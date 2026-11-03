@@ -7,6 +7,7 @@ import { StatusIndicator } from "../components/living/StatusIndicator";
 import { ShareFailureHelp } from "../components/living/ShareFailureHelp";
 import { hostFailureChecks } from "./host-page-notices";
 import { LoadingStatus } from "../components/living/WaitingStatus";
+import { StartupFailure } from "../components/living/StartupFailure";
 import { Pill } from "../components/living/primitives";
 import { deriveViewerPresentation } from "../media/viewer-presentation";
 import {
@@ -44,6 +45,11 @@ function StatusMark({ status }: { status: StatusDescriptor }) {
 }
 
 export function StatusPreviewPage() {
+  return new URLSearchParams(location.search).has("startup-failure")
+    ? <StartupFailure /> : <StatusCatalog />;
+}
+
+function StatusCatalog() {
   usePreviewAnchor();
   const { lang, vis, t, titleFrames } = useCopy();
   const [selected, setSelected] = useState("playing");
@@ -203,6 +209,7 @@ export function StatusPreviewPage() {
           <header><h2>加载与等待</h2>
             <p>页面加载与站点检查只显示真实状态。App 启动与媒体等待保留一句次要短句，每 15 秒轮换，隐藏时暂停；连续等待中的状态变化不会重新抽句。</p>
           </header>
+          <p><a href="/__status-preview?startup-failure">{t("startup.failed")}</a></p>
           <label>入口状态 <select value={loadingLabel} onChange={event => setLoadingLabel(event.target.value as CopyKey | "")}>
             <option value="common.loading">页面加载</option>
             <option value="gate.checking">站点检查</option>

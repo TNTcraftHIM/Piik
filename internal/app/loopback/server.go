@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/TNTcraftHIM/Piik/internal/app/buildinfo"
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/coder/websocket"
@@ -70,6 +71,9 @@ type Endpoint struct {
 }
 
 type Health struct {
+	Version           string                  `json:"version"`
+	Revision          string                  `json:"revision"`
+	PackageTarget     string                  `json:"packageTarget"`
 	Protocol          int                     `json:"protocol"`
 	Service           string                  `json:"service"`
 	Port              int                     `json:"port"`
@@ -417,6 +421,9 @@ func (server *Server) handleHealth(response http.ResponseWriter, request *http.R
 	}
 	response.Header().Set("Cache-Control", "no-store")
 	writeJSON(response, http.StatusOK, Health{
+		Version:           buildinfo.Version(),
+		Revision:          buildinfo.Revision,
+		PackageTarget:     buildinfo.PackageTarget(),
 		Protocol:          ProtocolVersion,
 		Service:           ServiceName,
 		Port:              server.endpoint.Port,

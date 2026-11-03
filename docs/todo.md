@@ -1,48 +1,46 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-01
+Last reviewed: 2026-11-03
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Public-invitation candidate retirement.** Capture the parent and server
+  reason when a candidate is retired before its first SDP offer. Keep this
+  separate from candidates that actually enter ICE and fail.
 - [ ] **Browser sharing falls to low source FPS during motion.** Trace raw
   capture, sender-owned track input and encoding on Windows Chrome with mixed
   direct/SFU delivery. The observed source fell to roughly 2 fps during video
   or game playback; reproduce with real window/display capture. Keep the
   separate SFU packet-loss stage distinct from source-frame production.
-- [ ] **Windows App sharing ends unexpectedly.** Identify WGC/source, device or
-  encoder termination in the supplied release feedback using the native stage
-  and HRESULT, and reproduce the unexpected termination.
-- [ ] **Native screen sound recaptures room voice.** Exclude Piik voice while
-  retaining intended source audio. Verify Browser own-document exclusion and
-  Native process exclusion; keep acoustic echo and duplicate commentary with
-  their separate microphone owners.
+- [ ] **Unclassified capture termination in older Windows feedback.** Identify
+  the Native failure stage and HRESULT in the original v2.4.1/v2.5.1 attempts.
+  Their Browser reports show Native failure before page cleanup but do not
+  identify its trigger.
+- [ ] **Room voice in Native display sound.** Resolve the remaining case where
+  system loopback recaptures Browser voice, while excluding the Browser process
+  also removes its other audio. Browser own-document exclusion and Native
+  process-tree exclusion are already implemented; acoustic echo and duplicate
+  commentary retain their separate microphone owners.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
-- [ ] **Remote-control end-to-end latency.** Measure input-to-visible-response
-  on an attended target, covering OS execution, Native capture/encoding, remote
-  transport and display in the same trial. The
-  [input assessment](./research/room-interactions.md#window-capture-and-game-input)
-  owns completed local component measurements.
+- [ ] **Native H264 scene-change latency.** Reduce large-AU send-queue delay
+  while preserving bitrate restoration. The
+  [end-to-end control](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)
+  locates the delay and rejects the one-frame HRD override that prevents recovery.
 - [ ] **Linux capture ends after selection (#499).** Follow
   [#499](https://github.com/TNTcraftHIM/Piik/issues/499) on niri/Wayland with
   GStreamer NVENC. The Browser report records capture ending before connection
   cleanup; obtain the native capture failure to distinguish the encoder and Portal.
-- [ ] **macOS source-picker thumbnails (#500).** The reporter confirmed normal
-  sharing on 2026-10-28; the remaining [#500](https://github.com/TNTcraftHIM/Piik/issues/500)
-  report concerns missing screen thumbnails in the source picker. The macOS
-  helper now implements the existing preview command; verify its build and
-  display/window thumbnails on a physical Mac before closing the issue.
 - [ ] **Mouse input stops when Host Chrome is minimized (#502).** Follow
   [#502](https://github.com/TNTcraftHIM/Piik/issues/502) on the original Windows
-  host: the v2.5.1 follow-up retains the grant, but mouse movement and left/right
-  clicks stop until Chrome is restored. The diagnostic candidate adds aggregate
-  input-stage and sink-API counts without recording input values. Obtain App ZIPs
-  during the minimized failure and after restoration; the local controlled
-  Chrome trial did not reproduce the original machine's trigger.
+  host. The supplied v2.5.2 reports retain the grant and receive authorized mouse
+  events, but Windows `SendInput` rejects a button event and subsequent release
+  attempts. Identify that OS refusal trigger and verify held-button recovery;
+  the local controlled Chrome trial did not reproduce it.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
@@ -56,6 +54,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
+- [ ] **Stronger microphone noise suppression (#518).** Assess the
+  [requested speech-processing option](https://github.com/TNTcraftHIM/Piik/issues/518)
+  through the shared microphone input. Browser voice processing is already the
+  default; keep screen and system audio unprocessed.
 - [ ] **3.0 semantic reconstruction.** Continue the isolated `feat/channel-prototype`
   from the accepted domain/room/participant model. Map existing behavior and
   ownership, remove accidental constraints, then implement cohesive Rust runtimes

@@ -861,12 +861,13 @@ export function HostPage({
         }
         return new SfuPublisher(events);
       },
-      reconcileChildren: (childPeerIds) => {
+      reconcileChildren: (assignment, revision) => {
         if (
           isCurrentGeneration(generation) &&
           hostSfuRouteRef.current === route
         ) {
-          reconcileHostChildren(childPeerIds, generation);
+          activatePreparedHostChild(revision, assignment);
+          reconcileHostChildren(assignment.childPeerIds, generation);
         }
       },
       send: (message) =>
@@ -2571,8 +2572,6 @@ export function HostPage({
         } else {
           discardPreparedHostChild();
         }
-      } else {
-        activatePreparedHostChild(message.revision, message.assignment);
       }
       if (
         message.phase === "active" &&

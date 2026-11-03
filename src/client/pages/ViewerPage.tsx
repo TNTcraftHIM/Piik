@@ -1194,7 +1194,7 @@ export function ViewerPage({
         },
         onSfuStream: (
           nextStream,
-          assignment,
+          _assignment,
           initialVideoStream,
           revision,
         ) => {
@@ -1203,7 +1203,7 @@ export function ViewerPage({
           }
           const previousChildPeerIds = currentAssignment.childPeerIds;
           currentAssignment = limitMediaAssignment(
-            { parentPeerId: null, childPeerIds: assignment.childPeerIds },
+            { parentPeerId: null, childPeerIds: currentAssignment.childPeerIds },
             endpointMediaCopyCapacity,
           );
           reconcileRelayChildren(previousChildPeerIds);
@@ -1375,18 +1375,6 @@ export function ViewerPage({
                     activePeerMetrics,
                     snapshot.metrics,
                   );
-                  if (
-                    probe.qualityResult === "rejected" &&
-                    signal.send({
-                      type: "route-failed",
-                      revision: probe.revision,
-                      phase: "prepare",
-                      connectionId: probe.candidateConnectionId,
-                    })
-                  ) {
-                    discardPendingPeer();
-                    return;
-                  }
                 }
               }
               provePendingPeer();

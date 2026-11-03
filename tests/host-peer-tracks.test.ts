@@ -5,6 +5,7 @@ import {
   type QualityProfile,
 } from "../src/client/media/quality.ts";
 import { HostProvisionalChild } from "../src/client/media/host-provisional-child.ts";
+import { ViewerSfuRoute } from "../src/client/media/viewer-sfu-route.ts";
 import { senderQualityEvidenceFromSnapshot } from "../src/client/media/sender-quality-evidence.ts";
 import { EMPTY_METRICS, type PeerSnapshot } from "../src/client/types.ts";
 import { HostPeer, RENEGOTIATION_ANSWER_TIMEOUT_MS, type HostMediaPeer } from "../src/client/webrtc/host-peer.ts";
@@ -2560,6 +2561,53 @@ describe("ViewerRelay downstream ownership", () => {
     qualityProbe: false,
   });
 
+  it("admits a relay replacement after retirement while upstream activation is awaiting SDP", async () => {
+    const relay = new ViewerRelay({ iceServers: [] }, QUALITY_PROFILES["720p30"], {
+      sendSignal: () => true,
+    });
+    relay.setStream(createStream(createTrack("video", "standing-source"), null));
+    let finishActivation!: () => void;
+    const upstreamSdp = new Promise<void>((resolve) => { finishActivation = resolve; });
+    let waitForSdp = false;
+    const activating = vi.fn();
+    const admissions: boolean[] = [];
+    const children = vi.fn((ids: readonly string[], revision: number) => relay.activateChildren(revision, ids));
+    const route = new ViewerSfuRoute("parent-viewer", {
+      activatePeer: () => {
+        if (waitForSdp) { activating(); return upstreamSdp; }
+      },
+      activateChildren: children,
+      prepareChild: (candidate, planned, revision) => {
+        if (candidate && planned && revision !== undefined) admissions.push(relay.prepareChild(revision, candidate, planned));
+        else relay.discardPreparedChild();
+      },
+      onSfuStream: () => undefined,
+      send: () => true,
+    });
+    const assignment = (childPeerIds: string[]): ParticipantRouteAssignment => ({
+      upstream: { kind: "peer", peerId: "upstream" }, childPeerIds, sfuPublicationGeneration: null,
+    });
+    try {
+      route.accept({ revision: 1, phase: "active", assignment: assignment(["retired-child"]) });
+      await vi.waitFor(() => expect(children).toHaveBeenCalledWith(["retired-child"], 1));
+      waitForSdp = true;
+      route.accept({ revision: 2, phase: "active", assignment: assignment([]) });
+      await vi.waitFor(() => expect(activating).toHaveBeenCalledOnce());
+      route.accept({ revision: 3, phase: "prepare", assignment: assignment(["replacement-child"]),
+        candidate: routeCandidate(3, "replacement-child") });
+      expect(admissions).toEqual([true]);
+      finishActivation();
+      await upstreamSdp;
+      await vi.waitFor(() => expect(relay.getSignalRouteRevision(
+        "replacement-child", routeCandidate(3, "replacement-child").connectionId, 2,
+      )).toBe(3));
+    } finally {
+      finishActivation();
+      await route.disconnect();
+      relay.dispose();
+    }
+  });
+
   it("prepares against the current source and codec after an in-flight probe is replaced", async () => {
     let finishOld!: (codec: "vp8") => void;
     let finishCurrent!: (codec: "h264") => void;
@@ -3031,6 +3079,41 @@ describe("ViewerRelay downstream ownership", () => {
     );
     expect(FakePeerConnection.instances).toHaveLength(instanceCount);
     relay.dispose();
+  });
+
+  it("keeps a prepared child when a superseded stream replacement fails", async () => {
+    const onPreparedChildFailed = vi.fn();
+    const signals: Array<{ connectionId: string }> = [];
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      { sendSignal: (_peerId, payload) => { signals.push(payload); return true; }, onPreparedChildFailed },
+    );
+    let finish!: () => void;
+    const paused = new Promise<void>(resolve => { finish = resolve; });
+    try {
+      relay.setStream(createStream(createTrack("video", "initial-video"), null));
+      expect(relay.prepareChild(7, routeCandidate(7, "prepared-child"), ["prepared-child"])).toBe(true);
+      await vi.waitFor(() => expect(signals).toHaveLength(1));
+      const prepared = FakePeerConnection.latest!;
+      const sender = prepared.senders[0]!;
+      const replace = vi.spyOn(sender, "replaceTrack").mockImplementationOnce(async () => {
+        await paused;
+        throw new Error("superseded stream was rejected");
+      });
+      relay.setStream(createStream(createTrack("video", "superseded-video"), null));
+      await vi.waitFor(() => expect(replace).toHaveBeenCalledOnce());
+      const finalVideo = createTrack("video", "current-video");
+      relay.setStream(createStream(finalVideo, null));
+      finish();
+      await vi.waitFor(() => expect(sender.track?.id).toBe(finalVideo.id));
+      expect(onPreparedChildFailed).not.toHaveBeenCalled();
+      expect(prepared.connectionState).not.toBe("closed");
+      expect(FakePeerConnection.instances).toHaveLength(1);
+      prepared.connectionState = "connected";
+      relay.activateChildren(7, ["prepared-child"]);
+      expect(relay.getSnapshot("prepared-child")?.connectionId).toBe(signals[0]!.connectionId);
+    } finally { finish(); relay.dispose(); }
   });
 
   it("syncs same-stream audio changes into the prepared connection", async () => {

@@ -2780,6 +2780,77 @@ func TestSignalKeepsMediaIdentityThroughGraceWhilePresenceReturnsOnce(t *testing
 		`{"fromPeerId":%q,"connectionId":"connection-during-grace","rebuild":false}`, firstViewerAuth.PeerID))
 }
 
+func TestSignalAllowsRetainedChildRestartWhileRelayRepairsIngress(t *testing.T) {
+	h := startHarness(t, harnessOptions{endpointMediaCopyCapacity: 1})
+	host := openClient(t, h)
+	hostAuth := authenticate(t, host, h.room, protocol.RoleHost, "restart-host-client", 0, "", presenceOptions{})
+	relay := openClient(t, h)
+	relayAuth := authenticate(t, relay, h.room, protocol.RoleViewer, "restart-relay-client", 1, "", presenceOptions{})
+	commitPreparedRoute(t, relay)
+	child := openClient(t, h)
+	childAuth := authenticate(t, child, h.room, protocol.RoleViewer, "restart-child-client", 0, "", presenceOptions{})
+	active := commitPreparedRoute(t, child)
+	if active.Assignment.Upstream != protocol.PeerUpstream(relayAuth.PeerID) {
+		t.Fatalf("child upstream = %v, want the relay", active.Assignment.Upstream)
+	}
+	var relayEdge, childEdge activeViewerMediaEdge
+	h.locked(func() {
+		var ok bool
+		relayEdge, ok = h.server.router.resolveActiveViewerMediaEdge(h.room.RoomID, relayAuth.PeerID)
+		if !ok {
+			t.Fatal("relay ingress must be active")
+		}
+		childEdge, ok = h.server.router.resolveActiveViewerMediaEdge(h.room.RoomID, childAuth.PeerID)
+		if !ok {
+			t.Fatal("child ingress must be active")
+		}
+	})
+	relay.sendJSON(map[string]any{
+		"type": "route-failed", "phase": "active", "revision": relayEdge.revision,
+		"connectionId": relayEdge.connectionID,
+	})
+	repair := nextPreparedRoute(t, relay)
+	h.locked(func() {
+		rm, _ := h.server.router.rooms.Get(h.room.RoomID)
+		snapshot := rm.controller.Snapshot()
+		edge, ok := snapshot.UpstreamByViewer.Get(childAuth.PeerID)
+		if !ok || !edge.PhysicalActive || !edge.Usable || videoConnectionID(snapshot, edge) != childEdge.connectionID {
+			t.Fatal("relay repair must retain its child's physical connection")
+		}
+		if _, ok := h.server.router.resolveActiveViewerMediaEdge(h.room.RoomID, childAuth.PeerID); ok {
+			t.Fatal("a retained subtree must not claim the repairing source path is ready")
+		}
+	})
+	child.sendJSON(map[string]any{
+		"type": "restart-request", "targetPeerId": relayAuth.PeerID,
+		"connectionId": childEdge.connectionID, "rebuild": false,
+	})
+	forwarded, ok := relay.tryNext("restart-request", defaultWait)
+	if !ok {
+		denial, _ := child.tryNext("error", 0)
+		t.Fatalf("retained child restart was not forwarded: %s", denial.raw)
+	}
+	expectMatch(t, forwarded.raw, fmt.Sprintf(
+		`{"fromPeerId":%q,"connectionId":%q,"rebuild":false}`, childAuth.PeerID, childEdge.connectionID))
+	for _, request := range []map[string]any{
+		{"type": "restart-request", "targetPeerId": hostAuth.PeerID, "connectionId": childEdge.connectionID, "rebuild": true},
+		{"type": "restart-request", "targetPeerId": relayAuth.PeerID, "connectionId": "retired_connection_12345678", "rebuild": true},
+	} {
+		child.sendJSON(request)
+		expectMatch(t, child.next("error").raw, `{"code":"FORBIDDEN"}`)
+	}
+	relay.sendJSON(map[string]any{
+		"type": "restart-request", "targetPeerId": childAuth.PeerID,
+		"connectionId": childEdge.connectionID, "rebuild": true,
+	})
+	expectMatch(t, relay.next("error").raw, `{"code":"FORBIDDEN"}`)
+	relay.sendJSON(map[string]any{
+		"type": "restart-request", "targetPeerId": repair.Assignment.Upstream.PeerID,
+		"connectionId": repair.Candidate.ConnectionID, "rebuild": true,
+	})
+	expectMatch(t, relay.next("error").raw, `{"code":"FORBIDDEN"}`)
+}
+
 // ---------------------------------------------------------------------------
 // capacity and abandonment
 // ---------------------------------------------------------------------------

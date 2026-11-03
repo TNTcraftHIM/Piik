@@ -916,8 +916,9 @@ For 200 samples, Browser input dispatch and AES-GCM-to-send each had a 0.1 ms
 at the 95th percentile, matching the short timer rather than a rendering-frame
 wait. Encrypted Pion delivery through Host authorization to a recorded input
 sink was 0.13 ms at the 95th percentile. No slow point appeared in these local
-components. End-to-end timing still needs target execution, Native capture and
-encoding, remote transport and physical display response in the same trial.
+components. The later [Native H264 end-to-end control](./webrtc-encoder-pool.md#h264-burst-and-recovery)
+includes real OS input, capture, encoding and Browser compositor presentation;
+its remaining scene-change delay is traced to the send queue.
 
 The reviewed implementation uses WGC capture and the documented Windows input
 API, without game-memory access, injected game code or an input driver.

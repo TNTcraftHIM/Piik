@@ -71,7 +71,7 @@ void CheckQuietCaptureRefresh() {
   latest.capture_timestamp = latest.timestamp;
   const auto previous = latest.timestamp;
   const auto before = static_cast<UINT64>(MFGetSystemTime());
-  const auto refreshed = RefreshCaptureInput(latest);
+  const auto refreshed = RefreshCaptureInput(latest, previous);
   const auto after = static_cast<UINT64>(MFGetSystemTime());
   assert(refreshed->timestamp >= before && refreshed->timestamp <= after);
   assert(refreshed->timestamp - previous >= 50'000'000);
@@ -81,6 +81,17 @@ void CheckQuietCaptureRefresh() {
          refreshed->presentation.cx == latest.presentation.cx &&
          refreshed->presentation.cy == latest.presentation.cy &&
          refreshed->color_space == latest.color_space && refreshed->texture.Get() == latest.texture.Get());
+  // A delayed real frame can advance presentation beyond the current QPC time.
+  CaptureInput ahead = latest;
+  ahead.timestamp = after + 10'000'000;
+  const auto after_ahead = RefreshCaptureInput(latest, ahead.timestamp);
+  assert(after_ahead->timestamp > ahead.timestamp);
+  assert((after_ahead->timestamp - ahead.timestamp) * 90'000 >= 10'000'000);
+  const auto repeated = RefreshCaptureInput(latest, after_ahead->timestamp);
+  assert(repeated->timestamp > after_ahead->timestamp);
+  assert((repeated->timestamp - after_ahead->timestamp) * 90'000 >= 10'000'000);
+  assert(repeated->capture_timestamp == latest.capture_timestamp);
+  assert(latest.timestamp == previous);
   // The compositor changed the picture just before the refresh, but its frame
   // callback arrives afterwards. It is new capture input, not a stale still.
   const auto delayed_capture = before - 1;
@@ -150,14 +161,16 @@ void CheckRetainedContentAtAdaptedCadence(ID3D11Device* device) {
   input->presentation = {64, 64};
   input->timestamp = static_cast<UINT64>(MFGetSystemTime());
   input->capture_timestamp = input->timestamp;
+  UINT64 previous_timestamp = 0;
   auto submit = [&](std::shared_ptr<const CaptureInput> next) {
     for (auto& worker : workers) worker->Submit(next);
+    previous_timestamp = next->timestamp;
   };
   const auto deadline = EncoderClock::now() + std::chrono::seconds(3);
   auto wait = [&](auto done) {
     while (!done()) {
       assert(EncoderClock::now() < deadline);
-      if (refresh.exchange(false)) submit(RefreshCaptureInput(*input));
+      if (refresh.exchange(false)) submit(RefreshCaptureInput(*input, previous_timestamp));
       std::this_thread::sleep_for(std::chrono::milliseconds(34));
     }
   };
@@ -172,20 +185,20 @@ void CheckRetainedContentAtAdaptedCadence(ID3D11Device* device) {
   submit(input);
   wait([&] { return changed[0] > 0 && changed[1] > 0; });
   // One rendition's drop must not reopen the other rendition's delivered content.
-  if (refresh.exchange(false)) submit(RefreshCaptureInput(*input));
+  if (refresh.exchange(false)) submit(RefreshCaptureInput(*input, previous_timestamp));
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   assert(!refresh.load());
   const auto before = keys[0].load();
   workers[0]->RequestKeyFrame();
-  submit(RefreshCaptureInput(*input));
+  submit(RefreshCaptureInput(*input, previous_timestamp));
   wait([&] { return keys[0] > before; });
-  if (refresh.exchange(false)) submit(RefreshCaptureInput(*input));
+  if (refresh.exchange(false)) submit(RefreshCaptureInput(*input, previous_timestamp));
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   assert(!refresh.load());
   workers[0]->SetBitrate(profile.bit_rate);
-  submit(RefreshCaptureInput(*input));
+  submit(RefreshCaptureInput(*input, previous_timestamp));
   wait([&] { return published_bitrate[0] == profile.bit_rate; });
-  if (refresh.exchange(false)) submit(RefreshCaptureInput(*input));
+  if (refresh.exchange(false)) submit(RefreshCaptureInput(*input, previous_timestamp));
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   assert(!refresh.load());
   for (auto& worker : workers) worker->Stop();
@@ -369,6 +382,37 @@ void CheckH264ProfileCompatibility() {
   assert(status.find("42c01f") == std::string::npos);
   CloseHandle(write);
   CloseHandle(read);
+}
+
+void CheckLocalH264Level1b() {
+  Runtime runtime;
+  // Include both start-code lengths, ordinary Baseline, a different profile,
+  // non-SPS data and a truncated SPS: only the local Baseline 1b bytes change.
+  const std::vector<UINT8> input{
+      0, 0, 0, 1, 0x67, 0x42, 0xc0, 9, 0x80,
+      0, 0, 1, 0x67, 0x42, 0xe0, 9, 0x80,
+      0, 0, 1, 0x67, 0x42, 0xc0, 31, 0x80,
+      0, 0, 1, 0x67, 0x64, 0, 9, 0x80,
+      0, 0, 1, 0x65, 0x42, 0xc0, 9,
+      0, 0, 1, 0x67, 0x42, 0xc0};
+  auto expected = input;
+  expected[6] = 0xd0;
+  expected[7] = 11;
+  expected[14] = 0xf0;
+  expected[15] = 11;
+  ComPtr<IMFSample> sample;
+  Check(MFCreateSample(&sample), "fixture-sample");
+  ComPtr<IMFMediaBuffer> buffer;
+  Check(MFCreateMemoryBuffer(static_cast<DWORD>(input.size()), &buffer), "fixture-buffer");
+  BYTE* raw = nullptr;
+  Check(buffer->Lock(&raw, nullptr, nullptr), "fixture-lock");
+  std::copy(input.begin(), input.end(), raw);
+  Check(buffer->Unlock(), "fixture-unlock");
+  Check(buffer->SetCurrentLength(static_cast<DWORD>(input.size())), "fixture-length");
+  Check(sample->AddBuffer(buffer.Get()), "fixture-add-buffer");
+  assert(ReadSample(sample.Get()) == expected);
+  assert(SupportsH264ProfileLevelId("42d00b"));
+  assert(!SupportsH264ProfileLevelId("42c009"));
 }
 
 void CheckEncoderCandidates() {
@@ -747,6 +791,7 @@ int main() {
   CheckEncoderCandidates();
   CheckQuietCaptureRefresh();
   CheckH264ProfileCompatibility();
+  CheckLocalH264Level1b();
   CheckPrimaryFailureDetails();
   CheckAudioCapabilityIsolation();
   CheckOutputSampleAlignment();

@@ -23,6 +23,35 @@ function applyFrom(
 }
 
 describe("Viewer presentation reducer", () => {
+  it("keeps route exhaustion across unrelated unassigned broadcasts until a new preparation", () => {
+    let state = apply(
+      { type: "access", access: "ready" },
+      { type: "signal", signal: "connected" },
+      { type: "host", host: "online" },
+      { type: "route", revision: 154, phase: "prepare", kind: "p2p" },
+      { type: "route", revision: 155, phase: "active", kind: "none" },
+      { type: "route-status", revision: 155, state: "failed" },
+    );
+    for (const revision of [157, 159, 161, 163, 165, 167]) {
+      state = reduceViewerPresentation(state, {
+        type: "route", revision, phase: "active", kind: "none",
+      });
+      expect(state.revision).toBe(revision);
+      expect(deriveViewerPresentation(state)).toMatchObject({
+        stage: "route-failed", failureCode: "ROUTE_EXHAUSTED",
+      });
+    }
+    const preparing = applyFrom(state,
+      { type: "route", revision: 172, phase: "prepare", kind: "p2p" });
+    expect(deriveViewerPresentation(preparing).stage).toBe("preparing-p2p");
+    expect(preparing.routeStatus).toBeNull();
+    const playing = applyFrom(preparing,
+      { type: "route", revision: 172, phase: "active", kind: "p2p" },
+      { type: "media-bound", generation: 1, revision: 172 },
+      { type: "frame-presented", generation: 1, proofEpoch: 0, revision: 172 });
+    expect(deriveViewerPresentation(playing).stage).toBe("playing");
+  });
+
   it("retains receiving rejection through route exhaustion but not fresh negotiation or stop", () => {
     const failed = apply(
       { type: "access", access: "ready" }, { type: "host", host: "online" },

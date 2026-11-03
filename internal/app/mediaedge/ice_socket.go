@@ -48,16 +48,19 @@ func (engine *Engine) newICESocket(servers []webrtc.ICEServer, mapping bool) (*i
 // Adoption happens before the one PeerConnection is constructed. Discovery and
 // media then keep this exact socket, including any authenticated punched tuple.
 func (engine *Engine) adoptICESocket(connection net.PacketConn, servers []webrtc.ICEServer, mapping bool) (*iceSocket, error) {
+	var punchedPeer *net.UDPAddr
+	if prepared, ok := connection.(*PunchedSocket); ok {
+		punchedPeer = prepared.remote
+		connection = prepared.PacketConn
+	}
 	ctx, cancel := context.WithCancel(engine.ctx)
 	socket := &iceSocket{
 		engine: engine, ctx: ctx, cancel: cancel,
-		localPort: connection.LocalAddr().(*net.UDPAddr).Port,
+		localPort:   connection.LocalAddr().(*net.UDPAddr).Port,
+		punchedPeer: punchedPeer,
 		mux: forwarding.NewUDPMux(ice.UDPMuxParams{
 			Logger: diagnostics.PionLoggerFactory().NewLogger("piik-ice"), UDPConn: connection,
 		}),
-	}
-	if prepared, ok := connection.(*PunchedSocket); ok {
-		socket.punchedPeer = prepared.remote
 	}
 	if engine.portMapping && mapping && len(stunServers(servers)) > 0 {
 		socket.portMapping = portmapping.Start(socket.localPort)

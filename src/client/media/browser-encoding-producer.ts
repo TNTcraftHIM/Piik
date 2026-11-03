@@ -11,6 +11,7 @@ import {
   videoQualitySettingsEqual, type QualityProfile,
 } from "./quality";
 import { cloneSenderVideoTrack, stopSenderVideoTrack } from "./sender-video-track";
+import { waitForConnectionOperation } from "../webrtc/connection-operation";
 
 // Leave time for ordinary encoding before the outer Viewer/route deadline.
 // Bound local transport setup, not frame production from a quiet source.
@@ -163,7 +164,10 @@ export class BrowserEncodingProducer {
   async report(): Promise<RTCStatsReport> {
     this.requireSender();
     const connection = this.send!;
-    const report = await connection.getStats().catch((error) => { debugRtcFailure(connection, error); throw error; });
+    const report = await waitForConnectionOperation(this.streamAbort.signal, () => connection.getStats()).catch((error) => {
+      if (!this.disposed) debugRtcFailure(connection, error);
+      throw error;
+    });
     debugRtcStats(connection, report);
     if (!this.disposed && this.startupPending &&
       (this.startupFrames ?? 0) >= STARTUP_VIDEO_ENCODED_FRAMES) {

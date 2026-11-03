@@ -376,7 +376,11 @@ export class ViewerRelay {
         candidate,
       );
     } catch (error) {
-      debugError("webrtc", "relay-prepare-failed", error, { connectionId: candidate.connectionId });
+      debugError("webrtc", "relay-prepare-failed", error, {
+        revision,
+        connectionId: candidate.connectionId,
+        stage: "create",
+      });
       this.discardPreparedChild();
       this.events.onPreparedChildFailed?.(revision, candidate.connectionId);
       return;
@@ -393,7 +397,14 @@ export class ViewerRelay {
     };
     void peer
       .start()
-      .catch(() => false)
+      .catch((error) => {
+        debugError("webrtc", "relay-prepare-failed", error, {
+          revision,
+          connectionId: candidate.connectionId,
+          stage: "start",
+        });
+        return false;
+      })
       .then((started) => {
         if (!started && this.preparedChild?.peer === peer) {
           this.failPreparedChild(peer);
@@ -426,7 +437,8 @@ export class ViewerRelay {
     if (
       preparedPeer &&
       this.preparedChild?.peer === preparedPeer &&
-      !(await this.replacePeerStream(preparedPeer, stream))
+      !(await this.replacePeerStream(preparedPeer, stream)) &&
+      this.stream === stream
     ) {
       this.failPreparedChild(preparedPeer);
     }

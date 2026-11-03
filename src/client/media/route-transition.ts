@@ -43,7 +43,7 @@ export class MediaRouteTransition {
   private plannedAssignment: ParticipantRouteAssignment | null = null;
   private activeAssignment: ParticipantRouteAssignment | null = null;
   // Preparation advances the operation without replacing committed authority.
-  private activeRevision: number | null = null;
+  private activeToken: RouteOperationToken | null = null;
   private mediaAssignment: ParticipantRouteAssignment | null = null;
   private preparedCandidate: PreparedRouteCandidate | null = null;
   private generation = 0;
@@ -73,11 +73,11 @@ export class MediaRouteTransition {
     this.plannedAssignment = cloneAssignment(update.assignment);
     this.preparedCandidate =
       update.phase === "prepare" ? cloneCandidate(update.candidate) : null;
+    this.generation += 1;
     if (update.phase === "active") {
       this.activeAssignment = cloneAssignment(update.assignment);
-      this.activeRevision = update.revision;
+      this.activeToken = { revision: update.revision, generation: this.generation };
     }
-    this.generation += 1;
     return "accepted";
   }
 
@@ -101,7 +101,7 @@ export class MediaRouteTransition {
   }
 
   markMediaActive(token: RouteOperationToken): boolean {
-    if (!this.owns(token, "active") || !this.activeAssignment) {
+    if (!this.ownsActive(token) || !this.activeAssignment) {
       return false;
     }
     this.mediaAssignment = cloneAssignment(this.activeAssignment);
@@ -127,7 +127,16 @@ export class MediaRouteTransition {
   }
 
   getActiveRevision(): number | null {
-    return this.activeRevision;
+    return this.activeToken?.revision ?? null;
+  }
+
+  getActiveToken(): RouteOperationToken | null {
+    return this.activeToken ? { ...this.activeToken } : null;
+  }
+
+  ownsActive(token: RouteOperationToken): boolean {
+    return token.revision === this.activeToken?.revision &&
+      token.generation === this.activeToken.generation;
   }
 
   getMediaAssignment(): ParticipantRouteAssignment | null {
@@ -145,7 +154,7 @@ export class MediaRouteTransition {
     this.phase = null;
     this.plannedAssignment = null;
     this.activeAssignment = null;
-    this.activeRevision = null;
+    this.activeToken = null;
     this.mediaAssignment = null;
     this.preparedCandidate = null;
     this.generation += 1;

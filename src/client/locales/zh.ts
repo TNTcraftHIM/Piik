@@ -251,6 +251,7 @@ export const zh = {
   "client.connect.remove": "取消此站点的 App 授权",
   "client.connect.openOnStart": "启动 App 时打开此站点",
   "client.connect.manage": "App 已就绪，点击管理。",
+  "client.connect.update": "App {current}，可更新至 {version}。",
   "client.connect.approveTitle": "允许使用 Piik App？",
   "client.connect.approveHint": "此站点将可以使用本机的屏幕、窗口和麦克风。请确认你信任这个网址。",
   "client.connect.approve": "允许使用",
@@ -296,8 +297,8 @@ export const zh = {
   "client.update.available": "发现新的 Piik 版本",
   "client.update.major": "发现新的 Piik 大版本",
   "client.update.majorHint": "此更新含不兼容改动。升级前请查看版本说明。",
-  "client.update.downloads": "Gitee 备用下载",
-  "client.update.extractAPK": "解压 ZIP 后安装 APK。",
+  "client.update.downloads": "AtomGit 备用下载",
+  "client.update.download": "下载 {version}",
   "client.update.differentBuild": "当前构建与官方发行版不同",
   "client.update.official": "可获取 Piik 正式发行版",
 
@@ -311,6 +312,8 @@ export const zh = {
   "gate.malformed": "房间号格式不正确",
   "gate.malformedHint": "请输入 1000 至 9999 的四位房间号",
   "gate.unavailableRoute": "无法访问",
+  "startup.failed": "页面未能加载",
+  "startup.retry": "请刷新页面后重试。",
 
   "join.title": "加入房间",
   "join.hint": "输入 {site} 的房间号",

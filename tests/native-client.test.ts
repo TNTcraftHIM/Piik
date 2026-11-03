@@ -138,9 +138,12 @@ describe("native App private wire", () => {
     await expect(discoverNativeConnect()).resolves.toBeNull();
   });
 
-  it("cancels the whole approval scan with its caller", async () => {
+  it.each([false, true])("cancels the whole approval scan with its caller (permission prompt: %s)", async prompting => {
     vi.spyOn(AbortSignal, "any").mockImplementation(() => { throw new TypeError("AbortSignal.any is not a function"); });
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    if (prompting) vi.stubGlobal("navigator", { permissions: {
+      query: vi.fn().mockResolvedValue(Object.assign(new EventTarget(), { state: "prompt" })),
+    } });
     const signals: AbortSignal[] = [];
     vi.stubGlobal("fetch", vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
       const signal = init.signal!;
@@ -149,6 +152,7 @@ describe("native App private wire", () => {
     })));
     const controller = new AbortController();
     const result = discoverNativeConnect(controller.signal);
+    await vi.waitFor(() => expect(signals).toHaveLength(NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1));
     controller.abort();
     await expect(result).resolves.toBeNull();
     expect(signals).toHaveLength(NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1);
@@ -277,11 +281,11 @@ describe("native App private wire", () => {
 
   it("still lets explicit source discovery ask for local permission", async () => {
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: { hostname: "piik.example" } });
-    const query = vi.fn().mockResolvedValue({ state: "prompt" });
+    const query = vi.fn().mockResolvedValue(Object.assign(new EventTarget(), { state: "prompt" }));
     vi.stubGlobal("navigator", { permissions: { query } });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(health))));
     await expect(discoverNativeHealth()).resolves.toMatchObject({ port: health.port });
-    expect(query).not.toHaveBeenCalled();
+    expect(query).toHaveBeenCalledOnce();
   });
 
   it.each(["localhost", "127.0.0.1", "[::1]"])("keeps App Local reception on %s available without cross-address-space consent", async (hostname) => {
@@ -371,6 +375,35 @@ describe("native App private wire", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("does not spend the discovery deadline while the user decides local permission", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    const permission = Object.assign(new EventTarget(), { state: "prompt" as PermissionState });
+    const query = vi.fn().mockResolvedValue(permission);
+    const remove = vi.spyOn(permission, "removeEventListener");
+    vi.stubGlobal("navigator", { permissions: { query } });
+    let respond!: (response: Response) => void;
+    vi.stubGlobal("fetch", vi.fn((url: string, options: RequestInit) => {
+      if (Number(new URL(url).port) !== health.port) return Promise.reject(new TypeError("No listener"));
+      return new Promise<Response>((resolve, reject) => {
+        respond = resolve;
+        options.signal!.addEventListener("abort", () => reject(options.signal!.reason), { once: true });
+      });
+    }));
+    const settled = vi.fn();
+    const discovery = discoverNativeHealth().then(settled);
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(settled).not.toHaveBeenCalled();
+    permission.state = "granted";
+    permission.dispatchEvent(new Event("change"));
+    respond(Response.json(health));
+    await discovery;
+    expect(settled).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ port: health.port }));
+    expect(query).toHaveBeenCalledOnce();
+    expect(remove).toHaveBeenCalledWith("change", expect.any(Function));
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("finds a later App without waiting for a silent port and aborts the unused probe", async () => {
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     let silentSignal: AbortSignal | undefined;
@@ -389,22 +422,45 @@ describe("native App private wire", () => {
     expect(silentSignal?.aborted).toBe(true);
   });
 
-  it("bounds all silent discovery ports with one deadline", async () => {
+  it.each(["unsupported", "grant", "response"])("bounds silent discovery ports with one network deadline after %s", async mode => {
     vi.useFakeTimers();
     vi.spyOn(AbortSignal, "any").mockImplementation(() => { throw new TypeError("AbortSignal.any is not a function"); });
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    const permission = Object.assign(new EventTarget(), { state: "prompt" as PermissionState });
+    if (mode !== "unsupported") vi.stubGlobal("navigator", { permissions: { query: vi.fn().mockResolvedValue(permission) } });
     const signals: AbortSignal[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (_url: string, options: RequestInit) => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string, options: RequestInit) => {
       signals.push(options.signal!);
+      if (mode === "response" && Number(new URL(url).port) === health.port) return new Response(null, { status: 403 });
       return new Promise<Response>((_resolve, reject) => {
         options.signal!.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
       });
     }));
     const discovery = discoverNativeHealth({ signal: new AbortController().signal });
+    if (mode === "grant") {
+      await vi.advanceTimersByTimeAsync(12_000);
+      expect(signals.every(signal => !signal.aborted)).toBe(true);
+      permission.state = "granted";
+      permission.dispatchEvent(new Event("change"));
+    }
     await vi.advanceTimersByTimeAsync(8_000);
     await expect(discovery).resolves.toBeNull();
     expect(signals).toHaveLength(NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1);
     expect(signals.every((signal) => signal.aborted)).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("does not wait for a permission decision when every discovery port rejects", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    const permission = Object.assign(new EventTarget(), { state: "prompt" });
+    const remove = vi.spyOn(permission, "removeEventListener");
+    vi.stubGlobal("navigator", { permissions: { query: vi.fn().mockResolvedValue(permission) } });
+    const fetcher = vi.fn().mockRejectedValue(new TypeError("No listener"));
+    vi.stubGlobal("fetch", fetcher);
+    await expect(discoverNativeHealth()).resolves.toBeNull();
+    expect(fetcher).toHaveBeenCalledTimes(NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1);
+    expect(remove).toHaveBeenCalledWith("change", expect.any(Function));
     expect(vi.getTimerCount()).toBe(0);
   });
 

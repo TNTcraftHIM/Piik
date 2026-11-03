@@ -27,6 +27,7 @@ export function summarizeConnectionMetrics(samples: readonly ConnectionMetricSam
     jitterMs: mean(numbers(metrics.map(metric => metric.jitterMs))),
     packetLossPercent: metrics.length === 1 ? metrics[0]!.packetLossPercent
       : direction === "send" ? mean(numbers(metrics.map(metric => metric.packetLossPercent)))
+      : packetSamples.length !== metrics.length ? null
       : packetLossPercentFromDeltas(sum(packetSamples.map(metric => metric.intervalPacketsReceived!)), sum(packetSamples.map(metric => metric.intervalPacketsLost!))),
     resolution: resolutions.length ? [resolutions[0]!, resolutions.at(-1)!] as const : null,
     framesPerSecond: frames.length ? [Math.min(...frames), Math.max(...frames)] as const : null,

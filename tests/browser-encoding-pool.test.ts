@@ -34,11 +34,11 @@ function member(budget = 2_000_000, configureCarrier = async () => true) {
     select, cancelSelection, push: vi.fn(), passthrough: vi.fn(() => { producerId = null; }), setPaused: vi.fn(),
     snapshot: () => ({ frames: producerId ? 30 : 0, width: 1920, height: 1080, timestamp: Date.now(), lastProducerId: producerId }),
   } as unknown as BrowserEncodingOutput;
-  const connection = { connectionState: "connected", getStats: async () => stats({ targetBitrate: demand.budget }, demand.codec) };
+  const connection = { connectionState: "connected", getStats: vi.fn(async () => stats({ targetBitrate: demand.budget }, demand.codec)) };
   const fatal = vi.fn();
-  const handle = pool.create(source, {} as RTCRtpSender, connection as RTCPeerConnection, profile,
+  const handle = pool.create(source, {} as RTCRtpSender, connection as unknown as RTCPeerConnection, profile,
     encoded, configureCarrier, async () => undefined, fatal)!;
-  return { demand, select, cancelSelection, fatal, handle, encoded, producerId: () => producerId };
+  return { demand, select, cancelSelection, fatal, handle, encoded, connection, producerId: () => producerId };
 }
 
 async function sample(count = 1) {
@@ -86,6 +86,17 @@ afterEach(() => {
 });
 
 describe("Browser encoding pool ownership", () => {
+  it("keeps sampling healthy members after retiring a pending connection stats wait", async () => {
+    const retired = member(), healthy = member();
+    retired.connection.getStats.mockReturnValueOnce(new Promise(() => {}));
+    await sample();
+    retired.handle.dispose();
+    await sample(4);
+    expect(healthy.producerId()).not.toBeNull();
+    expect(healthy.connection.getStats).toHaveBeenCalledTimes(5);
+    expect(healthy.fatal).not.toHaveBeenCalled();
+  });
+
   it.each(["false", "rejected"])("isolates a connection's %s carrier attachment from its shared source", async (outcome) => {
     const healthy = member();
     let finish!: (applied: boolean) => void, reject!: (error: Error) => void;

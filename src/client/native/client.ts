@@ -60,14 +60,13 @@ export function isLoopbackPage(): boolean {
   return ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
 }
 
-async function ungrantedLocalPermission(): Promise<PermissionState | null> {
+async function localPermission(): Promise<PermissionStatus | null> {
   // App Local already runs on loopback. Its permission can say "prompt" even
   // though loopback-to-loopback requests do not need consent.
   if (isLoopbackPage()) return null;
   for (const name of ["loopback-network", "local-network-access"]) {
     try {
-      const { state } = await navigator.permissions.query({ name: name as PermissionName });
-      return state === "granted" ? null : state;
+      return await navigator.permissions.query({ name: name as PermissionName });
     } catch {
       // Older Chromium uses the combined name; other browsers may expose neither.
     }
@@ -149,21 +148,23 @@ async function discoverNative<T>(
   { waitForPermission = true, signal }: NativeDiscoveryOptions,
 ): Promise<T | null> {
   if (signal?.aborted) return null;
-  if (!waitForPermission) {
-    const permission = await ungrantedLocalPermission();
-    if (permission) {
-      debugEvent("native", "unavailable", { stage: "permission", permission });
-      return null;
-    }
+  const permission = await localPermission();
+  if (!waitForPermission && permission && permission.state !== "granted") {
+    debugEvent("native", "unavailable", { stage: "permission", permission: permission.state });
+    return null;
   }
   if (signal?.aborted) return null;
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
   signal?.addEventListener("abort", abort, { once: true });
-  // The first request may wait for browser permission. One shared deadline
-  // bounds the scan; a silent port must not hide an App on another port.
-  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  // Permission waiting is user-owned; the parallel scan has one network deadline.
+  let timer: number | undefined;
+  const startDeadline = () => { timer ??= window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS); };
+  const permissionChanged = () => { if (permission?.state !== "prompt") startDeadline(); };
+  const awaitingPermission = permission?.state === "prompt";
   try {
+    if (awaitingPermission) permission.addEventListener("change", permissionChanged);
+    permissionChanged();
     // An explicit launch stays with its App even when another approved App is faster.
     const selectedPort = clientRuntimePort();
     const ports = selectedPort === null ? Array.from({
@@ -175,6 +176,7 @@ async function discoverNative<T>(
         signal: controller.signal,
         ...(isLoopbackPage() ? {} : { targetAddressSpace: "loopback" }),
       } as RequestInit);
+      startDeadline();
       if (!response.ok) throw new Error("Piik App discovery was not accepted");
       const body: unknown = await response.json();
       const identity = nativeDiscoveryIdentitySchema.safeParse(body);
@@ -201,6 +203,7 @@ async function discoverNative<T>(
     debugEvent("native", "unavailable", { stage: "discovery", timedOut: controller.signal.aborted });
     return null;
   } finally {
+    if (awaitingPermission) permission.removeEventListener("change", permissionChanged);
     signal?.removeEventListener("abort", abort);
     window.clearTimeout(timer);
     controller.abort();

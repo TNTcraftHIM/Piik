@@ -210,6 +210,8 @@ describe("minimal route transition contracts", () => {
       await vi.waitFor(() => expect(subscriber.disconnect).toHaveBeenCalledOnce());
       expect(activatePeer).toHaveBeenCalledWith(replacement, 3);
     } else {
+      route.accept({ revision: 3, phase: "prepare", assignment: peerAssignment("candidate_parent", ["next_child"]),
+        candidate: candidate(3, "next_child") });
       status = outcome;
       expect(route.retryPeerActivation(candidate(2).connectionId)).toBe(true);
       if (outcome === "connected") await vi.waitFor(() => expect(subscriber.disconnect).toHaveBeenCalledOnce());
@@ -349,6 +351,81 @@ describe("minimal route transition contracts", () => {
     });
   });
 
+  it.each(["prepare", "active"] as const)("promotes a committed upstream behind SDP while preserving the next child %s", async (phase) => {
+    let finishSdp!: () => void;
+    const sdp = new Promise<void>((resolve) => { finishSdp = resolve; });
+    const activatePeer = vi.fn((_assignment: ParticipantRouteAssignment, revision?: number) =>
+      revision === undefined ? sdp : true);
+    const preparePeer = vi.fn();
+    const prepareChild = vi.fn();
+    const route = new ViewerSfuRoute("viewer_12345678", {
+      activatePeer, preparePeer, prepareChild,
+      onSfuStream: () => undefined,
+      send: () => true,
+    });
+    const committed = peerAssignment("next_parent");
+    const withChild = peerAssignment("next_parent", ["next_child"]);
+    const nextChild = candidate(3, "next_child");
+    try {
+      route.accept({ revision: 1, phase: "active", assignment: peerAssignment("old_parent") });
+      await vi.waitFor(() => expect(activatePeer).toHaveBeenCalledOnce());
+      route.accept({ revision: 2, phase: "prepare", assignment: committed, candidate: candidate(2) });
+      // Active is the server's acceptance of this prepared input's readiness.
+      route.accept({ revision: 2, phase: "active", assignment: committed });
+      const preparations = preparePeer.mock.calls.length;
+      route.accept({ revision: 3, phase: "prepare", assignment: withChild, candidate: nextChild });
+      if (phase === "active") route.accept({ revision: 3, phase, assignment: withChild });
+      expect.soft(preparePeer.mock.calls.slice(preparations)).not.toContainEqual([null]);
+      finishSdp();
+      await vi.waitFor(() => expect(activatePeer).toHaveBeenCalledWith(phase === "active" ? withChild : committed, 2));
+      expect(prepareChild).toHaveBeenLastCalledWith(nextChild, ["next_child"], 3);
+    } finally {
+      finishSdp();
+      await route.disconnect();
+    }
+  });
+
+  it.each(["promote", "fail"] as const)("keeps committed SFU input behind SDP during a child operation, then %s", async outcome => {
+    let finishSdp!: () => void;
+    const sdp = new Promise<void>(resolve => { finishSdp = resolve; });
+    const onSfuStream = vi.fn();
+    const messages: ClientMessage[] = [];
+    let subscriber!: ReturnType<typeof createFakeSubscriber>;
+    const route = new ViewerSfuRoute("viewer_12345678", {
+      activatePeer: () => sdp, onSfuStream,
+      send: message => { messages.push(message); return true; },
+      createSubscriber: events => (subscriber = createFakeSubscriber(events, [], "committed")),
+    });
+    const stream = {} as MediaStream;
+    const assignment = viewerSfuAssignment(["next_child"]);
+    try {
+      route.accept({ revision: 1, phase: "active", assignment: peerAssignment("old_parent") });
+      // Let the preceding active transition enter its pending SDP operation.
+      await Promise.resolve();
+      route.accept({ revision: 2, phase: "prepare", assignment: viewerSfuAssignment(),
+        candidate: candidate(2, "viewer_12345678", "sfu") });
+      await route.acceptConfig(sfuConfig(2));
+      subscriber.events.onStream(stream);
+      subscriber.events.onFirstDecodedFrame();
+      expect(messages).toContainEqual({ type: "route-ready", revision: 2, phase: "prepare" });
+      route.accept({ revision: 2, phase: "active", assignment: viewerSfuAssignment() });
+      route.accept({ revision: 3, phase: "prepare", assignment, candidate: candidate(3, "next_child") });
+      route.accept({ revision: 3, phase: "active", assignment });
+      expect(subscriber.disconnect).not.toHaveBeenCalled();
+      if (outcome === "fail") subscriber.events.onDisconnected();
+      finishSdp();
+      if (outcome === "promote") {
+        await vi.waitFor(() => expect(onSfuStream).toHaveBeenCalledWith(stream, assignment, true, 3));
+      } else {
+        expect(messages).toContainEqual({ type: "route-failed", revision: 3, phase: "active", connectionId: sfuConfig(2).connectionId });
+        expect(onSfuStream).not.toHaveBeenCalled();
+      }
+    } finally {
+      finishSdp();
+      await route.disconnect();
+    }
+  });
+
   it("keeps old media through prepare and commits only exact active authority", () => {
     const route = new MediaRouteTransition();
     const oldAssignment = peerAssignment("old-parent");
@@ -366,6 +443,7 @@ describe("minimal route transition contracts", () => {
     });
     expect(route.getMediaAssignment()).toEqual(oldAssignment);
     expect(route.markMediaActive(route.token()!)).toBe(false);
+    expect(route.ownsActive(oldToken)).toBe(true);
 
     route.accept({ revision: 2, phase: "active", assignment: nextAssignment });
     expect(route.markMediaActive(route.token()!)).toBe(true);
@@ -373,6 +451,10 @@ describe("minimal route transition contracts", () => {
     expect(
       route.accept({ revision: 1, phase: "active", assignment: oldAssignment }),
     ).toBe("stale");
+    const committed = route.getActiveToken()!;
+    route.reset();
+    route.accept({ revision: 2, phase: "active", assignment: nextAssignment });
+    expect(route.ownsActive(committed)).toBe(false);
   });
 
   it("treats child assignment order as presentation-only", () => {
@@ -691,7 +773,7 @@ describe("minimal route transition contracts", () => {
       getStream: () => ({}) as MediaStream,
       getProfile: () => QUALITY_PROFILES["720p30"],
       getVideoCodec: () => "vp8",
-      reconcileChildren: (children) => reconciledChildren.push(children),
+      reconcileChildren: (assignment) => reconciledChildren.push(assignment.childPeerIds),
       send: () => true,
       createPublisher: () => createFakePublisher([], "publisher"),
     });
@@ -969,7 +1051,7 @@ describe("minimal route transition contracts", () => {
       getStream: () => ({}) as MediaStream,
       getProfile: () => QUALITY_PROFILES["720p30"],
       getVideoCodec: () => "vp8",
-      reconcileChildren: (children) => reconciledChildren.push(children),
+      reconcileChildren: (assignment) => reconciledChildren.push(assignment.childPeerIds),
       send: () => true,
       createPublisher: () => {
         const publisher = createFakePublisher(
@@ -1466,14 +1548,15 @@ describe("minimal route transition contracts", () => {
     await route.disconnect();
   });
 
-  it("rejects a quality SFU candidate after three comparable regressions", async () => {
+  it("keeps a low-quality SFU candidate until recovery proves non-regression", async () => {
     const messages: ClientMessage[] = [];
     const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
     let currentMetrics = receiveMetrics(1_000);
+    const onSfuStream = vi.fn();
     const route = new ViewerSfuRoute("viewer_12345678", {
       activatePeer: () => true,
       reconcileSfuChildren: () => undefined,
-      onSfuStream: () => undefined,
+      onSfuStream,
       currentPeerMetrics: () => currentMetrics,
       qualityProbeEligible: () => true,
       send: (message) => {
@@ -1519,16 +1602,21 @@ describe("minimal route transition contracts", () => {
       );
     }
 
-    expect(messages.at(-1)).toEqual({
-      type: "route-failed",
-      revision: 2,
-      phase: "prepare",
-      connectionId: null,
-    });
-    expect(subscriber.disconnect).toHaveBeenCalledOnce();
-    expect(
-      messages.filter((message) => message.type === "route-ready"),
-    ).toEqual([]);
+    expect(messages.filter(message => message.type === "route-failed" || message.type === "route-ready")).toEqual([]);
+    expect(subscriber.disconnect).not.toHaveBeenCalled();
+    expect(onSfuStream).not.toHaveBeenCalled();
+
+    for (const timestampMs of [7_100, 9_100, 11_100]) {
+      currentMetrics = receiveMetrics(timestampMs - 100);
+      subscriber.events.onStats(receiveMetrics(timestampMs));
+    }
+    expect(messages.filter(message => message.type === "route-failed")).toEqual([]);
+    expect(messages.filter(message => message.type === "route-ready")).toEqual([
+      { type: "route-ready", revision: 2, phase: "prepare" },
+    ]);
+    expect(subscriber.disconnect).not.toHaveBeenCalled();
+    expect(onSfuStream).not.toHaveBeenCalled();
+    await route.disconnect();
   });
 
   it("reconnects only the active SFU subscriber on the current route", async () => {
@@ -1959,5 +2047,75 @@ describe("minimal route transition contracts", () => {
     expect(activatedPeers.at(-1)).toEqual(
       peerAssignment("retained-parent", ["retained-child"]),
     );
+  });
+  it("preserves a committed Host publication while old source retirement delays activation", async () => {
+    const publishers: ReturnType<typeof createFakePublisher>[] = [];
+    const reconciledChildren: Array<{ childPeerIds: string[]; revision: number }> = [];
+    const stream = {} as MediaStream;
+    const route = new HostSfuRoute({
+      getStream: () => stream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      getVideoCodec: () => "h264",
+      reconcileChildren: (assignment, revision) => {
+        reconciledChildren.push({ childPeerIds: assignment.childPeerIds, revision });
+      },
+      send: () => true,
+      createPublisher: () => {
+        const publisher = createFakePublisher([], "publisher-" + publishers.length);
+        publishers.push(publisher);
+        return publisher;
+      },
+    });
+    await route.acceptAndWait({
+      revision: 1,
+      phase: "active",
+      assignment: hostAssignment("publication-old"),
+    });
+    await route.acceptConfig(sfuConfig(1, "publication-old"));
+    route.accept({
+      revision: 2,
+      phase: "prepare",
+      assignment: hostAssignment("publication-new", ["committed-child"]),
+      candidate: candidate(2, "viewer_first_12345678", "sfu"),
+    });
+    await route.acceptConfig(sfuConfig(2, "publication-new"));
+    expect(publishers[1]!.activate).toHaveBeenCalledOnce();
+
+    let releaseOld!: () => void;
+    const oldRetirement = new Promise<void>((resolve) => {
+      releaseOld = resolve;
+    });
+    publishers[0]!.replaceStream.mockResolvedValue(false);
+    publishers[0]!.disconnect.mockImplementation(() => oldRetirement);
+    const replacing = route.replaceStream({} as MediaStream);
+    const nextChild = {
+      revision: 3,
+      phase: "prepare" as const,
+      assignment: hostAssignment("publication-new", ["committed-child", "viewer_next_12345678"]),
+      candidate: candidate(3, "viewer_next_12345678", "direct"),
+    };
+    try {
+      await vi.waitFor(() => expect(publishers[0]!.disconnect).toHaveBeenCalledOnce());
+      // HostPage accepts route updates without awaiting local activation.
+      route.accept({
+        revision: 2,
+        phase: "active",
+        assignment: hostAssignment("publication-new", ["committed-child"]),
+      });
+      expect(reconciledChildren.at(-1)).toEqual({
+        childPeerIds: ["committed-child"],
+        revision: 2,
+      });
+      route.accept(nextChild);
+      expect(publishers[1]!.disconnect).not.toHaveBeenCalled();
+      releaseOld();
+      await replacing;
+      await route.acceptAndWait(nextChild);
+      expect(publishers[1]!.disconnect).not.toHaveBeenCalled();
+    } finally {
+      releaseOld();
+      await replacing;
+      await route.disconnect();
+    }
   });
 });
