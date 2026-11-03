@@ -162,10 +162,11 @@ impl Encoding {
 }
 
 struct Codec {
+    // Release the codec while its input surface and EGL resources remain alive.
+    codec: MediaCodec,
     // Destroy the window EGL surface before releasing the codec's native window.
     graphics: Graphics,
     _window: ndk::native_window::NativeWindow,
-    codec: MediaCodec,
     video_codec: VideoCodec,
     size: (u32, u32),
     config: Vec<u8>,
@@ -208,9 +209,9 @@ impl Codec {
         let graphics = Graphics::new(frames.display.clone(), Some(&window), false)?;
         codec.start()?;
         Ok(Self {
+            codec,
             graphics,
             _window: window,
-            codec,
             video_codec,
             size: (settings.width, settings.height),
             config: Vec::new(),
@@ -314,13 +315,12 @@ impl Codec {
 impl Drop for Codec {
     fn drop(&mut self) {
         eprintln!(
-            "Android encoder stop tid={} codec={:?} size={}x{}",
+            "Android encoder release tid={} codec={:?} size={}x{}",
             unsafe { libc::gettid() },
             self.video_codec,
             self.size.0,
             self.size.1
         );
-        let _ = self.codec.stop();
     }
 }
 
