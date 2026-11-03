@@ -1,18 +1,17 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-02
+Last reviewed: 2026-11-03
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **3.0 Native platforms and integration.** Complete the remaining Linux/macOS
+- [ ] **3.0 Native platform acceptance.** Complete the remaining Linux/macOS
   capture and input acceptance, retaining the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-  Finish the packaged Windows/Android main-flow acceptance at the internal-test
-  checkpoint, including repeated VP8 capture with another Android codec provider.
+  Verify repeated VP8 capture with another Android codec provider.
   MuMu's VP8 codec-service crash and Firefox's received-video conversion limit
   are recorded in [device evidence](./verification-status.md#device-evidence-boundary).
   Keep the SDK's transport controller,
