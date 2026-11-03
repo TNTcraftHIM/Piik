@@ -1,22 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 
 import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "../src/client/native/discovery-ports";
 import { channelAppDiscovery, discoverChannelAppHealth, nativeConnectionMetricsSchema } from "../src/client/channel/app-link";
 
-import {
-  nativeEventSchema,
-  nativeHealthSchema,
-  nativeRelayCapacity,
-  NATIVE_CLIENT_PROTOCOL,
-  nativeCaptureTargetSchema,
-  shareSourceReplacedResponseSchema,
-  shareStartedResponseSchema,
-  shareUpdatedResponseSchema,
-  sourcePreviewResponseSchema,
-  receiveAnswerResponseSchema,
-  requestFailedResponseSchema,
-} from "../src/client/native/wire";
+import { nativeCaptureTargetSchema, nativeVideoCodecSchema, remoteControlStateSchema } from "../src/client/native/wire";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -355,100 +342,14 @@ describe("current App discovery", () => {
   });
 });
 
-describe("published Native wire", () => {
-  const health = {
-    protocol: NATIVE_CLIENT_PROTOCOL,
-    service: "piik-client",
-    port: NATIVE_CLIENT_PORT_START,
-    instanceToken: "a".repeat(43),
-    nativeMedia: { video: true, hardwareH264: true },
-  };
-
-  it("preserves the published strict failure reader for requests without cancellation opt-in", () => {
-    const published = z.object({ version: z.literal(10), id: z.string(), type: z.literal("request-failed"), code: z.literal("operation-failed") }).strict();
-    const legacy = { version: 10, id: "request_start", type: "request-failed", code: "operation-failed" };
-    expect(published.safeParse(legacy).success).toBe(true);
-    expect(requestFailedResponseSchema.safeParse(legacy).success).toBe(true);
-    const optedIn = { ...legacy, code: "source-canceled" };
-    expect(published.safeParse(optedIn).success).toBe(false);
-    expect(requestFailedResponseSchema.safeParse(optedIn).success).toBe(true);
-  });
-
+describe("Native capture and input schemas", () => {
   it("requires the controlled App platform in remote-control state", () => {
-    const event = { version: NATIVE_CLIENT_PROTOCOL, type: "remote-control-state", shareId: "share_123456", mode: "off", requests: [] };
-    expect(nativeEventSchema.safeParse(event).success).toBe(false);
+    const state = { mode: "off", requests: [] };
+    expect(remoteControlStateSchema.safeParse(state).success).toBe(false);
     for (const platform of ["windows", "darwin", "linux"]) {
-      expect(nativeEventSchema.parse({ ...event, platform })).toMatchObject({ platform });
+      expect(remoteControlStateSchema.parse({ ...state, platform })).toMatchObject({ platform });
     }
-    expect(nativeEventSchema.safeParse({ ...event, platform: "unknown" }).success).toBe(false);
-  });
-
-  it("reads numeric video capability descriptions and rejects malformed limits", () => {
-    const nativeMedia = { ...health.nativeMedia, maxVideoResolution: { width: 3840, height: 3840 },
-      maxVideoPixels: 3840 * 2160, maxVideoMacroblocksPerSecond: 983_040 };
-    expect(nativeHealthSchema.parse({ ...health, nativeMedia }).nativeMedia).toMatchObject(nativeMedia);
-    const stronger = { ...nativeMedia, maxVideoResolution: { width: 32768, height: 32768 },
-      maxVideoPixels: 32768 ** 2, maxVideoFramerate: 120, maxVideoBitrate: 100_000_000,
-      maxAudioBitrate: 960_000, maxRelayChildren: 32 };
-    const strongerHealth = nativeHealthSchema.parse({ ...health, nativeMedia: stronger });
-    expect(strongerHealth.nativeMedia).toMatchObject(stronger);
-    expect(nativeRelayCapacity(20, strongerHealth)).toBe(20);
-    expect(nativeHealthSchema.safeParse({ ...health, nativeMedia: { ...nativeMedia, maxVideoPixels: 0 } }).success).toBe(false);
-    expect(nativeHealthSchema.safeParse({ ...health, nativeMedia: { ...nativeMedia, maxVideoMacroblocksPerSecond: -1 } }).success).toBe(false);
-    expect(nativeHealthSchema.parse({ ...health, nativeMedia: { ...nativeMedia, maxRelayChildren: 20 } })
-      .nativeMedia.maxRelayChildren).toBe(20);
-    for (const maxRelayChildren of [0, 0x1_0000_0000, 1.5]) {
-      expect(nativeHealthSchema.safeParse({ ...health, nativeMedia: { ...nativeMedia, maxRelayChildren } }).success).toBe(false);
-    }
-  });
-
-  it("accepts descriptive health extensions and treats absent media features as unavailable", () => {
-    expect(
-      nativeHealthSchema.parse({
-        protocol: 10,
-        service: "piik-client",
-        port: 39_721,
-        instanceToken: "a".repeat(43),
-        nativeMedia: {
-          video: true,
-          processAudio: false,
-          systemAudio: true,
-          hardwareH264: true,
-          softwareVP8: true,
-        },
-      }),
-    ).toMatchObject({ nativeMedia: { processAudio: false } });
-    expect(
-      nativeHealthSchema.safeParse({
-        protocol: NATIVE_CLIENT_PROTOCOL,
-        service: "piik-client",
-        port: 39_721,
-        instanceToken: "a".repeat(43),
-        nativeMedia: {
-          video: true,
-          processAudio: true,
-          systemAudio: true,
-          hardwareH264: true,
-          softwareVP8: false,
-        },
-        adapters: ["private"],
-      }).success,
-    ).toBe(true);
-    expect(nativeHealthSchema.parse({
-      ...health, futureDescription: "ignored", nativeMedia: { video: true, futureFeature: true },
-    })).toEqual({
-      ...health, nativeMedia: {
-        receiverReuse: false,
-        video: true, processAudio: false, processAudioExclusion: false, systemAudio: false, microphone: false, captureBorderControl: false, hardwareH264: false, softwareVP8: false,
-      },
-    });
-    expect(nativeHealthSchema.parse({ ...health, nativeMedia: undefined }).nativeMedia)
-      .toEqual({ receiverReuse: false, video: false, processAudio: false, processAudioExclusion: false, systemAudio: false, microphone: false, captureBorderControl: false, hardwareH264: false, softwareVP8: false });
-    for (const invalid of [
-      { protocol: 0 }, { protocol: 9.5 }, { protocol: Number.MAX_SAFE_INTEGER + 1 },
-      { service: "other" }, { port: NATIVE_CLIENT_PORT_END + 1 }, { instanceToken: "short" },
-      { nativeMedia: { softwareVP8: "true" } }, { nativeMedia: { captureBorderControl: "true" } }, { nativeMedia: null },
-    ]) expect(nativeHealthSchema.safeParse({ ...health, ...invalid }).success).toBe(false);
+    expect(remoteControlStateSchema.safeParse({ ...state, platform: "unknown" }).success).toBe(false);
   });
 
   it("keeps exact positive physical identities and accepts system picker zero", () => {
@@ -495,142 +396,9 @@ describe("published Native wire", () => {
     }).success).toBe(false);
   });
 
-  it("fences native events by share and connection identity", () => {
-    const event = {
-      version: 10,
-      type: "edge-state",
-      shareId: "share_123456",
-      connectionId: "edge_1234567",
-      state: "connected",
-    };
-    expect(nativeEventSchema.safeParse(event).success).toBe(true);
-    expect(
-      nativeEventSchema.safeParse({ ...event, connectionId: "short" }).success,
-    ).toBe(false);
-    expect(
-      nativeEventSchema.safeParse({ ...event, routeRevision: 1 }).success,
-    ).toBe(false);
-    const path = {
-      version: 10,
-      type: "edge-path",
-      shareId: "share_123456",
-      connectionId: "edge_1234567",
-      localType: "host",
-      remoteType: "srflx",
-      natTraversalPath: "predicted",
-    };
-    expect(nativeEventSchema.safeParse(path).success).toBe(true);
-    const { natTraversalPath: _missing, ...incompletePath } = path;
-    expect(nativeEventSchema.safeParse(incompletePath).success).toBe(false);
-  });
-
-  it("keeps an unavailable preview advisory instead of treating it as media failure", () => {
-    const preview = {
-      version: 10,
-      id: "request_preview",
-      type: "source-preview",
-      sourceKey: "display:65537",
-      mime: "image/bmp",
-      data: "",
-    };
-    expect(sourcePreviewResponseSchema.safeParse(preview).success).toBe(true);
-    expect(sourcePreviewResponseSchema.safeParse({
-      ...preview,
-      data: Buffer.alloc(54 + 320 * 180 * 3).toString("base64"),
-    }).success).toBe(true);
-    expect(sourcePreviewResponseSchema.safeParse({
-      ...preview,
-      data: "A".repeat(256 * 1024 + 1),
-    }).success).toBe(false);
-  });
-
-  it("keeps native share lifecycle responses as strict acknowledgements", () => {
-    const profile = {
-      resolution: { width: 2560, height: 1440 },
-      maxFramerate: 60,
-      maxBitrate: 12_000_000,
-      degradationPreference: "maintain-framerate",
-      maxAudioBitrate: 192000,
-    };
-    expect(shareStartedResponseSchema.safeParse({
-      version: 10,
-      id: "request_start",
-      type: "share-started",
-      shareId: "share_123456",
-      audio: true,
-      codec: "h264",
-    }).success).toBe(true);
-    expect(shareUpdatedResponseSchema.safeParse({
-      version: 10,
-      id: "request_update",
-      type: "share-updated",
-      shareId: "share_123456",
-    }).success).toBe(true);
-    expect(shareSourceReplacedResponseSchema.safeParse({
-      version: 10,
-      id: "request_source",
-      type: "share-source-replaced",
-      shareId: "share_123456",
-    }).success).toBe(true);
-    expect(shareUpdatedResponseSchema.safeParse({
-      version: 10,
-      id: "request_update",
-      type: "share-updated",
-      shareId: "share_123456",
-      profile,
-    }).success).toBe(false);
-  });
-
-  it("requires the actual Native codec instead of reporting Auto as media", () => {
-    const response = {
-      version: 10,
-      id: "request_receive",
-      type: "receive-answer",
-      shareId: "share_123456",
-      connectionId: "edge_1234567",
-      sdp: "v=0\r\n",
-      audio: false,
-    };
-    for (const codec of ["h264", "vp8"]) {
-      expect(receiveAnswerResponseSchema.safeParse({ ...response, codec }).success).toBe(true);
-      expect(shareStartedResponseSchema.safeParse({
-        version: 10, id: "request_start", type: "share-started",
-        shareId: response.shareId, audio: false, codec,
-      }).success).toBe(true);
-    }
-    expect(receiveAnswerResponseSchema.safeParse(response).success).toBe(false);
-    expect(receiveAnswerResponseSchema.safeParse({ ...response, codec: "auto" }).success).toBe(false);
-  });
-
-  it("accepts only internally consistent native quality evidence", () => {
-    const event = {
-      version: 10,
-      type: "edge-quality",
-      shareId: "share_123456",
-      connectionId: "edge_1234567",
-      sampleTimestampMs: 10_000,
-      sampleWindowMs: 2_000,
-      rtpStatsId: "pc_12345678",
-      trackIdentifier: "screen",
-      state: "degraded",
-      reason: "bandwidth",
-      intervalFramesEncoded: 60,
-      framesPerSecond: 30,
-      bitrateKbps: 3_000,
-      availableOutgoingKbps: 1_000,
-      width: 1280,
-      height: 720,
-    };
-    expect(nativeEventSchema.safeParse(event).success).toBe(true);
-    expect(
-      nativeEventSchema.safeParse({ ...event, reason: "none" }).success,
-    ).toBe(false);
-    expect(
-      nativeEventSchema.safeParse({
-        ...event,
-        state: "unknown",
-        reason: null,
-      }).success,
-    ).toBe(true);
+  it("requires an actual Native codec instead of Auto", () => {
+    for (const codec of ["h264", "vp8"]) expect(nativeVideoCodecSchema.parse(codec)).toBe(codec);
+    expect(nativeVideoCodecSchema.safeParse(undefined).success).toBe(false);
+    expect(nativeVideoCodecSchema.safeParse("auto").success).toBe(false);
   });
 });

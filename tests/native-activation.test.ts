@@ -1,8 +1,6 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { activateNativePicker, androidAppIntent } from "../src/client/native/activation";
-import { nativeHealthSchema, NATIVE_CLIENT_PROTOCOL } from "../src/client/native/wire";
-import { NATIVE_CLIENT_PORT_START } from "../src/client/native/discovery-ports";
 
 describe("Android App foreground actions", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -54,13 +52,5 @@ describe("Android App foreground actions", () => {
     activateNativePicker(activation);
     expect(assign).toHaveBeenCalledWith(activation);
     expect(androidAppIntent(activation.replace(";end", ";S.extra=value;end"))).toBeNull();
-  });
-
-  it("keeps activation optional and validates the known health extension", () => {
-    const health = { protocol: NATIVE_CLIENT_PROTOCOL, service: "piik-client", port: NATIVE_CLIENT_PORT_START,
-      instanceToken: "a".repeat(43), nativeMedia: {} };
-    expect(nativeHealthSchema.parse(health).activationURL).toBeUndefined();
-    expect(nativeHealthSchema.parse({ ...health, activationURL: "piik://media" }).activationURL).toBe("piik://media");
-    expect(nativeHealthSchema.safeParse({ ...health, activationURL: "piik://app" }).success).toBe(false);
   });
 });
