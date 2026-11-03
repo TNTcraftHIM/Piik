@@ -1,7 +1,6 @@
 //! Finite pair-scoped STUN work. The runtime remains the sole socket reader.
 use super::*;
 use futures_util::{stream::FuturesUnordered, StreamExt};
-use rtc_ice::url::{ProtoType, SchemeType, Url};
 use rtc_shared::{TaggedBytesMut, TransportContext, TransportProtocol};
 use rtc_stun::{
     agent::StunEvent,
@@ -16,52 +15,92 @@ pub(super) struct Base {
     pub socket: Arc<UdpIo>,
     pub local: SocketAddr,
 }
+#[derive(Clone)]
+pub(super) struct IceServerUrl {
+    pub host: String,
+    pub port: u16,
+    pub is_turn: bool,
+    pub username: String,
+    pub password: String,
+}
+impl IceServerUrl {
+    fn parse(raw: &str, server: &IceServer) -> Result<Option<Self>> {
+        ensure!(!raw.contains("//"), "invalid ICE URL");
+        // Preserve the existing explicit-UDP STUN spelling before URL parsing.
+        let raw = if raw.starts_with("stun:") {
+            raw.strip_suffix("?transport=udp").unwrap_or(raw)
+        } else {
+            raw
+        };
+        // STUN/TURN URIs omit `//`; url owns authority, IPv6, port and query parsing.
+        let url = url::Url::parse(&raw.replacen(':', "://", 1))?;
+        let host = url.host_str().context("ICE URL has no host")?;
+        let secure = matches!(url.scheme(), "stuns" | "turns");
+        let is_turn = match url.scheme() {
+            "stun" | "stuns" => false,
+            "turn" | "turns" => true,
+            _ => anyhow::bail!("unknown ICE URL scheme"),
+        };
+        let mut query = url.query_pairs();
+        let udp = if is_turn {
+            let transport = query.next();
+            ensure!(query.next().is_none(), "invalid ICE URL query");
+            match transport {
+                None => !secure,
+                Some((key, value)) => {
+                    ensure!(key == "transport", "invalid ICE URL query");
+                    match value.as_ref() {
+                        "udp" => true,
+                        "tcp" => false,
+                        _ => anyhow::bail!("invalid ICE URL transport"),
+                    }
+                }
+            }
+        } else {
+            ensure!(query.next().is_none(), "STUN URL must not contain a query");
+            !secure
+        };
+        if secure || !udp {
+            return Ok(None);
+        }
+        Ok(Some(Self {
+            host: host
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .to_owned(),
+            port: url.port().unwrap_or(3478),
+            is_turn,
+            username: server.username.clone(),
+            password: server.credential.clone(),
+        }))
+    }
+}
 pub(super) struct Config {
     bases: Vec<Base>,
-    urls: Vec<Url>,
+    urls: Vec<IceServerUrl>,
 }
 impl Config {
-    pub fn new(bases: Vec<Base>, urls: &[Url]) -> Self {
+    pub fn new(bases: Vec<Base>, urls: &[IceServerUrl]) -> Self {
         Self {
             bases,
-            urls: urls
-                .iter()
-                .filter(|url| url.scheme == SchemeType::Stun && url.proto == ProtoType::Udp)
-                .cloned()
-                .collect(),
+            urls: urls.iter().filter(|url| !url.is_turn).cloned().collect(),
         }
     }
 }
-pub(super) fn urls(servers: &[IceServer]) -> Vec<Url> {
+pub(super) fn urls(servers: &[IceServer]) -> Vec<IceServerUrl> {
     servers
         .iter()
         .flat_map(|server| server.urls.iter().map(move |raw| (server, raw)))
         .take(super::super::MAX_ICE_CANDIDATES)
-        .filter_map(|(server, raw)| {
-            // rtc's mature parser rejects STUN query strings; retain the
-            // existing common explicit-UDP spelling before passing it on.
-            let normalized = if raw.starts_with("stun:") {
-                raw.strip_suffix("?transport=udp").unwrap_or(raw)
-            } else {
-                raw
-            };
-            match Url::parse_url(normalized) {
-                Ok(mut url)
-                    if matches!(url.scheme, SchemeType::Stun | SchemeType::Turn)
-                        && url.proto == ProtoType::Udp =>
-                {
-                    url.username = server.username.clone();
-                    url.password = server.credential.clone();
-                    Some(url)
-                }
-                Ok(_) => {
-                    eprintln!("Native transport: secure/TCP ICE URLs are unsupported");
-                    None
-                }
-                Err(error) => {
-                    eprintln!("Native STUN URL rejected: {error}");
-                    None
-                }
+        .filter_map(|(server, raw)| match IceServerUrl::parse(raw, server) {
+            Ok(Some(url)) => Some(url),
+            Ok(None) => {
+                eprintln!("Native transport: secure/TCP ICE URLs are unsupported");
+                None
+            }
+            Err(error) => {
+                eprintln!("Native STUN URL rejected: {error}");
+                None
             }
         })
         .collect()
@@ -251,5 +290,100 @@ async fn observe(
             _=tokio::time::sleep_until(deadline.into())=>client.handle_timeout(Instant::now())?,
             reply=incoming.recv()=>{let reply=reply.context("binding route retired")?;let _=client.handle_read(reply);}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn udp_ice_urls_keep_endpoints_and_configured_credentials() -> Result<()> {
+        let mut parsed = Vec::new();
+        for (raw, is_turn, host, port) in [
+            ("stun:localhost", false, "localhost", 3478),
+            ("STUN:localhost:1234", false, "localhost", 1234),
+            ("stun:127.0.0.1:0", false, "127.0.0.1", 0),
+            ("stun:[::1]", false, "::1", 3478),
+            ("stun:[2001:db8::1]:1234", false, "2001:db8::1", 1234),
+            ("stun:localhost?transport=udp", false, "localhost", 3478),
+            ("stun:localhost/path", false, "localhost", 3478),
+            (
+                "stun:fixture:dummy@localhost:1234",
+                false,
+                "localhost",
+                1234,
+            ),
+            ("stun:localhost#fragment", false, "localhost", 3478),
+            ("turn:localhost", true, "localhost", 3478),
+            (
+                "turn:localhost:65535?transport=udp",
+                true,
+                "localhost",
+                65535,
+            ),
+            ("turn:[::1]?transport=udp", true, "::1", 3478),
+            (
+                "turn:fixture:dummy@[::1]:1234/path#fragment",
+                true,
+                "::1",
+                1234,
+            ),
+        ] {
+            let server = IceServer {
+                urls: vec![raw.into()],
+                username: "configured-user".into(),
+                credential: "configured-password".into(),
+            };
+            let result = urls(&[server]);
+            assert_eq!(result.len(), 1, "{raw}");
+            let result = &result[0];
+            assert_eq!(
+                (result.is_turn, result.host.as_str(), result.port),
+                (is_turn, host, port),
+                "{raw}"
+            );
+            assert_eq!(result.username, "configured-user");
+            assert_eq!(result.password, "configured-password");
+            parsed.push(result.clone());
+        }
+        let stun = Config::new(Vec::new(), &parsed);
+        assert_eq!(stun.urls.len(), 9);
+        assert!(stun.urls.iter().all(|url| !url.is_turn));
+        Ok(())
+    }
+
+    #[test]
+    fn unsupported_and_invalid_ice_urls_leave_other_configured_servers_usable() -> Result<()> {
+        for (raw, unsupported) in [
+            ("stuns:localhost", true),
+            ("turns:localhost?transport=udp", true),
+            ("turn:localhost?transport=tcp", true),
+            ("", false),
+            ("stun:", false),
+            ("stun://localhost", false),
+            ("stun:localhost:abc", false),
+            ("stun:localhost:65536", false),
+            ("stun:[::1]:123:", false),
+            ("stun:localhost?transport=tcp", false),
+            ("turn:localhost?trans=udp", false),
+            ("turn:localhost?transport=ip", false),
+            ("turn:localhost?transport=udp&another=1", false),
+        ] {
+            let server = IceServer {
+                urls: vec![raw.into(), "stun:localhost".into()],
+                ..Default::default()
+            };
+            let result = IceServerUrl::parse(raw, &server);
+            if unsupported {
+                assert!(result?.is_none(), "{raw}");
+            } else {
+                assert!(result.is_err(), "{raw}");
+            }
+            let retained = urls(&[server]);
+            assert_eq!(retained.len(), 1, "{raw}");
+            assert_eq!(retained[0].host, "localhost");
+        }
+        Ok(())
     }
 }

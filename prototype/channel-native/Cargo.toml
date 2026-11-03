@@ -19,7 +19,7 @@ str0m = { version = "=0.25.0", git = "https://github.com/algesten/str0m", rev = 
 rtc-rtp = "=0.21.1"
 rtc-media = "=0.21.1"
 rtc-shared = { version = "=0.21.1", default-features = false, features = ["marshal"] }
-rtc-ice = "=0.21.1"
+url = "=2.5.8"
 rtc-stun = "=0.21.1"
 rtc-turn = "=0.21.1"
 rtc-crypto = { version = "=0.21.1", default-features = false, features = ["crypto-ring"] }

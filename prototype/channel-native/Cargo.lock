@@ -2825,7 +2825,6 @@ dependencies = [
  "portmapper",
  "reis",
  "rtc-crypto",
- "rtc-ice",
  "rtc-media",
  "rtc-rtp",
  "rtc-shared",
@@ -2845,6 +2844,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite",
+ "url",
  "uuid",
  "vigem-rust",
  "wasapi",
@@ -3269,38 +3269,6 @@ dependencies = [
  "subtle",
  "thiserror 2.0.21",
  "zeroize",
-]
-
-[[package]]
-name = "rtc-ice"
-version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "099984f1be120b2e5692f232f8cbb82e53f6b4261c5c2eeda5be6223ba1adaa9"
-dependencies = [
- "bytes",
- "crc",
- "log",
- "rtc-crypto",
- "rtc-mdns",
- "rtc-shared",
- "rtc-stun",
- "sansio",
- "serde",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "rtc-mdns"
-version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d86ac3cafd411bef81d70aff9d59d9520331b29970f7e361180da99e7a8b5a0d"
-dependencies = [
- "bytes",
- "log",
- "rtc-shared",
- "sansio",
- "socket2",
 ]
 
 [[package]]

@@ -150,8 +150,9 @@ It contains only [PR #308](https://github.com/webrtc-rs/rtc/pull/308) on the
 published 0.21.1 baseline: a new FU-A start clears unfinished fragments, and an
 incomplete STAP-A length returns an error. The unchanged `rtc-shared` crate uses
 the same revision so its public error and marshal types have one identity.
-The other RTC helpers use published 0.21.1 crates: media readers, ICE
-URL parsing, STUN, TURN and crypto. Piik does not depend on the umbrella
+The other RTC helpers use published 0.21.1 crates: media readers,
+STUN, TURN and crypto. The existing `url` crate parses configured UDP STUN/TURN
+server addresses. Piik does not depend on the umbrella
 RTC engine; str0m owns negotiation and transport.
 
 The incoming-source adapter owns complete-AU ordering and first-packet metadata.

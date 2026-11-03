@@ -1,7 +1,7 @@
 //! Pair-owned UDP TURN endpoints; rtc-turn owns authentication, framing and timers.
+use super::discovery::IceServerUrl;
 use super::*;
 use futures_util::{stream::FuturesUnordered, StreamExt};
-use rtc_ice::url::{SchemeType, Url};
 use rtc_shared::{error::Error, TaggedBytesMut, TransportContext, TransportProtocol};
 use rtc_stun::message::TransactionId;
 use rtc_turn::client::{Client, ClientConfig, Event as ClientEvent};
@@ -10,7 +10,7 @@ use std::collections::VecDeque;
 
 const LIMIT: usize = super::super::MAX_ICE_CANDIDATES;
 pub(super) struct Setup {
-    pub urls: Vec<Url>,
+    pub urls: Vec<IceServerUrl>,
     pub ready: mpsc::Sender<Endpoint>,
 }
 pub(super) async fn setup(handle: Transport, config: Setup) {
@@ -18,7 +18,7 @@ pub(super) async fn setup(handle: Transport, config: Setup) {
     let mut jobs: FuturesUnordered<_> = config
         .urls
         .into_iter()
-        .filter(|url| url.scheme == SchemeType::Turn)
+        .filter(|url| url.is_turn)
         .filter(|url| {
             distinct.insert((
                 url.host.clone(),
@@ -96,7 +96,7 @@ pub(super) struct Endpoint {
     received_at: Instant,
 }
 impl Endpoint {
-    async fn setup(url: Url, server: SocketAddr) -> Result<Self> {
+    async fn setup(url: IceServerUrl, server: SocketAddr) -> Result<Self> {
         ensure!(
             !url.username.is_empty() && !url.password.is_empty(),
             "TURN credentials missing"
