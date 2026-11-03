@@ -1205,7 +1205,16 @@ func TestRouterKeepsCommittedEdgeSignalingAuthorizedDuringAnotherPeerCandidate(t
 		}
 	}
 
+	// The admitted candidate has not sent its first offer when another Viewer joins.
+	later := h.connectViewer(created, "later-viewer")
+	h.complete(later)
 	h.locked(func() {
+		rm, _ := h.router.rooms.Get(created.RoomID)
+		op := rm.controller.Operation()
+		if op == nil || op.ChildPeerID != candidateChild.peerID || op.Current == nil ||
+			op.Current.Revision != int64(prepared.Revision) || op.Current.ConnectionID != prepared.Candidate.ConnectionID {
+			t.Fatal("a later join retired the valid availability candidate before its first offer")
+		}
 		activeParentEdge := h.doMustEdge(created.RoomID, candidateParent.peerID)
 		authorize := func(input peerSignalInput) signalAuthorization {
 			input.roomID = created.RoomID
@@ -1233,6 +1242,41 @@ func TestRouterKeepsCommittedEdgeSignalingAuthorizedDuringAnotherPeerCandidate(t
 			connectionID: prepared.Candidate.ConnectionID,
 		}); got != signalAuthorizationUnassigned {
 			t.Fatalf("unrelated authorization = %v, want unassigned", got)
+		}
+	})
+}
+
+func TestRouterPreemptsQualityCandidateForNewViewerWithoutRetiringActiveMedia(t *testing.T) {
+	h := newRouterHarness(t, routerHarnessOptions{capacity: 2})
+	created, _, first, second, firstEdge, qualityPrepare := prepareQualityConvergence(h, nil)
+	later := h.connectViewer(created, "availability-viewer")
+	h.complete(later)
+	prepared := h.waitPrepared(later.sessionID)
+	h.locked(func() {
+		rm, _ := h.router.rooms.Get(created.RoomID)
+		snapshot := rm.controller.Snapshot()
+		op := snapshot.Operation
+		if op == nil || op.Reason != route.DemandJoin || op.ChildPeerID != later.peerID || op.Current == nil ||
+			op.Current.ConnectionID != prepared.Candidate.ConnectionID {
+			t.Fatal("the later Viewer did not acquire the serial availability operation")
+		}
+		edge, ok := snapshot.UpstreamByViewer.Get(first.peerID)
+		if !ok || !edge.Usable || edge.ConnectionID != firstEdge.connectionID {
+			t.Fatal("preempting the background probe retired the working media")
+		}
+		offer := func(parent, child authenticatedRouteParticipant, connectionID string) signalAuthorization {
+			return h.router.peerSignalAuthorization(peerSignalInput{
+				roomID: created.RoomID, sourcePeerID: parent.peerID, sourceSessionID: parent.sessionID,
+				targetPeerID: child.peerID, targetSessionID: child.sessionID, connectionID: connectionID,
+				signalKind: "description", descriptionType: "offer",
+			})
+		}
+		if got := offer(second, first, qualityPrepare.Candidate.ConnectionID); got != signalAuthorizationUnassigned ||
+			h.router.isActivePeerParentOf(created.RoomID, second.peerID, first.peerID) {
+			t.Fatalf("retired quality offer authorization = %v, want unassigned without an active parent capability", got)
+		}
+		if got := offer(second, later, prepared.Candidate.ConnectionID); got != signalAuthorizationProbe {
+			t.Fatalf("availability offer authorization = %v, want probe", got)
 		}
 	})
 }
