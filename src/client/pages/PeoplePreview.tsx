@@ -120,7 +120,7 @@ export function PeoplePreview() {
     .map((viewer) => viewer.peerId);
   const entries = viewers.map((viewer, index) => ({
     key: viewer.peerId, name: viewer.label, you: view === "viewer" && viewer.peerId === self,
-    status: deriveParticipantStatus(viewer, sourceActive, undefined, roomVoice), selectable: selectable.includes(viewer.peerId),
+    status: deriveParticipantStatus(viewer, sourceActive, roomVoice), selectable: selectable.includes(viewer.peerId),
     collaboration: picture && collaboration && mode !== "pending" && index < 2,
   }));
   const selectedViewer = viewers.find((viewer) => viewer.peerId === selected && selectable.includes(viewer.peerId));

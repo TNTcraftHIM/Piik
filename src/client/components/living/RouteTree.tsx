@@ -44,7 +44,7 @@ export const RouteTree = memo(function RouteTree({ hostPeerId, hostIdentity, hos
     topology.sfuRoots.forEach(branch => collect(branch, sfuId, "sfu"));
   }
   for (const viewer of topology.pending) {
-    const status = deriveParticipantStatus(viewer, pictureActive, undefined, voice);
+    const status = deriveParticipantStatus(viewer, pictureActive, voice);
     nodes.push({ id: viewer.peerId, label: viewer.label, you: selfPeerId === viewer.peerId,
       pending: status.pulse === true, description: t(status.labelKey) });
     if (status.pulse) edges.push({ from: rootId, to: viewer.peerId, selected: false, ready: false });

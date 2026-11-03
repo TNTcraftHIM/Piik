@@ -30,19 +30,19 @@ describe("media status projection", () => {
     for (const picture of [false, true]) {
       for (const publicationId of [undefined, "microphone"]) {
         member.publicationId = publicationId;
-        expect(deriveParticipantStatus(participant, picture, undefined, voice)).toMatchObject({ tone: "live", labelKey: "state.peer.voiceConnected" });
+        expect(deriveParticipantStatus(participant, picture, voice)).toMatchObject({ tone: "live", labelKey: "state.peer.voiceConnected" });
         expect(participantConnection(participant, picture, voice)).toMatchObject({ ready: true, upstream: member.upstream });
       }
     }
     member.upstream = { kind: "none" };
-    expect(deriveParticipantStatus(participant, false, undefined, voice).tone).toBe("busy");
+    expect(deriveParticipantStatus(participant, false, voice).tone).toBe("busy");
     const picture = { ...participant, mediaReady: true, upstream: { kind: "sfu" as const } };
-    expect(deriveParticipantStatus(picture, true, undefined, voice).tone).toBe("live");
+    expect(deriveParticipantStatus(picture, true, voice).tone).toBe("live");
     member.joined = false;
-    expect(deriveParticipantStatus(participant, false, undefined, voice).tone).toBe("off");
-    expect(deriveParticipantStatus(participant, false, undefined, voice).pulse).toBeUndefined();
+    expect(deriveParticipantStatus(participant, false, voice).tone).toBe("off");
+    expect(deriveParticipantStatus(participant, false, voice).pulse).toBeUndefined();
     voice.enabled = false;
-    expect(deriveParticipantStatus(participant, false, undefined, voice).tone).toBe("off");
+    expect(deriveParticipantStatus(participant, false, voice).tone).toBe("off");
   });
 
   it.each(["p2p", "sfu"] as const)("keeps %s setup distinct from proved playback", route => {

@@ -5,7 +5,6 @@ import type { ViewerPresentation, ViewerStage } from "../media/viewer-presentati
 import type { SignalConnectionState } from "../types";
 import type { MediaRouteUpstream, RoomVoiceState } from "../../shared/protocol";
 import { participantConnection } from "../lib/participant-connection";
-import { qualityEvidenceUpstreamMatches, type ViewerQualityEvidencePresentation } from "../media/viewer-quality-evidence";
 import type { CopyKey, TitleFrameKey } from "./copy";
 import type { GlyphName } from "./icons";
 
@@ -33,12 +32,9 @@ export const STATUS_CATALOG = {
 export function deriveParticipantStatus(
   participant: { peerId?: string; mediaReady?: boolean; upstream: MediaRouteUpstream },
   sourceActive: boolean,
-  presentation?: ViewerQualityEvidencePresentation,
   voice?: RoomVoiceState | null,
 ): StatusDescriptor {
   const connection = participantConnection(participant, sourceActive, voice);
-  // Room authority owns readiness. Receive evidence can annotate it, not
-  // convert a pending path into connected or a missing sample into failure.
   if (!connection.ready) {
     if (connection.medium === null) return STATUS_CATALOG.present;
     return { ...STATUS_CATALOG.joining,
@@ -47,11 +43,6 @@ export function deriveParticipantStatus(
       labelKey: connection.upstream.kind === "none" ? "state.peer.routing" : "state.peer.connecting" };
   }
   if (connection.medium === "voice") return STATUS_CATALOG.voiceConnected;
-  if (sourceActive && presentation?.fresh &&
-      qualityEvidenceUpstreamMatches(presentation.evidence, participant.upstream)) {
-    const { freezeCountDelta, freezeDurationMsDelta } = presentation.evidence.metrics;
-    if ((freezeCountDelta ?? 0) > 0 || (freezeDurationMsDelta ?? 0) > 0) return STATUS_CATALOG.stuttering;
-  }
   return STATUS_CATALOG.connected;
 }
 

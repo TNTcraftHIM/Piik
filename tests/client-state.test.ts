@@ -22,7 +22,6 @@ import {
 } from "../src/client/lib/session.ts";
 import { deriveParticipantTopology } from "../src/client/lib/participant-topology.ts";
 import { labelParticipantNames, labelParticipantSnapshot } from "../src/client/lib/viewer-presence.ts";
-import { qualityEvidenceWindowFromMetrics } from "../src/client/media/viewer-quality-evidence.ts";
 import {
   collectConnectionMetrics,
   collectConnectionMetricsFromReport,
@@ -1261,16 +1260,6 @@ describe("WebRTC stats parsing", () => {
         codecProfile: profile,
         codecParameters: parameters,
         scalabilityMode: null,
-      });
-      expect(
-        qualityEvidenceWindowFromMetrics({
-          ...metrics,
-          sampleWindowMs: 2_000,
-        })?.metrics,
-      ).toMatchObject({
-        codec: mimeType,
-        codecProfile: profile,
-        codecParameters: parameters,
       });
     },
   );
