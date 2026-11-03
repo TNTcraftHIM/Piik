@@ -18,6 +18,8 @@ accepted = ["CDLA-Permissive-2.0"]
 
 # These packaged files contain combined or extended notices that the scanner
 # cannot identify. Preserve the complete upstream text rather than synthesize it.
+# This name-only rule retains dalek 4's Go Authors appendix; dalek 5's shorter
+# BSD-3-Clause LICENSE uses the verified scanner fallback.
 [curve25519-dalek.clarify]
 license = "BSD-3-Clause"
 [[curve25519-dalek.clarify.files]]

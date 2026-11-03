@@ -94,6 +94,9 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   capture, publication and GUI stop, with continuing local RTP/RTCP. The desktop
   cross-emulator control fails during ICE before decoding; its candidate-pair
   observations remain part of current acceptance work.
+  A capture-free diagnostic isolates an intermittent failure before Native RTC
+  input; subsequent connections in the same runtime exchange room messages,
+  including after a room change.
   The Firefox relay failure is now traced to Gecko image-conversion errors:
   incoming Native H264 decodes while outgoing video remains unencoded. Automatic
   direct replacement delivers picture.
