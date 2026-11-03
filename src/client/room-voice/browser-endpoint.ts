@@ -77,8 +77,11 @@ export class BrowserVoiceEndpoint {
     const connections = [...this.connections.values()].filter(connection => !connection.config.pending && connection.pc.connectionState === "connected");
     await Promise.all(connections.map(async connection => {
       const received = [...this.received].filter(([, binding]) => binding.connectionId === connection.config.connectionId);
-      const stats = await connection.pc.getStats();
-      if (!this.current(connection) || connection.config.pending || connection.pc.connectionState !== "connected") return;
+      const stats = await this.wait(connection, () => connection.pc.getStats()).catch(error => {
+        if (this.current(connection)) throw error;
+        return null;
+      });
+      if (!stats || !this.current(connection) || connection.config.pending || connection.pc.connectionState !== "connected") return;
       for (const [key, binding] of received) {
         if (this.received.get(key) !== binding) continue;
         const publisher = this.state?.publications.find(pub => pub.id === binding.publicationId)?.peerId;
@@ -95,8 +98,11 @@ export class BrowserVoiceEndpoint {
     const samples = await Promise.all(connections.map(async connection => {
       const received = [...this.received].filter(([, binding]) => binding.connectionId === connection.config.connectionId);
       const senders = [...connection.senders].map(([publicationId, sender]) => ({ publicationId, sender, track: sender.track }));
-      const report = await connection.pc.getStats();
-      if (!this.current(connection) || connection.config.pending || connection.pc.connectionState !== "connected") return [];
+      const report = await this.wait(connection, () => connection.pc.getStats()).catch(error => {
+        if (this.current(connection)) throw error;
+        return null;
+      });
+      if (!report || !this.current(connection) || connection.config.pending || connection.pc.connectionState !== "connected") return [];
       const { config } = connection;
       const samples: VoiceConnectionMetric[] = [];
       const retained = new Set([...config.send.map(id => `send/${id}`), ...config.receive.map(id => `receive/${id}`)]);

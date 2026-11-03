@@ -73,6 +73,70 @@ class Peer {
 
 afterEach(() => { vi.unstubAllGlobals(); Peer.instances = []; });
 
+it.each(["levels", "metrics"])("finishes %s for healthy voice peers when a pending observer's connection retires", async observation => {
+  class AudioElement extends EventTarget {
+    volume = 1; muted = false; paused = true; ended = false;
+    srcObject: unknown = null;
+    play = async () => { this.paused = false; };
+    pause = () => { this.paused = true; };
+    remove = () => {};
+  }
+  vi.stubGlobal("Audio", AudioElement);
+  vi.stubGlobal("document", { body: { append: () => {} } });
+  vi.stubGlobal("MediaStream", class {
+    constructor(private tracks: MediaStreamTrack[]) {}
+    getAudioTracks() { return this.tracks; }
+  });
+  const tracks = ["retired", "healthy"].map(id => ({ id, kind: "audio", readyState: "live" }));
+  const report = (index: number, audioLevel: number) => new Map([["audio", {
+    id: "audio", type: "inbound-rtp", kind: "audio", ssrc: index + 1, timestamp: 1000,
+    trackIdentifier: tracks[index]!.id, audioLevel, bytesReceived: 100,
+  }]]) as unknown as RTCStatsReport;
+  let finishStats!: (report: RTCStatsReport) => void;
+  const delayed = new Promise<RTCStatsReport>(resolve => { finishStats = resolve; });
+  const healthyStats = vi.fn(async () => report(1, .25));
+  vi.stubGlobal("RTCPeerConnection", class extends Peer {
+    getStats = vi.fn((): Promise<RTCStatsReport> => this === Peer.instances[0] ? delayed : healthyStats());
+    getTransceivers = (): unknown[] => [{ mid: "0", direction: "recvonly",
+      receiver: { track: tracks[this === Peer.instances[0] ? 0 : 1] }, sender: { track: null } }];
+  });
+  const endpoint = new BrowserVoiceEndpoint({ iceServers: [] }, () => true, () => {});
+  const state = (ids: string[], revision: number): RoomVoiceState => ({
+    type: "room-voice-state", revision, enabled: true, hostPeerId: "host", unavailable: [],
+    members: [{ peerId: "self", connected: true, joined: true, upstream: { kind: "sfu" } }],
+    publications: ids.map(id => ({ id, peerId: id })),
+    connections: ids.map(id => ({ connectionId: id, childPeerId: "self", transport: "sfu", revision,
+      pending: false, send: [], receive: [id] })),
+  });
+  const observe = () => observation === "levels" ? endpoint.levels() : endpoint.connectionMetrics();
+  const expectHealthy = (sample: Awaited<ReturnType<typeof observe>>) => {
+    if (observation === "levels") expect([...sample]).toEqual([["healthy", .25]]);
+    else expect(sample).toEqual([expect.objectContaining({ connectionId: "healthy", peerId: "healthy", direction: "receive" })]);
+  };
+  try {
+    endpoint.setAuthority(state(["retired", "healthy"], 1), "self");
+    await endpoint.reconcile();
+    for (const id of ["retired", "healthy"]) await endpoint.receive({
+      type: "room-voice-signal", connectionId: id, description: {
+        revision: 1, sdp: { type: "offer", sdp: "offer" }, tracks: [{ mid: "0", publicationId: id }],
+      },
+    });
+    const pending = observe();
+    endpoint.setAuthority(state(["healthy"], 2), "self");
+    // Retirement completes this observation without waiting for the old stats.
+    const sample = await pending;
+    expectHealthy(sample);
+    expect(Peer.instances[0]!.close).toHaveBeenCalledOnce();
+    expect(Peer.instances[1]!.close).not.toHaveBeenCalled();
+    finishStats(report(0, .9));
+    expectHealthy(await observe());
+    expectHealthy(sample);
+    healthyStats.mockRejectedValueOnce(new Error("stats unavailable"));
+    await expect(observe()).rejects.toThrow("stats unavailable");
+    expectHealthy(await observe());
+  } finally { finishStats(report(0, .9)); endpoint.close(); }
+});
+
 it.each(["levels", "metrics"].flatMap(observation => [false, true].map(replaced => ({ observation, replaced }))))(
 "keeps in-flight $observation tied to its receiver publication (replaced=$replaced)", async ({ observation, replaced }) => {
   class AudioElement extends EventTarget {
