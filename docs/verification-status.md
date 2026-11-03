@@ -87,8 +87,10 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   room plans to Firefox and a desktop child, without Browser re-encoding.
   Capability-aware Native H264 capture passes source replacement while retaining
   the physical peer and continuing to decode. Native VP8 also delivers decoded
-  picture; repeated VP8 capture still encounters a system codec-service assertion
-  on the emulator. [TODO](./todo.md#now) owns codec-service and platform acceptance.
+  picture. MuMu's VP8 codec service crashes during repeated encoder creation;
+  independent public Java/Surface controls reproduce the same assertion with
+  direct release and with stop before release. [TODO](./todo.md#now) owns the
+  remaining platform acceptance.
   The Firefox relay failure is now traced to Gecko image-conversion errors:
   incoming Native H264 decodes while outgoing video remains unencoded. Automatic
   direct replacement delivers picture.

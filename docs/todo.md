@@ -12,9 +12,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
   Finish the packaged Windows/Android main-flow acceptance at the internal-test
-  checkpoint. Resolve Android's capture failures in the system codec service.
-  Firefox's received-video conversion limit
-  is recorded in [device evidence](./verification-status.md#device-evidence-boundary).
+  checkpoint, including repeated VP8 capture with another Android codec provider.
+  MuMu's VP8 codec-service crash and Firefox's received-video conversion limit
+  are recorded in [device evidence](./verification-status.md#device-evidence-boundary).
   Keep the SDK's transport controller,
   the first version's accepted scope and the prototype isolated.
 - [ ] **Native RTX reception statistics.** Follow
