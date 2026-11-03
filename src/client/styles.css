@@ -933,13 +933,14 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   box-shadow: var(--control-shadow), 0 12px 36px #101a2c33;
   overflow: auto; overscroll-behavior: contain;
 }
-.lr-app-connect-help p { margin: 12px 0; font-size: 13px; line-height: 1.6; }
+.lr-app-connect-help p { margin: 12px 0; font-size: 13px; line-height: 1.6; text-align: center; }
 .lr-app-connect-help .lr-app-connect-version { color: var(--muted); font-size: 12px; }
 .lr-app-connect-help .lr-client-release { margin-block: 12px; }
 .lr-anchored-card:is(:popover-open, .\:popover-open) { animation: lr-language-open 180ms var(--spring); }
 .lr-anchored-card.is-above { --language-offset: 5px; }
-.lr-app-connect-head { display: flex; align-items: flex-start; gap: 8px; }
-.lr-app-connect-close { flex: none; }
+.lr-app-connect-head { display: grid; grid-template-columns: var(--control-dense-size) minmax(0, 1fr) var(--control-dense-size); align-items: start; }
+.lr-app-connect-head > :first-child { grid-area: 1 / 2; }
+.lr-app-connect-close { grid-area: 1 / 3; justify-self: end; }
 .lr-app-connect-scene { width: min(220px, 100%); aspect-ratio: 10 / 3; margin-inline: auto; }
 .lr-app-connect-scene > svg { width: 100% !important; }
 .lr-app-connect-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
