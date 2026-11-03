@@ -21,6 +21,9 @@ retry limits and explicit protocol selection remain upstream-owned. The focused
 test is overlaid into the upstream package; it does not ship in the helper.
 The patch applies only to the Android source build. Desktop packages still ship
 the official prebuilt cloudflared executable and do not include this correction.
+Remove the supervisor overlay and its focused test when the pinned official
+source provides equivalent fallback; the Android resolver adapter keeps its
+separate platform responsibility.
 
 Both the full Android builder and `node scripts/build-android.mjs --tunnel-only`
 compile the focused fallback test to `build/android-cloudflared/fallback.test`

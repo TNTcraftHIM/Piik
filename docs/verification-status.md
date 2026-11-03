@@ -92,10 +92,13 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   remaining platform acceptance.
   A normal build at `af13f5be` completes H264 capture, publication and GUI stop,
   with continuing local RTP/RTCP. Cross-emulator Native ICE remains intermittent:
-  an instrumented `752bbd04` first connection carries confirmed room chat,
-  while the normal build fails its initial Native connections and later uses
-  Browser fallback. Instrumented success does not close the normal-build
-  failure; its cause remains unresolved.
+  initial connections fail in normal and instrumented `752bbd04` builds, while
+  another instrumented first connection carries confirmed room chat.
+  In a failed control, both endpoints successfully submit ICE probes and receive
+  STUN discovery replies, but neither process receives peer datagrams. Credentials,
+  candidates and socket ownership match. Native and Desktop advertise the same
+  public IPv4 address; the successful Browser fallback uses another public egress.
+  The packet-loss point between the Native and Desktop endpoints remains unresolved.
   The Firefox relay failure is now traced to Gecko image-conversion errors:
   incoming Native H264 decodes while outgoing video remains unencoded. Automatic
   direct replacement delivers picture.
