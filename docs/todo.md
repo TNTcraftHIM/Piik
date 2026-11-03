@@ -7,6 +7,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **2.x: third Viewer remains at route allocation.** Trace the reported
+  room's operation and route assignments when the first two Viewers play.
+  Check the capacity-to-relay/fallback handoff while preserving their streams.
 - [ ] **3.0 Native platform acceptance.** Complete the remaining Linux/macOS
   capture and input acceptance, retaining the accepted
   [network model](./research/channel-network-design.md)
@@ -65,9 +68,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
-- [ ] **macOS binding consolidation.** Unify capture and input on the objc2
-  framework family, preserving callback ownership, resource lifetimes and the
-  macOS 13 contract. Verify both Mac architectures and physical capture/input.
+- [ ] **Native audio codec dependency.** Review the current `rusty-opus` encoder
+  against official libopus for interoperability, CPU cost and maintenance.
+  Keep the choice within the existing local-audio adapter.
 - [ ] **Stronger microphone noise suppression (#518).** Assess the
   [requested speech-processing option](https://github.com/TNTcraftHIM/Piik/issues/518)
   through the shared microphone input. Browser voice processing is already the
