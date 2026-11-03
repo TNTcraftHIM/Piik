@@ -17,13 +17,22 @@ const servers = [...linuxServers, {
 type Scenario = { existing?: boolean; draft?: boolean; badArchive?: boolean;
   wrongSource?: boolean; wrongImage?: boolean; remoteMismatch?: boolean;
   registryError?: boolean; newerRelease?: boolean; largeCommit?: boolean;
-  partial?: boolean; wrongPlatform?: boolean };
+  partial?: boolean; wrongPlatform?: boolean; attestation?: boolean; unknownPlatform?: boolean };
 
 async function publish(options: Scenario = {}) {
   vi.resetModules();
   artifacts.mockReturnValue({ servers });
   const platforms = ["amd64", "arm64"];
-  const index = { manifests: platforms.map(architecture => ({ platform: { os: "linux", architecture } })) };
+  const index = { manifests: [
+    ...platforms.map(architecture => ({ platform: { os: "linux", architecture } })),
+    ...(options.attestation || options.unknownPlatform ? [{
+      platform: { os: "unknown", architecture: "unknown" },
+      ...(options.attestation ? { annotations: {
+        "vnd.docker.reference.type": "attestation-manifest",
+        "vnd.docker.reference.digest": `sha256:${digest}`,
+      } } : {}),
+    }] : []),
+  ] };
   const manifests = new Map<string, object>();
   if (options.existing) manifests.set(tag, index);
   if (options.partial) manifests.set(`${tag}-arm64`, {});
@@ -85,6 +94,16 @@ describe("container publication", () => {
     expect(artifacts).toHaveBeenCalledWith("artifacts", version, revision);
     expect(pushes()).toEqual([`${tag}-amd64`, `${tag}-arm64`]);
     expect(indexes()).toEqual([[tag, `${tag}-amd64`, `${tag}-arm64`], ["ghcr.io/tntcrafthim/piik:latest", tag]]);
+  });
+  it.each([false, true])("accepts BuildKit attestations in a new or retained index (existing=%s)", async (existing) => {
+    await publish({ existing, attestation: true });
+    expect(pushes()).toEqual(existing ? [] : [`${tag}-amd64`, `${tag}-arm64`]);
+    expect(indexes().at(-1)).toEqual(["ghcr.io/tntcrafthim/piik:latest", tag]);
+  });
+  it("rejects an unrecognized platform instead of treating it as an attestation", async () => {
+    await expect(publish({ existing: true, unknownPlatform: true })).rejects.toThrow("Container platforms differ");
+    expect(pushes()).toEqual([]);
+    expect(indexes()).toEqual([]);
   });
   it.each([
     { draft: true }, { badArchive: true }, { wrongSource: true }, { wrongImage: true },
