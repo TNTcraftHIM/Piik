@@ -37,8 +37,7 @@ checks the Browser, `scripts/tsconfig.json` checks tooling/tests, and root
 | `build/`, Cargo `target/`, generated WASM `pkg/`, `node_modules/`, `coverage/` | Ignored output and dependencies; never current product truth |
 
 This map describes the current Rust 3.0 source. Published compatibility remains
-owned by [versioning](./versioning.md). Standalone native helpers retain their
-own fixtures and provenance; the Rust App's capture owner is
+owned by [versioning](./versioning.md). The Rust App's capture owner is
 `prototype/channel-native/src/capture`.
 `site/` introduces Piik; the shared Web bundle is Piik's interactive application.
 Node, Vite and WASM tools prepare assets; deployed App/Server runtimes serve their

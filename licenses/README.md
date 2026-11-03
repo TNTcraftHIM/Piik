@@ -19,7 +19,7 @@ Android includes its Kotlin/platform-verifier notices. Linux App notices describ
 its unbundled GStreamer, Portal, PipeWire and encoder services through
 [system dependency attribution](./linux-system-dependencies.txt).
 
-## Independent Tunnel And Native Fixtures
+## Independent Tunnel And Source Attribution
 
 The [pinned source index](./upstream.json) records exact commits and SHA-256
 values for Cloudflared, the retained WebRTC SDK and npm packages missing license
@@ -30,11 +30,10 @@ at the pinned upstream revision. The protobuf text retains Google's BSD varint
 attribution. The [Android Cloudflared owner](../mobile/cloudflared/README.md)
 describes its independent Go module/toolchain and local overlays.
 
-The retained standalone Windows C++ capture helpers and encoder-pool probe link
-the pinned WebRTC SDK, including libvpx. Their collected SDK texts retain the
-upstream licenses. The standalone Linux helper's libportal license references
-remain with its source; retained LGPL/GPL texts do not make those system libraries
-part of the Rust App package. See each [native helper/probe owner](../native).
+Published 2.x Native helpers and encoder-probe attribution remain with their
+[immutable sources](https://github.com/TNTcraftHIM/Piik/tree/72ca6f2bc97df88e216a392721250309aa53bc39/native)
+and matching release artifacts. Retained SDK license texts identify upstream
+source provenance; the package owners above generate current distribution notices.
 
 Published 2.x Go dependency repairs and attribution are recorded in the
 [immutable public provenance](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/thirdparty/README.md)

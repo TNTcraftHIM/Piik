@@ -96,9 +96,11 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   Failed normal and instrumented first connections instead share one public IPv4
   address. In a failed control, both endpoints successfully submit ICE probes and
   receive STUN discovery replies, but neither process receives peer datagrams.
-  Credentials, candidates and socket ownership match. The Browser fallback also
-  succeeds through another public egress. Normal-build cross-egress acceptance
-  and the same-egress packet-loss point remain open.
+  Credentials, candidates and socket ownership match. A Browser relay connection
+  opens across different public IPv4 addresses after the initial history request
+  expires. Normal-build acceptance still needs an independent public egress and
+  a signed RoomHost history/chat exchange through the recovered path. The
+  same-egress packet-loss point remains open.
   The Firefox relay failure is now traced to Gecko image-conversion errors:
   incoming Native H264 decodes while outgoing video remains unencoded. Automatic
   direct replacement delivers picture.
