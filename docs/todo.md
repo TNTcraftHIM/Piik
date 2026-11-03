@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-01
+Last reviewed: 2026-11-03
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -12,13 +12,15 @@ own behavior; research and Git/PRs own evidence and completed history.
   direct/SFU delivery. The observed source fell to roughly 2 fps during video
   or game playback; reproduce with real window/display capture. Keep the
   separate SFU packet-loss stage distinct from source-frame production.
-- [ ] **Windows App sharing ends unexpectedly.** Identify WGC/source, device or
-  encoder termination in the supplied release feedback using the native stage
-  and HRESULT, and reproduce the unexpected termination.
-- [ ] **Native screen sound recaptures room voice.** Exclude Piik voice while
-  retaining intended source audio. Verify Browser own-document exclusion and
-  Native process exclusion; keep acoustic echo and duplicate commentary with
-  their separate microphone owners.
+- [ ] **Unclassified capture termination in older Windows feedback.** Identify
+  the Native failure stage and HRESULT in the original v2.4.1/v2.5.1 attempts.
+  Their Browser reports show Native failure before page cleanup but do not
+  identify its trigger.
+- [ ] **Room voice in Native display sound.** Resolve the remaining case where
+  system loopback recaptures Browser voice, while excluding the Browser process
+  also removes its other audio. Browser own-document exclusion and Native
+  process-tree exclusion are already implemented; acoustic echo and duplicate
+  commentary retain their separate microphone owners.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
