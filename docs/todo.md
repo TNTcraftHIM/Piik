@@ -24,11 +24,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
-- [ ] **Remote-control end-to-end latency.** Measure input-to-visible-response
-  on an attended target, covering OS execution, Native capture/encoding, remote
-  transport and display in the same trial. The
-  [input assessment](./research/room-interactions.md#window-capture-and-game-input)
-  owns completed local component measurements.
+- [ ] **Native H264 scene-change latency.** Reduce large-AU send-queue delay
+  while preserving bitrate restoration. The
+  [end-to-end control](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)
+  locates the delay and rejects the one-frame HRD override that prevents recovery.
 - [ ] **Linux capture ends after selection (#499).** Follow
   [#499](https://github.com/TNTcraftHIM/Piik/issues/499) on niri/Wayland with
   GStreamer NVENC. The Browser report records capture ending before connection

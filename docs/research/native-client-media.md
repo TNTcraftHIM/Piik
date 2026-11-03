@@ -513,6 +513,10 @@ an absent optional property or readback no longer rejects an otherwise usable
 encoder. Required CBR, bitrate and GOP checks, Constrained Baseline bitstream
 admission, actual H.264 output and Auto's measured frame cadence retain their owners.
 
+The [H264 burst and recovery assessment](./webrtc-encoder-pool.md#h264-burst-and-recovery)
+records the measured scene-change queue delay and the rejected one-frame HRD
+override. Average bitrate and optional low-latency mode do not bound each AU.
+
 Issue [#432](https://github.com/TNTcraftHIM/Piik/issues/432) reports more visible
 blocking with native H.264 than VP8 on v1.6.7. Review of its attached Browser
 report confirms 720p30 in both comparison windows, roughly 11 Mbps received,
