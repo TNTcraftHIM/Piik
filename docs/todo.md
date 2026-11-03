@@ -60,9 +60,6 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
-- [ ] **Native audio codec dependency.** Review the current `rusty-opus` encoder
-  against official libopus for interoperability, CPU cost and maintenance.
-  Keep the choice within the existing local-audio adapter.
 - [ ] **Stronger microphone noise suppression (#518).** Assess the
   [requested speech-processing option](https://github.com/TNTcraftHIM/Piik/issues/518)
   through the shared microphone input. Browser voice processing is already the

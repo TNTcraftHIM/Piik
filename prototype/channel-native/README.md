@@ -99,8 +99,7 @@ executor, including physical keys, Unicode text, pointer/drag/scroll and the
 Browser-selected stop chord observed by the existing App tick. Only the source
 page enabling control can request Accessibility permission. Window identity,
 focused-window geometry and permission are checked separately; macOS does not
-advertise gamepad support. macOS packaging and real-device capture/input
-acceptance remain open.
+advertise gamepad support.
 Linux control requests the system RemoteDesktop permission when the source page
 enables it. The selected monitor and its EIS input connection belong to that one
 Portal session. Approval preserves the existing producer, encoders and media
