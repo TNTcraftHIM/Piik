@@ -7,9 +7,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **Public-invitation route allocation.** Investigate v2.5.2 feedback that
-  the third participant remains at route allocation. Confirm the Host/Viewer
-  count and trace the room operation and assignments on its P2P-only path.
+- [ ] **Public-invitation candidate retirement.** Capture the parent and server
+  reason when a candidate is retired before its first SDP offer. Keep this
+  separate from candidates that actually enter ICE and fail.
 - [ ] **Browser sharing falls to low source FPS during motion.** Trace raw
   capture, sender-owned track input and encoding on Windows Chrome with mixed
   direct/SFU delivery. The observed source fell to roughly 2 fps during video

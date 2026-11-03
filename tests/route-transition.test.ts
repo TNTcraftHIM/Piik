@@ -773,7 +773,7 @@ describe("minimal route transition contracts", () => {
       getStream: () => ({}) as MediaStream,
       getProfile: () => QUALITY_PROFILES["720p30"],
       getVideoCodec: () => "vp8",
-      reconcileChildren: (children) => reconciledChildren.push(children),
+      reconcileChildren: (assignment) => reconciledChildren.push(assignment.childPeerIds),
       send: () => true,
       createPublisher: () => createFakePublisher([], "publisher"),
     });
@@ -1051,7 +1051,7 @@ describe("minimal route transition contracts", () => {
       getStream: () => ({}) as MediaStream,
       getProfile: () => QUALITY_PROFILES["720p30"],
       getVideoCodec: () => "vp8",
-      reconcileChildren: (children) => reconciledChildren.push(children),
+      reconcileChildren: (assignment) => reconciledChildren.push(assignment.childPeerIds),
       send: () => true,
       createPublisher: () => {
         const publisher = createFakePublisher(
@@ -2047,5 +2047,75 @@ describe("minimal route transition contracts", () => {
     expect(activatedPeers.at(-1)).toEqual(
       peerAssignment("retained-parent", ["retained-child"]),
     );
+  });
+  it("preserves a committed Host publication while old source retirement delays activation", async () => {
+    const publishers: ReturnType<typeof createFakePublisher>[] = [];
+    const reconciledChildren: Array<{ childPeerIds: string[]; revision: number }> = [];
+    const stream = {} as MediaStream;
+    const route = new HostSfuRoute({
+      getStream: () => stream,
+      getProfile: () => QUALITY_PROFILES["720p30"],
+      getVideoCodec: () => "h264",
+      reconcileChildren: (assignment, revision) => {
+        reconciledChildren.push({ childPeerIds: assignment.childPeerIds, revision });
+      },
+      send: () => true,
+      createPublisher: () => {
+        const publisher = createFakePublisher([], "publisher-" + publishers.length);
+        publishers.push(publisher);
+        return publisher;
+      },
+    });
+    await route.acceptAndWait({
+      revision: 1,
+      phase: "active",
+      assignment: hostAssignment("publication-old"),
+    });
+    await route.acceptConfig(sfuConfig(1, "publication-old"));
+    route.accept({
+      revision: 2,
+      phase: "prepare",
+      assignment: hostAssignment("publication-new", ["committed-child"]),
+      candidate: candidate(2, "viewer_first_12345678", "sfu"),
+    });
+    await route.acceptConfig(sfuConfig(2, "publication-new"));
+    expect(publishers[1]!.activate).toHaveBeenCalledOnce();
+
+    let releaseOld!: () => void;
+    const oldRetirement = new Promise<void>((resolve) => {
+      releaseOld = resolve;
+    });
+    publishers[0]!.replaceStream.mockResolvedValue(false);
+    publishers[0]!.disconnect.mockImplementation(() => oldRetirement);
+    const replacing = route.replaceStream({} as MediaStream);
+    const nextChild = {
+      revision: 3,
+      phase: "prepare" as const,
+      assignment: hostAssignment("publication-new", ["committed-child", "viewer_next_12345678"]),
+      candidate: candidate(3, "viewer_next_12345678", "direct"),
+    };
+    try {
+      await vi.waitFor(() => expect(publishers[0]!.disconnect).toHaveBeenCalledOnce());
+      // HostPage accepts route updates without awaiting local activation.
+      route.accept({
+        revision: 2,
+        phase: "active",
+        assignment: hostAssignment("publication-new", ["committed-child"]),
+      });
+      expect(reconciledChildren.at(-1)).toEqual({
+        childPeerIds: ["committed-child"],
+        revision: 2,
+      });
+      route.accept(nextChild);
+      expect(publishers[1]!.disconnect).not.toHaveBeenCalled();
+      releaseOld();
+      await replacing;
+      await route.acceptAndWait(nextChild);
+      expect(publishers[1]!.disconnect).not.toHaveBeenCalled();
+    } finally {
+      releaseOld();
+      await replacing;
+      await route.disconnect();
+    }
   });
 });

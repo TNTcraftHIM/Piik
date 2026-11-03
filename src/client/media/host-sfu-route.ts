@@ -44,6 +44,7 @@ export interface HostPublisherTransport {
 
 interface HostPublisherSlot {
   revision: number;
+  activationToken: RouteOperationToken | null;
   connectionId: string;
   publicationGeneration: string;
   publisher: HostPublisherTransport;
@@ -56,7 +57,7 @@ interface HostSfuRouteEvents {
   getStream: () => MediaStream | null;
   getProfile: () => QualityProfile;
   getVideoCodec: () => BrowserVideoCodec;
-  reconcileChildren: (childPeerIds: string[]) => void;
+  reconcileChildren: (assignment: ParticipantRouteAssignment, revision: number) => void;
   send: (message: ClientMessage) => boolean;
   onSenderUpdate?: (
     metrics: ConnectionMetrics,
@@ -102,8 +103,8 @@ export class HostSfuRoute {
           update.assignment.sfuPublicationGeneration,
         )
       : null;
-    if (pausedActiveReconciliation) {
-      this.events.reconcileChildren(update.assignment.childPeerIds);
+    if (update.phase === "active" && result !== "duplicate") {
+      this.events.reconcileChildren(update.assignment, update.revision);
     }
     if (this.paused && update.phase === "prepare") {
       this.clearPending();
@@ -113,10 +114,19 @@ export class HostSfuRoute {
       this.recovery = null;
       this.lastFailureStage = null;
     }
+    if (
+      update.phase === "active" && this.pending &&
+      this.pending.publicationGeneration === update.assignment.sfuPublicationGeneration &&
+      (this.pending.revision === update.revision || this.pending.activationToken)
+    ) {
+      this.pending.activationToken = this.route.getActiveToken();
+      this.pending.revision = update.revision;
+      this.pending.publisher.updateConfig(this.pending);
+    }
     if (update.phase === "prepare") {
       if (
         this.pending &&
-        (this.pending.revision !== update.revision ||
+        ((!this.pending.activationToken && this.pending.revision !== update.revision) ||
           this.pending.publicationGeneration !==
             update.assignment.sfuPublicationGeneration)
       ) {
@@ -128,7 +138,7 @@ export class HostSfuRoute {
       return result;
     }
 
-    const token = this.route.token();
+    const token = this.route.getActiveToken();
     if (retiredActive) {
       void this.queueTransition(() =>
         this.disconnectRetiredPublisher(retiredActive),
@@ -163,8 +173,12 @@ export class HostSfuRoute {
     this.route.reset();
     this.recovery = null;
     const closing = this.retirePublishers();
-    const accepted = this.route.accept(update);
-    this.events.reconcileChildren([]);
+    this.events.reconcileChildren({
+      upstream: { kind: "none" },
+      childPeerIds: [],
+      sfuPublicationGeneration: null,
+    }, update.revision);
+    const accepted = this.accept(update);
 
     await this.queueTransition(() => closing);
 
@@ -172,8 +186,8 @@ export class HostSfuRoute {
       return "stale";
     }
     this.resyncing = false;
-    const token = this.route.token();
-    if (token && this.route.getPhase() === "active") {
+    const token = this.route.getActiveToken();
+    if (token) {
       await this.queueActivation(token);
     }
     return accepted;
@@ -215,7 +229,8 @@ export class HostSfuRoute {
       return;
     }
     if (
-      this.pending?.revision === message.revision &&
+      this.pending &&
+      (this.pending.revision === message.revision || this.pending.activationToken) &&
       this.pending.publicationGeneration === publicationGeneration &&
       this.pending.connectionId === message.connectionId &&
       !this.pending.failed
@@ -238,6 +253,7 @@ export class HostSfuRoute {
       });
     slot = {
       revision: message.revision,
+      activationToken: phase === "active" ? this.route.getActiveToken() : null,
       connectionId: message.connectionId,
       publicationGeneration,
       publisher,
@@ -249,7 +265,7 @@ export class HostSfuRoute {
     try {
       const connected = await publisher.connect(message);
       if (!connected) {
-        if (this.pending === slot && this.route.owns(token)) {
+        if (this.pending === slot && this.ownsPublisherSlot(slot)) {
           this.handleFailure(slot);
         } else {
           if (this.pending === slot) {
@@ -260,7 +276,7 @@ export class HostSfuRoute {
         await this.disconnectPublisher(slot);
         return;
       }
-      if (this.pending !== slot || !this.route.owns(token)) {
+      if (this.pending !== slot || !this.ownsPublisherSlot(slot)) {
         if (this.pending === slot) {
           this.pending = null;
         }
@@ -271,7 +287,7 @@ export class HostSfuRoute {
       slot.connected = true;
       let prepared = false;
       await this.queueTransition(async () => {
-        if (this.pending !== slot || !this.route.owns(token)) {
+        if (this.pending !== slot || !this.ownsPublisherSlot(slot)) {
           if (this.pending === slot) {
             this.pending = null;
           }
@@ -284,8 +300,8 @@ export class HostSfuRoute {
       if (!prepared) {
         return;
       }
-      if (phase === "active" && !this.resyncing) {
-        await this.queueActivation(token);
+      if (slot.activationToken && !this.resyncing) {
+        await this.queueActivation(slot.activationToken);
       }
     } catch {
       this.failPublisherSlot(slot);
@@ -308,7 +324,7 @@ export class HostSfuRoute {
       slot && !slot.failed && slot.connectionId === message.connectionId &&
       slot.publicationGeneration === message.publicationGeneration,
     );
-    if (slot === this.pending && slot?.revision !== message.revision) return;
+    if (slot === this.pending && !slot?.activationToken && slot?.revision !== message.revision) return;
     await slot?.publisher.acceptSignal(message);
   }
 
@@ -417,8 +433,12 @@ export class HostSfuRoute {
     token: RouteOperationToken,
     retireUnreferenced = false,
   ): Promise<void> {
+    const pending = this.pending;
     return this.queueTransition(async () => {
-      if (this.closed || this.resyncing || !this.route.owns(token, "active")) {
+      if (
+        this.closed || this.resyncing || !this.route.ownsActive(token) ||
+        (pending?.activationToken && this.pending !== pending && this.active !== pending)
+      ) {
         return;
       }
       const assignment = this.route.getActiveAssignment();
@@ -429,11 +449,11 @@ export class HostSfuRoute {
             assignment.sfuPublicationGeneration
         ) {
           await this.retireActive();
-          if (!this.route.owns(token, "active")) {
+          if (!this.route.ownsActive(token)) {
             return;
           }
         }
-        await this.activate(assignment, token);
+        await this.activate(assignment, token, pending);
       }
     });
   }
@@ -447,20 +467,19 @@ export class HostSfuRoute {
   private async activate(
     assignment: ParticipantRouteAssignment,
     token: RouteOperationToken,
+    pendingAtQueue: HostPublisherSlot | null,
   ): Promise<void> {
     const publicationGeneration = assignment.sfuPublicationGeneration;
     if (publicationGeneration === null) {
-      this.clearPending();
+      if (this.pending === pendingAtQueue) this.clearPending();
       await this.retireActive();
-      if (!this.route.owns(token, "active")) {
+      if (!this.route.ownsActive(token)) {
         return;
       }
-      this.events.reconcileChildren(assignment.childPeerIds);
       this.commitMedia(token);
       return;
     }
 
-    this.events.reconcileChildren(assignment.childPeerIds);
     if (
       this.active &&
       !this.active.failed &&
@@ -468,8 +487,9 @@ export class HostSfuRoute {
       this.pending?.publicationGeneration !== publicationGeneration
     ) {
       this.active.revision = token.revision;
+      this.active.activationToken = token;
       this.active.publisher.updateConfig(this.active);
-      this.clearPending();
+      if (this.pending === pendingAtQueue) this.clearPending();
       if (this.active.active) {
         this.commitMedia(token);
       }
@@ -484,7 +504,7 @@ export class HostSfuRoute {
       !pending.connected ||
       !pending.active
     ) {
-      if (this.route.owns(token, "active")) {
+      if (this.route.ownsActive(token)) {
         this.requestRecovery(token.revision);
       }
       return;
@@ -558,6 +578,7 @@ export class HostSfuRoute {
   }
 
   private ownsPublisherSlot(slot: HostPublisherSlot): boolean {
+    if (slot.activationToken) return this.route.ownsActive(slot.activationToken);
     return (
       this.route.getRevision() === slot.revision &&
       this.route.getPlannedAssignment()?.sfuPublicationGeneration ===
@@ -624,6 +645,8 @@ export class HostSfuRoute {
     }
     const wasActive = this.active === slot;
     const wasPending = this.pending === slot;
+    const wasCommitted = slot.activationToken !== null &&
+      this.route.ownsActive(slot.activationToken);
     if (!wasActive && !wasPending) {
       slot.failed = true;
       return;
@@ -649,7 +672,7 @@ export class HostSfuRoute {
     }
     if (phase === "prepare") {
       const activeRevision = this.route.getActiveRevision();
-      if (wasActive) {
+      if (wasActive || wasCommitted) {
         if (
           activeRevision !== null &&
           this.route.getActiveAssignment()?.sfuPublicationGeneration ===
