@@ -6,7 +6,6 @@ interface DeliveredVideoSample {
   windowMs: number;
   pixels: number;
   framesDecoded: number;
-  bitrateKbps: number | null;
 }
 
 function deliveredNothingSample(
@@ -29,7 +28,6 @@ function deliveredNothingSample(
     windowMs: sampleWindowMs,
     pixels: 0,
     framesDecoded: 0,
-    bitrateKbps: 0,
   };
 }
 
@@ -41,7 +39,6 @@ function deliveredVideoSample(
     sampleWindowMs,
     frameWidth,
     frameHeight,
-    bitrateKbps,
     intervalFramesDecoded,
   } = metrics;
   if (
@@ -68,12 +65,6 @@ function deliveredVideoSample(
     windowMs: sampleWindowMs,
     pixels: frameWidth * frameHeight,
     framesDecoded: intervalFramesDecoded,
-    bitrateKbps:
-      typeof bitrateKbps === "number" &&
-      Number.isFinite(bitrateKbps) &&
-      bitrateKbps > 0
-        ? bitrateKbps
-        : null,
   };
 }
 
@@ -120,30 +111,6 @@ function frameCountDeficit(
   return Math.round(currentFrames * candidateWindowMs / currentWindowMs) - candidateFrames;
 }
 
-export function sfuCandidateDoesNotRegress(
-  current: ConnectionMetrics,
-  candidate: ConnectionMetrics,
-): boolean | null {
-  const samples = comparableSamples(current, candidate);
-  if (!samples) return null;
-  const [currentVideo, candidateVideo] = samples;
-  if (
-    currentVideo.bitrateKbps === null ||
-    candidateVideo.bitrateKbps === null
-  ) {
-    return null;
-  }
-  return (
-    candidate.intervalFreezeCount === 0 &&
-    candidate.intervalFreezeDurationMs === 0 &&
-    candidate.intervalPauseCount === 0 &&
-    candidate.intervalPauseDurationMs === 0 &&
-    candidateVideo.pixels >= currentVideo.pixels &&
-    frameRateDoesNotRegress(currentVideo, candidateVideo) &&
-    candidateVideo.bitrateKbps >= currentVideo.bitrateKbps
-  );
-}
-
 export function p2pCandidateDoesNotRegress(
   current: ConnectionMetrics,
   candidate: ConnectionMetrics,
@@ -161,19 +128,12 @@ export function p2pCandidateDoesNotRegress(
   );
 }
 
-class ConsecutiveCandidateQualityProbe {
+export class P2pQualityProbe {
   private lastCandidateTimestampMs: number | null = null;
   private lastCurrentTimestampMs: number | null = null;
   private consecutiveApprovedWindows = 0;
   private consecutiveRejectedWindows = 0;
   private consecutiveFrameDeficit = 0;
-
-  constructor(
-    private readonly compare: (
-      current: ConnectionMetrics,
-      candidate: ConnectionMetrics,
-    ) => boolean | null,
-  ) {}
 
   observe(
     current: ConnectionMetrics | null,
@@ -209,7 +169,7 @@ class ConsecutiveCandidateQualityProbe {
       return "pending";
     }
     this.lastCurrentTimestampMs = current.sampleTimestampMs;
-    const approved = this.compare(current, candidate);
+    const approved = p2pCandidateDoesNotRegress(current, candidate);
     if (approved === null) {
       this.resetRuns();
       return "pending";
@@ -256,15 +216,3 @@ export type CandidateQualityProbeResult =
   | "pending"
   | "approved"
   | "rejected";
-
-export class SfuQualityProbe extends ConsecutiveCandidateQualityProbe {
-  constructor() {
-    super(sfuCandidateDoesNotRegress);
-  }
-}
-
-export class P2pQualityProbe extends ConsecutiveCandidateQualityProbe {
-  constructor() {
-    super(p2pCandidateDoesNotRegress);
-  }
-}

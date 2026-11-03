@@ -2,9 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   P2pQualityProbe,
-  SfuQualityProbe,
   p2pCandidateDoesNotRegress,
-  sfuCandidateDoesNotRegress,
 } from "../src/client/media/candidate-quality-probe.ts";
 import {
   EMPTY_METRICS,
@@ -32,18 +30,18 @@ function metrics(
   };
 }
 
-describe("SFU quality probe", () => {
-  it.each([sfuCandidateDoesNotRegress, p2pCandidateDoesNotRegress])(
+describe("P2P quality probe", () => {
+  it(
     "compares frame delivery over the sampled window rather than the last second",
-    (compare) => {
+    () => {
       const current = metrics(3_000);
-      expect(compare(current, metrics(3_100, { framesPerSecond: 30 }))).toBe(true);
-      expect(compare(current, metrics(3_100, { framesPerSecond: null }))).toBe(true);
+      expect(p2pCandidateDoesNotRegress(current, metrics(3_100, { framesPerSecond: 30 }))).toBe(true);
+      expect(p2pCandidateDoesNotRegress(current, metrics(3_100, { framesPerSecond: null }))).toBe(true);
       expect(
-        compare(current, metrics(3_100, { intervalFramesDecoded: 60 })),
+        p2pCandidateDoesNotRegress(current, metrics(3_100, { intervalFramesDecoded: 60 })),
       ).toBe(false);
       expect(
-        compare(current, metrics(3_100, {
+        p2pCandidateDoesNotRegress(current, metrics(3_100, {
           sampleWindowMs: 3_000,
           intervalFramesDecoded: 180,
           framesPerSecond: 30,
@@ -51,41 +49,6 @@ describe("SFU quality probe", () => {
       ).toBe(true);
     },
   );
-
-  it("accepts only complete same-Viewer non-regressing windows", () => {
-    const current = metrics(2_000);
-    expect(sfuCandidateDoesNotRegress(current, metrics(2_100))).toBe(true);
-    expect(
-      sfuCandidateDoesNotRegress(
-        current,
-        metrics(2_100, { bitrateKbps: 4_999 }),
-      ),
-    ).toBe(false);
-    expect(
-      sfuCandidateDoesNotRegress(
-        current,
-        metrics(2_100, { frameHeight: 720 }),
-      ),
-    ).toBe(false);
-    expect(
-      sfuCandidateDoesNotRegress(
-        current,
-        metrics(2_100, { intervalFreezeCount: 1 }),
-      ),
-    ).toBe(false);
-    expect(
-      sfuCandidateDoesNotRegress(
-        current,
-        metrics(8_000),
-      ),
-    ).toBeNull();
-    expect(
-      sfuCandidateDoesNotRegress(
-        current,
-        metrics(2_100, { bitrateKbps: null }),
-      ),
-    ).toBeNull();
-  });
 
   it("accepts clean P2P receive windows that do not regress", () => {
     const current = metrics(2_000, {
@@ -206,10 +169,10 @@ describe("SFU quality probe", () => {
     expect(probe.observe(metrics(7_000), metrics(7_100))).toBe("pending");
   });
 
-  it.each([P2pQualityProbe, SfuQualityProbe])(
+  it(
     "preserves clean delivery evidence across one-frame sampling boundaries",
-    (Probe) => {
-      const probe = new Probe();
+    () => {
+      const probe = new P2pQualityProbe();
       const results = [20, 19, 20].map((frames, index) => probe.observe(
         metrics(10_000 + index * 2_000, {
           sampleWindowMs: 2002.045166015625, intervalFramesDecoded: 20,
@@ -237,10 +200,10 @@ describe("SFU quality probe", () => {
     expect(probe.observe(metrics(5_000), candidate(5_100))).toBe("rejected");
   });
 
-  it.each([P2pQualityProbe, SfuQualityProbe])(
+  it(
     "does not accumulate a new frame allowance in every low-rate window",
-    (Probe) => {
-      const probe = new Probe();
+    () => {
+      const probe = new P2pQualityProbe();
       for (const timestamp of [10_000, 12_000, 14_000, 16_000]) {
         expect(probe.observe(metrics(timestamp, { intervalFramesDecoded: 2 }),
           metrics(timestamp + 100, { intervalFramesDecoded: 1 }))).toBe("pending");
@@ -267,7 +230,7 @@ describe("SFU quality probe", () => {
   });
 
   it("requires three consecutive windows and resets after a regression", () => {
-    const probe = new SfuQualityProbe();
+    const probe = new P2pQualityProbe();
     expect(probe.observe(metrics(1_000), metrics(1_100))).toBe("pending");
     expect(probe.observe(metrics(3_000), metrics(3_100))).toBe("pending");
     expect(
@@ -282,7 +245,7 @@ describe("SFU quality probe", () => {
   });
 
   it("resets when either side lacks a new comparable window", () => {
-    const probe = new SfuQualityProbe();
+    const probe = new P2pQualityProbe();
     expect(probe.observe(metrics(1_000), metrics(1_100))).toBe("pending");
     expect(probe.observe(metrics(3_000), metrics(3_100))).toBe("pending");
     expect(probe.observe(metrics(3_000), metrics(5_100))).toBe("pending");
@@ -313,12 +276,11 @@ describe("zero-frame current route", () => {
       intervalFramesDecoded: 20,
     });
 
-  it("approves clean delivery on both candidate route types", () => {
-    for (const probe of [new P2pQualityProbe(), new SfuQualityProbe()]) {
-      expect(probe.observe(zeroFrames(1_000), metrics(1_100))).toBe("pending");
-      expect(probe.observe(zeroFrames(3_000), metrics(3_100))).toBe("pending");
-      expect(probe.observe(zeroFrames(5_000), metrics(5_100))).toBe("approved");
-    }
+  it("approves clean P2P candidate delivery", () => {
+    const probe = new P2pQualityProbe();
+    expect(probe.observe(zeroFrames(1_000), metrics(1_100))).toBe("pending");
+    expect(probe.observe(zeroFrames(3_000), metrics(3_100))).toBe("pending");
+    expect(probe.observe(zeroFrames(5_000), metrics(5_100))).toBe("approved");
   });
 
   it("continues a real improvement when the current route then stops decoding", () => {
@@ -329,46 +291,34 @@ describe("zero-frame current route", () => {
   });
 
   it("never approves when both routes stop decoding", () => {
-    for (const probe of [new P2pQualityProbe(), new SfuQualityProbe()]) {
-      for (let index = 0; index < 15; index += 1) {
-        const timestampMs = 1_000 + index * 2_000;
-        expect(
-          probe.observe(zeroFrames(timestampMs), zeroFrames(timestampMs + 100)),
-        ).toBe("pending");
-      }
+    const probe = new P2pQualityProbe();
+    for (let index = 0; index < 15; index += 1) {
+      const timestampMs = 1_000 + index * 2_000;
+      expect(
+        probe.observe(zeroFrames(timestampMs), zeroFrames(timestampMs + 100)),
+      ).toBe("pending");
     }
   });
 
   it("rejects a candidate that decodes only with freezes", () => {
-    for (const probe of [new P2pQualityProbe(), new SfuQualityProbe()]) {
-      for (const timestampMs of [1_000, 3_000]) {
-        expect(
-          probe.observe(
-            zeroFrames(timestampMs),
-            metrics(timestampMs + 100, { intervalFreezeCount: 1 }),
-          ),
-        ).toBe("pending");
-      }
+    const probe = new P2pQualityProbe();
+    for (const timestampMs of [1_000, 3_000]) {
       expect(
         probe.observe(
-          zeroFrames(5_000),
-          metrics(5_100, { intervalFreezeCount: 1 }),
-        ),
-      ).toBe("rejected");
-    }
-  });
-
-  it("keeps incomplete and non-overlapping candidates unknown", () => {
-    const incomplete = new SfuQualityProbe();
-    for (const timestampMs of [1_000, 3_000, 5_000]) {
-      expect(
-        incomplete.observe(
           zeroFrames(timestampMs),
-          metrics(timestampMs + 100, { bitrateKbps: null }),
+          metrics(timestampMs + 100, { intervalFreezeCount: 1 }),
         ),
       ).toBe("pending");
     }
+    expect(
+      probe.observe(
+        zeroFrames(5_000),
+        metrics(5_100, { intervalFreezeCount: 1 }),
+      ),
+    ).toBe("rejected");
+  });
 
+  it("keeps non-overlapping candidates unknown", () => {
     const nonOverlapping = new P2pQualityProbe();
     for (const timestampMs of [1_000, 4_000, 7_000]) {
       expect(
