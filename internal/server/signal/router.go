@@ -557,6 +557,19 @@ func (r *router) isActivePeerParentOf(roomID, parentPeerID, childPeerID string) 
 	return ok && activeParent == parentPeerID
 }
 
+// A retained child connection can restart while its parent repairs its own
+// ingress. The full source path need not be ready, but this inbound edge must
+// still own the exact endpoint sessions and connection.
+func (r *router) peerRestartAuthorized(input peerSignalInput) bool {
+	rm, _ := r.rooms.Get(input.roomID)
+	if rm == nil || rm.controller == nil {
+		return false
+	}
+	edge, ok := rm.controller.Snapshot().UpstreamByViewer.Get(input.sourcePeerID)
+	return ok && edge.Kind == route.UpstreamPeer && edge.ParentPeerID == input.targetPeerID &&
+		r.peerSignalAuthorization(input) == signalAuthorizationAllowed
+}
+
 // resolveActivePeerEdge returns false when the child has no active Peer edge.
 func (r *router) resolveActivePeerEdge(roomID, childPeerID string) (revision int64, parentPeerID string, ok bool) {
 	edge, found := r.resolveActiveViewerMediaEdge(roomID, childPeerID)
