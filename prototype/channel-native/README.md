@@ -151,7 +151,7 @@ published 0.21.1 baseline: a new FU-A start clears unfinished fragments, and an
 incomplete STAP-A length returns an error. The unchanged `rtc-shared` crate uses
 the same revision so its public error and marshal types have one identity.
 The other RTC helpers use published 0.21.1 crates: media readers, ICE
-candidate/URL parsing, STUN, TURN and crypto. Piik does not depend on the umbrella
+URL parsing, STUN, TURN and crypto. Piik does not depend on the umbrella
 RTC engine; str0m owns negotiation and transport.
 
 The incoming-source adapter owns complete-AU ordering and first-packet metadata.

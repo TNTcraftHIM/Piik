@@ -1,9 +1,7 @@
 //! A Server service owns its fixed sockets across all physical peer leases.
-use super::mapping;
 use anyhow::{ensure, Context, Result};
-use rtc_ice::candidate::Candidate as IceCandidate;
-use rtc_ice::candidate::CandidateType;
 use std::{net::SocketAddr, sync::Arc};
+use str0m::{net::Protocol, Candidate, CandidateKind};
 
 pub struct ServerUdp {
     pub(super) sockets: Vec<Arc<super::transport::UdpIo>>,
@@ -58,23 +56,18 @@ impl ServerUdp {
         }))
     }
 
-    pub(super) fn mapped_candidate(&self, base: &IceCandidate) -> Result<Option<IceCandidate>> {
-        if !base.network_type().is_udp()
-            || base.candidate_type() != CandidateType::Host
-            || base.component() != 1
-        {
+    pub(super) fn mapped_candidate(&self, base: &Candidate) -> Result<Option<Candidate>> {
+        if base.proto() != Protocol::Udp || base.kind() != CandidateKind::Host {
             return Ok(None);
         }
-        let Ok(ip) = base.address().parse::<std::net::IpAddr>() else {
-            return Ok(None);
-        };
+        let address = base.addr();
         let mapped = self.mappings.iter().find(|(local, _)| {
-            local.port() == base.port()
-                && local.is_ipv4() == ip.is_ipv4()
-                && (local.ip().is_unspecified() || local.ip() == ip)
+            local.port() == address.port()
+                && local.is_ipv4() == address.is_ipv4()
+                && (local.ip().is_unspecified() || local.ip() == address.ip())
         });
-        mapped
-            .map(|(_, external)| mapping::candidate(base, *external))
-            .transpose()
+        Ok(mapped
+            .map(|(_, external)| Candidate::server_reflexive(*external, address, "udp"))
+            .transpose()?)
     }
 }

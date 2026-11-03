@@ -15,7 +15,6 @@ use sansio::Protocol as _;
 pub(super) struct Base {
     pub socket: Arc<UdpIo>,
     pub local: SocketAddr,
-    pub candidate: IceCandidate,
 }
 pub(super) struct Config {
     bases: Vec<Base>,
@@ -181,17 +180,16 @@ async fn binding(handle: Transport, base: Base, server: SocketAddr) -> Result<()
         .await?;
     let result = observe(&base, server, request, incoming).await;
     let mapped = result.as_ref().ok().copied();
-    let host = base.candidate;
     handle
         .call(move |e| {
             e.discovery_routes.remove(&transaction);
             if let Some(mapped) = mapped {
-                let signal = super::super::mapping::candidate(&host, mapped)?;
-                if e.rtc
+                if let Some(candidate) = e
+                    .rtc
                     .add_local_candidate(Candidate::server_reflexive(mapped, local, "udp")?)
-                    .is_some()
+                    .cloned()
                 {
-                    e.emit(Event::Candidate(e.handle.pair, signal));
+                    e.emit(Event::Candidate(e.handle.pair, candidate));
                 }
             }
             Ok(())

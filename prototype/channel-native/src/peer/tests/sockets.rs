@@ -28,7 +28,17 @@ async fn fixed_and_prepared_udp_keep_pair_ownership_and_ipv6() -> Result<()> {
     drop(reserved);
     let fixed4 = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
     let fixed6 = SocketAddr::from((Ipv6Addr::LOCALHOST, port));
-    let service = ServerUdp::bind(&[(fixed4, None), (fixed6, None)])?;
+    let external = "192.0.2.1:41000".parse()?;
+    let service = ServerUdp::bind(&[(fixed4, Some(external)), (fixed6, None)])?;
+    let mapped = service
+        .mapped_candidate(&str0m::Candidate::host(fixed4, "udp")?)?
+        .context("fixed listener mapping missing")?;
+    ensure!(
+        mapped.addr() == external
+            && mapped.local() == fixed4
+            && mapped.kind() == str0m::CandidateKind::ServerReflexive,
+        "fixed listener mapping lost its real socket base"
+    );
     let server = Runtime::new(Some(service.clone()));
 
     // Adopt this exact socket. Its only owner after transfer is the real pump.
@@ -48,15 +58,20 @@ async fn fixed_and_prepared_udp_keep_pair_ownership_and_ipv6() -> Result<()> {
     assert_eq!(signal.sdp_m_line_index, Some(0));
     assert_eq!(signal.username_fragment, None);
     let candidate = signal.candidate.unwrap();
-    assert_eq!(
-        candidate,
-        format!("candidate:2693830880 1 udp 2130706431 127.0.0.1 {port} typ host")
-    );
+    let target_candidate = str0m::Candidate::from_sdp_string(&candidate)?;
     ensure!(
-        str0m::Candidate::from_sdp_string(&candidate)?.addr() == fixed4,
+        target_candidate.addr() == fixed4
+            && target_candidate.kind() == str0m::CandidateKind::Host
+            && target_candidate.proto() == str0m::net::Protocol::Udp,
         "prepared target changed identity"
     );
     let (remote4, mut events4) = add(&client4, pair4, Some((prepared, target))).await?;
+    let announced: Vec<_> = std::iter::from_fn(|| events4.try_recv().ok())
+        .filter_map(|event| match event {
+            Event::Candidate(_, candidate) => Some(candidate),
+            _ => None,
+        })
+        .collect();
     let (server6, _) = add(&server, pair6, None).await?;
     let (remote6, mut events6) = add(&client6, pair6, None).await?;
     let (left4, right4) = open(&server4, &remote4, &mut events4)
@@ -67,6 +82,19 @@ async fn fixed_and_prepared_udp_keep_pair_ownership_and_ipv6() -> Result<()> {
     remote4.add_candidate(candidate).await?;
     let (_, sdp) = remote4.local_description().await?;
     let addresses = local_candidates(&sdp)?;
+    ensure!(
+        !announced.is_empty()
+            && announced.iter().all(|candidate| {
+                candidate.ufrag().is_some()
+                    && addresses.iter().any(|registered| {
+                        registered.to_sdp_string()
+                            == crate::peer::signal_candidate(candidate.clone())
+                                .candidate
+                                .unwrap()
+                    })
+            }),
+        "announced host candidate differs from the SDK's registered candidate"
+    );
     ensure!(
         addresses.iter().any(|c| c.addr() == prepared_address),
         "prepared socket missing from local SDP"

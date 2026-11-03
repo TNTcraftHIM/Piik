@@ -69,8 +69,8 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
-- [ ] **Native dependency consolidation.** Unify duplicate candidate
-  representations and assess one macOS binding family.
+- [ ] **macOS binding consolidation.** Assess one framework-binding family
+  for capture and input, preserving their platform resource lifetimes.
 - [ ] **Stronger microphone noise suppression (#518).** Assess the
   [requested speech-processing option](https://github.com/TNTcraftHIM/Piik/issues/518)
   through the shared microphone input. Browser voice processing is already the

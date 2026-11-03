@@ -4,7 +4,6 @@ use super::{server_udp::ServerUdp, Event};
 use crate::media::{MediaKind, RtpCodec, RtpCodecParameters, SourceClockReport};
 use crate::peer::{IceServer, PeerState};
 use anyhow::{anyhow, ensure, Context, Result};
-use rtc_ice::candidate::Candidate as IceCandidate;
 use rtc_rtp as rtp;
 use std::{
     collections::{HashMap, HashSet},
@@ -484,23 +483,16 @@ impl Runtime {
             };
             for ip in addresses {
                 let address = SocketAddr::new(ip, local.port());
-                rtc.add_local_candidate(Candidate::host(address, "udp")?);
-                let candidate = rtc_ice::candidate::candidate_host::CandidateHostConfig {
-                    base_config: rtc_ice::candidate::CandidateConfig {
-                        network: "udp".into(),
-                        address: ip.to_string(),
-                        port: local.port(),
-                        component: 1,
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                }
-                .new_candidate_host()?;
+                let Some(candidate) = rtc
+                    .add_local_candidate(Candidate::host(address, "udp")?)
+                    .cloned()
+                else {
+                    continue;
+                };
                 if bases.len() < super::MAX_ICE_CANDIDATES {
                     bases.push(discovery::Base {
                         socket: socket.clone(),
                         local: address,
-                        candidate: candidate.clone(),
                     });
                 }
                 let _ = events.try_send(Event::Candidate(pair, candidate));
@@ -1167,18 +1159,9 @@ impl Engine {
             let mut failed = false;
             while let Some(change) = self.turn.get_mut(&key).and_then(|endpoint| endpoint.poll()) {
                 match change {
-                    turn::Change::Ready(relay, signal) => {
-                        let local = self.turn[&key].local();
-                        match Candidate::relayed(relay, local, "udp") {
-                            Ok(candidate) => {
-                                if self.rtc.add_local_candidate(candidate).is_some() {
-                                    self.emit(Event::Candidate(self.handle.pair, signal));
-                                }
-                            }
-                            Err(_) => {
-                                failed = true;
-                                break;
-                            }
+                    turn::Change::Ready(candidate) => {
+                        if let Some(candidate) = self.rtc.add_local_candidate(candidate).cloned() {
+                            self.emit(Event::Candidate(self.handle.pair, candidate));
                         }
                     }
                     turn::Change::Receive(source, destination, bytes, at) => {

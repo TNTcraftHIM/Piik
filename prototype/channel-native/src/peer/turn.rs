@@ -81,7 +81,7 @@ struct Pending {
     packets: VecDeque<Vec<u8>>,
 }
 pub(super) enum Change {
-    Ready(SocketAddr, IceCandidate),
+    Ready(Candidate),
     Receive(SocketAddr, SocketAddr, Vec<u8>, Instant),
     Failed,
 }
@@ -89,7 +89,6 @@ pub(super) struct Endpoint {
     pub socket: Arc<UdpIo>,
     local: SocketAddr,
     server: SocketAddr,
-    url: String,
     client: Client,
     pub relay: Option<SocketAddr>,
     pending: HashMap<SocketAddr, Pending>,
@@ -98,7 +97,6 @@ pub(super) struct Endpoint {
 }
 impl Endpoint {
     async fn setup(url: Url, server: SocketAddr) -> Result<Self> {
-        let source_url = url.to_string();
         ensure!(
             !url.username.is_empty() && !url.password.is_empty(),
             "TURN credentials missing"
@@ -129,7 +127,6 @@ impl Endpoint {
             socket: Arc::new(UdpIo::new(socket)?),
             local,
             server,
-            url: source_url,
             client,
             relay: None,
             pending: HashMap::new(),
@@ -222,22 +219,8 @@ impl Endpoint {
             match event {
                 ClientEvent::AllocateResponse(_, relay) => {
                     self.relay = Some(relay);
-                    let signal = rtc_ice::candidate::candidate_relay::CandidateRelayConfig {
-                        base_config: rtc_ice::candidate::CandidateConfig {
-                            network: "udp".into(),
-                            address: relay.ip().to_string(),
-                            port: relay.port(),
-                            component: 1,
-                            ..Default::default()
-                        },
-                        rel_addr: self.local.ip().to_string(),
-                        rel_port: self.local.port(),
-                        url: Some(self.url.clone()),
-                        ..Default::default()
-                    }
-                    .new_candidate_relay();
-                    return Some(match signal {
-                        Ok(signal) => Change::Ready(relay, signal),
+                    return Some(match Candidate::relayed(relay, self.local, "udp") {
+                        Ok(candidate) => Change::Ready(candidate),
                         Err(_) => Change::Failed,
                     });
                 }

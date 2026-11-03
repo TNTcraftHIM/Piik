@@ -16,7 +16,6 @@ use piik_channel_core::wire::{
     Candidate, Command, Description, FlowState, LinkState, PairInfo, PublicationInfo, Signal,
     Track as WireTrack, UdpPreparation,
 };
-use rtc_ice::candidate::Candidate as IceCandidate;
 use rtc_rtp as rtp;
 use std::{
     collections::{HashMap, HashSet},
@@ -26,6 +25,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
+use str0m::Candidate as IceCandidate;
 use tokio::{
     sync::{mpsc, oneshot, watch, Notify},
     task::JoinHandle,
@@ -3143,24 +3143,14 @@ impl Driver {
 }
 fn signal_candidate(c: IceCandidate) -> Candidate {
     Candidate {
-        candidate: Some(format!("candidate:{}", c.marshal())),
+        candidate: Some(c.to_sdp_string()),
         sdp_mid: Some(String::new()),
         sdp_m_line_index: Some(0),
         username_fragment: None,
     }
 }
 fn prepared_candidate(remote: std::net::SocketAddrV4) -> Result<Candidate> {
-    let candidate = rtc_ice::candidate::candidate_host::CandidateHostConfig {
-        base_config: rtc_ice::candidate::CandidateConfig {
-            network: "udp".into(),
-            address: remote.ip().to_string(),
-            port: remote.port(),
-            component: 1,
-            ..Default::default()
-        },
-        ..Default::default()
-    }
-    .new_candidate_host()?;
+    let candidate = IceCandidate::host(remote.into(), "udp")?;
     Ok(signal_candidate(candidate))
 }
 async fn close_pair(mut pair: Pair) {
