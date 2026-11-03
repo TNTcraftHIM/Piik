@@ -168,18 +168,21 @@ including failed runs. Passing a DataChannel control does not establish decoded
 media recovery; this job does not establish physical capture or Internet success rates.
 
 The separate `public-peer` control opens a normal Android App's temporary public
-room from the runner's Chrome. Prepare an isolated App-hosted room, confirmed
-seed message and Native H264 share using only test content. Supply that trial's
-member invitation, expected identities and normal package provenance through the
-temporary `CHANNEL_PUBLIC_LAB` repository secret; the
+room from the runner's Chrome. Prepare an isolated App-hosted room and Native
+H264 share using only test content. No pre-existing chat message is required.
+Supply that trial's member invitation, expected identities and normal package
+provenance through the temporary `CHANNEL_PUBLIC_LAB` repository secret; the
 [runner](../../prototype/channel-server/browser-public-peer.mjs) owns its input contract.
 
 ```sh
 gh workflow run repository-hygiene.yml --ref feat/channel-prototype -f channel_network_lab=public-peer
 ```
 
-It checks the actual Native room path, signed history/chat, independent UDP
-egresses and advancing H264 picture. It loads the App's existing Web/WASM rather
+It checks the actual Native room path and signed history, which may initially be
+empty. It sends a unique message, waits for its confirmed sequence, then uses the
+normal latest-history action to verify that a fresh signed response returns that
+message. Independent UDP egresses and advancing H264 picture remain required.
+It loads the App's existing Web/WASM rather
 than building another server or changing network settings. Only redacted results
 and the test picture are retained. Remove the temporary secret after the trial.
 

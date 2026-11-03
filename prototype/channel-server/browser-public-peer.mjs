@@ -11,7 +11,7 @@ import { pathToFileURL } from "node:url";
 export function readContract(text) {
   let value;
   try { value = JSON.parse(text); } catch { throw new Error("invalid_lab_json"); }
-  const fields = ["inviteURL", "roomId", "hostSessionId", "sourceSessionId", "publicationId", "historyText", "apkSha256", "appRevision"];
+  const fields = ["inviteURL", "roomId", "hostSessionId", "sourceSessionId", "publicationId", "apkSha256", "appRevision"];
   assert(value && typeof value === "object" && !Array.isArray(value), "invalid_lab_contract");
   assert(Object.keys(value).length === fields.length && fields.every(field => Object.hasOwn(value, field)), "invalid_lab_fields");
   for (const field of fields) assert(typeof value[field] === "string" && value[field], `invalid_lab_${field.toLowerCase()}`);
@@ -25,7 +25,6 @@ export function readContract(text) {
   assert(!fragment.has("room") || fragment.get("room") === value.roomId, "invitation_room_mismatch");
   for (const field of ["roomId", "hostSessionId", "sourceSessionId", "publicationId"])
     assert(/^[A-Za-z0-9_-]{1,128}$/.test(value[field]), `invalid_lab_${field.toLowerCase()}`);
-  assert(value.historyText.length <= 2000, "invalid_lab_historytext");
   assert(/^[a-f0-9]{64}$/i.test(value.apkSha256), "invalid_lab_apksha256");
   assert(/^[a-f0-9]{40}$/i.test(value.appRevision), "invalid_lab_apprevision");
   return value;
@@ -98,7 +97,6 @@ function installObserver() {
       const first = seen.find(entry => entry.peerId === config.hostSessionId);
       const active = [...current.media.peers.values()].find(peer => peer.plan.peerId === config.hostSessionId && peer.plan.rooms.includes(config.roomId));
       const messages = value.messagesByRoom[config.roomId] ?? [];
-      const history = messages.find(message => message.text === config.historyText);
       const confirmation = messages.find(message => message.text === nonce && message.userId === value.self?.id);
       const publication = value.state?.publications.find(publication => publication.id === config.publicationId);
       const input = value.screenInputs.get(config.publicationId)?.find(input => input.selected);
@@ -115,7 +113,7 @@ function installObserver() {
         base: first && { observedPcIndex: seen.indexOf(first) + 1, connection: first.pc.connectionState, ice: first.pc.iceConnectionState,
           current: active?.transport.pc === first.pc, selected: await selected(first.pc) },
         observedNativePcs: seen.filter(entry => entry.peerId === config.hostSessionId).length,
-        historySeq: value.historyByRoom[config.roomId] && !value.pending.has(`history:${config.roomId}`) ? history?.seq : null,
+        historyComplete: !!value.historyByRoom[config.roomId] && !value.pending.has(`history:${config.roomId}`),
         confirmationSeq: !value.pending.has(`chat:${config.roomId}`) ? confirmation?.seq : null,
         chatDraftCleared: document.querySelector(".c3-composer textarea")?.value === "",
         publicationExists: !!publication,
@@ -125,6 +123,18 @@ function installObserver() {
           codec: reports.get(inbound.codecId)?.mimeType, decoded: inbound.framesDecoded ?? 0,
           presented: video.getVideoPlaybackQuality().totalVideoFrames, time: video.currentTime,
           width: video.videoWidth, height: video.videoHeight, paused: video.paused, composited: video.dataset.composited === "true" } };
+    },
+    async latestHistory(roomId, nonce, seq) {
+      const current = find(), previous = current.getSnapshot().historyByRoom[roomId];
+      const loading = current.loadLatestHistory(roomId);
+      // request() awaits the already-ready reading before registering this request.
+      await Promise.resolve();
+      const response = [...current.requests.values()].find(request => request.roomId === roomId && request.history)?.history;
+      await loading;
+      const value = current.getSnapshot();
+      return { replaced: !!previous && previous !== value.historyByRoom[roomId],
+        completed: !value.pending.has(`history:${roomId}`),
+        received: !!response && [...response.entries.values()].some(entry => entry.message?.text === nonce && entry.message.seq === seq) };
     },
     picture(publicationId) {
       const stream = find().getSnapshot().screenInputs.get(publicationId)?.find(input => input.selected)?.stream;
@@ -202,12 +212,17 @@ async function main() {
     await command(["click", `.c3-room-link[aria-label=${JSON.stringify(last.roomName)}]`]);
     await wait("native-base", baseReady);
     result.checks.nativeBase = true;
-    await wait("signed-history", value => baseReady(value) && Number.isSafeInteger(value.historySeq) && value.historySeq > 0);
-    result.checks.historySeq = last.historySeq;
+    await wait("signed-history", value => baseReady(value) && value.historyComplete);
+    result.checks.historyComplete = true;
     await command(["fill", ".c3-composer textarea", nonce]);
     await command(["click", '.c3-composer button[type="submit"]']);
-    await wait("signed-chat", value => baseReady(value) && value.chatDraftCleared && value.confirmationSeq > result.checks.historySeq);
+    await wait("signed-chat", value => baseReady(value) && value.chatDraftCleared && Number.isSafeInteger(value.confirmationSeq) && value.confirmationSeq > 0);
     result.checks.confirmationSeq = last.confirmationSeq;
+    stage = "signed-history-readback";
+    console.log(JSON.stringify({ stage, elapsedMs: Date.now() - start }));
+    const readback = await evaluate(`window.__publicPeer.latestHistory(${JSON.stringify(config.roomId)},${JSON.stringify(nonce)},${result.checks.confirmationSeq})`);
+    result.checks.historyReadback = readback;
+    assert(readback.completed && readback.replaced && readback.received, "signed_history_readback_failed");
     await wait("native-publication", value => value.sourceMatches);
     await command(["click", `.c3-monitor-offer[data-source-id=${JSON.stringify(config.publicationId)}] button`]);
     let before;
@@ -228,7 +243,7 @@ async function main() {
   } finally {
     result.elapsedMs = Date.now() - start;
     if (last) result.observation = { connection: last.connection, hostMatches: last.hostMatches, sourceMatches: last.sourceMatches,
-      historySeq: last.historySeq, confirmationSeq: last.confirmationSeq, observedNativePcs: last.observedNativePcs,
+      historyComplete: last.historyComplete, confirmationSeq: last.confirmationSeq, observedNativePcs: last.observedNativePcs,
       picture: last.picture && Object.fromEntries(Object.entries(last.picture).filter(([key]) => !["flowId", "pairId", "trackId", "ssrc"].includes(key))),
       firstObservedNative: last.base && { observedPcIndex: last.base.observedPcIndex, connection: last.base.connection, ice: last.base.ice, current: last.base.current,
         independentEgress: independentEgress(last.base.selected), selected: last.base.selected && Object.fromEntries(Object.entries(last.base.selected)
