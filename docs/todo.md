@@ -12,8 +12,7 @@ own behavior; research and Git/PRs own evidence and completed history.
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
   Finish the packaged Windows/Android main-flow acceptance at the internal-test
-  checkpoint. Resolve Android's repeated VP8 capture failure in the system codec
-  service.
+  checkpoint. Resolve Android's capture failures in the system codec service.
   Follow the Android Native helper's source-layer suspension through its actual
   source and transport measurements. Firefox's received-video conversion limit
   is recorded in [device evidence](./verification-status.md#device-evidence-boundary).

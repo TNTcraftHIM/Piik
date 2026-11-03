@@ -1,12 +1,75 @@
 //! JNI objects stay attached to their owning capture; no native callback pointers.
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
 use jni::{
     jni_sig, jni_str,
-    objects::{JObject, JString},
+    objects::{IntoAuto, JObject, JObjectArray, JString},
     refs::{Cast, Global},
     Env, JavaVM,
 };
 use std::sync::Arc;
+
+pub(super) fn supports_cbr(name: &str, mime: &str) -> Result<bool> {
+    let context = ndk_context::android_context();
+    let vm = unsafe { JavaVM::from_raw(context.vm().cast()) };
+    vm.attach_current_thread(|env| -> Result<bool> {
+        let list = env.new_object(
+            jni_str!("android/media/MediaCodecList"),
+            jni_sig!((int) -> void),
+            &[1.into()], // ALL_CODECS
+        )?;
+        let infos = env
+            .call_method(
+                &list,
+                jni_str!("getCodecInfos"),
+                jni_sig!(() -> android.media.MediaCodecInfo[]),
+                &[],
+            )?
+            .l()?;
+        let infos = JObjectArray::<JObject>::cast_local(env, infos)?;
+        for index in 0..infos.len(env)? {
+            let info = infos.get_element(env, index)?.auto();
+            let codec_name = env
+                .call_method(
+                    &info,
+                    jni_str!("getName"),
+                    jni_sig!(() -> java.lang.String),
+                    &[],
+                )?
+                .l()?;
+            let codec_name = JString::cast_local(env, codec_name)?.auto();
+            if codec_name.mutf8_chars(env)?.to_string() != name {
+                continue;
+            }
+            let mime = JString::from_str(env, mime)?;
+            let caps = env
+                .call_method(
+                    &info,
+                    jni_str!("getCapabilitiesForType"),
+                    jni_sig!((java.lang.String) -> android.media.MediaCodecInfo::CodecCapabilities),
+                    &[(&mime).into()],
+                )?
+                .l()?;
+            let encoder = env
+                .call_method(
+                    &caps,
+                    jni_str!("getEncoderCapabilities"),
+                    jni_sig!(() -> android.media.MediaCodecInfo::EncoderCapabilities),
+                    &[],
+                )?
+                .l()?;
+            return Ok(env
+                .call_method(
+                    &encoder,
+                    jni_str!("isBitrateModeSupported"),
+                    jni_sig!((int) -> boolean),
+                    &[2.into()], // BITRATE_MODE_CBR
+                )?
+                .z()?);
+        }
+        bail!("selected encoder is absent from MediaCodecList")
+    })
+    .with_context(|| format!("query Android CBR support for {name} ({mime})"))
+}
 
 pub(super) fn activation_url() -> Result<String> {
     let context = ndk_context::android_context();

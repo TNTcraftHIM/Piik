@@ -7,7 +7,7 @@ use crate::{
     capture::{Settings, VideoCodec},
     EncodedFrame,
 };
-use anyhow::{anyhow, ensure, Result};
+use anyhow::{anyhow, ensure, Context, Result};
 use ndk::media::{
     media_codec::{DequeuedOutputBufferInfoResult, MediaCodec, MediaCodecDirection},
     media_format::MediaFormat,
@@ -173,20 +173,23 @@ struct Codec {
 }
 impl Codec {
     fn new(frames: &Frames, settings: Settings, video_codec: VideoCodec) -> Result<Self> {
-        eprintln!(
-            "Android encoder create tid={} codec={video_codec:?} size={}x{} fps={} bitrate={}",
-            unsafe { libc::gettid() },
-            settings.width,
-            settings.height,
-            settings.fps,
-            settings.bitrate
-        );
         let mime = match video_codec {
             VideoCodec::H264 => "video/avc",
             VideoCodec::Vp8 => "video/x-vnd.on2.vp8",
         };
         let codec = MediaCodec::from_encoder_type(mime)
             .ok_or_else(|| anyhow!("{video_codec:?} encoder unavailable"))?;
+        let name = codec.name().context("read Android encoder name")?;
+        let cbr = super::platform::supports_cbr(&name, mime)?;
+        eprintln!(
+            "Android encoder create tid={} codec={video_codec:?} size={}x{} fps={} bitrate={} mode={} provider={name}",
+            unsafe { libc::gettid() },
+            settings.width,
+            settings.height,
+            settings.fps,
+            settings.bitrate,
+            if cbr { "cbr" } else { "default" },
+        );
         let mut format = MediaFormat::new();
         format.set_str("mime", mime);
         for (key, value) in [
@@ -196,10 +199,12 @@ impl Codec {
             ("bitrate", settings.bitrate as i32),
             ("color-format", 0x7F000789),
             ("i-frame-interval", 2),
-            ("bitrate-mode", 2),
             ("priority", 0),
         ] {
             format.set_i32(key, value);
+        }
+        if cbr {
+            format.set_i32("bitrate-mode", 2);
         }
         if video_codec == VideoCodec::H264 {
             format.set_i32("max-bframes", 0);
