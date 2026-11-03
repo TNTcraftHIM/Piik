@@ -219,7 +219,9 @@ export function reduceViewerPresentation(
         },
         routeStatus: action.authoritative
           ? null
-          : !committedRoute && state.routeStatus?.revision === action.revision
+          : !committedRoute &&
+              (state.routeStatus?.revision === action.revision ||
+                (action.kind === "none" && state.routeStatus?.state === "failed"))
             ? state.routeStatus
             : null,
         connection: action.authoritative && state.media === null
