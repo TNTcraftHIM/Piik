@@ -30,7 +30,7 @@ pub(in crate::peer) struct Fixture {
     pub(in crate::peer) runtimes: Vec<transport::Runtime>,
     pub(in crate::peer) tracks: HashMap<String, Track>,
     pub(in crate::peer) packets: HashMap<String, Vec<rtp::Packet>>,
-    pub(in crate::peer) reports: HashMap<u32, Vec<rtc_rtcp::sender_report::SenderReport>>,
+    pub(in crate::peer) reports: HashMap<u32, Vec<crate::media::SourceClockReport>>,
     pub(in crate::peer) parents: Vec<Parent>,
     pub(in crate::peer) tick: tokio::time::Interval,
     pub(in crate::peer) epoch: Instant,

@@ -3018,7 +3018,6 @@ dependencies = [
  "rtc-crypto",
  "rtc-ice",
  "rtc-media",
- "rtc-rtcp",
  "rtc-rtp",
  "rtc-shared",
  "rtc-stun",
@@ -3548,16 +3547,6 @@ dependencies = [
  "rtc-rtp",
  "rtc-shared",
  "thiserror 2.0.21",
-]
-
-[[package]]
-name = "rtc-rtcp"
-version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "485aa259bdb68e550363c40c8dc30c1c453ddd80f0cf7224dd2d72dffd5e01c2"
-dependencies = [
- "bytes",
- "rtc-shared",
 ]
 
 [[package]]

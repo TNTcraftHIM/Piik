@@ -1,6 +1,5 @@
 //! A local monotonic coordinate for one source, paired with its own NTP clock.
-use super::SourceReport;
-use rtc_rtcp::sender_report::SenderReport;
+use super::{SourceClockReport, SourceReport};
 use rtc_shared::time::SystemInstant;
 use std::{
     sync::{Arc, Mutex},
@@ -42,7 +41,7 @@ impl SourceTime {
     /// Correlate another SSRC of the same source through its sender report.
     /// Until the reference SSRC has a report, its arrival-based origin cannot
     /// establish a relationship with another independently randomized RTP clock.
-    pub fn incoming_layer(&self, timestamp: u32, report: &SenderReport) -> Option<Self> {
+    pub fn incoming_layer(&self, timestamp: u32, report: &SourceClockReport) -> Option<Self> {
         let origin = self.ntp(self.epoch)?;
         let delta = report.ntp_time.wrapping_sub(origin) as i64;
         let elapsed =
@@ -124,7 +123,6 @@ fn advance(at: Instant, ticks: i64, rate: u64) -> Instant {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rtc_rtcp::sender_report::SenderReport;
     #[test]
     fn remote_clock_keeps_source_ntp_across_wrap_and_static_idr_without_wall_sync() {
         let epoch = Instant::now();
@@ -138,10 +136,10 @@ mod tests {
         // does not move the source's frame coordinate.
         let ntp = 1_000_000u64 << 32;
         *report.lock().unwrap() = Some((
-            SenderReport {
+            SourceClockReport {
+                ssrc: 0,
                 ntp_time: ntp,
                 rtp_time: rtp,
-                ..Default::default()
             },
             epoch + Duration::from_secs(12),
         ));
@@ -159,17 +157,17 @@ mod tests {
         let source = SourceTime::incoming(epoch, 900_000, report.clone());
         let ntp = 1_000_000u64 << 32;
         let layer_rtp = u32::MAX - 8_999;
-        let layer_report = SenderReport {
+        let layer_report = SourceClockReport {
+            ssrc: 0,
             ntp_time: ntp + (1u64 << 31),
             rtp_time: layer_rtp,
-            ..Default::default()
         };
         assert!(source.incoming_layer(layer_rtp, &layer_report).is_none());
         *report.lock().unwrap() = Some((
-            SenderReport {
+            SourceClockReport {
+                ssrc: 0,
                 ntp_time: ntp,
                 rtp_time: 900_000,
-                ..Default::default()
             },
             epoch + Duration::from_secs(12),
         ));

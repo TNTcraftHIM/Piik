@@ -1,9 +1,11 @@
 mod vp8;
 
-use super::{clock::SourceTime, video::Video, vp8::Vp8FrameMetadata, EncodedFrame, SourceReport};
+use super::{
+    clock::SourceTime, video::Video, vp8::Vp8FrameMetadata, EncodedFrame, SourceClockReport,
+    SourceReport,
+};
 use crate::media::RtpCodec;
 use anyhow::{ensure, Result};
-use rtc_rtcp::sender_report::SenderReport;
 use rtc_rtp::{
     packetizer::{new_packetizer, Packetizer as RtpPacketizer},
     sequence::new_random_sequencer,
@@ -116,11 +118,10 @@ impl Packetizer {
         };
         let timestamp = first.header.timestamp;
         *self.report.lock().unwrap() = Some((
-            SenderReport {
+            SourceClockReport {
                 ssrc: self.ssrc,
                 ntp_time: self.time.ntp(presentation_time).unwrap_or(0),
                 rtp_time: timestamp,
-                ..Default::default()
             },
             presentation_time,
         ));

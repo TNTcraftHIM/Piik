@@ -17,7 +17,6 @@ pub(crate) mod video;
 pub(crate) mod vp8;
 use anyhow::Result;
 pub(crate) use output::Output;
-use rtc_rtcp::sender_report::SenderReport;
 use rtc_rtp as rtp;
 use std::{
     collections::HashMap,
@@ -77,7 +76,14 @@ pub struct EncodedFrame {
 pub(crate) const RTP_PACKETS: usize = 256;
 // One directed flow owns each kind; a publication can have several hop flows.
 pub(crate) type TrackKey = (Uuid, MediaKind);
-pub(crate) type SourceReport = Arc<Mutex<Option<(SenderReport, std::time::Instant)>>>;
+#[derive(Clone, Debug)]
+pub(crate) struct SourceClockReport {
+    pub ssrc: u32,
+    /// Source NTP timestamp in 32.32 fixed-point format.
+    pub ntp_time: u64,
+    pub rtp_time: u32,
+}
+pub(crate) type SourceReport = Arc<Mutex<Option<(SourceClockReport, Instant)>>>;
 
 #[derive(Clone, Default)]
 pub(crate) struct OutputStreams(Arc<Mutex<HashMap<u32, OutputStream>>>);

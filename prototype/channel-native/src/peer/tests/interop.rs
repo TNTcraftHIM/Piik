@@ -240,7 +240,7 @@ async fn complete_h264_au_reaches_two_children_on_retained_pairs() -> Result<()>
     f.close().await;
     Ok(())
 }
-fn correlated(sr: &rtc_rtcp::sender_report::SenderReport, rtp: u32, rate: u32) -> i128 {
+fn correlated(sr: &crate::media::SourceClockReport, rtp: u32, rate: u32) -> i128 {
     (i128::from(sr.ntp_time) * 1_000_000_000 >> 32)
         + i128::from(rtp.wrapping_sub(sr.rtp_time) as i32) * 1_000_000_000 / i128::from(rate)
 }

@@ -17,7 +17,6 @@ bytes = "=1.12.1"
 piik-channel-core = { path = "../channel-core", features = ["sqlite"] }
 str0m = { version = "=0.25.0", git = "https://github.com/algesten/str0m", rev = "5f2183ce7c67117cd1960dfeb11bed11fc188b66", default-features = false, features = ["rust-crypto"] }
 rtc-rtp = "=0.21.1"
-rtc-rtcp = "=0.21.1"
 rtc-media = "=0.21.1"
 rtc-shared = { version = "=0.21.1", default-features = false, features = ["marshal"] }
 rtc-ice = "=0.21.1"

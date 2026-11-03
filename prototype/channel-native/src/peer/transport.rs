@@ -1,11 +1,10 @@
 //! One owned sans-I/O pump. Room/flow policy and bounded producers remain outside it.
 use super::metrics::StreamCounters;
 use super::{server_udp::ServerUdp, Event};
-use crate::media::{MediaKind, RtpCodec, RtpCodecParameters};
+use crate::media::{MediaKind, RtpCodec, RtpCodecParameters, SourceClockReport};
 use crate::peer::{IceServer, PeerState};
 use anyhow::{anyhow, ensure, Context, Result};
 use rtc_ice::candidate::Candidate as IceCandidate;
-use rtc_rtcp::sender_report::SenderReport;
 use rtc_rtp as rtp;
 use std::{
     collections::{HashMap, HashSet},
@@ -204,11 +203,11 @@ pub(crate) struct Track {
     pub first_codec: RtpCodecParameters,
     packets: Arc<tokio::sync::Mutex<mpsc::Receiver<TrackEvent>>>,
     encodings: Arc<Mutex<HashMap<u32, (String, RtpCodecParameters)>>>,
-    reports: Arc<Mutex<HashMap<u32, (SenderReport, Instant)>>>,
+    reports: Arc<Mutex<HashMap<u32, (SourceClockReport, Instant)>>>,
 }
 pub(crate) enum TrackEvent {
     Rtp(rtp::Packet, u64, u64, RtpCodec),
-    Report(Vec<(SenderReport, Instant)>),
+    Report(Vec<(SourceClockReport, Instant)>),
     End,
 }
 struct TrackState {
@@ -251,7 +250,7 @@ pub(crate) struct Engine {
     receive_memory: Arc<Semaphore>,
     tracks: HashMap<Mid, TrackState>,
     clocks: HashMap<String, Arc<Mutex<Option<(SystemTime, Instant)>>>>,
-    sender_reports: HashMap<u32, (Mid, SenderReport, Instant)>,
+    sender_reports: HashMap<u32, (Mid, SourceClockReport, Instant)>,
     outputs: HashMap<Uuid, Outgoing>,
     pending: Option<SdpPendingOffer>,
     local: Option<(String, String)>,
@@ -1448,11 +1447,10 @@ impl Engine {
                     Err(error) => local - error.duration(),
                 };
                 drop(anchor);
-                let sr = SenderReport {
+                let sr = SourceClockReport {
                     ssrc,
                     ntp_time: ntp(info.ntp_time),
                     rtp_time: info.rtp_time.numer() as u32,
-                    ..Default::default()
                 };
                 self.sender_reports
                     .insert(ssrc, (feedback.mid, sr.clone(), at));
