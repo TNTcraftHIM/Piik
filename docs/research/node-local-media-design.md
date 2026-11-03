@@ -430,6 +430,12 @@ Pion's existing 1.5 pacing headroom. This follows the
 Both queue controls must pass; correcting old-packet delay alone does not
 establish healthy Native sending.
 
+A 2026-11-03 2.x headroom-only comparison retained that same healthy-link gate
+and diagnostic observation code. Raising headroom to 2.5 downgraded the high
+output after 4.27 seconds. The matching 1.5 control completed 12.19 seconds,
+retained the high output without congestion and received about 4.8–5.02 Mbps.
+The larger headroom was rejected; the existing 1.5 setting remains.
+
 Allocation also distinguishes source measurements from changed capacity. A
 stable 1 Mbps connection must not drop its output merely because that source's
 measurement changes from 900 kbps to 1.05 Mbps, or because a lower output's
