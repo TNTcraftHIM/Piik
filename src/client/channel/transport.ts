@@ -355,7 +355,7 @@ export class ChannelTransport {
             for (const previous of owner.stream.getTracks()) if (!tracks.includes(previous)) owner.stream.removeTrack(previous);
             for (const track of tracks) if (!owner.stream.getTracks().includes(track)) owner.stream.addTrack(track);
           } catch (error) {
-            if (!this.closed && this.sending.get(id) === owner) {
+            if (!this.closed && this.sending.get(id) === owner && owner.replacement === tracks) {
               this.failOutput(id, owner);
               console.warn("Channel source replacement failed", { flowId: id }, error);
             }

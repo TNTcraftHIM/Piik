@@ -3607,6 +3607,35 @@ test("source tracks replace serially on the existing physical pair, senders and 
   } finally { media.reset(); session.close(); }
 });
 
+test("a superseded source replacement failure cannot retire the latest source on the same flow", async () => {
+  const { session, media, state, sent, pc } = await setupRoomMedia();
+  const oldVideo = remoteTrack("video"), oldAudio = remoteTrack("audio");
+  const nextVideo = remoteTrack("video"), nextAudio = remoteTrack("audio");
+  const finalVideo = remoteTrack("video"), finalAudio = remoteTrack("audio");
+  let finish!: () => void;
+  const paused = new Promise<void>(resolve => { finish = resolve; });
+  try {
+    state.publications = [{ id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false }];
+    media.setLocal("screen", remoteStream("old", [oldVideo, oldAudio]));
+    state.pairs[0].outgoing = [{ id: "screen-flow", publicationId: "screen", selected: true, inputFlowId: null }];
+    media.update("a", state);
+    const [videoSender, audioSender] = pc.senders;
+    const replace = vi.spyOn(videoSender, "replaceTrack").mockImplementationOnce(async () => {
+      await paused;
+      throw new Error("superseded source was rejected");
+    });
+    media.setLocal("screen", remoteStream("next", [nextVideo, nextAudio]));
+    await vi.waitFor(() => expect(replace).toHaveBeenCalledOnce());
+    media.setLocal("screen", remoteStream("final", [finalVideo, finalAudio]));
+    finish();
+    await vi.waitFor(() => expect(pc.senders.map(sender => sender.track)).toEqual([finalVideo, finalAudio]));
+    expect(pc.senders).toEqual([videoSender, audioSender]);
+    expect(RoomPeerConnection.instances).toHaveLength(1);
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(sent.some(command => command.type === "flow_state" && command.state === "failed")).toBe(false);
+  } finally { finish(); media.reset(); session.close(); }
+});
+
 test("live picture settings apply to the same capture and senders, and a refused sender restores the old profile", async () => {
   const { session, media, state, sent, pc } = await setupRoomMedia(true);
   const video = Object.assign(remoteTrack("video"), {
