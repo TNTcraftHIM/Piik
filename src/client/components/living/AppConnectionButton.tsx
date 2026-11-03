@@ -249,7 +249,10 @@ export function AppConnectionButton({ onConnected, discovery, connected }: AppCo
         </button>
       </div>
       <p id={`${helpId}-message`} className={vis ? "visually-hidden" : undefined}>{state === "busy" ? t("client.connect.permissionHint") : label}</p>
-      {state === "ready" && build && <p className="lr-app-connect-version">{t("client.launch.version", { version: build.version })}</p>}
+      {state === "ready" && build && <p className="lr-app-connect-version">
+        <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.version", { version: build.version })}</span>
+        {vis && <span aria-hidden="true">{build.version}</span>}
+      </p>}
       {update && <AppReleaseNotice update={update} />}
       <div className="lr-app-connect-actions">
         {state !== "busy" && <button type="button" className="lr-btn" aria-label={t(state === "approval" || state === "ready" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")} onClick={() => void connect()}>
@@ -262,7 +265,7 @@ export function AppConnectionButton({ onConnected, discovery, connected }: AppCo
           <Glyph name="arrowDown" size={16} /><span className={vis ? "visually-hidden" : undefined}>{t("client.connect.download")}</span>
         </a>}
       </div>
-      <p className={vis ? "visually-hidden" : "lr-app-connect-optional"}>{t("client.connect.browserHint")}</p>
+      {state !== "ready" && <p className={vis ? "visually-hidden" : "lr-app-connect-optional"}>{t("client.connect.browserHint")}</p>}
     </div>
   </>;
 }
