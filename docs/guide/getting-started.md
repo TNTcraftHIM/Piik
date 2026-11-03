@@ -75,7 +75,7 @@ If macOS blocks the first launch, follow the [Mac opening steps](./troubleshooti
 | `linux-arm64` | Linux ARM64 |
 | `android-universal` | Android 10+; ARM64 and x64 in one APK |
 
-Linux native capture also needs [system components](../../native/capture/linux/README.md).
+Linux native capture also needs [system components](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/linux/README.md).
 See the [App guide](../../cmd/piik-app/README.md) for package and runtime details.
 
 </details>

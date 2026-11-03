@@ -14,7 +14,7 @@ Piik App 通过系统浏览器中的 Piik 网页界面，提供本地房间与�
 macOS 打开 `Piik App.app`，也可以将整个 `.app` 移到「应用程序」。
 首次打开被拦截时，按 [Mac 打开说明](../../docs/guide/troubleshooting.zh-CN.md#macos-提示已损坏或无法验证开发者)处理。
 启动页会在系统浏览器中打开。Linux 原生采集所需的系统依赖见
-[Linux 采集指南](../../native/capture/linux/README.md)。
+[Linux 采集指南](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/linux/README.md)。
 
 网页没有自动打开时，可手动打开终端中显示的地址，或在终端按 **O** 重试。
 使用网页期间，请保持 App 运行。
@@ -80,8 +80,8 @@ App 自动选择唯一的活动地址或私有 IPv4；有多个地址时，在�
 房主页面提供浏览器、摄像头采集，以及可用的原生窗口或屏幕，请明确选择来源。
 Windows 原生采集提供 VP8/Auto/H264，Auto 会为本次分享选定一种编码。
 macOS 和 Linux 原生采集需要硬件 H264。可选来源与音频支持取决于平台，设置要求见
-[Windows](../../native/capture/windows/README.md)、[macOS](../../native/capture/darwin/README.md)
-和 [Linux](../../native/capture/linux/README.md) 采集指南。
+[Windows](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/windows/README.md)、[macOS](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/darwin/README.md)
+和 [Linux](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/linux/README.md) 采集指南。
 原生采集的画质可在[分享设置](../../docs/guide/sharing.zh-CN.md#画面与声音设置)中调整。
 
 Windows App 检测到采集能力支持时，选源器的 **程序 / 窗口** 和 **屏幕** 页会出现

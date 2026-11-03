@@ -132,8 +132,8 @@ the App is absent.
 App's available sources, with small Native window/display thumbnails. Closing
 the picker cancels its pending thumbnails. App capture publishes through that same Native participant;
 the selecting page previews it as an ordinary subscriber. Stopping the share or
-closing its page stops only its captures, not its hosted rooms. This prototype
-uses 1080p/30 fps/4 Mbps H264 for native video, with optional source audio.
+closing its page stops only its captures, not its hosted rooms. Native capture
+uses the shared quality and codec settings, with optional source audio.
 The [Native participant](../channel-native/README.md) owns platform capture, shared encoding and
 adaptation; [TODO](../../docs/todo.md) tracks its remaining integration.
 Browser capture retains its existing behavior.

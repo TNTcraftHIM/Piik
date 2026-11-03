@@ -14,16 +14,12 @@ own behavior; research and Git/PRs own evidence and completed history.
   capture and input acceptance, retaining the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-  Trace the intermittent Android-to-Desktop ICE failure.
+  Verify normal Android Native connections across independent public egresses.
   Verify repeated VP8 capture with another Android codec provider.
   MuMu's VP8 codec-service crash and Firefox's received-video conversion limit
   are recorded in [device evidence](./verification-status.md#device-evidence-boundary).
   Keep the SDK's transport controller,
   the first version's accepted scope and the prototype isolated.
-- [ ] **Retire standalone 2.x Native experiments.** Remove the replaced capture
-  helpers, their probes/fixtures and stale build/documentation references from
-  3.0 together. Preserve the Rust capture owner, required upstream attribution
-  and links to the published 2.x implementation.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.

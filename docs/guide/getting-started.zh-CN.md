@@ -70,7 +70,7 @@ macOS 首次打开被拦截时，按 [Mac 打开说明](./troubleshooting.zh-CN.
 | `linux-arm64` | Linux ARM64 |
 | `android-universal` | Android 10 及以上；一个 APK 包含 ARM64 和 x64 |
 
-Linux 原生采集还需要[系统组件](../../native/capture/linux/README.md)。
+Linux 原生采集还需要[系统组件](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/linux/README.md)。
 程序包与启动参数的细节见 [App 指南](../../cmd/piik-app/README.zh-CN.md)。
 
 </details>

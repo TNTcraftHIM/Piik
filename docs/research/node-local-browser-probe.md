@@ -93,14 +93,9 @@ was made by this probe.
 
 ## Reproduction
 
-```text
-node scripts/encoded-variants-browser.mjs
-```
-
-Open the printed loopback URL in an isolated Chrome and activate its one button.
-The bounded worker posts its structured result to
-`build/embedded-media/browser-variants-result.json`. Close the browser and stop
-the probe server afterward. This is opt-in research, not a new default CI job.
-Input is synthetic; it captures no user screen or private media.
+The [published 2.x runner and worker](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/docs/research/node-local-browser-probe.md#reproduction)
+retain this bounded WebCodecs comparison and its original run instructions.
+Its worker digest and synthetic measurements remain in the recorded data above;
+this historical experiment is outside the Rust capture acceptance path.
 
 Reference: [WebCodecs processing and resource model](https://www.w3.org/TR/webcodecs/).

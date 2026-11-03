@@ -90,7 +90,7 @@ the GPU before the shared output conversion. Ordinary RGB capture and already
 canonical NV12 keep one pass; no CPU readback, vendor branch or custom shader
 is added to the product path.
 
-The opt-in `-CheckColor` probe in the [Windows capture guide](../../native/capture/windows/README.md)
+The 2.x opt-in `-CheckColor` probe in the [Windows capture guide](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/windows/README.md)
 checks full/limited-range BT.601/BT.709 input, scaling and input replacement
 through the production converter. It passed on local RTX 4070 SUPER and AMD
 Radeon adapters. RTX H.264/VP8 encoding followed by Chrome 154 WebRTC playback

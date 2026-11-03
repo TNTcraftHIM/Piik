@@ -149,7 +149,6 @@ The [visual language](./visual-language.md) owns where these lines appear.
 | Standalone application | `Piik App` | Window title, documentation, shortcuts |
 | Hosted service in prose | `Piik Server` | Deployment instructions |
 | Executables and command directories | Lowercase, hyphen-separated | `piik-app[.exe]`, `piik-server[.exe]`, `cmd/piik-app` |
-| Native capture executable | Lowercase component name | `piik-capture[.exe]` |
 | App download archives | Lowercase, fixed target name within each release | `piik-app-windows-amd64.zip` |
 | Package/build directory names | Lowercase and target suffix | `piik-app-windows-amd64` |
 | macOS application bundle | Display name, standard extension | `Piik App.app` |

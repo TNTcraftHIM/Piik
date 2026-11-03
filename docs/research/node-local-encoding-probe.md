@@ -102,20 +102,10 @@ healthy forwarding relay would violate the one-encode reuse objective.
 
 ## Reproduction
 
-Use the existing pinned libvpx build produced by the Windows App build. From
-a Visual Studio x64 developer shell, with `VPX_INCLUDE` and `VPX_LIBRARY` pointing
-to that build:
-
-```bat
-cl /nologo /std:c++20 /EHsc /O2 /MT /W4 /WX /external:I "%VPX_INCLUDE%" /external:W0 native/capture/windows/encoded_variants.probe.cpp native/capture/windows/vp8_encoder.cpp /Fo:build/embedded-media/ /Fe:build/embedded-media/encoded-variants.probe.exe "%VPX_LIBRARY%" /link /LTCG psapi.lib
-node scripts/encoded-variants-probe.mjs
-```
-
-Create the `build/embedded-media` directory first. The Node entry runs 32 bounded
-processes sequentially with frame/count checks and writes its report under that
-directory. No default CI, application dependency, capture, room or production
-configuration was changed. All generated executables stay in this stable build
-path. The clock-ablation arm exists only to reproduce the observed pause effect.
+The [published 2.x source and commands](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/docs/research/node-local-encoding-probe.md#reproduction)
+retain this synthetic libvpx probe and its bounded Node runner. Its original
+source digests and measurements remain in the recorded data above. The probe
+is outside the Rust capture build and acceptance path.
 
 ## Primary Sources
 

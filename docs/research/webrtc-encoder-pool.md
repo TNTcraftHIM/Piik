@@ -373,9 +373,9 @@ the subsequent product attachment is recorded below.
 
 ### Hardware H264 Adapter Check
 
-The existing Windows `LiveEncoder` and its MFT/device helpers now have one
-shared implementation in `native/capture/windows/h264_encoder.{h,cpp}`. Both
-the capture binary and the opt-in probe link it; WGC, source selection, audio,
+The 2.x Windows `LiveEncoder` and its MFT/device helpers shared one
+[H264 implementation](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/windows/h264_encoder.cpp). Both
+the capture binary and the opt-in probe linked it; WGC, source selection, audio,
 profile application and capture retirement retain their existing owners.
 The probe adapter converts synthetic I420 to NV12 and uploads it for MFT.
 This validates the native encoder interface, not a zero-copy capture path.

@@ -27,7 +27,7 @@ checks the Browser, `scripts/tsconfig.json` checks tooling/tests, and root
 | `prototype/channel-android`, `mobile/android` | JNI entry, Android service/consent shell and shared Rust App lifetime |
 | `mobile/cloudflared`, root `.go-version` | Independent upstream tunnel helper's Android overlay and build toolchain |
 | `cmd/piik-app` | Retained App guides and shared icon/Windows resource inputs |
-| `native/capture`, `native/fixtures`, `native/probes`, `native/third_party` | Standalone platform helpers, synthetic workloads, probes and retained upstream provenance |
+| `native/third_party` | Retained upstream source provenance and licenses used by Rust capture |
 | `site/` | Independently published introduction, film and reader documentation |
 | `scripts/` | Development checks, shared builds, probes and release packaging/publishing tools |
 | `tests/` | TypeScript/tooling tests and retained Browser fixtures; Rust tests stay with their crates |
@@ -158,7 +158,7 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
 | Files and selected copies | [Core delivery](../../prototype/channel-core/src/file_delivery.rs), [Browser attachments](../../src/client/channel/attachments.ts), [Native file owner](../../prototype/channel-native/src/file.rs) |
 | App discovery, approval and hosting | [Browser App link](../../src/client/channel/app-link.ts), [App composition](../../prototype/channel-server/src/app.rs), [site namespaces](../../prototype/channel-server/src/app_sites.rs), [local domain](../../prototype/channel-server/src/app_domain.rs) |
 | Native RTC/media and gateway mapping | [Native peer](../../prototype/channel-native/src/peer.rs), [mapping](../../prototype/channel-native/src/peer/mapping.rs), [media](../../prototype/channel-native/src/media.rs), [dependency provenance](../../prototype/channel-native/README.md#rtc-dependency) |
-| Platform source capture and encoding | [Rust capture](../../prototype/channel-native/src/capture), [standalone helper/fixture source](../../native) |
+| Platform source capture and encoding | [Rust capture](../../prototype/channel-native/src/capture), [upstream provenance](../../native/third_party) |
 | Attended input and committed-route forwarding | [Core input](../../prototype/channel-core/src/input.rs), [Browser input](../../src/client/channel/input.ts), [Native executor](../../prototype/channel-native/src/input) |
 | Android App and platform lifecycle | [Android guide](../../mobile/README.md), [JNI](../../prototype/channel-android), [Native capture](../../prototype/channel-native/src/capture/android), [system shell](../../mobile/android/app/src/main) |
 | Voice, room tool and detached presentation | [Channel components](../../src/client/channel/components), [panel window](../../src/client/ui/panel-window.ts) |

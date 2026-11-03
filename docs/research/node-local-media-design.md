@@ -747,17 +747,9 @@ No additional local service, network port, selector UI or media clock is needed.
 
 ### Reproduce The Group Gate
 
-Compile `native/capture/windows/encoded_group.fixture.cpp` with `vp8_encoder.cpp`
-and the existing pinned libvpx build, using the same MSVC flags as the earlier
-CPU probe. Generate its JSONL under `build/embedded-media`, then run:
-
-```powershell
-$env:PIIK_ENCODED_FIXTURE = 'build/embedded-media/encoded-group.fixture.jsonl'
-$env:PIIK_ENCODED_OUTPUT = 'build/embedded-media/encoded-group.received.json'
-& .\build\embedded-media\mediaedge.test.exe '-test.run=TestEncodedGroupVP8Fixture' '-test.v' '-test.timeout=30s'
-node scripts/encoded-group-decode.mjs
-```
-
-Open the printed loopback URL in isolated Chrome; the decoder gate saves its
-result and stops its own server. Neither codec generation nor this browser gate
-is a new default CI job. The synthetic fixtures remain generated build output.
+The [published 2.x fixture and instructions](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/docs/research/node-local-media-design.md#reproduce-the-group-gate)
+retain the synthetic VP8 generator, Go forwarding fixture and Browser decode
+runner used for this result. Recorded source hashes remain in the measurement
+data. The Rust producer's current checks belong to the
+[Native owner](../../prototype/channel-native/README.md); this historical gate
+does not establish Rust acceptance.

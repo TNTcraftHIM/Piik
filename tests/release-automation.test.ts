@@ -218,7 +218,7 @@ describe("release automation", () => {
       git("commit", "-m", "feat: launch");
       git("tag", "v1.0.0");
       for (const path of ["src/client/styles.css", "src/shared/protocol.ts", "prototype/channel-server/src/domain.rs",
-        "cmd/piik-app/piik.ico", "native/capture/windows/build.ps1", "public/guide.md",
+        "cmd/piik-app/piik.ico", "scripts/windows-capture-deps.mjs", "public/guide.md",
         "licenses/NOTICE.md", "LICENSE", "package-lock.json", ".go-version",
         "scripts/check-rust.mjs", "scripts/app-package-targets.mjs", ".github/workflows/repository-hygiene.yml",
         "new-product-input.json"]) {

@@ -17,7 +17,7 @@ On macOS, open `Piik App.app`; you can move the whole `.app` to Applications.
 The launcher opens in the system Browser.
 If macOS blocks the first launch, follow the [Mac opening steps](../../docs/guide/troubleshooting.md#macos-blocks-first-launch).
 Linux native capture uses the system dependencies described
-in the [Linux capture guide](../../native/capture/linux/README.md).
+in the [Linux capture guide](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/linux/README.md).
 
 If the page does not open automatically, open the address shown in the terminal
 or press **O** there to retry. Keep the App running while using that page.
@@ -94,9 +94,9 @@ The Host page offers Browser and Camera capture alongside available native
 windows or screens; select the source explicitly. Windows native capture offers VP8/Auto/H264;
 Auto chooses one codec for the share. macOS and Linux native capture require
 hardware H264. Source and audio support vary by platform; their setup is covered
-in the [Windows](../../native/capture/windows/README.md),
-[macOS](../../native/capture/darwin/README.md) and
-[Linux](../../native/capture/linux/README.md) capture guides.
+in the [Windows](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/windows/README.md),
+[macOS](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/darwin/README.md) and
+[Linux](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/linux/README.md) capture guides.
 Adjust native capture through [Sharing settings](../../docs/guide/sharing.md#picture-and-sound-settings).
 
 When the Windows App's capture runtime supports it, the **Apps / Windows** and

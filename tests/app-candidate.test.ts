@@ -12,7 +12,7 @@ vi.mock("node:child_process", async (original) => ({
   ...await original<typeof import("node:child_process")>(),
   execFileSync: (_command: string, args: string[]) => {
     if (args[0] === "rev-parse") return source.revision;
-    if (args[0] === "status") return source.scenario === "dirty" ? " M native/capture/windows/main.cpp\n" : "";
+    if (args[0] === "status") return source.scenario === "dirty" ? " M prototype/channel-native/src/capture/windows.rs\n" : "";
     throw new Error(`Unexpected Git observation: ${args.join(" ")}`);
   },
   spawnSync: (_command: string, args: string[]) => {

@@ -2,7 +2,7 @@
 
 These four unmodified upstream source files come from WebRTC commit
 `6f37672d358475cd17544121a12494da454d85fb`, the existing SDK pin in
-[webrtc-dependencies.json](../../capture/windows/webrtc-dependencies.json).
+[published 2.x SDK pin](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/windows/webrtc-dependencies.json).
 Source: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/
 
 Android reuses FrameDropper and its ExpFilter dependency before encoder Surface
