@@ -20,8 +20,7 @@ own behavior; research and Git/PRs own evidence and completed history.
   Keep the SDK's transport controller,
   the first version's accepted scope and the prototype isolated.
 - [ ] **Native RTX reception statistics.** Keep repaired-packet delivery and
-  deduplication, while separating RTX arrival samples from primary-stream jitter.
-  Reproduce through the transport's public API before changing the dependency.
+  deduplication while separating RTX arrival samples from primary-stream jitter.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
