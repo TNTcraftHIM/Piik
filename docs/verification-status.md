@@ -85,10 +85,10 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   that VP8 input through a desktop Browser relay after Native H264 capture.
   An approved Android Native helper also forwards compatible H264 through normal
   room plans to Firefox and a desktop child, without Browser re-encoding.
-  Native VP8 capture and delayed-consent H264 startup have delivered decoded
-  picture. The emulator also reproduces a system codec-service assertion during
-  VP8 capture and H264 startup. [TODO](./todo.md#now) owns codec-service and
-  helper-quality acceptance.
+  Capability-aware Native H264 capture passes source replacement while retaining
+  the physical peer and continuing to decode. Native VP8 also delivers decoded
+  picture; repeated VP8 capture still encounters a system codec-service assertion
+  on the emulator. [TODO](./todo.md#now) owns codec-service and helper-quality acceptance.
   The Firefox relay failure is now traced to Gecko image-conversion errors:
   incoming Native H264 decodes while outgoing video remains unencoded. Automatic
   direct replacement delivers picture.
