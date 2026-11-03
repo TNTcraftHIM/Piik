@@ -426,7 +426,8 @@ export class ViewerRelay {
     if (
       preparedPeer &&
       this.preparedChild?.peer === preparedPeer &&
-      !(await this.replacePeerStream(preparedPeer, stream))
+      !(await this.replacePeerStream(preparedPeer, stream)) &&
+      this.stream === stream
     ) {
       this.failPreparedChild(preparedPeer);
     }

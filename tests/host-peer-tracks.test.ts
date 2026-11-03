@@ -3081,6 +3081,41 @@ describe("ViewerRelay downstream ownership", () => {
     relay.dispose();
   });
 
+  it("keeps a prepared child when a superseded stream replacement fails", async () => {
+    const onPreparedChildFailed = vi.fn();
+    const signals: Array<{ connectionId: string }> = [];
+    const relay = new ViewerRelay(
+      { iceServers: [] },
+      QUALITY_PROFILES["720p30"],
+      { sendSignal: (_peerId, payload) => { signals.push(payload); return true; }, onPreparedChildFailed },
+    );
+    let finish!: () => void;
+    const paused = new Promise<void>(resolve => { finish = resolve; });
+    try {
+      relay.setStream(createStream(createTrack("video", "initial-video"), null));
+      expect(relay.prepareChild(7, routeCandidate(7, "prepared-child"), ["prepared-child"])).toBe(true);
+      await vi.waitFor(() => expect(signals).toHaveLength(1));
+      const prepared = FakePeerConnection.latest!;
+      const sender = prepared.senders[0]!;
+      const replace = vi.spyOn(sender, "replaceTrack").mockImplementationOnce(async () => {
+        await paused;
+        throw new Error("superseded stream was rejected");
+      });
+      relay.setStream(createStream(createTrack("video", "superseded-video"), null));
+      await vi.waitFor(() => expect(replace).toHaveBeenCalledOnce());
+      const finalVideo = createTrack("video", "current-video");
+      relay.setStream(createStream(finalVideo, null));
+      finish();
+      await vi.waitFor(() => expect(sender.track?.id).toBe(finalVideo.id));
+      expect(onPreparedChildFailed).not.toHaveBeenCalled();
+      expect(prepared.connectionState).not.toBe("closed");
+      expect(FakePeerConnection.instances).toHaveLength(1);
+      prepared.connectionState = "connected";
+      relay.activateChildren(7, ["prepared-child"]);
+      expect(relay.getSnapshot("prepared-child")?.connectionId).toBe(signals[0]!.connectionId);
+    } finally { finish(); relay.dispose(); }
+  });
+
   it("syncs same-stream audio changes into the prepared connection", async () => {
     const relay = new ViewerRelay(
       { iceServers: [] },
