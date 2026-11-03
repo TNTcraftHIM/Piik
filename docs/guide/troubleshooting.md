@@ -57,8 +57,12 @@ over the existing official App.
 
 ### macOS blocks first launch
 
-Current Mac builds are unsigned and unnotarized. To open one, verify the
-download and allow this App through macOS's first-launch check:
+Current Mac builds are not Developer ID-signed or notarized by Apple. For
+first-launch warnings, verify the download and allow this App through macOS:
+
+If macOS reports malware, says the App will damage your computer, or moves it
+to Trash automatically, [report the exact alert and download link](#reporting-a-problem).
+Do not use the quarantine command below for those alerts.
 
 1. Download the matching Mac ZIP from the project's Releases and compare its
    SHA-256 with the checksum published for that release. In Terminal, run
