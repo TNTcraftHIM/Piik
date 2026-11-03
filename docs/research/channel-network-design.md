@@ -545,11 +545,6 @@ endpoint may already have accepted the offer. The
 owns sender updates; [RFC 3264](https://www.rfc-editor.org/rfc/rfc3264.html#section-6)
 defines an answer's independent SDP origin/version.
 
-App and Browser execute the same room rules through Native/SQLite and
-Browser/WASM/IndexedDB adapters. Each room follows its actual hosting runtime's
-lifetime, separately from personal activity. Persistent data outlives that runtime;
-reopening it does not resume captures or calls.
-
 ## Implementation Boundary
 
 Browser/WASM and Native/SQLite adapters execute the shared room core. The domain
@@ -595,25 +590,15 @@ hosting without deleting its data or affecting other sites. Changing a tunnel UR
 requires approval of the replacement origin; it does not inherit an earlier
 origin's data automatically. URLs carry discovery hints, never App permission.
 
-Use safe Rust for owned business rules and Native resource lifecycles; TypeScript
-owns the Web interface and Browser API bridge. Prefer maintained safe Rust APIs
-and keep necessary platform FFI inside narrow adapters. Memory safety depends
-on those adapters and dependencies upholding their contracts; a Rust wrapper
+Safe Rust owns business rules and Native resource lifecycles; TypeScript owns
+the Web interface and Browser bridge. Keep platform FFI narrow: a Rust wrapper
 does not make foreign code memory-safe. Follow Rust's
-[safe-abstraction guidance](https://doc.rust-lang.org/book/ch20-01-unsafe-rust.html),
-rather than replacing proven components only to change their implementation language.
+[safe-abstraction guidance](https://doc.rust-lang.org/book/ch20-01-unsafe-rust.html).
+The [engineering map](../standards/engineering.md#module-map) owns module and interface boundaries.
 
-| Boundary | Responsibility |
-| --- | --- |
-| Shared Rust core | Domain and room rules, ordered state changes, publication/subscription demand and route planning. Drive these with typed events rather than sockets or timers inside the model. |
-| Runtime adapters | Native App/Server I/O, timers and storage; Browser/WASM execution and IndexedDB. Validate external input at entry, with no second mutable authority in handlers. |
-| Participant transport/media | Shared peer connections, native or Browser capture/playback, congestion feedback and encoded forwarding where supported. Route repair reuses capture. |
-| Web interface | Existing Piik controls and presentation, projecting current room/activity state. UI selection does not own media lifetime. |
-
-One participant runtime counts the work it actually owns; a Browser origin cannot
-account for every unrelated tab or application on that computer. Reuse compatible
-source encodings, and preserve unaffected outputs rather than capping all viewers
-to the slowest request. WebRTC still adapts to real shared bottlenecks.
+A participant accounts only for its own work; a Browser origin cannot account
+for unrelated tabs or applications. Compatible encodings may be shared without
+capping healthy outputs to the slowest request.
 
 Actual sender allocation and the existing finite route operation determine
 admission. On an established pair, a local offer failure that occurs before
@@ -652,22 +637,14 @@ allocate before passing demand to encoders. Independently constrained branches
 need actual independently rate-controlled outputs; copying the same encoded
 packets or applying a minimum/maximum to one shared encoder cannot provide that.
 The library's [built-in BWE](https://github.com/algesten/str0m/blob/5f2183ce7c67117cd1960dfeb11bed11fc188b66/docs/BWE.md)
-replaces the private GoogCc/controller and probe-executor integration. Piik
-consumes its transport estimates through the existing Native allocator, without
-another congestion controller. Each connection aggregates known local media
-configuration ceilings independently of actual usage and current allocation.
-Received sources without a known ceiling retain unbounded demand; their measured
-source cost informs allocation, not a fabricated configuration limit.
+feeds the existing Native allocator without a second congestion controller.
+Each connection aggregates known local media configuration ceilings independently
+of actual usage and current allocation. Received sources without a known ceiling
+retain unbounded demand; measured source cost informs allocation.
 The [Native candidate index](../../prototype/channel-native/README.md#rtc-dependency)
 owns the exact source and controlled results. Publisher and relay recovery
 require separate evidence; [verification status](../verification-status.md#adaptation-boundaries)
 owns their current acceptance boundaries.
-
-The runtime's shared physical-socket wrapper requests a bounded 1 MiB receive
-buffer through its existing Quinn UDP adapter, preserving larger caller values.
-This accommodates media startup bursts before SRTP processing. IPv4, IPv6 and
-adopted sockets share this owner. Socket-option errors leave the connection usable;
-no media policy or additional receive queue is added.
 
 Native encoded forwarding separates control turns from real-time packet writers.
 Audio and video retain separate source identities within one publication. Each
@@ -689,10 +666,6 @@ encodings. Each encoding owns its conversion, bitrate, keyframe requests and
 stop, replaces only unencoded work and applies backpressure to complete access
 units. A blocked or stopped encoding does not stall its siblings; stopping the
 capture ends them all.
-Windows raw frames carry their actual colour space through GPU handoff and
-encoding. RGB capture and decoded NV12 share the existing limited-range BT.601
-SDR output; H264 declares matching colour metadata. The source maps HDR input
-to SDR once before preview and fanout, preserving ordinary SDR's copy path.
 Display changes recreate only the source's WGC resources, retaining its clock,
 encoders and routes. The [fidelity assessment](./media-fidelity.md) owns colour
 conversion, tone mapping and their measured boundaries.
@@ -811,16 +784,11 @@ resumes at a keyframe. The current bitrate, source clock and output identity
 survive the change. This follows the
 [asynchronous MFT drain contract](https://learn.microsoft.com/en-us/windows/win32/medfound/mft-message-command-drain)
 and [Chromium's encoder reconfiguration](https://chromium.googlesource.com/chromium/src/media/+/cf1aa0045e1e041b5da6d932ae89e2374db4c4e8/gpu/windows/media_foundation_video_encode_accelerator_win.cc#1307).
-WGC remains in the parent; each encoding owns one same-executable child. A single
-raw-frame credit requests a newer capture only when the encoder needs it.
-Same-adapter NT shared handles carry GPU textures through two copies; the child
-releases the shared lock before encoding its private copy. Pull-based IPC returns
-complete access units and original QPC timestamps. Cancelling a read preserves
-its pending result; an unread encoding stops requesting GPU transfers when its
-existing two-AU queue fills. Static keyframe requests reuse its private image.
-Each Encoding joins its child on Stop/Drop; a Windows Job also closes it when
-the App exits. Source stop ends input authority and signals every encoding;
-the Capture owner joins WGC.
+Windows keeps WGC in the parent and joins a separate child per encoding. The
+[Native participant](../../prototype/channel-native/README.md) describes its bounded
+GPU handoff and worker shutdown. The child releases the shared-texture lock
+before encoding its private copy. Cancelling a read preserves its pending result;
+unread encodings rest on their existing bounded output queue.
 Windows device removal is observed through the
 [D3D11 device event](https://learn.microsoft.com/en-us/windows/win32/api/d3d11_4/nf-d3d11_4-id3d11device4-registerdeviceremovedevent).
 The existing Capture and Encoding owners join and replace their affected WGC or
@@ -832,9 +800,7 @@ output ends with the original device error; unrelated failures remain terminal.
 A controlled single-MFT shutdown reproduced an NVIDIA callback using an already
 destroyed transform after `ShutdownObject` returned. The encoding process boundary
 contains that failure to consumers of that encoder, including viewers sharing
-one baseline. Other encodings, WGC and App-hosted rooms continue. The real App
-Browser check retires and rebuilds one constrained output while its sibling
-keeps decoding on the same track and SSRC; normal Stop reaps every child.
+one baseline. Other encodings, WGC and App-hosted rooms continue.
 No idle-encoder retention or shutdown delay is used to hide the driver failure.
 The Native driver allocates each connection's target to confirmed local video
 after accounting for other RTP, prioritizing selected video over optional video.
@@ -938,9 +904,7 @@ SDP negotiation and measured decoding retain their separate meanings. Keep the
 existing decoded-frame route proof; metadata alone must not retire a working
 connection or permanently reject its flow.
 Removing the last incoming demand releases its reader even if the publication
-remains in the room directory. Further Native media work is tracked in
-[TODO](../todo.md). This isolated dependency does
-not replace the current 2.x Native media core.
+remains in the room directory. Further Native work is tracked in [TODO](../todo.md).
 
 ## Design References
 
