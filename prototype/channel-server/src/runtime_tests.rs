@@ -260,7 +260,7 @@ fn complete_host_turn(
     endpoint: &mut Endpoint,
     host: &mut piik_channel_core::host::RoomHost,
     room_store: &mut storage::Storage,
-) {
+) -> piik_channel_core::host::HostOutput {
     let input = std::iter::from_fn(|| endpoint.events.try_recv().ok())
         .find_map(|event| match event {
             Event::HostInput { input, .. } => Some(input),
@@ -282,11 +282,16 @@ fn complete_host_turn(
         hub,
         json!({"type":"host_output", "roomId":host.policy().id, "output":output}),
     );
+    output
 }
 
 #[test]
 fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
-    use piik_channel_core::{host::RoomHost, wire::RoomAccess, RoomState};
+    use piik_channel_core::{
+        host::{RoomHost, RoomResult},
+        wire::{RoomAccess, VideoCeiling, VideoResolution},
+        RoomState,
+    };
     let directory_path =
         std::env::temp_dir().join(format!("piik-directory-failure-{}.sqlite", Uuid::new_v4()));
     let room_path =
@@ -323,8 +328,17 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
     );
     complete_host_turn(&mut hub, &mut operator, &mut host, &mut room_store);
     let publication = Uuid::new_v4();
-    operator.request(&mut hub, json!({"type":"publish", "publication":{"id":publication,"roomId":"hosted","kind":"screen","muted":false}}));
-    complete_host_turn(&mut hub, &mut operator, &mut host, &mut room_store);
+    let ceiling = VideoCeiling {
+        resolution: VideoResolution {
+            width: 1280,
+            height: 720,
+        },
+        max_framerate: 30.0,
+        max_bitrate: 5_000_000,
+    };
+    operator.request(&mut hub, json!({"type":"publish", "publication":{"id":publication,"roomId":"hosted","kind":"screen","muted":false,"videoCeiling":ceiling}}));
+    let output = complete_host_turn(&mut hub, &mut operator, &mut host, &mut room_store);
+    assert!(matches!(output.reply.unwrap().result, RoomResult::Done));
     viewer.request(
         &mut hub,
         json!({"type":"subscribe", "publicationId":publication, "enabled":true}),
