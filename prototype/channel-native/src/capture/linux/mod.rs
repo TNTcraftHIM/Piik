@@ -7,6 +7,7 @@ mod portal;
 mod source;
 
 pub use audio::{audio_capabilities, microphones, AudioCapture, AudioControl};
+pub(super) use encoding::encoding_available;
 pub use encoding::{Encoding, EncodingControl};
 pub use frames::{Clock, Frames, RawFrame};
 pub use source::{targets, Capture, Control};

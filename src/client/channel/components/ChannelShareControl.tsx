@@ -8,6 +8,7 @@ import { AudioBitrateControl, QualityPresets, PictureSettingsSummary, Resolution
 import { ShareMicrophoneSettings } from "../../components/living/ShareMicrophoneSettings";
 import { MAX_AUDIO_SEND_BITRATE, QUALITY_PROFILES, VIDEO_CAPTURE_LIMITS, captureFramerateCeiling, matchingQualityProfileId, type QualityProfile } from "../../media/quality";
 import { activateNativePicker } from "../../native/activation";
+import type { NativeCaptureSources } from "../app-link";
 import type { ChannelController } from "../types";
 import "./channel-share-control.css";
 
@@ -23,7 +24,7 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   const request = useRef<object | null>(null);
   const [open, setOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [sources, setSources] = useState<NativeSourceList>({ kind: "browser" });
+  const [sources, setSources] = useState<Exclude<NativeSourceList, { kind: "ready" }> | ({ kind: "ready" } & NativeCaptureSources)>({ kind: "browser" });
   const { appConnected, nativeSources, startNativeScreen, startScreen } = channel;
   const browserSupported = typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getDisplayMedia === "function";
   const cameraSupported = typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function";
@@ -32,6 +33,10 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   const available = browserSupported || cameraSupported || appConnected;
   const pickerAvailable = appConnected || cameraSupported;
   const sharing = channel.state?.publications.find(publication => publication.roomId === roomId && channel.ownedScreens.has(publication.id));
+  const codecMode = (sharing ? channel.screenCodecMode(sharing.id) : undefined) ?? channel.videoCodecMode;
+  const pickerSources: NativeSourceList = sources.kind === "ready" &&
+    !(codecMode === "auto" ? sources.codecs.length > 0 : sources.codecs.includes(codecMode))
+    ? { kind: "unsupported" } : sources;
   const screenQuality = sharing ? channel.screenQuality(sharing.id) : undefined;
   const quality = screenQuality?.requested ?? channel.quality;
   const setQuality = (profile: QualityProfile) => {
@@ -103,7 +108,7 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
             maxFramerate: Math.min(quality.maxFramerate, captureFramerateCeiling(resolution, VIDEO_CAPTURE_LIMITS)) })} />
           <VideoRateControls value={quality} limits={VIDEO_CAPTURE_LIMITS} disabled={busy}
             onChange={next => setQuality({ ...quality, ...next })} />
-          <VideoCodecControl value={(sharing ? channel.screenCodecMode(sharing.id) : undefined) ?? channel.videoCodecMode}
+          <VideoCodecControl value={codecMode}
             disabled={disabled || busy || !!sharing || !!captureRequest} onChange={channel.setVideoCodecMode} /></>}
         audio={<>
           {sharing && microphone && microphoneSettings && <ShareMicrophoneSettings available={microphone.available}
@@ -123,7 +128,7 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
     </div>
     <div ref={panel} id={id} popover="auto" className="lr-anchored-card c3-share-picker"
       onToggle={event => setOpen(event.newState === "open")}>
-      {open && <CaptureSourcePicker nativeSources={sources} browserSupported={browserSupported} cameraSupported={cameraSupported}
+      {open && <CaptureSourcePicker nativeSources={pickerSources} browserSupported={browserSupported} cameraSupported={cameraSupported}
         loadCameras={channel.cameraPreviews}
         initialTab="window" selectionDisabled={disabled || busy || qualityPending || microphonePending}
         initialAudio={selectedNative?.audio} initialExcludeAudio={selectedNative?.excludeAudio}

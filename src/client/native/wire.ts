@@ -143,7 +143,7 @@ export const punchCompleteResponseSchema = z.object({
   ...responseBase, type: z.literal("punch-complete"), connected: z.boolean(),
 }).strict();
 
-const nativeVideoCodecSchema = z.enum(["h264", "vp8"]);
+export const nativeVideoCodecSchema = z.enum(["h264", "vp8"]);
 export type NativeVideoCodec = z.infer<typeof nativeVideoCodecSchema>;
 
 export const readyResponseSchema = z

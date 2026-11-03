@@ -510,7 +510,7 @@ export const en: Record<CopyKey, string> = {
   "host.sourcePicker.showCaptureBorder": "Show capture border",
   "host.sourcePicker.showCaptureBorderHint": "Turn off to hide the border when Windows allows it. Other captures may keep it visible.",
   "host.sourcePicker.empty": "No sources available; refresh the list",
-  "host.sourcePicker.unsupported": "App capture is unavailable; check the App diagnostics.",
+  "host.sourcePicker.unsupported": "App screen sharing is unavailable with these settings. Change the codec or share through your browser.",
   "host.sourcePicker.failed": "Could not load sources; refresh to retry.",
   "native.incompatible": "App and page versions are incompatible; update the App and reload.",
   "native.fail.edge": "Piik App media connection failed",

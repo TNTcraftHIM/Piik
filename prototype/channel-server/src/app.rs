@@ -1406,9 +1406,14 @@ async fn capture_targets() -> Result<Value> {
     #[cfg(feature = "capture")]
     {
         tokio::task::spawn_blocking(|| {
-            let sources = piik_channel_native::capture::targets()?;
+            let codecs = piik_channel_native::capture::video_codecs()?;
+            let sources = if codecs.is_empty() {
+                Vec::new()
+            } else {
+                piik_channel_native::capture::targets()?
+            };
             let audio = piik_channel_native::capture::audio_capabilities();
-            let mut result = json!({"sources": sources, "processAudio": audio.process_audio, "processAudioExclusion": audio.process_audio_exclusion, "systemAudio": audio.system_audio});
+            let mut result = json!({"sources": sources, "codecs": codecs, "processAudio": audio.process_audio, "processAudioExclusion": audio.process_audio_exclusion, "systemAudio": audio.system_audio});
             if let Some(activation) = piik_channel_native::capture::activation_url()? {
                 result["activationURL"] = json!(activation);
             }
@@ -1418,7 +1423,7 @@ async fn capture_targets() -> Result<Value> {
     #[cfg(not(feature = "capture"))]
     {
         Ok(
-            json!({"sources": [], "processAudio": false, "processAudioExclusion": false, "systemAudio": false}),
+            json!({"sources": [], "codecs": [], "processAudio": false, "processAudioExclusion": false, "systemAudio": false}),
         )
     }
 }

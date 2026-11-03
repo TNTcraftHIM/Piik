@@ -1443,7 +1443,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
     const activationURL = "intent://media#Intent;scheme=piik;package=tv.piik.android.test;end";
     const excluded = { kind: "window" as const, sourceId: "2", title: "Room voice browser", pid: 42, creationTime: "1234" };
-    const sources = { sources: [target, excluded], processAudio: true, processAudioExclusion: true, systemAudio: true, activationURL };
+    const sources = { sources: [target, excluded], codecs: ["h264", "vp8"], processAudio: true, processAudioExclusion: true, systemAudio: true, activationURL };
     app.receive({ id: app.sent.at(-1)!.id, result: sources });
     await expect(listing).resolves.toEqual(sources);
     const abort = new AbortController();
@@ -1711,7 +1711,7 @@ test("pending Native capture stays page-owned through same-page stop and close",
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
     const target = { kind: "display" as const, sourceId: "1", title: "Test display" };
     const activationURL = "intent://media#Intent;scheme=piik;package=tv.piik.android.test;end";
-    const sources = { sources: [target], processAudio: false, processAudioExclusion: false, systemAudio: true, activationURL };
+    const sources = { sources: [target], codecs: ["h264", "vp8"], processAudio: false, processAudioExclusion: false, systemAudio: true, activationURL };
     const capabilities = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
     app.receive({ id: app.sent.at(-1)!.id, result: sources });

@@ -510,7 +510,7 @@ export const zh = {
   "host.sourcePicker.showCaptureBorder": "显示采集边框",
   "host.sourcePicker.showCaptureBorderHint": "关闭后尝试隐藏黄框；Windows 或其他采集程序可能仍要求显示。",
   "host.sourcePicker.empty": "暂无可用来源，请刷新列表",
-  "host.sourcePicker.unsupported": "App 采集暂不可用，请查看 App 诊断信息。",
+  "host.sourcePicker.unsupported": "当前设置无法通过 App 分享画面，请更换编码或使用浏览器分享。",
   "host.sourcePicker.failed": "无法读取来源列表，请刷新重试。",
   "native.incompatible": "App 与页面不兼容，请更新 App 并刷新页面。",
   "native.fail.edge": "Piik App 媒体连接失败",

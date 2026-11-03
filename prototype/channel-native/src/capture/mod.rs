@@ -220,6 +220,17 @@ impl VideoCodec {
     }
 }
 
+pub fn video_codecs() -> anyhow::Result<Vec<VideoCodec>> {
+    #[cfg(all(feature = "capture", target_os = "linux"))]
+    if !linux::encoding_available()? {
+        return Ok(Vec::new());
+    }
+    Ok([VideoCodec::H264, VideoCodec::Vp8]
+        .into_iter()
+        .filter(|codec| codec.supported())
+        .collect())
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum VideoCodecMode {

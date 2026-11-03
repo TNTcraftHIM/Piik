@@ -326,6 +326,16 @@ fn hardware_factories() -> Vec<gst::ElementFactory> {
     .collect()
 }
 
+pub(crate) fn encoding_available() -> Result<bool> {
+    gst::init()?;
+    Ok(hardware_factories().into_iter().any(|factory| {
+        factory
+            .create()
+            .build()
+            .is_ok_and(|encoder| supports_live_kbps(&encoder))
+    }))
+}
+
 struct Codec {
     pipeline: Pipeline,
     input: gst_app::AppSrc,

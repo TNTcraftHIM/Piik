@@ -1,7 +1,7 @@
 import type { RoomSummary } from "./protocol";
 import { z } from "zod";
 import { appApprovalURL, discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
-import { nativeCaptureTargetSchema, remoteControlStateSchema, remoteStopShortcutSchema, type NativeCaptureTarget } from "../native/wire";
+import { nativeCaptureTargetSchema, nativeVideoCodecSchema, remoteControlStateSchema, remoteStopShortcutSchema, type NativeCaptureTarget } from "../native/wire";
 import { remoteShortcutKeySchema, type RemoteControlMode } from "../remote-control/protocol";
 import type { QualityProfile } from "../media/quality";
 import { activateNativePicker } from "../native/activation";
@@ -31,10 +31,11 @@ export const nativeConnectionMetricsSchema = z.object({
 /** SDK sample clocks belong to each Native connectionId, never Browser performance time. */
 export type NativeConnectionMetrics = z.infer<typeof nativeConnectionMetricsSchema>;
 const captureSourcesSchema = z.object({ sources: z.array(nativeCaptureTargetSchema),
+  codecs: z.array(nativeVideoCodecSchema),
   processAudio: z.boolean(), processAudioExclusion: z.boolean().default(false), systemAudio: z.boolean(), activationURL: z.string().url().max(512).optional() }).strict();
 export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
 export type NativeCaptureRequest = { publicationId: string; activationURL: string };
-const preparedCaptureSchema = z.object({ captureId: z.uuid(), sessionId: z.uuid(), codec: z.enum(["h264", "vp8"]) }).strict();
+const preparedCaptureSchema = z.object({ captureId: z.uuid(), sessionId: z.uuid(), codec: nativeVideoCodecSchema }).strict();
 export type PreparedNativeCapture = z.infer<typeof preparedCaptureSchema>;
 const previewSchema = z.string().max(23 + 4 * Math.ceil(64 * 1024 / 3))
   .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/).nullable();

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
-import { createElement } from "react";
+import { createElement, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppConnectionButton } from "../src/client/components/living/AppConnectionButton";
@@ -9,6 +9,12 @@ import { CaptureSourcePicker } from "../src/client/components/living/CaptureSour
 import { ChannelShareControl } from "../src/client/channel/components/ChannelShareControl";
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 import type { ChannelController } from "../src/client/channel/types";
+import { setCopy, t } from "../src/client/ui/copy";
+
+vi.mock("react", async importOriginal => {
+  const actual = await importOriginal<typeof import("react")>();
+  return { ...actual, useState: vi.fn(actual.useState) };
+});
 
 describe("shared App connection entry", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -68,6 +74,49 @@ describe("shared App connection entry", () => {
     expect(html).toMatch(/aria-label="(?:Sharing settings|分享设置)"/);
     const elsewhere = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "other", disabled: false }));
     expect(elsewhere).not.toMatch(/aria-label="(?:Switch source|切换来源)"/);
+  });
+});
+
+describe("Native sharing capabilities", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("derives Native availability from retained capabilities and the source's codec mode", () => {
+    setCopy({ lang: "en", vis: false });
+    vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(), getUserMedia: vi.fn() } });
+    const sources = { kind: "ready", codecs: ["h264"], processAudio: false, systemAudio: false,
+      sources: [{ kind: "window", sourceId: "1", title: "Owned Native window", pid: 1, creationTime: "1" }] };
+    const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: true, pending: new Set(),
+      videoCodecMode: "vp8", nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined,
+      screenQuality: () => undefined, screenCodecMode: () => "h264", sourceAudio: () => undefined, sourceMicrophone: () => undefined,
+      ownedScreens: new Set<string>(), state: { publications: [] as { id: string; roomId: string }[], voice: [] },
+    };
+    const render = (settings = false) => {
+      // Open the real picker with the same completed targets response on each render.
+      vi.mocked(useState).mockReturnValueOnce([!settings, vi.fn()]).mockReturnValueOnce([settings, vi.fn()])
+        .mockReturnValueOnce([sources, vi.fn()]);
+      return renderToStaticMarkup(createElement(ChannelShareControl, { channel: channel as unknown as ChannelController, roomId: "room", disabled: false }));
+    };
+    const unsupported = render();
+    expect(unsupported.replaceAll("&#x27;", "'")).toContain(t("en", "host.sourcePicker.unsupported"));
+    expect(unsupported).not.toContain("data-native-source=");
+    expect(unsupported).toContain('data-source-tab="browser"');
+    expect(unsupported).toContain('data-source-tab="camera"');
+
+    channel.videoCodecMode = "h264";
+    expect(render()).toContain("data-native-source=");
+    expect(sources.codecs).toEqual(["h264"]);
+    sources.codecs = [];
+    channel.videoCodecMode = "auto";
+    expect(render().replaceAll("&#x27;", "'")).toContain(t("en", "host.sourcePicker.unsupported"));
+
+    sources.codecs = ["h264"];
+    channel.state.publications.push({ id: "mine", roomId: "room" });
+    channel.ownedScreens.add("mine");
+    channel.videoCodecMode = "vp8";
+    const sharing = render(true);
+    expect(sharing).toContain('value="h264" aria-pressed="true"');
+    for (const mode of ["auto", "h264", "vp8"]) expect(sharing).toContain(`value="${mode}"`);
+    expect(render()).toContain("data-native-source=");
   });
 });
 
