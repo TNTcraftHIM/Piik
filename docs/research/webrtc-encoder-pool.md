@@ -152,12 +152,12 @@ update and package cost before replacing the Native media engine. WebRTC code
 retains its BSD-style license and PATENTS grant, dependencies their own notices.
 Epic's infrastructure MIT license does not license Unreal Engine/EpicRtc code.
 This review copies no upstream implementation and adds no product dependency.
-The opt-in probe links the pinned SDK only under the ignored build directory.
+The opt-in probe linked the pinned SDK only under the ignored build directory.
 
 ## Executed Feasibility Probe
 
-The [opt-in source and build recipe](../../native/probes/encoder-pool/README.md)
-use Shiguredo `m152.7977.0.2`, whose WebRTC revision exactly matches the pin
+The [archived 2.x source and build recipe](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/native/probes/encoder-pool/README.md)
+used Shiguredo `m152.7977.0.2`, whose WebRTC revision exactly matches the pin
 above. Its relevant vendor differences are disabled built-in H264 and disabled
 pacer keyframe flushing; this VP8 encoder-only probe uses neither path.
 Matching SDK headers/static library and official MSVC libraries/linker were
