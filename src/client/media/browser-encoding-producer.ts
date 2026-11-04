@@ -10,7 +10,7 @@ import {
   needsStartupVideoProfile, startupVideoProfile, STARTUP_VIDEO_ENCODED_FRAMES,
   videoQualitySettingsEqual, type VideoSenderProfile,
 } from "./quality";
-import { cloneSenderVideoTrack, stopSenderVideoTrack } from "./sender-video-track";
+import { cloneSenderVideoTrack, senderCaptureTrack, stopSenderVideoTrack } from "./sender-video-track";
 import { waitForConnectionOperation } from "../webrtc/connection-operation";
 
 // Leave time for ordinary encoding before the outer Viewer/route deadline.
@@ -164,12 +164,16 @@ export class BrowserEncodingProducer {
   async report(): Promise<RTCStatsReport> {
     this.requireSender();
     const connection = this.send!;
+    const input = this.input!;
     const report = await waitForConnectionOperation(this.streamAbort.signal, () => connection.getStats()).catch((error) => {
       if (!this.disposed) debugRtcFailure(connection, error);
       throw error;
     });
+    if (this.disposed) return report;
     debugRtcStats(connection, report);
-    if (!this.disposed && this.startupPending &&
+    debugTrack(this.source, { producerId: this.id, role: "source", senderTrackId: input.id });
+    debugTrack(senderCaptureTrack(input), { producerId: this.id, role: "sender-input", senderTrackId: input.id });
+    if (this.startupPending &&
       (this.startupFrames ?? 0) >= STARTUP_VIDEO_ENCODED_FRAMES) {
       this.startupPending = false;
       void this.serialize(() => this.applyCurrent()).catch(this.fail);

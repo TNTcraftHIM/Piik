@@ -1,5 +1,6 @@
 import { addRemoteIceCandidate } from "../webrtc/remote-ice-candidate";
 import { collectTrackConnectionMetrics, decodedVideoFrameSamples, type StatsAccumulator } from "../webrtc/stats";
+import { debugTrack } from "../lib/debug-webrtc";
 import type { ConnectionMetrics } from "../types";
 import { preferOpusStereoReceive } from "../webrtc/opus-receive-sdp";
 import { applyVideoCodecPreference, normalizeVideoOfferSdp, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
@@ -7,7 +8,7 @@ import type { ChannelPublication, ChannelSignal } from "./protocol";
 import { applyVideoCaptureProfile, configureAudioSender, configureVideoSender, DEFAULT_ROOM_VOICE_BITRATE, screenAudioBitrate, screenShareEncodings, videoQualitySettingsEqual, type VideoSenderProfile } from "../media/quality";
 import { BrowserEncodingOutput, supportsBrowserEncoding } from "../media/browser-encoding-output";
 import type { BrowserEncodingPool, BrowserPooledSender } from "../media/browser-encoding-pool";
-import { cloneSenderVideoTrack, stopSenderVideoTrack } from "../media/sender-video-track";
+import { cloneSenderVideoTrack, senderCaptureTrack, stopSenderVideoTrack } from "../media/sender-video-track";
 import { waitForConnectionOperation } from "../webrtc/connection-operation";
 
 const MAX_FILE_FRAME_BYTES = 8192;
@@ -99,6 +100,11 @@ export class ChannelTransport {
       const video = binding.senders.find(value => value.source.kind === "video");
       const track = binding.senders.find(value => value.source.kind === (binding.kind === "screen" ? "video" : "audio"))?.sender.track;
       if (!track) return [];
+      // Picture counters belong to the producer while this sender uses its clock.
+      if (video && track !== video.encoded?.track) {
+        debugTrack(video.source, { flowId, role: "source", senderTrackId: track.id });
+        debugTrack(senderCaptureTrack(track), { flowId, role: "sender-input", senderTrackId: track.id });
+      }
       const audio = binding.senders.find(value => value.source.kind === "audio")?.sender.track;
       return collectTrackConnectionMetrics(report, "send", binding.metrics ??= new Map(), {
         kind: binding.kind === "screen" ? "video" : "audio", trackIdentifier: track.id,
