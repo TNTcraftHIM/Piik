@@ -1588,6 +1588,7 @@ export class ChannelSession {
       this.patch({});
       const prepared = await preparing;
       if (!current() || this.app !== app) throw new DOMException("Capture cancelled", "AbortError");
+      this.patch({});
       if (this.local.has(share.id)) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: prepared.sessionId }, undefined, roomId);
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       await app.commitCapture(share.id, prepared.captureId);

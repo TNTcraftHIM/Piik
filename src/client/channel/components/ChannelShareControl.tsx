@@ -85,7 +85,7 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
             onClick={() => activateNativePicker(captureRequest.activationURL)} />
         </span>
         <Btn icon="x" title="common.cancel" cap="common.cancel" size="compact" quiet
-          onClick={() => { void channel.cancelScreenSelection(roomId).catch(() => {}); }} />
+          onClick={() => { if (channel.nativeCaptureRequest(roomId)) void channel.cancelScreenSelection(roomId).catch(() => {}); }} />
       </> : <Btn icon={sharing ? "switchSource" : "cast"} title={{ text: label }} cap={{ text: label }} size="compact" tone="primary"
         hint={available ? "hint-share-start" : "hint-no-sources"} hintText={available ? undefined : "host.capture.noSource"}
         disabled={disabled || busy || qualityPending || microphonePending || !available} busy={busy || qualityPending} expanded={pickerAvailable || open ? open : undefined}
