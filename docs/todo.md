@@ -55,6 +55,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
+- [ ] **Native H264 scene-change latency.** Reduce encoded bursts while
+  preserving low-rate startup and live bitrate restoration. Keep CBR; the
+  [encoder assessment](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)
+  records why the low-delay VBR candidate was rejected.
 - [ ] **Stronger microphone noise suppression (#518).** Assess the
   [requested speech-processing option](https://github.com/TNTcraftHIM/Piik/issues/518)
   through the shared microphone input. Browser voice processing is already the
