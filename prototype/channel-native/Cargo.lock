@@ -2806,6 +2806,7 @@ dependencies = [
  "khronos-egl",
  "libc",
  "libvpx-native-sys",
+ "log",
  "ndk",
  "ndk-context",
  "netwatch",

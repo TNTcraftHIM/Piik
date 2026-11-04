@@ -156,7 +156,9 @@ impl Producer {
         let now = Instant::now();
         let clock = SystemInstant::now(now);
         anyhow::ensure!(mode.initial().supported(), "capture_codec_unsupported");
-        let capture = Capture::start(target.clone(), settings.fps, audio)?;
+        let capture = Capture::start(target.clone(), settings.fps, audio).inspect_err(|error| {
+            log::warn!(target: "piik.capture", "Capture startup failed: {error:#}");
+        })?;
         let video_control = capture.control();
         let (audio_control, audio_task) = audio::start(
             publication_id,

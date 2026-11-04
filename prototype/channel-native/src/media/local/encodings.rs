@@ -158,6 +158,7 @@ pub(super) async fn run(
         let (prepared, rtp) = match prepared {
             Err(error) if fallback && !error.is::<Aborted>() && !control.video.is_stopped() && !*cancelled.borrow() => {
                 eprintln!("Native Auto H264 startup was not proved: {error:#}; trying VP8");
+                log::warn!(target: "piik.encoder", "H264 startup proof failed: {error:#}");
                 codec = VideoCodec::Vp8;
                 initial(&capture, &control.video, settings, codec, None, &mut cancelled).await?
             }
@@ -178,6 +179,7 @@ pub(super) async fn run(
             }
             Err(error) => {
                 eprintln!("Native lower source encoding unavailable: {error:#}");
+                log::warn!(target: "piik.encoder", "Lower source encoding unavailable: {error:#}");
                 None
             }
         };
@@ -244,6 +246,7 @@ pub(super) async fn run(
                             Err(error) => {
                                 layers.remove("q");
                                 eprintln!("Native lower source encoding unavailable: {error:#}");
+                                log::warn!(target: "piik.encoder", "Lower source encoding unavailable: {error:#}");
                             }
                         }
                     }
@@ -303,6 +306,11 @@ pub(super) async fn run(
         .map_err(anyhow::Error::from)
         .and_then(|result| result);
     let result = result.and(joined);
+    if !*cancelled.borrow() {
+        if let Err(error) = &result {
+            log::warn!(target: "piik.capture", "Capture ended: {error:#}");
+        }
+    }
     let error = result.as_ref().err().map(|error| format!("{error:#}"));
     if let Some(ready) = ready {
         let _ = ready.send(result.and(Err(Aborted.into())));

@@ -44,6 +44,9 @@ impl Shared {
         self.available.notify_waiters();
     }
     fn finish(&self, result: &Result<()>) {
+        if let Err(error) = result {
+            log::warn!(target: "piik.encoder", "Android encoding ended: {error:#}");
+        }
         let mut state = self.state.lock().unwrap();
         state.stop = true;
         state.done = true;

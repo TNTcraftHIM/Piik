@@ -33,6 +33,9 @@ impl Shared {
         self.changed.notify_waiters();
     }
     fn finish(&self, result: &Result<()>) {
+        if let Err(error) = result {
+            log::warn!(target: "piik.encoder", "Linux encoding ended: {error:#}");
+        }
         let mut state = self.state.lock().unwrap();
         state.stop = true;
         state.done = true;

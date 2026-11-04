@@ -84,6 +84,9 @@ impl Shared {
         self.available.notify_waiters();
     }
     fn finish(&self, result: &Result<()>) {
+        if let Err(error) = result {
+            log::warn!(target: "piik.encoder", "Encoding process ended: {error:#}");
+        }
         self.stop(result.as_ref().err().map(|e| format!("{e:#}")).as_deref());
         self.state.lock().unwrap().done = true;
         self.available.notify_waiters();
