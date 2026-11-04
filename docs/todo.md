@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-03
+Last reviewed: 2026-11-04
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -10,11 +10,11 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Public-invitation candidate retirement.** Capture the parent and server
   reason when a candidate is retired before its first SDP offer. Keep this
   separate from candidates that actually enter ICE and fail.
-- [ ] **Browser sharing falls to low source FPS during motion.** Trace raw
-  capture, sender-owned track input and encoding on Windows Chrome with mixed
-  direct/SFU delivery. The observed source fell to roughly 2 fps during video
-  or game playback; reproduce with real window/display capture. Keep the
-  separate SFU packet-loss stage distinct from source-frame production.
+- [ ] **Browser sharing falls to low source FPS during motion.** Capture original
+  track, isolated capture-input and sender counters during the same low-FPS
+  episode on Windows Chrome with mixed direct/SFU delivery. The observed sender
+  input fell to roughly 2 fps during video or game playback. Keep source cadence
+  and the separate SFU packet-loss stage distinct.
 - [ ] **Unclassified capture termination in older Windows feedback.** Identify
   the Native failure stage and HRESULT in the original v2.4.1/v2.5.1 attempts.
   Their Browser reports show Native failure before page cleanup but do not

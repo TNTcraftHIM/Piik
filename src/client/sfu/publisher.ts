@@ -555,10 +555,10 @@ export class SfuPublisher {
     this.statsInFlight = stats;
     try {
       const report = await peer.waitForOperation(() => peer.pc.getStats());
-      debugRtcStats(peer.pc, report);
-      debugTrack(video, { event: "sfu-sample" });
       if (this.peer !== peer || this.video !== video || this.stats !== stats)
         return;
+      debugRtcStats(peer.pc, report);
+      debugTrack(senderCaptureTrack(video), { event: "sfu-sample", role: "sender-input", senderTrackId: video.id });
       const native = collectNativeSenderQualityFromReport(
         report,
         video.id,

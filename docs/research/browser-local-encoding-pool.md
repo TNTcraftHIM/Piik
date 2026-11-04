@@ -692,11 +692,13 @@ Piik regression. The capture and carrier repairs above address their reproduced
 defects, not every content-dependent adaptation state.
 Do not weaken candidate proof, impose output floors or reset encoders periodically.
 
-Use actual source frames, producer/carrier histories and receiver RTCStats
-together; settings and configured ceilings are not frame evidence. Some headless
-runs lost presentation callbacks while decoding continued. Raw traces and fixture
-variants remain ignored. Matched field Host evidence is still needed to separate
-capture feedback, encoder adaptation and a continuing transport limitation.
+Capture diagnostics read the optional [browser track frame counters](https://w3c.github.io/mediacapture-extensions/#mediastreamtrack-statistics)
+alongside producer, carrier and receiver RTCStats. Original-source and isolated
+capture-input tracks keep their own identities; generated sender `media-source`
+statistics describe input after that isolation. Compare cumulative counts within
+one track lifetime using event timestamps. `discardedFrames` counts frames
+discarded to meet the capture frame-rate target. Settings and ceilings describe
+configuration. Raw traces and fixture variants remain ignored.
 
 ## Cost And Accounting
 
