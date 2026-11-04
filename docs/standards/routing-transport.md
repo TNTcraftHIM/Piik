@@ -227,6 +227,10 @@ Committed P2P recovery first requests an ICE restart, then requests a rebuild
 if necessary, within the existing two-request budget. A sender without restart
 support, including the current Native sender, replaces its connection on that
 first request.
+A replacement picture connection keeps its room and voice assignment but
+starts without the previous connection's picture proof. Decoded progress for
+its current physical identity restores relay eligibility through the existing
+receive-quality report.
 Restart authority follows the exact retained edge and its endpoint sessions;
 an ancestor repairing its own ingress does not revoke that edge's recovery.
 The budget belongs to the current parent and survives physical connection or
