@@ -472,8 +472,9 @@ readiness rather than waiting for audible speech. Picture availability requires
 a decoded frame. Shared link failure reconciles all affected flows through the
 same transport owner. Temporary ICE disconnection retains its Pair; confirmed
 failure retires it and allows the room to establish a replacement. Signaling
-resynchronization only replays unfinished negotiation. Use these existing events;
-add no periodic probe protocol.
+resynchronization replays current connection, base and media facts alongside
+unfinished negotiation. A local report does not confirm that the room received
+it. Use these existing events; add no periodic probe protocol.
 
 A tree cannot connect two groups when no permitted, reachable edge joins them.
 An available participant relay or an accepted external fallback is needed in that

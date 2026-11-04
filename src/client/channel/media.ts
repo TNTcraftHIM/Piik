@@ -125,9 +125,8 @@ export class ChannelMedia {
           bulkClosed: () => this.bulkClosed?.(plan.peerId),
           input: channel => this.input?.(plan.id, channel),
           connected: () => {
-            this.send({ type: "link_state", pairId: plan.id, state: "connected" });
             const current = this.peers.get(plan.id);
-            if (current) for (const [id, input] of current.inputs) this.prove(current, id, input.stream);
+            if (current) this.reportConnected(current);
           },
           failed: released => {
             const current = this.peers.get(plan.id);
@@ -182,7 +181,12 @@ export class ChannelMedia {
     for (const peer of this.peers.values()) {
       if (["failed", "closed"].includes(peer.transport.pc.connectionState)) {
         this.send({ type: "link_state", pairId: peer.plan.id, state: "failed" });
-      } else peer.transport.resync();
+      } else {
+        peer.baseReady.clear();
+        if (peer.transport.pc.connectionState === "connected") this.reportConnected(peer);
+        else for (const [id, input] of peer.inputs) this.reportInput(peer, id, input);
+        peer.transport.resync();
+      }
     }
   }
 
@@ -250,7 +254,8 @@ export class ChannelMedia {
         }
       };
       if (kind === "screen" && previous?.ready && !video) {
-        this.send({ type: "flow_state", flowId: id, pairId: peer.plan.id, state: "failed" });
+        input.failed = true;
+        this.reportInput(peer, id, input);
       }
     }
     if (publication?.paused || input.ready || input.stopProof || input.failed) return;
@@ -260,7 +265,7 @@ export class ChannelMedia {
       if (peer.transport.pc.connectionState !== "connected") return false;
       input.ready = true;
       input.stopProof = undefined;
-      this.send({ type: "flow_state", flowId: id, pairId: peer.plan.id, state: kind === "screen" ? "decoded" : "forwardable" });
+      this.reportInput(peer, id, input);
       this.refresh();
       return true;
     };
@@ -291,6 +296,28 @@ export class ChannelMedia {
         && peer.transport.pc.getReceivers().includes(input.receiver)));
   }
 
+  private reportInput(peer: Peer, flowId: string, input: MediaInput): void {
+    const flow = peer.plan.incoming.find(flow => flow.id === flowId);
+    const kind = this.publications.find(publication => publication.id === flow?.publicationId)?.kind;
+    if (!flow || !kind || !this.ownsInput(peer, flowId, input)) return;
+    let state: Extract<ChannelCommand, { type: "flow_state" }>["state"];
+    if (input.failed) state = "failed";
+    else {
+      if (!input.ready || peer.transport.pc.connectionState !== "connected") return;
+      state = kind === "screen" ? "decoded" : "forwardable";
+      if (input.switchReady && !flow.selected && input.incumbent === this.selectedInput(flow.publicationId)?.input) state = "switch_ready";
+    }
+    this.send({ type: "flow_state", flowId, pairId: peer.plan.id, state });
+  }
+
+  private reportConnected(peer: Peer): void {
+    this.send({ type: "link_state", pairId: peer.plan.id, state: "connected" });
+    for (const [id, input] of peer.inputs) {
+      this.reportInput(peer, id, input);
+      this.prove(peer, id, input.stream);
+    }
+  }
+
   private selectedInput(publicationId: string): { peer: Peer; flowId: string; input: MediaInput } | null {
     for (const peer of this.peers.values()) {
       const flow = peer.plan.incoming.find(flow => flow.publicationId === publicationId && flow.selected);
@@ -309,7 +336,7 @@ export class ChannelMedia {
       if (state === "failed") {
         input.failed = true;
         input.release?.();
-        this.send({ type: "flow_state", flowId, pairId: peer.plan.id, state: "failed" });
+        this.reportInput(peer, flowId, input);
         this.refresh();
       } else if (!flow.selected && !input.switchReady) {
         input.presentationReady = state === "prepared";
@@ -326,7 +353,7 @@ export class ChannelMedia {
       || peer.transport.pc.connectionState !== "connected") return;
     input.switchReady = true;
     input.stopQuality?.();
-    this.send({ type: "flow_state", flowId, pairId: peer.plan.id, state: "switch_ready" });
+    this.reportInput(peer, flowId, input);
     this.refresh();
   }
 

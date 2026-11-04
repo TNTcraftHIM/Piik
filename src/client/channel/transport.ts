@@ -774,6 +774,9 @@ export class ChannelTransport {
 
   resync(): void {
     this.enqueue(async () => {
+      if (this.baseFailed) this.options.base(false);
+      else this.reportBaseReady();
+      for (const [id, output] of this.sending) if (output.failed) this.options.outgoingFailed?.(id);
       this.options.send({ resync: true });
       this.resendOffer();
     });

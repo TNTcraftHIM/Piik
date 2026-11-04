@@ -3107,12 +3107,31 @@ test("a selected screen reports only its current playback failure and keeps the 
     pc.receivers = [{ track: replacement, getStats: async () => decodedReport(1) } as RTCRtpReceiver];
     await receiveScreen(fixture, current);
     await vi.advanceTimersByTimeAsync(0);
+    sent.length = 0;
+    media.resync();
+    expect(sent.filter(command => command.type === "flow_state")).toEqual([
+      { type: "flow_state", pairId: "pair", flowId: "screen-flow", state: "decoded" },
+    ]);
+    sent.length = 0;
+    pc.connectionState = "disconnected"; pc.onconnectionstatechange?.();
+    media.resync();
+    expect(sent.filter(command => command.type === "flow_state")).toEqual([]);
+    pc.connected();
+    expect(sent.filter(command => command.type === "flow_state")).toEqual([
+      { type: "flow_state", pairId: "pair", flowId: "screen-flow", state: "decoded" },
+    ]);
+    sent.length = 0;
     media.screenPresentation("screen-flow", previous, "failed");
     media.screenPresentation("screen-flow", current, "prepared");
     expect(sent.some(command => command.type === "flow_state" && ["failed", "switch_ready"].includes(command.state))).toBe(false);
     media.screenPresentation("screen-flow", current, "failed");
     media.screenPresentation("screen-flow", current, "failed");
     expect(sent.filter(command => command.type === "flow_state" && command.state === "failed")).toEqual([
+      { type: "flow_state", pairId: "pair", flowId: "screen-flow", state: "failed" },
+    ]);
+    sent.length = 0;
+    media.resync();
+    expect(sent.filter(command => command.type === "flow_state")).toEqual([
       { type: "flow_state", pairId: "pair", flowId: "screen-flow", state: "failed" },
     ]);
     expect(changed.mock.calls.at(-1)![0].has("screen")).toBe(false);
@@ -3172,6 +3191,11 @@ test.each(["approved", "warming", "retired"])("a leaf candidate stays separate u
         candidateWidth = 640;
         await vi.advanceTimersByTimeAsync(8100);
       }
+      expect(sent.filter(command => command.type === "flow_state" && command.state === "switch_ready")).toEqual([
+        { type: "flow_state", pairId: "candidate-pair", flowId: "candidate-flow", state: "switch_ready" },
+      ]);
+      sent.length = 0;
+      media.resync();
       expect(sent.filter(command => command.type === "flow_state" && command.state === "switch_ready")).toEqual([
         { type: "flow_state", pairId: "candidate-pair", flowId: "candidate-flow", state: "switch_ready" },
       ]);
@@ -3937,6 +3961,11 @@ test.each(["ended", "removetrack"])("a still-declared screen fails when its vide
     ]);
     video.dispatchEvent(new Event("ended")); stream.dispatchEvent(new Event("removetrack"));
     expect(sent.filter(command => command.type === "flow_state")).toHaveLength(2);
+    sent.length = 0;
+    media.resync();
+    expect(sent.filter(command => command.type === "flow_state")).toEqual([
+      { type: "flow_state", flowId: "screen-flow", pairId: "pair", state: "failed" },
+    ]);
     expect(video.stop).not.toHaveBeenCalled(); expect(pc.close).not.toHaveBeenCalled();
   } finally { media.reset(); session.close(); }
 });
@@ -4519,10 +4548,11 @@ test.each(["connected", "disconnected", "failed", "deadline"] as const)("a resum
     socket.receive({ type: "state", state });
     const [kept, removed] = RoomPeerConnection.instances;
     const failed = mode === "failed" || mode === "deadline";
-    if (mode !== "deadline") { kept.connected(); kept.channels[0].open(); }
+    if (mode !== "connected" && mode !== "deadline") { kept.connected(); kept.channels[0].open(); }
     removed.connected(); removed.channels[0].open();
     if (mode === "deadline") vi.advanceTimersByTime(19000);
     socket.close();
+    if (mode === "connected") { kept.connected(); kept.channels[0].open(); }
     if (mode === "disconnected" || mode === "failed") { kept.connectionState = mode; kept.onconnectionstatechange?.(); }
     if (mode === "deadline") vi.advanceTimersByTime(1000);
     if (failed) { removed.connectionState = "failed"; removed.onconnectionstatechange?.(); }
@@ -4537,6 +4567,9 @@ test.each(["connected", "disconnected", "failed", "deadline"] as const)("a resum
     ]));
     expect(resumed.sent.filter(command => command.type === "link_state" && command.state === "failed")).toEqual(failed ? [
       { type: "link_state", pairId: "kept", state: "failed" },
+    ] : []);
+    expect(resumed.sent.filter(command => command.type === "base_state")).toEqual(mode === "connected" ? [
+      { type: "base_state", pairId: "kept", roomId: "first", ready: true },
     ] : []);
     expect(kept.close).toHaveBeenCalledTimes(failed ? 1 : 0);
     expect(removed.close).toHaveBeenCalledOnce();
@@ -4609,6 +4642,11 @@ test("data failure retires only the base attempt and does not retry unchanged de
     expect(pc.channels).toHaveLength(2);
     expect(pc.close).not.toHaveBeenCalled();
     expect(sent.some(command => command.type === "link_state" && command.state === "failed")).toBe(false);
+    sent.length = 0;
+    media.resync();
+    await vi.waitFor(() => expect(sent.filter(command => command.type === "base_state")).toEqual([
+      { type: "base_state", pairId: "pair", roomId: "first", ready: false },
+    ]));
     state.pairs[0].rooms.push("second");
     media.update("a", state);
     expect(pc.channels).toHaveLength(3);

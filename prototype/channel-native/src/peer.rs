@@ -1836,7 +1836,7 @@ impl Driver {
     }
     async fn resync(&self) {
         for id in self.admitted.iter().copied() {
-            if !self.pairs.contains_key(&id) {
+            let Some(pair) = self.pairs.get(&id) else {
                 if !self.preparings.contains_key(&id) {
                     self.send(Command::LinkState {
                         pair_id: id,
@@ -1845,6 +1845,23 @@ impl Driver {
                     .await;
                 }
                 continue;
+            };
+            if pair.connected() {
+                self.send(Command::LinkState {
+                    pair_id: id,
+                    state: LinkState::Connected,
+                })
+                .await;
+            }
+            if pair.base_failed || (pair.connected() && pair.dc_open) {
+                for room_id in &pair.plan.rooms {
+                    self.send(Command::BaseState {
+                        room_id: room_id.clone(),
+                        pair_id: id,
+                        ready: !pair.base_failed,
+                    })
+                    .await;
+                }
             }
             self.send_signal(
                 id,
@@ -1859,6 +1876,27 @@ impl Driver {
             )
             .await;
             self.replay_pending(id).await;
+        }
+        for source in self.sources.values() {
+            let Some((pair_id, flow_id)) = self.incoming_source_flow(source) else {
+                continue;
+            };
+            if self.pairs[&pair_id].connected()
+                && self
+                    .publications
+                    .get(&source.publication_id)
+                    .is_some_and(|publication| {
+                        source.kind == MediaKind::Video
+                            || publication.kind == piik_channel_core::wire::Kind::Voice
+                    })
+            {
+                self.send(Command::FlowState {
+                    flow_id,
+                    pair_id,
+                    state: FlowState::Forwardable,
+                })
+                .await;
+            }
         }
     }
     async fn replay_pending(&self, id: Uuid) {
@@ -2869,6 +2907,28 @@ impl Driver {
         );
         Ok(())
     }
+    fn incoming_source_flow(&self, source: &Source) -> Option<(Uuid, Uuid)> {
+        match &source.origin {
+            SourceOrigin::Incoming {
+                pair,
+                flow_id,
+                stream,
+                reader,
+            } => self
+                .pairs
+                .get(pair)
+                .filter(|p| {
+                    p.plan.incoming.iter().any(|flow| {
+                        flow.id == *flow_id && flow.publication_id == source.publication_id
+                    }) && p.remote.get(stream) == Some(flow_id)
+                        && p.latest.get(&(*flow_id, source.kind)) == Some(reader)
+                })
+                .map(|_| (*pair, *flow_id)),
+            #[cfg(any(feature = "capture", test))]
+            SourceOrigin::Local => None,
+        }
+    }
+
     async fn source_ready(&mut self, ready: SourceReady) -> Result<()> {
         #[cfg(feature = "capture")]
         if matches!(ready.source.origin, SourceOrigin::Local) {
@@ -2897,19 +2957,10 @@ impl Driver {
             SourceOrigin::Incoming {
                 pair,
                 flow_id,
-                stream,
                 reader,
+                ..
             } => {
-                let key = (*flow_id, source.kind);
-                let desired = self.pairs.get(pair).is_some_and(|p| {
-                    p.plan
-                        .incoming
-                        .iter()
-                        .any(|flow| flow.id == *flow_id && flow.publication_id == publication)
-                        && p.remote.get(stream) == Some(flow_id)
-                        && p.latest.get(&key) == Some(reader)
-                });
-                if !desired {
+                if self.incoming_source_flow(&source).is_none() {
                     return Ok(());
                 }
                 // A received successor replaces only its flow's encoded format.

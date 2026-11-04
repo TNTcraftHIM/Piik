@@ -412,29 +412,122 @@ async fn physical_failure_retires_only_that_source_and_keeps_other_flow_leases()
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn base_channel_failure_preserves_media_on_the_same_physical_pair() -> Result<()> {
+    fn take_reports(f: &mut Fixture) -> Vec<Command> {
+        let mut reports = std::mem::take(&mut f.reported);
+        let mut retained = Vec::new();
+        while let Ok(event) = f.commands.try_recv() {
+            match event {
+                NativeEvent::Command(command) if !matches!(&command, Command::Signal { .. }) => {
+                    reports.push(command);
+                }
+                event => retained.push(event),
+            }
+        }
+        for event in retained {
+            f.driver
+                .commands
+                .try_send(event)
+                .unwrap_or_else(|_| panic!("fixture command queue changed"));
+        }
+        reports
+    }
     let mut f = Fixture::new(vp8()).await?;
-    let sink = f.sink;
-    let flow = f.plans.iter().find(|p| p.id == sink).unwrap().outgoing[0].id;
-    f.until(|f| {
-        f.driver.pairs[&sink]
-            .outputs
-            .contains_key(&(flow, MediaKind::Video))
-    })
-    .await?;
-    let output = f.output(flow, MediaKind::Video);
-    f.until(|f| f.observed(&output.1, MediaKind::Video).is_some())
+    let result = async {
+        let sink = f.sink;
+        let flow = f.plans.iter().find(|p| p.id == sink).unwrap().outgoing[0].id;
+        f.until(|f| {
+            f.driver.pairs.values().all(|p| p.connected() && p.dc_open)
+                && f.driver.pairs[&sink]
+                    .outputs
+                    .contains_key(&(flow, MediaKind::Video))
+        })
         .await?;
-    let before = f.observed(&output.1, MediaKind::Video).unwrap();
-    f.driver.fail_base(sink).await;
-    ensure!(f.driver.pairs[&sink].base_failed && f.driver.pairs[&sink].connected());
-    f.until(|f| {
-        f.observed(&output.1, MediaKind::Video)
-            .is_some_and(|p| p.2.wrapping_sub(before.2) > 9000)
-    })
-    .await?;
-    ensure!(
-        f.output(flow, MediaKind::Video) == output && !f.driver.pairs[&sink].plan.rooms.is_empty()
-    );
+        let output = f.output(flow, MediaKind::Video);
+        f.until(|f| f.observed(&output.1, MediaKind::Video).is_some())
+            .await?;
+        let before = f.observed(&output.1, MediaKind::Video).unwrap();
+        let instance = f.driver.pairs[&sink]
+            .pc
+            .connection_metrics()
+            .await?
+            .connection_id;
+        // The socket can consume these reports before its failed write. Local
+        // readiness remains proved, but the authority never received the facts.
+        take_reports(&mut f);
+        f.driver
+            .update(f.plans.clone(), vec![f.publication.clone()], vec![])
+            .await?;
+        f.driver.resync().await;
+        let replayed = take_reports(&mut f);
+        for plan in &f.plans {
+            for room in &plan.rooms {
+                ensure!(
+                    replayed.iter().any(|command| matches!(command,
+                    Command::BaseState { room_id, pair_id, ready: true }
+                    if room_id == room && *pair_id == plan.id)),
+                    "resync lost the installed base endpoint"
+                );
+            }
+            ensure!(
+                replayed.iter().any(|command| matches!(command,
+                Command::LinkState { pair_id, state: LinkState::Connected }
+                if *pair_id == plan.id)),
+                "resync lost the connected pair"
+            );
+        }
+        let expected: HashSet<_> = f
+            .plans
+            .iter()
+            .flat_map(|plan| plan.incoming.iter().map(|flow| (plan.id, flow.id)))
+            .collect();
+        let forwardable: Vec<_> = replayed
+            .iter()
+            .filter_map(|command| match command {
+                Command::FlowState {
+                    pair_id,
+                    flow_id,
+                    state: FlowState::Forwardable,
+                } => Some((*pair_id, *flow_id)),
+                _ => None,
+            })
+            .collect();
+        ensure!(
+            forwardable.len() == expected.len()
+                && forwardable.iter().all(|flow| expected.contains(flow)),
+            "resync must report each current picture flow once, not its source audio"
+        );
+        f.driver.fail_base(sink).await;
+        ensure!(f.driver.pairs[&sink].base_failed && f.driver.pairs[&sink].connected());
+        let lost = take_reports(&mut f);
+        ensure!(lost.iter().any(|command| matches!(command,
+            Command::BaseState { pair_id, ready: false, .. } if *pair_id == sink)));
+        f.driver.resync().await;
+        let replayed = take_reports(&mut f);
+        ensure!(
+            replayed.iter().any(|command| matches!(command,
+            Command::BaseState { pair_id, ready: false, .. } if *pair_id == sink))
+                && !replayed.iter().any(|command| matches!(command,
+                Command::BaseState { pair_id, ready: true, .. } if *pair_id == sink)),
+            "resync resurrected a failed base channel"
+        );
+        f.until(|f| {
+            f.observed(&output.1, MediaKind::Video)
+                .is_some_and(|p| p.2.wrapping_sub(before.2) > 9000)
+        })
+        .await?;
+        ensure!(
+            f.output(flow, MediaKind::Video) == output
+                && f.driver.pairs[&sink]
+                    .pc
+                    .connection_metrics()
+                    .await?
+                    .connection_id
+                    == instance
+                && !f.driver.pairs[&sink].plan.rooms.is_empty()
+        );
+        Ok(())
+    }
+    .await;
     f.close().await;
-    Ok(())
+    result
 }
