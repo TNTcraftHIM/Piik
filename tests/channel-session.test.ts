@@ -2870,7 +2870,10 @@ async function screenFixture() {
 
 const remoteTrack = (kind: "audio" | "video") => Object.assign(new EventTarget(), {
   id: crypto.randomUUID(), kind, readyState: "live", stop: vi.fn(), getSettings: () => ({}),
+  clone: vi.fn(function (this: MediaStreamTrack) { return Object.assign(remoteTrack(kind), { getSettings: this.getSettings }); }),
 }) as unknown as MediaStreamTrack;
+
+const lastClone = (track: MediaStreamTrack) => vi.mocked(track.clone).mock.results.at(-1)?.value;
 
 const remoteStream = (id: string, tracks: MediaStreamTrack[]) => Object.assign(new EventTarget(), {
   id, getTracks: () => tracks, getVideoTracks: () => tracks.filter(track => track.kind === "video"),
@@ -2937,7 +2940,7 @@ test("room metrics read each PC once and follow current selected flows without m
     fixture.media.setLocal("voice", new MediaStream([voice]));
     fixture.media.setLocal("other", new MediaStream([other]), undefined, videoCodec.VP8_ONLY_VIDEO_CODEC);
     await vi.waitFor(() => expect(fixture.pc.senders).toHaveLength(4));
-    const report = (timestamp: number) => new Map<string, Record<string, unknown>>([video, sound, voice, other].flatMap((track, index) => [
+    const report = (timestamp: number) => new Map<string, Record<string, unknown>>(fixture.pc.senders.map(sender => sender.track!).flatMap((track, index) => [
       [`source-${index}`, { id: `source-${index}`, timestamp, type: "media-source", kind: track.kind, trackIdentifier: track.id }],
       [`rtp-${index}`, { id: `rtp-${index}`, timestamp, type: "outbound-rtp", kind: track.kind, mediaSourceId: `source-${index}`,
         bytesSent: timestamp * [100, 16, 6, 1000][index]!, framesEncoded: timestamp / 100 }],
@@ -3051,7 +3054,7 @@ test("a retired flow's late proof and cleanup cannot affect its replacement on t
     expect(sent.filter(command => command.type === "flow_state")).toEqual([
       { type: "flow_state", flowId: "replacement-flow", pairId: "pair", state: "decoded" },
     ]);
-    expect(downstream.senders.map(sender => sender.track)).toEqual([nextVideo]);
+    expect(downstream.senders.map(sender => sender.track)).toEqual([lastClone(nextVideo)]);
     expect(pc.close).not.toHaveBeenCalled();
     expect(oldVideo.stop).not.toHaveBeenCalled(); expect(nextVideo.stop).not.toHaveBeenCalled();
   } finally { media.reset(); session.close(); }
@@ -3185,7 +3188,7 @@ test.each(["commit", "failed"])("a shadow subtree forwards exact inputs and pres
     await vi.waitFor(() => expect(next.remoteDescription?.sdp).toBe(candidate.id));
     next.ontrack?.({ streams: [candidate] });
     await vi.advanceTimersByTimeAsync(0);
-    expect(downstream.senders.map(sender => sender.track)).toEqual([oldVideo, oldAudio, nextVideo, nextAudio]);
+    expect(downstream.senders.map(sender => sender.track)).toEqual([lastClone(oldVideo), oldAudio, lastClone(nextVideo), nextAudio]);
     const currentSenders = downstream.senders.slice(0, 2), shadowSenders = downstream.senders.slice(2);
     const shadowBinding = shadowSenders[0].stream;
     expect(shadowBinding).not.toBe(currentSenders[0].stream);
@@ -3327,11 +3330,11 @@ test("a relay waits for decoded input and Auto proof before creating its origina
     expect(apply).not.toHaveBeenCalled();
     resolve("h264"); await Promise.resolve();
     const sender = downstream.senders[0];
-    expect(sender.track).toBe(video);
+    expect(sender.track).toBe(lastClone(video));
     expect(apply).toHaveBeenLastCalledWith(expect.anything(), { primary: "h264", vp8Fallback: true });
     state.publications[0].paused = true; media.update("a", state);
     expect(downstream.senders).toEqual([sender]);
-    expect(sender.track).toBe(video);
+    expect(sender.track).toBe(lastClone(video));
     expect(apply).toHaveBeenCalledTimes(1);
     state.pairs.push({ id: "new-downstream", peerId: "z", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [{ id: "new-relay", publicationId: "screen", selected: true, inputFlowId: "screen-flow" }] });
     media.update("a", state);
@@ -3371,7 +3374,7 @@ test.each(["pause", "retire"])("a %s fences a relay's late codec proof without s
       media.update("a", state);
       await vi.waitFor(() => expect(pending).toHaveLength(2));
       pending[1].resolve("h264"); await Promise.resolve();
-      expect(downstream.senders.map(sender => sender.track)).toEqual([video]);
+      expect(downstream.senders.map(sender => sender.track)).toEqual([lastClone(video)]);
     }
     expect(video.stop).not.toHaveBeenCalled();
   } finally { media.reset(); session.close(); }
@@ -3392,7 +3395,7 @@ test("a relay applies the accepted source ceiling to its retained sender without
     const [picture, sound] = downstream.senders;
     await vi.waitFor(() => expect(picture.getParameters().encodings[0]).toMatchObject({ maxBitrate: 5_000_000, maxFramerate: 30 }));
     expect(picture.getParameters().degradationPreference).toBeUndefined();
-    expect(picture.track).toBe(video);
+    expect(picture.track).toBe(lastClone(video));
     state.publications[0] = { ...state.publications[0], kind: "screen", videoCeiling: {
       resolution: { width: 1920, height: 1080 }, maxFramerate: 60, maxBitrate: 8_000_000,
     } };
@@ -3419,7 +3422,7 @@ test("a relay updates senders when audio joins and leaves the same remote screen
     media.update("a", state);
     const downstream = RoomPeerConnection.instances[1];
     await receiveScreen(fixture, stream);
-    await vi.waitFor(() => expect(downstream.senders.map(sender => sender.track)).toEqual([video]));
+    await vi.waitFor(() => expect(downstream.senders.map(sender => sender.track)).toEqual([lastClone(video)]));
     const videoOnlyConsumer = RoomAudio.instances[0];
     expect(videoOnlyConsumer.srcObject?.getTracks()).toEqual([video]);
     const videoSender = downstream.senders[0];
@@ -3427,7 +3430,7 @@ test("a relay updates senders when audio joins and leaves the same remote screen
     expect(binding.id).not.toBe(stream.id);
     tracks.push(audio);
     pc.ontrack?.({ streams: [stream] });
-    expect(downstream.senders.map(sender => sender.track)).toEqual([video, audio]);
+    expect(downstream.senders.map(sender => sender.track)).toEqual([lastClone(video), audio]);
     const withSound = RoomAudio.instances.at(-1)!;
     expect(withSound.srcObject?.getTracks()).toEqual([video, audio]);
     expect(videoOnlyConsumer.pause).toHaveBeenCalledOnce();
@@ -3438,7 +3441,7 @@ test("a relay updates senders when audio joins and leaves the same remote screen
     media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "audio-removed" },
       tracks: [{ flowId: "screen-flow", streamId: stream.id }] });
     await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("audio-removed"));
-    expect(downstream.senders.map(sender => sender.track)).toEqual([video]);
+    expect(downstream.senders.map(sender => sender.track)).toEqual([lastClone(video)]);
     expect(RoomAudio.instances.at(-1)!.srcObject?.getTracks()).toEqual([video]);
     expect(withSound.pause).toHaveBeenCalledOnce();
     expect(downstream.senders[0]).toBe(videoSender);
@@ -3452,7 +3455,7 @@ test("a relay updates senders when audio joins and leaves the same remote screen
     expect(downstream.senders[0].stream).toBe(binding);
     state.pairs[1].outgoing = [{ id: "renewed-screen-downstream", publicationId: "screen", selected: true, inputFlowId: "screen-flow" }];
     media.update("a", state);
-    expect(downstream.senders.map(sender => sender.track)).toEqual([video]);
+    expect(downstream.senders.map(sender => sender.track)).toEqual([lastClone(video)]);
     expect(downstream.senders[0].stream.id).not.toBe(binding.id);
     expect(binding.getTracks()).toEqual([]);
     expect(video.stop).not.toHaveBeenCalled(); expect(audio.stop).not.toHaveBeenCalled();
@@ -3485,7 +3488,10 @@ test("channel publications share one pool across Browser children, while Native 
     expect(audio.track).toBe(sound);
     expect(firstSender.track).not.toBe(first); expect(secondSender.track).not.toBe(second);
     const native = RoomPeerConnection.instances[2].senders;
-    expect(native.map(sender => sender.track)).toEqual([first, sound]);
+    const nativeVideo = native[0].track!;
+    expect(nativeVideo).not.toBe(first);
+    expect(nativeVideo.getSettings()).toEqual(first.getSettings());
+    expect(native[1].track).toBe(sound);
     expect(native[0].getParameters().encodings.map(encoding => encoding.rid)).toEqual(["q", "h"]);
 
     const ordinary = pool.source();
@@ -3516,6 +3522,10 @@ test("channel publications share one pool across Browser children, while Native 
     expect(pool.members[1].handle.setPaused).toHaveBeenLastCalledWith(false);
 
     const oldPool = member.pool;
+    state.pairs = state.pairs.filter(pair => pair.id !== "native-child");
+    media.update("a", state);
+    expect(nativeVideo.stop).toHaveBeenCalledOnce();
+    for (const source of [first, second, sound]) expect(source.stop).not.toHaveBeenCalled();
     media.reset();
     expect(disposed.mock.contexts).toContain(oldPool);
     for (const member of pool.members) expect(member.handle.dispose).toHaveBeenCalledOnce();
@@ -3673,10 +3683,10 @@ test("source tracks replace serially on the existing physical pair, senders and 
     media.setLocal("screen", remoteStream("next", [nextVideo, nextAudio]));
     await vi.waitFor(() => expect(replace).toHaveBeenCalledOnce());
     media.setLocal("screen", remoteStream("final", [finalVideo, finalAudio]));
-    expect(videoSender.track).toBe(oldVideo);
+    expect(videoSender.track).toBe(lastClone(oldVideo));
     expect(audioSender.track).toBe(oldAudio);
     finish();
-    await vi.waitFor(() => expect(pc.senders.map(sender => sender.track)).toEqual([finalVideo, finalAudio]));
+    await vi.waitFor(() => expect(pc.senders.map(sender => sender.track)).toEqual([lastClone(finalVideo), finalAudio]));
     expect(pc.senders).toEqual([videoSender, audioSender]);
     expect(videoSender.stream).toBe(binding);
     expect(binding.getTracks()).toEqual([finalVideo, finalAudio]);
@@ -3711,7 +3721,7 @@ test("a superseded source replacement failure cannot retire the latest source on
     await vi.waitFor(() => expect(replace).toHaveBeenCalledOnce());
     media.setLocal("screen", remoteStream("final", [finalVideo, finalAudio]));
     finish();
-    await vi.waitFor(() => expect(pc.senders.map(sender => sender.track)).toEqual([finalVideo, finalAudio]));
+    await vi.waitFor(() => expect(pc.senders.map(sender => sender.track)).toEqual([lastClone(finalVideo), finalAudio]));
     expect(pc.senders).toEqual([videoSender, audioSender]);
     expect(RoomPeerConnection.instances).toHaveLength(1);
     expect(pc.close).not.toHaveBeenCalled();
@@ -3789,7 +3799,7 @@ test.each([false, true])("source replacement rescales the retained video sender 
       publish(video);
       await vi.waitFor(() => expect(sender.getParameters().encodings.map(encoding => encoding.scaleResolutionDownBy)).toEqual(expected));
       expect(pc.senders).toEqual([sender]);
-      expect(sender.track).toBe(video);
+      expect(sender.track).toBe(lastClone(video));
       expect(sender.stream).toBe(binding);
       expect(binding.getTracks()).toEqual([video]);
       expect(sender.getParameters().encodings.map(({ scaleResolutionDownBy: _, ...encoding }) => encoding)).toEqual(retained);
@@ -3802,7 +3812,7 @@ test.each([false, true])("source replacement rescales the retained video sender 
     publish(video);
     await vi.waitFor(() => expect(warning).toHaveBeenCalledWith("Channel source quality parameters could not be applied", { flowId: "screen-flow" }, rejected));
     await vi.waitFor(() => expect(binding.getTracks()).toEqual([video]));
-    expect(sender.track).toBe(video);
+    expect(sender.track).toBe(lastClone(video));
     expect(pc.senders).toEqual([sender]);
     expect(add).toHaveBeenCalledOnce();
     expect(failed).not.toHaveBeenCalled();
@@ -3833,8 +3843,11 @@ test.each(["new", "source", "audio", "ended"])("sender rejection retires only it
     ];
     media.update("a", state);
     const keptSender = pc.senders.find(sender => sender.track === kept);
-    const oldBinding = pc.senders.find(sender => sender.track === oldVideo)?.stream;
-    if (mode === "ended") Object.defineProperty(oldVideo, "readyState", { value: "ended" });
+    const oldBinding = pc.senders.find(sender => sender.track === lastClone(oldVideo))?.stream;
+    if (mode === "ended") {
+      Object.defineProperty(oldVideo, "readyState", { value: "ended" });
+      Object.defineProperty(lastClone(oldVideo), "readyState", { value: "ended" });
+    }
     const attach = pc.addTrack.bind(pc);
     const add = vi.spyOn(pc, "addTrack").mockImplementation((track, stream) => {
       if (track === rejectedAudio) throw new DOMException("sender attach rejected", "InvalidAccessError");
@@ -3846,7 +3859,7 @@ test.each(["new", "source", "audio", "ended"])("sender rejection retires only it
       { id: "kept-output", publicationId: "kept", selected: true, inputFlowId: null }, { id: "following-output", publicationId: "following", selected: true, inputFlowId: null }];
     expect(() => replacing ? media.setLocal("screen", source) : media.update("a", state)).not.toThrow();
     if (mode === "source" || mode === "ended") await vi.waitFor(() => expect(warning).toHaveBeenCalled());
-    expect(pc.senders.map(sender => sender.track)).toEqual(survives ? [oldVideo, kept, following] : [kept, following]);
+    expect(pc.senders.map(sender => sender.track)).toEqual(survives ? [lastClone(oldVideo), kept, following] : [kept, following]);
     expect(pc.senders.find(sender => sender.track === kept)).toBe(keptSender);
     expect(oldBinding?.getTracks() ?? []).toEqual(survives ? [oldVideo] : []);
     const failedBinding = add.mock.calls.find(([track]) => track === rejectedAudio)![1];
@@ -3865,8 +3878,8 @@ test.each(["new", "source", "audio", "ended"])("sender rejection retires only it
     state.pairs[0].outgoing.push({ id: "renewed-screen-output", publicationId: "screen", selected: true, inputFlowId: null });
     add.mockImplementation(attach);
     media.update("a", state);
-    expect(pc.senders.map(sender => sender.track)).toEqual([kept, following, video, rejectedAudio]);
-    expect(pc.senders.find(sender => sender.track === video)?.stream.id).not.toBe(failedBinding.id);
+    expect(pc.senders.map(sender => sender.track)).toEqual([kept, following, lastClone(video), rejectedAudio]);
+    expect(pc.senders.find(sender => sender.track === lastClone(video))?.stream.id).not.toBe(failedBinding.id);
     expect(sent.some(command => command.type === "link_state" && command.state === "failed")).toBe(false);
     expect(pc.close).not.toHaveBeenCalled();
     for (const track of [oldVideo, video, rejectedAudio, kept, following]) expect(track.stop).not.toHaveBeenCalled();
@@ -4162,7 +4175,7 @@ test.each(["flow", "pair", "attach"])("cross-pair retirement permits one compani
       await exchange("pair", pc, false);
       expect(add).toHaveBeenCalledTimes(2);
     }
-    expect(pc.senders.map(sender => sender.track)).toEqual([video, audio]);
+    expect(pc.senders.map(sender => sender.track)).toEqual([lastClone(video), audio]);
     expect(pc.senders[0]).toBe(incumbent);
     const attempts = install.mock.calls.length;
     media.update("a", state); media.update("a", state);
@@ -4216,7 +4229,7 @@ test.each(["candidate", "audio", "source", "pending", "late", "channel", "initia
     }
     pc.connected(); remote.connected();
     for (const channel of pc.channels) channel.open();
-    const established = pc.senders.filter(sender => sender.track !== next), wrapper = established[0].stream;
+    const established = pc.senders.filter(sender => sender.track !== lastClone(next)), wrapper = established[0].stream;
     if (mode === "audio") {
       outputs.set("screen", { kind: "screen", stream: remoteStream("with-audio", [picture, next]) });
     } else if (mode === "source") {
@@ -4247,7 +4260,7 @@ test.each(["candidate", "audio", "source", "pending", "late", "channel", "initia
     }
     if (mode === "late") {
       await vi.waitFor(() => expect(install).toHaveBeenCalledOnce());
-      lateSender = pc.senders.find(sender => sender.track === next)!;
+      lateSender = pc.senders.find(sender => sender.track === lastClone(next))!;
       outputs.delete("candidate"); left.setOutgoing(outputs);
       const track = remoteTrack("video"); Object.defineProperty(track, "id", { value: next.id });
       vi.spyOn(pc, "addTrack").mockImplementationOnce((track, stream) => {
@@ -4297,12 +4310,12 @@ test.each(["candidate", "audio", "source", "pending", "late", "channel", "initia
       await vi.waitFor(() => expect(remote.signalingState).toBe("stable"));
       sent[0].length = 0; sent[1].length = 0;
       left.setOutgoing(outputs);
-      expect(pc.senders.map(sender => sender.track)).toEqual([picture, voice]);
+      expect(pc.senders.map(sender => sender.track)).toEqual([lastClone(picture), voice]);
       expect(sent[0]).toEqual([]);
       outputs.delete("voice"); // A real resource release permits the refused audio binding to be tried again.
       left.setOutgoing(outputs);
       await exchange(false);
-      expect(pc.senders.map(sender => sender.track)).toEqual([picture, next]);
+      expect(pc.senders.map(sender => sender.track)).toEqual([lastClone(picture), next]);
       return;
     }
     outputs.delete("candidate");
@@ -4313,7 +4326,7 @@ test.each(["candidate", "audio", "source", "pending", "late", "channel", "initia
     left.setOutgoing(outputs);
     await exchange(false);
     expect(failed).not.toHaveBeenCalled();
-    expect(pc.senders.some(sender => sender.track === following)).toBe(true);
+    expect(pc.senders.some(sender => sender.track === lastClone(following))).toBe(true);
   } finally { transports.forEach(transport => transport.close()); }
 });
 

@@ -489,9 +489,8 @@ export class ChannelTransport {
     if (owner.kind !== "screen" || source.kind !== "video") return { sender: this.pc.addTrack(source, owner.stream), source, lifetime: new AbortController() };
     const profile = owner.profile;
     const layered = this.options.canReceiveVideoLayers, count = layered ? 2 : 1;
-    const isolated = !layered && profile && this.options.videoPool && supportsBrowserEncoding();
-    const pooled = allowPool && isolated;
-    const track = isolated ? this.cloneVideo(id, owner, source) : source;
+    const pooled = allowPool && !layered && profile && this.options.videoPool && supportsBrowserEncoding();
+    const track = this.cloneVideo(id, owner, source);
     const encodings = profile ? screenShareEncodings(profile, source.getSettings(), count, count)
       : layered ? [{ rid: "q", scaleResolutionDownBy: 2 }, { rid: "h", scaleResolutionDownBy: 1 }] : [{}];
     if (!layered) delete encodings[0].rid;
@@ -519,7 +518,7 @@ export class ChannelTransport {
       return binding;
     } catch (error) {
       if (binding) this.removeSender(binding);
-      else if (isolated) stopSenderVideoTrack(track);
+      else stopSenderVideoTrack(track);
       throw error;
     }
   }
