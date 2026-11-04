@@ -4508,26 +4508,40 @@ test("an earlier answer cannot finish a newer exchange on the same transport", a
   } finally { transports.forEach(transport => transport.close()); }
 });
 
-test("a resumed welcome requests resync only for the surviving transport plan", async () => {
+test.each(["connected", "disconnected", "failed", "deadline"] as const)("a resumed welcome resyncs only the surviving %s transport", async mode => {
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const { session, socket } = await setup();
+  vi.useFakeTimers();
   try {
     const state = structuredClone(session.getSnapshot().state!);
     state.pairs = ["kept", "removed"].map(id => ({ id, peerId: "z", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [] }));
     socket.receive({ type: "state", state });
     const [kept, removed] = RoomPeerConnection.instances;
-    kept.connected(); kept.channels[0].open();
-    socket.close(); session.reconnect();
+    const failed = mode === "failed" || mode === "deadline";
+    if (mode !== "deadline") { kept.connected(); kept.channels[0].open(); }
+    removed.connected(); removed.channels[0].open();
+    if (mode === "deadline") vi.advanceTimersByTime(19000);
+    socket.close();
+    if (mode === "disconnected" || mode === "failed") { kept.connectionState = mode; kept.onconnectionstatechange?.(); }
+    if (mode === "deadline") vi.advanceTimersByTime(1000);
+    if (failed) { removed.connectionState = "failed"; removed.onconnectionstatechange?.(); }
+    expect(socket.sent.filter(command => command.type === "link_state" && command.state === "failed")).toEqual([]);
+    session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
     state.pairs.pop();
     resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
-    await vi.waitFor(() => expect(resumed.sent.filter(command => command.type === "signal")).toEqual([
+    await vi.waitFor(() => expect(resumed.sent.filter(command => command.type === "signal")).toEqual(failed ? [] : [
       { type: "signal", pairId: "kept", payload: { resync: true } },
     ]));
-    expect(kept.close).not.toHaveBeenCalled();
+    expect(resumed.sent.filter(command => command.type === "link_state" && command.state === "failed")).toEqual(failed ? [
+      { type: "link_state", pairId: "kept", state: "failed" },
+    ] : []);
+    expect(kept.close).toHaveBeenCalledTimes(failed ? 1 : 0);
     expect(removed.close).toHaveBeenCalledOnce();
+    expect(RoomPeerConnection.instances).toHaveLength(2);
+    expect(kept.channels).toHaveLength(2);
   } finally { session.close(); }
 });
 

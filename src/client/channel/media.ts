@@ -129,7 +129,13 @@ export class ChannelMedia {
             const current = this.peers.get(plan.id);
             if (current) for (const [id, input] of current.inputs) this.prove(current, id, input.stream);
           },
-          failed: () => this.send({ type: "link_state", pairId: plan.id, state: "failed" }),
+          failed: released => {
+            const current = this.peers.get(plan.id);
+            if (current?.transport !== transport) return;
+            this.closePeer(current);
+            this.send({ type: "link_state", pairId: plan.id, state: "failed" });
+            this.refresh(released);
+          },
           base: ready => {
             const current = this.peers.get(plan.id);
             if (current) this.reportBase(current, ready);
@@ -173,7 +179,11 @@ export class ChannelMedia {
   }
 
   resync(): void {
-    for (const peer of this.peers.values()) peer.transport.resync();
+    for (const peer of this.peers.values()) {
+      if (["failed", "closed"].includes(peer.transport.pc.connectionState)) {
+        this.send({ type: "link_state", pairId: peer.plan.id, state: "failed" });
+      } else peer.transport.resync();
+    }
   }
 
   sendData(peerId: string, kind: "control" | "chunk", data: string | Uint8Array, allowed?: () => boolean): Promise<void> {
@@ -501,6 +511,7 @@ export class ChannelMedia {
 
   private closePeer(peer: Peer): boolean {
     for (const input of peer.inputs.values()) input.release?.();
+    peer.inputs.clear();
     return peer.transport.close();
   }
 

@@ -411,6 +411,9 @@ again after the room's five-second repair cooldown. The existing room wake-up
 schedules missing paths while retaining healthy branches, their failed-shortcut
 history and running screen-operation deadlines. Required leases on a retired
 physical pair receive a new pair identity.
+Each admitted physical pair acquires its connection resources once. Terminal
+failure releases those resources; if signaling is interrupted, the still-current
+lease reports that failure when signaling resumes instead of recreating the pair.
 Base reconciliation retains proved edges and re-evaluates unproved reservations
 against the ready tree, preferring shallower ready parents. Unchanged edges keep
 their physical leases and endpoint acknowledgements. A complete ready base path

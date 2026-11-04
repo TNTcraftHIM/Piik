@@ -59,7 +59,7 @@ interface TransportOptions {
   outgoingFailed?(flowId: string): void;
   connected(): void;
   base(ready: boolean): void;
-  failed(): void;
+  failed(resourcesReleased: boolean): void;
   data?(kind: "control" | "chunk", data: string | Uint8Array): void;
   dataState?(ready: boolean): void;
   bulkClosed?(): void;
@@ -127,7 +127,7 @@ export class ChannelTransport {
         options.connected();
         this.reportBaseReady();
         this.syncDeadline();
-      } else if (this.pc.connectionState === "failed") { options.dataState?.(false); options.input?.(null); this.fail(); }
+      } else if (this.pc.connectionState === "failed") this.fail();
       else if (["disconnected", "closed"].includes(this.pc.connectionState)) options.input?.(null);
     };
     this.pc.ondatachannel = ({ channel }) => {
@@ -150,9 +150,10 @@ export class ChannelTransport {
 
   /** Input follows selected screens, independently of room-base leases. */
   setInputEnabled(enabled: boolean): void {
+    if (this.closed) return;
     const changed = this.inputEnabled !== enabled;
     this.inputEnabled = enabled;
-    if (enabled && !this.input && !this.options.polite && !this.closed && !["failed", "closed"].includes(this.pc.connectionState)) {
+    if (enabled && !this.input && !this.options.polite && !["failed", "closed"].includes(this.pc.connectionState)) {
       this.installInput(this.pc.createDataChannel("piik-input", { ordered: true }));
       this.retryOffer();
     } else if (changed) this.options.input?.(enabled ? this.input : null);
@@ -183,6 +184,7 @@ export class ChannelTransport {
 
   /** Room leases share one reliable ordered channel on this physical pair. */
   setRooms(rooms: readonly string[]): void {
+    if (this.closed) return;
     const added = rooms.some(room => !this.rooms.has(room));
     const changed = added || rooms.length !== this.rooms.size;
     this.rooms = new Set(rooms);
@@ -288,6 +290,7 @@ export class ChannelTransport {
   }
 
   setOutgoing(streams: ReadonlyMap<string, OutgoingMedia>, resourcesReleased = false): boolean {
+    if (this.closed) return false;
     if (resourcesReleased || [...this.sending].some(([id, output]) => !output.failed && !streams.has(id)) || [...streams].some(([id, { stream }]) => {
       const output = this.sending.get(id);
       if (output?.failed) return false;
@@ -810,12 +813,12 @@ export class ChannelTransport {
 
   private fail(): void {
     if (this.closed) return;
-    this.clearDeadline();
     this.failBase();
-    this.options.failed();
+    this.options.failed(this.close());
   }
 
   close(): boolean {
+    if (this.closed) return false;
     const released = [...this.sending.values()].some(output => output.senders.length > 0);
     this.closed = true;
     this.options.dataState?.(false);
