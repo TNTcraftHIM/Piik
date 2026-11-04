@@ -110,6 +110,7 @@ impl Plan {
         if !connected.contains(&self.source) || !connected.contains(&child) {
             return None;
         }
+        let current = self.parents.get(&child);
         self.subtree(self.source)
             .into_iter()
             .filter(|parent| *parent == self.source || self.ready.contains_key(parent))
@@ -122,7 +123,15 @@ impl Plan {
                         .get(&child)
                         .is_some_and(|failed| failed.contains(parent))
             })
-            .find(|parent| self.wan_outputs(*parent, Some(child), helpers) < FANOUT)
+            .filter(|parent| self.wan_outputs(*parent, Some(child), helpers) < FANOUT)
+            // Readiness changes must not revoke a valid equal-depth reservation.
+            .min_by_key(|parent| {
+                (
+                    std::iter::successors(Some(*parent), |node| self.parents.get(node).copied())
+                        .count(),
+                    current != Some(parent),
+                )
+            })
     }
 
     fn is_display(&self, child: Uuid, helpers: &BTreeMap<Uuid, Uuid>) -> bool {
@@ -673,6 +682,56 @@ mod tests {
     }
 
     #[test]
+    fn pending_base_keeps_its_ready_parent_on_an_equal_depth_tie() {
+        use crate::transport::{BaseLink, TransportBook};
+
+        let available = set(&[1, 2, 3, 4]);
+        let demand = set(&[2, 3, 4]);
+        let mut base = BaseTree::new(id(1));
+        base.reconcile(&demand, &available, &available);
+        // B=2 is earlier in the BFS order, but only A=3 can yet relay C=4.
+        base.state(id(1), id(3), true);
+        base.state(id(3), id(1), true);
+        base.reconcile(&demand, &available, &available);
+        assert_eq!(base.plan.parents[&id(4)], id(3));
+        assert!(!base.ready(id(4)));
+
+        let project = |transports: &mut TransportBook, base: &BaseTree| {
+            transports.reconcile(
+                std::iter::empty(),
+                base.links().map(|(parent, child)| BaseLink {
+                    room_id: "room".into(),
+                    parent,
+                    child,
+                    ready: base.ready(child),
+                }),
+            );
+        };
+        let mut transports = TransportBook::default();
+        project(&mut transports, &base);
+        let original = transports.snapshot(id(4), |_| false, |_| false)[0].clone();
+
+        // C's first offer may still be in flight. B becoming ready changes
+        // neither A's authority/capacity nor the depth of C's installed edge.
+        base.state(id(1), id(2), true);
+        base.state(id(2), id(1), true);
+        base.reconcile(&demand, &available, &available);
+        project(&mut transports, &base);
+        let current = transports.snapshot(id(4), |_| false, |_| false);
+        assert_eq!(current.len(), 1);
+        assert_eq!(
+            current[0].id, original.id,
+            "an equal-depth ready relay must not revoke the pending physical attempt"
+        );
+        assert_eq!(current[0].peer_id, id(3));
+        assert_eq!(base.plan.parents[&id(4)], id(3));
+
+        // Releasing B's root slot still permits an actually shallower parent.
+        base.reconcile(&set(&[3, 4]), &available, &available);
+        assert_eq!(base.plan.parents[&id(4)], id(1));
+    }
+
+    #[test]
     fn recovered_base_replaces_an_unproved_screen_fallback() {
         let connected = set(&[1, 2, 3, 4]);
         let demand = set(&[2, 3, 4]);
@@ -736,6 +795,11 @@ mod tests {
         assert!(base.plan.ready.contains_key(&id(2)));
         assert!(base.plan.ready.contains_key(&id(3)));
         assert_eq!(screen.parents[&id(4)], id(3));
+        assert_eq!(base.plan.parents[&id(4)], id(3));
+        // A recovered equal-depth relay waits for this base attempt's own failure.
+        // The picture fallback is independent and remains installed for the graft.
+        assert!(base.state(id(3), id(4), false));
+        base.reconcile(&demand, &connected, &connected);
         assert_eq!(base.plan.parents[&id(4)], id(2));
         base.state(id(2), id(4), true);
         base.state(id(4), id(2), true);

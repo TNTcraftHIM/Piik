@@ -415,8 +415,9 @@ Each admitted physical pair acquires its connection resources once. Terminal
 failure releases those resources; if signaling is interrupted, the still-current
 lease reports that failure when signaling resumes instead of recreating the pair.
 Base reconciliation retains proved edges and re-evaluates unproved reservations
-against the ready tree, preferring shallower ready parents. Unchanged edges keep
-their physical leases and endpoint acknowledgements. A complete ready base path
+against the ready tree, preferring shallower ready parents. Equally deep choices
+retain the current eligible parent. Unchanged edges keep their physical leases
+and endpoint acknowledgements. A complete ready base path
 can replace an unproved screen fallback; proved media branches remain installed.
 Confirmed physical-pair failure informs both directions in every affected plan,
 including candidates first tried by another activity. A publication's media
