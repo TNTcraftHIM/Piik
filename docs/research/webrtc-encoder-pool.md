@@ -545,6 +545,9 @@ the same control first adopted both Original feeds 6–7 seconds after bandwidth
 restoration and kept them from 9–10 seconds onward. Temporary encoders retired;
 the healthy connection kept both Original feeds throughout restoration. Windows
 uses low-delay VBR when accepted and retains CBR for unsupported transforms.
+In a separate fixed-size control, one Mode4 encoder followed live
+2 Mbps → 100 kbps → 2 Mbps requests, returning to about 2 Mbps at 30 fps with
+decoded output and unchanged encoder identity.
 
 ### Budget Restoration
 
