@@ -264,7 +264,8 @@ fn writer(
             let message = tokio::select! {
                 _ = cancelled.changed() => break,
                 _ = channel.changed() => {
-                    if channel.borrow().as_ref().is_some_and(|binding| binding.state == BindingState::Closed) {
+                    let binding = channel.borrow();
+                    if binding.as_ref().is_some_and(|binding| binding.state == BindingState::Closed) {
                         while queue.try_recv().is_ok() {}
                     }
                     continue;
@@ -293,7 +294,8 @@ fn writer(
                 tokio::select! {
                     _ = cancelled.changed() => return,
                     _ = channel.changed() => {
-                        if channel.borrow().as_ref().is_some_and(|binding| binding.state == BindingState::Closed) {
+                        let binding = channel.borrow();
+                        if binding.as_ref().is_some_and(|binding| binding.state == BindingState::Closed) {
                             while queue.try_recv().is_ok() {}
                             break None;
                         }
@@ -331,22 +333,32 @@ fn writer(
                 tokio::select! {
                     _ = cancelled.changed() => return,
                     _ = channel.changed() => {
-                        if channel.borrow().as_ref().is_some_and(|binding| binding.token != dc.token || binding.state == BindingState::Closed) {
-                            while queue.try_recv().is_ok() {}
-                            break None;
+                        if let Some(binding) = channel.borrow().as_ref() {
+                            if binding.token != dc.token {
+                                // The pair's queue may already contain work for the new channel.
+                                break None;
+                            }
+                            if binding.state == BindingState::Closed {
+                                while queue.try_recv().is_ok() {}
+                                break None;
+                            }
                         }
                     }
                     alive = scope.changed() => { if !alive || !scope.allowed() { break None; } }
                     result = &mut send => break Some(result),
                 }
             };
-            if result.is_some_and(|result| result.is_err())
-                && report_failure
-                && channel.borrow().as_ref().is_some_and(|binding| {
+            let should_report = result.is_some_and(|result| result.is_err()) && report_failure && {
+                let binding = channel.borrow();
+                let current = binding.as_ref().is_some_and(|binding| {
                     binding.token == dc.token && binding.state == BindingState::Open
-                })
-            {
-                while queue.try_recv().is_ok() {}
+                });
+                if current {
+                    while queue.try_recv().is_ok() {}
+                }
+                current
+            };
+            if should_report {
                 let failed = crate::peer::Event::DataWriteFailed {
                     pair,
                     lane,

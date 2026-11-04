@@ -166,3 +166,114 @@ async fn native_opus_offer_and_answer_request_stereo_receive() -> Result<()> {
     runtime.close().await;
     result
 }
+
+#[tokio::test]
+async fn rebinding_writer_preserves_messages_queued_for_current_channel() -> Result<()> {
+    use crate::data::{queue_controls, DataLink, Lane, Message, MessageScope};
+    use crate::peer::tests::support::{endpoint, message, open};
+
+    let runtime = Runtime::new(None);
+    let (left, _) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+    let (right, mut events) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+    let (old, _) = open(&left, &right, &mut events).await?;
+    let next = left.create_channel("piik-room").await?;
+    if left.offer().await? {
+        let (kind, sdp) = left.local_description().await?;
+        right.accept(kind, sdp).await?;
+        let (kind, sdp) = right.local_description().await?;
+        left.accept(kind, sdp).await?;
+    }
+    let remote = tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(event) = events.recv().await {
+            if let Event::Channel(_, channel) = event {
+                return Ok::<_, anyhow::Error>(channel);
+            }
+        }
+        Err(anyhow!("replacement channel was not installed"))
+    })
+    .await??;
+    for channel in [&next, &remote] {
+        ensure!(matches!(
+            tokio::time::timeout(Duration::from_secs(5), channel.poll()).await?,
+            Some(ChannelEvent::Open)
+        ));
+    }
+
+    let (failures, mut failed) = mpsc::channel(8);
+    let link = DataLink::new(
+        left.pair,
+        Arc::new(AtomicU8::new(PeerState::Connected as u8)),
+        failures,
+    );
+    let result = async {
+        let senders = link.senders();
+        let old_ready = link.bind(Lane::Control, Uuid::new_v4(), old);
+        ensure!(old_ready.set(true));
+        let (_, MessageScope::Conversation { snapshot, .. }) = message("scope owner")? else {
+            unreachable!()
+        };
+        let (authority, _) = watch::channel(snapshot.borrow().clone());
+        let record = |tag: &str| -> Result<Message> {
+            let (bytes, mut scope) = message(tag)?;
+            let MessageScope::Conversation { snapshot, .. } = &mut scope else {
+                unreachable!()
+            };
+            *snapshot = authority.subscribe();
+            Ok(Message {
+                bytes,
+                scope,
+                report_failure: true,
+            })
+        };
+
+        // Hold only admission to the real command loop, so the old Channel::write
+        // remains pending while the pair writer observes its replacement.
+        let held = left.tx.reserve_many(left.tx.max_capacity()).await?;
+        queue_controls(&senders.control, vec![record("old in-flight")?])
+            .map_err(anyhow::Error::msg)?;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while senders.control.capacity() != senders.control.max_capacity() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .context("old message never entered Channel::write")?;
+
+        link.unbind(Lane::Control);
+        let next_ready = link.bind(Lane::Control, Uuid::new_v4(), next);
+        ensure!(next_ready.set(true));
+        let expected = [record("current one")?, record("current two")?];
+        let bytes: Vec<_> = expected
+            .iter()
+            .map(|message| message.bytes.clone())
+            .collect();
+        queue_controls(&senders.control, expected.into_iter().collect())
+            .map_err(anyhow::Error::msg)?;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while senders.control.capacity() == senders.control.max_capacity() - 2 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .context("writer never processed the binding change")?;
+        drop(held);
+
+        for expected in bytes {
+            let received = tokio::time::timeout(Duration::from_secs(5), remote.poll())
+                .await
+                .context("current-binding message was discarded during old-send cancellation")?;
+            ensure!(matches!(received, Some(ChannelEvent::Message(bytes)) if bytes == expected));
+        }
+        ensure!(
+            failed.try_recv().is_err(),
+            "replacement reported an old-send failure"
+        );
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+    link.close().await;
+    left.close().await?;
+    right.close().await?;
+    runtime.close().await;
+    result
+}
