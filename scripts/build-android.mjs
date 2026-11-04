@@ -148,6 +148,7 @@ if (!tunnelOnly) {
   const webAssets = join(android, 'app', 'src', 'main', 'assets', 'web');
   rmSync(webAssets, { recursive: true, force: true });
   mkdirSync(webAssets, { recursive: true });
+  // AGP rewrites .gz assets; an opaque archive preserves the shared Web tree.
   run('jar', ['--create', '--no-manifest', '--file', join(webAssets, 'frontend.zip'), '-C', frontend, '.']);
   writeAndroidLicenseNotices(root, join(android, 'app', 'src', 'main', 'assets', 'THIRD-PARTY-NOTICES.txt'));
   writeAndroidAppIcon(join(root, 'cmd', 'piik-app', 'piik.ico'), join(android, 'app', 'src', 'main', 'res', 'drawable-nodpi', 'piik.png'));
