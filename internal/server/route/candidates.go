@@ -186,58 +186,86 @@ func (c *Controller) retirementFor(childPeerID, producerPeerID string, tuple Can
 // candidateValid receives att when validating a live attempt.
 func (c *Controller) candidateValid(childPeerID string, plan CandidatePlan, att *attempt) bool {
 	tuple := plan.Tuple
-	if !c.allowsIncoming(childPeerID, tuple.Kind) {
+	reject := func(reason string) bool {
+		if att != nil && c.debugEnabled() {
+			c.debug("candidate-invalid", "child", c.debugPeer(childPeerID),
+				"candidate", c.debugTuple(tuple), "candidateRevision", att.revision, "reason", reason)
+		}
 		return false
+	}
+	if !c.allowsIncoming(childPeerID, tuple.Kind) {
+		return reject("route-policy")
 	}
 	child, _ := c.participants.Get(childPeerID)
 	if child == nil || child.sessionID == "" || child.departureConfirmed || (att != nil && att.childSessionID != child.sessionID) {
-		return false
+		return reject("child-session")
 	}
 	if tuple.Kind == UpstreamPeer {
 		if c.sfuOnly {
-			return false
+			return reject("sfu-only")
 		}
 		parent, _ := c.participants.Get(tuple.ParentPeerID)
-		if parent == nil || parent.sessionID == "" || parent.departureConfirmed || (att != nil && parent.sessionID != att.parentSessionID) ||
-			slices.Contains(c.descendantsOf(childPeerID), parent.peerID) || !c.sourceUsable(parent.peerID) || !c.sourceVideoReady(parent.peerID) ||
-			!c.voiceParentAllowed(childPeerID, parent.peerID) || !c.targetFits(parent.peerID, childPeerID) {
-			return false
+		if parent == nil || parent.sessionID == "" || parent.departureConfirmed || (att != nil && parent.sessionID != att.parentSessionID) {
+			return reject("parent-session")
+		}
+		if slices.Contains(c.descendantsOf(childPeerID), parent.peerID) {
+			return reject("cycle")
+		}
+		if !c.sourceUsable(parent.peerID) {
+			return reject("parent-source")
+		}
+		if !c.sourceVideoReady(parent.peerID) {
+			return reject("parent-video")
+		}
+		if !c.voiceParentAllowed(childPeerID, parent.peerID) {
+			return reject("voice-parent")
+		}
+		if !c.targetFits(parent.peerID, childPeerID) {
+			return reject("parent-capacity")
 		}
 	} else {
 		if !c.sfuEnabled {
-			return false
+			return reject("sfu-disabled")
 		}
 		if att != nil && att.hostSessionID != "" {
 			host, _ := c.participants.Get(c.hostPeerID)
 			if host == nil || !host.sessionIs(att.hostSessionID) {
-				return false
+				return reject("host-session")
 			}
 		}
 		switch tuple.Publication {
 		case PublicationReuse:
 			if c.hostPublication == nil || !c.hostPublication.Usable || !c.hostPublication.PhysicalActive ||
 				(att != nil && att.publicationGeneration != c.hostPublication.Generation) {
-				return false
+				return reject("publication-reuse")
 			}
 		case PublicationReplace:
 			if c.hostPublication == nil || c.hostPublication.Usable || !c.publicationFits(childPeerID, true) {
-				return false
+				return reject("publication-replace")
 			}
 		default:
 			if c.hostPublication != nil || !c.publicationFits(childPeerID, false) {
-				return false
+				return reject("publication-create")
 			}
 		}
 	}
 	currentPlan := c.planCandidate(childPeerID, tuple)
-	return currentPlan != nil && endpointTransitionEquals(currentPlan.EndpointTransition, plan.EndpointTransition)
+	if currentPlan == nil || !endpointTransitionEquals(currentPlan.EndpointTransition, plan.EndpointTransition) {
+		return reject("endpoint-transition")
+	}
+	return true
 }
 
 func (c *Controller) operationCandidateValid(op *operation, plan CandidatePlan, att *attempt) bool {
-	return c.candidateValid(op.childPeerID, plan, att) &&
-		((att != nil && att.connectionAttempt != nil) ||
-			!isAvailabilityOperation(op.reason) ||
-			c.candidateOpportunityAvailable(op.childPeerID, plan))
+	if !c.candidateValid(op.childPeerID, plan, att) {
+		return false
+	}
+	available := (att != nil && att.connectionAttempt != nil) ||
+		!isAvailabilityOperation(op.reason) || c.candidateOpportunityAvailable(op.childPeerID, plan)
+	if !available && att != nil {
+		c.debugOperation("candidate-invalid", op, nil, "reason", "opportunity-unavailable")
+	}
+	return available
 }
 
 func (c *Controller) physicalCopies(peerID string) int {

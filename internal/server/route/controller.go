@@ -878,6 +878,9 @@ func (c *Controller) SetPaused(paused bool, nowMs *int64) []*Resource {
 func (c *Controller) Dispose() []*Resource {
 	// Reservation first, then committed resources.
 	resources := &resourceSet{}
+	if c.operation != nil {
+		c.debugOperation("operation-disposed", c.operation, nil)
+	}
 	if c.operation != nil && c.operation.current != nil {
 		resources.add(reservationResources(c.operation.current.reservation)...)
 	}
@@ -913,6 +916,7 @@ func (c *Controller) abortOperation(nowMs *int64, bucket RejectionBucket) []*Res
 		c.finishTiming(c.operation.demandPeerID, *nowMs, c.currentFinalRoute(c.operation.demandPeerID), bucket, false)
 	}
 	op := c.operation
+	c.debugOperation("operation-aborted", op, nowMs, "reason", bucket)
 	released := []*Resource{}
 	if op.current != nil {
 		released = reservationResources(op.current.reservation)

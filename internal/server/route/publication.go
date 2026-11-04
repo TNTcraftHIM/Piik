@@ -195,6 +195,7 @@ func (c *Controller) finishPublicationAttach(op *operation, ready bool) []string
 func (c *Controller) validatePublicationAttach(op *operation, nowMs int64, failed *CandidateGuard) validation {
 	result := validation{}
 	if !c.publicationAttachOwned(op) {
+		c.debugOperation("operation-stale", op, &nowMs, "reason", "publication-owner")
 		c.advanceActiveRevision(op)
 		c.operation = nil
 		return result
@@ -202,6 +203,11 @@ func (c *Controller) validatePublicationAttach(op *operation, nowMs int64, faile
 	result.consumedGuard = failed != nil && op.current != nil && c.guardMatches(*failed, op, op.current)
 	result.expired = nowMs >= op.deadlineAtMs
 	if result.expired || result.consumedGuard {
+		event := "candidate-failed"
+		if result.expired {
+			event = "operation-deadline"
+		}
+		c.debugOperation(event, op, &nowMs)
 		result.exhaustedPeerIDs = c.finishPublicationAttach(op, false)
 	}
 	return result

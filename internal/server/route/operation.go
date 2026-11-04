@@ -337,7 +337,7 @@ func (c *Controller) BeginCurrentCandidate(input BeginInput) BeginResult {
 		details := []any{
 			"child", c.debugPeer(op.childPeerID),
 			"candidate", c.debugTuple(tuple),
-			"revision", op.current.revision,
+			"candidateRevision", op.current.revision,
 			"cursor", op.cursor,
 		}
 		if op.current.connectionAttempt != nil {
@@ -605,7 +605,7 @@ func (c *Controller) CandidateReady(guard CandidateGuard, nowMs int64, commitRes
 		c.debug("candidate-commit-rejected",
 			"child", c.debugPeer(op.childPeerID),
 			"candidate", c.debugTuple(att.tuple),
-			"revision", att.revision)
+			"candidateRevision", att.revision)
 		c.promoteNextDirectWithinHeadStart(op, nowMs)
 		c.noteRejection(op.demandPeerID, RejectionCandidateFailed)
 		failed := c.validateOrAdvance(nowMs, &guard)
@@ -626,7 +626,7 @@ func (c *Controller) CandidateReady(guard CandidateGuard, nowMs int64, commitRes
 	c.debug("candidate-ready",
 		"child", c.debugPeer(op.childPeerID),
 		"candidate", c.debugTuple(att.tuple),
-		"revision", att.revision)
+		"candidateRevision", att.revision)
 	// Displaced SFU children in map order.
 	displacedSfuChildren := []string{}
 	if att.tuple.Kind == UpstreamSfu && att.tuple.Publication == PublicationReplace {
@@ -671,7 +671,7 @@ func (c *Controller) CandidateTransportConnected(guard CandidateGuard, nowMs int
 	c.debug("candidate-transport-connected",
 		"child", c.debugPeer(op.childPeerID),
 		"candidate", c.debugTuple(att.tuple),
-		"revision", att.revision)
+		"candidateRevision", att.revision)
 	return SettleResult{
 		Accepted:       true,
 		FailedPeerIDs:  failedPeerIDsFrom(validation),
@@ -694,7 +694,7 @@ func (c *Controller) CandidateFailed(guard CandidateGuard, nowMs int64) SettleRe
 		c.debug("candidate-failed",
 			"child", c.debugPeer(op.childPeerID),
 			"candidate", c.debugTuple(op.current.tuple),
-			"revision", op.current.revision)
+			"candidateRevision", op.current.revision)
 		c.promoteNextDirectWithinHeadStart(op, nowMs)
 		c.noteRejection(op.demandPeerID, RejectionCandidateFailed)
 	}
@@ -710,28 +710,6 @@ func (c *Controller) CandidateFailed(guard CandidateGuard, nowMs int64) SettleRe
 // OperationExpired applies head-start and deadline expiry at nowMs;
 // Accepted reports whether something expired.
 func (c *Controller) OperationExpired(nowMs int64) SettleResult {
-	if op := c.operation; op != nil && c.debugEnabled() {
-		current := op.current
-		noProgress := current != nil &&
-			current.tuple.Kind == UpstreamPeer &&
-			!current.transportConnected &&
-			c.peerCandidateHasSuccessor(op) &&
-			nowMs >= current.startedAtMs+c.directHeadStartMs() &&
-			nowMs < op.deadlineAtMs
-		event := "operation-deadline"
-		if noProgress {
-			event = "candidate-no-progress"
-		}
-		var candidate any
-		if current != nil {
-			candidate = c.debugTuple(current.tuple)
-		}
-		c.debug(event,
-			"child", c.debugPeer(op.childPeerID),
-			"candidate", candidate,
-			"cursor", op.cursor,
-			"candidateCount", len(op.candidates))
-	}
 	validation := c.validateOrAdvance(nowMs, nil)
 	return SettleResult{
 		Accepted:       validation.expired,
@@ -754,6 +732,7 @@ func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard)
 		return c.validatePublicationAttach(op, nowMs, failedGuard)
 	}
 	if !c.bootstrapOperationOwned(op) {
+		c.debugOperation("operation-stale", op, &nowMs, "reason", "bootstrap-owner")
 		if op.current != nil {
 			result.released = append(result.released, reservationResources(op.current.reservation)...)
 			c.advanceActiveRevision(op)
@@ -771,6 +750,7 @@ func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard)
 		return result
 	}
 	if nowMs >= op.deadlineAtMs {
+		c.debugOperation("operation-deadline", op, &nowMs)
 		directConvergence := op.reason == DemandDirectConvergence
 		sfuBootstrap := op.reason == DemandSfuBootstrap
 		qualityConvergence := op.reason == DemandQualityConvergence
@@ -833,6 +813,7 @@ func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard)
 	child, _ := c.participants.Get(op.childPeerID)
 	demand, _ := c.participants.Get(op.demandPeerID)
 	if child == nil || !child.sessionIs(op.childSessionID) || demand == nil || !demand.sessionIs(op.demandSessionID) {
+		c.debugOperation("operation-stale", op, &nowMs, "reason", "participant-session")
 		if op.current != nil {
 			result.released = append(result.released, reservationResources(op.current.reservation)...)
 			c.advanceActiveRevision(op)
@@ -858,13 +839,15 @@ func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard)
 			if !guardFailed && !peerNoProgressExpired && plan != nil && c.operationCandidateValid(op, *plan, att) {
 				return result
 			}
+			bucket := RejectionCandidateFailed
 			if !guardFailed {
-				bucket := RejectionStale
+				bucket = RejectionStale
 				if peerNoProgressExpired {
 					bucket = RejectionFirstFrameTimeout
 				}
 				c.noteRejection(op.demandPeerID, bucket)
 			}
+			c.debugOperation("candidate-retired", op, &nowMs, "reason", bucket, "planAvailable", plan != nil)
 			if peerNoProgressExpired {
 				result.expired = true
 			}
@@ -1119,7 +1102,7 @@ func (c *Controller) commitAttempt(op *operation, att *attempt) []*Resource {
 	c.debug("route-committed",
 		"child", c.debugPeer(op.childPeerID),
 		"route", c.debugTuple(att.tuple),
-		"revision", att.revision)
+		"candidateRevision", att.revision)
 	after := &resourceSet{}
 	after.add(c.committedResources()...)
 	released := []*Resource{}
@@ -1262,6 +1245,7 @@ func (c *Controller) advanceExpiredDirectHeadStart(op *operation, nowMs int64, r
 	}
 	var activeCandidate any
 	if op.current != nil {
+		c.debugOperation("candidate-retired", op, &nowMs, "reason", RejectionFirstFrameTimeout)
 		activeCandidate = c.debugTuple(op.current.tuple)
 		c.noteRejection(op.demandPeerID, RejectionFirstFrameTimeout)
 		c.consumeCurrentAvailabilityOpportunity(op)

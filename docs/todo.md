@@ -39,8 +39,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   [#502](https://github.com/TNTcraftHIM/Piik/issues/502) on the original Windows
   host. The supplied v2.5.2 reports retain the grant and receive authorized mouse
   events, but Windows `SendInput` rejects a button event and subsequent release
-  attempts. Identify that OS refusal trigger and verify held-button recovery;
-  the local controlled Chrome trial did not reproduce it.
+  attempts. Capture whether local physical input also stops during the refusal
+  to identify its OS trigger. Later same-process reports clear the release
+  backlog; the local controlled Chrome trial did not reproduce the failure.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
