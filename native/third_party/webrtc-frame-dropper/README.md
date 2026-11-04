@@ -1,17 +1,14 @@
 # WebRTC encoder frame dropping
 
-These four unmodified upstream source files come from WebRTC commit
-`6f37672d358475cd17544121a12494da454d85fb`, the existing SDK pin in
-[published 2.x SDK pin](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/windows/webrtc-dependencies.json).
-Source: https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/
+The [Rust encoder utility](../../../prototype/channel-native/src/capture/frame_dropper.rs)
+is a semantic port of WebRTC's `modules/video_coding/utility/frame_dropper.{h,cc}`
+and `rtc_base/numerics/exp_filter.{h,cc}` at commit
+[`6f37672d358475cd17544121a12494da454d85fb`](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/).
 
-Android reuses FrameDropper and its ExpFilter dependency before encoder Surface
-submission when a platform encoder exceeds its allocation. They do not choose
-resolution, codec, media routes or transport budgets. The Android renderer owns
-one instance per physical encoder. Keep upstream code unchanged when updating
-the shared pin; LICENSE and PATENTS accompany this subset.
+Windows and Android encoder workers use it before frame submission when encoded
+output exceeds its allocation. It does not choose resolution, codec, media routes
+or transport budgets. Unused reset/enable entry points are omitted; input timing
+remains in the producer's cadence module.
 
-The isolated [Rust producer](../../../prototype/channel-native/src/capture/frame_dropper.rs)
-ports this same algorithm, with unused reset/enable entry points removed.
-Its source retains the upstream copyright and uses this directory's LICENSE
-and PATENTS; input timing remains in the producer's cadence module.
+The port retains the upstream copyright. [LICENSE](LICENSE) and [PATENTS](PATENTS)
+remain here for source attribution and the existing [package notices](../../../licenses/README.md).
