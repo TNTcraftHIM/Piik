@@ -516,6 +516,20 @@ pair does not establish an MF rate-control defect. The optional request was
 removed: it supplied no clear presentation benefit and did not pass the
 restoration target. Large-scene presentation latency remains open.
 
+With the restored settings, a normal App's twelve scene changes had a 260 ms
+median paint-to-last-packet delay and 4.9 ms from reception to composition.
+A separate metadata-only Native build uniquely matched twelve presented RTP
+timestamps through the same capture, encoder, IPC and sender. MF input-to-output
+took a median 1.0 ms; the dominant cost was outgoing burst serialization.
+Eight 215–225 KB access units took 179–265 ms from SDK admission to successful
+primary-marker UDP submission, with observed connection feedback of 5.57–7.35 Mbps.
+Three 9–11 KB units instead waited 223–244 ms for the preceding large AU to drain,
+then entered the SDK within 0.1 ms of its marker submission. This follows the
+existing whole-AU admission owner and upstream's
+[bandwidth-based pacer](https://github.com/algesten/str0m/blob/3b5b7ed1ff25d9432a87336a20bc2de336896db3/src/pacer/control.rs).
+The workload, default media settings and SDK policy stayed unchanged. Further
+latency work must address these bursts while retaining the restoration controls.
+
 ### Budget Restoration
 
 Transport allocation and encoder resolution recover separately. Replaying the

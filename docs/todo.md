@@ -14,8 +14,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   capture and input acceptance, retaining the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-- [ ] **Native H264 scene-change latency.** Trace large access units and their
-  presentation delay through the current capture and transport owners. Preserve
+- [ ] **Native H264 scene-change latency.** Reduce large-access-unit sender
+  queueing at the existing encoder/transport boundary. Preserve
   original-feed recovery and healthy siblings; the
   [burst assessment](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)
   owns the rejected buffer and low-delay overrides.
