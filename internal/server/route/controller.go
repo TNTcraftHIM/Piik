@@ -778,7 +778,7 @@ func (c *Controller) AdoptDirectConnection(input AdoptDirectConnectionInput, now
 	}
 	activeConnectionID := edge.ConnectionID
 	if c.roomMedia {
-		if !edge.VideoReady || edge.VideoGeneration != c.videoGeneration || c.videoGeneration == "" {
+		if edge.VideoConnectionID == "" || edge.VideoGeneration != c.videoGeneration || c.videoGeneration == "" {
 			return result
 		}
 		activeConnectionID = edge.VideoConnectionID
@@ -802,6 +802,7 @@ func (c *Controller) AdoptDirectConnection(input AdoptDirectConnectionInput, now
 			Tuple: CandidateTuple{Kind: edge.Kind, ParentPeerID: edge.ParentPeerID},
 		})
 	}
+	edge.VideoReady = false
 	if child, ok := c.participants.Get(input.ChildPeerID); ok {
 		child.availabilityExhausted = false
 	}

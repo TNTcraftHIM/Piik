@@ -54,7 +54,7 @@ func (c *Controller) buildCandidatePlans(childPeerID string, sfuOnly, preferUntr
 	parents := []*participant{}
 	for _, parent := range c.participants.Values() {
 		if parent.sessionID != "" && !parent.departureConfirmed && parent.peerID != childPeerID &&
-			!slices.Contains(descendants, parent.peerID) && c.sourceUsable(parent.peerID) && c.sourceVideoReady(parent.peerID) &&
+			!slices.Contains(descendants, parent.peerID) && c.sourceUsable(parent.peerID) && (!c.videoWorkEnabled() || c.SourceVideoReady(parent.peerID)) &&
 			c.voiceParentAllowed(childPeerID, parent.peerID) && c.targetFits(parent.peerID, childPeerID) {
 			parents = append(parents, parent)
 		}
@@ -214,7 +214,7 @@ func (c *Controller) candidateValid(childPeerID string, plan CandidatePlan, att 
 		if !c.sourceUsable(parent.peerID) {
 			return reject("parent-source")
 		}
-		if !c.sourceVideoReady(parent.peerID) {
+		if c.videoWorkEnabled() && !c.SourceVideoReady(parent.peerID) {
 			return reject("parent-video")
 		}
 		if !c.voiceParentAllowed(childPeerID, parent.peerID) {

@@ -967,6 +967,7 @@ func (c *Controller) commitAttempt(op *operation, att *attempt) []*Resource {
 			ConnectionID:    att.connectionID,
 			Usable:          true,
 			PhysicalActive:  true,
+			VideoReady:      !c.roomMedia || op.videoGeneration != "",
 			// Regenerate distinguishes quality trials, not the acquired route's
 			// availability opportunity if this committed connection later fails.
 			opportunityKey: c.candidateOpportunityBase(op.childPeerID, CandidatePlan{Tuple: CandidateTuple{
@@ -1004,6 +1005,7 @@ func (c *Controller) commitAttempt(op *operation, att *attempt) []*Resource {
 			ConnectionID:          att.connectionID,
 			Usable:                true,
 			PhysicalActive:        true,
+			VideoReady:            !c.roomMedia || op.videoGeneration != "",
 			Resource:              att.reservation.Edge,
 			opportunityKey:        c.candidateOpportunityBase(op.childPeerID, CandidatePlan{Tuple: att.tuple}),
 		})

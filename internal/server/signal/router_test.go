@@ -1128,6 +1128,98 @@ func TestRouterAcceptsActiveFailureForDirectConnectionAdoptedDuringRebuild(t *te
 	h.waitFailed(viewer.sessionID)
 }
 
+func TestRouterDoesNotAdmitRelayFromUnprovedReplacementVideoConnection(t *testing.T) {
+	h := newRouterHarness(t, routerHarnessOptions{capacity: 1, fakeTimers: true})
+	created := h.createRoom()
+	host := h.connectHost(created, nil, "", "")
+	relay := h.connectViewer(created, "rebuilding-relay")
+	var oldVideoID string
+	h.locked(func() {
+		h.doComplete(host)
+		h.doComplete(relay)
+	})
+	initial := h.waitPrepared(relay.sessionID)
+	h.locked(func() {
+		h.doReady(relay, int64(initial.Revision))
+		h.doRelay(relay, 1)
+		rm, _ := h.router.rooms.Get(created.RoomID)
+		settings, _ := rm.viewerSettings.Get(relay.peerID)
+		if settings.capacity != 1 {
+			t.Fatal("the relay must report its available downstream slot")
+		}
+		// As in the room-media attachment fixtures, retain the committed base
+		// connection and attach its already-proved picture to this publication.
+		rm.roomMedia, rm.mediaGeneration = true, "room_media_12345678"
+		rm.controller.SetVideoPublication(testShareGeneration, false, h.router.now())
+		before, _ := rm.controller.Snapshot().UpstreamByViewer.Get(relay.peerID)
+		oldVideoID = before.VideoConnectionID
+		if !before.VideoReady {
+			t.Fatal("the original picture must have committed before recovery")
+		}
+		authorization := h.router.peerSignalAuthorization(peerSignalInput{
+			roomID: created.RoomID, sourcePeerID: host.peerID, sourceSessionID: host.sessionID,
+			targetPeerID: relay.peerID, targetSessionID: relay.sessionID,
+			connectionID: "rebuilt_video_12345678", signalKind: "description", descriptionType: "offer",
+		})
+		if authorization != signalAuthorizationAllowed {
+			t.Fatal("the exact parent replacement offer must be authorized")
+		}
+		after, _ := rm.controller.Snapshot().UpstreamByViewer.Get(relay.peerID)
+		if after.VideoConnectionID != "rebuilt_video_12345678" || after.VideoConnectionID == before.VideoConnectionID {
+			t.Fatal("the replacement offer must adopt a new physical video identity")
+		}
+		if after.VideoReady || rm.controller.SourceVideoReady(relay.peerID) {
+			t.Fatal("the replacement must wait for its own picture proof")
+		}
+		if active := h.doMustEdge(created.RoomID, relay.peerID); active.connectionID != after.VideoConnectionID {
+			t.Fatal("the unproved replacement must retain its current signaling/observation identity")
+		}
+		if assigned := h.router.getViewerRouteUpstream(created.RoomID, relay.peerID); assigned != protocol.PeerUpstream(host.peerID) {
+			t.Fatal("waiting for picture proof must not withdraw the assigned physical route")
+		}
+		if after.ConnectionID != before.ConnectionID || after.Resource != before.Resource ||
+			!after.Usable || !after.PhysicalActive || after.ParentSessionID != before.ParentSessionID ||
+			after.ChildSessionID != before.ChildSessionID {
+			t.Fatal("picture recovery must retain the logical base/voice edge and its admission")
+		}
+		t.Logf("replacement adopted; logical/base voice identity retained; replacement videoReady=%t; no replacement ready/frame supplied", after.VideoReady)
+	})
+	// No decoded-frame/route-ready report is supplied for the replacement.
+	// The Host's only slot is occupied, so this tests relay eligibility directly.
+	child := h.connectViewer(created, "joins-during-relay-rebuild")
+	h.complete(child)
+	h.settle()
+	if prepared, ok := h.ownPrepare(child); ok && prepared.Assignment.Upstream == protocol.PeerUpstream(relay.peerID) {
+		t.Fatal("new child was prepared on the relay before its replacement video connection had any fresh ready/frame proof")
+	}
+	h.locked(func() {
+		rm, _ := h.router.rooms.Get(created.RoomID)
+		observe := func(connectionID string, frames protocol.Int) route.RouteQualityEvidenceResult {
+			return h.router.observeQualityEvidence(created.RoomID, route.RouteQualityEvidenceInput{
+				ChildPeerID: relay.peerID, ChildSessionID: relay.sessionID,
+				RouteRevision: rm.controller.Revision(), ConnectionID: connectionID,
+				Upstream:          route.QualityUpstream{Kind: route.UpstreamPeer, PeerID: host.peerID},
+				PresentationEpoch: 1, WindowMs: 1_000,
+				Metrics:      protocol.ViewerQualityEvidenceMetrics{FramesDecodedDelta: &frames},
+				AcceptedAtMs: h.router.now(),
+			})
+		}
+		if observe(oldVideoID, 1) != route.QualityEvidenceRejected {
+			t.Fatal("the retired physical connection must not restore picture proof")
+		}
+		if observe("rebuilt_video_12345678", 0) == route.QualityEvidenceRejected || rm.controller.SourceVideoReady(relay.peerID) {
+			t.Fatal("zero decoded progress must leave the replacement unproved")
+		}
+		if observe("rebuilt_video_12345678", 1) == route.QualityEvidenceRejected || !rm.controller.SourceVideoReady(relay.peerID) {
+			t.Fatal("positive current-connection decode must restore picture proof")
+		}
+	})
+	prepared := h.waitPreparedUpstream(child.sessionID, protocol.PeerUpstream(relay.peerID))
+	if prepared.Candidate.ChildPeerID != child.peerID {
+		t.Fatal("restored picture proof must wake the waiting child through the normal pump")
+	}
+}
+
 func TestRouterKeepsCommittedEdgeSignalingAuthorizedDuringAnotherPeerCandidate(t *testing.T) {
 	h := newRouterHarness(t, routerHarnessOptions{capacity: 2})
 	created := h.createRoom()

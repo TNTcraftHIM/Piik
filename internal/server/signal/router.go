@@ -366,7 +366,15 @@ func (r *router) routeDiagnosticSnapshot(roomID string) protocol.RouteDiagnostic
 func (r *router) observeQualityEvidence(roomID string, evidence route.RouteQualityEvidenceInput) route.RouteQualityEvidenceResult {
 	result := route.QualityEvidenceRejected
 	if rm, _ := r.rooms.Get(roomID); rm != nil && rm.controller != nil {
+		before, _ := rm.controller.Snapshot().UpstreamByViewer.Get(evidence.ChildPeerID)
 		result = rm.controller.ObserveQualityEvidence(evidence)
+		after, _ := rm.controller.Snapshot().UpstreamByViewer.Get(evidence.ChildPeerID)
+		if !before.VideoReady && after.VideoReady {
+			if r.hooks.routesChanged != nil {
+				r.hooks.routesChanged(roomID)
+			}
+			r.requestPump(roomID)
+		}
 	}
 	if result != route.QualityEvidenceRejected && routeDebugEnabled() {
 		upstream := "sfu"
@@ -685,7 +693,7 @@ func (r *router) peerSignalAuthorization(input peerSignalInput) signalAuthorizat
 		return signalAuthorizationDenied
 	}
 	activeConnectionID := videoConnectionID(snapshot, edge)
-	if rm.roomMedia && (!edge.VideoReady || edge.VideoGeneration != snapshot.VideoGeneration || snapshot.VideoGeneration == "") {
+	if rm.roomMedia && (edge.VideoConnectionID == "" || edge.VideoGeneration != snapshot.VideoGeneration || snapshot.VideoGeneration == "") {
 		return signalAuthorizationDenied
 	}
 	if edge.Transport == route.TransportDirect &&
@@ -710,8 +718,10 @@ func (r *router) peerSignalAuthorization(input peerSignalInput) signalAuthorizat
 			r.releaseResources(adopted.Released)
 			if adopted.ActiveRevision != snapshot.Revision {
 				r.broadcastActive(input.roomID, rm)
-				r.requestPump(input.roomID)
+			} else if r.hooks.routesChanged != nil {
+				r.hooks.routesChanged(input.roomID)
 			}
+			r.requestPump(input.roomID)
 			return signalAuthorizationAllowed
 		}
 		return signalAuthorizationDenied
@@ -1222,7 +1232,7 @@ func (r *router) assignments(
 		if !edge.PhysicalActive {
 			continue
 		}
-		if snapshot.RoomMedia && (!edge.VideoReady || edge.VideoGeneration != snapshot.VideoGeneration || snapshot.VideoGeneration == "") {
+		if snapshot.RoomMedia && (edge.VideoConnectionID == "" || edge.VideoGeneration != snapshot.VideoGeneration || snapshot.VideoGeneration == "") {
 			continue
 		}
 		if edge.Kind == route.UpstreamPeer {
@@ -1390,7 +1400,7 @@ func (r *router) pathIsPhysical(roomID string, snapshot route.RouteSnapshot, chi
 		if !ok || !edge.PhysicalActive || !edge.Usable {
 			return false
 		}
-		if snapshot.RoomMedia && (!edge.VideoReady || edge.VideoGeneration != snapshot.VideoGeneration || snapshot.VideoGeneration == "") {
+		if snapshot.RoomMedia && (edge.VideoConnectionID == "" || edge.VideoGeneration != snapshot.VideoGeneration || snapshot.VideoGeneration == "") {
 			return false
 		}
 		if edge.Kind == route.UpstreamSfu {

@@ -2723,7 +2723,7 @@ func TestSignalKeepsMediaIdentityThroughGraceWhilePresenceReturnsOnce(t *testing
 	firstViewer := openClient(t, h)
 	firstViewerAuth := authenticate(t, firstViewer, h.room, protocol.RoleViewer, "viewer-client-grace-roster", 1, "",
 		presenceOptions{displayName: "短线重连"})
-	commitPreparedRoute(t, firstViewer)
+	activeRoute := commitPreparedRoute(t, firstViewer)
 	expectMatch(t, viewerEntriesJSON(t, nextViewerPresenceMatching(t, firstHost, func(message presenceMessage) bool {
 		return slices.ContainsFunc(viewerPresenceEntries(message), func(entry presenceEntry) bool {
 			return entry.Upstream.Kind == "peer"
@@ -2733,6 +2733,17 @@ func TestSignalKeepsMediaIdentityThroughGraceWhilePresenceReturnsOnce(t *testing
 		firstViewerAuth.PeerID, firstHostAuth.PeerID))
 	firstHost.sendJSON(signalDescription(firstViewerAuth.PeerID, "connection-during-grace", "offer"))
 	firstViewer.next("signal")
+	nextViewerPresenceMatching(t, firstHost, func(message presenceMessage) bool {
+		return slices.ContainsFunc(viewerPresenceEntries(message), func(entry presenceEntry) bool {
+			return entry.PeerID == firstViewerAuth.PeerID && entry.Upstream.Kind == "peer" && !isMediaReady(entry)
+		})
+	})
+	firstViewer.sendJSON(viewerQualityEvidenceMessage("connection-during-grace", activeRoute.Revision, 0, 0))
+	nextViewerPresenceMatching(t, firstHost, func(message presenceMessage) bool {
+		return slices.ContainsFunc(viewerPresenceEntries(message), func(entry presenceEntry) bool {
+			return entry.PeerID == firstViewerAuth.PeerID && isMediaReady(entry)
+		})
+	})
 
 	h.closeClient(firstViewer)
 	if entries := viewerPresenceEntries(parsePresence(t, firstHost.next("viewer-presence").raw)); len(entries) != 0 {
