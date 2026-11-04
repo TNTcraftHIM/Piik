@@ -720,6 +720,18 @@ waits. Those waits must leave the App command processor available, and the same
 stop operation retires pending and active capture. The shared picker, activation
 flow and room/media routes remain the consumers of this platform adapter.
 
+Room voice currently plays in the Browser. System-output capture can therefore
+recapture remote voices even with headphones. Browser capture requests
+[`restrictOwnAudio`](https://w3c.github.io/mediacapture-screen-share/#dfn-restrictownaudio);
+that constraint does not control Native capture. Windows
+[process loopback](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params)
+can exclude a process tree, not one Browser document. Excluding the whole Browser
+would also remove its other sound. A candidate is to retain Browser voice decoding
+and volume controls, then send their final PCM mix to an App playback adapter.
+This is not implemented: it requires page-owned output, bounded device-driven
+buffering and capture exclusion on each platform. It must also preserve microphone
+echo processing; adding another Native Opus decoder would duplicate the current owner.
+
 Enabling Linux input requests a
 [RemoteDesktop Portal session](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html)
 beside the current capture. It commits only after its selected monitor, EIS
