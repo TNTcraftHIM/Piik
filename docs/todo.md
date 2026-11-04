@@ -24,9 +24,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Mouse input stops when Host Chrome is minimized (#502).** The
   [supplied v2.5.2 reports](https://github.com/TNTcraftHIM/Piik/issues/502)
   retain the grant and receive authorized mouse events, but Windows `SendInput`
-  rejects a button event and subsequent release attempts. Identify that OS
-  refusal trigger and verify held-button recovery; the local controlled Chrome
-  trial did not reproduce it.
+  rejects a button event and subsequent release attempts. Capture whether local
+  physical input also stops during the refusal to identify its OS trigger.
+  Later same-process reports clear the release backlog; the local controlled
+  Chrome trial did not reproduce the failure.
 - [ ] **2.x: return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the

@@ -59,7 +59,10 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   PipeWire frames with the source clock. Cancelling pending control permission
   preserves that stream and the Portal service; accepting it delivers encrypted
   keyboard and pointer input to a desktop window. Stopping capture releases
-  its Portal sessions and stream. The GNOME cancellation cleanup defect is
+  its Portal sessions and stream. Closing a source during pending control
+  permission cancels the old request and dismisses its dialog; a subsequent
+  capture produces fresh frames with input Off and no input endpoint.
+  The GNOME cancellation cleanup defect is
   recorded in the [network design](./research/channel-network-design.md#implementation-boundary).
   Real GlobalShortcuts approval binds the preferred Super + Alt + F10; actual
   EIS keyboard activation retires input grants while the original PipeWire
