@@ -730,9 +730,10 @@ would also remove its other sound. Moving the final voice PCM mix to an App sink
 would leave ordinary Chromium microphone processing without that playback in its
 [echo reference](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/platform/mediastream/media_stream_audio_processor_options.cc).
 The explicit [`all` echo-cancellation mode](https://developer.chrome.com/release-notes/141#echocancellationmode_for_getusermedia)
-requires actual device support and can add microphone latency. That playback/AEC
-tradeoff remains undecided; Browser playback stays the current owner. Processing
-the entire Native source mix would change the unprocessed source-sound contract.
+requires actual device support and can add microphone latency. The owner chose
+to retain Browser playback for the first internal test; automatic exclusion is
+separate later design work. Processing the entire Native source mix would change
+the unprocessed source-sound contract.
 
 Enabling Linux input requests a
 [RemoteDesktop Portal session](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html)

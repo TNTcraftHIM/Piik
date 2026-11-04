@@ -22,10 +22,6 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
-- [ ] **Room voice in Native display sound.** Resolve system loopback recapturing
-  Browser room voice without removing that Browser's other audio. Explicit
-  process-tree exclusion is available; it cannot isolate one Browser document.
-  App playback/AEC ownership awaits the owner's choice.
 - [ ] **Linux capture ends after selection (#499).** Follow
   [#499](https://github.com/TNTcraftHIM/Piik/issues/499) on niri/Wayland with
   GStreamer NVENC. The Browser report records capture ending before connection
@@ -74,6 +70,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Held By Owner
 
+- [ ] **Automatic room-voice exclusion from Native display sound.** Deferred
+  from the first 3.0 internal test. Keep Browser playback; the
+  [playback/AEC boundary](./research/channel-network-design.md#implementation-boundary)
+  owns the later design constraints.
 - [ ] **iOS native App.** Paused in favor of Browser use. Preserve the isolated
   implementation on `feat/ios-client`; native development and publication stay
   outside the current phase.
