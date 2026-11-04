@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { activateClient, isClientActivated, watchClientActivation } from "../../lib/session";
+import { activateClient, isClientActivated, watchClientActivation } from "../../lib/app-launch";
 import { useProjectLink } from "../../lib/use-project-link";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";

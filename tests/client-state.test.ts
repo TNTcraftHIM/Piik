@@ -1,25 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setCopy } from "../src/client/ui/copy.ts";
-import {
-  clearHostRoom,
-  clientLaunchURL,
-  getStableClientId,
-  isValidRoomId,
-  parseAppRoute,
-  mergeAuthenticatedHostRoom,
-  readHostRoom,
-  releaseHostRoom,
-  readPreferredRoomId,
-  readViewerGrant,
-  readViewerRoute,
-  watchViewerInvites,
-  replaceViewerInvite,
-  roomRouteForExplicitEntry,
-  roomRouteFromInput,
-  takeClientLaunchBootstrap,
-  writeHostRoom,
-  writePreferredRoom,
-} from "../src/client/lib/session.ts";
+import { clientLaunchURL, takeClientLaunchBootstrap, isClientActivated } from "../src/client/lib/app-launch.ts";
 import { deriveParticipantTopology } from "../src/client/lib/participant-topology.ts";
 import { labelParticipantNames, labelParticipantSnapshot } from "../src/client/lib/viewer-presence.ts";
 import {
@@ -31,7 +12,6 @@ import {
 } from "../src/client/webrtc/stats.ts";
 
 afterEach(() => {
-  releaseHostRoom();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   setCopy({ lang: "zh", vis: false });
@@ -220,548 +200,13 @@ describe("browser-local display name", () => {
   });
 });
 
-function hostRoomStorage(lockState: "available" | "held" | "absent" = "available") {
-  const local = new Map<string, string>();
-  const session = new Map<string, string>();
-  const held = new Set<string>();
-  const storage = (values: Map<string, string>) => ({
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => values.set(key, value),
-    removeItem: (key: string) => values.delete(key),
-  });
-  const request = vi.fn(async (name: string, _options: LockOptions, callback: (lock: Lock | null) => Promise<void>) => {
-    if (lockState === "held" || held.has(name)) return callback(null);
-    held.add(name);
-    try { await callback({ name, mode: "exclusive" } as Lock); }
-    finally { held.delete(name); }
-  });
-  vi.stubGlobal("window", {
-    localStorage: storage(local), sessionStorage: storage(session),
-    navigator: { locks: lockState === "absent" ? undefined : { request } },
-  });
-  return { local, session, held, request };
-}
-
-const storedHost = (roomId = "1234", hostToken = "a".repeat(32)) => ({
-  roomId, hostToken, inviteUrl: `https://share.test/r/${roomId}`,
-});
-
-describe("client session identity", () => {
-  it("works without secure-context-only crypto.randomUUID", () => {
-    const values = new Map<string, string>();
-    vi.stubGlobal("window", {
-      localStorage: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
-      },
-    });
-    vi.stubGlobal("crypto", {
-      getRandomValues: (bytes: Uint8Array) => {
-        bytes.fill(0xab);
-        return bytes;
-      },
-    });
-
-    const first = getStableClientId("viewer", "room-id-1234");
-
-    expect(first).toBe("ab".repeat(16));
-    expect(getStableClientId("viewer", "room-id-1234")).toBe(first);
-  });
-
-  it("persists a tab room and one validated origin resume hint without Viewer grants", async () => {
-    const { local: values, session } = hostRoomStorage();
-    const room = {
-      roomId: "1234",
-      hostToken: "a".repeat(32),
-      inviteUrl: `https://share.test/r/1234#v=${"b".repeat(21)}A`,
-      codeEntryPolicy: "open" as const,
-    };
-
-    await writeHostRoom(room);
-
-    expect(await readHostRoom()).toEqual({
-      roomId: "1234",
-      hostToken: "a".repeat(32),
-      canonicalUrl: "https://share.test/r/1234",
-    });
-    expect(values.get("piik:host-room:v1")).toBe(
-      JSON.stringify({
-        roomId: "1234",
-        hostToken: "a".repeat(32),
-        inviteUrl: "https://share.test/r/1234",
-      }),
-    );
-    expect([...values.values()].join(" ")).not.toContain(`${"b".repeat(21)}A`);
-    expect(session.get("piik:host-room:v1")).toBe(values.get("piik:host-room:v1"));
-    clearHostRoom();
-    expect(await readHostRoom()).toBeNull();
-  });
-
-  it("restores an origin resume hint only after claiming its room", async () => {
-    const { local, session, request } = hostRoomStorage();
-    local.set("piik:host-room:v1", JSON.stringify(storedHost("1234", "h".repeat(32))));
-    expect(await readHostRoom()).toEqual({
-      roomId: "1234",
-      hostToken: "h".repeat(32),
-      canonicalUrl: "https://share.test/r/1234",
-    });
-    expect(JSON.parse(session.get("piik:host-room:v1")!)).toEqual(JSON.parse(local.get("piik:host-room:v1")!));
-    expect(request).toHaveBeenCalledWith(expect.stringMatching(/^piik:host-room:1234:[a-f0-9]{64}$/), { ifAvailable: true }, expect.any(Function));
-    expect(request.mock.calls[0]![0]).not.toContain("h".repeat(32));
-  });
-
-  it("keeps stored room authority despite unowned metadata and discards malformed records", async () => {
-    const { local: values, session } = hostRoomStorage();
-    values.set("piik:host-room:v1", JSON.stringify({ ...storedHost(), unusedMetadata: 123 }));
-    expect(await readHostRoom()).toEqual({
-      roomId: "1234", hostToken: "a".repeat(32), canonicalUrl: "https://share.test/r/1234",
-    });
-    expect(JSON.parse(session.get("piik:host-room:v1")!)).toEqual(storedHost());
-    releaseHostRoom();
-    session.delete("piik:host-room:v1");
-    values.set("piik:host-room:v1", "not-json");
-    expect(await readHostRoom()).toBeNull();
-    expect(values.has("piik:host-room:v1")).toBe(false);
-  });
-
-  it("rejects a copied tab room while another tab holds it without deleting that hint", async () => {
-    const { local, session } = hostRoomStorage("held");
-    const saved = JSON.stringify(storedHost());
-    local.set("piik:host-room:v1", saved);
-    session.set("piik:host-room:v1", saved);
-    expect(await readHostRoom()).toBeNull();
-    expect(session.has("piik:host-room:v1")).toBe(false);
-    expect(local.get("piik:host-room:v1")).toBe(saved);
-  });
-
-  it("prefers this tab's room over another tab's latest hint and preserves that hint when forgotten", async () => {
-    const { local, session } = hostRoomStorage();
-    session.set("piik:host-room:v1", JSON.stringify(storedHost()));
-    const other = JSON.stringify(storedHost("5678", "b".repeat(32)));
-    local.set("piik:host-room:v1", other);
-    expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
-    clearHostRoom();
-    expect(session.has("piik:host-room:v1")).toBe(false);
-    expect(local.get("piik:host-room:v1")).toBe(other);
-  });
-
-  it("retains both records on unmount, reclaims on refresh, and releases the old claim on rotation", async () => {
-    const { local, session, held, request } = hostRoomStorage();
-    const room = storedHost();
-    await writeHostRoom({ ...room, codeEntryPolicy: "open" });
-    const stored = local.get("piik:host-room:v1");
-    releaseHostRoom();
-    expect(session.get("piik:host-room:v1")).toBe(stored);
-    expect(local.get("piik:host-room:v1")).toBe(stored);
-    expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
-    expect(request).toHaveBeenCalledTimes(2);
-    await writeHostRoom({ ...storedHost("5678", "b".repeat(32)), codeEntryPolicy: "open" });
-    expect(held.size).toBe(1);
-    expect([...held][0]).toContain(":5678:");
-  });
-
-  it("coalesces concurrent restoration and preserves records when an unmounted restore is cancelled", async () => {
-    const { local, session, request } = hostRoomStorage();
-    local.set("piik:host-room:v1", JSON.stringify(storedHost()));
-    const first = await Promise.all([readHostRoom(), readHostRoom()]);
-    expect(first[0]).toEqual(first[1]);
-    expect(request).toHaveBeenCalledOnce();
-    releaseHostRoom();
-    const cancelled = readHostRoom();
-    releaseHostRoom();
-    expect(await cancelled).toBeNull();
-    expect(session.has("piik:host-room:v1")).toBe(true);
-    expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
-  });
-
-  it("does not reuse the origin hint without Web Locks but keeps same-tab refresh authority", async () => {
-    const { local, session } = hostRoomStorage("absent");
-    const saved = JSON.stringify(storedHost());
-    local.set("piik:host-room:v1", saved);
-    expect(await readHostRoom()).toBeNull();
-    session.set("piik:host-room:v1", saved);
-    expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
-    releaseHostRoom();
-    expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
-  });
-
-  it("does not erase the resume hint when the server replaces this Host session", async () => {
-    const { local, session } = hostRoomStorage();
-    await writeHostRoom({ ...storedHost(), codeEntryPolicy: "open" });
-    const saved = local.get("piik:host-room:v1");
-    clearHostRoom(true);
-    expect(session.has("piik:host-room:v1")).toBe(false);
-    expect(local.get("piik:host-room:v1")).toBe(saved);
-  });
-
-  it("keeps same-tab authority when Web Locks are denied, without restoring the origin hint", async () => {
-    const { local, session, request } = hostRoomStorage();
-    request.mockRejectedValue(new DOMException("Blocked", "SecurityError"));
-    const saved = JSON.stringify(storedHost());
-    local.set("piik:host-room:v1", saved);
-    expect(await readHostRoom()).toBeNull();
-    session.set("piik:host-room:v1", saved);
-    expect(await readHostRoom()).toMatchObject({ roomId: "1234" });
-    expect(session.get("piik:host-room:v1")).toBeTruthy();
-  });
-
-  it("does not persist an obsolete creation and gives a reused code a distinct incarnation claim", async () => {
-    const { local, held, request } = hostRoomStorage();
-    let owns = true;
-    const cancelled = writeHostRoom({ ...storedHost(), codeEntryPolicy: "open" }, () => owns);
-    owns = false;
-    expect(await cancelled).toBe(false);
-    expect(local.size).toBe(0);
-    await writeHostRoom({ ...storedHost(), codeEntryPolicy: "open" });
-    const first = request.mock.calls.at(-1)![0];
-    await writeHostRoom({ ...storedHost("1234", "b".repeat(32)), codeEntryPolicy: "open" });
-    expect(request.mock.calls.at(-1)![0]).not.toBe(first);
-    expect(held.size).toBe(1);
-  });
-
-  it("retains the tab claim when a share's metadata update becomes obsolete", async () => {
-    const { held, request, local } = hostRoomStorage();
-    const room = { ...storedHost(), codeEntryPolicy: "open" as const };
-    await writeHostRoom(room);
-    const saved = local.get("piik:host-room:v1");
-    let owns = true;
-    const writing = writeHostRoom({ ...room, inviteUrl: "https://new.test/r/1234" }, () => owns);
-    owns = false;
-    expect(await writing).toBe(false);
-    expect(held.size).toBe(1);
-    expect(local.get("piik:host-room:v1")).toBe(saved);
-    expect(await readHostRoom()).toMatchObject({ roomId: "1234", canonicalUrl: "https://share.test/r/1234" });
-    expect(request).toHaveBeenCalledOnce();
-  });
-
-  it("consumes a Viewer grant fragment once into room-scoped session storage", () => {
-    const values = new Map<string, string>();
-    const replaceState = vi.fn();
-    const grant = `${"c".repeat(21)}g`;
-    vi.stubGlobal("window", {
-      location: new URL(`https://share.test/r/1234#v=${grant}`),
-      history: { state: { navigation: 1 }, replaceState },
-      sessionStorage: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
-        removeItem: (key: string) => values.delete(key),
-      },
-    });
-
-    expect(readViewerRoute()).toEqual({ roomId: "1234", viewerGrant: grant });
-    expect(values.get("piik:viewer-grant:1234")).toBe(grant);
-    expect(replaceState).toHaveBeenCalledWith(
-      { navigation: 1 },
-      "",
-      "/r/1234",
-    );
-    expect(readViewerGrant("8")).toBeNull();
-  });
-
-  it("fails malformed Viewer fragments closed without leaking across rooms", () => {
-    const values = new Map<string, string>();
-    const oldGrant = `${"d".repeat(21)}w`;
-    values.set("piik:viewer-grant:1234", oldGrant);
-    vi.stubGlobal("window", {
-      location: new URL("https://share.test/r/1234#v=malformed"),
-      history: { state: null, replaceState: vi.fn() },
-      sessionStorage: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
-        removeItem: (key: string) => values.delete(key),
-      },
-    });
-
-    expect(readViewerRoute()).toEqual({ roomId: "1234", invalidGrant: true });
-    expect(readViewerGrant("1234")).toBeNull();
-    replaceViewerInvite("1234", `https://share.test/r/1234#v=${"e".repeat(21)}Q`);
-    expect(readViewerGrant("1234")).toBe(`${"e".repeat(21)}Q`);
-    replaceViewerInvite("1234", `https://share.test/r/5678#v=${"f".repeat(21)}A`);
-    expect(readViewerGrant("1234")).toBeNull();
-    expect(readViewerGrant("5678")).toBeNull();
-  });
-
-  it("keeps the stored Viewer grant when the URL carries an unrelated fragment", () => {
-    const values = new Map<string, string>();
-    const grant = `${"d".repeat(21)}w`;
-    values.set("piik:viewer-grant:1234", grant);
-    const replaceState = vi.fn();
-    vi.stubGlobal("window", {
-      location: new URL("https://share.test/r/1234#:~:text=hello"),
-      history: { state: null, replaceState },
-      sessionStorage: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
-        removeItem: (key: string) => values.delete(key),
-      },
-    });
-
-    expect(readViewerRoute()).toEqual({ roomId: "1234", viewerGrant: grant });
-    expect(readViewerGrant("1234")).toBe(grant);
-    expect(replaceState).not.toHaveBeenCalled();
-  });
-
-  it("consumes renewed same-page invitations and ignores unrelated fragments", () => {
-    const events = new EventTarget();
-    const values = new Map<string, string>();
-    const location = new URL("https://share.test/r/1234");
-    vi.stubGlobal("window", {
-      location,
-      addEventListener: events.addEventListener.bind(events),
-      removeEventListener: events.removeEventListener.bind(events),
-      history: { state: null, replaceState: (_state: unknown, _unused: string, url: string) => {
-        location.href = new URL(url, location).href;
-      } },
-      sessionStorage: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
-        removeItem: (key: string) => values.delete(key),
-      },
-    });
-    const changed = vi.fn();
-    const stop = watchViewerInvites(changed);
-    const first = `${"g".repeat(21)}g`;
-    const renewed = `${"h".repeat(21)}w`;
-    for (const grant of [first, renewed]) {
-      location.hash = `v=${grant}`;
-      events.dispatchEvent(new Event("hashchange"));
-      expect(changed).toHaveBeenLastCalledWith({ roomId: "1234", viewerGrant: grant });
-      expect(readViewerGrant("1234")).toBe(grant);
-      expect(location.hash).toBe("");
-    }
-    location.hash = "section";
-    events.dispatchEvent(new Event("hashchange"));
-    expect(changed).toHaveBeenCalledTimes(2);
-    location.hash = "v=invalid";
-    events.dispatchEvent(new Event("hashchange"));
-    expect(changed).toHaveBeenLastCalledWith({ roomId: "1234", invalidGrant: true });
-    expect(readViewerGrant("1234")).toBeNull();
-    stop();
-    location.hash = `v=${renewed}`;
-    events.dispatchEvent(new Event("hashchange"));
-    expect(changed).toHaveBeenCalledTimes(3);
-  });
-
-  it("persists a rotated Viewer invitation across reload and clears it on revoke", () => {
-    const values = new Map<string, string>();
-    vi.stubGlobal("window", {
-      sessionStorage: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
-        removeItem: (key: string) => values.delete(key),
-      },
-    });
-    const firstGrant = `${"g".repeat(21)}g`;
-    const rotatedGrant = `${"h".repeat(21)}w`;
-
-    replaceViewerInvite("1234", `https://share.test/r/1234#v=${firstGrant}`);
-    replaceViewerInvite("1234", `https://share.test/r/1234#v=${rotatedGrant}`);
-
-    expect(readViewerGrant("1234")).toBe(rotatedGrant);
-    expect(readViewerGrant("1234")).toBe(rotatedGrant);
-
-    replaceViewerInvite("1234", null);
-    expect(readViewerGrant("1234")).toBeNull();
-  });
-
-  it("keeps the latest rotated or revoked invite through Host re-authentication", () => {
-    const values = new Map<string, string>();
-    vi.stubGlobal("window", {
-      sessionStorage: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
-        removeItem: (key: string) => values.delete(key),
-      },
-    });
-    const oldInvite = `https://share.test/r/1234#v=${"i".repeat(21)}Q`;
-    const rotatedInvite = `https://share.test/r/1234#v=${"j".repeat(21)}A`;
-    replaceViewerInvite("1234", oldInvite);
-    const activeRoom = {
-      roomId: "1234",
-      hostToken: "h".repeat(32),
-      canonicalUrl: "https://share.test/r/1234",
-      codeEntryPolicy: "open" as const,
-      inviteUrl: oldInvite,
-    };
-
-    expect(
-      mergeAuthenticatedHostRoom(
-        { ...activeRoom, inviteUrl: rotatedInvite },
-        activeRoom.roomId,
-        "open",
-      )?.inviteUrl,
-    ).toBe(rotatedInvite);
-    expect(
-      mergeAuthenticatedHostRoom(
-        { ...activeRoom, inviteUrl: null },
-        activeRoom.roomId,
-        "open",
-      )?.inviteUrl,
-    ).toBe(oldInvite);
-    replaceViewerInvite(activeRoom.roomId, null);
-    expect(
-      mergeAuthenticatedHostRoom(
-        { ...activeRoom, inviteUrl: null },
-        activeRoom.roomId,
-        "open",
-      )?.inviteUrl,
-    ).toBeNull();
-  });
-
-  it("keeps the latest preferred room without a client expiry", () => {
-    const values = new Map<string, string>();
-    vi.stubGlobal("window", {
-      localStorage: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
-        removeItem: (key: string) => values.delete(key),
-      },
-    });
-
-    writePreferredRoom("4321");
-
-    clearHostRoom();
-    expect(readPreferredRoomId()).toBe("4321");
-    expect(values.get("piik:host-room-preference:v1")).toBe(
-      JSON.stringify({ roomId: "4321" }),
-    );
-  });
-
-  it("removes a legacy Viewer grant from room-scoped session storage", () => {
-    const values = new Map<string, string>([
-      ["piik:viewer-grant:1234", `g1.1234.1.${"f".repeat(43)}`],
-    ]);
-    const removeItem = vi.fn((key: string) => values.delete(key));
-    vi.stubGlobal("window", {
-      sessionStorage: {
-        getItem: (key: string) => values.get(key) ?? null,
-        setItem: (key: string, value: string) => values.set(key, value),
-        removeItem,
-      },
-    });
-
-    expect(readViewerGrant("1234")).toBeNull();
-    expect(removeItem).toHaveBeenCalledWith("piik:viewer-grant:1234");
-  });
-});
-
-describe("room codes", () => {
-  it("accepts exactly four decimal digits without a leading zero", () => {
-    expect(isValidRoomId("1000")).toBe(true);
-    expect(isValidRoomId("9999")).toBe(true);
-    expect(isValidRoomId("123")).toBe(false);
-    expect(isValidRoomId("12345")).toBe(false);
-    expect(isValidRoomId("0")).toBe(false);
-    expect(isValidRoomId("0123")).toBe(false);
-    expect(isValidRoomId("123a")).toBe(false);
-    expect(roomRouteFromInput("1234")).toBe("/r/1234");
-    expect(roomRouteFromInput(" 1234 ")).toBeNull();
-    expect(roomRouteFromInput("１２３４")).toBeNull();
-    expect(roomRouteFromInput("0123")).toBeNull();
-  });
-
-  it("drops only the stored grant for an explicit valid room-code entry", () => {
-    const values = new Map<string, string>([
-      ["piik:viewer-grant:1234", "AAAAAAAAAAAAAAAAAAAAAA"],
-      ["piik:viewer-grant:5678", "AAAAAAAAAAAAAAAAAAAAAA"],
-    ]);
-    vi.stubGlobal("window", {
-      sessionStorage: {
-        removeItem: (key: string) => values.delete(key),
-      },
-    });
-
-    expect(roomRouteForExplicitEntry("1234")).toBe("/r/1234");
-    expect(values.has("piik:viewer-grant:1234")).toBe(false);
-    expect(values.has("piik:viewer-grant:5678")).toBe(true);
-
-    expect(roomRouteForExplicitEntry(" 5678 ")).toBeNull();
-    expect(values.has("piik:viewer-grant:5678")).toBe(true);
-  });
-
-  it("classifies routes without normalizing malformed room input", () => {
-    expect(parseAppRoute("/client")).toEqual({ kind: "client" });
-    expect(parseAppRoute("/client/")).toEqual({ kind: "client" });
-    expect(parseAppRoute("/")).toEqual({ kind: "host" });
-    expect(parseAppRoute("/join")).toEqual({ kind: "join" });
-    expect(parseAppRoute("/join/")).toEqual({ kind: "join" });
-    expect(parseAppRoute("/r/1000")).toEqual({
-      kind: "viewer",
-      roomId: "1000",
-    });
-    expect(parseAppRoute("/r/9999/")).toEqual({
-      kind: "viewer",
-      roomId: "9999",
-    });
-    for (const pathname of [
-      "/r",
-      "/r/",
-      "/r/123",
-      "/r/12345",
-      "/r/0000",
-      "/r/abcd",
-      "/r/１２３４",
-      "/r/1234/extra",
-    ]) {
-      expect(parseAppRoute(pathname)).toEqual({ kind: "malformed-room" });
-    }
-    expect(parseAppRoute("/other")).toEqual({ kind: "unknown" });
-  });
-
-  it("consumes one exact App access bootstrap without retaining it in the URL", () => {
-    const replaceState = vi.fn();
-    vi.stubGlobal("window", {
-      location: {
-        hash: `#client-access=${"a".repeat(32)}`,
-        pathname: "/",
-        search: "?mode=local",
-      },
-      history: { state: { current: true }, replaceState },
-    });
-
-    expect(takeClientLaunchBootstrap()).toMatchObject({
-      accessToken: "a".repeat(32),
-      launchedByClient: false,
-    });
-    expect(replaceState).toHaveBeenCalledWith(
-      { current: true },
-      "",
-      "/?mode=local",
-    );
-  });
-
-  it("removes an empty App bootstrap without authenticating it", () => {
-    const replaceState = vi.fn();
-    vi.stubGlobal("window", {
-      location: { hash: "#client-access=", pathname: "/", search: "" },
-      history: { state: null, replaceState },
-    });
-
-    expect(takeClientLaunchBootstrap().accessToken).toBeNull();
-    expect(replaceState).toHaveBeenCalledWith(null, "", "/");
-  });
-
-  it.each(["x", "中文", " ", "  中文 +&  ", "x".repeat(256)])("preserves a chosen App access value: %s", (password) => {
-    const replaceState = vi.fn();
-    vi.stubGlobal("window", {
-      location: {
-        hash: `#${new URLSearchParams({ "client-access": password })}`,
-        pathname: "/",
-        search: "",
-      },
-      history: { state: null, replaceState },
-    });
-
-    expect(takeClientLaunchBootstrap().accessToken).toBe(password);
-    expect(replaceState).toHaveBeenCalledWith(null, "", "/");
-  });
-
+describe("App launch handoff", () => {
   it("consumes the App launch marker from a server-private fragment", () => {
     const replaceState = vi.fn();
     const session = new Map<string, string>();
     vi.stubGlobal("window", {
       location: {
-        hash: `#client-access=${"a".repeat(32)}&piik-client=1&retained=yes`,
+        hash: "#piik-client=1&retained=yes",
         pathname: "/",
         search: "?room=6020",
       },
@@ -772,11 +217,8 @@ describe("room codes", () => {
       },
     });
 
-    expect(takeClientLaunchBootstrap()).toEqual({
-      accessToken: "a".repeat(32),
-      launchedByClient: true,
-      presentation: null,
-    });
+    expect(takeClientLaunchBootstrap()).toBeNull();
+    expect(isClientActivated()).toBe(true);
     expect(replaceState).toHaveBeenCalledWith(
       null,
       "",
@@ -784,11 +226,8 @@ describe("room codes", () => {
     );
 
     window.location.hash = "";
-    expect(takeClientLaunchBootstrap()).toEqual({
-      accessToken: null,
-      launchedByClient: true,
-      presentation: null,
-    });
+    expect(takeClientLaunchBootstrap()).toBeNull();
+    expect(isClientActivated()).toBe(true);
   });
 
   it.each([
@@ -796,7 +235,7 @@ describe("room codes", () => {
     { lang: "en", vis: true, theme: null },
   ] as const)("carries launcher presentation across origins: %j", (presentation) => {
     const target = new URL(clientLaunchURL(
-      "https://site.example/?room=9527#piik-client=1&client-access=a%2Bb%26c%3Fd%3De&retained=yes",
+      "https://site.example/?room=9527#piik-client=1&retained=yes",
       presentation,
     ));
     const replaceState = vi.fn();
@@ -806,11 +245,7 @@ describe("room codes", () => {
     });
 
     expect(target.origin).toBe("https://site.example");
-    expect(takeClientLaunchBootstrap()).toEqual({
-      accessToken: "a+b&c?d=e",
-      launchedByClient: true,
-      presentation: { ...presentation, explicit: [] },
-    });
+    expect(takeClientLaunchBootstrap()).toEqual({ ...presentation, explicit: [] });
     expect(replaceState).toHaveBeenCalledWith(null, "", "/?room=9527#retained=yes");
   });
 
@@ -819,16 +254,13 @@ describe("room codes", () => {
     ["piik-client=1&piik-lang=other&piik-mode=text&piik-theme=light", { vis: false, theme: "light", explicit: [] }],
     ["piik-client=1&piik-lang=zh&piik-mode=other&piik-theme=light", { lang: "zh", theme: "light", explicit: [] }],
     ["piik-client=1&piik-lang=zh&piik-mode=text&piik-theme=other", { lang: "zh", vis: false, explicit: [] }],
-  ])("ignores invalid preference fields without losing App access: %s", (fragment, presentation) => {
+  ])("ignores invalid preference fields: %s", (fragment, presentation) => {
     const replaceState = vi.fn();
     vi.stubGlobal("window", {
-      location: { hash: `#${fragment}&client-access=${"a".repeat(32)}`, pathname: "/", search: "" },
+      location: { hash: `#${fragment}`, pathname: "/", search: "" },
       history: { state: null, replaceState },
     });
-    expect(takeClientLaunchBootstrap()).toMatchObject({
-      accessToken: "a".repeat(32),
-      presentation,
-    });
+    expect(takeClientLaunchBootstrap()).toEqual(presentation);
     expect(replaceState).toHaveBeenCalledWith(null, "", "/");
   });
 });

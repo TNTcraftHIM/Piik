@@ -46,7 +46,7 @@ describe("App presentation handoff authority", () => {
       removeEventListener: events.removeEventListener.bind(events),
       dispatchEvent: events.dispatchEvent.bind(events),
     });
-    const { isClientActivated, activateClient, watchClientActivation } = await import("../src/client/lib/session");
+    const { isClientActivated, activateClient, watchClientActivation } = await import("../src/client/lib/app-launch");
     const changed = vi.fn();
     const release = watchClientActivation(changed);
     expect(isClientActivated()).toBe(false);
@@ -61,8 +61,8 @@ describe("App presentation handoff authority", () => {
   });
 
   it.each([
-    { name: "old launcher preserves saved choices", saved: ["zh", "vis", "dark"], fields: "", selection: "zh:true", theme: "dark", result: ["zh", "vis", "dark"] },
-    { name: "old launcher supplies only temporary first-use defaults", saved: [], fields: "", selection: "en:false", theme: "light", result: [null, null, null] },
+    { name: "default handoff preserves saved choices", saved: ["zh", "vis", "dark"], fields: "", selection: "zh:true", theme: "dark", result: ["zh", "vis", "dark"] },
+    { name: "default handoff supplies only temporary first-use defaults", saved: [], fields: "", selection: "en:false", theme: "light", result: [null, null, null] },
     { name: "explicit language keeps the destination theme", saved: ["zh", "vis", "dark"], fields: "copy", selection: "en:false", theme: "dark", result: ["en", "text", "dark"] },
     { name: "explicit theme keeps the destination language and visual mode", saved: ["zh", "vis", "dark"], fields: "theme", selection: "zh:true", theme: "light", result: ["zh", "vis", "light"] },
     { name: "both explicit domains replace saved choices", saved: ["zh", "vis", "dark"], fields: "copy,theme", selection: "en:false", theme: "light", result: ["en", "text", "light"] },
@@ -73,8 +73,8 @@ describe("App presentation handoff authority", () => {
     expect(env.document.documentElement.dataset.theme).toBe(theme);
     const copy = await import("../src/client/ui/copy");
     const themes = await import("../src/client/ui/theme");
-    const { takeClientLaunchBootstrap } = await import("../src/client/lib/session");
-    const presentation = takeClientLaunchBootstrap().presentation!;
+    const { takeClientLaunchBootstrap } = await import("../src/client/lib/app-launch");
+    const presentation = takeClientLaunchBootstrap()!;
     themes.initTheme(presentation.theme, presentation.explicit!.includes("theme"));
     copy.applyLaunchCopy(presentation, presentation.explicit!.includes("copy"));
     function Selection() { const { lang, vis } = copy.useCopy(); return `${lang}:${vis}`; }
@@ -85,7 +85,7 @@ describe("App presentation handoff authority", () => {
     expect(env.page.location.hash).toBe("");
   });
 
-  it("does not clear a saved dark theme on an old system-theme handoff", async () => {
+  it("does not clear a saved dark theme on a default system-theme handoff", async () => {
     const env = browser(["zh", "vis", "dark"]);
     const theme = await import("../src/client/ui/theme");
     theme.initTheme(null, false);
@@ -110,32 +110,29 @@ describe("App presentation handoff authority", () => {
     expect(env.saved()).toEqual([null, null, null]);
   });
 
-  it("keeps the old complete tuple and exact invitation fragment usable on old Sites", async () => {
+  it("consumes presentation and runtime port while preserving the destination fragment", async () => {
     const env = browser();
-    const { clientLaunchURL, takeClientLaunchBootstrap, readViewerRoute } = await import("../src/client/lib/session");
-    const grant = `${"a".repeat(21)}A`;
-    const target = new URL(clientLaunchURL(`https://site.example/r/9527?debug=1#piik-client=1&v=${grant}`, {
+    const { clientLaunchURL, takeClientLaunchBootstrap } = await import("../src/client/lib/app-launch");
+    const target = new URL(clientLaunchURL("https://site.example/?debug=1#piik-client=1&owner=room-owner", {
       lang: "zh", vis: true, theme: "dark", explicit: ["copy", "theme"],
     }, undefined, 39730));
-    const oldFragment = new URLSearchParams(target.hash.slice(1));
-    expect(oldFragment.get("piik-lang")).toBe("zh");
-    expect(oldFragment.get("piik-mode")).toBe("vis");
-    expect(oldFragment.get("piik-theme")).toBe("dark");
+    const fragment = new URLSearchParams(target.hash.slice(1));
+    expect(fragment.get("piik-lang")).toBe("zh");
+    expect(fragment.get("piik-mode")).toBe("vis");
+    expect(fragment.get("piik-theme")).toBe("dark");
     expect(target.searchParams.get("piik-client-port")).toBe("39730");
-    // The released reader removes only these keys before its exact #v= parser.
-    for (const key of ["piik-client", "client-access", "piik-lang", "piik-mode", "piik-theme"]) oldFragment.delete(key);
-    expect(oldFragment.toString()).toBe(`v=${grant}`);
     env.page.location = target;
-    expect(takeClientLaunchBootstrap().presentation?.explicit).toEqual(["copy", "theme"]);
+    expect(takeClientLaunchBootstrap()?.explicit).toEqual(["copy", "theme"]);
     expect(env.page.location.search).toBe("?debug=1");
-    expect(readViewerRoute()).toEqual({ roomId: "9527", viewerGrant: grant });
+    expect(env.page.location.hash).toBe("#owner=room-owner");
   });
 
   it.each(["0", "65536", "NaN", "39721.5"])("ignores invalid runtime ports: %s", async port => {
     const env = browser();
     env.page.location = new URL(`https://site.example/?piik-client-port=${port}#piik-client=1`);
-    const { takeClientLaunchBootstrap, clientRuntimePort } = await import("../src/client/lib/session");
-    expect(takeClientLaunchBootstrap().launchedByClient).toBe(true);
+    const { takeClientLaunchBootstrap, clientRuntimePort, isClientActivated } = await import("../src/client/lib/app-launch");
+    expect(takeClientLaunchBootstrap()).toBeNull();
+    expect(isClientActivated()).toBe(true);
     expect(clientRuntimePort()).toBeNull();
     expect(env.page.location.href).toBe("https://site.example/");
     expect(env.values.get("piik:client-launch:v1")).toBe("1");
@@ -148,7 +145,7 @@ describe("App presentation handoff authority", () => {
       setItem: () => { throw new Error("blocked"); },
     } });
     env.page.location = new URL("https://site.example/?piik-client-port=49152#piik-client=1");
-    const { takeClientLaunchBootstrap, clientRuntimePort, isClientActivated } = await import("../src/client/lib/session");
+    const { takeClientLaunchBootstrap, clientRuntimePort, isClientActivated } = await import("../src/client/lib/app-launch");
     takeClientLaunchBootstrap();
     expect(clientRuntimePort()).toBe(49152);
     expect(isClientActivated()).toBe(true);

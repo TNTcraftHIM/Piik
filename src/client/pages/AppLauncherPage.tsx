@@ -12,7 +12,7 @@ import { hasCopyPreference, isCopyKey, useCopy } from "../ui/copy";
 import { consoleLanguage } from "../locales";
 import { Glyph } from "../ui/icons";
 import { currentThemePreference, subscribeTheme } from "../ui/theme";
-import { clientLaunchURL, type ClientLaunchPresentation } from "../lib/session";
+import { clientLaunchURL, type ClientLaunchPresentation } from "../lib/app-launch";
 import type { AppReleaseIdentity } from "../lib/release-update";
 import { useReleaseUpdate } from "../lib/use-release-update";
 

@@ -124,7 +124,7 @@ describe("copy catalog", () => {
         history: { state: null, replaceState: vi.fn() },
       });
       const copy = await import("../src/client/ui/copy");
-      const { clientLaunchURL, takeClientLaunchBootstrap } = await import("../src/client/lib/session");
+      const { clientLaunchURL, takeClientLaunchBootstrap } = await import("../src/client/lib/app-launch");
 
       expect(registry.resolveLang("FR-ca")).toBe("fr");
       expect(registry.resolveLang("zh-CN")).toBe("zh");
@@ -135,7 +135,7 @@ describe("copy catalog", () => {
 
       const presentation = { lang: copy.currentLang(), vis: false, theme: null };
       window.location.hash = new URL(clientLaunchURL("https://site.example/#piik-client=1", presentation)).hash;
-      expect(takeClientLaunchBootstrap().presentation).toEqual({ ...presentation, explicit: [] });
+      expect(takeClientLaunchBootstrap()).toEqual({ ...presentation, explicit: [] });
       expect(registry.consoleLanguage(presentation.lang, false)).toBe("en");
       expect(registry.consoleLanguage(presentation.lang, true)).toBe("vis");
       expect(registry.consoleLanguage("zh", false)).toBe("zh");

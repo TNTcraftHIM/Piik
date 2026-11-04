@@ -46,7 +46,7 @@ it("uses an explicit non-secret App port outside the default scan range", async 
   const page = { setTimeout, clearTimeout, location: new URL("https://channel.example/?piik-client-port=48995#piik-client=1"),
     history: { state: null, replaceState: vi.fn() } };
   vi.stubGlobal("window", page);
-  const bootstrap = await import("../src/client/lib/session");
+  const bootstrap = await import("../src/client/lib/app-launch");
   bootstrap.takeClientLaunchBootstrap();
   try {
     const fetcher = vi.fn(async () => Response.json({ service: "piik-channel-app", protocol: 1, port: 48995, token: "instance-token" }));

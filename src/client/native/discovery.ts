@@ -1,5 +1,5 @@
 import { debugEvent } from "../lib/debug";
-import { clientRuntimePort } from "../lib/session";
+import { clientRuntimePort } from "../lib/app-launch";
 import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "./discovery-ports";
 import type { AppReleaseIdentity } from "../lib/release-update";
 

@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { LauncherForm } from "../src/client/components/living/LauncherForm";
 import { siteEntryOrigin } from "../src/client/lib/site-address";
-import { clientLaunchURL } from "../src/client/lib/session";
+import { clientLaunchURL } from "../src/client/lib/app-launch";
 
 // Run the page's actual state-read effect, including cleanup, without a DOM.
 const source = ts.createSourceFile("AppLauncherPage.tsx", readFileSync(

@@ -5,7 +5,7 @@ import * as hosting from "../src/client/channel/hosting";
 import * as backupArchive from "../src/client/channel/backup-archive";
 import * as appLink from "../src/client/channel/app-link";
 import * as nativeActivation from "../src/client/native/activation";
-import * as launchSession from "../src/client/lib/session";
+import * as launchSession from "../src/client/lib/app-launch";
 import * as cameraPreviews from "../src/client/media/camera-previews";
 import { ChannelMedia } from "../src/client/channel/media";
 import { ChannelTransport } from "../src/client/channel/transport";

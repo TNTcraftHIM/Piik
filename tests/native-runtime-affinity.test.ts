@@ -65,7 +65,7 @@ it("selects the launched runtime over a faster resident App and never substitute
   };
   vi.stubGlobal("window", page);
   const { discoverChannelAppHealth, channelAppDiscovery } = await import("../src/client/channel/app-link");
-  const { takeClientLaunchBootstrap, clientRuntimePort } = await import("../src/client/lib/session");
+  const { takeClientLaunchBootstrap, clientRuntimePort } = await import("../src/client/lib/app-launch");
   // Both actual HTTP stubs are discoverable; the older one responds first.
   await expect(discoverChannelAppHealth()).resolves.toMatchObject({ port: old.port });
   page.location.search = `?piik-client-port=${selected.port}`;
@@ -85,7 +85,7 @@ it("selects the launched runtime over a faster resident App and never substitute
   await expect(channelAppDiscovery.connect()).resolves.toBeNull();
   expect(old.requests).toEqual([]);
   vi.resetModules();
-  const reloaded = await import("../src/client/lib/session");
+  const reloaded = await import("../src/client/lib/app-launch");
   reloaded.takeClientLaunchBootstrap();
   expect(reloaded.clientRuntimePort()).toBe(selected.port);
   expect(reloaded.isClientActivated()).toBe(true);
@@ -101,7 +101,7 @@ it("selects the launched runtime over a faster resident App and never substitute
   // A fresh tab shares activation preference, but has its own session storage.
   vi.stubGlobal("window", { ...page, sessionStorage: { getItem: () => null } });
   vi.resetModules();
-  const freshTab = await import("../src/client/lib/session");
+  const freshTab = await import("../src/client/lib/app-launch");
   expect(freshTab.clientRuntimePort()).toBeNull();
   const freshDiscovery = await import("../src/client/channel/app-link");
   await expect(freshDiscovery.discoverChannelAppHealth()).resolves.toMatchObject({ port: old.port });

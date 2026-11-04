@@ -110,32 +110,23 @@ describe("opt-in Browser diagnostics", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("keeps explicit diagnostics through room and App entry without copying source credentials", async () => {
-    const page = browser("?debug=1&token=source-secret");
+  it("keeps explicit diagnostics through App entry without copying source credentials", async () => {
+    browser("?debug=1&token=source-secret");
     const { withBrowserDebug } = await import("../src/client/lib/debug");
-    const { clientLaunchURL, roomRouteForExplicitEntry, readViewerRoute } = await import("../src/client/lib/session");
+    const { clientLaunchURL } = await import("../src/client/lib/app-launch");
     const launched = new URL(clientLaunchURL(
-      "https://site.example/?existing=1#client-access=target-capability&piik-client=1",
+      "https://site.example/?existing=1#owner=target-owner&piik-client=1",
       { lang: "en", vis: false, theme: "light" },
     ));
     expect(launched.origin).toBe("https://site.example");
     expect(launched.search).toBe("?existing=1&debug=1");
-    expect(new URLSearchParams(launched.hash.slice(1)).get("client-access")).toBe("target-capability");
+    expect(new URLSearchParams(launched.hash.slice(1)).get("owner")).toBe("target-owner");
     expect(launched.href).not.toContain("source-secret");
     expect(new URL(clientLaunchURL("https://site.example/",
       { lang: "en", vis: false, theme: "light" }, false)).search).toBe("");
     expect(new URL(clientLaunchURL("https://site.example/",
       { lang: "en", vis: false, theme: "light" }, true)).search).toBe("?debug=1");
-    expect(roomRouteForExplicitEntry("5678")).toBe("https://private.example/r/5678?debug=1");
     expect(withBrowserDebug("/join")).toBe("https://private.example/join?debug=1");
-    const replaceState = vi.fn();
-    Object.assign(page, { history: { state: null, replaceState } });
-    const grant = `${"a".repeat(21)}A`;
-    page.location.hash = `#v=${grant}`;
-    expect(readViewerRoute()?.viewerGrant).toBe(grant);
-    // Consuming the invitation removes its credential and unrelated query
-    // parameters while keeping diagnostics enabled for a later reload.
-    expect(replaceState).toHaveBeenCalledWith(null, "", "https://private.example/r/1234?debug=1");
   });
 
   it("does no diagnostic collection without the explicit flag", async () => {
