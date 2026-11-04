@@ -7,9 +7,6 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **Public-invitation candidate retirement.** Capture the parent and server
-  reason when a candidate is retired before its first SDP offer. Keep this
-  separate from candidates that actually enter ICE and fail.
 - [ ] **Browser sharing falls to low source FPS during motion.** Capture original
   track, isolated capture-input and sender counters during the same low-FPS
   episode on Windows Chrome with mixed direct/SFU delivery. The observed sender
