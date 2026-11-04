@@ -56,6 +56,10 @@ invocation; follow their relevant guidance without importing unrelated workflows
 
 ## Product Contract
 
+The product contract below describes published 2.x. For isolated 3.0 work,
+[status](./docs/status.md#isolated-30-prototype) indexes the accepted architecture
+and its network/data owners.
+
 - Piik is private screen sharing for one Host and up to 20 authenticated
   Viewers, with Web Host/Viewer/relay as the current product surface.
 - Current product truth is split by owner:
