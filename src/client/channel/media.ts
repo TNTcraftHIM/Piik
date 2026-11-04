@@ -292,15 +292,16 @@ export class ChannelMedia {
 
   screenPresentation(flowId: string, stream: MediaStream, state: ScreenPresentation): void {
     for (const peer of this.peers.values()) {
-      const flow = peer.plan.incoming.find(flow => flow.id === flowId && !flow.selected);
+      const flow = peer.plan.incoming.find(flow => flow.id === flowId);
       const input = peer.inputs.get(flowId);
-      if (!flow || !input || input.stream !== stream || input.failed || !this.subscriptions.includes(flow.publicationId)) continue;
+      if (!flow || !input || input.stream !== stream || input.failed || !this.subscriptions.includes(flow.publicationId)
+        || !this.ownsInput(peer, flowId, input)) continue;
       if (state === "failed") {
         input.failed = true;
         input.release?.();
         this.send({ type: "flow_state", flowId, pairId: peer.plan.id, state: "failed" });
         this.refresh();
-      } else if (!input.switchReady) {
+      } else if (!flow.selected && !input.switchReady) {
         input.presentationReady = state === "prepared";
         this.switchReady(peer, flowId, input);
       }

@@ -3092,6 +3092,36 @@ test.each([
   } finally { media.reset(); session.close(); }
 });
 
+test("a selected screen reports only its current playback failure and keeps the room transport", async () => {
+  const fixture = await screenFixture();
+  const { media, session, state, pc, sent, changed } = fixture;
+  state.subscriptions = ["screen"];
+  media.update("a", state);
+  vi.useFakeTimers();
+  const video = remoteTrack("video"), replacement = remoteTrack("video");
+  const previous = remoteStream("previous", [video]), current = remoteStream("current", [replacement]);
+  try {
+    pc.receivers = [{ track: video, getStats: async () => decodedReport(1) } as RTCRtpReceiver];
+    await receiveScreen(fixture, previous);
+    await vi.advanceTimersByTimeAsync(0);
+    pc.receivers = [{ track: replacement, getStats: async () => decodedReport(1) } as RTCRtpReceiver];
+    await receiveScreen(fixture, current);
+    await vi.advanceTimersByTimeAsync(0);
+    media.screenPresentation("screen-flow", previous, "failed");
+    media.screenPresentation("screen-flow", current, "prepared");
+    expect(sent.some(command => command.type === "flow_state" && ["failed", "switch_ready"].includes(command.state))).toBe(false);
+    media.screenPresentation("screen-flow", current, "failed");
+    media.screenPresentation("screen-flow", current, "failed");
+    expect(sent.filter(command => command.type === "flow_state" && command.state === "failed")).toEqual([
+      { type: "flow_state", pairId: "pair", flowId: "screen-flow", state: "failed" },
+    ]);
+    expect(changed.mock.calls.at(-1)![0].has("screen")).toBe(false);
+    expect(sent.some(command => command.type === "link_state" && command.state === "failed")).toBe(false);
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(video.stop).not.toHaveBeenCalled(); expect(replacement.stop).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
+
 test.each(["approved", "warming", "retired"])("a leaf candidate stays separate until quality and presentation are %s", async outcome => {
   const fixture = await screenFixture();
   const { media, session, state, pc, sent, changed } = fixture;

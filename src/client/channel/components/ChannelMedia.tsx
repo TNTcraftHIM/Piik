@@ -34,7 +34,7 @@ function ChannelVideoInput({ input, visible, label, fit, register, frame, issue,
   input: ChannelScreenInput; visible: boolean; label: string; fit: VideoFit;
   register(input: ChannelScreenInput, element: HTMLVideoElement | null): void;
   frame(input: ChannelScreenInput, element: HTMLVideoElement): void;
-  issue(input: ChannelScreenInput, error: unknown): void;
+  issue(input: ChannelScreenInput, element: HTMLVideoElement, error: unknown): void;
   playing(input: ChannelScreenInput, paused: boolean): void;
   fullscreen(): void;
 }) {
@@ -52,15 +52,20 @@ function ChannelVideoInput({ input, visible, label, fit, register, frame, issue,
       setComposited(true); frame(input, element);
     });
     let active = true;
-    void element.play().catch(error => { if (active && playbackFailure(error)) issue(input, error); });
+    void element.play().catch(error => { if (active) issue(input, element, error); });
     return () => { active = false; stop(); element.muted = true; element.pause(); element.srcObject = null; };
   }, [input.flowId, input.stream, frame, issue]);
   return <video ref={attach} playsInline muted style={{ objectFit: fit }} aria-label={visible ? label : undefined} aria-hidden={!visible}
     data-flow-id={input.flowId} data-selected={visible} data-composited={composited} data-switch-ready={input.switchReady}
     tabIndex={visible ? 0 : -1} onPlay={() => playing(input, false)} onPause={() => playing(input, true)}
-    onEnded={() => playing(input, true)} onError={event => issue(input, event.currentTarget.error)}
+    onEnded={() => playing(input, true)} onError={event => issue(input, event.currentTarget, event.currentTarget.error)}
     onDoubleClick={visible ? fullscreen : undefined} onKeyDown={event => {
-      if (visible && event.code === "Space") { event.preventDefault(); if (event.currentTarget.paused) void event.currentTarget.play().catch(error => issue(input, error)); else event.currentTarget.pause(); }
+      if (visible && event.code === "Space") {
+        event.preventDefault();
+        const element = event.currentTarget;
+        if (element.paused) void element.play().catch(error => issue(input, element, error));
+        else element.pause();
+      }
     }} />;
 }
 
@@ -119,11 +124,14 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
     consumer.composited = true;
     changeConsumer(value => value + 1);
   }, []);
-  const issue = useCallback((input: ChannelScreenInput, error: unknown) => {
-    if (!playbackFailure(error) || !consumers.current.has(input.stream)) return;
+  const issue = useCallback((input: ChannelScreenInput, element: HTMLVideoElement, error: unknown) => {
+    const failure = playbackFailure(error);
+    if (!failure || consumers.current.get(input.stream)?.element !== element) return;
     const state = current.current;
     if (state.displayed.flowId === input.flowId && state.displayed.stream === input.stream) setBlocked(true);
-    else if (state.inputs?.some(value => value.flowId === input.flowId && !value.selected)) state.onPresentation?.(input.flowId, input.stream, "failed");
+    if (failure === "playback-failed" && state.inputs?.some(value => value.flowId === input.flowId && value.stream === input.stream)) {
+      state.onPresentation?.(input.flowId, input.stream, "failed");
+    }
   }, []);
   const playing = useCallback((input: ChannelScreenInput, value: boolean) => {
     if (current.current.displayed.flowId !== input.flowId || current.current.displayed.stream !== input.stream) return;
@@ -132,10 +140,11 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
   const play = () => {
     const element = ref.current;
     if (!element) return;
+    const displayed = current.current.displayed;
     output.current?.resume();
-    void element.play().then(() => setBlocked(false)).catch(error => {
-      if (ref.current === element && playbackFailure(error)) setBlocked(true);
-    });
+    void element.play().then(() => {
+      if (ref.current === element && consumers.current.get(displayed.stream)?.element === element) setBlocked(false);
+    }).catch(error => issue(displayed, element, error));
   };
   const fullscreenToggle = () => {
     const element = ref.current;
