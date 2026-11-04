@@ -91,7 +91,7 @@ export class ChannelTransport {
   private input: RTCDataChannel | null = null;
   private inputEnabled = false;
   private writers = new Map<RTCDataChannel, ChannelWriter>();
-  private lifetime = new AbortController();
+  private dataLifetime = new AbortController();
   private baseFailed = false;
 
   outgoingMetrics(report: RTCStatsReport, flowIds: ReadonlySet<string>): Array<{ flowId: string; metrics: ConnectionMetrics }> {
@@ -123,7 +123,7 @@ export class ChannelTransport {
     this.pc.onconnectionstatechange = () => {
       if (this.pc.connectionState === "connected") {
         if (this.inputEnabled) options.input?.(this.input);
-        options.dataState?.(true);
+        options.dataState?.(!this.dataLifetime.signal.aborted);
         options.connected();
         this.reportBaseReady();
         this.syncDeadline();
@@ -135,7 +135,7 @@ export class ChannelTransport {
         if (this.input) channel.close(); else this.installInput(channel);
         return;
       }
-      if ((channel.label !== "piik-room" && channel.label !== "piik-file") || (channel.label === "piik-room" ? this.channel : this.bulk)) { channel.close(); return; }
+      if (this.dataLifetime.signal.aborted || (channel.label !== "piik-room" && channel.label !== "piik-file") || (channel.label === "piik-room" ? this.channel : this.bulk)) { channel.close(); return; }
       this.installChannel(channel);
     };
     this.pc.ontrack = ({ streams }) => {
@@ -188,11 +188,16 @@ export class ChannelTransport {
     const added = rooms.some(room => !this.rooms.has(room));
     const changed = added || rooms.length !== this.rooms.size;
     this.rooms = new Set(rooms);
-    if (added) this.baseFailed = false;
-    if (this.rooms.size && !this.baseFailed && !this.channel && !this.options.polite) {
+    if (!rooms.length) this.closeData();
+    if (added) {
+      this.baseFailed = false;
+      if (this.dataLifetime.signal.aborted) this.dataLifetime = new AbortController();
+    }
+    if (this.dataLifetime.signal.aborted) { this.syncDeadline(); return; }
+    if (!this.channel && !this.options.polite) {
       this.installChannel(this.pc.createDataChannel("piik-room", { ordered: true }));
     }
-    if (this.rooms.size && !this.bulk && !this.options.polite) this.installChannel(this.pc.createDataChannel("piik-file", { ordered: true }));
+    if (!this.bulk && !this.options.polite) this.installChannel(this.pc.createDataChannel("piik-file", { ordered: true }));
     this.reportBaseReady();
     this.syncDeadline();
     if (changed) this.retryOffer();
@@ -237,15 +242,17 @@ export class ChannelTransport {
   }
 
   async sendData(kind: "control" | "chunk", data: string | Uint8Array, allowed?: () => boolean): Promise<void> {
+    const lifetime = this.dataLifetime.signal;
+    if (lifetime.aborted) throw new Error("peer_data_unavailable");
     let channel = kind === "control" ? this.channel : this.bulk;
     if (!channel) {
       await new Promise<void>((resolve, reject) => {
         const installed = ({ channel }: RTCDataChannelEvent) => { if (channel.label === (kind === "control" ? "piik-room" : "piik-file")) { cleanup(); resolve(); } };
         const aborted = () => { cleanup(); reject(new Error("peer_data_unavailable")); };
-        const cleanup = () => { this.pc.removeEventListener("datachannel", installed); this.lifetime.signal.removeEventListener("abort", aborted); };
+        const cleanup = () => { this.pc.removeEventListener("datachannel", installed); lifetime.removeEventListener("abort", aborted); };
         this.pc.addEventListener("datachannel", installed);
-        this.lifetime.signal.addEventListener("abort", aborted, { once: true });
-        if (this.closed) aborted();
+        lifetime.addEventListener("abort", aborted, { once: true });
+        if (lifetime.aborted) aborted();
       });
       channel = kind === "control" ? this.channel : this.bulk;
     }
@@ -254,7 +261,7 @@ export class ChannelTransport {
     if (!writer) throw new Error("data_channel_unavailable");
     try { await writer.send(data, allowed); }
     catch (error) {
-      if (this.closed || ["failed", "closed"].includes(this.pc.connectionState)) throw new Error("peer_data_unavailable");
+      if (lifetime.aborted || ["failed", "closed"].includes(this.pc.connectionState)) throw new Error("peer_data_unavailable");
       throw error;
     }
   }
@@ -266,12 +273,20 @@ export class ChannelTransport {
   private failBase(): void {
     if (!this.rooms.size || this.baseFailed) return;
     this.baseFailed = true;
-    const channel = this.channel;
-    this.channel = null;
-    if (channel) { this.writers.get(channel)?.close(); this.writers.delete(channel); }
-    channel?.close();
+    this.closeData();
     this.options.base(false);
     this.syncDeadline();
+  }
+
+  private closeData(): void {
+    if (this.dataLifetime.signal.aborted) return;
+    this.dataLifetime.abort();
+    for (const writer of this.writers.values()) writer.close();
+    this.writers.clear();
+    const channels = [this.channel, this.bulk];
+    this.channel = this.bulk = null;
+    for (const channel of channels) channel?.close();
+    this.options.dataState?.(false);
   }
 
   private syncDeadline(): void {
@@ -824,21 +839,15 @@ export class ChannelTransport {
     if (this.closed) return false;
     const released = [...this.sending.values()].some(output => output.senders.length > 0);
     this.closed = true;
-    this.options.dataState?.(false);
+    this.closeData();
     this.options.input?.(null);
-    this.lifetime.abort();
-    for (const writer of this.writers.values()) writer.close();
-    this.writers.clear();
     this.clearDeadline();
     this.pc.onicecandidate = null;
     this.pc.ontrack = null;
     this.pc.onnegotiationneeded = null;
     this.pc.onconnectionstatechange = null;
     this.pc.ondatachannel = null;
-    this.channel?.close();
-    this.bulk?.close();
     this.input?.close();
-    this.channel = null;
     for (const owner of this.sending.values()) for (const binding of owner.senders) this.removeSender(binding);
     this.pc.close();
     this.sending.clear();

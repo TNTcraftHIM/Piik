@@ -2839,7 +2839,7 @@ class RoomMediaStream {
   removeTrack(track: MediaStreamTrack) { this.tracks = this.tracks.filter(current => current !== track); }
 }
 
-async function setupRoomMedia(layered = false) {
+async function setupRoomMedia(layered = false, localSessionId = "a") {
   RoomPeerConnection.instances = [];
   RoomAudio.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
@@ -2851,7 +2851,7 @@ async function setupRoomMedia(layered = false) {
   const changed = vi.fn<(streams: ReadonlyMap<string, MediaStream>, inputs: ReadonlyMap<string, readonly ChannelScreenInput[]>) => void>();
   const media = new ChannelMedia(command => sent.push(command), changed);
   state.pairs = [{ id: "pair", peerId: "z", canReceiveVideoLayers: layered, rooms: ["first"], incoming: [], outgoing: [] }];
-  media.update("a", state);
+  media.update(localSessionId, state);
   return { session, socket, media, state, sent, changed, pc: RoomPeerConnection.instances[0] };
 }
 
@@ -4649,7 +4649,15 @@ test("data failure retires only the base attempt and does not retry unchanged de
     ]));
     state.pairs[0].rooms.push("second");
     media.update("a", state);
-    expect(pc.channels).toHaveLength(3);
+    expect(pc.channels).toHaveLength(4);
+    expect(pc.channels.slice(0, 2).map(channel => channel.readyState)).toEqual(["closed", "closed"]);
+    const [control, bulk] = pc.channels.slice(2);
+    control.open(); bulk.open();
+    await media.sendData("z", "control", "recovered");
+    await media.sendData("z", "chunk", new Uint8Array([1]));
+    expect(control.send).toHaveBeenLastCalledWith("recovered");
+    expect(bulk.send).toHaveBeenLastCalledWith(new Uint8Array([1]));
+    expect(RoomPeerConnection.instances).toEqual([pc]);
   } finally { media.reset(); session.close(); }
 });
 
@@ -4690,6 +4698,39 @@ test("connected media keeps its PC when the base channel exceeds the existing pr
     expect(pc.channels).toHaveLength(2);
     vi.advanceTimersByTime(20000);
     expect(sent.filter(command => command.type === "base_state")).toHaveLength(1);
+  } finally { media.reset(); session.close(); }
+});
+
+test("a base deadline settles missing-channel sends while polite screen media stays connected", async () => {
+  vi.useFakeTimers();
+  const { session, media, state, sent, pc } = await setupRoomMedia(false, "zz");
+  const video = remoteTrack("video"), stream = remoteStream("picture", [video]);
+  const outcomes: string[] = [];
+  const send = (kind: "control" | "chunk") => media.sendData("z", kind, kind === "control" ? "history" : new Uint8Array([1]))
+    .then(() => { outcomes.push(`${kind}:sent`); }, (error: Error) => { outcomes.push(`${kind}:${error.message}`); });
+  try {
+    state.publications = [{ id: "screen", roomId: "first", sessionId: "zz", userId: "self", kind: "screen",
+      videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]), muted: false, paused: false }];
+    state.pairs[0].outgoing = [{ id: "screen-flow", publicationId: "screen", selected: true, inputFlowId: null }];
+    media.setLocal("screen", stream, QUALITY_PROFILES["720p30"]);
+    media.update("zz", state);
+    pc.connected();
+    expect(pc.channels).toHaveLength(0);
+    expect(pc.senders).toHaveLength(1);
+    const sender = pc.senders[0];
+    const control = send("control"), chunk = send("chunk");
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(sent).toContainEqual({ type: "base_state", pairId: "pair", roomId: "first", ready: false });
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(pc.senders).toEqual([sender]);
+    expect(video.stop).not.toHaveBeenCalled();
+    expect([...outcomes].sort()).toEqual(["chunk:peer_data_unavailable", "control:peer_data_unavailable"]);
+    await Promise.all([control, chunk]);
+    const afterFailure = send("control");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(outcomes).toHaveLength(3);
+    expect(outcomes.at(-1)).toBe("control:peer_data_unavailable");
+    await afterFailure;
   } finally { media.reset(); session.close(); }
 });
 
