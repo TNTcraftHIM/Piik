@@ -203,9 +203,10 @@ before the main SSRC is known. This pin includes the upstream
 plus [persistent-queue pacing](https://github.com/algesten/str0m/pull/1115),
 [allocation probing](https://github.com/algesten/str0m/pull/1108) and
 [idle output readiness](https://github.com/algesten/str0m/issues/1011), without a
-private RTC fork. BWE keeps a zero requested minimum; the SDK owns its existing
-padding and probe policy. Return to a release containing these repairs and
-regenerate the Native, Server and Android locks when one is available.
+private RTC fork. Selected Original supply provides the SDK's minimum transmit
+demand; the SDK owns padding and probing within its estimate. Return to a release
+containing these repairs and regenerate the Native, Server and Android locks
+when one is available.
 The SDK owns ICE, DTLS/SRTP, SCTP, pacing, retransmission and congestion control.
 Piik owns source clocks, shared encodings, output demand and pair-scoped socket
 handoff; Server owns its fixed UDP listeners. The `rust-crypto` provider requires
