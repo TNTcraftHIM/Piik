@@ -726,11 +726,13 @@ recapture remote voices even with headphones. Browser capture requests
 that constraint does not control Native capture. Windows
 [process loopback](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params)
 can exclude a process tree, not one Browser document. Excluding the whole Browser
-would also remove its other sound. A candidate is to retain Browser voice decoding
-and volume controls, then send their final PCM mix to an App playback adapter.
-This is not implemented: it requires page-owned output, bounded device-driven
-buffering and capture exclusion on each platform. It must also preserve microphone
-echo processing; adding another Native Opus decoder would duplicate the current owner.
+would also remove its other sound. Moving the final voice PCM mix to an App sink
+would leave ordinary Chromium microphone processing without that playback in its
+[echo reference](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/platform/mediastream/media_stream_audio_processor_options.cc).
+The explicit [`all` echo-cancellation mode](https://developer.chrome.com/release-notes/141#echocancellationmode_for_getusermedia)
+requires actual device support and can add microphone latency. That playback/AEC
+tradeoff remains undecided; Browser playback stays the current owner. Processing
+the entire Native source mix would change the unprocessed source-sound contract.
 
 Enabling Linux input requests a
 [RemoteDesktop Portal session](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html)

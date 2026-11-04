@@ -25,6 +25,7 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Room voice in Native display sound.** Resolve system loopback recapturing
   Browser room voice without removing that Browser's other audio. Explicit
   process-tree exclusion is available; it cannot isolate one Browser document.
+  App playback/AEC ownership awaits the owner's choice.
 - [ ] **Linux capture ends after selection (#499).** Follow
   [#499](https://github.com/TNTcraftHIM/Piik/issues/499) on niri/Wayland with
   GStreamer NVENC. The Browser report records capture ending before connection
