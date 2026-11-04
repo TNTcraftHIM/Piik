@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeAndroidLicenseNotices } from './package-licenses.mjs';
@@ -147,7 +147,8 @@ if (!tunnelOnly) {
   const frontend = buildChannelWeb(root, { version, revision, cargoTarget });
   const webAssets = join(android, 'app', 'src', 'main', 'assets', 'web');
   rmSync(webAssets, { recursive: true, force: true });
-  cpSync(frontend, webAssets, { recursive: true });
+  mkdirSync(webAssets, { recursive: true });
+  run('jar', ['--create', '--no-manifest', '--file', join(webAssets, 'frontend.zip'), '-C', frontend, '.']);
   writeAndroidLicenseNotices(root, join(android, 'app', 'src', 'main', 'assets', 'THIRD-PARTY-NOTICES.txt'));
   writeAndroidAppIcon(join(root, 'cmd', 'piik-app', 'piik.ico'), join(android, 'app', 'src', 'main', 'res', 'drawable-nodpi', 'piik.png'));
   // Recreate the final ZIP so replaced native libraries leave no free blocks.

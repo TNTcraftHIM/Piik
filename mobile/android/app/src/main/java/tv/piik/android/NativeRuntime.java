@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.concurrent.CompletableFuture;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /** Bootstrap only; Rust owns rooms, site approval, launcher and networking. */
 final class NativeRuntime implements AutoCloseable {
@@ -18,7 +20,7 @@ final class NativeRuntime implements AutoCloseable {
   static NativeRuntime start(Context context) throws IOException {
     Context application = context.getApplicationContext();
     File frontend = new File(application.getCacheDir(), "channel-web");
-    copyAssets(application.getAssets(), "web", frontend);
+    extractFrontend(application.getAssets(), frontend);
     NativeRuntime runtime = new NativeRuntime();
     runtime.handle = runtime.nativeStart(
         application,
@@ -30,14 +32,21 @@ final class NativeRuntime implements AutoCloseable {
     return runtime;
   }
 
-  private static void copyAssets(AssetManager assets, String path, File target) throws IOException {
-    String[] children = assets.list(path);
-    if (children.length != 0) {
-      Files.createDirectories(target.toPath());
-      for (String child : children) copyAssets(assets, path + "/" + child, new File(target, child));
-    } else {
-      try (var input = assets.open(path)) {
-        Files.copy(input, target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+  private static void extractFrontend(AssetManager assets, File target) throws IOException {
+    var directory = target.toPath().toAbsolutePath().normalize();
+    Files.createDirectories(directory);
+    try (var archive = new ZipInputStream(assets.open("web/frontend.zip"))) {
+      ZipEntry entry;
+      while ((entry = archive.getNextEntry()) != null) {
+        var output = directory.resolve(entry.getName()).normalize();
+        if (!output.startsWith(directory)) throw new IOException("Invalid frontend archive path");
+        if (entry.isDirectory()) {
+          Files.createDirectories(output);
+        } else {
+          Files.createDirectories(output.getParent());
+          Files.copy(archive, output, StandardCopyOption.REPLACE_EXISTING);
+        }
+        archive.closeEntry();
       }
     }
   }
