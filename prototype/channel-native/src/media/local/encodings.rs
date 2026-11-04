@@ -284,6 +284,11 @@ pub(super) async fn run(
         }
         Ok::<_, anyhow::Error>(())
     }.await;
+    if let Err(error) = &result {
+        if !error.is::<Aborted>() {
+            log::warn!(target: "piik.capture", "Capture ended: {error:#}");
+        }
+    }
     control.stop();
     if let Some(preparing) = preparing.take() {
         let (request, prepared) = preparing.await;
@@ -305,12 +310,10 @@ pub(super) async fn run(
         .await
         .map_err(anyhow::Error::from)
         .and_then(|result| result);
-    let result = result.and(joined);
-    if !*cancelled.borrow() {
-        if let Err(error) = &result {
-            log::warn!(target: "piik.capture", "Capture ended: {error:#}");
-        }
+    if let Err(error) = &joined {
+        log::warn!(target: "piik.capture", "Capture cleanup failed: {error:#}");
     }
+    let result = result.and(joined);
     let error = result.as_ref().err().map(|error| format!("{error:#}"));
     if let Some(ready) = ready {
         let _ = ready.send(result.and(Err(Aborted.into())));

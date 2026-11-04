@@ -1,5 +1,5 @@
 //! Explicit App diagnostics, retained only in this process. These targets carry
-//! reviewed capture/encoder errors, never requests, registry data or SDK dumps.
+//! reviewed App/capture/encoder errors, never requests, registry data or SDK dumps.
 use anyhow::{anyhow, Result};
 use log::{LevelFilter, Log, Metadata, Record};
 use serde::Serialize;
@@ -110,6 +110,7 @@ fn now_ms() -> u64 {
 }
 fn target(value: &str) -> Option<&'static str> {
     match value {
+        "piik.app" => Some("piik.app"),
         "piik.capture" => Some("piik.capture"),
         "piik.encoder" => Some("piik.encoder"),
         _ => None,

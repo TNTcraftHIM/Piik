@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
-import { createElement } from "react";
+import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { LauncherForm } from "../src/client/components/living/LauncherForm";
+import { Btn } from "../src/client/components/living/primitives";
 import { siteEntryOrigin } from "../src/client/lib/site-address";
 import { clientLaunchURL } from "../src/client/lib/app-launch";
 
@@ -15,11 +16,16 @@ const source = ts.createSourceFile("AppLauncherPage.tsx", readFileSync(
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const declarations: string[] = [];
 let effect: string | undefined;
+let diagnosticControl: string | undefined;
 function collect(node: ts.Node): void {
+  if (ts.isJsxAttribute(node) && node.name.getText(source) === "diagnosticControl"
+    && node.initializer && ts.isJsxExpression(node.initializer)) {
+    diagnosticControl = node.initializer.expression!.getText(source);
+  }
   if (ts.isVariableDeclaration(node) && /^launcher.*Schema$/.test(node.name.getText(source))) {
     declarations.push(`const ${node.getText(source)};`);
   }
-  if (ts.isFunctionDeclaration(node) && ["beginStateChange", "changeSite", "approveSite", "enableDebug", "launch"].includes(node.name?.text ?? "")) {
+  if (ts.isFunctionDeclaration(node) && ["beginStateChange", "changeSite", "approveSite", "enableDebug", "exportDebug", "launch"].includes(node.name?.text ?? "")) {
     declarations.push(node.getText(source));
   }
   if (ts.isCallExpression(node) && node.expression.getText(source) === "useEffect"
@@ -30,7 +36,11 @@ function collect(node: ts.Node): void {
 }
 collect(source);
 if (!effect) throw new Error("Missing App launcher state-read owner");
-const executable = ts.transpileModule(`${declarations.join("\n")}\n({cleanup: (${effect})(), changeSite, approveSite, enableDebug, launch});`, {
+if (!diagnosticControl) throw new Error("Missing App launcher diagnostic control");
+const diagnosticExecutable = ts.transpileModule(`(${diagnosticControl})`, {
+  compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React },
+}).outputText;
+const executable = ts.transpileModule(`${declarations.join("\n")}\n({cleanup: (${effect})(), changeSite, approveSite, enableDebug, exportDebug, launch});`, {
   compilerOptions: { target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -39,9 +49,10 @@ const saved = {
   revision: "test", version: "development", debug: false,
   lan: { addresses: [{ address: "192.0.2.1", name: "LAN" }], selected: "192.0.2.1" },
 };
-const response = (state: typeof saved & { detail?: string; siteAccess?: "channel" } = saved) => ({ ok: true, status: 200, json: async () => state });
+const response = (state: typeof saved & { detail?: string; siteAccess?: "channel"; target?: string } = saved) => ({ ok: true, status: 200, json: async () => state });
 
 function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
+  const downloads = vi.fn();
   const state: Record<string, unknown> = {};
   const setters = Object.fromEntries([
     "Mode", "Modes", "LocalAccessPassword", "Lan", "Version", "ControlPort", "Target", "Starting", "Sites", "SiteAccess", "StartupSite",
@@ -54,7 +65,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
   const timers = new Map<number, () => void>();
   let nextTimer = 0;
   const actions = runInNewContext(executable, {
-    ...setters, z, fetch, window,
+    ...setters, z, fetch, window, downloadBlob: downloads,
     stateChanges: { current: { revision: 0, pending: 0 } },
     siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, manualSite, openOnApproval: false,
     mode: "link", lang: "en", vis: false, debug: false, appDebug: false, localAccessPassword: "",
@@ -65,8 +76,8 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
       return nextTimer;
     },
     clearTimeout: (id: number) => timers.delete(id),
-  }) as { cleanup(): void; changeSite(site: string, setting?: "site" | "startup-site", starAfterApproval?: boolean, allowed?: boolean): Promise<boolean>; approveSite(site: string): Promise<void>; enableDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
-  return { state, setters, ...actions, navigate: window.location.replace, focus: () => window.dispatchEvent(new Event("focus")),
+  }) as { cleanup(): void; changeSite(site: string, setting?: "site" | "startup-site", starAfterApproval?: boolean, allowed?: boolean): Promise<boolean>; approveSite(site: string): Promise<void>; enableDebug(): Promise<void>; exportDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
+  return { state, setters, ...actions, downloads, navigate: window.location.replace, focus: () => window.dispatchEvent(new Event("focus")),
     retry: () => {
       expect(timers.size).toBe(1);
       const [id, callback] = [...timers][0]!;
@@ -77,6 +88,47 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
 }
 
 describe("App launcher state recovery", () => {
+  it("enables App diagnostics while its existing domain is running without navigating", async () => {
+    const fetch = vi.fn(async () => response({ ...saved, target: "https://room.example" }));
+    const page = mount(fetch);
+    await settle();
+    const control = runInNewContext(diagnosticExecutable, {
+      React: { createElement }, Btn, appDebug: false, debug: false, debugBusy: false,
+      loading: false, starting: true, target: page.state.Target, error: null,
+      enableDebug: page.enableDebug, exportDebug: page.exportDebug,
+    }) as ReactElement<{ onClick(): void }>;
+    expect(renderToStaticMarkup(control)).not.toContain("disabled");
+    control.props.onClick();
+    await settle();
+    expect(fetch).toHaveBeenLastCalledWith("/api/client-launcher/debug", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+    });
+    expect(page.state.AppDebug).toBe(true);
+    expect(page.state.Target).toBe("https://room.example");
+    expect(page.navigate).not.toHaveBeenCalled();
+    page.cleanup();
+  });
+  it("retries an explicit App ZIP export without navigating or changing launcher state", async () => {
+    const fetch = vi.fn(async () => response({ ...saved, debug: true }));
+    const page = mount(fetch);
+    await settle();
+    fetch.mockResolvedValueOnce({ ok: false } as ReturnType<typeof response>);
+    await page.exportDebug();
+    expect(page.state.DebugError).toBe(true);
+    expect(page.downloads).not.toHaveBeenCalled();
+    const blob = new Blob(["fixture ZIP"], { type: "application/zip" });
+    fetch.mockResolvedValueOnce({ ok: true, blob: async () => blob } as unknown as ReturnType<typeof response>);
+    await page.exportDebug();
+    expect(fetch).toHaveBeenLastCalledWith("/api/client-launcher/debug/export", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+    });
+    expect(page.downloads).toHaveBeenCalledWith(blob, expect.stringMatching(/^piik-app-.*\.zip$/));
+    expect(page.state.AppDebug).toBe(true);
+    expect(page.state.DebugError).toBe(false);
+    expect(page.state.DebugBusy).toBe(false);
+    expect(page.navigate).not.toHaveBeenCalled();
+    page.cleanup();
+  });
   it("reads the channel App permission scope from the actual launcher response", async () => {
     const page = mount(vi.fn(async () => response({ ...saved, siteAccess: "channel" })));
     await settle();

@@ -106,6 +106,7 @@ pub(super) async fn launch(State(app): State<Arc<App>>, Json(request): Json<Requ
             let task = tokio::spawn(async move {
                 if let Err(failure) = run(owner, request, stopped, &progress).await {
                     eprintln!("App startup {}: {}", failure.reason, failure.detail);
+                    log::error!(target: "piik.app", "App startup {}: {}", failure.reason, failure.detail);
                     progress.send_replace(Progress::Failed(failure));
                 }
             });

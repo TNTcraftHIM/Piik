@@ -3048,6 +3048,7 @@ dependencies = [
  "dirs",
  "futures-util",
  "if-addrs",
+ "log",
  "piik-channel-core",
  "piik-channel-native",
  "rcgen",

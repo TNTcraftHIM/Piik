@@ -24,6 +24,7 @@ piik-channel-native = { path = "../channel-native", default-features = false }
 rtc-stun = "=0.21.1"
 anyhow = "1"
 futures-util = "0.3"
+log = "0.4"
 axum = { version = "0.8", features = ["ws"] }
 axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
 tower-http = { version = "0.6.6", features = ["fs", "set-header"] }

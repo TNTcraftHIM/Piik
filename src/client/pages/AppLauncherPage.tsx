@@ -15,6 +15,7 @@ import { currentThemePreference, subscribeTheme } from "../ui/theme";
 import { clientLaunchURL, type ClientLaunchPresentation } from "../lib/app-launch";
 import type { AppReleaseIdentity } from "../lib/release-update";
 import { useReleaseUpdate } from "../lib/use-release-update";
+import { downloadBlob } from "../lib/download";
 
 const launcherStateSchema = z.object({
   sites: z.array(z.string()),
@@ -177,6 +178,20 @@ export function AppLauncherPage() {
     finally { finish(); setDebugBusy(false); }
   }
 
+  async function exportDebug(): Promise<void> {
+    if (debugBusy) return;
+    setDebugBusy(true);
+    setDebugError(false);
+    try {
+      const response = await fetch("/api/client-launcher/debug/export", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+      if (!response.ok) throw new Error();
+      downloadBlob(await response.blob(), `piik-app-${new Date().toISOString().replace(/[:.]/g, "-")}.zip`);
+    } catch { setDebugError(true); }
+    finally { setDebugBusy(false); }
+  }
+
   function launchURL(target: string): string {
     const theme = currentThemePreference();
     const presentation: ClientLaunchPresentation = {
@@ -267,13 +282,16 @@ export function AppLauncherPage() {
   return (
     <div className="lr-app">
       <AppHeader homeHref="/client" diagnosticControl={appDebug === undefined ? null : (
-        <Btn icon="cpu" title="client.launch.debugHint" size="compact"
-          pressed={debug} tone={debug ? "on" : undefined} hint="debug-start"
-          disabled={appDebug || debugBusy || loading || starting || !!target || error?.kind === "load"}
-          onClick={() => void enableDebug()} />
+        <Btn icon={appDebug ? "arrowDown" : "cpu"} size="compact"
+          title={appDebug ? "client.launch.debugExportHint" : "client.launch.debugHint"}
+          cap={appDebug ? "client.launch.debugExport" : undefined}
+          pressed={appDebug ? undefined : debug} tone={appDebug ? "on" : undefined}
+          hint={appDebug ? undefined : "debug-start"} busy={debugBusy}
+          disabled={debugBusy || (!appDebug && (loading || error?.kind === "load"))}
+          onClick={() => void (appDebug ? exportDebug() : enableDebug())} />
       )} />
       <main className="lr-client-launch">
-        {debugError && <Pill icon="alert" tone="bad" comic="warning" alert label={t("client.launch.debugFailed")} />}
+        {debugError && <Pill icon="alert" tone="bad" comic="warning" alert label={t(appDebug ? "client.launch.debugExportFailed" : "client.launch.debugFailed")} />}
         {loading || (starting && !requestedSite) ? (
           <LoadingStatus label={starting ? "client.launch.starting" : "common.loading"} waitingCaption={starting} />
         ) : error?.kind === "load" ? (

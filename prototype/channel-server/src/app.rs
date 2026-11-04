@@ -1,6 +1,8 @@
 //! Local approval owns site access; the App owns each admitted site's room hosts.
 #[path = "app_backup.rs"]
 mod backup;
+#[path = "app_diagnostics.rs"]
+mod diagnostics;
 #[path = "app_domain.rs"]
 mod hosted;
 #[path = "app_sites.rs"]
@@ -336,6 +338,8 @@ pub async fn serve(
         .route("/rooms/{domain}/{user}/backup", put(backup::restore))
         .route("/rooms/{domain}/{user}/hosting", get(backup::describe))
         .route("/api/client-launcher", get(launcher))
+        .route("/api/client-launcher/debug", post(diagnostics::enable))
+        .route("/api/client-launcher/debug/export", post(diagnostics::export))
         .route("/api/client-launcher/launch", post(hosted::launch))
         .route("/api/client-launcher/site", post(approve))
         .route("/api/client-launcher/startup-site", post(startup))
@@ -498,7 +502,7 @@ fn launcher_state(registry: &Registry, port: u16) -> Result<Value> {
         json!({"sites":registry.approvals.keys().collect::<Vec<_>>(),"startupSite":registry.sites.startup()?,
         "defaultMode":"link","modes":["local","link"],"siteAccess":"channel",
         "version":BUILD_VERSION,"revision":BUILD_REVISION,
-        "packageTarget":PACKAGE_TARGET,"controlPort":port}),
+        "packageTarget":PACKAGE_TARGET,"controlPort":port,"debug":piik_channel_native::diagnostics::enabled()}),
     )
 }
 type ApiResult = std::result::Result<Json<Value>, (StatusCode, Json<Value>)>;

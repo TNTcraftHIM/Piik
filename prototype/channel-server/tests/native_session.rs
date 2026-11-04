@@ -402,6 +402,135 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
 }
 
 #[tokio::test]
+async fn app_diagnostics_are_local_opt_in_and_survive_service_restart() {
+    use piik_channel_prototype::app;
+
+    let folder = tempfile::tempdir().unwrap();
+    let assets = folder.path().join("web");
+    std::fs::create_dir(&assets).unwrap();
+    let config = || app::Config {
+        data_root: folder.path().to_owned(),
+        assets: assets.clone(),
+        open_browser: false,
+        cloudflared: "cloudflared".into(),
+        ice_servers: vec![],
+    };
+    for restart in [false, true] {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let local = format!("http://{address}");
+        let (stop, stopped) = oneshot::channel();
+        let service = tokio::spawn(app::serve(
+            listener,
+            config(),
+            async {
+                let _ = stopped.await;
+            },
+            None,
+        ));
+        let (_, state) = app_http(address, "GET", "/api/client-launcher", None, None).await;
+        assert_eq!(state["debug"], restart);
+        if !restart {
+            assert_eq!(
+                app_http(
+                    address,
+                    "POST",
+                    "/api/client-launcher/debug/export",
+                    Some(&local),
+                    Some(json!({}))
+                )
+                .await
+                .0,
+                409
+            );
+            assert_eq!(
+                app_http(
+                    address,
+                    "POST",
+                    "/api/client-launcher/site",
+                    Some(&local),
+                    Some(json!({"site":"https://approved.example","allowed":true}))
+                )
+                .await
+                .0,
+                200
+            );
+            for path in [
+                "/api/client-launcher/debug",
+                "/api/client-launcher/debug/export",
+            ] {
+                for origin in [None, Some("https://approved.example")] {
+                    assert_eq!(
+                        app_http(address, "POST", path, origin, Some(json!({})))
+                            .await
+                            .0,
+                        403
+                    );
+                }
+            }
+            assert_eq!(
+                app_http(
+                    address,
+                    "POST",
+                    "/api/client-launcher/debug",
+                    Some(&local),
+                    Some(json!({}))
+                )
+                .await,
+                (200, json!({"debug":true}))
+            );
+            // A real reviewed error producer, with no capture or network setup:
+            // the configured frontend deliberately has no index.html.
+            let (status, failure) = app_http(
+                address,
+                "POST",
+                "/api/client-launcher/launch",
+                Some(&local),
+                Some(json!({"mode":"local"})),
+            )
+            .await;
+            assert_eq!(status, 503);
+            assert_eq!(failure["reason"], "configuration");
+        }
+        let (_, state) = app_http(address, "GET", "/api/client-launcher", None, None).await;
+        assert_eq!(state["debug"], true);
+        let bytes = tokio::task::spawn_blocking(move || {
+            let mut response = ureq::post(format!("{local}/api/client-launcher/debug/export"))
+                .header("Origin", &local)
+                .header("Content-Type", "application/json")
+                .send("{}")
+                .unwrap();
+            assert_eq!(response.status().as_u16(), 200);
+            assert_eq!(response.headers()["content-type"], "application/zip");
+            assert_eq!(response.headers()["cache-control"], "no-store");
+            response.body_mut().read_to_vec().unwrap()
+        })
+        .await
+        .unwrap();
+        assert!(bytes.starts_with(b"PK"));
+        let contains = |value: &[u8]| bytes.windows(value.len()).any(|part| part == value);
+        for value in [
+            b"metadata.json".as_slice(),
+            b"events.ndjson",
+            b"piik.app",
+            b"App startup configuration: frontend directory must contain index.html",
+        ] {
+            assert!(contains(value), "missing expected ZIP entry/event");
+        }
+        assert!(
+            !contains(b"approved.example"),
+            "site registry is not diagnostics"
+        );
+        stop.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), service)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+    }
+}
+
+#[tokio::test]
 async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission() {
     use piik_channel_core::{conversation::SessionSigner, wire::RoomAccess, RoomState};
     use piik_channel_native::hosted_room::HostedRoom;
