@@ -2,7 +2,7 @@ import { parse, write } from "sdp-transform";
 import { createOpaqueId } from "../lib/opaque-id";
 import { debugError, debugEvent } from "../lib/debug";
 import { debugRtcFailure, debugRtcStats, debugTrack, observeDebugConnection } from "../lib/debug-webrtc";
-import { addRemoteIceCandidate } from "../webrtc/nat-prediction";
+import { addRemoteIceCandidate } from "../webrtc/remote-ice-candidate";
 import { normalizeVideoOfferSdp } from "../webrtc/video-codec";
 import { encodedStreams } from "./browser-encoding-output";
 import {

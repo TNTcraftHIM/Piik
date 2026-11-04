@@ -1,4 +1,4 @@
-import { addRemoteIceCandidate } from "../webrtc/nat-prediction";
+import { addRemoteIceCandidate } from "../webrtc/remote-ice-candidate";
 import { collectTrackConnectionMetrics, decodedVideoFrameSamples, type StatsAccumulator } from "../webrtc/stats";
 import type { ConnectionMetrics } from "../types";
 import { preferOpusStereoReceive } from "../webrtc/opus-receive-sdp";
