@@ -543,11 +543,25 @@ separately from configured desired capacity. The SDK fills the media gap within
 its estimate and owns congestion suppression and probing. With that adapter,
 the same control first adopted both Original feeds 6–7 seconds after bandwidth
 restoration and kept them from 9–10 seconds onward. Temporary encoders retired;
-the healthy connection kept both Original feeds throughout restoration. Windows
-uses low-delay VBR when accepted and retains CBR for unsupported transforms.
-In a separate fixed-size control, one Mode4 encoder followed live
-2 Mbps → 100 kbps → 2 Mbps requests, returning to about 2 Mbps at 30 fps with
-decoded output and unchanged encoder identity.
+the healthy connection kept both Original feeds throughout restoration. This
+SDK demand input remains independent of the hardware rate-control mode.
+
+Low-rate startup rejected the low-delay VBR candidate. Two fixed-size controls
+used the same 640×360 input and live 100 kbps → 2 Mbps update. With a 2 Mbps
+initialization, Mode4 returned to about 2 Mbps; initialized at 100 kbps, it stayed
+near 207 kbps after the same update. Both kept their MFT and decoded every AU.
+Offline parsing with the pinned WebRTC H264 parser found a restored-window QP
+median of 18 versus 50. Even the high-start control's low-budget phase retained
+QP 17 while dropping frames, so its payload-rate recovery did not establish
+dynamic hardware quality control. The separate 2.x VSE control also received
+the restored allocation and valid QP, but retained QP near 51 and 320×180 output.
+
+Changing only the low-start control's rate mode to CBR restored about 2.07 Mbps
+at 30 fps, with QP median 17 and all 341 AUs decoded. Mean-property readback
+alone was insufficient evidence; the unchanged 1.728 Mbps Max-property readback
+also did not explain the Mode4 result. Windows therefore retains one CBR path
+and the existing SDK demand adapter. The low-delay VBR candidate was removed;
+its measured scene-change benefit does not meet the live-quality contract.
 
 ### Budget Restoration
 

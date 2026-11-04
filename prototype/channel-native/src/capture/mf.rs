@@ -192,17 +192,10 @@ impl Encoder {
                 manager.ResetDevice(device, token)?;
                 transform.ProcessMessage(MFT_MESSAGE_SET_D3D_MANAGER, manager.as_raw() as usize)?;
                 let api = transform.cast::<ICodecAPI>()?;
-                // Some transforms offer only the existing CBR mode.
                 api.SetValue(
                     &CODECAPI_AVEncCommonRateControlMode,
-                    &VARIANT::from(eAVEncCommonRateControlMode_LowDelayVBR.0 as u32),
-                )
-                .or_else(|_| {
-                    api.SetValue(
-                        &CODECAPI_AVEncCommonRateControlMode,
-                        &VARIANT::from(eAVEncCommonRateControlMode_CBR.0 as u32),
-                    )
-                })?;
+                    &VARIANT::from(eAVEncCommonRateControlMode_CBR.0 as u32),
+                )?;
                 api.SetValue(
                     &CODECAPI_AVEncCommonMeanBitRate,
                     &VARIANT::from(settings.bitrate),

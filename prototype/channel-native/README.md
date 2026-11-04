@@ -32,8 +32,9 @@ owns the process and output boundaries.
 Windows encoders feed their actual output size into the existing WebRTC FrameDropper
 algorithm; raw-frame admission adjusts when hardware rate control overshoots,
 without discarding encoded reference frames or changing the source clock.
-Hardware H264 prefers low-delay VBR when the transform accepts it, retaining CBR
-for transforms that reject that mode. Live bitrate updates keep the same owner.
+Windows hardware H264 uses CBR so live bitrate updates also restore encoding quality
+after low-rate startup. The [encoder assessment](../../docs/research/webrtc-encoder-pool.md#h264-burst-and-recovery)
+records the rejected low-delay VBR control. Live updates keep the same owner.
 The macOS 13+ adapter uses ScreenCaptureKit and VideoToolbox through the published
 MIT-licensed `cidre` bindings. It plugs into the same producer, source picker,
 encoding demand and page lease; it does not use the Windows worker process.
