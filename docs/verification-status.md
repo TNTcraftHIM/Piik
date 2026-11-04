@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-03
+Last updated: 2026-11-04
 
 This file summarizes evidence boundaries that materially affect product claims.
 [Status](./status.md) owns candidate and deployment readiness; research owns
@@ -43,6 +43,9 @@ controls; platform-specific integration remains in [TODO](./todo.md).
 - The combined Windows App and Server pass normal production-UI chat, voice and
   viewing flows. The App's native window capture decodes as H264 in the Browser;
   closing the captured window retires its share while room chat continues.
+  A normal App-hosted room retains GUI message reactions across peer reloads,
+  including removal. Synthetic-microphone voice keeps its capture and controls
+  through floating and actual Document PiP surfaces, retaining drafts and attachments.
   Server's default dual-stack listeners retain usable IPv4 paths when IPv6 has
   no advertisable address. Both programs release their listeners on native Ctrl+C.
 - macOS/Linux builds and bounded native checks are distinct from physical
