@@ -264,6 +264,7 @@ pub(super) fn driver() -> (
             events,
             ready_sources,
             bandwidth_changed: Arc::new(Notify::new()),
+            admitted: HashSet::new(),
             pairs: HashMap::new(),
             preparings: HashMap::new(),
             publications: HashMap::new(),

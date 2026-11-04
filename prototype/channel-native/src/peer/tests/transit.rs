@@ -264,59 +264,151 @@ async fn screen_pause_stops_both_outputs_and_resumes_the_same_source_clock() -> 
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn physical_failure_retires_only_that_source_and_keeps_other_flow_leases() -> Result<()> {
+    fn discard_failed(f: &mut Fixture, pair: Uuid) -> usize {
+        let mut failures = 0;
+        let mut retained = Vec::new();
+        while let Ok(event) = f.commands.try_recv() {
+            if matches!(&event, NativeEvent::Command(Command::LinkState {
+                pair_id, state: LinkState::Failed
+            }) if *pair_id == pair)
+            {
+                failures += 1;
+            } else {
+                retained.push(event);
+            }
+        }
+        for event in retained {
+            f.driver
+                .commands
+                .try_send(event)
+                .unwrap_or_else(|_| panic!("fixture command queue changed"));
+        }
+        failures
+    }
     let mut f = Fixture::new(vp8()).await?;
-    let sink = f.sink;
-    let flow = f.plans.iter().find(|p| p.id == sink).unwrap().outgoing[1].id;
-    f.until(|f| {
-        f.driver.pairs[&sink]
-            .outputs
-            .contains_key(&(flow, MediaKind::Video))
-    })
-    .await?;
-    let survivor = f.output(flow, MediaKind::Video);
-    f.until(|f| f.observed(&survivor.1, MediaKind::Video).is_some())
+    let result = async {
+        let sink = f.sink;
+        let flow = f.plans.iter().find(|p| p.id == sink).unwrap().outgoing[1].id;
+        f.until(|f| {
+            f.driver.pairs[&sink]
+                .outputs
+                .contains_key(&(flow, MediaKind::Video))
+        })
         .await?;
-    let before = f.observed(&survivor.1, MediaKind::Video).unwrap();
-    let failed = f.parents[0].pair;
-    let rooms = f.driver.pairs[&sink].plan.rooms.clone();
-    let leases: Vec<_> = f.driver.pairs[&sink]
-        .plan
-        .outgoing
-        .iter()
-        .map(|flow| flow.id)
-        .collect();
-    f.driver.fail(failed).await;
-    f.parents.retain(|parent| parent.pair != failed);
-    ensure!(
-        !f.driver.pairs.contains_key(&failed)
-            && f.driver
-                .sources
-                .values()
-                .all(|s| !matches!(s.origin,SourceOrigin::Incoming{pair,..}if pair==failed)),
-        "failed pair retained resources"
-    );
-    ensure!(
-        f.driver.pairs[&sink].plan.rooms == rooms
-            && f.driver.pairs[&sink]
-                .plan
-                .outgoing
-                .iter()
-                .map(|f| f.id)
-                .collect::<Vec<_>>()
-                == leases,
-        "transport failure revoked domain leases"
-    );
-    f.until(|f| {
-        f.observed(&survivor.1, MediaKind::Video)
-            .is_some_and(|p| p.2.wrapping_sub(before.2) > 9000)
-    })
-    .await?;
-    ensure!(
-        f.output(flow, MediaKind::Video) == survivor,
-        "unaffected source changed output identity"
-    );
+        let survivor = f.output(flow, MediaKind::Video);
+        f.until(|f| f.observed(&survivor.1, MediaKind::Video).is_some())
+            .await?;
+        let before = f.observed(&survivor.1, MediaKind::Video).unwrap();
+        let failed = f.parents[0].pair;
+        let failed_pc = f.driver.pairs[&failed].pc.clone();
+        let failed_instance = failed_pc.connection_metrics().await?.connection_id;
+        let rooms = f.driver.pairs[&sink].plan.rooms.clone();
+        let leases: Vec<_> = f.driver.pairs[&sink]
+            .plan
+            .outgoing
+            .iter()
+            .map(|flow| flow.id)
+            .collect();
+        f.driver.fail(failed).await;
+        f.parents.retain(|parent| parent.pair != failed);
+        ensure!(
+            !f.driver.pairs.contains_key(&failed)
+                && f.driver
+                    .sources
+                    .values()
+                    .all(|s| !matches!(s.origin,SourceOrigin::Incoming{pair,..}if pair==failed)),
+            "failed pair retained resources"
+        );
+        ensure!(
+            f.driver.pairs[&sink].plan.rooms == rooms
+                && f.driver.pairs[&sink]
+                    .plan
+                    .outgoing
+                    .iter()
+                    .map(|f| f.id)
+                    .collect::<Vec<_>>()
+                    == leases,
+            "transport failure revoked domain leases"
+        );
+        // Losing the socket write consumes the command without informing Core.
+        ensure!(
+            discard_failed(&mut f, failed) == 1,
+            "initial failure not reported"
+        );
+        // Session::state can already hold this projection while await_peer forwards
+        // LinkState::Failed; writing it does not await the authority's next snapshot.
+        f.driver
+            .update(f.plans.clone(), vec![f.publication.clone()], vec![])
+            .await?;
+        f.driver.resync().await;
+        ensure!(
+            discard_failed(&mut f, failed) == 1,
+            "resync lost the failed lease"
+        );
+        let replayed_instance = match f.driver.pairs.get(&failed) {
+            Some(pair) => {
+                Some(pair.pc.connection_metrics().await?.connection_id)
+            }
+            _ => None,
+        };
+        ensure!(
+            replayed_instance.is_none(),
+            "unchanged authority projection recreated a failed physical pair: pair={failed}, before={failed_instance}, after={replayed_instance:?}"
+        );
+        ensure!(
+            !f.driver.pairs.contains_key(&failed) && f.driver.admitted.contains(&failed),
+            "failed runtime must retire without releasing its admitted lease"
+        );
+        ensure!(
+            failed_pc.connection_metrics().await.is_err(),
+            "failed pair retained its RTC"
+        );
+        f.until(|f| {
+            f.observed(&survivor.1, MediaKind::Video)
+                .is_some_and(|p| p.2.wrapping_sub(before.2) > 9000)
+        })
+        .await?;
+        ensure!(
+            f.output(flow, MediaKind::Video) == survivor,
+            "unaffected source changed output identity"
+        );
+        let mut replacement = f.plans
+            .iter()
+            .find(|plan| plan.id == failed)
+            .unwrap()
+            .clone();
+        f.plans.retain(|plan| plan.id != failed);
+        f.driver
+            .update(f.plans.clone(), vec![f.publication.clone()], vec![])
+            .await?;
+        ensure!(
+            !f.driver.admitted.contains(&failed),
+            "withdrawn lease retained admission"
+        );
+        f.driver.resync().await;
+        ensure!(
+            discard_failed(&mut f, failed) == 0,
+            "resync reported a withdrawn lease"
+        );
+        replacement.id = Uuid::new_v4();
+        let fresh = replacement.id;
+        f.plans.push(replacement);
+        f.driver
+            .update(f.plans.clone(), vec![f.publication.clone()], vec![])
+            .await?;
+        let fresh_instance = f.driver.pairs[&fresh].pc
+            .connection_metrics()
+            .await?
+            .connection_id;
+        ensure!(
+            f.driver.admitted.contains(&fresh) && fresh_instance != failed_instance,
+            "fresh authority lease did not acquire a new runtime"
+        );
+        Ok(())
+    }
+    .await;
     f.close().await;
-    Ok(())
+    result
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn base_channel_failure_preserves_media_on_the_same_physical_pair() -> Result<()> {

@@ -66,6 +66,7 @@ impl Fixture {
             events,
             ready_sources: ready,
             bandwidth_changed: Arc::new(Notify::new()),
+            admitted: HashSet::new(),
             pairs: HashMap::new(),
             preparings: HashMap::new(),
             publications: HashMap::new(),

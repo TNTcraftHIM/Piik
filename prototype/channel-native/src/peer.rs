@@ -572,6 +572,7 @@ struct Driver {
     events: mpsc::Sender<Event>,
     ready_sources: mpsc::Sender<SourceReady>,
     bandwidth_changed: Arc<Notify>,
+    admitted: HashSet<Uuid>,
     pairs: HashMap<Uuid, Pair>,
     preparings: HashMap<Uuid, preparation::Pending>,
     publications: HashMap<Uuid, PublicationInfo>,
@@ -637,6 +638,7 @@ impl NativePeers {
                 events,
                 ready_sources,
                 bandwidth_changed: bandwidth_changed.clone(),
+                admitted: HashSet::new(),
                 pairs: HashMap::new(),
                 preparings: HashMap::new(),
                 publications: HashMap::new(),
@@ -1546,6 +1548,7 @@ impl Driver {
         }
         self.relay.retain(&self.sources.keys().copied().collect());
         let retained: HashSet<_> = plans.iter().map(|p| p.id).collect();
+        self.admitted.retain(|id| retained.contains(id));
         let removed: Vec<_> = self
             .pairs
             .keys()
@@ -1559,6 +1562,14 @@ impl Driver {
         }
         for plan in plans {
             let id = plan.id;
+            // One acquisition per admitted lease, including failure before a
+            // runtime exists. Only authority withdrawal permits another lease.
+            if !self.admitted.insert(id)
+                && !self.pairs.contains_key(&id)
+                && !self.preparings.contains_key(&id)
+            {
+                continue;
+            }
             let result = async {
                 if !self.pairs.contains_key(&id)
                     && plan.udp_preparation == Some(UdpPreparation::Required)
@@ -1824,7 +1835,17 @@ impl Driver {
         .await;
     }
     async fn resync(&self) {
-        for id in self.pairs.keys().copied() {
+        for id in self.admitted.iter().copied() {
+            if !self.pairs.contains_key(&id) {
+                if !self.preparings.contains_key(&id) {
+                    self.send(Command::LinkState {
+                        pair_id: id,
+                        state: LinkState::Failed,
+                    })
+                    .await;
+                }
+                continue;
+            }
             self.send_signal(
                 id,
                 Signal {
