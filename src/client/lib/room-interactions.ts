@@ -1,13 +1,25 @@
-import { interactionPayloadSchema, type ClientMessage, type ServerMessage, type InteractionPayload } from "../../shared/protocol";
+import { interactionPayloadSchema, type InteractionPayload } from "../../shared/protocol";
 import { BASELINE_REACTION_IDS, INTERACTION_INTERVAL_MS, REACTION_DURATION_MS, REACTION_IDS, type ReactionId } from "../../shared/room-interactions";
 import { createOpaqueId } from "./opaque-id";
 import { identityHash } from "./identity-hash";
 import { CHAT_OVERLAY_DEFAULTS, CHAT_OVERLAY_LIMITS, readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "./room-preferences";
 
-export type RoomInteraction = Omit<Extract<ServerMessage, { type: "room-interaction" }>, "payload"> & {
+export interface RoomInteraction {
+  type: "room-interaction";
+  id: string;
+  requestId: string;
+  occurredAt: number;
+  sender: { peerId: string; role: "host" | "viewer"; displayName: string };
   payload: InteractionPayload;
-};
-type Rejection = Extract<ServerMessage, { type: "room-interaction-rejected" }>["reason"];
+}
+type Rejection = "rate-limited" | "target-unavailable" | "not-subscribed" | "busy";
+type InteractionCommand =
+  | { type: "subscribe-room-interactions" }
+  | { type: "send-room-interaction"; requestId: string; payload: InteractionPayload };
+type InteractionEvent =
+  | { type: "room-interactions-ready"; serverTime: number }
+  | { type: "room-interaction-rejected"; requestId: string; reason: Rejection }
+  | (Omit<RoomInteraction, "payload"> & { payload: unknown });
 export type InteractionError = Rejection | "offline" | "unconfirmed";
 export const CHAT_OVERLAY_DURATION_MS = 6000;
 export const CHAT_HISTORY_LIMIT = 1000;
@@ -31,8 +43,7 @@ const initialState = (): InteractionState => ({ reactionIds: BASELINE_REACTION_I
   overlayEnabled: false, overlayAppearance: CHAT_OVERLAY_DEFAULTS, overlayMessages: [],
   pending: null, confirmed: null, coolingDown: false, error: null });
 
-// One owner per signaling client. Authentication admits room data; media
-// generations and route changes deliberately do not reset this state.
+// One state per joined room. Media generations and route changes do not reset it.
 export class RoomInteractionSession {
   // Component state follows this room session, not reconnecting wire peer IDs.
   readonly key = createOpaqueId();
@@ -47,7 +58,7 @@ export class RoomInteractionSession {
   private subscriptionStartedAt: number | null = null;
   private serverOffset = 0;
 
-  constructor(private readonly sendMessage: (message: ClientMessage) => boolean, readonly now = Date.now, reactionIds?: readonly string[]) {
+  constructor(private readonly sendMessage: (message: InteractionCommand) => boolean, readonly now = Date.now, reactionIds?: readonly string[]) {
     const { overlayEnabled, overlayAppearance } = readRoomPreferences();
     this.state = { ...this.state, overlayEnabled, overlayAppearance };
     this.setSupportedReactions(reactionIds);
@@ -80,7 +91,7 @@ export class RoomInteractionSession {
     this.sendMessage({ type: "subscribe-room-interactions" });
   }
 
-  receive(event: ServerMessage): boolean {
+  receive(event: InteractionEvent): boolean {
     if (this.closed) return false;
     if (event.type === "room-interactions-ready") {
       if (this.subscriptionStartedAt === null) return true;

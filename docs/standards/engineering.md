@@ -83,7 +83,7 @@ authorization and media lifecycles.
 | Configuration and persistence | Rust startup/App composition and Core storage owners; runtime setup in the [Server/App guide](../../prototype/channel-server/README.md) |
 | Release/update metadata | Existing packaging scripts and Rust `release.rs`; identity/compatibility in [versioning](./versioning.md) and operations in [deployment](../deployment.md) |
 
-`tests/fixtures/wire-samples.json` remains a retained 2.x Browser fixture.
+The published 2.x [Browser wire fixture](https://github.com/TNTcraftHIM/Piik/blob/f2f9d27db66565f9234c16d46ddd10f4d143cc16/tests/fixtures/wire-samples.json) stays on its maintenance line.
 It does not define the 3.0 domain, room, Native or capture interfaces. Change the
 actual producer, consumer and relevant existing check together; do not create
 another handwritten field list, DTO hierarchy or schema generator without a

@@ -1,4 +1,3 @@
-import type { ServerMessage } from "../../shared/protocol";
 import type { CopyKey } from "../ui/copy";
 import type { SignalConnectionState } from "../types";
 
@@ -622,26 +621,6 @@ export function deriveViewerPresentation(
     frameOverlay,
     state,
   );
-}
-
-export function viewerFailureFromServerCode(
-  code: Extract<ServerMessage, { type: "error" }>["code"],
-): ViewerFailureCode | null {
-  switch (code) {
-    case "ROOM_NOT_FOUND":
-      return "ROOM_NOT_FOUND";
-    case "ROOM_ACCESS_DENIED":
-      return "ROOM_ACCESS_DENIED";
-    case "INVALID_TOKEN":
-    case "AUTH_REQUIRED":
-      return "INVALID_TOKEN";
-    case "ROOM_FULL":
-      return "ROOM_FULL";
-    case "SERVER_ERROR":
-      return "SERVER_ERROR";
-    default:
-      return null;
-  }
 }
 
 function hasCurrentFrame(state: ViewerPresentationState): boolean {

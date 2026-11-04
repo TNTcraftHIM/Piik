@@ -4,7 +4,6 @@ import {
   INITIAL_VIEWER_PRESENTATION_STATE,
   deriveViewerPresentation,
   reduceViewerPresentation,
-  viewerFailureFromServerCode,
   type ViewerPresentationAction,
   type ViewerPresentationState,
 } from "../src/client/media/viewer-presentation.ts";
@@ -840,18 +839,6 @@ describe("Viewer presentation reducer", () => {
       stage: "room-not-found",
       messageKey: "viewer.msg.notFound",
     });
-  });
-
-  it("preserves exact Viewer access failures without inferring a restart", () => {
-    expect(viewerFailureFromServerCode("INVALID_TOKEN")).toBe("INVALID_TOKEN");
-    expect(viewerFailureFromServerCode("ROOM_NOT_FOUND")).toBe(
-      "ROOM_NOT_FOUND",
-    );
-    expect(viewerFailureFromServerCode("ROOM_ACCESS_DENIED")).toBe(
-      "ROOM_ACCESS_DENIED",
-    );
-    expect(viewerFailureFromServerCode("FORBIDDEN")).toBeNull();
-    expect(viewerFailureFromServerCode("INVALID_MESSAGE")).toBeNull();
   });
 
   it("keeps an intentional stop authoritative over the following offline fact", () => {

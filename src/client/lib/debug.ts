@@ -1,4 +1,3 @@
-import { SIGNALING_PROTOCOL } from "../../shared/protocol";
 import { downloadBlob } from "./download";
 
 type DebugValue = null | boolean | number | string | DebugValue[] | { [key: string]: DebugValue };
@@ -192,7 +191,7 @@ export async function exportBrowserDebug(): Promise<string> {
     if (record.event === "collector-failed") collectorErrors.push({ at: record.at, ...record.details });
   }
   return JSON.stringify({
-    capturedAt: new Date().toISOString(), startedAt, protocol: SIGNALING_PROTOCOL,
+    capturedAt: new Date().toISOString(), startedAt,
     build: { version: buildEnvironment?.VITE_PIIK_VERSION ?? "development",
       revision: buildEnvironment?.VITE_PIIK_REVISION ?? "development" },
     asset: new URL(import.meta.url).pathname.split("/").at(-1),
