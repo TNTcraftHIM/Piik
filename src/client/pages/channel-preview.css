@@ -113,7 +113,7 @@
   .c3-room-actions { flex-wrap: wrap; }
 }
 @container (max-width: 600px) {
-  .c3-room-heading .lr-cap { display: none; }
+  .c3-room-heading .lr-cap:where(:not([popover] .lr-cap)) { display: none; }
   .c3-room-heading:has(.c3-app-confirmation) {
     grid-template-areas: "title title" "actions actions" "tools tools" "company company";
   }
@@ -164,9 +164,23 @@
   .c3-notice { margin: 10px 12px 0; }
 }
 @media (max-height: 500px) {
-  /* Scroll the overview while message history keeps its bounded workspace. */
   .c3-shell > .c3-main { overflow-y: auto; }
-  .c3-main > .c3-workspace { flex: 0 0 100%; }
+  .c3-room-heading { display: flex; flex-wrap: wrap; padding-block: 6px; gap: 6px 10px; }
+  .c3-room-name { flex-basis: 100%; }
+  .c3-room-tools { flex-wrap: wrap; margin-inline-start: auto; }
+  .c3-room-heading > :is(.c3-room-actions, .c3-room-tools) { max-width: 100%; }
+  /* The same couch remains available when moved into the room mini window. */
+  .c3-room-heading > .c3-room-slot { display: none; }
+  .c3-room-heading .lr-cap:where(:not([popover] .lr-cap)) { display: none; }
+  .c3-room-heading .c3-app-confirmation .lr-cap { display: inline; }
+  .c3-main > .c3-workspace .c3-conversation { min-height: 0; padding: 6px 12px; gap: 6px; }
+  .c3-main > .c3-workspace .c3-composer textarea { max-height: var(--control-compact-size); }
+  @container (min-width: 600px) {
+    .c3-room-heading { display: grid; grid-template-areas: "title actions tools"; grid-template-columns: minmax(0, 1fr) auto auto; }
+    .c3-room-heading:has(.c3-app-confirmation) { grid-template-areas: "title tools" "actions actions"; grid-template-columns: minmax(0, 1fr) auto; }
+    .c3-workspace.has-screens:not(.chat-collapsed) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+    .c3-workspace.has-screens:not(.chat-collapsed) > .c3-monitor { border-inline-end: 1px solid var(--line); border-bottom: 0; overflow-y: auto; }
+  }
 }
 @media (prefers-reduced-motion: no-preference) {
   .c3-room-link { transition: background 150ms, color 150ms, box-shadow 150ms; }
