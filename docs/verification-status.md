@@ -195,6 +195,11 @@ Windows received-VP8 controls also exercise the real shared decoder and two
 constrained encoders, including independent pause/recovery and decoder retirement.
 Original access-unit bytes and the source RTP/Sender Report clock remain unchanged.
 
+Windows H264 also passes the [burst and recovery controls](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)
+with smaller source bursts, restored Original supply and an unaffected healthy
+connection. The normal Windows package passes H264 sharing, visible Stop,
+retained room access and resource release with the selected implementation.
+
 ## Interpretation
 
 Evidence applies to its tested revision, device and workload. Builds and local

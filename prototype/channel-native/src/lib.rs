@@ -2,8 +2,8 @@
 //! WebRTC peers implement only the domain's current transport leases.
 pub mod backup;
 pub mod capture;
-pub mod diagnostics;
 mod data;
+pub mod diagnostics;
 mod file;
 pub mod hosted_room;
 pub mod input;

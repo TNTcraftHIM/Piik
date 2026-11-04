@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-03
+Last reviewed: 2026-11-04
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -14,11 +14,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   capture and input acceptance, retaining the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-- [ ] **Native H264 scene-change latency.** Reduce large-access-unit sender
-  queueing at the existing encoder/transport boundary. Preserve
-  original-feed recovery and healthy siblings; the
-  [burst assessment](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)
-  owns the rejected buffer and low-delay overrides.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
