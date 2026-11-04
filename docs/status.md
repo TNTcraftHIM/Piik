@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-11-02
+Last updated: 2026-11-04
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -8,84 +8,33 @@ and Git/PRs own completed history.
 
 ## Isolated 3.0 Prototype
 
-The [channel prototype](../prototype/channel-server/README.md) has a Rust
-coordinator and real Browser chat, screen publications, selective watching and
-room voice. Domain admission, room activities/plans and shared transport leases
-have separate Rust owners. Rooms created through the interface run in their
-owner's Browser or linked App, using the same Rust core through WASM/IndexedDB
-or Native/SQLite. The domain keeps their directory summaries and
-authenticated bindings; confirmed history and private policy stay with the room.
-The [accepted routing foundation](./research/channel-network-design.md) assigns
-each room to its actual operator and starts video on usable room paths before
-bounded source-rooted convergence. The [data model](./research/channel-storage-and-identity.md)
-owns history and file delivery. Browser-hosted rooms share base connections
-for reading, bidirectional voice, files and screen startup. The
-explicit [Native participant](../prototype/channel-native/README.md) operates
-SQLite-backed rooms and forwards encoded Opus and file ranges on the same base paths.
-Its media adapter also forwards VP8/H264 with source audio and preserves their
-shared source clock. Capture-enabled desktop Apps derive constrained received-video
-outputs through one shared decoder. Upstream str0m owns transport, congestion
-control, pacing and retransmission; Piik owns complete frames, shared encoding
-demand and source clocks. Ordinary Browser sources and relays reuse eligible
-node-local encoding groups across publication pairs.
-Chat and history use authenticated requests and room-owner confirmations on
-those base paths. File descriptions stay in confirmed history; selected and verified
-copies stay with their participants. Screen plans can replace a leaf or relay
-branch after its affected viewers prove delivery, while preserving playback.
-Server now embeds that same Native participant for its persistent rooms. Domain,
-Browser and Native consume one shared Rust core; conversation has one peer carrier.
-Server has a fixed UDP entry for self-hosted and FRP deployments, retaining App
-peers' existing socket ownership.
-Connection details reuse the shared topology and four media groups, reading the
-current room/publication plans and each local transport's actual measurements.
-App-to-Browser display hops remain separate from remote-path totals.
-App hosting has its own Native endpoint and process lifetime; the Browser's
-personal voice, shares and watches remain page-owned. Existing Browser rooms
-retain their page lifetime and storage when an App connects.
-App discovery and site approval reuse the shared product controls, with one
-local data namespace per approved site. The shared launcher starts an App-owned
-domain through Local HTTPS or Cloudflare Quick Tunnel; its rooms retain their
-identity and storage across local-port and invitation-address changes.
-The shared source picker connects Windows H264/VP8 capture and Auto selection to
-the same Native endpoint and routing model, preserving its original presentation clock.
-Windows source capture and previews share HDR-to-SDR conversion and the existing
-SDR colour contract through the GPU and encoder boundaries.
-Optional source sound uses WASAPI and a Rust Opus encoder, retaining independent
-stereo channels. The selecting page owns both captures independently of App room hosting.
-The macOS ScreenCaptureKit/VideoToolbox adapter uses that same producer and
-App path.
-Linux uses that same App path through a Portal-owned PipeWire source, independent
-GStreamer hardware encoders and optional system-output sound. Server forwarding
-builds without the desktop capture dependencies. Linux RemoteDesktop/EIS input
-uses that source's Portal permission and the shared input executor; enabling it
-preserves the producer and media clock, while cancelling leaves the share running.
-Windows keyboard, mouse and optional gamepad input use the selected screen route
-and shared control UI, with one App desktop executor, page-owned consent and a
-process-only stop hotkey.
-The isolated Android shell starts the same Rust App through JNI and opens the
-system Browser, using Android certificate trust for site connections. Its system
-picker supplies screen capture and optional playback sound to the same Native
-producer; permission and first-frame waits retain the page's capture lease.
-Normal Web development, checks and distribution use the shared Rust/WASM
-frontend and Rust App/Server. Android packages ARM64/x64 JNI and the
-system-browser shell. Go tooling is needed only to build its independent,
-pinned upstream Cloudflared helper.
-[TODO](./todo.md) owns remaining Native media/input and platform work.
+The [channel prototype](../prototype/channel-server/README.md) uses one Rust core
+across Server, Native and Browser/WASM, with the shared Web UI for chat, screen
+sharing, selective watching, room voice and App control. Normal development and
+distribution use these Rust/Web paths; Go tooling only builds the pinned
+Cloudflared helper. Work stays on `feat/channel-prototype`, separately from 2.x.
+
+The domain owns admission and directory summaries. Room plans and shared transport
+leases keep separate Rust owners. Rooms created in the UI run in their owner's
+Browser or linked App; confirmed history and private policy stay there. Browser
+hosting uses WASM/IndexedDB; Native uses Rust/SQLite. Server embeds a Native
+participant for persistent rooms and retains its fixed UDP deployment entry.
+
+App hosting follows its Native endpoint and process lifetime. Personal voice,
+shares, watches and capture consent remain page-owned; connecting an App does not
+transfer existing Browser rooms. The shared launcher supports Local HTTPS and
+Cloudflare public invitations, with separate data per approved site. Room identity
+and storage survive local-port and invitation-address changes.
+
+The [network model](./research/channel-network-design.md) owns routing and activity
+lifetimes; the [data model](./research/channel-storage-and-identity.md) owns identity,
+history, reactions and participant-held files. The
+[Server reference](../prototype/channel-server/README.md) covers shared UI/App flows;
+the [Native reference](../prototype/channel-native/README.md) covers capture, encoding,
+sound and input, with the [Android runtime](../mobile/README.md) owning its shell.
 Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.
-The functional domain and room editors share preset and bounded raster icons
-with their existing authority and storage owners; Browser reload and Native
-restart preserve the edits.
-Message reactions use room-owned history. The room mini window moves the existing
-conversation, couch and voice controls between the page and floating/PiP surfaces;
-personal drafts, attachment selections and voice participation remain page-owned.
-Voice controls reuse one microphone capture across rooms, with device/processing
-updates, room-managed sender bitrate and individual local listening controls.
-Optional source commentary has its own microphone and mixes into the share's
-audio owner, independently of room voice.
-Source audio has separate bitrate and output gain; local previews stay muted,
-and Viewer volume changes only local listening. Browser cameras use the same
-visual publication and source picker as screen sharing.
-Work stays on `feat/channel-prototype`, without changing the production 2.x contract.
+[Verification status](./verification-status.md) owns evidence and platform limits;
+[TODO](./todo.md) owns remaining implementation and acceptance work.
 
 ## Accepted Release Contract
 
@@ -102,10 +51,8 @@ Work stays on `feat/channel-prototype`, without changing the production 2.x cont
 - Camera sharing and room voice are accepted product features. Source audio
   follows the picture; room voice owns conversation microphones under the
   same route controller. Optional Host commentary belongs to the share's audio
-  and has separate activation.
-  Device selection and sharing settings keep their owners. The
-  [capture assessment](./research/camera-and-microphone.md) owns platform behavior
-  and platform limits.
+  and has separate activation. Device selection and sharing settings keep their
+  owners; the [capture assessment](./research/camera-and-microphone.md) owns platform limits.
 
 ## Accepted Interaction Phase
 
@@ -119,34 +66,25 @@ Release artifacts and operator records own delivery completion.
 ## Current Work
 
 The maintenance line preserves published protocols, compatibility and route
-ownership. [TODO](./todo.md) is the only unfinished-work ledger; Git and PRs own
-completed fixes. [Verification status](./verification-status.md) owns material
-acceptance and platform boundaries.
+ownership; [TODO](./todo.md) and [verification status](./verification-status.md)
+retain unfinished work and acceptance boundaries.
 
-The Android system-browser App shares the desktop Web UI and Go core,
-including Local/public-link rooms, Site approval, native screen capture and room
-voice. Its universal APK covers ARM64 and x64 through the shared release pipeline;
-[device evidence](./verification-status.md#device-evidence-boundary) and
-[remaining work](./todo.md) retain their existing owners. iOS remains separate.
+The published Android App shares the desktop Web UI and Go core through the system
+Browser, including Local/public links, Site approval, native capture and voice.
+Its APK covers ARM64/x64; iOS remains separate.
 
-Room voice, shared keyboard/mouse and optional Windows virtual gamepads use the
-normal App/Web interfaces. App packages contain no optional input SDK or driver.
-Linux uinput has an isolated kernel check; desktop permission and game-recognition
-coverage is pending. macOS virtual HID needs an Apple entitlement and physical
-build/runtime checks. The [input assessment](./research/room-interactions.md#remote-co-play)
-owns platform details.
+Room voice, keyboard/mouse and optional Windows virtual gamepads use normal App/Web
+interfaces, without optional input SDKs or drivers in the package. The
+[input assessment](./research/room-interactions.md#remote-co-play) owns platform boundaries.
 
 App Local invitations use HTTPS on the selected LAN address, with a loopback
 entry for the Host. Hosted Server supports direct HTTPS with temporary or
 operator-supplied certificates. The [HTTPS runbook](./operations/self-hosting.md)
 owns setup. Virtual LANs and frp use the existing room and UDP media paths.
-The website uses the selected bilingual film A, loaded on demand with shared
-product playback controls and a persistent final card.
 
 Optional coordinated Native UDP preparation augments the existing retry owner.
-The [network laboratory](./research/network-lab.md) covers all Browser/App
-pairings, recovery, SFU policies and successful two-App preparation through
-sequential kernel NAT. These results do not establish a public success rate.
+The [network laboratory](./research/network-lab.md) owns Browser/App, recovery,
+SFU and kernel-NAT evidence.
 Magicsock integration is not planned; its [controlled comparison](./research/nat-traversal.md#integration-cost-and-recovery-controls)
 records the technical basis.
 
@@ -169,10 +107,8 @@ entry, persistent room authority and P2P-only media. Cloudflare fronts HTTP/WSS
 and caches static bundles; STUN uses a separate DNS-only hostname. Caddy owns
 origin HTTPS, and the standard systemd service runs the published Server package.
 Demo expires rooms after one hour without authenticated participants; the private
-deployment retains the default of no expiry. The operator record owns exact
-identity and postflight evidence. `piik.tv` runs on GitHub Pages behind
-Cloudflare; website delivery includes a bilingual documentation center built
-from repository guides.
+deployment retains the default of no expiry. `piik.tv` runs on GitHub Pages behind
+Cloudflare; the [website runbook](./operations/website.md) owns delivery and its bilingual guide center.
 
 GitHub owns original Server and App packages; AtomGit mirrors them without
 rebuilding and verifies anonymous downloads against their checksums. Server

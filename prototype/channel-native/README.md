@@ -261,6 +261,10 @@ The Browser check also needs a built domain executable and the existing
 can select separate Native and domain builds. The runner owns its processes,
 temporary databases and Browser sessions, and stops them on completion.
 
+The [manual CI workflow](../../.github/workflows/repository-hygiene.yml)'s
+`channel_native` entry builds the macOS targets and runs a synthetic H264
+roundtrip through the production encoder/decoder, source clock and stop owner.
+
 The peer check uses real WebRTC endpoints for source replacement, signaling
 recovery, encoded audio/video forwarding and feedback under backpressure. The Browser
 check covers concurrent Native-rooted picture, voice and file forwarding,
