@@ -14,9 +14,11 @@ own behavior; research and Git/PRs own evidence and completed history.
   capture and input acceptance, retaining the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-- [ ] **3.0 App diagnostics.** Restore the opt-in capture and diagnostic export
-  workflow in Rust through the shared launcher. Current Native failure details
-  are written to stderr; the App does not yet export its own diagnostic bundle.
+- [ ] **Native H264 scene-change latency.** Trace large access units and their
+  presentation delay through the current capture and transport owners. Preserve
+  original-feed recovery and healthy siblings; the
+  [burst assessment](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)
+  owns the rejected buffer and low-delay overrides.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.

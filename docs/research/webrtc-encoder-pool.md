@@ -499,6 +499,23 @@ The candidate was removed and was not applied to the Rust MF owner. Its latency
 gain does not justify restoring the one-frame HRD override; the existing
 encoding and pacing settings remain.
 
+On 2026-11-04, normal Rust App controls used the same owned 826×612 textured
+window at a 5 Mbps / 30 fps ceiling. All twelve scene changes reached Browser
+presentation in each run. The existing MF settings produced a 274 ms median
+paint-to-presentation delay; an optional `CODECAPI_AVLowLatencyMode` request
+produced 259 ms, with maxima of 333 and 360 ms respectively. These measurements
+cover the combined capture-to-presentation path, without assigning that delay
+to one stage or treating receive-counter intervals as exact AU sizes.
+
+A same-SDK WGC/encoding/transport control changed only that MF request, using
+8 Mbps → 600 kbps → 8 Mbps and an independent healthy connection. Without the
+request, both weak-connection feeds stayed on Original from about 3–4 seconds
+after restoration; with it, one remained Limited at the 20-second endpoint.
+The latter's lower allocation matched its observed transport budget, so this
+pair does not establish an MF rate-control defect. The optional request was
+removed: it supplied no clear presentation benefit and did not pass the
+restoration target. Large-scene presentation latency remains open.
+
 ### Budget Restoration
 
 Transport allocation and encoder resolution recover separately. Replaying the
