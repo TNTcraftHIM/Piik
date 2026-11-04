@@ -13,7 +13,7 @@ use std::{mem::ManuallyDrop, ptr, sync::Arc};
 use windows::{
     core::{implement, IUnknown, Interface, Ref},
     Win32::{
-        Foundation::E_NOTIMPL,
+        Foundation::{E_NOTIMPL, S_OK},
         Graphics::{
             Direct3D11::{ID3D11Device, ID3D11Texture2D, D3D11_TEXTURE2D_DESC},
             Dxgi::IDXGIDevice,
@@ -196,6 +196,10 @@ impl Encoder {
                     &CODECAPI_AVEncCommonRateControlMode,
                     &VARIANT::from(eAVEncCommonRateControlMode_CBR.0 as u32),
                 )?;
+                // Optional realtime hint; S_FALSE does not mean modifiable.
+                if api.IsModifiable(&CODECAPI_AVLowLatencyMode) == S_OK {
+                    let _ = api.SetValue(&CODECAPI_AVLowLatencyMode, &VARIANT::from(true));
+                }
                 api.SetValue(
                     &CODECAPI_AVEncCommonMeanBitRate,
                     &VARIANT::from(settings.bitrate),
