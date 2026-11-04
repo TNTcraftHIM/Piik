@@ -653,11 +653,15 @@ impl Endpoint {
         }
     }
     fn apply(&self, sink: &mut dyn Sink, bounds: Bounds, action: &Action) -> Result<()> {
-        match self {
+        let result = match self {
             Self::System => sink.apply(bounds, action),
             #[cfg(all(feature = "capture", target_os = "linux"))]
             Self::Portal(endpoint) => endpoint.apply(bounds, action),
+        };
+        if let Err(error) = &result {
+            log::warn!(target: "piik.input", "Input execution failed: {error:#}");
         }
+        result
     }
     fn has_text(&self) -> bool {
         match self {
@@ -1050,7 +1054,8 @@ impl Executor {
                         }
                         c.pad.as_ref().unwrap().update(gamepad)
                     })();
-                    if result.is_err() {
+                    if let Err(error) = result {
+                        log::warn!(target: "piik.input", "Gamepad unavailable: {error:#}");
                         c.fail_pad();
                     }
                     return Ok(());

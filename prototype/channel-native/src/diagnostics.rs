@@ -1,5 +1,5 @@
 //! Explicit App diagnostics, retained only in this process. These targets carry
-//! reviewed App/capture/encoder errors, never requests, registry data or SDK dumps.
+//! reviewed technical failures, never input content, requests or SDK dumps.
 use anyhow::{anyhow, Result};
 use log::{LevelFilter, Log, Metadata, Record};
 use serde::Serialize;
@@ -111,6 +111,7 @@ fn now_ms() -> u64 {
 fn target(value: &str) -> Option<&'static str> {
     match value {
         "piik.app" => Some("piik.app"),
+        "piik.input" => Some("piik.input"),
         "piik.capture" => Some("piik.capture"),
         "piik.encoder" => Some("piik.encoder"),
         _ => None,
@@ -268,7 +269,7 @@ mod tests {
         drop(state);
         let large = "界".repeat(MAX_RECORD_BYTES);
         for _ in 0..MAX_BYTES / MAX_RECORD_BYTES + 1 {
-            emit("piik.encoder", format_args!("{large}"));
+            emit("piik.input", format_args!("{large}"));
         }
         let state = recorder.0.lock().unwrap();
         let buffer = state.as_ref().unwrap();
