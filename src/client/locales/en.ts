@@ -279,7 +279,7 @@ export const en: Record<CopyKey, string> = {
   "client.launch.localAccessHint": "If set, the passphrase is required to create a room or join by room code.",
   "client.launch.go": "Open Piik",
   "client.launch.starting": "Preparing Piik",
-  "client.launch.error": "Room unavailable",
+  "client.launch.error": "Could not open Piik",
   "client.launch.retryHint": "Try again or adjust the settings below.",
   "client.launch.errorDetails": "Technical details",
   "client.launch.failure.tunnel-exited": "The public invitation service could not connect. Check your network or use App with an existing Piik Site.",

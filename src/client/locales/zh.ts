@@ -279,7 +279,7 @@ export const zh = {
   "client.launch.localAccessHint": "设置后，创建房间或凭房间号加入需要输入口令。",
   "client.launch.go": "进入 Piik",
   "client.launch.starting": "正在准备 Piik",
-  "client.launch.error": "房间暂不可用",
+  "client.launch.error": "无法进入 Piik",
   "client.launch.retryHint": "可直接重试，也可调整下方设置。",
   "client.launch.errorDetails": "技术详情",
   "client.launch.failure.tunnel-exited": "公网邀请服务未能建立连接。可检查网络，或通过已有 Piik 站点使用 App。",

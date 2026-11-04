@@ -218,7 +218,6 @@ export function AppLauncherPage() {
         body: JSON.stringify({
           mode,
           language: consoleLanguage(lang, vis),
-          ...(appDebug !== undefined && debug ? { debug: true } : {}),
           ...(mode === "local" && lan ? { lanAddress: lan.selected } : {}),
           localAccessPassword,
         }),

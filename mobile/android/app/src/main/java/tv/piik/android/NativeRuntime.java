@@ -4,8 +4,12 @@ import android.content.Context;
 import android.content.res.AssetManager;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.concurrent.CompletableFuture;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -34,6 +38,22 @@ final class NativeRuntime implements AutoCloseable {
 
   private static void extractFrontend(AssetManager assets, File target) throws IOException {
     var directory = target.toPath().toAbsolutePath().normalize();
+    if (Files.exists(directory)) {
+      Files.walkFileTree(directory, new SimpleFileVisitor<Path>() {
+        @Override
+        public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException {
+          Files.delete(file);
+          return FileVisitResult.CONTINUE;
+        }
+
+        @Override
+        public FileVisitResult postVisitDirectory(Path folder, IOException error) throws IOException {
+          if (error != null) throw error;
+          Files.delete(folder);
+          return FileVisitResult.CONTINUE;
+        }
+      });
+    }
     Files.createDirectories(directory);
     try (var archive = new ZipInputStream(assets.open("web/frontend.zip"))) {
       ZipEntry entry;
