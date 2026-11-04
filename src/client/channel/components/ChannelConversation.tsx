@@ -76,6 +76,17 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
     const frame = view?.requestAnimationFrame(restore);
     return () => { if (frame !== undefined) view?.cancelAnimationFrame(frame); };
   }, [roomId, messages.length, hidden, loadingHistory, history?.atLatest, floating, surfaceDocument]);
+  useLayoutEffect(() => {
+    const node = log.current;
+    if (hidden || !node) return;
+    const view = node.ownerDocument.defaultView;
+    if (!view) return;
+    const observer = new view.ResizeObserver(() => {
+      if (reading.current.following) node.scrollTop = messages.length ? node.scrollHeight : 0;
+    });
+    observer.observe(node);
+    return () => { observer.disconnect(); };
+  }, [roomId, messages.length, hidden, floating, surfaceDocument]);
   function addFiles(incoming: File[]) {
     if (!attachmentsAvailable || !limits || working || !canSend) return;
     if (files.length + incoming.length > limits.maxAttachmentsPerMessage) {
