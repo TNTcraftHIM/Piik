@@ -20,10 +20,10 @@ const (
 	persistentDegradedWindows       = int64(protocol.PersistentNativeEdgeDegradedWindows)
 )
 
-// candidateOpportunity records the attempts consumed at one candidate rank.
+// candidateOpportunity records charged attempts at one candidate rank.
 type candidateOpportunity struct {
 	rank            int
-	startedAttempts int
+	chargedAttempts int
 	exhausted       bool
 }
 

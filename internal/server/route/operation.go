@@ -601,7 +601,6 @@ func (c *Controller) CandidateReady(guard CandidateGuard, nowMs int64, commitRes
 		}
 	}
 	if !commitReservation(att.reservation) {
-		c.consumeCurrentAvailabilityOpportunity(op)
 		c.debug("candidate-commit-rejected",
 			"child", c.debugPeer(op.childPeerID),
 			"candidate", c.debugTuple(att.tuple),
@@ -690,7 +689,6 @@ func (c *Controller) CandidateFailed(guard CandidateGuard, nowMs int64) SettleRe
 			ActiveRevision: c.revision, Released: validation.released}
 	}
 	if op != nil && op.current != nil && c.guardMatches(guard, op, op.current) {
-		c.consumeCurrentAvailabilityOpportunity(op)
 		c.debug("candidate-failed",
 			"child", c.debugPeer(op.childPeerID),
 			"candidate", c.debugTuple(op.current.tuple),
@@ -751,6 +749,8 @@ func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard)
 	}
 	if nowMs >= op.deadlineAtMs {
 		c.debugOperation("operation-deadline", op, &nowMs)
+		c.settleCandidateOpportunity(op)
+		c.consumeCurrentCandidateOpportunity(op)
 		directConvergence := op.reason == DemandDirectConvergence
 		sfuBootstrap := op.reason == DemandSfuBootstrap
 		qualityConvergence := op.reason == DemandQualityConvergence
@@ -778,9 +778,7 @@ func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard)
 			failedBootstrapDemand = c.completeSfuBootstrapCarrier(op.childPeerID, nowMs, deadlineBucket, op.planAtOrLast())
 		}
 		bootstrapAvailable := !backgroundConvergence && !sfuBootstrap && c.bootstrapCandidateAvailable(op.demandPeerID)
-		if bootstrapAvailable {
-			c.consumeCurrentAvailabilityOpportunity(op)
-		} else {
+		if !bootstrapAvailable {
 			c.consumeAvailabilityOperation(op)
 		}
 		var exhausted bool
@@ -852,6 +850,8 @@ func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard)
 				result.expired = true
 			}
 			if guardFailed || peerNoProgressExpired {
+				c.settleCandidateOpportunity(op)
+				c.consumeCurrentCandidateOpportunity(op)
 				c.consumeQualityCandidateOpportunity(op, plan)
 			}
 			if op.reason == DemandDirectConvergence {
@@ -860,7 +860,11 @@ func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard)
 			result.released = append(result.released, reservationResources(att.reservation)...)
 			c.advanceActiveRevision(op)
 			op.current = nil
-			op.cursor++
+			if guardFailed || peerNoProgressExpired {
+				op.cursor++
+			} else {
+				op.candidates = slices.Delete(op.candidates, op.cursor, min(op.cursor+1, len(op.candidates)))
+			}
 			c.clearCandidateTiming(op.demandPeerID)
 			result.consumedGuard = guardFailed
 			c.replanRemaining(op, nil, nil)
@@ -870,7 +874,7 @@ func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard)
 			if op.reason == DemandDirectConvergence {
 				c.consumeDirectContinuationCandidate(op)
 			}
-			op.cursor++
+			op.candidates = slices.Delete(op.candidates, op.cursor, op.cursor+1)
 			c.clearCandidateTiming(op.demandPeerID)
 		}
 		if op.cursor < len(op.candidates) {
@@ -932,6 +936,7 @@ func (c *Controller) expiredFinalRoute(op *operation, backgroundConvergence, exh
 // edge and returns the resources committed before but not after, plus the
 // overlap.
 func (c *Controller) commitAttempt(op *operation, att *attempt) []*Resource {
+	c.settleCandidateOpportunity(op)
 	before := &resourceSet{}
 	before.add(c.committedResources()...)
 	old, _ := c.upstreamByViewer.Get(op.childPeerID)
@@ -1248,9 +1253,10 @@ func (c *Controller) advanceExpiredDirectHeadStart(op *operation, nowMs int64, r
 	var activeCandidate any
 	if op.current != nil {
 		c.debugOperation("candidate-retired", op, &nowMs, "reason", RejectionFirstFrameTimeout)
+		c.settleCandidateOpportunity(op)
 		activeCandidate = c.debugTuple(op.current.tuple)
 		c.noteRejection(op.demandPeerID, RejectionFirstFrameTimeout)
-		c.consumeCurrentAvailabilityOpportunity(op)
+		c.consumeCurrentCandidateOpportunity(op)
 		*released = append(*released, reservationResources(op.current.reservation)...)
 		c.advanceActiveRevision(op)
 		op.current = nil
@@ -1483,11 +1489,7 @@ func (c *Controller) consumeDirectContinuationCandidate(op *operation) {
 	if op.reason != DemandDirectConvergence || tuple == nil || tuple.Kind != UpstreamPeer {
 		return
 	}
-	// Unstarted candidates invalidated by changing facts retain their opportunity.
 	plan := op.planAt(op.cursor)
-	if op.current != nil && op.current.connectionAttempt == nil && plan != nil {
-		c.consumeCandidateOpportunity(op.childPeerID, *plan)
-	}
 	continuation, ok := c.directContinuations.Get(op.childPeerID)
 	if !ok {
 		return

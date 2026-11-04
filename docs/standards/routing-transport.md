@@ -51,7 +51,9 @@ sharing. The server-validated route policy remains fixed for that share generati
   direct connections; its STUN survey and best-effort gateway mapping use IPv4.
   Availability and background direct acquisition share a bounded budget of
   four actual connection attempts per eligible parent/session opportunity:
-  the initial attempt plus three retries. The first has no retry label; subsequent
+  the initial attempt plus three retries. Completion, failure and timeout settle
+  those attempts; a choice canceled by changed prerequisites keeps its opportunity.
+  The first has no retry label; subsequent
   attempts show retry 1/3, 2/3 and 3/3 on pages supporting that progress format.
   Retries use the same serial controller and normal operation deadlines;
   waiting Viewers and untried parents receive their opportunities first.

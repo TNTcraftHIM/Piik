@@ -1220,6 +1220,78 @@ func TestRouterDoesNotAdmitRelayFromUnprovedReplacementVideoConnection(t *testin
 	}
 }
 
+func TestRouterRestoresChildOpportunityAfterParentVideoCancelsPreparation(t *testing.T) {
+	for _, prediction := range []bool{false, true} {
+		t.Run(fmt.Sprintf("nat=%t", prediction), func(t *testing.T) {
+			h := newRouterHarness(t, routerHarnessOptions{capacity: 1})
+			created := h.createRoom()
+			host := h.connectHost(created, &protocol.RoutePolicy{PeerOnly: true, NatPrediction: prediction}, "", "")
+			parent := h.connectViewer(created, "recovering-parent")
+			h.locked(func() { h.doComplete(host); h.doComplete(parent) })
+			initial := h.waitPrepared(parent.sessionID)
+			h.locked(func() { h.doReady(parent, int64(initial.Revision)); h.doRelay(parent, 1) })
+			child := h.connectViewer(created, "waiting-child")
+			h.complete(child)
+			prepared := h.waitPreparedUpstream(child.sessionID, protocol.PeerUpstream(parent.peerID))
+			if prediction {
+				// Preserve one genuine child failure while canceling later preparations.
+				h.locked(func() {
+					h.doFailed(child, routeFailedMessage(int64(prepared.Revision), "prepare", prepared.Candidate.ConnectionID))
+				})
+				prepared = h.waitPreparedMatching(child.sessionID, "second attempt", func(message protocol.RouteUpdatePrepareMessage) bool {
+					return message.Revision > prepared.Revision
+				})
+			}
+			for recovery := 1; recovery <= 4; recovery++ {
+				previousRevision := prepared.Revision
+				connectionID := fmt.Sprintf("parent_recovery_%d_12345678", recovery)
+				h.locked(func() {
+					if h.router.peerSignalAuthorization(peerSignalInput{
+						roomID: created.RoomID, sourcePeerID: host.peerID, sourceSessionID: host.sessionID,
+						targetPeerID: parent.peerID, targetSessionID: parent.sessionID,
+						connectionID: connectionID, signalKind: "description", descriptionType: "offer",
+					}) != signalAuthorizationAllowed {
+						t.Fatal("the current Host replacement offer must be authorized")
+					}
+				})
+				h.settle()
+				h.locked(func() {
+					rm, _ := h.router.rooms.Get(created.RoomID)
+					if rm.controller.SourceVideoReady(parent.peerID) {
+						t.Fatal("the replacement picture needs its own proof")
+					}
+					if operation := rm.controller.Operation(); operation != nil && operation.Current != nil && operation.Current.ConnectionID == prepared.Candidate.ConnectionID {
+						t.Fatal("the child's preparation must retire while its parent has no proved picture")
+					}
+					frames := protocol.Int(1)
+					if h.router.observeQualityEvidence(created.RoomID, route.RouteQualityEvidenceInput{
+						ChildPeerID: parent.peerID, ChildSessionID: parent.sessionID,
+						RouteRevision: rm.controller.Revision(), ConnectionID: connectionID,
+						Upstream:          route.QualityUpstream{Kind: route.UpstreamPeer, PeerID: host.peerID},
+						PresentationEpoch: 1, WindowMs: 1000,
+						Metrics: protocol.ViewerQualityEvidenceMetrics{FramesDecodedDelta: &frames}, AcceptedAtMs: h.router.now(),
+					}) == route.QualityEvidenceRejected {
+						t.Fatal("the current parent decode must restore picture eligibility")
+					}
+				})
+				// No child SDP, failure, ready or manual Retry accompanies the cancellation.
+				prepared = h.waitPreparedMatching(child.sessionID, "restored parent", func(message protocol.RouteUpdatePrepareMessage) bool {
+					return message.Revision > previousRevision && message.Assignment.Upstream == protocol.PeerUpstream(parent.peerID)
+				})
+				if prediction && (prepared.Candidate.ConnectionAttempt == nil || prepared.Candidate.ConnectionAttempt.Current != 2) {
+					t.Fatal("authority cancellation must retain the one real failure without spending another attempt")
+				}
+			}
+			h.locked(func() {
+				h.doReady(child, int64(prepared.Revision))
+				if h.doMustEdge(created.RoomID, child.peerID).connectionID != prepared.Candidate.ConnectionID {
+					t.Fatal("the restored candidate must commit normally")
+				}
+			})
+		})
+	}
+}
+
 func TestRouterKeepsCommittedEdgeSignalingAuthorizedDuringAnotherPeerCandidate(t *testing.T) {
 	h := newRouterHarness(t, routerHarnessOptions{capacity: 2})
 	created := h.createRoom()
