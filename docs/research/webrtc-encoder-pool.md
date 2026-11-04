@@ -563,6 +563,13 @@ also did not explain the Mode4 result. Windows therefore retains one CBR path
 and the existing SDK demand adapter. The low-delay VBR candidate was removed;
 its measured scene-change benefit does not meet the live-quality contract.
 
+A `PeakConstrainedVBR` control followed Chromium's
+[paired Mean/Max updates](https://chromium.googlesource.com/chromium/src/+/cf3aaf4828707a1c8cc3c6e8f6df91d37bea418b/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc#1106),
+using the same budget for both properties. On this MFT, the Rust binding reported
+success for the live update, but Max remained at its initial 100 kbps while Mean
+read back 2 Mbps. Output stayed near 208 kbps with QP 50; all 342 AUs decoded.
+This candidate also failed the low-start recovery contract and was not retained.
+
 ### Budget Restoration
 
 Transport allocation and encoder resolution recover separately. Replaying the
