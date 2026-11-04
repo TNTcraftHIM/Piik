@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       channel_native:
-        description: Build the experimental Rust Native and App against the macOS SDK only
+        description: Build Rust Native/App and run the synthetic macOS H264 roundtrip
         required: false
         default: false
         type: boolean
@@ -131,7 +131,7 @@ jobs:
 
   channel-native:
     if: github.event_name == 'workflow_dispatch' && inputs.channel_native == true
-    runs-on: xcode-27
+    runs-on: macos-15
     timeout-minutes: 40
     defaults:
       run:
@@ -152,7 +152,13 @@ jobs:
           cargo +1.91.0 build --locked --manifest-path prototype/channel-server/Cargo.toml --features capture --bins 2>&1 | tee "$RUNNER_TEMP/channel-native-logs/server-app.log"
       - name: Compile Native tests without running them
         run: cargo +1.91.0 test --locked --manifest-path prototype/channel-native/Cargo.toml --features capture --tests --no-run 2>&1 | tee "$RUNNER_TEMP/channel-native-logs/native-tests.log"
-      - name: Save macOS SDK build logs
+      - name: Run the synthetic VideoToolbox roundtrip without capture
+        timeout-minutes: 2
+        run: >-
+          cargo +1.91.0 test --locked --manifest-path prototype/channel-native/Cargo.toml
+          --features capture --lib capture::macos::tests::synthetic_h264_roundtrip_preserves_source_time_and_stops
+          -- --exact --nocapture 2>&1 | tee "$RUNNER_TEMP/channel-native-logs/synthetic-h264.log"
+      - name: Save macOS build and codec logs
         if: always()
         uses: actions/upload-artifact@v7
         with:

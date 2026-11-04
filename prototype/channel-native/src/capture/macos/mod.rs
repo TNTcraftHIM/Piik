@@ -4,6 +4,8 @@ mod decoder;
 mod encoding;
 mod frames;
 mod source;
+#[cfg(test)]
+mod tests;
 
 pub use audio::{audio_capabilities, microphones, AudioCapture, AudioControl};
 pub(crate) use decoder::Decoder;
