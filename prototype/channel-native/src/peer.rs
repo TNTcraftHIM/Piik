@@ -30,7 +30,7 @@ use tokio::{
     sync::{mpsc, oneshot, watch, Notify},
     task::JoinHandle,
 };
-use transport::{Channel, ChannelEvent, Track, TrackEvent, Transport};
+use transport::{BandwidthDemand, Channel, ChannelEvent, Track, TrackEvent, Transport};
 use uuid::Uuid;
 #[path = "peer/metrics.rs"]
 mod metrics;
@@ -466,7 +466,7 @@ struct Pair {
     rejected_outputs: HashMap<TrackKey, Uuid>,
     reports: OutputStreams,
     bandwidth: watch::Receiver<transport::Estimate>,
-    demand: watch::Sender<Option<u64>>,
+    demand: watch::Sender<BandwidthDemand>,
     tasks: HashMap<Uuid, Reader>,
     dc: Option<(Uuid, Arc<Channel>, JoinHandle<()>)>,
     bulk: Option<(Uuid, Arc<Channel>, JoinHandle<()>)>,
@@ -1613,7 +1613,10 @@ impl Driver {
         let overflow = Arc::new(AtomicBool::new(false));
         let state = Arc::new(AtomicU8::new(PeerState::New as u8));
         let reports = OutputStreams::default();
-        let (demand, requested) = watch::channel(Some(0));
+        let (demand, requested) = watch::channel(BandwidthDemand {
+            minimum_bps: 0,
+            desired_bps: Some(0),
+        });
         let candidates = prepared
             .as_ref()
             .map(|(_, remote)| prepared_candidate(*remote))

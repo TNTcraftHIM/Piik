@@ -46,6 +46,7 @@ impl Driver {
         self.pairs
             .iter()
             .map(|(id, pair)| {
+                let mut minimum = 0;
                 let mut maximum = Some(0u64);
                 let requests = pair
                     .plan
@@ -79,6 +80,9 @@ impl Driver {
                             } else {
                                 highest
                             };
+                            if flow.selected {
+                                minimum += rate.unwrap_or(0);
+                            }
                             let configured =
                                 self.configured_bitrate(source, pair.plan.can_receive_video_layers);
                             maximum = maximum
@@ -117,14 +121,17 @@ impl Driver {
                         }
                     })
                     .collect::<Vec<_>>();
-                // Application demand is configured capacity, not recent usage or
-                // the current grant. Keep unknown distinct from no output demand;
-                // the transport maps that distinction to its SDK ceiling.
+                // Sustain selected original supply with estimate-capped SDK padding.
+                // Desired capacity stays independent of usage and current allocation.
+                let requested = BandwidthDemand {
+                    minimum_bps: minimum,
+                    desired_bps: maximum,
+                };
                 pair.demand.send_if_modified(|current| {
-                    if *current == maximum {
+                    if *current == requested {
                         return false;
                     }
-                    *current = maximum;
+                    *current = requested;
                     true
                 });
                 let mut plan = allocate(
@@ -466,13 +473,14 @@ fn encoding_demand(full_bps: Option<u32>, grant: u32) -> EncodingDemand {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::media::{
+        clock::SourceTime,
+        video::{Layers, Video},
+    };
+    use rtc_shared::time::SystemInstant;
+
     #[tokio::test]
     async fn late_viewer_bootstraps_known_layers_before_feedback_then_obeys_budget() -> Result<()> {
-        use crate::media::{
-            clock::SourceTime,
-            video::{Layers, Video},
-        };
-        use rtc_shared::time::SystemInstant;
         let epoch = Instant::now();
         let time = SourceTime::local(epoch, SystemInstant::now(epoch));
         let low = Video::new(time.clone(), Arc::new(Notify::new()));
@@ -521,6 +529,131 @@ mod tests {
                 .await?
                 .is_some()
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sdk_minimum_tracks_selected_original_supply_and_its_lifecycle() -> Result<()> {
+        // The actual Driver advertises original supply, independently of the
+        // Limited grant it gives this selected output. Unknown desired capacity
+        // must not become a fabricated minimum.
+        let mut f =
+            crate::peer::tests::support::Fixture::new(crate::peer::tests::support::vp8()).await?;
+        let pair = f.driver.pairs.get_mut(&f.sink).unwrap();
+        pair.plan.outgoing.retain(|flow| flow.selected);
+        let flow = &mut pair.plan.outgoing[0];
+        flow.input_flow_id = None;
+        let flow_id = flow.id;
+        pair.bandwidth = watch::channel(transport::Estimate::Feedback(100_000.0)).1;
+        let epoch = Instant::now();
+        let original = Video::new(
+            SourceTime::local(epoch, SystemInstant::now(epoch)),
+            Arc::new(Notify::new()),
+        );
+        let source_id = Uuid::new_v4();
+        f.driver.sources.insert(
+            source_id,
+            Source {
+                id: source_id,
+                publication_id: f.publication.id,
+                origin: crate::media::SourceOrigin::Local,
+                codec: crate::peer::tests::support::vp8(),
+                kind: MediaKind::Video,
+                feed: SourceFeed::Video(original.clone()),
+                layers: None,
+            },
+        );
+        let pair = f.driver.pairs.get_mut(&f.sink).unwrap();
+        let output = crate::media::Output::new(
+            &pair.pc,
+            &f.driver.sources[&source_id],
+            "selected-demand".into(),
+            f.sink,
+            (flow_id, MediaKind::Video),
+            f.driver.events.clone(),
+            pair.reports.clone(),
+            false,
+            false,
+        )
+        .await?;
+        // This boundary starts with an already installed, stable output.
+        pair.stable_outputs = Some(HashSet::from([output.id]));
+        pair.outputs.insert((flow_id, MediaKind::Video), output);
+        f.driver.bandwidth_plans(epoch);
+        assert_eq!(
+            *f.driver.pairs[&f.sink].demand.borrow(),
+            BandwidthDemand {
+                minimum_bps: 0,
+                desired_bps: None,
+            }
+        );
+        original.write(crate::EncodedFrame {
+            bytes: vec![1; 512_000],
+            presentation_time: epoch,
+            keyframe: true,
+            vp8: None,
+        });
+        let measured = epoch + Duration::from_secs(2);
+        let original_bps = original.bitrate(measured).unwrap();
+        assert!(original_bps > 100_000);
+        let plan = f.driver.bandwidth_plans(measured);
+        assert_eq!(
+            plan[&f.sink].video[&flow_id],
+            EncodingDemand::Limited(100_000)
+        );
+        assert_eq!(
+            *f.driver.pairs[&f.sink].demand.borrow(),
+            BandwidthDemand {
+                minimum_bps: original_bps,
+                desired_bps: None,
+            }
+        );
+        f.driver
+            .publications
+            .get_mut(&f.publication.id)
+            .unwrap()
+            .paused = true;
+        f.driver.bandwidth_plans(measured);
+        assert_eq!(
+            *f.driver.pairs[&f.sink].demand.borrow(),
+            BandwidthDemand {
+                minimum_bps: 0,
+                desired_bps: Some(0),
+            }
+        );
+        f.driver
+            .publications
+            .get_mut(&f.publication.id)
+            .unwrap()
+            .paused = false;
+        f.driver.bandwidth_plans(measured + Duration::from_secs(2));
+        assert_eq!(f.driver.pairs[&f.sink].demand.borrow().minimum_bps, 0);
+        f.driver.sources.remove(&source_id);
+        f.driver.bandwidth_plans(measured + Duration::from_secs(2));
+        assert_eq!(
+            *f.driver.pairs[&f.sink].demand.borrow(),
+            BandwidthDemand {
+                minimum_bps: 0,
+                desired_bps: None,
+            }
+        );
+        f.driver
+            .pairs
+            .get_mut(&f.sink)
+            .unwrap()
+            .plan
+            .outgoing
+            .clear();
+        f.driver.bandwidth_plans(measured + Duration::from_secs(2));
+        assert_eq!(
+            *f.driver.pairs[&f.sink].demand.borrow(),
+            BandwidthDemand {
+                minimum_bps: 0,
+                desired_bps: Some(0),
+            }
+        );
+        f.close().await;
         Ok(())
     }
     fn request(

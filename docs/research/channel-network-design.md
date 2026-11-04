@@ -641,6 +641,10 @@ feeds the existing Native allocator without a second congestion controller.
 Each connection aggregates known local media configuration ceilings independently
 of actual usage and current allocation. Received sources without a known ceiling
 retain unbounded demand; measured source cost informs allocation.
+Selected original supply also provides the SDK's minimum transmit demand.
+The SDK can fill unused media capacity within its current estimate, suppressing
+padding during overuse; desired capacity remains separate. Idle or withdrawn
+sources contribute no minimum, and unknown cost does not become a guessed rate.
 The [Native candidate index](../../prototype/channel-native/README.md#rtc-dependency)
 owns the exact source and controlled results. Publisher and relay recovery
 require separate evidence; [verification status](../verification-status.md#adaptation-boundaries)

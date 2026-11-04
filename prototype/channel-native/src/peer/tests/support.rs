@@ -187,7 +187,10 @@ impl Fixture {
     pub(in crate::peer) async fn add_remote(&mut self, pair: Uuid) -> Result<Uuid> {
         let fixed = server_udp::ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
         let runtime = transport::Runtime::new(Some(fixed));
-        let (_, demand) = watch::channel(Some(1_000_000));
+        let (_, demand) = watch::channel(BandwidthDemand {
+            minimum_bps: 0,
+            desired_bps: Some(1_000_000),
+        });
         let (handle, _) = runtime
             .add(
                 pair,
@@ -655,7 +658,10 @@ pub(in crate::peer) async fn endpoint(
     prepared: Option<std::net::UdpSocket>,
 ) -> Result<(Transport, mpsc::Receiver<Event>)> {
     let (events, rx) = mpsc::channel(256);
-    let (_, demand) = watch::channel(Some(4_000_000));
+    let (_, demand) = watch::channel(BandwidthDemand {
+        minimum_bps: 0,
+        desired_bps: Some(4_000_000),
+    });
     let (handle, _) = runtime
         .add(
             pair,

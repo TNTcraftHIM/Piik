@@ -514,7 +514,7 @@ after restoration; with it, one remained Limited at the 20-second endpoint.
 The latter's lower allocation matched its observed transport budget, so this
 pair does not establish an MF rate-control defect. The optional request was
 removed: it supplied no clear presentation benefit and did not pass the
-restoration target. Large-scene presentation latency remains open.
+restoration target.
 
 With the restored settings, a normal App's twelve scene changes had a 260 ms
 median paint-to-last-packet delay and 4.9 ms from reception to composition.
@@ -527,8 +527,24 @@ Three 9–11 KB units instead waited 223–244 ms for the preceding large AU to 
 then entered the SDK within 0.1 ms of its marker submission. This follows the
 existing whole-AU admission owner and upstream's
 [bandwidth-based pacer](https://github.com/algesten/str0m/blob/3b5b7ed1ff25d9432a87336a20bc2de336896db3/src/pacer/control.rs).
-The workload, default media settings and SDK policy stayed unchanged. Further
-latency work must address these bursts while retaining the restoration controls.
+The workload, default media settings and SDK policy stayed unchanged.
+
+The same hardware accepted `LowDelayVBR` and retained it after format setup.
+Across the 65-second control, its largest source AU fell from 226 KB to 116 KB;
+the twelve scene changes had a 121 ms median paint-to-composition delay versus
+259 ms with CBR. BWE remained in the same range, with a somewhat higher median.
+This establishes smaller encoded bursts and faster presentation for this workload.
+Its first bandwidth-restoration control still ended Limited: the 1.24 Mbps
+estimate stayed below the 2.69 Mbps original supply cost.
+
+Piik now passes selected original supply cost to the existing SDK
+[`minimum` transmit demand](https://github.com/algesten/str0m/blob/3b5b7ed1ff25d9432a87336a20bc2de336896db3/src/bwe/api.rs),
+separately from configured desired capacity. The SDK fills the media gap within
+its estimate and owns congestion suppression and probing. With that adapter,
+the same control first adopted both Original feeds 6–7 seconds after bandwidth
+restoration and kept them from 9–10 seconds onward. Temporary encoders retired;
+the healthy connection kept both Original feeds throughout restoration. Windows
+uses low-delay VBR when accepted and retains CBR for unsupported transforms.
 
 ### Budget Restoration
 

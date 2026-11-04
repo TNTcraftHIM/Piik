@@ -51,6 +51,12 @@ impl Estimate {
 // original source ceiling is distinct from an explicitly idle connection.
 const MAX_CONNECTION_BITRATE: u64 = 100_000_000;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct BandwidthDemand {
+    pub minimum_bps: u64,
+    pub desired_bps: Option<u64>,
+}
+
 fn desired_bps(ceiling: Option<u64>) -> u64 {
     ceiling.unwrap_or(MAX_CONNECTION_BITRATE)
 }
@@ -257,7 +263,7 @@ pub(crate) struct Engine {
     remote_media: HashMap<Mid, (String, String)>,
     negotiated: bool,
     bandwidth: watch::Sender<Estimate>,
-    demand: watch::Receiver<Option<u64>>,
+    demand: watch::Receiver<BandwidthDemand>,
     bandwidth_changed: Arc<Notify>,
     reported: bool,
     estimate: f64,
@@ -394,7 +400,7 @@ impl Runtime {
         events: mpsc::Sender<Event>,
         overflow: Arc<AtomicBool>,
         state: Arc<AtomicU8>,
-        mut demand: watch::Receiver<Option<u64>>,
+        mut demand: watch::Receiver<BandwidthDemand>,
         changed: Arc<Notify>,
         ice: &[IceServer],
     ) -> Result<(Transport, watch::Receiver<Estimate>)> {
@@ -456,9 +462,10 @@ impl Runtime {
         );
         let stats_origin = Instant::now();
         let mut rtc = config.build(stats_origin);
+        let requested = *demand.borrow_and_update();
         rtc.bwe().set_bitrate(
-            Bitrate::ZERO,
-            Bitrate::bps(desired_bps(*demand.borrow_and_update())),
+            Bitrate::bps(requested.minimum_bps),
+            Bitrate::bps(desired_bps(requested.desired_bps)),
         );
         let interfaces = netwatch::interfaces::State::new().await;
         let mut bases = Vec::new();
@@ -1201,9 +1208,10 @@ impl Engine {
         self.drain_turn();
         if self.demand.has_changed().unwrap_or(false) {
             let demand = *self.demand.borrow_and_update();
-            self.rtc
-                .bwe()
-                .set_bitrate(Bitrate::ZERO, Bitrate::bps(desired_bps(demand)));
+            self.rtc.bwe().set_bitrate(
+                Bitrate::bps(demand.minimum_bps),
+                Bitrate::bps(desired_bps(demand.desired_bps)),
+            );
         }
         loop {
             match self.rtc.poll_output() {
