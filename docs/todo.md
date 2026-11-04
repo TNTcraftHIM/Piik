@@ -7,9 +7,6 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **2.x public-invitation candidate retirement.** Capture the parent and
-  server reason when a candidate is retired before its first SDP offer. Keep
-  this separate from candidates that actually enter ICE and fail.
 - [ ] **3.0 Native platform acceptance.** Complete the remaining Linux/macOS
   device acceptance, retaining the accepted
   [network model](./research/channel-network-design.md)
