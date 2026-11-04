@@ -206,7 +206,12 @@ export class ChannelTransport {
       if (!current()) return;
       writer.close();
       this.writers.delete(channel);
-      if (bulk) { if (!["failed", "closed"].includes(this.pc.connectionState)) this.options.bulkClosed?.(); return; }
+      if (bulk) {
+        this.bulk = null;
+        channel.close();
+        if (!["failed", "closed"].includes(this.pc.connectionState)) this.options.bulkClosed?.();
+        return;
+      }
       this.channel = null;
       this.failBase();
       channel.close();

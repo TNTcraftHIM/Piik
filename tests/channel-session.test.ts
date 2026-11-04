@@ -3962,7 +3962,7 @@ test("a replacement video waits for proof without treating the old input's retir
 });
 
 test("bulk waits for its own open and buffer while control and media remain available", async () => {
-  const { session, media, sent, pc } = await setupRoomMedia();
+  const { session, media, state, sent, pc } = await setupRoomMedia();
   try {
     const [control, bulk] = pc.channels;
     pc.connected(); control.open();
@@ -3985,6 +3985,18 @@ test("bulk waits for its own open and buffer while control and media remain avai
     bulk.close();
     await expect(closing).rejects.toThrow("data_channel_unavailable");
     await media.sendData("z", "control", "still-open");
+    media.update("a", state);
+    expect(pc.channels).toHaveLength(3);
+    const replacement = pc.channels[2];
+    expect(replacement.label).toBe("piik-file");
+    replacement.open();
+    await media.sendData("z", "chunk", new Uint8Array([5]));
+    bulk.onclose?.();
+    await media.sendData("z", "chunk", new Uint8Array([6]));
+    expect(replacement.send.mock.calls).toEqual([[new Uint8Array([5])], [new Uint8Array([6])]]);
+    await media.sendData("z", "control", "still-open-after-replacement");
+    expect(control.send).toHaveBeenLastCalledWith("still-open-after-replacement");
+    expect(RoomPeerConnection.instances).toEqual([pc]);
     expect(pc.close).not.toHaveBeenCalled();
     expect(sent.some(command => command.type === "base_state" && !command.ready)).toBe(false);
   } finally { media.reset(); session.close(); }
