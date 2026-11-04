@@ -504,6 +504,10 @@ retained CBR on rejection, preserving the existing low-latency, GOP and mean-rat
 settings. The unchanged 76-second `TestAdaptiveOutputFixture` rejected it:
 after restoring the 2 Mbps budget, output remained 320×180 at about 102 kbps with no
 full-size recovery. The candidate was removed; Windows 2.x retains CBR.
+Diagnostic replay confirmed a restored 2 Mbps allocation and Mean-property
+readback on the same MFT, while valid slice QP remained near 51. The SDK was
+receiving the requested budget and quality feedback; this result does not
+justify adding another SDK recovery policy.
 
 ### Budget Restoration
 
