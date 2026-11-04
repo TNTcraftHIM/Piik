@@ -78,7 +78,9 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   Hardware encoding and physical sound remain platform acceptance work.
 - The isolated 3.0 Android Rust App builds ARM64/x64 packages and passes emulator
   system-browser linkage, screen selection, decoded H.264 picture and captured
-  source sound. Same-signature updates preserve App data. Picker cancellation,
+  source sound. Its packaged Web/WASM loads in the system Browser; room history
+  and message reactions survive page reloads. Same-signature updates preserve
+  App data. Picker cancellation,
   pending-page cancellation and capture stop preserve the running room.
   Notification Stop joins the runtime and closes its listeners; launcher reentry
   retains the running domain without resuming capture. App-owned public rooms

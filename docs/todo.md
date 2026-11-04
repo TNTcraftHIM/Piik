@@ -10,8 +10,8 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **2.x public-invitation candidate retirement.** Capture the parent and
   server reason when a candidate is retired before its first SDP offer. Keep
   this separate from candidates that actually enter ICE and fail.
-- [ ] **3.0 Native platform acceptance.** Verify Android frontend-bundle startup
-  and complete the remaining Linux/macOS capture and input acceptance, retaining the accepted
+- [ ] **3.0 Native platform acceptance.** Complete the remaining Linux/macOS
+  device acceptance, retaining the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab

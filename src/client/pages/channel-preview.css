@@ -163,6 +163,11 @@
   .c3-voice-dock > svg { display: none; }
   .c3-notice { margin: 10px 12px 0; }
 }
+@media (max-height: 500px) {
+  /* Scroll the overview while message history keeps its bounded workspace. */
+  .c3-shell > .c3-main { overflow-y: auto; }
+  .c3-main > .c3-workspace { flex: 0 0 100%; }
+}
 @media (prefers-reduced-motion: no-preference) {
   .c3-room-link { transition: background 150ms, color 150ms, box-shadow 150ms; }
 }
