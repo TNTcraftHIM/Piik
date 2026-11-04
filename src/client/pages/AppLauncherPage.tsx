@@ -286,7 +286,7 @@ export function AppLauncherPage() {
           title={appDebug ? "client.launch.debugExportHint" : "client.launch.debugHint"}
           cap={appDebug ? "client.launch.debugExport" : undefined}
           pressed={appDebug ? undefined : debug} tone={appDebug ? "on" : undefined}
-          hint={appDebug ? undefined : "debug-start"} busy={debugBusy}
+          hint={appDebug ? "hint-debug-export" : "debug-start"} busy={debugBusy}
           disabled={debugBusy || (!appDebug && (loading || error?.kind === "load"))}
           onClick={() => void (appDebug ? exportDebug() : enableDebug())} />
       )} />

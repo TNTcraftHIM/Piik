@@ -529,13 +529,13 @@ Enable diagnostics before reproducing once, then export before refreshing:
 - **Web:** use the page's diagnostics button. A sharing failure's error icon below
   the TV also provides a copyable summary; it contains the Web version, message
   and code, without invitation links or source names.
-- **Desktop App capture or remote control:** also enable **Debug launch** on the Host App's mode selection page,
-  then press `D` in the terminal to export its report.
+- **App capture or remote control:** also enable **Debug launch** on the App's local launcher
+  before reproducing, then return there and select **App report** to download its ZIP.
 - **Connection failure:** collect the affected Viewer and Host reports for the
   same attempt. For self-hosted SFU, include the Server report too.
 
 Reports stay on your device. Review private information before sharing them;
-[diagnostics and export](../../cmd/piik-app/README.md#diagnostics) explains their contents.
+[App diagnostics](../../prototype/channel-server/README.md#app-diagnostics) explains their contents.
 If you cannot collect logs, send the full error text and reproduction steps.
 
 For other guides, return to [the documentation home](./README.md).

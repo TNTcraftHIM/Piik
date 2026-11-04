@@ -168,6 +168,18 @@ normal discovery range; a launch URL can supply the non-secret `piik-client-port
 query parameter. `PIIK_CHANNEL_APP_WEB_DIR` selects the built frontend and
 `PIIK_CHANNEL_APP_NO_BROWSER=1` suppresses browser opening for automated checks.
 
+## App diagnostics
+
+On the App's local launcher page, enable **Debug launch** before reproducing the
+problem. Return to that page and select **App report** to download the ZIP.
+This works on desktop and Android, including while the local domain is running.
+
+Diagnostics are off in each new App process. Enabling them retains bounded
+technical error records in memory until that process exits; restarting its local
+service does not clear them. Only an explicit export produces a report, containing
+build metadata and these records. Approved sites cannot read this process-wide
+report. Browser reports are separate downloads from the page's **Help** menu.
+
 ## Design studies
 
 Open `/__channel-design` on the same Vite service for the interactive design

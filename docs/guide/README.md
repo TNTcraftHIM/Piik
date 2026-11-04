@@ -24,7 +24,7 @@ Choose a guide to start sharing, use room tools or solve a problem.
 - [Sharing and playback](./sharing.md): picture quality, cameras, source sound and viewing controls.
 - [Chat, voice and remote control](./room-tools.md): reactions, conversations and letting a friend take control.
 - [Remote control and playing together](./remote-control.md): permissions, shared keyboard/mouse and gamepads.
-- [App reference](../../cmd/piik-app/README.md): saved modes, site access, command-line options and diagnostics.
+- [App reference](../../prototype/channel-server/README.md#local-app-link): local/public modes, site approval and diagnostics.
 
 ## Get help
 
