@@ -14,9 +14,15 @@ own behavior; research and Git/PRs own evidence and completed history.
   capture and input acceptance, retaining the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
+- [ ] **3.0 App diagnostics.** Restore the opt-in capture and diagnostic export
+  workflow in Rust through the shared launcher. Current Native failure details
+  are written to stderr; the App does not yet export its own diagnostic bundle.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
+- [ ] **Room voice in Native display sound.** Resolve system loopback recapturing
+  Browser room voice without removing that Browser's other audio. Explicit
+  process-tree exclusion is available; it cannot isolate one Browser document.
 - [ ] **Linux capture ends after selection (#499).** Follow
   [#499](https://github.com/TNTcraftHIM/Piik/issues/499) on niri/Wayland with
   GStreamer NVENC. The Browser report records capture ending before connection

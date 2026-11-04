@@ -129,10 +129,11 @@ illustrates separating recent history, older pagination and subsequent events.
 Refresh the latest reading window when its room path recovers or changes,
 including when the room-host binding stays the same. A reader browsing older
 history keeps that selected window. Refresh from the room owner's current result,
-including removals. This avoids introducing a permanent change-replay service
-for the first local cache. Browser copies belong
-in bounded IndexedDB storage; localStorage remains for small preferences and
-bookmarks. Original author departure does not erase confirmed messages.
+including removals. Participants keep a bounded reading window in page memory;
+reloading or re-entering retrieves it from the room owner. Browser room authority
+and retained attachments use their existing IndexedDB stores; localStorage remains
+for small preferences and bookmarks. Original author departure does not erase
+confirmed messages.
 
 The current room-host binding scopes history requests and live replies. A fresh
 binding replaces the previous reading window with the owner's current result,
