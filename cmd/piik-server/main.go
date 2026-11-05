@@ -143,7 +143,7 @@ func serve(debug bool) (returnedErr error) {
 		logger.Info("HTTPS certificate", "sha256", tlsconfig.Fingerprint(configuration.TLS))
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	// One bounded background lookup never delays serving. Join it before closing
 	// diagnostic outputs so shutdown cannot leave a late writer behind.
 	releaseChecked := make(chan struct{})
