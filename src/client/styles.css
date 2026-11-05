@@ -2061,7 +2061,7 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
 .lr-comic-tip.is-below::after { inset: auto 0 100%; }
 .lr-comic-tip.is-left::after { inset: 0 auto 0 100%; width: 10px; height: auto; }
 .lr-comic-tip.is-right::after { inset: 0 100% 0 auto; width: 10px; height: auto; }
-.lr-comic-tip-wrap:is(.is-hover-open, .is-focus-open, .is-tip-open) > .lr-comic-tip {
+.lr-comic-tip-wrap:is(.is-focus-open, .is-tip-open) > .lr-comic-tip {
   pointer-events: auto;
 }
 /* The caret follows the trigger, including in a scrolled/clipped list. */
@@ -2093,7 +2093,7 @@ svg[data-comic-motion="still"] .lr-person-eyes > ellipse {
 
 /* channel 1: fine-pointer hover */
 @media (hover: hover) and (pointer: fine) {
-  .lr-comic-tip-wrap.is-hover-open .lr-comic-tip { opacity: 1; transform: translate(var(--tooltip-offset-x, 0px), 0); }
+  .lr-comic-tip-wrap.is-hover-open .lr-comic-tip { opacity: 1; pointer-events: auto; transform: translate(var(--tooltip-offset-x, 0px), 0); }
   .lr-comic-tip-wrap.is-hover-open .lr-comic-tip * { animation-play-state: running !important; }
 
   /* Panel mutex: keyboard focus (channel 2) can hold one wrap's panel open
