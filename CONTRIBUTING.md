@@ -170,6 +170,10 @@ Every retained test must be collected by a documented verification entry point.
 Confirm runner inclusion when adding or moving a test; a file's presence alone
 does not establish coverage.
 
+Use local incremental builds and scoped checks during iteration. Batch GitHub
+Actions at review and acceptance boundaries; reuse passing results for unchanged
+code instead of repeatedly running the full platform matrix for one candidate.
+
 - `npm run check` runs the shared Rust/WASM checks, Web type-check and unit tests.
   CI uses this same command. Install the tools listed in
   [Run from source](./docs/README.md#run-from-source) first.

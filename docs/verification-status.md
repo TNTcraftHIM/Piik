@@ -48,6 +48,10 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   through floating and actual Document PiP surfaces, retaining drafts and attachments.
   Server's default dual-stack listeners retain usable IPv4 paths when IPv6 has
   no advertisable address. Both programs release their listeners on native Ctrl+C.
+  The `5e56589e` packaged App also retains its hosted rooms and confirmed
+  conversations across selecting-page exit and launcher reentry, while personal
+  voice and screen activities retire independently. Its normal two-Browser flow
+  carries verified files, synthetic-microphone voice and decoded picture.
 - macOS/Linux builds and bounded native checks are distinct from physical
   capture and input. Physical platform coverage remains limited.
 - The isolated 3.0 macOS Native and App pass an

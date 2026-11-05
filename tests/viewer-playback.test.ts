@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import { nextViewerMediaBinding, playbackFailure, prepareViewerPlayback } from "../src/client/media/viewer-playback.ts";
+import { ChannelVideo } from "../src/client/channel/components/ChannelMedia";
+import { PlaybackControlsView } from "../src/client/components/living/PlaybackControls";
+import { setCopy } from "../src/client/ui/copy";
 
 describe("Viewer playback binding", () => {
   it("distinguishes canceled playback from autoplay denial and actual failures", () => {
@@ -67,5 +72,43 @@ describe("Viewer playback binding", () => {
     // If the Host has already resumed, the new binding starts immediately.
     expect(prepareViewerPlayback(video, stream, false, pauseState)).toBe(true);
     expect(pauseState).toEqual({ active: false, resume: false });
+  });
+});
+
+describe("Playback audio controls", () => {
+  it("uses source audio presence despite the stable mixed output track", () => {
+    setCopy({ lang: "zh", vis: false });
+    const stream = { id: "mixed", getAudioTracks: () => [{ kind: "audio", readyState: "live" }] } as unknown as MediaStream;
+    const sourceAudio = { hasAudio: false, available: false, level: 1, muted: false, busy: false, onChange: vi.fn() };
+    const html = renderToStaticMarkup(createElement(ChannelVideo, { stream, local: true, label: "Own screen", sourceAudio }));
+    const range = html.match(/<input\b[^>]*type="range"[^>]*>/)![0];
+    expect(range).toContain('aria-label="分享源没有音频"');
+    expect(range).toContain('aria-valuetext="分享源没有音频"');
+    expect(range).toContain('value="0"');
+    expect(range).toContain("disabled");
+    expect(html.match(/<button\b[^>]*aria-label="分享源没有音频"[^>]*>/)?.[0]).toContain("disabled");
+
+    const silent = renderToStaticMarkup(createElement(ChannelVideo, { stream, local: true, label: "Own screen",
+      sourceAudio: { ...sourceAudio, hasAudio: true, available: true, muted: true, level: 0 } }));
+    const silentRange = silent.match(/<input\b[^>]*type="range"[^>]*>/)![0];
+    expect(silentRange).not.toContain("disabled");
+    expect(silentRange).toContain('aria-valuetext="0%"');
+    expect(silent).toContain('aria-label="恢复所有观众的分享声音"');
+  });
+
+  it("gives the shared volume slider the same no-audio label as its button", () => {
+    setCopy({ lang: "zh", vis: false });
+    const noop = () => {};
+    const html = renderToStaticMarkup(createElement(PlaybackControlsView, {
+      audio: { level: 1, muted: false, boostAvailable: true }, paused: false, hasAudio: false, canPlay: true,
+      sharingAudio: true, audioControlAvailable: false, theaterMode: false,
+      fullscreen: { supported: false, ready: false, active: false },
+      picture: { supported: false, active: false, failed: false, toggle: async () => {} },
+      togglePlayback: noop, toggleFullscreen: noop, toggleMute: noop, setLevel: noop, onToggleTheater: noop,
+    }));
+    const range = html.match(/<input\b[^>]*type="range"[^>]*>/)![0];
+    expect(range).toContain('aria-label="分享源没有音频"');
+    expect(range).toContain('aria-valuetext="分享源没有音频"');
+    expect(range).toContain("disabled");
   });
 });

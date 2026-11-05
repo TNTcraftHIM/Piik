@@ -74,7 +74,7 @@ export interface ChannelActions {
   screenCodecMode(publicationId: string): BrowserVideoCodecMode | undefined;
   setScreenQuality(publicationId: string, profile: QualityProfile): Promise<void>;
   setScreenPaused(publicationId: string, paused: boolean): Promise<void>;
-  sourceAudio(publicationId: string): { level: number; muted: boolean; bitrate: number; available: boolean } | undefined;
+  sourceAudio(publicationId: string): { level: number; muted: boolean; bitrate: number; hasAudio: boolean; available: boolean } | undefined;
   setSourceAudio(publicationId: string, settings: { bitrate?: number; level?: number; muted?: boolean }): Promise<void>;
   sourceMicrophone(publicationId: string): SourceMicrophoneConfiguration & { browser: boolean; available: boolean; requested: SourceMicrophoneConfiguration } | undefined;
   setSourceMicrophone(publicationId: string, settings: SourceMicrophoneSettings): Promise<void>;

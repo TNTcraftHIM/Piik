@@ -1062,7 +1062,12 @@ test("screen commentary owns a separate microphone and keeps its mixed track acr
     expect(contexts[0].close).not.toHaveBeenCalled();
     expect(session.sourceMicrophone(publication.id)).toMatchObject({ available: true, enabled: true, deviceId: "commentary-device" });
     expect(session.sourceMicrophone(publication.id)?.browser).toBe(true);
-    expect(session.sourceAudio(publication.id)?.available).toBe(true);
+    expect(session.sourceAudio(publication.id)).toMatchObject({ hasAudio: true, available: true });
+    await session.setSourceAudio(publication.id, { level: 0, muted: true });
+    expect(session.sourceAudio(publication.id)).toMatchObject({ hasAudio: true, available: true, level: 0, muted: true });
+    await session.setSourceMicrophone(publication.id, { enabled: false });
+    expect(session.sourceAudio(publication.id)).toMatchObject({ hasAudio: false, available: false });
+    expect(session.getSnapshot().streams.get(publication.id)!.getAudioTracks()[0]).toBe(mixed);
 
     const stopping = session.stopScreen(publication.id);
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await stopping;
@@ -1405,7 +1410,7 @@ test("Browser source output gain and bitrate survive replacement and close with 
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await pausing;
     expect(first.getTracks().every(track => !track.enabled)).toBe(true);
     expect(session.getSnapshot().streams.get(publication.id)!.getTracks().every(track => !track.enabled)).toBe(true);
-    expect(session.sourceAudio(publication.id)).toMatchObject({ level: 0.5, muted: false });
+    expect(session.sourceAudio(publication.id)).toMatchObject({ level: 0.5, muted: false, hasAudio: true, available: true });
     expect(contexts[0].gain).toHaveBeenLastCalledWith(0.5, 0, 0.01);
     const originalProfile = session.screenQuality(publication.id)!.applied;
     let applied!: () => void;
@@ -1725,10 +1730,10 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     expect(session.getSnapshot().remoteControls.get(publicationId)?.requests).toEqual([]);
 
     const pendingMicrophone = session.setSourceMicrophone(publicationId, { enabled: true });
-    expect(session.sourceAudio(publicationId)?.available).toBe(false);
+    expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: false, available: false });
     app.receive({ id: app.sent.at(-1)!.id, result: enabledMicrophone });
     await pendingMicrophone;
-    expect(session.sourceAudio(publicationId)?.available).toBe(true);
+    expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: true, available: true });
     const pendingReplacement = session.setSourceMicrophone(publicationId, { deviceId: "candidate" });
     const interruptedMicrophone = expect(pendingReplacement).rejects.toMatchObject({ name: "AbortError" });
     const microphoneRequest = app.sent.at(-1)!;

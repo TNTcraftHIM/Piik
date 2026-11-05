@@ -1530,10 +1530,11 @@ export class ChannelSession {
   sourceAudio = (publicationId: string) => {
     const share = [...this.screenShares.values()].find(share => share.id === publicationId);
     if (!share) return undefined;
+    const local = this.local.get(publicationId);
+    const hasAudio = local ? !!local.audio?.audioAvailable
+      : !!this.app?.screens.has(publicationId) && (!!share.native?.audio || !!this.app.sourceMicrophone(publicationId)?.enabled);
     return { ...share.volume, bitrate: share.profile.maxAudioBitrate ?? 128_000,
-      available: this.local.has(publicationId)
-        ? !!this.local.get(publicationId)?.audio?.outputGainAvailable && !!this.local.get(publicationId)?.audio?.audioAvailable
-        : !!this.app?.screens.has(publicationId) && (!!share.native?.audio || !!this.app.sourceMicrophone(publicationId)?.enabled) };
+      hasAudio, available: hasAudio && (!local || !!local.audio?.outputGainAvailable) };
   };
 
   setSourceAudio = (publicationId: string, settings: { bitrate?: number; level?: number; muted?: boolean }): Promise<void> => {
