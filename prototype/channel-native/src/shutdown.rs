@@ -6,6 +6,8 @@ pub fn shutdown_signal() -> io::Result<impl Future<Output = ()>> {
     let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
     #[cfg(unix)]
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    #[cfg(unix)]
+    let mut hangup = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())?;
     #[cfg(windows)]
     let (mut interrupt, mut terminate, mut close) = (
         tokio::signal::windows::ctrl_c()?,
@@ -17,6 +19,7 @@ pub fn shutdown_signal() -> io::Result<impl Future<Output = ()>> {
         tokio::select! {
             _ = interrupt.recv() => {},
             _ = terminate.recv() => {},
+            _ = hangup.recv() => {},
         }
         #[cfg(windows)]
         tokio::select! {
