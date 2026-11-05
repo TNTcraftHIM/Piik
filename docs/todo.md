@@ -7,8 +7,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **3.0 Native platform acceptance.** Complete the remaining Linux/macOS
-  device acceptance, retaining the accepted
+- [ ] **3.0 Native platform acceptance.** Finish macOS Dock/Finder reopening of
+  the Browser entry and complete the remaining Linux/macOS device acceptance,
+  retaining the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
