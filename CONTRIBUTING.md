@@ -170,6 +170,10 @@ code instead of repeatedly running the full platform matrix for one candidate.
   The server core is Go, so its acceptance runs here. It builds the Web UI first when
   that output is missing, because both binaries embed it. CI invokes these same
   package commands rather than rebuilding their steps in YAML.
+- `npm run check:go-core` runs the Go formatting, tests, vet and build stages
+  without platform capture/probing. Windows desktop input and global hotkey
+  acceptance are opt-in: set `PIIK_INPUT_GATE=1` when running
+  `go test ./internal/app/remoteinput` in an isolated desktop session.
 - `npm run check:go-race` checks port mapping, media forwarding, media-edge and native-control
   ownership, loopback delivery, service storage shutdown and scoped NAT dependencies with Go's race detector. It
   requires a supported cgo toolchain; CI runs it on Linux.
