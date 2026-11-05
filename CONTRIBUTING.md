@@ -160,6 +160,10 @@ Every retained test must be collected by a documented verification entry point.
 Confirm runner inclusion when adding or moving a test; a file's presence alone
 does not establish coverage.
 
+Use local incremental builds and scoped checks during iteration. Batch GitHub
+Actions at review and acceptance boundaries; reuse passing results for unchanged
+code instead of repeatedly running the full platform matrix for one candidate.
+
 - `npm run check` owns deterministic Web type-check, unit, and build acceptance.
 - `npm run check:go` owns Go formatting, unit tests, vet, Windows/Linux
   builds, Darwin builds on macOS, and the current platform's capture compile/probe.

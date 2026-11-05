@@ -178,7 +178,7 @@ export function PlaybackControlsView({
   }, [barRef]);
   const silent = audio.muted || audio.level === 0;
   const percent = Math.round(audio.level * 100);
-  const volumeTitle = sharingAudio ? !audioControlAvailable ? "host.shareVolume.unavailable" : "host.shareVolume"
+  const volumeTitle = !hasAudio ? "playback.noAudio" : sharingAudio ? !audioControlAvailable ? "host.shareVolume.unavailable" : "host.shareVolume"
     : audio.boostAvailable ? "playback.volume" : "playback.volumeBasic";
   const pipTitle = picture.failed ? "playback.pipFailed" : !picture.supported ? "playback.pipUnavailable"
     : picture.active ? "playback.exitPip" : !canPlay ? "playback.pipWaiting" : "playback.pip";
@@ -216,7 +216,7 @@ export function PlaybackControlsView({
             hint={!hasAudio ? "hint-no-audio" : silent ? "hint-unmute" : "hint-mute"} disabled={!hasAudio || !audioControlAvailable}
             onClick={toggleMute} />
           <Tooltip kind={!hasAudio ? "hint-no-audio" : audio.boostAvailable ? "hint-volume" : "hint-volume-basic"}
-            text={vis ? undefined : t(!hasAudio ? "playback.noAudio" : volumeTitle)}
+            text={vis ? undefined : t(volumeTitle)}
             className="lr-playback-volume">
             <input type="range" min={0} max={audio.boostAvailable ? 200 : 100} step={1}
               value={hasAudio ? percent : 0} disabled={!hasAudio || !audioControlAvailable}
