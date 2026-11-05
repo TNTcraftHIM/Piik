@@ -12,11 +12,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   retaining the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-- [ ] **Native source commentary during replacement.** Retain the enabled
-  microphone and its gain when replacing the source of the same share. Current
-  producer cleanup stops the share mixer with the old picture. Cancelling a
-  candidate must retain the current microphone; stopping the share retires it.
-  Room voice keeps its independent lifetime.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
