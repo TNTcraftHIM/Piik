@@ -49,7 +49,9 @@ uses the PulseAudio monitor, including PipeWire's PulseAudio compatibility servi
 The App enables the Native `capture`
 Cargo feature; Server disables it so forwarding does not require desktop media
 libraries. Linux App builds need GStreamer 1.20+ development libraries and
-`pkg-config`; runtime capture needs the PipeWire, conversion, H264 parser and
+`pkg-config`. Current Linux App packages require glibc 2.39+ and GStreamer 1.20+
+core, app and video libraries, plus GLib/GObject/GIO, before the launcher can start.
+Native capture additionally needs the PipeWire, conversion, H264 parser and
 hardware encoder plugins, plus a working desktop Portal backend.
 The optional global stop shortcut also needs normal desktop integration: install
 the package's `piik-app.desktop` entry with `piik-app` on the desktop's PATH.
