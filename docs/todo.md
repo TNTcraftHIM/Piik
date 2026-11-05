@@ -7,6 +7,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **3.0 Native capture failure feedback acceptance.** Verify that an active
+  encoder's terminal failure reaches its selecting page through capture
+  completion. Natural source closure, user stop, cancelled candidates and
+  retired encoders retain quiet cleanup.
 - [ ] **3.0 Native platform acceptance.** Complete the remaining Linux/macOS
   device acceptance, including Dock/Finder return to the App's Browser entry,
   retaining the accepted

@@ -81,7 +81,7 @@ export function ChannelPreviewPage() {
     : channel.error === "app_disconnected"
       ? copy("与 App 的连接已断开。请确认 App 正在运行，然后重试。", "Connection to the App was lost. Check that it is running, then retry.")
     : channel.error === "capture_failed"
-      ? copy("未能开始分享，请重新选择窗口或屏幕。", "Could not start sharing. Choose a window or screen again.")
+      ? copy("分享遇到问题，请重新选择窗口或屏幕。", "Sharing encountered a problem. Choose a window or screen again.")
     : channel.error === "capture_audio_failed"
       ? copy("无法分享声音，画面分享仍在继续。", "Could not share sound. Screen sharing continues.")
     : channel.error === "capture_codec_unsupported"

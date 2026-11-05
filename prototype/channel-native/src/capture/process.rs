@@ -652,6 +652,61 @@ mod tests {
         );
     }
     #[tokio::test]
+    async fn active_encoding_terminal_cause_survives_supply_retirement() {
+        use crate::media::{clock::SourceTime, encodings::Encodings, video::Video};
+        use rtc_shared::time::SystemInstant;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        #[derive(Debug)]
+        struct Failure(Arc<AtomicBool>);
+        impl std::fmt::Display for Failure {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("active codec failure")
+            }
+        }
+        impl std::error::Error for Failure {}
+        impl Drop for Failure {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+
+        let now = std::time::Instant::now();
+        let time = SourceTime::local(now, SystemInstant::now(now));
+        let changed = Arc::new(Notify::new());
+        let high = Video::new(time.clone(), changed.clone());
+        let low = Video::new(time.clone(), changed.clone());
+        let mut encodings = Encodings::new(time.clone(), changed.clone(), VideoCodec::Vp8);
+        let high_encoder = proxy();
+        let high_control = high_encoder.control();
+        let low_encoder = proxy();
+        let low_control = low_encoder.control();
+        encodings.baseline(high_encoder, high.clone(), high.requests());
+        encodings.supplied(low_encoder, low.clone());
+
+        let retired = Video::new(time, changed);
+        let dropped = Arc::new(AtomicBool::new(false));
+        drop(encodings.retired_or_failed(&retired, Err(Failure(dropped.clone()).into())));
+        assert!(dropped.load(Ordering::SeqCst));
+
+        let dropped = Arc::new(AtomicBool::new(false));
+        let completion = encodings.retired_or_failed(&low, Err(Failure(dropped.clone()).into()));
+        assert!(
+            !dropped.load(Ordering::SeqCst),
+            "the current encoder's cause must remain owned by its completion"
+        );
+        assert!(
+            !high_control.is_stopped(),
+            "a failed layer cannot stop its sibling"
+        );
+        drop(completion);
+        assert!(dropped.load(Ordering::SeqCst));
+        high_control.stop();
+        low_control.stop();
+        encodings.stop().await;
+    }
+
+    #[tokio::test]
     async fn encoding_stop_retains_failure_after_one_recv_error() {
         let mut encoding = proxy();
         encoding.control().stop();

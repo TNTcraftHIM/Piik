@@ -211,7 +211,7 @@ impl Encodings {
         next: &[VideoDemand],
         external: Option<&Arc<Input>>,
         mut encode: impl FnMut(u32) -> Result<Encoding>,
-    ) -> Vec<Video> {
+    ) -> Vec<(Video, Result<()>)> {
         self.inputs.retain(|id, input| {
             let keep = next.iter().any(|d| d.key() == *id && d.input.ptr_eq(input));
             if !keep {
@@ -249,7 +249,7 @@ impl Encodings {
                     if let Err(error) = entry.control.set_bitrate(bitrate) {
                         eprintln!("Native output encoding failed: {error:#}");
                         let entry = self.limited.remove(&demand.key()).unwrap();
-                        failed.push(entry.video.clone());
+                        failed.push((entry.video.clone(), Err(error)));
                         entry.retire();
                     } else {
                         entry.encoding = demand.encoding;
@@ -275,7 +275,7 @@ impl Encodings {
                     }
                     Err(error) => {
                         eprintln!("Native output encoding failed: {error:#}");
-                        failed.push(video);
+                        failed.push((video, Err(error)));
                     }
                 }
             }
@@ -283,7 +283,7 @@ impl Encodings {
         self.retire_unused();
         failed
     }
-    async fn join_retired(&mut self) -> Vec<Video> {
+    async fn join_retired(&mut self) -> Vec<(Video, Result<()>)> {
         self.retire_unused();
         let mut failed = Vec::new();
         // Each Entry owns one pump; extra pumps still own retiring encoders.
@@ -293,13 +293,13 @@ impl Encodings {
                 + self.limited.len()
         {
             let (video, result) = self.pumps.next().await.unwrap();
-            if self.retired_or_failed(&video, result) {
-                failed.push(video);
+            if let Some(result) = self.retired_or_failed(&video, result) {
+                failed.push((video, result));
             }
         }
         failed
     }
-    pub fn retired_or_failed(&mut self, video: &Video, result: Result<()>) -> bool {
+    pub fn retired_or_failed(&mut self, video: &Video, result: Result<()>) -> Option<Result<()>> {
         let owned = if self.supplied.as_ref().is_some_and(|e| e.video.same(video)) {
             self.supplied.take();
             true
@@ -314,13 +314,13 @@ impl Encodings {
                 .map(|(id, _)| id.clone());
             id.is_some_and(|id| self.limited.remove(&id).is_some())
         };
-        if let Err(error) = result {
+        if let Err(error) = &result {
             eprintln!(
                 "Native {} encoding ended: {error:#}",
                 if owned { "active" } else { "retired" }
             );
         }
-        owned
+        owned.then_some(result)
     }
     pub fn retire_unused(&mut self) {
         let retired: Vec<_> = self

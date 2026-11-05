@@ -40,6 +40,7 @@ export type PreparedNativeCapture = z.infer<typeof preparedCaptureSchema>;
 const previewSchema = z.string().max(23 + 4 * Math.ceil(64 * 1024 / 3))
   .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/).nullable();
 const captureAudioFailureSchema = z.object({ type: z.literal("capture_audio_failed"), publicationId: z.uuid() }).strict();
+const captureEndedSchema = z.object({ type: z.literal("capture_ended"), publicationId: z.uuid(), captureId: z.uuid(), failed: z.boolean() }).strict();
 const microphoneSchema = z.object({ enabled: z.boolean(), deviceId: z.string(), volume: z.number().min(0).max(2) }).strict();
 export type NativeSourceMicrophone = z.infer<typeof microphoneSchema>;
 const microphoneStateSchema = z.object({ type: z.literal("capture_microphone_state"), publicationId: z.uuid(), state: microphoneSchema }).strict();
@@ -108,7 +109,7 @@ export class ChannelApp {
   }
 
   constructor(health: AppHealth, channelId: string, userId: string, credential: string, name: string,
-    onClose: () => void, onAudioFailure: (publicationId: string) => void,
+    onClose: () => void, onCaptureState: (publicationId: string, error?: "capture_audio_failed" | "capture_failed") => void,
     onInputState: (publicationId: string, state: ChannelRemoteControlState) => void = () => {},
     private readonly onMicrophoneState: (publicationId: string) => void = () => {}) {
     this.roomHosting = new NativeRoomHosting(`http://127.0.0.1:${health.port}/rooms/${channelId}/${userId}`,
@@ -136,7 +137,16 @@ export class ChannelApp {
         }
         if (reply.type === "capture_audio_failed") {
           const { publicationId } = captureAudioFailureSchema.parse(reply);
-          if (this.captures.has(publicationId) || this.prepared.has(publicationId)) onAudioFailure(publicationId);
+          if (this.captures.has(publicationId) || this.prepared.has(publicationId)) onCaptureState(publicationId, "capture_audio_failed");
+          return;
+        }
+        if (reply.type === "capture_ended") {
+          const { publicationId, captureId, failed } = captureEndedSchema.parse(reply);
+          if (this.captures.get(publicationId) === captureId) {
+            this.captures.delete(publicationId);
+            this.microphones.delete(publicationId);
+            onCaptureState(publicationId, failed ? "capture_failed" : undefined);
+          }
           return;
         }
         if (reply.type === "capture_microphone_state") {

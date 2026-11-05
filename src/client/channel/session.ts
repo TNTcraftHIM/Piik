@@ -343,12 +343,6 @@ export class ChannelSession {
     for (const id of this.watching.keys()) {
       if (!state.publications.some(publication => publication.id === id) && !this.view.pending.has(`watch:${id}`)) this.watching.delete(id);
     }
-    for (const publication of this.view.state?.publications ?? []) {
-      if (this.app?.screens.has(publication.id) && !state.publications.some(value => value.id === publication.id)) {
-        if (this.screenShares.get(publication.roomId)?.id === publication.id) this.screenShares.delete(publication.roomId);
-        void this.app.stopCapture(publication.id).catch(() => {});
-      }
-    }
     const visible = this.projectActivity(state);
     const sameChannel = this.historyChannel === state.channel.id;
     if (!sameChannel) this.closeInteractions();
@@ -612,8 +606,12 @@ export class ChannelSession {
           for (const [roomId, share] of this.screenShares) if (!this.local.has(share.id)) this.screenShares.delete(roomId);
           this.patch({ remoteControls: new Map() });
           void this.syncAppWatching();
-        }, () => {
-          if (this.app === app) this.patch({ error: "capture_audio_failed" });
+        }, (id, error) => {
+          if (this.app !== app) return;
+          if (!app.screens.has(id)) for (const [roomId, share] of this.screenShares) {
+            if (share.id === id && !share.selection && !this.local.has(id)) this.screenShares.delete(roomId);
+          }
+          this.patch(error ? { error } : {});
         }, (id, state) => {
           if (this.app === app) this.patch({ remoteControls: new Map(this.view.remoteControls).set(id, state) });
         }, () => {

@@ -196,12 +196,13 @@ pub(super) async fn run(
         }
         let _ = ready.take().unwrap().send(Ok(()));
         encodings.baseline(encoding.take().unwrap(), frames.clone(), requests);
+        let mut ended = Ok(());
         while !encodings.pumps.is_empty() || preparing.is_some() {
             tokio::select! {
-                _ = control.video.stopped() => break,
-                _ = cancelled.changed() => break,
+                _ = control.video.stopped() => return Ok(()),
+                _ = cancelled.changed() => return Ok(()),
                 request = changes.recv(), if preparing.is_none() => {
-                    let Some(request) = request else { break; };
+                    let Some(request) = request else { return Ok(()); };
                     if request.result.is_closed() { continue; }
                     if request.settings == settings {
                         let _ = request.result.send(Ok(()));
@@ -235,6 +236,7 @@ pub(super) async fn run(
                     }
                     let previous = std::mem::replace(encodings, Encodings::new(time.clone(), changed.clone(), codec));
                     previous.stop().await;
+                    ended = Ok(());
                     settings = request.settings;
                     encodings.baseline(prepared.encoding, frames.clone(), frames.requests());
                     if let Some(layers) = &layers {
@@ -256,24 +258,27 @@ pub(super) async fn run(
                     }).await;
                     frames.write(prepared.first);
                     bandwidth_changed.notify_one();
-                    for video in failed {
+                    for (video, result) in failed {
+                        ended = result;
                         report_failure(&events, &control.video, publication_id, source_id, video, layers.as_ref()).await?;
                     }
                     let _ = request.result.send(Ok(()));
                 },
                 update = demands.changed() => {
-                    if update.is_err() { break; }
+                    if update.is_err() { return Ok(()); }
                     let next = demands.borrow_and_update().clone();
                     let failed = encodings.reconcile(&next, None, |bitrate| {
                         capture.encode(Settings { bitrate, ..settings }, codec)
                     }).await;
-                    for video in failed {
+                    for (video, result) in failed {
+                        ended = result;
                         report_failure(&events, &control.video, publication_id, source_id, video, layers.as_ref()).await?;
                     }
                 },
                 _ = changed.notified() => {},
                 Some((video, result)) = encodings.pumps.next(), if !encodings.pumps.is_empty() => {
-                    if encodings.retired_or_failed(&video, result) {
+                    if let Some(result) = encodings.retired_or_failed(&video, result) {
+                        ended = result;
                         report_failure(&events, &control.video, publication_id, source_id, video, layers.as_ref()).await?;
                     }
                 }
@@ -282,7 +287,7 @@ pub(super) async fn run(
             // allocation. Only a real change to demands starts another attempt.
             encodings.retire_unused();
         }
-        Ok::<_, anyhow::Error>(())
+        ended
     }.await;
     if let Err(error) = &result {
         if !error.is::<Aborted>() {

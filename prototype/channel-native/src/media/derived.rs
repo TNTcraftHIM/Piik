@@ -182,6 +182,9 @@ async fn apply(decoding: &mut Decoding, next: &[VideoDemand], baseline: &Video) 
             )
         })
         .await
+        .into_iter()
+        .map(|(video, _)| video)
+        .collect()
 }
 // Without an encoder owner, fail only Inputs requiring a derived encoding;
 // the original feed remains usable.
@@ -280,6 +283,7 @@ async fn run(
                     .unwrap()
                     .encodings
                     .retired_or_failed(&video, result)
+                    .is_some()
                 {
                     failed.push(video);
                 }

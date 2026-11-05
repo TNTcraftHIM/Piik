@@ -134,6 +134,7 @@ pub struct CaptureLease {
     codec: Arc<std::sync::OnceLock<crate::capture::VideoCodec>>,
     required_audio: Option<oneshot::Receiver<Result<()>>>,
     pub audio_error: Option<oneshot::Receiver<String>>,
+    pub ended: Option<oneshot::Receiver<Result<(), String>>>,
     pub remote: Option<crate::input::Source>,
     pub input_state: Option<watch::Receiver<crate::input::SourceView>>,
     #[cfg(feature = "capture")]
@@ -178,6 +179,7 @@ struct Capture {
     selected: bool,
     prepared: Vec<SourceReady>,
     pending_audio: Option<Uuid>,
+    ended: oneshot::Sender<Result<(), String>>,
 }
 impl CaptureLease {
     pub fn video_codec(&self) -> Result<crate::capture::VideoCodec> {
@@ -346,6 +348,7 @@ impl CaptureLease {
             }
             self.remote = previous.remote.take();
             self.input_state = previous.input_state.take();
+            self.ended = previous.ended.take();
         }
     }
     pub fn retains_video(&self) -> bool {
@@ -1290,6 +1293,7 @@ impl Driver {
                 codec: capture.producer.control.codec.clone(),
                 required_audio: None,
                 audio_error,
+                ended: None,
                 remote: None,
                 input_state: None,
                 producer: video,
@@ -1321,6 +1325,7 @@ impl Driver {
         )
         .await?;
         let id = producer.video;
+        let (ended, completion) = oneshot::channel();
         let lease = CaptureLease {
             id,
             session_id: self.session,
@@ -1329,6 +1334,7 @@ impl Driver {
             codec: producer.control.codec.clone(),
             required_audio,
             audio_error,
+            ended: Some(completion),
             remote: None,
             input_state: None,
             control: Some(CaptureLeaseControl::Capture(producer.control.clone())),
@@ -1343,6 +1349,7 @@ impl Driver {
                 selected: false,
                 prepared: Vec::new(),
                 pending_audio: None,
+                ended,
             },
         );
         Ok(lease)
@@ -1448,7 +1455,8 @@ impl Driver {
         }
         let audio = capture.producer.audio();
         let error = capture.producer.close().await;
-        self.captures.remove(&source_id);
+        let capture = self.captures.remove(&source_id).unwrap();
+        let _ = capture.ended.send(error.clone().map_or(Ok(()), Err));
         self.sources.remove(&source_id);
         self.relay.remove(source_id);
         if let Some(audio) = audio {

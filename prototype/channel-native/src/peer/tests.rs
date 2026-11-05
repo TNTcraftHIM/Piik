@@ -7,6 +7,47 @@ mod sockets;
 pub(super) mod support;
 mod transit;
 
+#[tokio::test]
+async fn retained_capture_transfers_its_single_completion_to_the_new_lease() {
+    fn lease(producer: Uuid) -> CaptureLease {
+        let (_, ready) = oneshot::channel();
+        CaptureLease {
+            id: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            scope: CaptureScope {
+                publication_id: Uuid::new_v4(),
+                room_id: "room".into(),
+                binding_id: Uuid::new_v4(),
+            },
+            ready,
+            codec: Arc::new(std::sync::OnceLock::new()),
+            required_audio: None,
+            audio_error: None,
+            ended: None,
+            remote: None,
+            input_state: None,
+            #[cfg(feature = "capture")]
+            control: None,
+            producer,
+        }
+    }
+    let producer = Uuid::new_v4();
+    let mut previous = lease(producer);
+    let mut replacement = lease(producer);
+    replacement.scope = previous.scope.clone();
+    replacement.session_id = previous.session_id;
+    let (finished, ended) = oneshot::channel();
+    previous.ended = Some(ended);
+    replacement.adopt_previous(&mut previous);
+    assert!(previous.ended.is_none());
+    assert_ne!(previous.id, replacement.id);
+    finished.send(Err("codec stopped".into())).unwrap();
+    assert_eq!(
+        replacement.ended.take().unwrap().await.unwrap(),
+        Err("codec stopped".into())
+    );
+}
+
 #[test]
 fn capture_scope_survives_host_signaling_recovery_but_not_retired_authority() {
     use piik_channel_core::{

@@ -77,7 +77,12 @@ selecting another encoding of the same capture keeps its sender and SSRC and
 switches at a replacement keyframe. A slow output recovers independently of its siblings.
 The selecting page holds the capture lease: closing it stops its captures while
 App-hosted rooms continue. Startup completes after the first encoded access unit;
-errors before that point return to the page. Optional WASAPI source audio uses
+errors before that point return to the page. The producer's completion ends its
+App capture lease and reports an active capture failure to the selecting page.
+Room snapshots describe publication availability; they do not retire that lease
+ahead of its completion. A failed output leaves healthy siblings running.
+Normal source closure, explicit stop, cancelled candidates and retired producers
+keep quiet cleanup. Optional WASAPI source audio uses
 process loopback for a selected window and render-device loopback for a screen.
 The Rust Opus encoder shares the picture's capture clock and routes. Silence does
 not delay picture startup; an audio failure warns the page while picture sharing

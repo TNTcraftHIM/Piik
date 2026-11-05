@@ -758,6 +758,18 @@ impl Drop for PendingCapture {
     }
 }
 
+fn capture_end_event(
+    publication_id: Uuid,
+    producer_id: Uuid,
+    current: Option<(Uuid, Uuid)>,
+    result: Option<Result<(), String>>,
+) -> Option<Value> {
+    let (_, capture_id) = current.filter(|(current, _)| *current == producer_id)?;
+    Some(
+        json!({"type":"capture_ended","publicationId":publication_id,"captureId":capture_id,"failed":result.is_some_and(|result| result.is_err())}),
+    )
+}
+
 async fn connection(
     socket: WebSocket,
     app: &App,
@@ -785,14 +797,14 @@ async fn connection(
                 BoxFuture<'static, (String, Uuid, AbortHandle, Result<CaptureResult>)>,
             > = FuturesUnordered::new();
             let mut audio_errors = FuturesUnordered::new();
+            let mut capture_ends = FuturesUnordered::new();
             let mut input_states = FuturesUnordered::new();
             let mut microphone_states = FuturesUnordered::new();
             let mut operations = FuturesUnordered::new();
             let mut previews = FuturesUnordered::new();
             let mut preview: Option<(String, Option<oneshot::Sender<()>>)> = None;
             loop {
-                captures
-                    .retain(|_, capture| capture.pending.is_some() || capture.lease().is_some());
+                captures.retain(|_, capture| capture.pending.is_some() || capture.active.is_some());
                 let message = tokio::select! {
                     _ = async {
                         match &host {
@@ -809,6 +821,16 @@ async fn connection(
                         if error.is_some() && captures.get(&publication_id).and_then(Capture::lease).is_some_and(|lease| lease.id == capture_id) {
                             let event = json!({"type":"capture_audio_failed","publicationId":publication_id});
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                        }
+                        continue;
+                    }
+                    Some((publication_id, producer_id, result)) = capture_ends.next(), if !capture_ends.is_empty() => {
+                        if let Some(capture) = captures.get_mut(&publication_id) {
+                            let current = capture.active.as_ref().map(|lease| (lease.producer_id(), lease.id));
+                            if let Some(event) = capture_end_event(publication_id, producer_id, current, result) {
+                                capture.active = None;
+                                timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                            }
                         }
                         continue;
                     }
@@ -869,6 +891,10 @@ async fn connection(
                                     let capture = captures.entry(publication_id).or_default();
                                     if let Some(previous) = capture.active.as_mut() { lease.adopt_previous(previous); }
                                     let capture_id = lease.id;
+                                    if let Some(ended) = lease.ended.take() {
+                                        let producer_id = lease.producer_id();
+                                        capture_ends.push(async move { (publication_id, producer_id, ended.await.ok()) });
+                                    }
                                     if let Some(error) = lease.audio_error.take() {
                                         audio_errors.push(async move { (publication_id, capture_id, error.await.ok()) });
                                     }
@@ -1580,6 +1606,57 @@ async fn publish_capture_ceiling(
 #[cfg(all(test, feature = "capture"))]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn capture_completion_follows_the_active_producer_and_current_lease() {
+        let publication = Uuid::new_v4();
+        let producer = Uuid::new_v4();
+        let audio_replacement = Uuid::new_v4();
+        let (finished, ended) = oneshot::channel();
+        let mut completions = FuturesUnordered::new();
+        completions.push(async move { (producer, ended.await.ok()) });
+        finished
+            .send(Err("private codec failure".to_owned()))
+            .unwrap();
+        let (completed, result) = completions.next().await.unwrap();
+        assert_eq!(
+            capture_end_event(
+                publication,
+                completed,
+                Some((producer, audio_replacement)),
+                result
+            ),
+            Some(json!({
+                "type":"capture_ended", "publicationId":publication, "captureId":audio_replacement, "failed":true,
+            }))
+        );
+        assert!(capture_end_event(
+            publication,
+            producer,
+            Some((Uuid::new_v4(), Uuid::new_v4())),
+            Some(Err("retired codec".into()))
+        )
+        .is_none());
+        assert!(capture_end_event(
+            publication,
+            producer,
+            None,
+            Some(Err("stopped codec".into()))
+        )
+        .is_none());
+        for result in [Some(Ok(())), None] {
+            assert_eq!(
+                capture_end_event(
+                    publication,
+                    producer,
+                    Some((producer, audio_replacement)),
+                    result
+                )
+                .unwrap()["failed"],
+                false
+            );
+        }
+    }
 
     #[tokio::test]
     async fn selected_capture_settings_reach_the_host_command() {
