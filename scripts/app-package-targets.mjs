@@ -1,5 +1,6 @@
 export const CLOUDFLARED_VERSION = "2026.10.3";
 export const CLOUDFLARED_SOURCE_SHA256 = "6c6901ae333508e1c529184bf90cb87ff59592620d293401db38415269908311";
+export const MACOS_MIN_VERSION = "13.0";
 
 // Android packages both supported ABIs in one installable APK, not a Go CLI.
 export const ANDROID_APP_PACKAGE_TARGET = {

@@ -21,7 +21,7 @@ import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-import { appPackageTarget, appPackageDirectory, CLOUDFLARED_VERSION } from "./app-package-targets.mjs";
+import { appPackageTarget, appPackageDirectory, CLOUDFLARED_VERSION, MACOS_MIN_VERSION } from "./app-package-targets.mjs";
 import { createZip, extractZip, tarExecutable } from "./archive-tool.mjs";
 import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
 import { buildVersion } from "./release-version.mjs";
@@ -281,10 +281,17 @@ function verifyPlatformAssets(root, target) {
     if (!readFileSync(icon).subarray(0, 4).equals(Buffer.from("icns"))) {
       fail("macOS App icon is not ICNS");
     }
+    const minimumVersion = run("otool", ["-l", executable], root)
+      .match(/^\s*minos\s+(\S+)\s*$/m)?.[1];
+    if (minimumVersion !== MACOS_MIN_VERSION) {
+      fail("macOS App deployment target does not match its minimum system version");
+    }
     const plistText = readFileSync(plist, "utf8");
     if (
       !plistText.includes(`<key>CFBundleExecutable</key><string>${target.appName}</string>`) ||
+      !plistText.includes(`<key>LSMinimumSystemVersion</key><string>${MACOS_MIN_VERSION}</string>`) ||
       !plistText.includes("<key>NSScreenCaptureUsageDescription</key>") ||
+      !plistText.includes("<key>NSMicrophoneUsageDescription</key>") ||
       !plistText.includes("<key>NSAudioCaptureUsageDescription</key>")
     ) {
       fail("macOS App entry or capture usage descriptions are missing");

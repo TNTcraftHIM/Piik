@@ -4,6 +4,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { MACOS_MIN_VERSION } from "./app-package-targets.mjs";
 
 const PNG_SIGNATURE = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -137,6 +138,7 @@ function writeMacAssets(packageRoot, version, revision, entries) {
       "<key>CFBundleName</key><string>Piik App</string>",
       "<key>CFBundlePackageType</key><string>APPL</string>",
       `<key>CFBundleShortVersionString</key><string>${bundleVersion}</string>`,
+      `<key>LSMinimumSystemVersion</key><string>${MACOS_MIN_VERSION}</string>`,
       "<key>NSScreenCaptureUsageDescription</key><string>Share a screen or application selected by you.</string>",
       "<key>NSMicrophoneUsageDescription</key><string>Include your voice while sharing.</string>",
       "<key>NSAudioCaptureUsageDescription</key><string>Share sound from the selected screen or application.</string>",
