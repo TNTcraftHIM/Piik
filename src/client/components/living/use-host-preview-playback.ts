@@ -26,22 +26,51 @@ export function useHostPreviewPlayback(
       setSuspended(false);
       return;
     }
+    const ownerDocument = video.ownerDocument;
+    const view = ownerDocument.defaultView;
+    if (!view) return;
+    let policyPause = false;
+    // Native PiP/fullscreen sound controls must not turn shared audio into
+    // local monitoring. The Host's volume control owns outgoing sound.
+    const keepMuted = () => { video.muted = true; };
+    keepMuted();
+    video.addEventListener("volumechange", keepMuted);
     const syncPlayback = () => {
-      const shouldPause = shouldPauseLocalPreview(document.visibilityState, document.hasFocus(), isPictureInPicture(video), autoPause);
+      const shouldPause = shouldPauseLocalPreview(ownerDocument.visibilityState, ownerDocument.hasFocus(), isPictureInPicture(video), autoPause);
       setSuspended(shouldPause);
-      if (shouldPause) video.pause();
-      else if (!pausedByUser.current) void video.play().catch(() => undefined);
+      if (shouldPause || pausedByUser.current) {
+        if (!video.paused) {
+          policyPause = shouldPause;
+          video.pause();
+        }
+      } else if (video.paused) void video.play().catch(() => undefined);
     };
-    document.addEventListener("visibilitychange", syncPlayback);
-    window.addEventListener("blur", syncPlayback);
-    window.addEventListener("focus", syncPlayback);
+    const paused = () => {
+      if (!video.paused) return;
+      if (policyPause) policyPause = false;
+      else pausedByUser.current = true;
+    };
+    const played = () => {
+      if (video.paused) return;
+      policyPause = false;
+      pausedByUser.current = false;
+      syncPlayback();
+    };
+    video.addEventListener("pause", paused);
+    video.addEventListener("play", played);
+    ownerDocument.addEventListener("visibilitychange", syncPlayback);
+    view.addEventListener("blur", syncPlayback);
+    view.addEventListener("focus", syncPlayback);
     const pictureEvents = ["enterpictureinpicture", "leavepictureinpicture", "webkitpresentationmodechanged"];
     pictureEvents.forEach(event => video.addEventListener(event, syncPlayback));
     syncPlayback();
     return () => {
-      document.removeEventListener("visibilitychange", syncPlayback);
-      window.removeEventListener("blur", syncPlayback);
-      window.removeEventListener("focus", syncPlayback);
+      video.removeEventListener("volumechange", keepMuted);
+      video.removeEventListener("pause", paused);
+      video.removeEventListener("play", played);
+      ownerDocument.removeEventListener("visibilitychange", syncPlayback);
+      view.removeEventListener("blur", syncPlayback);
+      view.removeEventListener("focus", syncPlayback);
       pictureEvents.forEach(event => video.removeEventListener(event, syncPlayback));
     };
   }, [videoRef, stream, autoPause]);

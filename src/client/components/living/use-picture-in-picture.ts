@@ -7,7 +7,7 @@ type PictureVideo = HTMLVideoElement & {
 };
 
 export function isPictureInPicture(video: PictureVideo): boolean {
-  return document.pictureInPictureElement === video || video.webkitPresentationMode === "picture-in-picture";
+  return video.ownerDocument.pictureInPictureElement === video || video.webkitPresentationMode === "picture-in-picture";
 }
 
 export async function leavePictureInPicture(video: PictureVideo): Promise<void> {

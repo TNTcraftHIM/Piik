@@ -5,6 +5,7 @@ import { PlaybackSettings } from "../../components/living/PlaybackSettings";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useVideoRotation } from "../../components/living/use-video-rotation";
 import { usePlaybackControlsVisibility } from "../../components/living/use-playback-controls-visibility";
+import { useHostPreviewPlayback } from "../../components/living/use-host-preview-playback";
 import { toggleVideoFullscreen, videoFullscreenState } from "../../components/living/video-fullscreen";
 import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio";
 import { observeCompositedVideoFrame } from "../../media/video-frame-proof";
@@ -95,6 +96,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
   const [pictureOpen, setPictureOpen] = useState(false);
   const [pictureFit, setPictureFit] = useState(() => readRoomPreferences().pictureFit);
   const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
+  const [previewAutoPause, setPreviewAutoPause] = useState(() => readRoomPreferences().previewAutoPause);
   const output = useRef<ViewerAudio | null>(null);
   const [blocked, setBlocked] = useState(false);
   const [ready, setReady] = useState(false);
@@ -116,6 +118,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
     ? !sourceAudio?.available ? "host.shareVolume.unavailable" : "host.shareVolume"
     : audio.boostAvailable ? "playback.volume" : "playback.volumeBasic";
   const playbackRef = useMemo(() => ({ current: activeVideo }), [activeVideo]);
+  useHostPreviewPlayback(playbackRef, local ? displayed.stream : null, previewAutoPause);
   useVideoRotation(playbackRef, pictureFit, pictureRotation);
   useAnchoredPopover(pictureTrigger, picturePanel, { side: "above", align: "center" });
   const visibility = usePlaybackControlsVisibility(playbackRef, controls, paused || blocked || !ready);
@@ -181,12 +184,12 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
       listening?.setMuted(true);
       if (previous) previous.muted = true;
       const element = binding.element;
-      if (keepPaused) element.pause();
+      if (keepPaused && !local) element.pause();
       element.volume = Math.min(saved.level, 1); element.muted = true;
       const nextAudio = local ? null : new ViewerAudio(element, setAudio);
       nextAudio?.bind(target.stream); nextAudio?.setLevel(saved.level); nextAudio?.setMuted(saved.muted);
       output.current = nextAudio; ref.current = element;
-      setActiveVideo(element); setPaused(keepPaused); setBlocked(false);
+      setActiveVideo(element); setPaused(local ? element.paused : keepPaused); setBlocked(false);
       listening?.dispose(); previous?.pause();
     }
     setReady(binding.composited);
@@ -280,7 +283,9 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
         <PlaybackSettings picture={{ pictureFit, pictureRotation,
           setPictureFit: (fit: VideoFit) => { setPictureFit(fit); saveRoomPreferences({ pictureFit: fit }); },
           setPictureRotation: (rotation: VideoRotation) => { setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation }); },
-        }} reconnect={null} />
+        }} preview={local ? { autoPause: previewAutoPause, onChange: autoPause => {
+          setPreviewAutoPause(autoPause); saveRoomPreferences({ previewAutoPause: autoPause });
+        } } : undefined} reconnect={null} />
       </div>
       <Btn icon={fullscreen.active ? "contract" : "expand"} quiet
         title={fullscreenFailed ? "playback.fullscreenFailed" : fullscreen.active ? "playback.exitFullscreen" : "playback.fullscreen"}
