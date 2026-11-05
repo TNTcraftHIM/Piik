@@ -113,6 +113,12 @@ async fn shadow_flows_preserve_source_clock_and_warm_outputs() -> Result<()> {
     );
 
     // A genuinely replaced input declaration must allocate a fresh output.
+    let previous_ssrcs: HashSet<_> = f
+        .packets
+        .values()
+        .flatten()
+        .map(|packet| packet.header.ssrc)
+        .collect();
     let pair = f.parents[0].pair;
     let previous_audio = f.parents[0].audio;
     let previous_video = f.parents[0].video;
@@ -134,21 +140,13 @@ async fn shadow_flows_preserve_source_clock_and_warm_outputs() -> Result<()> {
     let replacement_audio = f.output(warm_flow, MediaKind::Audio);
     let replacement_video = f.output(warm_flow, MediaKind::Video);
     f.until(|f| {
-        f.observed(&replacement_audio.1, MediaKind::Audio).is_some()
-            && f.observed(&replacement_video.1, MediaKind::Video).is_some()
-    })
-    .await?;
-    anyhow::ensure!(
         f.observed(&replacement_audio.1, MediaKind::Audio)
-            .unwrap()
-            .1
-            != before_audio.1
+            .is_some_and(|packet| !previous_ssrcs.contains(&packet.1))
             && f.observed(&replacement_video.1, MediaKind::Video)
-                .unwrap()
-                .1
-                != before_video.1,
-        "replacement reused retired SSRC"
-    );
+                .is_some_and(|packet| !previous_ssrcs.contains(&packet.1))
+    })
+    .await
+    .context("replacement emits actual audio/video RTP with fresh SSRCs")?;
     let result = serde_json::json!({"passed":true,"realIncomingRtpAndSenderFeedback":true,"warmCommitRetainsAudioVideoOutputIds":true,"warmCommitRetainsReceiverAndSsrc":true,"twoActualSenderReportsForEachKind":true,"replacedSourceGetsFreshSenderAndSsrc":true,"retainedPhysicalConnection":true,"decoderPlaybackClaim":false});
     f.close().await;
     ensure!(result["passed"] == true);

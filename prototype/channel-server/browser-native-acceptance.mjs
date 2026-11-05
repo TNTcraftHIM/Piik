@@ -540,13 +540,17 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
       "signaling recovery must complete pending negotiation on the existing pair");
     await action(2, `setMuted('${room}', false)`);
     await audible(1);
-    const voiceIds = (await view(1)).state.publications.filter(publication => publication.roomId === room).map(publication => publication.id);
+    const voices = (await view(1)).state.publications.filter(publication => publication.roomId === room);
+    const voiceIds = voices.map(publication => publication.id);
+    const sourceVoice = voices.find(publication => publication.sessionId === initial[1].sessionId).id;
     for (const index of [1, 2]) assert((await view(index)).state.pairs.filter(pair =>
       pair.incoming.some(flow => voiceIds.includes(flow.publicationId))).every(pair => pair.peerId === pairs[0].peerId));
 
     await evaluate(1, "window.__channelProbe.captureAudio(true)");
     const nativePicture = await capturedScreen(1, room);
     await evaluate(1, "window.__channelProbe.captureAudio(false)");
+    // Keep this exercise on the actual Native carrier, including later watches.
+    await evaluate(2, `window.__channelProbe.blockPeer(${JSON.stringify((await view(1)).sessionId)})`);
     await action(2, `watch(${JSON.stringify(nativePicture)})`);
     await playing(2, nativePicture);
     await audioProgressing(2, nativePicture);
@@ -556,6 +560,34 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
       `Native screen sound lost stereo separation: ${JSON.stringify(audioSeparationDb)}`);
     assert((await view(2)).state.pairs.some(pair => pair.id === pairs[1].id && pair.incoming.some(flow => flow.publicationId === nativePicture)),
       "picture startup must reuse the established Native base path");
+
+    const carrier = () => evaluate(2, `(() => {
+      const peer = ${hook}.session.media.peers.get(${JSON.stringify(pairs[1].id)});
+      const flow = peer?.plan.incoming.find(flow => flow.publicationId === ${JSON.stringify(nativePicture)});
+      const input = flow && peer.inputs.get(flow.id);
+      return { stable: peer?.transport.pc.signalingState === 'stable', flow: flow?.id,
+        mapped: [...peer.transport.remoteIds.values()],
+        stream: input?.stream.id, track: input?.video?.id,
+        sections: peer?.transport.pc.remoteDescription?.sdp.split('\\r\\n').filter(line => line.startsWith('m=')).length };
+    })()`);
+    const originalCarrier = await carrier();
+    let previousFlow = originalCarrier.flow;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await action(2, `unwatch(${JSON.stringify(nativePicture)})`);
+      await until("Native screen lease is retired on the retained pair", carrier,
+        value => value.stable && !value.flow && !value.mapped.includes(previousFlow));
+      await action(2, `watch(${JSON.stringify(nativePicture)})`);
+      await progressing(2, nativePicture);
+      await audioProgressing(2, nativePicture);
+      const current = await carrier();
+      assert.notEqual(current.flow, previousFlow, "rewatching owns fresh flow proof");
+      assert.equal(current.stream, originalCarrier.stream, "Native reuses the idle AV group's MSID");
+      assert.equal(current.track, originalCarrier.track, "Native reuses the video carrier");
+      assert.equal(current.sections, originalCarrier.sections, "Native media history does not grow per watch");
+      await audioProgressing(2, sourceVoice);
+      previousFlow = current.flow;
+    }
+    await evaluate(2, `window.__channelProbe.unblockPeer(${JSON.stringify((await view(1)).sessionId)})`);
 
     const fileSize = 1024 * 1024 + 17;
     const expected = createHash("sha256").update(Buffer.from(Array.from({ length: fileSize }, (_, index) => index % 251))).digest("hex");
@@ -645,7 +677,7 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     await browser(2, "screenshot", join(output, "native-room.png"), "--full");
     await writeFile(join(output, "native-result.json"), JSON.stringify({ passed: true, audioSeparationDb,
       scenarios: ["Native admitted root", "room SQLite owns confirmed history", "lost offer recovery on an existing pair", "bidirectional encoded Opus forwarding",
-        "picture startup through Native base", "simultaneous picture voice and file forwarding", "picture stop preserves voice",
+        "picture startup through Native base", "repeated Native AV carrier reuse with fresh flow proof", "simultaneous picture voice and file forwarding", "picture stop preserves voice",
         "peer file through Native with final digest", "signaling reconnect and view switch preserve file and voice", "no domain or Native file-byte store",
         "view changes retain voice", "capture replacement keeps base", "other-room picture survives",
         "Native process expiry", "history restore without activity revival"] }, null, 2));

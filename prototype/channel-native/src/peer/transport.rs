@@ -131,6 +131,7 @@ struct Outgoing {
     rids: Vec<String>,
     mid: Option<Mid>,
     retired: bool,
+    reusable: bool,
     feedback: mpsc::Sender<()>,
     seq: HashMap<String, SeqNo>,
     writable: Arc<Notify>,
@@ -665,16 +666,32 @@ impl Transport {
     pub async fn offer(&self) -> Result<bool> {
         self.call(|e| {
             ensure!(e.pending.is_none(), "pending transport offer");
+            // Browser addTrack can send on one of our offered media sections.
+            // Output retirement/reuse owns only that section's sending half.
+            let receiving: HashSet<_> = e
+                .outputs
+                .values()
+                .filter_map(|out| out.mid)
+                .filter(|mid| {
+                    e.rtc
+                        .media(*mid)
+                        .is_some_and(|m| m.direction().is_receiving())
+                })
+                .collect();
             let mut changes = e.rtc.sdp_api();
             for channel in e.channels.values_mut().filter(|c| c.id.is_none()) {
                 channel.id = Some(changes.add_channel_with_config(channel.config.clone()));
             }
             for output in e.outputs.values_mut() {
-                if output.retired {
-                    if let Some(mid) = output.mid {
-                        changes.stop_media(mid);
-                    }
-                } else if output.mid.is_none() {
+                if let Some(mid) = output.mid {
+                    let direction = match (output.retired, receiving.contains(&mid)) {
+                        (true, true) => Direction::RecvOnly,
+                        (true, false) => Direction::Inactive,
+                        (false, true) => Direction::SendRecv,
+                        (false, false) => Direction::SendOnly,
+                    };
+                    changes.set_direction(mid, direction);
+                } else if !output.retired {
                     let mut simulcast = str0m::media::Simulcast::new();
                     for rid in &output.rids {
                         if !rid.is_empty() {
@@ -750,6 +767,15 @@ impl Transport {
                         .mid
                         .is_some_and(|mid| e.rtc.media(mid).is_some_and(|m| !m.stopped()))
             });
+            for out in e.outputs.values_mut().filter(|out| out.retired) {
+                // Direction changes mutate the SDK before the answer arrives.
+                // Reuse only after an exchange acknowledges our sender's withdrawal.
+                out.reusable = out.mid.is_some_and(|mid| {
+                    e.rtc
+                        .media(mid)
+                        .is_some_and(|media| !media.disabled() && !media.direction().is_sending())
+                });
+            }
             if e.outputs.values().any(|o| !o.retired && o.mid.is_none())
                 || e.channels.values().any(|c| c.id.is_none())
             {
@@ -825,20 +851,45 @@ impl Transport {
         kind: MediaKind,
         stream: String,
         rids: Vec<String>,
-    ) -> Result<(mpsc::Receiver<()>, Arc<Notify>)> {
+    ) -> Result<(mpsc::Receiver<()>, Arc<Notify>, String)> {
         self.call(move |e| {
             let (tx, rx) = mpsc::channel(8);
             let writable = Arc::new(Notify::new());
+            let companion = e
+                .outputs
+                .values()
+                .any(|out| !out.retired && out.stream == stream);
+            // A new flow takes an idle group; its other kind joins the returned
+            // stream. MID/MSID/RIDs stay with the negotiated carrier.
+            let idle = e.outputs.iter().find_map(|(id, out)| {
+                (out.reusable
+                    && out.kind == kind
+                    && out.rids == rids
+                    && (out.stream == stream
+                        || !companion
+                            && e.outputs
+                                .values()
+                                .filter(|other| other.stream == out.stream)
+                                .all(|other| other.reusable)))
+                .then_some(*id)
+            });
+            let (mid, stream) = if let Some(id) = idle {
+                let previous = e.outputs.remove(&id).unwrap();
+                (previous.mid, previous.stream)
+            } else {
+                (None, stream)
+            };
             e.outputs.insert(
                 id,
                 Outgoing {
                     since: Instant::now(),
                     codec,
                     kind,
-                    stream,
+                    stream: stream.clone(),
                     rids,
-                    mid: None,
+                    mid,
                     retired: false,
+                    reusable: false,
                     feedback: tx,
                     seq: HashMap::new(),
                     writable: writable.clone(),
@@ -846,7 +897,7 @@ impl Transport {
                 },
             );
             e.emit(Event::Negotiate(e.handle.pair));
-            Ok((rx, writable))
+            Ok((rx, writable, stream))
         })
         .await
     }

@@ -120,7 +120,7 @@ pub(super) async fn scenario(window: Window) -> Result<serde_json::Value> {
     let label = if history { "piik-room" } else { "piik-file" };
     let sent = a.create_channel(label).await?;
     let video = Uuid::new_v4();
-    let (_feedback, writable) = a
+    let (_feedback, writable, _) = a
         .add_output(
             video,
             vp8(),

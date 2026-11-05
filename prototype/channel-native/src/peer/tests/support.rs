@@ -213,7 +213,7 @@ impl Fixture {
         let audio = Uuid::new_v4();
         let video = Uuid::new_v4();
         let remote = &self.remote[&pair];
-        let (_, audio_writable) = remote
+        let (_, audio_writable, stream) = remote
             .add_output(
                 audio,
                 codec(),
@@ -222,7 +222,7 @@ impl Fixture {
                 vec![String::new()],
             )
             .await?;
-        let (feedback, video_writable) = remote
+        let (feedback, video_writable, video_stream) = remote
             .add_output(
                 video,
                 self.video_codec.clone(),
@@ -231,6 +231,10 @@ impl Fixture {
                 self.video_rids.clone(),
             )
             .await?;
+        ensure!(
+            stream == video_stream,
+            "companion media split across streams"
+        );
         self.writable.insert(audio, audio_writable);
         self.writable.insert(video, video_writable);
         self.parents.retain(|p| p.pair != pair);

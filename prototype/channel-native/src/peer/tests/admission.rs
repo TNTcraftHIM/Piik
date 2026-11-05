@@ -129,7 +129,7 @@ pub async fn run() -> Result<serde_json::Value> {
     )
     .await?;
     let sibling_id = Uuid::new_v4();
-    let (_sibling_feedback, sibling_writable) = tx
+    let (_sibling_feedback, sibling_writable, _) = tx
         .add_output(
             sibling_id,
             format(),
@@ -294,24 +294,21 @@ pub async fn run() -> Result<serde_json::Value> {
     .await??;
     receive(&survivor, 90_000).await?;
     // Finish the already pending exchange, then let the unchanged SDP owner
-    // apply its deferred stop while the other output keeps its existing stream.
+    // acknowledge the inactive carrier while the other output keeps its stream.
     for _ in 0..2 {
         let (kind, sdp) = tx.local_description().await?;
         rx.accept(kind, sdp).await?;
         let (kind, sdp) = rx.local_description().await?;
         tx.accept(kind, sdp).await?;
-        if tx
-            .call(move |e| Ok(!e.outputs.contains_key(&output_id)))
-            .await?
-        {
+        if tx.call(move |e| Ok(e.outputs[&output_id].reusable)).await? {
             break;
         }
-        ensure!(tx.offer().await?, "deferred SDP stop offer missing");
+        ensure!(tx.offer().await?, "deferred inactive offer missing");
     }
     tx.call(move |e| {
         ensure!(
-            !e.outputs.contains_key(&output_id),
-            "deferred stop spec not retired"
+            e.outputs[&output_id].reusable,
+            "inactive carrier was not acknowledged"
         );
         Ok(())
     })
@@ -323,7 +320,7 @@ pub async fn run() -> Result<serde_json::Value> {
     left.close().await;
     right.close().await;
     Ok(
-        serde_json::json!({"passed":true,"unreadyAttempts":128,"unreadyAdmitted":0,"singleAuRepresentationBytes":2*1024*1024,"oneQueuedAuPerRid":true,"onePendingAuRetained":true,"healthyRidAdvancesWhileOtherPending":true,"blockedOutputCloseJoined":true,"queuedPacketsBeforeRetire":queued_before,"retiredPrimaryStreams":retired_ssrcs.len(),"rtxNegotiatedBeforeRetire":rtx_enabled,"retiredQueueAndRtxOwnerAbsentBeforeSdpAnswer":true,"otherOutputAdvancesWhileStopOfferWithheld":true,"laterSdpStopCompletes":true,"otherOutputAdvancesAfterStop":true,"pacerAlgorithm":"unmodified str0m GCC/pacer/RTX","capacityRecoveryClaim":false,"decoderPlaybackClaim":false}),
+        serde_json::json!({"passed":true,"unreadyAttempts":128,"unreadyAdmitted":0,"singleAuRepresentationBytes":2*1024*1024,"oneQueuedAuPerRid":true,"onePendingAuRetained":true,"healthyRidAdvancesWhileOtherPending":true,"blockedOutputCloseJoined":true,"queuedPacketsBeforeRetire":queued_before,"retiredPrimaryStreams":retired_ssrcs.len(),"rtxNegotiatedBeforeRetire":rtx_enabled,"retiredQueueAndRtxOwnerAbsentBeforeSdpAnswer":true,"otherOutputAdvancesWhileStopOfferWithheld":true,"laterInactiveSdpCompletes":true,"otherOutputAdvancesAfterStop":true,"pacerAlgorithm":"unmodified str0m GCC/pacer/RTX","capacityRecoveryClaim":false,"decoderPlaybackClaim":false}),
     )
 }
 

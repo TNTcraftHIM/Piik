@@ -7,6 +7,8 @@ mod bulk;
 mod codec_change;
 #[path = "history.rs"]
 mod history;
+#[path = "media_reuse.rs"]
+mod media_reuse;
 
 #[tokio::test]
 async fn metrics_keep_sdk_sample_clock_and_discard_retired_mid_events() -> Result<()> {
@@ -125,7 +127,7 @@ async fn native_opus_offer_and_answer_request_stereo_receive() -> Result<()> {
     let (left, _) = crate::peer::tests::support::endpoint(&runtime, Uuid::new_v4(), None).await?;
     let (right, _) = crate::peer::tests::support::endpoint(&runtime, Uuid::new_v4(), None).await?;
     let result = async {
-        let (_feedback, _writable) = left
+        let (_feedback, _writable, _) = left
             .add_output(
                 Uuid::new_v4(),
                 crate::peer::codec(),

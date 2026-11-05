@@ -161,7 +161,7 @@ impl Output {
             .as_ref()
             .map(|layers| layers.iter().map(|(rid, _)| rid.clone()).collect())
             .unwrap_or_else(|| vec![String::new()]);
-        let (mut feedback_rx, writable) = pc
+        let (mut feedback_rx, writable, stream) = pc
             .add_output(
                 id,
                 source.codec.clone(),

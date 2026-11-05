@@ -3291,6 +3291,35 @@ test.each([
   } finally { media.reset(); session.close(); }
 });
 
+test("an inactive Native carrier reused by a new flow cannot reuse its old decoded-frame proof", async () => {
+  const fixture = await screenFixture();
+  const { media, session, state, pc, sent } = fixture;
+  vi.useFakeTimers();
+  const video = remoteTrack("video"), stream = remoteStream("stable-native-msid", [video]);
+  let frames = 5;
+  pc.receivers = [{ track: video, getStats: async () => decodedReport(frames) } as RTCRtpReceiver];
+  try {
+    await receiveScreen(fixture, stream);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(sent.filter(command => command.type === "flow_state" && command.state === "decoded")).toHaveLength(1);
+    state.pairs[0].incoming = []; media.update("a", state);
+    media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "inactive" }, tracks: [] });
+    await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("inactive"));
+    state.pairs[0].incoming = [{ id: "new-flow", publicationId: "screen", selected: true, inputFlowId: null }];
+    media.update("a", state);
+    pc.getStats.mockImplementation(async () => decodedReport(frames));
+    await receiveScreen(fixture, stream);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(sent.some(command => command.type === "flow_state" && command.flowId === "new-flow")).toBe(false);
+    frames++;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(sent.filter(command => command.type === "flow_state" && command.flowId === "new-flow")).toEqual([
+      { type: "flow_state", pairId: "pair", flowId: "new-flow", state: "decoded" },
+    ]);
+    expect(pc.close).not.toHaveBeenCalled(); expect(video.stop).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
+
 test("a selected screen reports only its current playback failure and keeps the room transport", async () => {
   const fixture = await screenFixture();
   const { media, session, state, pc, sent, changed } = fixture;
