@@ -570,6 +570,12 @@ success for the live update, but Max remained at its initial 100 kbps while Mean
 read back 2 Mbps. Output stayed near 208 kbps with QP 50; all 342 AUs decoded.
 This candidate also failed the low-start recovery contract and was not retained.
 
+The 2026-11-05 API review confirmed that Microsoft's
+[coded access-unit size property](https://github.com/MicrosoftDocs/win32/blob/docs/desktop-src/codecapi/avencvideocodedvideoaccessunitsize-property.md)
+applies only to VBR. The pinned SDK's
+[pacing factor](https://github.com/algesten/str0m/blob/3b5b7ed1ff25d9432a87336a20bc2de336896db3/src/pacer/control.rs)
+is internal SDK policy. CBR retains the existing encoder and SDK demand adapter.
+
 ### Budget Restoration
 
 Transport allocation and encoder resolution recover separately. Replaying the
