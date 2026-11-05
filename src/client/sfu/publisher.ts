@@ -141,7 +141,7 @@ export class SfuPublisher {
   }
 
   activate(
-    stream: MediaStream,
+    stream: MediaStream | null,
     profile: QualityProfile,
     codec: BrowserVideoCodec = "vp8",
   ): Promise<boolean> {
@@ -155,6 +155,7 @@ export class SfuPublisher {
       let video: MediaStreamTrack | null = null;
       try {
         this.failureStage = "source";
+        if (!stream) throw new Error("SFU source has no stream");
         const sourceVideo = requiredVideo(stream);
         video = this.cloneVideoTrack(sourceVideo);
         await peer.waitForOperation(() => applyVideoCaptureProfile(video!, profile));
@@ -228,7 +229,7 @@ export class SfuPublisher {
     return true;
   }
 
-  replaceStream(stream: MediaStream): Promise<boolean> {
+  replaceStream(stream: MediaStream | null): Promise<boolean> {
     return this.enqueue(async () => {
       const peer = this.peer;
       const profile = this.profile;
@@ -236,7 +237,7 @@ export class SfuPublisher {
       const previousAudio = this.audio;
       const videoSender = this.videoSender;
       const audioSender = this.audioSender;
-      if (!peer || !profile || !previousVideo || !videoSender || !audioSender)
+      if (!stream || !peer || !profile || !previousVideo || !videoSender || !audioSender)
         return false;
       const sourceVideo = requiredVideo(stream);
       const videoChanged = sourceVideo !== this.sourceVideo;

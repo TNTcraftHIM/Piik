@@ -248,6 +248,17 @@ function feedVideoStats(
 }
 
 describe("embedded SFU browser transport", () => {
+  it("rejects publication without a real Browser source", async () => {
+    const send = vi.fn(() => true);
+    const host = new SfuPublisher({ send, onDisconnected: vi.fn() });
+    cleanups.push(() => host.disconnect());
+    await host.connect(config);
+    await expect(host.activate(null, QUALITY_PROFILES["720p30"], "h264")).rejects.toThrow("SFU source has no stream");
+    expect(host.getFailureStage()).toBe("source");
+    expect(FakePc.instances[0]!.transceivers).toHaveLength(0);
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it.each([100_000, 200_000, 50_000_000])("keeps every simulcast output within the %i bps source ceiling", async (maxBitrate) => {
     const send = vi.fn(() => true);
     const host = new SfuPublisher({ send, onDisconnected: vi.fn() });

@@ -554,7 +554,7 @@ export const zh = {
   "host.stop": "停止分享",
   "host.noAudio": "未分享来源声音",
   "host.localPreviewPaused": "本地预览已暂停，分享仍在继续",
-  "host.nativePreviewFailed": "本机预览连接已断开，分享仍在继续。可在播放设置中重新连接。",
+  "host.nativePreviewFailed": "本机预览不可用，分享仍在继续。可在播放设置中重新连接。",
   "host.nativePreviewRecovering": "正在重新连接本机预览，分享仍在继续",
   "host.preview": "本地预览",
   "host.previewAutoPause": "自动暂停预览",
