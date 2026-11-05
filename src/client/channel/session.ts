@@ -1587,7 +1587,8 @@ export class ChannelSession {
     try {
       app = await this.connectApp();
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
-      const codecMode = share.codec?.primary ?? (share.codecMode === "auto" && !supportsH264Receive() ? "vp8" : share.codecMode);
+      const codecMode = share.codec?.primary ?? (share.codecMode === "auto"
+        && app.supportsCaptureCodec("vp8") && !supportsH264Receive() ? "vp8" : share.codecMode);
       const preparing = app.prepareCapture(share.id, roomId, target, audio, share.profile, codecMode,
         audio ? share.native.excludeAudio : undefined, share.volume.muted ? 0 : share.volume.level);
       this.patch({});

@@ -91,11 +91,13 @@ export class ChannelApp {
   private prepared = new Set<string>();
   private activationURL?: string;
   private processAudioExclusion = false;
+  private captureCodecs: NativeCaptureSources["codecs"] = [];
   private previewTail: Promise<unknown> = Promise.resolve();
   private readonly roomHosting: NativeRoomHosting;
 
   get connected(): boolean { return this.authenticated && this.socket.readyState === WebSocket.OPEN; }
   get screens(): ReadonlySet<string> { return new Set(this.captures.keys()); }
+  supportsCaptureCodec(codec: NativeCaptureSources["codecs"][number]): boolean { return this.captureCodecs.includes(codec); }
 
   captureRequest(roomId: string): NativeCaptureRequest | undefined {
     if (!this.activationURL) return;
@@ -200,6 +202,7 @@ export class ChannelApp {
     const sources = captureSourcesSchema.parse(await this.request({ type: "targets" }));
     this.activationURL = sources.activationURL;
     this.processAudioExclusion = sources.processAudioExclusion;
+    this.captureCodecs = sources.codecs;
     return sources;
   }
 

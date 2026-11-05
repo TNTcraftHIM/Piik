@@ -1051,29 +1051,39 @@ test("codec selection cancellation releases capture without publishing or stoppi
 });
 
 test.each([
-  ["vp8", true, "vp8"], ["h264", false, "h264"],
-  ["auto", false, "vp8"], ["auto", true, "auto"],
-] as const)("Native codec selection preserves manual intent and preview capability (%s, H264 receive=%s)", async (mode, receivingH264, expected) => {
+  ["vp8", true, ["h264", "vp8"], "vp8"], ["h264", false, ["h264", "vp8"], "h264"],
+  ["auto", false, ["h264"], "auto"], ["auto", false, ["h264", "vp8"], "vp8"], ["auto", true, ["h264", "vp8"], "auto"],
+] as const)("Native codec selection uses advertised encoders and preserves manual intent (%s, H264 receive=%s, Native=%s)", async (mode, receivingH264, codecs, expected) => {
   vi.stubGlobal("RTCRtpSender", { getCapabilities: () => ({ codecs: [{ mimeType: "video/H264", clockRate: 90000, sdpFmtpLine: "packetization-mode=1" }] }) });
   vi.stubGlobal("RTCRtpReceiver", { getCapabilities: () => ({ codecs: [receivingH264
     ? { mimeType: "video/H264", clockRate: 90000, sdpFmtpLine: "packetization-mode=1" }
     : { mimeType: "video/VP8", clockRate: 90000 }] }) });
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
-  const { session } = await setup();
+  const { session, socket } = await setup();
   const app = ChannelSocket.current;
   session.setVideoCodecMode(mode);
   try {
     await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
-    const selecting = session.startNativeScreen("first", { kind: "display", sourceId: "owned", title: "Owned fixture" }).catch(error => error);
+    const target = { kind: "display" as const, sourceId: "1", title: "Owned fixture" };
+    const listing = session.nativeSources();
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
+    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs, processAudio: false, systemAudio: false } });
+    await listing;
+    const selecting = session.startNativeScreen("first", target).catch(error => error);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     expect(app.sent.at(-1)?.codecMode).toBe(expected);
-    app.receive({ id: app.sent.at(-1)!.id, error: "capture_codec_unsupported" });
-    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("cancel_capture"));
+    const publicationId = app.sent.at(-1)!.publicationId as string;
+    app.receive({ id: app.sent.at(-1)!.id, result: { captureId: crypto.randomUUID(), sessionId: crypto.randomUUID(),
+      codec: expected === "auto" ? "h264" : expected } });
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("commit_capture"));
     app.receive({ id: app.sent.at(-1)!.id, result: null });
-    await expect(selecting).resolves.toMatchObject({ message: "capture_codec_unsupported" });
-    expect(session.getSnapshot().ownedScreens.size).toBe(0);
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("subscribe"));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await expect(selecting).resolves.toBeUndefined();
+    expect(session.getSnapshot().ownedScreens).toEqual(new Set([publicationId]));
+    expect(app.sent.filter(command => command.type === "targets")).toHaveLength(1);
     expect(session.getSnapshot().videoCodecMode).toBe(mode);
   } finally { session.close(); }
 });
@@ -1781,6 +1791,8 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
 
     const heldInput = session.getSnapshot().remoteControls.get(publicationId);
     const audioTokens = new Set<string>();
+    // A selected source keeps its codec when the preview would now prefer VP8.
+    vi.stubGlobal("RTCRtpReceiver", { getCapabilities: () => ({ codecs: [{ mimeType: "video/VP8", clockRate: 90000 }] }) });
     for (const audio of [false, true, false]) {
       const changing = session.startNativeScreen("first", target, audio, excluded);
       await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
