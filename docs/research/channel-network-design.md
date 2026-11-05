@@ -638,6 +638,9 @@ at a keyframe without blocking siblings. Completeness spans reception, expiry an
 delivery: expired fragments never enter a decoder. Metadata that produces no RTP
 keeps the sender and its last clock correlation alive. Retiring a flow ends its
 unsent payload/retransmission state independently of a later SDP exchange.
+An output owns only its media section's sending half; an independent receiving
+flow survives its retirement. Carrier reuse waits for acknowledged sender withdrawal
+and starts fresh RTP state; a new picture flow still needs its own decoded-frame proof.
 Opaque RTP cost is measured once before fanout, even without outputs. Ingress
 deduplicates primary sequence numbers after RTX repair while retaining first late
 repairs/out-of-order packets; each downstream owns its retransmissions.

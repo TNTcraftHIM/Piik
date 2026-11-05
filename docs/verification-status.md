@@ -118,6 +118,8 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   room. The same page can start another decoded share and stop it normally.
   A failed picture route stays visible during retries while the source and chat
   remain live; normal sharing stop clears that result and releases capture.
+  Normal-package codec-rejection retries keep the same physical peer and media
+  section count; a later supported capture decodes on that retained connection.
   MuMu's software OMX service has crashed during both VP8 and H264
   encoder creation. Independent Java/Surface VP8 controls reproduce that
   assertion with direct release and with stop before release. The normal H264
