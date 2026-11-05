@@ -46,14 +46,9 @@ On P2P room paths, a relay is a participating endpoint doing forwarding work,
 not a separately deployed relay server. Sending, receiving and forwarding can
 coexist on the same user endpoint.
 
-Changing the selected room or closing an in-page panel does not end hosting.
-Closing a Browser page ends that page's personal voice, sharing and watching;
-it also ends rooms whose runtime runs in that page. App-owned rooms remain with
-the App and are not handed over when a page closes. Connecting an App does not
-automatically move existing Browser-owned rooms. Server-owned runtimes follow
-their deliberately started service, independently of administration pages.
-All use the same core and routing rules. Moving a room requires explicit transfer
-of its operation and saved state; automatic takeover is not selected.
+The [activity model](#activity-and-lifecycle) separates personal page activities
+from Browser, App and Server hosting lifetimes. Moving a room requires explicit
+transfer of its operation and saved state; automatic takeover is not selected.
 
 ## Authority And Information Boundaries
 
@@ -118,17 +113,12 @@ Confirmation follows the requester's current session and permission facts;
 another participant leaving or changing roles cannot invalidate it. Invitation
 verification follows the invited user's known permissions, not an online-session
 requirement for someone who has not joined yet.
-Chat reuses its persisted retry identity; history requests need response
-correlation, not another durable replay ledger. The room host signs live results,
-without creating a permanent signed history log. The shared transport owner
-dispatches typed control messages and bounded history records. A reader accepts
-only a complete page, and queued output checks current authority before sending.
-File delivery remains one consumer rather than owning unrelated room commands.
-
-The [room-data model](./channel-storage-and-identity.md) owns persistence,
-history copies, file retention and manual address replacement. Domain and room
-data may reside on different users' devices. When one App operates both, compose
-the same runtimes locally rather than requiring another deployment.
+The [room-data model](./channel-storage-and-identity.md) owns persistence, chat
+retry identity, history correlation/complete pages, file copies and manual address
+replacement. Live results are room-host signed without a permanent signed history
+log; bounded queued output rechecks current authority. File delivery consumes the
+shared control transport rather than owning unrelated room commands. Domain and
+room data may reside on different devices; an App may compose both runtimes locally.
 The domain's public listener serves its Web UI and signaling; local approval and
 App control stay on a separate loopback listener. Local and public entries address
 the same domain, but only the local launcher receives its owner bootstrap.
@@ -184,11 +174,6 @@ are ready; an open candidate DataChannel alone does not retire active media work
 | Voice | Project each joined source to its listeners over the base tree's unique paths; send each source at most once over a required directed edge. |
 | File bytes | Use the existing base paths; the [room-data model](./channel-storage-and-identity.md#shared-delivery-on-existing-room-paths) develops shared range delivery and cached-source selection without another topology planner. |
 | Screen picture and source audio | One distribution plan per publication: start on usable existing paths, then improve affected branches while preserving selected viewers and necessary relays. |
-
-Published 2.x [projectVoiceFlows](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/server/signal/voice_plan.go) already
-builds bidirectional adjacency from the committed room tree, finds paths from
-each speaker and avoids repeated copies on shared edges. Reuse that principle;
-its current Host/listening constraints are not automatically the 3.0 contract.
 
 Chat and files use reliable DataChannels; voice stays on WebRTC media tracks.
 Using one tree does not mean putting voice into an ordered file stream.
@@ -296,15 +281,17 @@ The room tree's root owns coordination. Its edges are bidirectional, so projecti
 a flow from its sharer already makes that sharer the logical media source; no new
 PeerConnection or change of room owner is needed merely to reverse flow direction.
 Renaming the root cannot shorten the tree's unique paths. A shorter path requires
-different, actually usable edges.
+different, actually usable edges. Reverse flow may use all three neighbors of an
+internal base node; the small fanout policy for new branches is a topology choice,
+not device capacity.
 
 1. A new viewer first attaches to a usable existing publication branch or an
-   admitted source-to-viewer path on the base tree. Install media forwarding and
-   prove picture readiness; an open control DataChannel is not a decoded frame.
-2. While that path plays, the same controller may prepare a bounded alternative
-   parent or branch using room-wide eligible peers. Existing 2.x availability,
-   direct-convergence and quality principles supply candidate filtering and
-   transition ownership; there is no separate fallback or shortest-path router.
+   admitted source-to-viewer path on the base tree, installing only its missing
+   suffix on ready room paths. Prove picture readiness; an open control
+   DataChannel is not a decoded frame.
+2. While that path plays, the same availability/direct-convergence/quality owner
+   may prepare a bounded alternative parent or branch using room-wide eligible
+   peers; there is no separate fallback or shortest-path router.
 3. Reserve the actual overlap resources, prepare the candidate, and require its
    media proof and the applicable non-regression evidence before committing.
    Replace one affected branch, then release only its old media work. The player
@@ -324,9 +311,10 @@ alternative. A viewer remains connecting until a selected path proves ready.
 Reconcile on relevant demand, connectivity or capacity changes. A new viewer adds
 a branch; stopping viewing removes only demand that no downstream still needs;
 a departed relay repairs only affected paths. Preserve healthy unrelated branches.
-Viewing toggles and unrelated membership updates must not reset spent candidate
-opportunities. Once useful attempts finish, keep the working route rather
-than probing periodically for a mathematical global optimum.
+Each admitted session gets one direct attempt per publication. Viewing toggles
+and unrelated membership updates must not reset spent candidate opportunities.
+Once useful attempts finish, keep the working route rather than probing
+periodically for a mathematical global optimum.
 Repairing a base edge reconciles only flows using that edge. An independent,
 healthy screen branch stays in place while room authority remains valid; a
 change in the base plan does not reset every publication to its startup path.
@@ -348,6 +336,16 @@ it is not evidence that the media path has failed. Transport, track and render
 failure retain their existing immediate retirement paths.
 The room owns the deadline and the domain's existing clock wakes a remote room
 only when it is due; Browser and Native hosting do not add separate routing timers.
+
+A publication prepares one alternative branch, including its transit nodes.
+First-picture viewers need decoded proof; pure transit proves forwarding, not
+decoding. Existing viewers keep their decoded input while the candidate passes
+shared quality comparison and supplies a prewarmed player frame. Selection retains
+prepared inputs/outputs before retiring old leases. Source sound, volume, pause
+and container fullscreen follow player handover; native element fullscreen defers it.
+Preparation/switching share one finite operation: first-viewer approval bounds the
+remaining wait to the quality-evidence lifetime. Failure or changed viewing demand
+cancels the candidate while preserving required old paths.
 
 ### One Owner For Actual Connections
 
@@ -467,9 +465,11 @@ use the existing candidate signaling. Pair retirement joins the address watcher
 and requests best-effort deactivation through the library's existing lifecycle.
 
 Prepare a replacement, prove it usable, commit, then release old work. A base
-edge requires an open DataChannel and an installed control path, not merely a
-connected PeerConnection. Silent voice readiness uses transport and forwarding
-readiness rather than waiting for audible speech. Picture availability requires
+edge requires both endpoints to confirm an installed open control DataChannel
+before bidirectional voice, not merely a connected PeerConnection. DataChannel
+failure repairs base paths while preserving the pair's healthy media leases.
+Silent voice uses transport/forwarding readiness rather than waiting for audible
+speech. Picture availability requires
 a decoded frame. Shared link failure reconciles all affected flows through the
 same transport owner. Retiring room-data work ends its queued and waiting sends
 while preserving the pair's picture and input work. A new room-data lease may
@@ -540,6 +540,15 @@ release another room's healthy source or transport lease.
 Within that window the retained room binding still owns existing captures;
 temporary unavailability rejects new room operations without retiring that binding.
 
+App sharing uses a page-owned, non-cloneable capture lease from the initial
+request; dropping it stops the producer even while signaling reconnects. Native
+Driver owns worker completion. Room admission precedes capture, and the first AU
+completes startup; Native preview uses an ordinary subscription. Source audio
+shares that page lease with separate outputs. WASAPI timestamps and Rust Opus use
+the video's source-time mapping; silence does not block picture startup, and audio
+failure retires only audio outputs. Stereo receive negotiation stays with the
+transport, including retained connections that change SDP roles.
+
 An unfinished SDP exchange belongs to its physical connection. On resume,
 retransmit its original offer or cached answer with the same exchange identity;
 an answer from an older exchange cannot complete a newer one. Keep that protocol
@@ -555,385 +564,228 @@ defines an answer's independent SDP origin/version.
 ## Implementation Boundary
 
 Browser/WASM and Native/SQLite adapters execute the shared room core. The domain
-binds their authenticated runtimes and projects authorized directory summaries;
-a failed directory save cannot undo policy already committed by the room owner.
-The [Server and App compositions](../../prototype/channel-server/README.md)
-describe their runtime setup. Both compose a
-[Native participant](../../prototype/channel-native/README.md), whose caller owns
-hosting lifetime. An OS file lock excludes simultaneous writers of a saved room.
-Capture remains a separate producer.
+projects their authorized summaries; a failed directory save cannot undo a room
+policy commit. The [Server/App compositions](../../prototype/channel-server/README.md)
+and [Native participant](../../prototype/channel-native/README.md) own runtime setup;
+an OS file lock excludes simultaneous writers of a saved room.
 
-The shared transport book combines logical flows into physical pairs. Both
-endpoints must confirm an installed open base DataChannel before an edge carries
-bidirectional voice. DataChannel failure repairs base paths while preserving the
-pair's healthy media leases. Changing one room's activity cannot retire a pair
-still used by another room.
+App control authenticates the Browser account against domain admission and opens
+rooms through the Native participant. Browser activities and existing hosted
+rooms keep their own endpoint and storage. Approval grants one exact Web origin
+its own data namespace; supplied domain/user IDs select data only after Native
+verifies admission. Revocation stops that site's hosting without deleting data
+or affecting other sites. For an approved external site, a replacement origin
+needs approval and does not inherit the previous origin's data. The App's own
+domain retains its saved identity and room-data namespace across port or
+invitation-address changes. URLs provide discovery, never App permission.
 
-Picture startup installs only the missing source-to-viewer suffix on ready room
-paths. Reverse flow may use all three neighbors of an internal base node; the
-small fanout policy for new branches is a topology choice, not device capacity.
-Convergence prepares one alternative branch per publication, including transit.
-Viewers with an existing decoded picture keep that input while their candidate
-passes the shared quality comparison and supplies a prewarmed player frame.
-First-picture delivery needs decoded proof; pure transit proves forwarding.
-Selection retains those prepared inputs and
-outputs before retiring the old leases. Source sound, volume, pause and container
-fullscreen follow the player handover; native element fullscreen defers it.
-Preparation and switching share one finite operation. The first viewer's approval
-bounds the remaining wait to the quality-evidence lifetime. Failure or changed
-viewing demand cancels the candidate while preserving required old paths. Each
-admitted session gets one direct attempt per publication, independent of view toggles.
+Keep platform FFI narrow: a Rust wrapper does not make foreign code memory-safe
+([safe abstractions](https://doc.rust-lang.org/book/ch20-01-unsafe-rust.html)). The
+[engineering map](../standards/engineering.md#module-map) owns module boundaries;
+[versioning](../standards/versioning.md) separates builds, wire, storage and live
+generations. Published cutover still requires a handshake/data-upgrade decision.
 
-The App entry assigns room execution, storage, signing and peer connections to
-its Native participant. A loopback control socket authenticates the Browser's
-account against domain admission and opens rooms through that participant.
-The Browser keeps its separate personal endpoint and controls its own activities;
-closing the socket does not retire the App's host. Existing Browser rooms keep
-their Browser runtime and storage.
-The local approval page grants one exact Web origin access to its own data
-namespace. Browser-supplied domain/user IDs select data only within that namespace,
-after Native verifies the actual domain admission. Revocation stops that site's
-hosting without deleting its data or affecting other sites. Changing a tunnel URL
-requires approval of the replacement origin; it does not inherit an earlier
-origin's data automatically. URLs carry discovery hints, never App permission.
+### Transport And Encoded Supply
 
-Safe Rust owns business rules and Native resource lifecycles; TypeScript owns
-the Web interface and Browser bridge. Keep platform FFI narrow: a Rust wrapper
-does not make foreign code memory-safe. Follow Rust's
-[safe-abstraction guidance](https://doc.rust-lang.org/book/ch20-01-unsafe-rust.html).
-The [engineering map](../standards/engineering.md#module-map) owns module and interface boundaries.
+The Native pump drives [str0m](https://github.com/algesten/str0m) socket input and
+deadlines through public APIs. The SDK owns ICE, DTLS/SRTP, SCTP, congestion
+control, probing, pacing and retransmission; Driver/Core retain room/flow
+authority. STUN/TURN clients use that same socket owner. Exact pins and removal
+boundaries belong to the [Native dependency owner](../../prototype/channel-native/README.md#rtc-dependency).
+Piik owns encoder demand, complete-AU assembly/admission and source-time mapping;
+public depacketizers do not own those assembly semantics or require a feature fork.
 
-A participant accounts only for its own work; a Browser origin cannot account
-for unrelated tabs or applications. Compatible encodings may be shared without
-capping healthy outputs to the slowest request.
+One SDK GCC target budgets a physical connection, not each outbound track.
+[Allocate before encoders](https://webrtc.googlesource.com/src/+/refs/heads/main/call/bitrate_allocator.cc),
+using the SDK's [built-in BWE](https://github.com/algesten/str0m/blob/5f2183ce7c67117cd1960dfeb11bed11fc188b66/docs/BWE.md)
+without a second congestion controller. Independent constraints require actual
+rate-controlled outputs, not copies of one encoding. Each connection aggregates
+known source configuration ceilings separately from usage/allocation; unknown
+received ceilings remain unbounded, with measured source cost informing allocation.
+Selected original supply sets minimum transmit demand within the SDK estimate;
+overuse suppresses padding. Desired capacity stays separate, idle/withdrawn supply
+contributes no minimum, and unknown cost never becomes a guessed rate.
 
-Actual sender allocation and the existing finite route operation determine
-admission. On an established pair, a local offer failure that occurs before
-signaling and leaves the connection stable withdraws only its unconfirmed additions;
-existing picture, voice and room connections remain. Normal sender retirement
-on any pair allows rejected companion audio to retry once. Failure rollback is
-not a new opportunity, unchanged projections do not retry, and a retired failed
-flow is not revived. This needs no parallel capacity ledger or polling loop.
+Selected demand precedes optional flows after accounting for other RTP. A trial's
+picture and sound are admitted together; unknown cost waits on the existing Driver
+tick. Pending selected video reserves capacity before its sender is ready. An empty
+connection can start ordinary forwarding: the initial estimate is not measured
+capacity. A trial that no longer fits retires its outputs, preserving selected
+media and the connection. Before signaling, a stable local offer failure withdraws
+only unconfirmed additions. Normal sender retirement lets rejected companion audio
+retry once; rollback is not a new opportunity, unchanged projections do not retry,
+and retired failed flows do not revive.
 
-The 3.0 experiment defines a new business contract without putting both models
-inside every module. The [versioning standard](../standards/versioning.md) still
-separates build identity, wire compatibility, stored schema and live generations.
-A published cutover needs its own handshake and data-upgrade decision.
+A participant accounts only for its own work, not unrelated tabs/apps. One producer
+reconciles actual output demand, reusing a warm baseline at full demand and an
+independent encoding per constrained output. Zero allocation pauses that output;
+restoration adopts a newer baseline keyframe before retiring its encoder. An
+unused baseline rests on its bounded AU queue. `Original`/`Limited` describe feed
+reuse/independent encoding, not delivered quality; observations own delivered
+size, cadence and quality. A lower supplied encoding does not permanently cap an
+outgoing RID's geometry. Each publication carries accepted source size/FPS/bitrate
+ceilings to relays; local encoder policy and source audio keep their controls.
+Quality edits preserve publication/routes and are acknowledged after producer and
+room acceptance; rejected publication updates restore the still-live producer.
 
-The Native runtime uses upstream
-[str0m](https://github.com/algesten/str0m)
-through public APIs. Its library owns ICE, DTLS/SRTP, SCTP, congestion control,
-probing, pacing and retransmission. One Native pump supplies socket input and
-deadlines; room and flow authority stay in the existing Driver and shared Core.
-Mature STUN/TURN clients supply discovery and relay protocols through that same
-socket owner. Fixed listeners remain service-owned; prepared and relay endpoints
-retain their pair lifetimes. The [Native dependency owner](../../prototype/channel-native/README.md#rtc-dependency)
-records exact pins and their removal boundaries.
+Control turns and real-time packet writers remain separate. Each output uses its
+negotiated codec mapping and complete-AU queue; overflow drops unsent AUs and resumes
+at a keyframe without blocking siblings. Completeness spans reception, expiry and
+delivery: expired fragments never enter a decoder. Metadata that produces no RTP
+keeps the sender and its last clock correlation alive. Retiring a flow ends its
+unsent payload/retransmission state independently of a later SDP exchange.
+Opaque RTP cost is measured once before fanout, even without outputs. Ingress
+deduplicates primary sequence numbers after RTX repair while retaining first late
+repairs/out-of-order packets; each downstream owns its retransmissions.
+Audio/video have separate source identities. Capture presentation time owns RTP and
+Sender Report correlation; encoding/delivery delay must not shift them independently.
+Replacing an incoming source creates a new sender/SSRC; changing a local encoding
+keeps capture identity, output sender/SSRC and packetizer, committing on a newer
+keyframe. Refresh demand remains until that keyframe, not merely an RTCP request.
 
-Piik owns encoder demand, complete-access-unit admission and source-time mapping.
-An output's unsent payload and retransmission state end when its flow retires,
-independently of a later SDP exchange. Public codec depacketizers remain library
-helpers; complete-AU ordering and packet-head metadata belong to the incoming-source
-adapter. Codec parsing defects justify dependency repairs; these assembly needs
-do not require a maintained feature fork.
+Required lower-rate replacement releases the incumbent and queued frames immediately,
+retaining last emitted source time; its delayed IDR crosses a fixed boundary.
+Optional restoration keeps the incumbent until the new IDR. Small encoding skew
+uses [source-switch RTP mapping](https://github.com/livekit/livekit/blob/master/pkg/sfu/forwarder.go)
+without changing capture timestamps/NTP correlation. Each encoding has a feed
+identity: failure applies atomically to current/required pending feeds, while an
+optional-upgrade failure preserves the incumbent. Driver consumes latest targets
+without queuing intermediate values. The existing WebRTC
+[FrameDropper](../../native/third_party/webrtc-frame-dropper/README.md) admits raw
+frames from actual encoded bytes/input cadence; dropped raw frames retain time,
+and encoded reference frames remain intact. The
+[encoder assessment](./webrtc-encoder-pool.md#h264-burst-and-recovery) owns measurements.
 
-The SDK's GCC target is one physical connection's budget, not an allocation for
-each outbound track. Consume it once for that connection's active media. As in
-[libwebrtc's allocator](https://webrtc.googlesource.com/src/+/refs/heads/main/call/bitrate_allocator.cc),
-allocate before passing demand to encoders. Independently constrained branches
-need actual independently rate-controlled outputs; copying the same encoded
-packets or applying a minimum/maximum to one shared encoder cannot provide that.
-The library's [built-in BWE](https://github.com/algesten/str0m/blob/5f2183ce7c67117cd1960dfeb11bed11fc188b66/docs/BWE.md)
-feeds the existing Native allocator without a second congestion controller.
-Each connection aggregates known local media configuration ceilings independently
-of actual usage and current allocation. Received sources without a known ceiling
-retain unbounded demand; measured source cost informs allocation.
-Selected original supply also provides the SDK's minimum transmit demand.
-The SDK can fill unused media capacity within its current estimate, suppressing
-padding during overuse; desired capacity remains separate. Idle or withdrawn
-sources contribute no minimum, and unknown cost does not become a guessed rate.
-The [Native candidate index](../../prototype/channel-native/README.md#rtc-dependency)
-owns the exact source and controlled results. Publisher and relay recovery
-require separate evidence; [verification status](../verification-status.md#adaptation-boundaries)
-owns their current acceptance boundaries.
+Default Server adaptation remains forwarding-only under
+[ADR-0013](../adr/0013-embedded-node-local-media.md). [Simulcast](https://www.rfc-editor.org/rfc/rfc8853)
+encodings represent one source/flow, not extra publications or operations. Session
+receive capabilities go only to assigned peers. Producers order encodings low to
+high; measured bitrate decides fit, not quality order. Each RID maps RTP/SR to one
+source timeline. Forwarding preserves downstream supply and needs no Server codec
+runtime. Received tracks keep physical readers/clocks across codec changes; feed
+replacement changes encoded format without replacing their route or reader.
+H264 shares complete AUs between forwarding and one demand-driven decoder; platform
+adapters feed the shared derived producer. Windows VP8 uses stock libvpx/owned NV12
+frames. Derived outputs keep source presentation/RTP/SR time, adopt a replacement
+keyframe before retiring old encoding, and release only their own derivation.
+Removing the last incoming demand releases its reader even while metadata remains.
 
-Native encoded forwarding separates control turns from real-time packet writers.
-Audio and video retain separate source identities within one publication. Each
-output uses its sender's negotiated codec mapping and preserves the source-time
-correlation in RTP and Sender Reports. Replacing an incoming source creates a
-new sender/SSRC. Switching a local encoding keeps the capture's logical identity
-and that output's sender, SSRC and packetizer; it commits on a newer keyframe.
-An active encoding handoff keeps its refresh demand until a suitable keyframe
-arrives; sending an RTCP request does not complete it.
-Each local output queues complete access units. Overflow discards unsent units
-and resumes at a keyframe without blocking healthy outputs.
+Registered capabilities, SDP and actual SPS remain distinct. The SDK matches H264
+profiles/packetization; the encoded-input boundary checks SPS. Chromium's
+[fixed decoder advertisement](https://chromium.googlesource.com/chromium/src/+/c423d38b941d7e282dcfdf1238d942845553b644/third_party/blink/renderer/platform/peerconnection/rtc_video_decoder_factory.cc)
+is not a forwarding ceiling or decoding proof. Retain actual decoded-frame proof;
+metadata alone cannot retire a working connection or permanently reject its flow.
 
-Local capture and received tracks feed that same encoded-output owner. A local
-source has no incoming route lease; its admitted publication supplies the outgoing
-flows. Capture presentation time owns both RTP and Sender Report clocks, so encoding
-or delivery delay cannot shift one of them independently. The Windows producer
-shares one capture's owned GPU textures and presentation clock across independent
-encodings. Each encoding owns its conversion, bitrate, keyframe requests and
-stop, replaces only unencoded work and applies backpressure to complete access
-units. A blocked or stopped encoding does not stall its siblings; stopping the
-capture ends them all.
-Display changes recreate only the source's WGC resources, retaining its clock,
-encoders and routes. The [fidelity assessment](./media-fidelity.md) owns colour
-conversion, tone mapping and their measured boundaries.
-Windows Auto selects from actual encoder startup: hardware H264 first, then
-software VP8 after a failed or timed-out first independent access unit. The
-failed encoder stops before replacement, and both retain the same capture and
-source clock. The admitted codec stays fixed for that publication's source
-changes and derived outputs. Manual selection either starts the requested codec
-or reports that it is unsupported before acquiring capture permission.
-The isolated macOS adapter keeps the same `Capture(Target, fps)` boundary through
-ScreenCaptureKit and typed Rust bindings. Source dimensions follow actual backing
-pixels and frame metadata, independently of encoder settings. Its original sample
-time is converted from the [stream's synchronization clock](https://developer.apple.com/documentation/screencapturekit/scstream/synchronizationclock)
-to the shared host-time domain. One completed image copy leaves ScreenCaptureKit's
-finite pool; encoders share only that immutable copy. The source owner applies
-configuration changes and stops the stream before draining its callback queue and
-releasing conversion resources. Each VideoToolbox encoding owns its fitted size,
-bitrate and bounded access-unit queue. Inputs come from the codec's native pixel
-buffer pool: an output callback does not authorize overwriting retained input.
-Source sound has a separate stream and stop lifetime. Both streams use the same
-selected-source filter; Apple's [window filter](https://developer.apple.com/videos/play/wwdc2022/10155/)
-already selects its owning application's audio, without requiring a second
-display selection or video dimensions. It uses the same App capture lease,
-producer, input registration and encoding allocation as Windows.
-[Platform verification](../verification-status.md#device-evidence-boundary)
-owns SDK and runtime evidence.
+### Capture And Platform Lifetimes
 
-The Linux adapter uses the same producer boundary. A typed
-[ScreenCast Portal session](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html)
-owns selection, its authorized PipeWire connection and revocation. The source
-copies each latest image out of PipeWire's pool once; independent GStreamer
-encoders consume that immutable image with their own raw-input backpressure and
-complete-access-unit queues. Each pipeline uses the same system-time domain;
-segment running time removes codec offsets before projecting presentation time
-into the shared media clock. Portal closure ends the source and its encodings;
-one encoder failure ends only its outputs. System-output sound uses a separate
-PulseAudio monitor pipeline. App enables
-this capture feature; Server forwarding has no desktop capture dependency.
-Platform acceptance is tracked in [verification status](../verification-status.md#device-evidence-boundary).
+Local capture has no incoming route lease; publication authority supplies its
+outputs. Each encoding fits natural source pixels within the requested ceiling,
+without upscaling. Encoders own conversion, bitrate, keyframe requests and bounded
+AU queues; only unencoded work may be replaced. One blocked/failed encoding affects
+only its outputs; stopping capture ends all encodings and source sound.
 
-Android uses this same producer boundary. One user-approved
-[MediaProjection](https://developer.android.com/media/grow/media-projection)
-owns one VirtualDisplay and image source. Independent MediaCodec encodings consume
-owned immutable snapshots, retaining the existing source clock and output owners;
-one blocked encoder must not retain the projection's reusable image or block its
-siblings. Optional [playback sound](https://developer.android.com/media/platform/av-capture)
-is acquired through that capture's authorization, rather than a second projection
-or a global lookup. Java supplies the necessary system consent, foreground
-service and platform callbacks; Rust owns capture and encoding. The page owns
-the capture lease from its initial request, including permission and first-frame
-waits. Those waits must leave the App command processor available, and the same
-stop operation retires pending and active capture. The shared picker, activation
-flow and room/media routes remain the consumers of this platform adapter.
+Windows shares owned GPU textures and source time across its independent worker
+processes. The child copies to private resources before releasing the shared lock
+and encoding. Cancelling a read preserves its pending result. Size changes drain
+old AUs and reconfigure the same MFT, preserving bitrate/clock/output identity and
+resuming at a keyframe ([MFT drain](https://learn.microsoft.com/en-us/windows/win32/medfound/mft-message-command-drain),
+[Chromium reconfiguration](https://chromium.googlesource.com/chromium/src/media/+/cf1aa0045e1e041b5da6d932ae89e2374db4c4e8/gpu/windows/media_foundation_video_encode_accelerator_win.cc#1307)).
+Display changes replace WGC resources without resetting encoders/routes/time.
+[D3D11 device removal](https://learn.microsoft.com/en-us/windows/win32/api/d3d11_4/nf-d3d11_4-id3d11device4-registerdeviceremovedevent)
+joins/replaces affected capture/child resources while retaining source clock,
+audio, bitrate and logical feed; replacement needs a newer independent AU. Failure
+before usable output preserves the original device error; unrelated errors stay
+terminal. The process boundary contains observed NVIDIA callbacks using a destroyed
+transform after ShutdownObject returned, without idle retention/shutdown delays.
+Auto selects hardware H264
+then software VP8 after failed/timed-out first independent AU, stopping the failed
+encoder before replacement on the same capture/clock. The admitted codec stays fixed
+for source changes/derived outputs; manual selection rejects unsupported codecs
+before capture permission. [Fidelity](./media-fidelity.md) owns colour/tone mapping.
 
-Room voice currently plays in the Browser. System-output capture can therefore
-recapture remote voices even with headphones. Browser capture requests
-[`restrictOwnAudio`](https://w3c.github.io/mediacapture-screen-share/#dfn-restrictownaudio);
-that constraint does not control Native capture. Windows
-[process loopback](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params)
-can exclude a process tree, not one Browser document. Excluding the whole Browser
-would also remove its other sound. Moving the final voice PCM mix to an App sink
-would leave ordinary Chromium microphone processing without that playback in its
-[echo reference](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/platform/mediastream/media_stream_audio_processor_options.cc).
-The explicit [`all` echo-cancellation mode](https://developer.chrome.com/release-notes/141#echocancellationmode_for_getusermedia)
-requires actual device support and can add microphone latency. The owner chose
-to retain Browser playback for the first internal test; automatic exclusion is
-separate later design work. Processing the entire Native source mix would change
-the unprocessed source-sound contract.
+macOS dimensions follow backing pixels/frame metadata. The
+[SCStream synchronization clock](https://developer.apple.com/documentation/screencapturekit/scstream/synchronizationclock)
+maps original sample time to host time. One completed image copy leaves the finite
+ScreenCaptureKit pool; encoders share only that immutable copy. Stop the stream,
+drain callbacks, then release conversion resources. Each VideoToolbox encoder owns
+its size/bitrate/AU queue and native input pool; output callbacks do not authorize
+overwriting retained input. Source-sound/video streams have independent stop
+lifetimes and use the same
+[selected-window/application filter](https://developer.apple.com/videos/play/wwdc2022/10155/),
+without another display choice or video dimensions.
 
-Enabling Linux input requests a
-[RemoteDesktop Portal session](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html)
-beside the current capture. It commits only after its selected monitor, EIS
-devices and first raw image are ready; cancellation closes that candidate and
-keeps the current share. Pending interaction explicitly closes its
-[Portal Request](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Request.html#methods)
-before session cleanup. The existing source-consent owner cancels superseded
-permission requests, including before the capture commit. One local presentation
-at handoff requests a keyframe without replacing the producer, encoders or clock;
-subsequent frames retain their source timestamps. The EIS region mapping pairs
-input with the selected monitor. Paused/removed devices follow the
-[EI neutral-state contract](https://libinput.pages.freedesktop.org/libei/interfaces/ei_device/index.html#ei_devicepaused),
-so their completed releases do not block another source. Text input follows the
-actual device capability.
+Linux's [ScreenCast Portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html)
+owns selection, PipeWire authorization and revocation. Copy each image out of the
+pool once for independent GStreamer encodings. Pipeline segment running time
+removes codec offsets in the shared system/source clock. Portal closure stops the
+source/all encodings; system sound keeps its separate PulseAudio monitor pipeline.
+Server forwarding has no desktop capture dependency.
 
-Linux's optional global stop uses the standard
-[GlobalShortcuts Portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.GlobalShortcuts.html),
-with the package's installed desktop identity registered through the
+Android's [MediaProjection](https://developer.android.com/media/grow/media-projection)
+owns one VirtualDisplay/image source; independent MediaCodec outputs consume owned
+immutable snapshots without retaining reusable projection images or blocking siblings.
+Optional [playback sound](https://developer.android.com/media/platform/av-capture)
+uses that same capture authorization. Java owns consent/foreground service/platform
+callbacks; Rust owns capture/encoding. Pending permission/first-frame waits leave
+App commands available, and the same stop retires pending and active capture.
+
+### Input And Sound Boundaries
+
+Linux input adds a [RemoteDesktop Portal session](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html)
+beside the current capture. Commit only with selected monitor, EIS devices and
+first image ready; cancellation closes the candidate and preserves the share.
+Close a pending [Portal Request](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Request.html#methods)
+before session cleanup, including superseded pre-commit consent. One local
+presentation requests a keyframe at handoff without replacing producer/encoders/time.
+EIS region mapping binds input to the selected monitor; paused/removed devices use
+[neutral-state releases](https://libinput.pages.freedesktop.org/libei/interfaces/ei_device/index.html#ei_devicepaused)
+without blocking another source. Text follows actual device capability.
+
+The optional [GlobalShortcuts Portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.GlobalShortcuts.html)
+uses an installed desktop identity via the
 [host Registry](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.host.portal.Registry.html).
-Desktop owns one process binding; source consent owns pending registration and
-closes its Request and candidate session on cancellation. A preferred Browser
-chord does not establish the actual binding: the system's returned description,
-changes and session closure feed the existing source snapshot. Activation revokes
-input through the same desktop executor while capture keeps its lifetime.
-Linux prefers Super + Alt + Fn; Ctrl + Alt + Fn selects a virtual terminal on
-GNOME rather than activating the shortcut.
+Desktop owns one process binding; source consent closes pending registration's
+Request/candidate session on cancellation. Actual system description/changes/closure,
+not the preferred Browser chord, report binding. Activation revokes input through
+the same executor without stopping capture. Linux prefers Super + Alt + Fn;
+GNOME uses Ctrl + Alt + Fn for virtual terminals.
 
-In the isolated Linux VM, GNOME Portal `50.0-r0` and control-center `50.3-r0`
-open real shortcut consent after normal desktop integration. Cancelling the
-source returns with input Off and releases Piik's Request/session, but leaves
-the provider's dialog visible. The backend's
-[`on_request_handle_close_cb`](https://github.com/GNOME/xdg-desktop-portal-gnome/blob/50.0/src/globalshortcuts.c)
-only marks the bind cancelled; the
-[50.3 provider](https://github.com/GNOME/gnome-control-center/blob/50.3/global-shortcuts-provider/cc-global-shortcuts-provider.c)
-has no corresponding external-dialog cancellation. Piik adds no provider
-workaround. Approval through the real provider UI bound Super + Alt + F10;
-actual EIS keyboard input activated global stop, retired the input grants and
-left the original PipeWire capture producing a newer frame. The cancelled
-shortcut dialog remains a provider UX limitation, separate from the Mutter
-capture-cancellation defect below.
+GNOME Portal 50.0/control-center 50.3 leave cancelled shortcut consent visible after
+Piik releases its Request/session: the
+[backend](https://github.com/GNOME/xdg-desktop-portal-gnome/blob/50.0/src/globalshortcuts.c)
+marks cancellation, but the [provider](https://github.com/GNOME/gnome-control-center/blob/50.3/global-shortcuts-provider/cc-global-shortcuts-provider.c)
+has no external-dialog cancellation. Piik adds no provider workaround. This UX
+limitation is separate from Mutter's unstarted-session leak: its
+[`!started` Stop branch](https://gitlab.gnome.org/GNOME/mutter/-/blob/50.2/src/backends/meta-remote-desktop-session.c#L691)
+returns without closing an object, even after system-UI cancellation. Piik releases
+its own Portal/PipeWire resources and must not start unapproved sessions. The same
+branch remained in [50.5](https://github.com/GNOME/mutter/blob/c28623c8d29c7b61ec744cdfdbec36f5e7faef1c/src/backends/meta-remote-desktop-session.c#L634)
+and [upstream main](https://github.com/GNOME/mutter/blob/432c167ef2de37a708140b02e29881646fc9c13c/src/backends/meta-remote-desktop-session.c#L442)
+on 2026-10-31. The isolated repair is local; [TODO](../todo.md#now) owns publication
+and [verification status](../verification-status.md#device-evidence-boundary) owns runtime acceptance.
 
-GNOME Portal 50.0 with Mutter 50.2 leaves an unstarted Mutter session after a
-cancelled permission dialog, including cancellation through the system UI.
-Piik's Portal requests, sessions and PipeWire streams are released. The backend
-calls Mutter `Stop`, whose
-[`!started` branch](https://gitlab.gnome.org/GNOME/mutter/-/blob/50.2/src/backends/meta-remote-desktop-session.c#L691)
-returns without closing the object. This is an upstream cleanup defect; Piik
-must not start an unapproved session to work around it.
-Checked on 2026-10-31, the same early return remains in
-[50.5](https://github.com/GNOME/mutter/blob/c28623c8d29c7b61ec744cdfdbec36f5e7faef1c/src/backends/meta-remote-desktop-session.c#L634)
-and [upstream main](https://github.com/GNOME/mutter/blob/432c167ef2de37a708140b02e29881646fc9c13c/src/backends/meta-remote-desktop-session.c#L442).
-Removing that eight-line early return passes an isolated Mutter build and
-runtime comparison: the owner can close an unstarted session, another caller
-is rejected, and cancelling the normal Portal dialog releases its object while
-an existing share continues. The repair remains local; no system compositor
-was replaced. Publication is tracked in [TODO](../todo.md#now).
+Room voice plays in the Browser. Native system-output capture can recapture remote
+voices even with headphones; Browser
+[`restrictOwnAudio`](https://w3c.github.io/mediacapture-screen-share/#dfn-restrictownaudio)
+does not control Native capture. Windows
+[process loopback](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params)
+excludes an entire Browser tree, including its other sound. App-sink playback would
+remove voice from ordinary Chromium's
+[echo reference](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/platform/mediastream/media_stream_audio_processor_options.cc).
+Explicit [`all` echo cancellation](https://developer.chrome.com/release-notes/141#echocancellationmode_for_getusermedia)
+needs actual device support and can add mic latency. The owner retains Browser
+playback for first internal testing; automatic exclusion stays separate later
+work. Processing the whole Native mix would change unprocessed source sound.
 
-Requested dimensions are ceilings: each encoder fits the source's natural pixel
-size without enlarging small sources. A Windows size change drains old access
-units through the existing MFT event loop, reconfigures that same encoder and
-resumes at a keyframe. The current bitrate, source clock and output identity
-survive the change. This follows the
-[asynchronous MFT drain contract](https://learn.microsoft.com/en-us/windows/win32/medfound/mft-message-command-drain)
-and [Chromium's encoder reconfiguration](https://chromium.googlesource.com/chromium/src/media/+/cf1aa0045e1e041b5da6d932ae89e2374db4c4e8/gpu/windows/media_foundation_video_encode_accelerator_win.cc#1307).
-Windows keeps WGC in the parent and joins a separate child per encoding. The
-[Native participant](../../prototype/channel-native/README.md) describes its bounded
-GPU handoff and worker shutdown. The child releases the shared-texture lock
-before encoding its private copy. Cancelling a read preserves its pending result;
-unread encodings rest on their existing bounded output queue.
-Windows device removal is observed through the
-[D3D11 device event](https://learn.microsoft.com/en-us/windows/win32/api/d3d11_4/nf-d3d11_4-id3d11device4-registerdeviceremovedevent).
-The existing Capture and Encoding owners join and replace their affected WGC or
-child resources while retaining the source clock, audio, current bitrate and
-logical feed. Each replacement child must publish a newer independent access unit
-before its output resumes. A replacement that fails before producing usable
-output ends with the original device error; unrelated failures remain terminal.
-
-A controlled single-MFT shutdown reproduced an NVIDIA callback using an already
-destroyed transform after `ShutdownObject` returned. The encoding process boundary
-contains that failure to consumers of that encoder, including viewers sharing
-one baseline. Other encodings, WGC and App-hosted rooms continue.
-No idle-encoder retention or shutdown delay is used to hide the driver failure.
-The Native driver allocates each connection's target to confirmed local video
-after accounting for other RTP, prioritizing selected video over optional video.
-One producer reconciles demand with the encodings actually used by its outputs.
-It reuses a warm baseline at full demand and one independently controlled encoding
-per constrained output. Zero allocation pauses that output; restoration retires
-its encoder only after a newer baseline keyframe is adopted. An unused baseline
-stops consuming access units and rests on the existing bounded queue.
-`Original` and `Limited` describe supplied-feed reuse or independent encoding,
-not delivered picture quality. A constrained local encoder changes bitrate within
-the producer's configured source-size ceiling; a supplied lower encoding's size
-is not a permanent geometry constraint on its outgoing RID. Receiver observations
-own delivered dimensions, cadence and quality.
-Each screen publication carries its source's accepted size, frame-rate and
-bitrate ceiling through the existing publication authority. Relays use that
-ceiling while local encoder policy and source audio retain their own controls.
-Quality edits update the same publication and preserve its routes. An App
-acknowledges an edit after both its producer and the room accept it; a rejected
-publication update restores the still-live original producer.
-A required lower-rate replacement releases that output's incumbent and queued
-frames immediately, retaining its last emitted source time. A delayed replacement
-IDR can then cross a fixed boundary instead of chasing the still-playing original.
-Optional restoration keeps playing its incumbent until the new IDR arrives.
-Small source-time skew between encodings is handled by the outgoing RTP timeline,
-following [LiveKit's source-switch mapping](https://github.com/livekit/livekit/blob/master/pkg/sfu/forwarder.go).
-Original capture timestamps and their NTP correlation remain unchanged.
-Each allocated encoding has its own feed identity. Failure is applied atomically
-against an output's current or required pending feed; a failed optional upgrade
-preserves the incumbent. The existing driver loop consumes latest targets
-without queuing intermediate values.
-The same connection budget admits optional flows only after selected demand.
-Opaque RTP is measured once at its source before fanout, including sources with
-no current outputs. Its ingress removes repeated primary sequence numbers after
-RTX repair, preserving the first late repair and out-of-order packets; each
-downstream transport owns its own retransmissions. A trial's picture and sound
-are admitted together; unknown
-cost waits through the existing driver tick without failing its lease. A trial
-that no longer fits retires its outputs through the existing flow-failure owner,
-preserving selected media and the connection. Pending selected video reserves
-trial capacity before its sender is ready. An otherwise empty connection still
-starts ordinary forwarding: the SDK's initial estimate is not measured capacity.
-No new retry timer, route protocol or adjustable-opaque representation is added.
-Default Server adaptation follows the source-supplied, forwarding-only model in
-[ADR-0013](../adr/0013-embedded-node-local-media.md). Standard
-[simulcast](https://www.rfc-editor.org/rfc/rfc8853) encodings remain representations
-of one admitted source and flow, not separate publications or route operations.
-Receiving capability belongs to the endpoint session and is projected only to
-its assigned peers. Piik producers declare encodings from lower to higher quality;
-observed bitrate determines whether a layer fits, not its quality order.
-Each RID retains its own RTP/Sender Report mapping into one
-source timeline. Outputs reuse complete-frame packetization and keyframe handoff;
-the source supplies the encoding work, so the default Server needs no decoder or
-encoder runtime. Layered Native forwarding must preserve downstream supply rather
-than collapse it into a single low encoding.
-Each received track retains its physical reader and source clock across
-negotiated codec changes. The existing feed replacement adopts the new encoded
-format without replacing the route or retiring that reader.
-Received H264 sources share complete source access units between
-original forwarding and one demand-driven decoder. Windows GPU, Linux GStreamer
-and macOS VideoToolbox adapters feed the same derived-producer boundary.
-Windows VP8 decoding uses stock libvpx and publishes owned NV12 frames into
-that same producer, retaining each access unit's original presentation time.
-Decoded frames reuse local capture's encoding and retirement owners. Stable outputs
-adopt the replacement's keyframe before retiring their previous encoding; closing a weak
-output releases its derivation without stopping healthy siblings. Source RTP/SR
-mapping preserves the sender's clock through decoding and re-encoding.
-The [Native candidate index](../../prototype/channel-native/README.md#rtc-dependency)
-separates each platform's source and checks; [verification status](../verification-status.md)
-owns the remaining platform acceptance.
-Completeness belongs to the assembler across reception, expiry and delivery:
-expired fragments must never become decoder inputs. Codec metadata may legitimately
-produce no RTP; that leaves the existing sender and its last clock correlation alive.
-A hardware encoder can exceed its target when quantization saturates: the
-standard-motion 200 kbps trial produced 273 kbps at QP 50; random noise reached
-QP 50/51 at 5.2 Mbps. Each encoding therefore reuses WebRTC's
-[FrameDropper](../../native/third_party/webrtc-frame-dropper/README.md) before
-submission, driven by actual encoded bytes and its incoming raw-frame rate.
-Dropped raw frames retain the source clock; encoded reference frames stay intact.
-The same standard-motion trial now produces 199 kbps at about 11.4 fps and
-recovers to 16.2 fps when its budget rises. The healthy sibling remains near
-2.16 Mbps, with its audio and output identity unchanged.
-App sharing uses that existing Native endpoint. The selecting page owns a
-non-cloneable capture lease whose drop stops the producer directly, even while
-signaling is reconnecting; the Native driver owns worker completion. Room
-admission precedes capture, and the first encoded access unit completes startup.
-The Browser previews its Native share through the ordinary subscription route.
-Optional source audio belongs to the same page lease. WASAPI supplies original
-sample timestamps; the Rust Opus encoder uses the video's source-time mapping
-and separate audio outputs. A silent source does not block picture startup, and
-an audio failure retires only its audio outputs. Stereo receive negotiation belongs
-to the shared transport, including retained connections that change SDP roles.
-
-Registered capabilities, negotiated SDP and the source's actual SPS are distinct
-facts. Match equivalent H.264 profiles and packetization using the SDK; inspect
-the actual SPS at the encoded-input boundary. Do not turn the SDP level alone
-into a forwarding ceiling: Chromium's
-[decoder factory](https://chromium.googlesource.com/chromium/src/+/c423d38b941d7e282dcfdf1238d942845553b644/third_party/blink/renderer/platform/peerconnection/rtc_video_decoder_factory.cc)
-advertises a fixed Level 3.1 baseline rather than its actual maximum. The
-controlled Level 4.0 capture played in two Browsers without rewriting their SDP.
-SDP negotiation and measured decoding retain their separate meanings. Keep the
-existing decoded-frame route proof; metadata alone must not retire a working
-connection or permanently reject its flow.
-Removing the last incoming demand releases its reader even if the publication
-remains in the room directory. Further Native work is tracked in [TODO](../todo.md).
+The [Native participant](../../prototype/channel-native/README.md) owns platform
+setup; [verification status](../verification-status.md) and the linked media
+assessments own measured results and remaining physical acceptance.
 
 ## Design References
 
+- Published 2.x [projectVoiceFlows](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/server/signal/voice_plan.go)
+  supplies the bidirectional, once-per-edge voice-path principle, without importing
+  its Host/listening constraints into 3.0.
 - [Discord voice-channel text](https://discord.com/blog/text-in-voice-chat-channel-announcement-tiv)
   informs independent conversation and voice participation.
 - [Discord multistream](https://support.discord.com/hc/en-us/articles/360045784891-Video-Screenshare-Updates-Multistream-and-More)
