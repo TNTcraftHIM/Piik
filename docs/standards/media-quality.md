@@ -263,7 +263,10 @@ does not by itself prove hardware acceleration, and Web content cannot select a
 specific MFT, NVENC, AMF, or QSV implementation.
 
 Windows native capture uses the same VP8/Auto/H264 controls. H264 selects the
-hardware path and VP8 the bundled libvpx encoder. Hardware enumeration is only
+hardware path and VP8 the bundled libvpx encoder. Before the first Native Auto
+capture, the selecting page requests VP8 if its receiver does not advertise H264
+support. Manual selection and an active source's actual codec stay unchanged.
+Hardware enumeration is only
 a candidate list: startup tries the preferred encoder first, then remaining
 adapter/encoder candidates within the shared selection budget. Manual H264
 requires actual H264 output and never changes codec on failure. The selected
