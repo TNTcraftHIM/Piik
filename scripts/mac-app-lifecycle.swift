@@ -58,6 +58,13 @@ enum AppLifecycle {
         let target = NSAppleEventDescriptor(processIdentifier: pid)
         let permission = AEDeterminePermissionToAutomateTarget(
             target.aeDesc, AEEventClass(kCoreEventClass), AEEventID(kAEQuitApplication), false)
+        if permission == errAEEventWouldRequireUserConsent {
+            let bytes = try JSONSerialization.data(withJSONObject: [
+                "pid": Int(pid), "preflight": Int(permission), "quitSent": false,
+                "reason": "user-consent-required"])
+            FileHandle.standardOutput.write(bytes + Data([10]))
+            return
+        }
         try require(permission == noErr, "Quit automation preflight denied without prompting: \(permission)")
         let quit = NSAppleEventDescriptor(
             eventClass: AEEventClass(kCoreEventClass), eventID: AEEventID(kAEQuitApplication),
@@ -67,7 +74,8 @@ enum AppLifecycle {
         let error = reply.paramDescriptor(forKeyword: AEKeyword(keyErrorNumber))?.int32Value ?? 0
         try require(error == 0, "Quit AppleEvent returned error \(error)")
         let bytes = try JSONSerialization.data(withJSONObject: [
-            "pid": Int(pid), "preflight": Int(permission), "quitError": Int(error)])
+            "pid": Int(pid), "preflight": Int(permission), "quitSent": true,
+            "quitError": Int(error)])
         FileHandle.standardOutput.write(bytes + Data([10]))
     }
 }

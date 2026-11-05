@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-04
+Last updated: 2026-11-05
 
 This file summarizes evidence boundaries that materially affect product claims.
 [Status](./status.md) owns candidate and deployment readiness; research owns
@@ -57,7 +57,10 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   A [synthetic VideoToolbox control](https://github.com/TNTcraftHIM/Piik/actions/runs/41779145779)
   at `4cbd5664` also runs H264 encode/decode, source-time preservation, forced
   keyframes and encoder teardown on hosted macOS through the production adapter.
-  System permission, capture, sound and input acceptance on a Mac remain open.
+  The [packaged App check](https://github.com/TNTcraftHIM/Piik/actions/runs/41960209933)
+  at `7c819060` also compiles and starts through LaunchServices on both architectures.
+  The runner requires Automation consent before sending Quit. System Quit,
+  Dock/Finder reentry, permissions, capture, sound and input remain device acceptance work.
 - The isolated 3.0 Linux adapter passes Native/App/Server compilation and real
   GStreamer encoding checks in a Linux VM. Synthetic frames cover independent
   encoders, backpressure, resizing, source timestamps, keyframes and teardown;

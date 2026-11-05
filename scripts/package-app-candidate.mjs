@@ -284,7 +284,8 @@ async function verifyMacLifecycle(root, target, version, revision, temporaryRoot
         })).json();
         if (identity.version !== version || identity.revision !== revision)
           fail("LaunchServices App build identity mismatch");
-        macLifecycle(probe, ["quit", String(launched.pid), app], root);
+        const quit = macLifecycle(probe, ["quit", String(launched.pid), app], root);
+        if (quit.preflight === -1744 && quit.quitSent === false) continue;
       }
       await waitForStop(launched.pid);
       const stillListening = await fetch(`${origin}/connect-discovery`, {
@@ -293,8 +294,8 @@ async function verifyMacLifecycle(root, target, version, revision, temporaryRoot
       if (stillListening) fail("LaunchServices App left its loopback listener running");
       process.stderr.write(`macOS App lifecycle ${web === emptyWeb ? "early-core-error" : "quit"}: exited, port closed\n`);
     } finally {
-      // Only failed cases reach this cleanup with a live owned PID. SIGTERM is
-      // never accepted as evidence that the Quit AppleEvent worked.
+      // Retire our bundle after a failed or unexecuted case. SIGTERM cleanup
+      // is never accepted as evidence that the Quit AppleEvent worked.
       if (launched && alive(launched.pid)) {
         process.kill(launched.pid, "SIGTERM");
         await waitForStop(launched.pid);
