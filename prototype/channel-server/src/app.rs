@@ -339,7 +339,10 @@ pub async fn serve(
         .route("/rooms/{domain}/{user}/hosting", get(backup::describe))
         .route("/api/client-launcher", get(launcher))
         .route("/api/client-launcher/debug", post(diagnostics::enable))
-        .route("/api/client-launcher/debug/export", post(diagnostics::export))
+        .route(
+            "/api/client-launcher/debug/export",
+            post(diagnostics::export),
+        )
         .route("/api/client-launcher/launch", post(hosted::launch))
         .route("/api/client-launcher/site", post(approve))
         .route("/api/client-launcher/startup-site", post(startup))

@@ -49,16 +49,15 @@ ndk-context = { version = "0.1", optional = true }
 jni = { version = "0.22", optional = true }
 khronos-egl = { version = "=6.0.0", optional = true, features = ["static", "no-pkg-config"] }
 glow = { version = "=0.16.0", optional = true }
-libc = "0.2"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rustls-platform-verifier = "=0.7.1"
 
 [target.'cfg(unix)'.dependencies]
+libc = "0.2"
 rustix = { version = "1", features = ["fs"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cidre = { version = "=0.29.0", optional = true, default-features = false, features = ["sc", "vt", "iio", "async", "io_surface", "av", "core_audio", "macos_13_0"] }
-libc = "0.2"
 objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["std", "CFArray", "CFDictionary", "CFNumber", "CFString", "CFCGTypes"] }
 objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["std", "CGEvent", "CGEventTypes", "CGEventSource", "CGRemoteOperation", "CGDisplayConfiguration", "CGDirectDisplay", "CGWindow", "CGGeometry", "libc"] }
 objc2-application-services = { version = "=0.3.2", default-features = false, features = ["std", "HIServices", "AXUIElement", "AXError", "AXValue", "libc"] }

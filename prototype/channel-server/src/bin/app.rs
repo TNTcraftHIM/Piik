@@ -17,6 +17,7 @@ fn main() -> Result<()> {
 #[tokio::main]
 async fn run(
     #[cfg(target_os = "macos")] quit: Option<tokio::sync::oneshot::Receiver<()>>,
+    #[cfg(target_os = "macos")] ready: Option<tokio::sync::oneshot::Sender<String>>,
 ) -> Result<()> {
     let stop = piik_channel_native::shutdown_signal()?;
     #[cfg(target_os = "macos")]
@@ -63,5 +64,7 @@ async fn run(
         .map(|port| port.parse())
         .transpose()?;
     let listener = listen(port).await?;
-    serve(listener, config, stop, None).await
+    #[cfg(not(target_os = "macos"))]
+    let ready = None;
+    serve(listener, config, stop, ready).await
 }
