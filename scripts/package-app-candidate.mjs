@@ -32,12 +32,13 @@ function fail(message) {
   throw new Error(message);
 }
 
-function run(command, args, cwd) {
+function run(command, args, cwd, timeout) {
   const result = spawnSync(command, args, {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
+    timeout,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
@@ -128,7 +129,7 @@ async function stopSmokeChild(child) {
   await waitForExit(child, 5_000).catch(() => undefined);
 }
 
-async function verifyLocalPackage(root, target, version, revision, temporaryRoot) {
+async function verifyLocalPackage(root, target, version, revision, temporaryRoot, macProbe) {
   const app = join(root, target.appName);
   const port = await reservePort();
   const origin = `http://127.0.0.1:${port}`;
@@ -173,6 +174,10 @@ async function verifyLocalPackage(root, target, version, revision, temporaryRoot
     }
     if (!appReady) {
       fail(`Packaged App discovery did not become ready${spawnFailure ? `: ${spawnFailure.message}` : ""}`);
+    }
+    if (macProbe) {
+      const facts = macLifecycle(macProbe, ["inspect", String(child.pid), app], root);
+      if (facts.launchDate !== null) fail("Direct App spawn unexpectedly used LaunchServices");
     }
     const request = async (path) => {
       const response = await fetch(new URL(path, `${origin}/`), {
@@ -227,6 +232,77 @@ async function verifyLocalPackage(root, target, version, revision, temporaryRoot
   }
 }
 
+function macLifecycle(probe, args, root) {
+  const facts = JSON.parse(run(probe, args, root, 20_000));
+  process.stderr.write(`macOS App lifecycle ${args[0]}: ${JSON.stringify(facts)}\n`);
+  return facts;
+}
+
+async function verifyMacLifecycle(root, target, version, revision, temporaryRoot, probe) {
+  const app = join(root, target.appName);
+  const emptyWeb = join(temporaryRoot, "empty-web");
+  mkdirSync(emptyWeb);
+  const alive = (pid) => {
+    try { process.kill(pid, 0); return true; }
+    catch (error) { if (error.code === "ESRCH") return false; throw error; }
+  };
+  const waitForStop = async (pid) => {
+    const deadline = Date.now() + 10_000;
+    while (alive(pid) && Date.now() < deadline) await delay(100);
+    if (alive(pid)) fail("LaunchServices App did not finish ordered shutdown");
+  };
+  for (const web of [join(root, "web"), emptyWeb]) {
+    const port = await reservePort();
+    const origin = `http://127.0.0.1:${port}`;
+    const environment = join(temporaryRoot, "mac-lifecycle-env.json");
+    writeFileSync(environment, JSON.stringify({
+      PIIK_CHANNEL_APP_DATA_DIR: join(temporaryRoot, "smoke-app-data"),
+      PIIK_CHANNEL_APP_WEB_DIR: web, PIIK_CHANNEL_APP_PORT: String(port),
+      PIIK_CHANNEL_APP_NO_BROWSER: "1", PIIK_CHANNEL_ICE_SERVERS: "[]",
+      PIIK_CHANNEL_CLOUDFLARED: join(root, "runtime", "tunnel", target.tunnelName),
+    }));
+    let launched;
+    try {
+      launched = macLifecycle(probe, ["launch", dirname(dirname(root)), environment, app], root);
+      if (!Number.isFinite(launched.launchDate)) fail("App bundle was not started by LaunchServices");
+      if (web !== emptyWeb) {
+        const deadline = Date.now() + 15_000;
+        let ready = false;
+        while (alive(launched.pid) && Date.now() < deadline) {
+          try {
+            const response = await fetch(`${origin}/connect-discovery`, { signal: AbortSignal.timeout(500) });
+            const discovery = response.ok ? await response.json() : null;
+            if (!response.ok) await response.body?.cancel();
+            ready = discovery?.port === port && discovery?.connectURL === `${origin}/client`;
+          } catch {}
+          if (ready) break;
+          await delay(100);
+        }
+        if (!ready) fail("LaunchServices App discovery did not become ready");
+        const identity = await (await fetch(`${origin}/api/client-launcher`, {
+          signal: AbortSignal.timeout(2_000),
+        })).json();
+        if (identity.version !== version || identity.revision !== revision)
+          fail("LaunchServices App build identity mismatch");
+        macLifecycle(probe, ["quit", String(launched.pid), app], root);
+      }
+      await waitForStop(launched.pid);
+      const stillListening = await fetch(`${origin}/connect-discovery`, {
+        signal: AbortSignal.timeout(500),
+      }).then(async response => { await response.body?.cancel(); return true; }, () => false);
+      if (stillListening) fail("LaunchServices App left its loopback listener running");
+      process.stderr.write(`macOS App lifecycle ${web === emptyWeb ? "early-core-error" : "quit"}: exited, port closed\n`);
+    } finally {
+      // Only failed cases reach this cleanup with a live owned PID. SIGTERM is
+      // never accepted as evidence that the Quit AppleEvent worked.
+      if (launched && alive(launched.pid)) {
+        process.kill(launched.pid, "SIGTERM");
+        await waitForStop(launched.pid);
+      }
+    }
+  }
+}
+
 async function verifyPackage(root, target, version, revision, temporaryRoot) {
   const runtimeRoot = join(root, appPackageDirectory(target));
   const packagedRevision = readFileSync(join(runtimeRoot, "REVISION"), "ascii").trim();
@@ -242,7 +318,14 @@ async function verifyPackage(root, target, version, revision, temporaryRoot) {
   run(tunnel, ["--version"], root);
   verifyPlatformAssets(root, target);
 
-  await verifyLocalPackage(runtimeRoot, target, version, revision, temporaryRoot);
+  let macProbe;
+  if (target.goos === "darwin") {
+    macProbe = join(temporaryRoot, "mac-app-lifecycle");
+    run("xcrun", ["swiftc", "-parse-as-library",
+      join(repositoryRoot, "scripts", "mac-app-lifecycle.swift"), "-o", macProbe], root);
+  }
+  if (macProbe) await verifyMacLifecycle(runtimeRoot, target, version, revision, temporaryRoot, macProbe);
+  await verifyLocalPackage(runtimeRoot, target, version, revision, temporaryRoot, macProbe);
 }
 
 function verifyPlatformAssets(root, target) {

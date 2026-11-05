@@ -1,5 +1,7 @@
 //! Domain I/O and explicit App/Server hosting composition.
 pub mod app;
+#[cfg(target_os = "macos")]
+pub mod app_macos;
 mod backup;
 pub mod domain;
 pub mod web;

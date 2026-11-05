@@ -45,6 +45,12 @@ ureq = { version = "=3.5.0", default-features = false, features = ["rustls"] }
 tokio-util = { version = "0.7", features = ["io-util"] }
 tempfile = "=3.27.0"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "=0.6.5"
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSApplication", "NSRunningApplication", "NSResponder", "NSEvent", "NSGraphicsContext", "NSMenu", "NSMenuItem"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSOperation", "block2"] }
+block2 = "=0.6.2"
+
 [dev-dependencies]
 netwatch = { version = "=0.20.0", git = "https://github.com/TNTcraftHIM/net-tools", rev = "0a61bb64facc469d015f5ba537dda57c94cdcb17" }
 tokio-tungstenite = "0.29"

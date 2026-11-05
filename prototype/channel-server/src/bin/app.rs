@@ -8,12 +8,27 @@ fn main() -> Result<()> {
         return Ok(());
     }
     let _capture_runtime = piik_channel_native::capture::Runtime::new()?;
+    #[cfg(target_os = "macos")]
+    return piik_channel_prototype::app_macos::run(run);
+    #[cfg(not(target_os = "macos"))]
     run()
 }
 
 #[tokio::main]
-async fn run() -> Result<()> {
+async fn run(
+    #[cfg(target_os = "macos")] quit: Option<tokio::sync::oneshot::Receiver<()>>,
+) -> Result<()> {
     let stop = piik_channel_native::shutdown_signal()?;
+    #[cfg(target_os = "macos")]
+    let stop = async move {
+        match quit {
+            Some(quit) => tokio::select! {
+                _ = stop => {},
+                _ = quit => {},
+            },
+            None => stop.await,
+        }
+    };
     let executable = env::current_exe().context("Locate the App executable")?;
     let resources = executable.parent().context("Locate the App directory")?;
     let config = Config {
