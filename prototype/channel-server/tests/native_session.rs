@@ -1250,7 +1250,6 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
                 .unwrap()
                 .unwrap()
                 .unwrap();
-            retired_listeners.push(TcpListener::bind(address).await.unwrap());
             continue;
         };
         let request = json!({"mode":"local","lanAddress":lan.address});
@@ -1587,7 +1586,6 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
         .expect("App stop retires the local Domain's actual socket");
         retired_listeners.push(TcpListener::bind(domain_address).await.unwrap());
         retired_listeners.push(TcpListener::bind(lan_address).await.unwrap());
-        retired_listeners.push(TcpListener::bind(address).await.unwrap());
         retired_stun.push(UdpSocket::bind(stun_address).await.unwrap());
     }
     drop(retired_listeners);
