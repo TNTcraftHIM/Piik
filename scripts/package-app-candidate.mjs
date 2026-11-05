@@ -382,11 +382,12 @@ function verifyPlatformAssets(root, target) {
     if (
       !plistText.includes(`<key>CFBundleExecutable</key><string>${target.appName}</string>`) ||
       !plistText.includes(`<key>LSMinimumSystemVersion</key><string>${MACOS_MIN_VERSION}</string>`) ||
+      !plistText.includes("<key>NSLocalNetworkUsageDescription</key>") ||
       !plistText.includes("<key>NSScreenCaptureUsageDescription</key>") ||
       !plistText.includes("<key>NSMicrophoneUsageDescription</key>") ||
       !plistText.includes("<key>NSAudioCaptureUsageDescription</key>")
     ) {
-      fail("macOS App entry or capture usage descriptions are missing");
+      fail("macOS App entry or permission usage descriptions are missing");
     }
   }
 }

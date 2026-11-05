@@ -36,8 +36,8 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   identity from an independent directory, then exits cleanly on native Ctrl+C.
   Current str0m App and Server archives pass their normal package checks,
   including served source identity, WASM/notices, SQLite room creation and
-  listener release. The [cross-platform candidate build](https://github.com/TNTcraftHIM/Piik/actions/runs/41774099872)
-  at `67327fe7` passes all six App and three Server packages. Both Linux
+  listener release. The [cross-platform candidate build](https://github.com/TNTcraftHIM/Piik/actions/runs/41970650750)
+  at `5e56589e` passes all six App and three Server packages. Both Linux
   container architectures pass shared-Web loading, authenticated Native rooms,
   persistence across recreation and clean shutdown.
 - The combined Windows App and Server pass normal production-UI chat, voice and
@@ -51,15 +51,15 @@ controls; platform-specific integration remains in [TODO](./todo.md).
 - macOS/Linux builds and bounded native checks are distinct from physical
   capture and input. Physical platform coverage remains limited.
 - The isolated 3.0 macOS Native and App pass an
-  [Apple SDK build](https://github.com/TNTcraftHIM/Piik/actions/runs/41774099872)
-  at `67327fe7` on both architectures, including ScreenCaptureKit, VideoToolbox,
+  [Apple SDK and package check](https://github.com/TNTcraftHIM/Piik/actions/runs/41970650750)
+  at `5e56589e` on both architectures, including ScreenCaptureKit, VideoToolbox,
   source sound, native microphone capture/conversion and Quartz input.
   A [synthetic VideoToolbox control](https://github.com/TNTcraftHIM/Piik/actions/runs/41779145779)
   at `4cbd5664` also runs H264 encode/decode, source-time preservation, forced
   keyframes and encoder teardown on hosted macOS through the production adapter.
-  The [packaged App check](https://github.com/TNTcraftHIM/Piik/actions/runs/41960209933)
-  at `7c819060` also compiles and starts through LaunchServices on both architectures.
-  The runner requires Automation consent before sending Quit. System Quit,
+  Both architectures verify LaunchServices startup, startup-error cleanup and
+  direct-process startup and shutdown. The runner requires Automation consent
+  before sending Quit. System Quit,
   Dock/Finder reentry, permissions, capture, sound and input remain device acceptance work.
 - The isolated 3.0 Linux adapter passes Native/App/Server compilation and real
   GStreamer encoding checks in a Linux VM. Synthetic frames cover independent
