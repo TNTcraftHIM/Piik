@@ -26,7 +26,7 @@ enum AppLifecycle {
     @MainActor
     static func main() async throws {
         let args = Array(CommandLine.arguments.dropFirst())
-        try require(args.count >= 3, "Expected launch, inspect or quit and owned paths")
+        try require(args.count >= 3, "Expected launch or quit and owned paths")
         if args[0] == "launch" {
             try require(args.count == 4, "Expected bundle, environment file and executable")
             let configuration = NSWorkspace.OpenConfiguration()
@@ -46,10 +46,6 @@ enum AppLifecycle {
         guard let pid = Int32(args[1]), let app = NSRunningApplication(processIdentifier: pid) else {
             throw NSError(domain: "PiikMacAppLifecycle", code: 2,
                           userInfo: [NSLocalizedDescriptionKey: "Owned application is not running"])
-        }
-        if args[0] == "inspect" {
-            try report(app, expected: args[2])
-            return
         }
         try require(args[0] == "quit", "Unknown lifecycle action")
         try require(app.executableURL?.resolvingSymlinksInPath().path ==

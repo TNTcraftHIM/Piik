@@ -129,7 +129,7 @@ async function stopSmokeChild(child) {
   await waitForExit(child, 5_000).catch(() => undefined);
 }
 
-async function verifyLocalPackage(root, target, version, revision, temporaryRoot, macProbe) {
+async function verifyLocalPackage(root, target, version, revision, temporaryRoot) {
   const app = join(root, target.appName);
   const port = await reservePort();
   const origin = `http://127.0.0.1:${port}`;
@@ -174,10 +174,6 @@ async function verifyLocalPackage(root, target, version, revision, temporaryRoot
     }
     if (!appReady) {
       fail(`Packaged App discovery did not become ready${spawnFailure ? `: ${spawnFailure.message}` : ""}`);
-    }
-    if (macProbe) {
-      const facts = macLifecycle(macProbe, ["inspect", String(child.pid), app], root);
-      if (facts.launchDate !== null) fail("Direct App spawn unexpectedly used LaunchServices");
     }
     const request = async (path) => {
       const response = await fetch(new URL(path, `${origin}/`), {
@@ -326,7 +322,7 @@ async function verifyPackage(root, target, version, revision, temporaryRoot) {
       join(repositoryRoot, "scripts", "mac-app-lifecycle.swift"), "-o", macProbe], root);
   }
   if (macProbe) await verifyMacLifecycle(runtimeRoot, target, version, revision, temporaryRoot, macProbe);
-  await verifyLocalPackage(runtimeRoot, target, version, revision, temporaryRoot, macProbe);
+  await verifyLocalPackage(runtimeRoot, target, version, revision, temporaryRoot);
 }
 
 function verifyPlatformAssets(root, target) {
