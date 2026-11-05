@@ -48,7 +48,7 @@ export function ChannelMessageReactions({ reactions, selfUserId, pending, disabl
       </button>
     </Tooltip>
     <div ref={menu} id={id} popover="auto" role="dialog" className="lr-floating-surface c3-message-reaction-menu"
-      onToggle={event => setOpen(event.newState === "open")}
+      onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}
       aria-label={lang === "zh" ? "消息表情" : "Message reactions"}>
       <strong>{label}</strong>
       <RoomReactionGrid person={selfUserId ? { peerId: selfUserId, displayName: "" } : undefined} selfPeerId={selfUserId}

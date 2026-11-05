@@ -37,6 +37,7 @@ export function ChannelDomainControls({ channel }: { channel: ChannelController 
     </Tooltip></span>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={title} className="lr-anchored-card c3-room-panel"
       onToggle={event => {
+        if (event.target !== event.currentTarget) return;
         setOpen(event.newState === "open");
         if (event.newState === "closed") setImageBusy(false);
       }}>

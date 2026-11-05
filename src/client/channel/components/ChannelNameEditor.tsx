@@ -24,6 +24,7 @@ export function ChannelNameEditor({ name, disabled, onSave }: {
     </span>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={zh ? "修改昵称" : "Edit nickname"}
       className="lr-anchored-card c3-name-popover" onToggle={event => {
+        if (event.target !== event.currentTarget) return;
         const open = event.newState === "open";
         setEditing(open);
         if (open) { input.current?.focus({ preventScroll: true }); input.current?.select(); }
