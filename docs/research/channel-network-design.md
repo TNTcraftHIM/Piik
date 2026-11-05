@@ -697,7 +697,10 @@ audio, bitrate and logical feed; replacement needs a newer independent AU. Failu
 before usable output preserves the original device error; unrelated errors stay
 terminal. The process boundary contains observed NVIDIA callbacks using a destroyed
 transform after ShutdownObject returned, without idle retention/shutdown delays.
-Auto selects hardware H264
+Native Auto first respects the selecting Browser's receive codecs, using VP8 when
+it does not advertise H264 reception. Sender support does not establish preview
+support ([WebRTC capabilities](https://w3c.github.io/webrtc-pc/#dom-rtcrtpreceiver-getcapabilities)).
+Otherwise Auto selects hardware H264
 then software VP8 after failed/timed-out first independent AU, stopping the failed
 encoder before replacement on the same capture/clock. The admitted codec stays fixed
 for source changes/derived outputs; manual selection rejects unsupported codecs

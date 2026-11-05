@@ -23,7 +23,7 @@ import { loadCameraPreviews, type CameraPreview } from "../media/camera-previews
 import { readBackup, writeBackup, type BackupMetadata, type RetainedBackupFile } from "./backup-archive";
 import { NativeDomainHosting, NativeRoomHosting } from "./hosting-api";
 import type { RetainedFile } from "./file-store";
-import { automaticVideoCodecPreference, manualVideoCodecPreference, type BrowserVideoCodecMode, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
+import { automaticVideoCodecPreference, manualVideoCodecPreference, supportsH264Receive, type BrowserVideoCodecMode, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
 import { preferredVideoCodecForTrack } from "../webrtc/video-codec-preflight";
 
 const credentialKey = "piik.channel.prototype.credential";
@@ -1587,7 +1587,8 @@ export class ChannelSession {
     try {
       app = await this.connectApp();
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
-      const preparing = app.prepareCapture(share.id, roomId, target, audio, share.profile, share.codec?.primary ?? share.codecMode,
+      const codecMode = share.codec?.primary ?? (share.codecMode === "auto" && !supportsH264Receive() ? "vp8" : share.codecMode);
+      const preparing = app.prepareCapture(share.id, roomId, target, audio, share.profile, codecMode,
         audio ? share.native.excludeAudio : undefined, share.volume.muted ? 0 : share.volume.level);
       this.patch({});
       const prepared = await preparing;

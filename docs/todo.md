@@ -1,12 +1,15 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-04
+Last reviewed: 2026-11-05
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **3.0 unavailable picture feedback.** Surface a failed video route instead
+  of leaving its tile at Connecting picture. A rejected receiving codec does not
+  make the source fail; retain healthy sharing and other consumers.
 - [ ] **3.0 Native capture failure feedback acceptance.** Verify that an active
   encoder's terminal failure reaches its selecting page through capture
   completion. Natural source closure, user stop, cancelled candidates and

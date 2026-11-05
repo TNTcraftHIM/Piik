@@ -43,6 +43,7 @@ beforeEach(() => {
   vi.spyOn(ChannelConversation.prototype, "initialize").mockResolvedValue(testSigningKey);
   vi.stubGlobal("MediaStream", RoomMediaStream);
   vi.stubGlobal("RTCRtpSender", { getCapabilities: () => ({ codecs: [{ mimeType: "video/VP8", clockRate: 90000 }] }) });
+  vi.stubGlobal("RTCRtpReceiver", { getCapabilities: () => ({ codecs: [{ mimeType: "video/H264", clockRate: 90000, sdpFmtpLine: "packetization-mode=1" }] }) });
 });
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
@@ -1027,24 +1028,31 @@ test("codec selection cancellation releases capture without publishing or stoppi
   } finally { session.close(); }
 });
 
-test("manual VP8 does not silently prepare H264 Native capture", async () => {
+test.each([
+  ["vp8", true, "vp8"], ["h264", false, "h264"],
+  ["auto", false, "vp8"], ["auto", true, "auto"],
+] as const)("Native codec selection preserves manual intent and preview capability (%s, H264 receive=%s)", async (mode, receivingH264, expected) => {
+  vi.stubGlobal("RTCRtpSender", { getCapabilities: () => ({ codecs: [{ mimeType: "video/H264", clockRate: 90000, sdpFmtpLine: "packetization-mode=1" }] }) });
+  vi.stubGlobal("RTCRtpReceiver", { getCapabilities: () => ({ codecs: [receivingH264
+    ? { mimeType: "video/H264", clockRate: 90000, sdpFmtpLine: "packetization-mode=1" }
+    : { mimeType: "video/VP8", clockRate: 90000 }] }) });
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
   const { session } = await setup();
   const app = ChannelSocket.current;
-  session.setVideoCodecMode("vp8");
+  session.setVideoCodecMode(mode);
   try {
     await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
-    const selecting = session.startNativeScreen("first", { kind: "display", sourceId: "owned", title: "Owned fixture" });
-    const failed = expect(selecting).rejects.toThrow("capture_codec_unsupported");
+    const selecting = session.startNativeScreen("first", { kind: "display", sourceId: "owned", title: "Owned fixture" }).catch(error => error);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
-    expect(app.sent.at(-1)?.codecMode).toBe("vp8");
+    expect(app.sent.at(-1)?.codecMode).toBe(expected);
     app.receive({ id: app.sent.at(-1)!.id, error: "capture_codec_unsupported" });
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("cancel_capture"));
     app.receive({ id: app.sent.at(-1)!.id, result: null });
-    await failed;
+    await expect(selecting).resolves.toMatchObject({ message: "capture_codec_unsupported" });
     expect(session.getSnapshot().ownedScreens.size).toBe(0);
+    expect(session.getSnapshot().videoCodecMode).toBe(mode);
   } finally { session.close(); }
 });
 
