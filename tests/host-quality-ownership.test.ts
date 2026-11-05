@@ -29,7 +29,7 @@ const source = ts.createSourceFile("HostPage.tsx", readFileSync(
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const owners = new Set(["changeQuality", "commitQuality", "rememberQuality", "loadAppQualityPreference", "handleSignalMessage",
   "switchSource", "watchCaptureEnd", "switchNativeSource", "switchToNativeSource", "createBrowserAudio", "retireNativeSenderPeers", "finishSourceSwitch", "replaceBrowserStream", "recoverBrowserFanout", "disposeNativeShare",
-  "acquireNativeClient", "requestSharing", "startNativeShare", "startBrowserNativeIngress",
+  "acquireNativeClient", "requestSharing", "nativeCaptureCodec", "startNativeShare", "startBrowserNativeIngress",
   "connectNativeClient", "handleNativeClientClosed", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
   "openCaptureSourcePicker", "startBrowserShareFromPicker", "startNativeShareFromPicker",
   "startSharing", "connectRoomSignal", "createReplacementRoom", "beginRoomMutation", "finishRoomMutation", "setCaptureError", "toggleSharingPause",
@@ -94,6 +94,7 @@ function fixture(launchedByClient = true, nativeConnected = true) {
     setJoiningRoom: vi.fn(), startSharing: vi.fn(), openCaptureSourcePicker: vi.fn(),
     videoCodecRef: ref({ primary: "h264" }),
     videoCodecModeRef: ref("h264"), MAX_ENDPOINT_MEDIA_CHILDREN: 2,
+    supportsH264Receive: vi.fn(() => true),
     sourcePickerReturnRef: ref<{ id: string; restore: boolean } | null>(null),
     nativeSourceRequestRef: ref<object | null>(null), nativeSourcePathRef: ref<unknown>(null),
     setNativeSources: vi.fn(), setShowCaptureBorder: vi.fn(), defaultNativeCapturePath: () => ({ adapterIndex: 0, encoderIndex: 0 }),
@@ -1483,6 +1484,25 @@ describe("Host quality ownership", () => {
     expect(current.NativeClient.connect).toHaveBeenCalledTimes(2);
     expect(current.setNativeSources).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "ready" }));
     current.closePicker();
+  });
+
+  it.each([
+    ["auto", false, false, "vp8"],
+    ["auto", true, false, "auto"],
+    ["h264", false, false, "h264"],
+    ["vp8", false, false, "vp8"],
+    ["auto", false, true, "h264"],
+  ] as const)("selects the same Native path and startup codec for %s, receive=%s, active=%s", async (mode, receive, active, expected) => {
+    const current = fixture();
+    current.videoCodecModeRef.current = mode;
+    current.nativeModeRef.current = active;
+    current.supportsH264Receive.mockReturnValue(receive);
+    const path = vi.fn(() => ({ adapterIndex: 0, encoderIndex: 0 }));
+    current.context.defaultNativeCapturePath = path;
+    await current.openPicker();
+    expect(path).toHaveBeenCalledWith([], expected, true);
+    await current.startNative();
+    expect(current.client.startShare).toHaveBeenCalledWith(expect.objectContaining({ codec: expected }), undefined);
   });
 
   it("distinguishes absent App, missing capture capability, incompatible codec and an empty source list", async () => {

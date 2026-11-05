@@ -204,6 +204,7 @@ import {
 import {
   automaticVideoCodecPreference,
   manualVideoCodecPreference,
+  supportsH264Receive,
   type BrowserVideoCodec,
   type BrowserVideoCodecMode,
   type BrowserVideoCodecPreference,
@@ -1286,6 +1287,12 @@ export function HostPage({
     );
   }
 
+  function nativeCaptureCodec(): BrowserVideoCodecMode {
+    if (nativeModeRef.current) return videoCodecRef.current.primary;
+    const mode = videoCodecModeRef.current;
+    return mode === "auto" && !supportsH264Receive() ? "vp8" : mode;
+  }
+
   async function startNativeShare(
     generation: number,
     shareGeneration: string,
@@ -1374,7 +1381,7 @@ export function HostPage({
         encoderIndex: path.encoderIndex,
         edgeCapacity: MAX_ENDPOINT_MEDIA_CHILDREN,
         profile: qualitySettingsRef.current,
-        codec: videoCodecModeRef.current,
+        codec: nativeCaptureCodec(),
       }, target.kind === "picker" ? () => activateNativePicker(client.health.activationURL) : undefined);
       shareStarted = true;
       if (!isCurrentShare(generation, shareGeneration)) {
@@ -1530,7 +1537,7 @@ export function HostPage({
         client.captureOptions(),
         client.sources(),
       ]);
-      const codec = nativeModeRef.current ? videoCodecRef.current.primary : videoCodecModeRef.current;
+      const codec = nativeCaptureCodec();
       const path = defaultNativeCapturePath(
         adapters,
         codec,

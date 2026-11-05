@@ -54,6 +54,11 @@ function h264ModeOneCodecs(codecs: readonly RTCRtpCodec[]): RTCRtpCodec[] {
   });
 }
 
+export function supportsH264Receive(): boolean {
+  return typeof RTCRtpReceiver !== "undefined" &&
+    h264ModeOneCodecs(RTCRtpReceiver.getCapabilities?.("video")?.codecs ?? []).length > 0;
+}
+
 function repairCodecs(codecs: readonly RTCRtpCodec[]): RTCRtpCodec[] {
   return codecs.filter(({ mimeType }) =>
     REPAIR_CODEC_MIME_TYPES.has(mimeType.toLowerCase()),
