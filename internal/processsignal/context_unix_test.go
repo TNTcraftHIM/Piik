@@ -37,7 +37,10 @@ func TestTerminalHangupRespectsInheritedIgnore(t *testing.T) {
 	}
 	stop()
 
-	signal.Reset(syscall.SIGHUP)
+	// Reset can restore an inherited ignore; explicitly request normal delivery.
+	requested := make(chan os.Signal, 1)
+	signal.Notify(requested, syscall.SIGHUP)
+	defer signal.Stop(requested)
 	ctx, stop := NotifyContext(context.Background())
 	defer stop()
 	if err := syscall.Kill(os.Getpid(), syscall.SIGHUP); err != nil {
