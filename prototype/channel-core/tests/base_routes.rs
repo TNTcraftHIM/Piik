@@ -95,6 +95,64 @@ fn topology(
 }
 
 #[test]
+fn picture_failure_is_projected_only_to_the_authorized_receiving_watch() {
+    let mut network = RoomNetwork::new();
+    let host = Uuid::new_v4();
+    let viewer = Uuid::new_v4();
+    let observer = Uuid::new_v4();
+    let (source, _) = join(&mut network, host, None);
+    join(&mut network, viewer, None);
+    join(&mut network, observer, None);
+    let room = network.create(host, RoomAccess::Public, false);
+    let screen = publish(&mut network, host, &room, "screen");
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"subscribe", "publicationId":screen, "enabled":true}),
+    );
+    let receiving = network
+        .state(viewer)
+        .pairs
+        .iter()
+        .find(|pair| pair.peer_id == source && !pair.incoming.is_empty())
+        .unwrap()
+        .clone();
+    let flow = receiving.incoming[0].id;
+    command(
+        &mut network,
+        host,
+        json!({"type":"flow_state", "pairId":receiving.id, "flowId":flow, "state":"failed"}),
+    );
+    assert_eq!(
+        serde_json::to_value(network.state(viewer)).unwrap()["failedSubscriptions"],
+        json!([screen])
+    );
+    for unrelated in [host, observer] {
+        assert_eq!(
+            serde_json::to_value(network.state(unrelated)).unwrap()["failedSubscriptions"],
+            json!([])
+        );
+    }
+    assert!(network
+        .state(viewer)
+        .publications
+        .iter()
+        .any(|publication| publication.id == screen));
+    let late = network.command(
+        viewer,
+        json!({"type":"flow_state", "pairId":receiving.id, "flowId":flow, "state":"decoded"}),
+    );
+    assert!(
+        late.events.is_empty(),
+        "retired reports never reach the room host"
+    );
+    assert_eq!(
+        serde_json::to_value(network.state(viewer)).unwrap()["failedSubscriptions"],
+        json!([screen])
+    );
+}
+
+#[test]
 fn assisted_viewing_projects_new_transit_and_keeps_the_local_transport_through_commit() {
     let mut network = RoomNetwork::new();
     let host = Uuid::new_v4();

@@ -47,6 +47,7 @@ pub struct RoomSnapshot {
     pub publications: Vec<PublicationInfo>,
     pub voice: Vec<VoiceInfo>,
     pub subscriptions: Vec<Uuid>,
+    pub failed_subscriptions: Vec<Uuid>,
 }
 
 impl RoomRuntime {
@@ -97,6 +98,7 @@ impl RoomRuntime {
             publications: Vec::new(),
             voice: Vec::new(),
             subscriptions: Vec::new(),
+            failed_subscriptions: Vec::new(),
         };
         if snapshot.room.authorized {
             snapshot.room.participant_session_ids = self.personal_sessions().into_iter().collect();
@@ -108,6 +110,15 @@ impl RoomRuntime {
             snapshot.publications = self.publications().cloned().collect();
             snapshot.voice = self.voice().cloned().collect();
             snapshot.subscriptions = self.subscriptions(session).into_iter().collect();
+            snapshot.failed_subscriptions = self
+                .publications
+                .values()
+                .filter(|publication| {
+                    publication.delivery_failed(session)
+                        && snapshot.subscriptions.contains(&publication.info.id)
+                })
+                .map(|publication| publication.info.id)
+                .collect();
         }
         Some(snapshot)
     }
@@ -1169,6 +1180,157 @@ mod tests {
     }
 
     #[test]
+    fn failed_picture_delivery_follows_the_watch_until_current_decoded_proof() {
+        let id = Uuid::from_u128;
+        let (mut room, endpoints) = screen_on_room_base();
+        for receiver in [id(1), id(2)] {
+            room.subscribe(endpoints[&receiver].member, receiver, id(10), true, None)
+                .unwrap();
+        }
+        room.reconcile(&endpoints, 0);
+        let failed = room.flows().find(|flow| flow.receiver == id(2)).unwrap();
+        let sibling = room.flows().find(|flow| flow.receiver == id(1)).unwrap();
+        let failures = |room: &RoomRuntime, receiver| {
+            serde_json::to_value(
+                room.snapshot(endpoints[&receiver].member, receiver)
+                    .unwrap(),
+            )
+            .unwrap()["failedSubscriptions"]
+                .clone()
+        };
+        room.flow_state(
+            failed.id,
+            failed.receiver,
+            failed.sender,
+            FlowState::Failed,
+            1,
+        )
+        .unwrap();
+        room.reconcile(&endpoints, 1);
+        assert_eq!(failures(&room, id(2)), serde_json::json!([id(10)]));
+        assert_eq!(failures(&room, id(4)), serde_json::json!([id(10)]));
+        assert_eq!(failures(&room, id(1)), serde_json::json!([]));
+        assert!(room.flows().any(|flow| flow.id == sibling.id));
+        assert_eq!(
+            room.flow_state(
+                failed.id,
+                failed.receiver,
+                failed.sender,
+                FlowState::Decoded,
+                2
+            ),
+            Err("unassigned_flow")
+        );
+        // Exhaust the alternative too, then let the existing room wake reopen
+        // failed choices without erasing the watching page's last result.
+        let alternative = room.flows().find(|flow| flow.receiver == id(2)).unwrap();
+        room.flow_state(
+            alternative.id,
+            alternative.receiver,
+            alternative.sender,
+            FlowState::Failed,
+            2,
+        )
+        .unwrap();
+        room.reconcile(&endpoints, 2);
+        assert_eq!(room.next_route_deadline(), Some(5_002));
+        room.reconcile(&endpoints, 5_001);
+        assert!(!room.flows().any(|flow| flow.receiver == id(2)));
+        room.reconcile(&endpoints, 5_002);
+        assert_eq!(failures(&room, id(4)), serde_json::json!([id(10)]));
+        let restored = room.flows().find(|flow| flow.receiver == id(2)).unwrap();
+        room.flow_state(
+            restored.id,
+            restored.receiver,
+            restored.sender,
+            FlowState::Forwardable,
+            5_002,
+        )
+        .unwrap();
+        assert_eq!(failures(&room, id(2)), serde_json::json!([id(10)]));
+        room.flow_state(
+            restored.id,
+            restored.receiver,
+            restored.sender,
+            FlowState::Decoded,
+            5_003,
+        )
+        .unwrap();
+        assert_eq!(failures(&room, id(2)), serde_json::json!([]));
+        assert_eq!(failures(&room, id(4)), serde_json::json!([id(10)]));
+        assert_eq!(
+            room.flow_state(
+                failed.id,
+                failed.receiver,
+                failed.sender,
+                FlowState::Failed,
+                5_003
+            ),
+            Err("unassigned_flow")
+        );
+        assert_eq!(failures(&room, id(2)), serde_json::json!([]));
+        room.reconcile(&endpoints, 5_003);
+        let child = room
+            .flows()
+            .find(|flow| flow.receiver == id(4) && flow.selected)
+            .unwrap();
+        room.flow_state(
+            child.id,
+            child.receiver,
+            child.sender,
+            FlowState::Decoded,
+            5_004,
+        )
+        .unwrap();
+        assert_eq!(failures(&room, id(4)), serde_json::json!([]));
+
+        room.flow_state(
+            child.id,
+            child.receiver,
+            child.sender,
+            FlowState::Failed,
+            5_005,
+        )
+        .unwrap();
+        room.reconcile(&endpoints, 5_005);
+        assert_eq!(failures(&room, id(4)), serde_json::json!([id(10)]));
+        for action in ["unwatch", "transfer", "unpublish", "revoke"] {
+            let mut ended = room.clone();
+            let viewer = endpoints[&id(4)].member;
+            match action {
+                "unwatch" => {
+                    ended.subscribe(viewer, id(4), id(10), false, None).unwrap();
+                    ended.reconcile(&endpoints, 5_006);
+                    ended.subscribe(viewer, id(4), id(10), true, None).unwrap();
+                }
+                "transfer" => ended
+                    .transfer_source(endpoints[&id(3)].member, id(3), id(10), id(3), &endpoints)
+                    .unwrap(),
+                "unpublish" => {
+                    ended.unpublish(id(3), id(10)).unwrap();
+                }
+                "revoke" => {
+                    ended
+                        .update(
+                            endpoints[&id(1)].member,
+                            "Friends".into(),
+                            Default::default(),
+                            RoomAccess::Private,
+                            false,
+                            None,
+                            None,
+                        )
+                        .unwrap();
+                    ended.revoke(endpoints[&id(1)].member, viewer).unwrap();
+                }
+                _ => unreachable!(),
+            }
+            ended.reconcile(&endpoints, 5_006);
+            assert_eq!(failures(&ended, id(4)), serde_json::json!([]), "{action}");
+        }
+    }
+
+    #[test]
     fn source_ceiling_upsert_preserves_routes_pause_and_transfer() {
         let id = Uuid::from_u128;
         let (mut room, mut endpoints) = screen_on_room_base();
@@ -1974,6 +2136,17 @@ mod tests {
             assert!(shadow
                 .iter()
                 .all(|old| !room.flows().any(|f| f.id == old.id)));
+            for receiver in [id(1), id(2), id(4)] {
+                assert_eq!(
+                    serde_json::to_value(
+                        room.snapshot(endpoints[&receiver].member, receiver)
+                            .unwrap()
+                    )
+                    .unwrap()["failedSubscriptions"],
+                    serde_json::json!([]),
+                    "an optional candidate does not fail its healthy incumbent"
+                );
+            }
             // A different target may be attempted, but toggling local watching
             // cannot reset the relay's consumed source-path attempt.
             room.subscribe(endpoints[&id(2)].member, id(2), id(10), false, None)

@@ -635,6 +635,7 @@ pub struct Snapshot {
     pub publications: Vec<PublicationInfo>,
     pub voice: Vec<VoiceInfo>,
     pub subscriptions: Vec<Uuid>,
+    pub failed_subscriptions: Vec<Uuid>,
     pub pairs: Vec<PairInfo>,
     pub ice_servers: Vec<Value>,
 }

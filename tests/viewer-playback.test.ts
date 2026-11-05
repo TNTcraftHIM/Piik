@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { nextViewerMediaBinding, playbackFailure, prepareViewerPlayback } from "../src/client/media/viewer-playback.ts";
 import { ChannelVideo } from "../src/client/channel/components/ChannelMedia";
+import { ChannelStage, type ChannelStageProps } from "../src/client/channel/components/ChannelStage";
 import { PlaybackControlsView } from "../src/client/components/living/PlaybackControls";
 import { setCopy } from "../src/client/ui/copy";
 
@@ -110,5 +111,28 @@ describe("Playback audio controls", () => {
     expect(range).toContain('aria-label="分享源没有音频"');
     expect(range).toContain('aria-valuetext="分享源没有音频"');
     expect(range).toContain("disabled");
+  });
+});
+
+describe("Screen delivery result", () => {
+  it("shows the watch failure without replacing an existing picture or changing its controls", () => {
+    setCopy({ lang: "en", vis: false });
+    const source = { id: "screen", userId: "friend", name: "Friend", roomName: "Room", owned: false,
+      subscribed: true, paused: false, deliveryFailed: true };
+    const props: ChannelStageProps = { sources: [source], focusedId: null, canSubscribe: true,
+      onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),
+      onInputPolicy: vi.fn(), onInputDecide: vi.fn(), onInputSimultaneous: vi.fn(), onInputShortcut: vi.fn() };
+    const failed = renderToStaticMarkup(createElement(ChannelStage, props));
+    expect(failed).toContain("Picture delivery failed. Retrying.");
+    expect(failed).not.toContain("Connecting picture");
+    expect(failed).toContain('aria-label="Stop watching Friend"');
+
+    const stream = { id: "retained", getAudioTracks: () => [] } as unknown as MediaStream;
+    const retained = renderToStaticMarkup(createElement(ChannelStage, { ...props, sources: [{ ...source, stream }] }));
+    expect(retained).toContain("<video");
+    expect(retained).not.toContain("Picture delivery failed");
+    expect(retained).toContain('aria-label="Stop watching Friend"');
+    const paused = renderToStaticMarkup(createElement(ChannelStage, { ...props, sources: [{ ...source, paused: true }] }));
+    expect(paused).not.toContain("Picture delivery failed");
   });
 });

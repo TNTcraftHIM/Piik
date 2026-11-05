@@ -179,6 +179,7 @@ impl RemoteRoom {
             publications: vec![],
             voice: vec![],
             subscriptions: vec![],
+            failed_subscriptions: vec![],
         })
     }
 }

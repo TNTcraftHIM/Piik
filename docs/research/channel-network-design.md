@@ -421,6 +421,10 @@ Confirmed physical-pair failure informs both directions in every affected plan,
 including candidates first tried by another activity. A publication's media
 failure remains local to that publication. Base failure history retires when
 neither current demand nor an installed transit path needs it.
+An affected watch retains the selected path's delivery failure while replacement
+paths prepare; only current decoded proof clears it. Unwatch, source replacement
+or publication retirement ends that result. Optional trial failure preserves the
+healthy incumbent, and only the authorized watching session receives the result.
 Required-path retries reopen exhausted choices while preserving other active
 connection attempts and their leases. Each attempt retains its transport-owned
 deadline; another path's repair wake does not restart or cancel it.

@@ -239,6 +239,7 @@ export function ChannelPreviewPage() {
             id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id),
             paused: publication.paused, pausePending: busy("pause", publication.id),
+            deliveryFailed: state?.failedSubscriptions.includes(publication.id),
             available: rooms.find(value => value.id === publication.roomId)?.available ?? false,
             subscribed: state?.subscriptions.includes(publication.id) ?? false, stream: streams.get(publication.id), inputs: channel.screenInputs.get(publication.id),
             input: channel.inputChannels.get(publication.id),

@@ -26,6 +26,7 @@
 .c3-monitor-source :is(strong, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .c3-monitor-tile-actions { display: flex; align-items: center; gap: 2px; flex: none; margin-inline: auto; }
 .c3-monitor-wait { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; aspect-ratio: 16 / 9; padding: 18px; border-radius: 14px 14px 0 0; background: var(--stage, var(--wall-2)); color: var(--muted); font-size: 12px; }
+.c3-monitor-wait[data-failed] > svg { color: var(--danger); }
 @media (max-width: 700px) {
   .c3-monitor { padding: 12px; gap: 12px; overflow: visible; }
   .c3-monitor-grid { gap: 12px; }

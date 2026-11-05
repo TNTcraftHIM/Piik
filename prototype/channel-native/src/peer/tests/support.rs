@@ -617,6 +617,7 @@ pub(in crate::peer) fn message(tag: &str) -> Result<(Vec<u8>, MessageScope)> {
         publications: vec![],
         voice: vec![],
         subscriptions: vec![],
+        failed_subscriptions: vec![],
         pairs: vec![PairInfo {
             id: pair,
             udp_preparation: None,

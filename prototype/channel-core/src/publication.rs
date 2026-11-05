@@ -20,6 +20,8 @@ pub(crate) struct Publication {
     leases: BTreeMap<Uuid, Flow>,
     operation: Option<RouteOperation>,
     direct_attempted: BTreeSet<Uuid>,
+    // A route retry does not erase the watching page's last delivery result.
+    failed_receivers: BTreeSet<Uuid>,
 }
 
 #[derive(Clone)]
@@ -57,6 +59,7 @@ impl Publication {
             leases: BTreeMap::new(),
             operation: None,
             direct_attempted: BTreeSet::new(),
+            failed_receivers: BTreeSet::new(),
         }
     }
 
@@ -81,8 +84,19 @@ impl Publication {
         self.plan.retry_required(requested, connected);
     }
 
+    pub fn delivery_failed(&self, receiver: Uuid) -> bool {
+        self.failed_receivers.contains(&receiver)
+    }
+
+    fn fail_delivery(&mut self, receiver: Uuid) {
+        if self.info.kind == Kind::Screen {
+            self.failed_receivers.extend(self.plan.subtree(receiver));
+        }
+    }
+
     pub fn transfer_source(&mut self, session: Uuid) {
         self.operation = None;
+        self.failed_receivers.clear();
         if self.info.session_id == session {
             // Retain proven paths; old-source preparation must prove a new lease.
             let preparing: BTreeSet<_> = self
@@ -109,6 +123,8 @@ impl Publication {
         now: u64,
     ) {
         self.expire(now);
+        self.failed_receivers
+            .retain(|receiver| requested.contains(receiver));
         let paths = if let Some(base) = base.filter(|_| self.info.kind == Kind::Voice) {
             base.project(self.plan.source, requested)
         } else {
@@ -337,6 +353,7 @@ impl Publication {
                     self.leases.get(child).is_some_and(|lease| lease.id == flow)
                 });
                 if let Some(edge) = expired {
+                    self.fail_delivery(edge.1);
                     self.plan.failed(edge.0, edge.1);
                     true
                 } else {
@@ -377,6 +394,13 @@ impl Publication {
     }
 
     pub fn failed_pair(&mut self, first: Uuid, second: Uuid) {
+        if let Some(receiver) = self.leases.values().find_map(|flow| {
+            ((flow.sender == first && flow.receiver == second)
+                || (flow.sender == second && flow.receiver == first))
+                .then_some(flow.receiver)
+        }) {
+            self.fail_delivery(receiver);
+        }
         if self.operation.as_ref().is_some_and(|op| match &op.kind {
             OperationKind::Switch { legs, .. } => legs.values().any(|leg| {
                 (leg.flow.sender == first && leg.flow.receiver == second)
@@ -459,6 +483,9 @@ impl Publication {
                     for (receiver, mut leg) in legs {
                         leg.flow.selected = true;
                         self.leases.insert(receiver, leg.flow);
+                        if leg.proof == Some(Readiness::Decoded) {
+                            self.failed_receivers.remove(&receiver);
+                        }
                     }
                     return true;
                 }
@@ -473,8 +500,14 @@ impl Publication {
                 self.plan
                     .mark_ready(receiver, sender, Readiness::Forwardable)
             }
-            FlowState::Decoded => self.plan.mark_ready(receiver, sender, Readiness::Decoded),
+            FlowState::Decoded => {
+                let changed = self.plan.mark_ready(receiver, sender, Readiness::Decoded);
+                let recovered = self.plan.readiness(receiver) == Some(Readiness::Decoded)
+                    && self.failed_receivers.remove(&receiver);
+                changed || recovered
+            }
             FlowState::Failed if self.info.kind == Kind::Screen => {
+                self.fail_delivery(receiver);
                 self.plan.failed(sender, receiver);
                 true
             }

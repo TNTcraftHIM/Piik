@@ -837,6 +837,13 @@ impl Channel {
                         .is_some_and(|v| v.room.authorized)
                 })
                 || view.subscriptions.len() > 40
+                || view.failed_subscriptions.len() > 40
+                || view.failed_subscriptions.iter().any(|id| {
+                    !view.subscriptions.contains(id)
+                        || !view.publications.iter().any(|publication| {
+                            publication.id == *id && publication.kind == Kind::Screen
+                        })
+                })
                 || view.files.len() > HISTORY_WINDOW
                 || (!view.room.authorized
                     && (view.room.reading
@@ -844,6 +851,7 @@ impl Channel {
                         || !view.publications.is_empty()
                         || !view.voice.is_empty()
                         || !view.subscriptions.is_empty()
+                        || !view.failed_subscriptions.is_empty()
                         || !view.files.is_empty()))
             {
                 return Err("invalid_room_projection");
@@ -1196,6 +1204,7 @@ impl Channel {
         let mut voice = Vec::new();
         let mut files = Vec::new();
         let mut subscriptions = BTreeSet::new();
+        let mut failed_subscriptions = BTreeSet::new();
         if let Some(member) = member {
             for room in self.remote.values() {
                 if let Some(mut snapshot) =
@@ -1217,6 +1226,7 @@ impl Channel {
                     voice.extend(snapshot.voice);
                     files.extend(snapshot.files);
                     subscriptions.extend(snapshot.subscriptions);
+                    failed_subscriptions.extend(snapshot.failed_subscriptions);
                 }
             }
         }
@@ -1270,6 +1280,7 @@ impl Channel {
             publications,
             voice,
             subscriptions: subscriptions.into_iter().collect(),
+            failed_subscriptions: failed_subscriptions.into_iter().collect(),
             pairs: self.transports.snapshot(
                 session_id,
                 |peer| self.can_prepare_udp(session_id, peer),

@@ -385,6 +385,7 @@ mod tests {
             }],
             voice: vec![],
             subscriptions: vec![],
+            failed_subscriptions: vec![],
             ice_servers: vec![],
             pairs: vec![
                 PairInfo {

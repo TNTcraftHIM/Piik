@@ -1851,6 +1851,10 @@ export class ChannelSession {
 
   private projectActivity(state: ChannelSnapshot): ChannelSnapshot {
     const sessionId = this.view.sessionId;
+    const subscriptions = state.subscriptions.filter(id => {
+      const publication = state.publications.find(value => value.id === id);
+      return publication?.kind === "voice" ? this.voiceCaptures.has(publication.roomId) : this.watching.has(id);
+    });
     // Only authority updates retire leases and assign transports. Local stop
     // intent changes what this page presents, even while the host is unreachable.
     return {
@@ -1861,10 +1865,8 @@ export class ChannelSession {
         member.sessionId === sessionId && this.voiceCaptures.get(member.roomId) === null
           && ![...this.local.values()].some(capture => capture.kind === "voice" && capture.roomId === member.roomId)
           ? { ...member, muted: true } : member),
-      subscriptions: state.subscriptions.filter(id => {
-        const publication = state.publications.find(value => value.id === id);
-        return publication?.kind === "voice" ? this.voiceCaptures.has(publication.roomId) : this.watching.has(id);
-      }),
+      subscriptions,
+      failedSubscriptions: state.failedSubscriptions.filter(id => subscriptions.includes(id)),
     };
   }
 

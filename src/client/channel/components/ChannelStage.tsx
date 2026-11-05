@@ -21,6 +21,7 @@ export interface ChannelStageSource {
   owned: boolean;
   subscribed: boolean;
   paused: boolean;
+  deliveryFailed?: boolean;
   stream?: MediaStream;
   sourceAudio?: SourceAudioControl;
   sourceMicrophone?: { enabled: boolean; busy?: boolean; disabled?: boolean; onEnabled: (enabled: boolean) => void };
@@ -110,9 +111,11 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
             {source.stream ? <ChannelVideo stream={source.stream} local={source.owned} inputs={source.inputs} onPresentation={onPresentation} input={source.input}
               sourceAudio={source.sourceAudio}
               label={`${source.name} — ${source.roomName}`} />
-              : <div className="c3-monitor-wait" role="status">
-                <Glyph name={source.paused ? "pause" : "loader"} size={24} className={source.paused ? undefined : "lr-spin"} />
-                <span>{source.paused ? t("host.pauseNotice") : copy("正在连接画面", "Connecting picture")}</span></div>}
+              : <div className="c3-monitor-wait" data-failed={!source.paused && source.deliveryFailed || undefined} role="status">
+                <Glyph name={source.paused ? "pause" : source.deliveryFailed ? "x" : "loader"} size={24} className={source.paused || source.deliveryFailed ? undefined : "lr-spin"} />
+                <span>{source.paused ? t("host.pauseNotice") : source.deliveryFailed
+                  ? copy("画面传输失败，正在重试。", "Picture delivery failed. Retrying.")
+                  : copy("正在连接画面", "Connecting picture")}</span></div>}
             <footer>
               <PawnSvg color={participantColor(source.userId)} identity={source.userId} />
               <div className="c3-monitor-source"><strong>{source.name}</strong>
