@@ -244,8 +244,8 @@ impl Output {
         let upstream = source.clone();
         let feedback_inputs = encodings.clone();
         let feedback = tokio::spawn(async move {
-            while feedback_rx.recv().await.is_some() {
-                for encoding in &feedback_inputs {
+            while let Some(rid) = feedback_rx.recv().await {
+                if let Some(encoding) = feedback_inputs.iter().find(|encoding| encoding.rid == rid) {
                     match &encoding.input {
                         Input::Rtp(_) => upstream.request_keyframe(),
                         Input::Video(input) => input.request_keyframe(),

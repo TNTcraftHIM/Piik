@@ -1,6 +1,8 @@
 use super::*;
 #[path = "admission.rs"]
 mod admission;
+#[path = "feedback.rs"]
+mod feedback;
 #[path = "bulk.rs"]
 mod bulk;
 #[path = "codec_change.rs"]

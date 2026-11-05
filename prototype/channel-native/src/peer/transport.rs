@@ -132,7 +132,7 @@ struct Outgoing {
     mid: Option<Mid>,
     retired: bool,
     reusable: bool,
-    feedback: mpsc::Sender<()>,
+    feedback: mpsc::Sender<String>,
     seq: HashMap<String, SeqNo>,
     writable: Arc<Notify>,
     waiting: HashSet<String>,
@@ -851,7 +851,7 @@ impl Transport {
         kind: MediaKind,
         stream: String,
         rids: Vec<String>,
-    ) -> Result<(mpsc::Receiver<()>, Arc<Notify>, String)> {
+    ) -> Result<(mpsc::Receiver<String>, Arc<Notify>, String)> {
         self.call(move |e| {
             let (tx, rx) = mpsc::channel(8);
             let writable = Arc::new(Notify::new());
@@ -1464,8 +1464,12 @@ impl Engine {
                 self.publish_estimate();
             }
             RtcEvent::KeyframeRequest(request) => {
-                for out in self.outputs.values().filter(|o| o.mid == Some(request.mid)) {
-                    let _ = out.feedback.try_send(());
+                // None identifies the ordinary, unnamed encoding, not all RIDs.
+                let rid = request.rid.map(|rid| rid.to_string()).unwrap_or_default();
+                for out in self.outputs.values().filter(|out| {
+                    !out.retired && out.mid == Some(request.mid) && out.rids.contains(&rid)
+                }) {
+                    let _ = out.feedback.try_send(rid.clone());
                 }
             }
             RtcEvent::SenderFeedback(feedback) => {
