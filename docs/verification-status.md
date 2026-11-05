@@ -104,7 +104,11 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   room plans to Firefox and a desktop child, without Browser re-encoding.
   Capability-aware Native H264 capture passes source replacement while retaining
   the physical peer and continuing to decode. Native VP8 also delivers decoded
-  picture. The normal `5fe433e9` package also passes same-device Native-to-Chrome
+  picture. The normal `76066c41` package delivers 720p VP8 and actual source
+  sound to Chromium: decoded PCM follows a 440 Hz source and returns to silence
+  on pause. Cancelling replacement keeps the same receiver, stream, audio track
+  and SSRC; concurrent room microphone capture and final capture cleanup pass.
+  The normal `5fe433e9` package also passes same-device Native-to-Chrome
   capture on the official Android 15/API35 emulator with C2 H264 and VP8 encoders.
   Each codec passes two consent/start/stop cycles with fresh decoded and presented
   frames. Rotating the captured display preserves the selected SSRC and advances

@@ -549,6 +549,49 @@ test.each([false, true])("App viewing assistance withdraws without ending the wa
   } finally { session.close(); }
 });
 
+test("temporary helper unavailability cannot retire a retained watch on Domain recovery", async () => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
+  const helperSessionId = crypto.randomUUID();
+  const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helperSessionId, roomIds: [] });
+  const { session, socket } = await setup();
+  const state = { ...session.getSnapshot().state!, publications: [
+    { id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false },
+  ], subscriptions: ["screen"] };
+  socket.receive({ type: "state", state });
+  try {
+    const watching = session.watch("screen");
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await watching;
+    const connecting = session.activateApp();
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
+    const app = ChannelSocket.current;
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await connecting;
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", helperSessionId }));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+
+    socket.close();
+    // App control can remain open while its separate Domain session is recovering.
+    description.mockRejectedValue(new Error("hosting_unavailable"));
+    session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    for (const command of resumed.sent.filter(command => command.type === "subscribe")) {
+      resumed.receive(command.helperSessionId === helperSessionId
+        ? { type: "error", requestId: command.requestId, code: "helper_unavailable" }
+        : { type: "ack", requestId: command.requestId });
+    }
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("watch:screen")).toBe(false));
+    expect(app.readyState).toBe(ChannelSocket.OPEN);
+    expect(session.getSnapshot().appConnected).toBe(true);
+    expect(session.getSnapshot().state?.subscriptions).toEqual(["screen"]);
+    expect(session.getSnapshot().error).toBeNull();
+    expect(resumed.sent.some(command => command.type === "subscribe" && command.enabled === false)).toBe(false);
+  } finally { session.close(); }
+});
+
 test("an App description completing after unwatch cannot recreate a subscription", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
   let describe!: (value: { sessionId: string; roomIds: string[] }) => void;

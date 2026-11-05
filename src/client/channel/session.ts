@@ -224,7 +224,7 @@ export class ChannelSession {
       this.reading = null;
       for (const room of event.state.channel.rooms) if (room.reading) this.readingRooms.add(room.id);
       this.applyState(event.state);
-      void this.syncAppWatching();
+      void this.syncAppWatching(resumed);
       void this.resumeApp();
       void this.restoreHosts(event.sessionId, skipRestoreRoom).catch(error => {
         if (!this.closed && this.view.sessionId === event.sessionId) this.patch({ error: error instanceof Error ? error.message : "storage_failed" });
@@ -247,7 +247,7 @@ export class ChannelSession {
           }
         }
         for (const id of this.watching.keys()) {
-          if (!this.view.pending.has(`watch:${id}`)) void this.watch(id).catch(() => {});
+          if (!event.state.subscriptions.includes(id) && !this.view.pending.has(`watch:${id}`)) void this.watch(id).catch(() => {});
         }
       }
       this.browse(this.roomId ?? event.state.channel.rooms[0]?.id ?? "");
@@ -633,7 +633,7 @@ export class ChannelSession {
 
   activateApp = (): Promise<void> => this.action("app", async () => { await this.connectApp(); });
 
-  private async syncAppWatching(): Promise<void> {
+  private async syncAppWatching(resync = false): Promise<void> {
     if (this.closed || this.view.connection !== "connected") return;
     const watches = [...this.watching].filter(([id]) => !this.local.has(id) && !this.view.pending.has(`watch:${id}`));
     if (!watches.length) return;
@@ -646,9 +646,10 @@ export class ChannelSession {
     }
     if (this.closed || this.view.connection !== "connected" || this.socket !== socket
       || this.view.sessionId !== sessionId || (this.app?.connected ? this.app : undefined) !== app) return;
+    // Cached placement hints are not authority acknowledgements after recovery.
     for (const [publicationId, previousHelper] of watches) {
       if (!this.watching.has(publicationId) || this.watching.get(publicationId) !== previousHelper
-        || this.view.pending.has(`watch:${publicationId}`) || previousHelper === helperSessionId) continue;
+        || this.view.pending.has(`watch:${publicationId}`) || !resync && previousHelper === helperSessionId) continue;
       this.watching.set(publicationId, helperSessionId);
       // Assistance changes route placement; failure must not withdraw the watch.
       void this.request({ type: "subscribe", publicationId, enabled: true, helperSessionId }).catch(() => {});
@@ -1235,9 +1236,9 @@ export class ChannelSession {
   setRoles = (userId: string, roles: string[]): Promise<void> => this.action(`roles:${userId}`, () => this.request({ type: "set_roles", userId, roles }));
   watch = (publicationId: string, roomId?: string, signal?: AbortSignal): Promise<void> => this.action(`watch:${publicationId}`, async () => {
     if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
-    if (!this.watching.has(publicationId)) this.watching.set(publicationId, undefined);
+    this.watching.set(publicationId, undefined);
     try {
-      await this.request({ type: "subscribe", publicationId, enabled: true, helperSessionId: this.watching.get(publicationId) }, undefined, roomId);
+      await this.request({ type: "subscribe", publicationId, enabled: true }, undefined, roomId);
       if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
     } catch (error) {
       if (!signal?.aborted && error instanceof Error && error.message === "disconnected") return;
