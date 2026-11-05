@@ -246,6 +246,18 @@ async function verifyPackage(root, target, version, revision, temporaryRoot) {
 }
 
 function verifyPlatformAssets(root, target) {
+  if (target.goos === "windows") {
+    const vswhere = join(process.env["ProgramFiles(x86)"], "Microsoft Visual Studio", "Installer", "vswhere.exe");
+    const dumpbin = run(vswhere, ["-latest", "-products", "*",
+      "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+      "-find", "VC/Tools/MSVC/*/bin/Hostx64/x64/dumpbin.exe"], root)
+      .split(/\r?\n/).find(Boolean);
+    if (!dumpbin) fail("Visual Studio dumpbin was not found");
+    const dependencies = run(dumpbin, ["/nologo", "/dependents", join(root, target.appName)], root);
+    if (/\b(?:VCRUNTIME|MSVCP|MSVCR|CONCRT)\d[\w-]*\.dll\b/i.test(dependencies)) {
+      fail("Windows App requires an external Visual C++ runtime");
+    }
+  }
   if (target.goos === "linux") {
     const desktop = join(root, "share", "applications", "piik-app.desktop");
     const icon = join(

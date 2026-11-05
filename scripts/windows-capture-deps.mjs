@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 // This official port fixes both the libvpx source and its MSVC build patches.
 const VCPKG_REVISION = "9a5dfef5d1a0438a7d24856a85bd60f309d355e9";
-const TRIPLET = "x64-windows-static-md";
+const TRIPLET = "x64-windows-static";
 export const WINDOWS_LIBVPX_VERSION = "1.16.0";
 
 /** Build the one standalone C dependency; never link the legacy WebRTC SDK. */
