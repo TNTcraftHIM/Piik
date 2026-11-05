@@ -7,9 +7,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **3.0 unavailable picture feedback.** Surface a failed video route instead
-  of leaving its tile at Connecting picture. A rejected receiving codec does not
-  make the source fail; retain healthy sharing and other consumers.
+- [ ] **3.0 Native media-slot retirement.** Repeated fixed-codec rejection on a
+  retained shared connection appends stopped SDP sections until signaling is too
+  large. Reuse inactive media groups through the transport owner while retaining
+  healthy voice/data/pictures and fresh flow/RTP proof; complete normal-package acceptance.
 - [ ] **3.0 Native platform acceptance.** Complete the remaining Linux/macOS
   device acceptance, including Dock/Finder return to the App's Browser entry,
   retaining the accepted
