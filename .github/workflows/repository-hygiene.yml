@@ -320,7 +320,6 @@ jobs:
   release-apps:
     needs:
       - validate
-      - release-server
     if: >-
       needs.validate.outputs.publish == 'true' ||
       (github.event_name == 'workflow_dispatch' && inputs.app_checks == true)
