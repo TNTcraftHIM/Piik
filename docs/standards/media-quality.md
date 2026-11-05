@@ -34,9 +34,10 @@ limits may retain the earlier 32 kbps bound.
 
 The Host may enable **Sharing settings → Sound → Include my microphone** to mix
 commentary into the picture's audio. It starts off for each new share and retires
-with that share. Browser capture reuses the stable HostAudio source/microphone
-output; Native capture reuses its mixer and microphone API. Room voice has its
-own room lifetime. Both microphones may be enabled intentionally; the UI warns
+with that share. Source replacement within the Browser or Native capture path
+retains the enabled commentary input and gain. Browser capture reuses the stable
+HostAudio source/microphone output; Native capture reuses its mixer and microphone
+API. Room voice has its own room lifetime. Both microphones may be enabled intentionally; the UI warns
 that listeners may hear the same speech twice through the separate deliveries.
 Piik does not automatically mute either microphone or switch between them.
 

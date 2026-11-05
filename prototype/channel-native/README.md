@@ -24,8 +24,9 @@ the child's private resource before encoding. An unread encoding rests on its
 bounded output queue without continuing GPU transfers. The Encoding owner stops
 and joins its child; a Windows Job also releases it when the App exits.
 Encoding failure affects only outputs using that encoder. Stopping capture ends
-all its encodings and input authority while App-hosted rooms continue. Once every
-video producer ends, the source also stops capture and its source sound.
+all its encodings and input authority while App-hosted rooms continue. Each picture
+producer retires its own source-sound input. The selecting page's share lease
+retains the mixer across replacement and stops it when the share ends.
 Frame-rate selection retains the original timestamps and accumulates its sampling
 interval across frames. The [network design](../../docs/research/channel-network-design.md)
 owns the process and output boundaries.

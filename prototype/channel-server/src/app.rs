@@ -32,7 +32,7 @@ use piik_channel_core::RoomState;
 use piik_channel_native::{
     capture::{Settings, Target, VideoCodec, VideoCodecMode},
     input::{Desktop, Mode, SourceView},
-    peer::{CaptureLease, SourceAudioSettings, SourceMicrophoneSettings},
+    peer::{CaptureAudio, CaptureLease, SourceAudioSettings, SourceMicrophoneSettings},
     session::{
         self, CommitCapture, HostCommand, Hosting, OpenRoom, PauseCapture, PrepareCapture,
         PublishCaptureCeiling, TransferSource,
@@ -735,6 +735,7 @@ enum Operation {
 struct Capture {
     active: Option<CaptureLease>,
     pending: Option<PendingCapture>,
+    audio: Option<CaptureAudio>,
 }
 struct PendingCapture {
     request: AbortHandle,
@@ -843,12 +844,12 @@ async fn connection(
                         }
                         continue;
                     }
-                    Some((publication_id, producer_id, changed, state)) = microphone_states.next(), if !microphone_states.is_empty() => {
+                    Some((publication_id, changed, state)) = microphone_states.next(), if !microphone_states.is_empty() => {
                         let state: Option<SourceMicrophoneSettings> = state;
-                        if let Some(state) = state.filter(|_| captures.get(&publication_id).and_then(Capture::lease).is_some_and(|lease| lease.producer_id() == producer_id)) {
+                        if let Some(state) = state.filter(|_| captures.get(&publication_id).and_then(|c| c.audio.as_ref()).and_then(CaptureAudio::microphone_state).is_some_and(|current| current.same_channel(&changed))) {
                             let event = json!({"type":"capture_microphone_state","publicationId":publication_id,"state":state});
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
-                            microphone_states.push(next_microphone_state(publication_id, producer_id, changed));
+                            microphone_states.push(next_microphone_state(publication_id, changed));
                         }
                         continue;
                     }
@@ -879,10 +880,14 @@ async fn connection(
                             Err(anyhow!("capture_cancelled"))
                         } else {
                             match result {
-                                Ok(CaptureResult::Prepared { lease, codec }) => {
+                                Ok(CaptureResult::Prepared { mut lease, codec }) => {
                                     let value = json!({"captureId":lease.id,"sessionId":lease.session_id,"codec":codec});
-                                    if let Some(pending) = captures.get_mut(&publication_id).and_then(|capture| capture.pending.as_mut()) {
-                                        pending.lease = Some(lease);
+                                    if let Some(capture) = captures.get_mut(&publication_id) {
+                                        if let Some(audio) = lease.audio.take() {
+                                            if let Some(state) = audio.microphone_state() { microphone_states.push(next_microphone_state(publication_id, state)); }
+                                            capture.audio = Some(audio);
+                                        }
+                                        if let Some(pending) = capture.pending.as_mut() { pending.lease = Some(lease); }
                                     }
                                     Ok(value)
                                 }
@@ -904,7 +909,6 @@ async fn connection(
                                     }
                                     if let Some(state) = lease.microphone_state() {
                                         initial_microphone = Some(state.borrow().clone());
-                                        if !retained { microphone_states.push(next_microphone_state(publication_id, lease.producer_id(), state)); }
                                     }
                                     capture.pending = None;
                                     capture.active = Some(lease);
@@ -1405,10 +1409,8 @@ async fn next_input_state(
 }
 async fn next_microphone_state(
     publication: Uuid,
-    producer: Uuid,
     mut changed: watch::Receiver<SourceMicrophoneSettings>,
 ) -> (
-    Uuid,
     Uuid,
     watch::Receiver<SourceMicrophoneSettings>,
     Option<SourceMicrophoneSettings>,
@@ -1418,7 +1420,7 @@ async fn next_microphone_state(
         .await
         .ok()
         .map(|_| changed.borrow_and_update().clone());
-    (publication, producer, changed, state)
+    (publication, changed, state)
 }
 async fn open(commands: &mpsc::Sender<HostCommand>, policy: &str) -> Result<Value> {
     let policy: RoomState = serde_json::from_str(policy)?;

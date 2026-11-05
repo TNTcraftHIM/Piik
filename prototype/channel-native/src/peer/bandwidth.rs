@@ -151,11 +151,15 @@ impl Driver {
     fn configured_bitrate(&self, source: &Source, preserve_layers: bool) -> Option<u32> {
         #[cfg(feature = "capture")]
         {
+            if source.kind == MediaKind::Audio {
+                let (_, audio) = self.capture_audio.get(&source.publication_id)?;
+                return (audio.source() == Some(source.id) && !audio.control.is_stopped())
+                    .then(|| audio.control.settings.borrow().bitrate);
+            }
             let capture = self.captures.values().find(|capture| {
                 capture.selected
                     && !capture.producer.control.is_stopped()
-                    && (capture.producer.video == source.id
-                        || capture.producer.audio() == Some(source.id))
+                    && capture.producer.video == source.id
             })?;
             let producer = &capture.producer;
             if producer.video == source.id {
@@ -176,8 +180,6 @@ impl Driver {
                         producer.settings().bitrate
                     },
                 )
-            } else if producer.audio() == Some(source.id) {
-                Some(producer.control.audio_bitrate())
             } else {
                 None
             }

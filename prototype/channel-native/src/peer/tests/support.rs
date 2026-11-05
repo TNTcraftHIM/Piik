@@ -73,6 +73,8 @@ impl Fixture {
             sources: HashMap::new(),
             #[cfg(feature = "capture")]
             captures: HashMap::new(),
+            #[cfg(feature = "capture")]
+            capture_audio: HashMap::new(),
             #[cfg(all(
                 feature = "capture",
                 any(target_os = "windows", target_os = "linux", target_os = "macos")

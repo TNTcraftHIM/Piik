@@ -25,18 +25,17 @@ use uuid::Uuid;
 
 mod audio;
 mod encodings;
-pub(crate) use audio::AudioLeaseControl;
+pub(crate) use audio::{AudioLeaseControl, Control as AudioControl};
 
 pub(crate) use super::encodings::VideoDemand;
 
-/// The page's one lease stops both workers without waiting for the signaling actor.
+/// A picture worker owns only its capture and encoders.
 #[derive(Clone)]
 pub(crate) struct Control {
     video: VideoControl,
     pub(crate) codec: Arc<OnceLock<VideoCodec>>,
     video_settings: watch::Sender<Settings>,
     video_requests: mpsc::Sender<VideoSettingsRequest>,
-    audio: audio::Control,
 }
 struct VideoSettingsRequest {
     settings: Settings,
@@ -46,19 +45,6 @@ struct VideoSettingsRequest {
 impl Control {
     pub fn settings(&self) -> Settings {
         *self.video_settings.borrow()
-    }
-    pub fn microphone_state(&self) -> watch::Receiver<crate::peer::SourceMicrophoneSettings> {
-        self.audio.microphone.clone()
-    }
-    pub async fn configure_microphone(
-        &self,
-        settings: crate::peer::SourceMicrophoneSettings,
-    ) -> Result<()> {
-        anyhow::ensure!(!self.is_stopped(), "capture_unavailable");
-        self.audio.configure_microphone(settings).await
-    }
-    pub async fn cancel_microphone(&self) -> Result<()> {
-        self.audio.cancel_microphone().await
     }
     pub async fn configure_video(&self, settings: Settings) -> Result<()> {
         anyhow::ensure!(!self.is_stopped(), "capture_unavailable");
@@ -88,13 +74,6 @@ impl Control {
         anyhow::ensure!(!self.is_stopped(), "capture_unavailable");
         Ok(())
     }
-    pub fn set_audio_settings(&self, settings: crate::peer::SourceAudioSettings) {
-        self.audio.settings.send_replace(settings);
-    }
-
-    pub fn audio_bitrate(&self) -> u32 {
-        self.audio.settings.borrow().bitrate
-    }
     #[cfg(target_os = "linux")]
     pub(crate) async fn authorize(
         &self,
@@ -106,10 +85,51 @@ impl Control {
 
     pub fn stop(&self) {
         self.video.stop();
-        self.audio.stop();
     }
     pub fn is_stopped(&self) -> bool {
         self.video.is_stopped()
+    }
+}
+
+/// One publication retains its mixer, microphone and RTP clock across pictures.
+pub(crate) struct AudioProducer {
+    pub control: AudioControl,
+    task: JoinHandle<()>,
+    joining: oneshot::Sender<()>,
+}
+impl AudioProducer {
+    pub fn start(
+        publication: Uuid,
+        ready_sources: mpsc::Sender<SourceReady>,
+        events: mpsc::Sender<Event>,
+        relay: Relay,
+        cancelled: watch::Receiver<bool>,
+    ) -> Self {
+        let epoch = Instant::now();
+        let (joining, joined) = oneshot::channel();
+        let (control, task) = audio::start(
+            publication,
+            epoch,
+            SystemInstant::now(epoch),
+            ready_sources,
+            events,
+            relay,
+            cancelled,
+            joined,
+        );
+        Self {
+            control,
+            task,
+            joining,
+        }
+    }
+    pub fn source(&self) -> Option<Uuid> {
+        *self.control.source.borrow()
+    }
+    pub async fn close(self) {
+        let _ = self.joining.send(());
+        self.control.stop();
+        let _ = self.task.await;
     }
 }
 
@@ -118,7 +138,6 @@ pub(crate) struct Producer {
     pub control: Control,
     task: Option<JoinHandle<Option<String>>>,
     demands: watch::Sender<Vec<VideoDemand>>,
-    audio_task: Option<JoinHandle<()>>,
     system_audio: Option<AudioLeaseControl>,
 }
 impl Producer {
@@ -139,20 +158,20 @@ impl Producer {
         target: Target,
         settings: Settings,
         mode: VideoCodecMode,
+        audio_control: AudioControl,
         audio: bool,
         exclude_audio: Option<Target>,
         ready_sources: mpsc::Sender<SourceReady>,
         events: mpsc::Sender<Event>,
-        relay: Relay,
         cancelled: watch::Receiver<bool>,
         bandwidth_changed: Arc<Notify>,
     ) -> Result<(
         Self,
         oneshot::Receiver<Result<()>>,
         Option<oneshot::Receiver<String>>,
-        Option<oneshot::Receiver<Result<()>>>,
+        oneshot::Receiver<Result<()>>,
     )> {
-        // Both source reports project original capture PTS through this one pair.
+        // The picture and the retained audio clock both project capture PTS to NTP.
         let now = Instant::now();
         let clock = SystemInstant::now(now);
         anyhow::ensure!(mode.initial().supported(), "capture_codec_unsupported");
@@ -160,19 +179,7 @@ impl Producer {
             log::warn!(target: "piik.capture", "Capture startup failed: {error:#}");
         })?;
         let video_control = capture.control();
-        let (audio_control, audio_task) = audio::start(
-            publication_id,
-            now,
-            clock,
-            ready_sources.clone(),
-            events.clone(),
-            relay,
-            cancelled.clone(),
-        );
-        let mut system_audio = None;
-        let mut required_audio = None;
-        let mut warning = None;
-        if audio {
+        let input = if audio {
             #[cfg(target_os = "windows")]
             let input = AudioCapture::start_with_exclusion(target, exclude_audio.clone());
             #[cfg(not(target_os = "windows"))]
@@ -181,29 +188,24 @@ impl Producer {
             } else {
                 capture.audio(target)
             };
-            let prepared = match input {
-                Ok(input) => audio_control.system(Some(input)).await,
-                Err(error) => Err(error),
-            };
-            match prepared {
-                Ok((control, ready, failed)) => {
-                    system_audio = Some(control);
-                    warning = failed;
-                    if exclude_audio.is_some() {
-                        required_audio = Some(ready);
-                    }
-                }
-                Err(failure) => {
-                    let error_text = format!("{failure:#}");
-                    let (error, failed) = oneshot::channel();
-                    let _ = error.send(error_text.clone());
-                    warning = Some(failed);
-                    if exclude_audio.is_some() {
-                        let (ready, started) = oneshot::channel();
-                        let _ = ready.send(Err(anyhow!(error_text)));
-                        required_audio = Some(started);
-                    }
-                }
+            input.map(Some)
+        } else {
+            Ok(None)
+        };
+        let (input, failure) = match input {
+            Ok(input) => (input, None),
+            Err(error) => (None, Some(format!("{error:#}"))),
+        };
+        let (system_audio, mut audio_ready, mut warning) =
+            audio_control.prepare_system(input).await?;
+        if let Some(error) = failure {
+            let (failed, received) = oneshot::channel();
+            let _ = failed.send(error.clone());
+            warning = Some(received);
+            if exclude_audio.is_some() {
+                let (failed, received) = oneshot::channel();
+                let _ = failed.send(Err(anyhow!(error)));
+                audio_ready = received;
             }
         }
         let (video_settings, _) = watch::channel(settings);
@@ -213,7 +215,6 @@ impl Producer {
             codec: Arc::new(OnceLock::new()),
             video_settings,
             video_requests,
-            audio: audio_control,
         };
         let video = Uuid::new_v4();
         let (ready, started) = oneshot::channel();
@@ -240,34 +241,32 @@ impl Producer {
                 control,
                 task: Some(task),
                 demands,
-                audio_task: Some(audio_task),
-                system_audio,
+                system_audio: Some(system_audio),
             },
             started,
             warning,
-            required_audio,
+            audio_ready,
         ))
     }
 
-    pub fn audio(&self) -> Option<Uuid> {
-        *self.control.audio.source.borrow()
+    pub fn system_audio(&self) -> &AudioLeaseControl {
+        self.system_audio.as_ref().unwrap()
+    }
+    pub fn replace_system_audio(&mut self, next: AudioLeaseControl) {
+        if let Some(old) = self.system_audio.replace(next) {
+            old.stop();
+        }
     }
 
     pub async fn stop_system_audio(&mut self) {
         if let Some(control) = self.system_audio.take() {
             control.stop();
         }
-        let _ = self.control.audio.stop_system().await;
-    }
-
-    pub fn audio_is_stopped(&self) -> bool {
-        self.system_audio
-            .as_ref()
-            .is_some_and(AudioLeaseControl::is_stopped)
     }
 
     pub async fn close(&mut self) -> Option<String> {
         self.control.stop();
+        self.stop_system_audio().await;
         let error = if let Some(task) = self.task.as_mut() {
             let result = (&mut *task).await;
             self.task = None;
@@ -278,9 +277,6 @@ impl Producer {
         } else {
             None
         };
-        if let Some(task) = self.audio_task.take() {
-            let _ = task.await;
-        }
         error
     }
 
@@ -290,19 +286,20 @@ impl Producer {
         target: Target,
         enabled: bool,
         exclude: Option<Target>,
+        mixer: &AudioControl,
     ) -> Result<(
         AudioLeaseControl,
         oneshot::Receiver<Result<()>>,
         Option<oneshot::Receiver<String>>,
     )> {
-        self.stop_system_audio().await;
+        if exclude.is_some() {
+            mixer.stop_system().await?;
+        }
         anyhow::ensure!(!self.control.is_stopped(), "capture_unavailable");
         let capture = enabled
             .then(|| AudioCapture::start_with_exclusion(target, exclude))
             .transpose()?;
-        let (control, ready, warning) = self.control.audio.system(capture).await?;
-        self.system_audio = Some(control.clone());
-        Ok((control, ready, warning))
+        mixer.prepare_system(capture).await
     }
 }
 
@@ -383,14 +380,15 @@ mod tests {
             let (sources, _ready) = mpsc::channel(1);
             let (events, _events) = mpsc::channel(1);
             let (_cancel, cancelled) = watch::channel(false);
+            let (_joining, joined) = oneshot::channel();
             let (audio, audio_task) = audio::start(Uuid::new_v4(), epoch, SystemInstant::now(epoch),
-                sources, events, Relay::default(), cancelled);
+                sources, events, Relay::default(), cancelled, joined);
             let previous = Settings { width: 640, height: 360, fps: 30, bitrate: 1_000_000 };
             let next = Settings { width: 1280, height: 720, bitrate: 3_000_000, ..previous };
             let (video_settings, _) = watch::channel(previous);
             let (video_requests, mut requests) = mpsc::channel(1);
             let control = Control { video: frames.control(), codec: Arc::new(OnceLock::new()),
-                video_settings, video_requests, audio };
+                video_settings, video_requests };
 
             // The existing encoder acknowledgement is separate from room authority.
             let (accepted, reply) = oneshot::channel();
@@ -444,9 +442,11 @@ mod tests {
             control.video_settings.send_replace(request.settings);
             request.result.send(Ok(())).unwrap();
             control.stop(); // Stop and replacement retire this exact Control.
+            assert!(!audio.is_stopped(), "picture retirement must retain the share mixer");
             accepted.send(Ok(())).unwrap();
             assert_eq!(retired.await.unwrap_err().to_string(), "capture_unavailable");
             assert!(matches!(requests.try_recv(), Err(mpsc::error::TryRecvError::Empty)));
+            audio.stop();
             audio_task.await?;
             Ok::<_, anyhow::Error>(())
         }).await??;

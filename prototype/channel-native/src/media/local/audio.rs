@@ -19,7 +19,7 @@ use tokio::{
 use uuid::Uuid;
 
 #[derive(Clone)]
-pub(super) struct Control {
+pub(crate) struct Control {
     requests: mpsc::Sender<Request>,
     stopped: watch::Sender<bool>,
     pub source: watch::Receiver<Option<Uuid>>,
@@ -30,12 +30,8 @@ pub(super) struct Control {
 pub(crate) struct AudioLeaseControl {
     capture: Option<CaptureControl>,
     cancelled: watch::Sender<bool>,
-    settings: watch::Sender<SourceAudioSettings>,
 }
 impl AudioLeaseControl {
-    pub fn set_audio_settings(&self, settings: SourceAudioSettings) {
-        self.settings.send_replace(settings);
-    }
     pub fn stop(&self) {
         self.cancelled.send_replace(true);
         if let Some(capture) = &self.capture {
@@ -51,7 +47,12 @@ struct Input {
     system: Option<(watch::Receiver<bool>, oneshot::Sender<String>)>,
 }
 enum Request {
-    System(Option<Input>, oneshot::Sender<Result<()>>),
+    PrepareSystem(
+        Option<Input>,
+        watch::Receiver<bool>,
+        oneshot::Sender<Result<()>>,
+    ),
+    CommitSystem(watch::Receiver<bool>, oneshot::Sender<Result<()>>),
     StopSystem(oneshot::Sender<()>),
     Microphone(SourceMicrophoneSettings, oneshot::Sender<Result<()>>),
     CancelMicrophone(oneshot::Sender<()>),
@@ -59,18 +60,25 @@ enum Request {
 struct Preparing {
     control: CaptureControl,
     ready: BoxFuture<'static, (Input, Result<()>)>,
-    microphone: Option<SourceMicrophoneSettings>,
+    kind: PreparingKind,
     reply: oneshot::Sender<Result<()>>,
 }
+enum PreparingKind {
+    System {
+        cancelled: watch::Receiver<bool>,
+        committed: bool,
+    },
+    Microphone(SourceMicrophoneSettings),
+}
+struct PreparedSystem {
+    input: Option<Input>,
+    cancelled: watch::Receiver<bool>,
+}
 impl Preparing {
-    fn new(
-        mut input: Input,
-        microphone: Option<SourceMicrophoneSettings>,
-        reply: oneshot::Sender<Result<()>>,
-    ) -> Self {
+    fn new(mut input: Input, kind: PreparingKind, reply: oneshot::Sender<Result<()>>) -> Self {
         Self {
             control: input.capture.control(),
-            microphone,
+            kind,
             reply,
             ready: Box::pin(async move {
                 let result = input.capture.ready().await;
@@ -86,6 +94,30 @@ impl Preparing {
     }
 }
 impl Control {
+    #[cfg(test)]
+    pub fn fixture() -> (Self, AudioLeaseControl) {
+        let (requests, _) = mpsc::channel(1);
+        let (settings, _) = watch::channel(SourceAudioSettings::default());
+        (
+            Self {
+                requests,
+                stopped: watch::channel(false).0,
+                source: watch::channel(None).1,
+                microphone: watch::channel(SourceMicrophoneSettings::default()).1,
+                settings: settings.clone(),
+            },
+            AudioLeaseControl {
+                capture: None,
+                cancelled: watch::channel(false).0,
+            },
+        )
+    }
+    pub fn same(&self, other: &watch::Receiver<bool>) -> bool {
+        self.stopped.subscribe().same_channel(other)
+    }
+    pub fn is_stopped(&self) -> bool {
+        *self.stopped.borrow() || self.requests.is_closed()
+    }
     pub fn stop(&self) {
         self.stopped.send_replace(true);
     }
@@ -97,7 +129,7 @@ impl Control {
             .map_err(|_| anyhow!("capture_unavailable"))?;
         wait.await.map_err(|_| anyhow!("capture_unavailable"))
     }
-    pub async fn system(
+    pub async fn prepare_system(
         &self,
         capture: Option<AudioCapture>,
     ) -> Result<(
@@ -111,26 +143,34 @@ impl Control {
         let control = AudioLeaseControl {
             capture: capture.as_ref().map(AudioCapture::control),
             cancelled: cancel,
-            settings: self.settings.clone(),
         };
         let present = capture.is_some();
         if let Err(error) = self
             .requests
-            .send(Request::System(
+            .send(Request::PrepareSystem(
                 capture.map(|capture| Input {
                     capture,
-                    system: Some((cancelled, warning)),
+                    system: Some((cancelled.clone(), warning)),
                 }),
+                cancelled,
                 ready,
             ))
             .await
         {
-            if let Request::System(Some(input), _) = error.0 {
+            if let Request::PrepareSystem(Some(input), _, _) = error.0 {
                 close(input).await;
             }
             return Err(anyhow!("capture_unavailable"));
         }
         Ok((control, wait, present.then_some(failed)))
+    }
+    pub async fn commit_system(&self, input: &AudioLeaseControl) -> Result<()> {
+        let (done, wait) = oneshot::channel();
+        self.requests
+            .send(Request::CommitSystem(input.cancelled.subscribe(), done))
+            .await
+            .map_err(|_| anyhow!("capture_unavailable"))?;
+        wait.await.map_err(|_| anyhow!("capture_unavailable"))?
     }
     pub async fn configure_microphone(&self, settings: SourceMicrophoneSettings) -> Result<()> {
         let (done, wait) = oneshot::channel();
@@ -158,6 +198,7 @@ pub(super) fn start(
     events: mpsc::Sender<Event>,
     relay: Relay,
     cancelled: watch::Receiver<bool>,
+    joining: oneshot::Receiver<()>,
 ) -> (Control, JoinHandle<()>) {
     run(
         publication,
@@ -167,6 +208,7 @@ pub(super) fn start(
         events,
         relay,
         cancelled,
+        joining,
         AudioCapture::microphone,
     )
 }
@@ -179,6 +221,7 @@ fn run(
     events: mpsc::Sender<Event>,
     relay: Relay,
     mut cancelled: watch::Receiver<bool>,
+    mut joining: oneshot::Receiver<()>,
     open_microphone: impl Fn(String) -> Result<AudioCapture> + Send + Sync + 'static,
 ) -> (Control, JoinHandle<()>) {
     let (requests, mut received) = mpsc::channel(1);
@@ -193,10 +236,12 @@ fn run(
         microphone: mic_state,
         settings,
     };
+    let completion = stop.clone();
     let task = tokio::spawn(async move {
         let mut system: Option<Input> = None;
         let mut mic: Option<Input> = None;
         let mut pending: Option<Preparing> = None;
+        let mut prepared: Option<PreparedSystem> = None;
         let mut output: Option<(rusty_opus::OpusEncoder, RtpSource, bool)> = None;
         let mut mix = Mix::default();
         let mut encoded = [0u8; 1500];
@@ -206,25 +251,44 @@ fn run(
                     biased;
                     _ = wait_stopped(&mut stop) => break,
                     _ = wait_stopped(&mut cancelled) => break,
-                    request = received.recv() => match request {
+                    request = received.recv() => {
+                        if pending.as_ref().is_some_and(|p| matches!(&p.kind, PreparingKind::System { cancelled, .. } if *cancelled.borrow())) { pending.take().unwrap().close().await; }
+                        if prepared.as_ref().is_some_and(|p| *p.cancelled.borrow()) { if let Some(input) = prepared.take().unwrap().input { close(input).await; } }
+                        match request {
                         None => break,
                         Some(Request::StopSystem(done)) => {
-                            if pending.as_ref().is_some_and(|p| p.microphone.is_none()) { pending.take().unwrap().close().await; }
+                            if pending.as_ref().is_some_and(|p| matches!(p.kind, PreparingKind::System { .. })) { pending.take().unwrap().close().await; }
+                            if let Some(input) = prepared.take().and_then(|p| p.input) { close(input).await; }
                             if let Some(input) = system.take() { close(input).await; }
                             mix.clear(0);
                             let _ = done.send(());
                         }
                         Some(Request::CancelMicrophone(done)) => {
-                            if pending.as_ref().is_some_and(|p| p.microphone.is_some()) { pending.take().unwrap().close().await; }
+                            if pending.as_ref().is_some_and(|p| matches!(p.kind, PreparingKind::Microphone(_))) { pending.take().unwrap().close().await; }
                             let _ = done.send(());
                         }
-                        Some(Request::System(input, reply)) => {
-                            if pending.is_some() { let _ = reply.send(Err(anyhow!("capture_pending"))); if let Some(input) = input { close(input).await; } }
-                            else if let Some(input) = input { pending = Some(Preparing::new(input, None, reply)); }
-                            else { let _ = reply.send(Ok(())); }
+                        Some(Request::PrepareSystem(input, cancelled, reply)) => {
+                            if pending.is_some() || prepared.is_some() { let _ = reply.send(Err(anyhow!("capture_pending"))); if let Some(input) = input { close(input).await; } }
+                            else if let Some(input) = input { pending = Some(Preparing::new(input, PreparingKind::System { cancelled, committed: false }, reply)); }
+                            else { prepared = Some(PreparedSystem { input: None, cancelled }); let _ = reply.send(Ok(())); }
+                        }
+                        Some(Request::CommitSystem(cancelled, reply)) => {
+                            if !*cancelled.borrow() && pending.as_ref().is_some_and(|p| matches!(&p.kind, PreparingKind::System { cancelled: current, .. } if current.same_channel(&cancelled))) {
+                                if let PreparingKind::System { committed, .. } = &mut pending.as_mut().unwrap().kind { *committed = true; }
+                                if let Some(old) = system.take() { close(old).await; }
+                                mix.clear(0);
+                                let _ = reply.send(Ok(()));
+                            } else if *cancelled.borrow() || !prepared.as_ref().is_some_and(|p| p.cancelled.same_channel(&cancelled)) {
+                                let _ = reply.send(Err(anyhow!("capture_unavailable")));
+                            } else {
+                                let next = prepared.take().unwrap().input;
+                                if let Some(old) = std::mem::replace(&mut system, next) { close(old).await; }
+                                mix.clear(0);
+                                let _ = reply.send(Ok(()));
+                            }
                         }
                         Some(Request::Microphone(next, reply)) => {
-                            if pending.is_some() { let _ = reply.send(Err(anyhow!("capture_pending"))); }
+                            if pending.is_some() || prepared.is_some() { let _ = reply.send(Err(anyhow!("capture_pending"))); }
                             else if !next.enabled {
                                 if let Some(input) = mic.take() { close(input).await; }
                                 mix.clear(1);
@@ -235,30 +299,46 @@ fn run(
                                 let _ = reply.send(Ok(()));
                             } else {
                                 match open_microphone(next.device_id.clone()) {
-                                    Ok(capture) => pending = Some(Preparing::new(Input { capture, system: None }, Some(next), reply)),
+                                    Ok(capture) => pending = Some(Preparing::new(Input { capture, system: None }, PreparingKind::Microphone(next), reply)),
                                     Err(error) => { let _ = reply.send(Err(error)); }
                                 }
                             }
                         }
+                        }
                     },
                     (input, result) = async { pending.as_mut().unwrap().ready.as_mut().await }, if pending.is_some() => {
-                        let prepared = pending.take().unwrap();
-                        if let Err(error) = result {
-                            let text = format!("{error:#}");
-                            failed(input, &text).await;
-                            let _ = prepared.reply.send(Err(error));
-                        } else if prepared.control.is_stopped() || (prepared.microphone.is_some() && prepared.reply.is_closed()) {
-                            close(input).await;
-                        } else if let Some(next) = prepared.microphone {
-                            if let Some(old) = mic.replace(input) { close(old).await; }
-                            mix.clear(1);
-                            microphone.send_replace(next);
-                            let _ = prepared.reply.send(Ok(()));
-                        } else {
-                            if let Some(old) = system.replace(input) { close(old).await; }
-                            mix.clear(0);
-                            let _ = prepared.reply.send(Ok(()));
+                        let ready = pending.take().unwrap();
+                        match ready.kind {
+                            PreparingKind::System { cancelled, committed } => {
+                                if *cancelled.borrow() {
+                                    close(input).await;
+                                    let _ = ready.reply.send(Err(anyhow!("capture_cancelled")));
+                                } else {
+                                    let input = if let Err(error) = &result { failed(input, &format!("{error:#}")).await; None } else { Some(input) };
+                                    if committed {
+                                        if let Some(old) = std::mem::replace(&mut system, input) { close(old).await; }
+                                        mix.clear(0);
+                                    } else { prepared = Some(PreparedSystem { input, cancelled }); }
+                                    let _ = ready.reply.send(result);
+                                }
+                            }
+                            PreparingKind::Microphone(next) => {
+                                if let Err(error) = result {
+                                    failed(input, &format!("{error:#}")).await;
+                                    let _ = ready.reply.send(Err(error));
+                                } else if ready.control.is_stopped() || ready.reply.is_closed() {
+                                    close(input).await;
+                                } else {
+                                    if let Some(old) = mic.replace(input) { close(old).await; }
+                                    mix.clear(1);
+                                    microphone.send_replace(next);
+                                    let _ = ready.reply.send(Ok(()));
+                                }
+                            }
                         }
+                    },
+                    _ = async { prepared.as_mut().unwrap().cancelled.wait_for(|v| *v).await.ok(); }, if prepared.is_some() => {
+                        if let Some(input) = prepared.take().and_then(|p| p.input) { close(input).await; }
                     },
                     frame = async { system.as_mut().unwrap().capture.recv().await }, if system.is_some() => match frame {
                         Some(Ok(frame)) => mix.push(0, frame),
@@ -309,8 +389,12 @@ fn run(
             }
             Ok(())
         }.await;
+        received.close();
         if let Some(pending) = pending {
             pending.close().await;
+        }
+        if let Some(input) = prepared.and_then(|p| p.input) {
+            close(input).await;
         }
         if let Some(input) = system {
             close(input).await;
@@ -322,7 +406,7 @@ fn run(
         if let Err(error) = work {
             eprintln!("Native audio source failed: {error:#}");
         }
-        // The Driver removes a stopped producer's last source after joining it.
+        // The Driver removes this mixer's last source after joining it.
         // Keep that identity until either its end event is queued or that join.
         let last = *source.borrow();
         if let Some(id) = last.filter(|_| !*stop.borrow() && !*cancelled.borrow()) {
@@ -330,6 +414,13 @@ fn run(
                 _ = events.send(Event::CaptureAudioEnded { publication_id: publication, source: id }) => { source.send_replace(None); },
                 _ = wait_stopped(&mut cancelled) => {},
                 _ = wait_stopped(&mut stop) => {},
+            }
+        }
+        if !*cancelled.borrow() {
+            tokio::select! {
+                _ = events.send(Event::CaptureAudioStopped { publication_id: publication, owner: completion }) => {},
+                _ = wait_stopped(&mut cancelled) => {},
+                _ = &mut joining => {},
             }
         }
     });
@@ -490,6 +581,7 @@ mod tests {
             let (events, mut ended) = mpsc::channel(4);
             let relay = Relay::default();
             let (_cancel, cancelled) = watch::channel(false);
+            let (_joining, joined) = oneshot::channel();
             let (mic, mic_pcm, mic_joined) = AudioCapture::fixture(true)?;
             let mic_control = mic.control();
             let (again, again_pcm, again_joined) = AudioCapture::fixture(true)?;
@@ -505,6 +597,8 @@ mod tests {
                 ("cancelled", cancelled_candidate, Some(cancel_opening)),
                 ("pending", candidate, Some(opening)),
             ]));
+            let microphone_opens = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let opened_microphones = microphone_opens.clone();
             let (control, task) = run(
                 publication,
                 epoch,
@@ -513,10 +607,12 @@ mod tests {
                 events,
                 relay.clone(),
                 cancelled,
+                joined,
                 move |device| {
                     if device == "missing" {
                         anyhow::bail!("device unavailable");
                     }
+                    opened_microphones.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     let (expected, input, opening) = inputs.lock().unwrap().pop_front().unwrap();
                     assert_eq!(device, expected);
                     if let Some(opening) = opening {
@@ -527,8 +623,14 @@ mod tests {
             );
             assert!(control.source.borrow().is_none());
             let (system, system_pcm, system_joined) = AudioCapture::fixture(true)?;
-            let (_, started, _) = control.system(Some(system)).await?;
+            let system_control = system.control();
+            control.settings.send_replace(SourceAudioSettings {
+                bitrate: 96_000,
+                gain: 0.75,
+            });
+            let (system_lease, started, _) = control.prepare_system(Some(system)).await?;
             started.await??;
+            control.commit_system(&system_lease).await?;
             system_pcm.send(frame(epoch, [0.1, 0.2])).await?;
             let first = ready.recv().await.unwrap();
             let id = first.source.id;
@@ -536,6 +638,7 @@ mod tests {
                 panic!("audio RTP");
             };
             let first_timestamp = first_packets[0].header.timestamp;
+            let first_ssrc = first_packets[0].header.ssrc;
             let (packets, mut received) = mpsc::channel(8);
             relay.set(id, vec![packets]);
             control
@@ -566,15 +669,111 @@ mod tests {
                 .is_err());
             assert_eq!(control.microphone.borrow().device_id, "mic");
             assert!(!mic_control.is_stopped());
-            control.stop_system().await?;
+
+            // Preparing and cancelling a picture's system input cannot retire
+            // the active system sound, commentary or their shared Opus clock.
+            let (cancelled_system, _cancelled_pcm, cancelled_system_joined) =
+                AudioCapture::fixture(true)?;
+            let (cancelled_lease, ready_system, _) = control.prepare_system(Some(cancelled_system)).await?;
+            ready_system.await??;
+            for millis in [60, 80] {
+                mic_pcm
+                    .send(frame(epoch + Duration::from_millis(millis), [0.2, 0.4]))
+                    .await?;
+                system_pcm
+                    .send(frame(epoch + Duration::from_millis(millis), [0.1, 0.2]))
+                    .await?;
+            }
+            while received
+                .recv()
+                .await
+                .unwrap()
+                .header
+                .timestamp
+                .wrapping_sub(first_timestamp)
+                != 2_880
+            {}
+            assert!(!system_control.is_stopped());
+            assert!(!mic_control.is_stopped());
+            cancelled_lease.stop();
+            let (unready_system, _unready_pcm, unready_joined) = AudioCapture::fixture(false)?;
+            let (unready_lease, unready, _) = control.prepare_system(Some(unready_system)).await?;
+            cancelled_system_joined.await?; // No wait before the caller's next prepare.
+            control.commit_system(&unready_lease).await?; // Optional sound cannot block the picture.
             system_joined.await?;
+            for millis in [100, 120] {
+                mic_pcm
+                    .send(frame(epoch + Duration::from_millis(millis), [0.2, 0.4]))
+                    .await?;
+            }
+            while received
+                .recv()
+                .await
+                .unwrap()
+                .header
+                .timestamp
+                .wrapping_sub(first_timestamp)
+                != 5_760
+            {}
+            assert!(!mic_control.is_stopped());
+
+            unready_lease.stop();
+            let (replacement_system, replacement_pcm, replacement_joined) =
+                AudioCapture::fixture(true)?;
+            let replacement_control = replacement_system.control();
+            let (replacement_lease, ready_system, _) =
+                control.prepare_system(Some(replacement_system)).await?;
+            unready_joined.await?;
+            assert!(unready.await?.is_err());
+            ready_system.await??;
+            control.commit_system(&replacement_lease).await?;
+            system_lease.stop(); // Late retirement belongs only to the old picture's input.
+            for millis in [140, 160] {
+                mic_pcm
+                    .send(frame(epoch + Duration::from_millis(millis), [0.2, 0.4]))
+                    .await?;
+                replacement_pcm
+                    .send(frame(epoch + Duration::from_millis(millis), [0.3, 0.1]))
+                    .await?;
+            }
+            let after_commit = loop {
+                let packet = received.recv().await.unwrap();
+                assert_eq!(packet.header.ssrc, first_ssrc);
+                if packet.header.timestamp.wrapping_sub(first_timestamp) == 6_720 {
+                    break packet;
+                }
+            };
+            let mut decoded = [0.0; 1_920];
+            assert_eq!(
+                rusty_opus::OpusDecoder::new(48_000, 2)?.decode(
+                    &after_commit.payload,
+                    960,
+                    &mut decoded
+                )?,
+                960
+            );
+            assert_eq!(*control.source.borrow(), Some(id));
+            assert!(ready.try_recv().is_err());
+            assert_eq!(
+                microphone_opens.load(std::sync::atomic::Ordering::Relaxed),
+                1
+            );
+            assert!(control.microphone.borrow().enabled);
+            assert_eq!(control.microphone.borrow().device_id, "mic");
+            assert_eq!(control.microphone.borrow().volume, 0.5);
+            assert_eq!(control.settings.borrow().bitrate, 96_000);
+            assert_eq!(control.settings.borrow().gain, 0.75);
+            assert!(!mic_control.is_stopped());
+            assert!(!replacement_control.is_stopped());
+            control.stop_system().await?;
+            replacement_joined.await?;
             assert!(!mic_control.is_stopped());
             mic_pcm
-                .send(frame(epoch + Duration::from_millis(80), [0.2, 0.4]))
+                .send(frame(epoch + Duration::from_millis(200), [0.2, 0.4]))
                 .await?;
             loop {
                 let packet = received.recv().await.unwrap();
-                if packet.header.timestamp.wrapping_sub(first_timestamp) == 3840 {
+                if packet.header.timestamp.wrapping_sub(first_timestamp) == 9600 {
                     break;
                 }
             }
@@ -611,7 +810,7 @@ mod tests {
                 })
                 .await?;
             again_pcm
-                .send(frame(epoch + Duration::from_millis(200), [0.2, 0.4]))
+                .send(frame(epoch + Duration::from_millis(320), [0.2, 0.4]))
                 .await?;
             let resumed = ready.recv().await.unwrap();
             assert_ne!(resumed.source.id, id);
@@ -638,6 +837,10 @@ mod tests {
             assert!(control.microphone.borrow().enabled);
             assert_eq!(control.microphone.borrow().device_id, "again");
             assert_eq!(*control.source.borrow(), Some(resumed.source.id));
+            let (last_system, _last_pcm, last_joined) = AudioCapture::fixture(true)?;
+            let (last_lease, ready_system, _) = control.prepare_system(Some(last_system)).await?;
+            ready_system.await??;
+            control.commit_system(&last_lease).await?;
             let changing = {
                 let control = control.clone();
                 tokio::spawn(async move {
@@ -654,11 +857,41 @@ mod tests {
             control.stop();
             task.await?;
             again_joined.await?;
+            last_joined.await?;
             candidate_joined.await?;
             assert!(changing.await?.is_err());
             assert_eq!(*control.source.borrow(), Some(resumed.source.id));
             assert!(!control.microphone.borrow().enabled);
-            assert!(ended.try_recv().is_err()); // whole-producer stop owns its source cleanup
+            let Event::CaptureAudioStopped {
+                publication_id,
+                owner,
+            } = ended.recv().await.unwrap()
+            else {
+                panic!("publication audio completion");
+            };
+            assert_eq!(publication_id, publication);
+            assert!(owner.same_channel(&control.stopped.subscribe()));
+            assert!(*owner.borrow());
+            assert!(ended.try_recv().is_err()); // No separate ended event races the owner's cleanup.
+
+            // The Driver joins this resource while it cannot drain its events.
+            // Exercise the real owner's close, rather than aborting its worker.
+            let (sources, mut ready) = mpsc::channel(1);
+            let (events, mut queued) = mpsc::channel(1);
+            let occupied = Uuid::new_v4();
+            assert!(events.try_send(Event::CaptureAudioEnded { publication_id: publication, source: occupied }).is_ok());
+            let (_cancel, cancelled) = watch::channel(false);
+            let producer = super::super::AudioProducer::start(publication, sources, events, Relay::default(), cancelled);
+            let (system, pcm, system_joined) = AudioCapture::fixture(true)?;
+            let (lease, started, _) = producer.control.prepare_system(Some(system)).await?;
+            started.await??;
+            producer.control.commit_system(&lease).await?;
+            pcm.send(frame(Instant::now(), [0.1, 0.2])).await?;
+            ready.recv().await.unwrap();
+            producer.close().await;
+            system_joined.await?;
+            assert!(matches!(queued.recv().await, Some(Event::CaptureAudioEnded { source, .. }) if source == occupied));
+            assert!(queued.try_recv().is_err());
             Ok::<_, anyhow::Error>(())
         })
         .await?

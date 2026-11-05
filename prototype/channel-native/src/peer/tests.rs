@@ -11,6 +11,8 @@ mod transit;
 async fn retained_capture_transfers_its_single_completion_to_the_new_lease() {
     fn lease(producer: Uuid) -> CaptureLease {
         let (_, ready) = oneshot::channel();
+        #[cfg(feature = "capture")]
+        let (mixer, system_audio) = crate::media::local::AudioControl::fixture();
         CaptureLease {
             id: Uuid::new_v4(),
             session_id: Uuid::new_v4(),
@@ -22,12 +24,17 @@ async fn retained_capture_transfers_its_single_completion_to_the_new_lease() {
             ready,
             codec: Arc::new(std::sync::OnceLock::new()),
             required_audio: None,
+            audio: None,
             audio_error: None,
             ended: None,
             remote: None,
             input_state: None,
             #[cfg(feature = "capture")]
             control: None,
+            #[cfg(feature = "capture")]
+            mixer,
+            #[cfg(feature = "capture")]
+            system_audio,
             producer,
         }
     }
@@ -312,6 +319,8 @@ pub(super) fn driver() -> (
             sources: HashMap::new(),
             #[cfg(feature = "capture")]
             captures: HashMap::new(),
+            #[cfg(feature = "capture")]
+            capture_audio: HashMap::new(),
             #[cfg(all(
                 feature = "capture",
                 any(target_os = "windows", target_os = "linux", target_os = "macos")
