@@ -246,6 +246,9 @@ export class ChannelSession {
             this.write({ type: "subscribe", publicationId: id, enabled: false });
           }
         }
+        for (const id of this.watching.keys()) {
+          if (!this.view.pending.has(`watch:${id}`)) void this.watch(id).catch(() => {});
+        }
       }
       this.browse(this.roomId ?? event.state.channel.rooms[0]?.id ?? "");
       for (const command of this.signals.splice(0)) {
@@ -1232,11 +1235,12 @@ export class ChannelSession {
   setRoles = (userId: string, roles: string[]): Promise<void> => this.action(`roles:${userId}`, () => this.request({ type: "set_roles", userId, roles }));
   watch = (publicationId: string, roomId?: string, signal?: AbortSignal): Promise<void> => this.action(`watch:${publicationId}`, async () => {
     if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
-    this.watching.set(publicationId, undefined);
+    if (!this.watching.has(publicationId)) this.watching.set(publicationId, undefined);
     try {
-      await this.request({ type: "subscribe", publicationId, enabled: true }, undefined, roomId);
+      await this.request({ type: "subscribe", publicationId, enabled: true, helperSessionId: this.watching.get(publicationId) }, undefined, roomId);
       if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
     } catch (error) {
+      if (!signal?.aborted && error instanceof Error && error.message === "disconnected") return;
       this.watching.delete(publicationId);
       this.refreshActivity();
       if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");

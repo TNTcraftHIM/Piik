@@ -1753,6 +1753,62 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
   } finally { session.close(); }
 });
 
+test.each(["before-subscribe", "awaiting-ack", "helper-awaiting-ack"])("committed Native preview resumes its watch intent after Domain recovery (%s)", async interrupted => {
+  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
+  const nativeSessionId = crypto.randomUUID();
+  vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: nativeSessionId, roomIds: ["first"] });
+  const { session, socket } = await setup();
+  const app = ChannelSocket.current;
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const starting = session.startNativeScreen("first", { kind: "picker", sourceId: "", title: "System picker" }).catch(error => error);
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
+    const publicationId = app.sent.at(-1)!.publicationId as string;
+    app.receive({ id: app.sent.at(-1)!.id, result: { captureId: crypto.randomUUID(), sessionId: nativeSessionId, codec: "h264" } });
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("commit_capture"));
+    const committed = app.sent.at(-1)!;
+    const state = structuredClone(session.getSnapshot().state!);
+    state.publications = [{ id: publicationId, roomId: "first", sessionId: nativeSessionId, userId: "self", kind: "screen",
+      videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false }];
+    socket.receive({ type: "state", state });
+    if (interrupted === "before-subscribe") socket.close();
+    app.receive({ id: committed.id, result: null });
+    if (interrupted !== "before-subscribe") {
+      await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId, enabled: true }));
+      state.subscriptions = [publicationId];
+      socket.receive({ type: "state", state });
+      if (interrupted === "helper-awaiting-ack") {
+        socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+        expect(await starting).toBeUndefined();
+        await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", helperSessionId: nativeSessionId }));
+      }
+      socket.close();
+    }
+    expect(await starting).toBeUndefined();
+    expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
+    session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    await vi.waitFor(() => expect(resumed.sent).toContainEqual(expect.objectContaining({
+      type: "subscribe", publicationId, enabled: true,
+      ...(interrupted === "helper-awaiting-ack" ? { helperSessionId: nativeSessionId } : {}),
+    })));
+    for (const command of resumed.sent.filter(command => command.type === "subscribe")) {
+      expect(command.enabled).toBe(true);
+      if (interrupted === "helper-awaiting-ack") expect(command.helperSessionId).toBe(nativeSessionId);
+      resumed.receive({ type: "ack", requestId: command.requestId });
+    }
+    expect(app.sent.filter(command => command.type === "prepare_capture")).toHaveLength(1);
+    expect(app.sent.filter(command => command.type === "commit_capture")).toHaveLength(1);
+    expect(app.sent.some(command => command.type === "stop_capture" || command.type === "cancel_capture")).toBe(false);
+    expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
 test("stopping committed Native capture retires its pending automatic preview error", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
@@ -4772,7 +4828,8 @@ test("browsing retires only reading and resumes the offline selection without en
     resumed.receive({ type: "ack", requestId: first.requestId });
     await vi.waitFor(() => expect(resumed.sent.at(-1)).toEqual({ type: "browse", roomId: "second", active: false }));
     expect(session.getSnapshot().state?.subscriptions).toEqual(["screen"]);
-    expect(resumed.sent.some(command => ["unpublish", "subscribe", "voice"].includes(String(command.type)))).toBe(false);
+    expect(resumed.sent.some(command => ["unpublish", "voice"].includes(String(command.type))
+      || command.type === "subscribe" && command.enabled === false)).toBe(false);
   } finally { session.close(); }
 });
 
