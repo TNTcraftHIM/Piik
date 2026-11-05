@@ -114,6 +114,8 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   frames. Rotating the captured display preserves the selected SSRC and advances
   playback; stopping releases the projection and encoder workers. Chrome 124 runs
   the normal Web/WASM.
+  An active encoder failure reaches the selecting page without ending the App or
+  room. The same page can start another decoded share and stop it normally.
   MuMu's software OMX service has crashed during both VP8 and H264
   encoder creation. Independent Java/Surface VP8 controls reproduce that
   assertion with direct release and with stop before release. The normal H264
