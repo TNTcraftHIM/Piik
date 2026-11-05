@@ -97,7 +97,7 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
         disabled={disabled || busy} busy={qualityPending} popoverTarget={`${id}-settings`} controls={`${id}-settings`} expanded={settingsOpen} />
     </span>
     <div ref={settingsPanel} id={`${id}-settings`} popover="auto" className="lr-anchored-card c3-quality-picker"
-      onToggle={event => setSettingsOpen(event.newState === "open")}>
+      onToggle={event => { if (event.target === event.currentTarget) setSettingsOpen(event.newState === "open"); }}>
       <SharingSettings id={`${id}-quality`} open={settingsOpen} busy={qualityPending || microphonePending}
         presets={<>{!vis && <div className="c3-quality-heading"><h3>{t("host.advanced")}</h3></div>}
           <QualityPresets selected={matchingQualityProfileId(quality)} disabled={busy} busy={qualityPending}
@@ -127,7 +127,7 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
           }} /></>} />
     </div>
     <div ref={panel} id={id} popover="auto" className="lr-anchored-card c3-share-picker"
-      onToggle={event => setOpen(event.newState === "open")}>
+      onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
       {open && <CaptureSourcePicker nativeSources={pickerSources} browserSupported={browserSupported} cameraSupported={cameraSupported}
         loadCameras={channel.cameraPreviews}
         initialTab="window" selectionDisabled={disabled || busy || qualityPending || microphonePending}

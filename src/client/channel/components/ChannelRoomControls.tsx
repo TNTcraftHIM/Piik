@@ -99,7 +99,7 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
       </button>
     </Tooltip>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={title}
-      className="lr-anchored-card c3-room-panel" onToggle={event => setOpen(event.newState === "open")}>
+      className="lr-anchored-card c3-room-panel" onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
       {open && <><h3>{title}</h3><RoomForm key={`form:${room?.delivery?.bindingId ?? room?.id ?? "create"}`} room={room} appHosted={channel.appConnected} disabled={!available || busy || backupBusy} busy={busy} onCancel={() => panel.current?.hidePopover()} onSave={async settings => {
         if (room) await channel.updateRoom(room.id, settings);
         else onCreated?.(await channel.createRoom(settings));
