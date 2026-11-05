@@ -15,8 +15,7 @@ npm run build:web
 Follow the [Rust App startup owner](../../prototype/channel-server/README.md#local-app-link)
 for capture-enabled builds, local approval, saved sites and the tunnel helper.
 The App and Server consume the same Rust core and shared Web bundle; native
-capture is integrated through the Rust Native adapter. The retained standalone
-helpers under `native/` have their own fixture/build instructions.
+capture is integrated through the Rust Native adapter.
 
 On Windows, use the stable Cargo output or a fixed `CARGO_TARGET_DIR` for network
 executables. See [verification entrypoints](../../CONTRIBUTING.md#verification-entrypoints)
