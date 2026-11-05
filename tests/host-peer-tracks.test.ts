@@ -5,6 +5,7 @@ import {
   type QualityProfile,
 } from "../src/client/media/quality.ts";
 import { HostProvisionalChild } from "../src/client/media/host-provisional-child.ts";
+import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
 import { ViewerSfuRoute } from "../src/client/media/viewer-sfu-route.ts";
 import { senderQualityEvidenceFromSnapshot } from "../src/client/media/sender-quality-evidence.ts";
 import { EMPTY_METRICS, type PeerSnapshot } from "../src/client/types.ts";
@@ -2290,6 +2291,25 @@ function hostProvisionalInput(
 }
 
 describe("Host provisional child runtime ownership", () => {
+  it("preview loss fails its prepared Browser child but preserves a Native child", () => {
+    const failed = vi.fn();
+    const stream = createStream(createTrack("video", "preview"), null);
+    const input = hostProvisionalInput(7, ["child"], stream);
+    const browser = new HostProvisionalChild({ sendSignal: () => true, onPreparedChildFailed: failed });
+    browser.prepare(input);
+    browser.failBrowserStream();
+    expect(failed).toHaveBeenCalledExactlyOnceWith(7, input.candidate.connectionId);
+    browser.discard();
+
+    const sink = Object.assign(Object.create(NativeSenderPeer.prototype), { start: vi.fn(async () => true), dispose: vi.fn() });
+    const native = new HostProvisionalChild({ sendSignal: () => true, createPeer: () => sink, onPreparedChildFailed: failed });
+    native.prepare(input);
+    native.failBrowserStream();
+    expect(sink.dispose).not.toHaveBeenCalled();
+    expect(failed).toHaveBeenCalledOnce();
+    native.discard();
+  });
+
   it("reports a lost prepared audio answer to its existing route owner", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const failed = vi.fn();

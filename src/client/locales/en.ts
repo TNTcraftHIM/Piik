@@ -554,6 +554,8 @@ export const en: Record<CopyKey, string> = {
   "host.stop": "Stop sharing",
   "host.noAudio": "Source sound is not being shared",
   "host.localPreviewPaused": "Local preview paused; sharing continues",
+  "host.nativePreviewFailed": "Local preview disconnected; sharing continues. Reconnect from playback settings.",
+  "host.nativePreviewRecovering": "Reconnecting local preview; sharing continues",
   "host.preview": "Local preview",
   "host.previewAutoPause": "Auto-pause preview",
   "host.previewAutoPauseHint": "Pause the local preview when switching tabs or windows; sharing continues. Turn off to watch on another monitor.",

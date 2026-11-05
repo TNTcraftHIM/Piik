@@ -390,6 +390,10 @@ Tracks received from a PeerConnection do not own capture constraints. Native
 capture therefore retains source resolution and frame-rate ownership across its
 loopback Browser preview. Native Host SFU publication uses the encoded source
 directly and does not re-encode that preview through a Browser publisher.
+Failure of an active local preview edge leaves the Native source and healthy
+Native downstreams running; Browser paths that depend on that preview report
+their own route failure. The Host can explicitly rebuild only the preview from
+the existing playback controls.
 
 Native parents and the SFU share the media forwarding adapter. Each Native
 parent considers only its direct children and its admitted SFU publication.

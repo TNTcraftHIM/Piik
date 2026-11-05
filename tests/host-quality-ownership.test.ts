@@ -8,7 +8,7 @@ import {
   screenAudioBitrate, videoQualitySettingsEqual, supportsCaptureProfile, videoCaptureLimits, MAX_AUDIO_SEND_BITRATE,
   type QualitySettings,
 } from "../src/client/media/quality";
-import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
+import { NativeSenderPeer, shouldUseBrowserQualityCandidate } from "../src/client/native/native-sender-peer";
 import { HostPeer } from "../src/client/webrtc/host-peer";
 import { NativeCompatibilityError, NativeRequestError, type NativeClient } from "../src/client/native/client";
 import { NativeClientConnection } from "../src/client/native/client-connection";
@@ -30,6 +30,7 @@ const source = ts.createSourceFile("HostPage.tsx", readFileSync(
 const owners = new Set(["changeQuality", "commitQuality", "rememberQuality", "loadAppQualityPreference", "handleSignalMessage",
   "switchSource", "watchCaptureEnd", "switchNativeSource", "switchToNativeSource", "createBrowserAudio", "retireNativeSenderPeers", "finishSourceSwitch", "replaceBrowserStream", "recoverBrowserFanout", "disposeNativeShare",
   "acquireNativeClient", "requestSharing", "nativeCaptureCodec", "startNativeShare", "startBrowserNativeIngress",
+  "createNativePreview", "failNativePreview", "reconnectNativePreview", "reportHostChildFailure", "hostChildIsAssigned", "prepareHostChild",
   "connectNativeClient", "handleNativeClientClosed", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
   "openCaptureSourcePicker", "startBrowserShareFromPicker", "startNativeShareFromPicker",
   "startSharing", "connectRoomSignal", "createReplacementRoom", "beginRoomMutation", "finishRoomMutation", "setCaptureError", "toggleSharingPause",
@@ -73,9 +74,9 @@ function ingress() {
 
 function fixture(launchedByClient = true, nativeConnected = true) {
   let physical: QualitySettings = original;
-  const track = { stop: vi.fn() };
-  const stream = { getTracks: () => [track] };
-  const bridge = { start: vi.fn(async (_audio: boolean) => stream), dispose: vi.fn(), getRemoteInput: () => null };
+  const track = { readyState: "live", stop: vi.fn() };
+  const stream = { getTracks: () => [track], getVideoTracks: () => [track], getAudioTracks: (): typeof track[] => [] };
+  const bridge = { stream, start: vi.fn(async (_audio: boolean) => stream), dispose: vi.fn(), getRemoteInput: () => null };
   const peer = { updateCaptureProfile: vi.fn(async () => true), updateProfile: vi.fn(async () => true),
     isConnected: vi.fn(() => true) };
   const client = { updateShare: vi.fn(async () => undefined), replaceShareSource: vi.fn(async () => undefined),
@@ -135,7 +136,8 @@ function fixture(launchedByClient = true, nativeConnected = true) {
     qualitySettingsEqual, qualityResolutionEqual, videoQualitySettingsEqual, screenAudioBitrate, qualitySettingsLabel,
     supportsCaptureProfile, videoLimits: videoCaptureLimits(), audioBitrateCeiling: MAX_AUDIO_SEND_BITRATE,
     say: (key: string) => key, syncHostSfuQualityWarning: () => null,
-    NativeSenderPeer, discardPreparedHostChild: vi.fn(), removePeer: vi.fn(), startPeer: vi.fn(async (_peerId: string, _generation: number): Promise<void> => {}),
+    NativeSenderPeer, HostPeer, shouldUseBrowserQualityCandidate, discardPreparedHostChild: vi.fn(), removePeer: vi.fn(), startPeer: vi.fn(async (_peerId: string, _generation: number): Promise<void> => {}),
+    setStream: vi.fn(),
     nativePreviewTailRef: ref(Promise.resolve()), setSourceSwitch: vi.fn(),
     invalidateSenderQualityEvidence: vi.fn(), routePolicyRef: ref({ topologyOptimization: false }),
     sourceSwitchNotice: () => "source-switch-result", hostPeerIdRef: ref(null), endpointMediaCopyCapacityRef: ref(2),
@@ -1361,20 +1363,139 @@ describe("Host quality ownership", () => {
 
   it.each([
     ["capture", "host.shareEnded", "app/capture/failed", "source-failed"],
-    ["media", "native.fail.edge", "app/browser-media/connection", "route-failed"],
     ["control", "native.fail.controlDisconnected", "app/control/disconnected", "route-failed"],
   ])("retains the known %s failure when retiring native sharing", async (kind, key, failureCode, comic) => {
     const current = fixture();
     current.generationRef.current = 1;
     await current.startNative();
     if (kind === "control") current.client.onClose.mock.calls[0]![0]();
-    else if (kind === "media") current.NativeMediaBridge.mock.calls[0]![2]();
     else current.client.onEvent.mock.calls[0]![0]({ type: "share-ended", shareId: "share", failed: true });
     expect(current.setNoticeValue).toHaveBeenLastCalledWith({
       kind: "key", key, vars: undefined, failureCode, target: "television", comic, tone: "bad",
     });
     expect(current.disposeResources).toHaveBeenCalledExactlyOnceWith(true, false);
     expect(current.activeGenerationRef.current).toBeNull();
+  });
+
+  it("retires an active Native preview without stopping its source or healthy Native sink", async () => {
+    const current = fixture();
+    current.generationRef.current = 1;
+    const native = Object.assign(Object.create(NativeSenderPeer.prototype), { dispose: vi.fn() });
+    const browser = Object.assign(Object.create(HostPeer.prototype), { peerId: "browser", connectionId: "browser-edge", dispose: vi.fn() });
+    current.peersRef.current.set("native", native);
+    current.peersRef.current.set("browser", browser);
+    current.activeHostChildPeerIdsRef.current = ["browser", "native"];
+    const prepared = { failBrowserStream: vi.fn(), prepare: vi.fn(() => true) };
+    Object.assign(current.hostProvisionalChildRef, { current: prepared });
+    current.removePeer.mockImplementation(id => {
+      const retired = current.peersRef.current.get(id) as unknown as { dispose?: () => void };
+      current.peersRef.current.delete(id);
+      retired?.dispose?.();
+    });
+    const input = vi.spyOn(current.nativeInputRoute, "setUpstream");
+    await current.startNative();
+    input.mockClear();
+    current.NativeMediaBridge.mock.calls[0]![2]();
+    expect(current.disposeResources).not.toHaveBeenCalled();
+    expect(current.client.stopShare).not.toHaveBeenCalled();
+    expect(current.activeGenerationRef.current).toBe(1);
+    expect(current.nativeModeRef.current).toBe(true);
+    expect(current.peersRef.current.get("native")).toBe(native);
+    expect(native.dispose).not.toHaveBeenCalled();
+    expect(browser.dispose).toHaveBeenCalledOnce();
+    expect(current.signalRef.current.send).toHaveBeenCalledWith({ type: "route-failed", revision: 1, phase: "active", connectionId: "browser-edge" });
+    expect(prepared.failBrowserStream).toHaveBeenCalledOnce();
+    expect(input).toHaveBeenCalledExactlyOnceWith(null);
+    expect(current.hostSfuRouteRef.current).toBe(current.route);
+    expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({
+      key: "host.nativePreviewFailed", tone: "warn",
+    }));
+    Object.assign(current.context, { iceConfigRef: ref({ iceServers: [] }) });
+    expect(current.context.prepareHostChild(2, { childPeerIds: ["native"] }, {
+      childPeerId: "native", connectionId: "quality-edge", qualityProbe: true,
+    }, 1)).toBe(false);
+    expect(prepared.prepare).not.toHaveBeenCalled();
+  });
+
+  it("reconnects only the preview and still handles real source termination after Browser-to-Native replacement", async () => {
+    const current = fixture();
+    current.generationRef.current = 1;
+    const token = {};
+    current.sourceSwitchRef.current = token;
+    Object.assign(current.context, { sharingPausedRef: ref(false) });
+    await current.context.startNativeShare(1, "share", { client: current.client, target: {}, audio: false, path: {} }, token);
+    current.sourceSwitchRef.current = null;
+    current.NativeMediaBridge.mock.calls[0]![2]();
+    const restored = { ...current.bridge, stream: { ...current.bridge.stream }, dispose: vi.fn() };
+    restored.start = vi.fn(async () => restored.stream);
+    current.NativeMediaBridge.mockImplementationOnce(function () { return restored; });
+    await current.context.reconnectNativePreview();
+    expect(current.client.startShare).toHaveBeenCalledOnce();
+    expect(current.client.replaceShareSource).not.toHaveBeenCalled();
+    expect(current.client.stopShare).not.toHaveBeenCalled();
+    expect(current.context.setStream).toHaveBeenCalledExactlyOnceWith(restored.stream);
+    expect(current.streamRef.current).toBe(restored.stream);
+    expect(current.nativeMediaBridgeRef.current).toBe(restored);
+    expect(current.disposeResources).not.toHaveBeenCalled();
+    current.client.onEvent.mock.calls[0]![0]({ type: "share-ended", shareId: "share", failed: true });
+    expect(current.disposeResources).toHaveBeenCalledOnce();
+    expect(current.activeGenerationRef.current).toBeNull();
+  });
+
+  it.each(["stopped", "replacement"])("late preview recovery cannot affect a %s source", async reason => {
+    const current = fixture();
+    await current.startNative();
+    current.NativeMediaBridge.mock.calls[0]![2]();
+    const pending = deferred<typeof current.bridge.stream>();
+    const retry = { ...current.bridge, start: vi.fn(() => pending.promise), dispose: vi.fn() };
+    current.NativeMediaBridge.mockImplementationOnce(function () { return retry; });
+    const recovering = current.context.reconnectNativePreview();
+    const next = { ...current.bridge, dispose: vi.fn() };
+    if (reason === "stopped") current.activeGenerationRef.current = null;
+    else {
+      current.sourceSwitchRef.current = {};
+      Object.assign(current.nativeMediaBridgeRef, { current: next });
+    }
+    current.setNoticeValue.mockClear();
+    if (reason === "replacement") pending.reject(new NativeMediaBridgeError("Old preview failed"));
+    else pending.resolve(retry.stream);
+    await recovering;
+    expect(retry.dispose).toHaveBeenCalledOnce();
+    expect(next.dispose).not.toHaveBeenCalled();
+    expect(current.context.setStream).not.toHaveBeenCalled();
+    expect(current.setNoticeValue).not.toHaveBeenCalled();
+    expect(current.client.stopShare).not.toHaveBeenCalled();
+    expect(current.nativeMediaBridgeRef.current).toBe(reason === "replacement" ? next : null);
+  });
+
+  it("a failed manual preview retry remains local and releases its retry slot", async () => {
+    const current = fixture();
+    await current.startNative();
+    current.NativeMediaBridge.mock.calls[0]![2]();
+    const retry = { ...current.bridge, start: vi.fn(async () => { throw new NativeMediaBridgeError("No local receiver"); }), dispose: vi.fn() };
+    current.NativeMediaBridge.mockImplementationOnce(function () { return retry; });
+    await current.context.reconnectNativePreview();
+    expect(retry.dispose).toHaveBeenCalledOnce();
+    expect(current.nativeMediaBridgeRef.current).toBeNull();
+    expect(current.activeGenerationRef.current).toBe(1);
+    expect(current.client.stopShare).not.toHaveBeenCalled();
+    expect(current.disposeResources).not.toHaveBeenCalled();
+  });
+
+  it("only a Browser capture track ending owns share teardown", () => {
+    const current = fixture();
+    current.generationRef.current = 1;
+    const video = new EventTarget();
+    const stream = { getVideoTracks: () => [video] };
+    Object.assign(current.streamRef, { current: stream });
+    current.nativeModeRef.current = true;
+    current.context.watchCaptureEnd(stream, 1);
+    video.dispatchEvent(new Event("ended"));
+    expect(current.disposeResources).not.toHaveBeenCalled();
+    current.nativeModeRef.current = false;
+    current.context.watchCaptureEnd(stream, 1);
+    video.dispatchEvent(new Event("ended"));
+    expect(current.disposeResources).toHaveBeenCalledOnce();
   });
 
   it("retains connecting children during reconciliation and rebuilds them after reauthentication", async () => {

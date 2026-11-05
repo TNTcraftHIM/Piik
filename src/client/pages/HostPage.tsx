@@ -1271,6 +1271,8 @@ export function HostPage({
     captured: MediaStream,
     generation: number,
   ): void {
+    // Native capture ends through share-ended; this track is only its preview.
+    if (nativeModeRef.current) return;
     const track = captured.getVideoTracks()[0];
     track?.addEventListener(
       "ended",
@@ -1291,6 +1293,63 @@ export function HostPage({
     if (nativeModeRef.current) return videoCodecRef.current.primary;
     const mode = videoCodecModeRef.current;
     return mode === "auto" && !supportsH264Receive() ? "vp8" : mode;
+  }
+
+  function failNativePreview(bridge: NativeMediaBridge, generation: number, shareGeneration: string): void {
+    if (!isCurrentShare(generation, shareGeneration) || nativeMediaBridgeRef.current !== bridge) return;
+    nativeMediaBridgeRef.current = null;
+    nativeInputRoute.setUpstream(null);
+    hostProvisionalChildRef.current?.failBrowserStream();
+    for (const [peerId, peer] of peersRef.current) if (peer instanceof HostPeer) {
+      reportHostChildFailure(peerId, peer.connectionId, generation);
+      removePeer(peerId);
+    }
+    bridge.dispose();
+    setStatusNotice({ key: "host.nativePreviewFailed", failureCode: "app/browser-media/connection" }, "route-failed", "warn");
+  }
+
+  function createNativePreview(client: NativeClient, nativeShareId: string, generation: number, shareGeneration: string): NativeMediaBridge {
+    const bridge = new NativeMediaBridge(nativeShareId, client, () => {
+      if (streamRef.current === bridge.stream) failNativePreview(bridge, generation, shareGeneration);
+    }, undefined, () => {
+      if (nativeMediaBridgeRef.current === bridge && isCurrentShare(generation, shareGeneration) && streamRef.current === bridge.stream) {
+        nativeInputRoute.setUpstream(bridge.getRemoteInput());
+      }
+    });
+    nativeMediaBridgeRef.current = bridge;
+    return bridge;
+  }
+
+  async function reconnectNativePreview(): Promise<void> {
+    const client = nativeConnection.current, nativeShareId = nativeShareGenerationRef.current;
+    const generation = activeGenerationRef.current, shareGeneration = shareGenerationRef.current;
+    if (!client || !nativeShareId || generation === null || !shareGeneration || !nativeModeRef.current ||
+      nativeMediaBridgeRef.current || sourceSwitchRef.current || qualityChangeRef.current) return;
+    const bridge = createNativePreview(client, nativeShareId, generation, shareGeneration);
+    const current = () => isCurrentShare(generation, shareGeneration) && nativeConnection.current === client &&
+      nativeShareGenerationRef.current === nativeShareId && nativeMediaBridgeRef.current === bridge && !sourceSwitchRef.current;
+    setStatusNotice({ key: "host.nativePreviewRecovering" }, "recovering", "warn");
+    try {
+      const preview = await bridge.start(audioAvailableRef.current);
+      if (!current()) {
+        if (nativeMediaBridgeRef.current === bridge) nativeMediaBridgeRef.current = null;
+        bridge.dispose();
+        return;
+      }
+      if (!preview.getVideoTracks().some(track => track.readyState === "live")) throw new NativeMediaBridgeError("Native preview ended during recovery");
+      streamRef.current = preview;
+      setStream(preview);
+      setDetails(captureDetails(preview, true, nativeSourceAudioRef.current));
+      nativeInputRoute.setUpstream(bridge.getRemoteInput());
+      setNoticeValue(current => current?.kind === "key" &&
+        (current.key === "host.nativePreviewFailed" || current.key === "host.nativePreviewRecovering") ? null : current);
+    } catch {
+      if (current()) failNativePreview(bridge, generation, shareGeneration);
+      else {
+        if (nativeMediaBridgeRef.current === bridge) nativeMediaBridgeRef.current = null;
+        bridge.dispose();
+      }
+    }
   }
 
   async function startNativeShare(
@@ -1319,27 +1378,7 @@ export function HostPage({
       if (nativeConnection.current !== client) throw new NativeRequestError("unavailable", "start-share");
       // Acquire the required Browser peer before starting capture. Pending
       // cancellation owns this bridge, but still closes control to abort startup.
-      bridge = new NativeMediaBridge(
-        nativeShareId,
-        client,
-        () => {
-          if (
-            nativeMediaBridgeRef.current === bridge &&
-            isCurrentShare(generation, shareGeneration) &&
-            (!replacement || streamRef.current === bridge?.stream)
-          ) {
-            endSharing({ key: "native.fail.edge", failureCode: "app/browser-media/connection" }, true, "route-failed", "bad");
-          }
-        },
-        undefined,
-        () => {
-          if (nativeMediaBridgeRef.current === bridge && isCurrentShare(generation, shareGeneration) &&
-            (!replacement || nativeModeRef.current)) {
-            nativeInputRoute.setUpstream(bridge?.getRemoteInput() ?? null);
-          }
-        },
-      );
-      nativeMediaBridgeRef.current = bridge;
+      bridge = createNativePreview(client, nativeShareId, generation, shareGeneration);
       nativeSourceAudioRef.current = undefined;
       if (!replacement) audioAvailableRef.current = false;
       nativeEventCleanup = client.onEvent((event) => {
@@ -1358,7 +1397,7 @@ export function HostPage({
           if (event.failed) setNoticeValue({ kind: "key", key: "host.audioInput.stopped", target: "operation", comic: "warning", tone: "warn" });
         }
         if (event.type === "share-ended") {
-          if (replacement && streamRef.current !== bridge?.stream) {
+          if (replacement && sourceSwitchRef.current === replacement && streamRef.current !== bridge?.stream) {
             bridge?.dispose();
             return;
           }
@@ -1416,8 +1455,8 @@ export function HostPage({
         else bridge.dispose();
         return null;
       }
-      if (replacement && !stream.getVideoTracks().some(track => track.readyState === "live")) {
-        throw new NativeMediaBridgeError("Native capture ended before source replacement");
+      if (!stream.getVideoTracks().some(track => track.readyState === "live")) {
+        throw new NativeMediaBridgeError("Native preview ended during startup");
       }
       if (replacement) {
         audioAvailableRef.current = !!nativeSourceAudioRef.current;
@@ -1425,8 +1464,8 @@ export function HostPage({
         nativeModeRef.current = true;
         setNativeActive(true);
         if (pendingRemoteControl) applyRemoteControl(pendingRemoteControl);
-        nativeInputRoute.setUpstream(bridge.getRemoteInput());
       }
+      nativeInputRoute.setUpstream(bridge.getRemoteInput());
       return stream;
     } catch (error) {
       if (nativeSourceSelectionRef.current === selection) nativeSourceSelectionRef.current = null;
@@ -2159,6 +2198,8 @@ export function HostPage({
     if (
       !isCurrentGeneration(generation) ||
       (!stream && !nativeModeRef.current) ||
+      (nativeModeRef.current && shouldUseBrowserQualityCandidate(peersRef.current.get(candidate.childPeerId), candidate) &&
+        nativeMediaBridgeRef.current?.stream !== stream) ||
       !iceConfig ||
       !signal
     ) {
@@ -3887,7 +3928,10 @@ export function HostPage({
                 ? !!nativeConnection.current?.health.nativeMedia.shareVolume : hostAudioRef.current?.commentaryAvailable === true,
                 onChange: changeShareVolume }}
               audioAvailable={audioAvailableRef.current}
-              canPlay={phase === "live" && !nativeSources && !sharingPaused && !previewPlayback.suspended}
+              canPlay={phase === "live" && !nativeSources && !sharingPaused && !previewPlayback.suspended &&
+                (!nativeActive || nativeMediaBridgeRef.current?.stream === stream)}
+              onReconnect={nativeActive ? () => { void reconnectNativePreview(); } : undefined}
+              reconnectAvailable={nativeActive && !nativeMediaBridgeRef.current && !switchingSource && !changingQuality}
               theaterMode={theaterMode} onToggleTheater={() => setTheaterMode(value => !value)}
               onPlay={previewPlayback.onPlay}
               onPause={previewPlayback.onPause}
