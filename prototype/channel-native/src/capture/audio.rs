@@ -51,6 +51,13 @@ impl AudioCapture {
     pub(crate) fn fixture(
         ready_now: bool,
     ) -> Result<(Self, mpsc::Sender<AudioFrame>, oneshot::Receiver<()>)> {
+        Self::fixture_with_teardown(ready_now, || {})
+    }
+    #[cfg(test)]
+    pub(crate) fn fixture_with_teardown(
+        ready_now: bool,
+        teardown: impl FnOnce() + Send + 'static,
+    ) -> Result<(Self, mpsc::Sender<AudioFrame>, oneshot::Receiver<()>)> {
         let event = unsafe { CreateEventW(None, true, false, None)? };
         let control = AudioControl(Arc::new(unsafe { OwnedHandle::from_raw_handle(event.0) }));
         let worker = control.clone();
@@ -69,6 +76,7 @@ impl AudioCapture {
             if let Some(ready) = ready {
                 let _ = ready.send(Err(anyhow!("candidate cancelled")));
             }
+            teardown();
             let _ = complete.send(Ok(()));
             let _ = joined.send(());
         });

@@ -410,6 +410,11 @@ fn run(
             Ok(())
         }.await;
         received.close();
+        while let Some(request) = received.recv().await {
+            if let Request::PrepareSystem(Some(input), _, _) = request {
+                close(input).await;
+            }
+        }
         if let Some(pending) = pending {
             pending.close().await;
         }
@@ -593,6 +598,7 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[tokio::test]
     async fn independent_inputs_retain_one_opus_source_and_join_on_cancel() -> Result<()> {
+        use futures_util::FutureExt;
         use std::sync::Mutex;
         tokio::time::timeout(Duration::from_secs(3), async {
             let epoch = Instant::now();
@@ -941,6 +947,31 @@ mod tests {
             system_joined.await?;
             assert!(matches!(queued.recv().await, Some(Event::CaptureAudioEnded { source, .. }) if source == occupied));
             assert!(queued.try_recv().is_err());
+
+            // An accepted request owns its input even before the worker takes it.
+            let (sources, _ready) = mpsc::channel(1);
+            let (events, _ended) = mpsc::channel(1);
+            let (_cancel, cancelled) = watch::channel(false);
+            let producer = super::super::AudioProducer::start(publication, sources, events, Relay::default(), cancelled);
+            let (stopping, stopped) = oneshot::channel();
+            let (finish, finishing) = oneshot::channel();
+            let (system, _pcm, system_joined) = AudioCapture::fixture_with_teardown(false, move || {
+                let _ = stopping.send(());
+                // Dropping the sender also releases the thread if the test fails.
+                let _ = finishing.blocking_recv();
+            })?;
+            let (_lease, started, _) = producer.control.prepare_system(Some(system)).await?;
+            let closing = producer.close();
+            tokio::pin!(closing);
+            tokio::select! {
+                _ = &mut closing => panic!("audio owner closed before its queued input joined"),
+                result = stopped => result?,
+            }
+            assert!((&mut closing).now_or_never().is_none(), "audio owner closed before its queued input joined");
+            let _ = finish.send(());
+            closing.await;
+            system_joined.await?;
+            assert!(started.await.is_err());
             Ok::<_, anyhow::Error>(())
         })
         .await?
