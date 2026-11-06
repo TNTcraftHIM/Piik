@@ -1,5 +1,5 @@
 import { interactionPayloadSchema, type InteractionPayload } from "../../shared/protocol";
-import { BASELINE_REACTION_IDS, INTERACTION_INTERVAL_MS, REACTION_DURATION_MS, REACTION_IDS, type ReactionId } from "../../shared/room-interactions";
+import { INTERACTION_INTERVAL_MS, REACTION_DURATION_MS, REACTION_IDS, type ReactionId } from "../../shared/room-interactions";
 import { createOpaqueId } from "./opaque-id";
 import { identityHash } from "./identity-hash";
 import { CHAT_OVERLAY_DEFAULTS, CHAT_OVERLAY_LIMITS, readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "./room-preferences";
@@ -39,7 +39,7 @@ interface InteractionState {
   coolingDown: boolean;
   error: InteractionError | null;
 }
-const initialState = (): InteractionState => ({ reactionIds: BASELINE_REACTION_IDS, ready: false, peerId: null, messages: [], reactions: [],
+const initialState = (): InteractionState => ({ reactionIds: REACTION_IDS, ready: false, peerId: null, messages: [], reactions: [],
   overlayEnabled: false, overlayAppearance: CHAT_OVERLAY_DEFAULTS, overlayMessages: [],
   pending: null, confirmed: null, coolingDown: false, error: null });
 
@@ -64,7 +64,7 @@ export class RoomInteractionSession {
     this.setSupportedReactions(reactionIds);
   }
 
-  setSupportedReactions(reactionIds: readonly string[] = BASELINE_REACTION_IDS): void {
+  setSupportedReactions(reactionIds: readonly string[] = REACTION_IDS): void {
     if (this.closed) return;
     this.update({ reactionIds: REACTION_IDS.filter(id => reactionIds.includes(id)) });
   }

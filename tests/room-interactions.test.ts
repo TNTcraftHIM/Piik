@@ -16,7 +16,7 @@ const message = (id: string): RoomInteraction => ({ type: "room-interaction", id
   sender: { peerId: "other_peer_1234", role: "viewer", displayName: "朋友" }, payload: { kind: "chat", text: "Hello" } });
 
 test.each([
-  { advertised: undefined, expected: ["laugh", "eyes", "wow", "wave", "heart", "clap", "party", "fire", "star", "sleep", "tomato", "poop"] },
+  { advertised: undefined, expected: [...REACTION_IDS] },
   { advertised: ["heart", "thumbsup", "future-effect"], expected: ["thumbsup", "heart"] },
   { advertised: [], expected: [] },
 ])("sends only known Server-supported reactions: $advertised", ({ advertised, expected }) => {
