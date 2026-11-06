@@ -40,10 +40,11 @@ function verifyImage(reference, server) {
 }
 const tag = `${destination}:${version}`;
 function manifest(reference) {
-  try { return JSON.parse(run("docker", "manifest", "inspect", reference)); }
+  // manifest inspect reconstructs the list and drops descriptor annotations.
+  try { return JSON.parse(run("docker", "buildx", "imagetools", "inspect", "--raw", reference)); }
   catch (error) {
     // Authentication/network failures are not evidence that a tag is absent.
-    if (!/manifest unknown|no such manifest/i.test(String(error.stderr ?? ""))) throw error;
+    if (String(error.stderr ?? "").trim().replace(/^ERROR: /, "") !== `${reference}: not found`) throw error;
     return null;
   }
 }

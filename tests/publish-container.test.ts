@@ -16,7 +16,7 @@ const servers = [...linuxServers, {
 }];
 type Scenario = { existing?: boolean; draft?: boolean; badArchive?: boolean;
   wrongSource?: boolean; wrongImage?: boolean; remoteMismatch?: boolean;
-  registryError?: boolean; newerRelease?: boolean; largeCommit?: boolean;
+  registryError?: string; newerRelease?: boolean; largeCommit?: boolean;
   partial?: boolean; wrongPlatform?: boolean; attestation?: boolean; unknownPlatform?: boolean };
 
 async function publish(options: Scenario = {}) {
@@ -64,17 +64,24 @@ async function publish(options: Scenario = {}) {
       } } }]);
     }
     if (args[0] === "manifest") {
-      if (options.registryError || !manifests.has(args[2])) {
+      // Docker CLI rebuilds a manifest list without its OCI annotations.
+      const original = manifests.get(args[2]) as { manifests?: object[] } | undefined;
+      return JSON.stringify({ ...original, manifests: original?.manifests?.map(entry => ({ ...entry, annotations: undefined })) });
+    }
+    if (args[0] === "buildx" && args[2] === "inspect") {
+      expect(args.slice(0, 4)).toEqual(["buildx", "imagetools", "inspect", "--raw"]);
+      const reference = args[4];
+      if (options.registryError || !manifests.has(reference)) {
         throw Object.assign(new Error("Registry failure"), {
-          stderr: options.registryError ? "unauthorized: authentication required" : "manifest unknown",
+          stderr: options.registryError ?? `ERROR: ${reference}: not found`,
         });
       }
-      return JSON.stringify(manifests.get(args[2]));
+      return JSON.stringify(manifests.get(reference));
     }
     if (args[0] === "pull") images.set(args[3], args[2].slice("linux/".length));
     if (args[0] === "tag") images.set(args[2], images.get(args[1])!);
     if (args[0] === "push") manifests.set(args[1], {});
-    if (args[0] === "buildx") manifests.set(args[4], index);
+    if (args[0] === "buildx" && args[2] === "create") manifests.set(args[4], index);
     return "{}";
   });
   const argv = process.argv;
@@ -85,7 +92,7 @@ async function publish(options: Scenario = {}) {
 }
 const pushes = () => command.mock.calls.filter(([program, args]) => program === "docker" && args[0] === "push")
   .map(([, args]) => args[1]);
-const indexes = () => command.mock.calls.filter(([program, args]) => program === "docker" && args[0] === "buildx")
+const indexes = () => command.mock.calls.filter(([program, args]) => program === "docker" && args[0] === "buildx" && args[2] === "create")
   .map(([, args]) => args.slice(4));
 
 describe("container publication", () => {
@@ -107,7 +114,10 @@ describe("container publication", () => {
   });
   it.each([
     { draft: true }, { badArchive: true }, { wrongSource: true }, { wrongImage: true },
-    { registryError: true }, { existing: true, remoteMismatch: true },
+    { registryError: "unauthorized: authentication required" },
+    { registryError: "ERROR: failed to fetch manifest sha256:missing: not found" },
+    { registryError: "ERROR: lookup ghcr.io: i/o timeout" },
+    { existing: true, remoteMismatch: true },
     { partial: true, remoteMismatch: true }, { wrongPlatform: true },
   ])("blocks invalid publication before pushing (%j)", async (options) => {
     await expect(publish(options)).rejects.toThrow();
