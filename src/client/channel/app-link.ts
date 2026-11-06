@@ -43,7 +43,8 @@ const captureAudioFailureSchema = z.object({ type: z.literal("capture_audio_fail
 const captureEndedSchema = z.object({ type: z.literal("capture_ended"), publicationId: z.uuid(), captureId: z.uuid(), failed: z.boolean() }).strict();
 const microphoneSchema = z.object({ enabled: z.boolean(), deviceId: z.string(), volume: z.number().min(0).max(2) }).strict();
 export type NativeSourceMicrophone = z.infer<typeof microphoneSchema>;
-const microphoneStateSchema = z.object({ type: z.literal("capture_microphone_state"), publicationId: z.uuid(), state: microphoneSchema }).strict();
+const audioStateSchema = z.object({ sourceAudio: z.boolean(), microphone: microphoneSchema }).strict();
+const captureAudioStateSchema = z.object({ type: z.literal("capture_audio_state"), publicationId: z.uuid(), state: audioStateSchema }).strict();
 const inputControlStateSchema = remoteControlStateSchema.extend({
   canSetStopShortcut: z.boolean(), stopShortcut: remoteShortcutKeySchema.nullable().optional(),
   // Omitted: fixed chord. Null: system-managed, unbound. Text: actual OS chord.
@@ -87,7 +88,7 @@ export class ChannelApp {
   private timer: ReturnType<typeof setTimeout>;
   private authenticated = false;
   private captures = new Map<string, string>();
-  private microphones = new Map<string, NativeSourceMicrophone>();
+  private audioStates = new Map<string, z.infer<typeof audioStateSchema>>();
   private prepared = new Set<string>();
   private activationURL?: string;
   private processAudioExclusion = false;
@@ -113,7 +114,7 @@ export class ChannelApp {
   constructor(health: AppHealth, channelId: string, userId: string, credential: string, name: string,
     onClose: () => void, onCaptureState: (publicationId: string, error?: "capture_audio_failed" | "capture_failed") => void,
     onInputState: (publicationId: string, state: ChannelRemoteControlState) => void = () => {},
-    private readonly onMicrophoneState: (publicationId: string) => void = () => {}) {
+    private readonly onAudioState: (publicationId: string) => void = () => {}) {
     this.roomHosting = new NativeRoomHosting(`http://127.0.0.1:${health.port}/rooms/${channelId}/${userId}`,
       { Authorization: `Bearer ${health.token}`, "X-Piik-Credential": credential });
     const socket = this.socket = new WebSocket(`ws://127.0.0.1:${health.port}/rooms`, `piik-channel-rooms.${health.token}`);
@@ -146,16 +147,16 @@ export class ChannelApp {
           const { publicationId, captureId, failed } = captureEndedSchema.parse(reply);
           if (this.captures.get(publicationId) === captureId) {
             this.captures.delete(publicationId);
-            this.microphones.delete(publicationId);
+            this.audioStates.delete(publicationId);
             onCaptureState(publicationId, failed ? "capture_failed" : undefined);
           }
           return;
         }
-        if (reply.type === "capture_microphone_state") {
-          const { publicationId, state } = microphoneStateSchema.parse(reply);
+        if (reply.type === "capture_audio_state") {
+          const { publicationId, state } = captureAudioStateSchema.parse(reply);
           if (this.captures.has(publicationId) || this.prepared.has(publicationId)) {
-            this.microphones.set(publicationId, state);
-            onMicrophoneState(publicationId);
+            this.audioStates.set(publicationId, state);
+            onAudioState(publicationId);
           }
           return;
         }
@@ -251,7 +252,11 @@ export class ChannelApp {
   }
 
   sourceMicrophone(publicationId: string): NativeSourceMicrophone | undefined {
-    return this.captures.has(publicationId) ? this.microphones.get(publicationId) : undefined;
+    return this.captures.has(publicationId) ? this.audioStates.get(publicationId)?.microphone : undefined;
+  }
+
+  hasSourceAudio(publicationId: string): boolean {
+    return this.captures.has(publicationId) && !!this.audioStates.get(publicationId)?.sourceAudio;
   }
 
   async sourceMicrophones(): Promise<CaptureDevice[]> {
@@ -266,8 +271,8 @@ export class ChannelApp {
     if (settings.enabled && !this.sourceMicrophone(publicationId)?.enabled) activateNativePicker(this.activationURL);
     const applied = microphoneSchema.parse(await pending);
     if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture cancelled", "AbortError");
-    this.microphones.set(publicationId, applied);
-    this.onMicrophoneState(publicationId);
+    this.audioStates.set(publicationId, { sourceAudio: this.audioStates.get(publicationId)?.sourceAudio ?? false, microphone: applied });
+    this.onAudioState(publicationId);
   }
 
   async setCapturePaused(publicationId: string, paused: boolean): Promise<void> {
@@ -307,7 +312,7 @@ export class ChannelApp {
 
   async stopCapture(publicationId: string): Promise<void> {
     const active = this.captures.delete(publicationId);
-    this.microphones.delete(publicationId);
+    this.audioStates.delete(publicationId);
     const prepared = this.prepared.delete(publicationId);
     if (!active && !prepared) return;
     if (this.connected) await this.request({ type: "stop_capture", publicationId });
@@ -340,7 +345,7 @@ export class ChannelApp {
   close(): void {
     this.authenticated = false;
     this.captures.clear();
-    this.microphones.clear();
+    this.audioStates.clear();
     this.prepared.clear();
     clearTimeout(this.timer);
     this.socket.onclose = null;

@@ -91,6 +91,13 @@ impl SourceMicrophoneSettings {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceAudioState {
+    pub source_audio: bool,
+    pub microphone: SourceMicrophoneSettings,
+}
+
 #[derive(Clone, Debug, Default, serde::Deserialize)]
 pub struct IceServer {
     pub urls: Vec<String>,
@@ -152,9 +159,9 @@ pub struct CaptureAudio {
     control: crate::media::local::AudioControl,
 }
 impl CaptureAudio {
-    pub fn microphone_state(&self) -> Option<watch::Receiver<SourceMicrophoneSettings>> {
+    pub fn audio_state(&self) -> Option<watch::Receiver<SourceAudioState>> {
         #[cfg(feature = "capture")]
-        return Some(self.control.microphone.clone());
+        return Some(self.control.state.clone());
         #[cfg(not(feature = "capture"))]
         None
     }
@@ -207,9 +214,9 @@ impl CaptureLease {
             .copied()
             .context("capture has no admitted video codec")
     }
-    pub fn microphone_state(&self) -> Option<watch::Receiver<SourceMicrophoneSettings>> {
+    pub fn audio_state(&self) -> Option<watch::Receiver<SourceAudioState>> {
         #[cfg(feature = "capture")]
-        return Some(self.mixer.microphone.clone());
+        return Some(self.mixer.state.clone());
         #[cfg(not(feature = "capture"))]
         None
     }

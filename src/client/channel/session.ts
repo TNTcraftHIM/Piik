@@ -1535,7 +1535,7 @@ export class ChannelSession {
     if (!share) return undefined;
     const local = this.local.get(publicationId);
     const hasAudio = local ? !!local.audio?.audioAvailable
-      : !!this.app?.screens.has(publicationId) && (!!share.native?.audio || !!this.app.sourceMicrophone(publicationId)?.enabled);
+      : !!this.app?.hasSourceAudio(publicationId) || !!this.app?.sourceMicrophone(publicationId)?.enabled;
     return { ...share.volume, bitrate: share.profile.maxAudioBitrate ?? 128_000,
       hasAudio, available: hasAudio && (!local || !!local.audio?.outputGainAvailable) };
   };

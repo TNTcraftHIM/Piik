@@ -32,7 +32,9 @@ use piik_channel_core::RoomState;
 use piik_channel_native::{
     capture::{Settings, Target, VideoCodec, VideoCodecMode},
     input::{Desktop, Mode, SourceView},
-    peer::{CaptureAudio, CaptureLease, SourceAudioSettings, SourceMicrophoneSettings},
+    peer::{
+        CaptureAudio, CaptureLease, SourceAudioSettings, SourceAudioState, SourceMicrophoneSettings,
+    },
     session::{
         self, CommitCapture, HostCommand, Hosting, OpenRoom, PauseCapture, PrepareCapture,
         PublishCaptureCeiling, TransferSource,
@@ -800,7 +802,7 @@ async fn connection(
             let mut audio_errors = FuturesUnordered::new();
             let mut capture_ends = FuturesUnordered::new();
             let mut input_states = FuturesUnordered::new();
-            let mut microphone_states = FuturesUnordered::new();
+            let mut audio_states = FuturesUnordered::new();
             let mut operations = FuturesUnordered::new();
             let mut previews = FuturesUnordered::new();
             let mut preview: Option<(String, Option<oneshot::Sender<()>>)> = None;
@@ -844,12 +846,12 @@ async fn connection(
                         }
                         continue;
                     }
-                    Some((publication_id, changed, state)) = microphone_states.next(), if !microphone_states.is_empty() => {
-                        let state: Option<SourceMicrophoneSettings> = state;
-                        if let Some(state) = state.filter(|_| captures.get(&publication_id).and_then(|c| c.audio.as_ref()).and_then(CaptureAudio::microphone_state).is_some_and(|current| current.same_channel(&changed))) {
-                            let event = json!({"type":"capture_microphone_state","publicationId":publication_id,"state":state});
+                    Some((publication_id, changed, state)) = audio_states.next(), if !audio_states.is_empty() => {
+                        let state: Option<SourceAudioState> = state;
+                        if let Some(state) = state.filter(|_| captures.get(&publication_id).and_then(|c| c.audio.as_ref()).and_then(CaptureAudio::audio_state).is_some_and(|current| current.same_channel(&changed))) {
+                            let event = json!({"type":"capture_audio_state","publicationId":publication_id,"state":state});
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
-                            microphone_states.push(next_microphone_state(publication_id, changed));
+                            audio_states.push(next_audio_state(publication_id, changed));
                         }
                         continue;
                     }
@@ -872,7 +874,7 @@ async fn connection(
                         let request: AbortHandle = request;
                         let result: Result<CaptureResult> = result;
                         let mut initial_input = None;
-                        let mut initial_microphone = None;
+                        let mut initial_audio = None;
                         let result = if request.is_aborted() {
                             // Stop already retired this request, including a completed
                             // future that had not yet been observed by the processor.
@@ -884,7 +886,7 @@ async fn connection(
                                     let value = json!({"captureId":lease.id,"sessionId":lease.session_id,"codec":codec});
                                     if let Some(capture) = captures.get_mut(&publication_id) {
                                         if let Some(audio) = lease.audio.take() {
-                                            if let Some(state) = audio.microphone_state() { microphone_states.push(next_microphone_state(publication_id, state)); }
+                                            if let Some(state) = audio.audio_state() { audio_states.push(next_audio_state(publication_id, state)); }
                                             capture.audio = Some(audio);
                                         }
                                         if let Some(pending) = capture.pending.as_mut() { pending.lease = Some(lease); }
@@ -907,8 +909,8 @@ async fn connection(
                                         initial_input = Some(state.borrow().clone());
                                         if !retained { input_states.push(next_input_state(publication_id, lease.producer_id(), state.clone())); }
                                     }
-                                    if let Some(state) = lease.microphone_state() {
-                                        initial_microphone = Some(state.borrow().clone());
+                                    if let Some(state) = lease.audio_state() {
+                                        initial_audio = Some(state.borrow().clone());
                                     }
                                     capture.pending = None;
                                     capture.active = Some(lease);
@@ -931,8 +933,8 @@ async fn connection(
                             let event = json!({"type":"input_state","publicationId":publication_id,"state":state});
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                         }
-                        if let Some(state) = initial_microphone {
-                            let event = json!({"type":"capture_microphone_state","publicationId":publication_id,"state":state});
+                        if let Some(state) = initial_audio {
+                            let event = json!({"type":"capture_audio_state","publicationId":publication_id,"state":state});
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                         }
                         continue;
@@ -1253,7 +1255,7 @@ async fn connection(
                                         Ok((
                                             lease.configure_microphone(settings)?,
                                             lease
-                                                .microphone_state()
+                                                .audio_state()
                                                 .ok_or_else(|| anyhow!("capture_unavailable"))?,
                                         ))
                                     });
@@ -1261,7 +1263,7 @@ async fn connection(
                                     Ok((update, state)) => {
                                         operations.push(async move {
                                             match update.await {
-                                                Ok(()) => json!({"id":request.id,"result":state.borrow().clone()}),
+                                                Ok(()) => json!({"id":request.id,"result":state.borrow().microphone.clone()}),
                                                 Err(error) => json!({"id":request.id,"error":error.to_string()}),
                                             }
                                         }.boxed());
@@ -1407,13 +1409,13 @@ async fn next_input_state(
         .map(|_| changed.borrow_and_update().clone());
     (publication, producer, changed, state)
 }
-async fn next_microphone_state(
+async fn next_audio_state(
     publication: Uuid,
-    mut changed: watch::Receiver<SourceMicrophoneSettings>,
+    mut changed: watch::Receiver<SourceAudioState>,
 ) -> (
     Uuid,
-    watch::Receiver<SourceMicrophoneSettings>,
-    Option<SourceMicrophoneSettings>,
+    watch::Receiver<SourceAudioState>,
+    Option<SourceAudioState>,
 ) {
     let state = changed
         .changed()
