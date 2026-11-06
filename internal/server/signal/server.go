@@ -1176,10 +1176,10 @@ func (s *Server) connectRouteParticipant(participant authenticatedRouteParticipa
 	if participant.role == protocol.RoleHost && participant.routePolicy != nil {
 		if rm, _ := s.router.rooms.Get(participant.roomID); rm != nil && rm.roomMedia && rm.controller != nil {
 			s.router.releaseResources(rm.controller.SetRoutePolicy(*participant.routePolicy, s.now()))
-			for peerID, settings := range rm.viewerSettings.All() {
+			for peerID, settings := range rm.endpointSettings.All() {
 				if settings.preference != "" && !rm.controller.AllowsViewerRoutePreference(settings.preference) {
 					settings.preference = protocol.ViewerRouteAuto
-					rm.viewerSettings.Set(peerID, settings)
+					rm.endpointSettings.Set(peerID, settings)
 					s.router.sendViewerRoutePreference(participant.roomID, peerID, true)
 				}
 			}

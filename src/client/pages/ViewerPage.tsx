@@ -79,7 +79,7 @@ import {
   type CandidateQualityProbeResult,
 } from "../media/candidate-quality-probe";
 import type { QualitySettings } from "../media/quality";
-import { relayCapacityMessageForBrowser, relayVolunteerLimit } from "../media/relay-capability";
+import { relayCapacityMessageForBrowser, relayPhysicalCapacity, relaySettingsLimit, relayVolunteerLimit } from "../media/relay-capability";
 import {
   invalidateSenderQualityEvidence,
   senderQualityEvidenceFromSnapshot,
@@ -280,6 +280,7 @@ export function ViewerPage({
   const [relayVolunteerSupported, setRelayVolunteerSupported] = useState(false);
   const [relayVolunteerEnabled, setRelayVolunteerEnabled] = useState(false);
   const [relayVolunteerPending, setRelayVolunteerPending] = useState(false);
+  const [relayCapacityCustomizable, setRelayCapacityCustomizable] = useState(false);
   const [relayVolunteerLimits, setRelayVolunteerLimits] = useState(() => relayVolunteerLimit(null, MAX_ENDPOINT_MEDIA_CHILDREN, MAX_VIEWERS_PER_ROOM_LIMIT));
   const requestRelayVolunteerRef = useRef<((enabled: boolean, capacity?: number) => void) | null>(null);
   const [peerOnly, setPeerOnly] = useState(false);
@@ -486,6 +487,7 @@ export function ViewerPage({
     let ordinaryRelayCapacity = MAX_ENDPOINT_MEDIA_CHILDREN;
     let requestedRelayCapacity: number | null = null;
     let relayVolunteerAvailable = false;
+    let relaySettingsAvailable = false;
     let viewerAuthorizationGeneration: string | null = null;
     let currentQualitySettings: QualitySettings = DEFAULT_QUALITY_SETTINGS;
     let currentRoutePolicy: RoutePolicy = DEFAULT_ROUTE_POLICY;
@@ -620,19 +622,28 @@ export function ViewerPage({
     setRelayVolunteerSupported(false);
     setRelayVolunteerEnabled(false);
     setRelayVolunteerPending(false);
+    setRelayCapacityCustomizable(false);
     function updateRelayVolunteer(enabled = signal.relayVolunteerRequest?.enabled ?? false, capacity?: number, send = true): void {
       if (capacity !== undefined) requestedRelayCapacity = capacity;
       // Keep consent in the signaling owner before asynchronous App discovery.
       // Until its backend is known, an App gets only the legacy physical bound.
       const backend = relayBackendCapacity ?? (clientActivationRef.current ? MAX_ENDPOINT_MEDIA_CHILDREN : MAX_VIEWERS_PER_ROOM_LIMIT);
-      const limits = relayVolunteerLimit(requestedRelayCapacity, ordinaryRelayCapacity, backend);
+      if (relaySettingsAvailable && enabled && requestedRelayCapacity === null) {
+        requestedRelayCapacity = Math.min(ordinaryRelayCapacity, backend);
+      }
+      const limits = relaySettingsAvailable
+        ? relaySettingsLimit(requestedRelayCapacity, ordinaryRelayCapacity, backend, enabled)
+        : relayVolunteerLimit(requestedRelayCapacity, ordinaryRelayCapacity, backend);
       setRelayVolunteerLimits({ ...limits, available: relayBackendCapacity === null || limits.available });
       if (!send || !relayVolunteerAvailable) return;
-      const effective = enabled ? limits.capacity : backend;
+      const effective = enabled
+        ? relaySettingsAvailable ? requestedRelayCapacity ?? ordinaryRelayCapacity : limits.capacity
+        : backend;
       const intent = signal.relayVolunteerRequest;
-      if (intent?.enabled === enabled && intent.capacity === effective) return;
+      if (intent?.enabled === enabled && intent.capacity === effective &&
+        intent.physicalCapacity === (relaySettingsAvailable ? backend : undefined)) return;
       setRelayVolunteerPending(true);
-      if (!signal.setRelayVolunteer(enabled, effective)) setRelayVolunteerPending(false);
+      if (!signal.setRelayVolunteer(enabled, effective, relaySettingsAvailable ? backend : undefined)) setRelayVolunteerPending(false);
     }
     requestRelayVolunteerRef.current = (enabled, capacity) => {
       updateRelayVolunteer(enabled, capacity);
@@ -650,9 +661,11 @@ export function ViewerPage({
       if (active && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
       if (active && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice({ listeningPresence: capabilities.roomVoiceListeningPresence, bitrate: capabilities.roomVoiceBitrate }));
       if (active) {
-        relayVolunteerAvailable = capabilities.relayVolunteer && !capabilities.sfuOnly;
+        relaySettingsAvailable = capabilities.roomRelayCapacity === true && !capabilities.sfuOnly;
+        setRelayCapacityCustomizable(relaySettingsAvailable);
+        relayVolunteerAvailable = (relaySettingsAvailable || capabilities.relayVolunteer) && !capabilities.sfuOnly;
         setRelayVolunteerSupported(relayVolunteerAvailable);
-        updateRelayVolunteer(undefined, undefined, relayBackendCapacity !== null);
+        updateRelayVolunteer(undefined, undefined, relaySettingsAvailable || relayBackendCapacity !== null);
       }
       if (active && capabilities.remoteInput) inputRoute.enable(identity => signal.send({ type: "subscribe-remote-input", ...identity }));
       if (active && capabilities.viewerRouteSelection) {
@@ -1523,12 +1536,17 @@ export function ViewerPage({
     ): Promise<void> {
       if (message.type === "relay-volunteer") {
         setRelayVolunteerEnabled(message.enabled);
+        if (message.roomCapacity !== undefined) {
+          ordinaryRelayCapacity = message.roomCapacity;
+          updateRelayVolunteer(undefined, undefined, false);
+        }
         const intent = signal.relayVolunteerRequest;
+        const applied = intent?.settings ? Math.min(intent.capacity, intent.physicalCapacity!) : intent?.capacity;
         setRelayVolunteerPending(intent !== null && (intent.enabled !== message.enabled ||
-          message.enabled && intent.capacity !== message.capacity));
+          message.enabled && applied !== message.capacity));
         // Withdrawal is a controller handoff. Retain physical room for old
         // children until its assignments retire them, including on reauth.
-        endpointMediaCopyCapacity = Math.max(endpointMediaCopyCapacity, message.capacity);
+        endpointMediaCopyCapacity = Math.max(endpointMediaCopyCapacity, relayPhysicalCapacity(message.capacity));
         viewerRelay?.updateCapacity(endpointMediaCopyCapacity);
         return;
       }
@@ -1544,9 +1562,8 @@ export function ViewerPage({
         setViewerPasswordDraft("");
         setViewerPasswordError(null);
         relayChildEvidenceStore.clear();
-        ordinaryRelayCapacity = message.endpointMediaCopyCapacity;
-        endpointMediaCopyCapacity = currentPeerId === null ? message.endpointMediaCopyCapacity
-          : Math.max(endpointMediaCopyCapacity, message.endpointMediaCopyCapacity);
+        if (!relaySettingsAvailable) ordinaryRelayCapacity = message.endpointMediaCopyCapacity;
+        endpointMediaCopyCapacity = Math.max(endpointMediaCopyCapacity, relayPhysicalCapacity(message.endpointMediaCopyCapacity));
         currentPeerId = message.peerId;
         setSelfPeerId(message.peerId);
         setRelayVolunteerPending(signal.relayVolunteerRequest !== null);
@@ -1576,7 +1593,7 @@ export function ViewerPage({
           undefined,
           true,
         );
-        signal.send(relayCapacityMessageForBrowser());
+        if (!relaySettingsAvailable) signal.send(relayCapacityMessageForBrowser());
         // Normalize this visit's limit before signaling replays its intent.
         updateRelayVolunteer();
         currentIceConfig = message.iceConfig;
@@ -2331,6 +2348,7 @@ export function ViewerPage({
                   },
                 } : undefined,
                 relayVolunteer: relayVolunteerSupported ? {
+                  customizable: relayCapacityCustomizable,
                   enabled: relayVolunteerEnabled, pending: relayVolunteerPending,
                   ...relayVolunteerLimits,
                   disabled: signalStatus !== "connected" || relayVolunteerPending || (!relayVolunteerLimits.available && !relayVolunteerEnabled),

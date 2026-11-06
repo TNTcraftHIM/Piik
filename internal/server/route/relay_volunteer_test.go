@@ -26,6 +26,27 @@ func TestRelayVolunteerUsesReportedCapabilityAndExactSession(t *testing.T) {
 	eq(t, routes.SetRelayVolunteer(A, sessionOf(A), true, nil), false)
 }
 
+func TestRoomDefaultCapacityKeepsPersonalAndPhysicalBounds(t *testing.T) {
+	routes := newController(2, Options{})
+	addViewer(routes, A, 20, nil)
+	addViewer(routes, B, 3, nil)
+	addViewer(routes, C, 0, nil)
+	routes.SetRelayVolunteer(C, sessionOf(C), true, nil)
+	routes.SetDefaultCapacity(20, ms(1))
+	a, _ := routes.participants.Get(A)
+	b, _ := routes.participants.Get(B)
+	c, _ := routes.participants.Get(C)
+	eq(t, a.effectiveDownstreamCapacity, 20)
+	eq(t, routes.transitionCopyLimit(a), 21)
+	eq(t, b.effectiveDownstreamCapacity, 3)
+	eq(t, routes.transitionCopyLimit(b), 3)
+	eq(t, c.effectiveDownstreamCapacity, 0)
+	routes.SetDefaultCapacity(1, ms(2))
+	eq(t, a.effectiveDownstreamCapacity, 1)
+	eq(t, b.effectiveDownstreamCapacity, 1)
+	eq(t, c.effectiveDownstreamCapacity, 0)
+}
+
 func TestRelayVolunteerFanoutAndWithdrawalKeepSingleRouteOperation(t *testing.T) {
 	routes := newController(1, Options{})
 	routes.SetVideoPublication("", false, 0)

@@ -238,6 +238,7 @@ export const runtimeCapabilitiesSchema = z.object({
   roomVoiceListeningPresence: z.boolean().default(false),
   roomVoiceBitrate: z.boolean().optional(),
   relayVolunteer: z.boolean().default(false),
+  roomRelayCapacity: z.boolean().optional(),
   roomReactionIds: z.array(z.string().max(32).regex(/^[a-z][a-z0-9-]*$/)).max(64).optional(),
   hostRoomSession: z.boolean().default(false),
   remoteInput: z.boolean().default(false),
@@ -933,7 +934,10 @@ const signalingChallengeSequenceSchema = z
   .max(Number.MAX_SAFE_INTEGER);
 
 export const clientMessageSchema = z.union([
-  z.object({ type: z.literal("set-relay-volunteer"), enabled: z.boolean(), capacity: z.number().int().min(0).max(MAX_VIEWERS_PER_ROOM_LIMIT) }).strict(),
+  z.object({ type: z.literal("set-relay-volunteer"), enabled: z.boolean(),
+    capacity: z.number().int().min(0).max(MAX_VIEWERS_PER_ROOM_LIMIT),
+    settings: z.boolean().optional(), physicalCapacity: z.number().int().min(0).max(MAX_VIEWERS_PER_ROOM_LIMIT).optional(),
+  }).strict().refine(value => Boolean(value.settings) === (value.physicalCapacity !== undefined)),
   z.object({ type: z.literal("subscribe-room-voice"), deafened: z.boolean().optional(), bitrate: z.literal(true).optional() }).strict(),
   z.object({ type: z.literal("room-voice-command"), command: roomVoiceCommandSchema }).strict(),
   z.object({ type: z.literal("room-voice-signal"), ...voiceSignalShape }).strict()
@@ -1126,7 +1130,10 @@ const authenticatedMessageSchema = z.union([
 ]);
 
 export const serverMessageSchema = z.union([
-  z.object({ type: z.literal("relay-volunteer"), enabled: z.boolean(), capacity: z.number().int().min(0).max(MAX_VIEWERS_PER_ROOM_LIMIT) }).strict(),
+  z.object({ type: z.literal("relay-volunteer"), enabled: z.boolean(),
+    capacity: z.number().int().min(0).max(MAX_VIEWERS_PER_ROOM_LIMIT),
+    roomCapacity: z.number().int().min(1).max(MAX_VIEWERS_PER_ROOM_LIMIT).optional(),
+  }).strict(),
   roomVoiceStateSchema,
   z.object({ type: z.literal("room-voice-signal"), ...voiceSignalShape }).strict()
     .refine(value => Number(!!value.description) + Number(!!value.candidate) + Number(!!value.renegotiate) === 1),

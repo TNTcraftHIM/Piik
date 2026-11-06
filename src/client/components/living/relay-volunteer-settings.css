@@ -1,0 +1,3 @@
+.lr-sharing-connection .lr-viewer-relay-setting { margin-top: 0; }
+.lr-sharing-connection .lr-viewer-relay-setting .lr-row-group:has(.lr-switch-item) { display: flex; align-items: center; }
+.lr-sharing-connection .lr-viewer-relay-setting p { color: var(--muted); font-size: 11px; line-height: 1.6; margin: 10px 0 0; }

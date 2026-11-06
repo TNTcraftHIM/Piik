@@ -5,6 +5,7 @@ import {
   type QualityProfile,
 } from "../src/client/media/quality.ts";
 import { HostProvisionalChild } from "../src/client/media/host-provisional-child.ts";
+import { relayPhysicalCapacity } from "../src/client/media/relay-capability.ts";
 import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
 import { ViewerSfuRoute } from "../src/client/media/viewer-sfu-route.ts";
 import { senderQualityEvidenceFromSnapshot } from "../src/client/media/sender-quality-evidence.ts";
@@ -2291,6 +2292,16 @@ function hostProvisionalInput(
 }
 
 describe("Host provisional child runtime ownership", () => {
+  it.each([2, 8])("admits the single overlap above a steady capacity of %s including SFU", capacity => {
+    const stream = createStream(createTrack("video", "preview"), null);
+    const activeChildPeerIds = Array.from({ length: capacity - 1 }, (_, i) => `child-${i}`);
+    const input = hostProvisionalInput(7, [...activeChildPeerIds, "candidate"], stream,
+      { activeChildPeerIds, publicationGeneration: "publication" });
+    input.maxMediaEdges = relayPhysicalCapacity(capacity);
+    const owner = new HostProvisionalChild({ sendSignal: () => true });
+    expect(owner.prepare(input)).toBe(true);
+    owner.discard();
+  });
   it("preview loss fails its prepared Browser child but preserves a Native child", () => {
     const failed = vi.fn();
     const stream = createStream(createTrack("video", "preview"), null);

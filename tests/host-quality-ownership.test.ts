@@ -23,6 +23,9 @@ import { debugError, debugEvent, debugOperation } from "../src/client/lib/debug"
 import { ApiError } from "../src/client/lib/api";
 import { hostActionErrorKey, hostServerErrorKey, hostFailureCode, isCapturePermissionFailure } from "../src/client/pages/host-page-notices";
 import { say, setCopy } from "../src/client/ui/copy";
+import { nativeRelayCapacity } from "../src/client/native/wire";
+import { relayPhysicalCapacity } from "../src/client/media/relay-capability";
+import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../src/shared/protocol";
 
 // Exercise the actual page owners without mounting capture hardware or a Browser.
 const source = ts.createSourceFile("HostPage.tsx", readFileSync(
@@ -36,7 +39,7 @@ const owners = new Set(["changeQuality", "commitQuality", "rememberQuality", "lo
   "openCaptureSourcePicker", "startBrowserShareFromPicker", "startNativeShareFromPicker",
   "startSharing", "connectRoomSignal", "createReplacementRoom", "beginRoomMutation", "finishRoomMutation", "setCaptureError", "toggleSharingPause",
   "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setStatusNotice", "setNoticeError", "setNoticeErrorKey", "endSharing", "disposeResources", "hostTerminationKey", "copyRoomLink", "isCurrentRoomAuthority",
-  "handleRoomAccessFailure", "replaceCurrentRoom", "forgetRoom", "endRoomSession", "readableError", "confirmNativePermission"]);
+  "handleRoomAccessFailure", "replaceCurrentRoom", "forgetRoom", "endRoomSession", "readableError", "confirmNativePermission", "updateHostRelayCapacity"]);
 
 const functions: string[] = [];
 let noticeRendering = "";
@@ -95,7 +98,10 @@ function fixture(launchedByClient = true, nativeConnected = true) {
     NativeClient: { connect: vi.fn(async (_options?: { signal: AbortSignal }): Promise<typeof client | null> => null) },
     setJoiningRoom: vi.fn(), startSharing: vi.fn(), openCaptureSourcePicker: vi.fn(),
     videoCodecRef: ref({ primary: "h264" }),
-    videoCodecModeRef: ref("h264"), MAX_ENDPOINT_MEDIA_CHILDREN: 2,
+    videoCodecModeRef: ref("h264"), MAX_ENDPOINT_MEDIA_CHILDREN: 2, MAX_VIEWERS_PER_ROOM_LIMIT,
+    nativeRelayCapacity, relayPhysicalCapacity,
+    ordinaryRelayCapacityRef: ref(2), requestedRelayCapacityRef: ref<number | null>(null), hostRelayAvailableRef: ref(false),
+    setHostRelaySupported: vi.fn(), setHostRelayPending: vi.fn(), setHostRelayCapacity: vi.fn(),
     supportsH264Receive: vi.fn(() => true),
     sourcePickerReturnRef: ref<{ id: string; restore: boolean } | null>(null),
     nativeSourceRequestRef: ref<object | null>(null), nativeSourcePathRef: ref<unknown>(null),
@@ -1571,10 +1577,10 @@ describe("Host quality ownership", () => {
     const attempt = current.discover();
     current.requestShare();
     expect(current.openCaptureSourcePicker).toHaveBeenCalledTimes(1);
-    expect(current.discover()).toBe(attempt);
+    const repeated = current.discover();
     await current.startOptionalIngress();
     discovery.resolve(null);
-    await attempt;
+    await expect(Promise.all([attempt, repeated])).resolves.toEqual([null, null]);
     expect(current.NativeClient.connect).toHaveBeenCalledTimes(1);
     current.NativeClient.connect.mockResolvedValue(current.client);
     await expect(current.discover()).resolves.toBe(current.client);

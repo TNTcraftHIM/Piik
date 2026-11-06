@@ -10,6 +10,7 @@ import {
 import {
   DEFAULT_ROUTE_POLICY,
   MAX_VIEWER_PASSWORD_LENGTH,
+  MAX_VIEWERS_PER_ROOM_LIMIT,
   viewerPasswordSchema,
   type CreateRoomResponse,
   type ClientMessage,
@@ -154,6 +155,7 @@ import {
   type QualitySettings,
 } from "../media/quality";
 import { HostSfuRoute } from "../media/host-sfu-route";
+import { relayPhysicalCapacity } from "../media/relay-capability";
 import { BrowserEncodingPool } from "../media/browser-encoding-pool";
 import {
   HostProvisionalChild,
@@ -194,7 +196,7 @@ import {
   nativeCaptureTargetKey,
   type NativeCapturePath,
 } from "../native/capture-selection";
-import type { NativeCaptureTarget, RemoteControlState } from "../native/wire";
+import { nativeRelayCapacity, type NativeCaptureTarget, type RemoteControlState } from "../native/wire";
 import { HostRemoteControl } from "../components/living/HostRemoteControl";
 import { InputRoute } from "../remote-control/input-route";
 import {
@@ -611,6 +613,12 @@ export function HostPage({
   const hostProvisionalChildRef = useRef<HostProvisionalChild | null>(null);
   const activeHostChildPeerIdsRef = useRef<string[]>([]);
   const endpointMediaCopyCapacityRef = useRef(MAX_ENDPOINT_MEDIA_CHILDREN);
+  const ordinaryRelayCapacityRef = useRef(MAX_ENDPOINT_MEDIA_CHILDREN);
+  const requestedRelayCapacityRef = useRef<number | null>(null);
+  const hostRelayAvailableRef = useRef(false);
+  const [hostRelaySupported, setHostRelaySupported] = useState(false);
+  const [hostRelayPending, setHostRelayPending] = useState(false);
+  const [hostRelayCapacity, setHostRelayCapacity] = useState(MAX_ENDPOINT_MEDIA_CHILDREN);
   const hostPeerIdRef = useRef<string | null>(null);
   const [viewerQualityEvidenceStore] = useState(
     () => new ViewerQualityEvidenceStore(scheduleViewerQualityEvidenceRender),
@@ -954,6 +962,11 @@ export function HostPage({
     activeHostChildPeerIdsRef.current = [];
     if (!keepRoomSession) {
       endpointMediaCopyCapacityRef.current = MAX_ENDPOINT_MEDIA_CHILDREN;
+      ordinaryRelayCapacityRef.current = MAX_ENDPOINT_MEDIA_CHILDREN;
+      requestedRelayCapacityRef.current = null;
+      hostRelayAvailableRef.current = false;
+      setHostRelaySupported(false);
+      setHostRelayPending(false);
       hostPeerIdRef.current = null;
     }
     serverShareGenerationRef.current = null;
@@ -1418,7 +1431,7 @@ export function HostPage({
         showCaptureBorder,
         adapterIndex: path.adapterIndex,
         encoderIndex: path.encoderIndex,
-        edgeCapacity: MAX_ENDPOINT_MEDIA_CHILDREN,
+        edgeCapacity: nativeRelayCapacity(MAX_VIEWERS_PER_ROOM_LIMIT, client.health),
         profile: qualitySettingsRef.current,
         codec: nativeCaptureCodec(client),
       }, target.kind === "picker" ? () => activateNativePicker(client.health.activationURL) : undefined);
@@ -1510,6 +1523,7 @@ export function HostPage({
     } else if (nativeModeRef.current && activeGenerationRef.current !== null) {
       endSharing({ key: "native.fail.controlDisconnected", failureCode: "app/control/disconnected" }, true, "route-failed", "bad");
     }
+    updateHostRelayCapacity();
   }
 
   function connectNativeClient(signal: AbortSignal): Promise<NativeClient | null> {
@@ -1521,7 +1535,26 @@ export function HostPage({
   }
 
   function acquireNativeClient(): Promise<NativeClient | null> {
-    return nativeConnection.acquire(nativeShareCleanupRef.current);
+    return nativeConnection.acquire(nativeShareCleanupRef.current).then(client => {
+      if (client && nativeConnection.current === client) updateHostRelayCapacity();
+      return client;
+    });
+  }
+
+  function updateHostRelayCapacity(capacity?: number): void {
+    if (capacity !== undefined) requestedRelayCapacityRef.current = capacity;
+    const client = nativeConnection.current;
+    const backend = client ? nativeRelayCapacity(MAX_VIEWERS_PER_ROOM_LIMIT, client.health) : MAX_VIEWERS_PER_ROOM_LIMIT;
+    const requested = requestedRelayCapacityRef.current;
+    const effective = requested ?? ordinaryRelayCapacityRef.current;
+    const enabled = requested !== null;
+    setHostRelayCapacity(effective);
+    const signal = signalRef.current;
+    if (!hostRelayAvailableRef.current || !signal) return;
+    const intent = signal.relayVolunteerRequest;
+    if (intent?.enabled === enabled && intent.capacity === effective && intent.physicalCapacity === backend) return;
+    setHostRelayPending(true);
+    if (!signal.setRelayVolunteer(enabled, effective, backend)) setHostRelayPending(false);
   }
 
   function releaseUnusedNativeClient(): void {
@@ -1530,6 +1563,7 @@ export function HostPage({
     if (nativeSourceRequestRef.current || nativeShareGenerationRef.current || sourceSwitchRef.current ||
       (activeGenerationRef.current !== null && roomMutationRef.current !== null)) return;
     nativeConnection.release();
+    updateHostRelayCapacity();
   }
 
   function closeCaptureSourcePicker(): void {
@@ -1631,7 +1665,7 @@ export function HostPage({
     if (nativeConnection.current !== client || !isCurrentShare(generation, shareGeneration)) return;
     const ingress = new NativeMediaIngress(shareGeneration, client, () => {
       recoverBrowserFanout(ingress);
-    }, () => qualitySettingsRef.current);
+    }, () => qualitySettingsRef.current, nativeRelayCapacity(MAX_VIEWERS_PER_ROOM_LIMIT, client.health));
     nativeMediaIngressRef.current = ingress;
     nativeShareGenerationRef.current = shareGeneration;
     try {
@@ -2688,6 +2722,10 @@ export function HostPage({
       return previous;
     }
     previous?.stop();
+    hostRelayAvailableRef.current = false;
+    requestedRelayCapacityRef.current = null;
+    setHostRelaySupported(false);
+    setHostRelayPending(false);
     let authenticated = false;
     const hostClientId = getStableClientId("host", activeRoom.roomId);
     hostClientIdRef.current = hostClientId;
@@ -2731,6 +2769,17 @@ export function HostPage({
         },
         onMessage: (message) => {
           if (signalRef.current !== signal || !isCurrentRoomAuthority(activeRoom)) return;
+          if (message.type === "relay-volunteer") {
+            if (message.roomCapacity === undefined) return;
+            ordinaryRelayCapacityRef.current = message.roomCapacity;
+            const intent = signal.relayVolunteerRequest;
+            setHostRelayPending(intent !== null && intent.enabled && intent.capacity !== message.roomCapacity);
+            setHostRelayCapacity(intent?.enabled ? intent.capacity : message.roomCapacity);
+            // Lowering policy hands children back to the controller. Keep room
+            // for their old connections until its assignments retire them.
+            endpointMediaCopyCapacityRef.current = Math.max(endpointMediaCopyCapacityRef.current, relayPhysicalCapacity(message.capacity));
+            return;
+          }
           if (message.type === "remote-input-peers") {
             remoteInputPeersRef.current = message.peers;
             const client = nativeConnection.current, shareId = nativeShareGenerationRef.current;
@@ -2790,7 +2839,10 @@ export function HostPage({
             authenticated = true;
             iceConfigRef.current = message.iceConfig;
             hostPeerIdRef.current = message.peerId;
-            endpointMediaCopyCapacityRef.current = message.endpointMediaCopyCapacity;
+            if (!hostRelayAvailableRef.current) ordinaryRelayCapacityRef.current = message.endpointMediaCopyCapacity;
+            endpointMediaCopyCapacityRef.current = Math.max(endpointMediaCopyCapacityRef.current, relayPhysicalCapacity(message.endpointMediaCopyCapacity));
+            setHostRelayPending(signal.relayVolunteerRequest !== null);
+            updateHostRelayCapacity();
             serverShareGenerationRef.current = message.shareGeneration;
             const profile = {
               codeEntryPolicy: message.codeEntryPolicy,
@@ -2859,6 +2911,11 @@ export function HostPage({
     signal.setAudioAvailable(audioAvailableRef.current);
     remoteInputPeersRef.current = [];
     void getRuntimeCapabilities().then(capabilities => {
+      if (signalRef.current === signal) {
+        hostRelayAvailableRef.current = capabilities.roomRelayCapacity === true && !capabilities.sfuOnly;
+        setHostRelaySupported(hostRelayAvailableRef.current);
+        updateHostRelayCapacity();
+      }
       if (signalRef.current === signal && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
       if (signalRef.current === signal && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice({ listeningPresence: capabilities.roomVoiceListeningPresence, bitrate: capabilities.roomVoiceBitrate }));
       if (signalRef.current === signal && capabilities.remoteInput) signal.enableRemoteInput();
@@ -3396,7 +3453,7 @@ export function HostPage({
             if (!client) throw new Error("Native media ingress is unavailable");
             const replacement = new NativeMediaIngress(ingress.shareId, client, () => {
               recoverBrowserFanout(replacement);
-            }, () => qualitySettingsRef.current);
+            }, () => qualitySettingsRef.current, nativeRelayCapacity(MAX_VIEWERS_PER_ROOM_LIMIT, client.health));
             try {
               await replacement.start(captured, qualitySettingsRef.current);
               if (!isCurrentGeneration(generation) || nativeMediaIngressRef.current !== ingress) {
@@ -4241,6 +4298,17 @@ export function HostPage({
                 max={audioBitrateCeiling} disabled={phase === "starting" || switchingSource}
                 onChange={changeMaxAudioBitrate} />
             </>}
+            sendingCapacity={hostRelaySupported ? {
+              capacity: hostRelayCapacity,
+              minimum: 1,
+              maximum: MAX_VIEWERS_PER_ROOM_LIMIT,
+              available: true,
+              enabled: true,
+              pending: hostRelayPending,
+              disabled: signalStatus !== "connected" || hostRelayPending,
+              onChange: () => {},
+              onCapacityChange: capacity => updateHostRelayCapacity(capacity),
+            } : undefined}
             connection={
               <div className="lr-row-group" role="group" aria-label={t("host.advanced.route")}>
                 {sfuOnly ? <SwitchItem checked disabled locked

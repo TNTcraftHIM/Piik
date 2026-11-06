@@ -267,7 +267,10 @@ func TestRejectedPublicationRetainsHostRoomSession(t *testing.T) {
 	host.ignore("viewer-presence")
 	subscribeInteractions(t, host)
 	// Inject the existing route-construction failure, after room admission.
-	h.locked(func() { h.server.router.capacity = 0 })
+	h.locked(func() {
+		h.server.router.room(h.room.RoomID) // Retain the valid room default before injecting an invalid constructor option.
+		h.server.router.capacity = 0
+	})
 	host.sendJSON(map[string]any{"type": "start-sharing", "shareGeneration": "rejected_publication_generation",
 		"routePolicy": protocol.DefaultRoutePolicy})
 	expectMatch(t, host.next("sharing-start-failed").raw,

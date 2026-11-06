@@ -1143,7 +1143,7 @@ func TestRouterDoesNotAdmitRelayFromUnprovedReplacementVideoConnection(t *testin
 		h.doReady(relay, int64(initial.Revision))
 		h.doRelay(relay, 1)
 		rm, _ := h.router.rooms.Get(created.RoomID)
-		settings, _ := rm.viewerSettings.Get(relay.peerID)
+		settings, _ := rm.endpointSettings.Get(relay.peerID)
 		if settings.capacity != 1 {
 			t.Fatal("the relay must report its available downstream slot")
 		}

@@ -151,25 +151,53 @@ type peerSignalDebugInput struct {
 // a callback that lost the Stop race sees it is stale.
 type roomRuntime struct {
 	hostPeerID      string
+	roomCapacity    int
 	controller      *route.Controller
 	revisions       *route.RevisionSequence
 	roomMedia       bool
 	mediaGeneration string
 	pendingMedia    *preparedCandidate
-	// Viewer choices survive signaling recovery and share replacement, not leave.
-	viewerSettings     ordered.Map[string, viewerRouteSettings]
+	// Endpoint choices survive same-session authentication and share replacement.
+	endpointSettings   ordered.Map[string, endpointRouteSettings]
 	requested          bool
 	pumping            bool
 	deadlineStop       func() bool
 	deadlineGeneration uint64
 }
 
-type viewerRouteSettings struct {
-	capacity  int
-	sessionID string
-	volunteer bool
+type endpointRouteSettings struct {
+	capacity         int
+	sessionID        string
+	volunteer        bool
+	settings         bool
+	physicalCapacity int
 	// Empty means the page has not opted into route selection.
 	preference protocol.ViewerRoutePreference
+}
+
+func (settings endpointRouteSettings) effectiveCapacity(room, ordinary int) int {
+	if settings.capacityOverride() {
+		return settings.reportedCapacity(ordinary)
+	}
+	return min(settings.reportedCapacity(ordinary), room)
+}
+
+func (settings endpointRouteSettings) capacityOverride() bool {
+	// Published pages keep their existing site/volunteer policy until opting in.
+	return settings.volunteer || !settings.settings
+}
+
+func (settings endpointRouteSettings) reportedCapacity(ordinary int) int {
+	if !settings.settings {
+		if settings.volunteer {
+			return settings.capacity
+		}
+		return min(settings.capacity, ordinary)
+	}
+	if settings.volunteer {
+		return min(settings.capacity, settings.physicalCapacity)
+	}
+	return settings.physicalCapacity
 }
 
 // router applies controller decisions through room signaling and media resources.
@@ -276,6 +304,14 @@ func (r *router) close(ctx context.Context) error {
 func (r *router) connectParticipant(input authenticatedRouteParticipant) hybridAuthenticationState {
 	rm := r.room(input.roomID)
 	if input.role == protocol.RoleHost {
+		if rm.hostPeerID != input.peerID {
+			rm.endpointSettings.Delete(rm.hostPeerID)
+		}
+		settings, _ := rm.endpointSettings.Get(input.peerID)
+		if settings.sessionID != input.sessionID {
+			settings = endpointRouteSettings{capacity: r.capacity, sessionID: input.sessionID}
+		}
+		rm.endpointSettings.Set(input.peerID, settings)
 		if rm.controller != nil && rm.hostPeerID != input.peerID {
 			r.clearDeadline(rm)
 			// rm.hostPeerID always equals the controller's, so this branch
@@ -287,8 +323,11 @@ func (r *router) connectParticipant(input authenticatedRouteParticipant) hybridA
 			r.createController(input.roomID, rm, input)
 		}
 	} else {
-		settings, _ := rm.viewerSettings.Get(input.peerID)
+		settings, _ := rm.endpointSettings.Get(input.peerID)
 		if settings.sessionID != input.sessionID {
+			if settings.settings {
+				settings.capacity, settings.physicalCapacity, settings.settings = 0, 0, false
+			}
 			settings.sessionID, settings.preference, settings.volunteer = input.sessionID, "", false
 		}
 		if input.routePreference != nil {
@@ -297,30 +336,22 @@ func (r *router) connectParticipant(input authenticatedRouteParticipant) hybridA
 				settings.preference = protocol.ViewerRouteAuto
 			}
 		}
-		rm.viewerSettings.Set(input.peerID, settings)
+		rm.endpointSettings.Set(input.peerID, settings)
 	}
 	if rm.controller != nil {
 		if rm.roomMedia && input.role == protocol.RoleViewer && r.videoGeneration(input.roomID) == "" &&
 			(r.hooks.voiceAllowed == nil || !r.hooks.voiceAllowed(input.roomID, input.peerID)) {
 			return hybridAuthenticationState{routeAssignment: emptyAssignment()}
 		}
-		capacity := r.capacity
-		var preference protocol.ViewerRoutePreference
-		if input.role != protocol.RoleHost {
-			settings, _ := rm.viewerSettings.Get(input.peerID)
-			capacity, preference = settings.capacity, settings.preference
-		}
+		settings, _ := rm.endpointSettings.Get(input.peerID)
 		r.releaseResources(rm.controller.UpsertParticipant(route.ParticipantInput{
 			PeerID:                      input.peerID,
 			Role:                        input.role,
 			SessionID:                   input.sessionID,
-			EffectiveDownstreamCapacity: capacity,
-			RoutePreference:             preference,
+			EffectiveDownstreamCapacity: settings.reportedCapacity(r.capacity),
+			RoutePreference:             settings.preference,
 		}, r.nowPtr()))
-		if input.role == protocol.RoleViewer {
-			settings, _ := rm.viewerSettings.Get(input.peerID)
-			rm.controller.SetRelayVolunteer(input.peerID, input.sessionID, settings.volunteer, r.nowPtr())
-		}
+		rm.controller.SetRelayVolunteer(input.peerID, input.sessionID, settings.capacityOverride(), r.nowPtr())
 	}
 	state := hybridAuthenticationState{routeAssignment: emptyAssignment()}
 	if rm.controller != nil {
@@ -415,11 +446,8 @@ func (r *router) observeSenderQualityEvidence(participant authenticatedRoutePart
 	controller := rm.controller
 	snapshot := controller.Snapshot()
 	before := snapshot.Revision
-	endpointCapacity := r.capacity
-	if participant.role != protocol.RoleHost {
-		settings, _ := rm.viewerSettings.Get(participant.peerID)
-		endpointCapacity = min(settings.capacity, r.capacity)
-	}
+	settings, _ := rm.endpointSettings.Get(participant.peerID)
+	endpointCapacity := settings.effectiveCapacity(rm.roomCapacity, r.capacity)
 	copyContext := r.qualityCopyContext(snapshot, rm.hostPeerID, participant.peerID, endpointCapacity, qualitySample{
 		kind:          route.UpstreamPeer,
 		childPeerID:   message.ChildPeerID,
@@ -497,7 +525,8 @@ func (r *router) observeSfuPublisherQualityEvidence(participant authenticatedRou
 		}
 	}
 	before := snapshot.Revision
-	copyContext := r.qualityCopyContext(snapshot, participant.peerID, participant.peerID, r.capacity, qualitySample{
+	settings, _ := rm.endpointSettings.Get(participant.peerID)
+	copyContext := r.qualityCopyContext(snapshot, participant.peerID, participant.peerID, settings.effectiveCapacity(rm.roomCapacity, r.capacity), qualitySample{
 		kind:                  route.UpstreamSfu,
 		routeRevision:         int64(message.RouteRevision),
 		publicationGeneration: message.PublicationGeneration,
@@ -766,14 +795,14 @@ func (r *router) viewerRouteAllowed(roomID string, preference protocol.ViewerRou
 
 func (r *router) setViewerRoutePreference(participant authenticatedRouteParticipant, preference protocol.ViewerRoutePreference) {
 	rm := r.room(participant.roomID)
-	settings, _ := rm.viewerSettings.Get(participant.peerID)
+	settings, _ := rm.endpointSettings.Get(participant.peerID)
 	accepted := r.viewerRouteAllowed(participant.roomID, preference)
 	if accepted {
 		settings.preference = preference
 	} else if settings.preference == "" {
 		settings.preference = protocol.ViewerRouteAuto
 	}
-	rm.viewerSettings.Set(participant.peerID, settings)
+	rm.endpointSettings.Set(participant.peerID, settings)
 	if accepted && rm.controller != nil {
 		before := rm.controller.Revision()
 		r.releaseResources(rm.controller.SetViewerRoutePreference(participant.peerID, participant.sessionID, preference, r.nowPtr()))
@@ -792,7 +821,7 @@ func (r *router) sendViewerRoutePreference(roomID, peerID string, accepted bool)
 	if !ok {
 		return
 	}
-	settings, _ := rm.viewerSettings.Get(peerID)
+	settings, _ := rm.endpointSettings.Get(peerID)
 	if settings.preference == "" {
 		return // Published clients that did not opt in receive no new event.
 	}
@@ -808,11 +837,15 @@ func (r *router) setViewerRelayCapacity(participant authenticatedRouteParticipan
 	r.debug(participant.roomID, "relay-capacity-received",
 		"participant", r.debugPeer(participant.roomID, participant.peerID),
 		"downstreamEdges", downstreamEdges)
-	settings, _ := rm.viewerSettings.Get(participant.peerID)
-	settings.capacity = downstreamEdges
-	rm.viewerSettings.Set(participant.peerID, settings)
+	settings, _ := rm.endpointSettings.Get(participant.peerID)
+	if settings.settings {
+		settings.physicalCapacity = downstreamEdges
+	} else {
+		settings.capacity = downstreamEdges
+	}
+	rm.endpointSettings.Set(participant.peerID, settings)
 	if rm.controller != nil &&
-		rm.controller.SetEffectiveCapacity(participant.peerID, participant.sessionID, downstreamEdges, r.nowPtr()) {
+		rm.controller.SetEffectiveCapacity(participant.peerID, participant.sessionID, settings.reportedCapacity(r.capacity), r.nowPtr()) {
 		r.requestPump(participant.roomID)
 	}
 }
@@ -1089,14 +1122,14 @@ func (r *router) disconnectParticipant(roomID, peerID, sessionID string) {
 func (r *router) removeViewer(roomID, peerID string) {
 	rm, _ := r.rooms.Get(roomID)
 	if rm != nil {
-		rm.viewerSettings.Delete(peerID)
+		rm.endpointSettings.Delete(peerID)
 	}
 	if rm != nil && rm.controller != nil && rm.controller.ConfirmDeparture(peerID, r.nowPtr()) {
 		r.requestPump(roomID)
 	}
 }
 
-// stopRoom preserves Viewer settings and the room's revision sequence across shares.
+// stopRoom preserves endpoint settings and the room's revision sequence across shares.
 func (r *router) stopRoom(roomID string) {
 	rm, _ := r.rooms.Get(roomID)
 	if rm == nil {
@@ -1107,7 +1140,7 @@ func (r *router) stopRoom(roomID string) {
 		return
 	}
 	r.clearRoom(roomID)
-	r.rooms.Set(roomID, &roomRuntime{revisions: rm.revisions, viewerSettings: rm.viewerSettings})
+	r.rooms.Set(roomID, &roomRuntime{hostPeerID: rm.hostPeerID, roomCapacity: rm.roomCapacity, revisions: rm.revisions, endpointSettings: rm.endpointSettings})
 }
 
 func (r *router) deleteRoom(roomID string) {
@@ -1117,7 +1150,7 @@ func (r *router) deleteRoom(roomID string) {
 func (r *router) room(roomID string) *roomRuntime {
 	rm, ok := r.rooms.Get(roomID)
 	if !ok {
-		rm = &roomRuntime{revisions: &route.RevisionSequence{}}
+		rm = &roomRuntime{roomCapacity: r.capacity, revisions: &route.RevisionSequence{}}
 		r.rooms.Set(roomID, rm)
 	}
 	return rm
@@ -1145,31 +1178,34 @@ func (r *router) createController(roomID string, rm *roomRuntime, host authentic
 	if rm.roomMedia {
 		rm.controller.SetVideoPublication(r.videoGeneration(roomID), false, r.now())
 	}
+	rm.controller.SetDefaultCapacity(rm.roomCapacity, r.nowPtr())
+	hostSettings, _ := rm.endpointSettings.Get(host.peerID)
 	rm.controller.UpsertParticipant(route.ParticipantInput{
 		PeerID:                      host.peerID,
 		Role:                        protocol.RoleHost,
 		SessionID:                   host.sessionID,
-		EffectiveDownstreamCapacity: r.capacity,
+		EffectiveDownstreamCapacity: hostSettings.reportedCapacity(r.capacity),
 	}, r.nowPtr())
+	rm.controller.SetRelayVolunteer(host.peerID, host.sessionID, hostSettings.capacityOverride(), r.nowPtr())
 	for _, viewer := range r.store.GetConnectedViewers(roomID) {
 		if rm.roomMedia && r.videoGeneration(roomID) == "" &&
 			(r.hooks.voiceAllowed == nil || !r.hooks.voiceAllowed(roomID, viewer.PeerID)) {
 			continue
 		}
-		settings, _ := rm.viewerSettings.Get(viewer.PeerID)
+		settings, _ := rm.endpointSettings.Get(viewer.PeerID)
 		if settings.preference != "" && !r.viewerRouteAllowed(roomID, settings.preference) {
 			settings.preference = protocol.ViewerRouteAuto
-			rm.viewerSettings.Set(viewer.PeerID, settings)
+			rm.endpointSettings.Set(viewer.PeerID, settings)
 			r.sendViewerRoutePreference(roomID, viewer.PeerID, true)
 		}
 		rm.controller.UpsertParticipant(route.ParticipantInput{
 			PeerID:                      viewer.PeerID,
 			Role:                        protocol.RoleViewer,
 			SessionID:                   viewer.SessionID,
-			EffectiveDownstreamCapacity: settings.capacity,
+			EffectiveDownstreamCapacity: settings.reportedCapacity(r.capacity),
 			RoutePreference:             settings.preference,
 		}, r.nowPtr())
-		rm.controller.SetRelayVolunteer(viewer.PeerID, viewer.SessionID, settings.volunteer, r.nowPtr())
+		rm.controller.SetRelayVolunteer(viewer.PeerID, viewer.SessionID, settings.capacityOverride(), r.nowPtr())
 	}
 }
 

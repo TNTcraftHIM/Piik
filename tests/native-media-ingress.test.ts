@@ -32,7 +32,7 @@ function snapshot(connectionState: RTCPeerConnectionState): PeerSnapshot {
   };
 }
 
-function fixture(pending = false) {
+function fixture(pending = false, edgeCapacity = 3) {
   vi.stubGlobal("window", globalThis);
   let listener: ((event: NativeClientEvent) => void) | null = null;
   let resolveAnswer!: (value: Awaited<ReturnType<NativeMediaIngressControl["receiveOffer"]>>) => void;
@@ -44,7 +44,7 @@ function fixture(pending = false) {
     onEvent: (next) => { listener = next; return () => { listener = null; }; },
   };
   const onFailed = vi.fn();
-  const ingress = new NativeMediaIngress("share_123456", control, onFailed, () => DEFAULT_QUALITY_SETTINGS);
+  const ingress = new NativeMediaIngress("share_123456", control, onFailed, () => DEFAULT_QUALITY_SETTINGS, edgeCapacity);
   const stream = { getAudioTracks: () => [] } as unknown as MediaStream;
   return { ingress, control, stream, onFailed, answer: () => resolveAnswer(answer), emit: (event: NativeClientEvent) => listener?.(event) };
 }
@@ -52,6 +52,13 @@ function fixture(pending = false) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Browser capture Native ingress", () => {
+  it.each([3, 20])("retains the selected backend's physical capacity %s", async edgeCapacity => {
+    const current = fixture(false, edgeCapacity);
+    await current.ingress.start(current.stream, DEFAULT_QUALITY_SETTINGS);
+    expect(current.control.receiveOffer).toHaveBeenCalledWith("share_123456", current.ingress.connectionId,
+      expect.objectContaining({ type: "offer" }), { iceServers: [] }, edgeCapacity);
+    current.ingress.dispose();
+  });
   it("queues candidates until the Native receiver exists", async () => {
     const current = fixture(true);
     const starting = current.ingress.start(current.stream, DEFAULT_QUALITY_SETTINGS);

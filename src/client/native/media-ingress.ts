@@ -57,6 +57,7 @@ export class NativeMediaIngress {
     private readonly client: NativeMediaIngressControl,
     private readonly onFailed: () => void,
     private readonly getProfile: () => QualityProfile,
+    private readonly edgeCapacity = MAX_ENDPOINT_MEDIA_CHILDREN,
   ) {}
 
   get hasAudio(): boolean { return this.audio; }
@@ -136,7 +137,7 @@ export class NativeMediaIngress {
     }
     const result = await this.client.receiveOffer(
       this.shareId, this.connectionId, payload.description,
-      LOCAL_ICE_CONFIG, MAX_ENDPOINT_MEDIA_CHILDREN,
+      LOCAL_ICE_CONFIG, this.edgeCapacity,
     );
     if (this.disposed) {
       await this.client.closeReceiver(this.shareId, this.connectionId);

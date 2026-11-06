@@ -98,21 +98,37 @@ participants retain their established protocol and automatic behavior.
 ## Endpoint And Server Capacity
 
 Every non-server endpoint has one server-authoritative steady outbound media-
-copy cap `C`, default `2` and configurable only as `1`, `2`, or `3`.
+copy cap. The site's ordinary default `C` is `2`, configurable as `1`, `2`, or `3`.
+On capable pages, the Host sets the room's default from `1` to `20`; this also
+governs the Host's own outbound copies. A Viewer follows that default or chooses
+a personal limit from `0` to `20`, either lower or higher. Zero receives without
+relaying. Each applied limit remains bounded by that endpoint's reported media
+capability. A smaller capability limits the applied value without overwriting
+the requested personal limit.
 
-A Viewer can also volunteer to relay to more participants
-for the current visit. It starts with one extra child above the ordinary cap;
-the Viewer may select a higher maximum within the endpoint's reported capability,
-at most the room's 20-Viewer limit. The requested maximum survives backend
-rediscovery within that visit; a smaller available capability limits the applied
-value without replacing the choice. Ordinary participants keep the configured
-cap. Withdrawing consent schedules affected
-children through the same operation; it does not abruptly drop the subtree.
-This remains an ordinary Peer relay, with no separate SFU service or authority.
+The room default belongs to the current live room and survives Host signaling
+reconnect, Host replacement and share replacement. Personal choices belong to
+the current visit and are replayed by the page after signaling recovery or
+backend rediscovery. A new WebSocket must opt into capacity settings before
+receiving room-default updates. Published pages keep their original site cap
+and explicit relay-volunteer behavior; their authenticated capacity field and
+acknowledgement shape remain unchanged.
+
+Reducing either limit or returning a Viewer to the room default schedules
+affected children through the same serial operation, preserving current media
+and the relay's subtree while the replacement prepares. Actual parent selection
+remains automatic. This is ordinary Peer forwarding, with no separate SFU
+service, relay role or scheduling algorithm.
+
+Capacity applies to usable parent paths, not summed spare slots across the room.
+In P2P-only mode, a zero-capacity leaf can occupy the Host's sole outgoing slot
+and leave later Viewers without a route. They receive explicit route failure;
+increasing the room or that parent's limit makes new paths eligible through
+ordinary reconciliation. The controller does not globally rotate healthy roots.
 
 - one peer child consumes one copy;
 - the Host's single SFU publication consumes one copy;
-- upstream receive is free;
+- upstream receive and local preview are free;
 - role, Browser, UA, visibility, and codec do not create another tier.
 
 A make-before-break transition may use the one admitted overlap slot and must

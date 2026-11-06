@@ -4,9 +4,8 @@ import type { VideoFit, VideoRotation } from "../../media/video-geometry";
 import type { RoomPreferences } from "../../lib/room-preferences";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
-import { Btn, Cap, Chip, FieldCap, Pill, RowGroup, SwitchItem } from "./primitives";
-import { NumberControl } from "./NumberControl";
-import { Tooltip } from "./Tooltip";
+import { Btn, Cap, Chip, Pill, RowGroup, SwitchItem } from "./primitives";
+import { RelayVolunteerSettings, type RelayCapacitySettings } from "./RelayVolunteerSettings";
 import "./playback-controls.css";
 
 export interface PlaybackSettingsProps {
@@ -31,17 +30,7 @@ export interface PlaybackSettingsProps {
     rejected: boolean;
     onChange: (preference: ViewerRoutePreference) => void;
   };
-  relayVolunteer?: {
-    enabled: boolean;
-    pending: boolean;
-    disabled: boolean;
-    capacity: number;
-    minimum: number;
-    maximum: number;
-    available: boolean;
-    onChange: (enabled: boolean) => void;
-    onCapacityChange: (capacity: number) => void;
-  };
+  relayVolunteer?: RelayCapacitySettings;
 }
 
 export function PlaybackPictureControls({ settings, captions = false }: {
@@ -136,24 +125,7 @@ export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVo
         {!vis && <p className={route.rejected ? "is-error" : undefined} role={route.rejected ? "status" : undefined}>{t(routeHint)}</p>}
         {vis && route.rejected && <Pill icon="alert" tone="bad" label={t(routeHint)} comic="settings-failed" />}
       </>}
-      {relayVolunteer && <div className="lr-viewer-relay-setting" aria-busy={relayVolunteer.pending}>
-        <div className="lr-door-group">
-        <RowGroup>
-          {vis && <Glyph name="branch" size={18} />}
-          <SwitchItem checked={relayVolunteer.enabled} disabled={relayVolunteer.disabled}
-            onChange={relayVolunteer.onChange} label={t("playback.relayVolunteer")}
-            note={t(relayVolunteer.available ? "playback.relayVolunteerHint" : "playback.relayUnavailable")} hint="hint-relay-volunteer" />
-        </RowGroup>
-        {relayVolunteer.enabled && <NumberControl value={relayVolunteer.capacity} min={relayVolunteer.minimum} max={relayVolunteer.maximum}
-          step={1} unit={t("playback.relayPeople")} showUnit={!vis} name="relay-capacity" label={t("playback.relayLimit")}
-          disabled={relayVolunteer.disabled || !relayVolunteer.available} onChange={relayVolunteer.onCapacityChange}
-          className="lr-door-group">{input => <div className="lr-quality-heading">
-            {vis ? <Glyph name="branch" size={16} /> : <FieldCap k="playback.relayLimit" />}
-            <Tooltip kind="hint-relay-volunteer" text={`${t("playback.relayLimit")}\n${t("playback.relayVolunteerHint")}`}>{input}</Tooltip>
-          </div>}</NumberControl>}
-        </div>
-        {!vis && <p>{t(relayVolunteer.available ? "playback.relayVolunteerHint" : "playback.relayUnavailable")}</p>}
-      </div>}
+      {relayVolunteer && <RelayVolunteerSettings settings={relayVolunteer} />}
     </section>}
   </div>;
 }

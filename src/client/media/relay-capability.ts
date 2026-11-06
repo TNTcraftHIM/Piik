@@ -11,6 +11,21 @@ export function relayVolunteerLimit(requested: number | null, ordinary: number, 
   };
 }
 
+export function relaySettingsLimit(requested: number | null, room: number, backend: number, customized: boolean) {
+  const maximum = Math.min(backend, MAX_VIEWERS_PER_ROOM_LIMIT);
+  return {
+    capacity: Math.min(maximum, customized ? requested ?? room : room),
+    minimum: 0,
+    maximum,
+    available: maximum > 0,
+  };
+}
+
+// Match the source owner's one transition slot without authorizing another child.
+export function relayPhysicalCapacity(capacity: number): number {
+  return capacity > MAX_ENDPOINT_MEDIA_COPY_CAPACITY ? capacity + 1 : MAX_ENDPOINT_MEDIA_COPY_CAPACITY;
+}
+
 type RelayCapacityMessage = Extract<
   ClientMessage,
   { type: "relay-capacity" }

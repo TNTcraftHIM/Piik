@@ -14,7 +14,6 @@ import { useCopy } from "../ui/copy";
 import { usePreviewInteractions } from "./use-preview-interactions";
 import { PreviewInput } from "./preview-input";
 import { HostAudio } from "../media/host-audio";
-import { relayVolunteerLimit } from "../media/relay-capability";
 import { DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY } from "../../shared/media-copy-accounting";
 import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../../shared/protocol";
 
@@ -125,8 +124,9 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
   const [previewAutoPause, setPreviewAutoPause] = useState(() => readRoomPreferences().previewAutoPause);
   const [viewerRoute, setViewerRoute] = useState<"auto" | "p2p" | "sfu">("auto");
   const [relayVolunteer, setRelayVolunteer] = useState(false);
-  const [relayCapacity, setRelayCapacity] = useState(DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY + 1);
-  const relayLimits = relayVolunteerLimit(relayCapacity, DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY, MAX_VIEWERS_PER_ROOM_LIMIT);
+  const [relayCapacity, setRelayCapacity] = useState(DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY);
+  const relayLimits = { capacity: relayVolunteer ? relayCapacity : DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
+    minimum: 0, maximum: MAX_VIEWERS_PER_ROOM_LIMIT, available: true };
   const [error, setError] = useState("");
   const [waiting, setWaiting] = useState(true);
   const [audioAvailable, setAudioAvailable] = useState(false);
@@ -225,7 +225,7 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
               } },
               route: viewer ? { preference: viewerRoute, onChange: setViewerRoute,
               sfuAvailable: true, sfuOnly: false, peerOnly: false, disabled: false, rejected: false } : undefined,
-              relayVolunteer: viewer ? { ...relayLimits, enabled: relayVolunteer, pending: false, disabled: false,
+              relayVolunteer: viewer ? { ...relayLimits, customizable: true, enabled: relayVolunteer, pending: false, disabled: false,
                 onChange: setRelayVolunteer, onCapacityChange: setRelayCapacity } : undefined }}
             audioTrackKey={stream?.getAudioTracks().map((track) => track.id).join(",")}
             canPlay={Boolean(stream) && !waiting && !previewPlayback.suspended} theaterMode={theaterMode}
