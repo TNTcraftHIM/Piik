@@ -28,7 +28,13 @@ export function ChannelBookmarks({ currentName, currentIcon, onCurrent, classNam
     : copy("无法保存收藏，请检查浏览器存储设置。", "Could not save. Check your browser's storage settings.");
 
   useEffect(() => {
-    const sync = (event: StorageEvent) => { if (!event.key || event.key === DOMAIN_BOOKMARKS_KEY) setBookmarks(readDomainBookmarks()); };
+    const sync = (event: StorageEvent) => {
+      if (!event.key || event.key === DOMAIN_BOOKMARKS_KEY) {
+        const saved = readDomainBookmarks();
+        setBookmarks(saved);
+        setEditing(current => saved.some(item => item.origin === current) ? current : null);
+      }
+    };
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
   }, []);
