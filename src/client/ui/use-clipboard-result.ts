@@ -6,7 +6,7 @@ export function useClipboardResult(value: string | null | undefined) {
   const pending = useRef<Promise<void> | null>(null);
   function copy() {
     if (!value) return;
-    const request = Promise.resolve().then(() => navigator.clipboard.writeText(value));
+    const request = (async () => { await navigator.clipboard.writeText(value); })();
     pending.current = request;
     void request.then(() => {
       if (pending.current === request) setResult({ value, status: "copied" });
