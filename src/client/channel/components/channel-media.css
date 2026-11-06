@@ -14,8 +14,9 @@
   position: absolute;
   inset: auto 10px 10px;
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 6px;
+  gap: clamp(2px, 1cqi, 6px);
   width: fit-content;
   max-width: calc(100% - 20px);
   margin-inline: auto;
@@ -28,7 +29,8 @@
   backdrop-filter: blur(14px);
   transition: opacity 160ms ease, transform 160ms ease;
 }
-.c3-mini-controls .lr-btn { flex: 0 0 auto; }
+.c3-mini-controls .lr-btn { flex: none; min-width: 0; width: clamp(24px, 8.5cqi, var(--control-compact-size)); padding: 0; }
+.c3-mini-controls .lr-remote-controls { display: inline-flex; align-items: center; flex: none; gap: inherit; }
 .c3-mini-space { flex: 1 1 0; min-width: 4px; }
 .c3-mini-volume {
   width: clamp(40px, 18cqi, 88px);
