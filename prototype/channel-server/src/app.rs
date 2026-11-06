@@ -113,6 +113,11 @@ struct Registry {
     local: Option<(String, Arc<Permission>)>,
 }
 impl Registry {
+    async fn join_host(&mut self, key: &HostKey) {
+        wait_host(&mut self.hosts.get_mut(key).unwrap().task).await;
+        self.hosts.remove(key);
+    }
+
     fn permission(&self, site: &str) -> Option<&Arc<Permission>> {
         self.local
             .as_ref()
@@ -155,9 +160,9 @@ impl App {
         if registry
             .hosts
             .get(&key)
-            .is_some_and(|host| host.task.is_finished())
+            .is_some_and(|host| host.task.is_finished() || *host.stop.borrow())
         {
-            let _ = registry.hosts.remove(&key).unwrap().task.await;
+            registry.join_host(&key).await;
         }
         if let Some(host) = registry.hosts.get(&key) {
             if host.credential != credential {
@@ -251,12 +256,15 @@ async fn stop_hosts(hosts: Vec<Host>) {
     for host in &hosts {
         host.stop.send_replace(true);
     }
-    for host in hosts {
-        match host.task.await {
-            Ok(Ok(())) => {}
-            Ok(Err(error)) => eprintln!("App hosting ended: {error}"),
-            Err(error) => eprintln!("App hosting task ended: {error}"),
-        }
+    for mut host in hosts {
+        wait_host(&mut host.task).await;
+    }
+}
+async fn wait_host(task: &mut JoinHandle<Result<()>>) {
+    match task.await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => eprintln!("App hosting ended: {error}"),
+        Err(error) => eprintln!("App hosting task ended: {error}"),
     }
 }
 
@@ -541,39 +549,36 @@ async fn approve(State(app): State<Arc<App>>, Json(change): Json<Approval>) -> A
             Json(json!({"detail":"Invalid site address"})),
         )
     })?;
-    let (result, hosts) = {
-        let mut registry = app.registry.lock().await;
-        let id = registry
-            .sites
-            .approve(&site, change.allowed)
-            .map_err(operation_failure)?;
-        let mut retired = Vec::new();
-        if change.allowed {
-            registry
-                .approvals
-                .entry(site.clone())
-                .or_insert_with(|| Arc::new(Permission::new(id)));
-        } else {
-            if let Some(permission) = registry.approvals.remove(&site) {
-                permission.revoked.send_replace(true);
-            }
-            let keys: Vec<_> = registry
-                .hosts
-                .keys()
-                .filter(|(origin, ..)| origin == &site)
-                .cloned()
-                .collect();
-            for key in keys {
-                retired.push(registry.hosts.remove(&key).unwrap());
-            }
+    let mut registry = app.registry.lock().await;
+    let id = registry
+        .sites
+        .approve(&site, change.allowed)
+        .map_err(operation_failure)?;
+    if change.allowed {
+        registry
+            .approvals
+            .entry(site.clone())
+            .or_insert_with(|| Arc::new(Permission::new(id)));
+    } else {
+        if let Some(permission) = registry.approvals.remove(&site) {
+            permission.revoked.send_replace(true);
         }
-        (
-            launcher_state(&registry, app.port).map_err(operation_failure)?,
-            retired,
-        )
-    };
-    stop_hosts(hosts).await;
-    Ok(Json(result))
+        let keys: Vec<_> = registry
+            .hosts
+            .keys()
+            .filter(|(origin, ..)| origin == &site)
+            .cloned()
+            .collect();
+        for key in &keys {
+            registry.hosts[key].stop.send_replace(true);
+        }
+        for key in keys {
+            registry.join_host(&key).await;
+        }
+    }
+    Ok(Json(
+        launcher_state(&registry, app.port).map_err(operation_failure)?,
+    ))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1605,6 +1610,188 @@ async fn publish_capture_ceiling(
         .await
         .map_err(|_| anyhow!("hosting_unavailable"))?
         .map_err(anyhow::Error::msg)
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpStream,
+    };
+
+    #[tokio::test]
+    async fn disconnected_approval_retains_stopping_hosts_until_joined() {
+        let directory = tempfile::tempdir().unwrap();
+        let site = "https://site.test".to_owned();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut sites = sites::Sites::open(directory.path()).unwrap();
+        let permission = Arc::new(Permission::new(sites.approve(&site, true).unwrap()));
+        let first_key = (site.clone(), Uuid::from_u128(1), Uuid::from_u128(1));
+        let second_key = (site.clone(), Uuid::from_u128(2), Uuid::from_u128(2));
+        let (release, wait_release) = oneshot::channel();
+        let (finished, wait_finished) = oneshot::channel();
+        let (first_commands, mut first_receiver) = mpsc::channel(1);
+        let (second_commands, _second_receiver) = mpsc::channel(1);
+        let original_commands = second_commands.clone();
+        let (first_stop, mut first_stopped) = watch::channel(false);
+        let (second_stop, mut second_stopped) = watch::channel(false);
+        let first = Host {
+            credential: "credential".into(),
+            commands: first_commands,
+            ready: watch::channel(Some(Ok(()))).1,
+            stop: first_stop,
+            task: tokio::spawn(async move {
+                let _ = first_stopped.changed().await;
+                Ok(())
+            }),
+        };
+        let second = Host {
+            credential: "credential".into(),
+            commands: second_commands,
+            ready: watch::channel(Some(Ok(()))).1,
+            stop: second_stop,
+            task: tokio::spawn(async move {
+                let _ = second_stopped.changed().await;
+                let _ = wait_release.await;
+                let _ = finished.send(());
+                Ok(())
+            }),
+        };
+        let app = Arc::new(App {
+            config: Config {
+                data_root: directory.path().into(),
+                assets: directory.path().into(),
+                open_browser: false,
+                cloudflared: PathBuf::new(),
+                ice_servers: vec![],
+            },
+            port: address.port(),
+            token: "test".into(),
+            registry: Mutex::new(Registry {
+                sites,
+                approvals: BTreeMap::from([(site.clone(), permission.clone())]),
+                hosts: BTreeMap::from([(first_key.clone(), first), (second_key.clone(), second)]),
+                local: None,
+            }),
+            closing: watch::channel(false).0,
+            launch: Mutex::new(None),
+            desktop: Desktop::new().unwrap(),
+        });
+        // Observe the actual HTTP handler future being dropped, without replacing
+        // its production approval/retirement work with a test implementation.
+        let (entered, mut requests) = mpsc::channel(2);
+        let router = Router::new()
+            .route(
+                "/api/client-launcher/site",
+                post(move |state, change| {
+                    let entered = entered.clone();
+                    async move {
+                        let (alive, ended) = oneshot::channel::<()>();
+                        entered.send(ended).await.unwrap();
+                        let _alive = alive;
+                        approve(state, change).await
+                    }
+                }),
+            )
+            .route("/api/client-launcher", get(launcher))
+            .with_state(app.clone());
+        let (stop_http, stopped) = oneshot::channel();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router)
+                .with_graceful_shutdown(async {
+                    let _ = stopped.await;
+                })
+                .await
+        });
+        let post = |allowed| {
+            let body = json!({"site":site,"allowed":allowed}).to_string();
+            format!("POST /api/client-launcher/site HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len())
+        };
+        let checks = std::panic::AssertUnwindSafe(async {
+            let mut client = TcpStream::connect(address).await.unwrap();
+            client.write_all(post(false).as_bytes()).await.unwrap();
+            let dropped = timeout(IO_TIMEOUT, requests.recv()).await.unwrap().unwrap();
+            assert!(
+                timeout(IO_TIMEOUT, first_receiver.recv())
+                    .await
+                    .unwrap()
+                    .is_none(),
+                "the first completed host is removed before waiting for its sibling"
+            );
+            drop(client);
+            assert!(
+                timeout(IO_TIMEOUT, dropped).await.unwrap().is_err(),
+                "closing TCP really cancelled the HTTP handler"
+            );
+            let mut reader = TcpStream::connect(address).await.unwrap();
+            let get = format!(
+                "GET /api/client-launcher HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n"
+            );
+            reader.write_all(get.as_bytes()).await.unwrap();
+            let mut response = String::new();
+            timeout(IO_TIMEOUT, reader.read_to_string(&mut response))
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(response.starts_with("HTTP/1.1 200"));
+            let retained = app.registry.lock().await.hosts.contains_key(&second_key);
+            let revoked = *permission.revoked.borrow();
+            let mut joining_stopped_host = true;
+            if retained {
+                let mut client = TcpStream::connect(address).await.unwrap();
+                client.write_all(post(true).as_bytes()).await.unwrap();
+                let mut response = String::new();
+                timeout(IO_TIMEOUT, client.read_to_string(&mut response))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert!(response.starts_with("HTTP/1.1 200"));
+                let current = app.registry.lock().await.approvals[&site].clone();
+                joining_stopped_host = {
+                    let hello = app.hello(
+                        &site,
+                        &current,
+                        second_key.1,
+                        second_key.2,
+                        "credential".into(),
+                        "Test".into(),
+                    );
+                    tokio::pin!(hello);
+                    futures_util::poll!(&mut hello).is_pending()
+                };
+                assert!(app.registry.lock().await.hosts[&second_key]
+                    .commands
+                    .same_channel(&original_commands));
+            }
+            (retained, revoked, joining_stopped_host)
+        })
+        .catch_unwind()
+        .await;
+        let _ = release.send(());
+        let joined = timeout(IO_TIMEOUT, app.shutdown()).await;
+        let finished = timeout(IO_TIMEOUT, wait_finished).await;
+        let empty = app.registry.lock().await.hosts.is_empty();
+        let _ = stop_http.send(());
+        let closed = timeout(IO_TIMEOUT, server).await;
+        joined.unwrap();
+        finished.unwrap().unwrap();
+        closed.unwrap().unwrap().unwrap();
+        let (retained, revoked, joining_stopped_host) =
+            checks.unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+        println!("TCP handler cancelled; retained={retained}; reauthorization joins={joining_stopped_host}; hosts empty={empty}; HTTP server joined");
+        assert!(revoked);
+        assert!(
+            retained,
+            "HTTP cancellation must not discard the unfinished host join owner"
+        );
+        assert!(
+            joining_stopped_host,
+            "reauthorization must join the stopping host, not return its old commands"
+        );
+        assert!(empty);
+    }
 }
 
 #[cfg(all(test, feature = "capture"))]
