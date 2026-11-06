@@ -1656,7 +1656,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     await starting;
     expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
     expect(session.getSnapshot().state?.subscriptions).toEqual([publicationId]);
-    expect(session.nativeCaptureSelection("first")).toEqual({ target, audio: true, excludeAudio: excluded });
+    expect(session.nativeCaptureSelection("first")).toEqual({ audio: true, excludeAudio: excluded });
 
     const microphone = { enabled: false, deviceId: "", volume: 1 };
     app.receive({ type: "capture_audio_state", publicationId, state: { sourceAudio: true, microphone } });
@@ -1665,13 +1665,13 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     for (const error of ["capture_cancelled", "capture_failed"]) {
       const replacement = session.startNativeScreen("first", target, false).catch(error => error);
       await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
-      expect(session.nativeCaptureSelection("first")).toEqual({ target, audio: true, excludeAudio: excluded });
+      expect(session.nativeCaptureSelection("first")).toEqual({ audio: true, excludeAudio: excluded });
       app.receive({ id: app.sent.at(-1)!.id, error });
       await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("cancel_capture"));
       app.receive({ id: app.sent.at(-1)!.id, result: null });
       expect(await replacement).toMatchObject(error === "capture_cancelled" ? { name: "AbortError" } : { message: error });
       expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: true, available: true });
-      expect(session.nativeCaptureSelection("first")).toEqual({ target, audio: true, excludeAudio: excluded });
+      expect(session.nativeCaptureSelection("first")).toEqual({ audio: true, excludeAudio: excluded });
       expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
       expect(session.getSnapshot().error).toBe(error === "capture_cancelled" ? null : error);
     }

@@ -48,7 +48,7 @@ interface ScreenShare {
   requestedProfile?: QualityProfile;
   qualityChange?: Promise<void>;
   selection?: AbortController;
-  native?: { target: NativeCaptureTarget; audio: boolean; excludeAudio?: NativeCaptureTarget };
+  native?: { audio: boolean; excludeAudio?: NativeCaptureTarget };
 }
 
 function stored(key: string, value?: string): string | null {
@@ -1582,7 +1582,7 @@ export class ChannelSession {
   startNativeScreen = (roomId: string, target: NativeCaptureTarget, audio = false, excludeAudio?: NativeCaptureTarget): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const { share, current } = this.selectScreen(roomId);
     const signal = share.selection!.signal;
-    const native = { target, audio, excludeAudio: target.kind === "display" ? excludeAudio : undefined };
+    const native = { audio, excludeAudio: target.kind === "display" ? excludeAudio : undefined };
     let app: ChannelApp | undefined;
     try {
       app = await this.connectApp();
