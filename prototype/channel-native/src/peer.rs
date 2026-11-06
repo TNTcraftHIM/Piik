@@ -1487,7 +1487,13 @@ impl Driver {
                 .commit_system(capture.producer.system_audio())
                 .await?;
             anyhow::ensure!(self.capture_current(id, false), "capture_unavailable");
-            self.inputs.end_source(publication);
+            let input = self
+                .inputs
+                .source(publication, id, target)
+                .unwrap_or_else(|error| {
+                    eprintln!("Native input unavailable: {error}");
+                    None
+                });
             for (old, capture) in &mut self.captures {
                 if *old != id && capture.scope.publication_id == publication && capture.selected {
                     capture.selected = false;
@@ -1500,13 +1506,6 @@ impl Driver {
             let capture = self.captures.get_mut(&id).unwrap();
             capture.selected = true;
             let prepared = std::mem::take(&mut capture.prepared);
-            let input = self
-                .inputs
-                .source(publication, id, target)
-                .unwrap_or_else(|error| {
-                    eprintln!("Native input unavailable: {error}");
-                    None
-                });
             for source in prepared {
                 if let Err(error) = self.source_ready(source).await {
                     eprintln!("Native replacement media unavailable: {error}");

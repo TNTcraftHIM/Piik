@@ -60,7 +60,10 @@ impl Inputs {
         let Some(desktop) = &self.desktop else {
             return Ok(None);
         };
-        let (source, replies, state) = desktop.source(publication, video, target)?;
+        let (source, replies, state) = match self.sources.get(&publication) {
+            Some(previous) => previous.replace(video, target)?,
+            None => desktop.source(publication, video, target)?,
+        };
         for registration in self
             .registrations
             .iter()

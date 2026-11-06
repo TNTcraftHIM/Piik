@@ -194,6 +194,16 @@ impl Desktop {
         video: Uuid,
         target: Target,
     ) -> Result<(Source, mpsc::Receiver<Reply>, watch::Receiver<SourceView>)> {
+        self.source_replacing(publication, video, target, None)
+    }
+
+    fn source_replacing(
+        &self,
+        publication: Uuid,
+        video: Uuid,
+        target: Target,
+        previous: Option<Uuid>,
+    ) -> Result<(Source, mpsc::Receiver<Reply>, watch::Receiver<SourceView>)> {
         #[cfg(any(target_os = "windows", target_os = "macos"))]
         let shortcut = self.1.lock().unwrap();
         #[cfg(any(target_os = "windows", target_os = "macos"))]
@@ -207,6 +217,22 @@ impl Desktop {
             !executor.sources.contains_key(&video),
             "input_source_already_active"
         );
+        let controllers = if let Some(previous) = previous {
+            ensure!(
+                executor
+                    .sources
+                    .get(&previous)
+                    .is_some_and(|source| source.publication == publication),
+                "input_source_retired"
+            );
+            let mut previous = executor.retire_source(previous).unwrap();
+            for controller in previous.controllers.values_mut() {
+                controller.last = None;
+            }
+            previous.controllers
+        } else {
+            BTreeMap::new()
+        };
         let (replies, receiver) = mpsc::channel(64);
         let (view, changed) = watch::channel(SourceView {
             mode: Mode::Off,
@@ -237,7 +263,7 @@ impl Desktop {
                 password_retry: None,
                 simultaneous: false,
                 available: true,
-                controllers: BTreeMap::new(),
+                controllers,
                 replies,
                 view,
             },
@@ -360,6 +386,17 @@ impl Source {
     }
     pub fn close(&self) {
         self.0.desktop.0.lock().unwrap().close(self.0.video);
+    }
+
+    /// Source consent ends at replacement; its still-registered encrypted route does not.
+    pub fn replace(
+        &self,
+        video: Uuid,
+        target: Target,
+    ) -> Result<(Source, mpsc::Receiver<Reply>, watch::Receiver<SourceView>)> {
+        self.0
+            .desktop
+            .source_replacing(self.0.publication, video, target, Some(self.0.video))
     }
 
     pub fn set_mode(&self, mode: Mode) -> Result<()> {
@@ -830,15 +867,19 @@ impl Executor {
     }
 
     fn close(&mut self, video: Uuid) {
-        if let Some(mut source) = self.sources.remove(&video) {
-            source.cancel_permission();
-            source.available = false;
-            self.revoke_all(&mut source);
-            self.emit(&mut source);
-        }
+        let _ = self.retire_source(video);
+    }
+
+    fn retire_source(&mut self, video: Uuid) -> Option<SourceState> {
+        let mut source = self.sources.remove(&video)?;
+        source.cancel_permission();
+        source.available = false;
+        self.revoke_all(&mut source);
+        self.emit(&mut source);
         if self.owner == Some(video) {
             self.owner = None;
         }
+        Some(source)
     }
 
     fn retry_releases(&mut self) {

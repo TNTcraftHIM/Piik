@@ -168,6 +168,9 @@ impl Client {
         s.receive(self.id, self.flow, &packet).unwrap();
     }
     fn state(&self, replies: &mut mpsc::Receiver<Reply>) -> Value {
+        self.state_packet(replies).1
+    }
+    fn state_packet(&self, replies: &mut mpsc::Receiver<Reply>) -> (u64, Value) {
         let mut last = None;
         while let Ok(reply) = replies.try_recv() {
             if reply.controller != self.id {
@@ -184,7 +187,10 @@ impl Client {
                     },
                 )
                 .unwrap();
-            last = Some(serde_json::from_slice(&plain).unwrap());
+            last = Some((
+                u64::from_be_bytes(bytes[..8].try_into().unwrap()),
+                serde_json::from_slice(&plain).unwrap(),
+            ));
         }
         last.expect("encrypted state reply")
     }
@@ -653,6 +659,81 @@ fn registered_route_replacement_and_cipher_replay_cannot_reuse_a_grant() {
     );
     assert_eq!(r.lock().unwrap().events.len(), 2);
     assert_eq!(c.state(&mut replies)["state"], "ready");
+}
+
+#[test]
+fn source_replacement_retires_consent_without_rewinding_registered_cipher() {
+    let (desktop, recording) = desktop();
+    let (old, mut replies, _) = source(&desktop);
+    old.set_mode(Mode::Room).unwrap();
+    let mut client = Client::new(&old);
+    let request = client.packet(json!({"type":"request","intent":Uuid::new_v4()}));
+    old.receive(client.id, client.flow, &request).unwrap();
+    let grant = client.state(&mut replies)["grant"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    client.send(
+        &old,
+        json!({"type":"key","code":"ShiftLeft","down":true,"grant":grant}),
+    );
+    client.send(
+        &old,
+        json!({"type":"button","button":0,"down":true,"grant":grant}),
+    );
+    for _ in 0..4 {
+        client.send(&old, json!({"type":"sync"}));
+    }
+    let (previous_sequence, _) = client.state_packet(&mut replies);
+    let target = Target {
+        kind: crate::capture::TargetKind::Display,
+        source_id: "2".into(),
+        title: "replacement".into(),
+        pid: 0,
+        creation_time: None,
+    };
+    let (current, mut replies, view) = old.replace(Uuid::new_v4(), target).unwrap();
+    current
+        .register(Registration {
+            controller: client.id,
+            flow: client.flow,
+            secret: client.key,
+        })
+        .unwrap();
+    let (next_sequence, state) = client.state_packet(&mut replies);
+    assert_eq!(state["state"], "unavailable");
+    assert!(state.get("grant").is_none());
+    assert_eq!(view.borrow().mode, Mode::Off);
+    assert_eq!(
+        recording.lock().unwrap().events.len(),
+        4,
+        "both holds were released"
+    );
+    current.set_mode(Mode::Room).unwrap();
+    client.state(&mut replies);
+    current.receive(client.id, client.flow, &request).unwrap();
+    assert!(next_sequence > previous_sequence && view.borrow().requests.is_empty(),
+        "replacement reset cipher: previous={previous_sequence}, next={next_sequence}, replayed requests={}", view.borrow().requests.len());
+    old.close();
+    drop(old);
+    let next_grant = client.approve(&current, &mut replies);
+    assert_ne!(grant, next_grant);
+    assert_eq!(view.borrow().mode, Mode::Room);
+    client.send(
+        &current,
+        json!({"type":"key","code":"KeyA","down":true,"grant":grant}),
+    );
+    assert_eq!(
+        recording.lock().unwrap().events.len(),
+        4,
+        "old grant cannot execute input"
+    );
+    client.send(
+        &current,
+        json!({"type":"key","code":"KeyA","down":true,"grant":next_grant}),
+    );
+    current.close();
+    assert_eq!(recording.lock().unwrap().events.len(), 6);
 }
 
 #[test]
