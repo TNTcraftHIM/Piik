@@ -1582,7 +1582,7 @@ export class ChannelSession {
   startNativeScreen = (roomId: string, target: NativeCaptureTarget, audio = false, excludeAudio?: NativeCaptureTarget): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const { share, current } = this.selectScreen(roomId);
     const signal = share.selection!.signal;
-    share.native = { target, audio, excludeAudio: target.kind === "display" ? excludeAudio : undefined };
+    const native = { target, audio, excludeAudio: target.kind === "display" ? excludeAudio : undefined };
     let app: ChannelApp | undefined;
     try {
       app = await this.connectApp();
@@ -1590,7 +1590,7 @@ export class ChannelSession {
       const codecMode = share.codec?.primary ?? (share.codecMode === "auto"
         && app.supportsCaptureCodec("vp8") && !supportsH264Receive() ? "vp8" : share.codecMode);
       const preparing = app.prepareCapture(share.id, roomId, target, audio, share.profile, codecMode,
-        audio ? share.native.excludeAudio : undefined, share.volume.muted ? 0 : share.volume.level);
+        audio ? native.excludeAudio : undefined, share.volume.muted ? 0 : share.volume.level);
       this.patch({});
       const prepared = await preparing;
       if (!current() || this.app !== app) throw new DOMException("Capture cancelled", "AbortError");
@@ -1599,6 +1599,7 @@ export class ChannelSession {
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       await app.commitCapture(share.id, prepared.captureId);
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+      share.native = native;
       share.codec ??= share.codecMode === "auto" ? automaticVideoCodecPreference(prepared.codec) : manualVideoCodecPreference(prepared.codec);
       this.retireCapture(share.id);
       this.patch({});

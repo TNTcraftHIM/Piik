@@ -1631,7 +1631,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const publicationId = app.sent.at(-1)!.publicationId as string;
     expect(app.sent.at(-1)).toMatchObject({ type: "prepare_capture", publicationId, roomId: "first", target, audio: true, excludeAudio: excluded });
-    expect(session.nativeCaptureSelection("first")?.excludeAudio).toEqual(excluded);
+    expect(session.nativeCaptureSelection("first")).toBeUndefined();
     expect(session.nativeCaptureRequest("first")).toEqual({ publicationId, activationURL });
     const captureId = crypto.randomUUID(), nativeSessionId = crypto.randomUUID();
     expect(app.sent.at(-1)?.codecMode).toBe("auto");
@@ -1654,10 +1654,25 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     await starting;
     expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
     expect(session.getSnapshot().state?.subscriptions).toEqual([publicationId]);
+    expect(session.nativeCaptureSelection("first")).toEqual({ target, audio: true, excludeAudio: excluded });
 
     const microphone = { enabled: false, deviceId: "", volume: 1 };
     app.receive({ type: "capture_microphone_state", publicationId, state: microphone });
     expect(session.sourceMicrophone(publicationId)).toMatchObject({ browser: false, available: true, ...microphone });
+    expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: true, available: true });
+    for (const error of ["capture_cancelled", "capture_failed"]) {
+      const replacement = session.startNativeScreen("first", target, false).catch(error => error);
+      await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
+      expect(session.nativeCaptureSelection("first")).toEqual({ target, audio: true, excludeAudio: excluded });
+      app.receive({ id: app.sent.at(-1)!.id, error });
+      await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("cancel_capture"));
+      app.receive({ id: app.sent.at(-1)!.id, result: null });
+      expect(await replacement).toMatchObject(error === "capture_cancelled" ? { name: "AbortError" } : { message: error });
+      expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: true, available: true });
+      expect(session.nativeCaptureSelection("first")).toEqual({ target, audio: true, excludeAudio: excluded });
+      expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
+      expect(session.getSnapshot().error).toBe(error === "capture_cancelled" ? null : error);
+    }
     const devices = session.sourceMicrophones(publicationId);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("microphones"));
     app.receive({ id: app.sent.at(-1)!.id, result: [{ id: "native-device", label: "Native microphone" }] });
@@ -1774,7 +1789,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     expect(session.screenQuality(publicationId)).toEqual({ applied: liveProfile, requested: liveProfile });
     expect(session.getSnapshot().quality).toEqual(liveProfile);
     expect(session.getSnapshot().remoteControls.get(publicationId)).toBe(inputState);
-    expect(app.sent.filter(command => command.type === "prepare_capture")).toHaveLength(1);
+    expect(app.sent.filter(command => command.type === "prepare_capture")).toHaveLength(3);
     expect(app.sent.filter(command => command.type === "commit_capture")).toHaveLength(1);
     session.clearError();
 
