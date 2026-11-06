@@ -134,8 +134,11 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
               .find(element => element.getBoundingClientRect().bottom > top);
             readingAnchor.current = message ? { room: roomId, message: message.dataset.messageId!, offset: message.getBoundingClientRect().top - top } : null;
           }
+          const anchor = readingAnchor.current;
           reading.current.following = false;
-          void onHistory(roomId).catch(() => { readingAnchor.current = null; });
+          void onHistory(roomId).catch(() => {
+            if (readingAnchor.current === anchor) readingAnchor.current = null;
+          });
         }} /></div>}
       {!history?.hasMore && <ChannelRoomStart roomName={roomName} icon={roomIcon} canSend={canSend}
         entry={!roomId ? entry ?? { kind: "entry" } : undefined}
