@@ -9,7 +9,6 @@ import {
   type VideoCeiling,
 } from "../../shared/protocol";
 import type { CopyKey } from "../ui/copy";
-import type { MediaFailure } from "../ui/media-failure";
 import { displayMediaOptions } from "./audio-capture";
 import { browserDebugEnabled, debugOperation } from "../lib/debug";
 import { debugTrack } from "../lib/debug-webrtc";
@@ -91,21 +90,6 @@ export const VIDEO_CAPTURE_LIMITS: VideoCaptureLimits = {
   maxVideoFramerate: 240,
   maxVideoBitrate: 240_000_000,
 };
-
-export function videoCaptureLimits(advertised?: Partial<VideoCaptureLimits>): VideoCaptureLimits {
-  const local = VIDEO_CAPTURE_LIMITS;
-  return {
-    maxVideoResolution: {
-      width: Math.min(local.maxVideoResolution.width, advertised?.maxVideoResolution?.width ?? local.maxVideoResolution.width),
-      height: Math.min(local.maxVideoResolution.height, advertised?.maxVideoResolution?.height ?? local.maxVideoResolution.height),
-    },
-    maxVideoPixels: Math.min(local.maxVideoPixels, advertised?.maxVideoPixels ?? local.maxVideoPixels),
-    maxVideoMacroblocksPerSecond: Math.min(local.maxVideoMacroblocksPerSecond,
-      advertised?.maxVideoMacroblocksPerSecond ?? local.maxVideoMacroblocksPerSecond),
-    maxVideoFramerate: Math.min(local.maxVideoFramerate, advertised?.maxVideoFramerate ?? local.maxVideoFramerate),
-    maxVideoBitrate: Math.min(local.maxVideoBitrate, advertised?.maxVideoBitrate ?? local.maxVideoBitrate),
-  };
-}
 
 export function captureFramerateCeiling(size: QualityResolution, limits = VIDEO_CAPTURE_LIMITS): number {
   if (![size.width, size.height].every(value => Number.isInteger(value) && value >= 4 && value % 2 === 0)
@@ -554,37 +538,4 @@ export async function configureAudioSender(
     appliedMaxBitrate,
     mismatch: appliedMaxBitrate !== requestedMaxBitrate,
   };
-}
-
-export function audioSenderParameterWarning(
-  readback: AudioSenderParameterReadback,
-): MediaFailure | null {
-  if (!readback.mismatch) {
-    return null;
-  }
-  return readback.appliedMaxBitrate === null
-    ? { key: "host.warn.audioUnread" }
-    : {
-        key: "host.warn.audioRewritten",
-        vars: { kbps: String(Math.round(readback.appliedMaxBitrate / 1_000)) },
-      };
-}
-
-const PARAMETER_KEYS = {
-  maxBitrate: "host.warn.param.maxBitrate",
-  maxFramerate: "host.warn.param.maxFramerate",
-  scaleResolutionDownBy: "host.warn.param.scaleResolutionDownBy",
-  degradationPreference: "host.warn.param.degradationPreference",
-  scalabilityMode: "host.warn.param.scalabilityMode",
-} as const satisfies Record<keyof VideoSenderParameterValues, CopyKey>;
-
-export function senderParameterWarning(
-  readback: VideoSenderParameterReadback,
-): MediaFailure | null {
-  return readback.mismatches.length > 0
-    ? {
-        key: "host.warn.senderPartial",
-        paramKeys: readback.mismatches.map((key) => PARAMETER_KEYS[key]),
-      }
-    : null;
 }

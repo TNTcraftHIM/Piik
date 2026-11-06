@@ -1,12 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  audioSenderParameterWarning,
   applyCaptureProfile,
   applyVideoCaptureProfile,
   captureDisplay,
   captureFramerateCeiling,
-  videoCaptureLimits,
   supportsCaptureProfile,
   configureAudioSender,
   configureVideoSender,
@@ -20,11 +18,9 @@ import {
   screenAudioBitrate,
   screenVideoCeiling,
   audioSenderCeiling,
-  senderParameterWarning,
   setMediaPaused,
   startupVideoProfile,
 } from "../src/client/media/quality.ts";
-import { setCopy } from "../src/client/ui/copy.ts";
 
 function createVideoStream() {
   const videoTrack = {
@@ -45,10 +41,6 @@ function createVideoStream() {
   return { stream, videoTrack, audioTrack };
 }
 
-beforeEach(() => {
-  setCopy({ lang: "zh", vis: false });
-});
-
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -62,25 +54,11 @@ describe("realtime quality controls", () => {
     expect(captureFramerateCeiling({ width: 3840, height: 2100 })).toBe(65);
     expect(captureFramerateCeiling({ width: 5120, height: 1440 })).toBe(72);
     expect(captureFramerateCeiling({ width: 1920, height: 1080 })).toBe(240);
-    const level51 = videoCaptureLimits({ maxVideoMacroblocksPerSecond: 983_040 });
-    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["2160p"], level51)).toBe(30);
-    expect(captureFramerateCeiling({ width: 2160, height: 3840 }, level51)).toBe(30);
     for (const size of [{ width: 3840, height: 3840 }, { width: 1921, height: 1080 },
       { width: 8194, height: 100 }, { width: 6562, height: 1438 },
       { width: 4.5, height: 4 }, { width: Infinity, height: 4 }, { width: 2, height: 4 }]) {
       expect(captureFramerateCeiling(size)).toBe(0);
     }
-    const limited = videoCaptureLimits({ maxVideoResolution: { width: 1920, height: 1080 },
-      maxVideoPixels: 1920 * 1080, maxVideoMacroblocksPerSecond: 245_760 });
-    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["2160p"], limited)).toBe(0);
-    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["1080p"], limited)).toBe(30);
-    expect(captureFramerateCeiling(QUALITY_RESOLUTIONS["720p"], limited)).toBe(68);
-    expect(videoCaptureLimits({ maxVideoResolution: { width: 8192, height: 8192 },
-      maxVideoPixels: 8192 * 8192, maxVideoMacroblocksPerSecond: 9_000_000,
-      maxVideoFramerate: 480, maxVideoBitrate: 1_000_000_000 })).toEqual(videoCaptureLimits());
-    const slower = videoCaptureLimits({ maxVideoFramerate: 30, maxVideoBitrate: 5_000_000 });
-    expect(supportsCaptureProfile(QUALITY_PROFILES["1080p30"], slower)).toBe(true);
-    expect(supportsCaptureProfile(QUALITY_PROFILES["1080p60"], slower)).toBe(false);
   });
 
   it("rejects unsupported requests before changing capture or asking for permission", async () => {
@@ -299,7 +277,6 @@ describe("realtime quality controls", () => {
       },
       mismatches: [],
     });
-    expect(senderParameterWarning(readback)).toBeNull();
     expect(setParameters).toHaveBeenCalledOnce();
   });
 
@@ -490,10 +467,6 @@ describe("realtime quality controls", () => {
       appliedMaxBitrate: 96_000,
       mismatch: true,
     });
-    expect(audioSenderParameterWarning(readback)).toEqual({
-      key: "host.warn.audioRewritten",
-      vars: { kbps: "96" },
-    });
   });
 
   it("does not mutate prior audio parameters when setParameters fails", async () => {
@@ -539,14 +512,6 @@ describe("realtime quality controls", () => {
       "scaleResolutionDownBy",
       "degradationPreference",
     ]);
-    expect(senderParameterWarning(readback)).toEqual({
-      key: "host.warn.senderPartial",
-      paramKeys: [
-        "host.warn.param.maxFramerate",
-        "host.warn.param.scaleResolutionDownBy",
-        "host.warn.param.degradationPreference",
-      ],
-    });
   });
 
   it("reports an applied default scalability mode without claiming a request", async () => {
@@ -581,7 +546,6 @@ describe("realtime quality controls", () => {
     expect(readback.requested.scalabilityMode).toBeNull();
     expect(readback.applied.scalabilityMode).toBe("L1T2");
     expect(readback.mismatches).not.toContain("scalabilityMode");
-    expect(senderParameterWarning(readback)).toBeNull();
   });
 
   it("keeps scalability mode unknown when sender encodings are ambiguous", async () => {
