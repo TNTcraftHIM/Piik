@@ -208,10 +208,9 @@ impl Inputs {
 
     #[cfg(any(feature = "capture", test))]
     pub fn end_source(&mut self, publication: Uuid) {
-        if let Some(source) = self.sources.remove(&publication) {
-            source.close();
+        if let Some(source) = self.sources.get(&publication) {
+            source.retire_capture();
         }
-        self.bindings.retain(|(id, _), _| *id != publication);
     }
 
     pub fn close(&mut self) {
@@ -515,6 +514,11 @@ mod tests {
             );
         }
         input.end_source(id(4));
+        assert!(input.sources.contains_key(&id(4)));
+        assert!(input.bindings.contains_key(&(id(4), id(3))));
+        assert!(source.set_mode(crate::input::Mode::Room).is_err());
+        snapshot.send_modify(|state| state.as_mut().unwrap().publications.clear());
+        input.reconcile();
         assert!(source.set_mode(crate::input::Mode::Off).is_err());
     }
 }

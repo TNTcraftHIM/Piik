@@ -388,6 +388,15 @@ impl Source {
         self.0.desktop.0.lock().unwrap().close(self.0.video);
     }
 
+    /// Capture ended; its authenticated registration may still serve a replacement.
+    pub fn retire_capture(&self) {
+        let video = self.0.video;
+        let _ = self.run(|executor, source| {
+            executor.retire_capture(video, source);
+            Ok(())
+        });
+    }
+
     /// Source consent ends at replacement; its still-registered encrypted route does not.
     pub fn replace(
         &self,
@@ -872,14 +881,19 @@ impl Executor {
 
     fn retire_source(&mut self, video: Uuid) -> Option<SourceState> {
         let mut source = self.sources.remove(&video)?;
+        self.retire_capture(video, &mut source);
+        self.emit(&mut source);
+        Some(source)
+    }
+
+    fn retire_capture(&mut self, video: Uuid, source: &mut SourceState) {
         source.cancel_permission();
         source.available = false;
-        self.revoke_all(&mut source);
-        self.emit(&mut source);
+        self.revoke_all(source);
+        source.endpoint = Endpoint::default();
         if self.owner == Some(video) {
             self.owner = None;
         }
-        Some(source)
     }
 
     fn retry_releases(&mut self) {

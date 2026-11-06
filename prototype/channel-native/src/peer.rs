@@ -343,7 +343,7 @@ impl CaptureLease {
     }
     pub fn stop(&self) {
         if let Some(source) = &self.remote {
-            source.close();
+            source.retire_capture();
         }
         #[cfg(feature = "capture")]
         {
