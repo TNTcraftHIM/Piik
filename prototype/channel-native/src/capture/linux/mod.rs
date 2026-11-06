@@ -3,7 +3,6 @@ mod audio;
 pub(crate) mod decoder;
 mod encoding;
 mod frames;
-mod portal;
 mod source;
 
 pub use audio::{audio_capabilities, microphones, AudioCapture, AudioControl};

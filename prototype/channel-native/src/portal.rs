@@ -10,11 +10,32 @@ use futures_util::StreamExt;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::HashMap, future::Future};
 
-// ashpd returns its Request only after Response, so dropping start() cannot
-// cancel the dialog. Keep this one request handle until Response or Close.
-pub(super) async fn start<T: DeserializeOwned + Type>(
+pub(crate) async fn start<T: DeserializeOwned + Type>(
     portal: &Proxy<'_>,
     session: &(impl Serialize + Type),
+    cancelled: &mut (impl Future<Output = Result<()>> + Unpin),
+) -> Result<Option<T>> {
+    request(
+        portal,
+        "Start",
+        |token| {
+            (
+                session,
+                "",
+                HashMap::from([("handle_token", Value::from(token))]),
+            )
+        },
+        cancelled,
+    )
+    .await
+}
+
+// ashpd returns its Request only after Response, so dropping its call cannot
+// cancel the dialog. Keep this one request handle until Response or Close.
+pub(crate) async fn request<T: DeserializeOwned + Type, B: Serialize + Type>(
+    portal: &Proxy<'_>,
+    method: &str,
+    body: impl FnOnce(String) -> B,
     cancelled: &mut (impl Future<Output = Result<()>> + Unpin),
 ) -> Result<Option<T>> {
     let connection = portal.connection();
@@ -34,9 +55,9 @@ pub(super) async fn start<T: DeserializeOwned + Type>(
     )
     .await?;
     let mut responses = request.receive_signal("Response").await?;
-    let options = HashMap::from([("handle_token", Value::from(token.as_str()))]);
+    let body = body(token);
     // Complete the method ACK before cancelling: the Request must exist first.
-    let handle: OwnedObjectPath = portal.call("Start", &(session, "", options)).await?;
+    let handle: OwnedObjectPath = portal.call(method, &body).await?;
     ensure!(handle.as_str() == path, "unexpected Portal request handle");
     tokio::select! {
         biased;

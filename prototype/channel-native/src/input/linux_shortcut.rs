@@ -4,7 +4,7 @@ use anyhow::{anyhow, ensure, Context as _, Result};
 use ashpd::{
     desktop::{
         global_shortcuts::{BindShortcuts, GlobalShortcuts, NewShortcut},
-        Response, Session,
+        Session,
     },
     zbus::{
         self,
@@ -286,50 +286,33 @@ async fn bind(
     key: u8,
     registration: AbortRegistration,
 ) -> Result<String> {
-    // ashpd waits for Response before exposing Request. Retain its standard
-    // handle here so source retirement can explicitly close an open dialog.
-    let connection = portal.connection();
-    let sender = connection
-        .unique_name()
-        .context("Portal connection has no unique name")?
-        .as_str()
-        .trim_start_matches(':')
-        .replace('.', "_");
-    let token = format!("piik_{}", uuid::Uuid::new_v4().simple());
-    let path = format!("/org/freedesktop/portal/desktop/request/{sender}/{token}");
-    let request = Proxy::new(
-        connection,
-        portal.destination(),
-        path.as_str(),
-        "org.freedesktop.portal.Request",
-    )
-    .await?;
-    let mut responses = request.receive_signal("Response").await?;
     let trigger = format!("LOGO+ALT+F{key}");
     let shortcuts =
         [NewShortcut::new(ACTION, "Stop remote control").preferred_trigger(trigger.as_str())];
-    let options = HashMap::from([("handle_token", Value::from(token.as_str()))]);
-    let handle: OwnedObjectPath = portal
-        .call(
-            "BindShortcuts",
-            &(session, shortcuts.as_slice(), "", options),
-        )
-        .await?;
-    ensure!(handle.as_str() == path, "unexpected Portal request handle");
-    tokio::select! {
-        biased;
-        response = responses.next() => {
-            match response.context("Portal response stream closed")?.body().deserialize::<Response<BindShortcuts>>()? {
-                Response::Ok(value) => {
-                    let shortcut = value.shortcuts().iter().find(|s| s.id() == ACTION && !s.trigger_description().is_empty()).context("input_shortcut_unavailable")?;
-                    Ok(shortcut.trigger_description().into())
-                }
-                Response::Err(error) => Err(ashpd::Error::Response(error).into()),
-            }
-        }
-        _ = Abortable::new(std::future::pending::<()>(), registration) => {
-            request.call::<_, _, ()>("Close", &()).await?;
-            Err(anyhow!("input_authorization_cancelled"))
-        }
-    }
+    let cancelled = async {
+        let _ = Abortable::new(std::future::pending::<()>(), registration).await;
+        Err(anyhow!("input_authorization_cancelled"))
+    };
+    tokio::pin!(cancelled);
+    let response = crate::portal::request::<BindShortcuts, _>(
+        portal,
+        "BindShortcuts",
+        |token| {
+            (
+                session,
+                shortcuts.as_slice(),
+                "",
+                HashMap::from([("handle_token", Value::from(token))]),
+            )
+        },
+        &mut cancelled,
+    )
+    .await?
+    .context("input_authorization_cancelled")?;
+    let shortcut = response
+        .shortcuts()
+        .iter()
+        .find(|s| s.id() == ACTION && !s.trigger_description().is_empty())
+        .context("input_shortcut_unavailable")?;
+    Ok(shortcut.trigger_description().into())
 }

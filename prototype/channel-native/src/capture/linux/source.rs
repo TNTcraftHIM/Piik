@@ -1,6 +1,7 @@
-use super::{frames, message_error, portal, Encoding, Frames, Pipeline, RawFrame};
+use super::{frames, message_error, Encoding, Frames, Pipeline, RawFrame};
 use crate::capture::{FrameTiming, FramerateRequest, Settings, Target, TargetKind, VideoCodec};
 use crate::input::{linux::Connection as Eis, Source as InputSource};
+use crate::portal;
 use anyhow::{anyhow, ensure, Context as _, Result};
 use ashpd::desktop::{
     remote_desktop::{DeviceType, RemoteDesktop, SelectDevicesOptions, SelectedDevices},

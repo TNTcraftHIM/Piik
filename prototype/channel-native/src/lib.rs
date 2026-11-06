@@ -9,6 +9,8 @@ pub mod hosted_room;
 pub mod input;
 mod media;
 pub mod peer;
+#[cfg(all(feature = "capture", target_os = "linux"))]
+mod portal;
 pub mod session;
 mod shutdown;
 
