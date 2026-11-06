@@ -162,27 +162,23 @@ impl Driver {
                     && capture.producer.video == source.id
             })?;
             let producer = &capture.producer;
-            if producer.video == source.id {
-                Some(
-                    if let Some(layers) = source.layers.as_ref().filter(|_| preserve_layers) {
-                        layers
-                            .snapshot()
-                            .iter()
-                            .filter(|(_, video)| video.is_some())
-                            .fold(0u32, |sum, (rid, _)| {
-                                sum.saturating_add(if rid == "q" {
-                                    producer.settings().lower_layer().bitrate
-                                } else {
-                                    producer.settings().bitrate
-                                })
+            Some(
+                if let Some(layers) = source.layers.as_ref().filter(|_| preserve_layers) {
+                    layers
+                        .snapshot()
+                        .iter()
+                        .filter(|(_, video)| video.is_some())
+                        .fold(0u32, |sum, (rid, _)| {
+                            sum.saturating_add(if rid == "q" {
+                                producer.settings().lower_layer().bitrate
+                            } else {
+                                producer.settings().bitrate
                             })
-                    } else {
-                        producer.settings().bitrate
-                    },
-                )
-            } else {
-                None
-            }
+                        })
+                } else {
+                    producer.settings().bitrate
+                },
+            )
         }
         #[cfg(not(feature = "capture"))]
         {

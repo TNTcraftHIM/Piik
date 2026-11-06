@@ -47,9 +47,9 @@ impl Estimate {
     }
 }
 
-// Existing hard upper bound of the retired GoogCc adapter; an unknown
-// original source ceiling is distinct from an explicitly idle connection.
-const MAX_CONNECTION_BITRATE: u64 = 100_000_000;
+// Finite SDK probing target when source demand is unknown, not a media limit.
+// An explicitly idle connection requests zero instead.
+const UNKNOWN_DEMAND_PROBE_BPS: u64 = 100_000_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BandwidthDemand {
@@ -58,7 +58,7 @@ pub(crate) struct BandwidthDemand {
 }
 
 fn desired_bps(ceiling: Option<u64>) -> u64 {
-    ceiling.unwrap_or(MAX_CONNECTION_BITRATE)
+    ceiling.unwrap_or(UNKNOWN_DEMAND_PROBE_BPS)
 }
 
 #[path = "discovery.rs"]
