@@ -37,10 +37,11 @@ Release artifacts and operator records own delivery completion.
 
 ## Current Work
 
-The maintenance candidate is ready for owner review of room and personal relay
-limits. It preserves published compatibility and the existing routing owner;
+Room and personal relay limits preserve published compatibility and the existing
+routing owner;
 the [capacity contract](./standards/routing-transport.md#endpoint-and-server-capacity)
-defines the two setting scopes. Publication remains pending owner acceptance.
+defines the two setting scopes. Release artifacts and deployment records own
+delivery status.
 New release feedback has reopened Windows capture termination and
 Browser motion-sharing cadence investigations. Device-loss recovery now retains
 the active media session; the original termination triggers remain under
