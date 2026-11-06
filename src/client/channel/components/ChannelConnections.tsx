@@ -8,7 +8,7 @@ import { RouteGraph } from "../../components/living/RouteGraph";
 import { LoadingStatus } from "../../components/living/WaitingStatus";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
-import { channelConnectionGraph, channelConnectionRows, connectionSessionName } from "./channel-connection-data";
+import { channelConnectionGraph, channelConnectionRows, connectionSessionName, hasSelectedLocalDisplay } from "./channel-connection-data";
 import { collectNativeConnectionMetrics, type NativeMetricSamples } from "../native-connection-metrics";
 import "./channel-connections.css";
 
@@ -27,7 +27,7 @@ export function ChannelConnectionReport({ state, roomId, sessionId, topology, me
   const { t, vis } = useCopy();
   const graph = topology ? channelConnectionGraph(state, roomId, sessionId, topology, t) : null;
   const rows = channelConnectionRows(state, sessionId, topology, metrics, t);
-  const displayOnly = topology?.screen?.edges.some(edge => edge.presentation && edge.selected && edge.receiver === sessionId);
+  const displayOnly = hasSelectedLocalDisplay(topology, sessionId);
   return <div className="c3-connection-report">
     {graph && <section aria-label={t("host.topology")}><RouteGraph {...graph} /></section>}
     {displayOnly && <p className={vis ? "visually-hidden" : "c3-connection-note"}>{t("connection.localDisplayHint")}</p>}
@@ -69,7 +69,7 @@ function ConnectionBody({ channel, roomId, active }: { channel: ChannelControlle
       const samples = [...browser, ...app].filter(sample => selected || owner.state?.publications.some(publication =>
         publication.id === sample.publicationId && publication.kind === "voice"));
       const graph = topology.status === "fulfilled" ? topology.value : null;
-      const appExpected = graph?.screen?.edges.some(edge => edge.presentation && edge.receiver === sessionId);
+      const appExpected = hasSelectedLocalDisplay(graph, sessionId!);
       setResult({ scope, topology: graph, metrics: samples,
         unavailable: topology.status === "rejected" || metrics.status === "rejected" || Boolean(appExpected && native.status === "rejected") });
       timer = setTimeout(read, 1000);

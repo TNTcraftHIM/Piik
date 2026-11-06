@@ -6,7 +6,7 @@ import { channelConnectionGraph, channelConnectionRows } from "../src/client/cha
 import { channelConnectionPreview } from "../src/client/pages/ChannelConnectionsPreview";
 import { collectNativeConnectionMetrics, type NativeMetricSamples } from "../src/client/channel/native-connection-metrics";
 import type { NativeConnectionMetrics } from "../src/client/channel/app-link";
-import type { CopyKey } from "../src/client/ui/copy";
+import { say, type CopyKey } from "../src/client/ui/copy";
 
 const t = (key: CopyKey) => key;
 
@@ -31,6 +31,9 @@ describe("channel connection presentation", () => {
     expect(rows.filter(row => row.label === "connection.localDisplay")).toHaveLength(2);
     expect(rows.filter(row => row.label === "connection.localDisplay").every(row => row.detailOnly)).toBe(true);
     expect(rows.find(row => row.key.startsWith("app/screen-host-receive"))?.detailOnly).toBeUndefined();
+    expect(renderToStaticMarkup(createElement(ChannelConnectionReport, fixture))).toContain(say("connection.localDisplayHint"));
+    fixture.topology.screen!.edges.find(edge => edge.presentation)!.selected = false;
+    expect(renderToStaticMarkup(createElement(ChannelConnectionReport, fixture))).not.toContain(say("connection.localDisplayHint"));
   });
 
   it("uses the shared four groups for picture and voice in both directions", () => {

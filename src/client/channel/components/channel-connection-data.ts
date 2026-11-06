@@ -7,6 +7,10 @@ import { EMPTY_METRICS } from "../../types";
 
 type Translate = (key: CopyKey, vars?: Record<string, string>) => string;
 
+export function hasSelectedLocalDisplay(topology: ChannelTopology | null, sessionId: string): boolean {
+  return topology?.screen?.edges.some(edge => edge.presentation && edge.selected && edge.receiver === sessionId) ?? false;
+}
+
 export function connectionSessionName(state: ChannelSnapshot, sessionId: string, t: Translate): string {
   const session = state.sessions.find(value => value.id === sessionId);
   return state.users.find(user => user.id === session?.userId)?.name ?? t("voice.participant");
