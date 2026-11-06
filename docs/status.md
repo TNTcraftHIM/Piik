@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-11-04
+Last updated: 2026-11-06
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -13,6 +13,8 @@ across Server, Native and Browser/WASM, with the shared Web UI for chat, screen
 sharing, selective watching, room voice and App control. Normal development and
 distribution use these Rust/Web paths; Go tooling only builds the pinned
 Cloudflared helper. Work stays on `feat/channel-prototype`, separately from 2.x.
+Windows and Android normal-package candidates are available for initial internal
+testing. Exact delivered revisions remain in artifact metadata.
 
 The domain owns admission and directory summaries. Room plans and shared transport
 leases keep separate Rust owners. Rooms created in the UI run in their owner's
@@ -65,9 +67,7 @@ Release artifacts and operator records own delivery completion.
 
 ## Current Work
 
-The maintenance line preserves published protocols, compatibility and route
-ownership; [TODO](./todo.md) and [verification status](./verification-status.md)
-retain unfinished work and acceptance boundaries.
+The maintenance line preserves published protocols, compatibility and route ownership.
 
 The published Android App shares the desktop Web UI and Go core through the system
 Browser, including Local/public links, Site approval, native capture and voice.

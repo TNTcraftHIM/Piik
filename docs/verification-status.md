@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-05
+Last updated: 2026-11-06
 
 This file summarizes evidence boundaries that materially affect product claims.
 [Status](./status.md) owns candidate and deployment readiness; research owns
@@ -48,10 +48,12 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   through floating and actual Document PiP surfaces, retaining drafts and attachments.
   Server's default dual-stack listeners retain usable IPv4 paths when IPv6 has
   no advertisable address. Both programs release their listeners on native Ctrl+C.
-  The `5e56589e` packaged App also retains its hosted rooms and confirmed
+  The packaged App also retains its hosted rooms and confirmed
   conversations across selecting-page exit and launcher reentry, while personal
-  voice and screen activities retire independently. Its normal two-Browser flow
-  carries verified files, synthetic-microphone voice and decoded picture.
+  voice and screen activities retire independently. Normal two-Browser checks
+  carry verified files, synthetic-microphone voice and generated Browser picture.
+  Watch changes, source replacement and actual signaling reconnection retain
+  progressing media without growing the physical connection's media sections.
 - macOS/Linux builds and bounded native checks are distinct from physical
   capture and input. Physical platform coverage remains limited.
 - The isolated 3.0 macOS Native and App pass an
