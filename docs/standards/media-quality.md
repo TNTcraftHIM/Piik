@@ -263,7 +263,11 @@ does not by itself prove hardware acceleration, and Web content cannot select a
 specific MFT, NVENC, AMF, or QSV implementation.
 
 Windows native capture uses the same VP8/Auto/H264 controls. H264 selects the
-hardware path and VP8 the bundled libvpx encoder. Hardware enumeration is only
+hardware path and VP8 the bundled libvpx encoder. Before the first Native Auto
+capture, the selecting page requests VP8 if Native advertises VP8 and its Browser
+receiver does not advertise H264. Manual selection and an active source's actual
+codec stay unchanged.
+Hardware enumeration is only
 a candidate list: startup tries the preferred encoder first, then remaining
 adapter/encoder candidates within the shared selection budget. Manual H264
 requires actual H264 output and never changes codec on failure. The selected
@@ -387,6 +391,11 @@ Tracks received from a PeerConnection do not own capture constraints. Native
 capture therefore retains source resolution and frame-rate ownership across its
 loopback Browser preview. Native Host SFU publication uses the encoded source
 directly and does not re-encode that preview through a Browser publisher.
+Native capture can start and publish without a local Browser preview. An
+unavailable preview leaves the Native source and healthy Native downstreams
+running; Browser paths that depend on that preview report their own route
+failure. The Host can explicitly rebuild only the preview from the existing
+playback controls.
 
 Native parents and the SFU share the media forwarding adapter. Each Native
 parent considers only its direct children and its admitted SFU publication.

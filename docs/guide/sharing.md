@@ -110,7 +110,15 @@ Move the pointer over the picture or tap it to show the playback bar.
 Leave the connection setting on **Auto** for ordinary use. To compare routes,
 select one of the alternatives offered by the Host and site.
 
-On supporting sites, **Playback settings → Connection → Help relay to more
-viewers** lets a Viewer volunteer more upload for the current visit. It starts
-with one extra Viewer; adjust **Maximum relay viewers** to set your limit.
-It remains an ordinary P2P relay; enable it on a stable connection with upload to spare.
+The Host can set **Sharing settings → Connection settings → Room relay limit**. It is
+the default number of outgoing copies per device, not the room's Viewer limit.
+
+Viewers follow that default. In **Playback settings → Connection**, enable
+**Custom relay limit** to choose a lower or higher limit for this visit. Set it
+to **0** to receive without relaying. Higher limits use more upload bandwidth;
+available values follow the device's capability. Older sites offer only
+**Raise relay limit**.
+
+In P2P-only rooms with a limit of **1**, keep the first Viewer's relay limit
+above zero so others can connect through them. If that Viewer disables relaying,
+raise the room limit or their personal limit to make another path available.

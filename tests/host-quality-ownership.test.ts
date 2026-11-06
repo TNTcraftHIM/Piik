@@ -8,12 +8,13 @@ import {
   screenAudioBitrate, videoQualitySettingsEqual, supportsCaptureProfile, videoCaptureLimits, MAX_AUDIO_SEND_BITRATE,
   type QualitySettings,
 } from "../src/client/media/quality";
-import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
+import { NativeSenderPeer, shouldUseBrowserQualityCandidate } from "../src/client/native/native-sender-peer";
 import { HostPeer } from "../src/client/webrtc/host-peer";
 import { NativeCompatibilityError, NativeRequestError, type NativeClient } from "../src/client/native/client";
 import { NativeClientConnection } from "../src/client/native/client-connection";
 import { androidAppIntent } from "../src/client/native/activation";
-import { nativeCaptureTargetKey } from "../src/client/native/capture-selection";
+import { defaultNativeCapturePath, nativeCaptureTargetKey } from "../src/client/native/capture-selection";
+import { manualVideoCodecPreference } from "../src/client/webrtc/video-codec";
 import { nativeAppDetected, type NativeSourceList } from "../src/client/components/living/CaptureSourcePicker";
 import { NativeMediaBridgeError } from "../src/client/native/media-bridge";
 import { InputRoute } from "../src/client/remote-control/input-route";
@@ -22,6 +23,9 @@ import { debugError, debugEvent, debugOperation } from "../src/client/lib/debug"
 import { ApiError } from "../src/client/lib/api";
 import { hostActionErrorKey, hostServerErrorKey, hostFailureCode, isCapturePermissionFailure } from "../src/client/pages/host-page-notices";
 import { say, setCopy } from "../src/client/ui/copy";
+import { nativeRelayCapacity } from "../src/client/native/wire";
+import { relayPhysicalCapacity } from "../src/client/media/relay-capability";
+import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../src/shared/protocol";
 
 // Exercise the actual page owners without mounting capture hardware or a Browser.
 const source = ts.createSourceFile("HostPage.tsx", readFileSync(
@@ -29,12 +33,13 @@ const source = ts.createSourceFile("HostPage.tsx", readFileSync(
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const owners = new Set(["changeQuality", "commitQuality", "rememberQuality", "loadAppQualityPreference", "handleSignalMessage",
   "switchSource", "watchCaptureEnd", "switchNativeSource", "switchToNativeSource", "createBrowserAudio", "retireNativeSenderPeers", "finishSourceSwitch", "replaceBrowserStream", "recoverBrowserFanout", "disposeNativeShare",
-  "acquireNativeClient", "requestSharing", "startNativeShare", "startBrowserNativeIngress",
+  "acquireNativeClient", "requestSharing", "nativeCaptureCodec", "startNativeShare", "startBrowserNativeIngress",
+  "createNativePreview", "failNativePreview", "reconnectNativePreview", "reportHostChildFailure", "hostChildIsAssigned", "prepareHostChild",
   "connectNativeClient", "handleNativeClientClosed", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
   "openCaptureSourcePicker", "startBrowserShareFromPicker", "startNativeShareFromPicker",
   "startSharing", "connectRoomSignal", "createReplacementRoom", "beginRoomMutation", "finishRoomMutation", "setCaptureError", "toggleSharingPause",
   "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setStatusNotice", "setNoticeError", "setNoticeErrorKey", "endSharing", "disposeResources", "hostTerminationKey", "copyRoomLink", "isCurrentRoomAuthority",
-  "handleRoomAccessFailure", "replaceCurrentRoom", "forgetRoom", "endRoomSession", "readableError", "confirmNativePermission"]);
+  "handleRoomAccessFailure", "replaceCurrentRoom", "forgetRoom", "endRoomSession", "readableError", "confirmNativePermission", "updateHostRelayCapacity"]);
 
 const functions: string[] = [];
 let noticeRendering = "";
@@ -73,9 +78,9 @@ function ingress() {
 
 function fixture(launchedByClient = true, nativeConnected = true) {
   let physical: QualitySettings = original;
-  const track = { stop: vi.fn() };
-  const stream = { getTracks: () => [track] };
-  const bridge = { start: vi.fn(async (_audio: boolean) => stream), dispose: vi.fn(), getRemoteInput: () => null };
+  const track = { readyState: "live", stop: vi.fn() };
+  const stream = { getTracks: () => [track], getVideoTracks: () => [track], getAudioTracks: (): typeof track[] => [] };
+  const bridge = { stream, start: vi.fn(async (_audio: boolean) => stream), dispose: vi.fn(), getRemoteInput: () => null };
   const peer = { updateCaptureProfile: vi.fn(async () => true), updateProfile: vi.fn(async () => true),
     isConnected: vi.fn(() => true) };
   const client = { updateShare: vi.fn(async () => undefined), replaceShareSource: vi.fn(async () => undefined),
@@ -93,7 +98,11 @@ function fixture(launchedByClient = true, nativeConnected = true) {
     NativeClient: { connect: vi.fn(async (_options?: { signal: AbortSignal }): Promise<typeof client | null> => null) },
     setJoiningRoom: vi.fn(), startSharing: vi.fn(), openCaptureSourcePicker: vi.fn(),
     videoCodecRef: ref({ primary: "h264" }),
-    videoCodecModeRef: ref("h264"), MAX_ENDPOINT_MEDIA_CHILDREN: 2,
+    videoCodecModeRef: ref("h264"), MAX_ENDPOINT_MEDIA_CHILDREN: 2, MAX_VIEWERS_PER_ROOM_LIMIT,
+    nativeRelayCapacity, relayPhysicalCapacity,
+    ordinaryRelayCapacityRef: ref(2), requestedRelayCapacityRef: ref<number | null>(null), hostRelayAvailableRef: ref(false),
+    setHostRelaySupported: vi.fn(), setHostRelayPending: vi.fn(), setHostRelayCapacity: vi.fn(),
+    supportsH264Receive: vi.fn(() => true),
     sourcePickerReturnRef: ref<{ id: string; restore: boolean } | null>(null),
     nativeSourceRequestRef: ref<object | null>(null), nativeSourcePathRef: ref<unknown>(null),
     setNativeSources: vi.fn(), setShowCaptureBorder: vi.fn(), defaultNativeCapturePath: () => ({ adapterIndex: 0, encoderIndex: 0 }),
@@ -104,7 +113,7 @@ function fixture(launchedByClient = true, nativeConnected = true) {
 
     createRoom: vi.fn(async () => { throw new Error("must not create an empty room"); }),
     readPreferredRoomId: () => null, disposeResources: vi.fn(), ApiError,
-    NativeMediaBridge: vi.fn(function (_shareId: string, _client: unknown, _onFailed: () => void) { return bridge; }), manualVideoCodecPreference: vi.fn(),
+    NativeMediaBridge: vi.fn(function (_shareId: string, _client: unknown, _onFailed: () => void) { return bridge; }), manualVideoCodecPreference: vi.fn(manualVideoCodecPreference),
     phase: "live", qualitySettingsRef: ref<QualitySettings>(original), advancedQualityRef: ref<QualitySettings>(original),
     nativeActive: false, switchingSource: false, sourceSwitchState: null, shareVolume: { level: 1, muted: false },
     androidAppIntent: (action: unknown) => androidAppIntent(action, "Android"),
@@ -134,7 +143,8 @@ function fixture(launchedByClient = true, nativeConnected = true) {
     qualitySettingsEqual, qualityResolutionEqual, videoQualitySettingsEqual, screenAudioBitrate, qualitySettingsLabel,
     supportsCaptureProfile, videoLimits: videoCaptureLimits(), audioBitrateCeiling: MAX_AUDIO_SEND_BITRATE,
     say: (key: string) => key, syncHostSfuQualityWarning: () => null,
-    NativeSenderPeer, discardPreparedHostChild: vi.fn(), removePeer: vi.fn(), startPeer: vi.fn(async (_peerId: string, _generation: number): Promise<void> => {}),
+    NativeSenderPeer, HostPeer, shouldUseBrowserQualityCandidate, discardPreparedHostChild: vi.fn(), removePeer: vi.fn(), startPeer: vi.fn(async (_peerId: string, _generation: number): Promise<void> => {}),
+    setStream: vi.fn(),
     nativePreviewTailRef: ref(Promise.resolve()), setSourceSwitch: vi.fn(),
     invalidateSenderQualityEvidence: vi.fn(), routePolicyRef: ref({ topologyOptimization: false }),
     sourceSwitchNotice: () => "source-switch-result", hostPeerIdRef: ref(null), endpointMediaCopyCapacityRef: ref(2),
@@ -322,7 +332,6 @@ describe("Camera replacement ownership", () => {
     current.context.nativeActive = native;
     current.nativeShareGenerationRef.current = native ? "native-source-1" : null;
     current.nativeSourcePathRef.current = { adapterIndex: 0, encoderIndex: 0 };
-    current.manualVideoCodecPreference.mockImplementation(codec => ({ primary: codec }));
     current.bridge.start.mockResolvedValue(nativeStream);
     Object.assign(current.bridge, { stream: nativeStream });
     Object.assign(current.client.health, { activationURL: "piik://media" });
@@ -463,7 +472,7 @@ describe("Camera replacement ownership", () => {
     expect(current.context.endSharing).toHaveBeenCalledOnce();
   });
 
-  it.each(["permission", "bridge"])("retains Camera picture, audio and codec after native %s fails", async stage => {
+  it.each(["permission", "capture-ended"])("retains Camera picture, audio and codec after native %s fails", async stage => {
     const current = sourceFixture(false);
     const previousCodec = current.videoCodecRef.current;
     current.audioAvailableRef.current = true;
@@ -471,9 +480,8 @@ describe("Camera replacement ownership", () => {
     const failure = new NativeRequestError("rejected", "start-share");
     if (stage === "permission") current.client.startShare.mockRejectedValue(failure);
     else current.bridge.start.mockImplementation(async () => {
-      // Exercise the real bridge-failure callback as well as its rejected wait.
-      current.NativeMediaBridge.mock.calls.at(-1)![2]();
-      throw new NativeMediaBridgeError("local preview failed");
+      current.client.onEvent.mock.calls.at(-1)![0]({ type: "share-ended", shareId: "native-source-2", failed: true });
+      throw new NativeMediaBridgeError("Capture ended while preparing its preview");
     });
     await current.context.switchToNativeSource({ kind: "native", client: current.client,
       target: { kind: "picker", sourceId: "1", title: "System" }, audio: false, path: {} });
@@ -491,6 +499,31 @@ describe("Camera replacement ownership", () => {
     expect(current.setRemoteControlState).not.toHaveBeenCalledWith(current.remoteSnapshot);
     expect(current.sourceSwitchRef.current).toBeNull();
     expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({ target: "operation" }));
+  });
+
+  it("commits Camera → Native without preview and can switch back to Camera in the same room", async () => {
+    const current = sourceFixture(false);
+    current.context.startPeer = current.startChild;
+    current.bridge.start.mockRejectedValue(new NativeMediaBridgeError("Local receiver unavailable"));
+    await current.context.switchToNativeSource({ kind: "native", client: current.client,
+      target: { kind: "picker", sourceId: "1", title: "System" }, audio: false, path: {} });
+    expect(current.context.streamRef.current).toBeNull();
+    expect(current.context.nativeMediaBridgeRef.current).toBeNull();
+    expect(current.nativeModeRef.current).toBe(true);
+    expect(current.peersRef.current.get("viewer")).toBeInstanceOf(NativeSenderPeer);
+    expect(current.previous.video.stop).toHaveBeenCalled();
+    expect(current.peer.dispose).toHaveBeenCalledOnce();
+    expect(current.client.stopShare).not.toHaveBeenCalled();
+    expect(current.replacePublication).toHaveBeenCalledWith(null, true);
+    expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({ key: "host.nativePreviewFailed" }));
+    current.context.startPeer = current.startPeer;
+    await current.context.switchSource("camera");
+    expect(current.context.streamRef.current).toBe(current.camera);
+    expect(current.nativeModeRef.current).toBe(false);
+    expect(current.client.stopShare).toHaveBeenCalledWith("native-source-2");
+    expect(current.replacePublication).toHaveBeenLastCalledWith(current.camera, true);
+    expect(current.context.endSharing).not.toHaveBeenCalled();
+    expect(current.createRoom).not.toHaveBeenCalled();
   });
 
   it.each([true, false])("does not apply a retired ingress replacement to a new share: %s", async result => {
@@ -1208,31 +1241,32 @@ describe("Host quality ownership", () => {
     expect(current.track.stop).not.toHaveBeenCalled();
   });
 
-  it("rejects unavailable Browser media before starting native capture or creating a room", async () => {
+  it.each(["initialization", "connection"])("retains the Native source when preview %s fails during startup", async stage => {
     const current = fixture();
     const failure = new NativeMediaBridgeError("Preview unavailable", {
       cause: new DOMException("Peer connection rejected", "NotAllowedError"),
     });
     const report = vi.fn();
-    Object.assign(current.context, { phase: "idle", debugError: report });
-    current.activeGenerationRef.current = null;
+    Object.assign(current.context, { debugError: report });
     current.nativeShareGenerationRef.current = null;
-    current.NativeMediaBridge.mockImplementationOnce(function () { throw failure; });
-    await current.start();
+    current.streamRef.current = null;
+    if (stage === "initialization") current.NativeMediaBridge.mockImplementationOnce(function () { throw failure; });
+    else current.bridge.start.mockRejectedValue(failure);
+    await expect(current.startNative()).resolves.toBeNull();
 
-    expect(current.client.startShare).not.toHaveBeenCalled();
+    expect(current.client.startShare).toHaveBeenCalledOnce();
     expect(current.client.stopShare).not.toHaveBeenCalled();
-    expect(current.client.close).toHaveBeenCalledOnce();
-    expect(current.createRoom).not.toHaveBeenCalled();
-    expect(current.roomMutationRef.current).toBeNull();
-    expect(current.setPhase).toHaveBeenLastCalledWith("error");
+    expect(current.client.close).not.toHaveBeenCalled();
+    expect(current.nativeModeRef.current).toBe(true);
+    expect(current.nativeShareGenerationRef.current).toBe("share");
+    expect(current.nativeMediaBridgeRef.current).toBeNull();
     expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({
-      target: "television", comic: "route-failed", tone: "bad",
+      key: "host.nativePreviewFailed", target: "television", comic: "route-failed", tone: "warn",
     }));
-    expect(report).toHaveBeenCalledWith("capture", "failed", failure, { action: "capture", source: undefined });
+    expect(report).toHaveBeenCalledWith("native-bridge", "preview-unavailable", failure);
   });
 
-  it.each(["reject", "cancel", "accept"])("owns the Browser reservation while native startup is pending: %s", async (outcome) => {
+  it.each(["reject", "cancel", "accept"])("owns pending Native capture independently of Browser preview: %s", async (outcome) => {
     const current = fixture();
     current.nativeShareGenerationRef.current = null;
     const started = deferred<{ audio: boolean; codec: "h264" }>();
@@ -1241,7 +1275,8 @@ describe("Host quality ownership", () => {
     const result = outcome === "accept" ? expect(starting).resolves.toBeDefined()
       : expect(starting).rejects.toThrow("capture unavailable");
     await vi.waitFor(() => expect(current.client.startShare).toHaveBeenCalledOnce());
-    expect(current.nativeMediaBridgeRef.current).toBe(current.bridge);
+    expect(current.NativeMediaBridge).not.toHaveBeenCalled();
+    expect(current.nativeMediaBridgeRef.current).toBeNull();
     expect(current.nativeShareGenerationRef.current).toBeNull();
     expect(current.nativeModeRef.current).toBe(false);
     expect(current.bridge.start).not.toHaveBeenCalled();
@@ -1252,7 +1287,7 @@ describe("Host quality ownership", () => {
       if (outcome === "cancel") {
         current.activeGenerationRef.current = null;
         current.disposeNative();
-        expect(current.bridge.dispose).toHaveBeenCalledOnce();
+        expect(current.bridge.dispose).not.toHaveBeenCalled();
         expect(current.client.close).toHaveBeenCalledOnce();
       }
       started.reject(new Error("capture unavailable"));
@@ -1263,7 +1298,7 @@ describe("Host quality ownership", () => {
       expect(current.nativeShareGenerationRef.current).toBe("share");
       expect(current.bridge.dispose).not.toHaveBeenCalled();
     } else {
-      expect(current.bridge.dispose).toHaveBeenCalled();
+      expect(current.bridge.dispose).not.toHaveBeenCalled();
       expect(current.nativeMediaBridgeRef.current).toBeNull();
       expect(current.client.stopShare).not.toHaveBeenCalled();
     }
@@ -1360,20 +1395,139 @@ describe("Host quality ownership", () => {
 
   it.each([
     ["capture", "host.shareEnded", "app/capture/failed", "source-failed"],
-    ["media", "native.fail.edge", "app/browser-media/connection", "route-failed"],
     ["control", "native.fail.controlDisconnected", "app/control/disconnected", "route-failed"],
   ])("retains the known %s failure when retiring native sharing", async (kind, key, failureCode, comic) => {
     const current = fixture();
     current.generationRef.current = 1;
     await current.startNative();
     if (kind === "control") current.client.onClose.mock.calls[0]![0]();
-    else if (kind === "media") current.NativeMediaBridge.mock.calls[0]![2]();
     else current.client.onEvent.mock.calls[0]![0]({ type: "share-ended", shareId: "share", failed: true });
     expect(current.setNoticeValue).toHaveBeenLastCalledWith({
       kind: "key", key, vars: undefined, failureCode, target: "television", comic, tone: "bad",
     });
     expect(current.disposeResources).toHaveBeenCalledExactlyOnceWith(true, false);
     expect(current.activeGenerationRef.current).toBeNull();
+  });
+
+  it("retires an active Native preview without stopping its source or healthy Native sink", async () => {
+    const current = fixture();
+    current.generationRef.current = 1;
+    const native = Object.assign(Object.create(NativeSenderPeer.prototype), { dispose: vi.fn() });
+    const browser = Object.assign(Object.create(HostPeer.prototype), { peerId: "browser", connectionId: "browser-edge", dispose: vi.fn() });
+    current.peersRef.current.set("native", native);
+    current.peersRef.current.set("browser", browser);
+    current.activeHostChildPeerIdsRef.current = ["browser", "native"];
+    const prepared = { failBrowserStream: vi.fn(), prepare: vi.fn(() => true) };
+    Object.assign(current.hostProvisionalChildRef, { current: prepared });
+    current.removePeer.mockImplementation(id => {
+      const retired = current.peersRef.current.get(id) as unknown as { dispose?: () => void };
+      current.peersRef.current.delete(id);
+      retired?.dispose?.();
+    });
+    const input = vi.spyOn(current.nativeInputRoute, "setUpstream");
+    await current.startNative();
+    input.mockClear();
+    current.NativeMediaBridge.mock.calls[0]![2]();
+    expect(current.disposeResources).not.toHaveBeenCalled();
+    expect(current.client.stopShare).not.toHaveBeenCalled();
+    expect(current.activeGenerationRef.current).toBe(1);
+    expect(current.nativeModeRef.current).toBe(true);
+    expect(current.peersRef.current.get("native")).toBe(native);
+    expect(native.dispose).not.toHaveBeenCalled();
+    expect(browser.dispose).toHaveBeenCalledOnce();
+    expect(current.signalRef.current.send).toHaveBeenCalledWith({ type: "route-failed", revision: 1, phase: "active", connectionId: "browser-edge" });
+    expect(prepared.failBrowserStream).toHaveBeenCalledOnce();
+    expect(input).toHaveBeenCalledExactlyOnceWith(null);
+    expect(current.hostSfuRouteRef.current).toBe(current.route);
+    expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({
+      key: "host.nativePreviewFailed", tone: "warn",
+    }));
+    Object.assign(current.context, { iceConfigRef: ref({ iceServers: [] }) });
+    expect(current.context.prepareHostChild(2, { childPeerIds: ["native"] }, {
+      childPeerId: "native", connectionId: "quality-edge", qualityProbe: true,
+    }, 1)).toBe(false);
+    expect(prepared.prepare).not.toHaveBeenCalled();
+  });
+
+  it("reconnects only the preview and still handles real source termination after Browser-to-Native replacement", async () => {
+    const current = fixture();
+    current.generationRef.current = 1;
+    const token = {};
+    current.sourceSwitchRef.current = token;
+    Object.assign(current.context, { sharingPausedRef: ref(false) });
+    await current.context.startNativeShare(1, "share", { client: current.client, target: {}, audio: false, path: {} }, token);
+    current.sourceSwitchRef.current = null;
+    current.NativeMediaBridge.mock.calls[0]![2]();
+    const restored = { ...current.bridge, stream: { ...current.bridge.stream }, dispose: vi.fn() };
+    restored.start = vi.fn(async () => restored.stream);
+    current.NativeMediaBridge.mockImplementationOnce(function () { return restored; });
+    await current.context.reconnectNativePreview();
+    expect(current.client.startShare).toHaveBeenCalledOnce();
+    expect(current.client.replaceShareSource).not.toHaveBeenCalled();
+    expect(current.client.stopShare).not.toHaveBeenCalled();
+    expect(current.context.setStream).toHaveBeenCalledExactlyOnceWith(restored.stream);
+    expect(current.streamRef.current).toBe(restored.stream);
+    expect(current.nativeMediaBridgeRef.current).toBe(restored);
+    expect(current.disposeResources).not.toHaveBeenCalled();
+    current.client.onEvent.mock.calls[0]![0]({ type: "share-ended", shareId: "share", failed: true });
+    expect(current.disposeResources).toHaveBeenCalledOnce();
+    expect(current.activeGenerationRef.current).toBeNull();
+  });
+
+  it.each(["stopped", "replacement"])("late preview recovery cannot affect a %s source", async reason => {
+    const current = fixture();
+    await current.startNative();
+    current.NativeMediaBridge.mock.calls[0]![2]();
+    const pending = deferred<typeof current.bridge.stream>();
+    const retry = { ...current.bridge, start: vi.fn(() => pending.promise), dispose: vi.fn() };
+    current.NativeMediaBridge.mockImplementationOnce(function () { return retry; });
+    const recovering = current.context.reconnectNativePreview();
+    const next = { ...current.bridge, dispose: vi.fn() };
+    if (reason === "stopped") current.activeGenerationRef.current = null;
+    else {
+      current.sourceSwitchRef.current = {};
+      Object.assign(current.nativeMediaBridgeRef, { current: next });
+    }
+    current.setNoticeValue.mockClear();
+    if (reason === "replacement") pending.reject(new NativeMediaBridgeError("Old preview failed"));
+    else pending.resolve(retry.stream);
+    await recovering;
+    expect(retry.dispose).toHaveBeenCalledOnce();
+    expect(next.dispose).not.toHaveBeenCalled();
+    expect(current.context.setStream).not.toHaveBeenCalled();
+    expect(current.setNoticeValue).not.toHaveBeenCalled();
+    expect(current.client.stopShare).not.toHaveBeenCalled();
+    expect(current.nativeMediaBridgeRef.current).toBe(reason === "replacement" ? next : null);
+  });
+
+  it("a failed manual preview retry remains local and releases its retry slot", async () => {
+    const current = fixture();
+    await current.startNative();
+    current.NativeMediaBridge.mock.calls[0]![2]();
+    const retry = { ...current.bridge, start: vi.fn(async () => { throw new NativeMediaBridgeError("No local receiver"); }), dispose: vi.fn() };
+    current.NativeMediaBridge.mockImplementationOnce(function () { return retry; });
+    await current.context.reconnectNativePreview();
+    expect(retry.dispose).toHaveBeenCalledOnce();
+    expect(current.nativeMediaBridgeRef.current).toBeNull();
+    expect(current.activeGenerationRef.current).toBe(1);
+    expect(current.client.stopShare).not.toHaveBeenCalled();
+    expect(current.disposeResources).not.toHaveBeenCalled();
+  });
+
+  it("only a Browser capture track ending owns share teardown", () => {
+    const current = fixture();
+    current.generationRef.current = 1;
+    const video = new EventTarget();
+    const stream = { getVideoTracks: () => [video] };
+    Object.assign(current.streamRef, { current: stream });
+    current.nativeModeRef.current = true;
+    current.context.watchCaptureEnd(stream, 1);
+    video.dispatchEvent(new Event("ended"));
+    expect(current.disposeResources).not.toHaveBeenCalled();
+    current.nativeModeRef.current = false;
+    current.context.watchCaptureEnd(stream, 1);
+    video.dispatchEvent(new Event("ended"));
+    expect(current.disposeResources).toHaveBeenCalledOnce();
   });
 
   it("retains connecting children during reconciliation and rebuilds them after reauthentication", async () => {
@@ -1423,10 +1577,10 @@ describe("Host quality ownership", () => {
     const attempt = current.discover();
     current.requestShare();
     expect(current.openCaptureSourcePicker).toHaveBeenCalledTimes(1);
-    expect(current.discover()).toBe(attempt);
+    const repeated = current.discover();
     await current.startOptionalIngress();
     discovery.resolve(null);
-    await attempt;
+    await expect(Promise.all([attempt, repeated])).resolves.toEqual([null, null]);
     expect(current.NativeClient.connect).toHaveBeenCalledTimes(1);
     current.NativeClient.connect.mockResolvedValue(current.client);
     await expect(current.discover()).resolves.toBe(current.client);
@@ -1483,6 +1637,79 @@ describe("Host quality ownership", () => {
     expect(current.NativeClient.connect).toHaveBeenCalledTimes(2);
     expect(current.setNativeSources).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "ready" }));
     current.closePicker();
+  });
+
+  it.each([
+    ["auto", false, false, true, "vp8"],
+    ["auto", false, false, false, "auto"],
+    ["auto", true, false, true, "auto"],
+    ["h264", false, false, true, "h264"],
+    ["vp8", false, false, true, "vp8"],
+    ["auto", false, true, true, "h264"],
+  ] as const)("selects the same Native path and startup codec for %s, receive=%s, active=%s, VP8=%s", async (mode, receive, active, vp8, expected) => {
+    const current = fixture();
+    current.videoCodecModeRef.current = mode;
+    current.nativeModeRef.current = active;
+    current.supportsH264Receive.mockReturnValue(receive);
+    current.client.health.nativeMedia.softwareVP8 = vp8;
+    const path = vi.fn(() => ({ adapterIndex: 0, encoderIndex: 0 }));
+    current.context.defaultNativeCapturePath = path;
+    await current.openPicker();
+    expect(path).toHaveBeenCalledWith([], expected, vp8);
+    await current.startNative();
+    expect(current.client.startShare).toHaveBeenCalledWith(expect.objectContaining({ codec: expected }), undefined);
+  });
+
+  it("starts an H264-only Native source and room without a Browser preview, and keeps source controls and termination", async () => {
+    const current = fixture();
+    current.context.phase = "idle";
+    current.activeGenerationRef.current = null;
+    current.nativeShareGenerationRef.current = null;
+    current.streamRef.current = null;
+    current.videoCodecModeRef.current = "auto";
+    current.supportsH264Receive.mockReturnValue(false);
+    current.client.health.nativeMedia.softwareVP8 = false;
+    current.client.captureOptions.mockResolvedValue([{ index: 0, hardwareH264: [{ index: 2 }] }] as never);
+    current.context.defaultNativeCapturePath = defaultNativeCapturePath;
+    await current.openPicker();
+    expect(current.setNativeSources).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "ready" }));
+    expect(current.nativeSourcePathRef.current).toEqual({ adapterIndex: 0, encoderIndex: 2 });
+    const startSignal = vi.fn();
+    Object.assign(current.context, {
+      roomRef: ref({ roomId: "existing-room" }),
+      connectRoomSignal: vi.fn(() => ({ start: startSignal })),
+      setResolvedVideoCodec: vi.fn(),
+      writePreferredRoom: vi.fn(),
+    });
+    await current.start();
+    expect(current.client.startShare).toHaveBeenCalledWith(expect.objectContaining({ codec: "auto" }), undefined);
+    expect(current.context.connectRoomSignal).toHaveBeenCalledOnce();
+    expect(startSignal).toHaveBeenCalledOnce();
+    expect(current.streamRef.current).toBeNull();
+    expect(current.NativeMediaBridge).not.toHaveBeenCalled();
+    expect(current.context.setResolvedVideoCodec).toHaveBeenCalledWith("h264");
+    expect(current.nativeModeRef.current).toBe(true);
+    expect(current.client.stopShare).not.toHaveBeenCalled();
+    expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({ key: "host.nativePreviewFailed", tone: "warn" }));
+    current.context.phase = "live";
+    await current.change(lower);
+    expect(current.client.updateShare).toHaveBeenCalledWith("share", lower);
+    const prepared = { prepare: vi.fn() };
+    current.peersRef.current.set("native", Object.create(NativeSenderPeer.prototype));
+    Object.assign(current.hostProvisionalChildRef, { current: prepared });
+    Object.assign(current.context, { iceConfigRef: ref({ iceServers: [] }) });
+    expect(current.context.prepareHostChild(2, { childPeerIds: ["native"] }, {
+      childPeerId: "native", connectionId: "browser-quality-edge", qualityProbe: true,
+    }, 1)).toBe(false);
+    expect(prepared.prepare).not.toHaveBeenCalled();
+    useRealResourceDisposal(current);
+    Object.assign(current.signalRef.current, { stop: vi.fn() });
+    Object.assign(current.hostProvisionalChildRef, { current: null });
+    current.client.onEvent.mock.calls[0]![0]({ type: "share-ended", shareId: "share", failed: true });
+    expect(current.activeGenerationRef.current).toBeNull();
+    expect(current.disposeResources).toHaveBeenCalledWith(true, false);
+    expect(current.client.stopShare).toHaveBeenCalledExactlyOnceWith("share");
+    expect(current.nativeShareGenerationRef.current).toBeNull();
   });
 
   it("distinguishes absent App, missing capture capability, incompatible codec and an empty source list", async () => {
@@ -1666,9 +1893,9 @@ describe("Host quality ownership", () => {
     expect(current.client.stopShare).toHaveBeenCalledWith("share");
     expect(current.nativeSourceAudioRef.current).toBeUndefined();
     expect(current.manualVideoCodecPreference).not.toHaveBeenCalled();
-    expect(current.NativeMediaBridge).toHaveBeenCalledOnce();
+    expect(current.NativeMediaBridge).not.toHaveBeenCalled();
     expect(current.bridge.start).not.toHaveBeenCalled();
-    expect(current.bridge.dispose).toHaveBeenCalledOnce();
+    expect(current.bridge.dispose).not.toHaveBeenCalled();
     expect(current.nativeMediaBridgeRef.current).toBeNull();
     expect(current.setNativeActive).not.toHaveBeenCalled();
   });

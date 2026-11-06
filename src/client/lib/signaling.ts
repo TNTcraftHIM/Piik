@@ -107,7 +107,7 @@ export class SignalingClient {
   private visibilityListenerAttached = false;
   private hostQualityIntent: HostQualityIntent | null = null;
   private pendingShareGeneration: string | null = null;
-  private relayVolunteerIntent: { enabled: boolean; capacity: number } | null = null;
+  private relayVolunteerIntent: Omit<Extract<ClientMessage, { type: "set-relay-volunteer" }>, "type"> | null = null;
 
   constructor(
     private readonly identity: SignalingIdentity,
@@ -204,13 +204,14 @@ export class SignalingClient {
     return true;
   }
 
-  get relayVolunteerRequest(): Readonly<{ enabled: boolean; capacity: number }> | null {
+  get relayVolunteerRequest(): Readonly<NonNullable<typeof this.relayVolunteerIntent>> | null {
     return this.relayVolunteerIntent;
   }
 
-  setRelayVolunteer(enabled: boolean, capacity: number): boolean {
-    if (this.stopped || this.identity.role !== "viewer") return false;
-    this.relayVolunteerIntent = { enabled, capacity };
+  setRelayVolunteer(enabled: boolean, capacity: number, physicalCapacity?: number): boolean {
+    if (this.stopped) return false;
+    this.relayVolunteerIntent = { enabled, capacity,
+      ...(physicalCapacity === undefined ? {} : { settings: true, physicalCapacity }) };
     return this.authenticatedPeerId === null || this.flushRelayVolunteerIntent();
   }
 

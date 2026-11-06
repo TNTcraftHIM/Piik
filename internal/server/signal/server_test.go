@@ -267,7 +267,10 @@ func TestRejectedPublicationRetainsHostRoomSession(t *testing.T) {
 	host.ignore("viewer-presence")
 	subscribeInteractions(t, host)
 	// Inject the existing route-construction failure, after room admission.
-	h.locked(func() { h.server.router.capacity = 0 })
+	h.locked(func() {
+		h.server.router.room(h.room.RoomID) // Retain the valid room default before injecting an invalid constructor option.
+		h.server.router.capacity = 0
+	})
 	host.sendJSON(map[string]any{"type": "start-sharing", "shareGeneration": "rejected_publication_generation",
 		"routePolicy": protocol.DefaultRoutePolicy})
 	expectMatch(t, host.next("sharing-start-failed").raw,
@@ -2723,7 +2726,7 @@ func TestSignalKeepsMediaIdentityThroughGraceWhilePresenceReturnsOnce(t *testing
 	firstViewer := openClient(t, h)
 	firstViewerAuth := authenticate(t, firstViewer, h.room, protocol.RoleViewer, "viewer-client-grace-roster", 1, "",
 		presenceOptions{displayName: "短线重连"})
-	commitPreparedRoute(t, firstViewer)
+	activeRoute := commitPreparedRoute(t, firstViewer)
 	expectMatch(t, viewerEntriesJSON(t, nextViewerPresenceMatching(t, firstHost, func(message presenceMessage) bool {
 		return slices.ContainsFunc(viewerPresenceEntries(message), func(entry presenceEntry) bool {
 			return entry.Upstream.Kind == "peer"
@@ -2733,6 +2736,17 @@ func TestSignalKeepsMediaIdentityThroughGraceWhilePresenceReturnsOnce(t *testing
 		firstViewerAuth.PeerID, firstHostAuth.PeerID))
 	firstHost.sendJSON(signalDescription(firstViewerAuth.PeerID, "connection-during-grace", "offer"))
 	firstViewer.next("signal")
+	nextViewerPresenceMatching(t, firstHost, func(message presenceMessage) bool {
+		return slices.ContainsFunc(viewerPresenceEntries(message), func(entry presenceEntry) bool {
+			return entry.PeerID == firstViewerAuth.PeerID && entry.Upstream.Kind == "peer" && !isMediaReady(entry)
+		})
+	})
+	firstViewer.sendJSON(viewerQualityEvidenceMessage("connection-during-grace", activeRoute.Revision, 0, 0))
+	nextViewerPresenceMatching(t, firstHost, func(message presenceMessage) bool {
+		return slices.ContainsFunc(viewerPresenceEntries(message), func(entry presenceEntry) bool {
+			return entry.PeerID == firstViewerAuth.PeerID && isMediaReady(entry)
+		})
+	})
 
 	h.closeClient(firstViewer)
 	if entries := viewerPresenceEntries(parsePresence(t, firstHost.next("viewer-presence").raw)); len(entries) != 0 {

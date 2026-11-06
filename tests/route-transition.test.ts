@@ -844,10 +844,10 @@ describe("minimal route transition contracts", () => {
     expect(evidence()?.state).toBe("unknown");
   });
 
-  it("rebinds source backends through the existing SFU authority after retiring the old publisher", async () => {
+  it("rebinds Browser → Native without preview → Browser through the existing SFU authority", async () => {
     const send = vi.fn(() => true);
     let native = false;
-    let stream = {} as MediaStream;
+    let stream: MediaStream | null = {} as MediaStream;
     let releaseBrowser!: () => void;
     const retiring = new Promise<void>(resolve => { releaseBrowser = resolve; });
     const browser = createFakePublisher([], "browser");
@@ -873,7 +873,7 @@ describe("minimal route transition contracts", () => {
     await route.acceptConfig(sfuConfig(1, "browser-publication"));
     send.mockClear();
     native = true;
-    stream = {} as MediaStream;
+    stream = null;
     const replacing = route.replaceStream(stream, true);
     expect(send).toHaveBeenCalledWith({ type: "route-failed", revision: 1, phase: "active", connectionId: sfuConfig(1).connectionId });
     expect(send).not.toHaveBeenCalledWith({ type: "refresh-sfu", revision: 1 });

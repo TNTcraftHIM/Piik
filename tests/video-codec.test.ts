@@ -1,5 +1,24 @@
-import { expect, it } from "vitest";
-import { normalizeVideoOfferSdp, requireReceivingVideo, VideoReceiveRejectedError } from "../src/client/webrtc/video-codec";
+import { expect, it, vi } from "vitest";
+import { normalizeVideoOfferSdp, requireReceivingVideo, supportsH264Receive, VideoReceiveRejectedError } from "../src/client/webrtc/video-codec";
+
+it("checks H264 receive capability independently of sender support", () => {
+  const h264 = { mimeType: "video/H264", clockRate: 90_000, sdpFmtpLine: "packetization-mode=1" };
+  const receive = vi.fn(() => ({ codecs: [h264] }));
+  vi.stubGlobal("RTCRtpSender", { getCapabilities: () => ({ codecs: [h264] }) });
+  vi.stubGlobal("RTCRtpReceiver", { getCapabilities: receive });
+  try {
+    expect(supportsH264Receive()).toBe(true);
+    expect(receive).toHaveBeenCalledWith("video");
+    receive.mockReturnValue({ codecs: [{ ...h264, sdpFmtpLine: "packetization-mode=0" }] });
+    expect(supportsH264Receive()).toBe(false);
+    receive.mockReturnValue({ codecs: [] });
+    expect(supportsH264Receive()).toBe(false);
+    vi.stubGlobal("RTCRtpReceiver", undefined);
+    expect(supportsH264Receive()).toBe(false);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
 
 it("recognizes a Browser-rejected video answer without inferring codec support", () => {
   const offer = (sdp: string): RTCSessionDescriptionInit => ({ type: "offer", sdp });

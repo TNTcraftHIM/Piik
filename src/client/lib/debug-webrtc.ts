@@ -98,8 +98,13 @@ export function debugRtcFailure(connection: RTCPeerConnection, error: unknown): 
 export function debugTrack(track: MediaStreamTrack, details: object = {}): void {
   if (!browserDebugEnabled) return;
   try {
+    const stats = track.kind === "video" ? (track as MediaStreamTrack & {
+      stats?: { deliveredFrames: number; discardedFrames: number; totalFrames: number } | null;
+    }).stats : null;
     debugEvent("capture", "track", { ...details, trackId: track.id, kind: track.kind,
       state: track.readyState, enabled: track.enabled, muted: track.muted, contentHint: track.contentHint,
-      settings: track.getSettings(), constraints: track.getConstraints() });
+      settings: track.getSettings(), constraints: track.getConstraints(),
+      ...(stats ? { videoFrameStats: { deliveredFrames: stats.deliveredFrames,
+        discardedFrames: stats.discardedFrames, totalFrames: stats.totalFrames } } : {}) });
   } catch (error) { debugError("capture", "collector-failed", error, { collector: "track", trackId: track.id }); }
 }

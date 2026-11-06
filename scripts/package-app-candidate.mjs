@@ -303,10 +303,12 @@ function verifyPlatformAssets(root, target) {
     const plistText = readFileSync(plist, "utf8");
     if (
       !plistText.includes(`<key>CFBundleExecutable</key><string>${target.appName}</string>`) ||
+      !plistText.includes("<key>NSLocalNetworkUsageDescription</key>") ||
+      !plistText.includes("<key>NSMicrophoneUsageDescription</key>") ||
       !plistText.includes("<key>NSScreenCaptureUsageDescription</key>") ||
       !plistText.includes("<key>NSAudioCaptureUsageDescription</key>")
     ) {
-      fail("macOS App entry or capture usage descriptions are missing");
+      fail("macOS App entry or permission usage descriptions are missing");
     }
   }
 }

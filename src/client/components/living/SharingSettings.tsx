@@ -3,11 +3,13 @@ import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { navigateTabs } from "../../ui/tab-navigation";
 import { Cap } from "./primitives";
+import { RelayVolunteerSettings, type RelayCapacitySettings } from "./RelayVolunteerSettings";
 
 // Presentation only. Capture, preferences and pending operations stay with the Host.
-export function SharingSettings({ id, open, busy, presets, picture, pictureSummary, audio, connection }: {
+export function SharingSettings({ id, open, busy, presets, picture, pictureSummary, audio, connection, sendingCapacity }: {
   id: string; open: boolean; busy?: boolean;
   presets: ReactNode; picture?: ReactNode; pictureSummary?: ReactNode; audio: ReactNode; connection?: ReactNode;
+  sendingCapacity?: RelayCapacitySettings;
 }) {
   const { t } = useCopy();
   const [tab, setTab] = useState<"picture" | "sound">("picture");
@@ -37,12 +39,12 @@ export function SharingSettings({ id, open, busy, presets, picture, pictureSumma
         aria-labelledby={`${id}-sound-tab`} hidden={tab !== "sound"}>
         <div className="lr-sharing-audio-controls">{audio}</div>
       </section>
-      {connection ? <details className="lr-sharing-connection">
+      {connection || sendingCapacity ? <details className="lr-sharing-connection">
         <summary aria-label={t("host.settings.connection")}>
           <span><Glyph name="branch" size={17} /><Cap k="host.settings.connection" /></span>
           <Glyph name="chevron" size={17} className="lr-sharing-chevron" />
         </summary>
-        <div>{connection}</div>
+        <div>{connection}{sendingCapacity && <RelayVolunteerSettings settings={sendingCapacity} role="host" />}</div>
       </details> : null}
     </section> : null}</div>
   </div>;

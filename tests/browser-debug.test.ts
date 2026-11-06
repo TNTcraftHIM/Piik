@@ -20,6 +20,35 @@ afterEach(() => {
 });
 
 describe("opt-in Browser diagnostics", () => {
+  it("records native video frame counters while retaining track facts when statistics are unavailable", async () => {
+    browser();
+    const debug = await import("../src/client/lib/debug");
+    const { debugTrack } = await import("../src/client/lib/debug-webrtc");
+    const nativeStats = Object.create({
+      get deliveredFrames() { return 40; },
+      get discardedFrames() { return 2; },
+      get totalFrames() { return 42; },
+    });
+    for (const [id, stats] of [["source", nativeStats], ["unsupported", undefined], ["unavailable", null]] as const) {
+      const track = { id, kind: "video", readyState: "live", enabled: true, muted: false, contentHint: "motion",
+        getSettings: () => ({ width: 1920, height: 1080, frameRate: 30 }), getConstraints: () => ({}) };
+      if (stats !== undefined) Object.defineProperty(track, "stats", { get: () => stats });
+      debugTrack(track as unknown as MediaStreamTrack, { senderTrackId: "generated-track" });
+    }
+    const exported = await debug.exportBrowserDebug();
+    const tracks = JSON.parse(exported).events.map((event: { details: object }) => event.details);
+    expect(tracks).toEqual([
+      expect.objectContaining({ trackId: "source", senderTrackId: "generated-track",
+        videoFrameStats: { deliveredFrames: 40, discardedFrames: 2, totalFrames: 42 } }),
+      expect.objectContaining({ trackId: "unsupported", senderTrackId: "generated-track", enabled: true,
+        settings: { width: 1920, height: 1080, frameRate: 30 } }),
+      expect.objectContaining({ trackId: "unavailable", senderTrackId: "generated-track", enabled: true,
+        settings: { width: 1920, height: 1080, frameRate: 30 } }),
+    ]);
+    expect(tracks[1]).not.toHaveProperty("videoFrameStats");
+    expect(tracks[2]).not.toHaveProperty("videoFrameStats");
+  });
+
   it("exports validated Native capture failure codes through the existing event recorder", async () => {
     browser();
     const debug = await import("../src/client/lib/debug");

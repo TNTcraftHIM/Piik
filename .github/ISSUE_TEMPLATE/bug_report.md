@@ -20,4 +20,8 @@ about: Report a reproducible problem / 反馈可复现的问题
 
 ## Optional evidence / 可选证据
 
-<!-- Screenshots or a local Debug export may help. Review artifacts before attaching; remove credentials and private content. 可附截图或本地 Debug 导出；分享前移除凭据与隐私内容。 -->
+For App capture or remote-control failures, enable [App diagnostics](https://github.com/TNTcraftHIM/Piik/blob/main/cmd/piik-app/README.md#diagnostics) before reproducing and attach the exported ZIP.
+
+App 选源或远控异常，请先开启 [App 诊断](https://github.com/TNTcraftHIM/Piik/blob/main/cmd/piik-app/README.zh-CN.md#诊断)，复现后附上导出的 ZIP。
+
+<!-- Screenshots may help. Review artifacts before attaching; remove credentials and private content. 可附截图；分享前移除凭据与隐私内容。 -->

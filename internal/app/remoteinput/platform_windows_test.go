@@ -5,6 +5,7 @@ package remoteinput
 import (
 	"context"
 	"errors"
+	"os"
 	"runtime"
 	"strings"
 	"syscall"
@@ -14,7 +15,15 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+func requireDesktopInputAcceptance(t *testing.T) {
+	t.Helper()
+	if os.Getenv("PIIK_INPUT_GATE") != "1" {
+		t.Skip("set PIIK_INPUT_GATE=1 for desktop input and hotkey acceptance")
+	}
+}
+
 func TestWindowsInputRecoversItsDesktopAndPendingRelease(t *testing.T) {
+	requireDesktopInputAcceptance(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	backend, err := newPlatformSink(false)
@@ -94,6 +103,7 @@ func TestRejectedWindowsInputDiagnostics(t *testing.T) {
 }
 
 func TestNativeStopShortcutRegistrationLifetime(t *testing.T) {
+	requireDesktopInputAcceptance(t)
 	// Reserve an available chord through the OS API without injecting input.
 	var reserved func()
 	var key int

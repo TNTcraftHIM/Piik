@@ -29,12 +29,12 @@ export interface HostPublisherTransport {
   updateConfig(config: SfuConnectionConfig): void;
   acceptSignal(message: SfuSignalMessage): Promise<void>;
   activate(
-    stream: MediaStream,
+    stream: MediaStream | null,
     profile: QualityProfile,
     videoCodec?: BrowserVideoCodec,
   ): Promise<boolean>;
   deactivate(): Promise<boolean>;
-  replaceStream(stream: MediaStream): Promise<boolean>;
+  replaceStream(stream: MediaStream | null): Promise<boolean>;
   updateProfile(profile: QualityProfile): Promise<boolean>;
   setPaused(paused: boolean): void;
   getQualityWarning?(): MediaFailure[] | null;
@@ -350,7 +350,7 @@ export class HostSfuRoute {
       : null;
   }
 
-  async replaceStream(stream: MediaStream, rebuildTransport = false): Promise<boolean> {
+  async replaceStream(stream: MediaStream | null, rebuildTransport = false): Promise<boolean> {
     if (rebuildTransport) {
       const slots = [...new Set([this.active, this.pending])].filter(
         (slot): slot is HostPublisherSlot => slot !== null && !slot.failed,
@@ -534,10 +534,8 @@ export class HostSfuRoute {
     const stream = this.events.getStream();
     const profile = this.events.getProfile();
     const videoCodec = this.events.getVideoCodec();
-    if (!stream) {
-      this.failPublisherSlot(slot);
-      return false;
-    }
+    // A Native publisher owns its encoded source independently of local preview.
+    // The Browser publisher still requires a live stream in activate().
     try {
       if (!(await slot.publisher.activate(stream, profile, videoCodec))) {
         this.failPublisherSlot(slot);
@@ -552,7 +550,6 @@ export class HostSfuRoute {
       slot.active = true;
       const latestStream = this.events.getStream();
       if (
-        latestStream &&
         latestStream !== stream &&
         !(await slot.publisher.replaceStream(latestStream))
       ) {

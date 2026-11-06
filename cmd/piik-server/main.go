@@ -1,6 +1,6 @@
 // Command piik-server is the Hosted Piik entry point: it loads the
 // environment, serves the embedded Browser UI together with the signaling and
-// room API, and stops on SIGINT or SIGTERM.
+// room API, and performs ordered process shutdown.
 //
 // Two maintenance modes exit without serving: --check-config validates the
 // environment (the release wrapper runs it as the service user before cutover)
@@ -17,13 +17,12 @@ import (
 	"log"
 	"log/slog"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/TNTcraftHIM/Piik/internal/processsignal"
 	"github.com/TNTcraftHIM/Piik/internal/server/app"
 	"github.com/TNTcraftHIM/Piik/internal/server/config"
 	"github.com/TNTcraftHIM/Piik/internal/server/webassets"
@@ -143,7 +142,7 @@ func serve(debug bool) (returnedErr error) {
 		logger.Info("HTTPS certificate", "sha256", tlsconfig.Fingerprint(configuration.TLS))
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := processsignal.NotifyContext(context.Background())
 	// One bounded background lookup never delays serving. Join it before closing
 	// diagnostic outputs so shutdown cannot leave a late writer behind.
 	releaseChecked := make(chan struct{})

@@ -75,6 +75,7 @@ describe("runtime capabilities", () => {
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, natPrediction: true }))
       .toEqual({ sfu: true, natPrediction: true, roomInteractions: false, hostRoomSession: false, remoteInput: false, viewerRouteSelection: false, audioPresence: false, coPlayPresence: false, roomVoice: false, roomVoiceListeningPresence: false, relayVolunteer: false });
     expect(runtimeCapabilitiesSchema.parse({ sfu: true, sfuOnly: true }).sfuOnly).toBe(true);
+    expect(runtimeCapabilitiesSchema.parse({ roomRelayCapacity: true }).roomRelayCapacity).toBe(true);
     expect(runtimeCapabilitiesSchema.parse({ roomReactionIds: ["heart", "future-effect"] }).roomReactionIds)
       .toEqual(["heart", "future-effect"]);
     expect(runtimeCapabilitiesSchema.parse({ roomReactionIds: [] }).roomReactionIds).toEqual([]);
@@ -90,6 +91,17 @@ describe("runtime capabilities", () => {
       expect(runtimeCapabilitiesSchema.safeParse(value).success).toBe(false);
     }
   });
+});
+
+it("validates opt-in capacity settings without changing legacy messages", () => {
+  const base = { type: "set-relay-volunteer", enabled: true, capacity: 0 };
+  expect(clientMessageSchema.parse(base)).toEqual(base);
+  expect(clientMessageSchema.parse({ ...base, settings: true, physicalCapacity: 20 }))
+    .toEqual({ ...base, settings: true, physicalCapacity: 20 });
+  expect(clientMessageSchema.safeParse({ ...base, settings: true }).success).toBe(false);
+  expect(clientMessageSchema.safeParse({ ...base, physicalCapacity: 20 }).success).toBe(false);
+  expect(serverMessageSchema.safeParse({ type: "relay-volunteer", enabled: false, capacity: 3, roomCapacity: 20 }).success).toBe(true);
+  expect(serverMessageSchema.safeParse({ type: "relay-volunteer", enabled: false, capacity: 3, roomCapacity: 0 }).success).toBe(false);
 });
 
 const qualitySettingsWithAudio = {

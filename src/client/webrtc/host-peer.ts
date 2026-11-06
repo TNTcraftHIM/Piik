@@ -21,7 +21,7 @@ import {
   type AudioSenderParameterReadback,
   type QualityProfile,
 } from "../media/quality";
-import { cloneSenderVideoTrack, stopSenderVideoTrack } from "../media/sender-video-track";
+import { cloneSenderVideoTrack, senderCaptureTrack, stopSenderVideoTrack } from "../media/sender-video-track";
 import { retireSenderQualityEvidence } from "../media/sender-quality-evidence";
 import { EMPTY_METRICS, type PeerSnapshot } from "../types";
 import {
@@ -845,7 +845,9 @@ export class HostPeer {
         },
       ));
       const capture = captureMetrics(captureTrack);
-      debugTrack(captureTrack, { connectionId: this.connectionId, event: "sample" });
+      debugTrack(senderCaptureTrack(captureTrack), {
+        connectionId: this.connectionId, event: "sample", role: "sender-input", senderTrackId: captureTrack.id,
+      });
       const metrics = { ...(await metricsPromise), ...capture };
       if (
         this.disposed ||

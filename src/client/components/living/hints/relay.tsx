@@ -1,33 +1,25 @@
-import { FAINT, Frame, MiniTv, Pawn, SKY, YOU, rmBlock } from "../Comic";
+import { FAINT, Frame, MiniTv, Pawn, SKY, rmBlock } from "../Comic";
 import type { HintScene, RelayHintKind } from "../../../ui/visual-kinds";
 
-// The same ordinary Viewer watches and passes the picture on in both panels.
-// A voluntary switch adds outgoing branches, without another participant role.
+// An adjustable limit belongs to the sender; branches describe its scope,
+// without promising an increase or showing an actual session's value.
 const HintRelayVolunteer: HintScene = ({ theme }) => <>
   <style>{`
-.vls-relay-more-a{animation:vlsRelayMoreA var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
-.vls-relay-more-b{animation:vlsRelayMoreB var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
-@keyframes vlsRelayMoreA{0%,10%,100%{opacity:0}24%,99.9%{opacity:1}}
-@keyframes vlsRelayMoreB{0%,24%,100%{opacity:0}38%,99.9%{opacity:1}}
-${rmBlock(["vls-relay-more-a", "vls-relay-more-b"], [[".vls-relay-more-a,.vls-relay-more-b", "opacity:1"]])}
+.vls-relay-limit{animation:vlsRelayLimit var(--comic-duration,3.2s) ease-in-out var(--comic-repeat,1) both}
+@keyframes vlsRelayLimit{0%,12%,100%{transform:translateX(0)}28%,42%{transform:translateX(-20px)}58%,72%{transform:translateX(20px)}88%{transform:translateX(0)}}
+${rmBlock(["vls-relay-limit"], [[".vls-relay-limit", "transform:translateX(0)"]])}
   `}</style>
-  {[0, 160].map((offset, index) => <g key={offset}>
-    <Frame x={offset + 4} w={152} theme={theme} result={Boolean(index)} />
-    <MiniTv x={offset + 18} y={22} w={34} h={23} />
-    <Pawn x={offset + 49} yb={82} s={14} eyes gaze={-2} />
-    <rect x={offset + 62} y={12} width={22} height={11} rx={5.5}
-      fill="var(--wall-2)" stroke="var(--ink)" strokeWidth={1.5} />
-    <circle cx={offset + (index ? 78 : 68)} cy={17.5} r={3.5} fill={index ? YOU : FAINT} />
-    {(index ? [20, 40, 60, 80] : [32, 72]).map((y, child) => {
-      const extra = index && (child === 1 || child === 2);
-      return <g key={y} className={extra ? child === 1 ? "vls-relay-more-a" : "vls-relay-more-b" : undefined}>
-        <path d={`M${offset + 64} 53 C${offset + 81} 53 ${offset + 86} ${y} ${offset + 106} ${y}`}
-          fill="none" stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
-        <path d={`m${offset + 101} ${y - 3} 5 3-5 3`} fill="none" stroke={FAINT} strokeWidth={1.5} strokeLinejoin="round" />
-        <MiniTv x={offset + 109} y={y - 6} w={15} h={11} />
-        <Pawn x={offset + 139} yb={y + (index ? 9 : 10)} s={index ? 6 : 7} color={SKY} eyes gaze={-1} />
-      </g>;
-    })}
+  <Frame x={4} w={312} theme={theme} />
+  <MiniTv x={35} y={23} w={42} h={28} />
+  <Pawn x={61} yb={86} s={17} eyes gaze={2} />
+  <rect x={103} y={11} width={99} height={20} rx={8} fill="var(--wall-2)" stroke={FAINT} strokeWidth={1.5} />
+  <path d="M115 21h75" stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
+  <circle className="vls-relay-limit" cx={152} cy={21} r={5} fill="var(--ink)" />
+  {[38, 59, 80].map(y => <g key={y}>
+    <path d={`M88 62 C135 62 166 ${y} 230 ${y}`} fill="none" stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
+    <path d={`m225 ${y - 3} 5 3-5 3`} fill="none" stroke={FAINT} strokeWidth={1.5} strokeLinejoin="round" />
+    <MiniTv x={239} y={y - 9} w={25} h={17} />
+    <Pawn x={282} yb={y + 6} s={8} color={SKY} eyes gaze={-1} />
   </g>)}
 </>;
 

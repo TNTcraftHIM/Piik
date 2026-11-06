@@ -31,7 +31,7 @@ service secret store or an untracked access-restricted environment file.
 | `ROOM_DATABASE_PATH` | Hosted defaults to `rooms.sqlite` in its working directory when unset or blank. An explicit absolute file path selects another SQLite file; `:memory:` opts into process-memory room authority. App Local remains in memory. |
 | `ROOM_EMPTY_TIMEOUT_SECONDS` | Integer `0..31536000`, default `0` (disabled). Positive values enable empty-room expiry and oldest-empty reclamation under allocation pressure. Apply at Server startup; App Local retains its process-only lifecycle. |
 | `MAX_VIEWERS_PER_ROOM` | `1..20`, default `20`; excludes the Host. |
-| `ENDPOINT_MEDIA_COPY_CAPACITY` | Shared endpoint steady-copy cap `1..3`, default `2`. |
+| `ENDPOINT_MEDIA_COPY_CAPACITY` | Site's initial room forwarding limit `1..3`, default `2`; capable pages can adjust room and personal limits. |
 | `STUN_URLS` | Comma-separated advertised `stun:` discovery URLs; at least one is required in production. These are not local bind addresses and may use an unproxied DNS name separate from the Web origin. |
 | `STUN_LISTEN_HOST` | Hosted IPv4 STUN bind address, default `0.0.0.0` when `STUN_URLS` is configured; independent of HTTP `LISTEN_HOST`. App Local configuration owns its separate LAN endpoint below. |
 | `NAT_PREDICTION_ENABLED` | Optional bounded NAT prediction capability, default `false`; requires an ordinary `STUN_URLS` endpoint on UDP 3478. Hosted startup binds UDP 3479/3480 before advertising the capability. Current pages use it automatically on P2P-first sites; ordinary ICE remains available without it. Firewall reachability remains an operator requirement. |

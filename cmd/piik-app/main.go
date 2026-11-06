@@ -10,10 +10,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/TNTcraftHIM/Piik/internal/app"
+	"github.com/TNTcraftHIM/Piik/internal/processsignal"
 )
 
 func main() {
@@ -49,7 +48,7 @@ func run(args []string) int {
 	}
 	options.DisableBrowser = os.Getenv("PIIK_CLIENT_GATE_NO_BROWSER") == "true"
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := processsignal.NotifyContext(context.Background())
 	defer stop()
 	if options.DisableBrowser {
 		go func() {

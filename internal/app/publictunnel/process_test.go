@@ -511,7 +511,7 @@ func TestTemporaryConfigIsMinimal(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Remove(path) })
-	if filepath.Dir(path) != directory {
+	if filepath.Dir(path) != filepath.Clean(directory) {
 		t.Fatalf("temporary config escaped caller directory: %s", path)
 	}
 	payload, err := os.ReadFile(path)

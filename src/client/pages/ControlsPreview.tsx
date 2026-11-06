@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { VideoFit, VideoRotation } from "../media/video-geometry";
 import { BackButton, Btn, Chip, NameTag, Pill, SwitchItem } from "../components/living/primitives";
 import { RoomChip, RoomCodePlaceholder, RoomAdmissionBadge } from "../components/living/RoomChip";
@@ -61,7 +61,17 @@ export function ControlsPreview() {
   const [commentary, setCommentary] = useState(false);
   const [commentaryInput, setCommentaryInput] = useState({ deviceId: "", volume: 1, voiceProcessing: true });
   const [excludedAudio, setExcludedAudio] = useState<NativeCaptureTarget | undefined>(SOURCES.sources[2]);
-  const [sharingSettings, setSharingSettings] = useState(false);
+  const relayPreview = new URLSearchParams(location.search).get("settings") === "relay";
+  const [sharingSettings, setSharingSettings] = useState(relayPreview);
+  useLayoutEffect(() => {
+    if (!relayPreview) return;
+    const connection = document.querySelector<HTMLDetailsElement>("#preview-sharing-settings .lr-sharing-connection");
+    if (connection) connection.open = true;
+    document.getElementById("sharing-preview")?.scrollIntoView();
+  }, [relayPreview]);
+  const [sendingCapacity, setSendingCapacity] = useState(2);
+  const [sendingPending, setSendingPending] = useState(false);
+  const [sendingAvailable, setSendingAvailable] = useState(true);
   const [remoteMode, setRemoteMode] = useState<RemoteControlMode>("off");
   const [quality, setQuality] = useState<QualityProfile>(QUALITY_PROFILES["1080p30"]);
   const [launchMode, setLaunchMode] = useState<AppMode>("link");
@@ -150,7 +160,14 @@ export function ControlsPreview() {
             hint={paused ? "hint-resume" : "hint-pause"} onClick={() => setPaused(!paused)} />}
           ending={<Btn id="host-stop-share" icon="stop" tone="danger" title="host.stop" cap="host.stop" hint="hint-share-stop" onClick={notify} />}
         />
+        <div className="cp-tools">
+          <SwitchItem checked={sendingPending} onChange={setSendingPending} label={en ? "Send limit busy" : "发送上限忙碌态"} />
+          <SwitchItem checked={sendingAvailable} onChange={setSendingAvailable} label={en ? "Send limit available" : "发送上限可用"} />
+        </div>
         <SharingSettings id="preview-sharing-settings" open={sharingSettings}
+          sendingCapacity={{ enabled: false, capacity: sendingCapacity, minimum: 1, maximum: 20,
+            pending: sendingPending, disabled: sendingPending || !sendingAvailable, available: sendingAvailable,
+            onChange: () => {}, onCapacityChange: setSendingCapacity }}
           presets={<QualityPresets selected={matchingQualityProfileId(quality)}
             onSelect={id => setQuality(current => ({ ...QUALITY_PROFILES[id], maxAudioBitrate: current.maxAudioBitrate }))} />}
           pictureSummary={<PictureSettingsSummary value={quality} />}

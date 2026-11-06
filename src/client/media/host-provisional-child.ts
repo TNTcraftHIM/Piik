@@ -215,6 +215,11 @@ export class HostProvisionalChild {
     this.livePeer()?.setPaused(paused);
   }
 
+  failBrowserStream(): void {
+    const peer = this.livePeer();
+    if (peer instanceof HostPeer) this.fail(peer);
+  }
+
   async replaceStream(stream: MediaStream): Promise<boolean> {
     const peer = this.livePeer();
     if (!peer) {

@@ -1630,6 +1630,55 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	if state := waitReply("first", true); state.inputFailed != nil || state.grant != nextGrant || state.state != "active" {
 		t.Fatal("fresh input did not clear failure within the same grant")
 	}
+	send("first", inputEvent{Type: "key", Code: "KeyA", Grant: nextGrant})
+	wait(func() bool { return !first.keys["KeyA"] })
+	for _, down := range []inputEvent{
+		{Type: "button", Button: 0, Down: true, Grant: nextGrant},
+		{Type: "key", Code: "KeyQ", Down: true, Grant: nextGrant},
+	} {
+		before := len(sink.events)
+		send("first", down)
+		wait(func() bool { return len(sink.events) == before+1 })
+		m.mu.Lock()
+		sink.applyErr = errors.New("release temporarily refused")
+		m.mu.Unlock()
+		up := down
+		up.Down = false
+		send("first", up)
+		wait(func() bool { return first.inputFailed })
+		if state := waitReply("first", true); state.inputFailed == nil || !*state.inputFailed || state.grant != nextGrant {
+			t.Fatalf("%s release rejection lost its retained-grant warning", down.Type)
+		}
+		send("first", down) // Release debt still blocks this press.
+		send("first", up)   // Its logical holder is already absent: a no-op, not recovery.
+		send("first", inputEvent{Type: "reset", Grant: nextGrant})
+		send("first", inputEvent{Type: "sync"})
+		if state := waitReply("first", true); state.inputFailed == nil || !*state.inputFailed || state.grant != nextGrant || state.state != "active" {
+			t.Fatalf("%s no-op release hid pending cleanup or changed its grant", down.Type)
+		}
+		m.mu.Lock()
+		pending := len(m.pendingKeys) + len(m.pendingButtons)
+		blocked := first.inputFailed && pending == 1 && len(sink.events) == before+1
+		sink.applyErr = nil
+		m.mu.Unlock()
+		if !blocked {
+			t.Fatalf("%s cleanup debt stopped blocking fresh input", down.Type)
+		}
+		send("first", up) // Existing release retry succeeds; the rejected press is never replayed.
+		wait(func() bool { return !first.inputFailed && len(m.pendingKeys)+len(m.pendingButtons) == 0 })
+		if state := waitReply("first", true); state.inputFailed != nil || state.grant != nextGrant || state.state != "active" {
+			t.Fatalf("%s recovered cleanup did not clear its warning within the same grant", down.Type)
+		}
+		send("first", down)
+		send("first", up)
+		send("first", inputEvent{Type: "sync"})
+		if state := waitReply("first", true); state.inputFailed != nil || state.grant != nextGrant || state.state != "active" {
+			t.Fatalf("%s fresh input did not remain usable after recovery", down.Type)
+		}
+		if len(sink.events) != before+4 {
+			t.Fatalf("%s recovery replayed rejected input or lost a fresh press/release", down.Type)
+		}
+	}
 	// Replacing this endpoint's live epoch retires its opt-in along with its grant.
 	epochs["first"] = strings.Repeat("a", 32)
 	send("first", inputEvent{Type: "sync"})

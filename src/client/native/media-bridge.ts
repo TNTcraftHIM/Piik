@@ -97,6 +97,7 @@ export class NativeMediaBridge {
     this.peer.addEventListener("track", (event) => {
       if (this.disposed) return;
       if (!this.stream.getTracks().includes(event.track)) this.stream.addTrack(event.track);
+      if (event.track.kind === "video") event.track.addEventListener("ended", () => this.fail("track-ended"), { once: true });
       this.completeNegotiation?.();
     });
     this.peer.addEventListener("connectionstatechange", () => {

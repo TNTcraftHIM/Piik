@@ -39,30 +39,27 @@ behavior are unchanged.
 ### One Capacity Rule
 
 Every non-server endpoint uses one server-authoritative steady outbound media-
-copy cap `C`: default `2`, configurable only as `1`, `2`, or `3`.
+copy cap. The site's initial default is `2`, configurable as `1`, `2`, or `3`.
+Room defaults, personal choices and published-client behavior follow the
+[endpoint capacity contract](../standards/routing-transport.md#endpoint-and-server-capacity).
 
 - one ordinary peer child consumes one copy;
 - the Host's single SFU publication consumes one copy;
 - upstream receive consumes none;
 - role, Browser, UA, device, visibility, codec, and room Viewer limit do not
   create another tier;
-- a client may advertise only `0..C` currently available copies, producing the
-  controller's effective capacity.
+- endpoint capability bounds the controller's applied policy.
 
 That advertised capacity belongs to the connected endpoint, not one sharing
 generation. Replacing the room graph retains it; Viewer departure or room
 deletion clears it.
 
-One transition-overlap reservation may temporarily raise a producer to
-`min(C + 1, 3)`. Commit or abort releases it. A fourth endpoint copy is never
-authorized. SFU ingress and subscription egress are independent server resources
-and are not inferred from endpoint child counts.
-
-Room voice adds an explicit, session-scoped relay volunteer
-override under the [endpoint capacity contract](../standards/routing-transport.md#endpoint-and-server-capacity).
-It retains ordinary caps and one serial overlap reservation, but a capable
-volunteer's admitted fanout may reach 20, with one extra transition slot.
-This exception does not turn an ordinary Viewer into a separate SFU worker.
+One admitted transition-overlap reservation may temporarily add a copy within
+the endpoint's physical capability. Commit or abort releases it; a backend
+reporting at most three copies never receives a fourth. SFU ingress and
+subscription egress are independent server resources and are not inferred from
+endpoint child counts. Increasing an endpoint's limit retains ordinary Peer
+forwarding rather than creating a separate SFU worker.
 
 ### One Graph And Reconcile Loop
 

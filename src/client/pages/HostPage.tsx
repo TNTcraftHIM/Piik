@@ -10,6 +10,7 @@ import {
 import {
   DEFAULT_ROUTE_POLICY,
   MAX_VIEWER_PASSWORD_LENGTH,
+  MAX_VIEWERS_PER_ROOM_LIMIT,
   viewerPasswordSchema,
   type CreateRoomResponse,
   type ClientMessage,
@@ -154,6 +155,7 @@ import {
   type QualitySettings,
 } from "../media/quality";
 import { HostSfuRoute } from "../media/host-sfu-route";
+import { relayPhysicalCapacity } from "../media/relay-capability";
 import { BrowserEncodingPool } from "../media/browser-encoding-pool";
 import {
   HostProvisionalChild,
@@ -194,7 +196,7 @@ import {
   nativeCaptureTargetKey,
   type NativeCapturePath,
 } from "../native/capture-selection";
-import type { NativeCaptureTarget, RemoteControlState } from "../native/wire";
+import { nativeRelayCapacity, type NativeCaptureTarget, type RemoteControlState } from "../native/wire";
 import { HostRemoteControl } from "../components/living/HostRemoteControl";
 import { InputRoute } from "../remote-control/input-route";
 import {
@@ -204,6 +206,7 @@ import {
 import {
   automaticVideoCodecPreference,
   manualVideoCodecPreference,
+  supportsH264Receive,
   type BrowserVideoCodec,
   type BrowserVideoCodecMode,
   type BrowserVideoCodecPreference,
@@ -251,16 +254,16 @@ interface CaptureDetails {
   hasSourceAudio: boolean;
 }
 
-function captureDetails(stream: MediaStream, native = false, sourceAudio?: boolean): CaptureDetails {
+function captureDetails(stream: MediaStream | null, native = false, sourceAudio?: boolean): CaptureDetails {
   // A Native preview is a received track, not an observation of raw capture.
-  const settings = native ? undefined : stream.getVideoTracks()[0]?.getSettings();
+  const settings = native ? undefined : stream?.getVideoTracks()[0]?.getSettings();
   return {
     resolution:
       settings?.width && settings.height
         ? `${settings.width}x${settings.height}`
         : null,
     frameRate: settings?.frameRate ?? null,
-    hasSourceAudio: sourceAudio ?? stream.getAudioTracks().some(track => track.readyState === "live"),
+    hasSourceAudio: sourceAudio ?? stream?.getAudioTracks().some(track => track.readyState === "live") ?? false,
   };
 }
 
@@ -610,6 +613,12 @@ export function HostPage({
   const hostProvisionalChildRef = useRef<HostProvisionalChild | null>(null);
   const activeHostChildPeerIdsRef = useRef<string[]>([]);
   const endpointMediaCopyCapacityRef = useRef(MAX_ENDPOINT_MEDIA_CHILDREN);
+  const ordinaryRelayCapacityRef = useRef(MAX_ENDPOINT_MEDIA_CHILDREN);
+  const requestedRelayCapacityRef = useRef<number | null>(null);
+  const hostRelayAvailableRef = useRef(false);
+  const [hostRelaySupported, setHostRelaySupported] = useState(false);
+  const [hostRelayPending, setHostRelayPending] = useState(false);
+  const [hostRelayCapacity, setHostRelayCapacity] = useState(MAX_ENDPOINT_MEDIA_CHILDREN);
   const hostPeerIdRef = useRef<string | null>(null);
   const [viewerQualityEvidenceStore] = useState(
     () => new ViewerQualityEvidenceStore(scheduleViewerQualityEvidenceRender),
@@ -953,6 +962,11 @@ export function HostPage({
     activeHostChildPeerIdsRef.current = [];
     if (!keepRoomSession) {
       endpointMediaCopyCapacityRef.current = MAX_ENDPOINT_MEDIA_CHILDREN;
+      ordinaryRelayCapacityRef.current = MAX_ENDPOINT_MEDIA_CHILDREN;
+      requestedRelayCapacityRef.current = null;
+      hostRelayAvailableRef.current = false;
+      setHostRelaySupported(false);
+      setHostRelayPending(false);
       hostPeerIdRef.current = null;
     }
     serverShareGenerationRef.current = null;
@@ -1270,6 +1284,8 @@ export function HostPage({
     captured: MediaStream,
     generation: number,
   ): void {
+    // Native capture ends through share-ended; this track is only its preview.
+    if (nativeModeRef.current) return;
     const track = captured.getVideoTracks()[0];
     track?.addEventListener(
       "ended",
@@ -1284,6 +1300,71 @@ export function HostPage({
       },
       { once: true },
     );
+  }
+
+  function nativeCaptureCodec(client: NativeClient): BrowserVideoCodecMode {
+    if (nativeModeRef.current) return videoCodecRef.current.primary;
+    const mode = videoCodecModeRef.current;
+    return mode === "auto" && client.health.nativeMedia.softwareVP8 && !supportsH264Receive() ? "vp8" : mode;
+  }
+
+  function failNativePreview(bridge: NativeMediaBridge | null, generation: number, shareGeneration: string): void {
+    if (!isCurrentShare(generation, shareGeneration) || nativeMediaBridgeRef.current !== bridge) return;
+    nativeMediaBridgeRef.current = null;
+    nativeInputRoute.setUpstream(null);
+    hostProvisionalChildRef.current?.failBrowserStream();
+    for (const [peerId, peer] of peersRef.current) if (peer instanceof HostPeer) {
+      reportHostChildFailure(peerId, peer.connectionId, generation);
+      removePeer(peerId);
+    }
+    bridge?.dispose();
+    setStatusNotice({ key: "host.nativePreviewFailed", failureCode: "app/browser-media/connection" }, "route-failed", "warn");
+  }
+
+  function createNativePreview(client: NativeClient, nativeShareId: string, generation: number, shareGeneration: string): NativeMediaBridge {
+    const bridge = new NativeMediaBridge(nativeShareId, client, () => {
+      if (streamRef.current === bridge.stream) failNativePreview(bridge, generation, shareGeneration);
+    }, undefined, () => {
+      if (nativeMediaBridgeRef.current === bridge && isCurrentShare(generation, shareGeneration) && streamRef.current === bridge.stream) {
+        nativeInputRoute.setUpstream(bridge.getRemoteInput());
+      }
+    });
+    nativeMediaBridgeRef.current = bridge;
+    return bridge;
+  }
+
+  async function reconnectNativePreview(): Promise<void> {
+    const client = nativeConnection.current, nativeShareId = nativeShareGenerationRef.current;
+    const generation = activeGenerationRef.current, shareGeneration = shareGenerationRef.current;
+    if (!client || !nativeShareId || generation === null || !shareGeneration || !nativeModeRef.current ||
+      nativeMediaBridgeRef.current || sourceSwitchRef.current || qualityChangeRef.current) return;
+    let bridge: NativeMediaBridge | null = null;
+    const current = () => isCurrentShare(generation, shareGeneration) && nativeConnection.current === client &&
+      nativeShareGenerationRef.current === nativeShareId && nativeMediaBridgeRef.current === bridge && !sourceSwitchRef.current;
+    setStatusNotice({ key: "host.nativePreviewRecovering" }, "recovering", "warn");
+    try {
+      if (videoCodecRef.current.primary === "h264" && !supportsH264Receive()) throw new NativeMediaBridgeError("Native preview codec is unavailable");
+      bridge = createNativePreview(client, nativeShareId, generation, shareGeneration);
+      const preview = await bridge.start(audioAvailableRef.current);
+      if (!current()) {
+        if (nativeMediaBridgeRef.current === bridge) nativeMediaBridgeRef.current = null;
+        bridge?.dispose();
+        return;
+      }
+      if (!preview.getVideoTracks().some(track => track.readyState === "live")) throw new NativeMediaBridgeError("Native preview ended during recovery");
+      streamRef.current = preview;
+      setStream(preview);
+      setDetails(captureDetails(preview, true, nativeSourceAudioRef.current));
+      nativeInputRoute.setUpstream(bridge.getRemoteInput());
+      setNoticeValue(current => current?.kind === "key" &&
+        (current.key === "host.nativePreviewFailed" || current.key === "host.nativePreviewRecovering") ? null : current);
+    } catch {
+      if (current()) failNativePreview(bridge, generation, shareGeneration);
+      else {
+        if (nativeMediaBridgeRef.current === bridge) nativeMediaBridgeRef.current = null;
+        bridge?.dispose();
+      }
+    }
   }
 
   async function startNativeShare(
@@ -1310,29 +1391,6 @@ export function HostPage({
       await nativePreviewTailRef.current;
       if (!isCurrentShare(generation, shareGeneration)) return null;
       if (nativeConnection.current !== client) throw new NativeRequestError("unavailable", "start-share");
-      // Acquire the required Browser peer before starting capture. Pending
-      // cancellation owns this bridge, but still closes control to abort startup.
-      bridge = new NativeMediaBridge(
-        nativeShareId,
-        client,
-        () => {
-          if (
-            nativeMediaBridgeRef.current === bridge &&
-            isCurrentShare(generation, shareGeneration) &&
-            (!replacement || streamRef.current === bridge?.stream)
-          ) {
-            endSharing({ key: "native.fail.edge", failureCode: "app/browser-media/connection" }, true, "route-failed", "bad");
-          }
-        },
-        undefined,
-        () => {
-          if (nativeMediaBridgeRef.current === bridge && isCurrentShare(generation, shareGeneration) &&
-            (!replacement || nativeModeRef.current)) {
-            nativeInputRoute.setUpstream(bridge?.getRemoteInput() ?? null);
-          }
-        },
-      );
-      nativeMediaBridgeRef.current = bridge;
       nativeSourceAudioRef.current = undefined;
       if (!replacement) audioAvailableRef.current = false;
       nativeEventCleanup = client.onEvent((event) => {
@@ -1351,7 +1409,8 @@ export function HostPage({
           if (event.failed) setNoticeValue({ kind: "key", key: "host.audioInput.stopped", target: "operation", comic: "warning", tone: "warn" });
         }
         if (event.type === "share-ended") {
-          if (replacement && streamRef.current !== bridge?.stream) {
+          if (replacement && sourceSwitchRef.current === replacement && !nativeModeRef.current) {
+            if (nativeSourceSelectionRef.current === selection) nativeSourceSelectionRef.current = null;
             bridge?.dispose();
             return;
           }
@@ -1372,18 +1431,16 @@ export function HostPage({
         showCaptureBorder,
         adapterIndex: path.adapterIndex,
         encoderIndex: path.encoderIndex,
-        edgeCapacity: MAX_ENDPOINT_MEDIA_CHILDREN,
+        edgeCapacity: nativeRelayCapacity(MAX_VIEWERS_PER_ROOM_LIMIT, client.health),
         profile: qualitySettingsRef.current,
-        codec: videoCodecModeRef.current,
+        codec: nativeCaptureCodec(client),
       }, target.kind === "picker" ? () => activateNativePicker(client.health.activationURL) : undefined);
       shareStarted = true;
       if (!isCurrentShare(generation, shareGeneration)) {
-        if (nativeMediaBridgeRef.current === bridge) nativeMediaBridgeRef.current = null;
-        bridge.dispose();
         await client.stopShare(nativeShareId).catch(() => nativeConnection.discard(client));
         return null;
       }
-      if (nativeConnection.current !== client) throw new NativeRequestError("unavailable", "start-share");
+      if (nativeConnection.current !== client || nativeSourceSelectionRef.current !== selection) throw new NativeRequestError("unavailable", "start-share");
       nativeSourceAudioRef.current ??= started.sourceAudio ?? started.audio;
       if (!replacement) audioAvailableRef.current = nativeSourceAudioRef.current || audioAvailableRef.current;
       if (!replacement) videoCodecRef.current = manualVideoCodecPreference(started.codec);
@@ -1397,7 +1454,19 @@ export function HostPage({
       } else nativeModeRef.current = true;
       if (client.health.nativeMedia.remoteInput) await client.setRemoteInputPeers(nativeShareId, remoteInputPeersRef.current);
       if (!replacement) setNativeActive(true);
-      const stream = await bridge.start(started.audio);
+      let stream: MediaStream | null = null;
+      // The App owns capture. This Browser may be unable to receive its codec.
+      try {
+        if (started.codec === "h264" && !supportsH264Receive()) throw new NativeMediaBridgeError("Native preview codec is unavailable");
+        bridge = createNativePreview(client, nativeShareId, generation, shareGeneration);
+        stream = await bridge.start(started.audio);
+        if (!stream.getVideoTracks().some(track => track.readyState === "live")) throw new NativeMediaBridgeError("Native preview ended during startup");
+      } catch (error) {
+        debugError("native-bridge", "preview-unavailable", error);
+        if (nativeMediaBridgeRef.current === bridge) nativeMediaBridgeRef.current = null;
+        bridge?.dispose();
+        stream = null;
+      }
       if (replacement) {
         if (sharingPausedRef.current) await client.setPaused(nativeShareId, true);
         if (client.health.nativeMedia.shareVolume) {
@@ -1405,21 +1474,20 @@ export function HostPage({
         }
       }
       if (!isCurrentShare(generation, shareGeneration) || (replacement && sourceSwitchRef.current !== replacement)) {
-        if (nativeMediaBridgeRef.current === bridge) disposeNativeShare();
-        else bridge.dispose();
+        if (nativeShareGenerationRef.current === nativeShareId) disposeNativeShare(nativeShareId);
+        else bridge?.dispose();
         return null;
       }
-      if (replacement && !stream.getVideoTracks().some(track => track.readyState === "live")) {
-        throw new NativeMediaBridgeError("Native capture ended before source replacement");
-      }
+      if (nativeConnection.current !== client || nativeSourceSelectionRef.current !== selection) throw new NativeRequestError("unavailable", "start-share");
       if (replacement) {
         audioAvailableRef.current = !!nativeSourceAudioRef.current;
         videoCodecRef.current = manualVideoCodecPreference(started.codec);
         nativeModeRef.current = true;
         setNativeActive(true);
         if (pendingRemoteControl) applyRemoteControl(pendingRemoteControl);
-        nativeInputRoute.setUpstream(bridge.getRemoteInput());
       }
+      if (stream && bridge) nativeInputRoute.setUpstream(bridge.getRemoteInput());
+      else if (!replacement) failNativePreview(null, generation, shareGeneration);
       return stream;
     } catch (error) {
       if (nativeSourceSelectionRef.current === selection) nativeSourceSelectionRef.current = null;
@@ -1455,6 +1523,7 @@ export function HostPage({
     } else if (nativeModeRef.current && activeGenerationRef.current !== null) {
       endSharing({ key: "native.fail.controlDisconnected", failureCode: "app/control/disconnected" }, true, "route-failed", "bad");
     }
+    updateHostRelayCapacity();
   }
 
   function connectNativeClient(signal: AbortSignal): Promise<NativeClient | null> {
@@ -1466,7 +1535,26 @@ export function HostPage({
   }
 
   function acquireNativeClient(): Promise<NativeClient | null> {
-    return nativeConnection.acquire(nativeShareCleanupRef.current);
+    return nativeConnection.acquire(nativeShareCleanupRef.current).then(client => {
+      if (client && nativeConnection.current === client) updateHostRelayCapacity();
+      return client;
+    });
+  }
+
+  function updateHostRelayCapacity(capacity?: number): void {
+    if (capacity !== undefined) requestedRelayCapacityRef.current = capacity;
+    const client = nativeConnection.current;
+    const backend = client ? nativeRelayCapacity(MAX_VIEWERS_PER_ROOM_LIMIT, client.health) : MAX_VIEWERS_PER_ROOM_LIMIT;
+    const requested = requestedRelayCapacityRef.current;
+    const effective = requested ?? ordinaryRelayCapacityRef.current;
+    const enabled = requested !== null;
+    setHostRelayCapacity(effective);
+    const signal = signalRef.current;
+    if (!hostRelayAvailableRef.current || !signal) return;
+    const intent = signal.relayVolunteerRequest;
+    if (intent?.enabled === enabled && intent.capacity === effective && intent.physicalCapacity === backend) return;
+    setHostRelayPending(true);
+    if (!signal.setRelayVolunteer(enabled, effective, backend)) setHostRelayPending(false);
   }
 
   function releaseUnusedNativeClient(): void {
@@ -1475,6 +1563,7 @@ export function HostPage({
     if (nativeSourceRequestRef.current || nativeShareGenerationRef.current || sourceSwitchRef.current ||
       (activeGenerationRef.current !== null && roomMutationRef.current !== null)) return;
     nativeConnection.release();
+    updateHostRelayCapacity();
   }
 
   function closeCaptureSourcePicker(): void {
@@ -1530,7 +1619,7 @@ export function HostPage({
         client.captureOptions(),
         client.sources(),
       ]);
-      const codec = nativeModeRef.current ? videoCodecRef.current.primary : videoCodecModeRef.current;
+      const codec = nativeCaptureCodec(client);
       const path = defaultNativeCapturePath(
         adapters,
         codec,
@@ -1576,7 +1665,7 @@ export function HostPage({
     if (nativeConnection.current !== client || !isCurrentShare(generation, shareGeneration)) return;
     const ingress = new NativeMediaIngress(shareGeneration, client, () => {
       recoverBrowserFanout(ingress);
-    }, () => qualitySettingsRef.current);
+    }, () => qualitySettingsRef.current, nativeRelayCapacity(MAX_VIEWERS_PER_ROOM_LIMIT, client.health));
     nativeMediaIngressRef.current = ingress;
     nativeShareGenerationRef.current = shareGeneration;
     try {
@@ -1810,7 +1899,7 @@ export function HostPage({
     const activeStream = streamRef.current;
     if (
       generation === null ||
-      !activeStream ||
+      (!activeStream && !nativeModeRef.current) ||
       !isCurrentGeneration(generation) ||
       sourceSwitchRef.current
     ) {
@@ -1852,7 +1941,7 @@ export function HostPage({
         );
       }
       const appliedProfile = nextProfile;
-      if (!nativeUpdate && captureChanged) {
+      if (!nativeUpdate && captureChanged && activeStream) {
         await applyCaptureProfile(activeStream, nextProfile);
       }
       if (
@@ -1869,7 +1958,7 @@ export function HostPage({
       outcome = "applied";
       if (nativeUpdate) {
         setDetails(captureDetails(activeStream, true, nativeSourceAudioRef.current));
-      } else if (captureChanged) {
+      } else if (captureChanged && activeStream) {
         setDetails(captureDetails(hostAudioRef.current?.sourceStream ?? activeStream));
       }
       signalRef.current?.setHostQualitySettings(appliedProfile);
@@ -2152,6 +2241,8 @@ export function HostPage({
     if (
       !isCurrentGeneration(generation) ||
       (!stream && !nativeModeRef.current) ||
+      (nativeModeRef.current && shouldUseBrowserQualityCandidate(peersRef.current.get(candidate.childPeerId), candidate) &&
+        nativeMediaBridgeRef.current?.stream !== stream) ||
       !iceConfig ||
       !signal
     ) {
@@ -2631,6 +2722,10 @@ export function HostPage({
       return previous;
     }
     previous?.stop();
+    hostRelayAvailableRef.current = false;
+    requestedRelayCapacityRef.current = null;
+    setHostRelaySupported(false);
+    setHostRelayPending(false);
     let authenticated = false;
     const hostClientId = getStableClientId("host", activeRoom.roomId);
     hostClientIdRef.current = hostClientId;
@@ -2674,6 +2769,17 @@ export function HostPage({
         },
         onMessage: (message) => {
           if (signalRef.current !== signal || !isCurrentRoomAuthority(activeRoom)) return;
+          if (message.type === "relay-volunteer") {
+            if (message.roomCapacity === undefined) return;
+            ordinaryRelayCapacityRef.current = message.roomCapacity;
+            const intent = signal.relayVolunteerRequest;
+            setHostRelayPending(intent !== null && intent.enabled && intent.capacity !== message.roomCapacity);
+            setHostRelayCapacity(intent?.enabled ? intent.capacity : message.roomCapacity);
+            // Lowering policy hands children back to the controller. Keep room
+            // for their old connections until its assignments retire them.
+            endpointMediaCopyCapacityRef.current = Math.max(endpointMediaCopyCapacityRef.current, relayPhysicalCapacity(message.capacity));
+            return;
+          }
           if (message.type === "remote-input-peers") {
             remoteInputPeersRef.current = message.peers;
             const client = nativeConnection.current, shareId = nativeShareGenerationRef.current;
@@ -2733,7 +2839,10 @@ export function HostPage({
             authenticated = true;
             iceConfigRef.current = message.iceConfig;
             hostPeerIdRef.current = message.peerId;
-            endpointMediaCopyCapacityRef.current = message.endpointMediaCopyCapacity;
+            if (!hostRelayAvailableRef.current) ordinaryRelayCapacityRef.current = message.endpointMediaCopyCapacity;
+            endpointMediaCopyCapacityRef.current = Math.max(endpointMediaCopyCapacityRef.current, relayPhysicalCapacity(message.endpointMediaCopyCapacity));
+            setHostRelayPending(signal.relayVolunteerRequest !== null);
+            updateHostRelayCapacity();
             serverShareGenerationRef.current = message.shareGeneration;
             const profile = {
               codeEntryPolicy: message.codeEntryPolicy,
@@ -2802,6 +2911,11 @@ export function HostPage({
     signal.setAudioAvailable(audioAvailableRef.current);
     remoteInputPeersRef.current = [];
     void getRuntimeCapabilities().then(capabilities => {
+      if (signalRef.current === signal) {
+        hostRelayAvailableRef.current = capabilities.roomRelayCapacity === true && !capabilities.sfuOnly;
+        setHostRelaySupported(hostRelayAvailableRef.current);
+        updateHostRelayCapacity();
+      }
       if (signalRef.current === signal && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
       if (signalRef.current === signal && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice({ listeningPresence: capabilities.roomVoiceListeningPresence, bitrate: capabilities.roomVoiceBitrate }));
       if (signalRef.current === signal && capabilities.remoteInput) signal.enableRemoteInput();
@@ -2946,7 +3060,10 @@ export function HostPage({
       if (nativeStarted) disposeNativeShare(shareGeneration);
       return;
     }
-    if (captured) setResolvedVideoCodec(videoCodecRef.current.primary);
+    if (captured || nativeModeRef.current) {
+      setResolvedVideoCodec(videoCodecRef.current.primary);
+      if (!captured) setDetails(captureDetails(null, true, nativeSourceAudioRef.current));
+    }
 
     let createdRoom: HostRoomState | null = null;
     let claimedRoom = false;
@@ -3133,9 +3250,8 @@ export function HostPage({
       const ingress = nativeMediaIngressRef.current;
       if (ingress) recoverBrowserFanout(ingress);
       const captured = await startNativeShare(generation, shareGeneration, selection, token);
-      if (!captured) return;
       if (!isCurrentShare(generation, shareGeneration) || sourceSwitchRef.current !== token) {
-        if (nativeMediaBridgeRef.current?.stream === captured) disposeNativeShare();
+        if (nativeSourceSelectionRef.current === selection) disposeNativeShare();
         return;
       }
       const previousAudio = hostAudioRef.current;
@@ -3146,6 +3262,7 @@ export function HostPage({
       signalRef.current?.setAudioAvailable(audioAvailableRef.current);
       setResolvedVideoCodec(videoCodecRef.current.primary);
       await replaceBrowserStream(captured, generation, token, [], true);
+      if (!captured) failNativePreview(null, generation, shareGeneration);
     } catch (error) {
       if (isCurrentShare(generation, shareGeneration) && sourceSwitchRef.current === token) {
         setNoticeError(error, "source");
@@ -3300,30 +3417,24 @@ export function HostPage({
       failureCode: hostFailureCode(error, action, "camera") });
   }
 
-  async function replaceBrowserStream(captured: MediaStream, generation: number, token: object, reboundPeerIds: string[] = [], rebuildTransport = false): Promise<void> {
+  async function replaceBrowserStream(captured: MediaStream | null, generation: number, token: object, reboundPeerIds: string[] = [], rebuildTransport = false): Promise<void> {
     // The caller retires its operation; this function owns only stream resources.
     const previousStream = streamRef.current;
-    if (!previousStream) {
-      captured.getTracks().forEach((track) => track.stop());
-      setStatusNotice({ key: "host.shareEnded" }, "share-ended", "off");
-      return;
-    }
-
     retiringStreamRef.current = previousStream;
-    const videoChanged = captured.getVideoTracks()[0] !== previousStream.getVideoTracks()[0];
+    const videoChanged = captured?.getVideoTracks()[0] !== previousStream?.getVideoTracks()[0];
     // HostAudio retires source audio; this operation retires replaced video.
-    const retirePrevious = () => previousStream.getVideoTracks().forEach((track) => {
-      if (!captured.getTracks().includes(track)) track.stop();
+    const retirePrevious = () => previousStream?.getVideoTracks().forEach((track) => {
+      if (!captured?.getTracks().includes(track)) track.stop();
     });
     if (videoChanged) invalidateSenderQualityEvidence();
     if (videoChanged && routePolicyRef.current.topologyOptimization) {
       signalRef.current?.send({ type: "reset-sender-quality" });
     }
-    setMediaPaused(captured, sharingPausedRef.current);
+    if (captured) setMediaPaused(captured, sharingPausedRef.current);
     streamRef.current = captured;
     setStream(captured);
     setDetails(captureDetails(hostAudioRef.current?.sourceStream ?? captured, nativeModeRef.current, nativeSourceAudioRef.current));
-    if (videoChanged) watchCaptureEnd(captured, generation);
+    if (videoChanged && captured) watchCaptureEnd(captured, generation);
 
     try {
       if (rebuildTransport) {
@@ -3335,14 +3446,14 @@ export function HostPage({
         }
       }
       const ingress = nativeMediaIngressRef.current;
-      if (ingress) {
+      if (ingress && captured) {
         try {
           if (ingress.hasAudio !== (captured.getAudioTracks().length > 0)) {
             const client = nativeConnection.current;
             if (!client) throw new Error("Native media ingress is unavailable");
             const replacement = new NativeMediaIngress(ingress.shareId, client, () => {
               recoverBrowserFanout(replacement);
-            }, () => qualitySettingsRef.current);
+            }, () => qualitySettingsRef.current, nativeRelayCapacity(MAX_VIEWERS_PER_ROOM_LIMIT, client.health));
             try {
               await replacement.start(captured, qualitySettingsRef.current);
               if (!isCurrentGeneration(generation) || nativeMediaIngressRef.current !== ingress) {
@@ -3370,7 +3481,7 @@ export function HostPage({
         }
       }
       if (!isCurrentGeneration(generation) || sourceSwitchRef.current !== token) {
-        captured.getTracks().forEach((track) => track.stop());
+        captured?.getTracks().forEach((track) => track.stop());
         return;
       }
       const activeSfuRoute = hostSfuRouteRef.current;
@@ -3382,14 +3493,14 @@ export function HostPage({
               return {
                 peerId,
                 peer,
-                replaced: await peer.replaceStream(captured),
+                replaced: captured ? await peer.replaceStream(captured) : false,
               };
             } catch {
               return { peerId, peer, replaced: false };
             }
           }),
         ),
-        provisional?.replaceStream(captured) ?? Promise.resolve(true),
+        captured ? provisional?.replaceStream(captured) ?? Promise.resolve(true) : Promise.resolve(true),
         activeSfuRoute?.replaceStream(captured, rebuildTransport) ?? Promise.resolve(true),
       ]);
 
@@ -3397,7 +3508,7 @@ export function HostPage({
         !isCurrentGeneration(generation) ||
         sourceSwitchRef.current !== token
       ) {
-        captured.getTracks().forEach((track) => track.stop());
+        captured?.getTracks().forEach((track) => track.stop());
         return;
       }
 
@@ -3871,16 +3982,19 @@ export function HostPage({
               </span>
             </>}
           >
-            {stream ? (
+            {stream || nativeActive ? (
               <video ref={videoRef} muted playsInline tabIndex={0}
                 style={{ objectFit: pictureFit }} aria-label={t("host.stageAria")} />
             ) : null}
-            {stream && <PlaybackControls videoRef={videoRef} stream={stream}
+            {(stream || nativeActive) && <PlaybackControls videoRef={videoRef} stream={stream}
               sharingAudio={{ ...shareVolume, available: nativeActive
                 ? !!nativeConnection.current?.health.nativeMedia.shareVolume : hostAudioRef.current?.commentaryAvailable === true,
                 onChange: changeShareVolume }}
               audioAvailable={audioAvailableRef.current}
-              canPlay={phase === "live" && !nativeSources && !sharingPaused && !previewPlayback.suspended}
+              canPlay={!!stream && phase === "live" && !nativeSources && !sharingPaused && !previewPlayback.suspended &&
+                (!nativeActive || nativeMediaBridgeRef.current?.stream === stream)}
+              onReconnect={nativeActive ? () => { void reconnectNativePreview(); } : undefined}
+              reconnectAvailable={nativeActive && !nativeMediaBridgeRef.current && !switchingSource && !changingQuality}
               theaterMode={theaterMode} onToggleTheater={() => setTheaterMode(value => !value)}
               onPlay={previewPlayback.onPlay}
               onPause={previewPlayback.onPause}
@@ -4184,6 +4298,17 @@ export function HostPage({
                 max={audioBitrateCeiling} disabled={phase === "starting" || switchingSource}
                 onChange={changeMaxAudioBitrate} />
             </>}
+            sendingCapacity={hostRelaySupported ? {
+              capacity: hostRelayCapacity,
+              minimum: 1,
+              maximum: MAX_VIEWERS_PER_ROOM_LIMIT,
+              available: true,
+              enabled: true,
+              pending: hostRelayPending,
+              disabled: signalStatus !== "connected" || hostRelayPending,
+              onChange: () => {},
+              onCapacityChange: capacity => updateHostRelayCapacity(capacity),
+            } : undefined}
             connection={
               <div className="lr-row-group" role="group" aria-label={t("host.advanced.route")}>
                 {sfuOnly ? <SwitchItem checked disabled locked
