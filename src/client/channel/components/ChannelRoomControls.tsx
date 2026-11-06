@@ -3,6 +3,7 @@ import { useAnchoredPopover } from "../../components/living/use-anchored-popover
 import { Tooltip } from "../../components/living/Tooltip";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
+import { useClipboardResult } from "../../ui/use-clipboard-result";
 import type { ChannelRoom, RoomSettings } from "../protocol";
 import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelAction";
@@ -70,14 +71,14 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
   const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [invite, setInvite] = useState("");
-  const [copied, setCopied] = useState(false);
+  const invitationCopy = useClipboardResult(invite);
   const [backupAvailable, setBackupAvailable] = useState(false);
   const id = room ? "c3-room-settings" : "c3-create-room";
   const title = room ? (zh ? "房间设置" : "Room settings") : (zh ? "创建房间" : "Create room");
   useAnchoredPopover(trigger, panel, { side: "below", align: "end" });
   useEffect(() => { panel.current?.hidePopover(); }, [room?.id]);
   useEffect(() => {
-    setInvite(""); setCopied(false);
+    setInvite("");
     if (!channel.pending.has("room-backup")) panel.current?.hidePopover();
   }, [room?.id, room?.access]);
   useEffect(() => {
@@ -117,11 +118,11 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
       {room?.access === "private" && <section className="c3-room-invitation">
         <ChannelAction icon="link" label={invite ? (zh ? "更换邀请链接" : "Replace invitation") : (zh ? "创建房间邀请" : "Create room invitation")}
           busy={channel.pending.has(`invite:${room.id}`)} disabled={!available} hint="hint-copy-invite"
-          onClick={() => run(channel.createRoomInvite(room.id).then(value => { setInvite(value); setCopied(false); }))} />
+          onClick={() => run(channel.createRoomInvite(room.id).then(setInvite))} />
         {invite && <div className="c3-invite-copy"><input className="c3-input" value={invite} readOnly
           aria-label={zh ? "房间邀请链接" : "Room invitation link"} onFocus={event => event.currentTarget.select()} />
-          <ChannelAction icon={copied ? "check" : "copy"} iconOnly label={copied ? (zh ? "已复制" : "Copied") : (zh ? "复制邀请" : "Copy invitation")}
-            hint="hint-copy-invite" onClick={() => run(navigator.clipboard.writeText(invite).then(() => setCopied(true)))} /></div>}
+          <ChannelAction icon={invitationCopy.status === "copied" ? "check" : "copy"} iconOnly label={invitationCopy.status === "copied" ? (zh ? "已复制" : "Copied") : (zh ? "复制邀请" : "Copy invitation")}
+            hint="hint-copy-invite" onClick={invitationCopy.copy} /></div>}
         <p>{zh ? "更换邀请或密码不会移除已获准的用户。" : "Replacing an invitation or password keeps existing access."}</p>
         {members.length > 0 && <details className="c3-room-members">
           <summary>{zh ? "已获准的用户" : "Users with access"}</summary>

@@ -6,6 +6,7 @@ import { participantColor } from "../components/living/participant-color";
 import { Tooltip } from "../components/living/Tooltip";
 import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
+import { useClipboardResult } from "../ui/use-clipboard-result";
 import { useChannel } from "../channel/use-channel";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelAction } from "../channel/components/ChannelAction";
@@ -43,8 +44,7 @@ export function ChannelPreviewPage() {
   const couchSlot = useRef<HTMLDivElement>(null), conversationSlot = useRef<HTMLDivElement>(null), voiceSlot = useRef<HTMLDivElement>(null);
   const [focusedScreen, setFocusedScreen] = useState<string | null>(null);
   const [voiceFocus, setVoiceFocus] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [copyError, setCopyError] = useState(false);
+  const invitationCopy = useClipboardResult(channel.inviteURL);
   const rooms = state?.channel.rooms ?? [];
   const room = rooms.find(value => value.id === selected) ?? rooms[0];
   const roomId = room?.id ?? "";
@@ -119,19 +119,12 @@ export function ChannelPreviewPage() {
     setSelected(roomId);
     channel.browse(roomId);
   }, [roomId, room?.authorized, room?.available]);
-  useEffect(() => { setCopied(false); setCopyError(false); }, [channel.inviteURL]);
   useEffect(() => {
     if (mobilePane === "room") return;
     const heading = document.getElementById(mobilePane === "rooms" ? "c3-room-list-heading" : "c3-people-heading");
     heading?.focus();
     return () => { document.getElementById(mobilePane === "rooms" ? "c3-rooms-trigger" : "c3-people-trigger")?.focus(); };
   }, [mobilePane]);
-  function copyInvite() {
-    if (!channel.inviteURL) return;
-    void navigator.clipboard.writeText(channel.inviteURL).then(() => {
-      setCopied(true); setCopyError(false);
-    }).catch(() => setCopyError(true));
-  }
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
   const connectionLabel = connected ? copy("已连接", "Connected") : connection === "connecting"
     ? copy("正在连接", "Connecting") : connection === "reconnecting" ? copy("正在重连", "Reconnecting") : copy("连接已断开", "Disconnected");
@@ -153,9 +146,9 @@ export function ChannelPreviewPage() {
           {state && owner && <ChannelDomainControls channel={channel} />}
           <span className="c3-pane-back"><BackButton onClick={() => setMobilePane("room")} /></span>
         </div>
-        {channel.inviteURL && <div className="c3-invite"><ChannelAction icon={copied ? "check" : "link"}
-          label={copied ? copy("已复制", "Copied") : copy("邀请朋友", "Invite friends")} hint="hint-copy-invite" onClick={copyInvite} /></div>}
-        {copyError && <label className="c3-copy-fallback">{copy("请手动复制邀请链接", "Copy invitation manually")}
+        {channel.inviteURL && <div className="c3-invite"><ChannelAction icon={invitationCopy.status === "copied" ? "check" : "link"}
+          label={invitationCopy.status === "copied" ? copy("已复制", "Copied") : copy("邀请朋友", "Invite friends")} hint="hint-copy-invite" onClick={invitationCopy.copy} /></div>}
+        {invitationCopy.status === "failed" && <label className="c3-copy-fallback">{copy("请手动复制邀请链接", "Copy invitation manually")}
           <input className="c3-input" readOnly value={channel.inviteURL ?? ""} onFocus={event => event.currentTarget.select()} />
         </label>}
         <div className={`c3-room-navigation${!rooms.length ? " is-empty" : ""}`}>
