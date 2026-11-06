@@ -60,7 +60,7 @@ struct Network {
     corrupt: Option<Uuid>,
     pause_chunk: Option<Uuid>,
     hold_read: Option<Uuid>,
-    pending_reads: Vec<(Uuid, FileKey, u64, usize)>,
+    pending_reads: Vec<(Uuid, FileKey, u64, Uuid, usize)>,
 }
 impl Network {
     fn new() -> Self {
@@ -100,14 +100,14 @@ impl Network {
         let effects = self.nodes.get_mut(&id(node)).unwrap().start(key());
         self.push(id(node), effects);
     }
-    fn read(&mut self, from: Uuid, key: FileKey, offset: u64, length: usize) {
+    fn read(&mut self, from: Uuid, key: FileKey, offset: u64, request_id: Uuid, length: usize) {
         *self.reads.entry((from, offset)).or_default() += 1;
         let bytes = self.bytes[offset as usize..offset as usize + length].to_vec();
         let effects = self
             .nodes
             .get_mut(&from)
             .unwrap()
-            .read_result(&key, offset, bytes);
+            .read_result(&key, offset, request_id, bytes);
         self.push(from, effects);
     }
     fn run(&mut self) {
@@ -148,12 +148,14 @@ impl Network {
                     key,
                     offset,
                     length,
+                    request_id,
                 } => {
                     assert!(length <= FILE_RANGE_BYTES);
                     if self.hold_read == Some(from) {
-                        self.pending_reads.push((from, key, offset, length));
+                        self.pending_reads
+                            .push((from, key, offset, request_id, length));
                     } else {
-                        self.read(from, key, offset, length);
+                        self.read(from, key, offset, request_id, length);
                     }
                 }
                 FileEffect::Write { key, offset, bytes } => {
@@ -281,8 +283,8 @@ fn authorized_source_and_route_change_preserve_written_prefix_and_ignore_old_sou
     network.push(id(2), effects);
     network.update(1, 1, None, &[3], false);
     network.update(3, 1, Some(1), &[], true);
-    for (node, key, offset, length) in std::mem::take(&mut network.pending_reads) {
-        network.read(node, key, offset, length);
+    for (node, key, offset, request_id, length) in std::mem::take(&mut network.pending_reads) {
+        network.read(node, key, offset, request_id, length);
     }
     network.run();
     assert_eq!(network.sinks[&id(3)], network.bytes);
@@ -293,4 +295,89 @@ fn authorized_source_and_route_change_preserve_written_prefix_and_ignore_old_sou
         !network.reads.contains_key(&(id(5), 0)),
         "resume never rereads the written prefix"
     );
+}
+
+#[test]
+fn request_ownership_survives_retry_coalescing_and_late_adapter_results() {
+    let bytes = content();
+    let mut source = FileDelivery::new(id(1));
+    source.update(vec![plan(1, None, &[2, 3], false, &bytes)]);
+    let (a, b, sibling) = (id(100), id(101), id(102));
+    let pull = |request_id| FileControl::Pull {
+        key: key(),
+        offset: 0,
+        request_id,
+    };
+    let first = source.control(id(2), pull(a));
+    let first_read = first
+        .iter()
+        .find_map(|effect| match effect {
+            FileEffect::Read { request_id, .. } => Some(*request_id),
+            _ => None,
+        })
+        .unwrap();
+    // Cancelling the only branch retires the exact source read; its late result
+    // and failure must not apply to a new read for the same immutable file.
+    source.control(
+        id(2),
+        FileControl::Cancel {
+            key: key(),
+            offset: 0,
+            request_id: a,
+        },
+    );
+    let retry = source.control(id(2), pull(b));
+    let retry_read = retry
+        .iter()
+        .find_map(|effect| match effect {
+            FileEffect::Read { request_id, .. } => Some(*request_id),
+            _ => None,
+        })
+        .unwrap();
+    assert_ne!(first_read, retry_read);
+    assert!(source
+        .read_result(&key(), 0, first_read, bytes[..FILE_RANGE_BYTES].to_vec())
+        .is_empty());
+    assert!(source
+        .request_failed(&key(), first_read, "retired_read")
+        .is_empty());
+    // A delayed Cancel from the old request cannot remove its replacement.
+    assert!(source
+        .control(
+            id(2),
+            FileControl::Cancel {
+                key: key(),
+                offset: 0,
+                request_id: a
+            }
+        )
+        .is_empty());
+    assert!(
+        source.control(id(3), pull(sibling)).is_empty(),
+        "shared range must not read a second copy"
+    );
+    let chunks = source.read_result(&key(), 0, retry_read, bytes[..FILE_RANGE_BYTES].to_vec());
+    for (peer, request) in [(id(2), b), (id(3), sibling)] {
+        // Inspect the supplier's actual serialized header, without constructing
+        // a duplicate frame codec in this test.
+        for effect in &chunks {
+            if let FileEffect::SendChunk {
+                peer: target,
+                request_id,
+                frame,
+                ..
+            } = effect
+            {
+                if *target == peer {
+                    assert_eq!(*request_id, request);
+                    let length = u16::from_be_bytes([frame[0], frame[1]]) as usize;
+                    let header: serde_json::Value =
+                        serde_json::from_slice(&frame[2..2 + length]).unwrap();
+                    assert_eq!(header["requestId"], request.to_string());
+                }
+            }
+        }
+    }
+    assert!(chunks.iter().any(|effect| matches!(effect, FileEffect::SendChunk { peer, request_id, .. } if *peer == id(2) && *request_id == b)));
+    assert!(chunks.iter().any(|effect| matches!(effect, FileEffect::SendChunk { peer, request_id, .. } if *peer == id(3) && *request_id == sibling)));
 }

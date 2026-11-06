@@ -18,9 +18,21 @@ pub const FILE_MAX_RANGE_FRAMES: usize = FILE_RANGE_BYTES / (FILE_FRAME_BYTES / 
     rename_all_fields = "camelCase"
 )]
 pub enum FileControl {
-    Pull { key: FileKey, offset: u64 },
-    Cancel { key: FileKey, offset: u64 },
-    Error { key: FileKey, code: String },
+    Pull {
+        key: FileKey,
+        offset: u64,
+        request_id: Uuid,
+    },
+    Cancel {
+        key: FileKey,
+        offset: u64,
+        request_id: Uuid,
+    },
+    Error {
+        key: FileKey,
+        request_id: Uuid,
+        code: String,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -37,10 +49,12 @@ pub enum FileEffect {
     SendChunk {
         peer: Uuid,
         key: FileKey,
+        request_id: Uuid,
         frame: Vec<u8>,
     },
     Read {
         key: FileKey,
+        request_id: Uuid,
         offset: u64,
         length: usize,
     },
@@ -59,19 +73,21 @@ pub enum FileEffect {
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct Header {
     key: FileKey,
     offset: u64,
+    request_id: Uuid,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Supplier {
     Waiting,
-    Local,
-    Peer(Uuid),
+    Local(Uuid),
+    Peer(Uuid, Uuid),
 }
 struct Range {
-    consumers: BTreeSet<Option<Uuid>>,
+    consumers: BTreeMap<Option<Uuid>, Option<Uuid>>,
     supplier: Supplier,
     bytes: Vec<u8>,
 }
@@ -136,18 +152,19 @@ impl FileDelivery {
             let stopped_receiving = file.plan.receiving && !plan.receiving;
             file.plan = plan;
             for (offset, range) in &mut file.ranges {
-                range.consumers.retain(|peer| {
+                range.consumers.retain(|peer, _| {
                     peer.map_or(file.plan.receiving, |peer| {
                         file.plan.downstream.contains(&peer)
                     })
                 });
                 if changed || range.consumers.is_empty() {
-                    if let Supplier::Peer(peer) = range.supplier {
+                    if let Supplier::Peer(peer, request_id) = range.supplier {
                         effects.push(FileEffect::SendControl {
                             peer,
                             control: FileControl::Cancel {
                                 key: key.clone(),
                                 offset: *offset,
+                                request_id,
                             },
                         });
                     }
@@ -182,12 +199,16 @@ impl FileDelivery {
 
     pub fn cancel(&mut self, key: &FileKey) -> Vec<FileEffect> {
         self.receivers.remove(key);
-        self.remove_consumer(key, None, None)
+        self.remove_consumer(key, None, None, None)
     }
 
     pub fn control(&mut self, peer: Uuid, control: FileControl) -> Vec<FileEffect> {
         match control {
-            FileControl::Pull { key, offset } => {
+            FileControl::Pull {
+                key,
+                offset,
+                request_id,
+            } => {
                 if !self
                     .files
                     .get(&key)
@@ -195,17 +216,25 @@ impl FileDelivery {
                 {
                     return Vec::new();
                 }
-                self.request(&key, offset, Some(peer))
+                self.request(&key, offset, Some((peer, request_id)))
             }
-            FileControl::Cancel { key, offset } => {
-                self.remove_consumer(&key, Some(peer), Some(offset))
-            }
-            FileControl::Error { key, code } => {
-                if self
-                    .files
-                    .get(&key)
-                    .is_some_and(|file| file.plan.upstream == Some(peer))
-                {
+            FileControl::Cancel {
+                key,
+                offset,
+                request_id,
+            } => self.remove_consumer(&key, Some(peer), Some(offset), Some(request_id)),
+            FileControl::Error {
+                key,
+                request_id,
+                code,
+            } => {
+                if self.files.get(&key).is_some_and(|file| {
+                    file.plan.upstream == Some(peer)
+                        && file
+                            .ranges
+                            .values()
+                            .any(|range| range.supplier == Supplier::Peer(peer, request_id))
+                }) {
                     self.fail(&key, &code)
                 } else {
                     Vec::new()
@@ -226,7 +255,7 @@ impl FileDelivery {
         let Some(range) = file.ranges.get_mut(&offset) else {
             return Ok(Vec::new());
         };
-        if range.supplier != Supplier::Peer(peer) {
+        if range.supplier != Supplier::Peer(peer, header.request_id) {
             return Ok(Vec::new());
         }
         let length = range_length(&file.plan, offset);
@@ -245,14 +274,20 @@ impl FileDelivery {
         }
     }
 
-    pub fn read_result(&mut self, key: &FileKey, offset: u64, bytes: Vec<u8>) -> Vec<FileEffect> {
+    pub fn read_result(
+        &mut self,
+        key: &FileKey,
+        offset: u64,
+        request_id: Uuid,
+        bytes: Vec<u8>,
+    ) -> Vec<FileEffect> {
         let Some(file) = self.files.get(key) else {
             return Vec::new();
         };
         if !file
             .ranges
             .get(&offset)
-            .is_some_and(|range| range.supplier == Supplier::Local)
+            .is_some_and(|range| range.supplier == Supplier::Local(request_id))
         {
             return Vec::new();
         }
@@ -286,23 +321,32 @@ impl FileDelivery {
         if let Some(file) = self.files.get_mut(key) {
             let mut consumers = BTreeSet::new();
             for (offset, range) in std::mem::take(&mut file.ranges) {
-                consumers.extend(range.consumers.into_iter().flatten());
-                if let Supplier::Peer(peer) = range.supplier {
+                consumers.extend(
+                    range
+                        .consumers
+                        .into_iter()
+                        .filter_map(|(peer, request)| peer.zip(request)),
+                );
+                if let Supplier::Peer(peer, request_id) = range.supplier {
                     effects.push(FileEffect::SendControl {
                         peer,
                         control: FileControl::Cancel {
                             key: key.clone(),
                             offset,
+                            request_id,
                         },
                     });
                 }
             }
-            effects.extend(consumers.into_iter().map(|peer| FileEffect::SendControl {
-                peer,
-                control: FileControl::Error {
-                    key: key.clone(),
-                    code: code.into(),
-                },
+            effects.extend(consumers.into_iter().map(|(peer, request_id)| {
+                FileEffect::SendControl {
+                    peer,
+                    control: FileControl::Error {
+                        key: key.clone(),
+                        request_id,
+                        code: code.into(),
+                    },
+                }
             }));
         }
         effects.extend(self.fail_local(key, code));
@@ -315,7 +359,7 @@ impl FileDelivery {
         let keys: Vec<_> = self.files.keys().cloned().collect();
         let mut effects = Vec::new();
         for key in keys {
-            effects.extend(self.remove_consumer(&key, Some(peer), None));
+            effects.extend(self.remove_consumer(&key, Some(peer), None, None));
             let file = self.files.get_mut(&key).unwrap();
             if file.plan.upstream == Some(peer) {
                 file.plan.upstream = None;
@@ -328,27 +372,74 @@ impl FileDelivery {
         effects
     }
 
-    pub fn peer_failed(&mut self, key: &FileKey, peer: Uuid, code: &str) -> Vec<FileEffect> {
+    /// An adapter completion belongs to the exact supplier request that issued it.
+    pub fn request_failed(
+        &mut self,
+        key: &FileKey,
+        request_id: Uuid,
+        code: &str,
+    ) -> Vec<FileEffect> {
+        if self.files.get(key).is_some_and(|file| {
+            file.ranges.values().any(|range| {
+                matches!(range.supplier, Supplier::Local(id) | Supplier::Peer(_, id) if id == request_id)
+            })
+        }) {
+            self.fail(key, code)
+        } else {
+            Vec::new()
+        }
+    }
+
+    pub fn peer_failed(
+        &mut self,
+        key: &FileKey,
+        peer: Uuid,
+        request_id: Uuid,
+        code: &str,
+    ) -> Vec<FileEffect> {
         let Some(file) = self.files.get(key) else {
             return Vec::new();
         };
         if file.plan.upstream == Some(peer) {
-            return self.fail(key, code);
+            if code == "peer_data_unavailable" {
+                return if file
+                    .ranges
+                    .values()
+                    .any(|range| range.supplier == Supplier::Peer(peer, request_id))
+                {
+                    self.peer_unavailable(peer)
+                } else {
+                    Vec::new()
+                };
+            }
+            return self.request_failed(key, request_id, code);
         }
-        let mut effects = self.remove_consumer(key, Some(peer), None);
+        let mut effects = self.remove_consumer(key, Some(peer), None, Some(request_id));
         effects.push(FileEffect::SendControl {
             peer,
             control: FileControl::Error {
                 key: key.clone(),
+                request_id,
                 code: code.into(),
             },
         });
         effects
     }
 
+    /// Actual transport loss affects current work, independently of one queued send.
+    pub fn peer_closed(&mut self, key: &FileKey, peer: Uuid, code: &str) -> Vec<FileEffect> {
+        let Some(file) = self.files.get(key) else {
+            return Vec::new();
+        };
+        if file.plan.upstream == Some(peer) {
+            return self.fail(key, code);
+        }
+        self.remove_consumer(key, Some(peer), None, None)
+    }
+
     fn fail_local(&mut self, key: &FileKey, code: &str) -> Vec<FileEffect> {
         let active = self.receivers.remove(key).is_some();
-        let mut effects = self.remove_consumer(key, None, None);
+        let mut effects = self.remove_consumer(key, None, None, None);
         if active {
             effects.push(FileEffect::Failed {
                 key: key.clone(),
@@ -363,24 +454,28 @@ impl FileDelivery {
         key: &FileKey,
         peer: Option<Uuid>,
         offset: Option<u64>,
+        request_id: Option<Uuid>,
     ) -> Vec<FileEffect> {
         let Some(file) = self.files.get_mut(key) else {
             return Vec::new();
         };
         let mut effects = Vec::new();
         file.ranges.retain(|range_offset, range| {
-            if offset.is_none_or(|offset| offset == *range_offset) {
+            if offset.is_none_or(|offset| offset == *range_offset)
+                && request_id.is_none_or(|id| range.consumers.get(&peer) == Some(&Some(id)))
+            {
                 range.consumers.remove(&peer);
             }
             if !range.consumers.is_empty() {
                 return true;
             }
-            if let Supplier::Peer(upstream) = range.supplier {
+            if let Supplier::Peer(upstream, request_id) = range.supplier {
                 effects.push(FileEffect::SendControl {
                     peer: upstream,
                     control: FileControl::Cancel {
                         key: key.clone(),
                         offset: *range_offset,
+                        request_id,
                     },
                 });
             }
@@ -427,19 +522,23 @@ impl FileDelivery {
                 continue;
             }
             if file.plan.source_id == Some(self.session) {
-                range.supplier = Supplier::Local;
+                let request_id = Uuid::new_v4();
+                range.supplier = Supplier::Local(request_id);
                 effects.push(FileEffect::Read {
                     key: key.clone(),
+                    request_id,
                     offset: *offset,
                     length: range_length(&file.plan, *offset),
                 });
             } else if let Some(peer) = file.plan.upstream {
-                range.supplier = Supplier::Peer(peer);
+                let request_id = Uuid::new_v4();
+                range.supplier = Supplier::Peer(peer, request_id);
                 effects.push(FileEffect::SendControl {
                     peer,
                     control: FileControl::Pull {
                         key: key.clone(),
                         offset: *offset,
+                        request_id,
                     },
                 });
             }
@@ -447,18 +546,24 @@ impl FileDelivery {
         effects
     }
 
-    fn request(&mut self, key: &FileKey, offset: u64, consumer: Option<Uuid>) -> Vec<FileEffect> {
+    fn request(
+        &mut self,
+        key: &FileKey,
+        offset: u64,
+        consumer: Option<(Uuid, Uuid)>,
+    ) -> Vec<FileEffect> {
         let count: usize = self.files.values().map(|file| file.ranges.len()).sum();
         let Some(file) = self.files.get_mut(key) else {
             return Vec::new();
         };
         let code = if offset >= file.plan.attachment.size || offset % FILE_RANGE_BYTES as u64 != 0 {
             Some("invalid_file_range")
-        } else if file
-            .ranges
-            .iter()
-            .any(|(other, range)| *other != offset && range.consumers.contains(&consumer))
-        {
+        } else if file.ranges.iter().any(|(other, range)| {
+            *other != offset
+                && range
+                    .consumers
+                    .contains_key(&consumer.map(|(peer, _)| peer))
+        }) {
             Some("file_range_pending")
         } else if count >= FILE_MAX_PENDING_RANGES && !file.ranges.contains_key(&offset) {
             Some("file_transfer_busy")
@@ -466,11 +571,12 @@ impl FileDelivery {
             None
         };
         if let Some(code) = code {
-            return if let Some(peer) = consumer {
+            return if let Some((peer, request_id)) = consumer {
                 vec![FileEffect::SendControl {
                     peer,
                     control: FileControl::Error {
                         key: key.clone(),
+                        request_id,
                         code: code.into(),
                     },
                 }]
@@ -481,12 +587,12 @@ impl FileDelivery {
         file.ranges
             .entry(offset)
             .or_insert_with(|| Range {
-                consumers: BTreeSet::new(),
+                consumers: BTreeMap::new(),
                 supplier: Supplier::Waiting,
                 bytes: Vec::new(),
             })
             .consumers
-            .insert(consumer);
+            .insert(consumer.map(|(peer, _)| peer), consumer.map(|(_, id)| id));
         if let Some((cached_key, cached_offset, bytes)) = &self.cached {
             if cached_key == key && *cached_offset == offset {
                 return self.deliver(key, offset, bytes.clone());
@@ -504,13 +610,15 @@ impl FileDelivery {
             return Vec::new();
         };
         let mut effects = Vec::new();
-        for consumer in range.consumers {
+        for (consumer, request_id) in range.consumers {
             if let Some(peer) = consumer {
+                let request_id = request_id.unwrap();
                 let mut position = 0;
                 while position < bytes.len() {
                     let header = serde_json::to_vec(&Header {
                         key: key.clone(),
                         offset: offset + position as u64,
+                        request_id,
                     })
                     .unwrap();
                     let length = (FILE_FRAME_BYTES - 2 - header.len()).min(bytes.len() - position);
@@ -521,6 +629,7 @@ impl FileDelivery {
                     effects.push(FileEffect::SendChunk {
                         peer,
                         key: key.clone(),
+                        request_id,
                         frame,
                     });
                     position += length;

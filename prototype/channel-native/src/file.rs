@@ -189,6 +189,11 @@ impl Files {
                     match effect {
                         FileEffect::SendControl { peer, control } => {
                             let file = key(&control).clone();
+                            let request_id = match &control {
+                                FileControl::Pull { request_id, .. }
+                                | FileControl::Cancel { request_id, .. }
+                                | FileControl::Error { request_id, .. } => *request_id,
+                            };
                             let error = matches!(control, FileControl::Error { .. });
                             let cancel = matches!(control, FileControl::Cancel { .. });
                             let bytes = match piik_channel_core::conversation::encode_control(
@@ -199,6 +204,7 @@ impl Files {
                                     effects.extend(core.peer_failed(
                                         &file,
                                         peer,
+                                        request_id,
                                         "invalid_file_frame",
                                     ));
                                     continue;
@@ -215,18 +221,25 @@ impl Files {
                                     .try_send(link.message(file.clone(), bytes, cancel, error))
                                     .is_err()
                                     && !error
+                                    && !cancel
                                 {
                                     effects.extend(core.peer_failed(
                                         &file,
                                         peer,
+                                        request_id,
                                         "file_transfer_busy",
                                     ));
                                 }
-                            } else if !error {
+                            } else if !error && !cancel {
                                 effects.extend(core.peer_unavailable(peer));
                             }
                         }
-                        FileEffect::SendChunk { peer, key, frame } => {
+                        FileEffect::SendChunk {
+                            peer,
+                            key,
+                            request_id,
+                            frame,
+                        } => {
                             if let Some(link) = links.get(&peer).filter(|_| {
                                 leases
                                     .get(&peer)
@@ -241,6 +254,7 @@ impl Files {
                                     effects.extend(core.peer_failed(
                                         &key,
                                         peer,
+                                        request_id,
                                         "file_transfer_busy",
                                     ));
                                 }
@@ -248,9 +262,13 @@ impl Files {
                                 effects.extend(core.peer_unavailable(peer));
                             }
                         }
-                        FileEffect::Read { key, .. } => {
-                            effects.extend(core.fail(&key, "file_source_unavailable"))
-                        }
+                        FileEffect::Read {
+                            key, request_id, ..
+                        } => effects.extend(core.request_failed(
+                            &key,
+                            request_id,
+                            "file_source_unavailable",
+                        )),
                         FileEffect::Write { key, .. } => {
                             effects.extend(core.fail(&key, "file_sink_unavailable"))
                         }
@@ -318,7 +336,7 @@ fn fail_peer(
             lease
                 .keys
                 .iter()
-                .flat_map(|key| core.peer_failed(key, peer, code))
+                .flat_map(|key| core.peer_closed(key, peer, code))
                 .collect()
         })
         .unwrap_or_default()

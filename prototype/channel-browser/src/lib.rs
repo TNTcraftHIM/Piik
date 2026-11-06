@@ -372,18 +372,47 @@ impl FileDelivery {
         &mut self,
         key: &str,
         offset: u64,
+        request_id: &str,
         bytes: Vec<u8>,
     ) -> Result<String, JsValue> {
-        encode(&self.0.read_result(&parse(key)?, offset, bytes))
+        encode(&self.0.read_result(
+            &parse(key)?,
+            offset,
+            Uuid::parse_str(request_id).map_err(|_| error("invalid_request"))?,
+            bytes,
+        ))
     }
     pub fn written(&mut self, key: &str, offset: u64, length: usize) -> Result<String, JsValue> {
         encode(&self.0.written(&parse(key)?, offset, length))
     }
-    pub fn fail(&mut self, key: &str, code: &str) -> Result<String, JsValue> {
-        encode(&self.0.fail(&parse(key)?, code))
-    }
-    pub fn peer_failed(&mut self, key: &str, peer: &str, code: &str) -> Result<String, JsValue> {
+    pub fn peer_failed(
+        &mut self,
+        key: &str,
+        peer: &str,
+        request_id: &str,
+        code: &str,
+    ) -> Result<String, JsValue> {
         encode(&self.0.peer_failed(
+            &parse(key)?,
+            Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?,
+            Uuid::parse_str(request_id).map_err(|_| error("invalid_request"))?,
+            code,
+        ))
+    }
+    pub fn request_failed(
+        &mut self,
+        key: &str,
+        request_id: &str,
+        code: &str,
+    ) -> Result<String, JsValue> {
+        encode(&self.0.request_failed(
+            &parse(key)?,
+            Uuid::parse_str(request_id).map_err(|_| error("invalid_request"))?,
+            code,
+        ))
+    }
+    pub fn peer_closed(&mut self, key: &str, peer: &str, code: &str) -> Result<String, JsValue> {
+        encode(&self.0.peer_closed(
             &parse(key)?,
             Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?,
             code,

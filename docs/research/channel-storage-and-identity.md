@@ -209,6 +209,9 @@ another topology planner or mandatory direct ICE connections.
    range requests. Cancel removes that recipient's demand; it does not retire
    delivery still needed by others. Release a shared flow after its last demand.
 
+Range responses and cancellation are accepted only for their matching active
+request. Retrying establishes a new request.
+
 For S-R with R-D1, R-D2 and R-D3, aligned concurrent downloads can share one copy
 of each range over S-R; R forwards to the three branches. Independent downloads
 from S would send three copies over S-R. This is a topology example, not a measured

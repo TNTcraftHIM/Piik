@@ -10,9 +10,9 @@ export interface DraftFile { id: string; file: File }
 export interface PreparedFile extends DraftFile { attachment: ChannelAttachment }
 type Hosting = Awaited<ReturnType<typeof loadRoomHosting>>;
 type Effect =
-  | { type: "send_control"; peer: string; control: { type: string; key: ChannelFileKey } }
-  | { type: "send_chunk"; peer: string; key: ChannelFileKey; frame: number[] }
-  | { type: "read"; key: ChannelFileKey; offset: number; length: number }
+  | { type: "send_control"; peer: string; control: { type: string; key: ChannelFileKey; requestId: string } }
+  | { type: "send_chunk"; peer: string; key: ChannelFileKey; requestId: string; frame: number[] }
+  | { type: "read"; key: ChannelFileKey; requestId: string; offset: number; length: number }
   | { type: "write"; key: ChannelFileKey; offset: number; bytes: number[] }
   | { type: "complete"; key: ChannelFileKey }
   | { type: "failed"; key: ChannelFileKey; code: string };
@@ -211,7 +211,7 @@ export class ChannelAttachments {
     if (this.runtime) void this.runtime.then(runtime => {
       for (const plan of this.plans) if (plan.upstream === peer || plan.downstream.includes(peer)) {
         const key = { roomId: plan.roomId, messageSeq: plan.messageSeq, attachmentId: plan.attachment.id };
-        this.invoke(runtime, () => runtime.delivery.peer_failed(JSON.stringify(key), peer, "data_channel_unavailable"));
+        this.invoke(runtime, () => runtime.delivery.peer_closed(JSON.stringify(key), peer, "data_channel_unavailable"));
       }
     }).catch(() => {});
   }
@@ -285,7 +285,6 @@ export class ChannelAttachments {
   private effects(runtime: Runtime, effects: Effect[]): void {
     for (const effect of effects) {
       const key = "key" in effect ? effect.key : effect.control.key;
-      const failed = (error: unknown) => this.invoke(runtime, () => runtime.delivery.fail(JSON.stringify(key), errorOf(error).message));
       if (effect.type === "send_control" || effect.type === "send_chunk") {
         const peer = effect.peer, isError = effect.type === "send_control" && effect.control.type === "error";
         const terminal = isError || (effect.type === "send_control" && effect.control.type === "cancel");
@@ -297,17 +296,20 @@ export class ChannelAttachments {
             && plan.attachment.id === key.attachmentId && (plan.upstream === peer || plan.downstream.includes(peer))));
         void this.sendData(peer, kind, data, allowed)
           .catch(error => {
-            if (isError) return;
-            this.invoke(runtime, () => errorOf(error).message === "peer_data_unavailable"
-              ? runtime.delivery.peer_unavailable(peer)
-              : runtime.delivery.peer_failed(JSON.stringify(key), peer, errorOf(error).message));
+            if (terminal) return;
+            this.invoke(runtime, () => runtime.delivery.peer_failed(JSON.stringify(key), peer,
+              effect.type === "send_control" ? effect.control.requestId : effect.requestId, errorOf(error).message));
           });
       } else if (effect.type === "read") {
         const source = this.sources.get(keyOf(key));
+        const failed = (error: unknown) => {
+          if (!this.current(runtime)) return;
+          const effects = JSON.parse(runtime.delivery.request_failed(JSON.stringify(key), effect.requestId, errorOf(error).message)) as Effect[];
+          if (effects.length && source) this.withdraw(source);
+          this.effects(runtime, effects);
+        };
         if (!source) { failed(new Error("file_unavailable")); continue; }
-        void source.file.slice(effect.offset, effect.offset + effect.length).arrayBuffer().then(bytes => this.invoke(runtime, () => runtime.delivery.read_result(JSON.stringify(key), BigInt(effect.offset), new Uint8Array(bytes)))).catch(error => {
-          this.withdraw(source); failed(error);
-        });
+        void source.file.slice(effect.offset, effect.offset + effect.length).arrayBuffer().then(bytes => this.invoke(runtime, () => runtime.delivery.read_result(JSON.stringify(key), BigInt(effect.offset), effect.requestId, new Uint8Array(bytes)))).catch(failed);
       } else {
         const entry = this.sinks.get(keyOf(key));
         if (!entry) continue;

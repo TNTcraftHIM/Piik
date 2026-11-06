@@ -51,12 +51,23 @@ fn window() -> Result<(Vec<Vec<u8>>, FileDelivery, Uuid)> {
     receiver.update(receiver_plans);
     let mut frames = Vec::new();
     for (key, bytes) in keys {
-        receiver.start(key.clone());
+        let request_id = receiver
+            .start(key.clone())
+            .into_iter()
+            .find_map(|effect| match effect {
+                FileEffect::SendControl {
+                    control: FileControl::Pull { request_id, .. },
+                    ..
+                } => Some(request_id),
+                _ => None,
+            })
+            .context("receiver range request missing")?;
         let effects = sender.control(
             peer,
             FileControl::Pull {
                 key: key.clone(),
                 offset: 0,
+                request_id,
             },
         );
         ensure!(
@@ -65,7 +76,14 @@ fn window() -> Result<(Vec<Vec<u8>>, FileDelivery, Uuid)> {
             ),
             "range was not admitted by Core"
         );
-        for effect in sender.read_result(&key, 0, bytes) {
+        let request_id_from_read = effects
+            .iter()
+            .find_map(|effect| match effect {
+                FileEffect::Read { request_id, .. } => Some(*request_id),
+                _ => None,
+            })
+            .unwrap();
+        for effect in sender.read_result(&key, 0, request_id_from_read, bytes) {
             if let FileEffect::SendChunk { frame, .. } = effect {
                 frames.push(frame);
             }

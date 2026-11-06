@@ -4490,7 +4490,7 @@ test.each(["initial", "resume"])("a stale %s file admission cannot retire a repl
     // must write and verify it; the fixture does not synthesize delivery effects.
     const reads = JSON.parse(upstream.control(receiver, pulls.at(-1)!));
     for (const read of reads) if (read.type === "read") {
-      const chunks = JSON.parse(upstream.read_result(JSON.stringify(read.key), BigInt(read.offset), bytes));
+      const chunks = JSON.parse(upstream.read_result(JSON.stringify(read.key), BigInt(read.offset), read.requestId, bytes));
       for (const chunk of chunks) if (chunk.type === "send_chunk") files.data(source, "chunk", Uint8Array.from(chunk.frame));
     }
     await expect(next).resolves.toMatchObject({ size: bytes.length });
@@ -5742,4 +5742,112 @@ test("portable import admits the archived identity through Welcome before commit
     admission.receive({ type: "ack", requestId: browse.requestId });
     await expect(importing).resolves.toEqual({ roomId: "imported", cached: true }); expect(cache).toHaveBeenCalledOnce();
   } finally { session.close(); }
+});
+
+test.each(["tail", "first"])("late bulk %s fragments from a cancelled file cannot fail its replacement download", async stale => {
+  const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  const { readFile } = await import("node:fs/promises");
+  await rust.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeFiles: async () => {} } as never);
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
+  vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new Error("optional_cache_unavailable"));
+  const source = "00000000-0000-0000-0000-000000000001", receiver = "00000000-0000-0000-0000-000000000002";
+  const key = { roomId: "room", messageSeq: 1, attachmentId: "00000000-0000-0000-0000-000000000003" };
+  const bytes = Uint8Array.from({ length: 20_000 }, (_, index) => index % 251), hash = new rust.AttachmentHash();
+  hash.update(bytes);
+  const attachment = { id: key.attachmentId, name: "owned.bin", size: bytes.length, mediaType: "application/octet-stream" as const, sha256: hash.finish() };
+  const plan = { ...key, attachment, sourceId: source, upstream: source, downstream: [], receiving: true };
+  const aborts: ReturnType<typeof vi.fn>[] = [];
+  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+    getFileHandle: async () => {
+      const written = new Uint8Array(bytes.length), abort = vi.fn(async () => {}); aborts.push(abort);
+      return { createWritable: async () => ({
+        write: async ({ position, data }: { position: number; data: Uint8Array }) => { written.set(data, position); }, close: async () => {}, abort,
+      }), getFile: async () => new File([written], "owned.bin") };
+    }, removeEntry: async () => {},
+  }) }) } });
+  const pulls: string[] = [], commands: ChannelCommand[] = [];
+  const files = new ChannelAttachments(async command => { commands.push(command); }, async (_peer, kind, data, allowed) => {
+    if (allowed() && kind === "control" && JSON.parse(data as string).type === "pull") pulls.push(data as string);
+  });
+  const upstream = new rust.FileDelivery(source);
+  upstream.update(JSON.stringify([{ ...plan, upstream: null, downstream: [receiver], receiving: false }]));
+  const chunksFor = (pull: string): Uint8Array[] => {
+    const effects = JSON.parse(upstream.control(receiver, pull));
+    return effects.flatMap((effect: { type: string; key: typeof key; offset: number; requestId: string; frame: number[] }) => {
+      const output = effect.type === "read" ? JSON.parse(upstream.read_result(JSON.stringify(effect.key), BigInt(effect.offset), effect.requestId, bytes)) : [effect];
+      return output.filter((next: { type: string }) => next.type === "send_chunk").map((next: { frame: number[] }) => Uint8Array.from(next.frame));
+    });
+  };
+  files.update(receiver, { domainId: "domain", userId: "user" }, [plan], [{ id: "room", authorized: true, available: true }] as never);
+  const old = new AbortController(), next = new AbortController();
+  const first = files.content(key, attachment, old.signal); void first.catch(() => {});
+  try {
+    await vi.waitFor(() => expect(pulls).toHaveLength(1));
+    const oldChunks = chunksFor(pulls[0]);
+    expect(oldChunks.length).toBeGreaterThan(1);
+    if (stale === "tail") files.data(source, "chunk", oldChunks[0]);
+    old.abort();
+    await expect(first).rejects.toMatchObject({ name: "AbortError" });
+    const replacement = files.content(key, attachment, next.signal); void replacement.catch(() => {});
+    await vi.waitFor(() => expect(pulls).toHaveLength(2));
+    // A retired transfer's already-queued bulk tail can follow cancellation on
+    // the independent control lane, after the user has requested a fresh copy.
+    files.data(source, "chunk", oldChunks[stale === "tail" ? 1 : 0]);
+    for (const chunk of chunksFor(pulls[1])) files.data(source, "chunk", chunk);
+    const completed = await replacement;
+    expect(new Uint8Array(await completed.arrayBuffer())).toEqual(bytes);
+    expect(aborts[1]).not.toHaveBeenCalled();
+    expect(commands.filter(command => command.type === "file_receive" && command.enabled)).toHaveLength(2);
+  } finally { next.abort(); files.reset(); upstream.free(); }
+});
+
+test("a delayed source busy error cannot fail a cancelled file's successful retry", async () => {
+  const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  const { readFile } = await import("node:fs/promises");
+  await rust.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeFiles: async () => {} } as never);
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
+  vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new Error("optional_cache_unavailable"));
+  const source = "00000000-0000-0000-0000-000000000001", receiver = "00000000-0000-0000-0000-000000000002";
+  const bytes = Uint8Array.from([1, 2, 3]), hash = new rust.AttachmentHash(); hash.update(bytes);
+  const attachment = { id: crypto.randomUUID(), name: "retry.bin", size: bytes.length, mediaType: "application/octet-stream" as const, sha256: hash.finish() };
+  const key = { roomId: "room", messageSeq: 33, attachmentId: attachment.id };
+  const plan = { ...key, attachment, sourceId: source, upstream: source, downstream: [], receiving: true };
+  const upstream = new rust.FileDelivery(source);
+  const blockers = Array.from({ length: 32 }, (_, index) => ({ ...plan, messageSeq: index + 1, attachment: { ...attachment, id: crypto.randomUUID() }, upstream: null, downstream: [receiver], receiving: false }));
+  upstream.update(JSON.stringify([...blockers, { ...plan, upstream: null, downstream: [receiver], receiving: false }]));
+  const blockerRequests = blockers.map(() => crypto.randomUUID());
+  const blockerKeys = blockers.map(blocker => ({ roomId: blocker.roomId, messageSeq: blocker.messageSeq, attachmentId: blocker.attachment.id }));
+  for (const [index, blocked] of blockerKeys.entries()) {
+    const reads = JSON.parse(upstream.control(receiver, JSON.stringify({ type: "pull", key: blocked, offset: 0, requestId: blockerRequests[index] })));
+    expect(reads.map((effect: { type: string }) => effect.type)).toEqual(["read"]);
+  }
+  const written = new Uint8Array(bytes.length);
+  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+    getFileHandle: async () => ({ createWritable: async () => ({ write: async ({ position, data }: { position: number; data: Uint8Array }) => written.set(data, position), close: async () => {}, abort: async () => {} }), getFile: async () => new File([written], "retry.bin") }), removeEntry: async () => {},
+  }) }) } });
+  const pulls: string[] = [], files = new ChannelAttachments(async () => {}, async (_peer, kind, data, allowed) => {
+    if (allowed() && kind === "control" && JSON.parse(data as string).type === "pull") pulls.push(data as string);
+  });
+  files.update(receiver, { domainId: "domain", userId: "user" }, [plan], [{ id: "room", authorized: true, available: true }] as never);
+  const old = new AbortController(), next = new AbortController();
+  const first = files.content(key, attachment, old.signal); void first.catch(() => {});
+  try {
+    await vi.waitFor(() => expect(pulls).toHaveLength(1));
+    const rejected = JSON.parse(upstream.control(receiver, pulls[0]));
+    expect(rejected).toEqual([{ type: "send_control", peer: receiver, control: { type: "error", key, requestId: JSON.parse(pulls[0]).requestId, code: "file_transfer_busy" } }]);
+    old.abort(); await expect(first).rejects.toMatchObject({ name: "AbortError" });
+    upstream.control(receiver, JSON.stringify({ type: "cancel", key: blockerKeys[0], offset: 0, requestId: blockerRequests[0] }));
+    const retry = files.content(key, attachment, next.signal); void retry.catch(() => {});
+    await vi.waitFor(() => expect(pulls).toHaveLength(2));
+    const reads = JSON.parse(upstream.control(receiver, pulls[1]));
+    expect(reads.map((effect: { type: string }) => effect.type)).toEqual(["read"]);
+    files.data(source, "control", JSON.stringify(rejected[0].control));
+    for (const read of reads) {
+      const chunks = JSON.parse(upstream.read_result(JSON.stringify(read.key), BigInt(read.offset), read.requestId, bytes));
+      for (const chunk of chunks) if (chunk.type === "send_chunk") files.data(source, "chunk", Uint8Array.from(chunk.frame));
+    }
+    expect(new Uint8Array(await (await retry).arrayBuffer())).toEqual(bytes);
+  } finally { next.abort(); files.reset(); upstream.free(); }
 });

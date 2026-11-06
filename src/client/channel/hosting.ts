@@ -67,11 +67,12 @@ export interface FileDelivery {
   update(plans: string): string;
   control(peer: string, control: string): string;
   chunk(peer: string, frame: Uint8Array): string;
-  read_result(key: string, offset: bigint, bytes: Uint8Array): string;
+  read_result(key: string, offset: bigint, requestId: string, bytes: Uint8Array): string;
   written(key: string, offset: bigint, length: number): string;
-  fail(key: string, code: string): string;
+  request_failed(key: string, requestId: string, code: string): string;
+  peer_closed(key: string, peer: string, code: string): string;
   peer_unavailable(peer: string): string;
-  peer_failed(key: string, peer: string, code: string): string;
+  peer_failed(key: string, peer: string, requestId: string, code: string): string;
   start(key: string): string;
   cancel(key: string): string;
   free(): void;
