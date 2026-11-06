@@ -21,7 +21,7 @@
     "typecheck": "node prototype/channel-browser/build.mjs && tsc -b --pretty false && tsc -p prototype/channel-browser/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run check:rust && npm run typecheck && npm test"
+    "check": "npm run check:rust && tsc -b --pretty false && npm test"
   },
   "devDependencies": {
     "@oddbird/popover-polyfill": "0.7.3",

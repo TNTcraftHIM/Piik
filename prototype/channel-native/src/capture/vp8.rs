@@ -5,7 +5,7 @@ use super::{
     frame_dropper::FrameDropper,
     frames::RawFrame,
     output::Shared,
-    CaptureClock, FrameTiming, Settings, VideoCodec,
+    CaptureClock, FrameTiming, Settings,
 };
 use anyhow::{ensure, Result};
 use std::{ffi::CStr, mem, ptr, slice, sync::Arc};
@@ -13,7 +13,6 @@ use vpx_sys::*;
 use windows::Win32::Graphics::Direct3D11::*;
 
 pub(super) struct AccessUnit {
-    pub codec: VideoCodec,
     pub bytes: Vec<u8>,
     pub keyframe: bool,
     pub non_reference: bool,
@@ -165,7 +164,6 @@ impl Encoder {
                     "VP8 independent frame request was not honored"
                 );
                 output = Some(AccessUnit {
-                    codec: VideoCodec::Vp8,
                     bytes: slice::from_raw_parts(frame.buf.cast(), frame.sz).to_vec(),
                     keyframe,
                     non_reference: frame.flags & VPX_FRAME_IS_DROPPABLE != 0,
@@ -342,7 +340,6 @@ pub(super) fn run(
         };
         last_pts = Some(qpc);
         if let Some(unit) = unit {
-            ensure!(unit.codec == VideoCodec::Vp8, "VP8 encoder changed codec");
             dropper.fill(unit.bytes.len(), !unit.keyframe);
             if !shared.output(crate::EncodedFrame {
                 bytes: unit.bytes,
@@ -396,7 +393,6 @@ mod tests {
                         index != 1,
                     )?
                     .unwrap();
-                assert_eq!(unit.codec, VideoCodec::Vp8);
                 assert_eq!(unit.keyframe, index != 1);
                 unsafe {
                     check(vpx_codec_decode(
