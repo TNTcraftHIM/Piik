@@ -150,7 +150,7 @@ const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const site = "https://site.example";
 const approval = `http://127.0.0.1:39721/client?site=${encodeURIComponent(site)}`;
 
-function mount(activated = false, state: "idle" | "ready" = "idle", android = false, connected?: boolean) {
+function mount(activated = false, state: "idle" | "ready" = "idle", android = false, connected?: boolean, discovery?: typeof channelAppDiscovery) {
   const popup = { closed: false, close: vi.fn(() => { popup.closed = true; }) };
   const window = Object.assign(new EventTarget(), { open: vi.fn((): typeof popup | null => popup), location: { origin: site, assign: vi.fn() } });
   const document = Object.assign(new EventTarget(), { visibilityState: "visible" });
@@ -172,7 +172,7 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
     window, document, pending, healthCheck, help, showHelp, setState, setBuild, activateClient, onConnected, AbortController, URL,
     wakeURL: android ? "intent://app#Intent;scheme=piik;package=tv.piik.android;end" : null,
     state, connected, isClientActivated: () => activated,
-    discovery: { health: native.discoverNativeHealth, connect: native.discoverNativeConnect,
+    discovery: discovery ?? { health: native.discoverNativeHealth, connect: native.discoverNativeConnect,
       isIncompatible: (error: unknown) => error instanceof native.NativeCompatibilityError },
     watchClientActivation: (changed: () => void) => {
       window.addEventListener("activation", changed);
@@ -191,6 +191,34 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
 
 describe("App connection approval", () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it.each([
+    [false, false, "incompatible"],
+    [true, false, "approval"],
+    [true, true, "ready"],
+  ] as const)("uses current App discovery beside public 2.x: current=%s authorized=%s => %s", async (current, authorized, state) => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("http://127.0.0.1/") });
+    vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+      const url = new URL(input), port = Number(url.port);
+      if (port === NATIVE_CLIENT_PORT_START) return Response.json({ service: "piik-client", protocol: 10, port, instanceToken: "fixture-token" });
+      if (current && port === NATIVE_CLIENT_PORT_START + 1) {
+        const identity = { service: "piik-channel-app", protocol: 1, port };
+        if (url.pathname === "/connect-discovery") return Response.json({ ...identity, connectURL: `http://127.0.0.1:${port}/client` });
+        return authorized ? Response.json({ ...identity, token: "fixture-token" }) : new Response(null, { status: 403 });
+      }
+      throw new TypeError("No fixture App");
+    }));
+    const page = mount(false, "idle", false, undefined, channelAppDiscovery);
+    try {
+      await page.connect();
+      expect(page.setState).toHaveBeenLastCalledWith(state);
+      expect(page.window.open).not.toHaveBeenCalled();
+      if (state === "approval") {
+        await page.connect();
+        expect(page.window.open).toHaveBeenCalledWith(`http://127.0.0.1:${NATIVE_CLIENT_PORT_START + 1}/client?site=http%3A%2F%2F127.0.0.1`, "_blank");
+      }
+    } finally { page.cleanup(); }
+  });
 
   it("recognizes the current App through the shared entry's default discovery", async () => {
     const discovery = runInNewContext(ts.transpileModule(

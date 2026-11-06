@@ -37,7 +37,7 @@ it("discovers the room App independently of v10 media control and checks health 
     return approved ? Response.json({ ...identity, token: "instance-token" }) : new Response(null, { status: 403 });
   }));
   await expect(channelAppDiscovery.connect()).resolves.toBe(`http://127.0.0.1:${NATIVE_CLIENT_PORT_START + 1}/client?site=https%3A%2F%2Fchannel.example`);
-  await expect(discoverChannelAppHealth()).resolves.toBeNull();
+  await expect(discoverChannelAppHealth().catch(error => channelAppDiscovery.isIncompatible(error))).resolves.toBe(true);
   approved = true;
   await expect(discoverChannelAppHealth()).resolves.toMatchObject({ protocol: 1, port: NATIVE_CLIENT_PORT_START + 1, token: "instance-token" });
 });
@@ -322,10 +322,20 @@ describe("current App discovery", () => {
     await expect(discoverChannelAppHealth().catch(error => channelAppDiscovery.isIncompatible(error))).resolves.toBe(true);
   });
 
+  it.each(["health", "connect"] as const)("identifies the public 2.x App through %s without using its control protocol", async method => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("http://127.0.0.1/") });
+    vi.stubGlobal("fetch", vi.fn(async (input: string) => Response.json({
+      service: "piik-client", protocol: 10, port: Number(new URL(input).port), instanceToken: "fixture-token",
+    })));
+    await expect(channelAppDiscovery[method]().catch(error => channelAppDiscovery.isIncompatible(error))).resolves.toBe(true);
+  });
+
   it("treats denied, absent and malformed endpoints as ordinary Browser-only operation", async () => {
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     const malformed = [
       { ...health, service: "another-service" },
+      { ...health, service: "piik-client", protocol: "10" },
+      { ...health, service: "piik-client", protocol: 10, port: NATIVE_CLIENT_PORT_END },
       { ...health, protocol: "8" },
       { ...health, token: 42 },
       { ...health, token: undefined },

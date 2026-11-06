@@ -58,9 +58,9 @@ class AppCompatibilityError extends Error {}
 type AppCommand = { type: string; publicationId?: string; roomId?: string; [key: string]: unknown };
 
 function identity(body: unknown, port: number): void {
-  const value = identitySchema.parse(body);
+  const value = identitySchema.extend({ service: z.enum(["piik-channel-app", "piik-client"]) }).parse(body);
   if (value.port !== port) throw new Error("invalid_app_response");
-  if (value.protocol !== 1) throw new AppCompatibilityError("App room protocol is incompatible");
+  if (value.service !== "piik-channel-app" || value.protocol !== 1) throw new AppCompatibilityError("App room protocol is incompatible");
 }
 
 export function discoverChannelAppHealth(options: AppDiscoveryOptions = {}): Promise<AppHealth | null> {
