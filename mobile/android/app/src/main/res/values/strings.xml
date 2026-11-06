@@ -1,5 +1,5 @@
 <resources>
- <string name="app_name">Piik Rust test</string>
+ <string name="app_name">Piik</string>
  <string name="runtime_channel">Piik companion</string>
  <string name="runtime_title">Piik is ready</string>
  <string name="runtime_body">Local rooms are available. Stop Piik when finished.</string>

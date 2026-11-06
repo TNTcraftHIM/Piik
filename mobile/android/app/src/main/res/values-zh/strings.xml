@@ -1,5 +1,5 @@
 <resources>
- <string name="app_name">Piik Rust 测试</string>
+ <string name="app_name">Piik</string>
  <string name="runtime_channel">Piik 本地服务</string>
  <string name="runtime_title">Piik 已就绪</string>
  <string name="runtime_body">可使用本地房间。使用完毕后可停止 Piik。</string>
