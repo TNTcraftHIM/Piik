@@ -8,7 +8,7 @@ import {
   type QualitySettings,
   type VideoCeiling,
 } from "../../shared/protocol";
-import { say, type CopyKey } from "../ui/copy";
+import type { CopyKey } from "../ui/copy";
 import type { MediaFailure } from "../ui/media-failure";
 import { displayMediaOptions } from "./audio-capture";
 import { browserDebugEnabled, debugOperation } from "../lib/debug";
@@ -270,14 +270,6 @@ export function matchingQualityProfileId(
     }
   }
   return null;
-}
-
-export function qualitySettingsLabel(settings: QualitySettings): string {
-  const profileId = matchingQualityProfileId(settings);
-  if (profileId) {
-    return say(QUALITY_PROFILE_KEYS[profileId]);
-  }
-  return `${qualityResolutionLabel(settings.resolution)} ${settings.maxFramerate} fps · ${(settings.maxBitrate / 1_000_000).toFixed(1)} Mbps · ${say(DEGRADATION_PREFERENCE_KEYS[settings.degradationPreference])}`;
 }
 
 function captureConstraints(profile: VideoCeiling): MediaTrackConstraints {

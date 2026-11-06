@@ -50,7 +50,6 @@ export class BrowserEncodingProducer {
   }
 
   get track(): MediaStreamTrack | null { return this.input; }
-  get sender(): RTCRtpSender | null { return this.videoSender; }
 
   async start(initialBudget = this.desiredProfile.maxBitrate): Promise<void> {
     this.checkAlive();
