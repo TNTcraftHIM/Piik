@@ -210,10 +210,7 @@ mod tests {
                 .segment(&gst::FormattedSegment::<gst::ClockTime>::new())
                 .build())
         };
-        let encoder = gst::ElementFactory::make("x264enc")
-            .property_from_str("tune", "zerolatency")
-            .property_from_str("speed-preset", "ultrafast")
-            .build()?;
+        let encoder = gst::ElementFactory::make("x264enc").build()?;
         let mut encoding = Encoding::start_with_encoder(
             frames.clone(),
             Settings {

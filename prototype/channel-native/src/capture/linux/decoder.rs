@@ -128,10 +128,7 @@ mod tests {
     use tokio::sync::mpsc;
 
     fn software_encoder() -> Result<gst::Element> {
-        Ok(gst::ElementFactory::make("x264enc")
-            .property_from_str("tune", "zerolatency")
-            .property_from_str("speed-preset", "ultrafast")
-            .build()?)
+        Ok(gst::ElementFactory::make("x264enc").build()?)
     }
     fn publish(frames: &Frames, time: Instant, color: u8) -> Result<()> {
         let info = gst_video::VideoInfo::builder(gst_video::VideoFormat::Bgra, 96, 64)

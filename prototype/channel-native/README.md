@@ -45,7 +45,7 @@ Its source, source sound and encoding owners are defined in the
 owns SDK builds and native acceptance.
 
 Linux uses the system Portal picker through `ashpd` and one PipeWire capture.
-Each hardware H264 encoding has its own GStreamer pipeline; system-output audio
+Each H264 encoding has its own GStreamer pipeline; system-output audio
 uses the PulseAudio monitor, including PipeWire's PulseAudio compatibility service.
 The App enables the Native `capture`
 Cargo feature; Server disables it so forwarding does not require desktop media
@@ -53,13 +53,16 @@ libraries. Linux App builds need GStreamer 1.20+ development libraries and
 `pkg-config`. Current Linux App packages require glibc 2.39+ and GStreamer 1.20+
 core, app and video libraries, plus GLib/GObject/GIO, before the launcher can start.
 Native capture additionally needs the PipeWire, conversion, H264 parser and
-hardware encoder plugins, plus a working desktop Portal backend.
+an available H264 encoder plugin, plus a working desktop Portal backend.
 The optional global stop shortcut also needs normal desktop integration: install
 the package's `piik-app.desktop` entry with `piik-app` on the desktop's PATH.
 Without that identity or a GlobalShortcuts backend, ordinary control and its
 manual stop remain available.
 Hardware selection uses the VA/VA-API, NVENC, MSDK and QSV plugins only when the installed encoder exposes
 live bitrate control. Selection opens the actual device and skips unavailable encoders.
+An installed `x264enc` is tried after the hardware candidates, with low-latency
+software settings and the same live bitrate control. Its GPL-licensed plugin
+remains a system dependency; Piik does not bundle or install it.
 The [network design](../../docs/research/channel-network-design.md) owns source,
 clock and encoder lifetimes; [verification status](../../docs/verification-status.md#device-evidence-boundary)
 owns platform acceptance. `ashpd` and the `reis` input bindings use MIT licensing;

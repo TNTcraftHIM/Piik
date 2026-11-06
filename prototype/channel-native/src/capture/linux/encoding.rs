@@ -93,7 +93,7 @@ impl Encoding {
     pub fn start(frames: Frames, settings: Settings) -> Result<Self> {
         Self::start_inner(frames, settings, None)
     }
-    /// Software encoders are an explicit test input, never a capture fallback.
+    /// An explicit encoder keeps finite tests independent of GPU availability.
     #[cfg(test)]
     pub(super) fn start_with_encoder(
         frames: Frames,
@@ -216,7 +216,7 @@ fn access_unit(sample: &gst::Sample, clock: &Clock) -> Result<EncodedFrame> {
     })
 }
 
-/// The hardware plugin owns its numeric property types and legal range.
+/// The encoder plugin owns its numeric property types and legal range.
 fn numeric(element: &gst::Element, name: &str, value: u64) -> Result<bool> {
     let Some(property) = element.find_property(name) else {
         return Ok(false);
@@ -282,6 +282,7 @@ fn enum_nick(element: &gst::Element, name: &str, nick: &str) {
 /// https://gstreamer.freedesktop.org/documentation/nvcodec/nvh264enc.html#nvh264enc:bitrate
 /// https://gstreamer.freedesktop.org/documentation/msdk/msdkh264enc.html#msdkh264enc:bitrate
 /// https://gstreamer.freedesktop.org/documentation/qsv/qsvh264enc.html#qsvh264enc:bitrate
+/// https://gstreamer.freedesktop.org/documentation/x264/index.html#x264enc:bitrate
 /// https://github.com/GStreamer/gstreamer-vaapi/blob/c3ddb29cb2860374f9efbed495af7b0eead08312/gst-libs/gst/vaapi/gstvaapiencoder.c
 fn supports_live_kbps(encoder: &gst::Element) -> bool {
     let Some(factory) = encoder.factory() else {
@@ -289,12 +290,8 @@ fn supports_live_kbps(encoder: &gst::Element) -> bool {
     };
     let supported = matches!(
         factory.plugin_name().as_deref(),
-        Some("va" | "nvcodec" | "msdk" | "qsv" | "vaapi")
+        Some("va" | "nvcodec" | "msdk" | "qsv" | "vaapi" | "x264")
     );
-    // The software reference is reachable only through explicit test injection;
-    // the production candidate list still requires Hardware classification.
-    #[cfg(test)]
-    let supported = supported || factory.name() == "x264enc";
     supported
         && encoder.find_property("bitrate").is_some_and(|property| {
             property
@@ -309,11 +306,11 @@ fn supports_live_kbps(encoder: &gst::Element) -> bool {
                 .contains(&property.value_type())
         })
 }
-fn hardware_factories() -> Vec<gst::ElementFactory> {
+fn encoder_factories() -> Vec<gst::ElementFactory> {
     let required = gst::Caps::builder("video/x-h264")
         .field("profile", "constrained-baseline")
         .build();
-    gst::ElementFactory::factories_with_type(
+    let mut factories: Vec<_> = gst::ElementFactory::factories_with_type(
         gst::ElementFactoryType::VIDEO_ENCODER,
         gst::Rank::NONE,
     )
@@ -326,12 +323,16 @@ fn hardware_factories() -> Vec<gst::ElementFactory> {
                 pad.direction() == gst::PadDirection::Src && pad.caps().can_intersect(&required)
             })
     })
-    .collect()
+    .collect();
+    if let Some(software) = gst::ElementFactory::find("x264enc") {
+        factories.push(software);
+    }
+    factories
 }
 
 pub(crate) fn encoding_available() -> Result<bool> {
     gst::init()?;
-    Ok(hardware_factories().into_iter().any(|factory| {
+    Ok(encoder_factories().into_iter().any(|factory| {
         factory
             .create()
             .build()
@@ -355,8 +356,8 @@ impl Codec {
         if let Some(encoder) = encoder {
             return Self::attempt(clock, settings, &sink, encoder);
         }
-        let mut error = anyhow!("no hardware H264 encoder with live bitrate control");
-        for factory in hardware_factories() {
+        let mut error = anyhow!("no H264 encoder with live bitrate control");
+        for factory in encoder_factories() {
             let attempt = factory
                 .create()
                 .build()
@@ -402,6 +403,13 @@ impl Codec {
             supports_live_kbps(&encoder),
             "encoder has no supported live kbps contract"
         );
+        if encoder
+            .factory()
+            .is_some_and(|factory| factory.name() == "x264enc")
+        {
+            encoder.set_property_from_str("tune", "zerolatency");
+            encoder.set_property_from_str("speed-preset", "ultrafast");
+        }
         let pipeline = Pipeline(gst::Pipeline::new());
         clock.pipeline(&pipeline.0);
         let input = gst_app::AppSrc::builder()
@@ -623,10 +631,7 @@ mod tests {
     use std::time::Duration;
 
     fn software_encoder() -> Result<gst::Element> {
-        Ok(gst::ElementFactory::make("x264enc")
-            .property_from_str("tune", "zerolatency")
-            .property_from_str("speed-preset", "ultrafast")
-            .build()?)
+        Ok(gst::ElementFactory::make("x264enc").build()?)
     }
     fn publish(frames: &Frames, width: u32, height: u32, index: u8) -> Result<Instant> {
         let info = gst_video::VideoInfo::builder(gst_video::VideoFormat::Bgra, width, height)
