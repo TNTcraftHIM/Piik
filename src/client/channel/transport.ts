@@ -46,6 +46,19 @@ interface OutgoingBinding {
   rejectedTracks?: MediaStreamTrack[];
   replacement?: MediaStreamTrack[];
   metrics?: Map<string, StatsAccumulator>;
+  slots?: MediaSlots;
+}
+
+interface MediaSlot {
+  sender: RTCRtpSender;
+  transceiver: RTCRtpTransceiver;
+  encoded?: BrowserEncodingOutput | null;
+}
+
+interface MediaSlots {
+  key: string;
+  stream: MediaStream;
+  senders: MediaSlot[];
 }
 
 interface TransportOptions {
@@ -66,10 +79,11 @@ interface TransportOptions {
   input?(channel: RTCDataChannel | null): void;
 }
 
-/** One physical pair. Flows own stream bindings and senders, never source tracks. */
+/** One physical pair and its media slots. Flows lease senders, never source tracks. */
 export class ChannelTransport {
   readonly pc: RTCPeerConnection;
   private sending = new Map<string, OutgoingBinding>();
+  private mediaSlots = new Set<MediaSlots>();
   private pausedEncodings = new WeakMap<RTCRtpSender, boolean[]>();
   private stableSenders: Map<RTCRtpSender, MediaStreamTrack | null> | null = null;
   private remoteIds = new Map<string, string>();
@@ -504,39 +518,103 @@ export class ChannelTransport {
   }
 
   private addSender(id: string, owner: OutgoingBinding, source: MediaStreamTrack, codec?: BrowserVideoCodecPreference, allowPool = true): SenderBinding {
-    if (owner.kind !== "screen" || source.kind !== "video") return { sender: this.pc.addTrack(source, owner.stream), source, lifetime: new AbortController() };
+    const key = JSON.stringify([owner.kind, codec?.primary ?? null, codec?.vp8Fallback ?? false,
+      owner.kind === "screen" ? this.options.canReceiveVideoLayers ? ["q", "h"] : [null] : []]);
+    if (!owner.slots || !owner.senders.length && owner.slots.key !== key) {
+      const slots = [...this.mediaSlots].find(slots => slots.key === key
+        && ![...this.sending.values()].some(output => output.slots === slots))
+        ?? { key, stream: new MediaStream(), senders: [] };
+      this.mediaSlots.add(slots);
+      const tracks = owner.stream.getTracks();
+      for (const track of tracks) owner.stream.removeTrack(track);
+      owner.slots = slots;
+      owner.stream = slots.stream;
+      for (const track of tracks) owner.stream.addTrack(track);
+    }
+    const slots = owner.slots;
+    let slot = slots.senders.find(slot => slot.transceiver.receiver.track.kind === source.kind
+      && slot.transceiver.direction !== "stopped" && !slot.sender.track
+      && ![...this.sending.values()].some(output => output.senders.some(binding => binding.sender === slot.sender)));
+    const reused = !!slot;
+    const video = owner.kind === "screen" && source.kind === "video";
     const profile = owner.profile;
     const layered = this.options.canReceiveVideoLayers, count = layered ? 2 : 1;
-    const pooled = allowPool && !layered && profile && this.options.videoPool && supportsBrowserEncoding();
-    const track = this.cloneVideo(id, owner, source);
-    const encodings = profile ? screenShareEncodings(profile, source.getSettings(), count, count)
+    const pooled = video && allowPool && !layered && profile && this.options.videoPool && supportsBrowserEncoding();
+    const track = video && !reused ? this.cloneVideo(id, owner, source) : source;
+    const encodings = video && profile ? screenShareEncodings(profile, source.getSettings(), count, count)
       : layered ? [{ rid: "q", scaleResolutionDownBy: 2 }, { rid: "h", scaleResolutionDownBy: 1 }] : [{}];
     if (!layered) delete encodings[0].rid;
     let binding: SenderBinding | undefined;
     try {
-      const transceiver = this.pc.addTransceiver(track, { direction: "sendrecv", streams: [owner.stream], sendEncodings: encodings });
+      const transceiver = slot?.transceiver ?? this.pc.addTransceiver(track, { direction: "sendrecv", streams: [owner.stream],
+        ...(video ? { sendEncodings: encodings } : {}) });
+      if (!slot) { slot = { sender: transceiver.sender, transceiver }; slots.senders.push(slot); }
       binding = { sender: transceiver.sender, source, lifetime: new AbortController() };
-      if (codec && !applyVideoCodecPreference(transceiver, codec)) throw new Error("video_codec_unsupported");
-      if (pooled) {
+      if (video && codec && !applyVideoCodecPreference(transceiver, codec)) throw new Error("video_codec_unsupported");
+      if (pooled && slot.encoded === undefined) {
         // Attach synchronously while this sender's encoded stream is still claimable.
         // The physical PC also carries ordinary audio, receive tracks and Native flows.
         try {
-          binding.encoded = new BrowserEncodingOutput(binding.sender, () => this.failOutput(id, owner), { flowId: id });
+          const sender = binding.sender;
+          const current = () => [...this.sending].find(([, output]) => output.senders.some(binding => binding.sender === sender));
+          slot.encoded = new BrowserEncodingOutput(sender, () => {
+            this.mediaSlots.delete(slots);
+            const flow = current();
+            if (flow) this.failOutput(flow[0], flow[1]);
+          }, { get flowId() { return current()?.[0]; } });
         } catch (error) {
           // A refused claim may already have intercepted this sender. Recreate
           // only this optional optimization's new sender with ordinary media.
           this.removeSender(binding);
           binding = undefined;
+          slots.senders.splice(slots.senders.indexOf(slot), 1);
+          if (!reused) transceiver.stop();
           console.warn("Channel encoding pool unavailable for sender", { flowId: id }, error);
           return this.addSender(id, owner, source, codec, false);
         }
+      } else if (!allowPool && slot.encoded === undefined) slot.encoded = null;
+      binding.encoded = slot.encoded ?? undefined;
+      if (reused) {
+        const active = binding;
+        transceiver.direction = "sendrecv";
+        active.sender.setStreams(owner.stream);
+        this.enqueue(async () => {
+          if (!this.ownsSender(id, owner, active)) return;
+          const track = video ? this.cloneVideo(id, owner, source) : source;
+          try {
+            await waitForConnectionOperation(active.lifetime.signal, () => active.sender.replaceTrack(track));
+            if (!this.ownsSender(id, owner, active)) return;
+            this.commitSenderTrack(active.sender);
+            this.attachPool(id, owner, active);
+            active.encoded?.setPaused(owner.paused);
+            if (video && profile) await this.applyVideoProfile(id, owner, active, profile);
+            await this.applyPaused(id, owner, active);
+            // Lease replacement may restore the old direction before the
+            // Browser raises negotiationneeded; its manifest still changed.
+            this.offer();
+          } catch (error) {
+            if (this.ownsSender(id, owner, active)) {
+              owner.rejectedTracks = owner.stream.getTracks();
+              const retained = owner.senders.filter(binding => binding !== active && binding.sender.track?.readyState === "live");
+              if (retained.some(binding => binding.source.kind === (owner.kind === "screen" ? "video" : "audio"))) {
+                for (const binding of owner.senders) if (!retained.includes(binding)) this.removeSender(binding);
+                owner.senders = retained;
+                for (const track of owner.stream.getTracks()) if (!retained.some(binding => binding.source === track)) owner.stream.removeTrack(track);
+              } else this.failOutput(id, owner);
+              console.warn("Channel media slot could not be rebound", { flowId: id }, error);
+            }
+          } finally {
+            if (video && !this.ownsSender(id, owner, active)) stopSenderVideoTrack(track);
+          }
+        });
+      } else if (binding.encoded) {
         binding.encoded.setPaused(owner.paused);
         this.attachPool(id, owner, binding);
       }
       return binding;
     } catch (error) {
       if (binding) this.removeSender(binding);
-      else stopSenderVideoTrack(track);
+      else if (video && !reused) stopSenderVideoTrack(track);
       throw error;
     }
   }
@@ -653,9 +731,10 @@ export class ChannelTransport {
   private removeSender(binding: SenderBinding): void {
     const { sender, encoded, pooled } = binding;
     binding.lifetime.abort();
+    encoded?.setPaused(true);
     binding.pooled = undefined;
     pooled?.dispose();
-    encoded?.dispose();
+    encoded?.passthrough(async () => {});
     if (sender.track !== binding.source && sender.track !== encoded?.track) stopSenderVideoTrack(sender.track);
     this.stableSenders?.delete(sender);
     this.pendingOffer?.senders.delete(sender);
@@ -671,8 +750,9 @@ export class ChannelTransport {
 
   private offer(): void {
     this.enqueue(async () => {
-      if (this.pc.signalingState !== "stable" || this.pendingOffer) return;
+      if (this.localOfferFailed || this.pc.signalingState !== "stable" || this.pendingOffer) return;
       const senders = new Map([...this.sending.values()].flatMap(output => output.senders.map(({ sender }) => [sender, sender.track] as const)));
+      const tracks = this.outgoingTracks();
       const channel = this.channel, bulk = this.bulk;
       this.makingOffer = true;
       try {
@@ -707,7 +787,7 @@ export class ChannelTransport {
             || [...this.sending.values()].some(output => output.senders.some(({ sender }) => !senders.has(sender) || senders.get(sender) !== sender.track))) this.retryOffer();
           return;
         }
-        if (!this.closed) this.sendDescription(senders);
+        if (!this.closed) this.sendDescription(senders, tracks);
       } finally { this.makingOffer = false; }
     });
   }
@@ -745,7 +825,7 @@ export class ChannelTransport {
         if (this.ignoreOffer) return;
         this.settingAnswer = description.type === "answer";
         const previousIds = this.remoteIds;
-        const offeredSenders = this.pendingOffer?.senders;
+        const offered = this.pendingOffer;
         const remoteIds = new Map((payload.tracks ?? []).map(track => [track.streamId, track.flowId]));
         const flows = new Set(remoteIds.values());
         const added = [...flows].filter(id => !this.frameBaselines.has(id));
@@ -763,12 +843,12 @@ export class ChannelTransport {
         this.remoteIds = remoteIds;
         try { await this.pc.setRemoteDescription(description); }
         finally { this.settingAnswer = false; }
-        if (description.type === "answer") this.confirmSenders(offeredSenders!);
+        if (description.type === "answer") this.confirmSenders(offered!.senders);
         if (description.type === "offer" || description.type === "answer") this.pendingOffer = null;
         for (const [streamId, stream] of this.receiving) {
           const flowId = this.remoteIds.get(streamId);
           if (flowId) this.options.receive(flowId, stream);
-          else this.receiving.delete(streamId);
+          else if (!stream.getTracks().some(track => this.pc.getReceivers().some(receiver => receiver.track === track))) this.receiving.delete(streamId);
         }
         for (const id of this.frameBaselines.keys()) if (!flows.has(id)) this.frameBaselines.delete(id);
         for (const id of new Set(previousIds.values())) {
@@ -777,9 +857,11 @@ export class ChannelTransport {
         for (const candidate of this.candidates.splice(0)) await addRemoteIceCandidate(this.pc, { ...candidate, candidate: candidate.candidate ?? "" });
         if (description.type === "offer") {
           const senders = new Map([...this.sending.values()].flatMap(output => output.senders.map(({ sender }) => [sender, sender.track] as const)));
+          const tracks = this.outgoingTracks();
           await this.pc.setLocalDescription(preferOpusStereoReceive(await this.pc.createAnswer()));
-          if (!this.closed) { this.confirmSenders(senders); this.sendDescription(senders, payload.exchangeId!); }
-        }
+          if (!this.closed) { this.confirmSenders(senders); this.sendDescription(senders, tracks, payload.exchangeId!); }
+          this.offerChangedTracks(tracks);
+        } else this.offerChangedTracks(offered!.payload.tracks!);
       } else if (payload.candidate && !this.ignoreOffer) {
         if (this.pc.remoteDescription) await addRemoteIceCandidate(this.pc, { ...payload.candidate, candidate: payload.candidate.candidate ?? "" });
         else if (this.candidates.length < 128) this.candidates.push(payload.candidate);
@@ -809,14 +891,24 @@ export class ChannelTransport {
     }) });
   }
 
-  private sendDescription(senders: Map<RTCRtpSender, MediaStreamTrack | null>, exchangeId: string = crypto.randomUUID()): void {
+  private outgoingTracks(): NonNullable<ChannelSignal["tracks"]> {
+    return [...this.sending].filter(([, output]) => !output.failed)
+      .map(([flowId, { stream }]) => ({ flowId, streamId: stream.id }));
+  }
+
+  private offerChangedTracks(tracks: NonNullable<ChannelSignal["tracks"]>): void {
+    const current = this.outgoingTracks();
+    if (current.length !== tracks.length || current.some(track => !tracks.some(previous =>
+      previous.flowId === track.flowId && previous.streamId === track.streamId))) this.offer();
+  }
+
+  private sendDescription(senders: Map<RTCRtpSender, MediaStreamTrack | null>, tracks: NonNullable<ChannelSignal["tracks"]>, exchangeId: string = crypto.randomUUID()): void {
     const description = this.pc.localDescription;
     if (!description || (description.type !== "offer" && description.type !== "answer")) return;
-    const payload = { exchangeId, description: { type: description.type, sdp: description.sdp }, tracks: [...this.sending]
-      .filter(([, output]) => !output.failed).map(([flowId, { stream }]) => ({ flowId, streamId: stream.id })) };
+    const payload = { exchangeId, description: { type: description.type, sdp: description.sdp }, tracks };
     if (description.type === "offer") this.pendingOffer = { payload, senders };
     else if (description.type === "answer") this.answer = payload;
-    this.options.send(payload);
+    this.replayDescription(payload);
   }
 
   private enqueue(action: () => Promise<void>): void {
@@ -849,6 +941,8 @@ export class ChannelTransport {
     this.pc.ondatachannel = null;
     this.input?.close();
     for (const owner of this.sending.values()) for (const binding of owner.senders) this.removeSender(binding);
+    for (const slots of this.mediaSlots) for (const slot of slots.senders) slot.encoded?.dispose();
+    this.mediaSlots.clear();
     this.pc.close();
     this.sending.clear();
     this.receiving.clear();
