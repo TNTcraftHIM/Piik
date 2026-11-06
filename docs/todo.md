@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-05
+Last reviewed: 2026-11-06
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -8,8 +8,8 @@ own behavior; research and Git/PRs own evidence and completed history.
 ## Now
 
 - [ ] **3.0 Native platform acceptance.** Complete the remaining Linux/macOS
-  device acceptance, including Dock/Finder return to the App's Browser entry,
-  retaining the accepted
+  device acceptance, including macOS Quit, Dock/Finder return and permissions,
+  and Linux hardware encoding and physical sound. Retain the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
