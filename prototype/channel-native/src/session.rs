@@ -529,12 +529,16 @@ impl Session {
 
     async fn release(&mut self) -> Result<()> {
         self.fail_captures("hosting_unavailable");
-        if let Some(live) = self.live.take() {
+        // A canceled connection turn must leave the Driver's join owned here.
+        let closed = if let Some(live) = self.live.as_mut() {
             live.room.snapshot.send_replace(None);
-            live.peers.close().await?;
-        }
+            live.peers.close().await
+        } else {
+            Ok(())
+        };
+        self.live = None;
         self.recovery = None;
-        Ok(())
+        closed
     }
 
     async fn drive(&mut self, stop: &mut (impl Future<Output = ()> + Unpin)) -> Result<()> {

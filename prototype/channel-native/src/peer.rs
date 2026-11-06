@@ -1036,9 +1036,9 @@ impl NativePeers {
             .await?;
         reply.await?
     }
-    pub async fn close(self) -> Result<()> {
+    pub async fn close(&mut self) -> Result<()> {
         let _ = self.cancel.send(true);
-        self.task.await?;
+        (&mut self.task).await?;
         Ok(())
     }
 }

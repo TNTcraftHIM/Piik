@@ -404,7 +404,7 @@ async fn pending_udp_preparation_keeps_the_latest_plan_and_retires_with_its_leas
 #[tokio::test]
 async fn close_cancels_a_full_command_output() -> Result<()> {
     let (tx, commands) = mpsc::channel(1);
-    let native = NativePeers::new(Uuid::nil(), vec![], tx);
+    let mut native = NativePeers::new(Uuid::nil(), vec![], tx);
     native
         .update(
             vec![PairInfo {

@@ -27,7 +27,7 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
         "users":[{"id":user,"name":"Source","roles":[]},{"id":owner,"name":"Owner","roles":[]}],
         "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]},
             {"id":host,"userId":owner,"online":true,"signingKey":vec![1;32]}],
-        "files":[],"publications":[],"voice":[],"subscriptions":[],"pairs":[],"iceServers":[]
+        "files":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[]
     }))
     .unwrap();
     let mut session = Session {
@@ -64,6 +64,33 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
         .await
         .unwrap();
     (session, socket, remote.unwrap(), state)
+}
+
+#[tokio::test]
+async fn release_keeps_peer_shutdown_owned_when_cancelled() {
+    use futures_util::FutureExt;
+
+    let (mut session, _socket, _remote, _state) = capture_projection_session().await;
+    let mut commands = std::mem::replace(
+        &mut session.live.as_mut().unwrap().commands,
+        mpsc::channel(1).1,
+    );
+    session.recovery = Some(Instant::now() + Duration::from_millis(RECOVERY_MS));
+    {
+        let mut closing = Box::pin(session.release());
+        // This current-thread task cannot finish the spawned Driver until we yield.
+        assert!(closing.as_mut().now_or_never().is_none());
+    }
+    let retained = session.live.is_some();
+    session.release().await.unwrap();
+    let joined = commands.is_closed();
+    // Drain notifications even if the first release lost its join handle.
+    while commands.recv().await.is_some() {}
+    assert!(
+        retained && joined,
+        "shutdown owner retained={retained}, joined={joined}"
+    );
+    assert!(session.live.is_none() && session.recovery.is_none());
 }
 
 fn projection_capture(result: oneshot::Sender<Result<CaptureLease, String>>) -> PrepareCapture {
@@ -388,7 +415,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                 "historyWindow":100,"roles":[],"rooms":[room("affected"),room("other")]},
             "users":[{"id":user,"name":"Source","roles":[]}],
             "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]}],
-            "files":[],"publications":[],"voice":[],"subscriptions":[],"pairs":[],"iceServers":[]
+            "files":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[]
         }))
         .unwrap();
             let mut session = Session {

@@ -187,7 +187,7 @@ async fn participant() -> Result<()> {
         Ok::<_, anyhow::Error>(())
     }.await;
     snapshots.send_replace(None);
-    if let Some(peers) = peers {
+    if let Some(mut peers) = peers {
         peers.close().await?;
     }
     let _ = send(&mut socket, Command::Leave).await;
