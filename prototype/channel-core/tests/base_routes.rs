@@ -949,6 +949,17 @@ fn revoking_a_private_transit_retires_its_branch_and_keeps_its_public_pair() {
         .incoming
         .iter()
         .any(|flow| flow.publication_id == private));
+    let public_flow = network
+        .state(connections[relay])
+        .pairs
+        .iter()
+        .find(|pair| pair.id == shared_pair)
+        .unwrap()
+        .incoming
+        .iter()
+        .find(|flow| flow.publication_id == public)
+        .unwrap()
+        .id;
     let user = network
         .state(connections[relay])
         .sessions
@@ -989,6 +1000,30 @@ fn revoking_a_private_transit_retires_its_branch_and_keeps_its_public_pair() {
                 .incoming
                 .iter()
                 .any(|flow| flow.publication_id == private)));
+    command(
+        &mut network,
+        connections[0],
+        json!({"type":"unpublish", "publicationId":private}),
+    );
+    assert!(
+        network.state(connections[relay]).pairs.iter().any(|pair| {
+            pair.id == shared_pair && pair.incoming.iter().any(|flow| flow.id == public_flow)
+        }),
+        "retiring one room's source preserves the other room's physical and media leases"
+    );
+    command(
+        &mut network,
+        connections[relay],
+        json!({"type":"subscribe", "publicationId":public, "enabled":false}),
+    );
+    assert!(
+        !network
+            .state(connections[relay])
+            .pairs
+            .iter()
+            .any(|pair| pair.id == shared_pair),
+        "the physical pair retires once its last media and room-base leases are gone"
+    );
 }
 
 #[test]
