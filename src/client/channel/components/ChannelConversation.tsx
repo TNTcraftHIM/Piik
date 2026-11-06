@@ -4,7 +4,7 @@ import { participantColor } from "../../components/living/participant-color";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import type { ChannelMessage, ChannelUser } from "../protocol";
-import { ChannelAction } from "./ChannelMedia";
+import { ChannelAction } from "./ChannelAction";
 import { ChannelAttachment } from "./ChannelAttachment";
 import { type AttachmentLimits, type DraftFile, type ChannelAttachments, fileSize } from "../attachments";
 import { ChannelRoomStart, type ChannelEntry } from "./ChannelRoomStart";

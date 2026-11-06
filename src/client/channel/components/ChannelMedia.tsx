@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Btn } from "../../components/living/primitives";
 import { PlaybackControlsReveal } from "../../components/living/PlaybackControlsReveal";
 import { PlaybackSettings } from "../../components/living/PlaybackSettings";
@@ -13,23 +13,12 @@ import { playbackFailure } from "../../media/viewer-playback";
 import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
 import type { VideoFit, VideoRotation } from "../../media/video-geometry";
 import type { ChannelScreenInput, ScreenPresentation } from "../types";
-import { Glyph, type GlyphName } from "../../ui/icons";
+import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { RemoteControl } from "../../components/living/RemoteControl";
 import type { InputTransport } from "../../remote-control/input-route";
+import { ChannelAction } from "./ChannelAction";
 import "./channel-media.css";
-
-/** Literal prototype copy, shared production geometry and guidance. */
-export function ChannelAction({ icon, label, onClick, disabled, busy, pressed, danger, primary, hint, iconOnly = false, quiet = false, type = "button" }: {
-  icon: GlyphName; label: string; onClick?: () => void; disabled?: boolean;
-  busy?: boolean; pressed?: boolean; danger?: boolean; primary?: boolean;
-  iconOnly?: boolean; quiet?: boolean;
-  hint?: ComponentProps<typeof Btn>["hint"]; type?: "button" | "submit";
-}) {
-  return <Btn icon={icon} title={{ text: label }} cap={iconOnly ? undefined : { text: label }}
-    size="compact" quiet={quiet} tone={danger ? "danger" : primary ? "primary" : undefined}
-    type={type} onClick={onClick} disabled={disabled || busy} busy={busy} pressed={pressed} hint={hint} />;
-}
 
 function ChannelVideoInput({ input, visible, label, fit, register, frame, issue, playing, fullscreen }: {
   input: ChannelScreenInput; visible: boolean; label: string; fit: VideoFit;

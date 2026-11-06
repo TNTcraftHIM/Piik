@@ -3,12 +3,12 @@ import { useAnchoredPopover } from "../../components/living/use-anchored-popover
 import { Tooltip } from "../../components/living/Tooltip";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
-import { ChannelAction } from "./ChannelMedia";
+import { ChannelAction } from "./ChannelAction";
 
 export function ChannelJoinVoice({ joined, disabled, busy, onJoin }: {
   joined: boolean; disabled: boolean; busy: boolean; onJoin: (listenOnly: boolean) => void;
 }) {
-  const { lang, vis } = useCopy();
+  const { lang, vis, t } = useCopy();
   const zh = lang === "zh";
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -17,7 +17,7 @@ export function ChannelJoinVoice({ joined, disabled, busy, onJoin }: {
   if (joined) return <span className="c3-voice-joined"><Glyph name="headphones" size={18} />
     {!vis && <span>{zh ? "语音已加入" : "Voice joined"}</span>}</span>;
   return <div className="c3-join-voice">
-    <ChannelAction icon="headphones" label={zh ? "加入语音" : "Join voice"} hint="hint-voice-join"
+    <ChannelAction icon="headphones" label={t("voice.join")} hint="hint-voice-join"
       disabled={disabled} busy={busy} onClick={() => onJoin(false)} />
     <Tooltip kind="hint-voice-join" text={vis ? undefined : zh ? "语音加入方式" : "Voice join options"}>
       <button type="button" ref={trigger} className="lr-btn is-compact is-quiet" disabled={disabled || busy}

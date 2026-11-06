@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Glyph } from "../../ui/icons";
 import { WelcomeLine } from "../../components/living/WelcomeLine";
-import { ChannelAction } from "../components/ChannelMedia";
+import { ChannelAction } from "../components/ChannelAction";
 import { ChannelNameEditor } from "../components/ChannelNameEditor";
 import { ChannelBookmarks } from "../components/ChannelBookmarks";
 import { DesignArtwork } from "./DesignArtwork";

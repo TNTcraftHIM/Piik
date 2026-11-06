@@ -1,6 +1,15 @@
-import type { ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket } from "./protocol";
-import type { BrowserRoomSnapshot, BrowserRoomStage } from "../../../prototype/channel-browser/src/room-host";
-export type { BrowserRoomSnapshot, BrowserRoomStage };
+import type { ChannelMessage, ConversationReply, MessageReactions, RoomSettings, RoomSummary, SignedConversationPacket } from "./protocol";
+
+export type BackupHistoryRow = ChannelMessage & { nonce: string; reactions: MessageReactions };
+export interface BrowserRoomSnapshot {
+  readonly policy: string;
+  readonly rows: AsyncIterable<BackupHistoryRow>;
+  close(): Promise<void>;
+}
+export interface BrowserRoomStage extends BrowserRoomSnapshot {
+  append(row: BackupHistoryRow): Promise<void>;
+  replace(signal?: AbortSignal): Promise<void>;
+}
 
 export interface HostedRoom {
   readonly roomId: string;
@@ -19,6 +28,7 @@ interface RoomHosting {
   BackupHistoryImport: new (metadata: string) => BackupHistoryImport;
   createSessionSigner(seed: Uint8Array): Promise<SessionSigner>;
   verify_reply(packet: string, key: Uint8Array): string;
+  conversation_broadcast(record: string): string;
   route_conversation(packet: string, local: string, state: string, from?: string): string;
   route_input(frame: string, local: string, state: string, from?: string, binding?: string): string;
   input_binding_current(binding: string, local: string, state: string): boolean;

@@ -1,8 +1,7 @@
-import { loadRoomHosting, type AttachmentHash } from "./hosting";
-import type { ChannelAttachment, ChannelMessage, MessageReactions } from "./protocol";
+import { loadRoomHosting, type AttachmentHash, type BackupHistoryRow } from "./hosting";
+import type { ChannelAttachment } from "./protocol";
 import type { FileEntry } from "@zip.js/zip.js";
 
-export type BackupHistoryRow = ChannelMessage & { nonce: string; reactions: MessageReactions };
 export interface RetainedBackupFile { messageSeq: number; attachment: ChannelAttachment }
 export type BackupMetadata =
   | { kind: "domain"; version: 1; state: Record<string, unknown> & { id: string; ownerId: string }; ownerKey: string; inviteKey: string }

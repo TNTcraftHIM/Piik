@@ -1,8 +1,9 @@
-import { BrowserRoomHost, createRoomPolicy, createSessionSigner, decode_control, encode_control, verify_reply, type SentResult } from "../src/room-host";
+import { BrowserRoomHost, conversation_broadcast, createRoomPolicy, createSessionSigner, decode_control, encode_control, verify_reply, type SentResult } from "../src/room-host";
 import type { SignedConversationPacket } from "../../../src/client/channel/protocol";
 import { IDENTITY_IMAGE_URL_BYTES, identityIconSchema } from "../../../src/client/channel/protocol";
 import { prepareIdentityImage } from "../../../src/client/channel/identity-image";
-import type { BackupHistoryRow } from "../../../src/client/channel/backup-archive";
+import type { BackupHistoryRow } from "../../../src/client/channel/hosting";
+import { QUALITY_PROFILES, screenVideoCeiling } from "../../../src/client/media/quality";
 
 declare global { interface Window { runBrowserRoomCheck(): Promise<object> } }
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
@@ -42,6 +43,10 @@ window.runBrowserRoomCheck = async () => {
     const replies = await host.dispatchPeer(peerPacket({ type: "chat", text, nonce, attachments }), Date.now(), signal);
     const confirmation = replies[0]?.record;
     check(confirmation?.type === "confirmed", "committed signed peer send result");
+    const broadcast = JSON.parse(conversation_broadcast(JSON.stringify(confirmation)));
+    check(confirmation.inserted ? broadcast?.type === "live_message"
+      && JSON.stringify(broadcast.message) === JSON.stringify(confirmation.message) : broadcast === null,
+    "the shared broadcast rule emits only newly committed messages");
     return confirmation;
   };
   const history = async (before?: number) => {
@@ -244,7 +249,9 @@ window.runBrowserRoomCheck = async () => {
     check(JSON.stringify(await history()) === JSON.stringify(latest), "history survives runtime/database reopen");
     const original = await send("Changed again", "first", [{ ...file, sha256: "0".repeat(64) }]);
     check(!original.inserted && JSON.stringify(original.message) === JSON.stringify(first.message), "nonce survives reopen");
-    await dispatch({ type: "publish", publication: { id: crypto.randomUUID(), roomId: host.roomId, kind: "screen", muted: false } });
+    check((await dispatch({ type: "publish", publication: { id: crypto.randomUUID(), roomId: host.roomId,
+      kind: "screen", muted: false, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]) } })).reply?.result.type === "done",
+    "the source is published before checking restart cleanup");
     await host.close();
     host = await BrowserRoomHost.open(database, policy);
     await bindHost();
@@ -252,7 +259,9 @@ window.runBrowserRoomCheck = async () => {
     check(restored.projection.views[session].publications.length === 0, "restart restores policy/history, not capture");
     check((await BrowserRoomHost.storedPolicies(database)).length === 2, "persisted room policies enumerated");
     const publication = crypto.randomUUID();
-    await dispatch({ type: "publish", publication: { id: publication, roomId: host.roomId, kind: "screen", muted: false } });
+    check((await dispatch({ type: "publish", publication: { id: publication, roomId: host.roomId,
+      kind: "screen", muted: false, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]) } })).reply?.result.type === "done",
+    "the source is published before checking same-binding continuity");
     await bindHost();
     check((await dispatch({ type: "browse", active: true, roomId: host.roomId })).projection.views[session].publications.length === 1,
       "same binding preserves live activity");

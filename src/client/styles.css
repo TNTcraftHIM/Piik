@@ -1570,7 +1570,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-client-modes {
   display: grid;
   width: 100%;
-  grid-template-columns: repeat(var(--launcher-columns, 2), minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 .lr-client-modes > .lr-comic-tip-wrap {
@@ -1594,12 +1594,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 }
 .lr-client-mode strong { font-size: 14px; }
 .lr-client-mode small { font-size: 11px; opacity: .7; }
-.lr-client-access {
-  width: min(460px, 100%);
-}
-.lr-client-access input {
-  min-width: 0;
-}
 .lr-client-room-settings { display: grid; width: min(460px, 100%); grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); align-items: start; gap: 12px; }
 .lr-client-room-settings .lr-client-lan { padding: 8px 0 0; }
 .lr-client-room-settings .lr-client-lan select { min-height: 48px; }
@@ -1612,8 +1606,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-client-access-options > summary::-webkit-details-marker { display: none; }
 .lr-client-access-options > summary > svg:last-child { transition: transform 180ms var(--spring); }
 .lr-client-access-options[open] > summary > svg:last-child { transform: rotate(180deg); }
-.lr-client-access-set { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); }
-.lr-client-access-options .lr-client-access { width: 100%; margin-top: 8px; }
 .lr-client-access-hint { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 
 .lr-join {

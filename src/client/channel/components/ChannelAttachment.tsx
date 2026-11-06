@@ -3,7 +3,7 @@ import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import type { ChannelAttachment as Attachment } from "../protocol";
 import { type ChannelAttachments, fileSize } from "../attachments";
-import { ChannelAction } from "./ChannelMedia";
+import { ChannelAction } from "./ChannelAction";
 
 export function ChannelAttachment({ roomId, messageSeq, file, client }: { roomId: string; messageSeq: number; file: Attachment; client: ChannelAttachments }) {
   const { lang } = useCopy(), zh = lang === "zh";

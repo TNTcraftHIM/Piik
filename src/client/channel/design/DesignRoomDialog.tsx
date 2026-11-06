@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Glyph } from "../../ui/icons";
 import { Btn, SwitchItem } from "../../components/living/primitives";
-import { ChannelAction } from "../components/ChannelMedia";
+import { ChannelAction } from "../components/ChannelAction";
 import type { DesignCopy, DesignRoom } from "./fixtures";
 import { DesignIdentityMark, DesignIdentityPicker, type DesignIdentity } from "./DesignIdentityPicker";
 

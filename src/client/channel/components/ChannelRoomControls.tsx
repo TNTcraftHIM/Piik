@@ -5,7 +5,7 @@ import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import type { ChannelRoom, RoomSettings } from "../protocol";
 import type { ChannelController } from "../types";
-import { ChannelAction } from "./ChannelMedia";
+import { ChannelAction } from "./ChannelAction";
 import { ChannelIdentityFields } from "./ChannelIdentity";
 import "./channel-room-controls.css";
 import { BackupControls } from "./BackupControls";

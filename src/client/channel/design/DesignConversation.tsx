@@ -4,7 +4,7 @@ import { Glyph } from "../../ui/icons";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { downloadBlob } from "../../lib/download";
 import { fileSize } from "../attachments";
-import { ChannelAction } from "../components/ChannelMedia";
+import { ChannelAction } from "../components/ChannelAction";
 import { ChannelMessageReactions } from "../components/ChannelMessageReactions";
 import type { MessageReactions } from "../protocol";
 import { DesignAvatar } from "./DesignAvatar";

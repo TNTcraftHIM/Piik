@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Btn } from "../../components/living/primitives";
-import { ChannelAction } from "../components/ChannelMedia";
+import { ChannelAction } from "../components/ChannelAction";
 import { DesignIdentityMark, DesignIdentityPicker, type DesignIdentity } from "./DesignIdentityPicker";
 import type { DesignCopy } from "./fixtures";
 

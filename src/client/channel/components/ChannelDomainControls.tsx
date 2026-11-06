@@ -4,7 +4,7 @@ import { Tooltip } from "../../components/living/Tooltip";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import type { ChannelController } from "../types";
-import { ChannelAction } from "./ChannelMedia";
+import { ChannelAction } from "./ChannelAction";
 import { ChannelIdentityFields } from "./ChannelIdentity";
 import { BackupControls } from "./BackupControls";
 import "./channel-name-editor.css";

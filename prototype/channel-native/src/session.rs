@@ -12,11 +12,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use futures_util::{SinkExt, StreamExt};
 use piik_channel_core::{
     backup::OwnCredential,
-    conversation::{
-        self, ConversationRecord, ConversationReply, ConversationResult, SessionSigner,
-        SignedPacket,
-    },
-    history::HistoryResult,
+    conversation::{self, ConversationRecord, ConversationReply, SessionSigner, SignedPacket},
 };
 use piik_channel_core::{
     host::{RoomResult, RoomSummary},
@@ -132,34 +128,14 @@ impl RoomTurns {
         let Ok(outcome) = hosted.dispatch_peer(&packet, now) else {
             return;
         };
-        let broadcast = match &outcome.result {
-            Ok(ConversationResult::History(HistoryResult::Sent(confirmation)))
-                if confirmation.inserted =>
-            {
-                Some((
-                    ConversationRecord::LiveMessage {
-                        message: confirmation.message.message.clone(),
-                    },
-                    hosted.current_readers(),
-                ))
-            }
-            Ok(ConversationResult::History(HistoryResult::Reacted(confirmation)))
-                if confirmation.changed =>
-            {
-                Some((
-                    ConversationRecord::MessageReactions {
-                        snapshot: confirmation.snapshot.clone(),
-                    },
-                    hosted.current_readers(),
-                ))
-            }
-            Ok(ConversationResult::Immediate(record @ ConversationRecord::Interaction { .. })) => {
-                Some((record.clone(), hosted.current_readers()))
-            }
-            _ => None,
-        };
         let address = outcome.address.reply();
-        if let Ok(replies) = outcome.replies() {
+        let replies = outcome.replies();
+        let broadcast = replies
+            .as_ref()
+            .ok()
+            .and_then(|replies| replies.iter().find_map(|reply| reply.record.broadcast()))
+            .map(|record| (record, hosted.current_readers()));
+        if let Ok(replies) = replies {
             if let Err(error) = self.replies(peers, &replies) {
                 eprintln!("Native conversation response unavailable: {error}");
                 self.reply(

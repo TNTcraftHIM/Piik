@@ -279,6 +279,29 @@ pub enum ConversationRecord {
         code: String,
     },
 }
+
+impl ConversationRecord {
+    /// Only new confirmed changes and live interactions fan out to other readers.
+    pub fn broadcast(&self) -> Option<Self> {
+        match self {
+            Self::Confirmed {
+                message,
+                inserted: true,
+            } => Some(Self::LiveMessage {
+                message: message.clone(),
+            }),
+            Self::ReactionConfirmed {
+                snapshot,
+                changed: true,
+            } => Some(Self::MessageReactions {
+                snapshot: snapshot.clone(),
+            }),
+            Self::Interaction { .. } => Some(self.clone()),
+            _ => None,
+        }
+    }
+}
+
 fn history_count<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<usize, D::Error> {
     let count = usize::deserialize(deserializer)?;
     if count > crate::history::HISTORY_PAGE {
@@ -623,6 +646,11 @@ mod room_tests {
         assert_eq!(confirmation.message.message.user_id, actor.user_id);
         assert_eq!(confirmation.message.message.time, 10);
         let reply = first.replies().unwrap().remove(0);
+        let Some(ConversationRecord::LiveMessage { message }) = reply.record.broadcast() else {
+            panic!("new confirmed chat must broadcast");
+        };
+        assert_eq!(message.text, "Original");
+        assert_eq!(message.user_id, actor.user_id);
         let signed = host_key.sign(host_session, &reply).unwrap();
         assert_eq!(
             ConversationReply::verify(&signed, host_key.signing_key())
@@ -637,15 +665,71 @@ mod room_tests {
         };
         let packet = sender_key.sign(sender, &request).unwrap();
         let retry = host.dispatch_peer(&packet, 20).unwrap();
-        let ConversationResult::History(HistoryResult::Sent(confirmation)) = retry.result.unwrap()
+        let ConversationResult::History(HistoryResult::Sent(confirmation)) =
+            retry.result.as_ref().unwrap()
         else {
             panic!("retry expected")
         };
         assert!(!confirmation.inserted);
         assert_eq!(
-            serde_json::to_value(confirmation.message).unwrap(),
+            serde_json::to_value(&confirmation.message).unwrap(),
             original
         );
+        assert!(retry
+            .replies()
+            .unwrap()
+            .iter()
+            .all(|reply| reply.record.broadcast().is_none()));
+        for (active, changed) in [(true, true), (true, false), (false, true), (false, false)] {
+            let request = ConversationRequest {
+                address: address.clone(),
+                command: ConversationCommand::SetReaction {
+                    message_seq: 1,
+                    reaction: "heart".into(),
+                    active,
+                },
+            };
+            let packet = sender_key.sign(sender, &request).unwrap();
+            let replies = host.dispatch_peer(&packet, 21).unwrap().replies().unwrap();
+            assert!(matches!(&replies[0].record,
+                ConversationRecord::ReactionConfirmed { changed: actual, .. } if *actual == changed));
+            assert_eq!(replies[0].record.broadcast().is_some(), changed);
+            if let Some(ConversationRecord::MessageReactions { snapshot }) =
+                replies[0].record.broadcast()
+            {
+                assert_eq!(snapshot.message_seq, 1);
+                assert_eq!(
+                    snapshot.reactions.choices.contains_key(&actor.user_id),
+                    active
+                );
+            }
+        }
+        for command in [
+            ConversationCommand::InteractionReady,
+            ConversationCommand::Interaction {
+                reaction: "wave".into(),
+                target_user_id: None,
+            },
+            ConversationCommand::History { before: None },
+        ] {
+            let request = ConversationRequest {
+                address: address.clone(),
+                command,
+            };
+            let packet = sender_key.sign(sender, &request).unwrap();
+            let replies = host.dispatch_peer(&packet, 22).unwrap().replies().unwrap();
+            for reply in replies {
+                let broadcast = reply.record.broadcast();
+                if matches!(reply.record, ConversationRecord::Interaction { .. }) {
+                    assert_eq!(
+                        serde_json::to_value(broadcast.unwrap()).unwrap(),
+                        serde_json::to_value(reply.record).unwrap()
+                    );
+                } else {
+                    assert!(broadcast.is_none());
+                }
+            }
+        }
         let context = RequestContext {
             connection: Uuid::new_v4(),
             session_id: host_session,
@@ -666,10 +750,12 @@ mod room_tests {
             denied.result.is_err(),
             "signature does not preserve revoked room permission"
         );
+        let denied_reply = denied.replies().unwrap().remove(0);
         assert!(matches!(
-            denied.replies().unwrap()[0].record,
+            denied_reply.record,
             ConversationRecord::Error { .. }
         ));
+        assert!(denied_reply.record.broadcast().is_none());
         host.dispatch(input(HostAction::Sync, Uuid::new_v4()))
             .unwrap();
         assert!(matches!(

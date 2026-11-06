@@ -240,6 +240,11 @@ pub fn decode_control(bytes: &[u8]) -> Result<String, JsValue> {
 }
 
 #[wasm_bindgen]
+pub fn conversation_broadcast(record: &str) -> Result<String, JsValue> {
+    encode(&parse::<conversation::ConversationRecord>(record)?.broadcast())
+}
+
+#[wasm_bindgen]
 pub fn conversation_replies(address: &str, result: &str) -> Result<String, JsValue> {
     let address = parse::<ConversationAddress>(address)?;
     let result = match parse::<Result<conversation::ConversationResult, String>>(result)? {

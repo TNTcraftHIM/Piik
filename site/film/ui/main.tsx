@@ -213,8 +213,6 @@ function Screen({ shot }: { shot: Shot }) {
             sites={[]}
             onRemoveSite={noop}
             onSelectSite={noop}
-            localAccessPassword=""
-            onLocalAccessPasswordChange={noop}
             onSubmit={(event) => event.preventDefault()}
           />
         </main>

@@ -513,7 +513,6 @@ async fn health(State(app): State<Arc<App>>) -> Json<Value> {
 fn launcher_state(registry: &Registry, port: u16) -> Result<Value> {
     Ok(
         json!({"sites":registry.approvals.keys().collect::<Vec<_>>(),"startupSite":registry.sites.startup()?,
-        "defaultMode":"link","modes":["local","link"],"siteAccess":"channel",
         "version":BUILD_VERSION,"revision":BUILD_REVISION,
         "packageTarget":PACKAGE_TARGET,"controlPort":port,"debug":piik_channel_native::diagnostics::enabled()}),
     )

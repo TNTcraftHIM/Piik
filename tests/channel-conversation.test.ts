@@ -5,10 +5,11 @@ import type { ChannelSnapshot, ConversationReply, SignedConversationPacket } fro
 
 afterEach(() => vi.restoreAllMocks());
 
-test("the Browser room host fans out transient interactions and changed message reactions, keeping readiness and unchanged results source-only", async () => {
+test("the Browser room host fans out Core-selected records, preserving signed request scope and excluding the requester", async () => {
   const state = { channel: { rooms: [{ id: "room", delivery: { bindingId: "binding", hostSessionId: "host" } }] } } as ChannelSnapshot;
   const sent: SignedConversationPacket[] = [];
   let changed = true;
+  let broadcast: ConversationReply["record"] | null = null;
   const host = {
     currentReaders: vi.fn(() => ["source", "second", "third"]),
     dispatchPeer: vi.fn(async (packet: SignedConversationPacket) => {
@@ -29,6 +30,7 @@ test("the Browser room host fans out transient interactions and changed message 
       return JSON.stringify({ packet, route: { address, nextHop: address.recipient === "host" ? null : address.recipient } });
     },
     encode_control: (json: string) => new TextEncoder().encode(json), decode_control: (bytes: Uint8Array) => new TextDecoder().decode(bytes),
+    conversation_broadcast: () => JSON.stringify(broadcast),
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const conversation = new ChannelConversation({ context: () => ({ sessionId: "host", state, connected: true }), host: () => host,
     send: async (_peer, frame, allowed) => { expect(allowed()).toBe(true); sent.push(JSON.parse(frame).body); }, file: vi.fn(), reply: vi.fn() });
@@ -43,6 +45,7 @@ test("the Browser room host fans out transient interactions and changed message 
     expect(sent.map(packet => JSON.parse(packet.payload).recipient)).toEqual(["source"]);
     expect(host.currentReaders).not.toHaveBeenCalled();
     sent.length = 0;
+    broadcast = { type: "interaction", id: "event", occurredAt: 1000, senderUserId: "user", reaction: "wave", targetUserId: "friend" };
     await receive("interaction");
     const replies = sent.map(packet => JSON.parse(packet.payload) as ConversationReply);
     expect(replies.map(reply => reply.recipient).sort()).toEqual(["second", "source", "third"]);
@@ -53,11 +56,13 @@ test("the Browser room host fans out transient interactions and changed message 
     expect(sign).toHaveBeenCalledTimes(4);
     sent.length = 0;
     changed = false;
+    broadcast = null;
     await receive("set_reaction");
     expect(sent.map(packet => JSON.parse(packet.payload).record.type)).toEqual(["reaction_confirmed"]);
     expect(host.currentReaders).toHaveBeenCalledTimes(1);
     sent.length = 0;
     changed = true;
+    broadcast = { type: "message_reactions", snapshot: { messageId: "message", messageSeq: 1, revision: 1, choices: { user: ["heart"] } } };
     await receive("set_reaction");
     const reactions = sent.map(packet => JSON.parse(packet.payload) as ConversationReply);
     expect(reactions.find(reply => reply.recipient === "source")?.record.type).toBe("reaction_confirmed");

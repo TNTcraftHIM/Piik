@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { downloadBlob } from "../../lib/download";
 import { useCopy } from "../../ui/copy";
-import { ChannelAction } from "./ChannelMedia";
+import { ChannelAction } from "./ChannelAction";
 
 /** File selection and confirmation are shared by backup consumers; the caller owns storage. */
 export function BackupControls({ disabled, busy, onExport, onRestore, replacing = true, available = true, kind = "room" }: {

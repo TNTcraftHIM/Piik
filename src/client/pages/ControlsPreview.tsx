@@ -71,7 +71,6 @@ export function ControlsPreview() {
   const releaseURL = `https://github.com/TNTcraftHIM/Piik/releases/tag/${releaseVersion}`;
   const [launchSites, setLaunchSites] = useState(["https://demo.piik.tv"]);
   const [startupSite, setStartupSite] = useState("");
-  const [launchPassword, setLaunchPassword] = useState("");
   const [launchLan, setLaunchLan] = useState("192.0.2.10");
   const [policy, setPolicy] = useState<"open" | "private">("open");
   const [roomPassword, setRoomPassword] = useState(false);
@@ -351,7 +350,6 @@ export function ControlsPreview() {
             { address: "192.0.2.10", name: "Wi-Fi" },
             { address: "192.0.2.20", name: "vEthernet (Example Virtual Network Adapter with a Long Name)" },
           ] }}
-          localAccessPassword={launchPassword} onLocalAccessPasswordChange={setLaunchPassword}
           onSubmit={event => event.preventDefault()}>
           <AppReleaseNotice update={{ kind: majorUpdate ? "major-update" : "update-available",
             version: releaseVersion, revision: null,

@@ -19,11 +19,7 @@ import { downloadBlob } from "../lib/download";
 
 const launcherStateSchema = z.object({
   sites: z.array(z.string()),
-  siteAccess: z.literal("channel").optional(),
   startupSite: z.string(),
-  localAccessPassword: z.string().optional(),
-  defaultMode: z.enum(["local", "link"]),
-  modes: z.array(z.enum(["local", "link"])).default(["local", "link"]),
   target: z.string().optional(),
   starting: z.boolean().optional(),
   reason: z.string().optional(),
@@ -48,22 +44,19 @@ export function AppLauncherPage() {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [mode, setMode] = useState<AppMode>("link");
-  const [modes, setModes] = useState<readonly AppMode[]>(["local", "link"]);
   const [sites, setSites] = useState<string[]>([]);
-  const [siteAccess, setSiteAccess] = useState<"channel">();
   const [startupSite, setStartupSite] = useState("");
   const [openOnApproval, setOpenOnApproval] = useState(false);
-  const [localAccessPassword, setLocalAccessPassword] = useState<string>();
   const [error, setError] = useState<{ kind: "load" | "launch"; reason?: string; detail?: string } | null>(null);
   const [appDebug, setAppDebug] = useState<boolean | undefined>();
-  const [debug, setDebug] = useState(false);
   const [debugBusy, setDebugBusy] = useState(false);
   const [debugError, setDebugError] = useState(false);
   const [reload, setReload] = useState(0);
   const [lan, setLan] = useState<z.infer<typeof launcherStateSchema>["lan"]>();
   const [build, setBuild] = useState<AppReleaseIdentity>();
   const { update } = useReleaseUpdate(build);
-  const [version, setVersion] = useState<string>();
+  const version = build?.version === "development" && /^[a-f0-9]{40}$/i.test(build.revision)
+    ? `${build.version} (${build.revision.slice(0, 7)})` : build?.version;
   const [target, setTarget] = useState<string>();
   const [controlPort, setControlPort] = useState<number>();
   const [siteBusy, setSiteBusy] = useState(false);
@@ -114,22 +107,15 @@ export function AppLauncherPage() {
       .then((state) => {
         if (!fresh()) return;
         if (!restoredSettings) {
-          setMode(state.defaultMode);
-          setModes(state.modes);
-          setLocalAccessPassword(state.localAccessPassword);
           setLan(state.lan);
           restoredSettings = true;
         }
-        setVersion(state.version === "development" && /^[a-f0-9]{40}$/i.test(state.revision)
-          ? `${state.version} (${state.revision.slice(0, 7)})` : state.version);
         setControlPort(state.controlPort);
         setTarget(state.target);
         setStarting(state.starting === true);
         setSites(state.sites);
-        setSiteAccess(state.siteAccess);
         setStartupSite(state.startupSite);
         setAppDebug(state.debug);
-        setDebug(state.debug === true);
         setError(previous => state.detail ? { kind: "launch", reason: state.reason, detail: state.detail }
           : previous?.kind === "load" ? null : previous);
         setLoading(false);
@@ -173,7 +159,6 @@ export function AppLauncherPage() {
       });
       if (!response.ok) throw new Error();
       setAppDebug(true);
-      setDebug(true);
     } catch { setDebugError(true); }
     finally { finish(); setDebugBusy(false); }
   }
@@ -201,7 +186,7 @@ export function AppLauncherPage() {
         ...(theme !== null ? ["theme" as const] : []),
       ],
     };
-    return clientLaunchURL(target, presentation, debug, controlPort);
+    return clientLaunchURL(target, presentation, appDebug === true, controlPort);
   }
 
   async function launch(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -219,7 +204,6 @@ export function AppLauncherPage() {
           mode,
           language: consoleLanguage(lang, vis),
           ...(mode === "local" && lan ? { lanAddress: lan.selected } : {}),
-          localAccessPassword,
         }),
       });
       if (response.status === 409) {
@@ -284,7 +268,7 @@ export function AppLauncherPage() {
         <Btn icon={appDebug ? "arrowDown" : "cpu"} size="compact"
           title={appDebug ? "client.launch.debugExportHint" : "client.launch.debugHint"}
           cap={appDebug ? "client.launch.debugExport" : undefined}
-          pressed={appDebug ? undefined : debug} tone={appDebug ? "on" : undefined}
+          pressed={appDebug ? undefined : false} tone={appDebug ? "on" : undefined}
           hint={appDebug ? "hint-debug-export" : "debug-start"} busy={debugBusy}
           disabled={debugBusy || (!appDebug && (loading || error?.kind === "load"))}
           onClick={() => void (appDebug ? exportDebug() : enableDebug())} />
@@ -323,7 +307,7 @@ export function AppLauncherPage() {
                 {approvalCurrent && <Glyph name="check" size={20} className="lr-client-approval-check" />}
               </div>
               <p className={vis ? "visually-hidden" : undefined}>{t(approvalCurrent ? "client.connect.return"
-                : siteAccess === "channel" ? "client.connect.approveChannelHint" : "client.connect.approveHint")}</p>
+                : "client.connect.approveChannelHint")}</p>
             </div>
             {!validSite && <Pill icon="alert" tone="bad" label={t("client.connect.invalid")} comic="signal-failed" />}
             {siteError && <p role="alert">{siteError}</p>}
@@ -366,7 +350,6 @@ export function AppLauncherPage() {
               </details>}
             </> : undefined}
             mode={mode}
-            modes={modes}
             sites={sites}
             siteAddress={siteEntry.origin}
             onSelectSite={origin => {
@@ -375,14 +358,12 @@ export function AppLauncherPage() {
             }}
             startupSite={startupSite}
             onToggleStartupSite={site => void changeSite(startupSite === site ? "" : site, "startup-site")}
-            localAccessPassword={localAccessPassword}
             onModeChange={setMode}
             onRemoveSite={site => void changeSite(site, "site", false, false)}
             siteBusy={siteBusy}
             siteError={siteError}
             target={target}
             entryURL={launchURL}
-            onLocalAccessPasswordChange={setLocalAccessPassword}
             lan={lan && { ...lan, onChange: (selected) => setLan({ ...lan, selected }) }}
             onSubmit={launch}
           >

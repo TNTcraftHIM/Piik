@@ -10,7 +10,7 @@ import type { RoomInteractionSession } from "../../lib/room-interactions";
 import { useElementWidth } from "../../lib/use-element-width";
 import { useCopy } from "../../ui/copy";
 import { useSurfaceDocument } from "../../ui/panel-window";
-import { ChannelAction } from "./ChannelMedia";
+import { ChannelAction } from "./ChannelAction";
 import "./channel-couch.css";
 
 export interface ChannelCouchPerson {

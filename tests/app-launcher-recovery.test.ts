@@ -45,18 +45,18 @@ const executable = ts.transpileModule(`${declarations.join("\n")}\n({cleanup: ($
 }).outputText;
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const saved = {
-  sites: ["https://site.example"], startupSite: "", localAccessPassword: "saved password", defaultMode: "local",
+  sites: ["https://site.example"], startupSite: "",
   revision: "test", version: "development", debug: false,
   lan: { addresses: [{ address: "192.0.2.1", name: "LAN" }], selected: "192.0.2.1" },
 };
-const response = (state: typeof saved & { detail?: string; siteAccess?: "channel"; target?: string } = saved) => ({ ok: true, status: 200, json: async () => state });
+const response = (state: typeof saved & { detail?: string; target?: string } = saved) => ({ ok: true, status: 200, json: async () => state });
 
 function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = false, mode = "link" }: { debug?: boolean; mode?: "local" | "link" } = {}) {
   const downloads = vi.fn();
   const state: Record<string, unknown> = {};
   const setters = Object.fromEntries([
-    "Mode", "Modes", "LocalAccessPassword", "Lan", "Version", "ControlPort", "Target", "Starting", "Sites", "SiteAccess", "StartupSite",
-    "AppDebug", "Debug", "Error", "Loading", "Build", "RemoteControlPrototype",
+    "Mode", "Lan", "ControlPort", "Target", "Starting", "Sites", "StartupSite",
+    "AppDebug", "Error", "Loading", "Build", "RemoteControlPrototype",
     "SiteBusy", "SiteError", "DebugBusy", "DebugError", "Reload",
   ].map(name => [`set${name}`, vi.fn((value: unknown) => {
     state[name] = typeof value === "function" ? value(state[name]) : value;
@@ -68,7 +68,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = fa
     ...setters, z, fetch, window, downloadBlob: downloads,
     stateChanges: { current: { revision: 0, pending: 0 } },
     siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, manualSite, openOnApproval: false,
-    mode, lang: "en", vis: false, debug, appDebug: debug, localAccessPassword: undefined, lan: saved.lan,
+    mode, lang: "en", vis: false, appDebug: debug, lan: saved.lan,
     consoleLanguage: () => "en", clientLaunchURL, currentThemePreference: () => null, hasCopyPreference: () => false,
     controlPort: undefined, t: (key: string) => key,
     setTimeout: (callback: () => void, delay: number) => {
@@ -152,21 +152,11 @@ describe("App launcher state recovery", () => {
     expect(page.navigate).not.toHaveBeenCalled();
     page.cleanup();
   });
-  it("reads the channel App permission scope from the actual launcher response", async () => {
-    const page = mount(vi.fn(async () => response({ ...saved, siteAccess: "channel" })));
-    await settle();
-    expect(page.state.SiteAccess).toBe("channel");
-    page.cleanup();
-  });
-  it.each([
-    ["v2.4.1", "v2.4.1"],
-    ["development", "development (aaaaaaa)"],
-  ])("shows the App build identity for %s without changing update inputs", async (version, label) => {
+  it("uses the installed build identity without retaining a second presentation state", async () => {
     const revision = "a".repeat(40);
-    const page = mount(vi.fn(async () => response({ ...saved, version, revision })));
+    const page = mount(vi.fn(async () => response({ ...saved, version: "development", revision })));
     await settle();
-    expect(page.state.Version).toBe(label);
-    expect(page.state.Build).toEqual({ version, revision, packageTarget: undefined });
+    expect(page.state.Build).toEqual({ version: "development", revision, packageTarget: undefined });
     page.cleanup();
   });
 
@@ -191,33 +181,21 @@ describe("App launcher state recovery", () => {
 
   it("keeps mode choices and the submit action available after a failed room start", () => {
     const html = renderToStaticMarkup(createElement(LauncherForm, {
-      mode: "link", sites: saved.sites, startupSite: "", localAccessPassword: "saved password",
-      onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onSelectSite() {}, onLocalAccessPasswordChange() {}, onSubmit() {},
+      mode: "link", sites: saved.sites, startupSite: "",
+      onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onSelectSite() {}, onSubmit() {},
       roomError: createElement("p", { role: "alert" }, "Connection timed out"),
     }));
     expect(html).toContain("Connection timed out");
     expect(html).toContain('role="radiogroup"');
-    expect(html).toContain('value="saved password"');
+    expect(html).not.toContain('type="password"');
     expect(html).toMatch(/type="submit"[^>]*aria-label="(?:Retry|重试)"/);
     expect(html).toContain(saved.sites[0]);
   });
 
-  it("keeps approved-site controls without unsupported room launch modes", () => {
-    const html = renderToStaticMarkup(createElement(LauncherForm, {
-      mode: "link", modes: [], sites: saved.sites, startupSite: saved.sites[0], localAccessPassword: "",
-      onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onSelectSite() {}, onLocalAccessPasswordChange() {}, onSubmit() {},
-    }));
-    expect(html).toContain(saved.sites[0]);
-    expect(html).toContain("lr-client-site-actions");
-    expect(html).not.toContain('role="radiogroup"');
-    expect(html).not.toContain('type="submit"');
-    expect(html).not.toContain("lr-client-room-settings");
-  });
-
   it("reopens a healthy room without offering another mode or password", () => {
     const html = renderToStaticMarkup(createElement(LauncherForm, {
-      mode: "local", sites: [], startupSite: "", localAccessPassword: "saved password", target: "http://127.0.0.1:8787/#piik-client=1",
-      onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onLocalAccessPasswordChange() {}, onSubmit() {},
+      mode: "local", sites: [], startupSite: "", target: "http://127.0.0.1:8787/#piik-client=1",
+      onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onSubmit() {},
     }));
     expect(html).toContain('href="http://127.0.0.1:8787/#piik-client=1"');
     expect(html).not.toContain('role="radiogroup"');
@@ -226,10 +204,10 @@ describe("App launcher state recovery", () => {
 
   it("renders complete App entries for saved sites and the existing room before any click", () => {
     const html = renderToStaticMarkup(createElement(LauncherForm, {
-      mode: "local", sites: saved.sites, startupSite: saved.sites[0]!, localAccessPassword: "",
+      mode: "local", sites: saved.sites, startupSite: saved.sites[0]!,
       target: "http://127.0.0.1:8787/#piik-client=1",
       entryURL: target => clientLaunchURL(target, { lang: "en", vis: false, theme: "light", explicit: ["theme"] }, false, 39729),
-      onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onLocalAccessPasswordChange() {}, onSubmit() {},
+      onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onSubmit() {},
     }));
     const entries = [...html.matchAll(/href="([^"]+)"/g)]
       .map(match => new URL(match[1]!.replaceAll("&amp;", "&")));
@@ -273,16 +251,6 @@ describe("App launcher state recovery", () => {
     page.cleanup();
   });
 
-  it("uses the App's available modes and keeps existing desktop defaults", async () => {
-    for (const modes of [undefined, ["local"]]) {
-      const page = mount(vi.fn(async () => response({ ...saved, ...(modes ? { modes } : {}) })));
-      await settle();
-      expect(page.state.Modes).toEqual(modes ?? ["local", "link"]);
-      expect(page.state.Mode).toBe("local");
-      page.cleanup();
-    }
-  });
-
   it.each([true, false])("keeps approval pending until the optional startup preference settles (saved: %s)", async (savedStartup) => {
     const nextSite = "https://next.example";
     let finishStartup!: (value: ReturnType<typeof response>) => void;
@@ -313,13 +281,12 @@ describe("App launcher state recovery", () => {
     page.focus();
     await settle();
     expect(page.state).toMatchObject({
-      Error: null, Loading: false, Sites: saved.sites, Mode: "local",
-      LocalAccessPassword: saved.localAccessPassword, Lan: saved.lan,
+      Error: null, Loading: false, Sites: saved.sites, Lan: saved.lan,
     });
-    Object.assign(page.state, { Mode: "link", LocalAccessPassword: "edited", Lan: { selected: "192.0.2.2" } });
+    Object.assign(page.state, { Mode: "local", Lan: { selected: "192.0.2.2" } });
     page.focus();
     await settle();
-    expect(page.state).toMatchObject({ Mode: "link", LocalAccessPassword: "edited", Lan: { selected: "192.0.2.2" } });
+    expect(page.state).toMatchObject({ Mode: "local", Lan: { selected: "192.0.2.2" } });
     expect(fetch).toHaveBeenCalledTimes(3);
     expect(page.state.Build).toMatchObject({ version: saved.version, revision: saved.revision });
     page.cleanup();
@@ -374,11 +341,11 @@ describe("App launcher state recovery", () => {
       await settle();
       expect(page.state).toEqual(committed);
       // One existing poll recovers the current App fact without restoring user edits.
-      page.state.LocalAccessPassword = "unsaved";
+      page.state.Lan = { selected: "192.0.2.2" };
       fetch.mockResolvedValueOnce(response({ ...saved, sites: [], debug: true }));
       page.retry();
       await settle();
-      expect(page.state).toMatchObject({ Sites: [], Debug: true, LocalAccessPassword: "unsaved" });
+      expect(page.state).toMatchObject({ Sites: [], AppDebug: true, Lan: { selected: "192.0.2.2" } });
       page.cleanup();
     }
   });

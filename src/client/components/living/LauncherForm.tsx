@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, type CSSProperties, type FormEvent, type MouseEvent, type ReactNode } from "react";
+import { useId, useLayoutEffect, useRef, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { BrandLockup } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
 import { WelcomeLine } from "./WelcomeLine";
@@ -35,7 +35,6 @@ const MODES: Array<{
 // The product and film share this form; requests and navigation stay in the page.
 export function LauncherForm({
   mode,
-  modes,
   onModeChange,
   sites,
   startupSite,
@@ -48,15 +47,12 @@ export function LauncherForm({
   target,
   onOpen,
   entryURL = target => target,
-  localAccessPassword,
-  onLocalAccessPasswordChange,
   lan,
   onSubmit,
   children,
   roomError,
 }: {
   mode: AppMode;
-  modes?: readonly AppMode[];
   onModeChange: (mode: AppMode) => void;
   sites: readonly string[];
   startupSite: string;
@@ -69,8 +65,6 @@ export function LauncherForm({
   target?: string;
   onOpen?: (event: MouseEvent<HTMLAnchorElement>) => void;
   entryURL?: (target: string) => string;
-  localAccessPassword?: string;
-  onLocalAccessPasswordChange: (password: string) => void;
   lan?: {
     addresses: readonly { address: string; name: string }[];
     selected: string;
@@ -81,7 +75,6 @@ export function LauncherForm({
   roomError?: ReactNode;
 }) {
   const { vis, t } = useCopy();
-  const choices = modes ? MODES.filter(choice => modes.includes(choice.mode)) : MODES;
   const chooseLAN = mode === "local" && lan && (lan.addresses.length !== 1 || !lan.selected);
   const accessHintId = useId();
   const standbyRef = useRef<HTMLElement>(null);
@@ -100,23 +93,6 @@ export function LauncherForm({
     const next = section.ownerDocument.getElementById(`${accessHintId}-remove-${Math.min(pending.index, sites.length - 1)}`);
     (next ?? section.querySelector("summary"))?.focus();
   }, [sites, siteBusy, accessHintId]);
-  const accessField = (
-    <label className="lr-input lr-client-access">
-      <Glyph name="key" size={18} />
-      <input
-        type="password"
-        value={localAccessPassword}
-        autoComplete="off"
-        spellCheck={false}
-        placeholder={vis ? "" : t("client.launch.localAccess")}
-        aria-label={t("client.launch.localAccess")}
-        aria-describedby={accessHintId}
-        onChange={(event) => {
-          onLocalAccessPasswordChange(event.target.value);
-        }}
-      />
-    </label>
-  );
   return (
     <form className="lr-client-launch-panel" onSubmit={onSubmit}>
       <header className="lr-client-launch-heading">
@@ -164,25 +140,24 @@ export function LauncherForm({
       </section>
 
       {roomError}
-      {choices.length > 0 && (target ? <a className="lr-btn is-primary" href={entryURL(target)} onClick={onOpen} aria-label={t("client.launch.go")}>
+      {target ? <a className="lr-btn is-primary" href={entryURL(target)} onClick={onOpen} aria-label={t("client.launch.go")}>
         <Glyph name="arrowRight" size={19} />{vis ? null : <span className="lr-cap">{t("client.launch.go")}</span>}
       </a> : <>
       <p className={vis ? "visually-hidden" : "lr-client-launch-section"}>{t("client.launch.room")}</p>
       <div
         className="lr-client-modes"
-        style={{ "--launcher-columns": choices.length } as CSSProperties}
         role="radiogroup"
         aria-label={t("client.launch.title")}
         onKeyDown={(event) => {
           if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
           event.preventDefault();
           const direction = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
-          const index = (choices.findIndex((choice) => choice.mode === mode) + direction + choices.length) % choices.length;
-          onModeChange(choices[index]!.mode);
+          const index = (MODES.findIndex((choice) => choice.mode === mode) + direction + MODES.length) % MODES.length;
+          onModeChange(MODES[index]!.mode);
           event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')[index]?.focus();
         }}
       >
-        {choices.map((choice) => {
+        {MODES.map((choice) => {
           const button = (
             <button
               key={choice.mode}
@@ -217,43 +192,26 @@ export function LauncherForm({
         })}
       </div>
 
-      {(localAccessPassword !== undefined || chooseLAN) && <div className="lr-client-room-settings">
-        {localAccessPassword !== undefined && <details className="lr-client-access-options">
+      {chooseLAN && lan && <div className="lr-client-room-settings">
+        <details className="lr-client-access-options" open={!lan.selected || undefined}>
           <summary className="lr-btn">
-            <Glyph name="key" size={17} />
-            <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.accessSettings")}</span>
-            {localAccessPassword && <span className="lr-client-access-set">
-              <Glyph name="check" size={14} />
-              <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.accessSet")}</span>
-            </span>}
+            <Glyph name="users" size={17} />
+            <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.lanAddress")}</span>
             <Glyph name="chevron" size={15} />
           </summary>
-          {accessField}
-          <p id={accessHintId} className={vis ? "visually-hidden" : "lr-client-access-hint"}>
-            {t("client.launch.localAccessHint")}
-          </p>
-        </details>}
-        {chooseLAN && lan ? (
-          <details className="lr-client-access-options" open={!lan.selected || undefined}>
-            <summary className="lr-btn">
-              <Glyph name="users" size={17} />
-              <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.lanAddress")}</span>
-              <Glyph name="chevron" size={15} />
-            </summary>
-            {lan.addresses.length === 0 ? (
-              <Pill icon="wifiOff" tone="warn" comic="signal-offline" label={t("client.launch.lanUnavailable")} />
-            ) : <div className="lr-capture-device lr-client-lan">
-              <select value={lan.selected} aria-label={t("client.launch.lanAddress")}
-                aria-describedby={`${accessHintId}-lan`} onChange={event => lan.onChange(event.target.value)}>
-                <option value="" disabled>{t("client.launch.chooseAddress")}</option>
-                {lan.addresses.map(({ address, name }) => (
-                  <option key={address} value={address}>{address} · {name}</option>
-                ))}
-              </select>
-              <small id={`${accessHintId}-lan`} className={vis ? "visually-hidden" : undefined}>{t("client.launch.lanHint")}</small>
-            </div>}
-          </details>
-        ) : null}
+          {lan.addresses.length === 0 ? (
+            <Pill icon="wifiOff" tone="warn" comic="signal-offline" label={t("client.launch.lanUnavailable")} />
+          ) : <div className="lr-capture-device lr-client-lan">
+            <select value={lan.selected} aria-label={t("client.launch.lanAddress")}
+              aria-describedby={`${accessHintId}-lan`} onChange={event => lan.onChange(event.target.value)}>
+              <option value="" disabled>{t("client.launch.chooseAddress")}</option>
+              {lan.addresses.map(({ address, name }) => (
+                <option key={address} value={address}>{address} · {name}</option>
+              ))}
+            </select>
+            <small id={`${accessHintId}-lan`} className={vis ? "visually-hidden" : undefined}>{t("client.launch.lanHint")}</small>
+          </div>}
+        </details>
       </div>}
 
       {mode === "local" && <p className={vis ? "visually-hidden" : "lr-client-access-hint"}>
@@ -268,7 +226,7 @@ export function LauncherForm({
         hint={MODES.find((choice) => choice.mode === mode)?.comic}
         disabled={mode === "local" && lan !== undefined && !lan.selected}
       />
-      </>)}
+      </>}
     </form>
   );
 }

@@ -99,17 +99,9 @@ export class ChannelConversation {
     };
     const broadcasts: ConversationReply[] = [];
     for (const reply of replies) {
-      if (reply.record.type === "confirmed" && reply.record.inserted) {
-        for (const recipient of await host.currentReaders()) if (recipient !== reply.recipient) {
-          const live: ConversationReply = { ...reply, recipient, record: { type: "live_message", message: reply.record.message } };
-          broadcasts.push(live);
-        }
-      } else if (reply.record.type === "interaction") {
-        for (const recipient of await host.currentReaders()) if (recipient !== reply.recipient) broadcasts.push({ ...reply, recipient });
-      } else if (reply.record.type === "reaction_confirmed" && reply.record.changed) {
-        for (const recipient of await host.currentReaders()) if (recipient !== reply.recipient) {
-          broadcasts.push({ ...reply, recipient, record: { type: "message_reactions", snapshot: reply.record.snapshot } });
-        }
+      const record = JSON.parse(runtime.conversation_broadcast(JSON.stringify(reply.record))) as ConversationReply["record"] | null;
+      if (record) for (const recipient of await host.currentReaders()) if (recipient !== reply.recipient) {
+        broadcasts.push({ ...reply, recipient, record });
       }
     }
     await Promise.allSettled([

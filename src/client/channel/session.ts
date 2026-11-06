@@ -905,7 +905,7 @@ export class ChannelSession {
     await this.request({ type: "browse", roomId, active: true });
     return roomId;
   });
-  private backupContext(): () => void {
+  private sessionContext(): () => void {
     const { sessionId, self, state } = this.view, socket = this.socket;
     if (!sessionId || !self || !state || this.view.connection !== "connected") throw new Error("disconnected");
     return () => {
@@ -914,15 +914,25 @@ export class ChannelSession {
     };
   }
 
-  roomTopology = async (roomId: string, publicationId?: string, signal?: AbortSignal): Promise<ChannelTopology> => {
-    signal?.throwIfAborted();
-    const current = this.backupContext(), selection = this.roomId;
+  private connectionContext(roomId: string, publicationId?: string) {
+    const selection = this.roomId;
     const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
     if (!room?.authorized || !room.available || !room.delivery) throw new Error("room_unavailable");
     const bindingId = room.delivery.bindingId;
     const publication = publicationId ? this.view.state?.publications.find(value => value.id === publicationId
       && value.roomId === roomId && value.kind === "screen") : undefined;
     if (publicationId && !publication) throw new Error("publication_unavailable");
+    return { bindingId, sourceSessionId: publication?.sessionId, current: () => {
+      const actual = this.view.state?.channel.rooms.find(room => room.id === roomId);
+      if (this.roomId !== selection || !actual?.authorized || !actual.available || actual.delivery?.bindingId !== bindingId
+        || (publicationId && !this.view.state?.publications.some(value => value.id === publicationId
+          && value.roomId === roomId && value.sessionId === publication?.sessionId && value.kind === "screen"))) throw new Error("room_context_changed");
+    } };
+  }
+
+  roomTopology = async (roomId: string, publicationId?: string, signal?: AbortSignal): Promise<ChannelTopology> => {
+    signal?.throwIfAborted();
+    const current = this.sessionContext(), context = this.connectionContext(roomId, publicationId);
     let topology: ChannelTopology | undefined;
     await this.request({ type: "room_topology", roomId, publicationId }, event => {
       if (event.type !== "room_reply" || event.result.type !== "topology") throw new Error("invalid_response");
@@ -931,12 +941,9 @@ export class ChannelSession {
       topology = parsed.data;
     }, roomId, signal);
     current(); signal?.throwIfAborted();
-    const actual = this.view.state?.channel.rooms.find(room => room.id === roomId);
-    if (this.roomId !== selection || !actual?.authorized || !actual.available || actual.delivery?.bindingId !== bindingId
-      || (publicationId && !this.view.state?.publications.some(value => value.id === publicationId
-        && value.roomId === roomId && value.sessionId === publication?.sessionId && value.kind === "screen"))) throw new Error("room_context_changed");
-    if (!topology || topology.bindingId !== bindingId || (publicationId
-      ? topology.screen?.publicationId !== publicationId || topology.screen.sourceSessionId !== publication?.sessionId
+    context.current();
+    if (!topology || topology.bindingId !== context.bindingId || (publicationId
+      ? topology.screen?.publicationId !== publicationId || topology.screen.sourceSessionId !== context.sourceSessionId
       : topology.screen !== null)) throw new Error("invalid_response");
     return topology;
   };
@@ -945,26 +952,19 @@ export class ChannelSession {
 
   appConnectionMetrics = async (roomId: string, publicationId?: string, signal?: AbortSignal): Promise<NativeConnectionMetrics> => {
     signal?.throwIfAborted();
-    const current = this.backupContext(), selection = this.roomId, app = this.app;
+    const current = this.sessionContext(), app = this.app;
     if (!app?.connected) throw new Error("app_disconnected");
-    const room = this.view.state?.channel.rooms.find(value => value.id === roomId);
-    if (!room?.authorized || !room.available || !room.delivery) throw new Error("room_unavailable");
-    const bindingId = room.delivery.bindingId;
-    const publication = publicationId ? this.view.state?.publications.find(value => value.id === publicationId
-      && value.roomId === roomId && value.kind === "screen") : undefined;
-    if (publicationId && !publication) throw new Error("publication_unavailable");
+    const context = this.connectionContext(roomId, publicationId);
     const metrics = await app.connectionMetrics(roomId, publicationId, signal);
     current(); signal?.throwIfAborted();
-    const actual = this.view.state?.channel.rooms.find(value => value.id === roomId);
-    if (this.app !== app || !app.connected || this.roomId !== selection || !actual?.authorized || !actual.available
-      || actual.delivery?.bindingId !== bindingId || (publicationId && !this.view.state?.publications.some(value =>
-        value.id === publicationId && value.roomId === roomId && value.kind === "screen" && value.sessionId === publication?.sessionId))) throw new Error("room_context_changed");
-    if (metrics.bindingId !== bindingId) throw new Error("invalid_response");
+    if (this.app !== app || !app.connected) throw new Error("room_context_changed");
+    context.current();
+    if (metrics.bindingId !== context.bindingId) throw new Error("invalid_response");
     return metrics;
   };
 
   private async backupOwner(roomId: string) {
-    const check = this.backupContext(), state = this.view.state!, self = this.view.self!;
+    const check = this.sessionContext(), state = this.view.state!, self = this.view.self!;
     const room = state.channel.rooms.find(room => room.id === roomId), delivery = room?.delivery;
     if (!room?.available || !delivery) throw new Error("room_unavailable");
     const current = () => {
@@ -1067,7 +1067,7 @@ export class ChannelSession {
 
   private async admitBackupIdentity(metadata: Extract<BackupMetadata, { kind: "room" }>): Promise<(() => Promise<void>) | undefined> {
     if (metadata.policy.creatorId === this.view.self?.id) return;
-    const check = this.backupContext(), archived = metadata.ownCredential;
+    const check = this.sessionContext(), archived = metadata.ownCredential;
     if (!archived || archived.userId !== metadata.policy.creatorId) throw new Error("backup_identity_required");
     const response = await fetch("/prototype/channel/identity", { headers: { Authorization: `Bearer ${archived.credential}` }, cache: "no-store" });
     if (!response.ok) throw new Error("backup_identity_required");
@@ -1114,7 +1114,7 @@ export class ChannelSession {
   }
 
   private domainBackupOwner(): { current(): void; native: NativeDomainHosting } {
-    const current = this.backupContext();
+    const current = this.sessionContext();
     if (this.view.state!.channel.ownerId !== this.view.self!.id || !this.credential) throw new Error("forbidden");
     return { current, native: new NativeDomainHosting({ Authorization: `Bearer ${this.credential}` }) };
   }
@@ -1146,7 +1146,7 @@ export class ChannelSession {
   }, false);
 
   restoreRoomBackup = (archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }> => this.action("room-backup", async () => {
-    const initial = this.backupContext(), owner = roomId ? await this.backupOwner(roomId) : undefined;
+    const initial = this.sessionContext(), owner = roomId ? await this.backupOwner(roomId) : undefined;
     let stage: BrowserRoomStage | undefined, rollback: (() => Promise<void>) | undefined, committed = false;
     const contents = new Map<string, File>();
     try {
@@ -1163,7 +1163,7 @@ export class ChannelSession {
       if (!roomId && this.view.state!.channel.rooms.some(room => room.id === metadata.policy.id && room.available)) throw new Error("room_host_conflict");
       if (roomId && metadata.policy.creatorId !== this.view.self!.id) throw new Error("backup_identity_required");
       rollback = await this.admitBackupIdentity(metadata);
-      const check = this.backupContext(), target = metadata.policy.id;
+      const check = this.sessionContext(), target = metadata.policy.id;
       const app = this.app?.connected ? this.app : undefined;
       const native = owner?.native ?? (!roomId && app ? { restore: (blob: Blob) => app.restoreRoom(blob) } : undefined);
       const previousDelivery = this.view.state?.channel.rooms.find(room => room.id === target)?.delivery;

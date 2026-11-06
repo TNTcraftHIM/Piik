@@ -328,11 +328,7 @@ impl Runtime {
                         Some(Command::Run(id,instance,action))=>if let Some(engine)=engines.get_mut(&id).filter(|e|e.handle.instance==instance) { action(engine);engine.drain(); },
                         Some(Command::Remove(id,instance,done))=> {
                             if engines.get(&id).is_some_and(|e|e.handle.instance==instance){if let Some(mut engine)=engines.remove(&id){
-                                if let Some(task)=engine.discovery.take(){task.abort();let _=task.await;}
-                                if let Some(task)=engine.turn_setup_task.take(){task.abort();let _=task.await;}
-                                engine.turn_setup.close();while engine.turn_setup.try_recv().is_ok(){}
-                                engine.close_turn();
-                                engine.discovery_routes.clear();engine.rtc.disconnect();engine.drain();
+                                engine.close().await;
                             }}
                             for socket in &mut sockets {if socket.owner==Some((id,instance)) {socket.task.abort();let _=(&mut socket.task).await;}}
                             sockets.retain(|s|s.owner!=Some((id,instance)));let _=done.send(());
@@ -368,20 +364,7 @@ impl Runtime {
                 }
             }
             for engine in engines.values_mut() {
-                if let Some(task) = engine.discovery.take() {
-                    task.abort();
-                    let _ = task.await;
-                }
-                if let Some(task) = engine.turn_setup_task.take() {
-                    task.abort();
-                    let _ = task.await;
-                }
-                engine.turn_setup.close();
-                while engine.turn_setup.try_recv().is_ok() {}
-                engine.close_turn();
-                engine.discovery_routes.clear();
-                engine.rtc.disconnect();
-                engine.drain();
+                engine.close().await;
             }
             engines.clear();
             for mut socket in sockets {
@@ -1178,6 +1161,23 @@ fn codec(params: &PayloadParams) -> RtpCodecParameters {
 }
 
 impl Engine {
+    async fn close(&mut self) {
+        if let Some(task) = self.discovery.take() {
+            task.abort();
+            let _ = task.await;
+        }
+        if let Some(task) = self.turn_setup_task.take() {
+            task.abort();
+            let _ = task.await;
+        }
+        self.turn_setup.close();
+        while self.turn_setup.try_recv().is_ok() {}
+        self.close_turn();
+        self.discovery_routes.clear();
+        self.rtc.disconnect();
+        self.drain();
+    }
+
     fn receive(
         &mut self,
         at: Instant,

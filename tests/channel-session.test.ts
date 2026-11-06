@@ -4874,6 +4874,33 @@ test.each(["offer", "answer"])("resync recovers a lost %s on the same transport 
   } finally { transports.forEach(transport => transport.close()); }
 });
 
+test.each([true, false])("an offer received during local offer creation follows queued collision policy: polite=%s", async polite => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const sent: ChannelSignal[] = [], failed = vi.fn();
+  const transport = new ChannelTransport({ polite, iceServers: [], send: payload => sent.push(payload),
+    receive() {}, connected() {}, base() {}, failed });
+  const pc = RoomPeerConnection.instances[0], exchangeId = crypto.randomUUID();
+  let finish!: (value: RTCSessionDescriptionInit) => void;
+  const creating = vi.spyOn(pc, "createOffer").mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const remote = vi.spyOn(pc, "setRemoteDescription");
+  try {
+    pc.onnegotiationneeded?.();
+    await vi.waitFor(() => expect(creating).toHaveBeenCalledOnce());
+    transport.signal({ exchangeId, description: { type: "offer", sdp: "remote-offer" }, tracks: [] });
+    expect(remote).not.toHaveBeenCalled();
+    finish({ type: "offer", sdp: "local-offer" });
+    await vi.waitFor(() => expect(sent.some(value => value.description?.type === "offer")).toBe(true));
+    if (polite) await vi.waitFor(() => expect(sent.some(value => value.exchangeId === exchangeId && value.description?.type === "answer")).toBe(true));
+    else {
+      await new Promise(resolve => setTimeout(resolve, 0));
+      expect(remote).not.toHaveBeenCalled();
+      expect(pc.signalingState).toBe("have-local-offer");
+    }
+    expect(failed).not.toHaveBeenCalled();
+  } finally { transport.close(); }
+});
+
 test("an earlier answer cannot finish a newer exchange on the same transport", async () => {
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);

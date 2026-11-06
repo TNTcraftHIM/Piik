@@ -3,7 +3,7 @@ import { Chip } from "../../components/living/primitives";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { isIdentityImage, prepareIdentityImage } from "../identity-image";
-import { ChannelAction } from "./ChannelMedia";
+import { ChannelAction } from "./ChannelAction";
 import "./channel-identity.css";
 
 export const CHANNEL_ICON_PRESETS: { icon: GlyphName; name: [string, string] }[] = [
