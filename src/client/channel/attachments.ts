@@ -151,10 +151,10 @@ export class ChannelAttachments {
     for (const plan of this.plans) {
       if (roomId && plan.roomId !== roomId) continue;
       const key = { roomId: plan.roomId, messageSeq: plan.messageSeq, attachmentId: plan.attachment.id };
-      const enabled = Boolean(this.sinks.get(keyOf(key))?.consumers.size);
+      const entry = this.sinks.get(keyOf(key));
+      const enabled = Boolean(entry?.consumers.size);
       if (enabled !== plan.receiving) void this.command({ type: "file_receive", ...key, enabled }).catch(error => {
-        const entry = this.sinks.get(keyOf(key));
-        if (entry) void entry.ready.then(sink => this.stopSink(key, entry, sink, errorOf(error))).catch(() => {});
+        if (entry && this.sinks.get(keyOf(key)) === entry) void entry.ready.then(sink => this.stopSink(key, entry, sink, errorOf(error))).catch(() => {});
       });
     }
   }
@@ -278,7 +278,7 @@ export class ChannelAttachments {
       await this.command({ type: "file_receive", ...key, enabled: true });
       return sink;
     } catch (error) {
-      this.invoke(runtime, () => runtime.delivery.cancel(JSON.stringify(key)));
+      if (this.sinks.get(keyOf(key))?.consumers === consumers) this.invoke(runtime, () => runtime.delivery.cancel(JSON.stringify(key)));
       await this.disposeSink(sink, errorOf(error)); throw error;
     }
   }

@@ -4433,6 +4433,72 @@ test("rejected file admission cancels its shared-core consumer and releases the 
   } finally { files.reset(); }
 });
 
+test.each(["initial", "resume"])("a stale %s file admission cannot retire a replacement download", async origin => {
+  const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  const { readFile } = await import("node:fs/promises");
+  await rust.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeFiles: async () => {} } as never);
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
+  vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new Error("optional_cache_unavailable"));
+  const source = "00000000-0000-0000-0000-000000000001", receiver = "00000000-0000-0000-0000-000000000002";
+  const key = { roomId: "room", messageSeq: 1, attachmentId: "00000000-0000-0000-0000-000000000003" };
+  const bytes = Uint8Array.from([1, 2, 3]), hash = new rust.AttachmentHash();
+  hash.update(bytes);
+  const attachment = { id: key.attachmentId, name: "owned.bin", size: bytes.length, mediaType: "application/octet-stream" as const, sha256: hash.finish() };
+  const plan = { ...key, attachment, sourceId: source, upstream: source, downstream: [], receiving: true };
+  const write = vi.fn(async (_value: unknown) => {}), aborts: ReturnType<typeof vi.fn>[] = [];
+  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+    getFileHandle: async () => {
+      const abort = vi.fn(async () => {}); aborts.push(abort);
+      return { createWritable: async () => ({ write, close: async () => {}, abort }), getFile: async () => new File([bytes], "owned.bin") };
+    }, removeEntry: async () => {},
+  }) }) } });
+  let enabled = 0, disabled = 0, rejectOld!: (error: Error) => void, acceptNew!: () => void;
+  const pulls: string[] = [];
+  const files = new ChannelAttachments(async command => {
+    if (command.type !== "file_receive") return;
+    if (command.enabled) {
+      enabled += 1;
+      if (enabled === 1 && origin === "initial") await new Promise<void>((_, reject) => { rejectOld = reject; });
+      else if (enabled === 2) await new Promise<void>(resolve => { acceptNew = resolve; });
+    } else if (++disabled === 2 && origin === "resume") await new Promise<void>((_, reject) => { rejectOld = reject; });
+  }, async (_peer, kind, data, allowed) => {
+    expect(allowed()).toBe(true);
+    if (kind === "control" && JSON.parse(data as string).type === "pull") pulls.push(data as string);
+  });
+  const upstream = new rust.FileDelivery(source);
+  upstream.update(JSON.stringify([{ ...plan, upstream: null, downstream: [receiver], receiving: false }]));
+  files.update(receiver, { domainId: "domain", userId: "user" }, [plan], [{ id: "room", authorized: true, available: true }] as never);
+  const oldAbort = new AbortController(), newAbort = new AbortController();
+  const first = files.content(key, attachment, oldAbort.signal);
+  void first.catch(() => {});
+  try {
+    await vi.waitFor(() => expect(enabled).toBe(1));
+    oldAbort.abort();
+    await expect(first).rejects.toMatchObject({ name: "AbortError" });
+    // A resumed projection can still contain the cancelled receive demand.
+    if (origin === "resume") files.resume();
+    const next = files.content(key, attachment, newAbort.signal);
+    void next.catch(() => {});
+    await vi.waitFor(() => expect(enabled).toBe(2));
+    rejectOld(new Error("request_timeout"));
+    acceptNew();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(aborts[0]).toHaveBeenCalledOnce();
+    expect(aborts[1]).not.toHaveBeenCalled();
+    // The real shared Rust source generates the response and the receiver
+    // must write and verify it; the fixture does not synthesize delivery effects.
+    const reads = JSON.parse(upstream.control(receiver, pulls.at(-1)!));
+    for (const read of reads) if (read.type === "read") {
+      const chunks = JSON.parse(upstream.read_result(JSON.stringify(read.key), BigInt(read.offset), bytes));
+      for (const chunk of chunks) if (chunk.type === "send_chunk") files.data(source, "chunk", Uint8Array.from(chunk.frame));
+    }
+    await expect(next).resolves.toMatchObject({ size: bytes.length });
+    expect(write).toHaveBeenCalledOnce();
+    expect(aborts[1]).not.toHaveBeenCalled();
+  } finally { newAbort.abort(); files.reset(); upstream.free(); }
+});
+
 test.each([true, false])("a verified download survives optional retention (stored=%s) and cleans only its temporary file", async stored => {
   vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
   const { session } = await setup();
