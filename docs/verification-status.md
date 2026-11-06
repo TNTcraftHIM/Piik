@@ -89,6 +89,9 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   plugin. Browser decoding advances, and normal sharing Stop releases capture
   while room messaging continues. A same-encoder control restores output after
   low-rate startup and subsequent bitrate decreases.
+  Normal App system-output capture also delivers decoded Opus through the
+  Browser player. Audio-service loss retires sound while picture and room chat
+  continue.
   Hardware encoding and physical sound remain platform acceptance work.
 - The isolated 3.0 Android Rust App builds ARM64/x64 packages and passes emulator
   system-browser linkage, screen selection, decoded H.264 picture and captured
