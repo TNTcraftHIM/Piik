@@ -101,9 +101,10 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={title}
       className="lr-anchored-card c3-room-panel" onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
       {open && <><h3>{title}</h3><RoomForm key={`form:${room?.delivery?.bindingId ?? room?.id ?? "create"}`} room={room} appHosted={channel.appConnected} disabled={!available || busy || backupBusy} busy={busy} onCancel={() => panel.current?.hidePopover()} onSave={async settings => {
+        const form = panel.current?.querySelector("form");
         if (room) await channel.updateRoom(room.id, settings);
         else onCreated?.(await channel.createRoom(settings));
-        panel.current?.hidePopover();
+        if (panel.current?.matches(":popover-open") && panel.current.querySelector("form") === form) panel.current.hidePopover();
       }} />
       <BackupControls key={room?.id ?? "import"} available={!room || backupAvailable} disabled={!available || (!!room && !backupAvailable)}
         busy={backupBusy} replacing={!!room}
