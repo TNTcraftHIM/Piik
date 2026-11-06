@@ -1215,7 +1215,7 @@ impl Executor {
                 reason: c.reason,
                 co_play: true,
                 capabilities,
-                input_failed: c.failed,
+                input_failed: c.failed || (c.grant.is_some() && !self.releases.is_empty()),
             };
             if c.last.as_ref() != Some(&state) {
                 let reply = serde_json::to_vec(&state)

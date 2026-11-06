@@ -353,14 +353,51 @@ fn os_failure_keeps_permission_and_only_failed_releases_are_retried() {
         json!({"type":"key","code":"KeyA","down":true,"grant":grant}),
     );
     r.lock().unwrap().fail_release = true;
+    c.send(
+        &s,
+        json!({"type":"key","code":"KeyA","down":false,"grant":grant}),
+    );
+    c.send(
+        &s,
+        json!({"type":"key","code":"KeyA","down":true,"grant":grant}),
+    );
+    c.send(
+        &s,
+        json!({"type":"key","code":"KeyA","down":false,"grant":grant}),
+    );
+    let state = c.state(&mut replies);
+    assert_eq!(state["grant"], grant);
+    assert_eq!(
+        state["inputFailed"], true,
+        "a no-op release cannot hide pending OS releases"
+    );
+    c.send(&s, json!({"type":"reset","grant":grant}));
+    c.send(&s, json!({"type":"sync"}));
+    assert_eq!(c.state(&mut replies)["inputFailed"], true);
+    r.lock().unwrap().fail_release = false;
+    d.tick();
+    c.send(&s, json!({"type":"move","x":0.5,"y":0.5,"grant":grant}));
+    let state = c.state(&mut replies);
+    assert_eq!(state["grant"], grant);
+    assert_ne!(state["inputFailed"], true);
+    assert_eq!(
+        r.lock().unwrap().events.last(),
+        Some(&Action::Move(0.5, 0.5))
+    );
+    c.send(
+        &s,
+        json!({"type":"key","code":"KeyA","down":true,"grant":grant}),
+    );
+    let before_close = r.lock().unwrap().events.len();
+    r.lock().unwrap().fail_release = true;
     s.close();
     d.tick();
-    assert_eq!(r.lock().unwrap().events.len(), 4);
+    assert_eq!(r.lock().unwrap().events.len(), before_close + 2);
     r.lock().unwrap().fail_release = false;
     d.tick();
     d.tick();
-    assert_eq!(r.lock().unwrap().events.len(), 5);
-    assert!(r.lock().unwrap().events[2..]
+    assert_eq!(r.lock().unwrap().events.len(), before_close + 3);
+    assert!(r.lock().unwrap().events[before_close..]
         .iter()
         .all(|e| *e == Action::Held(Held::Key(keyboard::scan("KeyA").unwrap()), false)));
 }
