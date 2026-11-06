@@ -114,7 +114,10 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
     if (!viewer || new URLSearchParams(location.search).get("settings") !== "relay") return;
     const settings = document.querySelector<HTMLButtonElement>(".lr-playback-more button");
     settings?.scrollIntoView({ block: "center" });
-    const frame = requestAnimationFrame(() => settings?.popoverTargetElement?.showPopover());
+    const frame = requestAnimationFrame(() => {
+      const panel = settings?.popoverTargetElement;
+      if (panel instanceof HTMLElement) panel.showPopover();
+    });
     return () => cancelAnimationFrame(frame);
   }, [viewer]);
   const [remote, setRemote] = useState(() => new URLSearchParams(location.search).get("remote") === "1");
