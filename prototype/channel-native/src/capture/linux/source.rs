@@ -68,8 +68,8 @@ impl Control {
     pub fn is_stopped(&self) -> bool {
         self.frames.is_stopped()
     }
-    pub async fn stopped(&self) {
-        self.frames.stopped().await;
+    pub async fn stopped(&self) -> Result<()> {
+        self.frames.stopped().await
     }
 
     pub(crate) async fn authorize(&self, source: InputSource, request: AbortHandle) -> Result<()> {
@@ -492,6 +492,17 @@ async fn prepare(
             },
             first,
         ))),
+        Err(error)
+            if matches!(
+                error.downcast_ref::<ashpd::Error>(),
+                Some(ashpd::Error::Response(
+                    ashpd::desktop::ResponseError::Cancelled
+                ))
+            ) =>
+        {
+            let _ = session.close().await;
+            Ok(None)
+        }
         result => {
             // A failed/cancelled Start may already have closed its Session.
             // Cleanup must not replace the interaction's original result.

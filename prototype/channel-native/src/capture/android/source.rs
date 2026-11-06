@@ -30,8 +30,8 @@ impl Control {
     pub fn is_stopped(&self) -> bool {
         self.frames.is_stopped()
     }
-    pub async fn stopped(&self) {
-        self.frames.stopped().await;
+    pub async fn stopped(&self) -> Result<()> {
+        self.frames.stopped().await
     }
 }
 pub struct Capture {

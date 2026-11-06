@@ -163,13 +163,19 @@ impl Control {
     pub fn is_stopped(&self) -> bool {
         self.0.state.lock().unwrap().stop
     }
-    pub async fn stopped(&self) {
+    pub async fn stopped(&self) -> Result<()> {
         loop {
             let ready = self.0.changed.notified();
             tokio::pin!(ready);
             ready.as_mut().enable();
-            if self.is_stopped() {
-                return;
+            {
+                let state = self.0.state.lock().unwrap();
+                if state.stop {
+                    return state
+                        .error
+                        .as_ref()
+                        .map_or(Ok(()), |error| Err(anyhow!(error.clone())));
+                }
             }
             ready.await;
         }

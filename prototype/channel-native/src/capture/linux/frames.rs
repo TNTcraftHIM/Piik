@@ -90,9 +90,13 @@ impl Control {
     pub fn is_stopped(&self) -> bool {
         matches!(*self.0.borrow(), State::Stopped(_))
     }
-    pub async fn stopped(&self) {
+    pub async fn stopped(&self) -> Result<()> {
         let mut state = self.0.subscribe();
-        let _ = state.wait_for(|s| matches!(s, State::Stopped(_))).await;
+        let state = state.wait_for(|s| matches!(s, State::Stopped(_))).await?;
+        match &*state {
+            State::Stopped(Some(error)) => Err(anyhow!(error.clone())),
+            _ => Ok(()),
+        }
     }
     fn finish(&self, error: Option<String>) {
         self.0.send_if_modified(|state| {

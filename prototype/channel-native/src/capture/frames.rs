@@ -3,7 +3,7 @@ use super::{
     process::{self, Encoding},
     CaptureClock, FrameTiming, Settings, VideoCodec,
 };
-use anyhow::{ensure, Result};
+use anyhow::{anyhow, ensure, Result};
 use std::{
     os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle},
     sync::{Arc, Mutex, Weak},
@@ -100,13 +100,19 @@ impl Control {
     pub fn stop(&self) {
         self.0.stop(None);
     }
-    pub async fn stopped(&self) {
+    pub async fn stopped(&self) -> Result<()> {
         loop {
             let stopped = self.0.stopped.notified();
             tokio::pin!(stopped);
             stopped.as_mut().enable();
-            if self.is_stopped() {
-                return;
+            {
+                let state = self.0.state.lock().unwrap();
+                if state.stop {
+                    return state
+                        .failure
+                        .as_ref()
+                        .map_or(Ok(()), |error| Err(anyhow!(error.clone())));
+                }
             }
             stopped.await;
         }
@@ -167,12 +173,13 @@ impl Frames {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures_util::FutureExt;
     use std::{sync::mpsc, thread};
     use windows_capture::capture::GraphicsCaptureApiError;
 
     #[test]
     fn capture_completion_and_stop_both_wake_the_owner() {
-        let shared = Shared::new().unwrap();
+        let shared = Arc::new(Shared::new().unwrap());
         let thread = thread::spawn(|| {
             Err::<(), _>(GraphicsCaptureApiError::FrameHandlerError(
                 "timestamp failed",
@@ -191,6 +198,10 @@ mod tests {
 
         let (release, receiver) = mpsc::channel();
         let thread = thread::spawn(move || receiver.recv().unwrap());
+        let control = Control(shared.clone());
+        let stopped = control.stopped();
+        tokio::pin!(stopped);
+        assert!(stopped.as_mut().now_or_never().is_none());
         shared.stop(None);
         shared
             .wait_for_stop_or(&[HANDLE(thread.as_raw_handle())])
@@ -198,5 +209,23 @@ mod tests {
         assert!(!thread.is_finished());
         release.send(()).unwrap();
         thread.join().unwrap();
+        assert!(stopped.as_mut().now_or_never().unwrap().is_ok());
+
+        let frames = Frames::new(FrameTiming::Capture).unwrap();
+        let control = frames.control();
+        let stopped = control.stopped();
+        tokio::pin!(stopped);
+        assert!(stopped.as_mut().now_or_never().is_none());
+        frames.finish(Some("source failed before its first frame".into()));
+        control.stop(); // Later cleanup cannot replace the accepted source failure.
+        assert_eq!(
+            stopped
+                .as_mut()
+                .now_or_never()
+                .unwrap()
+                .unwrap_err()
+                .to_string(),
+            "source failed before its first frame"
+        );
     }
 }

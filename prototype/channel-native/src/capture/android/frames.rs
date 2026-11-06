@@ -100,12 +100,12 @@ impl Frames {
             changed.changed().await?;
         }
     }
-    pub async fn stopped(&self) {
+    pub async fn stopped(&self) -> Result<()> {
         let mut changed = self.state.subscribe();
-        while !matches!(*changed.borrow_and_update(), State::Stopped(_)) {
-            if changed.changed().await.is_err() {
-                break;
-            }
+        let state = changed.wait_for(|s| matches!(s, State::Stopped(_))).await?;
+        match &*state {
+            State::Stopped(Some(error)) => Err(anyhow!(error.clone())),
+            _ => Ok(()),
         }
     }
 }

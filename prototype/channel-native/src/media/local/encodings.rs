@@ -68,7 +68,7 @@ async fn initial(
     };
     let result = tokio::select! {
         biased;
-        _ = control.stopped() => Err(Aborted.into()),
+        stopped = control.stopped() => stopped.and(Err(Aborted.into())),
         _ = cancelled.wait_for(|value| *value) => Err(Aborted.into()),
         frame = frame => frame.and_then(|frame| first_codec(codec, &frame).map(|rtp| (frame, rtp))),
     };
