@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { VideoFit, VideoRotation } from "../media/video-geometry";
 import { BackButton, Btn, Chip, NameTag, Pill, SwitchItem } from "../components/living/primitives";
 import { RoomChip, RoomCodePlaceholder, RoomAdmissionBadge } from "../components/living/RoomChip";
@@ -61,7 +61,14 @@ export function ControlsPreview() {
   const [commentary, setCommentary] = useState(false);
   const [commentaryInput, setCommentaryInput] = useState({ deviceId: "", volume: 1, voiceProcessing: true });
   const [excludedAudio, setExcludedAudio] = useState<NativeCaptureTarget | undefined>(SOURCES.sources[2]);
-  const [sharingSettings, setSharingSettings] = useState(false);
+  const relayPreview = new URLSearchParams(location.search).get("settings") === "relay";
+  const [sharingSettings, setSharingSettings] = useState(relayPreview);
+  useLayoutEffect(() => {
+    if (!relayPreview) return;
+    const connection = document.querySelector<HTMLDetailsElement>("#preview-sharing-settings .lr-sharing-connection");
+    if (connection) connection.open = true;
+    document.getElementById("sharing-preview")?.scrollIntoView();
+  }, [relayPreview]);
   const [sendingCapacity, setSendingCapacity] = useState(2);
   const [sendingPending, setSendingPending] = useState(false);
   const [sendingAvailable, setSendingAvailable] = useState(true);

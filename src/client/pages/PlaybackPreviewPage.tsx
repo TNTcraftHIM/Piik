@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { VideoFit, VideoRotation } from "../media/video-geometry";
 import { AppHeader } from "../components/living/Header";
 import { PlaybackControls } from "../components/living/PlaybackControls";
@@ -110,6 +110,13 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
   const { lang, t } = useCopy();
   const english = lang === "en";
   const viewer = role === "viewer";
+  useLayoutEffect(() => {
+    if (!viewer || new URLSearchParams(location.search).get("settings") !== "relay") return;
+    const settings = document.querySelector<HTMLButtonElement>(".lr-playback-more button");
+    settings?.scrollIntoView({ block: "center" });
+    const frame = requestAnimationFrame(() => settings?.popoverTargetElement?.showPopover());
+    return () => cancelAnimationFrame(frame);
+  }, [viewer]);
   const [remote, setRemote] = useState(() => new URLSearchParams(location.search).get("remote") === "1");
   const [remoteInput, setRemoteInput] = useState<PreviewInput | null>(null);
   const { session, receiveSample } = usePreviewInteractions(viewer);
