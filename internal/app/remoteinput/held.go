@@ -88,7 +88,7 @@ func (m *Manager) retryReleases() error {
 }
 
 func (m *Manager) noteInputResult(c *connection, err error) {
-	failed := err != nil
+	failed := err != nil || len(m.pendingKeys) != 0 || len(m.pendingButtons) != 0
 	if c.inputFailed != failed {
 		c.inputFailed = failed
 		m.send(c, m.state(c))
