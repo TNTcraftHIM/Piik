@@ -5,9 +5,9 @@ import { useSurfaceDocument } from "../../ui/panel-window";
 // menu beside its anchor, within the document displaying it.
 export function useAnchoredPopover(
   trigger: RefObject<HTMLElement | null>, panel: RefObject<HTMLElement | null>,
-  { side = "below", align = "end", maxHeight = Infinity, minVisibleHeight = Infinity, enabled = true }: {
+  { side = "below", align = "end", maxHeight = Infinity, preferredHeight, minVisibleHeight = Infinity, enabled = true }: {
     side?: "above" | "below"; align?: "end" | "center";
-    maxHeight?: number; minVisibleHeight?: number; enabled?: boolean;
+    maxHeight?: number; preferredHeight?: number; minVisibleHeight?: number; enabled?: boolean;
   } = {},
 ) {
   const ownerDocument = useSurfaceDocument();
@@ -36,16 +36,15 @@ export function useAnchoredPopover(
         return;
       }
       const above = Math.max(0, rect.top - top - 8), below = Math.max(0, bottom - rect.bottom - 8);
-      // Measure against the viewport, not the previous side's constrained size.
+      // Expanding the live scrollport to measure content would clamp its scroll offset.
       menu.style.maxWidth = `${right - left}px`;
-      menu.style.maxHeight = `${Math.min(maxHeight, bottom - top)}px`;
-      const height = Math.min(menu.scrollHeight, maxHeight);
+      const height = Math.min(preferredHeight ?? menu.scrollHeight, maxHeight);
       // Scrollable palettes can prefer their requested side without requiring
       // every row to fit; compact menus retain the full-content threshold.
-      const preferredHeight = Math.min(height, minVisibleHeight);
-      const openAbove = side === "above" ? above >= preferredHeight || above > below : below < preferredHeight && above > below;
+      const visibleHeight = Math.min(height, minVisibleHeight);
+      const openAbove = side === "above" ? above >= visibleHeight || above > below : below < visibleHeight && above > below;
       const beside = openAbove ? above : below;
-      menu.style.maxHeight = `${Math.min(maxHeight, beside >= preferredHeight ? beside : bottom - top)}px`;
+      menu.style.maxHeight = `${Math.min(maxHeight, beside >= visibleHeight ? beside : bottom - top)}px`;
       menu.classList.toggle("is-above", openAbove);
       const x = align === "center" ? rect.left + (rect.width - menu.offsetWidth) / 2 : rect.right - menu.offsetWidth;
       menu.style.left = `${Math.max(left, Math.min(x, right - menu.offsetWidth))}px`;
@@ -90,5 +89,5 @@ export function useAnchoredPopover(
       viewport?.removeEventListener("resize", schedule);
       viewport?.removeEventListener("scroll", schedule);
     };
-  }, [trigger, panel, side, align, maxHeight, minVisibleHeight, enabled, ownerDocument]);
+  }, [trigger, panel, side, align, maxHeight, preferredHeight, minVisibleHeight, enabled, ownerDocument]);
 }

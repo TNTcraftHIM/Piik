@@ -54,7 +54,7 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   const roomMicrophone = channel.state?.voice.some(voice => voice.sessionId === channel.sessionId && !voice.muted);
   const busy = channel.pending.has(`screen:${roomId}`) || !!sharing && channel.pending.has(`source-audio:${sharing.id}`);
   const label = t(sharing ? "host.switchSource" : "host.start");
-  useAnchoredPopover(trigger, panel, { maxHeight: 560, minVisibleHeight: 240 });
+  useAnchoredPopover(trigger, panel, { preferredHeight: 560, minVisibleHeight: 240 });
   useAnchoredPopover(settingsTrigger, settingsPanel, { maxHeight: 640, minVisibleHeight: 240 });
   const close = useCallback(() => { panel.current?.hidePopover(); settingsPanel.current?.hidePopover(); }, []);
   const refresh = useCallback(() => {
