@@ -14,6 +14,7 @@ import { browserDebugEnabled, debugOperation } from "../lib/debug";
 import { debugTrack } from "../lib/debug-webrtc";
 import { applySenderCaptureConstraints, senderCaptureTrack } from "./sender-video-track";
 import { cameraCaptureConstraints } from "./capture-devices";
+import { acquireMediaStream } from "./capture-stream";
 
 export type {
   DegradationPreference,
@@ -269,7 +270,7 @@ function captureConstraints(profile: VideoCeiling): MediaTrackConstraints {
   };
 }
 
-export async function captureDisplay(profile: QualityProfile): Promise<MediaStream> {
+export async function captureDisplay(profile: QualityProfile, signal?: AbortSignal): Promise<MediaStream> {
   requireCaptureProfile(profile);
   if (!navigator.mediaDevices?.getDisplayMedia) {
     throw new Error("getDisplayMedia unavailable");
@@ -278,9 +279,9 @@ export async function captureDisplay(profile: QualityProfile): Promise<MediaStre
   const complete = debugOperation("capture", "display", { requested: profile });
   let stream: MediaStream;
   try {
-    stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions({
+    stream = await acquireMediaStream(() => navigator.mediaDevices.getDisplayMedia(displayMediaOptions({
       ...captureConstraints(profile),
-    }));
+    })), signal);
   } catch (error) {
     complete("failed", {}, error);
     throw error;
@@ -306,11 +307,11 @@ export async function captureDisplay(profile: QualityProfile): Promise<MediaStre
 
 export type BrowserCaptureSource = "browser" | "camera";
 
-export async function captureBrowserSource(profile: QualityProfile, source: BrowserCaptureSource, deviceId = ""): Promise<MediaStream> {
-  if (source !== "camera") return captureDisplay(profile);
+export async function captureBrowserSource(profile: QualityProfile, source: BrowserCaptureSource, deviceId = "", signal?: AbortSignal): Promise<MediaStream> {
+  if (source !== "camera") return captureDisplay(profile, signal);
   requireCaptureProfile(profile);
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: false,
-    video: cameraCaptureConstraints(profile.resolution, profile.maxFramerate, deviceId) });
+  const stream = await acquireMediaStream(() => navigator.mediaDevices.getUserMedia({ audio: false,
+    video: cameraCaptureConstraints(profile.resolution, profile.maxFramerate, deviceId) }), signal);
   const track = stream.getVideoTracks()[0];
   if (!track || track.readyState === "ended") {
     stream.getTracks().forEach((track) => track.stop());

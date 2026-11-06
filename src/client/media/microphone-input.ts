@@ -6,7 +6,8 @@ export class MicrophoneInput {
   private readonly analyser: AnalyserNode;
   private source: MediaStreamAudioSourceNode;
   private readonly samples = new Float32Array(256);
-  private closed = false;
+  private readonly lifetime = new AbortController();
+  readonly signal = this.lifetime.signal;
 
   constructor(private captured: MediaStream, private readonly context: AudioContext,
     volume: number, private readonly ended: () => void) {
@@ -23,7 +24,7 @@ export class MicrophoneInput {
   }
 
   replace(captured: MediaStream): void {
-    if (this.closed || captured.getAudioTracks()[0]?.readyState !== "live") throw new DOMException("Microphone input is unavailable", "InvalidStateError");
+    if (this.signal.aborted || captured.getAudioTracks()[0]?.readyState !== "live") throw new DOMException("Microphone input is unavailable", "InvalidStateError");
     const source = this.context.createMediaStreamSource(captured);
     source.connect(this.gain);
     const previous = this.captured;
@@ -36,13 +37,13 @@ export class MicrophoneInput {
 
   volume(value: number): void { this.gain.gain.setTargetAtTime(value, this.context.currentTime, .01); }
   level(): number {
-    if (this.closed) return 0;
+    if (this.signal.aborted) return 0;
     this.analyser.getFloatTimeDomainData(this.samples);
     return Math.sqrt(this.samples.reduce((sum, value) => sum + value * value, 0) / this.samples.length);
   }
   close(): void {
-    if (this.closed) return;
-    this.closed = true;
+    if (this.signal.aborted) return;
+    this.lifetime.abort();
     this.captured.getTracks().forEach(track => { track.onended = null; track.stop(); });
     this.stream.getTracks().forEach(track => track.stop());
     void this.context.close().catch(() => {});

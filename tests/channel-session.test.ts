@@ -801,7 +801,7 @@ test("voice rooms share one microphone gain graph and release it after the last 
     let grantReplacement!: (stream: MediaStream) => void;
     getUserMedia.mockImplementationOnce(() => new Promise<MediaStream>(resolve => { grantReplacement = resolve; }));
     const lateConfiguration = session.configureVoiceInput({ deviceId: "late-device" });
-    const rejected = expect(lateConfiguration).rejects.toThrow("closed");
+    const rejected = expect(lateConfiguration).rejects.toMatchObject({ name: "AbortError" });
     for (const roomId of ["first", "second"]) {
       const leaving = session.leaveVoice(roomId);
       const request = socket.sent.at(-1)!;
@@ -826,7 +826,7 @@ test("closing during microphone permission releases the pending context and late
   let grant!: (stream: MediaStream) => void;
   vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: () => new Promise<MediaStream>(resolve => { grant = resolve; }) } });
   const joining = session.joinVoice("first");
-  const rejected = expect(joining).rejects.toThrow("closed");
+  const rejected = expect(joining).rejects.toMatchObject({ name: "AbortError" });
   session.close();
   expect(contexts[0].close).toHaveBeenCalledOnce();
   grant(remoteStream("late-source", [raw]));
@@ -834,6 +834,48 @@ test("closing during microphone permission releases the pending context and late
   expect(contexts[0].createMediaStreamSource).not.toHaveBeenCalled();
   expect(contexts[0].close).toHaveBeenCalledOnce();
   expect(raw.stop).toHaveBeenCalledOnce();
+});
+
+test("a new admitted session can request a microphone while retired permission is still pending", async () => {
+  const { session, socket } = await setup(1000, false);
+  const state = structuredClone(session.getSnapshot().state!);
+  const contexts = microphoneMixer([remoteStream("new-voice", [remoteTrack("audio")])]), late = remoteTrack("audio");
+  const grants: ((stream: MediaStream) => void)[] = [];
+  const getUserMedia = vi.fn(() => new Promise<MediaStream>(resolve => { grants.push(resolve); }));
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+  vi.useFakeTimers();
+  const oldJoin = session.joinVoice("first").catch(error => error);
+  let nextJoin: Promise<unknown> | undefined;
+  try {
+    socket.close();
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(session.getSnapshot().sessionId).toBeNull();
+    expect(contexts[0].close).toHaveBeenCalledOnce();
+    expect(await oldJoin).toMatchObject({ name: "AbortError" });
+    expect(session.getSnapshot().pending.has("voice:first")).toBe(false);
+    session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    state.sessions = state.sessions.map(value => value.id === "endpoint" ? { ...value, id: "new-endpoint" } : value);
+    resumed.receive({ type: "welcome", credential: "credential", sessionId: "new-endpoint", state });
+    nextJoin = session.joinVoice("first").catch(error => error);
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    grants.shift()!(remoteStream("late-source", [late]));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(late.stop).toHaveBeenCalledOnce();
+    expect(contexts[1].close).not.toHaveBeenCalled();
+    grants.shift()!(remoteStream("new-source", [remoteTrack("audio")]));
+    await vi.waitFor(() => expect(resumed.sent.at(-1)).toMatchObject({ type: "voice", joined: true }));
+    resumed.receive({ type: "ack", requestId: resumed.sent.at(-1)!.requestId });
+    await vi.waitFor(() => expect(resumed.sent.at(-1)?.type).toBe("publish"));
+    resumed.receive({ type: "ack", requestId: resumed.sent.at(-1)!.requestId });
+    expect(await nextJoin).toBeUndefined();
+    expect(session.getSnapshot().error).toBeNull();
+  } finally {
+    session.close();
+    grants.forEach(grant => grant(remoteStream("late-source", [late])));
+    await Promise.all([oldJoin, nextJoin]);
+  }
 });
 
 test("a source ending while voice join awaits authority cannot publish a live orphan clone", async () => {
@@ -1199,6 +1241,31 @@ test("camera permission denial permits retry and closing discards a late camera 
     expect(camera.stop).toHaveBeenCalledOnce();
     expect(socket.sent.some(command => command.type === "publish")).toBe(false);
     expect(session.getSnapshot().ownedScreens.size).toBe(0);
+  } finally { session.close(); }
+});
+
+test.each(["camera", "browser"] as const)("cancelled %s permission releases the picker before a late grant", async source => {
+  const { session, socket } = await setup(1000, false);
+  const late = remoteTrack("video"), current = remoteTrack("video");
+  let grant!: (stream: MediaStream) => void;
+  const acquire = vi.fn().mockImplementationOnce(() => new Promise<MediaStream>(resolve => { grant = resolve; }))
+    .mockResolvedValueOnce(remoteStream("new-source", [current]));
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: acquire, getDisplayMedia: acquire } });
+  try {
+    const previous = session.startScreen("first", source);
+    const cancelled = expect(previous).rejects.toMatchObject({ name: "AbortError" });
+    await session.cancelScreenSelection("first");
+    await cancelled;
+    expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
+    const next = session.startScreen("first", source);
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await next;
+    grant(remoteStream("late-source", [late]));
+    await vi.waitFor(() => expect(late.stop).toHaveBeenCalledOnce());
+    expect(current.stop).not.toHaveBeenCalled();
+    expect(session.getSnapshot().ownedScreens.size).toBe(1);
+    expect(socket.sent.filter(command => command.type === "publish")).toHaveLength(1);
   } finally { session.close(); }
 });
 

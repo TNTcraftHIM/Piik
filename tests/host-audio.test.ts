@@ -119,8 +119,12 @@ test("ending a share retires microphone permission completed after disposal", as
   const audio = new HostAudio(media(new Track("video")), "browser", () => {}, enabled);
   await audio.start();
   const pending = audio.setMicrophone(true, { deviceId: "", volume: 1, voiceProcessing: true });
+  expect(getUserMedia).toHaveBeenCalledOnce();
+  audio.dispose();
+  await pending;
+  expect(contexts.every(context => context.state === "closed")).toBe(true);
+  complete(media(microphone));
   await Promise.resolve();
-  audio.dispose(); complete(media(microphone)); await pending;
   expect(microphone.stop).toHaveBeenCalledOnce();
   expect(enabled).not.toHaveBeenCalledWith(true);
   expect(contexts.every(context => context.state === "closed")).toBe(true);

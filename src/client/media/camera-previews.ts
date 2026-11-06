@@ -1,4 +1,5 @@
 import { browserCameras, cameraCaptureConstraints, type CaptureDevice } from "./capture-devices";
+import { acquireMediaStream } from "./capture-stream";
 
 export type CameraPreview = CaptureDevice & { preview: string | null };
 
@@ -46,11 +47,9 @@ export async function loadCameraPreviews(signal: AbortSignal,
   let owned: MediaStream | null = null;
   const release = () => { owned?.getTracks().forEach(track => track.stop()); owned = null; };
   const open = async (id: string) => {
+    owned = await acquireMediaStream(() => navigator.mediaDevices.getUserMedia({ audio: false,
+      video: cameraCaptureConstraints({ width: 320, height: 180 }, 15, id) }), signal);
     signal.throwIfAborted();
-    owned = await navigator.mediaDevices.getUserMedia({ audio: false,
-      video: cameraCaptureConstraints({ width: 320, height: 180 }, 15, id) });
-    // A permission promise can settle after the picker has closed.
-    if (signal.aborted) { release(); signal.throwIfAborted(); }
     return owned;
   };
   signal.addEventListener("abort", release, { once: true });

@@ -12,6 +12,7 @@ import type { NativeCaptureTarget } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 import { MicrophoneInput } from "../media/microphone-input";
+import { acquireMediaStream } from "../media/capture-stream";
 import { HostAudio, type CommentaryInput } from "../media/host-audio";
 import { readPreferredQuality, savePreferredQuality, screenVideoCeiling, supportsCaptureProfile, type QualityProfile } from "../media/quality";
 import { audioInputConstraints } from "../media/audio-capture";
@@ -114,7 +115,7 @@ export class ChannelSession {
     interaction?: RoomInteractionSession; interactionBinding?: string } | null = null;
   private readingRooms = new Set<string>();
   private outgoingMessages = new Map<string, { content: string; nonce: string }>();
-  private captureEpoch = 0;
+  private captureLifetime = new AbortController();
   private screenShares = new Map<string, ScreenShare>();
   private local = new Map<string, { roomId: string; kind: "screen" | "voice"; stream: MediaStream; microphone?: MicrophoneInput; audio?: HostAudio; profile?: QualityProfile; camera?: boolean }>();
   private conversation = new ChannelConversation({
@@ -1291,9 +1292,8 @@ export class ChannelSession {
     if (share.audioChange || share.qualityChange || this.view.pending.has(`source-microphone:${share.id}`)) throw new Error("operation_pending");
     share.selection?.abort();
     const selection = share.selection = new AbortController();
-    const epoch = this.captureEpoch;
     const selected = share;
-    return { share, current: () => epoch === this.captureEpoch && this.screenShares.get(roomId) === selected && selected.selection === selection };
+    return { share, current: () => this.screenShares.get(roomId) === selected && selected.selection === selection };
   }
 
   private finishScreenSelection(roomId: string, share: ScreenShare): void {
@@ -1323,7 +1323,7 @@ export class ChannelSession {
     let candidate: MediaStream | undefined;
     let audio: HostAudio | undefined;
     try {
-      candidate = await captureBrowserSource(share.profile, source, deviceId);
+      candidate = await captureBrowserSource(share.profile, source, deviceId, share.selection!.signal);
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       const video = candidate.getVideoTracks()[0];
       if (!video || video.readyState !== "live") throw new Error("capture_unavailable");
@@ -1649,7 +1649,7 @@ export class ChannelSession {
     if (this.microphone?.stream.active) return this.microphone;
     if (this.microphoneRequest) return this.microphoneRequest.promise!;
     if (!navigator.mediaDevices?.getUserMedia) throw new Error("microphone_unavailable");
-    const epoch = this.captureEpoch;
+    const signal = this.captureLifetime.signal;
     // Resume during the gesture, before device permission consumes activation.
     const context = new AudioContext();
     const resumed = context.resume().then(() => true, () => false);
@@ -1657,8 +1657,8 @@ export class ChannelSession {
     request.promise = (async () => {
       let stream: MediaStream | undefined, input: MicrophoneInput | undefined;
       try {
-        stream = await navigator.mediaDevices.getUserMedia(this.microphoneConstraints(this.view.voiceInput));
-        if (epoch !== this.captureEpoch) throw new Error("closed");
+        stream = await acquireMediaStream(() => navigator.mediaDevices.getUserMedia(this.microphoneConstraints(this.view.voiceInput)), signal);
+        signal.throwIfAborted();
         if (stream.getAudioTracks()[0]?.readyState !== "live") throw new Error("microphone_unavailable");
         const captured = input = new MicrophoneInput(stream, context, this.view.voiceInput.volume, () => {
           for (const [id, capture] of [...this.local]) if (capture.microphone === captured) this.voiceCaptureEnded(id, capture.stream);
@@ -1668,7 +1668,7 @@ export class ChannelSession {
         request.input = captured;
         request.context = null;
         const started = await resumed;
-        if (epoch !== this.captureEpoch) throw new Error("closed");
+        signal.throwIfAborted();
         if (!started || !captured.stream.active) throw new Error("microphone_unavailable");
         captured.volume(this.view.voiceInput.volume);
         this.microphone = captured;
@@ -1702,15 +1702,16 @@ export class ChannelSession {
   }
 
   configureVoiceInput = (settings: Partial<Pick<RoomPreferences["voiceInput"], "deviceId" | "voiceProcessing">>): Promise<void> => this.action("voice-input", async () => {
-    const epoch = this.captureEpoch;
+    const signal = this.captureLifetime.signal;
     if (this.microphoneRequest) await this.microphoneRequest.promise;
-    if (epoch !== this.captureEpoch) throw new Error("closed");
+    signal.throwIfAborted();
     const voiceInput = { ...this.view.voiceInput, ...settings };
     const input = this.microphone;
     if (input) {
-      let captured: MediaStream | undefined = await navigator.mediaDevices.getUserMedia(this.microphoneConstraints(voiceInput));
+      let captured: MediaStream | undefined = await acquireMediaStream(() => navigator.mediaDevices.getUserMedia(this.microphoneConstraints(voiceInput)), input.signal);
       try {
-        if (epoch !== this.captureEpoch || this.microphone !== input) throw new Error("closed");
+        signal.throwIfAborted();
+        if (this.microphone !== input) throw new DOMException("Microphone capture cancelled", "AbortError");
         input.replace(captured);
         captured = undefined;
       } finally { captured?.getTracks().forEach(track => track.stop()); }
@@ -1815,7 +1816,10 @@ export class ChannelSession {
     this.closeInteractions();
     this.reading = null;
     this.readingRooms.clear();
-    this.captureEpoch += 1;
+    const request = this.microphoneRequest;
+    this.microphoneRequest = null;
+    this.captureLifetime.abort();
+    this.captureLifetime = new AbortController();
     for (const share of this.screenShares.values()) share.selection?.abort();
     this.screenShares.clear();
     this.app?.stopCaptures();
@@ -1829,9 +1833,9 @@ export class ChannelSession {
     this.watching.clear();
     this.microphone?.close();
     this.microphone = null;
-    this.microphoneRequest?.input?.close();
-    void this.microphoneRequest?.context?.close().catch(() => {});
-    if (this.microphoneRequest) this.microphoneRequest.context = null;
+    request?.input?.close();
+    void request?.context?.close().catch(() => {});
+    if (request) request.context = null;
     this.signals = [];
   }
 
