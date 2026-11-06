@@ -110,9 +110,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   reports first-launch blocking; the troubleshooting guide provides a scoped
   opening procedure, not a signing fix. Verify downloaded bundles on a Mac when
   signing becomes available.
-- **Automatic local chat history.** Manual TXT export already exists. Automatic
-  storage needs a stable room-incarnation identity, bounded retention and deletion;
-  reusable room codes must not combine conversations.
 - **Managed Demo hosting.** The [provider assessment](./operations/website.md#managed-hosting-assessment)
   establishes no cost saving; keep the existing P2P-only Demo pending a concrete option.
 - **Phone as a Host microphone.** Revisit only for a concrete use case that
