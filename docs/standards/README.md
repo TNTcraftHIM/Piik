@@ -5,6 +5,11 @@ the [ownership map](./documentation.md#owners) explains where each fact belongs.
 [AGENTS.md](../../AGENTS.md) owns task authority and
 [Contributing](../../CONTRIBUTING.md) owns delivery.
 
+The room, routing, media and lifecycle product contracts below describe published
+2.x. Isolated 3.0 uses the accepted [channel/network model](../research/channel-network-design.md)
+and [room-data model](../research/channel-storage-and-identity.md). Engineering,
+visual language and delivery rules apply to both lines.
+
 | Subject | Standard |
 | --- | --- |
 | Module responsibility, resources, interfaces and contextual consistency | [Engineering](./engineering.md) |

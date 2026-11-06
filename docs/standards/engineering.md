@@ -144,7 +144,8 @@ Presentation derives from the committed fact instead of mirroring it.
 ## Source Index
 
 Start a change at the owning entry point, then follow the interfaces listed
-above rather than searching the tree. NAT policy stays in [routing](./routing-transport.md),
+above rather than searching the tree. Routing and NAT policy follow the
+[channel/network model](../research/channel-network-design.md),
 visual rules in [visual language](./visual-language.md), and website behavior and publication
 in [introduction design](./public-introduction.md) and the [website runbook](../operations/website.md).
 
