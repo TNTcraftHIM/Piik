@@ -57,6 +57,18 @@ impl Layers {
     pub fn snapshot(&self) -> Vec<(String, Option<Video>)> {
         self.0.lock().unwrap().clone()
     }
+    /// Apply a failure before a quality change can reinstall the same feed.
+    #[cfg(feature = "capture")]
+    pub fn with_retired(&self, video: &Video, apply: impl FnOnce(bool) -> bool) -> bool {
+        let layers = self.0.lock().unwrap();
+        if layers
+            .iter()
+            .any(|(_, current)| current.as_ref().is_some_and(|current| current.same(video)))
+        {
+            return false;
+        }
+        apply(layers.iter().all(|(_, current)| current.is_none()))
+    }
     #[cfg(any(feature = "capture", test))]
     pub fn has_feed(&self) -> bool {
         self.0
@@ -702,19 +714,30 @@ impl Input {
         self.changed.notify_one();
         self.available.notify_waiters();
     }
-    /// A supplied RID cannot rebuild its retired feed through per-output demand.
+    /// Withdraw the failed supply while retaining its negotiated RID reader.
     #[cfg(feature = "capture")]
     pub fn retire(&self, video: &Video) {
         let mut state = self.state.lock().unwrap();
-        if !state.current.as_ref().is_some_and(|v| v.same(video))
-            && !state.pending.as_ref().is_some_and(|v| v.video.same(video))
-        {
+        let current = state.current.as_ref().is_some_and(|v| v.same(video));
+        let pending = state.pending.as_ref().is_some_and(|v| v.video.same(video));
+        if !current && !pending {
             return;
         }
-        state.close();
+        if pending {
+            state.pending = None;
+        }
+        if current {
+            state.current = None;
+            state.queue.clear();
+            state.waiting_keyframe = true;
+        }
+        let selected = state.active.then(|| state.selected().cloned()).flatten();
         drop(state);
         self.changed.notify_one();
         self.available.notify_waiters();
+        if let Some(selected) = selected {
+            selected.request_keyframe();
+        }
     }
 }
 
@@ -1262,6 +1285,51 @@ mod tests {
             "resumption has no live incumbent to preserve after its encoder was retired"
         );
         assert!(paused.recv().await.is_none());
+
+        #[cfg(feature = "capture")]
+        {
+            let supplied = low.subscribe();
+            low.write(frame(5));
+            supplied.recv().await.unwrap();
+            supplied.select(&high, false)?;
+            supplied.retire(&high);
+            assert!(
+                !supplied.is_closed(),
+                "loss of an optional supplied upgrade must keep its RID reader"
+            );
+            low.write(frame(6));
+            assert_eq!(supplied.recv().await.unwrap().bytes, [6]);
+
+            supplied.select(&high, true)?;
+            supplied.retire(&high);
+            assert!(!supplied.is_closed());
+            assert!(futures_util::poll!(Box::pin(supplied.recv())).is_pending());
+            supplied.select(&high, true)?;
+            high.write(frame(6));
+            let mut dependent = frame(7);
+            dependent.keyframe = false;
+            high.write(dependent);
+            assert!(
+                futures_util::poll!(Box::pin(supplied.recv())).is_pending(),
+                "recovery needs an independent frame after the last source PTS"
+            );
+            high.write(frame(8));
+            assert_eq!(supplied.recv().await.unwrap().bytes, [8]);
+
+            high.write(frame(9));
+            supplied.retire(&high);
+            assert!(!supplied.is_closed());
+            assert!(
+                futures_util::poll!(Box::pin(supplied.recv())).is_pending(),
+                "retirement discards queued frames without ending the RID"
+            );
+            supplied.select(&high, true)?;
+            high.write(frame(8));
+            assert!(futures_util::poll!(Box::pin(supplied.recv())).is_pending());
+            high.write(frame(10));
+            assert_eq!(supplied.recv().await.unwrap().bytes, [10]);
+            supplied.close();
+        }
         Ok(())
     }
 }

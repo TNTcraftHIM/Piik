@@ -245,7 +245,8 @@ impl Output {
         let feedback_inputs = encodings.clone();
         let feedback = tokio::spawn(async move {
             while let Some(rid) = feedback_rx.recv().await {
-                if let Some(encoding) = feedback_inputs.iter().find(|encoding| encoding.rid == rid) {
+                if let Some(encoding) = feedback_inputs.iter().find(|encoding| encoding.rid == rid)
+                {
                     match &encoding.input {
                         Input::Rtp(_) => upstream.request_keyframe(),
                         Input::Video(input) => input.request_keyframe(),
@@ -339,27 +340,29 @@ impl Output {
     }
     #[cfg(feature = "capture")]
     pub fn encoding_failed(&self, video: &video::Video, layers: Option<&video::Layers>) -> bool {
-        if let Some(input) = self.video_input().and_then(|input| input.upgrade()) {
-            return input.failed(video);
-        }
-        for encoding in &self.encodings {
-            if let Input::Video(input) = &encoding.input {
-                if layers.is_some() {
-                    input.retire(video);
-                } else {
-                    input.failed(video);
+        let fail = |exhausted: Option<bool>| {
+            for encoding in &self.encodings {
+                if let Input::Video(input) = &encoding.input {
+                    if exhausted.is_some() {
+                        input.retire(video);
+                    } else {
+                        input.failed(video);
+                    }
                 }
             }
-        }
-        // The source inventory includes failures predating this output. Unbound
-        // RID readers must not keep an exhausted local supply alive.
-        layers.map_or_else(
-            || {
+            // The inventory includes failures predating this output. Unbound
+            // RID readers must not keep an exhausted local supply alive.
+            exhausted.unwrap_or_else(|| {
                 self.encodings.iter().all(
                     |encoding| matches!(&encoding.input, Input::Video(input) if input.is_closed()),
                 )
-            },
-            |layers| !layers.has_feed(),
+            })
+        };
+        // The inventory check and selection change share its lock so a quality
+        // rebuild cannot reinstall the feed between them.
+        layers.map_or_else(
+            || fail(None),
+            |layers| layers.with_retired(video, |exhausted| fail(Some(exhausted))),
         )
     }
     pub fn select_layers(

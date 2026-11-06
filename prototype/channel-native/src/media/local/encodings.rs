@@ -240,6 +240,7 @@ pub(super) async fn run(
                     settings = request.settings;
                     encodings.baseline(prepared.encoding, frames.clone(), frames.requests());
                     if let Some(layers) = &layers {
+                        layers.insert("h".into(), frames.clone());
                         match capture.encode(settings.lower_layer(), codec) {
                             Ok(encoding) => {
                                 layers.insert("q".into(), low.clone());
