@@ -150,7 +150,7 @@ export const en: Record<CopyKey, string> = {
   "playback.relayRoomDefault": "Follows the room relay limit. Enable a custom limit to adjust it for this device.",
   "playback.relayLimit": "My relay limit",
   "playback.relayPeople": "viewers",
-  "playback.relayUnavailable": "This connection cannot relay to additional viewers.",
+  "playback.relayUnavailable": "The relay limit cannot be changed on this connection.",
   "playback.fit.contain": "Fit",
   "playback.fit.cover": "Fill",
   "playback.fit.fill": "Stretch",
