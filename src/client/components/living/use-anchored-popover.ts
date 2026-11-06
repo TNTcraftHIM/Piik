@@ -36,9 +36,8 @@ export function useAnchoredPopover(
         return;
       }
       const above = Math.max(0, rect.top - top - 8), below = Math.max(0, bottom - rect.bottom - 8);
-      // Measure against the viewport, not the previous side's constrained size.
+      // Expanding the live scrollport to measure content would clamp its scroll offset.
       menu.style.maxWidth = `${right - left}px`;
-      menu.style.maxHeight = `${Math.min(maxHeight, bottom - top)}px`;
       const height = Math.min(menu.scrollHeight, maxHeight);
       // Scrollable palettes can prefer their requested side without requiring
       // every row to fit; compact menus retain the full-content threshold.
