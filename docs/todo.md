@@ -7,8 +7,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **3.0 Native platform acceptance.** Complete the remaining Linux/macOS
-  device acceptance, including Dock/Finder return to the App's Browser entry,
+- [ ] **3.0 Native platform acceptance.** Complete Android source-sound handoff
+  and the remaining Linux/macOS device acceptance, including Dock/Finder return
+  to the App's Browser entry,
   retaining the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
