@@ -8,13 +8,16 @@
 .c3-quality-heading p { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .lr-anchored-card.c3-share-picker {
   width: min(720px, calc(100vw - 16px));
-  height: min(560px, calc(100dvh - 16px));
+  max-height: min(560px, calc(100dvh - 16px));
   padding: 0;
   overflow: hidden;
 }
+.c3-share-picker:popover-open { display: grid; grid-template-rows: minmax(0, 1fr); }
 .c3-share-picker > .lr-source-picker {
   position: relative;
   inset: auto;
-  height: 100%;
+  height: auto;
+  min-height: 0;
   border-radius: inherit;
 }
+.c3-share-picker .lr-source-picker-panel { height: auto; }

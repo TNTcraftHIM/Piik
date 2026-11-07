@@ -34,6 +34,8 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   const available = browserSupported || cameraSupported || appConnected;
   const pickerAvailable = appConnected || cameraSupported;
   const sharing = channel.state?.publications.find(publication => publication.roomId === roomId && channel.ownedScreens.has(publication.id));
+  const currentCamera = sharing ? channel.streams.get(sharing.id)?.getVideoTracks()
+    .find(track => track.readyState === "live")?.getSettings().deviceId : undefined;
   const codecMode = (sharing ? channel.screenCodecMode(sharing.id) : undefined) ?? channel.videoCodecMode;
   const pickerSources: NativeSourceList = sources.kind === "ready" &&
     !(codecMode === "auto" ? sources.codecs.length > 0 : sources.codecs.includes(codecMode))
@@ -56,7 +58,7 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   const roomMicrophone = channel.state?.voice.some(voice => voice.sessionId === channel.sessionId && !voice.muted);
   const busy = channel.pending.has(`screen:${roomId}`) || !!sharing && channel.pending.has(`source-audio:${sharing.id}`);
   const label = t(sharing ? "host.switchSource" : "host.start");
-  useAnchoredPopover(trigger, panel, { preferredHeight: 560, minVisibleHeight: 240 });
+  useAnchoredPopover(trigger, panel, { maxHeight: 560, minVisibleHeight: 240 });
   useAnchoredPopover(settingsTrigger, settingsPanel, { maxHeight: 640, minVisibleHeight: 240 });
   const close = useCallback(() => { panel.current?.hidePopover(); settingsPanel.current?.hidePopover(); }, []);
   const refresh = useCallback(() => {
@@ -141,7 +143,7 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
     <div ref={panel} id={id} popover="auto" className="lr-anchored-card c3-share-picker"
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
       {open && <CaptureSourcePicker nativeSources={pickerSources} browserSupported={browserSupported} cameraSupported={cameraSupported}
-        loadCameras={channel.cameraPreviews}
+        loadCameras={channel.cameraPreviews} initialCamera={currentCamera}
         initialTab="window" selectionDisabled={disabled || busy || qualityPending || microphonePending}
         initialAudio={selectedNative?.audio} initialExcludeAudio={selectedNative?.excludeAudio} initialShowCaptureBorder={selectedNative?.showCaptureBorder}
         onBrowser={() => start(() => startScreen(roomId))}

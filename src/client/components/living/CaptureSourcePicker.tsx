@@ -266,7 +266,8 @@ export function CaptureSourcePicker({
               <Tooltip
                 key={value}
                 kind={value === "picker" ? "hint-source-picker" : `hint-capture-${value}`}
-                text={vis ? undefined : t(value === "browser" ? "host.sourcePicker.browserHint" : `host.sourcePicker.tab.${value}`)}
+                text={vis ? undefined : t(value === "browser" ? "host.sourcePicker.browserHint"
+                  : value === "camera" ? "host.sourcePicker.cameraHint" : `host.sourcePicker.tab.${value}`)}
                 place="below"
               >
                 {button}
