@@ -360,6 +360,7 @@ pub async fn serve(
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
         .layer(middleware::from_fn_with_state(app.clone(), access))
         .with_state(app.clone());
+    eprintln!("Piik App {BUILD_VERSION}\nBuild {BUILD_REVISION}");
     eprintln!("App room socket listening on {address}");
     eprintln!("Open Piik App: {entry}");
     if let Some(ready) = ready {
