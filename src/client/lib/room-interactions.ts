@@ -52,7 +52,7 @@ export class RoomInteractionSession {
   private pendingTimer: ReturnType<typeof setTimeout> | undefined;
   private cooldownTimer: ReturnType<typeof setTimeout> | undefined;
   private effectsTimer: ReturnType<typeof setTimeout> | undefined;
-  private overlayVisible = false;
+  private visibleOverlays = new Set<object>();
   private requestId: string | null = null;
   private closed = false;
   private subscriptionStartedAt: number | null = null;
@@ -135,7 +135,7 @@ export class RoomInteractionSession {
       const lane = identityHash(`${message.sender.peerId}:${message.id}`) % CHAT_OVERLAY_LANES;
       const durationMs = CHAT_OVERLAY_DURATION_MS / this.state.overlayAppearance.speed;
       const expiresAt = beganAt + durationMs;
-      if (this.state.overlayEnabled && this.overlayVisible && expiresAt > now) {
+      if (this.state.overlayEnabled && this.visibleOverlays.size > 0 && expiresAt > now) {
         // Newest on this fixed lane wins; missing messages cannot shift a later
         // event to another lane, and bursts cannot accumulate a playback queue.
         overlayMessages = [...overlayMessages.filter(item => item.lane !== lane), { ...message, lane, expiresAt, durationMs }];
@@ -183,11 +183,16 @@ export class RoomInteractionSession {
     this.expireEffects();
   }
 
-  setOverlayVisible(visible: boolean) {
-    if (this.closed || this.overlayVisible === visible) return;
-    this.overlayVisible = visible;
-    if (!visible) this.update({ overlayMessages: [] });
-    this.expireEffects();
+  /** Each visible picture releases only its own interest in live chat flights. */
+  showOverlay(): () => void {
+    if (this.closed) return () => {};
+    const owner = {};
+    this.visibleOverlays.add(owner);
+    return () => {
+      if (!this.visibleOverlays.delete(owner) || this.visibleOverlays.size > 0) return;
+      this.update({ overlayMessages: [] });
+      this.expireEffects();
+    };
   }
 
   setOverlayAppearance(patch: Partial<OverlayAppearance>) {
@@ -225,6 +230,7 @@ export class RoomInteractionSession {
   }
   close() {
     this.closed = true;
+    this.visibleOverlays.clear();
     this.disconnected();
     this.update(initialState());
   }

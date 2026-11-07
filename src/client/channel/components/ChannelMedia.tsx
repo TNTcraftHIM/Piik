@@ -3,6 +3,8 @@ import { Btn } from "../../components/living/primitives";
 import { PlaybackControlsReveal } from "../../components/living/PlaybackControlsReveal";
 import { PlaybackWindowControls } from "../../components/living/PlaybackWindowControls";
 import { PlaybackSettings } from "../../components/living/PlaybackSettings";
+import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../../components/living/RoomChatOverlay";
+import type { RoomInteractionSession } from "../../lib/room-interactions";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useVideoRotation } from "../../components/living/use-video-rotation";
 import { usePlaybackControlsVisibility } from "../../components/living/use-playback-controls-visibility";
@@ -66,10 +68,11 @@ export interface SourceAudioControl {
   onChange(settings: { level?: number; muted?: boolean }): void;
 }
 
-export function ChannelVideo({ stream, local, label, inputs, onPresentation, input, sourceAudio, theaterMode, onToggleTheater }: {
+export function ChannelVideo({ stream, local, label, inputs, onPresentation, input, sourceAudio, interaction = null, theaterMode, onToggleTheater }: {
   stream: MediaStream; local: boolean; label: string; inputs?: readonly ChannelScreenInput[];
   input?: InputTransport;
   sourceAudio?: SourceAudioControl;
+  interaction?: RoomInteractionSession | null;
   theaterMode: boolean; onToggleTheater(): void;
   onPresentation?: (flowId: string, stream: MediaStream, state: ScreenPresentation) => void;
 }) {
@@ -248,6 +251,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
   return <div className="c3-video c3-mini-player" data-controls-hidden={visibility.hidden}>
     {rendered.map(input => <ChannelVideoInput key={`${input.flowId}:${input.stream.id}`} input={input} visible={input.flowId === displayed.flowId && input.stream === displayed.stream}
       label={label} fit={pictureFit} register={register} frame={frame} issue={issue} playing={playing} fullscreen={fullscreenToggle} />)}
+    <RoomChatOverlay session={interaction} visible={ready && !blocked && !paused} />
     {!ready && !blocked && <div className="c3-mini-message" role="status">
       <span className="c3-frame-wait"><Glyph name="loader" className="lr-spin" size={22} />
         {lang === "zh" ? "等待画面" : "Waiting for picture"}</span>
@@ -280,6 +284,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
           }} />
       </>}
       <span className="c3-mini-space" />
+      <RoomChatToggle session={interaction} quiet />
       {!local && <RemoteControl channel={input ?? null} videoRef={playbackRef} available={ready && displayed.flowId === target.flowId}
         pictureFit={pictureFit} pictureRotation={pictureRotation} touchMode={remoteTouchMode} />}
       <span ref={pictureTrigger} className="lr-playback-more"><Btn icon="sliders" quiet title="playback.more" hint="hint-advanced"
@@ -295,7 +300,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
           setPreviewAutoPause(autoPause); saveRoomPreferences({ previewAutoPause: autoPause });
         } } : undefined} remoteTouch={!local && input ? { mode: remoteTouchMode, onChange: mode => {
           setRemoteTouchMode(mode); saveRoomPreferences({ remoteTouchMode: mode });
-        } } : undefined} reconnect={null} />
+        } } : undefined} overlaySettings={interaction && <RoomChatOverlaySettings session={interaction} />} reconnect={null} />
       </div>
       <PlaybackWindowControls picture={{ ...picture, toggle: pictureToggle }} quiet
         canPlay={ready && !inputs?.some(input => !input.selected && input.switchReady)}

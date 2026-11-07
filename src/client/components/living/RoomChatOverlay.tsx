@@ -7,6 +7,7 @@ import { Btn, SwitchItem } from "./primitives";
 import { participantColor } from "./participant-color";
 import { Tooltip } from "./Tooltip";
 import "./room-chat-overlay.css";
+import { useSurfaceDocument } from "../../ui/panel-window";
 
 type ToggleProps = { session: RoomInteractionSession | null } & Pick<ComponentProps<typeof Btn>, "size" | "quiet">;
 
@@ -60,15 +61,21 @@ export function RoomChatOverlay({ session, visible }: { session: RoomInteraction
 
 function ConnectedOverlay({ session, visible }: { session: RoomInteractionSession; visible: boolean }) {
   const { overlayMessages, overlayAppearance } = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const ownerDocument = useSurfaceDocument();
   useEffect(() => {
-    const sync = () => session.setOverlayVisible(visible && !document.hidden);
-    sync();
-    document.addEventListener("visibilitychange", sync);
-    return () => {
-      document.removeEventListener("visibilitychange", sync);
-      session.setOverlayVisible(false);
+    if (!ownerDocument) return;
+    let release: (() => void) | undefined;
+    const sync = () => {
+      if (visible && !ownerDocument.hidden) release ??= session.showOverlay();
+      else { release?.(); release = undefined; }
     };
-  }, [session, visible]);
+    sync();
+    ownerDocument.addEventListener("visibilitychange", sync);
+    return () => {
+      ownerDocument.removeEventListener("visibilitychange", sync);
+      release?.();
+    };
+  }, [session, visible, ownerDocument]);
   return visible ? <div className="lr-chat-overlay" aria-hidden="true"
     style={{ "--chat-scale": overlayAppearance.scale, opacity: overlayAppearance.opacity } as CSSProperties}>
     {overlayMessages.map(message => <ChatFlight key={message.id} message={message} now={session.now} colorBySender={overlayAppearance.colorBySender} />)}

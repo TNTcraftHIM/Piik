@@ -244,6 +244,7 @@ export function ChannelPreviewPage() {
             deliveryFailed: state?.failedSubscriptions.includes(publication.id),
             available: rooms.find(value => value.id === publication.roomId)?.available ?? false,
             subscribed: state?.subscriptions.includes(publication.id) ?? false, stream: streams.get(publication.id), inputs: channel.screenInputs.get(publication.id),
+            interaction: channel.interactionsByRoom.get(publication.roomId) ?? null,
             input: channel.inputChannels.get(publication.id),
             sourceAudio: (() => {
               const sound = channel.sourceAudio(publication.id);

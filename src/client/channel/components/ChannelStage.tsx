@@ -7,6 +7,7 @@ import { ChannelAction } from "./ChannelAction";
 import type { ChannelScreenInput, ScreenPresentation } from "../types";
 import "./channel-stage.css";
 import type { InputTransport } from "../../remote-control/input-route";
+import type { RoomInteractionSession } from "../../lib/room-interactions";
 import type { RemoteControlMode } from "../../remote-control/protocol";
 import type { ChannelRemoteControlState, ChannelStopShortcut } from "../app-link";
 import { HostRemoteControl } from "../../components/living/HostRemoteControl";
@@ -26,6 +27,7 @@ export interface ChannelStageSource {
   deliveryFailed?: boolean;
   stream?: MediaStream;
   sourceAudio?: SourceAudioControl;
+  interaction?: RoomInteractionSession | null;
   sourceMicrophone?: { enabled: boolean; busy?: boolean; disabled?: boolean; onEnabled: (enabled: boolean) => void };
   inputs?: readonly ChannelScreenInput[];
   input?: InputTransport;
@@ -113,7 +115,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
               onFocus(source.id);
             }}>
             {source.stream ? <ChannelVideo stream={source.stream} local={source.owned} inputs={source.inputs} onPresentation={onPresentation} input={source.input}
-              sourceAudio={source.sourceAudio}
+              sourceAudio={source.sourceAudio} interaction={source.interaction}
               theaterMode={theater && isFocused} onToggleTheater={() => {
                 onFocus(source.id); setTheater(!theater);
               }}

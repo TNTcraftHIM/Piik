@@ -39,7 +39,7 @@ test("appearance is local, preserves a running flight, survives re-admission and
   const { session, send } = setup();
   session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
   session.setOverlayEnabled(true);
-  session.setOverlayVisible(true);
+  session.showOverlay();
   session.receive(message("event_1234"));
   const flights = session.getSnapshot().overlayMessages;
   const sent = send.mock.calls.length;
@@ -70,7 +70,7 @@ test("new overlay speed owns animation expiry without restarting an active fligh
   const { session } = setup();
   session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
   session.setOverlayEnabled(true);
-  session.setOverlayVisible(true);
+  session.showOverlay();
   session.receive(message("original_speed"));
   const flights = session.getSnapshot().overlayMessages;
   session.setOverlayAppearance({ speed: .5, colorBySender: true });
@@ -260,7 +260,7 @@ test("late echoes do not confirm a newer same-text request or erase its rejectio
 test("chat overlay keeps the newest message on each fixed lane, with no playback queue", () => {
   const { session } = setup();
   session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
-  session.setOverlayVisible(true);
+  session.showOverlay();
   session.receive(message("before_enabled"));
   expect(session.getSnapshot().overlayMessages).toEqual([]);
   session.setOverlayEnabled(true);
@@ -296,7 +296,7 @@ test("clock offsets, delivery delay and missing events do not shift a common eff
   for (const session of [first, second]) {
     session.authenticated("self_peer_1234");
     session.setOverlayEnabled(true);
-    session.setOverlayVisible(true);
+    session.showOverlay();
   }
   // Symmetric 20ms / 200ms subscription round trips to the same server clock.
   vi.advanceTimersByTime(20);
@@ -331,7 +331,7 @@ test("expired events still confirm chat, but never replay effects; reconnect rep
   const { session } = setup();
   session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
   session.setOverlayEnabled(true);
-  session.setOverlayVisible(true);
+  session.showOverlay();
   const occurredAt = Date.now() - 7000;
   session.send({ kind: "chat", text: "Delayed confirmation" });
   const pending = session.getSnapshot().pending!;
@@ -353,7 +353,7 @@ test("expired events still confirm chat, but never replay effects; reconnect rep
 test("asymmetric subscription delay stays approximate and cannot extend a fresh effect", () => {
   const { session } = setup();
   session.setOverlayEnabled(true);
-  session.setOverlayVisible(true);
+  session.showOverlay();
   // 190ms outbound and 10ms inbound: midpoint overestimates server time by 90ms.
   vi.advanceTimersByTime(200);
   session.receive({ type: "room-interactions-ready", serverTime: 1_000_190 });
@@ -369,18 +369,40 @@ test("asymmetric subscription delay stays approximate and cannot extend a fresh 
   expect(vi.getTimerCount()).toBe(0);
 });
 
+test("one picture leaving does not clear a sibling's live flights or replay hidden chat", () => {
+  const { session } = setup();
+  session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
+  session.setOverlayEnabled(true);
+  const first = session.showOverlay(), second = session.showOverlay();
+  session.receive(message("shared_picture"));
+  const flights = session.getSnapshot().overlayMessages;
+  first(); first();
+  expect(session.getSnapshot().overlayMessages).toBe(flights);
+  expect(flights.map(value => value.id)).toEqual(["shared_picture"]);
+  second();
+  expect(session.getSnapshot().overlayMessages).toEqual([]);
+  session.receive(message("hidden_picture"));
+  const last = session.showOverlay();
+  expect(session.getSnapshot().overlayMessages).toEqual([]);
+  session.receive(message("new_picture"));
+  expect(session.getSnapshot().overlayMessages.map(value => value.id)).toEqual(["new_picture"]);
+  session.close(); last();
+  expect(session.getSnapshot().overlayMessages).toEqual([]);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
 test("hidden, disabled and reconnecting overlays discard flights without replaying room history", () => {
   const { session } = setup();
   session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
   session.setOverlayEnabled(true);
   session.receive(message("no_picture"));
-  session.setOverlayVisible(true);
+  const hide = session.showOverlay();
   expect(session.getSnapshot().overlayMessages).toEqual([]);
   session.receive(message("visible"));
   expect(session.getSnapshot().overlayMessages).toHaveLength(1);
-  session.setOverlayVisible(false);
+  hide();
   session.receive(message("background"));
-  session.setOverlayVisible(true);
+  session.showOverlay();
   expect(session.getSnapshot().overlayMessages).toEqual([]);
   session.receive(message("visible_again"));
   session.setOverlayEnabled(false);
