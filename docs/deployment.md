@@ -60,7 +60,7 @@ unchanged. The deployment wrapper rejects a package for another host architectur
 `piik-<revision>-windows-amd64-runtime.zip`, with `piik-server.exe` in place of the
 Linux executable. It uses the same descriptor and checksum inventory; containers
 and `release-server.sh` remain Linux-only. Windows operation follows the
-[self-hosting guide](./operations/self-hosting.md).
+[Rust Server startup reference](../prototype/channel-server/README.md#run).
 
 Public Release pages expose the runnable packages and put package checksums in
 the release body. Retain the original complete build output outside the checkout
@@ -143,20 +143,15 @@ untagged local candidates use `development`. Schema-2 package descriptors carry
 the same pair and artifact hashes. The [version policy](./standards/versioning.md)
 owns ordering and first-public-release readiness.
 
-The default App launcher starts immediately, then checks GitHub Releases in the
-background. Published binaries still fall back to Gitee if GitHub is unavailable;
-current manual downloads use AtomGit. The
-[release-source policy](./standards/versioning.md#release-sources) owns selection
-and provenance checks. It shows a link only when
-the latest stable release is newer, the same version has a known different source
-SHA, or a development build can choose the official release. These notices are
-distinct; a different SHA alone is not called newer.
-The request sends no current revision, credentials, room data, or media data;
-network errors, private-repository responses, and missing releases are treated
-as no notice. Checking does not download an archive, replace files, or interrupt
-a running share; the user can follow the update link to download the App package.
+The App launcher and site App control check the installed App's identity in the
+background, using GitHub and the AtomGit fallback under the
+[release-source policy](./standards/versioning.md#release-sources). That policy
+owns provenance, version comparison and the distinction between a newer release
+and a different build.
 
-The Rust Server's operator release check remains in [TODO](./todo.md).
+The Rust Server provides a [one-shot operator check](../prototype/channel-server/README.md#run)
+and one non-blocking startup notice for released builds. Checks fetch metadata
+only; they do not install an update, replace files or interrupt a running share.
 
 ## Atomic Cutover
 

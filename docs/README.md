@@ -13,7 +13,8 @@ This page indexes developer and maintainer references.
 | Try or change the source code | [Run from source](#run-from-source) |
 | Find a module, interface, lifecycle or source entry point | [Engineering maps and source index](./standards/engineering.md#repository-layout) |
 | Find the shared product, design and lifecycle rules | [Standards index](./standards/README.md) |
-| Deploy or configure a service | [Self-hosting](./operations/self-hosting.md) · [Configuration](./standards/configuration.md) · [Service management](./operations/service-management.md) |
+| Run or deploy the current 3.0 runtime | [Rust Server startup](../prototype/channel-server/README.md#run) · [Packaging and deployment](./deployment.md) |
+| Operate published 2.x | [Self-hosting](./operations/self-hosting.md) · [Configuration](./standards/configuration.md) · [Service management](./operations/service-management.md) |
 | Build App packages and native capture | [Rust App](../prototype/channel-server/README.md#local-app-link) · [Packaging](./deployment.md#build-host) |
 | Build, publish or recover a maintained release | [Maintainer release tooling](./deployment.md) |
 | Send a useful bug report | [Diagnostics and export](./standards/configuration.md#diagnostics) |

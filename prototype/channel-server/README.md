@@ -93,7 +93,7 @@ The `piik-channel-app` entry uses the same App button, local approval page and
 saved-site controls as the shared Web interface. Build the frontend and start it:
 
 ```powershell
-node node_modules/vite/bin/vite.js build --config prototype/channel-browser/web.vite.config.ts
+npm run build:web
 $env:PIIK_CHANNEL_APP_WEB_DIR = (Resolve-Path build/channel-web).Path
 $env:PIIK_CHANNEL_CLOUDFLARED = "cloudflared"
 cargo +1.91.0 run --manifest-path prototype/channel-server/Cargo.toml --features capture --bin piik-channel-app
