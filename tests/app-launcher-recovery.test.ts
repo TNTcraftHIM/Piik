@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { LauncherForm } from "../src/client/components/living/LauncherForm";
 import { Btn } from "../src/client/components/living/primitives";
-import { siteEntryOrigin } from "../src/client/lib/site-address";
+import { siteEntryOrigin, siteEntryURL } from "../src/client/lib/site-address";
 import { clientLaunchURL } from "../src/client/lib/app-launch";
 
 // Run the page's actual state-read effect, including cleanup, without a DOM.
@@ -228,8 +228,12 @@ describe("App launcher state recovery", () => {
     expect(siteEntryOrigin("https://piik.example/r/1234?lang=en#v=private-invitation")).toBe("https://piik.example");
     expect(siteEntryOrigin("https://example.com/my room?q=hello world")).toBe("https://example.com");
     expect(siteEntryOrigin("http://127.0.0.1:8787/")).toBe("http://127.0.0.1:8787");
+    expect(siteEntryURL(" https://piik.example/r/1234?lang=en#v=private-invitation ")?.href)
+      .toBe("https://piik.example/r/1234?lang=en#v=private-invitation");
+    expect(siteEntryURL(" PIIK.example:443 ")?.href).toBe("https://piik.example/");
     for (const invalid of ["", "https://user:password@piik.example", "javascript:alert(1)", "file:///local", "https://", "not a site"]) {
       expect(siteEntryOrigin(invalid)).toBeNull();
+      expect(siteEntryURL(invalid)).toBeNull();
     }
   });
 
