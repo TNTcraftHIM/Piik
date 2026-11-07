@@ -1261,7 +1261,7 @@ export class ChannelSession {
     this.media.setLocal(id, stream, sourceProfile, codec);
     try {
       if (microphone && !microphone.stream.active) throw new Error("microphone_unavailable");
-      await this.request({ type: "publish", publication: { id, roomId, kind, muted: false,
+      await this.request({ type: "publish", publication: { id, roomId, kind,
         ...(sourceProfile ? { videoCeiling: screenVideoCeiling(sourceProfile) } : {}) } });
       const primary = kind === "screen" ? stream.getVideoTracks()[0] : stream.getAudioTracks()[0];
       if (primary?.readyState === "ended" || (microphone && !microphone.stream.active)) {
@@ -1502,7 +1502,6 @@ export class ChannelSession {
             if (!current() || this.local.get(publicationId) !== local) throw new DOMException("Capture cancelled", "AbortError");
             try {
               await this.request({ type: "publish", publication: { id: publicationId, roomId: local.roomId, kind: "screen",
-                muted: this.view.state?.publications.find(publication => publication.id === publicationId)?.muted ?? false,
                 videoCeiling: screenVideoCeiling(profile) } });
             } catch (error) {
               if (current() && this.local.get(publicationId) === local) await this.media.configureLocal(publicationId, previous);

@@ -250,7 +250,7 @@ window.runBrowserRoomCheck = async () => {
     const original = await send("Changed again", "first", [{ ...file, sha256: "0".repeat(64) }]);
     check(!original.inserted && JSON.stringify(original.message) === JSON.stringify(first.message), "nonce survives reopen");
     check((await dispatch({ type: "publish", publication: { id: crypto.randomUUID(), roomId: host.roomId,
-      kind: "screen", muted: false, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]) } })).reply?.result.type === "done",
+      kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]) } })).reply?.result.type === "done",
     "the source is published before checking restart cleanup");
     await host.close();
     host = await BrowserRoomHost.open(database, policy);
@@ -260,7 +260,7 @@ window.runBrowserRoomCheck = async () => {
     check((await BrowserRoomHost.storedPolicies(database)).length === 2, "persisted room policies enumerated");
     const publication = crypto.randomUUID();
     check((await dispatch({ type: "publish", publication: { id: publication, roomId: host.roomId,
-      kind: "screen", muted: false, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]) } })).reply?.result.type === "done",
+      kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]) } })).reply?.result.type === "done",
     "the source is published before checking same-binding continuity");
     await bindHost();
     check((await dispatch({ type: "browse", active: true, roomId: host.roomId })).projection.views[session].publications.length === 1,

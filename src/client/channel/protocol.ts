@@ -22,7 +22,7 @@ export const roomSchema = z.object({
 });
 const publicationBaseSchema = z.object({
   id, roomId: id, sessionId: id, userId: id,
-  muted: z.boolean(), paused: z.boolean(),
+  paused: z.boolean(),
 });
 export const publicationSchema = z.discriminatedUnion("kind", [
   publicationBaseSchema.extend({ kind: z.literal("screen"), videoCeiling: videoCeilingSchema }),
@@ -140,7 +140,7 @@ export type ChannelCommand =
   | { type: "room_topology"; roomId: string; publicationId?: string }
   | { type: "revoke_room_access"; roomId: string; userId: string }
   | { type: "set_roles"; userId: string; roles: string[] }
-  | { type: "publish"; publication: { id: string; roomId: string; kind: "screen" | "voice"; muted: boolean; videoCeiling?: VideoCeiling } }
+  | { type: "publish"; publication: { id: string; roomId: string; kind: "screen" | "voice"; videoCeiling?: VideoCeiling } }
   | { type: "unpublish"; publicationId: string }
   | { type: "set_paused"; publicationId: string; paused: boolean }
   | { type: "transfer_source"; publicationId: string; toSessionId: string }

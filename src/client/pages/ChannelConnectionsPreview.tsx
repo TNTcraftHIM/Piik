@@ -19,8 +19,8 @@ export function channelConnectionPreview(mode: "room" | "voice" | "both" | "app"
       { id: "self-user", name: "Nori", roles: [] }, { id: "friend-user", name: "Kiki", roles: [] }],
     sessions: ["host", "self", "friend", "app"].map(id => ({ id, userId: id === "app" ? "self-user" : `${id}-user`, online: true, signingKey: Array(32).fill(0) })),
     publications: mode === "room" ? [] : [
-      ...["host", "self", "friend"].map(id => ({ id: `voice-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "voice", muted: false, paused: false })),
-      ...(mode === "voice" ? [] : ["host", "self"].map(id => ({ id: `screen-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false }))),
+      ...["host", "self", "friend"].map(id => ({ id: `voice-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "voice", paused: false })),
+      ...(mode === "voice" ? [] : ["host", "self"].map(id => ({ id: `screen-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false }))),
     ], voice: [], subscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   });
   const topology: ChannelTopology = { bindingId: "binding", base: { rootSessionId: "host", edges: [
