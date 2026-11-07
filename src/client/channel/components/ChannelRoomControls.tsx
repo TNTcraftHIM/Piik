@@ -10,6 +10,7 @@ import { ChannelAction } from "./ChannelAction";
 import { ChannelIdentityFields } from "./ChannelIdentity";
 import "./channel-room-controls.css";
 import { BackupControls } from "./BackupControls";
+import { ChannelInviteQrCode } from "./ChannelInviteQrCode";
 
 function RoomForm({ room, appHosted, disabled, busy, onSave, onCancel }: {
   room?: ChannelRoom; appHosted: boolean; disabled: boolean; busy: boolean;
@@ -122,7 +123,11 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
         {invite && <div className="c3-invite-copy"><input className="c3-input" value={invite} readOnly
           aria-label={zh ? "房间邀请链接" : "Room invitation link"} onFocus={event => event.currentTarget.select()} />
           <ChannelAction icon={invitationCopy.status === "copied" ? "check" : "copy"} iconOnly label={invitationCopy.status === "copied" ? (zh ? "已复制" : "Copied") : (zh ? "复制邀请" : "Copy invitation")}
-            hint="hint-copy-invite" onClick={invitationCopy.copy} /></div>}
+            hint="hint-copy-invite" onClick={invitationCopy.copy} />
+          <ChannelInviteQrCode url={invite} disabled={!available || backupBusy}
+            label={zh ? "房间邀请二维码" : "Room invitation QR code"} closeLabel={zh ? "关闭" : "Close"}
+            hint={zh ? "用另一台设备扫码进入这个房间。" : "Scan on another device to enter this room."}
+            failure={zh ? "无法生成二维码，请复制邀请链接。" : "Could not create a QR code. Copy the invitation link instead."} /></div>}
         <p>{zh ? "更换邀请或密码不会移除已获准的用户。" : "Replacing an invitation or password keeps existing access."}</p>
         {members.length > 0 && <details className="c3-room-members">
           <summary>{zh ? "已获准的用户" : "Users with access"}</summary>

@@ -34,6 +34,7 @@
     "@vitejs/plugin-react": "6.0.5",
     "@zip.js/zip.js": "2.24.0",
     "esbuild": "0.28.2",
+    "qrcode.react": "4.2.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "sdp-transform": "3.0.0",
