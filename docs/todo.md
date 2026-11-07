@@ -12,6 +12,14 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **3.0 image attachment feedback.** Trace preview and download failures in
+  Chrome at an HTTPS LAN address after opening another Browser window on the
+  same computer. The image was selected through the file picker and the sender
+  page remains open; compare its retained bytes and the receiver's delivery path.
+- [ ] **3.0 iOS/iPadOS room voice feedback.** With noise processing disabled on
+  the phone/tablet, a computer listener reports mono sound. Distinguish source
+  capture channels, processing/mixing and negotiated Opus output in the current
+  investigation. Keep the published 2.x mono contract separate.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
@@ -53,6 +61,28 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **3.0 room deletion feedback.** Internal testers cannot delete a room;
+  the current UI and runtime implement settings and hosting pause, but no delete
+  operation. Add an explicit room/domain-owner action through the existing
+  authority and storage owners. Confirm history, retained-file and offline-host
+  disposition before implementing irreversible removal; closing and reopening
+  must remain distinct from deletion. Schedule after current blocking fixes.
+- [ ] **3.0 invitation controls feedback.** Distinguish domain admission from a
+  room invitation in the UI. The user confirmed the existing 2.x-style controls:
+  public/private access, a passphrase and resetting the invitation link. Reuse
+  the current permission and settings owners; private-room settings and link
+  rotation already exist, while domain invitation copying has no such controls.
+- [ ] **3.0 forwarding limits feedback.** Add the requested room default and
+  per-endpoint override, allowing an endpoint's choice above or below the default.
+  Use the room's existing base/publication planning owner and actual resource
+  admission; distinguish logical fanout from physical pairs shared across rooms
+  and sources. Keep this separate from transplanting 2.x route fields.
+- [ ] **3.0 capture settings feedback.** Make the existing Windows process-audio
+  exclusion discoverable from sharing audio settings; it currently lives in the
+  display source picker with source sound enabled. Restore capture-border control
+  through the 3.0 capability/request/Windows capture chain; the shared picker
+  supports the control, but the 3.0 App does not advertise or carry it.
+  Schedule these feedback items after image-attachment and iOS keyboard fixes.
 - [ ] **3.0 Native platform acceptance.** Complete the remaining Linux/macOS
   device acceptance, including macOS Quit, Dock/Finder return and permissions,
   and Linux hardware encoding and physical sound. Retain the accepted
