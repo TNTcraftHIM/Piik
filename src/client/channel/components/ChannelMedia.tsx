@@ -86,6 +86,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
   const [pictureFit, setPictureFit] = useState(() => readRoomPreferences().pictureFit);
   const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
   const [previewAutoPause, setPreviewAutoPause] = useState(() => readRoomPreferences().previewAutoPause);
+  const [remoteTouchMode, setRemoteTouchMode] = useState(() => readRoomPreferences().remoteTouchMode);
   const output = useRef<ViewerAudio | null>(null);
   const [blocked, setBlocked] = useState(false);
   const [ready, setReady] = useState(false);
@@ -266,7 +267,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
       </>}
       <span className="c3-mini-space" />
       {!local && <RemoteControl channel={input ?? null} videoRef={playbackRef} available={ready && displayed.flowId === target.flowId}
-        pictureFit={pictureFit} pictureRotation={pictureRotation} />}
+        pictureFit={pictureFit} pictureRotation={pictureRotation} touchMode={remoteTouchMode} />}
       <span ref={pictureTrigger} className="lr-playback-more"><Btn icon="sliders" quiet title="playback.more" hint="hint-advanced"
         popoverTarget={pictureId} controls={pictureId} expanded={pictureOpen} /></span>
       <div ref={picturePanel} id={pictureId} popover="auto" role="dialog" aria-label={t("playback.more")}
@@ -278,6 +279,8 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
           setPictureRotation: (rotation: VideoRotation) => { setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation }); },
         }} preview={local ? { autoPause: previewAutoPause, onChange: autoPause => {
           setPreviewAutoPause(autoPause); saveRoomPreferences({ previewAutoPause: autoPause });
+        } } : undefined} remoteTouch={!local && input ? { mode: remoteTouchMode, onChange: mode => {
+          setRemoteTouchMode(mode); saveRoomPreferences({ remoteTouchMode: mode });
         } } : undefined} reconnect={null} />
       </div>
       <Btn icon={fullscreen.active ? "contract" : "expand"} quiet
