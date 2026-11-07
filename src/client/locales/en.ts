@@ -212,6 +212,8 @@ export const en: Record<CopyKey, string> = {
   "notice.dismiss": "Dismiss notice",
   "common.enable": "Enable {name}",
   "common.disable": "Disable {name}",
+  "common.increase": "Increase {name}",
+  "common.decrease": "Decrease {name}",
   "host.join.hide": "Hide room entry",
   "host.advanced.hide": "Hide sharing settings",
   "host.password.settingsHide": "Hide password settings",

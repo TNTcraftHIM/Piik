@@ -1076,7 +1076,9 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-input:is(.lr-quality-number, .lr-video-size):has(:disabled) { opacity: .55; }
 .lr-input:is(.lr-quality-number, .lr-video-size):has([aria-invalid="true"]) { border-color: var(--danger); }
 .lr-quality-validation { color: color-mix(in srgb, var(--danger) 70%, var(--ink)); font-size: 12px; line-height: 1.5; }
-.lr-input.lr-quality-number { width: 110px; gap: 6px; }
+.lr-input.lr-quality-number { width: 144px; height: 52px; padding: 1px 3px 1px 10px; gap: 6px; }
+.lr-number-steppers { display: flex; flex: none; flex-direction: column; }
+.lr-number-steppers .lr-btn { --button-size: 24px; --button-padding: 0; --button-icon-size: 14px; --control-hover-transform: none; border-radius: 7px; }
 .lr-quality-number input, .lr-video-size input { font-size: 13px; font-weight: 650; appearance: textfield; }
 .lr-quality-number input { text-align: right; }
 .lr-quality-number span, .lr-video-size span { color: var(--muted); font-size: 11px; }

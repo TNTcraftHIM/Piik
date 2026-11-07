@@ -212,6 +212,8 @@ export const zh = {
   "notice.dismiss": "关闭提示",
   "common.enable": "开启{name}",
   "common.disable": "关闭{name}",
+  "common.increase": "增大{name}",
+  "common.decrease": "减小{name}",
   "host.join.hide": "收起加入房间",
   "host.advanced.hide": "收起分享设置",
   "host.password.settingsHide": "收起密码设置",

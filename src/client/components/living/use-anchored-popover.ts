@@ -31,7 +31,10 @@ export function useAnchoredPopover(
       const left = (viewport?.offsetLeft ?? 0) + 8, top = (viewport?.offsetTop ?? 0) + 8;
       const right = left + (viewport?.width ?? view.innerWidth) - 16;
       const bottom = top + (viewport?.height ?? view.innerHeight) - 16;
-      if (!anchor.getClientRects().length || rect.bottom < top || rect.top > bottom || rect.right < left || rect.left > right) {
+      const anchorOutside = rect.bottom < top || rect.top > bottom || rect.right < left || rect.left > right;
+      // A keyboard can cover the anchor while its popover still owns input.
+      // Keep that editing surface placed in view; a removed trigger still closes it.
+      if (!anchor.getClientRects().length || (anchorOutside && !menu.contains(menu.ownerDocument.activeElement))) {
         menu.hidePopover();
         return;
       }
@@ -44,7 +47,7 @@ export function useAnchoredPopover(
       const visibleHeight = Math.min(height, minVisibleHeight);
       const openAbove = side === "above" ? above >= visibleHeight || above > below : below < visibleHeight && above > below;
       const beside = openAbove ? above : below;
-      menu.style.maxHeight = `${Math.min(maxHeight, beside >= visibleHeight ? beside : bottom - top)}px`;
+      menu.style.maxHeight = `${Math.min(maxHeight, bottom - top, beside >= visibleHeight ? beside : bottom - top)}px`;
       menu.classList.toggle("is-above", openAbove);
       const x = align === "center" ? rect.left + (rect.width - menu.offsetWidth) / 2 : rect.right - menu.offsetWidth;
       menu.style.left = `${Math.max(left, Math.min(x, right - menu.offsetWidth))}px`;
