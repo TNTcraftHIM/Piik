@@ -683,6 +683,8 @@ enum Operation {
         audio: bool,
         #[serde(default)]
         exclude_audio: Option<Target>,
+        #[serde(default)]
+        show_capture_border: bool,
     },
     CommitCapture {
         publication_id: Uuid,
@@ -1059,6 +1061,7 @@ async fn connection(
                                 audio_settings,
                                 audio,
                                 exclude_audio,
+                                show_capture_border,
                             } => match &host {
                                 Some(commands) => {
                                     let capture = captures.entry(publication_id).or_default();
@@ -1086,6 +1089,7 @@ async fn connection(
                                                         audio_settings,
                                                         audio,
                                                         exclude_audio,
+                                                        show_capture_border,
                                                         replaces,
                                                     ),
                                                     registration,
@@ -1455,7 +1459,7 @@ async fn capture_targets() -> Result<Value> {
                 piik_channel_native::capture::targets()?
             };
             let audio = piik_channel_native::capture::audio_capabilities();
-            let mut result = json!({"sources": sources, "codecs": codecs, "processAudio": audio.process_audio, "processAudioExclusion": audio.process_audio_exclusion, "systemAudio": audio.system_audio});
+            let mut result = json!({"sources": sources, "codecs": codecs, "processAudio": audio.process_audio, "processAudioExclusion": audio.process_audio_exclusion, "systemAudio": audio.system_audio, "captureBorderControl": piik_channel_native::capture::capture_border_control()});
             if let Some(activation) = piik_channel_native::capture::activation_url()? {
                 result["activationURL"] = json!(activation);
             }
@@ -1465,7 +1469,7 @@ async fn capture_targets() -> Result<Value> {
     #[cfg(not(feature = "capture"))]
     {
         Ok(
-            json!({"sources": [], "codecs": [], "processAudio": false, "processAudioExclusion": false, "systemAudio": false}),
+            json!({"sources": [], "codecs": [], "processAudio": false, "processAudioExclusion": false, "systemAudio": false, "captureBorderControl": false}),
         )
     }
 }
@@ -1480,6 +1484,7 @@ async fn prepare_capture(
     audio_settings: SourceAudioSettings,
     audio: bool,
     exclude_audio: Option<Target>,
+    show_capture_border: bool,
     replaces: Option<Uuid>,
 ) -> Result<CaptureResult> {
     if !cfg!(feature = "capture") {
@@ -1497,6 +1502,7 @@ async fn prepare_capture(
             codec_mode,
             audio,
             exclude_audio,
+            show_capture_border,
             replaces,
             result,
         }))
@@ -1858,6 +1864,7 @@ mod tests {
             "settings": {"width": 1280, "height": 720, "fps": 24, "bitrate": 2_500_000},
             "audioSettings": {"bitrate":192000,"gain":0.5},
             "audio": true,
+            "showCaptureBorder": true,
             "excludeAudio": {"kind":"window","sourceId":"2","title":"Excluded app","pid":42,"creationTime":"1234"}
         });
         let request: Request = serde_json::from_value(wire.clone()).unwrap();
@@ -1870,6 +1877,7 @@ mod tests {
             audio_settings,
             audio,
             exclude_audio,
+            show_capture_border,
         } = request.operation
         else {
             panic!("expected capture request");
@@ -1893,6 +1901,7 @@ mod tests {
             audio_settings,
             audio,
             exclude_audio,
+            show_capture_border,
             None,
         );
         let host = async {
@@ -1902,6 +1911,7 @@ mod tests {
             assert_eq!(request.publication_id, publication);
             assert_eq!(request.room_id, "room");
             assert!(request.audio);
+            assert!(request.show_capture_border);
             assert_eq!(request.codec_mode, VideoCodecMode::Vp8);
             assert_eq!(
                 serde_json::to_value(request.exclude_audio).unwrap(),
@@ -1931,6 +1941,7 @@ mod tests {
             SourceAudioSettings::default(),
             false,
             None,
+            false,
             None,
         )
         .await

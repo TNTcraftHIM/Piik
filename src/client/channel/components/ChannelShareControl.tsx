@@ -131,10 +131,10 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
       {open && <CaptureSourcePicker nativeSources={pickerSources} browserSupported={browserSupported} cameraSupported={cameraSupported}
         loadCameras={channel.cameraPreviews}
         initialTab="window" selectionDisabled={disabled || busy || qualityPending || microphonePending}
-        initialAudio={selectedNative?.audio} initialExcludeAudio={selectedNative?.excludeAudio}
+        initialAudio={selectedNative?.audio} initialExcludeAudio={selectedNative?.excludeAudio} initialShowCaptureBorder={selectedNative?.showCaptureBorder}
         onBrowser={() => start(() => startScreen(roomId))}
         onCamera={deviceId => start(() => startScreen(roomId, "camera", deviceId))}
-        onNative={(target, audio, _border, excludeAudio) => start(() => startNativeScreen(roomId, target, audio, excludeAudio))}
+        onNative={(target, audio, border, excludeAudio) => start(() => startNativeScreen(roomId, target, audio, excludeAudio, border))}
         onPreview={channel.nativePreview} onRefresh={refresh} onCancel={() => {
           close(); trigger.current?.querySelector("button")?.focus({ preventScroll: true });
         }} />}

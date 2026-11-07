@@ -112,6 +112,7 @@ fn projection_capture(result: oneshot::Sender<Result<CaptureLease, String>>) -> 
         },
         codec_mode: crate::capture::VideoCodecMode::Vp8,
         audio: false,
+        show_capture_border: false,
         exclude_audio: None,
         replaces: None,
         result,

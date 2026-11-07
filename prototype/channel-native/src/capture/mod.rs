@@ -16,6 +16,13 @@ pub fn activation_url() -> anyhow::Result<Option<String>> {
     #[cfg(not(all(feature = "capture", target_os = "android")))]
     Ok(None)
 }
+
+pub fn capture_border_control() -> bool {
+    #[cfg(all(feature = "capture", target_os = "windows"))]
+    return windows::capture_border_control();
+    #[cfg(not(all(feature = "capture", target_os = "windows")))]
+    false
+}
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod audio;
 #[cfg(any(feature = "capture", test))]

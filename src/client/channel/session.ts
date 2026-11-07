@@ -49,7 +49,7 @@ interface ScreenShare {
   requestedProfile?: QualityProfile;
   qualityChange?: Promise<void>;
   selection?: AbortController;
-  native?: { audio: boolean; excludeAudio?: NativeCaptureTarget };
+  native?: { audio: boolean; excludeAudio?: NativeCaptureTarget; showCaptureBorder: boolean };
 }
 
 function stored(key: string, value?: string): string | null {
@@ -1578,10 +1578,10 @@ export class ChannelSession {
     }).finally(() => { share.audioChange = undefined; this.patch({}); });
     return share.audioChange;
   };
-  startNativeScreen = (roomId: string, target: NativeCaptureTarget, audio = false, excludeAudio?: NativeCaptureTarget): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  startNativeScreen = (roomId: string, target: NativeCaptureTarget, audio = false, excludeAudio?: NativeCaptureTarget, showCaptureBorder = false): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const { share, current } = this.selectScreen(roomId);
     const signal = share.selection!.signal;
-    const native = { audio, excludeAudio: target.kind === "display" ? excludeAudio : undefined };
+    const native = { audio, excludeAudio: target.kind === "display" ? excludeAudio : undefined, showCaptureBorder };
     let app: ChannelApp | undefined;
     try {
       app = await this.connectApp();
@@ -1589,7 +1589,7 @@ export class ChannelSession {
       const codecMode = share.codec?.primary ?? (share.codecMode === "auto"
         && app.supportsCaptureCodec("vp8") && !supportsH264Receive() ? "vp8" : share.codecMode);
       const preparing = app.prepareCapture(share.id, roomId, target, audio, share.profile, codecMode,
-        audio ? native.excludeAudio : undefined, share.volume.muted ? 0 : share.volume.level);
+        audio ? native.excludeAudio : undefined, share.volume.muted ? 0 : share.volume.level, showCaptureBorder);
       this.patch({});
       const prepared = await preparing;
       if (!current() || this.app !== app) throw new DOMException("Capture cancelled", "AbortError");

@@ -1111,7 +1111,7 @@ test.each([
     const target = { kind: "display" as const, sourceId: "1", title: "Owned fixture" };
     const listing = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
-    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs, processAudio: false, systemAudio: false } });
+    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs, processAudio: false, systemAudio: false, captureBorderControl: false } });
     await listing;
     const selecting = session.startNativeScreen("first", target).catch(error => error);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
@@ -1683,7 +1683,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
     const activationURL = "intent://media#Intent;scheme=piik;package=tv.piik.android.test;end";
     const excluded = { kind: "window" as const, sourceId: "2", title: "Room voice browser", pid: 42, creationTime: "1234" };
-    const sources = { sources: [target, excluded], codecs: ["h264", "vp8"], processAudio: true, processAudioExclusion: true, systemAudio: true, activationURL };
+    const sources = { sources: [target, excluded], codecs: ["h264", "vp8"], processAudio: true, processAudioExclusion: true, systemAudio: true, captureBorderControl: true, activationURL };
     app.receive({ id: app.sent.at(-1)!.id, result: sources });
     await expect(listing).resolves.toEqual(sources);
     const abort = new AbortController();
@@ -1696,10 +1696,10 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await Promise.resolve();
     expect(app.sent.filter(command => command.type === "preview")).toHaveLength(1);
-    const starting = session.startNativeScreen("first", target, true, excluded);
+    const starting = session.startNativeScreen("first", target, true, excluded, true);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const publicationId = app.sent.at(-1)!.publicationId as string;
-    expect(app.sent.at(-1)).toMatchObject({ type: "prepare_capture", publicationId, roomId: "first", target, audio: true, excludeAudio: excluded });
+    expect(app.sent.at(-1)).toMatchObject({ type: "prepare_capture", publicationId, roomId: "first", target, audio: true, excludeAudio: excluded, showCaptureBorder: true });
     expect(session.nativeCaptureSelection("first")).toBeUndefined();
     expect(session.nativeCaptureRequest("first")).toEqual({ publicationId, activationURL });
     const captureId = crypto.randomUUID(), nativeSessionId = crypto.randomUUID();
@@ -1723,7 +1723,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     await starting;
     expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
     expect(session.getSnapshot().state?.subscriptions).toEqual([publicationId]);
-    expect(session.nativeCaptureSelection("first")).toEqual({ audio: true, excludeAudio: excluded });
+    expect(session.nativeCaptureSelection("first")).toEqual({ audio: true, excludeAudio: excluded, showCaptureBorder: true });
 
     const microphone = { enabled: false, deviceId: "", volume: 1 };
     app.receive({ type: "capture_audio_state", publicationId, state: { sourceAudio: true, microphone } });
@@ -1732,13 +1732,13 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     for (const error of ["capture_cancelled", "capture_failed"]) {
       const replacement = session.startNativeScreen("first", target, false).catch(error => error);
       await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
-      expect(session.nativeCaptureSelection("first")).toEqual({ audio: true, excludeAudio: excluded });
+      expect(session.nativeCaptureSelection("first")).toEqual({ audio: true, excludeAudio: excluded, showCaptureBorder: true });
       app.receive({ id: app.sent.at(-1)!.id, error });
       await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("cancel_capture"));
       app.receive({ id: app.sent.at(-1)!.id, result: null });
       expect(await replacement).toMatchObject(error === "capture_cancelled" ? { name: "AbortError" } : { message: error });
       expect(session.sourceAudio(publicationId)).toMatchObject({ hasAudio: true, available: true });
-      expect(session.nativeCaptureSelection("first")).toEqual({ audio: true, excludeAudio: excluded });
+      expect(session.nativeCaptureSelection("first")).toEqual({ audio: true, excludeAudio: excluded, showCaptureBorder: true });
       expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
       expect(session.getSnapshot().error).toBe(error === "capture_cancelled" ? null : error);
     }
@@ -2000,7 +2000,7 @@ test.each([
     const target = { kind: "picker" as const, sourceId: "1", title: "System picker" };
     const sources = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
-    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs: ["h264"], processAudio: false, systemAudio: false, activationURL: "piik://media" } });
+    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs: ["h264"], processAudio: false, systemAudio: false, captureBorderControl: false, activationURL: "piik://media" } });
     await sources;
     const nativeSessionId = crypto.randomUUID(), oldCaptureId = crypto.randomUUID(), captureId = crypto.randomUUID();
     const starting = session.startNativeScreen("first", target);
@@ -2096,7 +2096,7 @@ test("pending Native capture stays page-owned through same-page stop and close",
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
     const target = { kind: "display" as const, sourceId: "1", title: "Test display" };
     const activationURL = "intent://media#Intent;scheme=piik;package=tv.piik.android.test;end";
-    const sources = { sources: [target], codecs: ["h264", "vp8"], processAudio: false, processAudioExclusion: false, systemAudio: true, activationURL };
+    const sources = { sources: [target], codecs: ["h264", "vp8"], processAudio: false, processAudioExclusion: false, systemAudio: true, captureBorderControl: false, activationURL };
     const capabilities = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
     app.receive({ id: app.sent.at(-1)!.id, result: sources });

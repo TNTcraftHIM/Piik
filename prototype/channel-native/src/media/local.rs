@@ -161,6 +161,7 @@ impl Producer {
         audio_control: AudioControl,
         audio: bool,
         exclude_audio: Option<Target>,
+        show_capture_border: bool,
         ready_sources: mpsc::Sender<SourceReady>,
         events: mpsc::Sender<Event>,
         cancelled: watch::Receiver<bool>,
@@ -175,7 +176,14 @@ impl Producer {
         let now = Instant::now();
         let clock = SystemInstant::now(now);
         anyhow::ensure!(mode.initial().supported(), "capture_codec_unsupported");
-        let capture = Capture::start(target.clone(), settings.fps, audio).inspect_err(|error| {
+        #[cfg(target_os = "windows")]
+        let capture = Capture::start(target.clone(), settings.fps, audio, show_capture_border);
+        #[cfg(not(target_os = "windows"))]
+        let capture = {
+            let _ = show_capture_border;
+            Capture::start(target.clone(), settings.fps, audio)
+        };
+        let capture = capture.inspect_err(|error| {
             log::warn!(target: "piik.capture", "Capture startup failed: {error:#}");
         })?;
         let video_control = capture.control();

@@ -32,7 +32,7 @@ export const nativeConnectionMetricsSchema = z.object({
 export type NativeConnectionMetrics = z.infer<typeof nativeConnectionMetricsSchema>;
 const captureSourcesSchema = z.object({ sources: z.array(nativeCaptureTargetSchema),
   codecs: z.array(nativeVideoCodecSchema),
-  processAudio: z.boolean(), processAudioExclusion: z.boolean().default(false), systemAudio: z.boolean(), activationURL: z.string().url().max(512).optional() }).strict();
+  processAudio: z.boolean(), processAudioExclusion: z.boolean().default(false), systemAudio: z.boolean(), captureBorderControl: z.boolean(), activationURL: z.string().url().max(512).optional() }).strict();
 export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
 export type NativeCaptureRequest = { publicationId: string; activationURL: string };
 const preparedCaptureSchema = z.object({ captureId: z.uuid(), sessionId: z.uuid(), codec: nativeVideoCodecSchema }).strict();
@@ -225,14 +225,14 @@ export class ChannelApp {
     return preview;
   }
 
-  async prepareCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio: boolean, profile: QualityProfile, codecMode: BrowserVideoCodecMode, excludeAudio?: NativeCaptureTarget, gain = 1): Promise<PreparedNativeCapture> {
+  async prepareCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio: boolean, profile: QualityProfile, codecMode: BrowserVideoCodecMode, excludeAudio?: NativeCaptureTarget, gain = 1, showCaptureBorder = false): Promise<PreparedNativeCapture> {
     const settings = { width: profile.resolution.width, height: profile.resolution.height,
       fps: profile.maxFramerate, bitrate: profile.maxBitrate };
     if (!this.connected) throw new Error("app_disconnected");
     if (excludeAudio && (!audio || target.kind !== "display" || excludeAudio.kind !== "window" || !this.processAudioExclusion)) throw new Error("audio exclusion unavailable");
     this.prepared.add(publicationId);
     try {
-      const pending = this.request({ type: "prepare_capture", publicationId, roomId, target, audio, settings, codecMode,
+      const pending = this.request({ type: "prepare_capture", publicationId, roomId, target, audio, settings, codecMode, showCaptureBorder,
         audioSettings: { bitrate: profile.maxAudioBitrate ?? 128_000, gain }, ...(excludeAudio ? { excludeAudio } : {}) });
       activateNativePicker(this.activationURL);
       const capture = preparedCaptureSchema.parse(await pending);

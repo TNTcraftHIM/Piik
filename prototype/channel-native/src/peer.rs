@@ -201,6 +201,8 @@ pub struct CaptureInput {
 struct Capture {
     scope: CaptureScope,
     target: crate::capture::Target,
+    #[cfg(target_os = "windows")]
+    show_capture_border: bool,
     producer: crate::media::local::Producer,
     selected: bool,
     prepared: Vec<SourceReady>,
@@ -407,6 +409,7 @@ enum Input {
         crate::capture::VideoCodecMode,
         bool,
         Option<crate::capture::Target>,
+        bool,
         oneshot::Sender<Result<CaptureLease>>,
     ),
     CommitCapture(Uuid, oneshot::Sender<Result<CaptureInput>>),
@@ -766,6 +769,7 @@ impl NativePeers {
                             mode,
                             audio,
                             exclude_audio,
+                            show_capture_border,
                             done,
                         )) => {
                             let _ = done.send(
@@ -777,6 +781,7 @@ impl NativePeers {
                                     mode,
                                     audio,
                                     exclude_audio,
+                                    show_capture_border,
                                 )
                                 .await,
                             );
@@ -976,6 +981,7 @@ impl NativePeers {
         mode: crate::capture::VideoCodecMode,
         audio: bool,
         exclude_audio: Option<crate::capture::Target>,
+        show_capture_border: bool,
     ) -> Result<CaptureLease> {
         #[cfg(feature = "capture")]
         {
@@ -989,6 +995,7 @@ impl NativePeers {
                     mode,
                     audio,
                     exclude_audio,
+                    show_capture_border,
                     tx,
                 ))
                 .await?;
@@ -1004,6 +1011,7 @@ impl NativePeers {
                 mode,
                 audio,
                 exclude_audio,
+                show_capture_border,
             );
             anyhow::bail!("capture_unavailable")
         }
@@ -1257,6 +1265,7 @@ impl Driver {
         mode: crate::capture::VideoCodecMode,
         audio: bool,
         exclude_audio: Option<crate::capture::Target>,
+        show_capture_border: bool,
     ) -> Result<CaptureLease> {
         let publication = scope.publication_id;
         self.cancelled_audio().await;
@@ -1330,6 +1339,7 @@ impl Driver {
                 capture.scope.publication_id == publication
                     && capture.selected
                     && capture.target.same_source(&target)
+                    && capture.show_capture_border == show_capture_border
                     && capture.producer.settings() == settings
                     && capture.producer.control.codec.get().is_some_and(|codec| {
                         mode == crate::capture::VideoCodecMode::Auto || *codec == mode.initial()
@@ -1374,6 +1384,7 @@ impl Driver {
             mixer.clone(),
             audio,
             exclude_audio,
+            show_capture_border,
             self.ready_sources.clone(),
             self.events.clone(),
             self.cancel.clone(),
@@ -1404,6 +1415,8 @@ impl Driver {
             Capture {
                 scope,
                 target,
+                #[cfg(target_os = "windows")]
+                show_capture_border,
                 producer,
                 selected: false,
                 prepared: Vec::new(),

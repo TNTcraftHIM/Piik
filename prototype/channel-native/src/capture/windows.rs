@@ -18,6 +18,9 @@ use std::{
 };
 use windows::{
     core::Interface,
+    Foundation::Metadata::ApiInformation,
+    Graphics::Capture::{GraphicsCaptureAccess, GraphicsCaptureAccessKind},
+    Security::Authorization::AppCapabilityAccess::AppCapabilityAccessStatus,
     Win32::{
         Foundation::{CloseHandle, FILETIME, HANDLE, HWND},
         Graphics::{Direct3D11::*, Dxgi::Common::*},
@@ -33,7 +36,7 @@ use windows_capture::{
         GraphicsCaptureApiHandler,
     },
     frame::Frame,
-    graphics_capture_api::InternalCaptureControl,
+    graphics_capture_api::{GraphicsCaptureApi, InternalCaptureControl},
     monitor::Monitor,
     settings::{
         CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings,
@@ -52,16 +55,22 @@ impl Capture {
         super::AudioCapture::start(target)
     }
 
-    pub fn start(target: Target, fps: u32, _audio: bool) -> Result<Self> {
+    pub fn start(
+        target: Target,
+        fps: u32,
+        _audio: bool,
+        show_capture_border: bool,
+    ) -> Result<Self> {
         ensure!(fps > 0, "capture fps must be positive");
         let frames = Frames::new(FrameTiming::Capture)?;
         let worker = frames.shared.clone();
         let fps = Arc::new(AtomicU32::new(fps));
         let rate = fps.clone();
+        let runtime = tokio::runtime::Handle::current();
         let thread = thread::Builder::new()
             .name("piik-capture".into())
             .spawn(move || {
-                let result = run(target, rate, worker.clone());
+                let result = run(target, rate, worker.clone(), show_capture_border, runtime);
                 worker.stop(result.as_ref().err().map(|error| format!("{error:#}")));
                 result
             })?;
@@ -202,7 +211,62 @@ impl TryInto<windows_capture::settings::GraphicsCaptureItemType> for Target {
         }
     }
 }
-fn run(target: Target, fps: Arc<AtomicU32>, shared: Arc<Shared>) -> Result<()> {
+pub fn capture_border_control() -> bool {
+    GraphicsCaptureApi::is_border_settings_supported().unwrap_or(false)
+        && ApiInformation::IsMethodPresent(
+            &"Windows.Graphics.Capture.GraphicsCaptureAccess".into(),
+            &"RequestAccessAsync".into(),
+        )
+        .unwrap_or(false)
+}
+
+fn border_settings(
+    show: bool,
+    control: &Control,
+    runtime: &tokio::runtime::Handle,
+) -> DrawBorderSettings {
+    if !capture_border_control() {
+        return DrawBorderSettings::Default;
+    }
+    if show {
+        return DrawBorderSettings::WithBorder;
+    }
+    let access =
+        match GraphicsCaptureAccess::RequestAccessAsync(GraphicsCaptureAccessKind::Borderless) {
+            Ok(access) => access,
+            Err(error) => {
+                log::warn!(target: "piik.capture", "Borderless capture access failed: {error}");
+                return DrawBorderSettings::Default;
+            }
+        };
+    let result = runtime.block_on(async {
+        tokio::select! {
+            biased;
+            _ = control.stopped() => {
+                let _ = access.Cancel();
+                None
+            },
+            result = async { access.clone().await } => Some(result),
+        }
+    });
+    match result {
+        Some(Ok(AppCapabilityAccessStatus::Allowed)) => DrawBorderSettings::WithoutBorder,
+        Some(Err(error)) => {
+            log::warn!(target: "piik.capture", "Borderless capture access failed: {error}");
+            DrawBorderSettings::Default
+        }
+        _ => DrawBorderSettings::Default,
+    }
+}
+
+fn run(
+    target: Target,
+    fps: Arc<AtomicU32>,
+    shared: Arc<Shared>,
+    show_capture_border: bool,
+    runtime: tokio::runtime::Handle,
+) -> Result<()> {
+    let border = border_settings(show_capture_border, &Control(shared.clone()), &runtime);
     let mut recovering = None;
     while !shared.state.lock().unwrap().stop {
         let mut display = DisplayColor::new(&target)?;
@@ -210,7 +274,7 @@ fn run(target: Target, fps: Arc<AtomicU32>, shared: Arc<Shared>) -> Result<()> {
         let capture = match Wgc::start_free_threaded(WgcSettings::new(
             target.clone(),
             CursorCaptureSettings::Default,
-            DrawBorderSettings::Default,
+            border,
             SecondaryWindowSettings::Default,
             MinimumUpdateIntervalSettings::Default,
             DirtyRegionSettings::Default,
