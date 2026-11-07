@@ -109,7 +109,6 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
                     session_id: *session,
                     user_id: channel.identity.sessions[session].user_id,
                     kind,
-                    muted: false,
                     paused: false,
                     video_ceiling: (kind == Kind::Screen).then_some(VideoCeiling {
                         resolution: VideoResolution {

@@ -74,7 +74,6 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
                         id: publication,
                         room_id: "review".into(),
                         kind: Kind::Screen,
-                        muted: false,
                         video_ceiling: Some(VideoCeiling {
                             resolution: VideoResolution {
                                 width: 1280,
@@ -579,7 +578,6 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
                     id: publication,
                     room_id: "concurrent-review".into(),
                     kind: Kind::Screen,
-                    muted: false,
                     video_ceiling: Some(VideoCeiling {
                         resolution: VideoResolution {
                             width: 1280,
@@ -739,7 +737,6 @@ fn host_projection_rejects_conflicting_flow_identity_and_input_ownership() {
                             id: publication,
                             room_id: room.into(),
                             kind: Kind::Screen,
-                            muted: false,
                             video_ceiling: Some(VideoCeiling {
                                 resolution: VideoResolution {
                                     width: 1280,
@@ -967,7 +964,6 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
                     id: publication,
                     room_id: room_id.into(),
                     kind: Kind::Screen,
-                    muted: false,
                     video_ceiling: Some(VideoCeiling {
                         resolution: VideoResolution {
                             width: 1280,

@@ -508,7 +508,6 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                     session_id,
                     user_id: user,
                     kind: Kind::Screen,
-                    muted: false,
                     paused: false,
                     video_ceiling: Some(Settings { width: 640, height: 360, fps: 30, bitrate: 5_000_000 }.into()),
                 })

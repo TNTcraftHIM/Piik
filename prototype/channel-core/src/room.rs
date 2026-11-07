@@ -360,25 +360,17 @@ impl RoomRuntime {
         session: Uuid,
         id: Uuid,
         kind: Kind,
-        muted: bool,
         video_ceiling: Option<VideoCeiling>,
     ) -> Result<(), &'static str> {
         self.authorize(member, RoomPermission::Write)?;
         validate_video_ceiling(kind, video_ceiling)?;
-        let muted = if kind == Kind::Voice {
-            self.activity
-                .get(&session)
-                .and_then(|activity| activity.voice.as_ref())
-                .ok_or("voice_not_joined")?
-                .muted
-        } else {
-            muted
-        };
+        if kind == Kind::Voice && !self.voice_joined(session) {
+            return Err("voice_not_joined");
+        }
         if let Some(publication) = self.publications.get_mut(&id) {
             if publication.info.session_id != session || publication.info.kind != kind {
                 return Err("publication_identity_conflict");
             }
-            publication.info.muted = muted;
             publication.info.video_ceiling = video_ceiling;
         } else {
             if self.publications.values().any(|publication| {
@@ -394,7 +386,6 @@ impl RoomRuntime {
                     session_id: session,
                     user_id: member.user_id,
                     kind,
-                    muted,
                     paused: false,
                     video_ceiling,
                 }),
@@ -548,11 +539,6 @@ impl RoomRuntime {
         self.publications.retain(|_, publication| {
             publication.info.session_id != session || publication.info.kind != Kind::Voice || joined
         });
-        for publication in self.publications.values_mut().filter(|publication| {
-            publication.info.session_id == session && publication.info.kind == Kind::Voice
-        }) {
-            publication.info.muted = muted;
-        }
         Ok(())
     }
 
@@ -1169,7 +1155,6 @@ mod tests {
             id(3),
             publication,
             Kind::Screen,
-            false,
             screen_ceiling(),
         )
         .unwrap();
@@ -1339,7 +1324,7 @@ mod tests {
         let deadline = room.next_route_deadline();
         let mut ceiling = screen_ceiling().unwrap();
         ceiling.max_framerate = 59.94;
-        room.publish(member, id(3), id(10), Kind::Screen, false, Some(ceiling))
+        room.publish(member, id(3), id(10), Kind::Screen, Some(ceiling))
             .unwrap();
         assert_eq!(
             room.publication(id(10)).unwrap().video_ceiling,
@@ -1351,16 +1336,20 @@ mod tests {
         );
         assert_eq!(room.next_route_deadline(), deadline);
         room.set_paused(id(3), id(10), true).unwrap();
-        room.publish(member, id(3), id(10), Kind::Screen, false, Some(ceiling))
+        room.publish(member, id(3), id(10), Kind::Screen, Some(ceiling))
             .unwrap();
         assert!(room.publication(id(10)).unwrap().paused);
         assert_eq!(
-            room.publish(member, id(3), id(10), Kind::Screen, false, None),
+            room.publish(member, id(3), id(10), Kind::Screen, None),
             Err("invalid_video_ceiling")
         );
         assert_eq!(
-            room.publish(member, id(3), id(11), Kind::Voice, false, Some(ceiling)),
+            room.publish(member, id(3), id(11), Kind::Voice, Some(ceiling)),
             Err("invalid_video_ceiling")
+        );
+        assert_eq!(
+            room.publish(member, id(3), id(11), Kind::Voice, None),
+            Err("voice_not_joined")
         );
         endpoints.get_mut(&id(4)).unwrap().member = member;
         room.transfer_source(member, id(3), id(10), id(4), &endpoints)
@@ -1553,7 +1542,6 @@ mod tests {
                 id(1),
                 id(10),
                 Kind::Screen,
-                false,
                 screen_ceiling(),
             )
             .unwrap();
@@ -1575,7 +1563,6 @@ mod tests {
                     id(3),
                     id(11),
                     Kind::Screen,
-                    false,
                     screen_ceiling(),
                 )
                 .unwrap();
@@ -1708,7 +1695,7 @@ mod tests {
             Err("forbidden")
         );
         endpoints.get_mut(&id(5)).unwrap().member = source;
-        room.publish(source, id(5), id(11), Kind::Screen, false, screen_ceiling())
+        room.publish(source, id(5), id(11), Kind::Screen, screen_ceiling())
             .unwrap();
         assert_eq!(
             room.transfer_source(source, id(3), id(10), id(5), &endpoints),
@@ -1734,7 +1721,7 @@ mod tests {
             room.set_voice(endpoints[&session].member, session, true, false, false)
                 .unwrap();
         }
-        room.publish(source, id(3), id(11), Kind::Voice, false, None)
+        room.publish(source, id(3), id(11), Kind::Voice, None)
             .unwrap();
         for now in 1..=3 {
             room.reconcile(&endpoints, now);
@@ -1958,15 +1945,8 @@ mod tests {
             room.set_voice(endpoints[&session].member, session, true, false, false)
                 .unwrap();
         }
-        room.publish(
-            endpoints[&id(3)].member,
-            id(3),
-            id(11),
-            Kind::Voice,
-            false,
-            None,
-        )
-        .unwrap();
+        room.publish(endpoints[&id(3)].member, id(3), id(11), Kind::Voice, None)
+            .unwrap();
         room.reconcile(&endpoints, 0);
         let picture: Vec<_> = room
             .flows()
@@ -2299,13 +2279,12 @@ mod tests {
             owner_session,
             picture,
             Kind::Screen,
-            false,
             screen_ceiling(),
         )
         .unwrap();
         room.set_voice(owner, owner_session, true, false, false)
             .unwrap();
-        room.publish(owner, owner_session, voice, Kind::Voice, false, None)
+        room.publish(owner, owner_session, voice, Kind::Voice, None)
             .unwrap();
         room.set_voice(viewer, viewer_session, true, false, false)
             .unwrap();

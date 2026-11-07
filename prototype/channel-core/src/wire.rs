@@ -246,7 +246,6 @@ pub struct PublicationInput {
     pub id: Uuid,
     pub room_id: String,
     pub kind: Kind,
-    pub muted: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub video_ceiling: Option<VideoCeiling>,
 }
@@ -337,7 +336,6 @@ fn video_ceiling_preserves_fractional_fps_and_rejects_invalid_source_facts() {
         id: Uuid::new_v4(),
         room_id: "room".into(),
         kind: Kind::Voice,
-        muted: false,
         video_ceiling: None,
     };
     assert!(serde_json::to_value(input)
@@ -543,7 +541,6 @@ pub struct PublicationInfo {
     pub session_id: Uuid,
     pub user_id: Uuid,
     pub kind: Kind,
-    pub muted: bool,
     pub paused: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub video_ceiling: Option<VideoCeiling>,

@@ -336,7 +336,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         max_framerate: 30.0,
         max_bitrate: 5_000_000,
     };
-    operator.request(&mut hub, json!({"type":"publish", "publication":{"id":publication,"roomId":"hosted","kind":"screen","muted":false,"videoCeiling":ceiling}}));
+    operator.request(&mut hub, json!({"type":"publish", "publication":{"id":publication,"roomId":"hosted","kind":"screen","videoCeiling":ceiling}}));
     let output = complete_host_turn(&mut hub, &mut operator, &mut host, &mut room_store);
     assert!(matches!(output.reply.unwrap().result, RoomResult::Done));
     viewer.request(

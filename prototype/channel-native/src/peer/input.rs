@@ -373,7 +373,6 @@ mod tests {
                 session_id: id(1),
                 user_id: id(1),
                 kind: Kind::Screen,
-                muted: false,
                 paused: false,
                 video_ceiling: Some(
                     crate::capture::Settings {

@@ -1189,7 +1189,6 @@ impl Session {
                     id: request.scope.publication_id,
                     room_id: request.scope.room_id.clone(),
                     kind: Kind::Screen,
-                    muted: false,
                     video_ceiling: request.video_ceiling,
                 },
             }
@@ -1328,7 +1327,6 @@ impl Session {
                 id: request.scope.publication_id,
                 room_id: request.scope.room_id.clone(),
                 kind: Kind::Screen,
-                muted: publication.muted,
                 video_ceiling: Some(request.ceiling),
             },
         };
@@ -1368,7 +1366,6 @@ impl Session {
                     id: publication_id,
                     room_id: request.scope.room_id.clone(),
                     kind: Kind::Screen,
-                    muted: publication.muted,
                     video_ceiling: request.video_ceiling,
                 },
             };

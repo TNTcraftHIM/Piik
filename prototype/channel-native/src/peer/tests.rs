@@ -187,7 +187,7 @@ fn capture_scope_survives_host_signaling_recovery_but_not_retired_authority() {
         binding_id: binding,
     };
     assert!(scope.is_current(state(&registered, native_connection)));
-    let publish = json!({"type":"publish","publication":{"id":scope.publication_id,"roomId":"capture","kind":"screen","muted":false,
+    let publish = json!({"type":"publish","publication":{"id":scope.publication_id,"roomId":"capture","kind":"screen",
         "videoCeiling":{"resolution":{"width":640,"height":360},"maxFramerate":30,"maxBitrate":5_000_000}}});
     let published = send(&mut core, native_connection, publish.clone(), 3);
     finish(&mut core, &mut host, host_connection, published, 3);

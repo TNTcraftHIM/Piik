@@ -238,7 +238,6 @@ impl RoomRuntime {
                 session,
                 publication.id,
                 publication.kind,
-                publication.muted,
                 publication.video_ceiling,
             )?,
             Command::Unpublish { publication_id } => {

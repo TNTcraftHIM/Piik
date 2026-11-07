@@ -911,7 +911,6 @@ impl Channel {
                 publication.session_id,
                 publication.user_id,
                 publication.kind,
-                publication.muted,
                 publication.video_ceiling,
             );
             if publications

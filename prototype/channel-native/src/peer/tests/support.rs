@@ -92,7 +92,6 @@ impl Fixture {
             session_id: Uuid::new_v4(),
             user_id: Uuid::new_v4(),
             kind: Kind::Screen,
-            muted: false,
             paused: false,
             video_ceiling: Some(
                 crate::capture::Settings {
