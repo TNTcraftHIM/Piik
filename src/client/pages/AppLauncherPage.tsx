@@ -6,13 +6,13 @@ import { HintComic } from "../components/living/hints";
 import { LoadingStatus } from "../components/living/WaitingStatus";
 import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
 import { AppHeader } from "../components/living/Header";
-import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
+import { LauncherForm } from "../components/living/LauncherForm";
 import { Btn, Pill } from "../components/living/primitives";
 import { hasCopyPreference, isCopyKey, useCopy } from "../ui/copy";
 import { consoleLanguage } from "../locales";
 import { Glyph } from "../ui/icons";
 import { currentThemePreference, subscribeTheme } from "../ui/theme";
-import { clientLaunchURL, type ClientLaunchPresentation } from "../lib/app-launch";
+import { clientLaunchURL, readPreferredAppMode, savePreferredAppMode, type AppMode, type ClientLaunchPresentation } from "../lib/app-launch";
 import type { AppReleaseIdentity } from "../lib/release-update";
 import { useReleaseUpdate } from "../lib/use-release-update";
 import { downloadBlob } from "../lib/download";
@@ -43,7 +43,7 @@ export function AppLauncherPage() {
   useSyncExternalStore(subscribeTheme, currentThemePreference);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
-  const [mode, setMode] = useState<AppMode>("link");
+  const [mode, setMode] = useState<AppMode>(readPreferredAppMode);
   const [sites, setSites] = useState<string[]>([]);
   const [startupSite, setStartupSite] = useState("");
   const [openOnApproval, setOpenOnApproval] = useState(false);
@@ -187,6 +187,11 @@ export function AppLauncherPage() {
       ],
     };
     return clientLaunchURL(target, presentation, appDebug === true, controlPort);
+  }
+
+  function changeMode(next: AppMode): void {
+    setMode(next);
+    savePreferredAppMode(next);
   }
 
   async function launch(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -361,7 +366,7 @@ export function AppLauncherPage() {
             }}
             startupSite={startupSite}
             onToggleStartupSite={site => void changeSite(startupSite === site ? "" : site, "startup-site")}
-            onModeChange={setMode}
+            onModeChange={changeMode}
             onRemoveSite={site => void changeSite(site, "site", false, false)}
             siteBusy={siteBusy}
             siteError={siteError}

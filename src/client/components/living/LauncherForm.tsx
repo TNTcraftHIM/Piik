@@ -7,7 +7,7 @@ import { Btn, Pill } from "./primitives";
 import { HintComic, type HintKind } from "./hints";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
-export type AppMode = "local" | "link";
+import type { AppMode } from "../../lib/app-launch";
 
 const MODES: Array<{
   mode: AppMode;

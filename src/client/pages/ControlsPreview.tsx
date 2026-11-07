@@ -17,7 +17,8 @@ import { ShareMicrophoneSettings } from "../components/living/ShareMicrophoneSet
 import { HostShareControls } from "../components/living/HostShareControls";
 import { HostRemoteControl } from "../components/living/HostRemoteControl";
 import type { RemoteControlMode } from "../remote-control/protocol";
-import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
+import { LauncherForm } from "../components/living/LauncherForm";
+import type { AppMode } from "../lib/app-launch";
 import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 

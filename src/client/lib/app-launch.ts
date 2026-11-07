@@ -4,6 +4,18 @@ import { withBrowserDebug } from "./debug";
 const CLIENT_LAUNCH_STORAGE_KEY = "piik:client-launch:v1";
 const CLIENT_RUNTIME_STORAGE_KEY = "piik:client-runtime-port";
 const CLIENT_ACTIVATION_EVENT = "piik-client-activation";
+const APP_MODE_PREFERENCE_KEY = "piik:app-mode";
+export type AppMode = "local" | "link";
+
+export function readPreferredAppMode(): AppMode {
+  try { return window.localStorage.getItem(APP_MODE_PREFERENCE_KEY) === "local" ? "local" : "link"; }
+  catch { return "link"; }
+}
+
+export function savePreferredAppMode(mode: AppMode): void {
+  try { window.localStorage.setItem(APP_MODE_PREFERENCE_KEY, mode); } catch { /* Optional persistence. */ }
+}
+
 // Keep the selected App through this tab's reloads, without copying it into invites.
 let clientPortInPage = parseClientRuntimePort(readSessionValue(CLIENT_RUNTIME_STORAGE_KEY));
 let clientActivatedInPage = clientPortInPage !== null;

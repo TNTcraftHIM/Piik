@@ -8,7 +8,7 @@ import { z } from "zod";
 import { LauncherForm } from "../src/client/components/living/LauncherForm";
 import { Btn } from "../src/client/components/living/primitives";
 import { siteEntryOrigin, siteEntryURL } from "../src/client/lib/site-address";
-import { clientLaunchURL } from "../src/client/lib/app-launch";
+import { clientLaunchURL, readPreferredAppMode, savePreferredAppMode, type AppMode } from "../src/client/lib/app-launch";
 
 // Run the page's actual state-read effect, including cleanup, without a DOM.
 const source = ts.createSourceFile("AppLauncherPage.tsx", readFileSync(
@@ -17,7 +17,10 @@ const source = ts.createSourceFile("AppLauncherPage.tsx", readFileSync(
 const declarations: string[] = [];
 let effect: string | undefined;
 let diagnosticControl: string | undefined;
+let modeInitializer: string | undefined;
 function collect(node: ts.Node): void {
+  if (ts.isVariableDeclaration(node) && node.name.getText(source) === "[mode, setMode]"
+    && node.initializer && ts.isCallExpression(node.initializer)) modeInitializer = node.initializer.arguments[0]?.getText(source);
   if (ts.isJsxAttribute(node) && node.name.getText(source) === "diagnosticControl"
     && node.initializer && ts.isJsxExpression(node.initializer)) {
     diagnosticControl = node.initializer.expression!.getText(source);
@@ -25,7 +28,7 @@ function collect(node: ts.Node): void {
   if (ts.isVariableDeclaration(node) && /^launcher.*Schema$/.test(node.name.getText(source))) {
     declarations.push(`const ${node.getText(source)};`);
   }
-  if (ts.isFunctionDeclaration(node) && ["beginStateChange", "changeSite", "approveSite", "enableDebug", "exportDebug", "launchURL", "launch"].includes(node.name?.text ?? "")) {
+  if (ts.isFunctionDeclaration(node) && ["beginStateChange", "changeMode", "changeSite", "approveSite", "enableDebug", "exportDebug", "launchURL", "launch"].includes(node.name?.text ?? "")) {
     declarations.push(node.getText(source));
   }
   if (ts.isCallExpression(node) && node.expression.getText(source) === "useEffect"
@@ -37,10 +40,11 @@ function collect(node: ts.Node): void {
 collect(source);
 if (!effect) throw new Error("Missing App launcher state-read owner");
 if (!diagnosticControl) throw new Error("Missing App launcher diagnostic control");
+if (!modeInitializer) throw new Error("Missing App launcher mode initializer");
 const diagnosticExecutable = ts.transpileModule(`(${diagnosticControl})`, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React },
 }).outputText;
-const executable = ts.transpileModule(`${declarations.join("\n")}\n({cleanup: (${effect})(), changeSite, approveSite, enableDebug, exportDebug, launch});`, {
+const executable = ts.transpileModule(`${declarations.join("\n")}\n({cleanup: (${effect})(), changeMode, changeSite, approveSite, enableDebug, exportDebug, launch});`, {
   compilerOptions: { target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -51,9 +55,10 @@ const saved = {
 };
 const response = (state: typeof saved & { detail?: string; target?: string } = saved) => ({ ok: true, status: 200, json: async () => state });
 
-function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = false, mode = "link" }: { debug?: boolean; mode?: "local" | "link" } = {}) {
+function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = false, mode }: { debug?: boolean; mode?: AppMode } = {}) {
   const downloads = vi.fn();
-  const state: Record<string, unknown> = {};
+  const initialMode = mode ?? runInNewContext(`(${modeInitializer})()`, { readPreferredAppMode }) as AppMode;
+  const state: Record<string, unknown> = { Mode: initialMode };
   const setters = Object.fromEntries([
     "Mode", "Lan", "ControlPort", "Target", "Starting", "Sites", "StartupSite",
     "AppDebug", "Error", "Loading", "Build", "RemoteControlPrototype",
@@ -68,7 +73,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = fa
     ...setters, z, fetch, window, AbortController, downloadBlob: downloads,
     stateChanges: { current: { revision: 0, pending: 0 } },
     siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, manualSite, openOnApproval: false,
-    mode, lang: "en", vis: false, appDebug: debug, lan: saved.lan,
+    mode: initialMode, lang: "en", vis: false, appDebug: debug, lan: saved.lan, savePreferredAppMode,
     consoleLanguage: () => "en", clientLaunchURL, currentThemePreference: () => null, hasCopyPreference: () => false,
     controlPort: undefined, t: (key: string) => key,
     setTimeout: (callback: () => void, delay: number) => {
@@ -76,7 +81,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = fa
       return nextTimer;
     },
     clearTimeout: (id: number) => timers.delete(id),
-  }) as { cleanup(): void; changeSite(site: string, setting?: "site" | "startup-site", starAfterApproval?: boolean, allowed?: boolean): Promise<boolean>; approveSite(site: string): Promise<void>; enableDebug(): Promise<void>; exportDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
+  }) as { cleanup(): void; changeMode(mode: AppMode): void; changeSite(site: string, setting?: "site" | "startup-site", starAfterApproval?: boolean, allowed?: boolean): Promise<boolean>; approveSite(site: string): Promise<void>; enableDebug(): Promise<void>; exportDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
   return { state, setters, ...actions, downloads, navigate: window.location.replace, focus: () => window.dispatchEvent(new Event("focus")),
     retry: () => {
       const entry = [...timers].find(([, timer]) => timer.delay === 750);
@@ -96,6 +101,25 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = fa
 }
 
 describe("App launcher state recovery", () => {
+  it("restores explicit Browser mode choices on reload while running-state reads never save a preference", async () => {
+    const values = new Map<string, string>();
+    const setItem = vi.fn((key: string, value: string) => values.set(key, value));
+    vi.stubGlobal("window", { localStorage: { getItem: (key: string) => values.get(key) ?? null, setItem } });
+    const fetch = vi.fn(async () => response({ ...saved, target: "https://running.example" }));
+    try {
+      const first = mount(fetch); await settle();
+      expect(first.state.Mode).toBe("link"); expect(setItem).not.toHaveBeenCalled();
+      first.changeMode("local"); first.cleanup();
+      const local = mount(fetch); await settle();
+      expect(local.state).toMatchObject({ Mode: "local", Target: "https://running.example" });
+      local.focus(); await settle();
+      expect(setItem).toHaveBeenCalledTimes(1); expect(local.state.Mode).toBe("local");
+      local.changeMode("link"); local.cleanup();
+      const link = mount(fetch); await settle();
+      expect(link.state.Mode).toBe("link"); expect(setItem).toHaveBeenCalledTimes(2);
+      link.cleanup();
+    } finally { vi.unstubAllGlobals(); }
+  });
   it("launches with diagnostics enabled without sending its process flag to the room command", async () => {
     const target = "http://127.0.0.1:41234/#piik-client=1";
     const fetch = vi.fn(async () => response({ ...saved, debug: true }));
@@ -327,7 +351,7 @@ describe("App launcher state recovery", () => {
     await settle();
     page.focus();
     expect(fetch).toHaveBeenCalledOnce();
-    expect(page.state).toEqual({});
+    expect(page.state).toEqual({ Mode: "link" });
     for (const setter of Object.values(page.setters)) expect(setter).not.toHaveBeenCalled();
   });
 
