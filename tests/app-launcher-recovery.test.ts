@@ -62,26 +62,33 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = fa
     state[name] = typeof value === "function" ? value(state[name]) : value;
   })]));
   const window = Object.assign(new EventTarget(), { location: { replace: vi.fn() } });
-  const timers = new Map<number, () => void>();
+  const timers = new Map<number, { callback: () => void; delay: number }>();
   let nextTimer = 0;
   const actions = runInNewContext(executable, {
-    ...setters, z, fetch, window, downloadBlob: downloads,
+    ...setters, z, fetch, window, AbortController, downloadBlob: downloads,
     stateChanges: { current: { revision: 0, pending: 0 } },
     siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, manualSite, openOnApproval: false,
     mode, lang: "en", vis: false, appDebug: debug, lan: saved.lan,
     consoleLanguage: () => "en", clientLaunchURL, currentThemePreference: () => null, hasCopyPreference: () => false,
     controlPort: undefined, t: (key: string) => key,
     setTimeout: (callback: () => void, delay: number) => {
-      expect(delay).toBe(750);
-      timers.set(++nextTimer, callback);
+      timers.set(++nextTimer, { callback, delay });
       return nextTimer;
     },
     clearTimeout: (id: number) => timers.delete(id),
   }) as { cleanup(): void; changeSite(site: string, setting?: "site" | "startup-site", starAfterApproval?: boolean, allowed?: boolean): Promise<boolean>; approveSite(site: string): Promise<void>; enableDebug(): Promise<void>; exportDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
   return { state, setters, ...actions, downloads, navigate: window.location.replace, focus: () => window.dispatchEvent(new Event("focus")),
     retry: () => {
-      expect(timers.size).toBe(1);
-      const [id, callback] = [...timers][0]!;
+      const entry = [...timers].find(([, timer]) => timer.delay === 750);
+      expect(entry).toBeDefined();
+      const [id, { callback }] = entry!;
+      timers.delete(id);
+      callback();
+    },
+    expireRequest: () => {
+      const entry = [...timers].find(([, timer]) => timer.delay > 750);
+      expect(entry).toBeDefined();
+      const [id, { callback }] = entry!;
       timers.delete(id);
       callback();
     },
@@ -376,3 +383,46 @@ describe("App launcher state recovery", () => {
     page.cleanup();
   });
 });
+
+it("releases the approval page when saving a site never responds", async () => {
+    const fetch = vi.fn(async (_url: string, options?: { method?: string; signal?: AbortSignal }) => {
+      if (options?.method === "POST") return await new Promise<never>((_, reject) => {
+        options.signal?.addEventListener("abort", () => reject(new Error("request aborted")), { once: true });
+      });
+      return response();
+    });
+    const page = mount(fetch, true);
+    await settle();
+    const approval = page.approveSite("https://next.example");
+    await settle();
+    expect(page.state.SiteBusy).toBe(true);
+    page.expireRequest();
+    await approval;
+    expect(page.state).toMatchObject({ SiteBusy: false, SiteError: "client.connect.saveFailed" });
+    expect(page.navigate).not.toHaveBeenCalled();
+    fetch.mockResolvedValueOnce(response({ ...saved, sites: [...saved.sites, "https://next.example"] }));
+    await page.approveSite("https://next.example");
+    expect(page.navigate).toHaveBeenCalledWith("https://next.example/#piik-client=1&piik-lang=en&piik-mode=text&piik-theme=system");
+    expect(page.state.SiteBusy).toBe(false);
+    page.cleanup();
+  });
+
+it("keeps committed approval when the startup preference body stalls", async () => {
+    const nextSite = "https://next.example";
+    const approved = { ...saved, sites: [...saved.sites, nextSite] };
+    const fetch = vi.fn(async (url: string, options?: { method?: string; signal?: AbortSignal }) => {
+      if (url.endsWith("/startup-site")) return { ...response(), json: () => new Promise<never>((_, reject) => {
+        options?.signal?.addEventListener("abort", () => reject(new Error("body aborted")), { once: true });
+      }) };
+      return response(options?.method === "POST" ? approved : saved);
+    });
+    const page = mount(fetch, true);
+    await settle();
+    const approval = page.changeSite(nextSite, "site", true);
+    await settle();
+    expect(page.state).toMatchObject({ Sites: approved.sites, StartupSite: "", SiteBusy: true });
+    page.expireRequest();
+    await expect(approval).resolves.toBe(false);
+    expect(page.state).toMatchObject({ Sites: approved.sites, StartupSite: "", SiteBusy: false, SiteError: "client.connect.saveFailed" });
+    page.cleanup();
+  });

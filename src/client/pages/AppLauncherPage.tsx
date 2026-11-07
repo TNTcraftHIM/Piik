@@ -230,10 +230,13 @@ export function AppLauncherPage() {
     const finish = beginStateChange();
     setSiteBusy(true);
     setSiteError(undefined);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8_000);
     async function save(setting: "site" | "startup-site"): Promise<boolean> {
       const response = await fetch(`/api/client-launcher/${setting}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ site: nextSite, ...(setting === "site" ? { allowed } : {}) }),
+        signal: controller.signal,
       });
       const result = launcherStateSchema.pick({ sites: true, startupSite: true }).safeParse(await response.json().catch(() => null));
       if (result.success) {
@@ -252,7 +255,7 @@ export function AppLauncherPage() {
     } catch {
       setSiteError(t("client.connect.saveFailed"));
       return false;
-    } finally { finish(); setSiteBusy(false); }
+    } finally { clearTimeout(timer); finish(); setSiteBusy(false); }
   }
 
   async function approveSite(site: string): Promise<void> {
