@@ -10,6 +10,137 @@ use uuid::Uuid;
 fn id(n: u128) -> Uuid {
     Uuid::from_u128(n)
 }
+fn room_peers() -> Vec<(Uuid, Vec<String>)> {
+    (1..=5)
+        .map(|peer| (id(peer), vec!["room".into()]))
+        .collect()
+}
+
+#[test]
+fn first_pull_survives_the_sources_later_plan_without_a_receiver_retry() {
+    let mut network = Network::new();
+    network.update(1, 1, None, &[], false);
+    network.update(2, 1, Some(1), &[], true);
+    network.start(2);
+    network.run();
+    assert!(network.reads.is_empty() && network.complete.is_empty());
+    network.update(1, 1, None, &[2], false);
+    network.run();
+    assert_eq!(network.complete, vec![id(2)]);
+    assert_eq!(network.sinks[&id(2)], network.bytes);
+}
+
+#[test]
+fn pending_pull_uses_room_leases_exact_cancellation_and_its_first_deadline() {
+    let bytes = content();
+    let mut source = FileDelivery::new(id(1));
+    let mut receiver = FileDelivery::new(id(2));
+    receiver.update(vec![plan(1, Some(1), &[], true, &bytes)], room_peers(), 0);
+    let pull = receiver
+        .start(key())
+        .into_iter()
+        .find_map(|effect| match effect {
+            FileEffect::SendControl { control, .. } => Some(control),
+            _ => None,
+        })
+        .unwrap();
+    assert!(source.control(id(2), pull.clone(), 0).is_empty());
+    assert_eq!(
+        source.next_deadline(),
+        None,
+        "an unleased peer cannot occupy waiting capacity"
+    );
+    source.update(vec![], room_peers(), 0);
+    source.control(id(2), pull.clone(), 10);
+    source.control(id(2), pull, 1000);
+    assert_eq!(source.next_deadline(), Some(5010));
+    let cancel = receiver
+        .cancel(&key())
+        .into_iter()
+        .find_map(|effect| match effect {
+            FileEffect::SendControl { control, .. } => Some(control),
+            _ => None,
+        })
+        .unwrap();
+    source.control(id(2), cancel.clone(), 1001);
+    assert_eq!(source.next_deadline(), None);
+    let retry = receiver
+        .start(key())
+        .into_iter()
+        .find_map(|effect| match effect {
+            FileEffect::SendControl { control, .. } => Some(control),
+            _ => None,
+        })
+        .unwrap();
+    source.control(id(2), retry, 1002);
+    source.control(id(2), cancel, 1003);
+    assert_eq!(
+        source.next_deadline(),
+        Some(6002),
+        "old cancellation cannot retire the replacement request"
+    );
+    let expired = source.update(vec![plan(1, None, &[2], false, &bytes)], room_peers(), 6002);
+    assert_eq!(
+        expired.len(),
+        1,
+        "a late plan must not start reading expired work"
+    );
+    let FileEffect::SendControl { control, .. } = expired.into_iter().next().unwrap() else {
+        panic!("missing timeout response")
+    };
+    assert!(receiver
+        .control(id(1), control, 6002)
+        .iter()
+        .any(|effect| matches!(effect,
+        FileEffect::Failed { code, .. } if code == "file_route_timeout")));
+    assert_eq!(source.next_deadline(), None);
+}
+
+#[test]
+fn pending_pull_capacity_is_bounded_and_room_lease_retirement_clears_it() {
+    let bytes = content();
+    let plans: Vec<_> = (0..=32)
+        .map(|index| {
+            let mut value = plan(1, Some(1), &[], true, &bytes);
+            value.message_seq = index + 1;
+            value
+        })
+        .collect();
+    let mut source = FileDelivery::new(id(1));
+    source.update(vec![], room_peers(), 0);
+    let mut receivers = [FileDelivery::new(id(2)), FileDelivery::new(id(3))];
+    for receiver in &mut receivers {
+        receiver.update(plans.clone(), room_peers(), 0);
+    }
+    for (index, plan) in plans.iter().enumerate() {
+        let key = FileKey {
+            room_id: plan.room_id.clone(),
+            message_seq: plan.message_seq,
+            attachment_id: plan.attachment.id,
+        };
+        let receiver = if index < 32 { 0 } else { 1 };
+        let pull = receivers[receiver]
+            .start(key)
+            .into_iter()
+            .find_map(|effect| match effect {
+                FileEffect::SendControl { control, .. } => Some(control),
+                _ => None,
+            })
+            .unwrap();
+        let effects = source.control(id(receiver as u128 + 2), pull, 0);
+        if index < 32 {
+            assert!(effects.is_empty());
+        } else {
+            assert!(
+                matches!(&effects[..], [FileEffect::SendControl { control: FileControl::Error { code, .. }, .. }] if code == "file_transfer_busy")
+            );
+        }
+    }
+    assert_eq!(source.next_deadline(), Some(5000));
+    assert!(source.update(vec![], vec![], 1).is_empty());
+    assert_eq!(source.next_deadline(), None);
+    assert!(source.expire(5000).is_empty());
+}
 fn content() -> Vec<u8> {
     (0..FILE_RANGE_BYTES * 2 + 17)
         .map(|i| (i % 251) as u8)
@@ -89,7 +220,11 @@ impl Network {
         receiving: bool,
     ) {
         let plan = plan(source, upstream, downstream, receiving, &self.bytes);
-        let effects = self.nodes.get_mut(&id(node)).unwrap().update(vec![plan]);
+        let effects = self
+            .nodes
+            .get_mut(&id(node))
+            .unwrap()
+            .update(vec![plan], room_peers(), 0);
         self.push(id(node), effects);
     }
     fn push(&mut self, from: Uuid, effects: Vec<FileEffect>) {
@@ -125,7 +260,7 @@ impl Network {
                     // Exercise serialization on the control carrier too.
                     let control: FileControl =
                         serde_json::from_slice(&serde_json::to_vec(&control).unwrap()).unwrap();
-                    let effects = self.nodes.get_mut(&peer).unwrap().control(from, control);
+                    let effects = self.nodes.get_mut(&peer).unwrap().control(from, control, 0);
                     self.push(peer, effects);
                 }
                 FileEffect::SendChunk {
@@ -279,7 +414,11 @@ fn authorized_source_and_route_change_preserve_written_prefix_and_ignore_old_sou
         .unwrap()
         .peer_unavailable(id(5));
     network.push(id(2), effects);
-    let effects = network.nodes.get_mut(&id(2)).unwrap().update(vec![]);
+    let effects = network
+        .nodes
+        .get_mut(&id(2))
+        .unwrap()
+        .update(vec![], room_peers(), 0);
     network.push(id(2), effects);
     network.update(1, 1, None, &[3], false);
     network.update(3, 1, Some(1), &[], true);
@@ -301,14 +440,14 @@ fn authorized_source_and_route_change_preserve_written_prefix_and_ignore_old_sou
 fn request_ownership_survives_retry_coalescing_and_late_adapter_results() {
     let bytes = content();
     let mut source = FileDelivery::new(id(1));
-    source.update(vec![plan(1, None, &[2, 3], false, &bytes)]);
+    source.update(vec![plan(1, None, &[2, 3], false, &bytes)], room_peers(), 0);
     let (a, b, sibling) = (id(100), id(101), id(102));
     let pull = |request_id| FileControl::Pull {
         key: key(),
         offset: 0,
         request_id,
     };
-    let first = source.control(id(2), pull(a));
+    let first = source.control(id(2), pull(a), 0);
     let first_read = first
         .iter()
         .find_map(|effect| match effect {
@@ -325,8 +464,9 @@ fn request_ownership_survives_retry_coalescing_and_late_adapter_results() {
             offset: 0,
             request_id: a,
         },
+        0,
     );
-    let retry = source.control(id(2), pull(b));
+    let retry = source.control(id(2), pull(b), 0);
     let retry_read = retry
         .iter()
         .find_map(|effect| match effect {
@@ -349,11 +489,12 @@ fn request_ownership_survives_retry_coalescing_and_late_adapter_results() {
                 key: key(),
                 offset: 0,
                 request_id: a
-            }
+            },
+            0
         )
         .is_empty());
     assert!(
-        source.control(id(3), pull(sibling)).is_empty(),
+        source.control(id(3), pull(sibling), 0).is_empty(),
         "shared range must not read a second copy"
     );
     let chunks = source.read_result(&key(), 0, retry_read, bytes[..FILE_RANGE_BYTES].to_vec());

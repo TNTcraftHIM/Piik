@@ -346,8 +346,8 @@ impl FileDelivery {
             Uuid::parse_str(session_id).map_err(|_| error("invalid_session"))?,
         )))
     }
-    pub fn update(&mut self, plans: &str) -> Result<String, JsValue> {
-        encode(&self.0.update(parse(plans)?))
+    pub fn update(&mut self, plans: &str, room_peers: &str, now: u64) -> Result<String, JsValue> {
+        encode(&self.0.update(parse(plans)?, parse(room_peers)?, now))
     }
     pub fn start(&mut self, key: &str) -> Result<String, JsValue> {
         encode(&self.0.start(parse(key)?))
@@ -355,11 +355,18 @@ impl FileDelivery {
     pub fn cancel(&mut self, key: &str) -> Result<String, JsValue> {
         encode(&self.0.cancel(&parse(key)?))
     }
-    pub fn control(&mut self, peer: &str, control: &str) -> Result<String, JsValue> {
+    pub fn control(&mut self, peer: &str, control: &str, now: u64) -> Result<String, JsValue> {
         encode(&self.0.control(
             Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?,
             parse(control)?,
+            now,
         ))
+    }
+    pub fn next_deadline(&self) -> Option<u64> {
+        self.0.next_deadline()
+    }
+    pub fn expire(&mut self, now: u64) -> Result<String, JsValue> {
+        encode(&self.0.expire(now))
     }
     pub fn chunk(&mut self, peer: &str, bytes: &[u8]) -> Result<String, JsValue> {
         encode(

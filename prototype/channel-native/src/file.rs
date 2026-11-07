@@ -51,6 +51,7 @@ impl Link {
     }
 }
 enum Input {
+    Expire,
     Update(Vec<FilePlan>, Vec<(Uuid, Vec<String>)>, oneshot::Sender<()>),
     Attach(Uuid, Senders),
     Detach(Uuid),
@@ -96,17 +97,30 @@ impl Files {
             let mut core = FileDelivery::new(session);
             let mut links: HashMap<Uuid, Link> = HashMap::new();
             let mut leases: HashMap<Uuid, Lease> = HashMap::new();
+            let clock = tokio::time::Instant::now();
+            let now = || clock.elapsed().as_millis() as u64;
             loop {
-                let message = tokio::select! {_=cancelled.changed()=>break,message=messages.recv()=>match message{Some(message)=>message,None=>break}};
+                let expiry = async {
+                    if let Some(deadline) = core.next_deadline() {
+                        tokio::time::sleep(std::time::Duration::from_millis(
+                            deadline.saturating_sub(now()),
+                        ))
+                        .await;
+                    } else {
+                        std::future::pending::<()>().await;
+                    }
+                };
+                let message = tokio::select! {_=cancelled.changed()=>break,_=expiry=>Input::Expire,message=messages.recv()=>match message{Some(message)=>message,None=>break}};
                 let effects = match message {
+                    Input::Expire => core.expire(now()),
                     Input::Update(plans, peers, done) => {
                         leases = peers
-                            .into_iter()
+                            .iter()
                             .map(|(peer, rooms)| {
                                 (
-                                    peer,
+                                    *peer,
                                     Lease {
-                                        rooms: rooms.into_iter().collect(),
+                                        rooms: rooms.iter().cloned().collect(),
                                         keys: BTreeSet::new(),
                                     },
                                 )
@@ -130,7 +144,7 @@ impl Files {
                             link.lease
                                 .send_replace(leases.get(peer).cloned().unwrap_or_default());
                         }
-                        let effects = core.update(plans);
+                        let effects = core.update(plans, peers, now());
                         let _ = done.send(());
                         effects
                     }
@@ -153,7 +167,7 @@ impl Files {
                                 .get(&peer)
                                 .is_some_and(|lease| lease.rooms.contains(&key(&control).room_id))
                         {
-                            core.control(peer, control)
+                            core.control(peer, control, now())
                         } else {
                             vec![]
                         }

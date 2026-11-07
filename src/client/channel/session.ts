@@ -411,7 +411,7 @@ export class ChannelSession {
     }
     this.media.update(sessionId, state);
     this.input.update();
-    if (userId) this.attachments.update(sessionId, { domainId: state.channel.id, userId }, state.files, state.channel.rooms);
+    if (userId) this.attachments.update(sessionId, { domainId: state.channel.id, userId }, state.files, state.channel.rooms, state.pairs);
     else this.attachments.reset();
     this.sendConversations();
     const room = state.channel.rooms.find(room => room.id === this.reading?.roomId);

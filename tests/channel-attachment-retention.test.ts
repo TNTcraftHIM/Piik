@@ -17,7 +17,7 @@ function setup() {
   vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
   const files = new ChannelAttachments(async () => {}, async () => {});
   files.update("endpoint", { domainId: "domain", userId: "self" }, [],
-    [{ id: key.roomId, authorized: true, available: true }] as ChannelRoom[]);
+    [{ id: key.roomId, authorized: true, available: true }] as ChannelRoom[], []);
   return files;
 }
 

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { downloadBlob } from "../lib/download";
 import { FileStore, type FileScope, type FileRetentionLimits, type RetainedFile } from "./file-store";
 import { loadRoomHosting, type AttachmentHash, type FileDelivery } from "./hosting";
-import { attachmentSchema, type ChannelAttachment, type ChannelCommand, type ChannelFileKey, type ChannelFilePlan, type ChannelMessage, type ChannelRoom } from "./protocol";
+import { attachmentSchema, type ChannelAttachment, type ChannelCommand, type ChannelFileKey, type ChannelFilePlan, type ChannelMessage, type ChannelRoom, type ChannelPair } from "./protocol";
 
 export const attachmentLimitsSchema = z.object({ maxFileBytes: z.number().positive(), maxAttachmentsPerMessage: z.number().positive(), maxRetainedBytes: z.number().positive(), maxRetainedFiles: z.number().positive() });
 export type AttachmentLimits = z.infer<typeof attachmentLimitsSchema>;
@@ -38,6 +38,8 @@ export class ChannelAttachments {
   private lifetime = new AbortController();
   private runtime: Promise<Runtime> | null = null;
   private plans: ChannelFilePlan[] = [];
+  private roomPeers: [string, string[]][] = [];
+  private expiry: ReturnType<typeof setTimeout> | undefined;
   private rooms: ChannelRoom[] = [];
   private sources = new Map<string, Source>();
   private scope: FileScope | null = null;
@@ -64,13 +66,23 @@ export class ChannelAttachments {
     const lifetime = this.lifetime, session = this.sessionId;
     return this.runtime ??= this.module().then(module => {
       lifetime.signal.throwIfAborted();
-      return { module, delivery: new module.FileDelivery(session), lifetime };
+      const runtime = { module, delivery: new module.FileDelivery(session), lifetime };
+      this.invoke(runtime, () => this.project(runtime));
+      return runtime;
     });
   }
   private current(runtime: Runtime): boolean { return this.lifetime === runtime.lifetime && !runtime.lifetime.signal.aborted; }
-  private invoke(runtime: Runtime, work: () => string): void { if (this.current(runtime)) this.effects(runtime, JSON.parse(work()) as Effect[]); }
+  private project(runtime: Runtime): string { return runtime.delivery.update(JSON.stringify(this.plans), JSON.stringify(this.roomPeers), BigInt(Date.now())); }
+  private invoke(runtime: Runtime, work: () => string): void {
+    if (!this.current(runtime)) return;
+    this.effects(runtime, JSON.parse(work()) as Effect[]);
+    clearTimeout(this.expiry);
+    const deadline = runtime.delivery.next_deadline();
+    this.expiry = deadline === undefined ? undefined : setTimeout(() => this.invoke(runtime,
+      () => runtime.delivery.expire(BigInt(Date.now()))), Math.max(0, Number(deadline) - Date.now()));
+  }
 
-  update(sessionId: string, scope: FileScope, plans: ChannelFilePlan[], rooms: ChannelRoom[]): void {
+  update(sessionId: string, scope: FileScope, plans: ChannelFilePlan[], rooms: ChannelRoom[], pairs: Pick<ChannelPair, "peerId" | "rooms">[]): void {
     if ((this.sessionId && this.sessionId !== sessionId) || (this.scope && (this.scope.domainId !== scope.domainId || this.scope.userId !== scope.userId))) this.reset();
     this.sessionId = sessionId;
     const opening = !this.store;
@@ -78,6 +90,7 @@ export class ChannelAttachments {
     const store = this.store ??= new FileStore(scope);
     const previous = this.rooms;
     this.rooms = rooms; this.plans = plans;
+    this.roomPeers = pairs.map(pair => [pair.peerId, pair.rooms]);
     for (const [id, source] of this.sources) {
       if (!rooms.some(room => room.id === source.key.roomId && room.authorized)) this.sources.delete(id);
       else if (!this.matchesPlan(source)) this.withdraw(source, true);
@@ -90,7 +103,7 @@ export class ChannelAttachments {
         }
       }).catch(() => {});
     }
-    if (plans.length || this.runtime) void this.ensure().then(runtime => this.invoke(runtime, () => runtime.delivery.update(JSON.stringify(this.plans)))).catch(() => {});
+    if (plans.length || this.runtime) void this.ensure().then(runtime => this.invoke(runtime, () => this.project(runtime))).catch(() => {});
     for (const room of rooms) if (room.available && previous.some(old => old.id === room.id && !old.available)) this.resume(room.id);
   }
   private matchesPlan(source: Pick<Source, "key" | "attachment">): boolean {
@@ -206,10 +219,10 @@ export class ChannelAttachments {
     }
   }
   data(peer: string, kind: "control" | "chunk", data: string | Uint8Array): void {
-    void this.ensure().then(runtime => this.invoke(runtime, () => kind === "control" ? runtime.delivery.control(peer, data as string) : runtime.delivery.chunk(peer, data as Uint8Array))).catch(() => {});
+    void this.ensure().then(runtime => this.invoke(runtime, () => kind === "control" ? runtime.delivery.control(peer, data as string, BigInt(Date.now())) : runtime.delivery.chunk(peer, data as Uint8Array))).catch(() => {});
   }
   peerState(peer: string, available: boolean): void {
-    if (this.runtime) void this.runtime.then(runtime => this.invoke(runtime, () => available ? runtime.delivery.update(JSON.stringify(this.plans)) : runtime.delivery.peer_unavailable(peer))).catch(() => {});
+    if (this.runtime) void this.runtime.then(runtime => this.invoke(runtime, () => available ? this.project(runtime) : runtime.delivery.peer_unavailable(peer))).catch(() => {});
   }
   bulkClosed(peer: string): void {
     if (this.runtime) void this.runtime.then(runtime => {
@@ -369,11 +382,12 @@ export class ChannelAttachments {
     try { await sink.directory.removeEntry(sink.name); } catch { /* A failed creation may have no entry. */ }
   }
   reset(): void {
+    clearTimeout(this.expiry); this.expiry = undefined;
     this.lifetime.abort();
     if (this.runtime) void this.runtime.then(runtime => runtime.delivery.free()).catch(() => {});
     for (const download of this.downloads.values()) download.controller.abort();
     for (const entry of this.sinks.values()) void entry.ready.then(sink => this.disposeSink(sink, aborted())).catch(() => {});
-    this.sources.clear(); this.sinks.clear(); this.downloads.clear(); this.runtime = null; this.plans = []; this.rooms = []; this.sessionId = null; this.scope = null; this.store = null;
+    this.sources.clear(); this.sinks.clear(); this.downloads.clear(); this.runtime = null; this.plans = []; this.rooms = []; this.roomPeers = []; this.sessionId = null; this.scope = null; this.store = null;
     this.lifetime = new AbortController(); this.changed();
   }
 }

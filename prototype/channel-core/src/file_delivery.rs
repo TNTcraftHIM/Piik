@@ -106,6 +106,8 @@ pub struct FileDelivery {
     files: BTreeMap<FileKey, File>,
     receivers: BTreeMap<FileKey, Receiver>,
     cached: Option<(FileKey, u64, Vec<u8>)>,
+    room_peers: BTreeMap<Uuid, BTreeSet<String>>,
+    pending: BTreeMap<(Uuid, FileKey, u64), (Uuid, u64)>,
 }
 
 impl FileDelivery {
@@ -115,11 +117,27 @@ impl FileDelivery {
             files: BTreeMap::new(),
             receivers: BTreeMap::new(),
             cached: None,
+            room_peers: BTreeMap::new(),
+            pending: BTreeMap::new(),
         }
     }
 
-    pub fn update(&mut self, plans: Vec<FilePlan>) -> Vec<FileEffect> {
-        let mut effects = Vec::new();
+    pub fn update(
+        &mut self,
+        plans: Vec<FilePlan>,
+        room_peers: Vec<(Uuid, Vec<String>)>,
+        now: u64,
+    ) -> Vec<FileEffect> {
+        self.room_peers = room_peers
+            .into_iter()
+            .map(|(peer, rooms)| (peer, rooms.into_iter().collect()))
+            .collect();
+        self.pending.retain(|(peer, key, _), _| {
+            self.room_peers
+                .get(peer)
+                .is_some_and(|rooms| rooms.contains(&key.room_id))
+        });
+        let mut effects = self.expire(now);
         let next: BTreeMap<_, _> = plans
             .into_iter()
             .map(|plan| (plan_key(&plan), plan))
@@ -182,6 +200,44 @@ impl FileDelivery {
             }
             effects.extend(self.pump(&key));
         }
+        let admitted: Vec<_> = self
+            .pending
+            .keys()
+            .filter(|(peer, key, _)| {
+                self.files
+                    .get(key)
+                    .is_some_and(|file| file.plan.downstream.contains(peer))
+            })
+            .cloned()
+            .collect();
+        for (peer, key, offset) in admitted {
+            let (request_id, _) = self.pending.remove(&(peer, key.clone(), offset)).unwrap();
+            effects.extend(self.request(&key, offset, Some((peer, request_id))));
+        }
+        effects
+    }
+
+    pub fn next_deadline(&self) -> Option<u64> {
+        self.pending.values().map(|(_, deadline)| *deadline).min()
+    }
+
+    pub fn expire(&mut self, now: u64) -> Vec<FileEffect> {
+        let mut effects = vec![];
+        self.pending
+            .retain(|(peer, key, _), (request_id, deadline)| {
+                if now < *deadline {
+                    return true;
+                }
+                effects.push(FileEffect::SendControl {
+                    peer: *peer,
+                    control: FileControl::Error {
+                        key: key.clone(),
+                        request_id: *request_id,
+                        code: "file_route_timeout".into(),
+                    },
+                });
+                false
+            });
         effects
     }
 
@@ -202,7 +258,19 @@ impl FileDelivery {
         self.remove_consumer(key, None, None, None)
     }
 
-    pub fn control(&mut self, peer: Uuid, control: FileControl) -> Vec<FileEffect> {
+    pub fn control(&mut self, peer: Uuid, control: FileControl, now: u64) -> Vec<FileEffect> {
+        let key = match &control {
+            FileControl::Pull { key, .. }
+            | FileControl::Cancel { key, .. }
+            | FileControl::Error { key, .. } => key,
+        };
+        if !self
+            .room_peers
+            .get(&peer)
+            .is_some_and(|rooms| rooms.contains(&key.room_id))
+        {
+            return vec![];
+        }
         match control {
             FileControl::Pull {
                 key,
@@ -214,6 +282,28 @@ impl FileDelivery {
                     .get(&key)
                     .is_some_and(|file| file.plan.downstream.contains(&peer))
                 {
+                    let slot = (peer, key.clone(), offset);
+                    if self
+                        .pending
+                        .get(&slot)
+                        .is_some_and(|(current, _)| *current == request_id)
+                    {
+                        return vec![];
+                    }
+                    if self.pending.len() >= FILE_MAX_PENDING_RANGES
+                        && !self.pending.contains_key(&slot)
+                    {
+                        return vec![FileEffect::SendControl {
+                            peer,
+                            control: FileControl::Error {
+                                key,
+                                request_id,
+                                code: "file_transfer_busy".into(),
+                            },
+                        }];
+                    }
+                    self.pending
+                        .insert(slot, (request_id, now.saturating_add(5000)));
                     return Vec::new();
                 }
                 self.request(&key, offset, Some((peer, request_id)))
@@ -222,7 +312,17 @@ impl FileDelivery {
                 key,
                 offset,
                 request_id,
-            } => self.remove_consumer(&key, Some(peer), Some(offset), Some(request_id)),
+            } => {
+                let slot = (peer, key.clone(), offset);
+                if self
+                    .pending
+                    .get(&slot)
+                    .is_some_and(|(current, _)| *current == request_id)
+                {
+                    self.pending.remove(&slot);
+                }
+                self.remove_consumer(&key, Some(peer), Some(offset), Some(request_id))
+            }
             FileControl::Error {
                 key,
                 request_id,
@@ -356,6 +456,8 @@ impl FileDelivery {
     /// A retired pair loses its partial range, not the local download or hash.
     /// The next authorized room plan supplies its replacement path.
     pub fn peer_unavailable(&mut self, peer: Uuid) -> Vec<FileEffect> {
+        self.pending
+            .retain(|(pending_peer, _, _), _| *pending_peer != peer);
         let keys: Vec<_> = self.files.keys().cloned().collect();
         let mut effects = Vec::new();
         for key in keys {

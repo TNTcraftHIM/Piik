@@ -64,8 +64,10 @@ export interface BackupHistoryImport {
   free(): void;
 }
 export interface FileDelivery {
-  update(plans: string): string;
-  control(peer: string, control: string): string;
+  update(plans: string, roomPeers: string, now: bigint): string;
+  control(peer: string, control: string, now: bigint): string;
+  next_deadline(): bigint | undefined;
+  expire(now: bigint): string;
   chunk(peer: string, frame: Uint8Array): string;
   read_result(key: string, offset: bigint, requestId: string, bytes: Uint8Array): string;
   written(key: string, offset: bigint, length: number): string;

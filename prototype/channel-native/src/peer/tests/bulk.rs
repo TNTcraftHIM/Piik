@@ -47,8 +47,8 @@ fn window() -> Result<(Vec<Vec<u8>>, FileDelivery, Uuid)> {
         });
         keys.push((key, bytes));
     }
-    sender.update(source_plans);
-    receiver.update(receiver_plans);
+    sender.update(source_plans, vec![(peer, vec!["bulk".into()])], 0);
+    receiver.update(receiver_plans, vec![(source, vec!["bulk".into()])], 0);
     let mut frames = Vec::new();
     for (key, bytes) in keys {
         let request_id = receiver
@@ -69,6 +69,7 @@ fn window() -> Result<(Vec<Vec<u8>>, FileDelivery, Uuid)> {
                 offset: 0,
                 request_id,
             },
+            0,
         );
         ensure!(
             effects.iter().any(
