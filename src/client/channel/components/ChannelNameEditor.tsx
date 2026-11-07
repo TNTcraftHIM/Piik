@@ -19,7 +19,7 @@ export function ChannelNameEditor({ name, disabled, onSave }: {
   useEffect(() => { panel.current?.hidePopover(); setDraft(name); }, [name]);
   return <>
     <span ref={trigger} className="c3-name-editor c3-edit-action">
-      <Btn icon="pencil" title="common.edit" hint="hint-rename" size="compact" quiet
+      <Btn icon="pencil" title={{ text: zh ? "修改昵称" : "Edit nickname" }} hint="hint-rename" size="dense" quiet
         disabled={disabled} popoverTarget={id} controls={id} expanded={editing} onClick={() => setDraft(name)} />
     </span>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={zh ? "修改昵称" : "Edit nickname"}

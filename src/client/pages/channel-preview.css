@@ -28,9 +28,10 @@
 .c3-room-list-empty { padding: 16px 10px; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .c3-room-navigation.is-empty > .c3-section-label { flex-wrap: wrap; gap: 12px; }
 .c3-pane-back, .c3-pane-navigation, .c3-room-tools > .c3-pane-navigation { display: none; }
-.c3-identity { display: flex; gap: 8px; align-items: center; margin-top: auto; padding: 16px 4px 2px; border-top: 1px solid var(--line); }
+.c3-identity { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: auto; padding: 16px 4px 2px; border-top: 1px solid var(--line); }
 .c3-identity > svg { flex: none; width: 32px; height: 40px; }
-.c3-identity > div { flex: 1; min-width: 0; }
+.c3-identity > div { flex: 1 1 12ch; min-width: 0; }
+.c3-identity > .c3-name-editor { margin-inline-start: auto; }
 .c3-identity strong { display: block; font-size: 13px; overflow-wrap: anywhere; }
 .c3-identity small { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; }
 .c3-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; container: channel-room / size; }
@@ -88,7 +89,12 @@
 .c3-user { min-width: 0; padding: 9px 6px; }
 .c3-person { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
 .c3-person > svg { flex: none; width: 30px; height: 38px; }
-.c3-person > div { min-width: 0; flex: 1; }
+.c3-person-copy { min-width: 0; flex: 1 1 12ch; }
+.c3-person-actions { display: flex; align-items: center; flex: none; gap: 4px; margin-inline-start: auto; }
+.c3-person-actions .lr-btn, .c3-identity .c3-name-editor .lr-btn { width: var(--button-size, var(--control-dense-size)); padding-inline: 0; }
+@media (any-pointer: coarse) {
+  .c3-person-actions .lr-btn, .c3-identity .c3-name-editor .lr-btn { --button-size: var(--control-compact-size); }
+}
 .c3-person strong { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
 .c3-person small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
 .c3-you { font-weight: 400; font-size: 11px; color: var(--muted); }
@@ -114,8 +120,13 @@
   .c3-room-actions { flex-wrap: wrap; }
 }
 @container (max-width: 600px) {
-  .c3-room-heading { grid-template-areas: "title title" "actions actions" "tools tools" "company company"; }
-  .c3-room-tools { justify-content: flex-end; }
+  .c3-room-heading { display: flex; flex-wrap: wrap; }
+  .c3-room-name { flex: 1 0 100%; }
+  .c3-room-actions, .c3-room-tools { flex: none; max-width: 100%; }
+  .c3-room-tools { flex-wrap: wrap; margin-inline-start: auto; }
+  .c3-room-company { margin-inline: auto; }
+  /* The live voice dock already names the joined room and keeps its controls. */
+  .c3-main:has(.c3-voice-dock) .c3-room-actions .c3-voice-joined { display: none; }
   .c3-room-heading .lr-cap:where(:not([popover] .lr-cap)) { display: none; }
   .c3-room-heading .c3-app-confirmation .lr-cap { display: inline; }
 }
@@ -153,7 +164,7 @@
   .c3-room-name { min-width: 0; }
   .c3-room-name h2 { font-size: 16px; }
   .c3-room-name > svg { display: none; }
-  .c3-room-actions { gap: 8px; }
+  .c3-room-actions { gap: 6px; }
   .c3-avatar-stack > svg + svg { display: none; }
   .c3-people-trigger > svg { display: none; }
   .c3-workspace:not(.has-screens) > .c3-monitor { max-height: 140px; overflow-y: auto; }
