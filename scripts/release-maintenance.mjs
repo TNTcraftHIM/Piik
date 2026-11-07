@@ -2,14 +2,22 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { parseArgs } from "node:util";
 
-const command = process.argv[2] ?? "website-check";
+const { values, positionals } = parseArgs({ options: {
+  help: { type: "boolean" }, revision: { type: "string" },
+}, allowPositionals: true });
+const command = positionals[0] ?? "website-check";
 const commands = ["website-check", "website-purge", "server-check"];
-if (command === "--help") {
-  console.log("Usage: node --env-file=.env.maintenance.local scripts/release-maintenance.mjs <command>\nCommands: " + commands.join(", "));
+if (values.help) {
+  console.log("Usage: node --env-file=.env.maintenance.local scripts/release-maintenance.mjs <command> [--revision <full-source-SHA>]\nCommands: " + commands.join(", ") + "\n--revision verifies the expected server deployment.");
   process.exit(0);
 }
-assert.ok(commands.includes(command) && process.argv.length <= 3, "Unknown maintenance command; use --help.");
+assert.ok(commands.includes(command) && positionals.length <= 1, "Unknown maintenance command; use --help.");
+if (values.revision !== undefined) {
+  assert.equal(command, "server-check", "--revision applies only to server-check.");
+  assert.match(values.revision, /^[a-f0-9]{40}$/, "Use the release descriptor's full source revision.");
+}
 const required = name => {
   const value = process.env[name]?.trim();
   assert.ok(value, `Set ${name} in the local maintenance env file.`);
@@ -94,6 +102,7 @@ print(json.dumps({
   assert.equal((await response.json()).status, "ok");
   assert.equal(remote.service, "active");
   assert.equal(remote.runningPackage, true, "The running binary differs from the current release.");
+  if (values.revision) assert.equal(remote.revision, values.revision, "The service is not running the expected release.");
   return { ...remote, origin: origin.origin, health: true, passed: true };
 }
 
