@@ -12,6 +12,10 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **3.0 conversation during route changes.** A relay receiving its routing
+  snapshot 450 ms later drops valid chat and history packets with
+  `room_path_unavailable`; the original requests then time out. Fix delivery at
+  the shared conversation boundary without relaxing authority or route checks.
 - [ ] **3.0 image attachment feedback.** Trace preview and download failures in
   Chrome at an HTTPS LAN address after opening another Browser window on the
   same computer. The selected file is a GIF and the sender page remains open;
@@ -71,11 +75,6 @@ the feedback period; they do not delay that delivery.
   public/private access, a passphrase and resetting the invitation link. Reuse
   the current permission and settings owners; private-room settings and link
   rotation already exist, while domain invitation copying has no such controls.
-- [ ] **3.0 forwarding limits feedback.** Add the requested room default and
-  per-endpoint override, allowing an endpoint's choice above or below the default.
-  Use the room's existing base/publication planning owner and actual resource
-  admission; distinguish logical fanout from physical pairs shared across rooms
-  and sources. Keep this separate from transplanting 2.x route fields.
 - [ ] **Routing parity decisions.** Review the current domain-wide 20-endpoint
   limit, which counts Browser and App separately, against the intended user
   capacity. The current direct-source/helper trials cover fewer improvement

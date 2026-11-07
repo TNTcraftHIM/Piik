@@ -38,7 +38,7 @@ function RelayLimit({ value, min, label, note, disabled, onChange }: {
   value: number; min: number; label: string; note: string; disabled: boolean; onChange(value: number): void;
 }) {
   const { t, vis } = useCopy();
-  return <NumberControl value={value} min={min} max={MAX_RELAY_CAPACITY} step={1} unit={t("playback.relayPeople")}
+  return <NumberControl value={value} min={min} max={MAX_RELAY_CAPACITY} step={1} unit={t(value === 1 ? "playback.relayPerson" : "playback.relayPeople")}
     showUnit={!vis} name="relay-capacity" label={label} disabled={disabled} onChange={onChange} className="lr-door-group c3-relay-limit">
     {input => <><div className="lr-quality-heading"><span className="lr-door-glyph"><Glyph name="branch" size={18} />
       {!vis && <span>{label}</span>}</span><Tooltip kind="hint-relay-volunteer" text={vis ? undefined : `${label}\n${note}`}>{input}</Tooltip></div>
@@ -54,7 +54,7 @@ function PersonalRelay({ channel, room, disabled }: { channel: ChannelController
   const change = (value: number | null) => { void channel.setRelayOverride(room.id, value).catch(() => {}); };
   const label = zh ? "我的转发上限" : "My forwarding limit";
   const note = host ? (zh ? "房主使用房间默认上限。" : "The room host uses the room default.")
-    : (zh ? "只调整我在这个房间的转发。0 表示不帮别人转发，仍可发言和分享。" : "Only changes my forwarding in this room. At zero, I can still speak and share.");
+    : (zh ? "只调整我在这个房间的转发。0 表示不帮别人转发，仍可发言和分享。" : "Only changes my forwarding in this room. Zero stops forwarding for others; I can still speak and share.");
   return <section className="c3-room-relay" aria-label={label} aria-busy={busy}>
     <SwitchItem checked={host || following} disabled={disabled || busy || host} icon="branch" hint="hint-relay-volunteer"
       label={zh ? "跟随房间默认" : "Follow room default"} note={note}

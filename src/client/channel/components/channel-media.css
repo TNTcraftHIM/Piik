@@ -30,7 +30,7 @@
   transition: opacity 160ms ease, transform 160ms ease;
 }
 .c3-mini-controls .lr-btn:not(:where(.c3-mini-controls [popover] *)) { --button-size: var(--control-compact-size); flex: none; min-width: 0; width: var(--button-size); height: var(--button-size); padding: 0; }
-@container (max-width: 440px) {
+@container (max-width: 520px) {
   .c3-mini-controls .lr-btn:not(:where(.c3-mini-controls [popover] *)) { --button-size: clamp(24px, 8cqi, var(--control-dense-size)); }
 }
 .c3-mini-controls .lr-remote-controls { display: inline-flex; align-items: center; flex: none; gap: inherit; }

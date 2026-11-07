@@ -195,7 +195,9 @@ export function ChannelPreviewPage() {
             onClick={() => setMobilePane("rooms")} /></span><ChannelIdentityMark icon={room?.icon ?? "couch"} size={25} />
             <Tooltip className="c3-room-title" overflow={{ text: room?.name ?? copy("欢迎回来", "Welcome back"), selector: "h2" }}>
               <h2>{room?.name ?? copy("欢迎回来", "Welcome back")}</h2>
-            </Tooltip></div>
+            </Tooltip>
+            {(room?.authorized || room?.canManage) && <ChannelRoomControls key={`controls:${room.id}`} channel={channel} room={room} />}
+          </div>
           <div className="c3-room-actions">
             {room?.authorized && <><ChannelShareControl channel={channel} roomId={roomId} disabled={!connected || !room.available || !can("publish")} />
               <ChannelJoinVoice joined={joined} disabled={!connected || !room.available || !can("voice")} busy={busy("voice", roomId)}
@@ -217,7 +219,6 @@ export function ChannelPreviewPage() {
                 onSend={channel.sendMessage} floating={toolSurface.open} hidden={room?.authorized === false || (!toolSurface.open && visibleScreens.length > 0 && !chatOpen)} /></>}
               voice={<ChannelVoiceDock channel={channel} selected={voiceFocus} onSelect={setVoiceFocus} onBrowse={selectRoom} />} />
             {room?.authorized && <ChannelConnections key={`connections:${roomId}`} channel={channel} roomId={roomId} />}
-            {room?.canManage && <ChannelRoomControls key={`controls:${room.id}`} channel={channel} room={room} />}
             {visibleScreens.length > 0 && !toolSurface.open && <ChannelAction icon="chat" label={chatOpen ? copy("收起聊天", "Hide chat") : copy("打开聊天", "Show chat")}
               iconOnly quiet pressed={chatOpen} hint={chatOpen ? "hint-close" : "hint-chat-open"} onClick={() => setChatOpen(!chatOpen)} />}
             <Tooltip className="c3-pane-navigation" kind="hint-details" disabled={mobilePane === "people"} text={vis ? undefined : copy("域内用户", "Domain users")}><button id="c3-people-trigger" type="button" className="c3-people-trigger"

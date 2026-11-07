@@ -145,7 +145,7 @@ export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVo
             note={t(relayVolunteer.available ? "playback.relayVolunteerHint" : "playback.relayUnavailable")} hint="hint-relay-volunteer" />
         </RowGroup>
         {relayVolunteer.enabled && <NumberControl value={relayVolunteer.capacity} min={relayVolunteer.minimum} max={relayVolunteer.maximum}
-          step={1} unit={t("playback.relayPeople")} showUnit={!vis} name="relay-capacity" label={t("playback.relayLimit")}
+          step={1} unit={t(relayVolunteer.capacity === 1 ? "playback.relayPerson" : "playback.relayPeople")} showUnit={!vis} name="relay-capacity" label={t("playback.relayLimit")}
           disabled={relayVolunteer.disabled || !relayVolunteer.available} onChange={relayVolunteer.onCapacityChange}
           className="lr-door-group">{input => <div className="lr-quality-heading">
             {vis ? <Glyph name="branch" size={16} /> : <FieldCap k="playback.relayLimit" />}

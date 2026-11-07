@@ -145,6 +145,7 @@ export const zh = {
   "playback.relayVolunteerHint": "仅本次观看生效，会使用更多上行带宽。",
   "playback.relayLimit": "最多转发人数",
   "playback.relayPeople": "人",
+  "playback.relayPerson": "人",
   "playback.relayUnavailable": "当前连接无法增加转发人数。",
   "playback.fit.contain": "完整显示",
   "playback.fit.cover": "等比铺满",
