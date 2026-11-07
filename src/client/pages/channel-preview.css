@@ -173,6 +173,7 @@
   .c3-workspace.has-screens:not(.chat-collapsed) > .c3-monitor { border-inline-end: 1px solid var(--line); border-bottom: 0; }
 }
 @container channel-room (max-height: 420px) {
+  .c3-workspace.has-screens .c3-monitor { padding-block: 0; }
   .c3-room-heading { display: flex; flex-wrap: wrap; padding-block: 6px; gap: 6px 10px; }
   .c3-room-name { flex-basis: 100%; }
   .c3-room-tools { flex-wrap: wrap; margin-inline-start: auto; }
