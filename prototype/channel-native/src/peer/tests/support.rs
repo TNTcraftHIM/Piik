@@ -588,6 +588,9 @@ pub(in crate::peer) fn message(tag: &str) -> Result<(Vec<u8>, MessageScope)> {
             name: "Transport check".into(),
             icon: Default::default(),
             owner_id: None,
+            access: RoomAccess::Private,
+            has_password: false,
+            invite_hash: piik_channel_core::domain_invite_hash("fixture"),
             rooms: vec![Room {
                 id: "transport-check".into(),
                 name: "Transport check".into(),

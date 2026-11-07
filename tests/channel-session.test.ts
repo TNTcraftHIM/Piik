@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { createHash } from "node:crypto";
 import { ChannelConversation } from "../src/client/channel/conversation";
 import { ChannelSession } from "../src/client/channel/session";
 import * as hosting from "../src/client/channel/hosting";
@@ -38,9 +39,12 @@ class ChannelSocket {
 }
 
 const testSigningKey = Array.from(Buffer.from("8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c", "hex"));
+const inviteHash = (key: string) => createHash("sha256").update(key).digest("hex");
 beforeEach(() => {
+  vi.stubGlobal("history", { state: null, replaceState: vi.fn() });
   vi.spyOn(launchSession, "isClientActivated").mockReturnValue(false);
   vi.spyOn(ChannelConversation.prototype, "initialize").mockResolvedValue(testSigningKey);
+  vi.spyOn(hosting, "domainInviteHash").mockImplementation(async key => inviteHash(key));
   vi.stubGlobal("MediaStream", RoomMediaStream);
   vi.stubGlobal("RTCRtpSender", { getCapabilities: () => ({ codecs: [{ mimeType: "video/VP8", clockRate: 90000 }] }) });
   vi.stubGlobal("RTCRtpReceiver", { getCapabilities: () => ({ codecs: [{ mimeType: "video/H264", clockRate: 90000, sdpFmtpLine: "packetization-mode=1" }] }) });
@@ -102,6 +106,7 @@ async function setup(window = 1000, read = true, hash = "", readyInteractions = 
   await socket.onopen?.();
   socket.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state: {
     channel: { id: "domain", name: "Friends", icon: "future-domain_7", ownerId: "self", historyWindow: window,
+      access: "private", hasPassword: false, inviteHash: inviteHash("domain-invite"),
       rooms: roomIds.map(id => ({ id, name: id, icon: "couch", creatorId: "self", access: "public",
         hidden: false, hasPassword: false, authorized: true, canManage: true,
         participantSessionIds: id === "first" ? ["endpoint"] : [],
@@ -125,6 +130,16 @@ const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", t
 const reactionSnapshot = (seq: number, revision: number, choices: Record<string, string[]> = {}) =>
   ({ messageId: `message-${seq}`, messageSeq: seq, revision, choices });
 
+test("restoring the viewed room does not turn its navigation state into an invitation", async () => {
+  vi.stubGlobal("history", { state: { piikChannelRoom: "second" }, replaceState: vi.fn() });
+  const { session, socket } = await setup(1000, false, "room=first&invite=room-link");
+  try {
+    expect(socket.sent.find(command => command.type === "join")).toMatchObject({ roomId: "first", key: "room-link" });
+    expect(socket.sent.filter(command => command.type === "browse" && command.active).map(command => command.roomId)).toEqual(["second"]);
+    expect(location.hash).toBe("#room=first&invite=room-link");
+  } finally { session.close(); }
+});
+
 test("a saved owner credential retires only the consumed owner URL parameter and owns reconnect and reload", async () => {
   const { session, socket } = await setup(3, false, "owner=owner-secret&room=first&invite=friend-link&other=keep");
   const values = new Map<string, string>();
@@ -139,7 +154,7 @@ test("a saved owner credential retires only the consumed owner URL parameter and
     const state = session.getSnapshot().state!;
     socket.receive({ type: "welcome", credential: "personal-owner-credential", sessionId: "endpoint", state, inviteKey: "domain-invite" });
     expect(replaceState).toHaveBeenCalledWith(previousHistory, "", "/__channel-preview?theme=dark#room=first&invite=friend-link&other=keep");
-    expect(session.getSnapshot().inviteURL).toBe("https://channel.test/__channel-preview#invite=domain-invite");
+    await vi.waitFor(() => expect(session.getSnapshot().inviteURL).toBe("https://channel.test/__channel-preview#invite=domain-invite"));
     expect(values.get("piik.channel.prototype.credential")).toBe("personal-owner-credential");
     vi.useFakeTimers();
     socket.close(); await vi.advanceTimersByTimeAsync(1000);
@@ -176,10 +191,92 @@ test("saving a member credential preserves the ordinary invitation URL and forwa
   const replaceState = vi.fn(); vi.stubGlobal("history", { state: null, replaceState });
   try {
     const state = structuredClone(session.getSnapshot().state!); state.channel.ownerId = "another-user";
+    state.channel.inviteHash = inviteHash("friend-link");
     socket.receive({ type: "welcome", credential: "member-credential", sessionId: "endpoint", state });
     expect(replaceState).not.toHaveBeenCalled();
     expect(location.hash).toBe("#invite=friend-link&other=keep");
-    expect(session.getSnapshot().inviteURL).toBe("https://channel.test/__channel-preview#invite=friend-link");
+    await vi.waitFor(() => expect(session.getSnapshot().inviteURL).toBe("https://channel.test/__channel-preview#invite=friend-link"));
+    state.channel.inviteHash = inviteHash("new-link");
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().inviteURL).toBeNull();
+    socket.receive({ type: "welcome", credential: "member-credential", sessionId: "endpoint", state });
+    await Promise.resolve();
+    expect(session.getSnapshot().connection).toBe("connected");
+    expect(session.getSnapshot().inviteURL).toBeNull();
+  } finally { session.close(); }
+});
+
+test("domain passphrase retries use the same session and retire the submitted secret after Welcome", async () => {
+  const { session: initial } = await setup(3, false);
+  const state = initial.getSnapshot().state!; initial.close();
+  const saved = new Map<string, string>();
+  vi.stubGlobal("localStorage", { getItem: (key: string) => saved.get(key) ?? null,
+    setItem: (key: string, value: string) => { saved.set(key, value); } });
+  const session = new ChannelSession();
+  try {
+    session.start(); await ChannelSocket.current.onopen?.();
+    ChannelSocket.current.receive({ type: "error", code: "domain_password_required" });
+    expect(session.getSnapshot()).toMatchObject({ state: null, connection: "closed", error: "domain_password_required" });
+    session.enterDomain("wrong-passphrase");
+    await ChannelSocket.current.onopen?.();
+    expect(ChannelSocket.current.sent[0]).toMatchObject({ type: "join", password: "wrong-passphrase" });
+    ChannelSocket.current.receive({ type: "error", code: "domain_password_incorrect" });
+    expect(session.getSnapshot()).toMatchObject({ state: null, connection: "closed", error: "domain_password_incorrect" });
+    session.enterDomain("right-passphrase");
+    await ChannelSocket.current.onopen?.();
+    expect(ChannelSocket.current.sent[0]).toMatchObject({ password: "right-passphrase" });
+    ChannelSocket.current.receive({ type: "welcome", credential: "personal", sessionId: "endpoint", state });
+    expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null });
+    expect([...saved.values()]).toEqual(["personal"]);
+    session.reconnect(); await ChannelSocket.current.onopen?.();
+    expect(ChannelSocket.current.sent[0]).toMatchObject({ type: "join", credential: "personal" });
+    expect(ChannelSocket.current.sent[0]).not.toHaveProperty("password");
+  } finally { session.close(); }
+});
+
+test("domain invitation rotation follows canonical state and the owner reply, preserving the link on rejection", async () => {
+  const { session, socket } = await setup(3, false);
+  const state = structuredClone(session.getSnapshot().state!);
+  try {
+    socket.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state, inviteKey: "domain-invite" });
+    await vi.waitFor(() => expect(session.getSnapshot().inviteURL).toContain("invite=domain-invite"));
+    const resetting = session.resetDomainInvite();
+    const request = socket.sent.findLast(command => command.type === "domain_invite")!;
+    state.channel.inviteHash = inviteHash("rotated-invite");
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().inviteURL).toBeNull();
+    socket.receive({ type: "domain_invite", key: "rotated-invite", requestId: request.requestId });
+    await resetting;
+    await vi.waitFor(() => expect(session.getSnapshot().inviteURL).toBe("https://channel.test/__channel-preview#invite=rotated-invite"));
+    const rejected = session.resetDomainInvite();
+    socket.receive({ type: "error", code: "storage_failed", requestId: socket.sent.findLast(command => command.type === "domain_invite")!.requestId });
+    await expect(rejected).rejects.toThrow("storage_failed");
+    expect(session.getSnapshot().inviteURL).toContain("invite=rotated-invite");
+    // Another owner endpoint can rotate without a local request.
+    state.channel.inviteHash = inviteHash("other-owner-invite");
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "domain_invite", key: "other-owner-invite" });
+    await vi.waitFor(() => expect(session.getSnapshot().inviteURL).toContain("invite=other-owner-invite"));
+    state.channel.access = "public";
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().inviteURL).toBe("https://channel.test/__channel-preview");
+  } finally { session.close(); }
+});
+
+test.each(["", "first"])("a new invitation replaces failed admission in the same session (room=%s)", async roomId => {
+  const { session: initial } = await setup(3, false);
+  const state = initial.getSnapshot().state!; initial.close();
+  const session = new ChannelSession();
+  try {
+    session.start(); await ChannelSocket.current.onopen?.();
+    ChannelSocket.current.receive({ type: "error", code: "domain_invitation_required" });
+    location.hash = new URLSearchParams({ invite: "new-invite", ...(roomId ? { room: roomId } : {}) }).toString();
+    await expect(session.acceptInvitation()).resolves.toBe(roomId || null);
+    await ChannelSocket.current.onopen?.();
+    expect(ChannelSocket.current.sent[0]).toMatchObject({ type: "join", key: "new-invite", ...(roomId ? { roomId } : {}) });
+    if (!roomId) expect(ChannelSocket.current.sent[0]).not.toHaveProperty("roomId");
+    ChannelSocket.current.receive({ type: "welcome", credential: "personal", sessionId: "endpoint", state });
+    expect(session.getSnapshot().connection).toBe("connected");
   } finally { session.close(); }
 });
 
@@ -451,7 +548,7 @@ test("domain and room invitations use the current Welcome origin without local b
       socket.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state,
         inviteKey: "domain-invite", ...(invitationOrigin ? { invitationOrigin } : {}) });
       const origin = invitationOrigin ?? "https://channel.test";
-      expect(session.getSnapshot().inviteURL).toBe(`${origin}/__channel-preview#invite=domain-invite`);
+      await vi.waitFor(() => expect(session.getSnapshot().inviteURL).toBe(`${origin}/__channel-preview#invite=domain-invite`));
       const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
       socket.receive({ type: "ack", requestId: browse.requestId });
       peer.page(await peer.next(), [], false, null);
@@ -4595,7 +4692,7 @@ test("a connecting bulk channel has a bounded frame queue and releases admission
 test("rejected file admission cancels its shared-core consumer and releases the temporary sink", async () => {
   const cancel = vi.fn(() => "[]"), abort = vi.fn(async () => {}), removeEntry = vi.fn(async () => {});
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
-    initializeFiles: async () => {},
+    initializeRuntime: async () => {},
     FileDelivery: class { start() { return "[]"; } update() { return "[]"; } next_deadline() { return undefined; } cancel = cancel; free() {} },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
@@ -4617,7 +4714,7 @@ test.each(["initial", "resume"])("a stale %s file admission cannot retire a repl
   const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
   const { readFile } = await import("node:fs/promises");
   await rust.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
-  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeFiles: async () => {} } as never);
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeRuntime: async () => {} } as never);
   vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
   vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new Error("optional_cache_unavailable"));
   const source = "00000000-0000-0000-0000-000000000001", receiver = "00000000-0000-0000-0000-000000000002";
@@ -4691,7 +4788,7 @@ test.each([true, false])("a verified download survives optional retention (store
   const retain = vi.spyOn(FileStore.prototype, "retain");
   if (stored) retain.mockResolvedValue({ file: durable, evicted: [] });
   else retain.mockRejectedValue(new DOMException("Full", "QuotaExceededError"));
-  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ initializeFiles: async () => {},
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ initializeRuntime: async () => {},
     FileDelivery: class {
       start() { return "[]"; } update() { return "[]"; } next_deadline() { return undefined; } cancel() { return "[]"; } free() {}
       control() { return JSON.stringify([{ type: "complete", key }]); }
@@ -6040,7 +6137,7 @@ test.each(["tail", "first"])("late bulk %s fragments from a cancelled file canno
   const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
   const { readFile } = await import("node:fs/promises");
   await rust.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
-  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeFiles: async () => {} } as never);
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeRuntime: async () => {} } as never);
   vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
   vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new Error("optional_cache_unavailable"));
   const source = "00000000-0000-0000-0000-000000000001", receiver = "00000000-0000-0000-0000-000000000002";
@@ -6098,7 +6195,7 @@ test("a delayed source busy error cannot fail a cancelled file's successful retr
   const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
   const { readFile } = await import("node:fs/promises");
   await rust.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
-  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeFiles: async () => {} } as never);
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeRuntime: async () => {} } as never);
   vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
   vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new Error("optional_cache_unavailable"));
   const source = "00000000-0000-0000-0000-000000000001", receiver = "00000000-0000-0000-0000-000000000002";

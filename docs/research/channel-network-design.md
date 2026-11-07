@@ -71,6 +71,13 @@ neither directory details nor activity to unauthorized users. A nickname is not
 identity, and an invitation establishes admission rather than proving that two
 visitors are the same user.
 
+A domain starts private and admits users through a domain invitation, a configured
+passphrase, or their saved personal credential. A valid room invitation also
+admits its recipient to the domain and that room. Public domains accept their
+ordinary address and do not use a passphrase. The domain owner controls these
+entry settings. Resetting the domain invitation retires its old links while
+preserving admitted users and independently managed room invitations.
+
 The domain directory binds each room to its owner's current authenticated runtime
 connection, separately from the owner's persistent user identity. With no runtime,
 the room is unavailable. One room has one current runtime binding; reconnecting

@@ -90,6 +90,8 @@ export interface ChannelActions {
   loadLatestHistory(roomId: string): Promise<void>;
   attachments: ChannelAttachments;
   renameSelf(name: string): Promise<void>;
+  enterDomain(password: string): void;
+  resetDomainInvite(): Promise<void>;
   updateDomain(settings: DomainSettings): Promise<void>;
   exportDomainBackup(): Promise<Blob>;
   restoreDomainBackup(archive: Blob): Promise<void>;

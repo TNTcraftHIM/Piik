@@ -48,6 +48,7 @@ export const messageSchema = z.object({
 });
 export const snapshotSchema = z.object({
   channel: z.object({
+    access: z.enum(["public", "private"]), hasPassword: z.boolean(), inviteHash: z.string().regex(/^[a-f0-9]{64}$/),
     id, name: identityNameSchema, icon: identityIconSchema, ownerId: id.nullable(), rooms: z.array(roomSchema).max(32), historyWindow: z.number().int().positive(),
   }),
   users: z.array(userSchema).max(64),
@@ -81,6 +82,7 @@ export const eventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("state"), state: snapshotSchema }),
   z.object({ type: z.literal("input_state"), registrations: z.array(z.object({ publicationId: id, controllerSessionId: id, flowId: id, secret: signingKey })) }),
   z.object({ type: z.literal("room_invite"), roomId: id, key: id, requestId: id.optional() }),
+  z.object({ type: z.literal("domain_invite"), key: id, requestId: id.optional() }),
   z.object({ type: z.literal("host_bound"), roomId: id, bindingId: id }),
   z.object({ type: z.literal("room_created"), room: roomSummarySchema, requestId: id.optional() }),
   z.object({ type: z.literal("host_input"), roomId: id, input: z.object({ bindingId: id }).passthrough() }),
@@ -104,7 +106,7 @@ export type RoomSummary = z.infer<typeof roomSummarySchema>;
 export type ChannelPair = ChannelSnapshot["pairs"][number];
 export type ChannelSignal = z.infer<typeof signalSchema>;
 export type ChannelEvent = z.infer<typeof eventSchema>;
-export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" | "room_reply" | "room_created" }> | Extract<ConversationReply["record"], { type: "confirmed" }>;
+export type ChannelReply = Extract<ChannelEvent, { type: "domain_invite" | "room_invite" | "room_reply" | "room_created" }> | Extract<ConversationReply["record"], { type: "confirmed" }>;
 export interface SignedConversationPacket { sender: string; payload: string; signature: number[]; remainingHops: number }
 export interface ConversationAddress { roomId: string; bindingId: string; sender: string; recipient: string; requestId: string }
 export type ConversationReply = ConversationAddress & { record:
@@ -117,16 +119,17 @@ export type ConversationReply = ConversationAddress & { record:
   | { type: "history_end"; count: number; hasMore: boolean; oldestSeq: number | null; before: number | null }
   | { type: "error"; code: string }
 };
-export interface DomainSettings { name: string; icon: string }
+export interface DomainSettings { name: string; icon: string; access?: "public" | "private"; password?: string | null }
 export interface RoomSettings extends DomainSettings {
   access: "public" | "private"; hidden: boolean; password?: string | null;
   voiceBitrate?: number;
   relayCapacity?: number;
 }
 export type ChannelCommand =
-  | { type: "join"; name: string; signingKey: number[]; credential?: string; key?: string; roomId?: string; sessionId?: string }
+  | { type: "join"; name: string; signingKey: number[]; credential?: string; key?: string; password?: string; roomId?: string; sessionId?: string }
   | { type: "set_name"; name: string }
   | ({ type: "update_domain" } & DomainSettings)
+  | { type: "domain_invite" }
   | { type: "input_register"; publicationId: string; flowId: string; secret: number[] }
   | { type: "host_register"; room: RoomSummary; resumeBinding?: string }
   | { type: "create_room"; room: RoomSummary }

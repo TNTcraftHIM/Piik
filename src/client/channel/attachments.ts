@@ -56,7 +56,7 @@ export class ChannelAttachments {
     return download?.busy ? download : source?.error ? source : download ?? idle;
   };
   private changed() { for (const listener of this.listeners) listener(); }
-  private async module(): Promise<Hosting> { const module = await loadRoomHosting(); await module.initializeFiles(); return module; }
+  private async module(): Promise<Hosting> { const module = await loadRoomHosting(); await module.initializeRuntime(); return module; }
   limits = async (signal?: AbortSignal): Promise<AttachmentLimits> => {
     const module = await this.module(); signal?.throwIfAborted();
     return attachmentLimitsSchema.parse(JSON.parse(module.attachment_limits()));

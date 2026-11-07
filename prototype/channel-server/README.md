@@ -198,7 +198,9 @@ conversation and selected screens in the middle, and a persistent domain-wide
 user list on the right. Narrow layouts navigate between room and user panes.
 It provides self-name editing, room controls, files, history, voice
 and multiple watched screens through the existing session and shared components.
-The domain owner can edit its name and icon beside the domain title.
+The domain owner can edit its name, icon and public/private entry settings beside
+the domain title. A private domain can also accept a passphrase. Resetting its
+invitation changes the shared link while keeping existing users and room invitations.
 Room creation and settings share the same identity fields; the room owner or
 domain owner saves them at that room's runtime. Both surfaces share preset icons
 and custom images. The browser crops images to a small square; saving retains

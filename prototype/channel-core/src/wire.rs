@@ -16,6 +16,7 @@ pub enum Command {
         name: String,
         credential: Option<String>,
         key: Option<String>,
+        password: Option<String>,
         session_id: Option<String>,
         room_id: Option<String>,
         signing_key: [u8; 32],
@@ -30,7 +31,16 @@ pub enum Command {
     UpdateDomain {
         name: String,
         icon: IdentityIcon,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        access: Option<RoomAccess>,
+        #[serde(
+            default,
+            deserialize_with = "nullable_password",
+            skip_serializing_if = "Option::is_none"
+        )]
+        password: Option<Option<String>>,
     },
+    DomainInvite {},
     Browse {
         room_id: String,
         active: bool,
@@ -627,6 +637,9 @@ pub struct ChannelInfo {
     pub name: String,
     pub icon: IdentityIcon,
     pub owner_id: Option<Uuid>,
+    pub access: RoomAccess,
+    pub has_password: bool,
+    pub invite_hash: String,
     pub rooms: Vec<Room>,
 }
 
@@ -691,6 +704,11 @@ pub enum Event {
     },
     State {
         state: Snapshot,
+    },
+    DomainInvite {
+        key: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
     },
     RoomInvite {
         room_id: String,

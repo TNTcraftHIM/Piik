@@ -114,6 +114,7 @@ async fn participant() -> Result<()> {
     send(
         &mut socket,
         Command::Join {
+            password: None,
             name: "Kernel Native reader".into(),
             credential: None,
             key: Some(INVITE.into()),

@@ -45,6 +45,218 @@ fn join(core: &mut Authority, connection: Uuid, owner: bool, now: u64) -> (Uuid,
     )
 }
 
+#[test]
+fn domain_admission_preserves_identity_and_scopes_invitation_rotation_to_owners() {
+    let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+    let owner = Uuid::new_v4();
+    let (_, owner_credential, initial) = join(&mut core, owner, true, 0);
+    assert!(matches!(
+        initial.channel.access,
+        piik_channel_core::wire::RoomAccess::Private
+    ));
+    assert!(!initial.channel.has_password);
+    let other_owner = Uuid::new_v4();
+    welcome(
+        apply(
+            &mut core,
+            other_owner,
+            json!({"type":"join","name":"Same owner","credential":owner_credential}),
+            0,
+        ),
+        other_owner,
+    );
+    let guest = Uuid::new_v4();
+    let (session, credential, _) = join(&mut core, guest, false, 0);
+    let user = state(
+        &apply(
+            &mut core,
+            guest,
+            json!({"type":"set_name","name":"Guest"}),
+            0,
+        ),
+        guest,
+    )
+    .sessions
+    .iter()
+    .find(|entry| entry.id == session)
+    .unwrap()
+    .user_id;
+    let update = json!({"type":"update_domain","name":"Friends","icon":"couch","access":"private","password":"friends-only"});
+    let denied = apply(&mut core, guest, update.clone(), 1);
+    assert!(denied
+        .events
+        .iter()
+        .any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "forbidden")));
+    apply(&mut core, owner, update, 1);
+    for (password, error) in [
+        (None, "domain_password_required"),
+        (Some("wrong"), "domain_password_incorrect"),
+    ] {
+        let connection = Uuid::new_v4();
+        let rejected = apply(
+            &mut core,
+            connection,
+            json!({"type":"join","name":"Visitor","password":password}),
+            2,
+        );
+        assert!(rejected
+            .events
+            .iter()
+            .any(|(_, event)| matches!(event, Event::Error { code, .. } if code == error)));
+    }
+    let visitor = Uuid::new_v4();
+    let password_entry = apply(
+        &mut core,
+        visitor,
+        json!({"type":"join","name":"Visitor","password":"friends-only"}),
+        2,
+    );
+    assert!(password_entry.events.iter().any(|(_, event)| matches!(
+        event,
+        Event::Welcome {
+            invite_key: None,
+            ..
+        }
+    )));
+    let (_, _, password_state) = welcome(password_entry, visitor);
+    assert!(password_state.channel.has_password);
+    assert!(!serde_json::to_string(&password_state)
+        .unwrap()
+        .contains("friends-only"));
+    let denied_reset = apply(&mut core, guest, json!({"type":"domain_invite"}), 3);
+    assert!(denied_reset
+        .events
+        .iter()
+        .any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "forbidden")));
+    let reset = apply(
+        &mut core,
+        owner,
+        json!({"type":"domain_invite","requestId":"reset"}),
+        3,
+    );
+    let mut new_key = None;
+    for target in [owner, other_owner] {
+        let state_at = reset
+            .events
+            .iter()
+            .position(|(recipient, event)| {
+                *recipient == target && matches!(event, Event::State { .. })
+            })
+            .unwrap();
+        let (key_at, key, request_id) = reset
+            .events
+            .iter()
+            .enumerate()
+            .find_map(|(index, (recipient, event))| match event {
+                Event::DomainInvite { key, request_id } if *recipient == target => {
+                    Some((index, key.clone(), request_id.clone()))
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert!(state_at < key_at);
+        assert_eq!(
+            request_id.as_deref(),
+            if target == owner { Some("reset") } else { None }
+        );
+        new_key = Some(key);
+    }
+    assert!(!reset
+        .events
+        .iter()
+        .any(|(target, event)| *target == guest && matches!(event, Event::DomainInvite { .. })));
+    let new_key = new_key.unwrap();
+    assert_eq!(
+        state(&reset, guest).channel.invite_hash,
+        piik_channel_core::domain_invite_hash(&new_key)
+    );
+    assert_ne!(
+        state(&reset, guest).channel.invite_hash,
+        initial.channel.invite_hash
+    );
+    let old_link = Uuid::new_v4();
+    assert!(apply(&mut core, old_link, json!({"type":"join","name":"Old link","key":"invite"}), 4).events.iter()
+        .any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "domain_password_required")));
+    let returning = Uuid::new_v4();
+    let (returning_session, returned, restored) = welcome(
+        apply(
+            &mut core,
+            returning,
+            json!({"type":"join","name":"Returning","key":"invite","password":"wrong","credential":credential}),
+            4,
+        ),
+        returning,
+    );
+    assert_eq!(returned, credential);
+    assert_eq!(
+        restored
+            .sessions
+            .iter()
+            .find(|entry| entry.id == returning_session)
+            .unwrap()
+            .user_id,
+        user
+    );
+    let valid_link = Uuid::new_v4();
+    welcome(
+        apply(
+            &mut core,
+            valid_link,
+            json!({"type":"join","name":"New link","key":new_key,"password":"wrong"}),
+            4,
+        ),
+        valid_link,
+    );
+    apply(
+        &mut core,
+        owner,
+        json!({"type":"update_domain","name":"Friends","icon":"couch","access":"public","password":"discard this draft"}),
+        5,
+    );
+    let bare = Uuid::new_v4();
+    let (_, _, public) = welcome(
+        apply(
+            &mut core,
+            bare,
+            json!({"type":"join","name":"No invitation"}),
+            5,
+        ),
+        bare,
+    );
+    assert!(!public.channel.has_password);
+    assert!(matches!(
+        public.channel.access,
+        piik_channel_core::wire::RoomAccess::Public
+    ));
+}
+
+#[cfg(feature = "sqlite")]
+#[test]
+fn private_domain_passphrase_does_not_intercept_verified_room_invites() {
+    use piik_channel_core::wire::RoomAccess;
+    let mut core = support::RoomNetwork::new();
+    let owner = Uuid::new_v4();
+    core.command(owner, json!({"type":"join","name":"Owner","key":"owner"}));
+    let room = core.create(owner, RoomAccess::Private, true);
+    let key = core
+        .command(owner, json!({"type":"room_invite","roomId":room}))
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::RoomInvite { key, .. } => Some(key),
+            _ => None,
+        })
+        .unwrap();
+    core.command(owner, json!({"type":"update_domain","name":"Friends","icon":"couch","access":"private","password":"domain-passphrase"}));
+    let guest = Uuid::new_v4();
+    let (_, _, state) = welcome(core.command(guest, json!({"type":"join","name":"Room guest","roomId":room,"key":key,"password":"wrong-domain-password"})), guest);
+    assert!(state
+        .channel
+        .rooms
+        .iter()
+        .any(|entry| entry.id == room && entry.authorized));
+}
+
 fn state(effects: &Effects, connection: Uuid) -> &Snapshot {
     effects
         .events

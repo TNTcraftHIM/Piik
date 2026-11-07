@@ -21,7 +21,7 @@ const zipOptions = { useWebWorkers: false, compressionMethod: 0, level: 0 } as c
 
 async function runtime(): Promise<Runtime> {
   const module = await loadRoomHosting();
-  await module.initializeFiles();
+  await module.initializeRuntime();
   return module;
 }
 

@@ -57,18 +57,10 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **Room navigation on refresh.** Keep the selected room when refreshing
-  through the existing entry/navigation owner. It currently returns to the first
-  listed room; reopening the intended room correctly restores its saved history.
 - [ ] **Native quality preference.** Complete the detail-versus-motion preference
   after choosing its Native adaptation owner: Browser encoding already consumes
   that preference, while Native currently keeps its default. Do not expose a
   control that the selected producer cannot apply.
-- [ ] **3.0 invitation controls feedback.** Distinguish domain admission from a
-  room invitation in the UI. The user confirmed the existing 2.x-style controls:
-  public/private access, a passphrase and resetting the invitation link. Reuse
-  the current permission and settings owners; private-room settings and link
-  rotation already exist, while domain invitation copying has no such controls.
 - [ ] **Routing parity decisions.** Review the current domain-wide 20-endpoint
   limit, which counts Browser and App separately, against the intended user
   capacity. The current direct-source/helper trials cover fewer improvement

@@ -107,16 +107,23 @@ impl Channel {
                 self.identity.users.get_mut(&user_id).unwrap().name = name.to_owned();
                 broadcast = true;
             }
-            Command::UpdateDomain { name, icon } => {
+            Command::UpdateDomain {
+                name,
+                icon,
+                access,
+                password,
+            } => {
                 if user_id != self.identity.owner_id {
                     return Err("forbidden");
                 }
                 let name = title(&name).ok_or("invalid_domain_name")?;
+                self.identity.update_admission(access, password)?;
                 self.name = name;
                 self.icon = icon;
                 broadcast = true;
             }
             Command::HostRegister { .. }
+            | Command::DomainInvite {}
             | Command::CreateRoom { .. }
             | Command::AdmitRoom { .. }
             | Command::DeleteRoom { .. }
@@ -351,6 +358,8 @@ impl Channel {
             name: self.name.clone(),
             icon: self.icon.clone(),
             owner_id: self.identity.owner_id,
+            access: self.identity.access,
+            password_hash: self.identity.password_hash.clone(),
             users: self.identity.export_users(),
             hosted_rooms: self
                 .remote
@@ -419,6 +428,16 @@ impl Channel {
             self.identity.owner_key.clone(),
             self.identity.invite_key.clone(),
         );
+        if (state.access == RoomAccess::Public && state.password_hash.is_some())
+            || state
+                .password_hash
+                .as_ref()
+                .is_some_and(|hash| argon2::password_hash::PasswordHash::new(hash).is_err())
+        {
+            return Err("invalid_state");
+        }
+        identity.access = state.access;
+        identity.password_hash = state.password_hash;
         identity.restore_users(state.owner_id, state.users)?;
         let name = title(&state.name).ok_or("invalid_state")?;
         self.identity = identity;
@@ -1383,6 +1402,9 @@ impl Channel {
                 name: self.name.clone(),
                 icon: self.icon.clone(),
                 owner_id: Some(self.identity.owner_id),
+                access: self.identity.access,
+                has_password: self.identity.password_hash.is_some(),
+                invite_hash: crate::domain_invite_hash(&self.identity.invite_key),
                 rooms,
             },
             users: self
@@ -1455,6 +1477,9 @@ pub struct DurableState {
     name: String,
     icon: IdentityIcon,
     owner_id: Uuid,
+    #[serde(default = "crate::identity::private_access")]
+    access: RoomAccess,
+    password_hash: Option<String>,
     users: Vec<StoredUser>,
     hosted_rooms: BTreeMap<String, RoomSummary>,
 }

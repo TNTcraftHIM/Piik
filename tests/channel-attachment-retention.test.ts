@@ -11,7 +11,7 @@ const key = { roomId: "room", messageSeq: 1, attachmentId: attachment.id };
 const message: ChannelMessage = { id: "message", seq: 1, userId: "self", time: 1, text: "", attachments: [attachment] };
 
 function setup() {
-  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ initializeFiles: async () => {},
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ initializeRuntime: async () => {},
     attachment_limits: () => JSON.stringify({ maxFileBytes: 1024, maxAttachmentsPerMessage: 8, maxRetainedBytes: 1024, maxRetainedFiles: 8 }),
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);

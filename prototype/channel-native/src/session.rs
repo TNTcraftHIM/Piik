@@ -667,6 +667,7 @@ impl Session {
             };
             if let Ok(Ok((mut socket, _))) = connection {
                 let join = Command::Join {
+                    password: None,
                     can_prepare_udp: self.config.server_udp.is_none()
                         && crate::peer::can_prepare_udp().await,
                     can_receive_video_layers: true,

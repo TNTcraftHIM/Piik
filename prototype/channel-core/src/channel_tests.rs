@@ -57,6 +57,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
             channel
                 .join(
                     Admission {
+                        password: None,
                         can_prepare_udp: false,
                         can_receive_video_layers: false,
                         name: "Participant",
@@ -294,6 +295,7 @@ fn text_limits_match_browser_utf16_and_room_history() {
     let owner = channel
         .join(
             Admission {
+                password: None,
                 can_prepare_udp: false,
                 can_receive_video_layers: false,
                 name: "Owner",
@@ -319,6 +321,8 @@ fn text_limits_match_browser_utf16_and_room_history() {
         .handle(
             owner.session_id,
             Command::UpdateDomain {
+                access: None,
+                password: None,
                 name: "\u{1f600}".repeat(33),
                 icon: Default::default(),
             },
@@ -329,6 +333,8 @@ fn text_limits_match_browser_utf16_and_room_history() {
         .handle(
             owner.session_id,
             Command::UpdateDomain {
+                access: None,
+                password: None,
                 name: "   ".into(),
                 icon: Default::default(),
             },
@@ -339,6 +345,8 @@ fn text_limits_match_browser_utf16_and_room_history() {
         .handle(
             owner.session_id,
             Command::UpdateDomain {
+                access: None,
+                password: None,
                 name: format!(" {} ", "\u{1f600}".repeat(32)),
                 icon: Default::default(),
             },

@@ -83,12 +83,23 @@ fn domain_keys_belong_to_its_data_and_old_checkpoints_remain_untouched() {
         let owner = Endpoint::join(&mut hub, "saved-owner");
         assert_eq!(owner.user, identity.1);
         old_checkpoint = serde_json::to_value(hub.authority.export_state()).unwrap();
+        let mut legacy = serde_json::to_value(hub.authority.export_backup()).unwrap();
+        legacy["state"].as_object_mut().unwrap().remove("access");
+        legacy["state"]
+            .as_object_mut()
+            .unwrap()
+            .remove("passwordHash");
+        hub.storage.lock().unwrap().save(&legacy).unwrap();
     }
     drop(domain);
     for (owner_seed, invite_seed) in [("different-owner", "different-invite"), ("", "")] {
         let reopened = open(owner_seed, invite_seed).unwrap();
         assert_eq!(reopened.identity(), identity);
         assert_eq!(reopened.owner_key(), "saved-owner");
+        let state =
+            serde_json::to_value(reopened.hub.lock().unwrap().authority.export_state()).unwrap();
+        assert_eq!(state["access"], "private");
+        assert!(state["passwordHash"].is_null());
         let mut hub = reopened.hub.lock().unwrap();
         let owner = Endpoint::join(&mut hub, "saved-owner");
         assert_eq!(owner.user, identity.1);
@@ -130,9 +141,9 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
     let mut guest = Endpoint::join(&mut hub, "invite");
     owner.drain();
     let original = serde_json::to_value(hub.authority.export_state()).unwrap();
+    let original_backup = serde_json::to_value(hub.authority.export_backup()).unwrap();
     let icon = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
-    let update =
-        json!({"type":"update_domain","name":"  Friends  ","icon":icon,"requestId":"metadata"});
+    let update = json!({"type":"update_domain","name":"  Friends  ","icon":icon,"access":"private","password":"friends-only","requestId":"metadata"});
     guest.request(&mut hub, update.clone());
     assert!(guest
         .drain()
@@ -161,6 +172,19 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
         hub.storage.lock().unwrap().load().unwrap().unwrap()["state"],
         original
     );
+    owner.request(
+        &mut hub,
+        json!({"type":"domain_invite","requestId":"failed-reset"}),
+    );
+    assert_eq!(
+        owner.drain(),
+        vec![json!({"type":"error","code":"storage_failed","requestId":"failed-reset"})]
+    );
+    assert!(guest.drain().is_empty());
+    assert_eq!(
+        serde_json::to_value(hub.authority.export_backup()).unwrap(),
+        original_backup
+    );
     database
         .execute_batch("DROP TRIGGER reject_metadata;")
         .unwrap();
@@ -172,17 +196,57 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
         .unwrap();
     assert_eq!(state["state"]["channel"]["name"], "Friends");
     assert_eq!(state["state"]["channel"]["icon"], icon);
+    assert_eq!(state["state"]["channel"]["hasPassword"], true);
     let _: piik_channel_core::wire::Snapshot =
         serde_json::from_value(state["state"].clone()).unwrap();
+    owner.drain();
+    owner.request(
+        &mut hub,
+        json!({"type":"domain_invite","requestId":"reset"}),
+    );
+    let owner_events = owner.drain();
+    let key = owner_events
+        .iter()
+        .find(|event| event["type"] == "domain_invite")
+        .unwrap()["key"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        hub.storage.lock().unwrap().load().unwrap().unwrap()["inviteKey"],
+        key
+    );
+    assert!(guest
+        .drain()
+        .iter()
+        .all(|event| event["type"] != "domain_invite"));
     drop(hub);
     let store = storage::Storage::open(&path).unwrap();
-    let restored = serde_json::from_value::<DomainMetadata>(store.load().unwrap().unwrap())
+    let mut restored = serde_json::from_value::<DomainMetadata>(store.load().unwrap().unwrap())
         .unwrap()
         .into_authority(vec![])
         .unwrap();
     let saved = serde_json::to_value(restored.export_state()).unwrap();
     assert_eq!(saved["name"], "Friends");
     assert_eq!(saved["icon"], icon);
+    assert_eq!(saved["access"], "private");
+    assert!(saved["passwordHash"]
+        .as_str()
+        .unwrap()
+        .starts_with("$argon2"));
+    let old = Uuid::new_v4();
+    let join = |key: Option<&str>, password: Option<&str>| {
+        Request::parse(&json!({"type":"join","name":"Visitor","key":key,"password":password,
+        "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1;32]).signing_key()}).to_string()).unwrap()
+    };
+    assert!(restored.handle(old, join(Some("invite"), None), 1).events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "domain_password_required")));
+    for entry in [join(Some(&key), None), join(None, Some("friends-only"))] {
+        assert!(restored
+            .handle(Uuid::new_v4(), entry, 1)
+            .events
+            .iter()
+            .any(|(_, event)| matches!(event, Event::Welcome { .. })));
+    }
     drop(store);
     drop(database);
     std::fs::remove_file(path).unwrap();

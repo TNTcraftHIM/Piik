@@ -32,7 +32,7 @@ pub mod wire;
 pub use access::{RoomPermission, RoomState};
 pub use attachment::{AttachmentDescriptor, AttachmentLimits, ATTACHMENT_LIMITS};
 pub use channel::DurableState;
-pub use identity::{Endpoint, Member, User, RECOVERY_MS};
+pub use identity::{domain_invite_hash, Endpoint, Member, User, RECOVERY_MS};
 pub use room::{RoomRuntime, RoomSnapshot};
 #[cfg(feature = "sqlite")]
 pub use stored_room::{RoomBackup, StoredRoomHost};
@@ -149,6 +149,7 @@ impl Authority {
             Command::Join { .. }
             | Command::SetName { .. }
             | Command::UpdateDomain { .. }
+            | Command::DomainInvite {}
             | Command::CreateRoom { .. }
             | Command::AdmitRoom { .. }
             | Command::DeleteRoom { .. } => true,
@@ -206,6 +207,39 @@ impl Authority {
             now,
         };
         match &request.command {
+            Command::DomainInvite {} => {
+                if self.channel.identity.sessions[&session_id].user_id
+                    != self.channel.identity.owner_id
+                {
+                    Self::error(connection, request.request_id, "forbidden", &mut effects);
+                    return effects;
+                }
+                let key = Uuid::new_v4().to_string();
+                self.channel.identity.invite_key = key.clone();
+                self.broadcast(None, &mut effects);
+                for session in self
+                    .channel
+                    .identity
+                    .sessions
+                    .values()
+                    .filter(|session| session.user_id == self.channel.identity.owner_id)
+                {
+                    if let Some(target) = session.connection {
+                        effects.events.push((
+                            target,
+                            Event::DomainInvite {
+                                key: key.clone(),
+                                request_id: if target == connection {
+                                    request.request_id.clone()
+                                } else {
+                                    None
+                                },
+                            },
+                        ));
+                    }
+                }
+                return effects;
+            }
             Command::CreateRoom { room } => {
                 match self.channel.create_room(session_id, room.clone()) {
                     Ok(room) => {
@@ -523,6 +557,7 @@ impl Authority {
             name,
             credential,
             key,
+            password,
             session_id,
             room_id: _,
             signing_key,
@@ -545,6 +580,7 @@ impl Authority {
                 name: &name,
                 credential: credential.as_deref(),
                 key: key.as_deref(),
+                password: password.as_deref(),
                 resume: session_id.as_deref(),
                 signing_key,
                 can_prepare_udp,
@@ -679,6 +715,7 @@ impl Authority {
                             name,
                             credential: credential.as_deref(),
                             key: Some(&key),
+                            password: None,
                             resume: session_id.as_deref(),
                             signing_key: *signing_key,
                             can_prepare_udp: *can_prepare_udp,

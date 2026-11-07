@@ -48,6 +48,23 @@ pub fn digest(secret: &str) -> [u8; 32] {
     Sha256::digest(secret.as_bytes()).into()
 }
 
+pub(crate) fn hash_password(value: &str) -> Result<String, &'static str> {
+    let salt = SaltString::encode_b64(Uuid::new_v4().as_bytes()).map_err(|_| "password_failed")?;
+    Argon2::default()
+        .hash_password(value.as_bytes(), &salt)
+        .map(|hash| hash.to_string())
+        .map_err(|_| "password_failed")
+}
+
+pub(crate) fn accepts_password(hash: &str, value: &str) -> bool {
+    value.encode_utf16().count() <= 128
+        && PasswordHash::new(hash).ok().is_some_and(|hash| {
+            Argon2::default()
+                .verify_password(value.as_bytes(), &hash)
+                .is_ok()
+        })
+}
+
 impl RoomState {
     /// Validate retained policy without changing its password or invitation.
     pub fn validate(&self) -> Result<(), &'static str> {
@@ -121,14 +138,7 @@ impl RoomState {
                 {
                     return Err("invalid_room_password");
                 }
-                let salt = SaltString::encode_b64(Uuid::new_v4().as_bytes())
-                    .map_err(|_| "password_failed")?;
-                Some(Some(
-                    Argon2::default()
-                        .hash_password(value.as_bytes(), &salt)
-                        .map_err(|_| "password_failed")?
-                        .to_string(),
-                ))
+                Some(Some(hash_password(&value)?))
             }
             Some(None) => Some(None),
             None => None,
@@ -163,14 +173,9 @@ impl RoomState {
         }
         let valid = invite.is_some_and(|key| self.accepts_invite(key))
             || password.is_some_and(|password| {
-                password.encode_utf16().count() <= 128
-                    && self.password_hash.as_ref().is_some_and(|hash| {
-                        PasswordHash::new(hash).ok().is_some_and(|hash| {
-                            Argon2::default()
-                                .verify_password(password.as_bytes(), &hash)
-                                .is_ok()
-                        })
-                    })
+                self.password_hash
+                    .as_ref()
+                    .is_some_and(|hash| accepts_password(hash, password))
             });
         if !valid {
             return Err("room_access_required");

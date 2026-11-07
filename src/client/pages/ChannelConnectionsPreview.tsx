@@ -11,6 +11,7 @@ import { QUALITY_PROFILES, screenVideoCeiling } from "../media/quality";
 export function channelConnectionPreview(mode: "room" | "voice" | "both" | "app", longNames = false) {
   const state = snapshotSchema.parse({
     channel: { id: "domain", name: "Friends", icon: "couch", ownerId: "host-user", historyWindow: 100,
+      access: "public", hasPassword: false, inviteHash: "a".repeat(64),
       rooms: [{ id: "room", name: "Living room", icon: "couch", creatorId: "host-user", access: "public", hidden: false,
         hasPassword: false, authorized: true, canManage: false, participantSessionIds: ["host", "self", "friend", "app"],
         available: true, reading: true, capabilities: { attachments: true },

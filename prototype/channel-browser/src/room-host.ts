@@ -1,6 +1,6 @@
 import init, { attachment_result, conversation_replies, create_room_policy, history_page, history_page_size, prepare_confirmation, reaction_result, RoomHost, SessionSigner } from "../pkg/piik_channel_browser.js";
-export { AttachmentHash, BackupHistoryImport, FileDelivery, attachment_limits, attachment_media_type, backup_metadata, backup_record_bytes, conversation_broadcast, decode_control, encode_control, route_conversation, route_input, input_binding_current, verify_reply } from "../pkg/piik_channel_browser.js";
-export async function initializeFiles(): Promise<void> { await init(); }
+export { AttachmentHash, BackupHistoryImport, FileDelivery, attachment_limits, attachment_media_type, backup_metadata, backup_record_bytes, conversation_broadcast, decode_control, encode_control, domain_invite_hash, route_conversation, route_input, input_binding_current, verify_reply } from "../pkg/piik_channel_browser.js";
+export async function initializeRuntime(): Promise<void> { await init(); }
 export async function createSessionSigner(seed: Uint8Array): Promise<SessionSigner> { await init(); return new SessionSigner(seed); }
 import type { ChannelMessage, ConversationAddress, ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket } from "../../../src/client/channel/protocol";
 import type { BackupHistoryRow, BrowserRoomSnapshot, BrowserRoomStage } from "../../../src/client/channel/hosting";

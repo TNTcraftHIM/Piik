@@ -8,6 +8,7 @@ import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
 import { useClipboardResult } from "../ui/use-clipboard-result";
 import { useChannel } from "../channel/use-channel";
+import { rememberRoom, selectedRoom } from "../channel/navigation";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelAction } from "../channel/components/ChannelAction";
 import { ChannelInviteQrCode } from "../channel/components/ChannelInviteQrCode";
@@ -21,6 +22,7 @@ import { ChannelNameEditor } from "../channel/components/ChannelNameEditor";
 import { ChannelRoomControls, ChannelRoomEntry } from "../channel/components/ChannelRoomControls";
 import { ChannelBookmarks } from "../channel/components/ChannelBookmarks";
 import { ChannelDomainControls } from "../channel/components/ChannelDomainControls";
+import { ChannelDomainEntry } from "../channel/components/ChannelDomainEntry";
 import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
 import { ChannelCouch } from "../channel/components/ChannelCouch";
 import { ChannelRoomTool, type RoomToolSurface } from "../channel/components/ChannelRoomTool";
@@ -36,9 +38,12 @@ export function ChannelPreviewPage() {
   const { lang, vis } = useCopy();
   const zh = lang === "zh";
   const copy = (cn: string, en: string) => zh ? cn : en;
-  const [selected, setSelected] = useState(() => new URLSearchParams(location.hash.slice(1)).get("room") ?? "");
+  const [selected, setSelected] = useState(selectedRoom);
   const [mobilePane, setMobilePane] = useState<"room" | "rooms" | "people">("room");
-  const selectRoom = useCallback((id: string) => { setSelected(id); setMobilePane("room"); }, []);
+  const selectRoom = useCallback((id: string) => {
+    rememberRoom(id);
+    setSelected(id); setMobilePane("room");
+  }, []);
   const channel = useChannel(selectRoom);
   const { state, self, sessionId, connection, pending, streams } = channel;
   const [sharingView, setSharingView] = useState(() => readRoomPreferences().sharingView);
@@ -106,6 +111,8 @@ export function ChannelPreviewPage() {
       ? copy("这间房间已在另一处打开。请回到正在托管它的页面或 App。", "This room is already open elsewhere. Return to the page or App hosting it.")
     : channel.error === "room_host_offline"
       ? copy("房间暂不可用，请等待恢复托管。", "This room is unavailable. Wait for hosting to resume.")
+    : /domain_password/.test(channel.error)
+    ? copy("域口令不正确，请重新输入。", "The domain passphrase is incorrect. Please try again.")
     : /password/i.test(channel.error)
     ? copy("房间密码不正确，请重新输入。", "The room password is incorrect. Please try again.")
     : /room_access|room_forbidden/i.test(channel.error)
@@ -147,10 +154,10 @@ export function ChannelPreviewPage() {
       appControl={<AppConnectionButton discovery={channelAppDiscovery} connected={channel.appConnected} onConnected={() => run(channel.activateApp())} />} diagnosticControl={null}
       led={<LedStrip state={connected ? "live" : connection === "closed" ? "bad" : "busy"}
         label={connectionLabel} comic={connected ? "signal-connected" : "signal-connecting"} />} />
-    {failure && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span>{failure}</span>
+    {state && failure && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span>{failure}</span>
       <Btn icon="x" title="notice.dismiss" size="compact" quiet onClick={channel.clearError} />
     </div>}
-    <main className="c3-shell" data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"}>
+    {!state ? <ChannelDomainEntry channel={channel} failure={failure} /> : <main className="c3-shell" data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"}>
       <ChannelBookmarks currentName={state?.channel.name ?? location.host}
         currentIcon={<ChannelIdentityMark icon={state?.channel.icon ?? "couch"} size={26} />} onCurrent={() => setMobilePane("rooms")} />
       <aside id="c3-room-list" className="c3-sidebar" aria-label={copy("域和房间", "Domain and rooms")}>
@@ -160,14 +167,15 @@ export function ChannelPreviewPage() {
           {state && owner && <ChannelDomainControls channel={channel} />}
           <span className="c3-pane-back"><BackButton onClick={() => setMobilePane("room")} /></span>
         </div>
-        {channel.inviteURL && <div className="c3-invite" role="group" aria-label={copy("域邀请", "Domain invitation")}>
-          <span className="c3-invite-label">{!vis && copy("域邀请", "Domain invitation")}</span>
+        {channel.inviteURL && <div className="c3-invite" role="group" aria-label={state.channel.access === "public" ? copy("域地址", "Domain address") : copy("域邀请", "Domain invitation")}>
+          <span className="c3-invite-label">{!vis && (state.channel.access === "public" ? copy("域地址", "Domain address") : copy("域邀请", "Domain invitation"))}</span>
           <ChannelAction icon={invitationCopy.status === "copied" ? "check" : "link"} iconOnly
-            label={invitationCopy.status === "copied" ? copy("已复制", "Copied") : copy("复制域邀请", "Copy domain invitation")}
+            label={invitationCopy.status === "copied" ? copy("已复制", "Copied") : state.channel.access === "public" ? copy("复制域地址", "Copy domain address") : copy("复制域邀请", "Copy domain invitation")}
             hint="hint-copy-invite" onClick={invitationCopy.copy} />
-          <ChannelInviteQrCode url={channel.inviteURL} label={copy("域邀请二维码", "Domain invitation QR code")} />
+          <ChannelInviteQrCode url={channel.inviteURL} label={state.channel.access === "public" ? copy("域地址二维码", "Domain address QR code") : copy("域邀请二维码", "Domain invitation QR code")} />
         </div>}
-        {invitationCopy.status === "failed" && <label className="c3-copy-fallback">{copy("请手动复制邀请链接", "Copy invitation manually")}
+        {state.channel.access === "private" && !owner && !channel.inviteURL && <p className="c3-room-list-empty">{copy("需要邀请朋友时，请向域主索取当前域邀请。", "Ask the domain owner for the current invitation to invite friends.")}</p>}
+        {invitationCopy.status === "failed" && <label className="c3-copy-fallback">{state.channel.access === "public" ? copy("请手动复制域地址", "Copy domain address manually") : copy("请手动复制邀请链接", "Copy invitation manually")}
           <input className="c3-input" readOnly value={channel.inviteURL ?? ""} onFocus={event => event.currentTarget.select()} />
         </label>}
         <div className={`c3-room-navigation${!rooms.length ? " is-empty" : ""}`}>
@@ -290,6 +298,6 @@ export function ChannelPreviewPage() {
           label={`${nameOfUser(publication.userId)} — ${nameOfRoom(publication.roomId)}`} />)}
       </section>
       <ChannelPeople channel={channel} roomId={roomId} onBack={() => setMobilePane("room")} />
-    </main>
+    </main>}
   </div>;
 }

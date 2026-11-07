@@ -1,4 +1,7 @@
-use crate::access::digest;
+use crate::{
+    access::{accepts_password, digest, hash_password},
+    wire::RoomAccess,
+};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -8,6 +11,14 @@ use uuid::Uuid;
 pub const RECOVERY_MS: u64 = 20_000;
 const MAX_USERS: usize = 64;
 const MAX_SESSIONS: usize = 20;
+
+pub fn domain_invite_hash(key: &str) -> String {
+    crate::attachment::sha256_hex(key.as_bytes())
+}
+
+pub(crate) fn private_access() -> RoomAccess {
+    RoomAccess::Private
+}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,6 +49,8 @@ pub struct Identity {
     pub owner_key: String,
     pub invite_key: String,
     pub owner_id: Uuid,
+    pub access: RoomAccess,
+    pub password_hash: Option<String>,
 }
 
 pub struct Admission<'a> {
@@ -46,6 +59,7 @@ pub struct Admission<'a> {
     pub can_receive_video_layers: bool,
     pub credential: Option<&'a str>,
     pub key: Option<&'a str>,
+    pub password: Option<&'a str>,
     pub resume: Option<&'a str>,
     pub name: &'a str,
 }
@@ -106,7 +120,37 @@ impl Identity {
             owner_key,
             invite_key,
             owner_id: Uuid::new_v4(),
+            access: RoomAccess::Private,
+            password_hash: None,
         }
+    }
+
+    pub fn update_admission(
+        &mut self,
+        access: Option<RoomAccess>,
+        password: Option<Option<String>>,
+    ) -> Result<(), &'static str> {
+        let access = access.unwrap_or(self.access);
+        if access == RoomAccess::Public {
+            self.access = access;
+            self.password_hash = None;
+            return Ok(());
+        }
+        let hash = match password {
+            Some(Some(value)) => {
+                if value.is_empty() || value.encode_utf16().count() > 128 {
+                    return Err("invalid_domain_password");
+                }
+                Some(Some(hash_password(&value)?))
+            }
+            Some(None) => Some(None),
+            None => None,
+        };
+        self.access = access;
+        if let Some(hash) = hash {
+            self.password_hash = hash;
+        }
+        Ok(())
     }
 
     pub fn admit(
@@ -128,8 +172,18 @@ impl Identity {
         } else if let Some(user) = existing {
             user
         } else {
-            if input.key != Some(self.invite_key.as_str()) {
-                return Err("invitation_required");
+            if self.access == RoomAccess::Private && input.key != Some(self.invite_key.as_str()) {
+                let hash = self
+                    .password_hash
+                    .as_ref()
+                    .ok_or("domain_invitation_required")?;
+                let password = input
+                    .password
+                    .filter(|value| !value.is_empty())
+                    .ok_or("domain_password_required")?;
+                if !accepts_password(hash, password) {
+                    return Err("domain_password_incorrect");
+                }
             }
             Uuid::new_v4()
         };
@@ -298,6 +352,7 @@ mod tests {
             can_prepare_udp: false,
             can_receive_video_layers: false,
             key,
+            password: None,
             credential,
             resume,
             name: "Friend",

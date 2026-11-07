@@ -23,6 +23,7 @@ export interface HostedRoom {
 }
 
 interface RoomHosting {
+  domain_invite_hash(key: string): string;
   backup_metadata(input: string): string;
   backup_record_bytes(): number;
   BackupHistoryImport: new (metadata: string) => BackupHistoryImport;
@@ -34,7 +35,7 @@ interface RoomHosting {
   input_binding_current(binding: string, local: string, state: string): boolean;
   encode_control(frame: string): Uint8Array;
   decode_control(bytes: Uint8Array): string;
-  initializeFiles(): Promise<void>;
+  initializeRuntime(): Promise<void>;
   FileDelivery: new (sessionId: string) => FileDelivery;
   AttachmentHash: new () => AttachmentHash;
   attachment_media_type(bytes: Uint8Array): string;
@@ -87,6 +88,12 @@ export async function loadRoomHosting(): Promise<RoomHosting> {
   if (typeof WebAssembly === "undefined") throw new Error("webassembly_unavailable");
   try { return await roomHostingModules["../../../prototype/channel-browser/src/room-host.ts"](); }
   catch { throw new Error("room_runtime_unavailable"); }
+}
+
+export async function domainInviteHash(key: string): Promise<string> {
+  const runtime = await loadRoomHosting();
+  await runtime.initializeRuntime();
+  return runtime.domain_invite_hash(key);
 }
 
 export function roomDatabaseName(channelId: string, userId: string): string {
