@@ -104,6 +104,8 @@ node --env-file=.env.maintenance.local scripts/release-maintenance.mjs server-ch
 root/index asset references. `website-purge` clears those entry points from
 Cloudflare; visitors' Browser caches remain separate. `server-check` is a read-only
 SSH check of the Linux `piik` service, running package and public health.
+After deployment, pass `--revision FULL_SOURCE_SHA` from the release descriptor;
+an older healthy service then fails the check.
 Keep separate ignored env files or SSH aliases for different Server targets;
 keep private connection details out of scripts. For package upload, cutover
 and recovery, follow [Server deployment](../deployment.md).

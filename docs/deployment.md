@@ -224,6 +224,19 @@ schema validation fails closed before accepting signaling or media admission.
 
 ## Postflight
 
+Package publication, the website, and running Piik services are separate delivery
+targets. CI publishes packages and the website; it does not update the managed
+Demo or private service. Complete their authorized deployment before reporting
+the release as deployed, and verify each service against the release descriptor:
+
+```sh
+node --env-file=.env.maintenance.demo.local scripts/release-maintenance.mjs server-check --revision FULL_SOURCE_SHA
+node --env-file=.env.maintenance.private.local scripts/release-maintenance.mjs server-check --revision FULL_SOURCE_SHA
+```
+
+The website's latest-version card reads GitHub metadata and cannot establish
+which release either service is running.
+
 Verify only the surfaces relevant to the release:
 
 - local and public `/healthz` return `{"status":"ok"}`;
