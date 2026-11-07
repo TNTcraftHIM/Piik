@@ -25,7 +25,7 @@ export function ChannelMessageReactions({ reactions, selfUserId, pending, disabl
   const menu = useRef<HTMLDivElement>(null);
   const id = useId();
   const [open, setOpen] = useState(false);
-  useAnchoredPopover(trigger, menu, { side: "above", align: "center" });
+  useAnchoredPopover(trigger, menu, { side: "above", align: "center", enabled: open });
   const choices = Object.values(reactions?.choices ?? {});
   const selected = selfUserId ? reactions?.choices[selfUserId] ?? [] : [];
   const canSet = selfUserId !== null && !disabled && !pending;
@@ -50,10 +50,10 @@ export function ChannelMessageReactions({ reactions, selfUserId, pending, disabl
     <div ref={menu} id={id} popover="auto" role="dialog" className="lr-floating-surface c3-message-reaction-menu"
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}
       aria-label={lang === "zh" ? "消息表情" : "Message reactions"}>
-      <strong>{label}</strong>
+      {open && <><strong>{label}</strong>
       <RoomReactionGrid person={selfUserId ? { peerId: selfUserId, displayName: "" } : undefined} selfPeerId={selfUserId}
         reactionIds={messageReactionIds} canSend={canSet}
-        onSend={reaction => { set(reaction); menu.current?.hidePopover(); }} />
+        onSend={reaction => { set(reaction); menu.current?.hidePopover(); }} /></>}
     </div>
   </div>;
 }

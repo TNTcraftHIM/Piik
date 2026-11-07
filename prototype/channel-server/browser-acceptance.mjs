@@ -959,25 +959,48 @@ async function roomsAndFiles() {
     "the Server room's real peer endpoint supports the same file delivery");
   console.log("Private Browser room owns chat and sends file bytes over its actual peer path");
 
+  const historyWindow = created.state.channel.historyWindow;
+  const pageSize = await evaluate(0, `(async () => {
+    const { history_page_size } = await import('/prototype/channel-browser/pkg/piik_channel_browser.js');
+    return history_page_size();
+  })()`);
+  // Prepare retained history independently of the normal sends above/below.
+  // One transaction copies the confirmed row's storage shape without rendering
+  // a thousand intermediate conversations just to reach the reading boundary.
+  await evaluate(0, `(async () => {
+    const host = ${hook}.session.hostedRooms.get(${JSON.stringify(room.id)}).host;
+    const tx = host.db.transaction('messages', 'readwrite');
+    const messages = tx.objectStore('messages');
+    const first = messages.get([${JSON.stringify(room.id)}, 1]);
+    first.onsuccess = () => {
+      for (let seq = 2; seq <= ${historyWindow}; seq++) messages.add({ ...first.result,
+        seq, id: crypto.randomUUID(), nonce: 'history-fixture-' + seq, text: 'history-' + seq,
+        attachments: [], reactions: { revision: 0, choices: {} } });
+    };
+    await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); });
+    return true;
+  })()`);
   await browser(1, "click", '.c3-room-link[aria-label="Movie night"]');
-  for (let start = 0; start < 1020; start += 40) {
-    await evaluate(1, `(async () => {
-      for (let index = ${start}; index < ${Math.min(start + 40, 1020)}; index++) await ${hook}.session.sendMessage(${JSON.stringify(room.id)}, 'history-' + index);
-      return true;
-    })()`);
-  }
+  await action(1, `sendMessage(${JSON.stringify(room.id)}, 'History preparation complete')`);
+  const latestSeq = historyWindow + 1;
   await browser(0, "click", '.c3-room-link[aria-label="Movie night"]');
   await until("returning loads the latest contiguous history page", () => evaluate(0,
-    `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]?.length`), count => count === 100);
-  for (let page = 0; page < 10; page++) {
-    const anchor = page === 9 ? await evaluate(0, `(() => {
+    `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]?.map(message => message.seq)`),
+    seqs => seqs?.length === pageSize && seqs[0] === latestSeq - pageSize + 1 && seqs.at(-1) === latestSeq);
+  let firstSeq = latestSeq - pageSize + 1, loaded = pageSize;
+  while (firstSeq > 1) {
+    const olderCount = Math.min(pageSize, firstSeq - 1);
+    const anchor = loaded + olderCount > historyWindow ? await evaluate(0, `(() => {
       const log = document.querySelector('.c3-message-log'); log.scrollTop = 0;
       const message = log.querySelector('[data-message-id]');
       return { id: message.dataset.messageId, offset: message.getBoundingClientRect().top - log.getBoundingClientRect().top };
     })()`) : null;
     await browser(0, "find", "role", "button", "click", "--name", "Earlier messages", "--exact");
+    firstSeq -= olderCount;
+    loaded = Math.min(historyWindow, loaded + olderCount);
     await until("older page advances the reading window", () => evaluate(0,
-      `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]?.[0]?.seq`), seq => seq === Math.max(1, 922 - (page + 1) * 100));
+      `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]?.map(message => message.seq)`),
+      seqs => seqs?.length === loaded && seqs[0] === firstSeq && seqs.every((seq, index) => seq === firstSeq + index));
     if (anchor) {
       await until("full-window pagination preserves the visible message", () => evaluate(0, `(() => {
         const log = document.querySelector('.c3-message-log');
@@ -986,7 +1009,7 @@ async function roomsAndFiles() {
       })()`), offset => Math.abs(offset - anchor.offset) <= 2);
     }
   }
-  assert.equal(await evaluate(0, `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}].length`), 1000);
+  assert.equal(await evaluate(0, `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}].length`), historyWindow);
   assert.equal(await evaluate(0, `${hook}.snapshot().historyByRoom[${JSON.stringify(room.id)}].atLatest`), false);
   await browser(0, "screenshot", join(output, "room-history-desktop.png"), "--full");
   await browser(0, "set", "viewport", "390", "844");

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { Glyph } from "../../ui/icons";
@@ -13,6 +13,8 @@ import type { ReactionId } from "../../../shared/room-interactions";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import "./channel-conversation.css";
 
+type MessageReactionHandler = (roomId: string, messageSeq: number, reaction: ReactionId, active: boolean) => Promise<void>;
+
 /** Browsing owns the conversation; drafts and reading position belong to this pane. */
 export function ChannelConversation({ roomId, roomName, roomIcon, entry, messages, users, selfUserId, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, isReactionPending, onReaction }: {
   roomId: string; roomName: string; roomIcon?: string; messages: ChannelMessage[]; users: ChannelUser[];
@@ -25,7 +27,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   onLatest: (roomId: string) => Promise<void>;
   onSend: (roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal) => Promise<void>;
   isReactionPending: (messageSeq: number) => boolean;
-  onReaction: (roomId: string, messageSeq: number, reaction: ReactionId, active: boolean) => Promise<void>;
+  onReaction: MessageReactionHandler;
 }) {
   const { lang } = useCopy();
   const surfaceDocument = useSurfaceDocument();
@@ -69,9 +71,10 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
     }
     const node = log.current;
     if (hidden || !node) return;
-    const saved = reading.current;
-    const restore = () => { node.scrollTop = saved.following ? (messages.length ? node.scrollHeight : 0) : saved.position; };
-    restore();
+    const restore = () => {
+      const saved = reading.current;
+      node.scrollTop = saved.following ? node.scrollHeight : saved.position;
+    };
     const view = node.ownerDocument.defaultView;
     const frame = view?.requestAnimationFrame(restore);
     return () => { if (frame !== undefined) view?.cancelAnimationFrame(frame); };
@@ -82,11 +85,11 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
     const view = node.ownerDocument.defaultView;
     if (!view) return;
     const observer = new view.ResizeObserver(() => {
-      if (reading.current.following) node.scrollTop = messages.length ? node.scrollHeight : 0;
+      if (reading.current.following) node.scrollTop = node.scrollHeight;
     });
     observer.observe(node);
     return () => { observer.disconnect(); };
-  }, [roomId, messages.length, hidden, floating, surfaceDocument]);
+  }, [roomId, hidden, floating, surfaceDocument]);
   function addFiles(incoming: File[]) {
     if (!attachmentsAvailable || !limits || working || !canSend) return;
     if (files.length + incoming.length > limits.maxAttachmentsPerMessage) {
@@ -150,15 +153,9 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
         const previous = messages[index - 1];
         const grouped = previous?.userId === message.userId && message.time - previous.time < 120_000;
         const name = users.find(user => user.id === message.userId)?.name ?? (zh ? "用户" : "User");
-        return <article className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}`} key={message.id} data-message-id={message.id}>
-          {!grouped && <PawnSvg color={participantColor(message.userId)} identity={message.userId} />}
-          <div className="c3-message-body">{!grouped && <div className="c3-message-meta"><strong>{name}</strong>
-            <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(zh ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
-          </div>}{message.text && <p>{message.text}</p>}
-          {message.attachments.map(file => <ChannelAttachment key={file.id} roomId={roomId} messageSeq={message.seq} file={file} client={attachments} />)}
-          <ChannelMessageReactions reactions={message.reactions} selfUserId={selfUserId} pending={isReactionPending(message.seq)}
-            disabled={!available} onSet={(reaction, active) => { void onReaction(roomId, message.seq, reaction, active).catch(() => {}); }} /></div>
-        </article>;
+        return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name}
+          selfUserId={selfUserId} attachments={attachments} available={available}
+          reactionPending={isReactionPending(message.seq)} onReaction={onReaction} />;
       })}
     </div>
     {roomId && (history?.atLatest === false || (!history && (!loadingHistory || messages.length > 0))) && <div className="c3-history-more"><ChannelAction icon={history ? "arrowDown" : "refresh"} quiet
@@ -193,3 +190,20 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
     </form>}
   </section>;
 }
+
+const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, selfUserId, attachments, available, reactionPending, onReaction }: {
+  roomId: string; message: ChannelMessage; grouped: boolean; name: string; selfUserId: string | null;
+  attachments: ChannelAttachments; available: boolean; reactionPending: boolean;
+  onReaction: MessageReactionHandler;
+}) {
+  const { lang } = useCopy();
+  return <article className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}`} data-message-id={message.id}>
+    {!grouped && <PawnSvg color={participantColor(message.userId)} identity={message.userId} />}
+    <div className="c3-message-body">{!grouped && <div className="c3-message-meta"><strong>{name}</strong>
+      <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
+    </div>}{message.text && <p>{message.text}</p>}
+    {message.attachments.map(file => <ChannelAttachment key={file.id} roomId={roomId} messageSeq={message.seq} file={file} client={attachments} />)}
+    <ChannelMessageReactions reactions={message.reactions} selfUserId={selfUserId} pending={reactionPending}
+      disabled={!available} onSet={(reaction, active) => { void onReaction(roomId, message.seq, reaction, active).catch(() => {}); }} /></div>
+  </article>;
+});
