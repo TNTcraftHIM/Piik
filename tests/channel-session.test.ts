@@ -125,6 +125,64 @@ const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", t
 const reactionSnapshot = (seq: number, revision: number, choices: Record<string, string[]> = {}) =>
   ({ messageId: `message-${seq}`, messageSeq: seq, revision, choices });
 
+test("a saved owner credential retires only the consumed owner URL parameter and owns reconnect and reload", async () => {
+  const { session, socket } = await setup(3, false, "owner=owner-secret&room=first&invite=friend-link&other=keep");
+  const values = new Map<string, string>();
+  vi.stubGlobal("localStorage", { getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); } });
+  const previousHistory = { scroll: "kept" };
+  const replaceState = vi.fn((_state: unknown, _title: string, url: string) => { location.href = new URL(url, location.href).href; });
+  vi.stubGlobal("history", { state: previousHistory, replaceState });
+  location.search = "?theme=dark";
+  let reloaded: ChannelSession | undefined;
+  try {
+    const state = session.getSnapshot().state!;
+    socket.receive({ type: "welcome", credential: "personal-owner-credential", sessionId: "endpoint", state, inviteKey: "domain-invite" });
+    expect(replaceState).toHaveBeenCalledWith(previousHistory, "", "/__channel-preview?theme=dark#room=first&invite=friend-link&other=keep");
+    expect(session.getSnapshot().inviteURL).toBe("https://channel.test/__channel-preview#invite=domain-invite");
+    expect(values.get("piik.channel.prototype.credential")).toBe("personal-owner-credential");
+    vi.useFakeTimers();
+    socket.close(); await vi.advanceTimersByTimeAsync(1000);
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    expect(resumed.sent.find(command => command.type === "join")).toMatchObject({ credential: "personal-owner-credential" });
+    expect(resumed.sent.find(command => command.type === "join")).not.toHaveProperty("key");
+    session.close();
+    reloaded = new ChannelSession(); reloaded.start(); await ChannelSocket.current.onopen?.();
+    const join = ChannelSocket.current.sent.find(command => command.type === "join")!;
+    expect(join).toMatchObject({ credential: "personal-owner-credential", key: "friend-link", roomId: "first" });
+    expect(JSON.stringify(join)).not.toContain("owner-secret");
+  } finally { session.close(); reloaded?.close(); }
+});
+
+test.each(["throws", "ignores-write"] as const)("owner bootstrap stays recoverable when Browser storage %s", async failure => {
+  const { session, socket } = await setup(3, false, "owner=owner-secret&other=keep");
+  const replaceState = vi.fn(); vi.stubGlobal("history", { state: null, replaceState });
+  vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => { if (failure === "throws") throw new Error("storage unavailable"); } });
+  try {
+    socket.receive({ type: "welcome", credential: "personal-owner-credential", sessionId: "endpoint", state: session.getSnapshot().state! });
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(location.hash).toBe("#owner=owner-secret&other=keep");
+    expect(session.getSnapshot().connection).toBe("connected");
+    vi.useFakeTimers(); socket.close(); await vi.advanceTimersByTimeAsync(1000); await ChannelSocket.current.onopen?.();
+    expect(ChannelSocket.current.sent.find(command => command.type === "join")).toMatchObject({ key: "owner-secret", credential: "personal-owner-credential" });
+  } finally { session.close(); }
+});
+
+test("saving a member credential preserves the ordinary invitation URL and forwarding", async () => {
+  const { session, socket } = await setup(3, false, "invite=friend-link&other=keep");
+  let credential: string | null = null;
+  vi.stubGlobal("localStorage", { getItem: () => credential, setItem: (_key: string, value: string) => { credential = value; } });
+  const replaceState = vi.fn(); vi.stubGlobal("history", { state: null, replaceState });
+  try {
+    const state = structuredClone(session.getSnapshot().state!); state.channel.ownerId = "another-user";
+    socket.receive({ type: "welcome", credential: "member-credential", sessionId: "endpoint", state });
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(location.hash).toBe("#invite=friend-link&other=keep");
+    expect(session.getSnapshot().inviteURL).toBe("https://channel.test/__channel-preview#invite=friend-link");
+  } finally { session.close(); }
+});
+
 test("a browser without WebAssembly reports its capability failure before joining", async () => {
   vi.mocked(ChannelConversation.prototype.initialize).mockRestore();
   vi.stubGlobal("WebAssembly", undefined);

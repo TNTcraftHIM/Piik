@@ -228,7 +228,17 @@ export class ChannelSession {
       if (this.view.sessionId && !resumed) this.releaseMedia();
       if (!resumed) this.releaseHosts();
       this.credential = event.credential;
-      stored(credentialKey, event.credential);
+      const saved = stored(credentialKey, event.credential) === event.credential;
+      const parameters = new URLSearchParams(location.hash.slice(1));
+      const owner = event.state.sessions.find(session => session.id === event.sessionId)?.userId === event.state.channel.ownerId;
+      if (saved && owner && parameters.has("owner") && parameters.get("owner") === this.key && typeof history !== "undefined") {
+        parameters.delete("owner");
+        const hash = parameters.toString();
+        try {
+          history.replaceState(history.state, "", location.pathname + location.search + (hash ? `#${hash}` : ""));
+          this.key = undefined;
+        } catch { /* The saved credential still owns recovery if URL editing is unavailable. */ }
+      }
       this.invitationOrigin = event.invitationOrigin ?? location.origin;
       const invite = event.inviteKey ?? (!this.invitedRoom ? new URLSearchParams(location.hash.slice(1)).get("invite") : null);
       const inviteURL = new URL(location.pathname, this.invitationOrigin);
