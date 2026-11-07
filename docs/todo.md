@@ -57,6 +57,9 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **Room navigation on refresh.** Keep the selected room when refreshing
+  through the existing entry/navigation owner. It currently returns to the first
+  listed room; reopening the intended room correctly restores its saved history.
 - [ ] **Native quality preference.** Complete the detail-versus-motion preference
   after choosing its Native adaptation owner: Browser encoding already consumes
   that preference, while Native currently keeps its default. Do not expose a
