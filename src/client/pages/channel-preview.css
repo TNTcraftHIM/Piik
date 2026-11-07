@@ -6,11 +6,14 @@
 :where(.c3-shell) :is(h1,h2,h3,p) { margin: 0; }
 .c3-shell button { cursor: pointer; }
 .c3-shell button:disabled { cursor: default; }
-.c3-sidebar { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 20px; padding: 24px 12px 14px; background: var(--wall); border-inline-end: 1px solid var(--line); overflow-y: auto; overscroll-behavior: contain; }
-.c3-channel-title { display: flex; align-items: center; gap: 10px; padding-inline: 10px; }
-.c3-channel-title > div { min-width: 0; flex: 1; }
-.c3-channel-title h1 { font-size: 21px; font-weight: 750; line-height: 1.35; letter-spacing: -.035em; overflow-wrap: anywhere; }
-.c3-channel-caption { display: block; margin-top: 6px; font-size: 12px; color: var(--muted); }
+.c3-sidebar { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px 12px 14px; background: var(--wall); border-inline-end: 1px solid var(--line); }
+.c3-sidebar-browse { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.c3-sidebar > .c3-identity { flex: none; }
+.c3-channel-title { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px 10px; padding-inline: 10px; }
+.c3-channel-title > div:first-child { display: contents; }
+.c3-channel-title h1 { grid-column: 1 / -1; min-width: 0; font-size: 21px; font-weight: 750; line-height: 1.35; letter-spacing: -.035em; overflow-wrap: anywhere; }
+.c3-channel-title > .c3-pane-back { grid-column: 3; }
+.c3-channel-caption { display: block; font-size: 12px; color: var(--muted); }
 .c3-invite { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-inline: 6px; }
 .c3-invite-label { flex-basis: 100%; font-size: 12px; font-weight: 600; }
 .c3-invite-label:empty { display: none; }
@@ -24,7 +27,7 @@
 .c3-room-link strong { min-width: 0; flex: 1; overflow-wrap: anywhere; font-size: 13px; font-weight: 650; line-height: 1.4; }
 .c3-room-activity, .c3-room-activity > span { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
 .c3-room-activity:empty { display: none; }
-.c3-room-navigation { min-height: 120px; flex: 1; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.c3-room-navigation { flex: 1 0 auto; }
 .c3-room-list-empty { padding: 16px 10px; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .c3-room-navigation.is-empty > .c3-section-label { flex-wrap: wrap; gap: 12px; }
 .c3-pane-back, .c3-pane-navigation, .c3-room-tools > .c3-pane-navigation { display: none; }

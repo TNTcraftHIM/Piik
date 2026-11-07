@@ -142,6 +142,7 @@ export function ChannelPreviewPage() {
       <ChannelBookmarks currentName={state?.channel.name ?? location.host}
         currentIcon={<ChannelIdentityMark icon={state?.channel.icon ?? "couch"} size={26} />} onCurrent={() => setMobilePane("rooms")} />
       <aside id="c3-room-list" className="c3-sidebar" aria-label={copy("域和房间", "Domain and rooms")}>
+        <div className="c3-sidebar-browse">
         <div className="c3-channel-title c3-editable"><div><h1 id="c3-room-list-heading" tabIndex={-1}>{state?.channel.name ?? copy("你的域", "Your domain")}</h1>
           <span className="c3-channel-caption">{copy("域", "Domain")}</span></div>
           {state && owner && <ChannelDomainControls channel={channel} />}
@@ -180,6 +181,7 @@ export function ChannelPreviewPage() {
             })}
           </nav>
           {state && !rooms.length && <p className="c3-room-list-empty">{copy("暂无可进入的房间", "No rooms available yet")}</p>}
+        </div>
         </div>
         {self && <div className="c3-identity"><PawnSvg color={participantColor(self.id)} identity={self.id} host={owner} />
           <div><strong>{self.name}</strong><small>{owner ? copy("域主", "Domain owner") : copy("你的名字", "Your name")}</small></div>
