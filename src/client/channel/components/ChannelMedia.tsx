@@ -258,7 +258,11 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
           }} />
         <input className="c3-mini-volume" type="range" min="0" max={local || audio.boostAvailable ? 2 : 1} step="0.05" value={hasAudio ? sound.level : 0}
           disabled={soundDisabled} aria-label={t(volumeTitle)} aria-valuetext={hasAudio ? `${Math.round(sound.level * 100)}%` : t("playback.noAudio")}
-          onChange={event => local ? sourceAudio?.onChange({ level: Number(event.currentTarget.value) }) : output.current?.setLevel(Number(event.currentTarget.value))} />
+          onChange={event => {
+            const level = Number(event.currentTarget.value);
+            if (local) sourceAudio?.onChange({ level, muted: false });
+            else { output.current?.setLevel(level); output.current?.setMuted(false); }
+          }} />
       </>}
       <span className="c3-mini-space" />
       {!local && <RemoteControl channel={input ?? null} videoRef={playbackRef} available={ready && displayed.flowId === target.flowId}
