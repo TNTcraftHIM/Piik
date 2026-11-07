@@ -293,8 +293,10 @@ downloads in one IndexedDB store, scoped to its domain and user identity. File
 bytes and their confirmed descriptions commit together. The cache retains at
 most 256 files and 256 MiB, reclaiming oldest entries first. Reopening offers
 readable copies only in rooms the participant can still access; reclamation
-withdraws the source announcement and leaves the history description intact.
-Explicitly saved user files are outside that cache's cleanup.
+withdraws cache-only source announcements and leaves history intact. An active
+sender adopts its committed readable copy, so moving the originally selected
+file does not break that source. Cache eviction does not retire the copy already
+held by that active page. Explicitly saved user files remain outside cache cleanup.
 
 OPFS holds temporary streamed downloads. A retained IndexedDB copy must be
 independently readable before its temporary source is removed. A linked App or

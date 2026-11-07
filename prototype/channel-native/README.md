@@ -30,6 +30,10 @@ retains the mixer across replacement and stops it when the share ends.
 Frame-rate selection retains the original timestamps and accumulates its sampling
 interval across frames. The [network design](../../docs/research/channel-network-design.md)
 owns the process and output boundaries.
+On supported Windows versions, the source picker can request capture without
+the system border. Windows grants that access; denial keeps ordinary bordered
+capture. Cancelling selection also cancels the pending permission request under
+the existing capture lease.
 Windows encoders feed their actual output size into the existing WebRTC FrameDropper
 algorithm; raw-frame admission adjusts when hardware rate control overshoots,
 without discarding encoded reference frames or changing the source clock.

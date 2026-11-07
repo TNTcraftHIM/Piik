@@ -14,8 +14,9 @@ the feedback period; they do not delay that delivery.
 
 - [ ] **3.0 image attachment feedback.** Trace preview and download failures in
   Chrome at an HTTPS LAN address after opening another Browser window on the
-  same computer. The image was selected through the file picker and the sender
-  page remains open; compare its retained bytes and the receiver's delivery path.
+  same computer. The selected file is a GIF and the sender page remains open;
+  the user clarified this is a file-unavailable result, not a broken decoded
+  image. Compare retained bytes and the receiver's delivery path.
 - [ ] **3.0 iOS/iPadOS room voice feedback.** With noise processing disabled on
   the phone/tablet, a computer listener reports mono sound. Distinguish source
   capture channels, processing/mixing and negotiated Opus output in the current
@@ -100,10 +101,8 @@ the feedback period; they do not delay that delivery.
   model before extending existing admission and switch owners.
 - [ ] **3.0 capture settings feedback.** Make the existing Windows process-audio
   exclusion discoverable from sharing audio settings; it currently lives in the
-  display source picker with source sound enabled. Restore capture-border control
-  through the 3.0 capability/request/Windows capture chain; the shared picker
-  supports the control, but the 3.0 App does not advertise or carry it.
-  Schedule these feedback items after image-attachment and iOS keyboard fixes.
+  display source picker with source sound enabled. Reuse the same source settings
+  and replacement owner for live changes.
 - [ ] **3.0 Native platform acceptance.** Complete the remaining Linux/macOS
   device acceptance, including macOS Quit, Dock/Finder return and permissions,
   and Linux hardware encoding and physical sound. Retain the accepted
