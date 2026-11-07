@@ -188,6 +188,11 @@ links `#chat`, `#screens`, `#focus` and `#create` select the four studies; the
 toolbar compares desktop/narrow layouts, the shared light/dark themes and rooms
 with 4, 12 or 20 people. `?people=20#chat` opens the crowded-room study directly.
 
+The sharing-view study opens at `?view=share&content=empty&people=2`;
+`?view=share&content=full&people=4#screens` shows several pictures. The view switch
+retains the same sample room, chat draft, voice and sharing state. These boards
+compare layouts before applying them to the functional client.
+
 The functional frontend uses the accepted shell: room navigation on the left,
 conversation and selected screens in the middle, and a persistent domain-wide
 user list on the right. Narrow layouts navigate between room and user panes.
@@ -205,13 +210,13 @@ open their corresponding editors. Colours, controls, icons and animated people c
 existing components. Conversations, pictures and interactions are local samples;
 they do not create rooms or transmit media.
 
-Both surfaces share the domain-bookmark rail. Its plus button opens saved addresses:
-add a URL and optional local label, edit an address after a move, or remove a bookmark.
-Addresses without a scheme use HTTPS; use explicit `http://` for a local HTTP
-prototype. Pasted URLs save only their origin, without invitation secrets.
-Opening a bookmark uses a new tab at `/__channel-preview`, preserving the current
-activity. The list survives refresh in this Browser origin; it does not yet sync
-between sites. A bookmark grants no access to a private channel.
+Both surfaces share domain navigation. Its plus button opens a friend's URL or
+invitation in a new tab, keeping the full path, query and fragment. Addresses
+without a scheme use HTTPS; use explicit `http://` for a local HTTP entry.
+Opening a link preserves the current room's activities. Saving an address is a
+separate action: bookmarks contain only the origin and a local label. Saved
+addresses can be edited or removed and remain local to this Browser origin.
+Private-room access still follows the normal invitation and membership rules.
 
 The room's compact couch shares the heading with its title and actions; narrow
 layouts place it beneath them. It stays visible above conversation and screens.
