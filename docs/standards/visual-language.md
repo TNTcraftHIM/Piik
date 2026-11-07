@@ -66,6 +66,31 @@ Keep existing controls in their established positions as a room becomes active.
 Represent missing room identity with a passive placeholder in its own slot;
 do not move unrelated controls into that space to fill an empty state.
 
+### Space Priority
+
+Allocate space by the task, not by equally shrinking every child. A name or
+selected object gets space before its supporting edit action. Familiar auxiliary
+captions may collapse while retaining the icon, accessible name, guidance and
+shared control size. Primary, destructive and unfamiliar actions keep enough
+visible identity to distinguish their scope; retain wording when an icon would
+be ambiguous. Reflow related groups before squeezing text
+into narrow columns; exact values, units and usable input widths stay intact.
+Keep circular controls square rather than compressing one axis.
+
+Room layout follows the available container width and height. Pictures, messages
+and the composer get space before decorative scenery. A compact presence strip
+and the existing room tool keep participant interactions accessible in short
+windows. Media and history own their scrolling; the composer and live voice
+controls remain reachable. When columns fit, use them instead of forcing every
+region into a short vertical stack. Moving content between surfaces preserves
+the same component and session rather than creating a second UI or connection.
+
+Apply these priorities through existing layout and control owners, with no
+platform-specific layout manager. Check long names, translations, text zoom,
+editing and active playback: a page without horizontal overflow can still hide
+its useful content. [W3C reflow guidance](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html)
+permits reorganizing panels while preserving access to their content and actions.
+
 ### Control Selection
 
 Choose by the user's task, then reuse its interaction and visual primitive.
