@@ -692,6 +692,21 @@ frames from actual encoded bytes/input cadence; dropped raw frames retain time,
 and encoded reference frames remain intact. The
 [encoder assessment](./webrtc-encoder-pool.md#h264-burst-and-recovery) owns measurements.
 
+Native detail-versus-motion preference remains an adaptation-owner decision.
+Current encoders retain their spatial ceiling; the Windows/Android FrameDropper
+reduces raw-frame admission under encoded overshoot, which favors retaining
+detail without implementing a motion preference. Unlike the older complete
+WebRTC VideoStreamEncoder path, str0m supplies transport budgets and the platform
+codecs apply bitrate; neither owns this resolution/FPS tradeoff. Encoder
+quality-versus-speed controls do not substitute for it. A bounded semantic port
+of WebRTC's quality/source-adaptation modules would also require actual encoder
+feedback and per-encoding dynamic size/cadence application across platforms.
+GStreamer's [webrtcsink mitigation](https://gstreamer.freedesktop.org/documentation/rswebrtc/webrtcsink.html#enable-mitigation-modes)
+is coupled to its pipeline and uses bitrate tiers; libvpx resampling only covers
+that codec. Neither supplies the required shared owner here. Keep Native's
+current behavior until that larger boundary is explicitly selected, rather than
+adding a Piik quality ladder or advertising an ineffective preference.
+
 Default Server adaptation remains forwarding-only under
 [ADR-0013](../adr/0013-embedded-node-local-media.md). [Simulcast](https://www.rfc-editor.org/rfc/rfc8853)
 encodings represent one source/flow, not extra publications or operations. Session

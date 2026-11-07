@@ -42,6 +42,9 @@ where supported. A controlled two-channel input through the production
 microphone graph, Browser transport and playback retained separate 500 Hz left
 and 1500 Hz right signals at the default 64 kbps; received separation was over
 53 dB on Chrome 152. The source was a synthetic WAV, not a physical microphone.
+A later normal-room control retained those distinct channels through two peer
+hops and the receiver's per-person volume graph. Setting that volume to 50%
+reduced both channels by 6 dB without downmixing them.
 
 The reported iOS/iPadOS mono input remains under investigation. WebKit's
 [microphone configuration](https://github.com/WebKit/WebKit/blob/ff77ff95a2e470c383e2b87fb1c78ee6a8c97caf/Source/WebCore/platform/mediastream/cocoa/CoreAudioCaptureUnit.cpp#L458)

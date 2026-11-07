@@ -13,9 +13,11 @@ the feedback period; they do not delay that delivery.
 ## Now
 
 - [ ] **3.0 iOS/iPadOS room voice feedback.** With noise processing disabled on
-  the phone/tablet, a computer listener reports mono sound. Distinguish source
-  capture channels, processing/mixing and negotiated Opus output in the current
-  investigation. Keep the published 2.x mono contract separate.
+  the phone/tablet, a computer listener reports mono sound. Check that device's
+  raw capture channels against its received sound; the shared microphone,
+  two-hop relay and per-person volume paths retain stereo in controlled input.
+  [Media fidelity](./research/media-fidelity.md#30-room-microphone) owns the evidence.
+  Keep the published 2.x mono contract separate.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
@@ -58,9 +60,13 @@ the feedback period; they do not delay that delivery.
 ## Next
 
 - [ ] **Native quality preference.** Complete the detail-versus-motion preference
-  after choosing its Native adaptation owner: Browser encoding already consumes
-  that preference, while Native currently keeps its default. Do not expose a
-  control that the selected producer cannot apply.
+  after choosing its Native adaptation owner. Browser encoding already consumes
+  it; Native retains its spatial ceiling and existing bitrate/frame admission.
+  A mature source-adaptation port needs encoder feedback and per-encoding dynamic
+  size/cadence support; no shared off-the-shelf owner is currently selected.
+  Keep this [implementation boundary](./research/channel-network-design.md#implementation-boundary)
+  on hold rather than mapping the preference to encoder speed/quality controls
+  or adding a custom quality ladder.
 - [ ] **Routing parity decisions.** Review the current domain-wide 20-endpoint
   limit, which counts Browser and App separately, against the intended user
   capacity. The current direct-source/helper trials cover fewer improvement
