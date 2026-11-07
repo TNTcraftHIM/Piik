@@ -138,6 +138,9 @@ impl Authority {
                     .remote
                     .get(room_id)
                     .is_some_and(|room| room.summary != output.projection.summary)
+                    || output.reply.as_ref().is_some_and(|reply| {
+                        matches!(reply.result, RoomResult::Deleted { data_removed: true })
+                    })
                     || output
                         .reply
                         .as_ref()
@@ -146,6 +149,9 @@ impl Authority {
             Command::Join { .. }
             | Command::SetName { .. }
             | Command::UpdateDomain { .. }
+            | Command::CreateRoom { .. }
+            | Command::AdmitRoom { .. }
+            | Command::DeleteRoom { .. }
             | Command::SetRoles { .. } => true,
             _ => false,
         }
@@ -201,6 +207,68 @@ impl Authority {
             now,
         };
         match &request.command {
+            Command::CreateRoom { room } => {
+                match self.channel.create_room(session_id, room.clone()) {
+                    Ok(room) => {
+                        self.broadcast(None, &mut effects);
+                        effects.events.push((
+                            connection,
+                            Event::RoomCreated {
+                                room,
+                                request_id: request.request_id,
+                            },
+                        ));
+                    }
+                    Err(code) => Self::error(connection, request.request_id, code, &mut effects),
+                }
+                return effects;
+            }
+            Command::AdmitRoom { room } => {
+                match self.channel.admit_room(session_id, room.clone()) {
+                    Ok(()) => {
+                        self.broadcast(None, &mut effects);
+                        if let Some(request_id) = request.request_id {
+                            effects.events.push((connection, Event::Ack { request_id }));
+                        }
+                    }
+                    Err(code) => Self::error(connection, request.request_id, code, &mut effects),
+                }
+                return effects;
+            }
+            Command::DeleteRoom {
+                room_id,
+                delete_data,
+            } => {
+                if let Err(code) = self.channel.manages_room(session_id, room_id) {
+                    Self::error(connection, request.request_id, code, &mut effects);
+                } else if *delete_data && self.channel.room_online(room_id) {
+                    match self
+                        .channel
+                        .forward_room(room_id, context, request.command.clone())
+                    {
+                        Ok((session, event)) => self.deliver(session, event, &mut effects),
+                        Err(code) => {
+                            Self::error(connection, request.request_id, code, &mut effects)
+                        }
+                    }
+                } else {
+                    for (room, binding, reply) in self.channel.remove_room(room_id) {
+                        self.room_reply(&room, binding, reply, &mut effects);
+                    }
+                    self.broadcast(None, &mut effects);
+                    effects.events.push((
+                        connection,
+                        Event::RoomReply {
+                            room_id: room_id.clone(),
+                            request_id: request.request_id,
+                            result: RoomResult::Deleted {
+                                data_removed: false,
+                            },
+                        },
+                    ));
+                }
+                return effects;
+            }
             Command::RoomTopology {
                 room_id,
                 publication_id,
@@ -346,6 +414,22 @@ impl Authority {
             self.sync_hosts(&mut effects, false);
             self.broadcast(None, &mut effects);
         }
+        effects
+    }
+
+    /// Room data is already deleted, but the directory checkpoint failed.
+    /// Preserve its prior summary as unavailable so removal can be retried.
+    pub fn failed_room_delete(&mut self, id: &str, request: &RequestContext) -> Effects {
+        let mut effects = Effects::default();
+        if let Some(room) = self.channel.remote.get_mut(id) {
+            for (room, binding, reply) in room.pause() {
+                if &reply.context != request {
+                    self.room_reply(&room, binding, reply, &mut effects);
+                }
+            }
+        }
+        self.channel.reconcile();
+        self.broadcast(None, &mut effects);
         effects
     }
 
@@ -547,6 +631,16 @@ impl Authority {
         let accepted = self
             .channel
             .accept_host(room_id, session, connection, &output)?;
+        if output
+            .reply
+            .as_ref()
+            .is_some_and(|reply| matches!(reply.result, RoomResult::Deleted { data_removed: true }))
+        {
+            for (room, binding, reply) in self.channel.remove_room(room_id) {
+                self.room_reply(&room, binding, reply, effects);
+            }
+            self.broadcast(None, effects);
+        }
         if accepted.projection_applied {
             self.broadcast(None, effects);
         }
@@ -696,6 +790,9 @@ impl Authority {
                 },
             )),
             RoomResult::Error { code } => completion = RoomResult::Error { code },
+            RoomResult::Deleted { data_removed } => {
+                completion = RoomResult::Deleted { data_removed }
+            }
             _ => {}
         }
         effects.events.push((

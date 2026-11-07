@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ChannelMedia } from "./media";
 import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
-import { channelTopologySchema, eventSchema, userSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomSettings } from "./protocol";
+import { channelTopologySchema, eventSchema, roomSummarySchema, userSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomSettings, type RoomSummary } from "./protocol";
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView, ScreenPresentation, SourceMicrophoneConfiguration, SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage } from "./hosting";
@@ -274,6 +274,11 @@ export class ChannelSession {
       const binding = hosted.bindingId;
       void hosted.host.dispatch(event.input).then(output => {
         if (this.hostedRooms.get(event.roomId) === hosted && hosted.bindingId === binding && this.socket === socket) {
+          const result = (output as { reply?: { result?: { type?: string; dataRemoved?: boolean } } }).reply?.result;
+          if (result?.type === "deleted" && result.dataRemoved === true) {
+            this.hostedRooms.delete(event.roomId);
+            this.hostCleanup = Promise.all([this.hostCleanup, hosted.host.close()]).then(() => {});
+          }
           this.write({ type: "host_output", roomId: event.roomId, output });
         }
       }).catch(error => {
@@ -291,6 +296,12 @@ export class ChannelSession {
         try { request.result?.(event); request.resolve(); }
         catch (error) { request.reject(error instanceof Error ? error : new Error("invalid_response")); }
       }
+    } else if (event.type === "room_created") {
+      const request = event.requestId ? this.requests.get(event.requestId) : undefined;
+      if (!request || !event.requestId) return;
+      clearTimeout(request.timer); this.requests.delete(event.requestId);
+      try { request.result?.(event); request.resolve(); }
+      catch (error) { request.reject(error instanceof Error ? error : new Error("invalid_response")); }
     } else if (event.type === "state") this.applyState(event.state);
     else if (event.type === "room_invite") {
       if (event.requestId) this.requests.get(event.requestId)?.result?.(event);
@@ -364,6 +375,10 @@ export class ChannelSession {
       messagesByRoom: Object.fromEntries(Object.entries(this.view.messagesByRoom).filter(([id]) => canRead(id) && !freshBindings.has(id))),
       historyByRoom: Object.fromEntries(Object.entries(this.view.historyByRoom).filter(([id]) => canRead(id) && !freshBindings.has(id))),
     });
+    for (const [id, hosted] of this.hostedRooms) if (!state.channel.rooms.some(room => room.id === id)) {
+      this.hostedRooms.delete(id);
+      this.hostCleanup = Promise.all([this.hostCleanup, hosted.host.close()]).then(() => {});
+    }
     if (this.reading && (!sameChannel || !state.channel.rooms.some(room => room.id === this.reading!.roomId
       && room.authorized && room.available && room.delivery?.bindingId === this.reading!.bindingId))) {
       this.closeInteractions(); this.reading = null;
@@ -706,9 +721,15 @@ export class ChannelSession {
     const storage = await this.browserStorage(state.channel.id, self.id);
     const policies = await storage.storedPolicies();
     if (this.view.sessionId !== sessionId || this.closed) return;
+    const retained = new Set(policies.map(policy => (JSON.parse(policy) as { id: string }).id));
+    for (const [id, hosted] of this.hostedRooms) if (!retained.has(id)) {
+      this.hostedRooms.delete(id);
+      await hosted.host.close();
+    }
     for (const policy of policies) {
       const id = (JSON.parse(policy) as { id: string }).id;
       if (id === skipRoom) continue;
+      if (!this.view.state?.channel.rooms.some(room => room.id === id && room.creatorId === self.id)) continue;
       let hosted = this.hostedRooms.get(id);
       if (!hosted) {
         const host = await storage.open(policy);
@@ -718,7 +739,17 @@ export class ChannelSession {
       }
       const room = await hosted.host.summary();
       if (this.hostedRooms.get(id) !== hosted || this.view.sessionId !== sessionId || this.closed) return;
-      await this.request({ type: "host_register", room, resumeBinding: hosted.bindingId });
+      try { await this.request({ type: "host_register", room, resumeBinding: hosted.bindingId }); }
+      catch (error) {
+        if (!(error instanceof Error) || error.message !== "room_not_in_domain") throw error;
+        if (this.hostedRooms.get(id) === hosted) this.hostedRooms.delete(id);
+        await hosted.host.close();
+      }
+    }
+    for (const room of this.view.state?.channel.rooms ?? []) {
+      if (room.delivery?.hostSessionId === sessionId && !this.hostedRooms.has(room.id)) {
+        this.write({ type: "host_stop", roomId: room.id, bindingId: room.delivery.bindingId });
+      }
     }
   }
 
@@ -888,7 +919,15 @@ export class ChannelSession {
     const app = this.app?.connected ? this.app : undefined;
     const state = this.view.state, self = this.view.self, sessionId = this.view.sessionId;
     if (!state || !self || !sessionId) throw new Error("disconnected");
-    const runtime = await loadRoomHosting(), roomId = crypto.randomUUID();
+    const current = this.sessionContext();
+    let room: RoomSummary | undefined;
+    await this.request({ type: "create_room", room: roomSummarySchema.parse({ ...settings, id: "new", creatorId: self.id,
+      hasPassword: settings.access === "private" && Boolean(settings.password) }) }, event => {
+      if (event.type === "room_created") room = event.room;
+    });
+    current();
+    if (!room) throw new Error("invalid_response");
+    const runtime = await loadRoomHosting(), roomId = room.id;
     const policy = await runtime.createRoomPolicy({ ...settings, id: roomId, creatorId: self.id });
     if (app) {
       const room = await app.open(policy);
@@ -900,9 +939,9 @@ export class ChannelSession {
     const host = await storage.open(policy);
     if (this.view.sessionId !== sessionId || this.closed) { await host.close(); throw new Error("disconnected"); }
     this.hostedRooms.set(roomId, { host });
-    const room = await host.summary();
+    const summary = await host.summary();
     if (this.hostedRooms.get(roomId)?.host !== host || this.view.sessionId !== sessionId || this.closed) throw new Error("disconnected");
-    await this.request({ type: "host_register", room });
+    await this.request({ type: "host_register", room: summary });
     await this.request({ type: "browse", roomId, active: true });
     return roomId;
   });
@@ -1163,6 +1202,10 @@ export class ChannelSession {
       if (metadata.kind !== "room" || !stage) throw new Error("invalid_backup");
       if (!roomId && this.view.state!.channel.rooms.some(room => room.id === metadata.policy.id && room.available)) throw new Error("room_host_conflict");
       if (roomId && metadata.policy.creatorId !== this.view.self!.id) throw new Error("backup_identity_required");
+      if (!this.view.state!.channel.rooms.some(room => room.id === metadata.policy.id)) {
+        await this.request({ type: "admit_room", room: roomSummarySchema.parse({ ...metadata.policy, hasPassword: metadata.policy.passwordHash != null }) });
+        initial();
+      }
       rollback = await this.admitBackupIdentity(metadata);
       const check = this.sessionContext(), target = metadata.policy.id;
       const app = this.app?.connected ? this.app : undefined;
@@ -1215,6 +1258,16 @@ export class ChannelSession {
   }, false);
 
   updateRoom = (roomId: string, settings: RoomSettings): Promise<void> => this.action(`room:${roomId}`, () => this.request({ type: "update_room", roomId, ...settings }));
+  deleteRoom = (roomId: string, deleteData: boolean): Promise<{ dataRemoved: boolean }> => this.action(`delete:${roomId}`, async () => {
+    let dataRemoved: boolean | undefined;
+    await this.request({ type: "delete_room", roomId, deleteData }, event => {
+      if (event.type !== "room_reply" || event.result.type !== "deleted" || typeof event.result.dataRemoved !== "boolean") throw new Error("invalid_response");
+      dataRemoved = event.result.dataRemoved;
+    });
+    if (dataRemoved === undefined) throw new Error("invalid_response");
+    if (this.roomId === roomId) this.browse(this.view.state?.channel.rooms.find(room => room.id !== roomId)?.id ?? "");
+    return { dataRemoved };
+  });
 
   setRoomVoiceBitrate = (roomId: string, voiceBitrate: number): Promise<void> => {
     const room = this.view.state?.channel.rooms.find(room => room.id === roomId);

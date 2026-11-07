@@ -10,6 +10,230 @@ use uuid::Uuid;
 mod support;
 use support::RoomNetwork;
 
+#[test]
+fn deletion_withdraws_directory_authority_across_restart_without_recreating_the_room() {
+    let mut network = RoomNetwork::new();
+    let owner = Uuid::new_v4();
+    let creator = Uuid::new_v4();
+    let stranger = Uuid::new_v4();
+    admit(
+        &mut network,
+        owner,
+        json!({"type":"join","name":"Domain owner","key":"owner"}),
+    );
+    let (_, credential, _) = admit(
+        &mut network,
+        creator,
+        json!({"type":"join","name":"Creator","key":"invite"}),
+    );
+    admit(
+        &mut network,
+        stranger,
+        json!({"type":"join","name":"Stranger","key":"invite"}),
+    );
+    let deleted = room(&mut network, creator, "private", true);
+    let sibling = room(&mut network, owner, "public", false);
+    let policy = network.policy(&deleted);
+    let summary = piik_channel_core::host::RoomSummary::from_policy(&policy);
+    let forbidden = command(
+        &mut network,
+        stranger,
+        json!({"type":"delete_room","deleteData":true,"roomId":deleted,"requestId":"deny"}),
+    );
+    assert!(forbidden
+        .events
+        .iter()
+        .any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "forbidden")));
+    let pending = network.authority.handle(
+        owner,
+        piik_channel_core::wire::Request::parse(
+            &json!({"type":"delete_room","deleteData":true,"roomId":deleted,"requestId":"delete"})
+                .to_string(),
+        )
+        .unwrap(),
+        100,
+    );
+    let input = pending
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::HostInput { input, .. } => Some(input),
+            _ => None,
+        })
+        .unwrap();
+    let output = network.host_turn(&deleted, input);
+    network.authority.disconnect(owner, 100);
+    let removed = command(
+        &mut network,
+        creator,
+        json!({"type":"host_output","roomId":deleted,"output":output}),
+    );
+    assert!(
+        !removed
+            .events
+            .iter()
+            .any(|(target, event)| *target == owner && matches!(event, Event::RoomReply { .. })),
+        "a closed requester receives no completion"
+    );
+    assert!(!network
+        .state(creator)
+        .channel
+        .rooms
+        .iter()
+        .any(|room| room.id == deleted));
+    assert!(network
+        .state(creator)
+        .channel
+        .rooms
+        .iter()
+        .any(|room| room.id == sibling));
+
+    let checkpoint = network.authority.export_state();
+    let mut reopened = RoomNetwork::new();
+    reopened.authority.import_state(checkpoint).unwrap();
+    let returning = Uuid::new_v4();
+    admit(
+        &mut reopened,
+        returning,
+        json!({"type":"join","name":"Creator","credential":credential}),
+    );
+    for value in [
+        json!({"type":"host_register","room":summary}),
+        json!({"type":"admit_room","room":summary}),
+    ] {
+        let result = command(&mut reopened, returning, value);
+        assert!(result
+            .events
+            .iter()
+            .any(|(_, event)| matches!(event, Event::Error { .. })));
+    }
+    let created = command(
+        &mut reopened,
+        returning,
+        json!({"type":"create_room","room":summary}),
+    );
+    assert!(created.events.iter().any(|(_, event)| matches!(event, Event::RoomCreated { room, .. } if room.id != deleted && room.creator_id == policy.creator_id)));
+    let administrator = Uuid::new_v4();
+    admit(
+        &mut reopened,
+        administrator,
+        json!({"type":"join","name":"Domain owner","key":"owner"}),
+    );
+    let admitted = command(
+        &mut reopened,
+        administrator,
+        json!({"type":"admit_room","room":summary,"requestId":"restore"}),
+    );
+    assert!(admitted
+        .events
+        .iter()
+        .any(|(_, event)| matches!(event, Event::Ack { request_id } if request_id == "restore")));
+    reopened.restore_room(returning, policy);
+}
+
+#[test]
+fn offline_removal_and_correlated_online_deletion_keep_room_scopes_separate() {
+    use piik_channel_core::wire::Request;
+    let mut network = RoomNetwork::new();
+    let owner = Uuid::new_v4();
+    admit(
+        &mut network,
+        owner,
+        json!({"type":"join","name":"Owner","key":"owner"}),
+    );
+    let first = room(&mut network, owner, "public", false);
+    let second = room(&mut network, owner, "public", false);
+    let directory_only = room(&mut network, owner, "public", false);
+    let removal = network.authority.handle(owner, Request::parse(&json!({"type":"delete_room","deleteData":false,"roomId":directory_only,"requestId":"no-data-consent"}).to_string()).unwrap(), 100);
+    assert!(
+        !removal
+            .events
+            .iter()
+            .any(|(_, event)| matches!(event, Event::HostInput { .. })),
+        "an online host must never receive a storage deletion without consent"
+    );
+    let removal = network.deliver(removal);
+    assert!(removal.events.iter().any(|(_, event)| matches!(
+        event,
+        Event::RoomReply {
+            result: RoomResult::Deleted {
+                data_removed: false
+            },
+            ..
+        }
+    )));
+    let binding = network
+        .state(owner)
+        .channel
+        .rooms
+        .iter()
+        .find(|room| room.id == second)
+        .unwrap()
+        .delivery
+        .as_ref()
+        .unwrap()
+        .binding_id;
+    let effects = network.authority.handle(
+        owner,
+        Request::parse(
+            &json!({"type":"delete_room","deleteData":true,"roomId":first,"requestId":"scoped"})
+                .to_string(),
+        )
+        .unwrap(),
+        100,
+    );
+    let input = effects
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::HostInput { input, .. } => Some(input),
+            _ => None,
+        })
+        .unwrap();
+    let output = network.host_turn(&first, input);
+    let wrong = command(
+        &mut network,
+        owner,
+        json!({"type":"host_output","roomId":second,"output":output}),
+    );
+    assert!(wrong
+        .events
+        .iter()
+        .any(|(_, event)| matches!(event, Event::Error { .. })));
+    let valid = command(
+        &mut network,
+        owner,
+        json!({"type":"host_output","roomId":first,"output":output}),
+    );
+    assert!(valid.events.iter().any(|(_, event)| matches!(
+        event,
+        Event::RoomReply {
+            result: RoomResult::Deleted { data_removed: true },
+            ..
+        }
+    )));
+    command(
+        &mut network,
+        owner,
+        json!({"type":"host_stop","roomId":second,"bindingId":binding}),
+    );
+    let removed = command(
+        &mut network,
+        owner,
+        json!({"type":"delete_room","deleteData":true,"roomId":second,"requestId":"offline"}),
+    );
+    assert!(removed.events.iter().any(|(_, event)| matches!(
+        event,
+        Event::RoomReply {
+            result: RoomResult::Deleted {
+                data_removed: false
+            },
+            ..
+        }
+    )));
+    assert!(network.state(owner).channel.rooms.is_empty());
+}
+
 fn command(core: &mut RoomNetwork, connection: Uuid, value: Value) -> Effects {
     core.command(connection, value)
 }

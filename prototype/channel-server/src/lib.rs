@@ -57,6 +57,7 @@ impl NativeService {
                 path: directory.join(format!("{id}.sqlite")),
                 id: id.into(),
                 name: name.into(),
+                bootstrap: true,
             })
             .collect()
         } else {

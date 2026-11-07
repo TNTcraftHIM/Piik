@@ -1,6 +1,237 @@
 use super::*;
 use serde_json::json;
 
+#[tokio::test]
+async fn resumed_endpoint_retires_its_missing_host_after_a_deleted_output_cannot_be_sent() {
+    use piik_channel_core::{
+        host::{HostAction, HostInput, RequestContext},
+        Endpoint, Member,
+    };
+    let (mut session, mut socket, mut remote, mut state) = capture_projection_session().await;
+    let native = session.live.as_ref().unwrap().session;
+    let user = state
+        .sessions
+        .iter()
+        .find(|entry| entry.id == native)
+        .unwrap()
+        .user_id;
+    let binding = state.channel.rooms[0].delivery.as_ref().unwrap().binding_id;
+    state.channel.rooms[0].creator_id = user;
+    state.channel.rooms[0]
+        .delivery
+        .as_mut()
+        .unwrap()
+        .host_session_id = native;
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("room.sqlite");
+    let policy = RoomState::new(
+        "target".into(),
+        "Target".into(),
+        Default::default(),
+        user,
+        RoomAccess::Public,
+        false,
+        None,
+    )
+    .unwrap();
+    let mut host = HostedRoom::create(&path, policy).unwrap();
+    host.bind(binding).unwrap();
+    session
+        .live
+        .as_mut()
+        .unwrap()
+        .room
+        .rooms
+        .insert("target".into(), host);
+    session.files.push(RoomFile {
+        path: path.clone(),
+        id: "target".into(),
+        name: "Target".into(),
+        bootstrap: false,
+    });
+    session.state(state.clone(), &mut socket).await.unwrap();
+    remote.close(None).await.unwrap();
+    let _ = socket.close(None).await;
+    let input = HostInput {
+        now: 1,
+        binding_id: binding,
+        host_session_id: native,
+        revision: 1,
+        endpoints: [(
+            native,
+            Endpoint {
+                signing_key: session.signer.signing_key(),
+                member: Member {
+                    user_id: user,
+                    participates: true,
+                    domain_owner: false,
+                },
+                connected: true,
+            },
+        )]
+        .into(),
+        action: HostAction::Command {
+            context: RequestContext {
+                connection: Uuid::new_v4(),
+                session_id: native,
+                request_id: Some("delete".into()),
+                now: 1,
+            },
+            command: Command::DeleteRoom {
+                room_id: "target".into(),
+                delete_data: true,
+            },
+        },
+    };
+    assert!(session
+        .event(
+            Event::HostInput {
+                room_id: "target".into(),
+                input
+            },
+            &mut socket
+        )
+        .await
+        .is_err());
+    assert!(!session
+        .live
+        .as_ref()
+        .unwrap()
+        .room
+        .rooms
+        .contains_key("target"));
+    assert!(session.files.is_empty());
+    assert!(piik_channel_core::storage::Storage::open(&path)
+        .unwrap()
+        .load()
+        .unwrap()
+        .is_none());
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("ws://{}", listener.local_addr().unwrap());
+    let (client, peer) = tokio::join!(tokio_tungstenite::connect_async(url), async {
+        tokio_tungstenite::accept_async(listener.accept().await.unwrap().0).await
+    });
+    let (mut socket, _) = client.unwrap();
+    let mut peer = peer.unwrap();
+    session
+        .event(
+            Event::Welcome {
+                credential: "fixture".into(),
+                session_id: native,
+                state,
+                invite_key: None,
+                invitation_origin: None,
+            },
+            &mut socket,
+        )
+        .await
+        .unwrap();
+    let packet = tokio::time::timeout(std::time::Duration::from_secs(1), peer.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let request = piik_channel_core::wire::Request::parse(packet.to_text().unwrap()).unwrap();
+    assert!(
+        matches!(request.command, Command::HostStop { room_id, binding_id } if room_id == "target" && binding_id == binding)
+    );
+    session.release().await.unwrap();
+}
+
+#[tokio::test]
+async fn missing_room_restore_waits_for_domain_admission_and_drops_denied_or_retired_staging() {
+    use piik_channel_core::{backup::RoomMetadata, wire::Request, RoomBackup};
+    let (mut session, mut socket, mut remote, state) = capture_projection_session().await;
+    let directory = tempfile::tempdir().unwrap();
+    let user = state
+        .sessions
+        .iter()
+        .find(|entry| Some(entry.id) == session.live.as_ref().map(|live| live.session))
+        .unwrap()
+        .user_id;
+    let (_commands, received) = mpsc::channel(1);
+    session.hosting = Some(Hosting {
+        directory: directory.path().into(),
+        identity: (state.channel.id, user),
+        commands: received,
+        ready: watch::channel(None).0,
+        desktop: None,
+    });
+    for denied in [true, false] {
+        let staging = tempfile::tempdir().unwrap();
+        let path = staging.path().to_owned();
+        let policy = RoomState::new(
+            "restored".into(),
+            "Restored".into(),
+            Default::default(),
+            user,
+            RoomAccess::Public,
+            false,
+            None,
+        )
+        .unwrap();
+        let room = RoomBackup::stage(
+            &path.join("room.sqlite"),
+            RoomMetadata {
+                version: 1,
+                domain_id: state.channel.id,
+                policy,
+                own_credential: None,
+                retained_files: vec![],
+            },
+            std::iter::empty(),
+        )
+        .unwrap();
+        let (result, response) = oneshot::channel();
+        session
+            .restore_room(
+                RestoreRoom {
+                    snapshot: RoomSnapshot {
+                        room,
+                        directory: staging,
+                    },
+                    result,
+                },
+                &mut socket,
+            )
+            .await
+            .unwrap();
+        let request =
+            Request::parse(remote.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+        assert!(matches!(request.command, Command::AdmitRoom { .. }));
+        assert!(
+            stored_rooms(directory.path()).unwrap().is_empty(),
+            "no destination room was written before admission"
+        );
+        if denied {
+            session
+                .event(
+                    Event::Error {
+                        code: "forbidden".into(),
+                        request_id: request.request_id,
+                    },
+                    &mut socket,
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.await.unwrap().err().unwrap(), "forbidden");
+        } else {
+            session.release().await.unwrap();
+            assert_eq!(
+                response.await.unwrap().err().unwrap(),
+                "hosting_unavailable"
+            );
+        }
+        assert!(
+            !path.exists(),
+            "the staged database is released with its request"
+        );
+        assert!(stored_rooms(directory.path()).unwrap().is_empty());
+        assert!(session.opening.is_empty());
+    }
+}
+
 async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpStream>, Snapshot) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());

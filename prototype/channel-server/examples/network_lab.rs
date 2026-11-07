@@ -90,6 +90,7 @@ async fn host(path: PathBuf) -> Result<()> {
             path: path.join("room.sqlite"),
             id: ROOM.into(),
             name: "Kernel room".into(),
+            bootstrap: true,
         }],
         stop(),
     )

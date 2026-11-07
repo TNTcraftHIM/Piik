@@ -24,7 +24,7 @@ interface ReadRequest { type: "read"; roomId: string; before: number | null }
 interface AttachmentRequest { type: "attachment"; roomId: string; messageSeq: number; attachmentId: string }
 interface ReactionRequest { type: "set_reaction"; roomId: string; messageSeq: number; userId: string; reaction: string; active: boolean }
 type HistoryRequest = SendRequest | ReadRequest | AttachmentRequest | ReactionRequest;
-interface HostWork { policy: object | null; history: HistoryRequest | null }
+interface HostWork { policy: object | null; history: HistoryRequest | null; delete: boolean }
 type ConversationWork = { type: "history"; value: HistoryRequest } | { type: "immediate"; value: ConversationReply["record"] };
 type ConversationResult = { type: "history"; value: HistoryResult } | { type: "immediate"; value: ConversationReply["record"] };
 
@@ -304,7 +304,13 @@ export class BrowserRoomHost {
       const work: HostWork = JSON.parse(this.room.dispatch(JSON.stringify(input)));
       try {
         let result: HistoryResult | undefined;
-        if (work.history) result = await this.executeHistory(work.history, work.policy, signal);
+        if (work.delete) {
+          await this.roomTransaction(["rooms", "messages"], "readwrite", tx => {
+            tx.objectStore("rooms").delete(this.roomId);
+            tx.objectStore("messages").delete(IDBKeyRange.bound([this.roomId], [this.roomId, Infinity]));
+          }, () => {}, signal);
+          this.bindingId = undefined;
+        } else if (work.history) result = await this.executeHistory(work.history, work.policy, signal);
         else await this.roomTransaction(["rooms"], work.policy ? "readwrite" : "readonly", tx => {
           this.savePolicy(tx, work.policy);
         }, () => {}, signal);

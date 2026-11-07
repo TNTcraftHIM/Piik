@@ -8,6 +8,7 @@
 .c3-check { display: flex; align-items: center; gap: 8px; cursor: pointer; line-height: 1.5; }
 .c3-check input { flex: none; accent-color: var(--action); cursor: pointer; }
 .c3-room-invitation { display: grid; gap: 12px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.c3-room-removal { display: flex; justify-content: flex-end; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
 .c3-invite-copy, .c3-room-members > div { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .c3-invite-copy .c3-input, .c3-room-members > div > span { flex: 1; min-width: 0; }
 .c3-room-members { font-size: 12px; }

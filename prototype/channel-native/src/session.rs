@@ -231,6 +231,7 @@ pub struct RoomFile {
     // Creation defaults for explicitly configured files; discoveries leave this
     // empty so a missing saved database is never recreated without its history.
     pub name: String,
+    pub bootstrap: bool,
 }
 
 struct Live {
@@ -259,8 +260,30 @@ pub struct OpenRoom {
 
 struct OpeningRoom {
     request_id: String,
-    previous_binding: Option<Uuid>,
-    replies: Vec<oneshot::Sender<Result<RoomSummary, String>>>,
+    work: OpeningWork,
+}
+enum OpeningWork {
+    Register {
+        previous_binding: Option<Uuid>,
+        replies: Vec<oneshot::Sender<Result<RoomSummary, String>>>,
+    },
+    AdmitRestore(RestoreRoom),
+    Create(RoomFile),
+}
+impl OpeningRoom {
+    fn fail(self, code: &str) {
+        match self.work {
+            OpeningWork::Register { replies, .. } => {
+                for reply in replies {
+                    let _ = reply.send(Err(code.into()));
+                }
+            }
+            OpeningWork::AdmitRestore(request) => {
+                let _ = request.result.send(Err(code.into()));
+            }
+            OpeningWork::Create(_) => eprintln!("Native room creation failed: {code}"),
+        }
+    }
 }
 
 pub struct SnapshotRoom {
@@ -490,9 +513,7 @@ pub async fn run_host(
         }
     }
     for opening in session.opening.into_values() {
-        for reply in opening.replies {
-            let _ = reply.send(Err(error.clone()));
-        }
+        opening.fail(&error);
     }
     result.and(closed)
 }
@@ -506,6 +527,19 @@ impl Session {
 
     async fn release(&mut self) -> Result<()> {
         self.fail_captures("hosting_unavailable");
+        let restoring: Vec<_> = self
+            .opening
+            .iter()
+            .filter_map(|(id, opening)| {
+                (!matches!(opening.work, OpeningWork::Register { .. })).then(|| id.clone())
+            })
+            .collect();
+        for id in restoring {
+            self.opening
+                .remove(&id)
+                .unwrap()
+                .fail("hosting_unavailable");
+        }
         // A canceled connection turn must leave the Driver's join owned here.
         let closed = if let Some(live) = self.live.as_mut() {
             live.room.snapshot.send_replace(None);
@@ -574,6 +608,16 @@ impl Session {
                 if let Some(live) = &self.live {
                     live.room.snapshot.send_replace(None);
                 }
+                let result = if matches!(result, Ok(false))
+                    && self
+                        .opening
+                        .values()
+                        .any(|opening| matches!(opening.work, OpeningWork::Create(_)))
+                {
+                    Err(anyhow!("room_creation_interrupted: the domain did not confirm this creation; restart explicitly to try again"))
+                } else {
+                    result
+                };
                 if !matches!(result, Ok(false)) {
                     let released = self.release().await;
                     leave(&mut socket).await;
@@ -821,12 +865,34 @@ impl Session {
                     .live
                     .as_ref()
                     .is_some_and(|live| live.session == session_id);
+                let mut new_rooms = BTreeSet::new();
+                let mut creating = Vec::new();
                 if !resumed {
                     self.release().await?;
                     let mut rooms = BTreeMap::new();
-                    for file in &self.files {
+                    for mut file in std::mem::take(&mut self.files) {
                         let host = match std::fs::metadata(&file.path) {
-                            Ok(_) => HostedRoom::open(&file.path, &file.id, user),
+                            Ok(_) => {
+                                let store = piik_channel_core::storage::Storage::open(&file.path)
+                                    .map_err(anyhow::Error::from_boxed)?;
+                                let Some(policy) =
+                                    store.load().map_err(anyhow::Error::from_boxed)?
+                                else {
+                                    self.files.push(file);
+                                    continue;
+                                };
+                                let policy: RoomState = serde_json::from_value(policy)?;
+                                file.id = policy.id;
+                                if !state.channel.rooms.iter().any(|room| room.id == file.id) {
+                                    if file.bootstrap {
+                                        new_rooms.insert(file.id.clone());
+                                    } else {
+                                        self.files.push(file);
+                                        continue;
+                                    }
+                                }
+                                HostedRoom::open(&file.path, &file.id, user)
+                            }
                             Err(error)
                                 if error.kind() == std::io::ErrorKind::NotFound
                                     && !file.name.is_empty() =>
@@ -841,13 +907,35 @@ impl Session {
                                     None,
                                 )
                                 .map_err(anyhow::Error::msg)?;
+                                if !file.bootstrap {
+                                    let request_id = Uuid::new_v4().to_string();
+                                    creating.push((
+                                        request_id.clone(),
+                                        RoomSummary::from_policy(&policy),
+                                    ));
+                                    self.opening.insert(
+                                        file.id.clone(),
+                                        OpeningRoom {
+                                            request_id,
+                                            work: OpeningWork::Create(file),
+                                        },
+                                    );
+                                    continue;
+                                }
+                                new_rooms.insert(file.id.clone());
                                 HostedRoom::create(&file.path, policy)
                             }
                             Err(error) => Err(error.into()),
-                        }?;
+                        };
+                        let host = match host {
+                            Ok(host) => host,
+                            Err(error) if error.to_string() == "room_not_found" => continue,
+                            Err(error) => return Err(error),
+                        };
                         if rooms.insert(file.id.clone(), host).is_some() {
                             bail!("duplicate room id");
                         }
+                        self.files.push(file);
                     }
                     let ice = state
                         .ice_servers
@@ -895,6 +983,16 @@ impl Session {
                     .await?;
                 }
                 for (id, hosted) in &mut self.live.as_mut().unwrap().room.rooms {
+                    if new_rooms.contains(id) {
+                        write(
+                            socket,
+                            &Command::AdmitRoom {
+                                room: hosted.summary(),
+                            },
+                            None,
+                        )
+                        .await?;
+                    }
                     write(
                         socket,
                         &Command::HostRegister {
@@ -908,6 +1006,23 @@ impl Session {
                         ),
                     )
                     .await?;
+                }
+                for (request_id, room) in creating {
+                    write(socket, &Command::CreateRoom { room }, Some(&request_id)).await?;
+                }
+                let restoring: Vec<_> = self
+                    .opening
+                    .values()
+                    .filter_map(|opening| match &opening.work {
+                        OpeningWork::AdmitRestore(request) => Some((
+                            opening.request_id.clone(),
+                            RoomSummary::from_policy(&request.snapshot.room.metadata().policy),
+                        )),
+                        _ => None,
+                    })
+                    .collect();
+                for (request_id, room) in restoring {
+                    write(socket, &Command::AdmitRoom { room }, Some(&request_id)).await?;
                 }
                 self.hosting_ready();
                 eprintln!(
@@ -936,7 +1051,7 @@ impl Session {
                 if self
                     .opening
                     .get(&room_id)
-                    .is_some_and(|opening| opening.previous_binding == Some(binding_id))
+                    .is_some_and(|opening| matches!(opening.work, OpeningWork::Register { previous_binding: Some(previous), .. } if previous == binding_id))
                 {
                     return Ok(());
                 }
@@ -950,20 +1065,69 @@ impl Session {
                 }
                 self.hosting_ready();
             }
+            Event::RoomCreated {
+                room,
+                request_id: Some(request_id),
+            } => {
+                let pending = self.opening.iter().find_map(|(id, opening)| {
+                    (opening.request_id == request_id
+                        && matches!(opening.work, OpeningWork::Create(_)))
+                    .then(|| id.clone())
+                });
+                if let Some(pending) = pending {
+                    let OpeningWork::Create(mut file) = self.opening.remove(&pending).unwrap().work
+                    else {
+                        unreachable!()
+                    };
+                    let policy = RoomState::new(
+                        room.id.clone(),
+                        room.name.clone(),
+                        room.icon.clone(),
+                        room.creator_id,
+                        room.access,
+                        room.hidden,
+                        None,
+                    )
+                    .map_err(anyhow::Error::msg)?;
+                    let host = HostedRoom::create(&file.path, policy)?;
+                    file.id = room.id.clone();
+                    self.files.push(file);
+                    if let Some(live) = &mut self.live {
+                        live.room.rooms.insert(room.id.clone(), host);
+                    }
+                    write(
+                        socket,
+                        &Command::HostRegister {
+                            room: room.clone(),
+                            resume_binding: None,
+                        },
+                        Some(&room.id),
+                    )
+                    .await?;
+                }
+            }
             Event::Ack { request_id: id } => {
-                if let Some(room_id) = self
+                let room_id = self
                     .opening
                     .iter()
-                    .find_map(|(room, opening)| (opening.request_id == id).then(|| room.clone()))
-                {
+                    .find_map(|(room, opening)| (opening.request_id == id).then(|| room.clone()));
+                if let Some(room_id) = room_id {
                     let opening = self.opening.remove(&room_id).unwrap();
+                    let replies = match opening.work {
+                        OpeningWork::AdmitRestore(request) => {
+                            self.restore_room(request, socket).await?;
+                            return Ok(());
+                        }
+                        OpeningWork::Register { replies, .. } => replies,
+                        OpeningWork::Create(_) => return Ok(()),
+                    };
                     let summary = self
                         .live
                         .as_ref()
                         .and_then(|live| live.room.rooms.get(&room_id))
                         .filter(|host| host.binding().is_some())
                         .map(HostedRoom::summary);
-                    for reply in opening.replies {
+                    for reply in replies {
                         let _ =
                             reply.send(summary.clone().ok_or_else(|| "room_unavailable".into()));
                     }
@@ -976,6 +1140,12 @@ impl Session {
                             && live.session == input.host_session_id
                         {
                             let output = hosted.dispatch(input).map_err(anyhow::Error::msg)?;
+                            if output.reply.as_ref().is_some_and(|reply| {
+                                matches!(reply.result, RoomResult::Deleted { data_removed: true })
+                            }) {
+                                live.room.rooms.remove(&room_id);
+                                self.files.retain(|file| file.id != room_id);
+                            }
                             write(socket, &Command::HostOutput { room_id, output }, None).await?;
                         }
                     }
@@ -1031,6 +1201,14 @@ impl Session {
                 }
             }
             Event::Error { code, request_id } => {
+                if let Some(room) = self.opening.iter().find_map(|(room, opening)| {
+                    (!matches!(opening.work, OpeningWork::Register { .. })
+                        && request_id.as_ref() == Some(&opening.request_id))
+                    .then(|| room.clone())
+                }) {
+                    self.opening.remove(&room).unwrap().fail(&code);
+                    return Ok(());
+                }
                 if let Some(request) = request_id
                     .as_ref()
                     .and_then(|id| self.pending_captures.remove(id))
@@ -1051,16 +1229,14 @@ impl Session {
                         .as_ref()
                         .is_some_and(|live| live.room.rooms.contains_key(id))
                 }) {
-                    if self.hosting.is_none() {
+                    if self.hosting.is_none() && code != "room_not_in_domain" {
                         bail!("room registration failed: {code}");
                     }
                     let id = request_id.as_ref().unwrap();
                     self.live.as_mut().unwrap().room.rooms.remove(id);
                     self.files.retain(|file| &file.id != id);
                     if let Some(opening) = self.opening.remove(id) {
-                        for reply in opening.replies {
-                            let _ = reply.send(Err(code.clone()));
-                        }
+                        opening.fail(&code);
                     }
                     self.hosting_ready();
                     return Ok(());
@@ -1432,6 +1608,7 @@ impl Session {
                     path,
                     id: id.clone(),
                     name: host.summary().name,
+                    bootstrap: false,
                 });
                 live.room.rooms.insert(id.clone(), host);
             }
@@ -1487,6 +1664,44 @@ impl Session {
             return Ok(());
         }
         let id = request.snapshot.room.metadata().policy.id.clone();
+        let admission = (|| -> Result<bool> {
+            let hosting = self
+                .hosting
+                .as_ref()
+                .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+            crate::hosted_room::backup_identity(&request.snapshot.room, hosting.identity)?;
+            if self.opening.contains_key(&id) {
+                bail!("room_busy");
+            }
+            let live = self
+                .live
+                .as_ref()
+                .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+            let snapshot = live.room.snapshot.borrow();
+            let snapshot = snapshot
+                .as_ref()
+                .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+            Ok(!snapshot.channel.rooms.iter().any(|room| room.id == id))
+        })();
+        match admission {
+            Ok(true) => {
+                let request_id = Uuid::new_v4().to_string();
+                let room = RoomSummary::from_policy(&request.snapshot.room.metadata().policy);
+                self.opening.insert(
+                    id,
+                    OpeningRoom {
+                        request_id: request_id.clone(),
+                        work: OpeningWork::AdmitRestore(request),
+                    },
+                );
+                return write(socket, &Command::AdmitRoom { room }, Some(&request_id)).await;
+            }
+            Err(error) => {
+                let _ = request.result.send(Err(error.to_string()));
+                return Ok(());
+            }
+            Ok(false) => {}
+        }
         let restored = (|| -> Result<(RoomSummary, Option<Uuid>)> {
             let hosting = self
                 .hosting
@@ -1522,6 +1737,7 @@ impl Session {
                         path,
                         id: id.clone(),
                         name: String::new(),
+                        bootstrap: false,
                     });
                 }
                 live.room.rooms.insert(id.clone(), host);
@@ -1556,11 +1772,17 @@ impl Session {
             .entry(id.clone())
             .or_insert_with(|| OpeningRoom {
                 request_id: Uuid::new_v4().to_string(),
-                previous_binding,
-                replies: vec![],
+                work: OpeningWork::Register {
+                    previous_binding,
+                    replies: vec![],
+                },
             });
-        opening.replies.push(result);
-        if opening.replies.len() == 1 {
+        let OpeningWork::Register { replies, .. } = &mut opening.work else {
+            let _ = result.send(Err("room_busy".into()));
+            return Ok(());
+        };
+        replies.push(result);
+        if replies.len() == 1 {
             write(
                 socket,
                 &Command::HostRegister {
@@ -1575,6 +1797,13 @@ impl Session {
     }
 
     async fn state(&mut self, state: Snapshot, socket: &mut Socket) -> Result<()> {
+        if let Some(live) = &mut self.live {
+            live.room.rooms.retain(|id, room| {
+                room.binding().is_none()
+                    || state.channel.rooms.iter().any(|summary| &summary.id == id)
+            });
+        }
+        self.retire_missing_hosts(&state, socket).await?;
         let retired: Vec<_> = self
             .pending_captures
             .iter()
@@ -1646,6 +1875,38 @@ impl Session {
         }
         Ok(())
     }
+
+    async fn retire_missing_hosts(&mut self, state: &Snapshot, socket: &mut Socket) -> Result<()> {
+        let Some(live) = self.live.as_ref() else {
+            return Ok(());
+        };
+        let missing: Vec<_> = state
+            .channel
+            .rooms
+            .iter()
+            .filter_map(|room| {
+                room.delivery
+                    .as_ref()
+                    .filter(|delivery| {
+                        delivery.host_session_id == live.session
+                            && !live.room.rooms.contains_key(&room.id)
+                    })
+                    .map(|delivery| (room.id.clone(), delivery.binding_id))
+            })
+            .collect();
+        for (room_id, binding_id) in missing {
+            write(
+                socket,
+                &Command::HostStop {
+                    room_id,
+                    binding_id,
+                },
+                None,
+            )
+            .await?;
+        }
+        Ok(())
+    }
 }
 
 /// Physical names are local storage, not room identities. Imported named rooms
@@ -1662,16 +1923,15 @@ fn stored_rooms(directory: &std::path::Path) -> Result<Vec<RoomFile>> {
         }
         let store =
             piik_channel_core::storage::Storage::open(&path).map_err(anyhow::Error::from_boxed)?;
-        let policy: RoomState = serde_json::from_value(
-            store
-                .load()
-                .map_err(anyhow::Error::from_boxed)?
-                .ok_or_else(|| anyhow!("room_not_found"))?,
-        )?;
+        let Some(policy) = store.load().map_err(anyhow::Error::from_boxed)? else {
+            continue;
+        };
+        let policy: RoomState = serde_json::from_value(policy)?;
         files.push(RoomFile {
             path,
             id: policy.id,
             name: String::new(),
+            bootstrap: false,
         });
     }
     Ok(files)

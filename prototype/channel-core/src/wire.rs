@@ -52,6 +52,16 @@ pub enum Command {
         room: crate::host::RoomSummary,
         resume_binding: Option<Uuid>,
     },
+    CreateRoom {
+        room: crate::host::RoomSummary,
+    },
+    AdmitRoom {
+        room: crate::host::RoomSummary,
+    },
+    DeleteRoom {
+        room_id: String,
+        delete_data: bool,
+    },
     HostOutput {
         room_id: String,
         output: crate::host::HostOutput,
@@ -687,6 +697,11 @@ pub enum Event {
     RoomInvite {
         room_id: String,
         key: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    RoomCreated {
+        room: crate::host::RoomSummary,
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },

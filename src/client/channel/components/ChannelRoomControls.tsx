@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { Tooltip } from "../../components/living/Tooltip";
+import { Btn } from "../../components/living/primitives";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { useClipboardResult } from "../../ui/use-clipboard-result";
@@ -87,28 +88,33 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
     if (open && room) void channel.roomBackupAvailable(room.id).then(value => { if (current) setBackupAvailable(value); });
     return () => { current = false; };
   }, [open, room?.id, room?.delivery?.bindingId, channel.sessionId, channel.appConnected, channel.connection, channel.roomBackupAvailable]);
-  const available = channel.connection === "connected" && (!room || room.available);
+  const connected = channel.connection === "connected";
+  const available = connected && (!room || room.available);
   const busy = channel.pending.has(room ? `room:${room.id}` : "create-room");
   const backupBusy = channel.pending.has("room-backup");
+  const removing = !!room && channel.pending.has(`delete:${room.id}`);
+  const working = busy || backupBusy || removing;
   const members = room?.members?.filter(userId => userId !== room.creatorId && userId !== channel.state?.channel.ownerId) ?? [];
   const run = (work: Promise<unknown>) => { void work.catch(() => {}); };
   return <>
     <Tooltip kind={room ? "hint-details" : "hint-create-room"} disabled={open} text={vis ? undefined : title}>
       <button ref={trigger} type="button" className="lr-btn is-dense is-quiet" popoverTarget={id}
-        aria-label={title} aria-haspopup="dialog" aria-expanded={open} aria-controls={id} disabled={!available}>
+        aria-label={title} aria-haspopup="dialog" aria-expanded={open} aria-controls={id} disabled={!connected}>
         <Glyph name={room ? "sliders" : "plus"} size={18} />
         {!room && !channel.state?.channel.rooms.length && !vis && <span className="lr-cap">{title}</span>}
       </button>
     </Tooltip>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={title}
       className="lr-anchored-card c3-room-panel" onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
-      {open && <><h3>{title}</h3><RoomForm key={`form:${room?.delivery?.bindingId ?? room?.id ?? "create"}`} room={room} appHosted={channel.appConnected} disabled={!available || busy || backupBusy} busy={busy} onCancel={() => panel.current?.hidePopover()} onSave={async settings => {
+      {open && <><h3>{title}</h3>
+      {room && !room.available && <p>{zh ? "房间当前未托管，可以从域中移除。" : "This room is offline. You can remove it from the domain."}</p>}
+      <div hidden={!!room && !room.available}><RoomForm key={`form:${room?.delivery?.bindingId ?? room?.id ?? "create"}`} room={room} appHosted={channel.appConnected} disabled={!available || working} busy={busy} onCancel={() => panel.current?.hidePopover()} onSave={async settings => {
         const form = panel.current?.querySelector("form");
         if (room) await channel.updateRoom(room.id, settings);
         else onCreated?.(await channel.createRoom(settings));
         if (panel.current?.matches(":popover-open") && panel.current.querySelector("form") === form) panel.current.hidePopover();
       }} />
-      <BackupControls key={room?.id ?? "import"} available={!room || backupAvailable} disabled={!available || (!!room && !backupAvailable)}
+      <BackupControls key={room?.id ?? "import"} available={!room || backupAvailable} disabled={!available || busy || removing || (!!room && !backupAvailable)}
         busy={backupBusy} replacing={!!room}
         onExport={room ? () => channel.exportRoomBackup(room.id) : undefined}
         onRestore={async file => {
@@ -118,13 +124,13 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
         }} />
       {room?.access === "private" && <section className="c3-room-invitation">
         <ChannelAction icon="link" label={invite ? (zh ? "更换邀请链接" : "Replace invitation") : (zh ? "创建房间邀请" : "Create room invitation")}
-          busy={channel.pending.has(`invite:${room.id}`)} disabled={!available} hint="hint-copy-invite"
+          busy={channel.pending.has(`invite:${room.id}`)} disabled={!available || working} hint="hint-copy-invite"
           onClick={() => run(channel.createRoomInvite(room.id).then(setInvite))} />
         {invite && <div className="c3-invite-copy"><input className="c3-input" value={invite} readOnly
           aria-label={zh ? "房间邀请链接" : "Room invitation link"} onFocus={event => event.currentTarget.select()} />
           <ChannelAction icon={invitationCopy.status === "copied" ? "check" : "copy"} iconOnly label={invitationCopy.status === "copied" ? (zh ? "已复制" : "Copied") : (zh ? "复制邀请" : "Copy invitation")}
             hint="hint-copy-invite" onClick={invitationCopy.copy} />
-          <ChannelInviteQrCode url={invite} disabled={!available || backupBusy}
+          <ChannelInviteQrCode url={invite} disabled={!available || working}
             label={zh ? "房间邀请二维码" : "Room invitation QR code"} /></div>}
         <p>{zh ? "更换邀请或密码不会移除已获准的用户。" : "Replacing an invitation or password keeps existing access."}</p>
         {members.length > 0 && <details className="c3-room-members">
@@ -132,9 +138,23 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
           {members.map(userId =>
             <div key={userId}><span>{channel.state?.users.find(user => user.id === userId)?.name ?? (zh ? "用户" : "User")}</span>
               <ChannelAction icon="x" quiet iconOnly label={zh ? "移除房间资格" : "Remove room access"} hint="hint-close"
-                busy={channel.pending.has(`revoke:${room.id}:${userId}`)} disabled={!available}
+                busy={channel.pending.has(`revoke:${room.id}:${userId}`)} disabled={!available || working}
                 onClick={() => run(channel.revokeRoomAccess(room.id, userId))} /></div>)}
         </details>}
+      </section>}</div>
+      {room?.canManage && <section className="c3-room-removal">
+        <Btn icon="x" size="dense" quiet tone="danger" busy={removing} disabled={!connected || working}
+          title={{ text: room.available ? (zh ? "删除房间" : "Delete room") : (zh ? "从域移除" : "Remove from domain") }}
+          cap={{ text: room.available ? (zh ? "删除房间" : "Delete room") : (zh ? "从域移除" : "Remove from domain") }}
+          onClick={() => {
+            const deleteData = room.available;
+            const question = deleteData
+              ? (zh ? `删除“${room.name}”及其聊天记录？已下载的文件保留。若托管端已离线，则仅从域中移除。`
+                : `Delete “${room.name}” and its chat history? Downloaded files are kept. If hosting has gone offline, only its domain entry will be removed.`)
+              : (zh ? `从域中移除“${room.name}”？离线托管端的数据保留。`
+                : `Remove “${room.name}” from this domain? Data on its offline host is kept.`);
+            if (window.confirm(question)) run(channel.deleteRoom(room.id, deleteData).then(() => panel.current?.hidePopover()));
+          }} />
       </section>}</>}
     </div>
   </>;

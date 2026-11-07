@@ -17,12 +17,13 @@ async fn run_native() -> Result<()> {
     let mut rooms = Vec::new();
     while let Some(flag) = args.next() {
         if flag != "--room" {
-            bail!("usage: piik-channel-native --room <database> <id> <name> [--room ...]");
+            bail!("usage: piik-channel-native --room <database> <name> [--room ...]");
         }
         rooms.push(RoomFile {
             path: PathBuf::from(args.next().context("missing room database path")?),
-            id: args.next().context("missing room id")?,
+            id: uuid::Uuid::new_v4().to_string(),
             name: args.next().context("missing room name")?,
+            bootstrap: false,
         });
     }
     if rooms.is_empty() {

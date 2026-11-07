@@ -530,6 +530,7 @@ Browser preference; the App holds only the current process registration.
 | An administration page closes while Server owns the runtime | The deliberately running service continues; its lifetime is independent of that page. |
 | Browser-owned room runtime closes or expires | The room pauses; Browser hosting must not silently move to the domain owner's device. |
 | Room owner stops the hosting runtime | The room becomes unavailable; saved data remains. No automatic replacement is selected. |
+| A manager deletes or removes a room | Retire its activities and bindings; data disposition follows the [room removal scope](./channel-storage-and-identity.md#room-creation-and-removal). Other rooms keep their leases. |
 | Same owner restarts using saved room data | Restore room identity/history and establish new live sessions. Captures require explicit activation; reopening data does not resume a saved call. |
 | Sharer stops or leaves | End that publication, preserving other sources and the room base tree. |
 | A relay leaves | Repair affected paths through the same route owners; keep unrelated flows. |

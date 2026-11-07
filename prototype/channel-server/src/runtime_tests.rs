@@ -322,6 +322,15 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
     room_store
         .save(&serde_json::to_value(host.policy()).unwrap())
         .unwrap();
+    let administrator = Endpoint::join(&mut hub, "owner");
+    administrator.request(
+        &mut hub,
+        json!({"type":"admit_room", "room":host.summary()}),
+    );
+    let admitted_users = serde_json::to_value(hub.authority.export_state()).unwrap()["users"]
+        .as_array()
+        .unwrap()
+        .len();
     operator.request(
         &mut hub,
         json!({"type":"host_register", "room":host.summary()}),
@@ -443,7 +452,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
             .as_array()
             .unwrap()
             .len(),
-        2,
+        admitted_users,
         "an unconfirmed domain identity must not be checkpointed"
     );
     drop(database);
@@ -517,6 +526,10 @@ fn room_peer_commit_owns_confirmation_retry_without_domain_checkpoint() {
                 .unwrap(),
             )
             .unwrap();
+            sender.request(
+                &mut hub,
+                json!({"type":"admit_room", "room":host.summary()}),
+            );
             sender.request(
                 &mut hub,
                 json!({"type":"host_register", "room":host.summary()}),
@@ -1313,7 +1326,6 @@ async fn native_hosting_failure_stops_the_http_service() {
     .unwrap();
     let identity = domain.identity();
     let rooms = crate::room_directory(&folder, identity);
-    drop(domain);
     std::fs::create_dir_all(&rooms).unwrap();
     drop(
         StoredRoomHost::create(
@@ -1331,6 +1343,15 @@ async fn native_hosting_failure_stops_the_http_service() {
         )
         .unwrap(),
     );
+    {
+        let mut hub = domain.hub.lock().unwrap();
+        let owner = Endpoint::join(&mut hub, "owner");
+        let room = StoredRoomHost::open(&rooms.join("living.sqlite"))
+            .unwrap()
+            .summary();
+        owner.request(&mut hub, json!({"type":"admit_room", "room":room}));
+    }
+    drop(domain);
     let lock = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)

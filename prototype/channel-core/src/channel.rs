@@ -117,6 +117,9 @@ impl Channel {
                 broadcast = true;
             }
             Command::HostRegister { .. }
+            | Command::CreateRoom { .. }
+            | Command::AdmitRoom { .. }
+            | Command::DeleteRoom { .. }
             | Command::HostOutput { .. }
             | Command::HostStop { .. } => return Err("invalid_request"),
             Command::SetRoles {
@@ -506,28 +509,12 @@ impl Channel {
         let member = self
             .identity
             .member(self.identity.sessions[&session].user_id)?;
-        if summary.creator_id != member.user_id
-            || (!self.remote.contains_key(&summary.id) && !member.participates)
-        {
+        if summary.creator_id != member.user_id {
             return Err("forbidden");
         }
-        if !valid_id(&summary.id)
-            || summary.name.trim().is_empty()
-            || summary.name.encode_utf16().count() > 64
-        {
-            return Err("invalid_room_name");
-        }
-        if !crate::access::valid_audio_bitrate(summary.voice_bitrate) {
-            return Err("invalid_audio_bitrate");
-        }
-        if !self.remote.contains_key(&summary.id) && self.remote.len() >= 32 {
-            return Err("room_limit");
-        }
+        summary.validate()?;
         let room_id = summary.id.clone();
-        let remote = self
-            .remote
-            .entry(room_id.clone())
-            .or_insert_with(|| RemoteRoom::restored(summary.clone()));
+        let remote = self.remote.get_mut(&room_id).ok_or("room_not_in_domain")?;
         if remote.summary.creator_id != member.user_id {
             return Err("forbidden");
         }
@@ -581,6 +568,83 @@ impl Channel {
         binding.projection_floor = binding.revision;
         self.reconcile();
         Ok((events, replies))
+    }
+
+    pub(crate) fn create_room(
+        &mut self,
+        session: Uuid,
+        mut room: RoomSummary,
+    ) -> Result<RoomSummary, &'static str> {
+        let member = self
+            .identity
+            .member(self.identity.sessions[&session].user_id)?;
+        if !member.participates {
+            return Err("forbidden");
+        }
+        room.id = Uuid::new_v4().to_string();
+        room.creator_id = member.user_id;
+        self.insert_room(room.clone())?;
+        Ok(room)
+    }
+
+    pub(crate) fn admit_room(
+        &mut self,
+        session: Uuid,
+        room: RoomSummary,
+    ) -> Result<(), &'static str> {
+        let member = self
+            .identity
+            .member(self.identity.sessions[&session].user_id)?;
+        if !member.domain_owner {
+            return Err("forbidden");
+        }
+        self.identity.member(room.creator_id)?;
+        room.validate()?;
+        if let Some(current) = self.remote.get(&room.id) {
+            return if current.summary.creator_id == room.creator_id {
+                Ok(())
+            } else {
+                Err("forbidden")
+            };
+        }
+        self.insert_room(room)
+    }
+
+    fn insert_room(&mut self, room: RoomSummary) -> Result<(), &'static str> {
+        room.validate()?;
+        if self.remote.len() >= 32 {
+            return Err("room_limit");
+        }
+        self.remote
+            .insert(room.id.clone(), RemoteRoom::restored(room));
+        Ok(())
+    }
+
+    pub(crate) fn manages_room(&self, session: Uuid, id: &str) -> Result<(), &'static str> {
+        let member = self
+            .identity
+            .member(self.identity.sessions[&session].user_id)?;
+        let room = self.remote.get(id).ok_or("room_not_in_domain")?;
+        if member.domain_owner || member.user_id == room.summary.creator_id {
+            Ok(())
+        } else {
+            Err("forbidden")
+        }
+    }
+
+    pub(crate) fn room_online(&self, id: &str) -> bool {
+        self.remote
+            .get(id)
+            .is_some_and(|room| Self::host_online(&self.identity, room))
+    }
+
+    pub(crate) fn remove_room(&mut self, id: &str) -> Vec<RetiredRoomReply> {
+        let replies = self
+            .remote
+            .remove(id)
+            .map_or_else(Vec::new, |mut room| room.drain_replies());
+        self.reconcile();
+        replies
     }
 
     pub(crate) fn host_input(
@@ -804,6 +868,33 @@ impl Channel {
         };
         if !reply_valid {
             return Err("invalid_room_reply");
+        }
+        if let Some(reply) = output
+            .reply
+            .as_ref()
+            .filter(|reply| matches!(reply.result, RoomResult::Deleted { .. }))
+        {
+            if !matches!(reply.result, RoomResult::Deleted { data_removed: true })
+                || !matches!(
+                    binding.replies.get(&output.revision),
+                    Some(ReplyOwner::Request { delete: true, .. })
+                )
+            {
+                return Err("invalid_room_reply");
+            }
+            self.remote
+                .get_mut(id)
+                .unwrap()
+                .binding
+                .as_mut()
+                .unwrap()
+                .replies
+                .remove(&output.revision);
+            return Ok(HostAcceptance {
+                projection_applied: false,
+                invitation_current: false,
+                replies: vec![reply.clone()],
+            });
         }
         let projection_applied = output.revision >= binding.projection_floor;
         let room = &self.remote[id];
@@ -1065,6 +1156,7 @@ impl Channel {
                     context,
                     member,
                     completion: Some(result),
+                    ..
                 } = owner
                 else {
                     return None;

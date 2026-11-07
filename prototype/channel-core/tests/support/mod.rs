@@ -110,7 +110,7 @@ impl RoomNetwork {
             .find(|entry| entry.id == session)
             .unwrap()
             .user_id;
-        let policy = RoomState::new(
+        let mut policy = RoomState::new(
             Uuid::new_v4().to_string(),
             "Friends".into(),
             Default::default(),
@@ -120,6 +120,19 @@ impl RoomNetwork {
             None,
         )
         .unwrap();
+        let summary = piik_channel_core::host::RoomSummary::from_policy(&policy);
+        let created = self.command(
+            connection,
+            json!({"type":"create_room", "room":summary, "requestId":"new-room"}),
+        );
+        policy.id = created
+            .events
+            .into_iter()
+            .find_map(|(_, event)| match event {
+                Event::RoomCreated { room, .. } => Some(room.id),
+                _ => None,
+            })
+            .expect("domain assigned room identity");
         self.restore_room(connection, policy)
     }
 

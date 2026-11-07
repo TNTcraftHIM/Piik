@@ -243,7 +243,7 @@ $env:CHANNEL_WS_URL = "ws://127.0.0.1:8791/prototype/channel"
 $env:CHANNEL_UI_ORIGIN = "http://127.0.0.1:8790"
 $env:PIIK_CHANNEL_NATIVE_KEY = "<the configured domain owner key>"
 New-Item -ItemType Directory -Force build/channel-native-data | Out-Null
-cargo +1.91.0 run --manifest-path prototype/channel-native/Cargo.toml -- --room build/channel-native-data/lounge.sqlite lounge "Lounge"
+cargo +1.91.0 run --manifest-path prototype/channel-native/Cargo.toml -- --room build/channel-native-data/lounge.sqlite "Lounge"
 ```
 
 Use your configured key, never the placeholder. An existing user credential can
@@ -252,7 +252,8 @@ instead be supplied through `PIIK_CHANNEL_NATIVE_CREDENTIAL`; the optional
 printed or saved by this launcher. Reopening saved room data requires the same
 authenticated user. Reuse the domain owner's stable key for the example above.
 
-Repeat `--room <database> <id> <name>` to operate several rooms. Each room has a
+Repeat `--room <database> <name>` to operate several rooms. The domain assigns
+each new room's ID; an existing database restores its saved identity. Each room has a
 separate database and an OS file lock held by its runtime. A second process
 cannot open that room while the first holds it. Existing files restore their
 saved policy; command-line names do not overwrite it. Live calls, captures and

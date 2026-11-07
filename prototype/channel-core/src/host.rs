@@ -27,6 +27,18 @@ pub struct RoomSummary {
 }
 
 impl RoomSummary {
+    pub(crate) fn validate(&self) -> Result<(), &'static str> {
+        if !crate::wire::valid_id(&self.id)
+            || self.name.trim().is_empty()
+            || self.name.encode_utf16().count() > 64
+        {
+            return Err("invalid_room_name");
+        }
+        if !crate::access::valid_audio_bitrate(self.voice_bitrate) {
+            return Err("invalid_audio_bitrate");
+        }
+        Ok(())
+    }
     pub fn from_policy(policy: &RoomState) -> Self {
         let view = policy.view(policy.creator_id, false).expect("room owner");
         Self {
@@ -113,6 +125,9 @@ pub struct HostInput {
 )]
 pub enum RoomResult {
     Done,
+    Deleted {
+        data_removed: bool,
+    },
     Topology {
         topology: crate::topology::RoomTopology,
     },
@@ -164,6 +179,7 @@ pub struct HostOutput {
 pub struct HostWork {
     pub policy: Option<RoomState>,
     pub history: Option<HistoryRequest>,
+    pub delete: bool,
 }
 
 pub(crate) struct RoomOperation {
@@ -638,6 +654,7 @@ impl RoomHost {
         let mut work = HostWork {
             policy: None,
             history: None,
+            delete: false,
         };
         let context = match &input.action {
             HostAction::Command { context, .. }
@@ -691,6 +708,18 @@ impl RoomHost {
                     return Ok(RoomResult::Invited);
                 }
                 HostAction::Command { context, command } => {
+                    if matches!(
+                        command,
+                        Command::DeleteRoom {
+                            delete_data: true,
+                            ..
+                        }
+                    ) {
+                        self.room
+                            .authorize(member.unwrap(), crate::RoomPermission::Manage)?;
+                        work.delete = true;
+                        return Ok(RoomResult::Deleted { data_removed: true });
+                    }
                     let op = self.room.command(
                         member.unwrap(),
                         context.session_id,
@@ -732,6 +761,7 @@ impl RoomHost {
                 work = HostWork {
                     policy: None,
                     history: None,
+                    delete: false,
                 };
                 RoomResult::Error { code: code.into() }
             }

@@ -476,12 +476,13 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
   capturedScreen, playing, progressing, assertNoError, hook, output }) {
   const directory = await mkdtemp(join(tmpdir(), "piik-native-room-check-"));
   const database = join(directory, "room.sqlite");
-  const room = "native-room", name = "Native room";
+  let room;
+  const name = "Native room";
   const executable = resolve(process.env.CHANNEL_NATIVE_EXECUTABLE ??
     `prototype/channel-native/target/debug/piik-channel-native${process.platform === "win32" ? ".exe" : ""}`);
   let native, log = "";
   const start = () => {
-    native = spawn(executable, ["--room", database, room, name], {
+    native = spawn(executable, ["--room", database, name], {
       env: { ...process.env, PIIK_CHANNEL_NATIVE_KEY: process.env.PIIK_CHANNEL_OWNER_KEY,
         PIIK_CHANNEL_NATIVE_NAME: "Native operator" },
       windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
@@ -508,7 +509,8 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     await until("Native room becomes available", async () => {
       if (native.exitCode !== null) throw new Error(`Native host exited: ${log}`);
       return view(0);
-    }, value => value.state.channel.rooms.some(entry => entry.id === room && entry.available));
+    }, value => value.state.channel.rooms.some(entry => entry.name === name && entry.available));
+    room = (await view(0)).state.channel.rooms.find(entry => entry.name === name && entry.available).id;
     for (const index of [1, 2]) await browser(index, "click", `.c3-room-link[aria-label="${name}"]`);
     await until("both Browsers join the Native base", async () => Promise.all([view(1), view(2)]), values =>
       values.every(value => value.state.pairs.some(pair => pair.rooms.includes(room))));

@@ -26,6 +26,7 @@ pub(crate) enum ReplyOwner {
         context: RequestContext,
         member: Member,
         completion: Option<RoomResult>,
+        delete: bool,
     },
     Invitation {
         ticket: Uuid,
@@ -109,6 +110,16 @@ impl RemoteRoom {
                 context: context.clone(),
                 member: endpoints[&context.session_id].member,
                 completion: None,
+                delete: matches!(
+                    &action,
+                    HostAction::Command {
+                        command: crate::wire::Command::DeleteRoom {
+                            delete_data: true,
+                            ..
+                        },
+                        ..
+                    }
+                ),
             }),
             HostAction::RouteWake => Some(ReplyOwner::RouteWake),
             HostAction::VerifyInvite { ticket, member, .. } => Some(ReplyOwner::Invitation {

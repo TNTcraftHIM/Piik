@@ -54,6 +54,16 @@ impl Storage {
         Ok(())
     }
 
+    /// One room store loses policy and history together. An empty container is
+    /// skipped by discovery; filesystem unlink is not a second commit boundary.
+    pub fn delete_room(&mut self, room_id: &str) -> StoreResult<()> {
+        let transaction = self.connection.transaction()?;
+        transaction.execute("DELETE FROM checkpoint WHERE id=1", [])?;
+        transaction.execute("DELETE FROM message WHERE room_id=?1", [room_id])?;
+        transaction.commit()?;
+        Ok(())
+    }
+
     /// Freeze this database with SQLite's online backup API. The caller owns the
     /// disposable destination and keeps it until its streaming reader finishes.
     pub fn snapshot(&self, path: &Path) -> StoreResult<Self> {

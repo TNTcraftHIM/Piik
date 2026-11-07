@@ -1,6 +1,6 @@
 # Piik 3.0 Room Data And Hosting
 
-Reviewed 2026-10-28. The [accepted network model](./channel-network-design.md)
+Reviewed 2026-11-07. The [accepted network model](./channel-network-design.md)
 owns responsibilities, routing and live lifecycles. This document records the
 accepted data ownership and develops synchronization, delivery and recovery. The
 [prototype README](../../prototype/channel-server/README.md) describes running
@@ -325,8 +325,9 @@ process-only room behavior.
 The [network model](./channel-network-design.md#activity-and-lifecycle) owns
 hosting availability, signaling recovery and participant lifetimes. When the
 hosting runtime ends, the room pauses and retains its data. Restarting with the
-same data restores that room's identity and history without resuming captures
-or calls. Recreating a same-named room without its data creates a new room.
+same data restores that room's identity and history while its directory entry
+remains admitted, without resuming captures or calls. Recreating a same-named
+room without its data creates a new room.
 
 The domain directory can retain the unavailable room's summary and owner binding.
 It does not automatically become a substitute room host or recover data it never
@@ -334,6 +335,31 @@ stored. If the room owner permanently leaves, the domain owner can remove the
 directory entry; continuing that room requires an explicit transfer of hosting
 and state. Automatic election and offline concurrent writing are outside this
 first model.
+
+### Room Creation And Removal
+
+Explicit creation asks the domain for a fresh room ID and creator binding before
+the hosting runtime saves its policy. Host registration only binds an existing
+directory entry; automatic recovery cannot recreate a removed room. Explicit
+backup import may restore an absent entry only with domain-owner approval.
+An archive's identifiers do not grant that authority.
+
+An online room's creator or domain owner can delete its authoritative policy and
+history. The hosting runtime commits that local deletion before the domain
+confirms directory removal. Removing only a directory entry is a separate user
+intent: it retires room access and activity without deleting the host's data,
+even if that host comes online during confirmation. The UI offers this operation
+for an offline room. Downloaded files and participant-held copies retain their
+existing owners.
+
+The two owners have separate stores. If local deletion commits but the directory
+cannot confirm removal, the old binding retires and the summary remains offline
+for explicit removal. Already-authorized deletion completion survives the
+requester's disconnect; a lost reply cannot keep a nonexistent host available.
+Existing directory membership and live binding/revision checks provide recovery
+without a second deletion ledger.
+
+### Backups
 
 Backup follows ownership: a domain export contains the domain's data; a room
 export contains that room's state and retained local content. A domain export

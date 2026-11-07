@@ -110,6 +110,90 @@ fn sent(
 }
 
 #[test]
+fn deleting_room_policy_and_history_is_one_commit_and_keeps_other_stores() {
+    use piik_channel_core::{history::HistoryRequest, storage::Storage};
+    let folder = std::env::temp_dir().join(format!("piik-room-delete-{}", Uuid::new_v4()));
+    std::fs::create_dir(&folder).unwrap();
+    let path = folder.join("deleted.sqlite");
+    let sibling_path = folder.join("sibling.sqlite");
+    let owner = Uuid::new_v4();
+    let stranger = Uuid::new_v4();
+    let mut host =
+        StoredRoomHost::create(&path, policy("deleted", owner, RoomAccess::Public)).unwrap();
+    let sibling =
+        StoredRoomHost::create(&sibling_path, policy("sibling", owner, RoomAccess::Public))
+            .unwrap();
+    command(
+        &mut host,
+        owner,
+        owner,
+        json!({"type":"browse","roomId":"deleted","active":true}),
+    );
+    sent(peer(
+        &mut host,
+        owner,
+        owner,
+        ConversationCommand::Chat {
+            text: "Retained".into(),
+            nonce: "before-delete".into(),
+            attachments: vec![],
+        },
+    ));
+    let denied = command(
+        &mut host,
+        owner,
+        stranger,
+        json!({"type":"delete_room","deleteData":true,"roomId":"deleted"}),
+    );
+    assert!(
+        matches!(denied.reply.unwrap().result, RoomResult::Error { code } if code == "forbidden")
+    );
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    connection.execute_batch("CREATE TRIGGER reject_delete BEFORE DELETE ON message BEGIN SELECT RAISE(ABORT,'held'); END;").unwrap();
+    let failed = command(
+        &mut host,
+        owner,
+        owner,
+        json!({"type":"delete_room","deleteData":true,"roomId":"deleted"}),
+    );
+    assert!(
+        matches!(failed.reply.unwrap().result, RoomResult::Error { code } if code == "storage_failed")
+    );
+    let mut retained = Storage::open(&path).unwrap();
+    assert!(
+        retained.load().unwrap().is_some(),
+        "history failure rolled back policy deletion"
+    );
+    assert!(
+        matches!(retained.history(&HistoryRequest::Read { room_id: "deleted".into(), before: None }).unwrap(), HistoryResult::Page { messages, .. } if messages.len() == 1)
+    );
+    connection
+        .execute_batch("DROP TRIGGER reject_delete")
+        .unwrap();
+    let removed = command(
+        &mut host,
+        owner,
+        owner,
+        json!({"type":"delete_room","deleteData":true,"roomId":"deleted"}),
+    );
+    assert!(matches!(
+        removed.reply.unwrap().result,
+        RoomResult::Deleted { data_removed: true }
+    ));
+    assert!(retained.load().unwrap().is_none());
+    assert!(
+        matches!(retained.history(&HistoryRequest::Read { room_id: "deleted".into(), before: None }).unwrap(), HistoryResult::Page { messages, .. } if messages.is_empty())
+    );
+    assert!(Storage::open(&sibling_path)
+        .unwrap()
+        .load()
+        .unwrap()
+        .is_some());
+    drop((host, sibling, retained, connection));
+    std::fs::remove_dir_all(folder).unwrap();
+}
+
+#[test]
 fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_state() {
     use piik_channel_core::{backup::Metadata, storage::Storage, RoomBackup};
     let folder = std::env::temp_dir().join(format!("piik-room-backup-{}", Uuid::new_v4()));

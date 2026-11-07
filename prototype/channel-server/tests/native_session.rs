@@ -139,6 +139,163 @@ async fn app_http(
 }
 
 #[tokio::test]
+async fn interrupted_unconfirmed_native_creation_reports_failure_without_replaying_it() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("pending.sqlite");
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("ws://{}/prototype/channel", listener.local_addr().unwrap());
+    let expected_path = path.clone();
+    let native = tokio::spawn(run(
+        Config {
+            url,
+            origin: "http://localhost".into(),
+            name: "Participant".into(),
+            key: Some("invite".into()),
+            credential: None,
+            server_udp: None,
+        },
+        vec![RoomFile {
+            path,
+            id: "new-room".into(),
+            name: "New room".into(),
+            bootstrap: false,
+        }],
+        std::future::pending(),
+    ));
+    let mut domain = Domain::accept(&listener).await;
+    domain
+        .until(|_, event| matches!(event, Event::Welcome { .. }))
+        .await;
+    let request = Request::parse(
+        domain
+            .socket
+            .next()
+            .await
+            .unwrap()
+            .unwrap()
+            .to_text()
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(request.command, Command::CreateRoom { .. }));
+    let effects = domain
+        .authority
+        .handle(domain.connection, request, domain.now);
+    assert!(effects
+        .events
+        .iter()
+        .any(|(_, event)| matches!(event, Event::RoomCreated { .. })));
+    // The directory commit succeeds, but its response cannot reach the creator.
+    domain.socket.close(None).await.unwrap();
+    let result = tokio::time::timeout(Duration::from_secs(5), native)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("room_creation_interrupted"));
+    assert!(
+        !expected_path.exists(),
+        "unconfirmed creation never wrote a local policy"
+    );
+    assert_eq!(
+        serde_json::to_value(domain.authority.export_state()).unwrap()["hostedRooms"]
+            .as_object()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), listener.accept())
+            .await
+            .is_err(),
+        "failure does not start another creation or reconnect"
+    );
+}
+
+#[tokio::test]
+async fn ordinary_native_creation_uses_the_domain_id_and_reopens_that_saved_identity() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("participant.sqlite");
+    let mut authority = None;
+    let mut credential = None;
+    let mut saved_id = None;
+    for first in [true, false] {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}/prototype/channel", listener.local_addr().unwrap());
+        let (stop, stopped) = oneshot::channel();
+        let native = tokio::spawn(run(
+            Config {
+                url,
+                origin: "http://localhost".into(),
+                name: "Participant".into(),
+                key: first.then(|| "invite".into()),
+                credential: credential.clone(),
+                server_udp: None,
+            },
+            vec![RoomFile {
+                path: path.clone(),
+                id: "caller-cannot-choose-this".into(),
+                name: "Participant room".into(),
+                bootstrap: false,
+            }],
+            async {
+                let _ = stopped.await;
+            },
+        ));
+        let mut domain = Domain::accept(&listener).await;
+        if let Some(previous) = authority.take() {
+            domain.authority = previous;
+        }
+        let id = if first {
+            let Event::RoomCreated { room, .. } = domain
+                .until(|_, event| matches!(event, Event::RoomCreated { .. }))
+                .await
+            else {
+                unreachable!()
+            };
+            assert_ne!(room.id, "caller-cannot-choose-this");
+            saved_id = Some(room.id.clone());
+            room.id
+        } else {
+            saved_id.clone().unwrap()
+        };
+        domain.bound(&id).await;
+        domain.room_turn(&id).await;
+        assert!(
+            !domain
+                .commands
+                .iter()
+                .any(|command| matches!(command, Command::AdmitRoom { .. })),
+            "ordinary native creation never uses bootstrap authority"
+        );
+        if !first {
+            assert!(
+                !domain
+                    .commands
+                    .iter()
+                    .any(|command| matches!(command, Command::CreateRoom { .. })),
+                "existing policy is restored, never recreated"
+            );
+        }
+        assert_eq!(StoredRoomHost::open(&path).unwrap().policy().id, id);
+        credential = domain.events.iter().find_map(|(_, event)| match event {
+            Event::Welcome { credential, .. } => Some(credential.clone()),
+            _ => None,
+        });
+        stop.send(()).unwrap();
+        domain.until(|_, event| matches!(event, Event::Ack { request_id } if request_id == "native-leave")).await;
+        tokio::time::timeout(Duration::from_secs(5), native)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        authority = Some(domain.authority);
+    }
+}
+
+#[tokio::test]
 async fn rejected_identity_never_creates_room_storage() {
     let folder = std::env::temp_dir().join(format!("piik-native-rejected-{}", Uuid::new_v4()));
     std::fs::create_dir(&folder).unwrap();
@@ -156,6 +313,7 @@ async fn rejected_identity_never_creates_room_storage() {
             path: folder.join("one.sqlite"),
             id: "one".into(),
             name: "one".into(),
+            bootstrap: true,
         }],
         std::future::pending(),
     ));
@@ -199,6 +357,7 @@ fn start(
                     path: folder.join(format!("{id}.sqlite")),
                     id: id.into(),
                     name: id.into(),
+                    bootstrap: true,
                 })
                 .collect(),
             async {
@@ -299,7 +458,6 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
         .args([
             "--room",
             folder.join("one.sqlite").to_str().unwrap(),
-            "one",
             "stolen",
         ])
         .env(
@@ -722,9 +880,8 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let ready: Value =
         serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
     assert!(ready.get("result").is_some());
-    let room = Uuid::new_v4().to_string();
-    let policy = RoomState::new(
-        room.clone(),
+    let mut policy = RoomState::new(
+        "new".into(),
         "Saved private".into(),
         Default::default(),
         user,
@@ -733,6 +890,19 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         Some("room-secret".into()),
     )
     .unwrap();
+    domain.command(browser, json!({"type":"create_room","room":piik_channel_core::host::RoomSummary::from_policy(&policy),"requestId":"create-app-room"})).await;
+    policy.id = domain
+        .events
+        .iter()
+        .find_map(|(connection, event)| match event {
+            Event::RoomCreated {
+                room,
+                request_id: Some(id),
+            } if *connection == browser && id == "create-app-room" => Some(room.id.clone()),
+            _ => None,
+        })
+        .unwrap();
+    let room = policy.id.clone();
     let policy = serde_json::to_string(&policy).unwrap();
     let open = json!({"id":"open","type":"open","policy":policy});
     page.send(Message::Text(open.to_string().into()))
@@ -1022,13 +1192,22 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         domain
             .command(
                 browser,
-                json!({"type":"host_register","room":{
+                json!({"type":"create_room","room":{
                     "id":format!("reserved-{index}"),"name":format!("Reserved {index}"),"icon":"couch",
                     "creatorId":user,"access":"public","hidden":false,"hasPassword":false,
                 }}),
             )
             .await;
     }
+    domain
+        .command(
+            browser,
+            json!({"type":"create_room","room":{
+        "id":"new","name":"Beyond limit","icon":"couch","creatorId":user,
+        "access":"public","hidden":false,"hasPassword":false},"requestId":"limit-before-storage"}),
+        )
+        .await;
+    assert!(domain.events.iter().any(|(connection, event)| *connection == browser && matches!(event, Event::Error { code, request_id: Some(id) } if code == "room_limit" && id == "limit-before-storage")));
     let refused_room = Uuid::new_v4().to_string();
     let refused_policy = RoomState::new(
         refused_room.clone(),
@@ -1045,12 +1224,12 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     domain
         .until(|connection, event| {
             connection == native_connection
-                && matches!(event, Event::Error {code,request_id:Some(_)} if code == "room_limit")
+                && matches!(event, Event::Error {code,request_id:Some(_)} if code == "room_not_in_domain")
         })
         .await;
     let refused: Value =
         serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
-    assert_eq!(refused["error"], "room_limit");
+    assert_eq!(refused["error"], "room_not_in_domain");
     let refused_path = room_directory.join(format!("{refused_room}.sqlite"));
     assert!(
         refused_path.exists(),
@@ -1120,8 +1299,8 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     domain.socket = accept_async(stream).await.unwrap();
     domain.connection = Uuid::new_v4();
     domain.events.clear();
-    domain.until(|_, event| matches!(event, Event::Error {code,request_id:Some(id)} if code == "room_limit" && id == &refused_room)).await;
     let next_binding = domain.bound(&room).await;
+    assert!(!domain.commands.iter().rev().take_while(|command| !matches!(command, Command::Join { .. })).any(|command| matches!(command, Command::HostRegister { room, .. } if room.id == refused_room)), "a saved but unadmitted room is not automatically introduced on restart");
     assert_ne!(next_binding, binding);
     let ready: Value = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
@@ -1476,9 +1655,8 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
                 serde_json::from_str(&control.next().await.unwrap().unwrap().into_text().unwrap())
                     .unwrap();
             assert!(ready.get("result").is_some());
-            let room = Uuid::new_v4().to_string();
-            let policy = piik_channel_core::RoomState::new(
-                room.clone(),
+            let mut policy = piik_channel_core::RoomState::new(
+                "new".into(),
                 "Saved local room".into(),
                 Default::default(),
                 Uuid::parse_str(user).unwrap(),
@@ -1487,6 +1665,28 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
                 None,
             )
             .unwrap();
+            admin.send(Message::Text(json!({"type":"create_room","room":piik_channel_core::host::RoomSummary::from_policy(&policy),"requestId":"create-app-room"}).to_string().into())).await.unwrap();
+            policy.id = tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let frame = admin.next().await.unwrap().unwrap();
+                    let Message::Text(text) = frame else {
+                        continue;
+                    };
+                    let event: Event = serde_json::from_str(&text).unwrap();
+                    if let Event::RoomCreated {
+                        room,
+                        request_id: Some(id),
+                    } = event
+                    {
+                        if id == "create-app-room" {
+                            break room.id;
+                        }
+                    }
+                }
+            })
+            .await
+            .unwrap();
+            let room = policy.id.clone();
             control.send(Message::Text(json!({"id":"open","type":"open","policy":serde_json::to_string(&policy).unwrap()}).to_string().into())).await.unwrap();
             let opened: Value =
                 serde_json::from_str(&control.next().await.unwrap().unwrap().into_text().unwrap())

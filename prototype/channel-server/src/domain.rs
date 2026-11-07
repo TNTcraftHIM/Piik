@@ -58,7 +58,23 @@ impl Hub {
         let room_projection = matches!(&request.command,
             piik_channel_core::wire::Command::HostOutput { output, .. }
             if !output.reply.as_ref().is_some_and(|reply| matches!(reply.result,
-                piik_channel_core::host::RoomResult::Invited)));
+                piik_channel_core::host::RoomResult::Invited | piik_channel_core::host::RoomResult::Deleted { .. })));
+        let deleted = match &request.command {
+            piik_channel_core::wire::Command::HostOutput { room_id, output }
+                if output.reply.as_ref().is_some_and(|reply| {
+                    matches!(
+                        reply.result,
+                        piik_channel_core::host::RoomResult::Deleted { data_removed: true }
+                    )
+                }) =>
+            {
+                Some((
+                    room_id.clone(),
+                    output.reply.as_ref().unwrap().context.clone(),
+                ))
+            }
+            _ => None,
+        };
         let (failure_target, request_id) = match &request.command {
             piik_channel_core::wire::Command::HostOutput { output, .. } => output
                 .reply
@@ -89,6 +105,10 @@ impl Hub {
                     return;
                 }
                 self.authority = before.expect("metadata request checkpoint");
+                if let Some((room, context)) = deleted {
+                    let effects = self.authority.failed_room_delete(&room, &context);
+                    self.apply(effects);
+                }
                 self.send(
                     failure_target,
                     Event::Error {
@@ -535,3 +555,144 @@ impl Domain {
 #[cfg(test)]
 #[path = "runtime_tests.rs"]
 mod runtime_tests;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use piik_channel_core::{
+        host::{HostInput, RoomSummary},
+        RoomState, StoredRoomHost,
+    };
+    use serde_json::json;
+
+    #[test]
+    fn failed_deleted_room_checkpoint_keeps_only_an_offline_retry_entry() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("domain.sqlite");
+        let authority = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+        let mut storage = storage::Storage::open(&path).unwrap();
+        storage
+            .save(&serde_json::to_value(authority.export_backup()).unwrap())
+            .unwrap();
+        let connection = Uuid::new_v4();
+        let (events, mut receiver) = mpsc::channel(64);
+        let mut hub = Hub {
+            authority,
+            clients: [(
+                connection,
+                Client {
+                    events,
+                    close: watch::channel(false).0,
+                },
+            )]
+            .into(),
+            storage: Arc::new(Mutex::new(storage)),
+            invitation_origin: None,
+            room_commands: None,
+        };
+        let request = |value: serde_json::Value| Request::parse(&value.to_string()).unwrap();
+        let drain = |receiver: &mut mpsc::Receiver<Event>| {
+            let mut events = Vec::new();
+            while let Ok(event) = receiver.try_recv() {
+                events.push(event);
+            }
+            events
+        };
+        hub.request(
+            connection,
+            request(json!({"type":"join","name":"Owner","key":"owner","signingKey":vec![0;32]})),
+        );
+        drain(&mut receiver);
+        let owner = hub.authority.identity().1;
+        let mut policy = RoomState::new(
+            "unused".into(),
+            "Delete".into(),
+            Default::default(),
+            owner,
+            piik_channel_core::wire::RoomAccess::Public,
+            false,
+            None,
+        )
+        .unwrap();
+        hub.request(connection, request(json!({"type":"create_room","room":RoomSummary::from_policy(&policy),"requestId":"create"})));
+        policy.id = drain(&mut receiver)
+            .into_iter()
+            .find_map(|event| match event {
+                Event::RoomCreated { room, .. } => Some(room.id),
+                _ => None,
+            })
+            .unwrap();
+        let id = policy.id.clone();
+        let mut host = StoredRoomHost::create(Path::new(":memory:"), policy).unwrap();
+        hub.request(
+            connection,
+            request(json!({"type":"host_register","room":host.summary()})),
+        );
+        let input: HostInput = drain(&mut receiver)
+            .into_iter()
+            .find_map(|event| match event {
+                Event::HostInput { input, .. } => Some(input),
+                _ => None,
+            })
+            .unwrap();
+        let output = host.dispatch(input).unwrap();
+        hub.request(
+            connection,
+            request(json!({"type":"host_output","roomId":id,"output":output})),
+        );
+        drain(&mut receiver);
+        hub.request(
+            connection,
+            request(
+                json!({"type":"delete_room","deleteData":true,"roomId":id,"requestId":"delete"}),
+            ),
+        );
+        let input = drain(&mut receiver)
+            .into_iter()
+            .find_map(|event| match event {
+                Event::HostInput { input, .. } => Some(input),
+                _ => None,
+            })
+            .unwrap();
+        let output = host.dispatch(input).unwrap();
+        let failure = rusqlite::Connection::open(&path).unwrap();
+        failure.execute_batch("CREATE TRIGGER reject_checkpoint BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'held'); END;").unwrap();
+        hub.request(
+            connection,
+            request(json!({"type":"host_output","roomId":id,"output":output})),
+        );
+        let failed = drain(&mut receiver);
+        assert!(failed.iter().any(|event| matches!(event, Event::Error { code, request_id: Some(request) } if code == "storage_failed" && request == "delete")));
+        assert!(failed.iter().any(|event| matches!(event, Event::State { state } if state.channel.rooms.iter().any(|room| room.id == id && !room.available))));
+        assert!(!failed.iter().any(|event| matches!(
+            event,
+            Event::RoomReply {
+                result: piik_channel_core::host::RoomResult::Deleted { .. },
+                ..
+            }
+        )));
+        failure
+            .execute_batch("DROP TRIGGER reject_checkpoint")
+            .unwrap();
+        hub.request(
+            connection,
+            request(
+                json!({"type":"delete_room","deleteData":true,"roomId":id,"requestId":"retry"}),
+            ),
+        );
+        assert!(drain(&mut receiver).iter().any(|event| matches!(
+            event,
+            Event::RoomReply {
+                result: piik_channel_core::host::RoomResult::Deleted {
+                    data_removed: false
+                },
+                ..
+            }
+        )));
+        let saved = hub.storage.lock().unwrap().load().unwrap().unwrap();
+        assert!(saved["state"]["hostedRooms"]
+            .as_object()
+            .unwrap()
+            .is_empty());
+    }
+}

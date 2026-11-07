@@ -169,6 +169,16 @@ fn capture_scope_survives_host_signaling_recovery_but_not_retired_authority() {
     .unwrap();
     policy.grants.insert(native_user);
     let mut host = RoomHost::new(policy.clone());
+    let admitted = send(
+        &mut core,
+        host_connection,
+        json!({"type":"admit_room","room":host.summary()}),
+        2,
+    );
+    assert!(!admitted
+        .events
+        .iter()
+        .any(|(_, event)| matches!(event, CoreEvent::Error { .. })));
     let registered = send(
         &mut core,
         host_connection,

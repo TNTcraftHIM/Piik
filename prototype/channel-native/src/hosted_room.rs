@@ -122,7 +122,7 @@ impl HostedRoom {
     }
 }
 
-fn backup_identity(backup: &RoomBackup, (domain, owner): (Uuid, Uuid)) -> Result<()> {
+pub(crate) fn backup_identity(backup: &RoomBackup, (domain, owner): (Uuid, Uuid)) -> Result<()> {
     if backup.metadata().domain_id != domain || backup.metadata().policy.creator_id != owner {
         bail!("backup_owner_mismatch");
     }

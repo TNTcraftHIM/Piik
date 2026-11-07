@@ -148,6 +148,12 @@ impl StoredRoomHost {
     pub fn dispatch(&mut self, input: HostInput) -> Result<HostOutput, &'static str> {
         let work = self.host.dispatch(input)?;
         let result = (|| {
+            if work.delete {
+                self.store
+                    .delete_room(&self.host.policy().id)
+                    .map_err(|_| "storage_failed")?;
+                return Ok(None);
+            }
             if let Some(policy) = work.policy {
                 let value = serde_json::to_value(policy).map_err(|_| "storage_failed")?;
                 self.store.save(&value).map_err(|_| "storage_failed")?;

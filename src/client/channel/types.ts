@@ -95,6 +95,7 @@ export interface ChannelActions {
   restoreDomainBackup(archive: Blob): Promise<void>;
   createRoom(settings: RoomSettings): Promise<string>;
   updateRoom(roomId: string, settings: RoomSettings): Promise<void>;
+  deleteRoom(roomId: string, deleteData: boolean): Promise<{ dataRemoved: boolean }>;
   setRoomVoiceBitrate(roomId: string, bitrate: number): Promise<void>;
   roomBackupAvailable(roomId: string): Promise<boolean>;
   exportRoomBackup(roomId: string): Promise<Blob>;

@@ -48,7 +48,7 @@ beforeEach(() => {
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
-async function setup(window = 1000, read = true, hash = "", readyInteractions = true) {
+async function setup(window = 1000, read = true, hash = "", readyInteractions = true, roomIds = ["first", "second"]) {
   vi.stubGlobal("location", new URL(`https://channel.test/__channel-preview${hash ? `#${hash}` : ""}`));
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   vi.stubGlobal("WebSocket", ChannelSocket);
@@ -102,7 +102,7 @@ async function setup(window = 1000, read = true, hash = "", readyInteractions = 
   await socket.onopen?.();
   socket.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state: {
     channel: { id: "domain", name: "Friends", icon: "future-domain_7", ownerId: "self", historyWindow: window,
-      rooms: ["first", "second"].map(id => ({ id, name: id, icon: "couch", creatorId: "self", access: "public",
+      rooms: roomIds.map(id => ({ id, name: id, icon: "couch", creatorId: "self", access: "public",
         hidden: false, hasPassword: false, authorized: true, canManage: true,
         participantSessionIds: id === "first" ? ["endpoint"] : [],
         available: true, reading: id === "first", capabilities: { attachments: true },
@@ -417,12 +417,13 @@ test("App hosting uses its own participant while Browser rooms retain their page
     close: vi.fn(async () => {}),
   };
   vi.stubGlobal("indexedDB", {});
-  const storedPolicies = vi.fn(async () => [JSON.stringify(localRoom)]);
+  const storedPolicies = vi.fn(async () => [JSON.stringify(localRoom), JSON.stringify({ ...localRoom, id: "removed-from-domain" })]);
+  const open = vi.fn(async () => host);
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
     createRoomPolicy: async (input: unknown) => JSON.stringify(input),
-    BrowserRoomHost: { open: async () => host, storedPolicies },
+    BrowserRoomHost: { open, storedPolicies },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
-  const { session, socket } = await setup();
+  const { session, socket } = await setup(1000, true, "", true, ["first", "second", localRoom.id]);
   const app = ChannelSocket.current;
   try {
     expect(app).not.toBe(socket);
@@ -436,8 +437,10 @@ test("App hosting uses its own participant while Browser rooms retain their page
     socket.receive({ type: "host_bound", roomId: localRoom.id, bindingId: "browser-binding" });
     socket.receive({ type: "ack", requestId: register.requestId });
     expect(storedPolicies).toHaveBeenCalledOnce();
+    expect(open).toHaveBeenCalledOnce();
 
     const creating = session.createRoom({ name: "App room", icon: "couch", access: "private", hidden: true, password: "private-room" });
+    acceptCreatedRoom(socket);
     await vi.waitFor(() => expect(app.sent.some(command => command.type === "open")).toBe(true));
     const opening = app.sent.find(command => command.type === "open")!;
     const policy = JSON.parse(opening.policy as string) as { id: string; name: string; icon: string; creatorId: string; access: string; hidden: boolean; password: string };
@@ -2158,6 +2161,38 @@ test("pending Native capture stays page-owned through same-page stop and close",
   } finally { session.close(); }
 });
 
+function acceptCreatedRoom(socket: ChannelSocket): void {
+  const request = socket.sent.findLast(command => command.type === "create_room")!;
+  expect(request.type).toBe("create_room");
+  socket.receive({ type: "room_created", requestId: request.requestId,
+    room: { ...(request.room as object), id: "domain-created-room" } });
+}
+
+test("same-session recovery retires its own host binding when the committed room policy is gone", async () => {
+  const policy = JSON.stringify({ id: "first", creatorId: "self", name: "First", icon: "couch", access: "public", hidden: false });
+  let policies = [policy];
+  const host = { roomId: "first", summary: () => ({ ...JSON.parse(policy), hasPassword: false }), bind: vi.fn(async () => {}), close: vi.fn(async () => {}) };
+  vi.stubGlobal("indexedDB", {});
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: { storedPolicies: async () => policies, open: async () => host } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const { session, socket } = await setup();
+  try {
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "host_register")).toBe(true));
+    const registration = socket.sent.find(command => command.type === "host_register")!;
+    socket.receive({ type: "host_bound", roomId: "first", bindingId: "owned-binding" });
+    socket.receive({ type: "ack", requestId: registration.requestId });
+    const retained = structuredClone(session.getSnapshot().state!);
+    retained.channel.rooms[0].delivery = { hostSessionId: "endpoint", bindingId: "owned-binding", nextHops: {} };
+    policies = [];
+    session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state: retained });
+    await vi.waitFor(() => expect(resumed.sent.some(command => command.type === "host_stop" && command.roomId === "first" && command.bindingId === "owned-binding")).toBe(true));
+    expect(host.close).toHaveBeenCalledOnce();
+    expect(resumed.sent.some(command => command.type === "host_register")).toBe(false);
+  } finally { session.close(); }
+});
+
 test("remembered App intent does not prevent Browser hosting when no App is connected", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue(null);
@@ -2174,6 +2209,7 @@ test("remembered App intent does not prevent Browser hosting when no App is conn
     expect(discovery).toHaveBeenCalledOnce();
     expect(session.getSnapshot()).toMatchObject({ appConnected: false, error: null });
     const creating = session.createRoom({ name: "Browser room", icon: "couch", access: "public", hidden: false });
+    acceptCreatedRoom(socket);
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === "host_register")).toBe(true));
     const register = socket.sent.find(command => command.type === "host_register")!;
     socket.receive({ type: "host_bound", roomId: host.roomId, bindingId: "browser-binding" });
@@ -2205,6 +2241,7 @@ test("an App failure during creation does not turn that request into a Browser r
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
     const creating = session.createRoom({ name: "App room", icon: "couch", access: "public", hidden: false });
+    acceptCreatedRoom(socket);
     const failed = expect(creating).rejects.toThrow("app_disconnected");
     await vi.waitFor(() => expect(prepared).toBeTypeOf("function"));
     app.close();
@@ -2234,6 +2271,7 @@ test("host binding precedes its first input and a failed binding retires that ho
   const { session, socket } = await setup();
   try {
     const creating = session.createRoom({ name: "Hosted", icon: "couch", access: "public", hidden: false });
+    acceptCreatedRoom(socket);
     void creating.catch(() => {});
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === "host_register")).toBe(true));
     const registration = socket.sent.at(-1)!;
@@ -2327,6 +2365,15 @@ test("room replies settle only the request belonging to that room", async () => 
       result: { type: "done" } });
     await saving;
     expect(settled).toBe(true);
+    for (const deleteData of [false, true]) {
+      const deleting = session.deleteRoom("first", deleteData);
+      const request = socket.sent.at(-1)!;
+      expect(request).toMatchObject({ type: "delete_room", roomId: "first", deleteData });
+      socket.receive({ type: "room_reply", roomId: "second", requestId: request.requestId, result: { type: "deleted", dataRemoved: true } });
+      expect(session.getSnapshot().pending.has("delete:first")).toBe(true);
+      socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "deleted", dataRemoved: deleteData } });
+      await expect(deleting).resolves.toEqual({ dataRemoved: deleteData });
+    }
     const updating = session.updateRoom("first", { name: "Unavailable", icon: "couch", access: "public", hidden: false });
     const rejected = expect(updating).rejects.toThrow("room_host_offline");
     socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.at(-1)!.requestId,
@@ -5727,7 +5774,7 @@ test("a late Native ownership description cannot export a replaced room binding"
 });
 
 test("portable import validates the full archive before switching accounts and rejects an unrelated Welcome without persisting it", async () => {
-  const { session, stage, metadata, read } = await setupRoomBackup();
+  const { session, socket, stage, metadata, read } = await setupRoomBackup();
   metadata.policy = { ...metadata.policy, id: "imported", creatorId: "archived-user" };
   Object.assign(metadata, { ownCredential: { userId: "archived-user", credential: "archived-credential" } });
   const persist = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: persist });
@@ -5737,8 +5784,16 @@ test("portable import validates the full archive before switching accounts and r
     read.mockRejectedValueOnce(new Error("backup_content_mismatch"));
     await expect(session.restoreRoomBackup(new Blob())).rejects.toThrow("backup_content_mismatch");
     expect(ChannelSocket.current.sent.some(command => command.credential === "archived-credential")).toBe(false);
+    expect(socket.sent.some(command => command.type === "admit_room")).toBe(false);
     const importing = session.restoreRoomBackup(new Blob()), failed = expect(importing).rejects.toThrow("backup_identity_required");
-    await vi.waitFor(() => expect(ChannelSocket.current).not.toBeUndefined());
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("admit_room"));
+    const admissionRequest = socket.sent.at(-1)!;
+    expect(admissionRequest.room).toMatchObject({ id: "imported", creatorId: "archived-user" });
+    expect(stage.replace).not.toHaveBeenCalled(); expect(persist).not.toHaveBeenCalled();
+    const catalog = structuredClone(original);
+    catalog.channel.rooms.push({ ...catalog.channel.rooms[0], id: "imported", creatorId: "archived-user", available: false, delivery: undefined });
+    socket.receive({ type: "state", state: catalog });
+    socket.receive({ type: "ack", requestId: admissionRequest.requestId });
     await vi.waitFor(() => expect(session.getSnapshot().connection).toBe("connecting"));
     const admission = ChannelSocket.current; await admission.onopen?.();
     expect(admission.sent.find(command => command.type === "join")).toMatchObject({ credential: "archived-credential" });
@@ -5782,7 +5837,7 @@ test("an approved App exports only rooms positively matched to its Native sessio
 });
 
 test("portable import admits the archived identity through Welcome before committing and omits old owner/resume context", async () => {
-  const { session, stage, metadata, nextHost, read } = await setupRoomBackup();
+  const { session, socket, stage, metadata, nextHost, read } = await setupRoomBackup();
   metadata.policy = { ...metadata.policy, id: "imported", creatorId: "archived-user" }; stage.policy = JSON.stringify(metadata.policy);
   Object.assign(metadata, { ownCredential: { userId: "archived-user", credential: "archived-credential" } });
   const runtime = await hosting.loadRoomHosting(); vi.spyOn(runtime.BrowserRoomHost, "storedPolicies").mockResolvedValue([]);
@@ -5791,10 +5846,19 @@ test("portable import admits the archived identity through Welcome before commit
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived", roles: [] } }))));
   const cache = vi.spyOn(session.attachments, "restoreRetained").mockResolvedValue(true);
   const state = structuredClone(session.getSnapshot().state!);
-  state.channel.rooms = []; state.channel.ownerId = null; state.users = [{ id: "archived-user", name: "Archived", roles: [] }];
+  const catalog = structuredClone(state);
+  const imported = { ...state.channel.rooms[0], id: "imported", creatorId: "archived-user", name: "First", available: false, delivery: undefined };
+  catalog.channel.rooms.push(imported);
+  state.channel.rooms = [imported]; state.channel.ownerId = null; state.users = [{ id: "archived-user", name: "Archived", roles: [] }];
   state.sessions = [{ id: "new-endpoint", userId: "archived-user", online: true, signingKey: testSigningKey }];
   try {
     const importing = session.restoreRoomBackup(new Blob());
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("admit_room"));
+    const admissionRequest = socket.sent.at(-1)!;
+    expect(admissionRequest.room).toMatchObject({ id: "imported", creatorId: "archived-user" });
+    expect(stage.replace).not.toHaveBeenCalled(); expect(saved).not.toHaveBeenCalled();
+    socket.receive({ type: "state", state: catalog });
+    socket.receive({ type: "ack", requestId: admissionRequest.requestId });
     await vi.waitFor(() => expect(session.getSnapshot().connection).toBe("connecting"));
     const admission = ChannelSocket.current; await admission.onopen?.();
     const join = admission.sent.find(command => command.type === "join")!;
@@ -5808,9 +5872,9 @@ test("portable import admits the archived identity through Welcome before commit
     admission.receive({ type: "host_bound", roomId: "imported", bindingId: "imported-binding" });
     admission.receive({ type: "ack", requestId: registration.requestId });
     const restored = structuredClone(state);
-    restored.channel.rooms.push({ id: "imported", name: "First", creatorId: "archived-user", icon: "couch", access: "public", hidden: false, hasPassword: false,
+    restored.channel.rooms = [{ id: "imported", name: "First", creatorId: "archived-user", icon: "couch", access: "public", hidden: false, hasPassword: false,
       authorized: true, canManage: true, voiceBitrate: 64_000, participantSessionIds: [], available: true, reading: false, capabilities: { attachments: true },
-      delivery: { hostSessionId: "new-endpoint", bindingId: "imported-binding", nextHops: {} } });
+      delivery: { hostSessionId: "new-endpoint", bindingId: "imported-binding", nextHops: {} } }];
     admission.receive({ type: "state", state: restored });
     await vi.waitFor(() => expect(admission.sent.some(command => command.type === "browse" && command.roomId === "imported")).toBe(true));
     const browse = admission.sent.find(command => command.type === "browse" && command.roomId === "imported")!;

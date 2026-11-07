@@ -204,6 +204,11 @@ domain owner saves them at that room's runtime. Both surfaces share preset icons
 and custom images. The browser crops images to a small square; saving retains
 them with the domain or room metadata, including after a restart.
 
+Room settings also offers **Delete room** while hosting is online, or **Remove
+from domain** while offline. Deletion clears the hosting runtime's room and chat
+history; directory-only removal leaves the offline host's data. Saved downloads
+are kept. Both operations end access through that room's old invitation.
+
 In the design studies, room creation and editing share one native dialog
 with conditional private options. Pencils beside the user, domain and room names
 open their corresponding editors. Colours, controls, icons and animated people come from Piik's

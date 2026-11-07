@@ -174,6 +174,23 @@ fn review_register(
     host_connection: Uuid,
     host: &RoomHost,
 ) -> piik_channel_core::host::HostInput {
+    let administrator = if host.summary().creator_id == core.identity().1 {
+        host_connection
+    } else {
+        let connection = Uuid::new_v4();
+        review_admit(core, connection, "owner");
+        connection
+    };
+    core.handle(
+        administrator,
+        piik_channel_core::wire::Request {
+            request_id: None,
+            command: Command::AdmitRoom {
+                room: host.summary(),
+            },
+        },
+        0,
+    );
     core.handle(
         host_connection,
         piik_channel_core::wire::Request {
@@ -617,6 +634,13 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
         .any(|(_, e)| matches!(e, Event::HostInput { .. })));
     host.dispatch(input).unwrap();
     let mut output = host.finish(None).unwrap();
+    let mut forged_delete = output.clone();
+    forged_delete.reply.as_mut().unwrap().result =
+        piik_channel_core::host::RoomResult::Deleted { data_removed: true };
+    let rejected = review_host_turn(&mut core, b, "concurrent-review", forged_delete);
+    assert!(rejected.events.iter().any(
+        |(_, event)| matches!(event, Event::Error { code, .. } if code == "invalid_room_reply")
+    ));
     for view in output.projection.views.values_mut() {
         view.room.delivery = Some(piik_channel_core::wire::RoomDelivery {
             host_session_id: Uuid::new_v4(),
