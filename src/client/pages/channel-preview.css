@@ -11,9 +11,10 @@
 .c3-channel-title > div { min-width: 0; flex: 1; }
 .c3-channel-title h1 { font-size: 21px; font-weight: 750; line-height: 1.35; letter-spacing: -.035em; overflow-wrap: anywhere; }
 .c3-channel-caption { display: block; margin-top: 6px; font-size: 12px; color: var(--muted); }
-.c3-invite { padding-inline: 6px; }
-.c3-invite > .lr-comic-tip-wrap { width: 100%; }
-.c3-invite .lr-btn { width: 100%; }
+.c3-invite { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-inline: 6px; }
+.c3-invite-label { flex-basis: 100%; font-size: 12px; font-weight: 600; }
+.c3-invite-label:empty { display: none; }
+.c3-invite > :not(.c3-invite-label) { flex: none; }
 .c3-section-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 650; min-height: 32px; padding-inline: 10px; }
 .c3-rooms { display: grid; gap: 5px; margin-top: 8px; }
 .c3-room-link { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 10px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--muted); text-align: start; }

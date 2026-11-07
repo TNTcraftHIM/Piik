@@ -2,8 +2,9 @@
 .c3-invite-qr header > .lr-comic-tip-wrap { margin-left: auto; }
 .c3-invite-qr > svg { display: block; width: 100%; height: auto; margin-top: 12px; border-radius: 4px; }
 .c3-invite-qr > p { margin: 12px 0 0; text-align: center; font-size: 13px; line-height: 1.5; }
+.c3-invite-qr > footer { display: flex; justify-content: center; margin-top: 12px; }
 /* Keep a complete code visible when the room panel opens near a short viewport. */
 @media (max-height: 700px) {
   .c3-invite-qr { left: 50% !important; top: 50% !important; translate: -50% -50%; max-height: calc(100dvh - 16px) !important; }
-  .c3-invite-qr > svg { width: min(256px, calc(100dvh - 152px)); margin-inline: auto; }
+  .c3-invite-qr > svg { width: min(256px, calc(100dvh - 176px)); margin-inline: auto; }
 }

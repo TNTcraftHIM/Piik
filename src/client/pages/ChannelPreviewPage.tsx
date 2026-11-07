@@ -10,6 +10,7 @@ import { useClipboardResult } from "../ui/use-clipboard-result";
 import { useChannel } from "../channel/use-channel";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelAction } from "../channel/components/ChannelAction";
+import { ChannelInviteQrCode } from "../channel/components/ChannelInviteQrCode";
 import { ChannelStage } from "../channel/components/ChannelStage";
 import { ChannelShareControl } from "../channel/components/ChannelShareControl";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
@@ -146,8 +147,13 @@ export function ChannelPreviewPage() {
           {state && owner && <ChannelDomainControls channel={channel} />}
           <span className="c3-pane-back"><BackButton onClick={() => setMobilePane("room")} /></span>
         </div>
-        {channel.inviteURL && <div className="c3-invite"><ChannelAction icon={invitationCopy.status === "copied" ? "check" : "link"}
-          label={invitationCopy.status === "copied" ? copy("已复制", "Copied") : copy("邀请朋友", "Invite friends")} hint="hint-copy-invite" onClick={invitationCopy.copy} /></div>}
+        {channel.inviteURL && <div className="c3-invite" role="group" aria-label={copy("域邀请", "Domain invitation")}>
+          <span className="c3-invite-label">{!vis && copy("域邀请", "Domain invitation")}</span>
+          <ChannelAction icon={invitationCopy.status === "copied" ? "check" : "link"} iconOnly
+            label={invitationCopy.status === "copied" ? copy("已复制", "Copied") : copy("复制域邀请", "Copy domain invitation")}
+            hint="hint-copy-invite" onClick={invitationCopy.copy} />
+          <ChannelInviteQrCode url={channel.inviteURL} label={copy("域邀请二维码", "Domain invitation QR code")} />
+        </div>}
         {invitationCopy.status === "failed" && <label className="c3-copy-fallback">{copy("请手动复制邀请链接", "Copy invitation manually")}
           <input className="c3-input" readOnly value={channel.inviteURL ?? ""} onFocus={event => event.currentTarget.select()} />
         </label>}
