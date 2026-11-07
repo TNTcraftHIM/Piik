@@ -28,6 +28,7 @@ import { ChannelConnections } from "../channel/components/ChannelConnections";
 import { listeningVoicePublications, roomPeople } from "../channel/presentation";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { channelAppDiscovery } from "../channel/app-link";
+import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preferences";
 import "../channel/bootstrap";
 import "./channel-preview.css";
 
@@ -40,7 +41,8 @@ export function ChannelPreviewPage() {
   const selectRoom = useCallback((id: string) => { setSelected(id); setMobilePane("room"); }, []);
   const channel = useChannel(selectRoom);
   const { state, self, sessionId, connection, pending, streams } = channel;
-  const [chatOpen, setChatOpen] = useState(true);
+  const [sharingView, setSharingView] = useState(() => readRoomPreferences().sharingView);
+  const [chatOpen, setChatOpen] = useState(!sharingView);
   const [toolSurface, setToolSurface] = useState<RoomToolSurface>({ open: false, document: null });
   const couchSlot = useRef<HTMLDivElement>(null), conversationSlot = useRef<HTMLDivElement>(null), voiceSlot = useRef<HTMLDivElement>(null);
   const [focusedScreen, setFocusedScreen] = useState<string | null>(null);
@@ -49,6 +51,16 @@ export function ChannelPreviewPage() {
   const rooms = state?.channel.rooms ?? [];
   const room = rooms.find(value => value.id === selected) ?? rooms[0];
   const roomId = room?.id ?? "";
+  useEffect(() => {
+    if (sharingView && state && !rooms.length) setMobilePane("rooms");
+  }, [sharingView, state?.channel.id, rooms.length]);
+  const toggleSharingView = () => {
+    const next = !sharingView;
+    setSharingView(next);
+    saveRoomPreferences({ sharingView: next });
+    if (next) setChatOpen(false);
+    setMobilePane(next && state && !rooms.length ? "rooms" : "room");
+  };
   const connected = connection === "connected";
   const owner = !!self && state?.channel.ownerId === self.id;
   const permissions = new Set(state?.channel.roles.filter(role => self?.roles.includes(role.id)).flatMap(role => role.permissions));
@@ -138,7 +150,7 @@ export function ChannelPreviewPage() {
     {failure && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span>{failure}</span>
       <Btn icon="x" title="notice.dismiss" size="compact" quiet onClick={channel.clearError} />
     </div>}
-    <main className="c3-shell" data-pane={mobilePane}>
+    <main className="c3-shell" data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"}>
       <ChannelBookmarks currentName={state?.channel.name ?? location.host}
         currentIcon={<ChannelIdentityMark icon={state?.channel.icon ?? "couch"} size={26} />} onCurrent={() => setMobilePane("rooms")} />
       <aside id="c3-room-list" className="c3-sidebar" aria-label={copy("域和房间", "Domain and rooms")}>
@@ -204,6 +216,8 @@ export function ChannelPreviewPage() {
                 onJoin={listenOnly => run(channel.joinVoice(roomId, listenOnly).then(() => setVoiceFocus(roomId)))} /></>}
           </div>
           <div className="c3-room-tools">
+            <span className="c3-view-toggle"><ChannelAction icon="tv" label={copy("分享视图", "Sharing view")}
+              pressed={sharingView} quiet hint="hint-details" onClick={toggleSharingView} /></span>
             <ChannelRoomTool title={room?.name ?? copy("房间", "Room")} surface={toolSurface} onSurfaceChange={setToolSurface}
               home={{ couch: couchSlot, conversation: conversationSlot, voice: voiceSlot }}
               couch={room?.authorized && <ChannelCouch className="c3-room-company" people={state ? roomPeople(state, roomId) : []}

@@ -218,3 +218,18 @@
 @media (prefers-reduced-motion: no-preference) {
   .c3-room-link { transition: background 150ms, color 150ms, box-shadow 150ms; }
 }
+
+/* One room and its live players; the presentation only folds navigation away. */
+.c3-view-toggle { display: inline-flex; flex: none; }
+.c3-view-toggle .lr-cap { display: inline; }
+.c3-shell[data-view="share"] { grid-template-columns: minmax(0, 1fr); max-width: 1180px; grid-template-rows: minmax(0, 1fr); }
+.c3-shell[data-view="share"] > :is(.c3-domain-rail, .c3-sidebar, .c3-people-panel) { display: none; }
+.c3-shell[data-view="share"] > .c3-main { grid-column: 1; grid-row: 1; }
+.c3-shell[data-view="share"] :is(.c3-pane-navigation, .c3-pane-back),
+.c3-shell[data-view="share"] .c3-room-tools > .c3-pane-navigation { display: inline-flex; }
+.c3-shell[data-view="share"][data-pane="rooms"] { grid-template-columns: 54px minmax(0, 1fr); }
+.c3-shell[data-view="share"][data-pane="rooms"] > .c3-domain-rail { display: flex; grid-column: 1; grid-row: 1; }
+.c3-shell[data-view="share"][data-pane="rooms"] > .c3-sidebar { display: flex; grid-column: 2; grid-row: 1; border-inline-end: 0; }
+.c3-shell[data-view="share"][data-pane="rooms"] > .c3-main { grid-column: 2; }
+.c3-shell[data-view="share"][data-pane="people"] > .c3-people-panel { display: flex; grid-column: 1; grid-row: 1; border-inline-start: 0; }
+.c3-shell[data-view="share"]:is([data-pane="rooms"], [data-pane="people"]) > .c3-main { visibility: hidden; }
