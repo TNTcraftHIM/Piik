@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Glyph } from "../../ui/icons";
 import { WelcomeLine } from "../../components/living/WelcomeLine";
+import { BrandMark } from "../../components/living/BrandMark";
+import { useClipboardResult } from "../../ui/use-clipboard-result";
 import { ChannelAction } from "../components/ChannelAction";
 import { ChannelNameEditor } from "../components/ChannelNameEditor";
 import { ChannelBookmarks } from "../components/ChannelBookmarks";
@@ -21,8 +23,8 @@ import "../../components/living/floating-panel.css";
 import "../../components/living/room-interactions.css";
 import "./design-social.css";
 
-export function DesignWorkspace({ copy, scene, content, peopleCount, onScene }: {
-  copy: DesignCopy; scene: DesignScene; content: DesignContent; peopleCount: number; onScene(scene: DesignScene): void;
+export function DesignWorkspace({ copy, scene, view, content, peopleCount, onScene }: {
+  copy: DesignCopy; scene: DesignScene; view: "share" | "room"; content: DesignContent; peopleCount: number; onScene(scene: DesignScene): void;
 }) {
   const sparse = content !== "full" || peopleCount < 4;
   const [roomChanges, setRoomChanges] = useState<Record<string, DesignRoom>>({});
@@ -46,6 +48,8 @@ export function DesignWorkspace({ copy, scene, content, peopleCount, onScene }: 
   const [selfName, setSelfName] = useState<string>();
   const name = (index: number) => index === 3 && selfName !== undefined ? selfName : copy(designPeople[index].name, designPeople[index].english);
   const conversation = useDesignConversation();
+  const invitation = "https://piik.example/r/movie-night";
+  const inviteCopy = useClipboardResult(invitation);
   const reactions = useDesignReactions(roomId, name(3));
   const voice = { joined, muted, deafened, inputVolume, listeningVolume, setInputVolume, setListeningVolume,
     toggleJoined: () => { setJoined(!joined); setMuted(joined); setDeafened(false); },
@@ -55,7 +59,11 @@ export function DesignWorkspace({ copy, scene, content, peopleCount, onScene }: 
   const demoRoom = !sparse && roomId === "games";
   const sharing = sharingRoom === roomId;
   const screenIds = [...(demoRoom ? [0, 1] : []), ...(sharing ? [3] : [])];
-  const showingScreens = screenIds.length > 0 && !screensHidden && (scene === "screens" || scene === "focus" || sharing);
+  const showingScreens = screenIds.length > 0 && !screensHidden && (view === "share" || scene === "screens" || scene === "focus" || sharing);
+  const focusStage = scene === "focus" || view === "share";
+  const toggleSharing = () => {
+    setSharingRoom(sharing ? null : roomId); setScreensHidden(false); setFocused(sharing ? 0 : 3);
+  };
   const selfVoice = joined ? { microphone: !muted, deafened } : false;
   const demoPeople = sparse ? [3, 0, 1, 2, ...Array.from({ length: 16 }, (_, index) => index + 5)].slice(0, peopleCount)
     : [0, 1, 2, 3, ...Array.from({ length: peopleCount - 4 }, (_, index) => index + 5)];
@@ -66,7 +74,7 @@ export function DesignWorkspace({ copy, scene, content, peopleCount, onScene }: 
   useEffect(() => { setMobilePane("room"); setScreensHidden(false); }, [scene, roomId]);
 
   return <DesignNames.Provider value={name}>
-    <div className="cd-workspace" data-pane={mobilePane}>
+    <div className="cd-workspace" data-pane={mobilePane} data-view={view}>
       <ChannelBookmarks className="cd-channel-rail" currentName={channelTitle} currentIcon={<DesignIdentityMark value={channelIdentity} size={28} />}
         onCurrent={() => setMobilePane("rooms")} />
 
@@ -117,37 +125,49 @@ export function DesignWorkspace({ copy, scene, content, peopleCount, onScene }: 
           {room && <DesignCouch key={roomId} people={here} selfVoice={selfVoice} voiceEnabled={!sparse} copy={copy} reactions={reactions} />}
           <div className="cd-room-actions">
             {room && !sparse && <DesignRoomPanel room={room} roomName={roomName} people={here} conversation={conversation} reactions={reactions} voice={voice} copy={copy} />}
-            {room && <span className="cd-header-action"><ChannelAction icon={sharing ? "stop" : "share"} primary={!sharing} hint={sharing ? "hint-share-stop" : "hint-share-start"}
-              label={sharing ? copy("停止分享", "Stop sharing") : copy("分享屏幕", "Share screen")} onClick={() => {
-                setSharingRoom(sharing ? null : roomId); setScreensHidden(false);
-                setFocused(sharing ? 0 : 3);
-              }} /></span>}
+            {room && (view === "room" || showingScreens) && <span className="cd-header-action"><ChannelAction icon={sharing ? "stop" : "share"} primary={!sharing} hint={sharing ? "hint-share-stop" : "hint-share-start"}
+              label={sharing ? copy("停止分享", "Stop sharing") : copy("分享屏幕", "Share screen")} onClick={toggleSharing} /></span>}
             <span className="cd-mobile-members"><ChannelAction icon="users" label={copy("成员", "Members")} hint="hint-details" quiet iconOnly onClick={() => setMobilePane("members")} /></span>
           </div>
         </header>
 
         <div className="cd-room-content">
-          {showingScreens ? <section className={"cd-stage" + (scene === "focus" ? " is-focused" : "")} aria-label={copy("分享的画面", "Shared screens")}>
+          {view === "share" && <div className="cd-share-invitation">
+            <label><span>{copy("邀请朋友", "Invitation")}</span><input aria-label={copy("示例邀请链接", "Example invitation link")} readOnly value={invitation}
+              onFocus={event => event.currentTarget.select()} /></label>
+            <ChannelAction icon={inviteCopy.status === "copied" ? "check" : "link"} iconOnly quiet hint="hint-copy-invite"
+              label={inviteCopy.status === "copied" ? copy("示例邀请已复制", "Example invitation copied") : copy("复制示例邀请", "Copy example invitation")} onClick={inviteCopy.copy} />
+          </div>}
+          {showingScreens ? <section className={"cd-stage" + (focusStage ? " is-focused" : "")} aria-label={copy("分享的画面", "Shared screens")}>
             <div className="cd-stage-heading"><span><Glyph name="display" size={16} />{copy("正在观看", "Watching")} <b>{screenIds.length}</b></span>
               <ChannelAction icon="x" label={copy("收起画面", "Hide screens")} hint="hint-collapse" quiet onClick={() => setScreensHidden(true)} />
             </div>
             <div className="cd-screen-grid">
-              {screenIds.map(index => <button key={index} type="button" className={"cd-screen" + (scene === "focus" && focused === index ? " is-focused" : "")}
-                aria-label={copy("观看", "Watch") + " " + name(index)} aria-pressed={scene === "focus" && focused === index}
-                onClick={() => { setFocused(index); onScene(scene === "focus" && focused === index ? "screens" : "focus"); }}>
+              {screenIds.map(index => <button key={index} type="button" className={"cd-screen" + (focusStage && focused === index ? " is-focused" : "")}
+                aria-label={copy("观看", "Watch") + " " + name(index)} aria-pressed={focusStage && focused === index}
+                onClick={() => { setFocused(index); if (view === "room") onScene(scene === "focus" && focused === index ? "screens" : "focus"); }}>
                 <DesignArtwork kind={index === 0 ? "game" : "drawing"} />
-                <span className="cd-screen-caption"><Avatar index={index} /><strong>{name(index)}</strong><Glyph name={scene === "focus" && focused === index ? "contract" : "expand"} size={16} /></span>
+                <span className="cd-screen-caption"><Avatar index={index} /><strong>{name(index)}</strong><Glyph name={view === "share" ? focused === index ? "check" : "eye" : focusStage && focused === index ? "contract" : "expand"} size={16} /></span>
               </button>)}
             </div>
           </section> : screenIds.length > 0 ? <div className="cd-sharing-strip">
             <span className="cd-sharing-avatars">{screenIds.slice(0, 2).map(index => <Avatar index={index} key={index} />)}</span>
             <span><strong>{demoRoom ? copy("朋友正在分享画面", "Friends are sharing") : copy("你正在分享画面", "You're sharing")}</strong><small>{copy("选一个看看，或者一起看。", "Pick a screen, or watch them together.")}</small></span>
             <ChannelAction icon="play" label={copy("观看", "Watch")} onClick={() => { setScreensHidden(false); onScene("screens"); }} />
-          </div> : null}
+          </div> : view === "share" && <section className="cd-share-ready" aria-label={copy("准备分享", "Ready to share")}>
+            <BrandMark size={76} motion="once" />
+            <h3>{copy("选个画面，一起看看。", "Pick a screen. Watch together.")}</h3>
+            <p>{copy("分享屏幕，把朋友叫过来。", "Share your screen and bring your friends.")}</p>
+            <ChannelAction icon={room ? "share" : "plus"} primary hint={room ? "hint-share-start" : "hint-create-room"}
+              label={room ? copy("开始分享", "Start sharing") : copy("创建房间", "Create room")} onClick={room ? toggleSharing : () => onScene("create")} />
+          </section>}
 
-          {sparse ? <DesignSparseConversation key={room?.id ?? "domain"} roomId={room?.id ?? ""} roomName={room?.name ?? ""}
+          <details className="cd-inline-interaction" open={view === "room"}>
+            <summary><Glyph name="chat" size={18} /><span>{copy("聊天", "Chat")}</span></summary>
+            {sparse ? <DesignSparseConversation key={room?.id ?? "domain"} roomId={room?.id ?? ""} roomName={room?.name ?? ""}
             people={here} few={content === "few"} copy={copy} />
             : room && <DesignConversation room={room} roomName={roomName} copy={copy} showingScreens={showingScreens} model={conversation} />}
+          </details>
           <div className="cd-mobile-voice" data-connected={joined}>
             <span><Glyph name="headphones" size={15} />{joined ? copy("语音已连接", "Voice connected") : copy("尚未加入语音", "Not in voice")}</span>
             <DesignVoiceControls voice={voice} />{room && <DesignVoiceJoin voice={voice} />}

@@ -18,6 +18,7 @@ export function ChannelDesignPage() {
   const { lang } = useCopy();
   const copy = (chinese: string, english: string) => lang === "zh" ? chinese : english;
   const [scene, setScene] = useState(readDesignScene);
+  const [view, setView] = useState<"share" | "room">(() => new URLSearchParams(location.search).get("view") === "share" ? "share" : "room");
   const [phone, setPhone] = useState(false);
   const [content, setContent] = useState<DesignContent>(() => {
     const value = new URLSearchParams(location.search).get("content");
@@ -46,10 +47,17 @@ export function ChannelDesignPage() {
     </header>
     <section className="cd-book-intro">
       <span className="cd-book-eyebrow">{copy("界面设计稿", "INTERFACE STUDIES")}<span>01—04</span></span>
-      <h1>{copy(...current.title)}</h1>
-      <p>{copy(...current.note)}</p>
+      <h1>{view === "share" ? copy("把画面分享给朋友。", "Share your screen with friends.") : copy(...current.title)}</h1>
+      <p>{view === "share" ? copy("画面放在中央，邀请就在手边。聊天和语音按需打开，也能随时回到完整房间。", "The screen comes first, with an invitation close by. Conversation and voice stay within reach; the full room is one step away.") : copy(...current.note)}</p>
     </section>
     <div className="cd-book-tools">
+      <div className="lr-toggle cd-view-picker" role="group" aria-label={copy("界面视图", "Workspace view")}>
+        {(["share", "room"] as const).map(value => <button key={value} type="button" className={view === value ? "is-selected" : undefined}
+          aria-pressed={view === value} onClick={() => {
+            setView(value);
+            const url = new URL(location.href); url.searchParams.set("view", value); history.replaceState(null, "", url);
+          }}>{value === "share" ? copy("分享视图", "Share view") : copy("房间视图", "Room view")}</button>)}
+      </div>
       <nav className="lr-toggle cd-scene-picker" style={{ "--lr-segments": 4 } as CSSProperties} aria-label={copy("设计场景", "Design scenes")}>
         {designScenes.map((item, index) => <button type="button" key={item.id} className={scene === item.id ? "is-selected" : undefined}
           aria-current={scene === item.id ? "page" : undefined} onClick={() => { setBoardKey(boardKey + 1); navigate(item.id); }}>
@@ -79,7 +87,7 @@ export function ChannelDesignPage() {
       </div>
     </div>
     <div className={"cd-board" + (phone ? " is-phone" : "")}>
-      <DesignWorkspace key={`${boardKey}-${people}-${content}`} copy={copy} scene={scene} content={content} peopleCount={people} onScene={navigate} />
+      <DesignWorkspace key={`${boardKey}-${people}-${content}`} copy={copy} scene={scene} view={view} content={content} peopleCount={people} onScene={navigate} />
     </div>
     <div className="cd-book-notes">
       <article><span>01</span><div><h2>{copy("空间先稳定下来", "A steady sense of place")}</h2><p>{copy("左侧找房间，中央一起聊和看，右侧找朋友。成员列表有自己的位置，不再悬浮在画面上。", "Rooms, conversation and people each have a home. The member list belongs to the layout, not a floating window.")}</p></div></article>
