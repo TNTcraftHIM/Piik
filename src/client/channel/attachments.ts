@@ -197,8 +197,12 @@ export class ChannelAttachments {
       const selected = files.find(file => file.attachment.id === attachment.id && sameContent(file.attachment, attachment));
       if (!selected) continue;
       const key = { roomId, messageSeq: message.seq, attachmentId: attachment.id };
-      this.sources.set(keyOf(key), { key, attachment, file: selected.file, status: idle, retained: false }); this.reofferKey(key);
-      void this.retain(key, attachment, selected.file);
+      const source: Source = { key, attachment, file: selected.file, status: idle, retained: false };
+      this.sources.set(keyOf(key), source); this.reofferKey(key);
+      void this.retain(key, attachment, selected.file).then(copy => {
+        // The page keeps its live offer even if this saved copy is later evicted.
+        if (copy && this.sources.get(keyOf(key)) === source) source.file = copy;
+      });
     }
   }
   data(peer: string, kind: "control" | "chunk", data: string | Uint8Array): void {
