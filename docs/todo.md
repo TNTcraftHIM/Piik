@@ -1,17 +1,17 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-06
+Last reviewed: 2026-11-07
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
 
+The first 3.0 internal test targets Windows and Android. Prioritize confirmed
+blocking defects in startup, room access, conversation, media, recovery and
+shutdown. UI polish, terminal presentation and alternative views follow during
+the feedback period; they do not delay that delivery.
+
 ## Now
 
-- [ ] **3.0 Native platform acceptance.** Complete the remaining Linux/macOS
-  device acceptance, including macOS Quit, Dock/Finder return and permissions,
-  and Linux hardware encoding and physical sound. Retain the accepted
-  [network model](./research/channel-network-design.md)
-  and [room-data model](./research/channel-storage-and-identity.md).
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
@@ -53,6 +53,11 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
+- [ ] **3.0 Native platform acceptance.** Complete the remaining Linux/macOS
+  device acceptance, including macOS Quit, Dock/Finder return and permissions,
+  and Linux hardware encoding and physical sound. Retain the accepted
+  [network model](./research/channel-network-design.md)
+  and [room-data model](./research/channel-storage-and-identity.md).
 - [ ] **First-beta usability follow-up.** After the first 3.0 internal test,
   research and prototype a simple sharing entry alongside the full room UI,
   using the same room and route owners. Reassess domain navigation against the
