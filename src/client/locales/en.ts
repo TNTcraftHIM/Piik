@@ -144,7 +144,7 @@ export const en: Record<CopyKey, string> = {
   "playback.relayVolunteer": "Help relay to more viewers",
   "playback.relayVolunteerHint": "Uses more upload bandwidth for this visit.",
   "playback.relayLimit": "Maximum relay viewers",
-  "playback.relayPeople": "viewers",
+  "playback.relayPeople": "people",
   "playback.relayUnavailable": "This connection cannot relay to additional viewers.",
   "playback.fit.contain": "Fit",
   "playback.fit.cover": "Fill",

@@ -1,17 +1,49 @@
 import { useEffect, useRef, useState } from "react";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { Tooltip } from "../../components/living/Tooltip";
-import { Btn } from "../../components/living/primitives";
+import { Btn, SwitchItem } from "../../components/living/primitives";
+import { NumberControl } from "../../components/living/NumberControl";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { useClipboardResult } from "../../ui/use-clipboard-result";
 import type { ChannelRoom, RoomSettings } from "../protocol";
+import { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../protocol";
 import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelAction";
 import { ChannelIdentityFields } from "./ChannelIdentity";
 import "./channel-room-controls.css";
 import { BackupControls } from "./BackupControls";
 import { ChannelInviteQrCode } from "./ChannelInviteQrCode";
+
+function RelayLimit({ value, min, label, note, disabled, onChange }: {
+  value: number; min: number; label: string; note: string; disabled: boolean; onChange(value: number): void;
+}) {
+  const { t, vis } = useCopy();
+  return <NumberControl value={value} min={min} max={MAX_RELAY_CAPACITY} step={1} unit={t("playback.relayPeople")}
+    showUnit={!vis} name="relay-capacity" label={label} disabled={disabled} onChange={onChange} className="lr-door-group c3-relay-limit">
+    {input => <><div className="lr-quality-heading"><span className="lr-door-glyph"><Glyph name="branch" size={18} />
+      {!vis && <span>{label}</span>}</span><Tooltip kind="hint-relay-volunteer" text={vis ? undefined : `${label}\n${note}`}>{input}</Tooltip></div>
+      {!vis && <p>{note}</p>}</>}
+  </NumberControl>;
+}
+
+function PersonalRelay({ channel, room, disabled }: { channel: ChannelController; room: ChannelRoom; disabled: boolean }) {
+  const { lang } = useCopy(), zh = lang === "zh";
+  const host = room.delivery?.hostSessionId === channel.sessionId;
+  const following = room.relayOverride === null;
+  const busy = channel.pending.has(`relay:${room.id}`);
+  const change = (value: number | null) => { void channel.setRelayOverride(room.id, value).catch(() => {}); };
+  const label = zh ? "我的转发上限" : "My forwarding limit";
+  const note = host ? (zh ? "房主使用房间默认上限。" : "The room host uses the room default.")
+    : (zh ? "只调整我在这个房间的转发。0 表示不帮别人转发，仍可发言和分享。" : "Only changes my forwarding in this room. At zero, I can still speak and share.");
+  return <section className="c3-room-relay" aria-label={label} aria-busy={busy}>
+    <SwitchItem checked={host || following} disabled={disabled || busy || host} icon="branch" hint="hint-relay-volunteer"
+      label={zh ? "跟随房间默认" : "Follow room default"} note={note}
+      onChange={follow => change(follow ? null : room.relayCapacity)} />
+    <RelayLimit value={host || following ? room.relayCapacity : room.relayOverride!} min={0} label={label} note={note}
+      disabled={disabled || busy || host || following} onChange={change} />
+  </section>;
+}
 
 function RoomForm({ room, appHosted, disabled, busy, onSave, onCancel }: {
   room?: ChannelRoom; appHosted: boolean; disabled: boolean; busy: boolean;
@@ -26,10 +58,11 @@ function RoomForm({ room, appHosted, disabled, busy, onSave, onCancel }: {
   const [hidden, setHidden] = useState(room?.hidden ?? false);
   const [password, setPassword] = useState("");
   const [removePassword, setRemovePassword] = useState(false);
+  const [relayCapacity, setRelayCapacity] = useState(room?.relayCapacity ?? DEFAULT_RELAY_CAPACITY);
   return <form className="c3-room-form" onSubmit={event => {
     event.preventDefault();
     if (!name.trim() || disabled || imageBusy) return;
-    void onSave({ name: name.trim(), icon, access, hidden: access === "private" && hidden,
+    void onSave({ name: name.trim(), icon, access, relayCapacity, hidden: access === "private" && hidden,
       ...(access === "private" && password ? { password } : removePassword ? { password: null } : {}) }).catch(() => {});
   }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}>
     {!room && <p>{appHosted
@@ -57,6 +90,9 @@ function RoomForm({ room, appHosted, disabled, busy, onSave, onCancel }: {
       <label className="c3-check"><input type="checkbox" checked={hidden} disabled={disabled} onChange={event => setHidden(event.target.checked)} />
         {zh ? "对未获准的用户隐藏房间" : "Hide from users without access"}</label>
     </div>}
+    <RelayLimit value={relayCapacity} min={1} label={zh ? "房间默认转发上限" : "Room forwarding default"}
+      note={zh ? "房间内默认的转发上限，其他人可以单独调整。" : "The default forwarding limit in this room. Others can adjust their own."}
+      disabled={disabled} onChange={setRelayCapacity} />
     <div className="c3-form-actions"><ChannelAction icon="x" quiet label={zh ? "取消" : "Cancel"} onClick={onCancel} />
       <ChannelAction icon={room ? "check" : "plus"} label={room ? (zh ? "保存" : "Save") : (zh ? "创建房间" : "Create room")}
         primary type="submit" disabled={disabled || imageBusy || !name.trim()} busy={busy} /></div>
@@ -85,9 +121,9 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
   }, [room?.id, room?.access]);
   useEffect(() => {
     let current = true; setBackupAvailable(false);
-    if (open && room) void channel.roomBackupAvailable(room.id).then(value => { if (current) setBackupAvailable(value); });
+    if (open && room?.canManage) void channel.roomBackupAvailable(room.id).then(value => { if (current) setBackupAvailable(value); });
     return () => { current = false; };
-  }, [open, room?.id, room?.delivery?.bindingId, channel.sessionId, channel.appConnected, channel.connection, channel.roomBackupAvailable]);
+  }, [open, room?.id, room?.canManage, room?.delivery?.bindingId, channel.sessionId, channel.appConnected, channel.connection, channel.roomBackupAvailable]);
   const connected = channel.connection === "connected";
   const available = connected && (!room || room.available);
   const busy = channel.pending.has(room ? `room:${room.id}` : "create-room");
@@ -107,8 +143,9 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={title}
       className="lr-anchored-card c3-room-panel" onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
       {open && <><h3>{title}</h3>
-      {room && !room.available && <p>{zh ? "房间当前未托管，可以从域中移除。" : "This room is offline. You can remove it from the domain."}</p>}
-      <div hidden={!!room && !room.available}><RoomForm key={`form:${room?.delivery?.bindingId ?? room?.id ?? "create"}`} room={room} appHosted={channel.appConnected} disabled={!available || working} busy={busy} onCancel={() => panel.current?.hidePopover()} onSave={async settings => {
+      {room && !room.available && <p>{room.canManage ? (zh ? "房间当前未托管，可以从域中移除。" : "This room is offline. You can remove it from the domain.")
+        : (zh ? "房间当前未托管，恢复后可调整转发设置。" : "The room is offline. Forwarding settings will be available when hosting resumes.")}</p>}
+      {(!room || room.canManage) && <div hidden={!!room && !room.available}><RoomForm key={`form:${room?.delivery?.bindingId ?? room?.id ?? "create"}`} room={room} appHosted={channel.appConnected} disabled={!available || working} busy={busy} onCancel={() => panel.current?.hidePopover()} onSave={async settings => {
         const form = panel.current?.querySelector("form");
         if (room) await channel.updateRoom(room.id, settings);
         else onCreated?.(await channel.createRoom(settings));
@@ -141,7 +178,8 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
                 busy={channel.pending.has(`revoke:${room.id}:${userId}`)} disabled={!available || working}
                 onClick={() => run(channel.revokeRoomAccess(room.id, userId))} /></div>)}
         </details>}
-      </section>}</div>
+      </section>}</div>}
+      {room?.authorized && <PersonalRelay channel={channel} room={room} disabled={!available || working} />}
       {room?.canManage && <section className="c3-room-removal">
         <Btn icon="x" size="dense" quiet tone="danger" busy={removing} disabled={!connected || working}
           title={{ text: room.available ? (zh ? "删除房间" : "Delete room") : (zh ? "从域移除" : "Remove from domain") }}
