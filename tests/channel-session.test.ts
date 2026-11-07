@@ -5311,6 +5311,47 @@ test("browsing keeps watched-room reading and resumes the offline selection with
   } finally { session.close(); }
 });
 
+test("relay overrides persist per room only after acceptance and accompany read admission", async () => {
+  const { session, socket } = await setup();
+  const values = new Map<string, string>();
+  vi.stubGlobal("window", { localStorage: {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+  } });
+  const preferences = () => JSON.parse(values.get("piik:room-preferences:v1") ?? "{}").relayCapacityByRoom;
+  try {
+    const stopping = session.setRelayOverride("first", 0);
+    const first = socket.sent.at(-1)!;
+    expect(first).toMatchObject({ type: "relay_capacity", roomId: "first", capacity: 0 });
+    expect(preferences()).toBeUndefined();
+    socket.receive({ type: "room_reply", roomId: "first", requestId: first.requestId, result: { type: "done" } });
+    await stopping;
+    expect(preferences()).toEqual({ "domain/first": 0 });
+
+    const rejected = session.setRelayOverride("first", null);
+    const refusal = expect(rejected).rejects.toThrow("forbidden");
+    socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.at(-1)!.requestId,
+      result: { type: "error", code: "forbidden" } });
+    await refusal;
+    expect(preferences()).toEqual({ "domain/first": 0 });
+
+    const state = structuredClone(session.getSnapshot().state!);
+    socket.close(); session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    expect(resumed.sent.some(command => command.type === "relay_capacity")).toBe(false);
+    const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
+    expect(browse).toMatchObject({ roomId: "first", relayCapacity: 0 });
+    resumed.receive({ type: "ack", requestId: browse.requestId });
+
+    const resetting = session.setRelayOverride("first", null);
+    resumed.receive({ type: "room_reply", roomId: "first", requestId: resumed.sent.at(-1)!.requestId, result: { type: "done" } });
+    await resetting;
+    expect(preferences()).toEqual({});
+  } finally { session.close(); }
+});
+
 test("live chat overlays follow each watched room and never replay loaded history", async () => {
   const { session, socket, peer } = await setup();
   try {
@@ -5927,7 +5968,7 @@ test("portable import admits the archived identity through Welcome before commit
     admission.receive({ type: "ack", requestId: registration.requestId });
     const restored = structuredClone(state);
     restored.channel.rooms = [{ id: "imported", name: "First", creatorId: "archived-user", icon: "couch", access: "public", hidden: false, hasPassword: false,
-      authorized: true, canManage: true, voiceBitrate: 64_000, participantSessionIds: [], available: true, reading: false, capabilities: { attachments: true },
+      authorized: true, canManage: true, voiceBitrate: 64_000, relayCapacity: 2, relayOverride: null, participantSessionIds: [], available: true, reading: false, capabilities: { attachments: true },
       delivery: { hostSessionId: "new-endpoint", bindingId: "imported-binding", nextHops: {} } }];
     admission.receive({ type: "state", state: restored });
     await vi.waitFor(() => expect(admission.sent.some(command => command.type === "browse" && command.roomId === "imported")).toBe(true));

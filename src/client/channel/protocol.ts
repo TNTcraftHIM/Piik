@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { videoCeilingSchema, type VideoCeiling } from "../../shared/protocol";
+import { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
+export { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
 
 // This is the experimental channel wire boundary; production room contracts stay separate.
 const id = z.string().min(1).max(128);
@@ -14,12 +16,15 @@ export const roomSchema = z.object({
   id, name: identityNameSchema, icon: identityIconSchema, creatorId: id, access: z.enum(["public", "private"]),
   hidden: z.boolean(), hasPassword: z.boolean(), authorized: z.boolean(), canManage: z.boolean(),
   voiceBitrate: z.number().int().min(6_000).max(320_000).default(64_000),
+  relayCapacity: z.number().int().min(1).max(MAX_RELAY_CAPACITY).default(DEFAULT_RELAY_CAPACITY),
+  relayOverride: z.number().int().min(0).max(MAX_RELAY_CAPACITY).nullable().default(null),
   members: z.array(id).optional(),
   participantSessionIds: z.array(id),
   available: z.boolean(), reading: z.boolean(),
   capabilities: z.object({ attachments: z.boolean() }),
   delivery: z.object({ hostSessionId: id, bindingId: id, nextHops: z.record(id, id) }).optional(),
 });
+export const roomSummarySchema = roomSchema.pick({ id: true, name: true, icon: true, creatorId: true, access: true, hidden: true, hasPassword: true, voiceBitrate: true, relayCapacity: true });
 const publicationBaseSchema = z.object({
   id, roomId: id, sessionId: id, userId: id,
   paused: z.boolean(),
@@ -78,7 +83,7 @@ export const eventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("input_state"), registrations: z.array(z.object({ publicationId: id, controllerSessionId: id, flowId: id, secret: signingKey })) }),
   z.object({ type: z.literal("room_invite"), roomId: id, key: id, requestId: id.optional() }),
   z.object({ type: z.literal("host_bound"), roomId: id, bindingId: id }),
-  z.object({ type: z.literal("room_created"), room: roomSchema.pick({ id: true, name: true, icon: true, creatorId: true, access: true, hidden: true, hasPassword: true, voiceBitrate: true }), requestId: id.optional() }),
+  z.object({ type: z.literal("room_created"), room: roomSummarySchema, requestId: id.optional() }),
   z.object({ type: z.literal("host_input"), roomId: id, input: z.object({ bindingId: id }).passthrough() }),
   z.object({ type: z.literal("room_reply"), roomId: id, requestId: id.optional(), result: z.object({ type: z.string(), code: z.string().optional() }).passthrough() }),
   z.object({ type: z.literal("signal"), pairId: id, fromSessionId: id, payload: signalSchema }),
@@ -96,7 +101,6 @@ export type ChannelFileKey = z.infer<typeof fileKeySchema>;
 export type ChannelFilePlan = z.infer<typeof filePlanSchema>;
 export type ChannelUser = z.infer<typeof userSchema>;
 export type ChannelRoom = z.infer<typeof roomSchema>;
-export const roomSummarySchema = roomSchema.pick({ id: true, name: true, icon: true, creatorId: true, access: true, hidden: true, hasPassword: true, voiceBitrate: true });
 export type RoomSummary = z.infer<typeof roomSummarySchema>;
 export type ChannelPair = ChannelSnapshot["pairs"][number];
 export type ChannelSignal = z.infer<typeof signalSchema>;
@@ -118,6 +122,7 @@ export interface DomainSettings { name: string; icon: string }
 export interface RoomSettings extends DomainSettings {
   access: "public" | "private"; hidden: boolean; password?: string | null;
   voiceBitrate?: number;
+  relayCapacity?: number;
 }
 export type ChannelCommand =
   | { type: "join"; name: string; signingKey: number[]; credential?: string; key?: string; roomId?: string; sessionId?: string }
@@ -130,7 +135,8 @@ export type ChannelCommand =
   | { type: "delete_room"; roomId: string; deleteData: boolean }
   | { type: "host_output"; roomId: string; output: unknown }
   | { type: "host_stop"; roomId: string; bindingId: string }
-  | { type: "browse"; roomId: string; active: boolean }
+  | { type: "browse"; roomId: string; active: boolean; relayCapacity?: number }
+  | { type: "relay_capacity"; roomId: string; capacity: number | null }
   | { type: "interaction_ready"; roomId: string }
   | { type: "interaction"; roomId: string; reaction: string; targetUserId?: string }
   | { type: "set_reaction"; roomId: string; messageSeq: number; reaction: string; active: boolean }

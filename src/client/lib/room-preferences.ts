@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { viewerRoutePreferenceSchema } from "../../shared/protocol";
+import { MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
 import { remoteControlModeSchema, remoteShortcutKeySchema } from "../remote-control/protocol";
 
 const STORAGE_KEY = "piik:room-preferences:v1";
@@ -12,6 +13,7 @@ const roomPreferencesSchema = z.object({
   pictureRotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).catch(0).default(0),
   previewAutoPause: z.boolean().default(true),
   routePreference: viewerRoutePreferenceSchema.default("auto"),
+  relayCapacityByRoom: z.record(z.string(), z.number().int().min(0).max(MAX_RELAY_CAPACITY)).default({}),
   overlayEnabled: z.boolean().default(false),
   overlayAppearance: z.object({
     scale: z.number().min(CHAT_OVERLAY_LIMITS.scale[0]).max(CHAT_OVERLAY_LIMITS.scale[1]),

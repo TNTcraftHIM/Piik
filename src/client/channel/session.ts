@@ -391,7 +391,6 @@ export class ChannelSession {
       this.hostedRooms.delete(id);
       this.hostCleanup = Promise.all([this.hostCleanup, hosted.host.close()]).then(() => {});
     }
-    let resumedReading = false;
     if (this.view.connection === "connected") for (const room of state.channel.rooms) {
       if (room.available && previousRooms?.some(previous => previous.id === room.id && !previous.available)
         && this.voiceCaptures.get(room.id) === null && !this.view.pending.has(`voice:${room.id}`)) {
@@ -406,7 +405,6 @@ export class ChannelSession {
       if (room.id !== this.roomId && room.reading && room.authorized && room.available
         && previousRooms?.some(previous => previous.id === room.id && !previous.available)) {
         this.readingRooms.add(room.id);
-        resumedReading = true;
       }
     }
     this.media.update(sessionId, state);
@@ -414,7 +412,6 @@ export class ChannelSession {
     if (userId) this.attachments.update(sessionId, { domainId: state.channel.id, userId }, state.files, state.channel.rooms);
     else this.attachments.reset();
     this.sendConversations();
-    if (this.roomId && (freshBindings.has(this.roomId) || resumedReading)) this.browse(this.roomId);
     const room = state.channel.rooms.find(room => room.id === this.reading?.roomId);
     const previous = previousRooms?.find(previous => previous.id === room?.id);
     const nextHop = room?.delivery?.nextHops[room.delivery.hostSessionId];
@@ -818,8 +815,9 @@ export class ChannelSession {
       if (!room?.delivery) continue;
       let reading = this.readings.get(id);
       if (!reading) {
+        const capacity = readRoomPreferences().relayCapacityByRoom[`${this.view.state!.channel.id}/${id}`];
         reading = { roomId: id, bindingId: room.delivery.bindingId, socket: this.socket,
-          ready: this.request({ type: "browse", roomId: id, active: true }) };
+          ready: this.request({ type: "browse", roomId: id, active: true, ...(capacity !== undefined ? { relayCapacity: capacity } : {}) }) };
         this.readings.set(id, reading);
       }
       const current = reading;
@@ -1305,6 +1303,16 @@ export class ChannelSession {
   }, false);
 
   updateRoom = (roomId: string, settings: RoomSettings): Promise<void> => this.action(`room:${roomId}`, () => this.request({ type: "update_room", roomId, ...settings }));
+  setRelayOverride = (roomId: string, capacity: number | null): Promise<void> => this.action(`relay:${roomId}`, async () => {
+    const current = this.sessionContext();
+    const key = `${this.view.state!.channel.id}/${roomId}`;
+    await this.request({ type: "relay_capacity", roomId, capacity });
+    current();
+    const relayCapacityByRoom = { ...readRoomPreferences().relayCapacityByRoom };
+    if (capacity === null) delete relayCapacityByRoom[key];
+    else relayCapacityByRoom[key] = capacity;
+    saveRoomPreferences({ relayCapacityByRoom });
+  });
   deleteRoom = (roomId: string, deleteData: boolean): Promise<{ dataRemoved: boolean }> => this.action(`delete:${roomId}`, async () => {
     let dataRemoved: boolean | undefined;
     await this.request({ type: "delete_room", roomId, deleteData }, event => {

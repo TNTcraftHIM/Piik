@@ -97,6 +97,7 @@ export interface ChannelActions {
   updateRoom(roomId: string, settings: RoomSettings): Promise<void>;
   deleteRoom(roomId: string, deleteData: boolean): Promise<{ dataRemoved: boolean }>;
   setRoomVoiceBitrate(roomId: string, bitrate: number): Promise<void>;
+  setRelayOverride(roomId: string, capacity: number | null): Promise<void>;
   roomBackupAvailable(roomId: string): Promise<boolean>;
   exportRoomBackup(roomId: string): Promise<Blob>;
   restoreRoomBackup(archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }>;
