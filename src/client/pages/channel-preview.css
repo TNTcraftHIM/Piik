@@ -65,14 +65,15 @@
 .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr) 300px; }
 .c3-workspace.has-screens > .c3-monitor { background: var(--wall); border-inline-end: 1px solid var(--line); }
 .c3-workspace.has-screens.chat-collapsed { grid-template-columns: minmax(0, 1fr); }
-.c3-voice-dock { flex: none; display: flex; align-items: center; gap: 12px; padding: 14px 24px; border-top: 1px solid var(--line); }
+.c3-voice-dock { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 14px 24px; border-top: 1px solid var(--line); }
 .c3-voice-dock > svg { color: var(--live); flex: none; }
-.c3-voice-destination { min-width: 0; flex: 1; }
-.c3-voice-destination small { display: block; color: var(--live); font-size: 11px; margin-bottom: 2px; }
-.c3-voice-destination > button, .c3-voice-destination > select { max-width: 100%; border: 0; padding: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px; font-weight: 650; text-align: start; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+.c3-voice-destination { min-width: 0; flex: 1 1 18ch; }
+.c3-voice-destination small { display: block; color: var(--live); font-size: 11px; margin-bottom: 2px; white-space: nowrap; }
+.c3-voice-destination > button, .c3-voice-destination > select { max-width: 100%; border: 0; padding: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px; font-weight: 650; text-align: start; }
+.c3-voice-destination > button { overflow-wrap: anywhere; }
 .c3-voice-destination > button:hover { text-decoration: underline; text-underline-offset: 3px; }
 .c3-voice-destination > select { padding-inline-end: 5px; }
-.c3-voice-controls { display: inline-flex; align-items: center; gap: 6px; }
+.c3-voice-controls { display: inline-flex; flex-wrap: wrap; align-items: center; flex: none; max-width: 100%; gap: 6px; margin-inline-start: auto; }
 .c3-voice-participants { display: flex; align-items: center; gap: 4px; margin-inline-end: 14px; }
 .c3-voice-participants svg { display: block; width: 26px; height: 34px; }
 .c3-voice-participants small { color: var(--muted); font-size: 11px; }
