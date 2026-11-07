@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-06
+Last updated: 2026-11-07
 
 This file summarizes evidence boundaries that materially affect product claims.
 [Status](./status.md) owns candidate and deployment readiness; research owns
@@ -36,7 +36,9 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   normal UI room creation, bidirectional confirmed chat, file delivery with an
   exact received digest, and Native screen reception in both directions. Room
   voice reaches Android with advancing packet and energy measurements from a
-  desktop synthetic microphone. Closing the Windows console during active
+  desktop synthetic microphone. The packaged Windows UI also passes control
+  request, Host approval, real pointer/keyboard input to an isolated window,
+  and normal End control. Closing the Windows console during active
   Native capture retires the App, encoder children and listeners. Package
   metadata owns the exact tested revision; these are controlled local-network
   checks, not physical microphone or Internet-path measurements.
