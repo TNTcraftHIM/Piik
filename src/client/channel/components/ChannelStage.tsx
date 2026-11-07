@@ -10,7 +10,8 @@ import type { InputTransport } from "../../remote-control/input-route";
 import type { RemoteControlMode } from "../../remote-control/protocol";
 import type { ChannelRemoteControlState, ChannelStopShortcut } from "../app-link";
 import { HostRemoteControl } from "../../components/living/HostRemoteControl";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
+import { useTheaterMode } from "../../components/living/use-theater-mode";
 import { VoiceMicrophoneButton } from "../../room-voice/VoiceAudioButtons";
 
 export interface ChannelStageSource {
@@ -70,9 +71,11 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
   const active = sources.filter(source => source.owned || source.subscribed);
   const available = sources.filter(source => !source.owned && !source.subscribed);
   const focused = active.find(source => source.id === focusedId);
+  const [theater, setTheater] = useTheaterMode();
+  useEffect(() => { if (!focused?.stream) setTheater(false); }, [focused?.id, focused?.stream, setTheater]);
   if (!sources.length) return null;
 
-  return <section className="c3-monitor" aria-label={copy("共享画面", "Shared screens")}>
+  return <section className={`c3-monitor${theater && focused ? " is-theater" : ""}`} aria-label={copy("共享画面", "Shared screens")}>
     {available.length > 0 && <section className="c3-monitor-directory" aria-label={copy("可观看的画面", "Available screens")}>
       <div className="c3-monitor-directory-heading"><Glyph name="tv" size={17} />
         <span>{copy("正在分享", "Available to watch")}</span><small>{available.length}</small>
@@ -111,6 +114,9 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
             }}>
             {source.stream ? <ChannelVideo stream={source.stream} local={source.owned} inputs={source.inputs} onPresentation={onPresentation} input={source.input}
               sourceAudio={source.sourceAudio}
+              theaterMode={theater && isFocused} onToggleTheater={() => {
+                onFocus(source.id); setTheater(!theater);
+              }}
               label={`${source.name} — ${source.roomName}`} />
               : <div className="c3-monitor-wait" data-failed={!source.paused && source.deliveryFailed || undefined} role="status">
                 <Glyph name={source.paused ? "pause" : source.deliveryFailed ? "x" : "loader"} size={24} className={source.paused || source.deliveryFailed ? undefined : "lr-spin"} />

@@ -81,7 +81,8 @@ describe("Playback audio controls", () => {
     setCopy({ lang: "zh", vis: false });
     const stream = { id: "mixed", getAudioTracks: () => [{ kind: "audio", readyState: "live" }] } as unknown as MediaStream;
     const sourceAudio = { hasAudio: false, available: false, level: 1, muted: false, busy: false, onChange: vi.fn() };
-    const html = renderToStaticMarkup(createElement(ChannelVideo, { stream, local: true, label: "Own screen", sourceAudio }));
+    const windowModes = { theaterMode: false, onToggleTheater: vi.fn() };
+    const html = renderToStaticMarkup(createElement(ChannelVideo, { stream, local: true, label: "Own screen", sourceAudio, ...windowModes }));
     const range = html.match(/<input\b[^>]*type="range"[^>]*>/)![0];
     expect(range).toContain('aria-label="分享源没有音频"');
     expect(range).toContain('aria-valuetext="分享源没有音频"');
@@ -89,7 +90,7 @@ describe("Playback audio controls", () => {
     expect(range).toContain("disabled");
     expect(html.match(/<button\b[^>]*aria-label="分享源没有音频"[^>]*>/)?.[0]).toContain("disabled");
 
-    const silent = renderToStaticMarkup(createElement(ChannelVideo, { stream, local: true, label: "Own screen",
+    const silent = renderToStaticMarkup(createElement(ChannelVideo, { stream, local: true, label: "Own screen", ...windowModes,
       sourceAudio: { ...sourceAudio, hasAudio: true, available: true, muted: true, level: 0 } }));
     const silentRange = silent.match(/<input\b[^>]*type="range"[^>]*>/)![0];
     expect(silentRange).not.toContain("disabled");

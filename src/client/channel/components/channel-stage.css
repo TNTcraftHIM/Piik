@@ -27,6 +27,16 @@
 .c3-monitor-tile-actions { display: flex; align-items: center; gap: 2px; flex: none; margin-inline: auto; }
 .c3-monitor-wait { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; aspect-ratio: 16 / 9; padding: 18px; border-radius: 14px 14px 0 0; background: var(--stage, var(--wall-2)); color: var(--muted); font-size: 12px; }
 .c3-monitor-wait[data-failed] > svg { color: var(--danger); }
+/* Theater changes the existing stage's layout; every subscription stays mounted. */
+.c3-app:has(.c3-monitor.is-theater) .c3-shell { visibility: hidden; }
+.c3-app:has(.c3-monitor.is-theater) .lr-floating-panel { visibility: visible; }
+.c3-main:has(.c3-monitor.is-theater) { container-type: normal; }
+.c3-monitor.is-theater { position: fixed; inset: 0; z-index: 20; gap: 0; padding: 0; background: var(--stage, var(--wall-2)); overflow: hidden; visibility: visible; }
+.c3-monitor.is-theater > :is(.c3-monitor-heading, .c3-monitor-directory) { display: none; }
+.c3-monitor.is-theater .c3-monitor-grid { display: block; height: 100%; }
+.c3-monitor.is-theater .c3-monitor-tile:not(.is-focused) { display: none; }
+.c3-monitor.is-theater .c3-monitor-tile.is-focused { width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; }
+.c3-monitor.is-theater .c3-mini-player { border-radius: 0; }
 @media (max-width: 700px) {
   .c3-monitor { padding: 12px; gap: 12px; overflow: visible; }
   .c3-monitor-grid { gap: 12px; }

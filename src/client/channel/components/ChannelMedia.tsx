@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Btn } from "../../components/living/primitives";
 import { PlaybackControlsReveal } from "../../components/living/PlaybackControlsReveal";
+import { PlaybackWindowControls } from "../../components/living/PlaybackWindowControls";
 import { PlaybackSettings } from "../../components/living/PlaybackSettings";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useVideoRotation } from "../../components/living/use-video-rotation";
 import { usePlaybackControlsVisibility } from "../../components/living/use-playback-controls-visibility";
 import { useHostPreviewPlayback } from "../../components/living/use-host-preview-playback";
+import { usePictureInPicture } from "../../components/living/use-picture-in-picture";
 import { toggleVideoFullscreen, videoFullscreenState } from "../../components/living/video-fullscreen";
 import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio";
 import { observeCompositedVideoFrame } from "../../media/video-frame-proof";
@@ -64,10 +66,11 @@ export interface SourceAudioControl {
   onChange(settings: { level?: number; muted?: boolean }): void;
 }
 
-export function ChannelVideo({ stream, local, label, inputs, onPresentation, input, sourceAudio }: {
+export function ChannelVideo({ stream, local, label, inputs, onPresentation, input, sourceAudio, theaterMode, onToggleTheater }: {
   stream: MediaStream; local: boolean; label: string; inputs?: readonly ChannelScreenInput[];
   input?: InputTransport;
   sourceAudio?: SourceAudioControl;
+  theaterMode: boolean; onToggleTheater(): void;
   onPresentation?: (flowId: string, stream: MediaStream, state: ScreenPresentation) => void;
 }) {
   const target = inputs?.find(input => input.selected) ?? { flowId: stream.id, stream, selected: true, switchReady: false };
@@ -108,6 +111,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
     ? !sourceAudio?.available ? "host.shareVolume.unavailable" : "host.shareVolume"
     : audio.boostAvailable ? "playback.volume" : "playback.volumeBasic";
   const playbackRef = useMemo(() => ({ current: activeVideo }), [activeVideo]);
+  const picture = usePictureInPicture(playbackRef);
   useHostPreviewPlayback(playbackRef, local ? displayed.stream : null, previewAutoPause);
   useVideoRotation(playbackRef, pictureFit, pictureRotation);
   useAnchoredPopover(pictureTrigger, picturePanel, { side: "above", align: "center" });
@@ -161,6 +165,16 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
       nativeRequested.current = false;
       if (ref.current === element) { setFullscreenFailed(true); changeConsumer(value => value + 1); }
     });
+  };
+  const pictureToggle = async () => {
+    const candidate = inputs?.find(input => !input.selected);
+    if (!picture.active) {
+      if (candidate?.switchReady) return;
+      nativeRequested.current = true;
+      if (candidate) onPresentation?.(candidate.flowId, candidate.stream, "waiting");
+    }
+    try { await picture.toggle(); }
+    finally { nativeRequested.current = false; changeConsumer(value => value + 1); }
   };
   useLayoutEffect(() => {
     const binding = consumers.current.get(target.stream);
@@ -225,10 +239,10 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
     for (const input of inputs ?? []) if (!input.selected && !input.switchReady) {
       const consumer = consumers.current.get(input.stream);
       if (!consumer) continue;
-      const state = nativeRequested.current || fullscreen.nativeActive ? "waiting" : consumer.composited ? "prepared" : "waiting";
+      const state = nativeRequested.current || fullscreen.nativeActive || picture.active ? "waiting" : consumer.composited ? "prepared" : "waiting";
       onPresentation?.(input.flowId, input.stream, state);
     }
-  }, [inputs, onPresentation, consumerVersion, fullscreen.nativeActive]);
+  }, [inputs, onPresentation, consumerVersion, fullscreen.nativeActive, picture.active]);
   const nativeEntryBlocked = inputs?.some(input => !input.selected && input.switchReady)
     && !fullscreen.active && !(document.fullscreenEnabled && activeVideo?.parentElement?.requestFullscreen);
   return <div className="c3-video c3-mini-player" data-controls-hidden={visibility.hidden}>
@@ -283,10 +297,11 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
           setRemoteTouchMode(mode); saveRoomPreferences({ remoteTouchMode: mode });
         } } : undefined} reconnect={null} />
       </div>
-      <Btn icon={fullscreen.active ? "contract" : "expand"} quiet
-        title={fullscreenFailed ? "playback.fullscreenFailed" : fullscreen.active ? "playback.exitFullscreen" : "playback.fullscreen"}
-        hint={fullscreenFailed || !fullscreen.ready ? "hint-fullscreen-unavailable" : fullscreen.active ? "hint-fullscreen-exit" : "hint-fullscreen"}
-        disabled={(!fullscreen.ready && !fullscreen.active) || !!nativeEntryBlocked} onClick={fullscreenToggle} />
+      <PlaybackWindowControls picture={{ ...picture, toggle: pictureToggle }} quiet
+        canPlay={ready && !inputs?.some(input => !input.selected && input.switchReady)}
+        theaterMode={theaterMode} onToggleTheater={onToggleTheater}
+        fullscreen={{ ...fullscreen, ready: fullscreen.ready && !nativeEntryBlocked }} fullscreenFailed={fullscreenFailed}
+        toggleFullscreen={fullscreenToggle} />
     </div>
     <PlaybackControlsReveal controls={controls} controlsId={controlsId} hidden={visibility.hidden} />
   </div>;

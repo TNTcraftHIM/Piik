@@ -62,12 +62,11 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **Playback and interaction parity.** Restore picture-in-picture/theater
-  viewing, detail-versus-motion preference, picture chat overlays and readable
-  chat export through the existing shared
-  components. Restore the launcher's last Local/public mode through its existing
-  preference owner. Check actual reachability; retained component files alone
-  do not provide these controls in the 3.0 room UI.
+- [ ] **Playback and interaction parity.** Restore picture chat overlays through
+  the existing shared components. Complete the detail-versus-motion preference
+  after choosing its Native adaptation owner: Browser encoding already consumes
+  that preference, while Native currently keeps its default. Do not expose a
+  control that the selected producer cannot apply.
 - [ ] **3.0 invitation controls feedback.** Distinguish domain admission from a
   room invitation in the UI. The user confirmed the existing 2.x-style controls:
   public/private access, a passphrase and resetting the invitation link. Reuse

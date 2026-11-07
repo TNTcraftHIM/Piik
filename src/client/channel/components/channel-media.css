@@ -31,9 +31,18 @@
 }
 .c3-mini-controls .lr-btn:not(:where(.c3-mini-controls [popover] *)) { --button-size: var(--control-compact-size); flex: none; min-width: 0; width: var(--button-size); height: var(--button-size); padding: 0; }
 @container (max-width: 440px) {
-  .c3-mini-controls .lr-btn:not(:where(.c3-mini-controls [popover] *)) { --button-size: var(--control-dense-size); }
+  .c3-mini-controls .lr-btn:not(:where(.c3-mini-controls [popover] *)) { --button-size: clamp(24px, 8cqi, var(--control-dense-size)); }
 }
 .c3-mini-controls .lr-remote-controls { display: inline-flex; align-items: center; flex: none; gap: inherit; }
+.c3-mini-controls .lr-playback-window { gap: inherit; }
+.c3-mini-controls .lr-playback-window::before { display: none; }
+@container (max-width: 360px) {
+  .c3-mini-controls { inset-inline: 4px; max-width: calc(100% - 8px); gap: 2px; padding: 3px; }
+}
+@container (max-width: 280px) {
+  .c3-mini-controls { inset-inline: 2px; width: calc(100% - 4px); max-width: calc(100% - 4px); gap: 0; padding: 2px; }
+  .c3-mini-controls .c3-mini-space { display: none; }
+}
 .c3-mini-space { flex: 1 1 0; min-width: 4px; }
 .c3-mini-volume {
   flex: 0 1 88px;

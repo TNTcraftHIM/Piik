@@ -5,6 +5,7 @@ import { useCopy } from "../../ui/copy";
 import { debugError } from "../../lib/debug";
 import { Btn } from "./primitives";
 import { PlaybackControlsReveal } from "./PlaybackControlsReveal";
+import { PlaybackWindowControls } from "./PlaybackWindowControls";
 import { PlaybackPictureControls, PlaybackSettings, type PlaybackSettingsProps } from "./PlaybackSettings";
 import { Tooltip } from "./Tooltip";
 import { useAnchoredPopover } from "./use-anchored-popover";
@@ -180,19 +181,6 @@ export function PlaybackControlsView({
   const percent = Math.round(audio.level * 100);
   const volumeTitle = !hasAudio ? "playback.noAudio" : sharingAudio ? !audioControlAvailable ? "host.shareVolume.unavailable" : "host.shareVolume"
     : audio.boostAvailable ? "playback.volume" : "playback.volumeBasic";
-  const pipTitle = picture.failed ? "playback.pipFailed" : !picture.supported ? "playback.pipUnavailable"
-    : picture.active ? "playback.exitPip" : !canPlay ? "playback.pipWaiting" : "playback.pip";
-  const theaterTitle = theaterMode ? "viewer.theater.exit" : "viewer.theater";
-  const displayActions = <>
-    <Btn icon={picture.active ? "pipExit" : "pip"} draw="playback-pip" title={pipTitle}
-      hintTone={picture.failed ? "bad" : undefined}
-      hint={!picture.supported || picture.failed || (!picture.active && !canPlay) ? "hint-pip-unavailable" : picture.active ? "hint-pip-exit" : "hint-pip"}
-      pressed={picture.active} disabled={!picture.supported || (!picture.active && !canPlay)}
-      onClick={() => { void picture.toggle(); }} />
-    {!fullscreen.active && <Btn icon={theaterMode ? "theaterExit" : "theater"} draw="playback-theater" title={theaterTitle}
-      hint={theaterMode ? "hint-theater-exit" : "hint-theater"}
-      pressed={theaterMode} onClick={onToggleTheater} />}
-  </>;
   const reveal = <PlaybackControlsReveal controls={barRef} controlsId={controlsId} hidden={!!visibility?.hidden} />;
 
   return <>
@@ -232,21 +220,8 @@ export function PlaybackControlsView({
             onReconnect={onReconnect} reconnectAvailable={reconnectAvailable} />
         </span>
       </div>
-      <span className="lr-playback-window" role="group" aria-label={t("playback.windowControls")}>
-        {displayActions}
-        {fullscreen.supported ? (
-          <Btn icon={fullscreen.active ? "contract" : "expand"}
-            draw="playback-fullscreen"
-            title={fullscreenFailed ? "playback.fullscreenFailed" : fullscreen.active ? "playback.exitFullscreen"
-              : !fullscreen.ready ? "playback.fullscreenWaiting" : "playback.fullscreen"}
-            hint={fullscreenFailed || (!fullscreen.active && !fullscreen.ready) ? "hint-fullscreen-unavailable"
-              : fullscreen.active ? "hint-fullscreen-exit" : "hint-fullscreen"}
-            hintTone={fullscreenFailed ? "bad" : !fullscreen.ready ? "warn" : undefined}
-            disabled={!fullscreen.active && !fullscreen.ready}
-            pressed={fullscreen.active}
-            onClick={toggleFullscreen} />
-        ) : null}
-      </span>
+      <PlaybackWindowControls picture={picture} canPlay={canPlay} theaterMode={theaterMode} onToggleTheater={onToggleTheater}
+        fullscreen={fullscreen} fullscreenFailed={fullscreenFailed} toggleFullscreen={toggleFullscreen} />
     </div>
     {chin && !theaterMode && !fullscreen.active ? createPortal(reveal, chin) : reveal}
   </>;
