@@ -12,15 +12,6 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **3.0 conversation during route changes.** A relay receiving its routing
-  snapshot 450 ms later drops valid chat and history packets with
-  `room_path_unavailable`; the original requests then time out. Fix delivery at
-  the shared conversation boundary without relaxing authority or route checks.
-- [ ] **3.0 image attachment feedback.** Trace preview and download failures in
-  Chrome at an HTTPS LAN address after opening another Browser window on the
-  same computer. The selected file is a GIF and the sender page remains open;
-  the user clarified this is a file-unavailable result, not a broken decoded
-  image. Compare retained bytes and the receiver's delivery path.
 - [ ] **3.0 iOS/iPadOS room voice feedback.** With noise processing disabled on
   the phone/tablet, a computer listener reports mono sound. Distinguish source
   capture channels, processing/mixing and negotiated Opus output in the current
@@ -86,9 +77,6 @@ the feedback period; they do not delay that delivery.
   and Linux hardware encoding and physical sound. Retain the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-- [ ] **Simple sharing view.** Apply the reviewed sharing-view study alongside
-  the full room UI on the same 3.0 core and session. Preserve quick create/share/join
-  without requiring the domain workspace or reviving separate 2.x controllers.
 - [ ] **Entry presentation.** Restore the App terminal's useful presentation
   and review the prepared website/help wording for joining a friend's room.
 - [ ] **Native H264 scene-change latency.** Reduce encoded bursts while
@@ -104,6 +92,10 @@ the feedback period; they do not delay that delivery.
   the existing [headline contract](./standards/versioning.md#release-notes).
 
 ## Held By Owner
+
+- [ ] **Participation controls.** Await the user's choice between one participation
+  switch and distinct role permissions. The current member and moderator roles
+  grant the same capabilities. Hold only this role-model change.
 
 - [ ] **Automatic room-voice exclusion from Native display sound.** Deferred
   from the first 3.0 internal test. Keep Browser playback; the
