@@ -53,6 +53,12 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
+- [ ] **First-beta usability follow-up.** After the first 3.0 internal test,
+  research and prototype a simple sharing entry alongside the full room UI,
+  using the same room and route owners. Reassess domain navigation against the
+  existing URL/bookmark model, restore the App terminal's useful presentation,
+  and simplify website/help entry wording around symptoms such as being unable
+  to join a friend's room. Blocking defects and beta acceptance take priority.
 - [ ] **Native H264 scene-change latency.** Reduce encoded bursts while
   preserving low-rate startup and live bitrate restoration. Keep CBR; the
   [encoder assessment](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)

@@ -32,6 +32,14 @@ controls; platform-specific integration remains in [TODO](./todo.md).
 
 ## Device Evidence Boundary
 
+- Current matched Windows and official Android API35 internal packages pass
+  normal UI room creation, bidirectional confirmed chat, file delivery with an
+  exact received digest, and Native screen reception in both directions. Room
+  voice reaches Android with advancing packet and energy measurements from a
+  desktop synthetic microphone. Closing the Windows console during active
+  Native capture retires the App, encoder children and listeners. Package
+  metadata owns the exact tested revision; these are controlled local-network
+  checks, not physical microphone or Internet-path measurements.
 - The isolated 3.0 Windows desktop archive serves its bundled Web/WASM and build
   identity from an independent directory, then exits cleanly on native Ctrl+C.
   Current str0m App and Server archives pass their normal package checks,
