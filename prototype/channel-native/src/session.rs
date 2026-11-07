@@ -21,7 +21,7 @@ use piik_channel_core::{
 };
 use std::sync::Arc;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     future::Future,
     path::PathBuf,
     time::Duration,
@@ -55,66 +55,122 @@ struct RoomTurns {
     rooms: BTreeMap<String, HostedRoom>,
     signer: Arc<SessionSigner>,
     snapshot: watch::Sender<Option<Snapshot>>,
+    waiting: VecDeque<WaitingConversation>,
+}
+struct WaitingConversation {
+    packets: Vec<SignedPacket>,
+    from: Option<Uuid>,
+    deadline: Instant,
 }
 impl RoomTurns {
-    fn replies(&self, peers: &NativePeers, replies: &[ConversationReply]) -> Result<()> {
-        let snapshot = self.snapshot.borrow();
-        let snapshot = snapshot
+    fn wait(
+        &mut self,
+        packets: Vec<SignedPacket>,
+        from: Option<Uuid>,
+        deadline: Instant,
+    ) -> Result<()> {
+        if Instant::now() >= deadline {
+            bail!("room_path_unavailable");
+        }
+        if self
+            .waiting
+            .iter()
+            .map(|turn| turn.packets.len())
+            .sum::<usize>()
+            + packets.len()
+            > crate::data::CONTROL_QUEUE
+        {
+            bail!("room_control_busy");
+        }
+        self.waiting.push_back(WaitingConversation {
+            packets,
+            from,
+            deadline,
+        });
+        Ok(())
+    }
+    fn forward(
+        &mut self,
+        peers: &NativePeers,
+        originals: Vec<SignedPacket>,
+        from: Option<Uuid>,
+        deadline: Instant,
+    ) -> Result<Option<(SignedPacket, conversation::ConversationRoute)>> {
+        let current = self.snapshot.borrow();
+        let snapshot = current
             .as_ref()
             .ok_or_else(|| anyhow!("room_unavailable"))?;
         let mut next = None;
-        let mut packets = Vec::with_capacity(replies.len());
-        for reply in replies {
-            let original = self
-                .signer
-                .sign(self.local, reply)
-                .map_err(anyhow::Error::msg)?;
+        let mut packets = Vec::with_capacity(originals.len());
+        for original in &originals {
             let mut packet = original.clone();
-            let route = conversation::route(&mut packet, self.local, snapshot, None)
-                .map_err(anyhow::Error::msg)?;
-            let peer = route
-                .next_hop
-                .ok_or_else(|| anyhow!("room_path_unavailable"))?;
+            let route = match conversation::route(&mut packet, self.local, snapshot, from) {
+                Ok(route) => route,
+                Err("room_path_unavailable") => {
+                    drop(current);
+                    self.wait(originals, from, deadline)?;
+                    return Ok(None);
+                }
+                Err(error) => return Err(anyhow!(error)),
+            };
+            let Some(peer) = route.next_hop else {
+                return Ok(Some((packet, route)));
+            };
             if next.is_some_and(|previous| previous != peer) {
                 return Err(anyhow!("room_path_changed"));
             }
             next = Some(peer);
-            packets.push((packet, original));
+            packets.push((packet, original.clone()));
         }
+        drop(current);
         if let Some(peer) = next {
-            peers.conversations(peer, packets, self.snapshot.subscribe(), self.local, None)?;
+            if let Err(error) =
+                peers.conversations(peer, packets, self.snapshot.subscribe(), self.local, from)
+            {
+                if error.to_string() != "room_path_unavailable" {
+                    return Err(error);
+                }
+                self.wait(originals, from, deadline)?;
+            }
         }
+        Ok(None)
+    }
+    fn replies(&mut self, peers: &NativePeers, replies: &[ConversationReply]) -> Result<()> {
+        self.update(peers);
+        let packets = replies
+            .iter()
+            .map(|reply| self.signer.sign(self.local, reply))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(anyhow::Error::msg)?;
+        self.forward(
+            peers,
+            packets,
+            None,
+            Instant::now() + Duration::from_secs(5),
+        )?;
         Ok(())
     }
-    fn reply(&self, peers: &NativePeers, reply: &ConversationReply) {
+    fn reply(&mut self, peers: &NativePeers, reply: &ConversationReply) {
         let result = self.replies(peers, std::slice::from_ref(reply));
         if let Err(error) = result {
             eprintln!("Native conversation response unavailable: {error}");
         }
     }
-    fn receive(&mut self, peers: &NativePeers, peer: Uuid, mut packet: SignedPacket) {
-        let original = packet.clone();
-        let routed = {
-            let snapshot = self.snapshot.borrow();
-            let Some(snapshot) = snapshot.as_ref() else {
-                return;
-            };
-            conversation::route(&mut packet, self.local, snapshot, Some(peer))
-        };
-        let Ok(route) = routed else {
+    fn receive(&mut self, peers: &NativePeers, peer: Uuid, packet: SignedPacket) {
+        self.update(peers);
+        self.receive_until(peers, peer, packet, Instant::now() + Duration::from_secs(5));
+    }
+    fn receive_until(
+        &mut self,
+        peers: &NativePeers,
+        peer: Uuid,
+        packet: SignedPacket,
+        deadline: Instant,
+    ) {
+        let Ok(Some((packet, route))) = self.forward(peers, vec![packet], Some(peer), deadline)
+        else {
             return;
         };
-        if let Some(next) = route.next_hop {
-            let _ = peers.conversation(
-                next,
-                packet,
-                original,
-                self.snapshot.subscribe(),
-                self.local,
-                Some(peer),
-            );
-            return;
-        }
         let Some(hosted) = self.rooms.get_mut(&route.address.room_id) else {
             return;
         };
@@ -166,6 +222,24 @@ impl RoomTurns {
                 );
             }
         }
+    }
+    fn update(&mut self, peers: &NativePeers) {
+        for turn in std::mem::take(&mut self.waiting) {
+            if Instant::now() >= turn.deadline {
+                continue;
+            }
+            if let Some(peer) = turn.from {
+                for packet in turn.packets {
+                    self.receive_until(peers, peer, packet, turn.deadline);
+                }
+            } else {
+                let _ = self.forward(peers, turn.packets, None, turn.deadline);
+            }
+        }
+    }
+    fn disconnected(&mut self) {
+        self.snapshot.send_replace(None);
+        self.waiting.clear();
     }
 }
 
@@ -542,7 +616,7 @@ impl Session {
         }
         // A canceled connection turn must leave the Driver's join owned here.
         let closed = if let Some(live) = self.live.as_mut() {
-            live.room.snapshot.send_replace(None);
+            live.room.disconnected();
             live.peers.close().await
         } else {
             Ok(())
@@ -605,8 +679,8 @@ impl Session {
                 };
                 let result = self.connected(&mut socket, join, stop).await;
                 self.fail_captures("disconnected");
-                if let Some(live) = &self.live {
-                    live.room.snapshot.send_replace(None);
+                if let Some(live) = &mut self.live {
+                    live.room.disconnected();
                 }
                 let result = if matches!(result, Ok(false))
                     && self
@@ -659,7 +733,16 @@ impl Session {
         let mut admitted = false;
         let mut last_seen = Instant::now();
         loop {
+            if let Some(live) = &mut self.live {
+                live.room
+                    .waiting
+                    .retain(|turn| Instant::now() < turn.deadline);
+            }
             let recovery = self.recovery;
+            let conversation_deadline = self
+                .live
+                .as_ref()
+                .and_then(|live| live.room.waiting.iter().map(|turn| turn.deadline).min());
             let idle = last_seen + Duration::from_millis(RECOVERY_MS);
             // Stop and connection deadlines cover the whole operation, including
             // peer negotiation and socket writes. Welcome ends the recovery window
@@ -675,6 +758,7 @@ impl Session {
                         return Ok(true);
                     }
                     tokio::select! {
+                        _ = recovery_deadline(conversation_deadline) => {},
                         request = next_host_command(&mut self.hosting) => {
                             let request = request.ok_or_else(|| anyhow!("hosting_control_closed"))?;
                             if !admitted { request.unavailable(); }
@@ -962,6 +1046,7 @@ impl Session {
                             local: session_id,
                             signer: self.signer.clone(),
                             snapshot,
+                            waiting: VecDeque::new(),
                         },
                         peers,
                         commands: receiver,
@@ -1873,6 +1958,7 @@ impl Session {
                 socket,
             )
             .await?;
+            live.room.update(&live.peers);
         }
         Ok(())
     }

@@ -2,6 +2,167 @@ use super::*;
 use serde_json::json;
 
 #[tokio::test]
+async fn deferred_conversations_keep_their_deadline_and_retire_with_room_authority() {
+    use piik_channel_core::conversation::ConversationAddress;
+    let (mut session, _socket, _remote, mut state) = capture_projection_session().await;
+    let live = session.live.as_mut().unwrap();
+    let sender = state.channel.rooms[0]
+        .delivery
+        .as_ref()
+        .unwrap()
+        .host_session_id;
+    let recipient = Uuid::new_v4();
+    let binding = state.channel.rooms[0].delivery.as_ref().unwrap().binding_id;
+    let signer = SessionSigner::from_seed([2; 32]);
+    state
+        .sessions
+        .iter_mut()
+        .find(|entry| entry.id == sender)
+        .unwrap()
+        .signing_key = signer.signing_key();
+    state.pairs.push(
+        serde_json::from_value(json!({ "id": Uuid::new_v4(), "peerId": sender,
+        "rooms": ["target"], "incoming": [], "outgoing": [] }))
+        .unwrap(),
+    );
+    let packet = signer
+        .sign(
+            sender,
+            &ConversationReply {
+                address: ConversationAddress {
+                    room_id: "target".into(),
+                    binding_id: binding,
+                    sender,
+                    recipient,
+                    request_id: "deferred".into(),
+                },
+                record: ConversationRecord::HistoryEnd {
+                    count: 0,
+                    has_more: false,
+                    oldest_seq: None,
+                    before: None,
+                },
+            },
+        )
+        .unwrap();
+    live.room.snapshot.send_replace(Some(state.clone()));
+    live.room.receive(&live.peers, sender, packet.clone());
+    assert_eq!(live.room.waiting.len(), 1);
+    let deadline = live.room.waiting[0].deadline;
+    live.room.update(&live.peers);
+    assert_eq!(live.room.waiting[0].deadline, deadline);
+    assert_eq!(
+        live.room.waiting[0].packets[0].remaining_hops,
+        packet.remaining_hops
+    );
+    state.channel.rooms[0].delivery.as_mut().unwrap().binding_id = Uuid::new_v4();
+    live.room.snapshot.send_replace(Some(state));
+    live.room.update(&live.peers);
+    assert!(live.room.waiting.is_empty());
+    session.release().await.unwrap();
+}
+
+#[tokio::test]
+async fn deferred_history_keeps_its_complete_batch_ahead_of_later_records_until_peer_installation()
+{
+    use piik_channel_core::{
+        conversation::{ConversationAddress, ConversationResult},
+        history::{ConfirmationInput, HistoryResult, MessageDraft, HISTORY_PAGE},
+    };
+    let (mut session, _socket, _remote, mut state) = capture_projection_session().await;
+    let live = session.live.as_mut().unwrap();
+    let peer = state.channel.rooms[0]
+        .delivery
+        .as_ref()
+        .unwrap()
+        .host_session_id;
+    let delivery = state.channel.rooms[0].delivery.as_mut().unwrap();
+    delivery.host_session_id = live.session;
+    delivery.next_hops.insert(peer, peer);
+    let binding = delivery.binding_id;
+    state
+        .sessions
+        .iter_mut()
+        .find(|entry| entry.id == live.session)
+        .unwrap()
+        .signing_key = live.room.signer.signing_key();
+    state.pairs.push(
+        serde_json::from_value(json!({ "id": Uuid::new_v4(), "peerId": peer,
+        "rooms": ["target"], "incoming": [], "outgoing": [] }))
+        .unwrap(),
+    );
+    live.room.snapshot.send_replace(Some(state));
+    let address = ConversationAddress {
+        room_id: "target".into(),
+        binding_id: binding,
+        sender: peer,
+        recipient: live.session,
+        request_id: "history".into(),
+    };
+    let messages = (0..HISTORY_PAGE)
+        .map(|seq| {
+            MessageDraft {
+                user_id: peer,
+                nonce: format!("nonce-{seq}"),
+                text: format!("Message {seq}"),
+                attachments: vec![],
+                time: 1,
+            }
+            .prepare_confirmation(ConfirmationInput::New {
+                last_seq: seq as u64,
+            })
+            .unwrap()
+            .message
+        })
+        .collect();
+    let replies = address
+        .replies(Ok(ConversationResult::History(HistoryResult::Page {
+            messages,
+            has_more: false,
+            oldest_seq: Some(1),
+            before: None,
+        })))
+        .unwrap();
+    assert_eq!(replies.len(), 101);
+    live.room.replies(&live.peers, &replies).unwrap();
+    let mut later = replies.last().unwrap().clone();
+    later.address.request_id = "later".into();
+    live.room.replies(&live.peers, &[later]).unwrap();
+    assert_eq!(
+        live.room
+            .waiting
+            .iter()
+            .map(|turn| turn.packets.len())
+            .collect::<Vec<_>>(),
+        [101, 1]
+    );
+    let end: ConversationReply = conversation::verify(
+        &live.room.waiting[0].packets[100],
+        live.room.signer.signing_key(),
+    )
+    .unwrap();
+    assert!(matches!(
+        end.record,
+        ConversationRecord::HistoryEnd {
+            count: HISTORY_PAGE,
+            ..
+        }
+    ));
+    live.room.waiting[0].deadline = Instant::now();
+    live.room.update(&live.peers);
+    assert_eq!(live.room.waiting.len(), 1);
+    let remaining: ConversationReply = conversation::verify(
+        &live.room.waiting[0].packets[0],
+        live.room.signer.signing_key(),
+    )
+    .unwrap();
+    assert_eq!(remaining.address.request_id, "later");
+    live.room.disconnected();
+    assert!(live.room.waiting.is_empty());
+    session.release().await.unwrap();
+}
+
+#[tokio::test]
 async fn resumed_endpoint_retires_its_missing_host_after_a_deleted_output_cannot_be_sent() {
     use piik_channel_core::{
         host::{HostAction, HostInput, RequestContext},

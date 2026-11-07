@@ -898,17 +898,6 @@ impl NativePeers {
             })
     }
     /// Queue directly on the existing pair writer; no peer control turn is needed.
-    pub(crate) fn conversation(
-        &self,
-        peer: Uuid,
-        packet: SignedPacket,
-        original: SignedPacket,
-        snapshot: watch::Receiver<Option<Snapshot>>,
-        local: Uuid,
-        from: Option<Uuid>,
-    ) -> Result<()> {
-        self.conversations(peer, vec![(packet, original)], snapshot, local, from)
-    }
     pub(crate) fn conversations(
         &self,
         peer: Uuid,

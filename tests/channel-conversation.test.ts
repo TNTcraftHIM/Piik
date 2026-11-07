@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { ChannelConversation } from "../src/client/channel/conversation";
 import * as hosting from "../src/client/channel/hosting";
 import type { ChannelSnapshot, ConversationReply, SignedConversationPacket } from "../src/client/channel/protocol";
+import { readFile } from "node:fs/promises";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -71,4 +72,59 @@ test("the Browser room host fans out Core-selected records, preserving signed re
       snapshot: { messageId: "message", messageSeq: 1, revision: 1, choices: { user: ["heart"] } },
     } });
   } finally { conversation.close(); }
+});
+
+test("signed packets wait for the adjacent participant's selected snapshot without replaying or outliving their binding", async () => {
+  const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  await rust.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust,
+    createSessionSigner: async (seed: Uint8Array) => new rust.SessionSigner(seed),
+  } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const [host, sender, relay, binding, domain] = [1, 2, 3, 4, 5].map(value => `00000000-0000-0000-0000-${String(value).padStart(12, "0")}`);
+  const signer = new rust.SessionSigner(new Uint8Array(32).fill(1));
+  let state = {
+    channel: { id: domain, name: "Friends", icon: "couch", ownerId: host, historyWindow: 100, roles: [], rooms: [{
+      id: "room", name: "Room", icon: "couch", creatorId: host, access: "public", hidden: false, hasPassword: false,
+      voiceBitrate: 64000, relayCapacity: 1, relayOverride: 2, authorized: true, canManage: false, available: true,
+      reading: true, participantSessionIds: [host, sender, relay], capabilities: { attachments: true },
+      delivery: { hostSessionId: host, bindingId: binding, nextHops: { [host]: sender } },
+    }] },
+    sessions: [host, sender, relay].map(id => ({ id, userId: id, online: true, signingKey: Array.from(signer.signing_key()) })),
+    users: [], files: [], publications: [], voice: [], subscriptions: [], failedSubscriptions: [], iceServers: [],
+    pairs: [sender, host].map(peerId => ({ id: peerId, peerId, canReceiveVideoLayers: false, rooms: ["room"], incoming: [], outgoing: [] })),
+  } as ChannelSnapshot;
+  const sent: SignedConversationPacket[] = [];
+  const conversation = new ChannelConversation({ context: () => ({ sessionId: relay, state, connected: true }),
+    host: () => undefined, file: vi.fn(), reply: vi.fn(),
+    send: async (peer, frame, allowed) => { expect(peer).toBe(host); expect(allowed()).toBe(true); sent.push(JSON.parse(frame).body); },
+  });
+  const receive = (requestId: string) => conversation.receive(sender, new TextDecoder().decode(rust.encode_control(JSON.stringify({
+    kind: "conversation", body: JSON.parse(signer.sign(sender, JSON.stringify({ roomId: "room", bindingId: binding,
+      sender, recipient: host, requestId, command: { type: "history", before: null } }))),
+  }))));
+  const select = (next: string, nextBinding = binding) => {
+    state = { ...state, channel: { ...state.channel, rooms: state.channel.rooms.map(room => ({ ...room,
+      delivery: { ...room.delivery!, bindingId: nextBinding, nextHops: { [host]: next } },
+    })) } };
+    conversation.update();
+  };
+  await conversation.initialize();
+  try {
+    const first = receive("history"), second = receive("chat");
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(sent).toHaveLength(0);
+    select(host);
+    await Promise.all([first, second]);
+    expect(sent.map(packet => JSON.parse(packet.payload).requestId)).toEqual(["history", "chat"]);
+    expect(sent.every(packet => packet.remainingHops === 19)).toBe(true);
+    conversation.update();
+    expect(sent).toHaveLength(2);
+    select(sender);
+    const revoked = receive("revoked");
+    const rejected = expect(revoked).rejects.toBe("invalid_conversation_scope");
+    await new Promise(resolve => setTimeout(resolve, 0));
+    select(host, domain);
+    await rejected;
+    expect(sent).toHaveLength(2);
+  } finally { conversation.close(); signer.free(); }
 });

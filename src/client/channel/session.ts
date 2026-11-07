@@ -165,11 +165,13 @@ export class ChannelSession {
   };
 
   private patch(patch: Partial<ChannelView>): void {
+    const previous = this.view;
     const ownedScreens = new Set(this.app?.screens);
     for (const share of this.screenShares.values()) ownedScreens.add(share.id);
     for (const [id, capture] of this.local) if (capture.kind === "screen") ownedScreens.add(id);
     const remoteControls = new Map([...(patch.remoteControls ?? this.view.remoteControls)].filter(([id]) => ownedScreens.has(id)));
     this.view = { ...this.view, ...patch, appConnected: this.app?.connected ?? false, ownedScreens, remoteControls };
+    if (previous.state !== this.view.state || previous.connection !== this.view.connection) this.conversation.update();
     for (const listener of this.listeners) listener();
   }
 

@@ -15,7 +15,23 @@ interface ConversationOptions {
 /** Browser I/O for the shared Rust conversation protocol. Callers own requests. */
 export class ChannelConversation {
   private identity: Promise<{ runtime: Runtime; signer: SessionSigner }> | undefined;
+  private waiting = new Set<(error?: Error) => void>();
   constructor(private options: ConversationOptions) {}
+
+  update(): void { for (const resume of [...this.waiting]) resume(); }
+
+  private waitForState(deadline: number): Promise<void> {
+    if (this.waiting.size >= 128) return Promise.reject(new Error("room_control_busy"));
+    return new Promise((resolve, reject) => {
+      const resume = (error?: Error) => {
+        clearTimeout(timer);
+        this.waiting.delete(resume);
+        if (error) reject(error); else resolve();
+      };
+      const timer = setTimeout(() => resume(new Error("room_path_unavailable")), Math.max(0, deadline - performance.now()));
+      this.waiting.add(resume);
+    });
+  }
 
   private async ready() {
     const identity = this.identity;
@@ -60,12 +76,28 @@ export class ChannelConversation {
     else await this.deliver(control.body, runtime, peer);
   }
 
+  private async route(packet: SignedConversationPacket, runtime: Runtime, from?: string) {
+    const identity = this.identity;
+    const deadline = performance.now() + 5000;
+    for (;;) {
+      const { state, sessionId, connected } = this.options.context();
+      if (!connected || !state || !sessionId) throw new Error("disconnected");
+      try {
+        const routed = JSON.parse(runtime.route_conversation(JSON.stringify(packet), sessionId, JSON.stringify(state), from)) as {
+          packet: SignedConversationPacket; route: { address: ConversationAddress; nextHop: string | null };
+        };
+        return { routed, state, sessionId };
+      } catch (error) {
+        if ((error instanceof Error ? error.message : String(error)) !== "room_path_unavailable") throw error;
+        if (performance.now() >= deadline) throw error;
+        await this.waitForState(deadline);
+        if (this.identity !== identity) throw new Error("disconnected");
+      }
+    }
+  }
+
   private async deliver(packet: SignedConversationPacket, runtime: Runtime, from?: string): Promise<void> {
-    const { state, sessionId, connected } = this.options.context();
-    if (!connected || !state || !sessionId) throw new Error("disconnected");
-    const routed = JSON.parse(runtime.route_conversation(JSON.stringify(packet), sessionId, JSON.stringify(state), from)) as {
-      packet: SignedConversationPacket; route: { address: ConversationAddress; nextHop: string | null };
-    };
+    const { routed, state, sessionId } = await this.route(packet, runtime, from);
     if (routed.route.nextHop) {
       const peer = routed.route.nextHop;
       const frame = runtime.encode_control(JSON.stringify({ kind: "conversation", body: routed.packet }));
@@ -113,6 +145,7 @@ export class ChannelConversation {
   close(): void {
     const identity = this.identity;
     this.identity = undefined;
+    for (const resume of [...this.waiting]) resume(new Error("disconnected"));
     void identity?.then(({ signer }) => signer.free()).catch(() => {});
   }
 }
