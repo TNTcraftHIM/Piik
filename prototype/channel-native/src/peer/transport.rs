@@ -61,6 +61,26 @@ fn desired_bps(ceiling: Option<u64>) -> u64 {
     ceiling.unwrap_or(UNKNOWN_DEMAND_PROBE_BPS)
 }
 
+fn host_candidates(
+    local: SocketAddr,
+    interfaces: impl Iterator<Item = std::net::IpAddr>,
+) -> Result<Vec<Candidate>> {
+    if !local.ip().is_unspecified() {
+        return Ok(vec![Candidate::host(local, "udp")?]);
+    }
+    // Interface discovery includes addresses the ICE SDK cannot advertise.
+    // One such address must not discard the socket's other usable candidates.
+    Ok(interfaces
+        .filter(|ip| {
+            ip.is_ipv4() == local.is_ipv4()
+                && !ip.is_unspecified()
+                && !ip.is_loopback()
+                && !matches!(ip, std::net::IpAddr::V6(ip) if ip.is_unicast_link_local())
+        })
+        .filter_map(|ip| Candidate::host(SocketAddr::new(ip, local.port()), "udp").ok())
+        .collect())
+}
+
 #[path = "discovery.rs"]
 mod discovery;
 #[cfg(test)]
@@ -455,29 +475,18 @@ impl Runtime {
         let mut bases = Vec::new();
         for socket in &sockets {
             let local = socket.local_addr()?;
-            let addresses: Vec<_> = if local.ip().is_unspecified() {
+            let candidates = host_candidates(
+                local,
                 interfaces
                     .interfaces
                     .values()
                     .filter(|i| i.is_up())
                     .flat_map(|i| i.addrs())
-                    .map(|a| a.addr())
-                    .filter(|ip| {
-                        ip.is_ipv4() == local.is_ipv4()
-                            && !ip.is_unspecified()
-                            && !ip.is_loopback()
-                            && !matches!(ip,std::net::IpAddr::V6(ip) if ip.is_unicast_link_local())
-                    })
-                    .collect()
-            } else {
-                vec![local.ip()]
-            };
-            for ip in addresses {
-                let address = SocketAddr::new(ip, local.port());
-                let Some(candidate) = rtc
-                    .add_local_candidate(Candidate::host(address, "udp")?)
-                    .cloned()
-                else {
+                    .map(|a| a.addr()),
+            )?;
+            for candidate in candidates {
+                let address = candidate.addr();
+                let Some(candidate) = rtc.add_local_candidate(candidate).cloned() else {
                     continue;
                 };
                 if bases.len() < super::MAX_ICE_CANDIDATES {

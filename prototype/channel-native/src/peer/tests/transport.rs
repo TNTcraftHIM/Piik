@@ -12,6 +12,40 @@ mod history;
 #[path = "media_reuse.rs"]
 mod media_reuse;
 
+#[test]
+fn wildcard_candidates_ignore_unusable_interfaces_without_losing_valid_paths() -> Result<()> {
+    let interfaces = [
+        "169.254.83.107",
+        "255.255.255.255",
+        "224.0.0.1",
+        "0.0.0.0",
+        "127.0.0.1",
+        "192.168.1.10",
+        "::1",
+        "fe80::1",
+        "ff02::1",
+        "fd00::1",
+    ]
+    .map(|ip| ip.parse::<std::net::IpAddr>().unwrap());
+    let v4 = host_candidates("0.0.0.0:42000".parse()?, interfaces.into_iter())?;
+    let v6 = host_candidates("[::]:42000".parse()?, interfaces.into_iter())?;
+    assert_eq!(
+        v4.iter().map(Candidate::addr).collect::<Vec<_>>(),
+        vec!["192.168.1.10:42000".parse::<SocketAddr>()?]
+    );
+    assert_eq!(
+        v6.iter().map(Candidate::addr).collect::<Vec<_>>(),
+        vec!["[fd00::1]:42000".parse::<SocketAddr>()?]
+    );
+    let explicit = "127.0.0.1:42000".parse()?;
+    assert_eq!(
+        host_candidates(explicit, interfaces.into_iter())?[0].addr(),
+        explicit
+    );
+    assert!(host_candidates("169.254.83.107:42000".parse()?, interfaces.into_iter()).is_err());
+    Ok(())
+}
+
 #[tokio::test]
 async fn metrics_keep_sdk_sample_clock_and_discard_retired_mid_events() -> Result<()> {
     let runtime = Runtime::new(None);
