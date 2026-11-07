@@ -603,7 +603,26 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
             host,
             owner,
             owner,
-            json!({"type":"update_room","icon":image,"roomId":room,"name":format!("Saved {room}"),"access":"public","hidden":false}),
+            json!({"type":"update_room","icon":image,"roomId":room,"name":format!("Saved {room}"),"access":"public","hidden":false,"relayCapacity":7}),
+        );
+        let personal = command(
+            host,
+            owner,
+            owner,
+            json!({"type":"relay_capacity","roomId":room,"capacity":0}),
+        );
+        assert_eq!(
+            personal.projection.views[&owner].room.relay_override,
+            Some(0)
+        );
+        let invalid = command(
+            host,
+            owner,
+            owner,
+            json!({"type":"update_room","icon":image,"roomId":room,"name":"Invalid","access":"public","hidden":false,"relayCapacity":0}),
+        );
+        assert!(
+            matches!(invalid.reply.unwrap().result, RoomResult::Error { code } if code == "invalid_relay_capacity")
         );
         let result = sent(peer(
             host,
@@ -634,6 +653,7 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
         let mut restored = StoredRoomHost::open(path).unwrap();
         assert_eq!(restored.policy().id, room);
         assert_eq!(restored.summary().name, format!("Saved {room}"));
+        assert_eq!(restored.policy().relay_capacity, 7);
         assert_eq!(
             serde_json::to_value(restored.policy().icon.clone()).unwrap(),
             image
@@ -646,6 +666,8 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
             .dispatch(input(owner, owner, |_| HostAction::Sync))
             .unwrap();
         assert!(!output.projection.views[&owner].room.reading);
+        assert_eq!(output.projection.views[&owner].room.relay_override, None);
+        assert_eq!(output.projection.views[&owner].room.relay_capacity, 7);
         assert!(output.projection.views[&owner]
             .room
             .participant_session_ids

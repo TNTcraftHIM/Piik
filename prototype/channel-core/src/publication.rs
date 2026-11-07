@@ -1,6 +1,6 @@
 use crate::{
     identity::Endpoint,
-    routes::{BaseTree, Plan, Readiness},
+    routes::{BaseTree, Plan, Readiness, RelayLimits},
     transport::Flow,
     wire::{FlowState, Kind, PublicationInfo},
 };
@@ -38,6 +38,13 @@ enum OperationKind {
     Switch {
         root: Uuid,
         helper: Option<Uuid>,
+        legs: BTreeMap<Uuid, Shadow>,
+    },
+    Reduce {
+        root: Uuid,
+        legs: BTreeMap<Uuid, Shadow>,
+    },
+    Base {
         legs: BTreeMap<Uuid, Shadow>,
     },
 }
@@ -120,20 +127,29 @@ impl Publication {
         connected: &BTreeSet<Uuid>,
         base: Option<&BaseTree>,
         helpers: &BTreeMap<Uuid, Uuid>,
+        limits: &RelayLimits,
         now: u64,
     ) {
         self.expire(now);
         self.failed_receivers
             .retain(|receiver| requested.contains(receiver));
         let paths = if let Some(base) = base.filter(|_| self.info.kind == Kind::Voice) {
-            base.project(self.plan.source, requested)
+            let paths = base.project(self.plan.source, requested);
+            self.plan.parents = paths
+                .iter()
+                .map(|(parent, child)| (*child, *parent))
+                .collect();
+            paths
         } else {
             self.plan
-                .reconcile(requested, available, connected, base, helpers);
+                .reconcile(requested, available, connected, base, helpers, limits);
             // An unproved input has no picture to preserve. A proved branch
             // instead keeps every incumbent lease until the shared switch.
             for (viewer, helper) in helpers {
-                if let Some(parents) = self.plan.assisted(*viewer, *helper, connected, helpers) {
+                if let Some(parents) = self
+                    .plan
+                    .assisted(*viewer, *helper, connected, helpers, limits)
+                {
                     if self
                         .branch(&parents, requested)
                         .keys()
@@ -141,7 +157,7 @@ impl Publication {
                     {
                         self.plan.parents = parents;
                         self.plan
-                            .reconcile(requested, available, connected, base, helpers);
+                            .reconcile(requested, available, connected, base, helpers, limits);
                     }
                 }
             }
@@ -155,9 +171,29 @@ impl Publication {
         if self.info.kind != Kind::Screen || self.info.paused {
             return;
         }
+        let origin_paths = base
+            .map(|base| base.project(self.plan.source, requested))
+            .unwrap_or_default();
+        if matches!(
+            self.operation.as_ref().map(|operation| &operation.kind),
+            Some(OperationKind::Reduce { .. })
+        ) {
+            self.prepare_reduction(requested, connected, helpers, limits, &origin_paths, now);
+            return;
+        }
+        if self
+            .plan
+            .capacity_child(helpers, limits, &origin_paths)
+            .is_some()
+        {
+            self.operation = None;
+            self.prepare_reduction(requested, connected, helpers, limits, &origin_paths, now);
+            return;
+        }
         if let Some(operation) = &self.operation {
             let current = match &operation.kind {
                 OperationKind::Prepare { flow } => self.preparing_flows().any(|id| id == *flow),
+                OperationKind::Reduce { .. } | OperationKind::Base { .. } => unreachable!(),
                 OperationKind::Switch { root, helper, legs } => {
                     self.current_switch(legs)
                         && match helper {
@@ -165,14 +201,14 @@ impl Publication {
                                 helpers.get(root) == Some(helper)
                                     && self
                                         .plan
-                                        .assisted(*root, *helper, connected, helpers)
+                                        .assisted(*root, *helper, connected, helpers, limits)
                                         .is_some_and(|parents| {
                                             legs.iter().all(|(receiver, leg)| {
                                                 parents.get(receiver) == Some(&leg.flow.sender)
                                             })
                                         })
                             }
-                            None => self.plan.can_shortcut(*root, helpers),
+                            None => self.plan.can_shortcut(*root, helpers, limits),
                         }
                         && connected.contains(&self.plan.source)
                         && legs.iter().all(|(receiver, leg)| {
@@ -192,7 +228,9 @@ impl Publication {
             return;
         }
         let assisted = helpers.iter().find_map(|(viewer, helper)| {
-            let parents = self.plan.assisted(*viewer, *helper, connected, helpers)?;
+            let parents = self
+                .plan
+                .assisted(*viewer, *helper, connected, helpers, limits)?;
             let legs = self.branch(&parents, requested);
             (!legs.is_empty() && legs.keys().all(|receiver| connected.contains(receiver)))
                 .then_some((*viewer, Some(*helper), legs))
@@ -217,7 +255,7 @@ impl Publication {
         }
         let root = self
             .plan
-            .shortcut_candidates(helpers)
+            .shortcut_candidates(helpers, limits)
             .into_iter()
             .find(|root| {
                 !self.direct_attempted.contains(root)
@@ -267,6 +305,158 @@ impl Publication {
                 ))
             })
             .collect()
+    }
+
+    fn prepare_reduction(
+        &mut self,
+        requested: &BTreeSet<Uuid>,
+        connected: &BTreeSet<Uuid>,
+        helpers: &BTreeMap<Uuid, Uuid>,
+        limits: &RelayLimits,
+        origin_paths: &BTreeSet<(Uuid, Uuid)>,
+        now: u64,
+    ) {
+        let pending = self
+            .operation
+            .as_ref()
+            .and_then(|operation| match &operation.kind {
+                OperationKind::Reduce { root, .. } => Some((*root, operation.deadline)),
+                _ => None,
+            });
+        let Some(root) = self.plan.capacity_child(helpers, limits, origin_paths) else {
+            self.operation = None;
+            return;
+        };
+        if pending.is_some_and(|(pending, _)| pending != root) {
+            self.operation = None;
+        }
+        let deadline = pending
+            .filter(|(pending, _)| *pending == root)
+            .map_or(now.saturating_add(SCREEN_PREPARE_MS), |(_, deadline)| {
+                deadline
+            });
+        let Some((_, parent)) =
+            self.plan
+                .capacity_candidate(connected, helpers, limits, origin_paths)
+        else {
+            self.operation = Some(RouteOperation {
+                deadline,
+                kind: OperationKind::Reduce {
+                    root,
+                    legs: BTreeMap::new(),
+                },
+            });
+            return;
+        };
+        if let Some(RouteOperation {
+            kind: OperationKind::Reduce { legs, .. },
+            ..
+        }) = &self.operation
+        {
+            if !legs.is_empty()
+                && self.current_switch(legs)
+                && legs.get(&root).is_some_and(|leg| leg.flow.sender == parent)
+                && legs.iter().all(|(receiver, leg)| {
+                    connected.contains(receiver) && requested.contains(receiver) == leg.viewing
+                })
+            {
+                return;
+            }
+        }
+        let mut parents = self.plan.parents.clone();
+        parents.insert(root, parent);
+        self.operation = Some(RouteOperation {
+            deadline,
+            kind: OperationKind::Reduce {
+                root,
+                legs: self.branch(&parents, requested),
+            },
+        });
+    }
+
+    pub fn prepare_base(
+        &mut self,
+        candidate: &BaseTree,
+        requested: &BTreeSet<Uuid>,
+        deadline: u64,
+    ) {
+        if self.info.kind != Kind::Voice {
+            return;
+        }
+        let retained = requested
+            .iter()
+            .filter(|receiver| self.leases.contains_key(receiver))
+            .copied()
+            .collect();
+        let parents = candidate
+            .project(self.plan.source, &retained)
+            .into_iter()
+            .map(|(parent, child)| (child, parent))
+            .collect();
+        let mut next = self.branch(&parents, &BTreeSet::new());
+        if let Some(RouteOperation {
+            kind: OperationKind::Base { legs },
+            ..
+        }) = &self.operation
+        {
+            if self.current_switch(legs)
+                && next.len() == legs.len()
+                && next.iter().all(|(receiver, leg)| {
+                    legs.get(receiver)
+                        .is_some_and(|old| old.flow.sender == leg.flow.sender)
+                })
+            {
+                return;
+            }
+        }
+        for leg in next.values_mut() {
+            leg.viewing = false;
+        }
+        self.operation = (!next.is_empty()).then_some(RouteOperation {
+            deadline,
+            kind: OperationKind::Base { legs: next },
+        });
+    }
+    pub fn base_ready(&self) -> bool {
+        match self.operation.as_ref().map(|operation| &operation.kind) {
+            Some(OperationKind::Base { legs }) => {
+                self.current_switch(legs) && legs.values().all(|leg| leg.proof.is_some())
+            }
+            _ => true,
+        }
+    }
+    pub fn base_flow(&self, flow: Uuid) -> bool {
+        matches!(self.operation.as_ref().map(|operation| &operation.kind), Some(OperationKind::Base { legs }) if legs.values().any(|leg| leg.flow.id == flow))
+    }
+    pub fn abort_base(&mut self) {
+        if matches!(
+            self.operation.as_ref().map(|operation| &operation.kind),
+            Some(OperationKind::Base { .. })
+        ) {
+            self.operation = None;
+        }
+    }
+    pub fn commit_base(&mut self) {
+        if matches!(
+            self.operation.as_ref().map(|operation| &operation.kind),
+            Some(OperationKind::Base { .. })
+        ) {
+            let OperationKind::Base { legs } = self.operation.take().unwrap().kind else {
+                unreachable!()
+            };
+            self.adopt(legs);
+        }
+    }
+    fn adopt(&mut self, legs: BTreeMap<Uuid, Shadow>) {
+        self.plan.adopt_branch(
+            legs.iter()
+                .map(|(receiver, leg)| (*receiver, leg.flow.sender, leg.proof.unwrap())),
+        );
+        for (receiver, mut leg) in legs {
+            leg.flow.selected = true;
+            self.leases.insert(receiver, leg.flow);
+            self.failed_receivers.remove(&receiver);
+        }
     }
 
     fn reconcile_leases(&mut self, paths: &BTreeSet<(Uuid, Uuid)>) {
@@ -342,6 +532,14 @@ impl Publication {
             return false;
         }
         match self.operation.take().unwrap().kind {
+            OperationKind::Base { .. } => true,
+            OperationKind::Reduce { root, .. } => {
+                self.fail_delivery(root);
+                if let Some(parent) = self.plan.parents.get(&root).copied() {
+                    self.plan.failed(parent, root);
+                }
+                true
+            }
             OperationKind::Switch { root, helper, .. } => {
                 if let Some(helper) = helper {
                     self.plan.reject_parent(root, helper);
@@ -376,7 +574,9 @@ impl Publication {
             })
             .chain(self.operation.iter().flat_map(|op| {
                 match &op.kind {
-                    OperationKind::Switch { legs, .. } => Some(legs.values()),
+                    OperationKind::Switch { legs, .. }
+                    | OperationKind::Reduce { legs, .. }
+                    | OperationKind::Base { legs } => Some(legs.values()),
                     OperationKind::Prepare { .. } => None,
                 }
                 .into_iter()
@@ -402,17 +602,40 @@ impl Publication {
             self.fail_delivery(receiver);
         }
         if self.operation.as_ref().is_some_and(|op| match &op.kind {
-            OperationKind::Switch { legs, .. } => legs.values().any(|leg| {
+            OperationKind::Switch { legs, .. }
+            | OperationKind::Reduce { legs, .. }
+            | OperationKind::Base { legs } => legs.values().any(|leg| {
                 (leg.flow.sender == first && leg.flow.receiver == second)
                     || (leg.flow.sender == second && leg.flow.receiver == first)
             }),
             OperationKind::Prepare { .. } => false,
         }) {
-            if let OperationKind::Switch { root, helper, .. } = self.operation.take().unwrap().kind
-            {
-                if let Some(helper) = helper {
-                    self.plan.reject_parent(root, helper);
+            match self.operation.take().unwrap() {
+                RouteOperation {
+                    kind:
+                        OperationKind::Switch {
+                            root,
+                            helper: Some(helper),
+                            ..
+                        },
+                    ..
+                } => self.plan.reject_parent(root, helper),
+                RouteOperation {
+                    deadline,
+                    kind: OperationKind::Reduce { root, legs },
+                } => {
+                    if let Some(leg) = legs.get(&root) {
+                        self.plan.reject_parent(root, leg.flow.sender);
+                    }
+                    self.operation = Some(RouteOperation {
+                        deadline,
+                        kind: OperationKind::Reduce {
+                            root,
+                            legs: BTreeMap::new(),
+                        },
+                    });
                 }
+                _ => {}
             }
         }
         self.plan.failed_pair(first, second);
@@ -430,6 +653,65 @@ impl Publication {
             return false;
         }
         let expired = self.expire(now);
+        if let Some(operation) = &mut self.operation {
+            if let OperationKind::Base { legs } = &mut operation.kind {
+                if let Some(leg) = legs
+                    .get_mut(&receiver)
+                    .filter(|leg| leg.flow.id == id && leg.flow.sender == sender)
+                {
+                    if state == FlowState::Failed {
+                        self.operation = None;
+                    } else {
+                        leg.proof = Some(Readiness::Forwardable);
+                    }
+                    return true;
+                }
+            }
+        }
+        if let Some(RouteOperation {
+            deadline,
+            kind: OperationKind::Reduce { root, legs },
+        }) = &mut self.operation
+        {
+            if let Some(leg) = legs
+                .get_mut(&receiver)
+                .filter(|leg| leg.flow.id == id && leg.flow.sender == sender)
+            {
+                match state {
+                    FlowState::Failed => {
+                        if let Some(candidate) = legs.get(root) {
+                            self.plan.reject_parent(*root, candidate.flow.sender);
+                        }
+                        legs.clear();
+                        return true;
+                    }
+                    FlowState::Forwardable => {
+                        leg.proof = leg.proof.max(Some(Readiness::Forwardable))
+                    }
+                    FlowState::Decoded => leg.proof = Some(Readiness::Decoded),
+                    FlowState::SwitchReady if leg.viewing => {
+                        leg.proof = Some(Readiness::Decoded);
+                        leg.presented = true;
+                        *deadline = (*deadline).min(now.saturating_add(QUALITY_EVIDENCE_MS));
+                    }
+                    FlowState::SwitchReady => return false,
+                }
+                if legs.iter().all(|(receiver, leg)| {
+                    leg.proof.is_some()
+                        && (!leg.viewing
+                            || (leg.proof == Some(Readiness::Decoded)
+                                && (self.plan.readiness(*receiver) != Some(Readiness::Decoded)
+                                    || leg.presented)))
+                }) {
+                    let OperationKind::Reduce { legs, .. } = self.operation.take().unwrap().kind
+                    else {
+                        unreachable!()
+                    };
+                    self.adopt(legs);
+                }
+                return true;
+            }
+        }
         if let Some(RouteOperation {
             kind: OperationKind::Switch { legs, .. },
             ..

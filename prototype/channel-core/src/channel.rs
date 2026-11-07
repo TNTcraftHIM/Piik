@@ -467,6 +467,7 @@ impl Channel {
             | Command::RoomInvite { room_id }
             | Command::RevokeRoomAccess { room_id, .. }
             | Command::Voice { room_id, .. } => Some(room_id.clone()),
+            Command::RelayCapacity { room_id, .. } => Some(room_id.clone()),
             Command::Publish { publication } => Some(publication.room_id.clone()),
             Command::Unpublish { publication_id }
             | Command::SetPaused { publication_id, .. }
@@ -910,7 +911,18 @@ impl Channel {
         let endpoints = self.identity.endpoints();
         if projection.views.len() > 20
             || projection.flows.len() > 40 * (19 + 19)
-            || projection.base_links.len() > 19
+            || projection
+                .base_links
+                .iter()
+                .filter(|link| link.selected)
+                .count()
+                > 19
+            || projection
+                .base_links
+                .iter()
+                .filter(|link| !link.selected)
+                .count()
+                > 2
         {
             return Err("invalid_room_projection");
         }
@@ -950,10 +962,14 @@ impl Channel {
             for file in &view.files {
                 let neighbor = |peer: Uuid| {
                     peer != *recipient
-                        && projection.base_links.iter().any(|link| {
-                            (link.parent == *recipient && link.child == peer)
-                                || (link.child == *recipient && link.parent == peer)
-                        })
+                        && projection
+                            .base_links
+                            .iter()
+                            .filter(|link| link.selected)
+                            .any(|link| {
+                                (link.parent == *recipient && link.child == peer)
+                                    || (link.child == *recipient && link.parent == peer)
+                            })
                 };
                 if file.room_id != id
                     || file.message_seq == 0
@@ -1120,6 +1136,63 @@ impl Channel {
                 return Err("invalid_room_projection");
             }
         }
+        let mut base_parents = BTreeMap::new();
+        for link in projection.base_links.iter().filter(|link| link.selected) {
+            if link.child == binding.session
+                || base_parents.insert(link.child, link.parent).is_some()
+            {
+                return Err("invalid_room_projection");
+            }
+        }
+        for child in base_parents.keys() {
+            let mut path = BTreeSet::new();
+            let mut node = *child;
+            while node != binding.session {
+                if !path.insert(node) {
+                    return Err("invalid_room_projection");
+                }
+                node = *base_parents.get(&node).ok_or("invalid_room_projection")?;
+            }
+        }
+        let candidates: Vec<_> = projection
+            .base_links
+            .iter()
+            .filter(|link| !link.selected)
+            .collect();
+        let mut proposed = base_parents.clone();
+        if let [link] = candidates.as_slice() {
+            if !base_parents.contains_key(&link.child) || base_parents[&link.child] == link.parent {
+                return Err("invalid_room_projection");
+            }
+            proposed.insert(link.child, link.parent);
+        } else if let [first, second] = candidates.as_slice() {
+            let (entry, branch) = if first.child == second.parent {
+                (*first, *second)
+            } else {
+                (*second, *first)
+            };
+            if entry.child != branch.parent
+                || entry.parent == branch.child
+                || base_parents.get(&branch.child) != Some(&entry.parent)
+                || base_parents
+                    .get(&entry.child)
+                    .is_some_and(|parent| *parent != branch.child)
+            {
+                return Err("invalid_room_projection");
+            }
+            proposed.insert(entry.child, entry.parent);
+            proposed.insert(branch.child, branch.parent);
+        }
+        for link in candidates {
+            let mut path = BTreeSet::new();
+            let mut parent = link.child;
+            while parent != binding.session {
+                if !path.insert(parent) {
+                    return Err("invalid_room_projection");
+                }
+                parent = *proposed.get(&parent).ok_or("invalid_room_projection")?;
+            }
+        }
         let room = self.remote.get_mut(id).unwrap();
         room.binding.as_mut().unwrap().projection_floor = output.revision;
         room.binding.as_mut().unwrap().applied_revision = output.revision;
@@ -1273,6 +1346,7 @@ impl Channel {
                 edges: projection
                     .base_links
                     .iter()
+                    .filter(|link| link.selected)
                     .map(|link| BaseEdge {
                         sender: link.parent,
                         receiver: link.child,
@@ -1391,7 +1465,7 @@ fn room_next_hops(session: Uuid, links: &[crate::transport::BaseLink]) -> BTreeM
     let mut result = BTreeMap::new();
     let mut pending = VecDeque::from([(session, session)]);
     while let Some((current, first)) = pending.pop_front() {
-        for link in links {
+        for link in links.iter().filter(|link| link.selected) {
             let next = if link.parent == current {
                 link.child
             } else if link.child == current {

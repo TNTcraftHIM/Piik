@@ -180,7 +180,7 @@ async fn participant() -> Result<()> {
                     snapshots.send_replace(Some(state.clone()));
                     peers.as_ref().unwrap().update(state.pairs, state.publications, state.files).await?;
                     if !browsing && state.channel.rooms.iter().any(|room| room.id == ROOM && room.available && room.authorized) {
-                        send(&mut socket, Command::Browse { room_id: ROOM.into(), active: true }).await?; browsing = true;
+                        send(&mut socket, Command::Browse { room_id: ROOM.into(), active: true, relay_capacity: None }).await?; browsing = true;
                     }
                 }
             }

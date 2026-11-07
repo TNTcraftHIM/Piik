@@ -178,6 +178,8 @@ impl RemoteRoom {
                 hidden: self.summary.hidden,
                 has_password: self.summary.has_password,
                 voice_bitrate: self.summary.voice_bitrate,
+                relay_capacity: self.summary.relay_capacity,
+                relay_override: None,
                 authorized: manager || self.summary.access == RoomAccess::Public,
                 can_manage: manager,
                 available: false,

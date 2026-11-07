@@ -115,6 +115,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
                         hidden: false,
                         password: None,
                         voice_bitrate: None,
+                        relay_capacity: None,
                     },
                 },
             })
@@ -624,6 +625,7 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
             command: Command::Browse {
                 room_id: "concurrent-review".into(),
                 active: true,
+                relay_capacity: None,
             },
         },
         1,
@@ -1032,6 +1034,7 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
             Command::Browse {
                 room_id: room_id.into(),
                 active: true,
+                relay_capacity: None,
             },
         );
         let root = leg(source, branch, None, false);
@@ -1183,6 +1186,7 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
                 Command::Browse {
                     room_id: room_id.into(),
                     active: false,
+                    relay_capacity: None,
                 },
             );
             committed.projection.flows = vec![root, child];

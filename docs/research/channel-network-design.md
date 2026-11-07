@@ -281,9 +281,30 @@ The room tree's root owns coordination. Its edges are bidirectional, so projecti
 a flow from its sharer already makes that sharer the logical media source; no new
 PeerConnection or change of room owner is needed merely to reverse flow direction.
 Renaming the root cannot shorten the tree's unique paths. A shorter path requires
-different, actually usable edges. Reverse flow may use all three neighbors of an
-internal base node; the small fanout policy for new branches is a topology choice,
-not device capacity.
+different, actually usable edges. Reverse flow may use all neighbors of an
+internal base node. The room's default fanout starts at two and can be set from
+one to twenty by its managers. Other endpoints follow that default or choose
+their own relay limit from zero to twenty. The room host and each publication's
+source use the room default for their root branches. Zero declines forwarding
+for others; it does not stop originating voice, pictures or files through the
+existing base paths. Necessary reverse-base neighbors and a helper's local display
+link remain distinct from new forwarding branches. This is a room-local topology
+policy, not a total upload-copy or device-capacity promise, and does not divide a
+domain-wide resource budget among rooms.
+
+Reducing a limit stops new excess branches and moves affected children through
+one bounded transition at that tree's existing owner. Keep the old branch until
+the candidate base transport and affected voice flows are proved; picture changes
+retain their existing forwarding, decoded and presentation proof. Conversation
+next hops and file paths use only the committed base, while candidate connections
+hold ordinary transport leases. An explicit reduction is necessary capacity work:
+if its bounded alternatives cannot succeed, retire the excess old branch and use
+ordinary route failure/recovery. Optional optimization still preserves a healthy
+path. Neither case periodically rebalances unrelated branches. When a receive-only
+leaf occupies an upstream slot, that same bounded base operation may insert a
+willing relay into the branch or rotate its immediate child into that slot.
+Both new legs and affected voice paths must be proved before replacing the old
+branch; a participant without a feasible candidate does not block another one.
 
 1. A new viewer first attaches to a usable existing publication branch or an
    admitted source-to-viewer path on the base tree, installing only its missing

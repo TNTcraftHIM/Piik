@@ -33,23 +33,27 @@ struct NewRoom {
     access: RoomAccess,
     hidden: bool,
     password: Option<String>,
+    relay_capacity: Option<u8>,
 }
 
 #[wasm_bindgen]
 pub fn create_room_policy(input: &str) -> Result<String, JsValue> {
     let input: NewRoom = parse(input)?;
-    encode(
-        &RoomState::new(
-            input.id,
-            input.name,
-            input.icon,
-            input.creator_id,
-            input.access,
-            input.hidden,
-            input.password,
-        )
-        .map_err(error)?,
+    let mut policy = RoomState::new(
+        input.id,
+        input.name,
+        input.icon,
+        input.creator_id,
+        input.access,
+        input.hidden,
+        input.password,
     )
+    .map_err(error)?;
+    if let Some(capacity) = input.relay_capacity {
+        policy.relay_capacity = capacity;
+    }
+    policy.validate().map_err(error)?;
+    encode(&policy)
 }
 
 #[wasm_bindgen]

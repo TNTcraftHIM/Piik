@@ -1079,7 +1079,7 @@ impl Session {
                     else {
                         unreachable!()
                     };
-                    let policy = RoomState::new(
+                    let mut policy = RoomState::new(
                         room.id.clone(),
                         room.name.clone(),
                         room.icon.clone(),
@@ -1089,6 +1089,7 @@ impl Session {
                         None,
                     )
                     .map_err(anyhow::Error::msg)?;
+                    policy.relay_capacity = room.relay_capacity;
                     let host = HostedRoom::create(&file.path, policy)?;
                     file.id = room.id.clone();
                     self.files.push(file);

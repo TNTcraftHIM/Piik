@@ -34,6 +34,8 @@ pub enum Command {
     Browse {
         room_id: String,
         active: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        relay_capacity: Option<u8>,
     },
     FileOffer {
         room_id: String,
@@ -78,6 +80,8 @@ pub enum Command {
         hidden: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         voice_bitrate: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        relay_capacity: Option<u8>,
         #[serde(
             default,
             deserialize_with = "nullable_password",
@@ -89,6 +93,10 @@ pub enum Command {
         room_id: String,
         password: Option<String>,
         invite_key: Option<String>,
+    },
+    RelayCapacity {
+        room_id: String,
+        capacity: Option<u8>,
     },
     RoomInvite {
         room_id: String,
@@ -516,6 +524,9 @@ pub struct Room {
     pub hidden: bool,
     pub has_password: bool,
     pub voice_bitrate: u32,
+    #[serde(default = "crate::access::default_relay_capacity")]
+    pub relay_capacity: u8,
+    pub relay_override: Option<u8>,
     pub authorized: bool,
     pub can_manage: bool,
     pub available: bool,

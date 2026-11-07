@@ -598,6 +598,8 @@ pub(in crate::peer) fn message(tag: &str) -> Result<(Vec<u8>, MessageScope)> {
                 hidden: false,
                 has_password: false,
                 voice_bitrate: 64_000,
+                relay_capacity: 2,
+                relay_override: None,
                 authorized: true,
                 can_manage: true,
                 available: true,

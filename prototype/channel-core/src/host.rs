@@ -24,6 +24,8 @@ pub struct RoomSummary {
     pub has_password: bool,
     #[serde(default = "crate::access::default_voice_bitrate")]
     pub voice_bitrate: u32,
+    #[serde(default = "crate::access::default_relay_capacity")]
+    pub relay_capacity: u8,
 }
 
 impl RoomSummary {
@@ -36,6 +38,9 @@ impl RoomSummary {
         }
         if !crate::access::valid_audio_bitrate(self.voice_bitrate) {
             return Err("invalid_audio_bitrate");
+        }
+        if !(1..=20).contains(&self.relay_capacity) {
+            return Err("invalid_relay_capacity");
         }
         Ok(())
     }
@@ -50,6 +55,7 @@ impl RoomSummary {
             hidden: view.hidden,
             has_password: view.has_password,
             voice_bitrate: view.voice_bitrate,
+            relay_capacity: view.relay_capacity,
         }
     }
 }
@@ -203,7 +209,18 @@ impl RoomRuntime {
             policy_changed: false,
         };
         match command {
-            Command::Browse { active, .. } => self.browse(member, session, active)?,
+            Command::Browse {
+                active,
+                relay_capacity,
+                ..
+            } => {
+                if active {
+                    if let Some(capacity) = relay_capacity {
+                        self.set_relay_capacity(member, session, Some(capacity))?;
+                    }
+                }
+                self.browse(member, session, active)?;
+            }
             Command::FileOffer {
                 message_seq,
                 attachment_id,
@@ -229,10 +246,20 @@ impl RoomRuntime {
                 hidden,
                 password,
                 voice_bitrate,
+                relay_capacity,
                 ..
             } => {
+                if relay_capacity.is_some_and(|capacity| !(1..=20).contains(&capacity)) {
+                    return Err("invalid_relay_capacity");
+                }
                 self.update(member, name, icon, access, hidden, password, voice_bitrate)?;
+                if let Some(capacity) = relay_capacity {
+                    self.set_default_relay_capacity(capacity);
+                }
                 op.policy_changed = true;
+            }
+            Command::RelayCapacity { capacity, .. } => {
+                self.set_relay_capacity(member, session, capacity)?
             }
             Command::EnterRoom {
                 password,

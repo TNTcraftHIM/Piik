@@ -167,23 +167,23 @@ mod tests {
         files.install(ids[4], 1, attachment.clone(), false).unwrap();
         files.reconcile(&online);
         // Use the real base owner to establish the existing bounded tree first.
-        base.reconcile(&online, &online, &online);
+        base.reconcile(&online, &online, &online, &Default::default(), 0);
         for _ in 0..3 {
             let links: Vec<_> = base.links().collect();
             for (parent, child) in links {
                 base.state(parent, child, true);
                 base.state(child, parent, true);
             }
-            base.reconcile(&online, &online, &online);
+            base.reconcile(&online, &online, &online, &Default::default(), 0);
         }
-        base.reconcile(&files.demand(), &online, &online);
+        base.reconcile(&files.demand(), &online, &online, &Default::default(), 0);
         let relay = files.plans("room", ids[1], &base);
         assert_eq!(relay[0].upstream, Some(ids[0]));
         assert_eq!(relay[0].downstream.len(), 2);
         assert!(!relay[0].receiving);
         assert_eq!(files.plans("room", ids[3], &base)[0].upstream, Some(ids[1]));
         files.remove(ids[3], 1, attachment.id, false);
-        base.reconcile(&files.demand(), &online, &online);
+        base.reconcile(&files.demand(), &online, &online, &Default::default(), 0);
         assert_eq!(
             files.plans("room", ids[1], &base)[0].downstream,
             vec![ids[4]]

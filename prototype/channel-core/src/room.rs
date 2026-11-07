@@ -3,7 +3,7 @@ use crate::{
     history::{HistoryRequest, MessageDraft},
     identity::{Endpoint, Member},
     publication::Publication,
-    routes::BaseTree,
+    routes::{BaseTree, RelayLimits},
     transport::{BaseLink, Flow},
     wire::{
         validate_video_ceiling, FlowState, Kind, PublicationInfo, Room, RoomAccess, VideoCeiling,
@@ -24,6 +24,7 @@ struct Activity {
     reading: bool,
     watching: BTreeMap<Uuid, Option<Uuid>>,
     voice: Option<VoiceInfo>,
+    relay_capacity: Option<u8>,
     next_interaction_at: u64,
 }
 
@@ -90,6 +91,10 @@ impl RoomRuntime {
 
     pub fn snapshot(&self, member: Member, session: Uuid) -> Option<RoomSnapshot> {
         let mut room = self.policy.view(member.user_id, member.domain_owner)?;
+        room.relay_override = self
+            .activity
+            .get(&session)
+            .and_then(|activity| activity.relay_capacity);
         room.capabilities.attachments = self.base.is_some();
         room.reading = room.authorized && self.reading(session);
         let mut snapshot = RoomSnapshot {
@@ -125,6 +130,39 @@ impl RoomRuntime {
 
     pub fn accepts_invite(&self, key: &str) -> bool {
         self.policy.accepts_invite(key)
+    }
+
+    pub(crate) fn set_default_relay_capacity(&mut self, capacity: u8) {
+        self.policy.relay_capacity = capacity;
+    }
+    pub(crate) fn set_relay_capacity(
+        &mut self,
+        member: Member,
+        session: Uuid,
+        capacity: Option<u8>,
+    ) -> Result<(), &'static str> {
+        self.authorize(member, RoomPermission::Read)?;
+        if capacity.is_some_and(|capacity| capacity > 20) {
+            return Err("invalid_relay_capacity");
+        }
+        self.activity.entry(session).or_default().relay_capacity = capacity;
+        Ok(())
+    }
+
+    fn relay_limits(&self) -> RelayLimits {
+        RelayLimits {
+            default: self.policy.relay_capacity as usize,
+            host: self.base.as_ref().map_or(Uuid::nil(), BaseTree::root),
+            overrides: self
+                .activity
+                .iter()
+                .filter_map(|(session, activity)| {
+                    activity
+                        .relay_capacity
+                        .map(|capacity| (*session, capacity as usize))
+                })
+                .collect(),
+        }
     }
 
     pub fn set_host_session(&mut self, session: Uuid) {
@@ -568,6 +606,7 @@ impl RoomRuntime {
     }
 
     pub fn reconcile(&mut self, endpoints: &BTreeMap<Uuid, Endpoint>, now: u64) {
+        let limits = self.relay_limits();
         let repair_due = self.repair_at.is_some_and(|deadline| deadline <= now);
         if repair_due {
             self.repair_at = None;
@@ -631,7 +670,7 @@ impl RoomRuntime {
             if repair_due {
                 base.retry_required(&demand, &base_connected);
             }
-            base.reconcile(&demand, &readable, &base_connected);
+            base.reconcile(&demand, &readable, &base_connected, &limits, now);
             needs_repair |= base.needs_repair(&demand, &base_connected);
         }
         for (id, publication) in &mut self.publications {
@@ -661,9 +700,47 @@ impl RoomRuntime {
                 &connected,
                 self.base.as_ref(),
                 &helpers,
+                &limits,
                 now,
             );
             needs_repair |= publication.needs_repair(&subscribers, &connected);
+        }
+        if let Some(candidate) = self.base.as_ref().and_then(BaseTree::candidate_tree) {
+            let deadline = self.base.as_ref().unwrap().deadline().unwrap();
+            for (id, publication) in &mut self.publications {
+                let subscribers = requested
+                    .iter()
+                    .filter_map(|(session, ids)| ids.contains(id).then_some(*session))
+                    .collect();
+                publication.prepare_base(&candidate, &subscribers, deadline);
+            }
+            if self.base.as_ref().unwrap().candidate_ready()
+                && self.publications.values().all(Publication::base_ready)
+            {
+                self.base.as_mut().unwrap().commit();
+                for (id, publication) in &mut self.publications {
+                    publication.commit_base();
+                    if publication.info.kind == Kind::Voice {
+                        let subscribers = requested
+                            .iter()
+                            .filter_map(|(session, ids)| ids.contains(id).then_some(*session))
+                            .collect();
+                        publication.reconcile(
+                            &subscribers,
+                            &available,
+                            &connected,
+                            self.base.as_ref(),
+                            &BTreeMap::new(),
+                            &limits,
+                            now,
+                        );
+                    }
+                }
+            }
+        } else {
+            for publication in self.publications.values_mut() {
+                publication.abort_base();
+            }
         }
         if needs_repair {
             self.repair_at
@@ -677,6 +754,7 @@ impl RoomRuntime {
         self.publications
             .values()
             .filter_map(Publication::deadline)
+            .chain(self.base.as_ref().and_then(BaseTree::deadline))
             .chain(self.repair_at)
             .min()
     }
@@ -712,7 +790,19 @@ impl RoomRuntime {
                 parent,
                 child,
                 ready: self.base.as_ref().is_some_and(|base| base.ready(child)),
+                selected: true,
             })
+            .chain(self.base.iter().flat_map(|base| {
+                base.candidate_links()
+                    .into_iter()
+                    .map(|(parent, child)| BaseLink {
+                        room_id: self.policy.id.clone(),
+                        parent,
+                        child,
+                        ready: base.candidate_ready(),
+                        selected: false,
+                    })
+            }))
     }
     pub fn base_state(
         &mut self,
@@ -753,7 +843,17 @@ impl RoomRuntime {
                 })
             })
             .ok_or("unassigned_flow")?;
-        Ok(publication.flow_state(flow_id, receiver, sender, state, now))
+        let base_flow = publication.base_flow(flow_id);
+        let changed = publication.flow_state(flow_id, receiver, sender, state, now);
+        if base_flow && state == FlowState::Failed {
+            if let Some(base) = &mut self.base {
+                base.abort();
+            }
+            for publication in self.publications.values_mut() {
+                publication.abort_base();
+            }
+        }
+        Ok(changed)
     }
 }
 
@@ -1162,6 +1262,332 @@ mod tests {
             .unwrap();
         room.reconcile(&endpoints, 0);
         (room, endpoints)
+    }
+
+    #[test]
+    fn relay_limit_migrates_base_and_voice_before_releasing_the_incumbent() {
+        let id = Uuid::from_u128;
+        let (mut room, endpoints) = screen_on_room_base();
+        for flow in room.flows().collect::<Vec<_>>() {
+            room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
+                .unwrap();
+        }
+        for (session, endpoint) in &endpoints {
+            room.set_voice(endpoint.member, *session, true, false, false)
+                .unwrap();
+        }
+        room.publish(endpoints[&id(4)].member, id(4), id(20), Kind::Voice, None)
+            .unwrap();
+        room.reconcile(&endpoints, 2);
+        for flow in room
+            .flows()
+            .filter(|flow| flow.publication_id == id(20))
+            .collect::<Vec<_>>()
+        {
+            room.flow_state(
+                flow.id,
+                flow.receiver,
+                flow.sender,
+                FlowState::Forwardable,
+                3,
+            )
+            .unwrap();
+        }
+        let voice: BTreeSet<_> = room
+            .flows()
+            .filter(|flow| flow.publication_id == id(20))
+            .map(|flow| flow.id)
+            .collect();
+        let picture: BTreeSet<_> = room
+            .flows()
+            .filter(|flow| flow.publication_id == id(10) && flow.selected)
+            .map(|flow| flow.id)
+            .collect();
+        room.set_default_relay_capacity(1);
+        room.reconcile(&endpoints, 10);
+        let candidate = room.base_links().find(|link| !link.selected).unwrap();
+        assert_eq!(room.base_links().filter(|link| link.selected).count(), 3);
+        assert!(voice
+            .iter()
+            .all(|old| room.flows().any(|flow| flow.id == *old && flow.selected)));
+        room.base_state(candidate.parent, candidate.child, true)
+            .unwrap();
+        room.base_state(candidate.child, candidate.parent, true)
+            .unwrap();
+        room.reconcile(&endpoints, 11);
+        assert!(
+            room.base_links().any(|link| !link.selected),
+            "transport ACKs cannot retire the old voice route"
+        );
+        let shadows: Vec<_> = room
+            .flows()
+            .filter(|flow| !flow.selected && flow.publication_id == id(20))
+            .collect();
+        assert!(!shadows.is_empty());
+        for flow in &shadows {
+            room.flow_state(
+                flow.id,
+                flow.receiver,
+                flow.sender,
+                FlowState::Forwardable,
+                12,
+            )
+            .unwrap();
+        }
+        room.reconcile(&endpoints, 13);
+        assert!(!room.base_links().any(|link| !link.selected));
+        assert!(room.base_links().any(|link| link.parent == candidate.parent
+            && link.child == candidate.child
+            && link.selected));
+        assert!(shadows
+            .iter()
+            .all(|new| room.flows().any(|flow| flow.id == new.id && flow.selected)));
+        assert!(
+            picture
+                .iter()
+                .all(|old| room.flows().any(|flow| flow.id == *old && flow.selected)),
+            "independent picture delivery keeps its healthy leases"
+        );
+        let mut transports = crate::transport::TransportBook::default();
+        transports.reconcile(room.flows(), room.base_links());
+        assert!(!transports.snapshot(id(1), |_| false, |_| false).is_empty());
+    }
+
+    #[test]
+    fn bounded_base_insertion_and_rotation_admit_a_relay_without_revoking_the_old_voice_path() {
+        let id = Uuid::from_u128;
+        for already_joined in [false, true] {
+            let endpoints: BTreeMap<_, _> = (1..=3)
+                .map(|value| {
+                    (
+                        id(value),
+                        Endpoint {
+                            signing_key: [value as u8; 32],
+                            member: Member {
+                                user_id: id(value),
+                                participates: true,
+                                domain_owner: value == 1,
+                            },
+                            connected: true,
+                        },
+                    )
+                })
+                .collect();
+            let mut room = RoomRuntime::new(
+                RoomState::new(
+                    "limited".into(),
+                    "Limited".into(),
+                    Default::default(),
+                    id(1),
+                    RoomAccess::Public,
+                    false,
+                    None,
+                )
+                .unwrap(),
+            );
+            room.set_host_session(id(1));
+            room.set_default_relay_capacity(1);
+            room.browse(endpoints[&id(1)].member, id(1), true).unwrap();
+            room.browse(endpoints[&id(2)].member, id(2), true).unwrap();
+            room.set_relay_capacity(
+                endpoints[&id(2)].member,
+                id(2),
+                Some(if already_joined { 2 } else { 0 }),
+            )
+            .unwrap();
+            room.reconcile(&endpoints, 0);
+            for link in room.base_links().collect::<Vec<_>>() {
+                room.base_state(link.parent, link.child, true).unwrap();
+                room.base_state(link.child, link.parent, true).unwrap();
+            }
+            room.reconcile(&endpoints, 1);
+            for endpoint in [id(1), id(2)] {
+                room.set_voice(endpoints[&endpoint].member, endpoint, true, false, false)
+                    .unwrap();
+            }
+            room.publish(endpoints[&id(2)].member, id(2), id(20), Kind::Voice, None)
+                .unwrap();
+            room.reconcile(&endpoints, 2);
+            for flow in room.flows().collect::<Vec<_>>() {
+                room.flow_state(
+                    flow.id,
+                    flow.receiver,
+                    flow.sender,
+                    FlowState::Forwardable,
+                    2,
+                )
+                .unwrap();
+            }
+            let old_voice = room.flows().find(|flow| flow.receiver == id(1)).unwrap().id;
+            room.command(
+                endpoints[&id(3)].member,
+                id(3),
+                crate::wire::Command::Browse {
+                    room_id: "limited".into(),
+                    active: true,
+                    relay_capacity: Some(2),
+                },
+                &endpoints,
+            )
+            .unwrap();
+            if already_joined {
+                room.reconcile(&endpoints, 3);
+                for link in room
+                    .base_links()
+                    .filter(|link| link.selected)
+                    .collect::<Vec<_>>()
+                {
+                    room.base_state(link.parent, link.child, true).unwrap();
+                    room.base_state(link.child, link.parent, true).unwrap();
+                }
+                room.reconcile(&endpoints, 4);
+                room.set_relay_capacity(endpoints[&id(2)].member, id(2), Some(0))
+                    .unwrap();
+            }
+            room.set_voice(endpoints[&id(3)].member, id(3), true, false, false)
+                .unwrap();
+            room.publish(endpoints[&id(3)].member, id(3), id(21), Kind::Voice, None)
+                .unwrap();
+            room.reconcile(&endpoints, 5);
+            let candidates: Vec<_> = room.base_links().filter(|link| !link.selected).collect();
+            assert_eq!(candidates.len(), 2);
+            assert!(candidates
+                .iter()
+                .any(|link| link.parent == id(1) && link.child == id(3)));
+            assert!(candidates
+                .iter()
+                .any(|link| link.parent == id(3) && link.child == id(2)));
+            for link in candidates {
+                room.base_state(link.parent, link.child, true).unwrap();
+                room.base_state(link.child, link.parent, true).unwrap();
+            }
+            room.reconcile(&endpoints, 6);
+            assert!(room
+                .base_links()
+                .any(|link| link.selected && link.parent == id(1) && link.child == id(2)));
+            assert!(room
+                .flows()
+                .any(|flow| flow.id == old_voice && flow.selected));
+            for flow in room
+                .flows()
+                .filter(|flow| !flow.selected)
+                .collect::<Vec<_>>()
+            {
+                room.flow_state(
+                    flow.id,
+                    flow.receiver,
+                    flow.sender,
+                    FlowState::Forwardable,
+                    7,
+                )
+                .unwrap();
+            }
+            room.reconcile(&endpoints, 8);
+            let selected: BTreeSet<_> = room
+                .base_links()
+                .filter(|link| link.selected)
+                .map(|link| (link.parent, link.child))
+                .collect();
+            assert_eq!(selected, [(id(1), id(3)), (id(3), id(2))].into());
+            assert!(!room.base_links().any(|link| !link.selected));
+            assert!(room.flows().any(|flow| flow.publication_id == id(21) && flow.sender == id(3)), "first delivery from the newly inserted origin uses ordinary committed-base reconciliation");
+        }
+    }
+
+    #[test]
+    fn relay_reduction_uses_the_picture_switch_proof_and_preserves_the_viewer() {
+        let id = Uuid::from_u128;
+        let (mut room, endpoints) = screen_on_room_base();
+        for flow in room.flows().collect::<Vec<_>>() {
+            room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
+                .unwrap();
+        }
+        let old = room.flows().find(|flow| flow.receiver == id(4)).unwrap();
+        room.set_relay_capacity(endpoints[&id(2)].member, id(2), Some(0))
+            .unwrap();
+        room.set_relay_capacity(endpoints[&id(3)].member, id(3), Some(0))
+            .unwrap();
+        room.reconcile(&endpoints, 2);
+        let candidate = room
+            .flows()
+            .find(|flow| flow.publication_id == id(10) && flow.receiver == id(4) && !flow.selected)
+            .unwrap();
+        assert_eq!(candidate.sender, id(3), "the publication origin uses the room default even when its personal relay override is zero");
+        for state in [FlowState::Forwardable, FlowState::Decoded] {
+            room.flow_state(candidate.id, candidate.receiver, candidate.sender, state, 3)
+                .unwrap();
+            assert!(room.flows().any(|flow| flow.id == old.id && flow.selected));
+        }
+        room.flow_state(
+            candidate.id,
+            candidate.receiver,
+            candidate.sender,
+            FlowState::SwitchReady,
+            4,
+        )
+        .unwrap();
+        room.reconcile(&endpoints, 5);
+        assert!(room
+            .flows()
+            .any(|flow| flow.id == candidate.id && flow.selected));
+        assert!(!room
+            .flows()
+            .any(|flow| flow.publication_id == id(10) && flow.sender == id(2)));
+        assert!(room.subscriptions(id(4)).contains(&id(10)));
+    }
+
+    #[test]
+    fn zero_relay_limit_retires_an_excess_branch_at_its_deadline_but_allows_own_voice() {
+        let id = Uuid::from_u128;
+        let (mut room, endpoints) = screen_on_room_base();
+        for flow in room.flows().collect::<Vec<_>>() {
+            room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
+                .unwrap();
+        }
+        room.set_default_relay_capacity(1);
+        for endpoint in [id(2), id(3), id(4)] {
+            room.set_relay_capacity(endpoints[&endpoint].member, endpoint, Some(0))
+                .unwrap();
+        }
+        room.set_voice(endpoints[&id(2)].member, id(2), true, false, false)
+            .unwrap();
+        room.set_voice(endpoints[&id(1)].member, id(1), true, false, false)
+            .unwrap();
+        room.publish(endpoints[&id(2)].member, id(2), id(20), Kind::Voice, None)
+            .unwrap();
+        room.reconcile(&endpoints, 10);
+        assert!(
+            room.base_links()
+                .filter(|link| link.selected)
+                .any(|link| link.parent == id(2)),
+            "the old branch remains during its bounded transition"
+        );
+        assert!(
+            room.flows()
+                .any(|flow| flow.publication_id == id(20) && flow.sender == id(2)),
+            "zero rejects relaying others, not originating voice"
+        );
+        room.reconcile(&endpoints, 20_010);
+        assert!(!room
+            .base_links()
+            .filter(|link| link.selected)
+            .any(|link| link.parent == id(2)));
+        assert!(
+            room.base_links()
+                .filter(|link| link.selected && link.parent == id(1))
+                .count()
+                <= 1
+        );
+        assert!(!room
+            .flows()
+            .any(|flow| flow.publication_id == id(10) && flow.sender == id(2)));
+        assert_eq!(
+            room.snapshot(endpoints[&id(2)].member, id(2))
+                .unwrap()
+                .room
+                .relay_override,
+            Some(0)
+        );
     }
 
     #[test]

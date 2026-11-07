@@ -614,6 +614,7 @@ mod room_tests {
                 command: crate::wire::Command::Browse {
                     room_id: "room".into(),
                     active: true,
+                    relay_capacity: None,
                 },
             },
             binding_id,

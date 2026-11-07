@@ -159,6 +159,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
             parent: sessions[(index - 1) / 2],
             child: *child,
             ready: false,
+            selected: true,
         })
         .collect();
     output.projection.flows = room

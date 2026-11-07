@@ -25,6 +25,7 @@ pub struct BaseLink {
     pub parent: Uuid,
     pub child: Uuid,
     pub ready: bool,
+    pub selected: bool,
 }
 
 #[derive(Clone, Default)]
