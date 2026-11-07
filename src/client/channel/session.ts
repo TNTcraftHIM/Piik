@@ -18,6 +18,7 @@ import { readPreferredQuality, savePreferredQuality, screenVideoCeiling, support
 import { audioInputConstraints } from "../media/audio-capture";
 import { browserCaptureDevices } from "../media/capture-devices";
 import { RoomInteractionSession } from "../lib/room-interactions";
+import { MAX_CHAT_CODE_POINTS } from "../../shared/room-interactions";
 import { createOpaqueId } from "../lib/opaque-id";
 import { captureBrowserSource, setMediaPaused, type BrowserCaptureSource } from "../media/quality";
 import { loadCameraPreviews, type CameraPreview } from "../media/camera-previews";
@@ -29,6 +30,15 @@ import { preferredVideoCodecForTrack } from "../webrtc/video-codec-preflight";
 
 const credentialKey = "piik.channel.prototype.credential";
 const nameKey = "piik.channel.prototype.name";
+
+interface RoomReading {
+  roomId: string;
+  bindingId: string;
+  socket: WebSocket | null;
+  ready: Promise<void>;
+  history?: Promise<void>;
+  interaction?: RoomInteractionSession;
+}
 
 interface MicrophoneRequest {
   context: AudioContext | null;
@@ -111,8 +121,8 @@ export class ChannelSession {
   private watching = new Map<string, string | undefined>();
   private admittedPublications = new Set<string>();
   private historyChannel: string | null = null;
-  private reading: { roomId: string; bindingId: string; socket: WebSocket | null; ready: Promise<void>; history?: Promise<void>;
-    interaction?: RoomInteractionSession; interactionBinding?: string } | null = null;
+  private readings = new Map<string, RoomReading>();
+  private get reading(): RoomReading | undefined { return this.readings.get(this.roomId ?? ""); }
   private readingRooms = new Set<string>();
   private outgoingMessages = new Map<string, { content: string; nonce: string }>();
   private captureLifetime = new AbortController();
@@ -222,7 +232,8 @@ export class ChannelSession {
       const inviteURL = new URL(location.pathname, this.invitationOrigin);
       if (invite) inviteURL.hash = new URLSearchParams({ invite }).toString();
       this.patch({ sessionId: event.sessionId, connection: "connected", error: null, inviteURL: invite ? inviteURL.href : null });
-      this.reading = null;
+      this.readings.clear();
+      this.roomId ??= event.state.channel.rooms[0]?.id ?? null;
       for (const room of event.state.channel.rooms) if (room.reading) this.readingRooms.add(room.id);
       this.applyState(event.state);
       void this.syncAppWatching(resumed);
@@ -357,11 +368,12 @@ export class ChannelSession {
     }
     const visible = this.projectActivity(state);
     const sameChannel = this.historyChannel === state.channel.id;
-    if (!sameChannel) this.closeInteractions();
+    if (!sameChannel) { this.closeInteractions(); this.readings.clear(); }
     this.historyChannel = state.channel.id;
     const canRead = (id: string) => sameChannel && state.channel.rooms.some(room => room.id === id && room.authorized);
     const freshBindings = new Set(state.channel.rooms.filter(room => room.delivery
       && previousRooms?.find(previous => previous.id === room.id)?.delivery?.bindingId !== room.delivery.bindingId).map(room => room.id));
+    for (const id of freshBindings) this.closeInteraction(id);
     for (const [id, request] of this.requests) if (request.bindingId
       && !state.channel.rooms.some(room => room.id === request.roomId && room.authorized
         && room.available && room.delivery?.bindingId === request.bindingId)) {
@@ -378,11 +390,6 @@ export class ChannelSession {
     for (const [id, hosted] of this.hostedRooms) if (!state.channel.rooms.some(room => room.id === id)) {
       this.hostedRooms.delete(id);
       this.hostCleanup = Promise.all([this.hostCleanup, hosted.host.close()]).then(() => {});
-    }
-    if (this.reading && (!sameChannel || !state.channel.rooms.some(room => room.id === this.reading!.roomId
-      && room.authorized && room.available && room.delivery?.bindingId === this.reading!.bindingId))) {
-      this.closeInteractions(); this.reading = null;
-      this.browse(this.roomId ?? "");
     }
     let resumedReading = false;
     if (this.view.connection === "connected") for (const room of state.channel.rooms) {
@@ -412,6 +419,7 @@ export class ChannelSession {
     const previous = previousRooms?.find(previous => previous.id === room?.id);
     const nextHop = room?.delivery?.nextHops[room.delivery.hostSessionId];
     const previousHop = previous?.delivery?.nextHops[previous.delivery.hostSessionId];
+    this.browseRooms();
     this.syncReading(undefined, nextHop !== undefined && nextHop !== previousHop);
     this.releaseUnusedMicrophone();
   }
@@ -426,7 +434,7 @@ export class ChannelSession {
   }
 
   private async request(command: ChannelCommand, result?: (event: ChannelReply) => void, roomId = this.commandRoom(command), signal?: AbortSignal): Promise<void> {
-    const reading = this.reading;
+    const reading = roomId ? this.readings.get(roomId) : undefined;
     const conversation = command.type === "chat" || command.type === "history" || command.type === "set_reaction";
     if (conversation && reading && reading.roomId === roomId) await reading.ready;
     signal?.throwIfAborted();
@@ -479,7 +487,7 @@ export class ChannelSession {
       if (record.type === "message_reactions") return;
     }
     const interaction = this.view.interactionsByRoom.get(reply.roomId);
-    if (interaction && this.reading?.interactionBinding === reply.bindingId) {
+    if (interaction && this.readings.get(reply.roomId)?.bindingId === reply.bindingId) {
       if (record.type === "interaction_ready") {
         interaction.setSupportedReactions(record.reactionIds);
         interaction.receive({ type: "room-interactions-ready", serverTime: record.serverTime });
@@ -493,7 +501,7 @@ export class ChannelSession {
         return;
       }
       if (record.type === "error" && !this.requests.has(reply.requestId)) {
-        if (!interaction.getSnapshot().ready) this.closeInteractions();
+        if (!interaction.getSnapshot().ready) this.closeInteraction(reply.roomId);
         else interaction.receive({ type: "room-interaction-rejected", requestId: reply.requestId,
           reason: record.code === "rate_limited" ? "rate-limited" : record.code === "target_unavailable" ? "target-unavailable" : "busy" });
         return;
@@ -571,6 +579,15 @@ export class ChannelSession {
   private applyMessage(roomId: string, message: ChannelMessage): void {
     const state = this.view.state;
     if (!state?.channel.rooms.some(room => room.id === roomId && room.authorized)) return;
+    const sender = state.users.find(user => user.id === message.userId);
+    if (sender && message.text) {
+      const points = Array.from(message.text.replace(/\s+/gu, " ").normalize("NFC").trim());
+      const text = points.length > MAX_CHAT_CODE_POINTS ? `${points.slice(0, MAX_CHAT_CODE_POINTS - 1).join("")}…` : points.join("");
+      this.view.interactionsByRoom.get(roomId)?.receive({
+        type: "room-interaction", id: message.id, requestId: message.id, occurredAt: message.time,
+        sender: { peerId: sender.id, displayName: sender.name, role: "viewer" }, payload: { kind: "chat", text },
+      });
+    }
     // A bounded historical window stays put until its reader requests latest.
     if (this.view.historyByRoom[roomId]?.atLatest === false) return;
     const messages = this.view.messagesByRoom[roomId] ?? [];
@@ -770,78 +787,108 @@ export class ChannelSession {
   }
 
   browse = (roomId: string): void => {
-    const previous = this.roomId;
     this.roomId = roomId;
-    if (previous !== roomId) this.closeInteractions();
-    if (this.reading?.roomId !== roomId || this.reading.socket !== this.socket) this.reading = null;
-    if (this.view.connection !== "connected") return;
-    const room = this.view.state?.channel.rooms.find(room => room.id === roomId && room.authorized && room.available);
-    if (room?.delivery) {
-      if (this.reading) {
-        const reading = this.reading;
-        void reading.ready.then(() => {
-          if (this.reading === reading && this.socket === reading.socket && this.roomId === roomId) this.retireReadings(roomId);
-        }).catch(() => {});
-        return;
+    const wanted = this.wantedReadings();
+    for (const id of this.view.interactionsByRoom.keys()) if (!wanted.has(id)) this.closeInteraction(id);
+    this.browseRooms();
+  };
+
+  private wantedReadings(): Set<string> {
+    const state = this.view.state;
+    const rooms = new Set(this.roomId ? [this.roomId] : []);
+    for (const publication of state?.publications ?? []) {
+      if (publication.kind === "screen" && (this.view.ownedScreens.has(publication.id) || state?.subscriptions.includes(publication.id))) {
+        rooms.add(publication.roomId);
       }
-      const reading: NonNullable<ChannelSession["reading"]> = { roomId, bindingId: room.delivery.bindingId, socket: this.socket, ready: this.request({ type: "browse", roomId, active: true }) };
-      this.reading = reading;
-      void reading.ready.then(() => {
-        if (this.reading !== reading || this.socket !== reading.socket || this.roomId !== roomId) return;
-        const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
-        if (!room?.authorized || !room.available || room.delivery?.bindingId !== reading.bindingId) return;
-        this.retireReadings(roomId);
-        this.syncReading();
-        if (this.view.pending.has(`history:${roomId}`)) return;
-        reading.history = this.action(`history:${roomId}`, () => this.request({ type: "history", roomId }).catch(error => {
-          if (this.reading === reading && this.socket === reading.socket) throw error;
+    }
+    return rooms;
+  }
+
+  private browseRooms(): void {
+    if (this.view.connection !== "connected") return;
+    const wanted = this.wantedReadings();
+    for (const [id, reading] of this.readings) {
+      const room = this.view.state?.channel.rooms.find(room => room.id === id);
+      if (reading.socket !== this.socket || !room?.authorized || !room.available || room.delivery?.bindingId !== reading.bindingId) {
+        this.closeInteraction(id); this.readings.delete(id);
+      }
+    }
+    for (const id of wanted) {
+      const room = this.view.state?.channel.rooms.find(room => room.id === id && room.authorized && room.available);
+      if (!room?.delivery) continue;
+      let reading = this.readings.get(id);
+      if (!reading) {
+        reading = { roomId: id, bindingId: room.delivery.bindingId, socket: this.socket,
+          ready: this.request({ type: "browse", roomId: id, active: true }) };
+        this.readings.set(id, reading);
+      }
+      const current = reading;
+      void current.ready.then(() => {
+        if (this.readings.get(id) !== current || this.socket !== current.socket || !this.wantedReadings().has(id)) return;
+        this.retireReadings();
+        this.syncRoomReading(current);
+        if (this.roomId !== id || current.history || this.view.pending.has(`history:${id}`)) return;
+        current.history = this.action(`history:${id}`, () => this.request({ type: "history", roomId: id }).catch(error => {
+          if (this.readings.get(id) === current && this.socket === current.socket) throw error;
         }));
-        void reading.history.catch(() => {});
+        void current.history.catch(() => {});
       }, error => {
-        if (this.reading === reading && this.socket === reading.socket && this.view.connection === "connected") {
-          this.closeInteractions();
-          this.reading = null;
+        if (this.readings.get(id) === current && this.socket === current.socket && this.view.connection === "connected") {
+          this.closeInteraction(id); this.readings.delete(id);
           this.retireReadings();
           this.patch({ error: error instanceof Error ? error.message : "operation_failed" });
         }
       });
-    } else this.retireReadings();
-  };
-  private retireReadings(keep?: string): void {
+    }
+    if (!this.reading) this.retireReadings();
+  }
+
+  private retireReadings(): void {
+    const keep = this.wantedReadings();
+    for (const id of this.view.interactionsByRoom.keys()) if (!keep.has(id)) this.closeInteraction(id);
+    for (const [id] of this.readings) if (!keep.has(id)) {
+      this.closeInteraction(id); this.readings.delete(id);
+    }
     for (const id of this.readingRooms) {
-      if (id === keep) continue;
+      if (keep.has(id) && this.readings.has(id)) continue;
       const room = this.view.state?.channel.rooms.find(room => room.id === id);
       if (room?.authorized && !room.available) continue;
       if (room?.authorized) this.write({ type: "browse", roomId: id, active: false });
       this.readingRooms.delete(id);
     }
   }
+  private closeInteraction(roomId: string): void {
+    this.view.interactionsByRoom.get(roomId)?.close();
+    const reading = this.readings.get(roomId);
+    if (reading) delete reading.interaction;
+    const interactionsByRoom = new Map(this.view.interactionsByRoom);
+    if (interactionsByRoom.delete(roomId)) this.patch({ interactionsByRoom });
+  }
   private closeInteractions(): void {
-    for (const interaction of this.view.interactionsByRoom.values()) interaction.close();
-    if (this.reading) { delete this.reading.interaction; delete this.reading.interactionBinding; }
-    if (this.view.interactionsByRoom.size) this.patch({ interactionsByRoom: new Map() });
+    for (const id of this.view.interactionsByRoom.keys()) this.closeInteraction(id);
   }
 
   private syncReading(peerId?: string, refreshHistory = false): void {
-    const reading = this.reading;
-    if (!reading) return;
+    for (const reading of this.readings.values()) this.syncRoomReading(reading, peerId, refreshHistory && reading.roomId === this.roomId);
+  }
+
+  private syncRoomReading(reading: RoomReading, peerId?: string, refreshHistory = false): void {
     void reading.ready.then(() => {
-      if (this.reading !== reading || this.socket !== reading.socket || this.view.connection !== "connected" || !this.view.self) return;
+      if (this.readings.get(reading.roomId) !== reading || this.socket !== reading.socket || this.view.connection !== "connected" || !this.view.self) return;
       const room = this.view.state?.channel.rooms.find(room => room.id === reading.roomId && room.authorized && room.available);
       const delivery = room?.delivery;
       if (!delivery) return;
       const isCurrentHop = peerId !== undefined && delivery.nextHops[delivery.hostSessionId] === peerId;
-      if (refreshHistory || isCurrentHop) {
+      if (reading.roomId === this.roomId && (refreshHistory || isCurrentHop)) {
         const history = reading.history;
         const refresh = () => {
-          if (this.reading !== reading || this.socket !== reading.socket || reading.history !== history
+          if (this.readings.get(reading.roomId) !== reading || this.socket !== reading.socket || reading.history !== history
             || this.view.historyByRoom[reading.roomId]?.atLatest === false || this.view.pending.has(`history:${reading.roomId}`)) return;
           void this.loadLatestHistory(reading.roomId).catch(() => {});
         };
         if (this.view.pending.has(`history:${reading.roomId}`)) void history?.catch(refresh);
         else refresh();
       }
-      if (reading.interaction && reading.interactionBinding !== delivery.bindingId) this.closeInteractions();
       if (reading.interaction) {
         if (isCurrentHop && !reading.interaction.getSnapshot().ready) {
           reading.interaction.authenticated(this.view.self.id);
@@ -850,7 +897,7 @@ export class ChannelSession {
       }
       if (delivery.hostSessionId !== this.view.sessionId && !delivery.nextHops[delivery.hostSessionId]) return;
       const interaction = this.view.interactionsByRoom.get(reading.roomId) ?? new RoomInteractionSession(message => {
-        const current = this.reading;
+        const current = this.readings.get(reading.roomId);
         if (current?.interaction !== interaction || this.view.connection !== "connected") return false;
         const command = message.type === "subscribe-room-interactions" ? { type: "interaction_ready" as const, roomId: current.roomId }
           : message.type === "send-room-interaction" && message.payload.kind === "reaction"
@@ -859,14 +906,14 @@ export class ChannelSession {
         if (!command) return false;
         const requestId = message.type === "send-room-interaction" ? message.requestId : createOpaqueId();
         void this.conversation.send(command, requestId).catch(() => {
-          if (this.reading !== current || current.interaction !== interaction) return;
-          if (command.type === "interaction_ready") this.closeInteractions();
+          if (this.readings.get(reading.roomId) !== current || current.interaction !== interaction) return;
+          if (command.type === "interaction_ready") this.closeInteraction(reading.roomId);
           else interaction.receive({ type: "room-interaction-rejected", requestId, reason: "busy" });
         });
         return true;
       });
-      reading.interaction = interaction; reading.interactionBinding = delivery.bindingId;
-      this.patch({ interactionsByRoom: new Map([[reading.roomId, interaction]]) });
+      reading.interaction = interaction;
+      this.patch({ interactionsByRoom: new Map([...this.view.interactionsByRoom, [reading.roomId, interaction]]) });
       interaction.authenticated(this.view.self.id);
     }).catch(() => {});
   }
@@ -1102,7 +1149,7 @@ export class ChannelSession {
     for (const publication of own) await this.stopScreen(publication.id);
     for (const publication of this.view.state?.publications.filter(value => value.roomId === roomId && this.watching.has(value.id)) ?? []) await this.unwatch(publication.id);
     if (this.voiceCaptures.has(roomId)) await this.leaveVoice(roomId);
-    if (this.reading?.roomId === roomId) { this.closeInteractions(); this.reading = null; }
+    this.closeInteraction(roomId); this.readings.delete(roomId);
   }
 
   private async admitBackupIdentity(metadata: Extract<BackupMetadata, { kind: "room" }>): Promise<(() => Promise<void>) | undefined> {
@@ -1869,7 +1916,7 @@ export class ChannelSession {
 
   private releaseMedia(): void {
     this.closeInteractions();
-    this.reading = null;
+    this.readings.clear();
     this.readingRooms.clear();
     const request = this.microphoneRequest;
     this.microphoneRequest = null;

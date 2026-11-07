@@ -5272,7 +5272,7 @@ test("a base deadline settles missing-channel sends while polite screen media st
   } finally { media.reset(); session.close(); }
 });
 
-test("browsing retires only reading and resumes the offline selection without ending subscriptions", async () => {
+test("browsing keeps watched-room reading and resumes the offline selection without ending subscriptions", async () => {
   const { session, socket } = await setup();
   try {
     const state = structuredClone(session.getSnapshot().state!);
@@ -5288,7 +5288,8 @@ test("browsing retires only reading and resumes the offline selection without en
     expect(second).toMatchObject({ type: "browse", roomId: "second", active: true });
     expect(socket.sent.some(command => command.type === "browse" && command.active === false)).toBe(false);
     socket.receive({ type: "ack", requestId: second.requestId });
-    await vi.waitFor(() => expect(socket.sent.at(-1)).toEqual({ type: "browse", roomId: "first", active: false }));
+    await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.get("second")?.getSnapshot().ready).toBe(true));
+    expect(socket.sent.some(command => command.type === "browse" && command.roomId === "first" && command.active === false)).toBe(false);
     expect(session.getSnapshot().state?.subscriptions).toEqual(["screen"]);
     socket.close();
     const count = socket.sent.length;
@@ -5299,7 +5300,7 @@ test("browsing retires only reading and resumes the offline selection without en
     await resumed.onopen?.();
     state.channel.rooms.forEach(room => { room.reading = room.id === "second"; });
     resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
-    const first = resumed.sent.at(-1)!;
+    const first = resumed.sent.findLast(command => command.type === "browse" && command.roomId === "first" && command.active)!;
     expect(first).toMatchObject({ type: "browse", roomId: "first", active: true });
     expect(resumed.sent.some(command => command.type === "browse" && command.active === false)).toBe(false);
     resumed.receive({ type: "ack", requestId: first.requestId });
@@ -5307,6 +5308,59 @@ test("browsing retires only reading and resumes the offline selection without en
     expect(session.getSnapshot().state?.subscriptions).toEqual(["screen"]);
     expect(resumed.sent.some(command => ["unpublish", "voice"].includes(String(command.type))
       || command.type === "subscribe" && command.enabled === false)).toBe(false);
+  } finally { session.close(); }
+});
+
+test("live chat overlays follow each watched room and never replay loaded history", async () => {
+  const { session, socket, peer } = await setup();
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.publications = [{ id: "screen", roomId: "first", sessionId: "other", userId: "friend", kind: "screen",
+      videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false }];
+    socket.receive({ type: "state", state });
+    const watching = session.watch("screen");
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await watching;
+    state.subscriptions = ["screen"];
+    socket.receive({ type: "state", state });
+    const first = session.getSnapshot().interactionsByRoom.get("first")!;
+    session.browse("second");
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    peer.page(await peer.next(), [], false, null);
+    await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.get("second")?.getSnapshot().ready).toBe(true));
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:second")).toBe(false));
+    const second = session.getSnapshot().interactionsByRoom.get("second")!;
+    first.setOverlayEnabled(true); second.setOverlayEnabled(true);
+    const stopFirst = first.showOverlay(), stopSecond = second.showOverlay();
+    const firstMessage = { ...message(1), time: Date.now(), text: "First room" };
+    const secondMessage = { ...message(2), time: Date.now(), text: "Second room" };
+    peer.live(firstMessage, "first"); peer.live(firstMessage, "first");
+    peer.live(secondMessage, "second");
+    expect(first.getSnapshot().overlayMessages.map(value => value.id)).toEqual([firstMessage.id]);
+    expect(second.getSnapshot().overlayMessages.map(value => value.id)).toEqual([secondMessage.id]);
+    const latest = session.loadLatestHistory("second");
+    peer.page(await peer.next(), [{ ...message(3), time: Date.now() }], false);
+    await latest;
+    expect(second.getSnapshot().overlayMessages.map(value => value.id)).toEqual([secondMessage.id]);
+    const longMessage = { ...message(4), time: Date.now(), text: `A multiline message\n${"界🙂".repeat(180)}` };
+    peer.live(longMessage, "second");
+    const summary = second.getSnapshot().messages.find(value => value.id === longMessage.id)!.payload;
+    expect(summary.kind).toBe("chat");
+    if (summary.kind === "chat") {
+      expect(Array.from(summary.text)).toHaveLength(280);
+      expect(summary.text).not.toContain("\n");
+      expect(summary.text.endsWith("…")).toBe(true);
+    }
+    expect(session.getSnapshot().messagesByRoom.second.find(value => value.id === longMessage.id)?.text).toBe(longMessage.text);
+    const unwatching = session.unwatch("screen");
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await unwatching;
+    state.subscriptions = [];
+    socket.receive({ type: "state", state });
+    await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.has("first")).toBe(false));
+    expect(first.getSnapshot().overlayMessages).toEqual([]);
+    expect(second.getSnapshot().ready).toBe(true);
+    stopFirst(); stopSecond();
   } finally { session.close(); }
 });
 

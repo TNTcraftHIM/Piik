@@ -62,8 +62,7 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **Playback and interaction parity.** Restore picture chat overlays through
-  the existing shared components. Complete the detail-versus-motion preference
+- [ ] **Native quality preference.** Complete the detail-versus-motion preference
   after choosing its Native adaptation owner: Browser encoding already consumes
   that preference, while Native currently keeps its default. Do not expose a
   control that the selected producer cannot apply.

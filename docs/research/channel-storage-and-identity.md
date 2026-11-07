@@ -135,6 +135,13 @@ and retained attachments use their existing IndexedDB stores; localStorage remai
 for small preferences and bookmarks. Original author departure does not erase
 confirmed messages.
 
+The page retains a live conversation reader for its selected room and for rooms
+whose pictures it is sharing or watching. Each picture's chat overlay uses that
+room's reader; changing the sidebar selection does not replace another picture's
+conversation. Only the selected conversation requests history pages. Overlay
+effects use live confirmed text, with a bounded single-line summary for long
+messages; loading history never replays effects or alters the stored message.
+
 The current room-host binding scopes history requests and live replies. A fresh
 binding replaces the previous reading window with the owner's current result,
 even when its newest message is older or the history is empty. Only live arrivals
