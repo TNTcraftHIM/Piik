@@ -1,6 +1,7 @@
 .c3-room-panel { width: min(360px, calc(100vw - 32px)); padding: 20px; }
 .c3-room-panel h3 { font-size: 16px; margin: 0 0 18px; }
 .c3-room-relay { display: grid; gap: 14px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.c3-room-transcript { display: grid; gap: 12px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
 .c3-relay-limit .lr-quality-heading { display: flex; }
 .c3-room-panel > h3 + .c3-room-relay { margin-top: 0; padding-top: 0; border-top: 0; }
 .c3-room-form, .c3-room-form > label, .c3-private-options, .c3-private-options > label:not(.c3-check) { display: grid; gap: 10px; }

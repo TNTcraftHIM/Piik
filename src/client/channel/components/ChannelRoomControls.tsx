@@ -6,7 +6,9 @@ import { NumberControl } from "../../components/living/NumberControl";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { useClipboardResult } from "../../ui/use-clipboard-result";
-import type { ChannelRoom, RoomSettings } from "../protocol";
+import { downloadBlob } from "../../lib/download";
+import { formatChatTranscript } from "../../lib/room-chat-export";
+import type { ChannelMessage, ChannelUser, ChannelRoom, RoomSettings } from "../protocol";
 import { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../protocol";
 import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelAction";
@@ -14,6 +16,23 @@ import { ChannelIdentityFields } from "./ChannelIdentity";
 import "./channel-room-controls.css";
 import { BackupControls } from "./BackupControls";
 import { ChannelInviteQrCode } from "./ChannelInviteQrCode";
+
+export function RoomChatExport({ messages, users }: { messages: readonly ChannelMessage[]; users: readonly ChannelUser[] }) {
+  const { lang, vis } = useCopy(), zh = lang === "zh";
+  return <section className="c3-room-transcript" aria-label={zh ? "文字记录" : "Chat text"}>
+    {!vis && <p>{zh ? "导出此页面已加载的文字。" : "Exports the text loaded on this page."}</p>}
+    <ChannelAction icon="save" quiet hint="hint-chat-export" label={zh ? "导出文字记录（TXT）" : "Export chat text (TXT)"}
+      disabled={!messages.some(message => message.text)} onClick={() => {
+        const text = formatChatTranscript(messages.filter(message => message.text).map(message => ({
+          occurredAt: message.time,
+          sender: { displayName: users.find(user => user.id === message.userId)?.name ?? (zh ? "用户" : "User") },
+          payload: { kind: "chat" as const, text: message.text },
+        })));
+        downloadBlob(new Blob([text], { type: "text/plain;charset=utf-8" }),
+          `piik-chat-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`);
+      }} />
+  </section>;
+}
 
 function RelayLimit({ value, min, label, note, disabled, onChange }: {
   value: number; min: number; label: string; note: string; disabled: boolean; onChange(value: number): void;
@@ -135,7 +154,7 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
   return <>
     <Tooltip kind={room ? "hint-details" : "hint-create-room"} disabled={open} text={vis ? undefined : title}>
       <button ref={trigger} type="button" className="lr-btn is-dense is-quiet" popoverTarget={id}
-        aria-label={title} aria-haspopup="dialog" aria-expanded={open} aria-controls={id} disabled={!connected}>
+        aria-label={title} aria-haspopup="dialog" aria-expanded={open} aria-controls={id} disabled={!connected && !room?.authorized}>
         <Glyph name={room ? "sliders" : "plus"} size={18} />
         {!room && !channel.state?.channel.rooms.length && !vis && <span className="lr-cap">{title}</span>}
       </button>
@@ -180,6 +199,7 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
         </details>}
       </section>}</div>}
       {room?.authorized && <PersonalRelay channel={channel} room={room} disabled={!available || working} />}
+      {room?.authorized && <RoomChatExport messages={channel.messagesByRoom[room.id] ?? []} users={channel.state?.users ?? []} />}
       {room?.canManage && <section className="c3-room-removal">
         <Btn icon="x" size="dense" quiet tone="danger" busy={removing} disabled={!connected || working}
           title={{ text: room.available ? (zh ? "删除房间" : "Delete room") : (zh ? "从域移除" : "Remove from domain") }}
