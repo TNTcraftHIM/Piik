@@ -33,7 +33,7 @@
 .c3-identity > div { flex: 1; min-width: 0; }
 .c3-identity strong { display: block; font-size: 13px; overflow-wrap: anywhere; }
 .c3-identity small { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; }
-.c3-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; container-type: inline-size; }
+.c3-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; container: channel-room / size; }
 .c3-room-heading { display: grid; grid-template-areas: "title actions tools" "company company company"; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px 16px; flex: none; padding: 16px 24px 8px; border-bottom: 1px solid var(--line); }
 .c3-room-name { grid-area: title; min-width: 0; display: flex; align-items: center; gap: 10px; }
 .c3-room-company { grid-area: company; justify-self: center; }
@@ -114,17 +114,16 @@
   .c3-room-actions { flex-wrap: wrap; }
 }
 @container (max-width: 600px) {
+  .c3-room-heading { grid-template-areas: "title title" "actions actions" "tools tools" "company company"; }
+  .c3-room-tools { justify-content: flex-end; }
   .c3-room-heading .lr-cap:where(:not([popover] .lr-cap)) { display: none; }
-  .c3-room-heading:has(.c3-app-confirmation) {
-    grid-template-areas: "title title" "actions actions" "tools tools" "company company";
-  }
   .c3-room-heading .c3-app-confirmation .lr-cap { display: inline; }
 }
 @container (max-width: 800px) {
-  .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(min-content, 1fr) minmax(188px, .8fr); overflow-y: auto; }
-  .c3-workspace.has-screens.chat-collapsed { grid-template-rows: minmax(min-content, 1fr); }
-  .c3-workspace.has-screens > .c3-monitor { border-inline-end: 0; border-bottom: 1px solid var(--line); overflow: visible; }
-  .c3-workspace.has-screens .c3-conversation { min-height: 188px; padding: 12px 18px; gap: 10px; }
+  .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, .8fr); }
+  .c3-workspace.has-screens.chat-collapsed { grid-template-rows: minmax(0, 1fr); }
+  .c3-workspace.has-screens > .c3-monitor { border-inline-end: 0; border-bottom: 1px solid var(--line); overflow-y: auto; }
+  .c3-workspace.has-screens .c3-conversation { padding: 12px 18px; gap: 10px; }
 }
 @media (max-width: 980px) {
   .c3-shell { grid-template-columns: 54px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
@@ -164,23 +163,31 @@
   .c3-voice-dock > svg { display: none; }
   .c3-notice { margin: 10px 12px 0; }
 }
-@media (max-height: 500px) {
-  .c3-shell > .c3-main { overflow-y: auto; }
+@container channel-room (max-height: 680px) {
+  .c3-workspace.has-screens .c3-monitor { padding: 10px; gap: 8px; }
+  .c3-workspace.has-screens .c3-conversation { padding: 8px 12px; gap: 8px; }
+}
+@container channel-room (min-width: 600px) and (max-height: 680px) {
+  .c3-room-heading { grid-template-areas: "title actions tools" "company company company"; grid-template-columns: minmax(0, 1fr) auto auto; padding: 8px 12px; }
+  .c3-workspace.has-screens:not(.chat-collapsed) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .c3-workspace.has-screens:not(.chat-collapsed) > .c3-monitor { border-inline-end: 1px solid var(--line); border-bottom: 0; }
+}
+@container channel-room (max-height: 420px) {
   .c3-room-heading { display: flex; flex-wrap: wrap; padding-block: 6px; gap: 6px 10px; }
   .c3-room-name { flex-basis: 100%; }
   .c3-room-tools { flex-wrap: wrap; margin-inline-start: auto; }
   .c3-room-heading > :is(.c3-room-actions, .c3-room-tools) { max-width: 100%; }
-  /* The same couch remains available when moved into the room mini window. */
+  /* The existing room tool carries these same people and reaction controls. */
   .c3-room-heading > .c3-room-slot { display: none; }
   .c3-room-heading .lr-cap:where(:not([popover] .lr-cap)) { display: none; }
   .c3-room-heading .c3-app-confirmation .lr-cap { display: inline; }
   .c3-main > .c3-workspace .c3-conversation { min-height: 0; padding: 6px 12px; gap: 6px; }
   .c3-main > .c3-workspace .c3-composer textarea { max-height: var(--control-compact-size); }
+  .c3-voice-dock { padding-block: 4px; }
+  .c3-voice-participants { display: none; }
   @container (min-width: 600px) {
     .c3-room-heading { display: grid; grid-template-areas: "title actions tools"; grid-template-columns: minmax(0, 1fr) auto auto; }
     .c3-room-heading:has(.c3-app-confirmation) { grid-template-areas: "title tools" "actions actions"; grid-template-columns: minmax(0, 1fr) auto; }
-    .c3-workspace.has-screens:not(.chat-collapsed) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); overflow: hidden; }
-    .c3-workspace.has-screens:not(.chat-collapsed) > .c3-monitor { border-inline-end: 1px solid var(--line); border-bottom: 0; overflow-y: auto; }
   }
 }
 @media (prefers-reduced-motion: no-preference) {

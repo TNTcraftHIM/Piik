@@ -20,7 +20,7 @@
 .c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) { flex: 1; min-height: 100px; aspect-ratio: auto; }
 .c3-monitor-tile.is-focused { grid-column: 1 / -1; order: -1; border-color: var(--action); box-shadow: 0 0 0 1px var(--action); }
 .c3-monitor-tile[data-focusable] .c3-video { cursor: pointer; }
-.c3-monitor-tile > footer { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; }
+.c3-monitor-tile > footer { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; position: sticky; bottom: 0; z-index: 2; background: var(--wall); border-radius: 0 0 16px 16px; }
 .c3-monitor-tile > footer > svg { width: 25px; height: 32px; flex: none; }
 .c3-monitor-source { min-width: 0; flex: 1 1 100px; }
 .c3-monitor-source :is(strong, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -32,4 +32,8 @@
   .c3-monitor-grid { gap: 12px; }
   .c3-monitor-offer { flex: 1 1 240px; }
   .c3-monitor-offer > div { flex: 1; }
+}
+@container channel-room (max-height: 420px) {
+  .c3-monitor-heading:not(:has(.c3-monitor-layout)) { display: none; }
+  .c3-monitor-tile > footer { padding-block: 4px; }
 }
