@@ -93,9 +93,11 @@ the feedback period; they do not delay that delivery.
 
 ## Held By Owner
 
-- [ ] **Participation controls.** Await the user's choice between one participation
-  switch and distinct role permissions. The current member and moderator roles
-  grant the same capabilities. Hold only this role-model change.
+- [ ] **Role boundary.** Clarify the duplicate member/moderator controls with the
+  user. Their current shared gate also blocks viewing and listening while allowing
+  reactions; replacing it with an "Allow participation" switch was withdrawn.
+  Keep room admission and source-owner input consent separate. Hold role edits
+  pending agreement; other acceptance continues.
 
 - [ ] **Automatic room-voice exclusion from Native display sound.** Deferred
   from the first 3.0 internal test. Keep Browser playback; the
