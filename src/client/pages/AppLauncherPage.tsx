@@ -265,9 +265,9 @@ export function AppLauncherPage() {
   return (
     <div className="lr-app">
       <AppHeader homeHref="/client" diagnosticControl={appDebug === undefined ? null : (
-        <Btn icon={appDebug ? "arrowDown" : "cpu"} size="compact"
+        <Btn icon={appDebug ? "arrowDown" : "cpu"} size="compact" quiet
           title={appDebug ? "client.launch.debugExportHint" : "client.launch.debugHint"}
-          cap={appDebug ? "client.launch.debugExport" : undefined}
+          cap={appDebug ? "client.launch.debugExport" : "debug.start"}
           pressed={appDebug ? undefined : false} tone={appDebug ? "on" : undefined}
           hint={appDebug ? "hint-debug-export" : "debug-start"} busy={debugBusy}
           disabled={debugBusy || (!appDebug && (loading || error?.kind === "load"))}

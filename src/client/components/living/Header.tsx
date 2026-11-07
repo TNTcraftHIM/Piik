@@ -85,7 +85,7 @@ const webVersion = import.meta.env.VITE_PIIK_VERSION ?? "development";
 const webRelease = /^v\d+\.\d+\.\d+$/.test(webVersion)
   ? `https://github.com/TNTcraftHIM/Piik/releases/tag/${webVersion}` : null;
 
-function BrowserHelpContent({ active }: { active: boolean }) {
+function BrowserHelpContent({ active, diagnosticControl }: { active: boolean; diagnosticControl?: React.ReactNode }) {
   const { lang, vis, t } = useCopy();
   const guide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}troubleshooting.html`,
     `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/troubleshooting${lang === "zh" ? ".zh-CN" : ""}.md`, active);
@@ -101,13 +101,13 @@ function BrowserHelpContent({ active }: { active: boolean }) {
             <Glyph name="book" size={16} />{!vis && <span className="lr-cap">{t("help.troubleshooting")}</span>}
           </a>
         </Tooltip>
-        <BrowserDiagnosticsButton size="compact" quiet />
+        {diagnosticControl === undefined ? <BrowserDiagnosticsButton size="compact" quiet /> : diagnosticControl}
       </>}
     </nav>
   </div>;
 }
 
-function BrowserHelpMenu() {
+function BrowserHelpMenu({ diagnosticControl }: { diagnosticControl?: React.ReactNode }) {
   const { vis, t } = useCopy();
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -125,7 +125,7 @@ function BrowserHelpMenu() {
       className="lr-anchored-card lr-help-menu" onToggle={event => {
         if (event.target === event.currentTarget) setOpen(event.newState === "open");
       }}>
-      <BrowserHelpContent active={open} />
+      <BrowserHelpContent active={open} diagnosticControl={diagnosticControl} />
     </div>, document.body)}
   </>;
 }
@@ -198,7 +198,7 @@ export function HeaderControls({ diagnosticControl, appControl }: { diagnosticCo
             {themeButton}
           </Tooltip>
         </div>
-        {diagnosticControl === undefined ? compact ? <BrowserHelpContent active={open} /> : <BrowserHelpMenu /> : diagnosticControl}
+        {compact ? <BrowserHelpContent active={open} diagnosticControl={diagnosticControl} /> : <BrowserHelpMenu diagnosticControl={diagnosticControl} />}
       </div>
     </div>
   );
