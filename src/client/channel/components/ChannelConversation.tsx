@@ -5,6 +5,8 @@ import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import type { ChannelMessage, ChannelUser } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
+import { downloadBlob } from "../../lib/download";
+import { formatChatTranscript } from "../../lib/room-chat-export";
 import { ChannelAttachment } from "./ChannelAttachment";
 import { type AttachmentLimits, type DraftFile, type ChannelAttachments, fileSize } from "../attachments";
 import { ChannelRoomStart, type ChannelEntry } from "./ChannelRoomStart";
@@ -178,6 +180,17 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
     {roomId && <form className="c3-composer" onSubmit={event => { void send(event); }}
       onDragOver={event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
       onDrop={event => { event.preventDefault(); addFiles([...event.dataTransfer.files]); }}>
+      <ChannelAction icon="save" quiet iconOnly hint="hint-chat-export"
+        label={zh ? "导出当前已加载文字（TXT）" : "Export currently loaded text (TXT)"}
+        disabled={!messages.some(message => message.text)} onClick={() => {
+          const text = formatChatTranscript(messages.filter(message => message.text).map(message => ({
+            occurredAt: message.time,
+            sender: { displayName: users.find(user => user.id === message.userId)?.name ?? (zh ? "用户" : "User") },
+            payload: { kind: "chat" as const, text: message.text },
+          })));
+          downloadBlob(new Blob([text], { type: "text/plain;charset=utf-8" }),
+            `piik-chat-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`);
+        }} />
       {attachmentsAvailable && <><input ref={chooser} type="file" multiple hidden onChange={event => { addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ""; }} />
         <ChannelAction icon="plus" label={zh ? "添加文件" : "Add files"} iconOnly quiet hint="hint-file-add"
           disabled={!canSend || working || !limits} onClick={() => chooser.current?.click()} /></>}
