@@ -61,6 +61,17 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **2.x to 3.0 behavior parity.** Review routing/lifecycle, media/input and
+  App/room-data flows against their maintained 2.x behavior. Separate intended
+  model changes from missing capability and unnecessary complexity. Keep the
+  simple sharing mode on the same 3.0 core, preserving quick create/share/join
+  without requiring the full domain workspace.
+- [ ] **Playback and interaction parity.** Restore picture-in-picture/theater
+  viewing, the saved direct-touch/trackpad choice, detail-versus-motion preference,
+  picture chat overlays and readable chat export through the existing shared
+  components. Restore the launcher's last Local/public mode through its existing
+  preference owner. Check actual reachability; retained component files alone
+  do not provide these controls in the 3.0 room UI.
 - [ ] **3.0 room deletion feedback.** Internal testers cannot delete a room;
   the current UI and runtime implement settings and hosting pause, but no delete
   operation. Add an explicit room/domain-owner action through the existing
@@ -72,11 +83,21 @@ the feedback period; they do not delay that delivery.
   public/private access, a passphrase and resetting the invitation link. Reuse
   the current permission and settings owners; private-room settings and link
   rotation already exist, while domain invitation copying has no such controls.
+- [ ] **QR invitations.** Reuse the locally generated QR prototype on
+  `archive/deferred-prototypes` when integrating the invitation controls. Encode
+  the exact copied URL, including room/access fragments, and provide a scannable
+  image for sharing from a computer. No external QR service is needed.
 - [ ] **3.0 forwarding limits feedback.** Add the requested room default and
   per-endpoint override, allowing an endpoint's choice above or below the default.
   Use the room's existing base/publication planning owner and actual resource
   admission; distinguish logical fanout from physical pairs shared across rooms
   and sources. Keep this separate from transplanting 2.x route fields.
+- [ ] **Routing parity decisions.** Review the current domain-wide 20-endpoint
+  limit, which counts Browser and App separately, against the intended user
+  capacity. The current direct-source/helper trials cover fewer improvement
+  opportunities than 2.x, and its central-fallback and route-preference controls
+  are not equivalent. Choose required behavior with the accepted multi-source
+  model before extending existing admission and switch owners.
 - [ ] **3.0 capture settings feedback.** Make the existing Windows process-audio
   exclusion discoverable from sharing audio settings; it currently lives in the
   display source picker with source sound enabled. Restore capture-border control
@@ -113,8 +134,6 @@ the feedback period; they do not delay that delivery.
 - [ ] **iOS native App.** Paused in favor of Browser use. Preserve the isolated
   implementation on `feat/ios-client`; native development and publication stay
   outside the current phase.
-- [ ] **QR invitations.** Deferred from the maintenance release on 2026-10-24.
-  Keep the local QR implementation on `archive/deferred-prototypes` for later acceptance.
 - [ ] **Additional collaboration cursors.** Deferred by the owner. Keep the
   shared system mouse; do not add multi-cursor or pointer-ownership visualization.
 - [ ] **Persistent-loss estimator replacement.** Deferred on 2026-10-18.

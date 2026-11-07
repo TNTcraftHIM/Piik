@@ -1,6 +1,6 @@
 # Media Fidelity
 
-Reviewed 2026-11-01. [Media quality](../standards/media-quality.md) owns behavior;
+Reviewed 2026-11-07. [Media quality](../standards/media-quality.md) owns behavior;
 [TODO](../todo.md) owns remaining work. These synthetic checks do not establish
 all-device acceptance or full HDR support.
 
@@ -33,6 +33,23 @@ independently requires more than 20 dB decoded separation at all three bitrates.
 These checks support keeping the existing stereo path. They do not cover every
 physical source device, browser or acoustic setup, and do not establish surround
 sound support.
+
+### 3.0 Room Microphone
+
+With voice processing disabled, the shared microphone requests two channels and
+disables echo cancellation, noise suppression, automatic gain and voice isolation
+where supported. A controlled two-channel input through the production
+microphone graph, Browser transport and playback retained separate 500 Hz left
+and 1500 Hz right signals at the default 64 kbps; received separation was over
+53 dB on Chrome 152. The source was a synthetic WAV, not a physical microphone.
+
+The reported iOS/iPadOS mono input remains under investigation. WebKit's
+[microphone configuration](https://github.com/WebKit/WebKit/blob/ff77ff95a2e470c383e2b87fb1c78ee6a8c97caf/Source/WebCore/platform/mediastream/cocoa/CoreAudioCaptureUnit.cpp#L458)
+inherits its AudioUnit channel format; its capture capabilities do not expose
+`channelCount`. The open [stereo-capture issue](https://bugs.webkit.org/show_bug.cgi?id=210231)
+records this limitation. Determine the affected device's actual input channels
+before attributing mono content to Piik's mixer or Opus transport. Turning off
+voice processing does not turn a mono source into stereo.
 
 ## SDR Conversion
 
