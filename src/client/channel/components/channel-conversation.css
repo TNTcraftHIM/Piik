@@ -1,4 +1,4 @@
-.c3-conversation { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 16px; padding: 20px 24px; }
+.c3-conversation { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 16px; padding: 20px 24px; container: conversation / size; }
 .c3-conversation[hidden] { display: none; }
 .c3-workspace:not(.has-screens) .c3-conversation { width: 100%; max-width: 820px; margin-inline: auto; }
 .c3-workspace:not(.has-screens) .c3-chat-heading { display: none; }
@@ -52,5 +52,5 @@
 .c3-attachment small { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
 .c3-attachment > .lr-btn { justify-self: start; }
 .c3-attachment img { display: block; max-width: 100%; max-height: 260px; border-radius: 6px; object-fit: contain; }
-.c3-composer textarea { flex: 1; min-width: 0; width: 100%; border: 0; border-radius: 0; background: transparent; color: var(--ink); font: inherit; font-size: 14px; line-height: 1.6; padding: 7px 4px; min-height: 36px; max-height: 140px; resize: none; field-sizing: content; }
+.c3-composer textarea { flex: 1; min-width: 0; width: 100%; border: 0; border-radius: 0; background: transparent; color: var(--ink); font: inherit; font-size: 14px; line-height: 1.6; padding: 7px 4px; min-height: 36px; max-height: min(140px, 35cqb); resize: none; field-sizing: content; }
 .c3-composer textarea:focus { outline: 0; }
