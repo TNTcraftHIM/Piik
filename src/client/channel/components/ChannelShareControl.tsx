@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { CaptureSourcePicker, type NativeSourceList } from "../../components/living/CaptureSourcePicker";
-import { Btn } from "../../components/living/primitives";
+import { Btn, SwitchItem } from "../../components/living/primitives";
+import { LiveAudioExclusion } from "../../components/living/AudioExclusionSelect";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useCopy } from "../../ui/copy";
 import { SharingSettings } from "../../components/living/SharingSettings";
@@ -49,6 +50,7 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   const microphoneSettings = microphone?.requested ?? microphone;
   const microphonePending = !!sharing && channel.pending.has(`source-microphone:${sharing.id}`);
   const { sourceMicrophones } = channel;
+  const loadAudioApplications = useCallback(async () => (await nativeSources()).sources, [nativeSources]);
   const publicationId = sharing?.id;
   const loadMicrophones = useCallback(() => publicationId ? sourceMicrophones(publicationId) : Promise.resolve([]), [publicationId, sourceMicrophones]);
   const roomMicrophone = channel.state?.voice.some(voice => voice.sessionId === channel.sessionId && !voice.muted);
@@ -69,9 +71,9 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
     });
   }, [appConnected, nativeSources]);
   useEffect(() => {
-    if (open) refresh();
+    if (open || settingsOpen) refresh();
     return () => { request.current = null; };
-  }, [open, refresh]);
+  }, [open, settingsOpen, refresh]);
   useLayoutEffect(() => { close(); }, [roomId, disabled, close]);
   const start = (operation: () => Promise<void>) => {
     close();
@@ -111,6 +113,16 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
           <VideoCodecControl value={codecMode}
             disabled={disabled || busy || !!sharing || !!captureRequest} onChange={channel.setVideoCodecMode} /></>}
         audio={<>
+          {sharing && selectedNative?.current && selectedNative.target.kind === "display" && sources.kind === "ready" && sources.systemAudio && sources.processAudioExclusion &&
+            <div className="lr-door-group lr-source-audio-settings">
+              <SwitchItem checked={selectedNative.audio} label={t("host.sourcePicker.systemAudio")}
+                hint={selectedNative.audio ? "hint-stop-audio" : "hint-share-audio"}
+                disabled={disabled || busy || qualityPending || microphonePending || sharing.paused}
+                onChange={audio => { void startNativeScreen(roomId, selectedNative.target, audio, selectedNative.excludeAudio, selectedNative.showCaptureBorder).catch(() => {}); }} />
+              <LiveAudioExclusion load={loadAudioApplications} value={selectedNative.excludeAudio}
+                disabled={!selectedNative.audio || disabled || busy || qualityPending || microphonePending || sharing.paused}
+                onChange={excludeAudio => { void startNativeScreen(roomId, selectedNative.target, true, excludeAudio, selectedNative.showCaptureBorder).catch(() => {}); }} />
+            </div>}
           {sharing && microphone && microphoneSettings && <ShareMicrophoneSettings available={microphone.available}
             enabled={microphone.enabled} disabled={disabled || busy} busy={microphonePending} browser={microphone.browser}
             roomMicrophone={roomMicrophone} volume={microphoneSettings.volume} deviceId={microphoneSettings.deviceId}

@@ -108,7 +108,7 @@ export interface ChannelActions {
   nativeSources(): Promise<NativeCaptureSources>;
   nativePreview(target: NativeCaptureTarget, signal?: AbortSignal): Promise<string | null>;
   nativeCaptureRequest(roomId: string): NativeCaptureRequest | undefined;
-  nativeCaptureSelection(roomId: string): { audio: boolean; excludeAudio?: NativeCaptureTarget; showCaptureBorder: boolean } | undefined;
+  nativeCaptureSelection(roomId: string): { target: NativeCaptureTarget; audio: boolean; excludeAudio?: NativeCaptureTarget; showCaptureBorder: boolean; current: boolean } | undefined;
   startNativeScreen(roomId: string, target: NativeCaptureTarget, audio?: boolean, excludeAudio?: NativeCaptureTarget, showCaptureBorder?: boolean): Promise<void>;
   cancelScreenSelection(roomId: string): Promise<void>;
   stopScreen(publicationId: string): Promise<void>;

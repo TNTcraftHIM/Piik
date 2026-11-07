@@ -49,7 +49,7 @@ interface ScreenShare {
   requestedProfile?: QualityProfile;
   qualityChange?: Promise<void>;
   selection?: AbortController;
-  native?: { audio: boolean; excludeAudio?: NativeCaptureTarget; showCaptureBorder: boolean };
+  native?: { target: NativeCaptureTarget; audio: boolean; excludeAudio?: NativeCaptureTarget; showCaptureBorder: boolean };
 }
 
 function stored(key: string, value?: string): string | null {
@@ -1410,7 +1410,10 @@ export class ChannelSession {
   nativePreview = (target: NativeCaptureTarget, signal?: AbortSignal): Promise<string | null> =>
     this.app?.preview(target, signal) ?? Promise.resolve(null);
   nativeCaptureRequest = (roomId: string) => this.app?.captureRequest(roomId);
-  nativeCaptureSelection = (roomId: string) => this.screenShares.get(roomId)?.native;
+  nativeCaptureSelection = (roomId: string) => {
+    const share = this.screenShares.get(roomId);
+    return share?.native && { ...share.native, current: !this.local.has(share.id) && !!this.app?.screens.has(share.id) };
+  };
 
   sourceMicrophone = (publicationId: string) => {
     const share = [...this.screenShares.values()].find(share => share.id === publicationId);
@@ -1581,7 +1584,7 @@ export class ChannelSession {
   startNativeScreen = (roomId: string, target: NativeCaptureTarget, audio = false, excludeAudio?: NativeCaptureTarget, showCaptureBorder = false): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const { share, current } = this.selectScreen(roomId);
     const signal = share.selection!.signal;
-    const native = { audio, excludeAudio: target.kind === "display" ? excludeAudio : undefined, showCaptureBorder };
+    const native = { target, audio, excludeAudio: target.kind === "display" ? excludeAudio : undefined, showCaptureBorder };
     let app: ChannelApp | undefined;
     try {
       app = await this.connectApp();
