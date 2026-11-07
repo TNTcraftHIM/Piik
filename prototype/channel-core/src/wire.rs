@@ -1,7 +1,7 @@
 use base64ct::{Base64, Encoding};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -108,10 +108,6 @@ pub enum Command {
     RevokeRoomAccess {
         room_id: String,
         user_id: Uuid,
-    },
-    SetRoles {
-        user_id: Uuid,
-        roles: Vec<String>,
     },
     Publish {
         publication: PublicationInput,
@@ -618,17 +614,9 @@ pub enum FlowState {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-pub struct RoleInfo {
-    pub id: String,
-    pub name: String,
-    pub permissions: Vec<String>,
-}
-
-#[derive(Clone, Deserialize, Serialize)]
 pub struct UserInfo {
     pub id: Uuid,
     pub name: String,
-    pub roles: BTreeSet<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -640,7 +628,6 @@ pub struct ChannelInfo {
     pub icon: IdentityIcon,
     pub owner_id: Option<Uuid>,
     pub rooms: Vec<Room>,
-    pub roles: Vec<RoleInfo>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]

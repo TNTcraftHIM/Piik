@@ -17,7 +17,7 @@ window.runBrowserRoomCheck = async () => {
   const signer = await createSessionSigner(crypto.getRandomValues(new Uint8Array(32)));
   const peerSigner = await createSessionSigner(crypto.getRandomValues(new Uint8Array(32)));
   const signingKey = Array.from(signer.signing_key()), peerSigningKey = Array.from(peerSigner.signing_key());
-  const owner = { userId: crypto.randomUUID(), participates: true, domainOwner: false };
+  const owner = { userId: crypto.randomUUID(), domainOwner: false };
   const session = crypto.randomUUID(), connection = crypto.randomUUID();
   const peerSession = crypto.randomUUID(), peerMember = { ...owner, userId: crypto.randomUUID() };
   let bindingId = crypto.randomUUID();
@@ -313,17 +313,8 @@ window.runBrowserRoomCheck = async () => {
     const page = await host.dispatchPeer(peerPacket({ type: "history", before: null }), Date.now());
     check(page.length === 101 && page.slice(0, 100).every((reply, index) => String(reply.record.type) === (index % 2 ? "message_reactions" : "history_message"))
       && page[100].record.type === "history_end" && page[100].record.hasMore, "history returns shared typed records and one end marker");
-    peerMember.participates = false;
-    await host.dispatch({ now: Date.now(), bindingId, hostSessionId: session, revision: ++revision, endpoints, action: { type: "sync" } });
-    const denied = await host.dispatchPeer(peerPacket({ type: "chat", text: "Not allowed", nonce: "peer-denied", attachments: [] }), Date.now());
-    check(denied.length === 1 && denied[0].record.type === "error" && denied[0].record.code === "forbidden", "current domain write permission controls signed peer sends");
-    const readable = await host.dispatchPeer(peerPacket({ type: "history", before: null }), Date.now());
-    check(readable.at(-1)?.record.type === "history_end", "losing write permission preserves permitted history reads");
-    const readOnlyReaction = await react("laugh", true);
-    check(readOnlyReaction.type === "reaction_confirmed" && !readOnlyReaction.changed,
-      "room access permits the existing user's reaction independently of chat write permission");
     const ready = JSON.parse(JSON.stringify(await host.dispatchPeer(peerPacket({ type: "interaction_ready" }), 1000)));
-    check(ready[0].record.type === "interaction_ready" && ready[0].record.serverTime === 1000 && ready[0].record.reactionIds.includes("wave"), "read-only participant initializes interaction time and reactions");
+    check(ready[0].record.type === "interaction_ready" && ready[0].record.serverTime === 1000 && ready[0].record.reactionIds.includes("wave"), "admitted participant initializes interaction time and reactions");
     const interactionPacket = peerPacket({ type: "interaction", reaction: "wave", targetUserId: owner.userId });
     const interaction = JSON.parse(JSON.stringify(await host.dispatchPeer(interactionPacket, 2000)));
     check(interaction[0].record.type === "interaction" && interaction[0].record.senderUserId === peerMember.userId
@@ -335,8 +326,6 @@ window.runBrowserRoomCheck = async () => {
     const afterInteraction = await host.dispatchPeer(peerPacket({ type: "history", before: null }), 3000);
     check(JSON.stringify(afterInteraction.map(reply => reply.record)) === JSON.stringify(page.map(reply => reply.record)), "immediate interaction does not add retained history");
 
-    peerMember.participates = true;
-    await bindHost();
     const snapshot = await host.snapshot(), rows: BackupHistoryRow[] = [];
     const savedPolicy = snapshot.policy;
     try {
@@ -496,7 +485,7 @@ window.runBrowserRoomCheck = async () => {
       reopen: true, abortAfterInsertSuccess: insertSucceeded, abortConfirmed: false, unavailableSourceRejected: true, missingAttachmentRejected: true,
       latest: latest.messages.length, older: older.messages.length, beforeZero: true, versionChangeClearsPending: true,
       bindingWriteOwner: true, lateBindingClaim: true, sameBindingActivity: true, privateRoomProjection: true, privateInvitationGrant: true, restoredWithoutCapture: true,
-      signedPeerHistory: true, signedPeerPermission: true, immediateReadPermission: true, immediateBindingFence: true, immediateNotHistory: true,
+      signedPeerHistory: true, signedPeerIdentity: true, immediateAdmission: true, immediateBindingFence: true, immediateNotHistory: true,
       retainedReactions: true, independentUserChoices: true, reactionAbortAfterPutSuccess: reactionWriteSucceeded,
       identityImage: true, identityPngFallback: true, identityAbortAfterPutSuccess: true, identityPresetReplacement: true,
       previousSchemaPreserved: true,

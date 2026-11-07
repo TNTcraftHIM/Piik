@@ -77,8 +77,8 @@ the feedback period; they do not delay that delivery.
   and Linux hardware encoding and physical sound. Retain the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-- [ ] **Entry presentation.** Restore the App terminal's useful presentation
-  and review the prepared website/help wording for joining a friend's room.
+- [ ] **Website entry wording.** Review the prepared website/help wording for
+  joining a friend's room.
 - [ ] **Native H264 scene-change latency.** Reduce encoded bursts while
   preserving low-rate startup and live bitrate restoration. Keep CBR; the
   [encoder assessment](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)
@@ -92,12 +92,6 @@ the feedback period; they do not delay that delivery.
   the existing [headline contract](./standards/versioning.md#release-notes).
 
 ## Held By Owner
-
-- [ ] **Role boundary.** Clarify the duplicate member/moderator controls with the
-  user. Their current shared gate also blocks viewing and listening while allowing
-  reactions; replacing it with an "Allow participation" switch was withdrawn.
-  Keep room admission and source-owner input consent separate. Hold role edits
-  pending agreement; other acceptance continues.
 
 - [ ] **Automatic room-voice exclusion from Native display sound.** Deferred
   from the first 3.0 internal test. Keep Browser playback; the

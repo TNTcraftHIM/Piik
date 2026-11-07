@@ -9,26 +9,22 @@ import { ChannelUser } from "./ChannelUser";
 export function ChannelPeople({ channel, roomId, onBack }: { channel: ChannelController; roomId: string; onBack(): void }) {
   const { lang } = useCopy();
   const zh = lang === "zh";
-  const { state, self, pending, connection } = channel;
+  const { state, self } = channel;
   const online = new Set(state?.sessions.filter(session => session.online).map(session => session.userId));
   const listeningUsers = new Set(listeningVoicePublications(state, channel.sessionId, channel.streams).map(publication => publication.userId));
-  const isOwner = self?.id === state?.channel.ownerId;
-  const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
   const row = (user: User) => {
     const sharing = state?.publications.some(publication => publication.userId === user.id && publication.kind === "screen");
     const voice = state ? voiceAppearance(state, user.id, roomId) : undefined;
     const playback = channel.voicePlaybackByUser.get(user.id) ?? { volume: 1, muted: false };
     return <ChannelUser key={user.id} id={user.id} name={user.name} self={user.id === self?.id}
-      owner={user.id === state?.channel.ownerId} roles={user.roles} online={online.has(user.id)}
+      owner={user.id === state?.channel.ownerId} online={online.has(user.id)}
       voice={voice}
       actions={listeningUsers.has(user.id) && user.id !== self?.id && <AudioVolumeMenu volume={playback.volume}
         onVolume={volume => channel.setVoiceVolume(user.id, volume)} label="voice.personVolume" icon="speaker" heading={user.name}>
         <Btn icon={playback.muted ? "speakerOff" : "speaker"} size="dense" quiet title="voice.listenPerson"
           pressed={!playback.muted} onClick={() => channel.setVoiceMuted(user.id, !playback.muted)} />
       </AudioVolumeMenu>}
-      activity={sharing ? (zh ? "正在分享画面" : "Sharing a screen") : undefined}
-      rolesDisabled={connection !== "connected" || pending.has(`roles:${user.id}`)} availableRoles={state?.channel.roles}
-      onRoles={isOwner ? roles => run(channel.setRoles(user.id, roles)) : undefined} />;
+      activity={sharing ? (zh ? "正在分享画面" : "Sharing a screen") : undefined} />;
   };
   const users = state?.users ?? [];
   const offline = users.filter(user => !online.has(user.id));

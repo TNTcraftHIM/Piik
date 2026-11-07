@@ -2,7 +2,7 @@ use crate::access::digest;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 pub const RECOVERY_MS: u64 = 20_000;
@@ -16,7 +16,6 @@ pub struct User {
     pub name: String,
     #[serde(skip)]
     pub owner: bool,
-    pub roles: BTreeSet<String>,
     #[serde(skip)]
     credential: [u8; 32],
 }
@@ -64,7 +63,6 @@ pub struct Admitted {
 #[serde(rename_all = "camelCase")]
 pub struct Member {
     pub user_id: Uuid,
-    pub participates: bool,
     pub domain_owner: bool,
 }
 
@@ -81,7 +79,6 @@ impl Identity {
         let user = self.users.get(&user_id).ok_or("invalid_credential")?;
         Ok(Member {
             user_id,
-            participates: self.may_participate(user_id),
             domain_owner: user.owner,
         })
     }
@@ -175,7 +172,6 @@ impl Identity {
             id: user_id,
             name: name.to_owned(),
             owner,
-            roles: BTreeSet::from(["member".to_owned()]),
             credential: digest(&credential),
         });
         if owner {
@@ -221,7 +217,6 @@ impl Identity {
             .map(|u| StoredUser {
                 id: u.id,
                 name: u.name.clone(),
-                roles: u.roles.clone(),
                 credential: u.credential,
             })
             .collect()
@@ -245,7 +240,6 @@ impl Identity {
                         id: u.id,
                         name: u.name,
                         owner: u.id == owner_id,
-                        roles: u.roles,
                         credential: u.credential,
                     },
                 )
@@ -281,31 +275,6 @@ impl Identity {
             .map(|session| session.id)
             .collect()
     }
-
-    pub fn assign_roles(
-        &mut self,
-        actor: Uuid,
-        target: Uuid,
-        roles: BTreeSet<String>,
-    ) -> Result<(), &'static str> {
-        if !self.users.get(&actor).is_some_and(|user| user.owner) {
-            return Err("forbidden");
-        }
-        if roles
-            .iter()
-            .any(|role| role != "member" && role != "moderator")
-        {
-            return Err("unknown_role");
-        }
-        self.users.get_mut(&target).ok_or("unknown_user")?.roles = roles;
-        Ok(())
-    }
-
-    pub fn may_participate(&self, user_id: Uuid) -> bool {
-        self.users.get(&user_id).is_some_and(|user| {
-            user.owner || user.roles.contains("member") || user.roles.contains("moderator")
-        })
-    }
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -313,7 +282,6 @@ impl Identity {
 pub struct StoredUser {
     pub id: Uuid,
     pub name: String,
-    pub roles: BTreeSet<String>,
     pub credential: [u8; 32],
 }
 
@@ -425,7 +393,7 @@ mod tests {
     }
 
     #[test]
-    fn owner_is_not_an_exclusive_activity_role_and_only_owner_assigns_roles() {
+    fn legacy_user_records_normalize_without_losing_identity_or_credentials() {
         let mut identity = Identity::new("owner".into(), "invite".into());
         let owner = identity
             .admit(input(Some("owner"), None, None), Uuid::new_v4(), 0)
@@ -433,21 +401,28 @@ mod tests {
         let friend = identity
             .admit(input(Some("invite"), None, None), Uuid::new_v4(), 0)
             .unwrap();
-        assert!(identity
-            .assign_roles(friend.user_id, owner.user_id, BTreeSet::new())
-            .is_err());
-        identity
-            .assign_roles(
-                owner.user_id,
-                friend.user_id,
-                BTreeSet::from(["member".into(), "moderator".into()]),
-            )
+        let before = serde_json::to_value(identity.export_users()).unwrap();
+        let mut legacy = before.clone();
+        for user in legacy.as_array_mut().unwrap() {
+            user["roles"] = serde_json::json!([]);
+        }
+        let mut restored = Identity::new("owner".into(), "invite".into());
+        restored
+            .restore_users(owner.user_id, serde_json::from_value(legacy).unwrap())
             .unwrap();
-        assert!(identity.may_participate(owner.user_id));
-        assert!(identity.may_participate(friend.user_id));
-        identity
-            .assign_roles(owner.user_id, friend.user_id, BTreeSet::new())
-            .unwrap();
-        assert!(!identity.may_participate(friend.user_id));
+        assert_eq!(
+            serde_json::to_value(restored.export_users()).unwrap(),
+            before
+        );
+        assert_eq!(
+            restored.user_for_credential(&owner.credential),
+            Some(owner.user_id)
+        );
+        assert_eq!(
+            restored.user_for_credential(&friend.credential),
+            Some(friend.user_id)
+        );
+        assert!(restored.member(owner.user_id).unwrap().domain_owner);
+        assert!(!restored.member(friend.user_id).unwrap().domain_owner);
     }
 }

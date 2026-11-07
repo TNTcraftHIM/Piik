@@ -151,8 +151,7 @@ impl Authority {
             | Command::UpdateDomain { .. }
             | Command::CreateRoom { .. }
             | Command::AdmitRoom { .. }
-            | Command::DeleteRoom { .. }
-            | Command::SetRoles { .. } => true,
+            | Command::DeleteRoom { .. } => true,
             _ => false,
         }
     }
@@ -359,7 +358,7 @@ impl Authority {
             }
             return effects;
         }
-        let sync_hosts = matches!(request.command, Command::SetRoles { .. } | Command::Leave);
+        let sync_hosts = matches!(request.command, Command::Leave);
         match self.channel.handle(session_id, request.command, now) {
             Ok(outcome) => {
                 for (room, binding, reply) in outcome.replies {

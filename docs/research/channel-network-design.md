@@ -27,16 +27,15 @@ shared file delivery on those same paths. Browser and Native room owners run the
 shared Rust core with local confirmation/storage. Their base paths carry authenticated
 chat/history, voice and verified file ranges; TODO owns remaining route and platform integration.
 
-## Terminology And Roles
+## Terminology And Responsibilities
 
 | English | Chinese | Meaning |
 | --- | --- | --- |
 | User | 用户 | Every participant, including domain owners, room owners and sharers. |
-| Domain | 域 | The top-level container for users, roles and rooms; named `Channel` in the current code. |
-| Domain owner | 域主 | The user operating the channel's directory, membership and role authority. |
+| Domain | 域 | The top-level container for users and rooms; named `Channel` in the current code. |
+| Domain owner | 域主 | The user operating the channel's directory and admission. |
 | Room | 房间 | A conversation, history and media scope within a channel. |
 | Room owner | 房主 | The user operating that room's state, management and base distribution network. |
-| Role | 身份组 | A domain-scoped permission group; a user may have several roles. |
 | Sharer | 分享者 | The user originating a particular screen, voice publication or file offer. |
 
 Management identities and activities overlap. A room owner can share, watch or
@@ -54,16 +53,17 @@ transfer of its operation and saved state; automatic takeover is not selected.
 
 | Owner | Its authoritative state and work |
 | --- | --- |
-| Domain runtime | Domain identity, users, roles, room-to-owner bindings and authorized room-directory summaries; initial contact and signaling rendezvous. |
+| Domain runtime | Domain identity, users, room-to-owner bindings and authorized room-directory summaries; initial contact and signaling rendezvous. |
 | Room runtime, operated by its room owner | Detailed room metadata, room admission and grants, confirmed conversation, file descriptions/available holders, base-tree planning and screen-route scheduling. |
 | Participant runtime | Local captures, playback, file copies and the actual peer transports/forwarding work it has admitted. |
 
 The domain directory is a projection of room details. It does not become a
-second writer of the room name, private-room policy or history. Domain membership
-and role policy place the upper bound on access; the room runtime applies its
-room policy within that bound. Removing global membership cannot be overridden
-by a local room grant. Use the same typed permission rules and authenticated
-identity facts across both scopes, rather than unrelated permission engines.
+second writer of the room name, private-room policy or history. Admitted domain
+users may create and manage their own rooms. Room admission permits conversation,
+voice, sharing, watching and interactions without additional role groups or
+participation switches. The domain owner manages the domain and its rooms;
+room owners manage their own rooms. Source owners separately consent to remote
+input. These scopes use the shared authenticated identity and room-access rules.
 
 Directory visibility and access remain separate. Public rooms admit channel
 users; private rooms require their room admission. Hidden private rooms expose
@@ -110,7 +110,7 @@ Successful room actions are acknowledged after the domain has installed a
 projection covering that turn. Until then, the existing pending request retains
 its result; explicit failures do not wait for a projection.
 Confirmation follows the requester's current session and permission facts;
-another participant leaving or changing roles cannot invalidate it. Invitation
+another participant leaving cannot invalidate it. Invitation
 verification follows the invited user's known permissions, not an online-session
 requirement for someone who has not joined yet.
 The [room-data model](./channel-storage-and-identity.md) owns persistence, chat

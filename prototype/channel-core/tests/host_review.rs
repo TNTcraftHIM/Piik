@@ -8,131 +8,118 @@ use uuid::Uuid;
 
 #[test]
 fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints() {
-    for remove_session in [true, false] {
-        let owner = Member {
-            user_id: Uuid::new_v4(),
-            participates: true,
-            domain_owner: false,
-        };
-        let viewer = Member {
-            user_id: Uuid::new_v4(),
-            participates: true,
-            domain_owner: true,
-        };
-        let publisher = Uuid::new_v4();
-        let reader = Uuid::new_v4();
-        let publication = Uuid::new_v4();
-        let binding = Uuid::new_v4();
-        let mut endpoints = BTreeMap::from([
-            (
-                publisher,
-                Endpoint {
-                    member: owner,
-                    connected: true,
-                    signing_key: piik_channel_core::conversation::SessionSigner::from_seed([1; 32])
-                        .signing_key(),
+    let owner = Member {
+        user_id: Uuid::new_v4(),
+        domain_owner: false,
+    };
+    let viewer = Member {
+        user_id: Uuid::new_v4(),
+        domain_owner: true,
+    };
+    let publisher = Uuid::new_v4();
+    let reader = Uuid::new_v4();
+    let publication = Uuid::new_v4();
+    let binding = Uuid::new_v4();
+    let mut endpoints = BTreeMap::from([
+        (
+            publisher,
+            Endpoint {
+                member: owner,
+                connected: true,
+                signing_key: piik_channel_core::conversation::SessionSigner::from_seed([1; 32])
+                    .signing_key(),
+            },
+        ),
+        (
+            reader,
+            Endpoint {
+                member: viewer,
+                connected: true,
+                signing_key: piik_channel_core::conversation::SessionSigner::from_seed([2; 32])
+                    .signing_key(),
+            },
+        ),
+    ]);
+    let mut host = RoomHost::new(
+        RoomState::new(
+            "review".into(),
+            "Review".into(),
+            Default::default(),
+            owner.user_id,
+            RoomAccess::Public,
+            false,
+            None,
+        )
+        .unwrap(),
+    );
+    let context = |session_id| RequestContext {
+        connection: Uuid::new_v4(),
+        session_id,
+        request_id: None,
+        now: 0,
+    };
+    host.dispatch(HostInput {
+        now: 0,
+        binding_id: binding,
+        host_session_id: publisher,
+        revision: 1,
+        endpoints: endpoints.clone(),
+        action: HostAction::Command {
+            context: context(publisher),
+            command: Command::Publish {
+                publication: PublicationInput {
+                    id: publication,
+                    room_id: "review".into(),
+                    kind: Kind::Screen,
+                    video_ceiling: Some(VideoCeiling {
+                        resolution: VideoResolution {
+                            width: 1280,
+                            height: 720,
+                        },
+                        max_framerate: 29.97,
+                        max_bitrate: 2500000,
+                    }),
                 },
-            ),
-            (
-                reader,
-                Endpoint {
-                    member: viewer,
-                    connected: true,
-                    signing_key: piik_channel_core::conversation::SessionSigner::from_seed([2; 32])
-                        .signing_key(),
-                },
-            ),
-        ]);
-        let mut host = RoomHost::new(
-            RoomState::new(
-                "review".into(),
-                "Review".into(),
-                Default::default(),
-                owner.user_id,
-                RoomAccess::Public,
-                false,
-                None,
-            )
-            .unwrap(),
-        );
-        let context = |session_id| RequestContext {
-            connection: Uuid::new_v4(),
-            session_id,
-            request_id: None,
-            now: 0,
-        };
-        host.dispatch(HostInput {
+            },
+        },
+    })
+    .unwrap();
+    assert_eq!(
+        host.finish(None).unwrap().projection.views[&reader]
+            .publications
+            .len(),
+        1
+    );
+    endpoints.remove(&publisher);
+    let work = host
+        .dispatch(HostInput {
             now: 0,
             binding_id: binding,
             host_session_id: publisher,
-            revision: 1,
-            endpoints: endpoints.clone(),
+            revision: 2,
+            endpoints,
             action: HostAction::Command {
-                context: context(publisher),
-                command: Command::Publish {
-                    publication: PublicationInput {
-                        id: publication,
-                        room_id: "review".into(),
-                        kind: Kind::Screen,
-                        video_ceiling: Some(VideoCeiling {
-                            resolution: VideoResolution {
-                                width: 1280,
-                                height: 720,
-                            },
-                            max_framerate: 29.97,
-                            max_bitrate: 2500000,
-                        }),
-                    },
+                context: context(reader),
+                command: Command::UpdateRoom {
+                    room_id: "review".into(),
+                    name: "Updated".into(),
+                    icon: Default::default(),
+                    access: RoomAccess::Public,
+                    hidden: false,
+                    password: None,
+                    voice_bitrate: None,
+                    relay_capacity: None,
                 },
             },
         })
         .unwrap();
-        assert_eq!(
-            host.finish(None).unwrap().projection.views[&reader]
-                .publications
-                .len(),
-            1
-        );
-        if remove_session {
-            endpoints.remove(&publisher);
-        } else {
-            endpoints.get_mut(&publisher).unwrap().member.participates = false;
-        }
-        let work = host
-            .dispatch(HostInput {
-                now: 0,
-                binding_id: binding,
-                host_session_id: publisher,
-                revision: 2,
-                endpoints,
-                action: HostAction::Command {
-                    context: context(reader),
-                    command: Command::UpdateRoom {
-                        room_id: "review".into(),
-                        name: "Updated".into(),
-                        icon: Default::default(),
-                        access: RoomAccess::Public,
-                        hidden: false,
-                        password: None,
-                        voice_bitrate: None,
-                        relay_capacity: None,
-                    },
-                },
-            })
-            .unwrap();
-        assert!(work.policy.is_some());
-        let output = host.abort("storage_failed".into()).unwrap();
-        assert!(
-            output.projection.views[&reader].publications.is_empty(),
-            "storage failure restored {} publisher's retired activity",
-            if remove_session {
-                "expired"
-            } else {
-                "role-revoked"
-            }
-        );
-        assert!(output.projection.flows.is_empty());
-    }
+    assert!(work.policy.is_some());
+    let output = host.abort("storage_failed".into()).unwrap();
+    assert!(
+        output.projection.views[&reader].publications.is_empty(),
+        "storage failure restored the expired publisher's retired activity"
+    );
+    assert!(output.projection.flows.is_empty());
 }
 
 fn review_admit(core: &mut piik_channel_core::Authority, connection: Uuid, key: &str) -> Uuid {

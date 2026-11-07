@@ -353,7 +353,6 @@ mod tests {
     fn authorized_entry_projects_a_new_endpoint_without_a_policy_write() {
         let owner = Member {
             user_id: Uuid::new_v4(),
-            participates: true,
             domain_owner: false,
         };
         let friend = Member {
@@ -426,7 +425,6 @@ mod tests {
     fn forwarding_a_room_update_preserves_omitted_password_and_explicit_removal() {
         let owner = Member {
             user_id: Uuid::new_v4(),
-            participates: true,
             domain_owner: false,
         };
         let session = Uuid::new_v4();
@@ -491,7 +489,6 @@ mod tests {
     fn room_voice_bitrate_requires_manage_and_rejects_invalid_without_policy_changes() {
         let owner = Member {
             user_id: Uuid::new_v4(),
-            participates: true,
             domain_owner: false,
         };
         let other = Member {

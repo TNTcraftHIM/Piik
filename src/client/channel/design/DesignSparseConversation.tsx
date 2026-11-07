@@ -13,7 +13,7 @@ export function DesignSparseConversation({ roomId, roomName, people, few, copy }
 }) {
   const [attachments] = useState(() => new ChannelAttachments(unavailable, unavailable));
   const users = people.map(index => ({ id: designPeople[index].id,
-    name: copy(designPeople[index].name, designPeople[index].english), roles: [] }));
+    name: copy(designPeople[index].name, designPeople[index].english) }));
   const [started] = useState(Date.now);
   const [sent, setSent] = useState<ChannelMessage[]>([]);
   const [reactions, setReactions] = useState<Record<string, MessageReactions>>({});
@@ -31,7 +31,7 @@ export function DesignSparseConversation({ roomId, roomName, people, few, copy }
       const key = `${roomId}:${message.id}`;
       setReactions(previous => ({ ...previous, [key]: setDesignMessageReaction(previous[key], designPeople[3].id, reaction, active) }));
     }}
-    entry={{ kind: "domain", canCreate: true }} canSend={!!roomId} sending={false} hidden={false}
+    entry={{ kind: "domain" }} canSend={!!roomId} sending={false} hidden={false}
     attachments={attachments} attachmentsAvailable={false} available={true}
     history={{ hasMore: false, atLatest: true }} loadingHistory={false}
     onHistory={unavailable} onLatest={unavailable} onSend={async (_room, text) => {

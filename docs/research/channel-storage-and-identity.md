@@ -16,7 +16,7 @@ arrangement adds a storage server, a second application or a configuration task.
 
 | Information | Authoritative owner and copies |
 | --- | --- |
-| Domain identity, users, roles and room-to-owner binding | Domain runtime's durable data. Clients and room runtimes receive authorized identity facts. |
+| Domain identity, users and room-to-owner binding | Domain runtime's durable data. Clients and room runtimes receive authorized identity facts. |
 | Room name, icon, access and grants | Room runtime's durable data. The domain directory holds only its authorized summary. |
 | Identity images | Small retained metadata at their domain or room owner; independent of the uploader's live session. The directory carries the authorized room summary. |
 | Messages and attachment descriptions | Confirmed history at the room runtime; participants may keep readable local copies. |

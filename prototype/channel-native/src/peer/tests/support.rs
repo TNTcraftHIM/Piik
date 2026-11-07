@@ -588,7 +588,6 @@ pub(in crate::peer) fn message(tag: &str) -> Result<(Vec<u8>, MessageScope)> {
             name: "Transport check".into(),
             icon: Default::default(),
             owner_id: None,
-            roles: vec![],
             rooms: vec![Room {
                 id: "transport-check".into(),
                 name: "Transport check".into(),

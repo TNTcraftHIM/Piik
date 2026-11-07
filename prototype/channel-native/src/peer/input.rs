@@ -358,7 +358,6 @@ mod tests {
                 icon: Default::default(),
                 owner_id: None,
                 rooms: vec![],
-                roles: vec![],
             },
             users: vec![],
             sessions: vec![SessionInfo {

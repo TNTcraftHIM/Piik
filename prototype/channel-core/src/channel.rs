@@ -122,14 +122,6 @@ impl Channel {
             | Command::DeleteRoom { .. }
             | Command::HostOutput { .. }
             | Command::HostStop { .. } => return Err("invalid_request"),
-            Command::SetRoles {
-                user_id: target,
-                roles,
-            } => {
-                self.identity
-                    .assign_roles(user_id, target, roles.into_iter().collect())?;
-                broadcast = true;
-            }
             Command::Signal {
                 pair_id,
                 mut payload,
@@ -312,16 +304,10 @@ impl Channel {
                         file.downstream
                             .retain(|peer| readable_sessions.contains(peer));
                     }
-                    view.publications.retain(|p| {
-                        endpoints
-                            .get(&p.session_id)
-                            .is_some_and(|e| e.member.participates)
-                    });
-                    view.voice.retain(|v| {
-                        endpoints
-                            .get(&v.session_id)
-                            .is_some_and(|e| e.member.participates)
-                    });
+                    view.publications
+                        .retain(|p| readable_sessions.contains(&p.session_id));
+                    view.voice
+                        .retain(|v| readable_sessions.contains(&v.session_id));
                     view.subscriptions
                         .retain(|id| view.publications.iter().any(|p| p.id == *id));
                 }
@@ -375,10 +361,7 @@ impl Channel {
     }
 
     fn input_source(&self, controller: Uuid, publication: Uuid, flow: Uuid) -> Option<Uuid> {
-        let session = self.identity.sessions.get(&controller)?;
-        if !self.identity.member(session.user_id).ok()?.participates {
-            return None;
-        }
+        self.identity.sessions.get(&controller)?;
         self.remote
             .values()
             .filter(|room| room.binding.is_some())
@@ -579,9 +562,6 @@ impl Channel {
         let member = self
             .identity
             .member(self.identity.sessions[&session].user_id)?;
-        if !member.participates {
-            return Err("forbidden");
-        }
         room.id = Uuid::new_v4().to_string();
         room.creator_id = member.user_id;
         self.insert_room(room.clone())?;
@@ -992,9 +972,9 @@ impl Channel {
             for publication in &view.publications {
                 if validate_video_ceiling(publication.kind, publication.video_ceiling).is_err()
                     || publication.room_id != id
-                    || !endpoints.get(&publication.session_id).is_some_and(|e| {
-                        e.member.user_id == publication.user_id && e.member.participates
-                    })
+                    || !endpoints
+                        .get(&publication.session_id)
+                        .is_some_and(|e| e.member.user_id == publication.user_id)
                     || self.remote.iter().any(|(other_id, other)| {
                         other_id != id
                             && other.projection.as_ref().is_some_and(|p| {
@@ -1404,22 +1384,6 @@ impl Channel {
                 icon: self.icon.clone(),
                 owner_id: Some(self.identity.owner_id),
                 rooms,
-                roles: vec![
-                    RoleInfo {
-                        id: "member".into(),
-                        name: "Member".into(),
-                        permissions: ["chat", "publish", "subscribe", "voice", "create_room"]
-                            .map(String::from)
-                            .into(),
-                    },
-                    RoleInfo {
-                        id: "moderator".into(),
-                        name: "Moderator".into(),
-                        permissions: ["chat", "publish", "subscribe", "voice", "create_room"]
-                            .map(String::from)
-                            .into(),
-                    },
-                ],
             },
             users: self
                 .identity
@@ -1428,7 +1392,6 @@ impl Channel {
                 .map(|user| UserInfo {
                     id: user.id,
                     name: user.name.clone(),
-                    roles: user.roles.clone(),
                 })
                 .collect(),
             sessions: self

@@ -11,7 +11,6 @@ use uuid::Uuid;
 #[derive(Clone, Copy)]
 pub enum RoomPermission {
     Read,
-    Write,
     Manage,
 }
 

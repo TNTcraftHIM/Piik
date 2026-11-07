@@ -63,8 +63,6 @@ export function ChannelPreviewPage() {
   };
   const connected = connection === "connected";
   const owner = !!self && state?.channel.ownerId === self.id;
-  const permissions = new Set(state?.channel.roles.filter(role => self?.roles.includes(role.id)).flatMap(role => role.permissions));
-  const can = (permission: string) => owner || permissions.has(permission);
   const busy = (action: string, id?: string) => pending.has(action) || pending.has(`${action}:${id}`);
   const publications = state?.publications ?? [];
   const screens = publications.filter(value => value.kind === "screen");
@@ -116,8 +114,10 @@ export function ChannelPreviewPage() {
     ? copy("需要有效邀请。请打开域主提供的完整邀请链接。", "A valid invitation is required. Open the full link from the domain owner.")
     : channel.error === "session_expired"
       ? copy("连接超时，采集已停止。重新连接后可再次分享或加入语音。", "Connection timed out. Capture stopped. Reconnect to share or join voice again.")
-    : /permission|forbidden|denied|notallowed/i.test(channel.error)
-      ? copy("未获允许。请检查身份组及浏览器的采集权限。", "Permission was declined. Check your roles and browser capture permission.")
+    : channel.error === "forbidden"
+      ? copy("此操作需要由负责人完成。", "This action needs to be performed by its owner.")
+    : /permission|denied|notallowed/i.test(channel.error)
+      ? copy("设备访问未获允许，请检查浏览器或系统设置。", "Device access was declined. Check browser or system settings.")
     : /room_(path_unavailable|delivery_unavailable|unavailable|control_busy)|peer_data_unavailable|data_channel_(unavailable|busy)|request_timeout/.test(channel.error)
       ? copy("房间通信未能完成，请重试。", "Room communication did not complete. Please try again.")
     : channel.error === "incomplete_history"
@@ -172,7 +172,7 @@ export function ChannelPreviewPage() {
         </label>}
         <div className={`c3-room-navigation${!rooms.length ? " is-empty" : ""}`}>
           <div className="c3-section-label"><span className="c3-section-caption">{copy("房间", "Rooms")}</span>
-            {can("create_room") && <ChannelRoomControls channel={channel} onCreated={selectRoom} />}
+            {self && <ChannelRoomControls channel={channel} onCreated={selectRoom} />}
           </div>
           <nav className="c3-rooms" aria-label={copy("房间", "Rooms")}>
             {rooms.map(value => {
@@ -211,8 +211,8 @@ export function ChannelPreviewPage() {
             {(room?.authorized || room?.canManage) && <ChannelRoomControls key={`controls:${room.id}`} channel={channel} room={room} />}
           </div>
           <div className="c3-room-actions">
-            {room?.authorized && <><ChannelShareControl channel={channel} roomId={roomId} disabled={!connected || !room.available || !can("publish")} />
-              <ChannelJoinVoice joined={joined} disabled={!connected || !room.available || !can("voice")} busy={busy("voice", roomId)}
+            {room?.authorized && <><ChannelShareControl channel={channel} roomId={roomId} disabled={!connected || !room.available} />
+              <ChannelJoinVoice joined={joined} disabled={!connected || !room.available} busy={busy("voice", roomId)}
                 onJoin={listenOnly => run(channel.joinVoice(roomId, listenOnly).then(() => setVoiceFocus(roomId)))} /></>}
           </div>
           <div className="c3-room-tools">
@@ -224,8 +224,8 @@ export function ChannelPreviewPage() {
                 floating={toolSurface.open} selfUserId={self?.id ?? null} session={channel.interactionsByRoom.get(roomId) ?? null} />}
               conversation={<>{room && !room.authorized && <ChannelRoomEntry key={room.id} channel={channel} room={room} />}
                 <ChannelConversation roomId={roomId} roomName={room?.name ?? ""} roomIcon={room?.icon} messages={channel.messagesByRoom[roomId] ?? []}
-                users={state?.users ?? []} selfUserId={self?.id ?? null} entry={self ? { kind: "domain", canCreate: can("create_room") } : { kind: "entry" }}
-                canSend={connected && !!room?.authorized && room.available && can("chat")} sending={busy("chat", roomId)}
+                users={state?.users ?? []} selfUserId={self?.id ?? null} entry={self ? { kind: "domain" } : { kind: "entry" }}
+                canSend={connected && !!room?.authorized && room.available} sending={busy("chat", roomId)}
                 attachments={channel.attachments} attachmentsAvailable={room?.capabilities.attachments ?? false} available={connected && !!room?.authorized && room.available}
                 history={channel.historyByRoom[roomId]} loadingHistory={busy("history", roomId)}
                 onHistory={channel.loadHistory} onLatest={channel.loadLatestHistory}
@@ -249,8 +249,6 @@ export function ChannelPreviewPage() {
         </div>}
         {room && !room.available && <div className="c3-notice" role="status"><Glyph name="couch" size={20} />
           <span>{copy("房间暂不可用，请等待恢复托管。", "This room is unavailable. Wait for hosting to resume.")}</span></div>}
-        {self && !owner && !permissions.size && <div className="c3-notice" role="status"><Glyph name="lock" size={20} />
-          <span>{copy("当前为只读。请联系域主分配身份组。", "Read-only access. Ask the domain owner for a role to participate.")}</span></div>}
         <div className={`c3-workspace${visibleScreens.length ? " has-screens" : ""}${chatOpen && !toolSurface.open ? "" : " chat-collapsed"}`}>
           <ChannelStage sources={[...visibleScreens, ...availableScreens].map(publication => ({
             id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
@@ -278,7 +276,7 @@ export function ChannelPreviewPage() {
                 name: nameOfUser(state?.sessions.find(session => session.id === request.peerId)?.userId ?? request.peerId) })) };
             })(),
             pending: busy(channel.ownedScreens.has(publication.id) ? "stop" : "watch", publication.id),
-          }))} focusedId={focusedScreen} onFocus={setFocusedScreen} canSubscribe={connected && can("subscribe")}
+          }))} focusedId={focusedScreen} onFocus={setFocusedScreen} canSubscribe={connected}
             onWatch={id => run(channel.watch(id))} onUnwatch={id => run(channel.unwatch(id))}
             onPause={(id, paused) => run(channel.setScreenPaused(id, paused))}
             onStop={id => run(channel.stopScreen(id))} onPresentation={channel.screenPresentation}

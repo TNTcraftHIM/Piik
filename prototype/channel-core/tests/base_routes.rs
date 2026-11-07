@@ -1381,16 +1381,10 @@ fn voice_uses_only_mutually_ready_tree_paths_and_non_listeners_can_forward_both_
         .find(|s| s.id == cs)
         .unwrap()
         .user_id;
-    let owner = Uuid::new_v4();
     command(
         &mut network,
-        owner,
-        json!({"type":"join","key":"owner","name":"Domain owner"}),
-    );
-    command(
-        &mut network,
-        owner,
-        json!({"type":"set_roles","userId":user,"roles":[]}),
+        c,
+        json!({"type":"unpublish","publicationId":screen}),
     );
     assert!(network.state(c).sessions.iter().any(|s| s.id == cs));
     assert!(network.state(c).users.iter().any(|u| u.id == user));
@@ -2192,7 +2186,6 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
     for outcome in [
         "pending",
         "already-applied",
-        "member-revoked",
         "disconnected",
         "new-binding",
         "error",
@@ -2318,20 +2311,6 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
                 );
                 let again = network.command(host, json!({"type":"set_name","name":"Still here"}));
                 assert!(completion(&again).is_none(), "completion is consumed once");
-            }
-            "member-revoked" => {
-                let user = network
-                    .state(publisher)
-                    .sessions
-                    .iter()
-                    .find(|session| session.id == publisher_session)
-                    .unwrap()
-                    .user_id;
-                let delivered =
-                    network.command(host, json!({"type":"set_roles","userId":user,"roles":[]}));
-                assert!(
-                    matches!(completion(&delivered), Some(RoomResult::Error { code }) if code == "room_context_changed")
-                );
             }
             "disconnected" => {
                 let effects = network.authority.disconnect(publisher, 102);

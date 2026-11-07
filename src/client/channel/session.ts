@@ -1352,7 +1352,6 @@ export class ChannelSession {
     return url.href;
   });
   revokeRoomAccess = (roomId: string, userId: string): Promise<void> => this.action(`revoke:${roomId}:${userId}`, () => this.request({ type: "revoke_room_access", roomId, userId }));
-  setRoles = (userId: string, roles: string[]): Promise<void> => this.action(`roles:${userId}`, () => this.request({ type: "set_roles", userId, roles }));
   watch = (publicationId: string, roomId?: string, signal?: AbortSignal): Promise<void> => this.action(`watch:${publicationId}`, async () => {
     if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
     this.watching.set(publicationId, undefined);

@@ -9,7 +9,7 @@ Use the same role and action vocabulary in the App, Browser, website and guides.
 Role labels describe permission; a person's chosen nickname stays unchanged.
 
 The table below describes the published 2.x model. The
-[3.0 design vocabulary](../research/channel-network-design.md#terminology-and-roles)
+[3.0 design vocabulary](../research/channel-network-design.md#terminology-and-responsibilities)
 owns the channel/room hierarchy and overlapping user roles for that experiment.
 
 | Meaning | English | Chinese |

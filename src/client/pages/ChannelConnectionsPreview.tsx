@@ -14,9 +14,9 @@ export function channelConnectionPreview(mode: "room" | "voice" | "both" | "app"
       rooms: [{ id: "room", name: "Living room", icon: "couch", creatorId: "host-user", access: "public", hidden: false,
         hasPassword: false, authorized: true, canManage: false, participantSessionIds: ["host", "self", "friend", "app"],
         available: true, reading: true, capabilities: { attachments: true },
-        delivery: { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } } }], roles: [] },
-    users: [{ id: "host-user", name: longNames ? "Host with a very long display name" : "Momo", roles: [] },
-      { id: "self-user", name: "Nori", roles: [] }, { id: "friend-user", name: "Kiki", roles: [] }],
+        delivery: { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } } }] },
+    users: [{ id: "host-user", name: longNames ? "Host with a very long display name" : "Momo" },
+      { id: "self-user", name: "Nori" }, { id: "friend-user", name: "Kiki" }],
     sessions: ["host", "self", "friend", "app"].map(id => ({ id, userId: id === "app" ? "self-user" : `${id}-user`, online: true, signingKey: Array(32).fill(0) })),
     publications: mode === "room" ? [] : [
       ...["host", "self", "friend"].map(id => ({ id: `voice-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "voice", paused: false })),

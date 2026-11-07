@@ -50,7 +50,7 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
     roomBackupAvailable: session.roomBackupAvailable, exportRoomBackup: session.exportRoomBackup, restoreRoomBackup: session.restoreRoomBackup,
     createRoomInvite: session.createRoomInvite, revokeRoomAccess: session.revokeRoomAccess,
     attachments: session.attachments, loadHistory: session.loadHistory, loadLatestHistory: session.loadLatestHistory,
-    setRoles: session.setRoles, startScreen: session.startScreen, cameraPreviews: session.cameraPreviews,
+    startScreen: session.startScreen, cameraPreviews: session.cameraPreviews,
     nativeSources: session.nativeSources, nativePreview: session.nativePreview, startNativeScreen: session.startNativeScreen,
     nativeCaptureRequest: session.nativeCaptureRequest,
     nativeCaptureSelection: session.nativeCaptureSelection,

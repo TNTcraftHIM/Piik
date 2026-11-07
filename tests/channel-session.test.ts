@@ -106,8 +106,8 @@ async function setup(window = 1000, read = true, hash = "", readyInteractions = 
         hidden: false, hasPassword: false, authorized: true, canManage: true,
         participantSessionIds: id === "first" ? ["endpoint"] : [],
         available: true, reading: id === "first", capabilities: { attachments: true },
-        delivery: { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } } })), roles: [] },
-    users: [{ id: "self", name: "Me", roles: [] }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
+        delivery: { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } } })) },
+    users: [{ id: "self", name: "Me" }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
     publications: [], voice: [], subscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   } });
   if (read) {
@@ -267,7 +267,7 @@ test("room interactions reuse their original acknowledgement and user identity w
   try {
     const state = structuredClone(session.getSnapshot().state!);
     state.channel.ownerId = "friend-user-1234";
-    state.users.push({ id: "friend-user-1234", name: "Friend", roles: [] });
+    state.users.push({ id: "friend-user-1234", name: "Friend" });
     socket.receive({ type: "state", state });
     await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.get("first")?.getSnapshot().ready).toBe(true));
     const interaction = session.getSnapshot().interactionsByRoom.get("first")!;
@@ -742,7 +742,7 @@ test("personal voice playback follows user identity without sending room command
   const { session, socket } = await setup();
   try {
     const initial = session.getSnapshot().state!;
-    const friend = { id: "friend", name: "Friend", roles: [] };
+    const friend = { id: "friend", name: "Friend" };
     const state = { ...initial, users: [...initial.users, friend],
       sessions: [...initial.sessions, { id: "friend-first", userId: friend.id, online: true, signingKey: testSigningKey }] };
     socket.receive({ type: "state", state });
@@ -2520,7 +2520,7 @@ test("topology reads reject late data after binding access account or selection 
       else if (change === "access") state.channel.rooms[0].authorized = false;
       else if (change === "account") {
         state.sessions[0].userId = "replacement-user";
-        state.users = [{ id: "replacement-user", name: "Other account", roles: [] }];
+        state.users = [{ id: "replacement-user", name: "Other account" }];
       }
       else if (change === "publication") state.publications = [];
       if (change === "selection") session.browse("second");
@@ -5765,7 +5765,7 @@ test("domain restore closes the old connection, admits archived keys only after 
   const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
   const state = structuredClone(session.getSnapshot().state!);
   state.channel.id = domainId; state.channel.ownerId = ownerId; state.channel.rooms = [];
-  state.users = [{ id: ownerId, name: "Restored owner", roles: [] }]; state.sessions[0].userId = ownerId;
+  state.users = [{ id: ownerId, name: "Restored owner" }]; state.sessions[0].userId = ownerId;
   try {
     const restoring = session.restoreDomainBackup(new Blob(["complete-domain-zip"]));
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
@@ -5932,7 +5932,7 @@ test("portable import validates the full archive before switching accounts and r
   Object.assign(metadata, { ownCredential: { userId: "archived-user", credential: "archived-credential" } });
   const persist = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: persist });
   const original = structuredClone(session.getSnapshot().state!);
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived", roles: [] } }))));
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived" } }))));
   try {
     read.mockRejectedValueOnce(new Error("backup_content_mismatch"));
     await expect(session.restoreRoomBackup(new Blob())).rejects.toThrow("backup_content_mismatch");
@@ -5996,13 +5996,13 @@ test("portable import admits the archived identity through Welcome before commit
   const runtime = await hosting.loadRoomHosting(); vi.spyOn(runtime.BrowserRoomHost, "storedPolicies").mockResolvedValue([]);
   nextHost.summary = () => ({ id: "imported", name: "First", creatorId: "archived-user", icon: "couch", access: "public", hidden: false, hasPassword: false });
   const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived", roles: [] } }))));
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived" } }))));
   const cache = vi.spyOn(session.attachments, "restoreRetained").mockResolvedValue(true);
   const state = structuredClone(session.getSnapshot().state!);
   const catalog = structuredClone(state);
   const imported = { ...state.channel.rooms[0], id: "imported", creatorId: "archived-user", name: "First", available: false, delivery: undefined };
   catalog.channel.rooms.push(imported);
-  state.channel.rooms = [imported]; state.channel.ownerId = null; state.users = [{ id: "archived-user", name: "Archived", roles: [] }];
+  state.channel.rooms = [imported]; state.channel.ownerId = null; state.users = [{ id: "archived-user", name: "Archived" }];
   state.sessions = [{ id: "new-endpoint", userId: "archived-user", online: true, signingKey: testSigningKey }];
   try {
     const importing = session.restoreRoomBackup(new Blob());

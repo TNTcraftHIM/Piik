@@ -81,7 +81,6 @@ impl RoomRuntime {
         }
         match permission {
             RoomPermission::Read => Ok(()),
-            RoomPermission::Write if member.participates => Ok(()),
             RoomPermission::Manage if self.policy.manages(member.user_id, member.domain_owner) => {
                 Ok(())
             }
@@ -370,7 +369,7 @@ impl RoomRuntime {
         attachments: Vec<crate::attachment::AttachmentDescriptor>,
         now: u64,
     ) -> Result<HistoryRequest, &'static str> {
-        self.authorize(member, RoomPermission::Write)?;
+        self.authorize(member, RoomPermission::Read)?;
         if !self.attachments_available() && !attachments.is_empty() {
             return Err("attachments_unavailable");
         }
@@ -400,7 +399,7 @@ impl RoomRuntime {
         kind: Kind,
         video_ceiling: Option<VideoCeiling>,
     ) -> Result<(), &'static str> {
-        self.authorize(member, RoomPermission::Write)?;
+        self.authorize(member, RoomPermission::Read)?;
         validate_video_ceiling(kind, video_ceiling)?;
         if kind == Kind::Voice && !self.voice_joined(session) {
             return Err("voice_not_joined");
@@ -471,7 +470,7 @@ impl RoomRuntime {
         to_session: Uuid,
         endpoints: &BTreeMap<Uuid, Endpoint>,
     ) -> Result<(), &'static str> {
-        self.authorize(member, RoomPermission::Write)?;
+        self.authorize(member, RoomPermission::Read)?;
         let publication = self.publication(id).ok_or("publication_unavailable")?;
         if publication.session_id != session {
             return Err("not_publication_owner");
@@ -486,7 +485,7 @@ impl RoomRuntime {
         if target.member.user_id != publication.user_id {
             return Err("forbidden");
         }
-        self.authorize(target.member, RoomPermission::Write)?;
+        self.authorize(target.member, RoomPermission::Read)?;
         if self.publications.values().any(|other| {
             other.info.id != id
                 && other.info.session_id == to_session
@@ -512,7 +511,7 @@ impl RoomRuntime {
         enabled: bool,
         helper: Option<(Uuid, &Endpoint)>,
     ) -> Result<bool, &'static str> {
-        self.authorize(member, RoomPermission::Write)?;
+        self.authorize(member, RoomPermission::Read)?;
         let publication = self
             .publications
             .get(&id)
@@ -532,7 +531,7 @@ impl RoomRuntime {
                     if !endpoint.connected {
                         return Err("helper_unavailable");
                     }
-                    self.authorize(endpoint.member, RoomPermission::Write)?;
+                    self.authorize(endpoint.member, RoomPermission::Read)?;
                     Ok(id)
                 })
                 .transpose()?
@@ -567,7 +566,7 @@ impl RoomRuntime {
         muted: bool,
         deafened: bool,
     ) -> Result<(), &'static str> {
-        self.authorize(member, RoomPermission::Write)?;
+        self.authorize(member, RoomPermission::Read)?;
         self.activity.entry(session).or_default().voice = joined.then(|| VoiceInfo {
             session_id: session,
             room_id: self.policy.id.clone(),
@@ -620,29 +619,17 @@ impl RoomRuntime {
                     .then_some(*session)
             })
             .collect();
-        let available: BTreeSet<_> = endpoints
-            .iter()
-            .filter_map(|(session, endpoint)| {
-                self.authorize(endpoint.member, RoomPermission::Write)
-                    .is_ok()
-                    .then_some(*session)
-            })
-            .collect();
         self.files.reconcile(&readable);
         self.publications
-            .retain(|_, publication| available.contains(&publication.info.session_id));
+            .retain(|_, publication| readable.contains(&publication.info.session_id));
         self.activity
             .retain(|session, _| readable.contains(session));
-        for (session, activity) in &mut self.activity {
-            if !available.contains(session) {
-                activity.voice = None;
-                activity.watching.clear();
-            }
+        for activity in self.activity.values_mut() {
             activity
                 .watching
                 .retain(|id, _| self.publications.contains_key(id));
             for helper in activity.watching.values_mut() {
-                if helper.is_some_and(|id| !available.contains(&id)) {
+                if helper.is_some_and(|id| !readable.contains(&id)) {
                     *helper = None;
                 }
             }
@@ -655,23 +642,17 @@ impl RoomRuntime {
         let connected = endpoints
             .iter()
             .filter_map(|(session, endpoint)| {
-                (endpoint.connected && available.contains(session)).then_some(*session)
+                (endpoint.connected && readable.contains(session)).then_some(*session)
             })
             .collect();
         let mut demand = self.personal_sessions();
         if let Some(base) = &mut self.base {
             demand.extend(self.files.demand());
-            let base_connected = endpoints
-                .iter()
-                .filter_map(|(session, endpoint)| {
-                    (endpoint.connected && readable.contains(session)).then_some(*session)
-                })
-                .collect();
             if repair_due {
-                base.retry_required(&demand, &base_connected);
+                base.retry_required(&demand, &connected);
             }
-            base.reconcile(&demand, &readable, &base_connected, &limits, now);
-            needs_repair |= base.needs_repair(&demand, &base_connected);
+            base.reconcile(&demand, &readable, &connected, &limits, now);
+            needs_repair |= base.needs_repair(&demand, &connected);
         }
         for (id, publication) in &mut self.publications {
             publication.retain_sessions(endpoints);
@@ -696,7 +677,7 @@ impl RoomRuntime {
             }
             publication.reconcile(
                 &subscribers,
-                &available,
+                &readable,
                 &connected,
                 self.base.as_ref(),
                 &helpers,
@@ -727,7 +708,7 @@ impl RoomRuntime {
                             .collect();
                         publication.reconcile(
                             &subscribers,
-                            &available,
+                            &readable,
                             &connected,
                             self.base.as_ref(),
                             &BTreeMap::new(),
@@ -1217,7 +1198,6 @@ mod tests {
                         signing_key: [value as u8; 32],
                         member: Member {
                             user_id: id(value),
-                            participates: true,
                             domain_owner: value == 1,
                         },
                         connected: true,
@@ -1365,7 +1345,6 @@ mod tests {
                             signing_key: [value as u8; 32],
                             member: Member {
                                 user_id: id(value),
-                                participates: true,
                                 domain_owner: value == 1,
                             },
                             connected: true,
@@ -1831,7 +1810,6 @@ mod tests {
                         signing_key: [value as u8; 32],
                         member: Member {
                             user_id: id(value),
-                            participates: true,
                             domain_owner: value == 3,
                         },
                         connected: true,
@@ -1933,7 +1911,6 @@ mod tests {
                         Endpoint {
                             member: crate::Member {
                                 user_id: id(n),
-                                participates: true,
                                 domain_owner: n == 1,
                             },
                             connected: true,
@@ -2096,7 +2073,7 @@ mod tests {
     }
 
     #[test]
-    fn screen_transfer_requires_the_current_source_and_a_live_writable_same_user_target() {
+    fn screen_transfer_requires_the_current_source_and_a_live_same_user_target() {
         let id = Uuid::from_u128;
         let (mut room, mut endpoints) = screen_on_room_base();
         endpoints.insert(id(5), endpoints[&id(3)].clone());
@@ -2115,11 +2092,6 @@ mod tests {
             Err("source_unavailable")
         );
         endpoints.get_mut(&id(5)).unwrap().connected = true;
-        endpoints.get_mut(&id(5)).unwrap().member.participates = false;
-        assert_eq!(
-            room.transfer_source(source, id(3), id(10), id(5), &endpoints),
-            Err("forbidden")
-        );
         endpoints.get_mut(&id(5)).unwrap().member = source;
         room.publish(source, id(5), id(11), Kind::Screen, screen_ceiling())
             .unwrap();
@@ -2676,7 +2648,6 @@ mod tests {
     fn room_projection_obeys_private_access_before_exposing_activity() {
         let owner = Member {
             user_id: Uuid::new_v4(),
-            participates: true,
             domain_owner: false,
         };
         let viewer = Member {

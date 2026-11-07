@@ -195,7 +195,6 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
         .map(|_| UserInfo {
             id: Uuid::new_v4(),
             name: "名".repeat(40),
-            roles: ["member".into(), "moderator".into()].into_iter().collect(),
         })
         .collect();
     for index in 0..32 {

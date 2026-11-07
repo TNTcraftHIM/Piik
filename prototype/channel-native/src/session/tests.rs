@@ -224,7 +224,6 @@ async fn resumed_endpoint_retires_its_missing_host_after_a_deleted_output_cannot
                 signing_key: session.signer.signing_key(),
                 member: Member {
                     user_id: user,
-                    participates: true,
                     domain_owner: false,
                 },
                 connected: true,
@@ -413,10 +412,10 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
     };
     let state: Snapshot = serde_json::from_value(json!({
         "channel":{"id":Uuid::new_v4(),"name":"Capture projection","icon":"couch","ownerId":owner,
-            "historyWindow":100,"roles":[],"rooms":[room("target",true,json!({
+            "historyWindow":100,"rooms":[room("target",true,json!({
                 "hostSessionId":host,"bindingId":Uuid::new_v4(),"nextHops":{}
             })),room("offline",false,serde_json::Value::Null)]},
-        "users":[{"id":user,"name":"Source","roles":[]},{"id":owner,"name":"Owner","roles":[]}],
+        "users":[{"id":user,"name":"Source"},{"id":owner,"name":"Owner"}],
         "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]},
             {"id":host,"userId":owner,"online":true,"signingKey":vec![1;32]}],
         "files":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[]
@@ -805,8 +804,8 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
             };
             let mut state: Snapshot = serde_json::from_value(json!({
             "channel":{"id":Uuid::new_v4(),"name":"Capture lifecycle","icon":"couch","ownerId":user,
-                "historyWindow":100,"roles":[],"rooms":[room("affected"),room("other")]},
-            "users":[{"id":user,"name":"Source","roles":[]}],
+                "historyWindow":100,"rooms":[room("affected"),room("other")]},
+            "users":[{"id":user,"name":"Source"}],
             "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]}],
             "files":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[]
         }))

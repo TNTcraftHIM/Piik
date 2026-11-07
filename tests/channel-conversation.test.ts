@@ -83,7 +83,7 @@ test("signed packets wait for the adjacent participant's selected snapshot witho
   const [host, sender, relay, binding, domain] = [1, 2, 3, 4, 5].map(value => `00000000-0000-0000-0000-${String(value).padStart(12, "0")}`);
   const signer = new rust.SessionSigner(new Uint8Array(32).fill(1));
   let state = {
-    channel: { id: domain, name: "Friends", icon: "couch", ownerId: host, historyWindow: 100, roles: [], rooms: [{
+    channel: { id: domain, name: "Friends", icon: "couch", ownerId: host, historyWindow: 100, rooms: [{
       id: "room", name: "Room", icon: "couch", creatorId: host, access: "public", hidden: false, hasPassword: false,
       voiceBitrate: 64000, relayCapacity: 1, relayOverride: 2, authorized: true, canManage: false, available: true,
       reading: true, participantSessionIds: [host, sender, relay], capabilities: { attachments: true },

@@ -11,7 +11,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const userSchema = z.object({ id, name: z.string().max(40), roles: z.array(id).max(16) });
+export const userSchema = z.object({ id, name: z.string().max(40) });
 export const roomSchema = z.object({
   id, name: identityNameSchema, icon: identityIconSchema, creatorId: id, access: z.enum(["public", "private"]),
   hidden: z.boolean(), hasPassword: z.boolean(), authorized: z.boolean(), canManage: z.boolean(),
@@ -49,7 +49,6 @@ export const messageSchema = z.object({
 export const snapshotSchema = z.object({
   channel: z.object({
     id, name: identityNameSchema, icon: identityIconSchema, ownerId: id.nullable(), rooms: z.array(roomSchema).max(32), historyWindow: z.number().int().positive(),
-    roles: z.array(z.object({ id, name: z.string(), permissions: z.array(z.string()) })),
   }),
   users: z.array(userSchema).max(64),
   sessions: z.array(z.object({ id, userId: id, online: z.boolean(), signingKey })).max(20),
@@ -149,7 +148,6 @@ export type ChannelCommand =
   | { type: "room_invite"; roomId: string }
   | { type: "room_topology"; roomId: string; publicationId?: string }
   | { type: "revoke_room_access"; roomId: string; userId: string }
-  | { type: "set_roles"; userId: string; roles: string[] }
   | { type: "publish"; publication: { id: string; roomId: string; kind: "screen" | "voice"; videoCeiling?: VideoCeiling } }
   | { type: "unpublish"; publicationId: string }
   | { type: "set_paused"; publicationId: string; paused: boolean }

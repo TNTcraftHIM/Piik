@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-11-06
+Last updated: 2026-11-07
 
 This working tree develops the isolated 3.0 model: a shared Rust core across
 Server, Native and Browser/WASM, with one shared Web UI for rooms, conversation,
@@ -16,9 +16,12 @@ The 3.0 owners below define this tree's domain, room and participant model.
 
 ## Authority And Lifetimes
 
-- The domain owns persistent user identity, membership, roles, room-host
+- The domain owns persistent user identity, membership, room-host
   bindings and directory summaries. A room's detailed policy and history belong
   to its room runtime; the directory is a projection of those facts.
+- Room admission permits conversation, voice, sharing and watching without
+  role groups. Domain/room management follows ownership; remote input still
+  requires the source owner's consent.
 - Each room owner operates that room in a Browser or Native runtime. Participants
   can share, watch, speak and forward independently of room ownership. One user
   may have separate Browser and App endpoints; identity, live connection and

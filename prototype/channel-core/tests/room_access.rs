@@ -971,30 +971,12 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
     let public_room = room(&mut core, creator, "public", false);
     let room = room(&mut core, creator, "private", true);
     let key = invite(&mut core, creator, &room);
-    let (outsider_session, _, initial) = admit(
+    let (_, _, initial) = admit(
         &mut core,
         outsider,
         json!({"type":"join","name":"Outsider","key":"invite"}),
     );
     assert!(!initial.channel.rooms.iter().any(|r| r.id == room));
-    // Promoting a channel collaborator does not bypass a room creator's privacy.
-    let outsider_user = initial
-        .sessions
-        .iter()
-        .find(|session| session.id == outsider_session)
-        .unwrap()
-        .user_id;
-    command(
-        &mut core,
-        owner,
-        json!({"type":"set_roles","userId":outsider_user,"roles":["member","moderator"]}),
-    );
-    assert!(!core
-        .state(outsider)
-        .channel
-        .rooms
-        .iter()
-        .any(|entry| entry.id == room));
     rejected(command(
         &mut core,
         outsider,
@@ -1261,17 +1243,31 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     assert_eq!(active.publications.len(), 1);
     assert_eq!(active.voice.len(), 1);
     let policy = original.policy(&room);
-    let checkpoint = serde_json::to_string(&original.authority.export_state()).unwrap();
+    let mut legacy = serde_json::to_value(original.authority.export_backup()).unwrap();
+    for user in legacy["state"]["users"].as_array_mut().unwrap().iter_mut() {
+        user["roles"] = if user["id"] == json!(policy.creator_id) {
+            json!([])
+        } else {
+            json!(["member", "moderator"])
+        };
+    }
+    let checkpoint = serde_json::to_string(&legacy).unwrap();
     assert!(!checkpoint.contains(&credential));
     assert!(!checkpoint.contains(&owner_credential));
     assert!(!checkpoint.contains(&key));
     let room_policy = serde_json::to_value(&policy).unwrap();
     assert!(!checkpoint.contains(&serde_json::to_string(&room_policy["inviteHash"]).unwrap()));
     let mut restored = core();
-    restored
-        .authority
-        .import_state(serde_json::from_str(&checkpoint).unwrap())
-        .unwrap();
+    let backup: piik_channel_core::backup::DomainMetadata =
+        serde_json::from_str(&checkpoint).unwrap();
+    restored.authority = backup.into_authority(vec![]).unwrap();
+    assert!(
+        serde_json::to_value(restored.authority.export_backup()).unwrap()["state"]["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|user| user.get("roles").is_none())
+    );
     let new_page = Uuid::new_v4();
     let (_, _, initial) = admit(
         &mut restored,
@@ -1325,6 +1321,24 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     assert!(
         matches!(history.result, Ok(piik_channel_core::conversation::ConversationResult::History(piik_channel_core::history::HistoryResult::Page { messages, .. })) if messages.is_empty())
     );
+    let sent = restored.peer_request(
+        new_page,
+        &room,
+        piik_channel_core::conversation::ConversationCommand::Chat {
+            text: "Still admitted".into(),
+            nonce: "after-legacy-restore".into(),
+            attachments: vec![],
+        },
+    );
+    assert!(
+        sent.result.is_ok(),
+        "a previously empty role list is no longer a participation restriction"
+    );
+    let created = self::room(&mut restored, new_page, "public", false);
+    assert_eq!(
+        restored.policy(&created).creator_id,
+        original.policy(&room).creator_id
+    );
     let (_, again, _) = admit(
         &mut restored,
         Uuid::new_v4(),
@@ -1336,7 +1350,7 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
 }
 
 #[test]
-fn late_room_results_follow_the_requesters_current_authority() {
+fn late_room_results_ignore_unrelated_profile_changes_and_departures() {
     use piik_channel_core::{host::HostAction, wire::Request};
     let mut network = core();
     let owner = Uuid::new_v4();
@@ -1347,7 +1361,7 @@ fn late_room_results_follow_the_requesters_current_authority() {
         owner,
         json!({"type":"join","name":"Owner","key":"owner"}),
     );
-    let (actor_session, credential, state) = admit(
+    let (_, credential, _) = admit(
         &mut network,
         actor,
         json!({"type":"join","name":"Actor","key":"invite"}),
@@ -1357,12 +1371,6 @@ fn late_room_results_follow_the_requesters_current_authority() {
         unrelated,
         json!({"type":"join","name":"Unrelated","key":"invite"}),
     );
-    let actor_user = state
-        .sessions
-        .iter()
-        .find(|session| session.id == actor_session)
-        .unwrap()
-        .user_id;
     let public = room(&mut network, owner, "public", false);
     let private = room(&mut network, owner, "private", true);
     let invitation = invite(&mut network, owner, &private);
@@ -1388,7 +1396,7 @@ fn late_room_results_follow_the_requesters_current_authority() {
     command(
         &mut network,
         owner,
-        json!({"type":"set_roles","userId":actor_user,"roles":[]}),
+        json!({"type":"set_name","name":"Renamed owner"}),
     );
     let late = command(
         &mut network,
@@ -1407,13 +1415,7 @@ fn late_room_results_follow_the_requesters_current_authority() {
             _ => None,
         })
         .expect("the original request receives its scoped result");
-    assert!(matches!(result, RoomResult::Error { code } if code == "room_context_changed"));
-
-    command(
-        &mut network,
-        owner,
-        json!({"type":"set_roles","userId":actor_user,"roles":["member"]}),
-    );
+    assert!(matches!(result, RoomResult::Done));
     let returning = Uuid::new_v4();
     let signing_key =
         piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key();
@@ -1449,21 +1451,21 @@ fn late_room_results_follow_the_requesters_current_authority() {
     command(
         &mut network,
         owner,
-        json!({"type":"set_roles","userId":actor_user,"roles":[]}),
+        json!({"type":"set_name","name":"Still owner"}),
     );
-    let rejected = command(
+    let accepted = command(
         &mut network,
         owner,
         json!({"type":"host_output","roomId":private,"output":verification}),
     );
-    assert!(rejected.close.contains(&returning));
+    assert!(!accepted.close.contains(&returning));
     assert!(
-        !rejected
+        accepted
             .events
             .iter()
             .any(|(recipient, event)| *recipient == returning
                 && matches!(event, Event::Welcome { .. })),
-        "an existing user's stale invitation cannot bypass changed authority"
+        "an existing user's verified invitation remains valid across profile changes"
     );
 
     let newcomer = Uuid::new_v4();

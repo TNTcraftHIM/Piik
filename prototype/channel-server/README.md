@@ -196,7 +196,7 @@ compare layouts before applying them to the functional client.
 The functional frontend uses the accepted shell: room navigation on the left,
 conversation and selected screens in the middle, and a persistent domain-wide
 user list on the right. Narrow layouts navigate between room and user panes.
-It retains real roles, self-name editing, room controls, files, history, voice
+It provides self-name editing, room controls, files, history, voice
 and multiple watched screens through the existing session and shared components.
 The domain owner can edit its name and icon beside the domain title.
 Room creation and settings share the same identity fields; the room owner or
@@ -256,9 +256,9 @@ The studies reinterpret those familiar patterns using Piik's visual language.
 ## Rooms, conversation and media
 
 A channel contains rooms. Users can create and manage their own rooms as room owners (房主);
-the domain owner (域主) manages the channel, all rooms and user roles. Both remain
-users (用户), independently of sharing activity. Moderator status
-does not grant access to another user's private room. Public rooms admit channel
+the domain owner (域主) manages the channel and all rooms. Both remain
+users (用户), independently of sharing activity. Room admission permits chatting,
+voice, sharing and watching without separate role groups. Public rooms admit channel
 users. Private rooms require a room invitation or password, and hidden rooms do
 not appear in an unauthorized user's directory. Changing a password or invitation
 controls new admission; existing grants require explicit revocation.

@@ -113,6 +113,21 @@ impl Domain {
     }
 }
 
+#[cfg(all(feature = "capture", target_os = "windows"))]
+async fn capture_reply(
+    domain: &mut Domain,
+    page: &mut WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
+) -> Value {
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            tokio::select! {
+                reply = page.next() => return serde_json::from_str(&reply.unwrap().unwrap().into_text().unwrap()).unwrap(),
+                _ = domain.step() => {},
+            }
+        }
+    }).await.expect("capture admission completes while the Domain processes its requests")
+}
+
 async fn app_http(
     address: std::net::SocketAddr,
     method: &str,
@@ -1106,9 +1121,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
             json!({"id":"missing-capture-room","type":"prepare_capture","publicationId":Uuid::new_v4(),"codecMode":"auto",
                 "roomId":"missing-capture-room","target":target,"settings":settings}).to_string().into(),
         )).await.unwrap();
-        let denied: Value =
-            serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap())
-                .unwrap();
+        let denied = capture_reply(&mut domain, &mut page).await;
         assert_eq!(denied["error"], "room_unavailable");
 
         let publication = Uuid::new_v4();
@@ -1120,16 +1133,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         ))
         .await
         .unwrap();
-        let failed: Value = serde_json::from_str(
-            &tokio::time::timeout(Duration::from_secs(10), page.next())
-                .await
-                .expect("invalid capture preparation finishes without publishing")
-                .unwrap()
-                .unwrap()
-                .into_text()
-                .unwrap(),
-        )
-        .unwrap();
+        let failed = capture_reply(&mut domain, &mut page).await;
         assert!(failed.get("error").is_some());
         let _ = tokio::time::timeout(Duration::from_millis(50), async {
             loop {

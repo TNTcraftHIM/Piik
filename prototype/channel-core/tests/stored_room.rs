@@ -29,7 +29,6 @@ fn input(owner: Uuid, actor: Uuid, action: impl FnOnce(RequestContext) -> HostAc
                         signing_key: SessionSigner::from_seed([1; 32]).signing_key(),
                         member: Member {
                             user_id: session,
-                            participates: true,
                             domain_owner: false,
                         },
                         connected: true,

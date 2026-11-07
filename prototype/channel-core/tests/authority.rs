@@ -218,13 +218,6 @@ fn hosted_history_uses_authenticated_peer_author_and_the_original_confirmation()
         serde_json::to_value(first.message).unwrap(),
         serde_json::to_value(retry.message).unwrap()
     );
-    core.command(owner, json!({"type":"set_roles","userId":user,"roles":[]}));
-    assert_eq!(
-        core.peer_request(author, &room, send("Denied"))
-            .result
-            .err(),
-        Some("forbidden")
-    );
     assert!(
         matches!(core.peer_request(author, &room, ConversationCommand::History { before:Some(12) }).result,
         Ok(ConversationResult::History(HistoryResult::Page { messages, .. })) if messages.len() == 1)
@@ -248,36 +241,17 @@ fn public_dispatch_owns_authorization_state_before_ack_and_explicit_leave() {
         .find(|endpoint| endpoint.id == guest_session)
         .unwrap()
         .user_id;
-    let revoked = apply(
-        &mut core,
-        owner,
-        json!({"type":"set_roles", "userId":guest_user, "roles":[], "requestId":"roles"}),
-        1,
-    );
-    assert!(
-        matches!(revoked.events.last(), Some((target, Event::Ack { request_id })) if *target == owner && request_id == "roles")
-    );
-    assert!(state(&revoked, guest)
-        .users
-        .iter()
-        .find(|user| user.id == guest_user)
-        .unwrap()
-        .roles
-        .is_empty());
-    assert!(state(&revoked, guest)
-        .sessions
-        .iter()
-        .any(|endpoint| endpoint.id == guest_session && endpoint.online));
-    let forbidden = apply(
+    let created = apply(
         &mut core,
         guest,
-        json!({"type":"create_room", "room":{"id":Uuid::new_v4(), "name":"Denied", "icon":"couch", "creatorId":guest_user,
+        json!({"type":"create_room", "room":{"id":Uuid::new_v4(), "name":"Friends", "icon":"couch", "creatorId":guest_user,
             "access":"public", "hidden":false, "hasPassword":false}, "requestId":"create"}),
         2,
     );
-    assert!(forbidden.close.is_empty());
+    assert!(created.close.is_empty());
     assert!(
-        matches!(forbidden.events.as_slice(), [(target, Event::Error { code, request_id:Some(request_id) })] if *target == guest && code == "forbidden" && request_id == "create")
+        matches!(created.events.last(), Some((target, Event::RoomCreated { room, request_id:Some(request_id) }))
+        if *target == guest && room.creator_id == guest_user && request_id == "create")
     );
     let left = apply(
         &mut core,

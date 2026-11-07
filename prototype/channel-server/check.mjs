@@ -103,7 +103,7 @@ test("the frontend accepts real cross-room publications and subscriptions", { ti
   }
 });
 
-test("authenticated users, role authority, peer-only conversation and selective source ownership", { timeout: 30_000 }, async t => {
+test("authenticated users, peer-only conversation and selective source ownership", { timeout: 30_000 }, async t => {
   const owner = await connect(t, { key: ownerKey, name: "Owner check" });
   const friend = await connect(t, { key: inviteKey, name: "Friend check" });
   const other = await connect(t, { key: inviteKey, name: "Other check" });
@@ -114,11 +114,6 @@ test("authenticated users, role authority, peer-only conversation and selective 
   assert.equal(ownerSession.userId, state.channel.ownerId);
   assert.notEqual(friend.welcome.sessionId, other.welcome.sessionId);
   const friendUser = friend.welcome.state.sessions.find(session => session.id === friend.welcome.sessionId).userId;
-
-  assert.equal((await friend.request({ type: "set_roles", userId: friendUser, roles: ["moderator"] })).type, "error");
-  assert.equal((await owner.request({ type: "set_roles", userId: friendUser, roles: ["member", "moderator"] })).type, "ack");
-  assert.equal((await owner.request({ type: "set_roles", userId: friendUser, roles: ["member"] })).type, "ack");
-
   const roomId = state.channel.rooms[0].id;
   if (!state.channel.rooms[0].available) await owner.wait(event => event.type === "state"
     && event.state.channel.rooms.some(room => room.id === roomId && room.available), "Server room host available after cleanup");

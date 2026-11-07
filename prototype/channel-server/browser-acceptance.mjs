@@ -707,7 +707,7 @@ async function roomOwner(initial, serverRoom) {
   console.log("Browser owns policy/history and room activities; domain only retains its directory; unrelated media survives owner shutdown");
 }
 
-async function lifecycle(initial, roomId) {
+async function lifecycle(roomId) {
   await action(1, `joinVoice(${JSON.stringify(roomId)}, true)`);
   assert.equal((await sample(1)).captures.filter(track => track.kind === "audio" && track.state === "live").length, 0);
   await action(1, `setMuted(${JSON.stringify(roomId)}, false)`);
@@ -718,13 +718,6 @@ async function lifecycle(initial, roomId) {
 
   const otherScreen = await capturedScreen(2, roomId);
   await action(2, `joinVoice(${JSON.stringify(roomId)})`);
-  const revokedScreen = await capturedScreen(1, roomId);
-  await action(0, `setRoles(${JSON.stringify(initial[1].self.id)}, [])`);
-  await until("role revocation releases the local screen", () => sample(1), value => value.captures.every(track => track.state === "ended"));
-  assert(!(await view(1)).streams.includes(revokedScreen));
-  await action(0, `setRoles(${JSON.stringify(initial[1].self.id)}, ['member'])`);
-  console.log("Authority role revocation retires local capture");
-
   await action(1, `joinVoice(${JSON.stringify(roomId)})`);
   await action(1, `watch(${JSON.stringify(otherScreen)})`);
   await playing(1, otherScreen);
@@ -775,7 +768,7 @@ async function lifecycle(initial, roomId) {
   assert.equal((await sample(0)).overflow, false);
   await browser(0, "screenshot", join(output, "lifecycle-zh-light-390.png"), "--full");
   await writeFile(join(output, "lifecycle-result.json"), JSON.stringify({ passed: true,
-    scenarios: ["listen-only", "unmute capture", "leave capture retirement", "role revoke capture retirement",
+    scenarios: ["listen-only", "unmute capture", "leave capture retirement",
       "offline unwatch/leave", "same-session intent reconciliation", "20s media expiry", "new-session no resurrection"],
     recoveryMs: Date.now() - disconnectedAt }, null, 2));
 }
@@ -943,7 +936,7 @@ async function roomsAndFiles() {
   const room = created.state.channel.rooms.find(room => room.name === "Movie night");
   await browser(1, "click", '.c3-room-link[aria-label="Movie night"]');
   await until("unadmitted user sees password entry", () => evaluate(1, "!!document.querySelector('.c3-locked-room input')"), Boolean);
-  assert.equal(await evaluate(1, "!!document.querySelector('.c3-composer')"), false);
+  assert.equal(await evaluate(1, "[...document.querySelectorAll('.c3-composer')].some(form => !form.closest('[hidden]') && !form.querySelector('textarea').disabled)"), false);
   await browser(1, "fill", ".c3-locked-room input", "movie-night-test");
   await browser(1, "click", ".c3-locked-room button[type=submit]");
   await until("room grant opens the conversation", () => evaluate(1, "!!document.querySelector('.c3-composer textarea')"), Boolean);
@@ -1081,7 +1074,7 @@ try {
     await roomsAndFiles();
     console.log(`Room and file Browser acceptance passed; evidence: ${output}`);
   } else if (lifecycleOnly) {
-    await lifecycle(initial, roomId);
+    await lifecycle(roomId);
     console.log(`Focused lifecycle acceptance passed; evidence: ${output}`);
   } else {
   console.log("Five independent Browser sessions authenticated");
