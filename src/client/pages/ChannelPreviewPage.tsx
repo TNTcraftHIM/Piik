@@ -221,7 +221,8 @@ export function ChannelPreviewPage() {
           <ChannelStage sources={[...visibleScreens, ...availableScreens].map(publication => ({
             id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id),
-            paused: publication.paused, pausePending: busy("pause", publication.id),
+            paused: publication.paused, pausePending: publication.sessionId !== sessionId && busy("pause", publication.id),
+            pauseAvailable: publication.sessionId === sessionId || connected,
             deliveryFailed: state?.failedSubscriptions.includes(publication.id),
             available: rooms.find(value => value.id === publication.roomId)?.available ?? false,
             subscribed: state?.subscriptions.includes(publication.id) ?? false, stream: streams.get(publication.id), inputs: channel.screenInputs.get(publication.id),
@@ -229,12 +230,12 @@ export function ChannelPreviewPage() {
             input: channel.inputChannels.get(publication.id),
             sourceAudio: (() => {
               const sound = channel.sourceAudio(publication.id);
-              return sound && { ...sound, busy: busy("screen", publication.roomId),
+              return sound && { ...sound, busy: busy("screen", publication.roomId), canMute: channel.sourceMicrophone(publication.id)?.browser,
                 onChange: (settings: { level?: number; muted?: boolean }) => run(channel.setSourceAudio(publication.id, settings)) };
             })(),
             sourceMicrophone: (() => {
               const microphone = channel.sourceMicrophone(publication.id);
-              return microphone?.available ? { enabled: microphone.enabled, busy: busy("source-microphone", publication.id),
+              return microphone?.available ? { enabled: microphone.enabled, busy: busy("source-microphone", publication.id), canDisable: microphone.canDisable,
                 disabled: !connected || busy("screen", publication.roomId),
                 onEnabled: (enabled: boolean) => run(channel.setSourceMicrophone(publication.id, { enabled })) } : undefined;
             })(),

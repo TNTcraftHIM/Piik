@@ -40,7 +40,7 @@ export class ChannelMedia {
   private publications: ChannelSnapshot["publications"] = [];
   private subscriptions: ChannelSnapshot["subscriptions"] = [];
   private rooms: ChannelSnapshot["channel"]["rooms"] = [];
-  private local = new Map<string, { stream: MediaStream; profile?: QualityProfile; codec?: BrowserVideoCodecPreference }>();
+  private local = new Map<string, { stream: MediaStream; profile?: QualityProfile; codec?: BrowserVideoCodecPreference; paused?: boolean }>();
   private streams = new Map<string, MediaStream>();
   private screenInputs = new Map<string, ChannelScreenInput[]>();
   private relayMedia = new Map<string, { tracks: MediaStreamTrack[]; player: HTMLMediaElement }>();
@@ -53,8 +53,15 @@ export class ChannelMedia {
     private bulkClosed?: (peer: string) => void,
     private input?: (pairId: string, channel: RTCDataChannel | null) => void) {}
 
-  setLocal(id: string, stream: MediaStream, profile?: QualityProfile, codec?: BrowserVideoCodecPreference): void {
-    this.local.set(id, { stream, profile, codec });
+  setLocal(id: string, stream: MediaStream, profile?: QualityProfile, codec?: BrowserVideoCodecPreference, paused = this.local.get(id)?.paused): void {
+    this.local.set(id, { stream, profile, codec, paused });
+    this.refresh();
+  }
+
+  setLocalPaused(id: string, paused: boolean): void {
+    const local = this.local.get(id);
+    if (!local) return;
+    local.paused = paused;
     this.refresh();
   }
 
@@ -440,7 +447,7 @@ export class ChannelMedia {
           break;
         }
         outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null, profile: local?.profile ?? publication.videoCeiling,
-          audioBitrate: local?.profile?.maxAudioBitrate, codec, paused: publication.paused,
+          audioBitrate: local?.profile?.maxAudioBitrate, codec, paused: local?.paused ?? publication.paused,
           voiceBitrate: this.rooms.find(room => room.id === publication.roomId)?.voiceBitrate });
       }
       outgoingByPeer.set(peer.transport, outgoing);

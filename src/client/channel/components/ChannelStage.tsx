@@ -28,12 +28,13 @@ export interface ChannelStageSource {
   stream?: MediaStream;
   sourceAudio?: SourceAudioControl;
   interaction?: RoomInteractionSession | null;
-  sourceMicrophone?: { enabled: boolean; busy?: boolean; disabled?: boolean; onEnabled: (enabled: boolean) => void };
+  sourceMicrophone?: { enabled: boolean; busy?: boolean; disabled?: boolean; canDisable?: boolean; onEnabled: (enabled: boolean) => void };
   inputs?: readonly ChannelScreenInput[];
   input?: InputTransport;
   remoteControl?: Omit<ChannelRemoteControlState, "requests"> & { requests: (ChannelRemoteControlState["requests"][number] & { name: string })[] };
   pending?: boolean;
   pausePending?: boolean;
+  pauseAvailable?: boolean;
   available?: boolean;
 }
 
@@ -137,11 +138,14 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
                   label={isFocused ? copy("返回平铺", "Return to grid") : copy(`聚焦 ${source.name}`, `Focus ${source.name}`)}
                   pressed={isFocused} onClick={() => onFocus(isFocused ? null : source.id)} />}
                 {source.owned && microphone && <VoiceMicrophoneButton active={microphone.enabled}
-                  quiet busy={microphone.busy} disabled={microphone.disabled || microphone.busy}
+                  quiet busy={microphone.busy && !(microphone.enabled && microphone.canDisable)}
+                  disabled={(microphone.disabled || microphone.busy) && !(microphone.enabled && microphone.canDisable)}
                   hint={microphone.enabled ? "hint-microphone-off" : "hint-microphone-on"}
                   onClick={() => microphone.onEnabled(!microphone.enabled)} />}
                 {source.owned && <ChannelAction icon={source.paused ? "play" : "pause"} quiet iconOnly
-                  label={t(source.paused ? "host.resume" : "host.pause")} pressed={source.paused}
+                  label={t(source.paused ? "host.resume" : "host.pause") + (source.pauseAvailable === false
+                    ? copy("（重新连接后可用）", " (available after reconnecting)") : "")} pressed={source.paused}
+                  disabled={source.pauseAvailable === false}
                   hint={source.paused ? "hint-resume" : "hint-pause"} busy={source.pausePending}
                   onClick={() => onPause(source.id, !source.paused)} />}
                 <ChannelAction icon={source.owned ? "stop" : "x"} danger={source.owned} quiet={!source.owned} iconOnly

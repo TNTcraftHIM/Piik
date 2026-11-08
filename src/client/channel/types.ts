@@ -76,7 +76,7 @@ export interface ChannelActions {
   setScreenPaused(publicationId: string, paused: boolean): Promise<void>;
   sourceAudio(publicationId: string): { level: number; muted: boolean; bitrate: number; hasAudio: boolean; available: boolean } | undefined;
   setSourceAudio(publicationId: string, settings: { bitrate?: number; level?: number; muted?: boolean }): Promise<void>;
-  sourceMicrophone(publicationId: string): SourceMicrophoneConfiguration & { browser: boolean; available: boolean; requested: SourceMicrophoneConfiguration } | undefined;
+  sourceMicrophone(publicationId: string): SourceMicrophoneConfiguration & { browser: boolean; canDisable: boolean; available: boolean; requested: SourceMicrophoneConfiguration } | undefined;
   setSourceMicrophone(publicationId: string, settings: SourceMicrophoneSettings): Promise<void>;
   sourceMicrophones(publicationId: string): Promise<CaptureDevice[]>;
   activateApp(): Promise<void>;

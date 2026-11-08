@@ -159,6 +159,19 @@ pub struct CaptureAudio {
     control: crate::media::local::AudioControl,
 }
 impl CaptureAudio {
+    pub fn is_stopped(&self) -> bool {
+        #[cfg(feature = "capture")]
+        return self.control.is_stopped();
+        #[cfg(not(feature = "capture"))]
+        true
+    }
+    pub fn configure(&self, settings: SourceAudioSettings) -> Result<()> {
+        settings.validate()?;
+        anyhow::ensure!(!self.is_stopped(), "capture_unavailable");
+        #[cfg(feature = "capture")]
+        self.control.settings.send_replace(settings);
+        Ok(())
+    }
     pub fn audio_state(&self) -> Option<watch::Receiver<SourceAudioState>> {
         #[cfg(feature = "capture")]
         return Some(self.control.state.clone());
@@ -277,16 +290,6 @@ impl CaptureLease {
             return Some(control.settings().into());
         }
         None
-    }
-    pub fn configure_audio(&self, settings: SourceAudioSettings) -> Result<()> {
-        settings.validate()?;
-        anyhow::ensure!(!self.is_stopped(), "capture_unavailable");
-        #[cfg(feature = "capture")]
-        self.mixer.settings.send_replace(settings);
-        #[cfg(not(feature = "capture"))]
-        anyhow::bail!("capture_unavailable");
-        #[cfg(feature = "capture")]
-        Ok(())
     }
 
     pub fn producer_id(&self) -> Uuid {

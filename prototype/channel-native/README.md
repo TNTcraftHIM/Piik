@@ -26,7 +26,10 @@ and joins its child; a Windows Job also releases it when the App exits.
 Encoding failure affects only outputs using that encoder. Stopping capture ends
 all its encodings and input authority while App-hosted rooms continue. Each picture
 producer retires its own source-sound input. The selecting page's share lease
-retains the mixer across replacement and stops it when the share ends.
+retains the mixer across replacement and stops it when the share ends. Its volume
+and audio bitrate belong to the publication, so preparing or committing another
+picture cannot restore older sound settings. Turning off the microphone cancels
+only microphone preparation; picture and system-sound preparation keep their owners.
 Frame-rate selection retains the original timestamps and accumulates its sampling
 interval across frames. The [network design](../../docs/research/channel-network-design.md)
 owns the process and output boundaries.

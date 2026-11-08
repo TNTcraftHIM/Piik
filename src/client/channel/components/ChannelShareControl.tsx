@@ -126,6 +126,7 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
                 onChange={excludeAudio => { void startNativeScreen(roomId, selectedNative.target, true, excludeAudio, selectedNative.showCaptureBorder).catch(() => {}); }} />
             </div>}
           {sharing && microphone && microphoneSettings && <ShareMicrophoneSettings available={microphone.available}
+            canDisable={microphone.canDisable}
             enabled={microphone.enabled} disabled={disabled || busy} busy={microphonePending} browser={microphone.browser}
             roomMicrophone={roomMicrophone} volume={microphoneSettings.volume} deviceId={microphoneSettings.deviceId}
             voiceProcessing={microphoneSettings.voiceProcessing} loadDevices={loadMicrophones}

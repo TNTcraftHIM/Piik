@@ -7,6 +7,49 @@ mod sockets;
 pub(super) mod support;
 mod transit;
 
+#[cfg(feature = "capture")]
+#[tokio::test]
+async fn publication_audio_settings_belong_to_the_mixer_until_it_stops() -> Result<()> {
+    let (sources, _ready) = mpsc::channel(2);
+    let (events, _ended) = mpsc::channel(2);
+    let (_cancel, cancelled) = watch::channel(false);
+    let producer = crate::media::local::AudioProducer::start(
+        Uuid::new_v4(),
+        sources,
+        events,
+        Relay::default(),
+        cancelled,
+    );
+    let owner = CaptureAudio {
+        control: producer.control.clone(),
+    };
+    let muted = SourceAudioSettings {
+        bitrate: 96_000,
+        gain: 0.0,
+    };
+    owner.configure(muted)?;
+    assert_eq!(*producer.control.settings.borrow(), muted);
+    assert!(!owner.is_stopped());
+    assert!(owner
+        .configure(SourceAudioSettings {
+            bitrate: 1,
+            gain: 1.0
+        })
+        .is_err());
+    assert_eq!(*producer.control.settings.borrow(), muted);
+    producer.control.stop();
+    assert!(owner.is_stopped());
+    assert_eq!(
+        owner
+            .configure(SourceAudioSettings::default())
+            .unwrap_err()
+            .to_string(),
+        "capture_unavailable"
+    );
+    producer.close().await;
+    Ok(())
+}
+
 #[tokio::test]
 async fn retained_capture_transfers_its_single_completion_to_the_new_lease() {
     fn lease(producer: Uuid) -> CaptureLease {

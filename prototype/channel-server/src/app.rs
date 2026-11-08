@@ -55,7 +55,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 1;
+const PROTOCOL: u8 = 2;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -721,7 +721,6 @@ enum Operation {
     },
     CaptureAudioSettings {
         publication_id: Uuid,
-        capture_id: Uuid,
         settings: SourceAudioSettings,
     },
     CaptureMicrophone {
@@ -774,6 +773,7 @@ struct Capture {
     active: Option<CaptureLease>,
     pending: Option<PendingCapture>,
     audio: Option<CaptureAudio>,
+    audio_settings: SourceAudioSettings,
 }
 struct PendingCapture {
     request: AbortHandle,
@@ -789,6 +789,50 @@ enum CaptureResult {
 impl Capture {
     fn lease(&self) -> Option<&CaptureLease> {
         self.active.as_ref().filter(|lease| !lease.is_stopped())
+    }
+    fn prepare(
+        &mut self,
+        settings: SourceAudioSettings,
+    ) -> Result<(AbortHandle, futures_util::future::AbortRegistration)> {
+        settings.validate()?;
+        anyhow::ensure!(self.pending.is_none(), "capture_pending");
+        if self.lease().is_none() {
+            self.audio_settings = settings;
+        }
+        let (request, registration) = AbortHandle::new_pair();
+        self.pending = Some(PendingCapture {
+            request: request.clone(),
+            lease: None,
+        });
+        Ok((request, registration))
+    }
+    fn configure_audio(&mut self, settings: SourceAudioSettings) -> Result<()> {
+        settings.validate()?;
+        anyhow::ensure!(
+            self.lease().is_some() || self.pending.is_some(),
+            "capture_unavailable"
+        );
+        if let Some(audio) = self.audio.as_ref().filter(|audio| !audio.is_stopped()) {
+            audio.configure(settings)?;
+        } else {
+            anyhow::ensure!(self.pending.is_some(), "capture_unavailable");
+        }
+        self.audio_settings = settings;
+        Ok(())
+    }
+
+    fn install_prepared(&mut self, mut lease: CaptureLease) -> Result<()> {
+        if let Some(audio) = lease.audio.take() {
+            self.audio = Some(audio);
+        }
+        if let Some(audio) = &self.audio {
+            audio.configure(self.audio_settings)?;
+        }
+        self.pending
+            .as_mut()
+            .ok_or_else(|| anyhow!("capture_cancelled"))?
+            .lease = Some(lease);
+        Ok(())
     }
 }
 impl Drop for PendingCapture {
@@ -918,16 +962,14 @@ async fn connection(
                             Err(anyhow!("capture_cancelled"))
                         } else {
                             match result {
-                                Ok(CaptureResult::Prepared { mut lease, codec }) => {
+                                Ok(CaptureResult::Prepared { lease, codec }) => {
                                     let value = json!({"captureId":lease.id,"sessionId":lease.session_id,"codec":codec});
                                     if let Some(capture) = captures.get_mut(&publication_id) {
-                                        if let Some(audio) = lease.audio.take() {
-                                            if let Some(state) = audio.audio_state() { audio_states.push(next_audio_state(publication_id, state)); }
-                                            capture.audio = Some(audio);
-                                        }
-                                        if let Some(pending) = capture.pending.as_mut() { pending.lease = Some(lease); }
+                                        if let Some(state) = lease.audio.as_ref().and_then(CaptureAudio::audio_state) { audio_states.push(next_audio_state(publication_id, state)); }
+                                        capture.install_prepared(lease).map(|_| value)
+                                    } else {
+                                        Err(anyhow!("capture_cancelled"))
                                     }
-                                    Ok(value)
                                 }
                                 Ok(CaptureResult::Committed(mut lease)) => {
                                     let retained = lease.retains_video();
@@ -1094,44 +1136,40 @@ async fn connection(
                             } => match &host {
                                 Some(commands) => {
                                     let capture = captures.entry(publication_id).or_default();
-                                    if capture.pending.is_some() {
-                                        Err(anyhow!("capture_pending"))
-                                    } else {
-                                        let replaces =
-                                            capture.lease().map(CaptureLease::producer_id);
-                                        let (cancel, registration) = AbortHandle::new_pair();
-                                        capture.pending = Some(PendingCapture {
-                                            request: cancel.clone(),
-                                            lease: None,
-                                        });
-                                        let commands = commands.clone();
-                                        capture_starts.push(
-                                            async move {
-                                                let result = Abortable::new(
-                                                    prepare_capture(
-                                                        &commands,
-                                                        publication_id,
-                                                        room_id,
-                                                        target,
-                                                        settings,
-                                                        codec_mode,
-                                                        audio_settings,
-                                                        audio,
-                                                        exclude_audio,
-                                                        show_capture_border,
-                                                        replaces,
-                                                    ),
-                                                    registration,
-                                                )
-                                                .await
-                                                .unwrap_or_else(|_| {
-                                                    Err(anyhow!("capture_cancelled"))
-                                                });
-                                                (request.id, publication_id, cancel, result)
-                                            }
-                                            .boxed(),
-                                        );
-                                        continue;
+                                    match capture.prepare(audio_settings) {
+                                        Err(error) => Err(error),
+                                        Ok((cancel, registration)) => {
+                                            let replaces =
+                                                capture.lease().map(CaptureLease::producer_id);
+                                            let commands = commands.clone();
+                                            capture_starts.push(
+                                                async move {
+                                                    let result = Abortable::new(
+                                                        prepare_capture(
+                                                            &commands,
+                                                            publication_id,
+                                                            room_id,
+                                                            target,
+                                                            settings,
+                                                            codec_mode,
+                                                            audio_settings,
+                                                            audio,
+                                                            exclude_audio,
+                                                            show_capture_border,
+                                                            replaces,
+                                                        ),
+                                                        registration,
+                                                    )
+                                                    .await
+                                                    .unwrap_or_else(|_| {
+                                                        Err(anyhow!("capture_cancelled"))
+                                                    });
+                                                    (request.id, publication_id, cancel, result)
+                                                }
+                                                .boxed(),
+                                            );
+                                            continue;
+                                        }
                                     }
                                 }
                                 None => Err(anyhow!("hello_required")),
@@ -1227,14 +1265,11 @@ async fn connection(
                             }
                             Operation::CaptureAudioSettings {
                                 publication_id,
-                                capture_id,
                                 settings,
                             } => captures
-                                .get(&publication_id)
-                                .and_then(Capture::lease)
-                                .filter(|lease| lease.id == capture_id)
+                                .get_mut(&publication_id)
                                 .ok_or_else(|| anyhow!("capture_unavailable"))
-                                .and_then(|lease| lease.configure_audio(settings))
+                                .and_then(|capture| capture.configure_audio(settings))
                                 .map(|_| Value::Null),
                             Operation::CaptureVideoSettings {
                                 publication_id,
@@ -1541,7 +1576,6 @@ async fn prepare_capture(
         .await
         .map_err(|_| anyhow!("hosting_unavailable"))?
         .map_err(anyhow::Error::msg)?;
-    lease.configure_audio(audio_settings)?;
     lease.ready().await.map_err(|error| {
         if error.is::<Aborted>() {
             anyhow!("capture_cancelled")
@@ -1654,6 +1688,58 @@ mod lifecycle_tests {
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpStream,
     };
+
+    #[test]
+    fn publication_audio_settings_survive_pending_picture_work_and_end_with_the_page_capture() {
+        let old = SourceAudioSettings {
+            bitrate: 96_000,
+            gain: 1.0,
+        };
+        let muted = SourceAudioSettings { gain: 0.0, ..old };
+        let mut capture = Capture::default();
+        assert_eq!(
+            capture.configure_audio(muted).unwrap_err().to_string(),
+            "capture_unavailable"
+        );
+        let (_request, _registration) = capture.prepare(old).unwrap();
+        capture.configure_audio(muted).unwrap();
+        assert_eq!(capture.audio_settings, muted);
+        // A duplicate preparation cannot replace accepted audio intent while
+        // the existing request owns its first frame/commit wait.
+        assert_eq!(
+            capture.prepare(old).unwrap_err().to_string(),
+            "capture_pending"
+        );
+        assert_eq!(capture.audio_settings, muted);
+        assert!(capture
+            .configure_audio(SourceAudioSettings {
+                gain: f32::NAN,
+                ..old
+            })
+            .is_err());
+        assert_eq!(capture.audio_settings, muted);
+        capture.pending = None;
+        assert_eq!(
+            capture.configure_audio(old).unwrap_err().to_string(),
+            "capture_unavailable"
+        );
+        let mut captures = BTreeMap::from([(Uuid::new_v4(), capture)]);
+        captures.retain(|_, capture| capture.pending.is_some() || capture.active.is_some());
+        assert!(captures.is_empty());
+    }
+
+    #[test]
+    fn publication_audio_command_has_no_picture_capture_identity() {
+        let mut wire = json!({"id":"audio","type":"capture_audio_settings","publicationId":Uuid::new_v4(),"settings":{"bitrate":128000,"gain":0}});
+        assert!(matches!(
+            serde_json::from_value::<Request>(wire.clone())
+                .unwrap()
+                .operation,
+            Operation::CaptureAudioSettings { .. }
+        ));
+        wire["captureId"] = json!(Uuid::new_v4());
+        assert!(serde_json::from_value::<Request>(wire).is_err());
+    }
 
     #[tokio::test]
     async fn disconnected_approval_retains_stopping_hosts_until_joined() {

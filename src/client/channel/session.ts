@@ -55,6 +55,7 @@ interface VoiceParticipation {
 
 interface ScreenShare {
   id: string;
+  paused?: boolean;
   profile: QualityProfile;
   codecMode: BrowserVideoCodecMode;
   codec?: BrowserVideoCodecPreference;
@@ -268,6 +269,10 @@ export class ChannelSession {
         this.attachments.resume();
         for (const publication of event.state.publications) {
           if (publication.sessionId === event.sessionId && !this.local.has(publication.id)) this.write({ type: "unpublish", publicationId: publication.id });
+          const share = this.screenShares.get(publication.roomId);
+          if (publication.kind === "screen" && this.local.has(publication.id) && share?.id === publication.id
+            && share.paused !== undefined && share.paused !== publication.paused)
+            this.write({ type: "set_paused", publicationId: publication.id, paused: share.paused });
         }
         for (const member of event.state.voice) {
           if (member.sessionId === event.sessionId && !this.voiceParticipation.has(member.roomId)) this.write({ type: "voice", roomId: member.roomId, joined: false, muted: true, deafened: false });
@@ -391,8 +396,9 @@ export class ChannelSession {
     for (const publication of state.publications) if (publication.kind === "screen") {
       const local = this.local.get(publication.id);
       if (local) {
-        setMediaPaused(local.stream, publication.paused);
-        if (local.audio) setMediaPaused(local.audio.sourceStream, publication.paused);
+        const paused = this.screenShares.get(publication.roomId)?.paused ?? publication.paused;
+        setMediaPaused(local.stream, paused);
+        if (local.audio) setMediaPaused(local.audio.sourceStream, paused);
       }
     }
     for (const id of this.watching.keys()) {
@@ -1554,12 +1560,13 @@ export class ChannelSession {
         }
         if (retainedAudio) candidate = retainedAudio.attach(candidate, source);
         const mixed = retainedAudio ?? audio;
-        const paused = this.view.state?.publications.find(publication => publication.id === share.id)?.paused ?? false;
+        const paused = share.paused = (previous ? share.paused : undefined)
+          ?? this.view.state?.publications.find(publication => publication.id === share.id)?.paused ?? false;
         setMediaPaused(candidate, paused);
         if (mixed) setMediaPaused(mixed.sourceStream, paused);
         this.local.set(share.id, { roomId, kind: "screen", stream: candidate, audio: mixed, profile: share.profile, camera: source === "camera" });
         this.admittedPublications.add(share.id);
-        this.media.setLocal(share.id, candidate, share.profile, codec);
+        this.media.setLocal(share.id, candidate, share.profile, codec, paused);
         this.observeScreen(share.id, candidate);
         candidate = undefined;
         audio = undefined;
@@ -1604,7 +1611,8 @@ export class ChannelSession {
     const browser = local?.kind === "screen";
     const actual = browser ? { ...share.microphone, enabled: !!local.audio?.microphoneEnabled }
       : this.app?.sourceMicrophone(publicationId) ?? { enabled: false, deviceId: "", volume: 1 };
-    return { ...actual, browser, available: browser ? !!local.audio?.commentaryAvailable : !!this.app?.screens.has(publicationId),
+    return { ...actual, browser, canDisable: browser ? !!local.audio : !!this.app?.connected && this.app.screens.has(publicationId),
+      available: browser ? !!local.audio?.commentaryAvailable : !!this.app?.screens.has(publicationId),
       requested: share.requestedMicrophone ?? actual };
   };
 
@@ -1615,14 +1623,24 @@ export class ChannelSession {
     const owner = [...this.screenShares].find(([, share]) => share.id === publicationId);
     const share = owner?.[1];
     const actual = this.sourceMicrophone(publicationId);
-    if (!share || share.selection || !actual?.available) return Promise.reject(new Error("microphone_unavailable"));
-    if (share.microphoneChange && !share.requestedMicrophone) return share.microphoneChange;
+    const local = this.local.get(publicationId), app = this.app;
+    const stopping = settings.enabled === false && actual?.canDisable;
+    if (!share || share.selection && !stopping || !actual?.available) return Promise.reject(new Error("microphone_unavailable"));
+    if (share.microphoneChange && !share.requestedMicrophone && !stopping) return share.microphoneChange;
     const next = { ...actual.requested, ...settings };
     if (!Number.isFinite(next.volume) || next.volume < 0 || next.volume > 2) return Promise.reject(new Error("invalid_audio_settings"));
     share.requestedMicrophone = next;
+    if (stopping && local?.audio) void local.audio.setMicrophone(false, share.microphone);
+    else if (stopping && share.microphoneChange && app) {
+      // The existing Native microphone owner cancels its own pending input on off.
+      void app.setSourceMicrophone(publicationId, owner![0], { enabled: false, deviceId: next.deviceId, volume: next.volume })
+        .catch(error => {
+          if (this.screenShares.get(owner![0]) === share && this.app === app)
+            this.patch({ error: error instanceof Error ? error.message : "microphone_unavailable" });
+        });
+    }
     this.patch({});
     if (share.microphoneChange) return share.microphoneChange;
-    const local = this.local.get(publicationId), app = this.app;
     const current = () => [...this.screenShares.values()].includes(share)
       && (local ? this.local.get(publicationId) === local : this.app === app && !!app?.screens.has(publicationId));
     share.microphoneChange = this.action(`source-microphone:${publicationId}`, async () => {
@@ -1726,12 +1744,17 @@ export class ChannelSession {
 
   setSourceAudio = (publicationId: string, settings: { bitrate?: number; level?: number; muted?: boolean }): Promise<void> => {
     const share = [...this.screenShares.values()].find(share => share.id === publicationId);
-    if (!share || share.selection || share.qualityChange) return Promise.reject(new Error("capture_unavailable"));
+    const local = this.local.get(publicationId);
+    const stopping = settings.bitrate === undefined && (settings.muted === true || settings.level === 0) && !!local?.audio?.outputGainAvailable;
+    const native = this.app?.hasSourceAudioControl(publicationId);
+    if (!share || (share.selection || share.qualityChange) && !(settings.bitrate === undefined && (stopping || native)))
+      return Promise.reject(new Error("capture_unavailable"));
     const volume = { level: settings.level ?? share.volume.level, muted: settings.muted ?? share.volume.muted };
     const profile = { ...share.profile, maxAudioBitrate: settings.bitrate ?? share.profile.maxAudioBitrate ?? 128_000 };
     if (!supportsCaptureProfile(profile) || !Number.isFinite(volume.level) || volume.level < 0 || volume.level > 2) return Promise.reject(new Error("invalid_audio_settings"));
     let appliedVolume = share.volume, appliedProfile = share.profile;
     share.profile = profile; share.volume = volume;
+    if (stopping) local!.audio!.setVolume(0);
     this.patch({});
     if (share.audioChange) return share.audioChange;
     const current = () => [...this.screenShares.values()].includes(share);
@@ -1740,16 +1763,25 @@ export class ChannelSession {
         do {
           const volume = share.volume, profile = share.profile;
           const local = this.local.get(publicationId);
-          if (local) {
-            if (!local.audio?.outputGainAvailable && (volume.level !== 1 || volume.muted)) throw new Error("source_audio_unavailable");
-            local.audio?.setVolume(volume.muted ? 0 : volume.level);
-            local.profile = profile;
-            this.media.setLocal(publicationId, local.stream, profile);
-          } else {
+          try {
+            if (local) {
+              if (!local.audio?.outputGainAvailable && (volume.level !== 1 || volume.muted)) throw new Error("source_audio_unavailable");
+              local.audio?.setVolume(volume.muted ? 0 : volume.level);
+              appliedVolume = volume;
+              if (local.profile?.maxAudioBitrate !== profile.maxAudioBitrate) {
+                local.profile = { ...local.profile!, maxAudioBitrate: profile.maxAudioBitrate };
+                this.media.setLocal(publicationId, local.stream, local.profile, share.codec);
+                appliedProfile = profile;
+              }
+            }
             const app = this.app;
-            if (!app?.screens.has(publicationId)) throw new Error("capture_unavailable");
-            await app.setSourceAudio(publicationId, profile.maxAudioBitrate!, volume.muted ? 0 : volume.level);
-            if (this.app !== app) throw new DOMException("Capture cancelled", "AbortError");
+            if (app?.hasSourceAudioControl(publicationId)) {
+              await app.setSourceAudio(publicationId, profile.maxAudioBitrate!, volume.muted ? 0 : volume.level);
+              if (this.app !== app) throw new DOMException("Capture cancelled", "AbortError");
+            } else if (!local) throw new Error("capture_unavailable");
+          } catch (error) {
+            if (current() && (volume !== share.volume || profile !== share.profile)) continue;
+            throw error;
           }
           if (!current()) throw new DOMException("Capture cancelled", "AbortError");
           appliedVolume = volume; appliedProfile = profile;
@@ -1757,7 +1789,11 @@ export class ChannelSession {
         } while (current());
         throw new DOMException("Capture cancelled", "AbortError");
       } catch (error) {
-        if (current()) { share.volume = appliedVolume; share.profile = appliedProfile; this.patch({}); }
+        if (current()) {
+          share.volume = appliedVolume;
+          share.profile = { ...share.profile, maxAudioBitrate: appliedProfile.maxAudioBitrate };
+          this.patch({});
+        }
         throw error;
       }
     }).finally(() => { share.audioChange = undefined; this.patch({}); });
@@ -1784,6 +1820,7 @@ export class ChannelSession {
       await app.commitCapture(share.id, prepared.captureId);
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       share.native = native;
+      share.paused = undefined;
       share.codec ??= share.codecMode === "auto" ? automaticVideoCodecPreference(prepared.codec) : manualVideoCodecPreference(prepared.codec);
       this.retireCapture(share.id);
       this.patch({});
@@ -1794,15 +1831,28 @@ export class ChannelSession {
       throw error;
     } finally { this.finishScreenSelection(roomId, share); }
   });
-  setScreenPaused = (publicationId: string, paused: boolean): Promise<void> => this.action(`pause:${publicationId}`, async () => {
+  setScreenPaused = async (publicationId: string, paused: boolean): Promise<void> => {
     const publication = this.view.state?.publications.find(value => value.id === publicationId && value.kind === "screen");
     if (!publication) throw new Error("publication_unavailable");
     if (this.local.get(publicationId)?.kind === "screen" && publication.sessionId === this.view.sessionId) {
-      await this.request({ type: "set_paused", publicationId, paused }, undefined, publication.roomId);
+      const local = this.local.get(publicationId)!, share = this.screenShares.get(publication.roomId);
+      if (share) share.paused = paused;
+      setMediaPaused(local.stream, paused);
+      if (local.audio) setMediaPaused(local.audio.sourceStream, paused);
+      this.media.setLocalPaused(publicationId, paused);
+      this.refreshActivity();
+      if (this.view.connection !== "connected") return;
+      const command = { type: "set_paused" as const, publicationId, paused };
+      if (this.view.pending.has(`pause:${publicationId}`)) { this.send(command); return; }
+      await this.action(`pause:${publicationId}`, async () => {
+        try { await this.request(command, undefined, publication.roomId); }
+        catch (error) { if (!(error instanceof Error) || error.message !== "disconnected") throw error; }
+      });
     } else if (this.app?.screens.has(publicationId)) {
-      await this.app.setCapturePaused(publicationId, paused);
+      if (this.view.connection !== "connected") throw new Error("disconnected");
+      await this.action(`pause:${publicationId}`, () => this.app!.setCapturePaused(publicationId, paused));
     } else throw new Error("not_publication_owner");
-  });
+  };
   stopScreen = (publicationId: string): Promise<void> => this.action(`stop:${publicationId}`, async () => {
     for (const [roomId, share] of this.screenShares) if (share.id === publicationId) {
       share.selection?.abort();
@@ -2106,7 +2156,11 @@ export class ChannelSession {
     return {
       ...state,
       publications: state.publications.filter(publication => publication.sessionId !== sessionId || this.local.has(publication.id)
-        || this.screenShares.get(publication.roomId)?.id === publication.id),
+        || this.screenShares.get(publication.roomId)?.id === publication.id).map(publication => {
+          const share = this.screenShares.get(publication.roomId);
+          return publication.kind === "screen" && this.local.has(publication.id) && share?.id === publication.id
+            ? { ...publication, paused: share.paused ?? publication.paused } : publication;
+        }),
       voice: state.voice.filter(member => member.sessionId !== sessionId || this.voiceParticipation.has(member.roomId)).map(member =>
         member.sessionId === sessionId && this.voiceParticipation.has(member.roomId)
           ? { ...member, muted: this.voiceParticipation.get(member.roomId)!.muted, deafened: this.voiceParticipation.get(member.roomId)!.deafened } : member),

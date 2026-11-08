@@ -10,7 +10,7 @@ import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), port: z.number().int().min(1).max(65535) });
-const healthSchema = identitySchema.extend({ protocol: z.literal(1), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
+const healthSchema = identitySchema.extend({ protocol: z.literal(2), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
   version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional() });
 type AppHealth = z.infer<typeof healthSchema>;
 const measured = z.number().finite().nonnegative();
@@ -60,7 +60,7 @@ type AppCommand = { type: string; publicationId?: string; roomId?: string; [key:
 function identity(body: unknown, port: number): void {
   const value = identitySchema.extend({ service: z.enum(["piik-channel-app", "piik-client"]) }).parse(body);
   if (value.port !== port) throw new Error("invalid_app_response");
-  if (value.service !== "piik-channel-app" || value.protocol !== 1) throw new AppCompatibilityError("App room protocol is incompatible");
+  if (value.service !== "piik-channel-app" || value.protocol !== 2) throw new AppCompatibilityError("App room protocol is incompatible");
 }
 
 export function discoverChannelAppHealth(options: AppDiscoveryOptions = {}): Promise<AppHealth | null> {
@@ -245,10 +245,13 @@ export class ChannelApp {
   }
 
   async setSourceAudio(publicationId: string, bitrate: number, gain: number): Promise<void> {
-    const captureId = this.captures.get(publicationId);
-    if (!captureId) throw new Error("capture_unavailable");
-    await this.request({ type: "capture_audio_settings", publicationId, captureId, settings: { bitrate, gain } });
-    if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture cancelled", "AbortError");
+    if (!this.hasSourceAudioControl(publicationId)) throw new Error("capture_unavailable");
+    await this.request({ type: "capture_audio_settings", publicationId, settings: { bitrate, gain } });
+    if (!this.hasSourceAudioControl(publicationId)) throw new DOMException("Capture cancelled", "AbortError");
+  }
+
+  hasSourceAudioControl(publicationId: string): boolean {
+    return this.connected && (this.captures.has(publicationId) || this.prepared.has(publicationId));
   }
 
   sourceMicrophone(publicationId: string): NativeSourceMicrophone | undefined {

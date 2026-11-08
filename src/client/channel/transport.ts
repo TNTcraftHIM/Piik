@@ -351,6 +351,7 @@ export class ChannelTransport {
         output.paused = paused;
         const owner = output;
         for (const sender of owner.senders) {
+          if (sender.sender.track && sender.sender.track !== sender.source) sender.sender.track.enabled = !paused;
           sender.encoded?.setPaused(paused);
           sender.pooled?.setPaused(paused);
           this.enqueue(() => this.applyPaused(id, owner, sender));

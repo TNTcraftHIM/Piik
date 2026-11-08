@@ -65,6 +65,7 @@ function ChannelVideoInput({ input, visible, label, fit, register, frame, issue,
 
 export interface SourceAudioControl {
   level: number; muted: boolean; hasAudio: boolean; available: boolean; busy: boolean;
+  canMute?: boolean;
   onChange(settings: { level?: number; muted?: boolean }): void;
 }
 
@@ -110,6 +111,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
   const silent = sound.muted || sound.level === 0;
   const soundAvailable = hasAudio && (!local || !!sourceAudio?.available);
   const soundDisabled = !soundAvailable || local && !!sourceAudio?.busy;
+  const muteDisabled = !soundAvailable || local && !!sourceAudio?.busy && !(sourceAudio.canMute && !silent);
   const volumeTitle = !hasAudio ? "playback.noAudio" : local
     ? !sourceAudio?.available ? "host.shareVolume.unavailable" : "host.shareVolume"
     : audio.boostAvailable ? "playback.volume" : "playback.volumeBasic";
@@ -267,7 +269,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
             ? !sourceAudio?.available ? "host.shareVolume.unavailable" : silent ? "host.shareVolume.unmute" : "host.shareVolume.mute"
             : silent ? "playback.unmute" : "playback.mute"}
           hint={!hasAudio ? "hint-no-audio" : silent ? "hint-unmute" : "hint-mute"}
-          disabled={soundDisabled} pressed={silent}
+          disabled={muteDisabled} pressed={silent}
           onClick={() => {
             if (local) sourceAudio?.onChange({ level: sound.level || 1, muted: !silent });
             else {
