@@ -25,6 +25,14 @@ Keep those internal values at the first public release: resetting schema or
 authorization counters for visual consistency can invalidate data or stale-work
 fences. A room number is a user-facing address, not a software version.
 The private tooling-only npm package carries no independent product version.
+Local test candidates may explicitly set `PIIK_BUILD_VERSION=v3.0.0-beta.4`.
+This prerelease build identity does not declare a public release: stable-tag
+selection and publication remain stable-only. Keep the full prerelease string
+and source SHA in product/build metadata; wire and storage generations are unchanged.
+Android versionCode and macOS numeric bundle fields use the major/minor/patch
+base. Successive candidates with the same base therefore share an Android code
+and require explicit local replacement (for example, `adb install -r`); keep
+internal candidate distribution separate from the public channel.
 The shared App launcher displays its installed version from the existing launcher
 state; development builds also show their short source revision.
 The Web help menu displays its bundled build version without a network lookup.

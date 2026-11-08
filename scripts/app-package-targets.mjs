@@ -1,3 +1,5 @@
+import semver from "semver";
+
 export const CLOUDFLARED_VERSION = "2026.10.3";
 export const CLOUDFLARED_SOURCE_SHA256 = "6c6901ae333508e1c529184bf90cb87ff59592620d293401db38415269908311";
 export const MACOS_MIN_VERSION = "13.0";
@@ -10,9 +12,10 @@ export const ANDROID_APP_PACKAGE_TARGET = {
 
 export function androidVersionCode(version) {
   if (version === "development") return 1;
-  const parts = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(version);
-  if (!parts) throw new Error("Android version must be vMAJOR.MINOR.PATCH or development");
-  const [major, minor, patch] = parts.slice(1).map(Number);
+  const parsed = semver.parse(version);
+  if (!version.startsWith("v") || !parsed || parsed.version !== version.slice(1))
+    throw new Error("Android version must be vMAJOR.MINOR.PATCH with an optional prerelease suffix, or development");
+  const { major, minor, patch } = parsed;
   const code = major * 1_000_000 + minor * 1_000 + patch;
   if (minor > 999 || patch > 999 || !Number.isSafeInteger(code) || code < 1 || code > 2_100_000_000) {
     throw new Error("Android versionCode requires minor/patch <= 999 and a code in 1..2100000000");

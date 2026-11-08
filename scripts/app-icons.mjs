@@ -5,6 +5,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { MACOS_MIN_VERSION } from "./app-package-targets.mjs";
+import semver from "semver";
 
 const PNG_SIGNATURE = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -115,7 +116,10 @@ function writeLinuxAssets(packageRoot, entries) {
 }
 
 function writeMacAssets(packageRoot, version, revision, entries) {
-  const bundleVersion = version === "development" ? "0.0.0" : version.slice(1);
+  const parsed = semver.parse(version);
+  if (version !== "development" && (!version.startsWith("v") || !parsed || parsed.version !== version.slice(1)))
+    throw new Error("macOS bundle requires a valid build version");
+  const bundleVersion = parsed ? `${parsed.major}.${parsed.minor}.${parsed.patch}` : "0.0.0";
   const bundleRoot = join(packageRoot, "Piik App.app");
   const contents = join(bundleRoot, "Contents");
   const macos = join(contents, "MacOS");
@@ -145,6 +149,7 @@ function writeMacAssets(packageRoot, version, revision, entries) {
       "<key>NSAudioCaptureUsageDescription</key><string>Share sound from the selected screen or application.</string>",
       `<key>CFBundleVersion</key><string>${bundleVersion}</string>`,
       `<key>PiikSourceRevision</key><string>${revision}</string>`,
+      `<key>PiikProductVersion</key><string>${version}</string>`,
       "</dict></plist>",
       "",
     ].join("\n"),

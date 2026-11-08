@@ -7,12 +7,39 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { pullRequestNotes, releaseNotes } from "../scripts/release-notes.mjs";
 import { splitReleaseHeadline } from "../scripts/release-headline.mjs";
+import { buildVersion, isReleaseVersion, stableTags } from "../scripts/release-version.mjs";
+import { readReleaseArtifacts } from "../scripts/release-artifacts.mjs";
 
 const planner = fileURLToPath(new URL("../scripts/release-version.mjs", import.meta.url));
 const publisher = fileURLToPath(new URL("../scripts/publish-release.mjs", import.meta.url));
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 
 describe("release automation", () => {
+  it("accepts explicit prerelease builds without treating them as stable releases", () => {
+    const root = mkdtempSync(join(tmpdir(), "piik-candidate-version-"));
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+    try {
+      git("init", "--quiet", "--initial-branch=main");
+      git("config", "user.name", "Piik fixture");
+      git("config", "user.email", "fixture@example.invalid");
+      git("config", "commit.gpgSign", "false");
+      git("commit", "--allow-empty", "-m", "candidate source");
+      const revision = git("rev-parse", "HEAD");
+      for (const version of ["development", "v3.0.0", "v3.0.0-beta.4", "v3.0.0-rc.1"])
+        expect(buildVersion(root, revision, version)).toBe(version);
+      for (const version of ["3.0.0-beta.4", "v03.0.0", "v3.0.0-beta.04", "v3.0.0-", "v3.0.0-beta.4+build", " v3.0.0"])
+        expect(() => buildVersion(root, revision, version)).toThrow("Build version");
+      const beta = "v3.0.0-beta.4";
+      expect(isReleaseVersion(beta)).toBe(false);
+      expect(() => readReleaseArtifacts(root, beta, revision)).toThrow("stable version");
+      expect(() => releaseNotes(root, beta, revision, "owner/repo")).toThrow("stable version");
+      git("tag", beta);
+      expect(stableTags(root)).toEqual([]);
+      expect(buildVersion(root, revision, "")).toBe("development");
+      git("commit", "--allow-empty", "-m", "another source");
+      expect(() => buildVersion(root, git("rev-parse", "HEAD"), beta)).toThrow("two source revisions");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
   it("shares only an authored leading bilingual headline with the website", () => {
     const opening = "**Play together. Your turn!**\n\n**远程同乐，轮到你啦！**";
     expect(splitReleaseHeadline(`${opening}\n\n### 中文\n\n修复开播。`)).toEqual({

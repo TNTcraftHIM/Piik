@@ -51,11 +51,12 @@ export function releaseCommits(root, revision, previous) {
   return commits;
 }
 
-// One input for packagers: a planned CI version, an exact public tag, or a dev build.
+// Prerelease candidates are explicit build inputs, never inferred stable releases.
 export function buildVersion(root, revision, requested = process.env.PIIK_BUILD_VERSION) {
   const version = requested || stableTags(root, "--points-at", revision)[0] || "development";
   if (version === "development") return version;
-  if (!isReleaseVersion(version)) throw new Error("Build version must be vMAJOR.MINOR.PATCH or development");
+  if (!version.startsWith("v") || semver.valid(version) !== version.slice(1))
+    throw new Error("Build version must be vMAJOR.MINOR.PATCH with an optional prerelease suffix, or development");
   if (git(root, "tag", "--list", version) &&
       git(root, "rev-parse", `${version}^{commit}`) !== revision) {
     throw new Error("A release version cannot identify two source revisions");

@@ -141,6 +141,14 @@ describe("App release update notice", () => {
     expect(releaseUpdateNotice({ version, revision: currentRevision }, latest)?.kind ?? null).toBe(kind);
   });
 
+  it("does not offer 2.x to a 3.0 beta, but offers the final 3.0 release", () => {
+    for (const [version, expected] of [["v2.6.0", null], ["v3.0.0", "update-available"]] as const) {
+      expect(releaseUpdateNotice({ version: "v3.0.0-beta.3", revision: currentRevision }, {
+        version, revision: latestRevision, url: release.html_url, releaseURL: release.html_url,
+      })?.kind ?? null).toBe(expected);
+    }
+  });
+
   it("does not turn branch names, prereleases or malformed metadata into release identity", async () => {
     expect(parseReleaseMetadata({ ...release, target_commitish: "main" })?.revision).toBeNull();
     for (const changed of [
