@@ -244,7 +244,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
             input: channel.inputChannels.get(publication.id),
             sourceAudio: (() => {
               const sound = channel.sourceAudio(publication.id);
-              return sound && { ...sound, busy: busy("screen", publication.roomId), canMute: channel.sourceMicrophone(publication.id)?.browser,
+              return sound && { ...sound, busy: busy("screen", publication.roomId),
                 onChange: (settings: { level?: number; muted?: boolean }) => run(channel.setSourceAudio(publication.id, settings)) };
             })(),
             sourceMicrophone: (() => {

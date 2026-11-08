@@ -1722,8 +1722,9 @@ export class ChannelSession {
     const local = this.local.get(publicationId);
     const hasAudio = local ? !!local.audio?.audioAvailable
       : !!this.app?.hasSourceAudio(publicationId) || !!this.app?.sourceMicrophone(publicationId)?.enabled;
+    const canMute = !!local?.audio?.outputGainAvailable || !!this.app?.hasSourceAudioControl(publicationId);
     return { ...share.volume, bitrate: share.profile.maxAudioBitrate ?? 128_000,
-      hasAudio, available: hasAudio && (!local || !!local.audio?.outputGainAvailable) };
+      hasAudio, available: hasAudio && (!local || !!local.audio?.outputGainAvailable), canMute };
   };
 
   setSourceAudio = (publicationId: string, settings: { bitrate?: number; level?: number; muted?: boolean }): Promise<void> => {

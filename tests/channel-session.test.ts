@@ -1737,6 +1737,7 @@ test.each(["live", "stop-before-reply", "candidate-ended-before-reply", "app-clo
     const retiredShortcut = expect(oldShortcut).rejects.toMatchObject({ name: "AbortError" });
     const nativeAgain = session.startNativeScreen("first", target);
     expect(await appCommand("prepare_capture")).toMatchObject({ publicationId: publication.id });
+    expect(session.sourceAudio(publication.id)?.canMute).toBe(true);
     expect(app.sent.at(-1)?.codecMode).toBe("vp8");
     appReply({ captureId: secondCaptureId, sessionId: nativeSessionId, codec: "vp8" });
     expect(await appCommand("commit_capture")).toMatchObject({ publicationId: publication.id, captureId: secondCaptureId });
