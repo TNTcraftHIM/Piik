@@ -27,7 +27,6 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
     const appearance = voiceAppearance(state, user.id, roomId);
     return appearance ? [{ user, ...appearance }] : [];
   });
-  const busy = channel.pending.has(`voice:${roomId}`);
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
   return <section className="c3-voice-dock" aria-label={zh ? "语音控制" : "Voice controls"}>
     <Glyph name="headphones" size={22} />
@@ -50,17 +49,17 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
     </div>
     <div className="c3-voice-controls">
       <AudioVolumeMenu volume={channel.voiceInput.volume} onVolume={channel.setInputVolume} label="host.microphone.volume" icon="microphone">
-        <VoiceMicrophoneButton active={!muted} disabled={!available} busy={busy} quiet
+        <VoiceMicrophoneButton active={!muted} disabled={muted && !channel.canUnmute(roomId)} quiet
           onClick={() => run(channel.setMuted(roomId, !muted))} />
       </AudioVolumeMenu>
       <AudioVolumeMenu volume={channel.listeningVolume} onVolume={channel.setListeningVolume} label="voice.listeningVolume" icon="headphones">
-        <VoiceListeningButton deafened={deafened} disabled={!available} busy={busy} quiet
+        <VoiceListeningButton deafened={deafened} quiet
           onClick={() => run(channel.setDeafened(roomId, !deafened))} />
       </AudioVolumeMenu>
       <ChannelVoiceSettings channel={channel} roomId={roomId} available={available} />
       <span className="c3-control-divider" />
       <Btn icon="door" title="voice.leave" hint="hint-voice-leave" draw="voice-membership" size="compact" quiet
-        busy={busy} disabled={busy} onClick={() => run(channel.leaveVoice(roomId))} />
+        onClick={() => run(channel.leaveVoice(roomId))} />
     </div>
   </section>;
 }

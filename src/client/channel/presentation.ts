@@ -3,6 +3,7 @@ import type { ChannelSnapshot } from "./protocol";
 /** Remote voice streams played by this endpoint, independently of the browsed room. */
 export function listeningVoicePublications(state: ChannelSnapshot | null, sessionId: string | null, streams: ReadonlyMap<string, MediaStream>) {
   return state?.publications.filter(value => value.kind === "voice" && value.sessionId !== sessionId &&
+    state.voice.some(member => member.sessionId === sessionId && member.roomId === value.roomId && !member.deafened) &&
     state.subscriptions.includes(value.id) && streams.has(value.id)) ?? [];
 }
 

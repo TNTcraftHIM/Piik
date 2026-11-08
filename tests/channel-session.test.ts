@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { ChannelConversation } from "../src/client/channel/conversation";
 import { ChannelSession } from "../src/client/channel/session";
 import * as hosting from "../src/client/channel/hosting";
+import { listeningVoicePublications } from "../src/client/channel/presentation";
 import * as backupArchive from "../src/client/channel/backup-archive";
 import * as appLink from "../src/client/channel/app-link";
 import * as nativeActivation from "../src/client/native/activation";
@@ -899,6 +900,103 @@ test("sharing quality is remembered by the actual session across endpoint lifeti
   } finally { resumed?.close(); session.close(); }
 });
 
+test("recovery mute stops only this room's retained voice immediately", async () => {
+  const { session, socket } = await setup(3, false);
+  const first = remoteTrack("audio"), second = remoteTrack("audio");
+  const contexts = microphoneMixer([remoteStream("first", [first]), remoteStream("second", [second])]);
+  const raw = remoteTrack("audio"), getUserMedia = vi.fn(async () => remoteStream("shared-raw", [raw]));
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+  const state = structuredClone(session.getSnapshot().state!);
+  try {
+    for (const roomId of ["first", "second"]) {
+      const joining = session.joinVoice(roomId);
+      await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "voice", roomId }));
+      const join = socket.sent.at(-1)!;
+      state.voice.push({ roomId, sessionId: "endpoint", muted: false, deafened: false });
+      socket.receive({ type: "state", state });
+      socket.receive({ type: "ack", requestId: join.requestId });
+      await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+      const publishing = socket.sent.at(-1)!;
+      state.publications.push({ ...(publishing.publication as { id: string; roomId: string; kind: "voice" }), sessionId: "endpoint", userId: "self", paused: false });
+      socket.receive({ type: "state", state });
+      socket.receive({ type: "ack", requestId: publishing.requestId });
+      await joining;
+    }
+    expect(getUserMedia).toHaveBeenCalledOnce();
+    expect(contexts).toHaveLength(1);
+    state.publications.push(...["first", "second"].map(roomId => ({ id: `heard-${roomId}`, roomId, kind: "voice" as const, sessionId: "friend-endpoint", userId: "friend", paused: false })));
+    state.subscriptions = ["heard-first", "heard-second"];
+    socket.receive({ type: "state", state });
+    const received = new Map(["first", "second"].map(roomId => [`heard-${roomId}`, remoteStream(`heard-${roomId}`, [remoteTrack("audio")])]));
+    const listening = () => listeningVoicePublications(session.getSnapshot().state, session.getSnapshot().sessionId, received).map(value => value.id);
+    const earlier = session.setMuted("first", false), earlierRequest = socket.sent.at(-1)!;
+    await session.setMuted("first", true);
+    expect(first.enabled).toBe(false); expect(second.enabled).toBe(true);
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "ack", requestId: earlierRequest.requestId });
+    await earlier;
+    expect(first.enabled).toBe(false);
+    socket.close();
+    const muting = session.setMuted("first", true).catch(error => error);
+    expect(first.enabled).toBe(false);
+    expect(second.enabled).toBe(true);
+    expect(session.getSnapshot().state?.voice.find(value => value.roomId === "first")?.muted).toBe(true);
+    await muting;
+    await session.setDeafened("first", true);
+    expect(listening()).toEqual(["heard-second"]);
+    expect(session.getSnapshot().state?.subscriptions).toEqual(state.subscriptions);
+    await session.setDeafened("first", false);
+    expect(listening()).toEqual(["heard-first", "heard-second"]);
+    await session.setMuted("first", false);
+    expect(first.enabled).toBe(true);
+    await session.setMuted("first", true);
+    await session.setDeafened("first", true);
+    expect(raw.stop).not.toHaveBeenCalled();
+    expect(contexts[0].close).not.toHaveBeenCalled();
+    session.reconnect();
+    const resumed = ChannelSocket.current; await resumed.onopen?.();
+    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    expect(resumed.sent).toContainEqual({ type: "voice", roomId: "first", joined: true, muted: true, deafened: true });
+    expect(first.enabled).toBe(false); expect(second.enabled).toBe(true);
+    expect(listening()).toEqual(["heard-second"]);
+    resumed.receive({ type: "state", state });
+    expect(first.enabled).toBe(false);
+    expect(session.getSnapshot().state?.voice.find(value => value.roomId === "first")).toMatchObject({ muted: true, deafened: true });
+    resumed.receive({ type: "welcome", credential: "credential", sessionId: "new-endpoint", state: { ...state, sessions: state.sessions.map(value => value.id === "endpoint" ? { ...value, id: "new-endpoint" } : value) } });
+    expect(session.canUnmute("first")).toBe(false);
+    expect(session.getSnapshot().state?.voice.some(value => value.sessionId === "new-endpoint")).toBe(false);
+  } finally { session.close(); }
+});
+
+test("mute and leave supersede a pending unmute without activating a late microphone", async () => {
+  const { session, socket } = await setup(3, false);
+  const state = structuredClone(session.getSnapshot().state!);
+  const contexts = microphoneMixer([]);
+  const raw = remoteTrack("audio");
+  let grant!: (stream: MediaStream) => void;
+  const getUserMedia = vi.fn(() => new Promise<MediaStream>(resolve => { grant = resolve; }));
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+  try {
+    const joining = session.joinVoice("first", true);
+    state.voice.push({ roomId: "first", sessionId: "endpoint", muted: true, deafened: false });
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await joining;
+    const opening = session.setMuted("first", false);
+    expect(session.getSnapshot().pending.has("voice:first")).toBe(true);
+    await session.setMuted("first", true);
+    expect(session.getSnapshot().state?.voice[0].muted).toBe(true);
+    await session.leaveVoice("first");
+    expect(session.getSnapshot().state?.voice).toEqual([]);
+    grant(remoteStream("late-shared-raw", [raw]));
+    await opening;
+    expect(socket.sent.some(command => command.type === "publish")).toBe(false);
+    expect(raw.stop).toHaveBeenCalledOnce();
+    expect(contexts[0].close).toHaveBeenCalledOnce();
+    expect(socket.sent.at(-1)).toMatchObject({ type: "voice", joined: false });
+  } finally { session.close(); }
+});
+
 test("voice rooms share one microphone gain graph and release it after the last consumer", async () => {
   const preferences = new Map<string, string>();
   preferences.set("piik:room-preferences:v1", JSON.stringify({ voiceInput: { deviceId: "saved-device", volume: .7, voiceProcessing: false }, voiceListeningVolume: 1.2 }));
@@ -1074,7 +1172,7 @@ test("ending a Browser microphone retires its publication while room listening r
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("voice"));
     const join = socket.sent.at(-1)!;
     expect(join).toMatchObject({ type: "voice", joined: true, muted: false });
-    const state = { ...session.getSnapshot().state!, voice: [{ sessionId: "endpoint", roomId: "first", muted: false, deafened: true }] };
+    const state = { ...session.getSnapshot().state!, voice: [{ sessionId: "endpoint", roomId: "first", muted: false, deafened: false }] };
     socket.receive({ type: "state", state });
     socket.receive({ type: "room_reply", roomId: "first", requestId: join.requestId, result: { type: "done" } });
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
@@ -1083,6 +1181,12 @@ test("ending a Browser microphone retires its publication while room listening r
     socket.receive({ type: "state", state });
     socket.receive({ type: "room_reply", roomId: "first", requestId: publish.requestId, result: { type: "done" } });
     await joining;
+
+    const deafening = session.setDeafened("first", true);
+    state.voice[0].deafened = true;
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await deafening;
 
     state.channel.rooms[0].available = false;
     socket.receive({ type: "state", state });

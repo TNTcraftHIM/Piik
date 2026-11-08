@@ -125,6 +125,7 @@ export interface ChannelActions {
   joinVoice(roomId: string, listenOnly?: boolean): Promise<void>;
   leaveVoice(roomId: string): Promise<void>;
   setMuted(roomId: string, muted: boolean): Promise<void>;
+  canUnmute(roomId: string): boolean;
   setDeafened(roomId: string, deafened: boolean): Promise<void>;
   setInputVolume(volume: number): void;
   microphones(): Promise<CaptureDevice[]>;
