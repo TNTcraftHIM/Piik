@@ -516,7 +516,8 @@ Read discovery logs or check a router you manage. [View steps](./network.md#stun
 
 ### Optional: a virtual LAN
 
-Use Local room over Tailscale, ZeroTier or UU. [View steps](./network.md#optional-a-virtual-lan).
+Friends elsewhere cannot reach a local invitation, or direct media still will not
+connect? A virtual LAN provides another connection option. [View steps](./network.md#optional-a-virtual-lan).
 
 ## Reporting a problem
 

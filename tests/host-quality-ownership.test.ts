@@ -32,7 +32,7 @@ const source = ts.createSourceFile("HostPage.tsx", readFileSync(
   new URL("../src/client/pages/HostPage.tsx", import.meta.url), "utf8",
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const owners = new Set(["changeQuality", "commitQuality", "rememberQuality", "loadAppQualityPreference", "handleSignalMessage",
-  "switchSource", "watchCaptureEnd", "switchNativeSource", "switchToNativeSource", "createBrowserAudio", "retireNativeSenderPeers", "finishSourceSwitch", "replaceBrowserStream", "recoverBrowserFanout", "disposeNativeShare",
+  "switchSource", "watchCaptureEnd", "switchNativeSource", "switchToNativeSource", "createBrowserAudio", "changeCommentary", "retireNativeSenderPeers", "finishSourceSwitch", "replaceBrowserStream", "recoverBrowserFanout", "disposeNativeShare",
   "acquireNativeClient", "requestSharing", "nativeCaptureCodec", "startNativeShare", "startBrowserNativeIngress",
   "createNativePreview", "failNativePreview", "reconnectNativePreview", "reportHostChildFailure", "hostChildIsAssigned", "prepareHostChild",
   "connectNativeClient", "handleNativeClientClosed", "releaseUnusedNativeClient", "closeCaptureSourcePicker",
@@ -337,6 +337,66 @@ describe("Camera replacement ownership", () => {
     Object.assign(current.client.health, { activationURL: "piik://media" });
     return { ...current, nativeControl, remoteSnapshot, picture, previous, camera, nativeStream, oldBridge, peer, nativePeer, startedPeerStreams, replacePublication };
   }
+
+  it("releases pending Browser commentary when Native handoff retires its audio owner", async () => {
+    const current = sourceFixture(false);
+    const permission = deferred<MediaStream>();
+    const getUserMedia = vi.fn(() => permission.promise), contexts: { close: ReturnType<typeof vi.fn> }[] = [];
+    const outputAudio = { readyState: "live", stop: vi.fn() };
+    vi.stubGlobal("AudioContext", class {
+      close = vi.fn(async () => {});
+      resume = vi.fn(async () => {});
+      constructor() { contexts.push(this); }
+      createMediaStreamDestination() { return { stream: { getAudioTracks: () => [outputAudio], getTracks: () => [outputAudio] } }; }
+      createGain() { return { gain: { value: 1 }, connect() {}, disconnect() {} }; }
+    });
+    vi.stubGlobal("MediaStream", class {
+      constructor(private tracks: unknown[]) {}
+      getTracks() { return this.tracks; }
+      getVideoTracks() { return this.tracks.filter(track => track === current.previous.video); }
+      getAudioTracks() { return this.tracks.filter(track => track === outputAudio); }
+    });
+    vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+    let busy = false;
+    const setCommentaryBusy = vi.fn((value: boolean) => { busy = value; });
+    const setMicrophone = vi.fn(async () => {});
+    Object.assign(current.client, { setMicrophone });
+    Object.assign(current.context, {
+      commentaryOperationRef: ref(null), setCommentaryBusy, setCommentaryInput: vi.fn(),
+      commentaryInput: { deviceId: "", volume: 1, voiceProcessing: true },
+      startPeer: current.startChild,
+    });
+    const audio = current.context.hostAudioRef.current as HostAudio;
+    const disposed = vi.spyOn(audio, "dispose");
+    const lateTrack = { stop: vi.fn() };
+    try {
+      await audio.start();
+      const commentary = current.context.changeCommentary(true) as Promise<void>;
+      await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
+      expect(busy).toBe(true);
+      // The normal source action is available while microphone permission waits.
+      await current.context.switchToNativeSource({ kind: "native", client: current.client,
+        target: { kind: "display", sourceId: "1", title: "Display" }, audio: false, path: {} });
+      expect(current.nativeModeRef.current).toBe(true);
+      expect(current.context.streamRef.current).toBe(current.nativeStream);
+      expect(disposed).toHaveBeenCalledOnce();
+      await vi.waitFor(() => expect(busy).toBe(false));
+      await commentary;
+      expect(contexts.every(context => context.close.mock.calls.length === 1)).toBe(true);
+      await current.context.changeCommentary(true);
+      expect(setMicrophone).toHaveBeenCalledExactlyOnceWith("native-source-2", true, 1, "");
+      permission.resolve({ getTracks: () => [lateTrack] } as unknown as MediaStream);
+      await Promise.resolve();
+      expect(lateTrack.stop).toHaveBeenCalledOnce();
+      expect(current.context.streamRef.current).toBe(current.nativeStream);
+      expect(current.context.endSharing).not.toHaveBeenCalled();
+      expect(current.createRoom).not.toHaveBeenCalled();
+    } finally {
+      permission.resolve({ getTracks: () => [lateTrack] } as unknown as MediaStream);
+      audio.dispose();
+      vi.unstubAllGlobals();
+    }
+  });
 
   it.each(["initial", "replacement"])("rejects Browser capture that ends during %s audio preparation", async entry => {
     const current = sourceFixture(entry === "replacement");

@@ -1,12 +1,17 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-04
+Last reviewed: 2026-11-07
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Blue-tinted sharing (#529).** Identify the source and affected receive
+  path from [#529](https://github.com/TNTcraftHIM/Piik/issues/529): Piik version,
+  platform, capture choice and matching source/Viewer screenshots. Compare
+  those pixels with the existing colour controls; increased bitrate did not
+  resolve the reported tint.
 - [ ] **Browser sharing falls to low source FPS during motion.** Capture original
   track, isolated capture-input and sender counters during the same low-FPS
   episode on Windows Chrome with mixed direct/SFU delivery. The observed sender

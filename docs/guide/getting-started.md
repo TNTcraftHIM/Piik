@@ -40,6 +40,10 @@ you do not need to create a room in your App to watch them.
    second device or send it to a friend.
 4. Select **Stop sharing** when finished.
 
+On iPhone/iPad, screen sharing requires **Safari on iOS/iPadOS 27 or later**.
+See [iPhone and iPad screen sharing](./sharing.md#iphone-and-ipad-screen-sharing)
+for sound support and the separate requirements for watching and cameras.
+
 The online version is provided by the project. Media travels only between participants (P2P);
 restrictive networks may load the page but block video.
 

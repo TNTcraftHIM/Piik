@@ -31,7 +31,7 @@ describe("mirror source authority", () => {
     expect(resolveMirrorSource("12345")).toEqual(expected);
     api({ ...run, conclusion: "failure" });
     expect(resolveMirrorSource("12345")).toEqual(expected);
-    expect(() => resolveMirrorSource("12345", true)).toThrow(/completed main push/);
+    expect(resolveMirrorSource("12345", true)).toEqual(expected);
   });
 
   it.each(["", "012345", "1e3", "-1", "12345\nmirror=true", "9007199254740992", undefined])
@@ -52,9 +52,11 @@ describe("mirror source authority", () => {
   });
 
   it("skips automatic runs without a current release and refuses an explicit stale retry", () => {
-    api(run, { ...release, target_commitish: "b".repeat(40) });
-    expect(resolveMirrorSource("12345", true)).toBeNull();
-    expect(() => resolveMirrorSource("12345")).toThrow(/does not match the latest/);
+    for (const conclusion of ["success", "failure", "cancelled"]) {
+      api({ ...run, conclusion }, { ...release, target_commitish: "b".repeat(40) });
+      expect(resolveMirrorSource("12345", true)).toBeNull();
+      expect(() => resolveMirrorSource("12345")).toThrow(/does not match the latest/);
+    }
   });
 
   it.each([{ draft: true }, { prerelease: true }, { tag_name: "preview" }, { target_commitish: "main" }])

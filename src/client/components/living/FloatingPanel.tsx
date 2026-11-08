@@ -98,6 +98,9 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
     // resizing the living room or taking ownership of scrolling/focus.
     const viewport = window.visualViewport;
     const place = (change?: PanelChange) => {
+      // Native hiding/adoption can precede React's effect cleanup. Only this
+      // document's visible panel can update its remembered in-page position.
+      if (panel.ownerDocument !== document || !panel.matches(":popover-open")) return;
       const layout = document.documentElement;
       const width = viewport?.width ?? layout.clientWidth, height = viewport?.height ?? layout.clientHeight;
       const maxWidth = Math.max(0, width - 24), maxHeight = Math.max(0, height - 24);

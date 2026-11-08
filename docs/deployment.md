@@ -237,6 +237,13 @@ node --env-file=.env.maintenance.private.local scripts/release-maintenance.mjs s
 The website's latest-version card reads GitHub metadata and cannot establish
 which release either service is running.
 
+Download mirrors have a separate completion check: the AtomGit stable/latest
+release must match the published version and source, and every package must pass
+the mirror publisher's anonymous download and checksum verification. A green
+workflow that skipped its upload step is not mirror completion. Keep a failed
+mirror in the active TODO ledger until recovery and postflight succeed; source
+synchronization alone does not publish download attachments.
+
 Verify only the surfaces relevant to the release:
 
 - local and public `/healthz` return `{"status":"ok"}`;

@@ -16,12 +16,11 @@ export function resolveMirrorSource(runId, automatic = false) {
   if (run.id !== Number(runId) || run.repository?.full_name !== repository ||
       run.head_repository?.full_name !== repository || run.event !== "push" ||
       run.head_branch !== "main" || run.path !== ".github/workflows/repository-hygiene.yml" ||
-      run.status !== "completed" || !/^[a-f0-9]{40}$/.test(run.head_sha) ||
-      (automatic && run.conclusion !== "success")) {
+      run.status !== "completed" || !/^[a-f0-9]{40}$/.test(run.head_sha)) {
     throw new Error("Mirror artifacts must come from a completed main push in this repository's CI workflow");
   }
-  // A legacy CI run may be red because its mirror failed after GitHub published.
-  // The published release, not that aggregate result, owns manual retry identity.
+  // A later publication step can fail after GitHub has published the packages.
+  // The matching stable release owns mirror identity, not the CI aggregate result.
   const release = gh("releases/latest");
   if (release.draft !== false || release.prerelease !== false || !isReleaseVersion(release.tag_name) ||
       !/^[a-f0-9]{40}$/.test(release.target_commitish)) {
