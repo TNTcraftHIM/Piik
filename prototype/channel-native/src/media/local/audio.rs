@@ -306,13 +306,19 @@ fn run(
                             }
                         }
                         Some(Request::Microphone(next, reply)) => {
-                            if pending.is_some() || prepared.is_some() { response = Some((reply, Err(anyhow!("capture_pending")))); }
-                            else if !next.enabled {
-                                if let Some(input) = mic.take() { close(input).await; }
+                            if !next.enabled {
+                                let old = mic.take();
+                                let preparing = pending.take_if(|p| matches!(p.kind, PreparingKind::Microphone(_)));
+                                if let Some(input) = &old { input.capture.control().stop(); }
+                                if let Some(preparing) = &preparing { preparing.control.stop(); }
                                 mix.clear(1);
                                 microphone = next;
+                                publish_state(&system, &microphone);
+                                if let Some(input) = old { close(input).await; }
+                                if let Some(preparing) = preparing { preparing.close().await; }
                                 response = Some((reply, Ok(())));
-                            } else if mic.is_some() && microphone.device_id == next.device_id {
+                            } else if pending.is_some() || prepared.is_some() { response = Some((reply, Err(anyhow!("capture_pending")))); }
+                            else if mic.is_some() && microphone.device_id == next.device_id {
                                 microphone = next;
                                 response = Some((reply, Ok(())));
                             } else {
@@ -593,6 +599,116 @@ mod tests {
         assert!(mix.pop(false, 1.0).is_none());
         mix.push(0, frame(at + Duration::from_millis(20), [0.2, 0.4]));
         assert!(mix.pop(false, 1.0).is_none());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test]
+    async fn microphone_off_retires_its_active_and_pending_input_without_canceling_system_preparation(
+    ) -> Result<()> {
+        use std::sync::Mutex;
+        tokio::time::timeout(Duration::from_secs(3), async {
+            for preparing_microphone in [true, false] {
+                let epoch = Instant::now();
+                let (sources, _ready) = mpsc::channel(4);
+                let (events, _ended) = mpsc::channel(4);
+                let (_cancel, cancelled) = watch::channel(false);
+                let (_joining, joined) = oneshot::channel();
+                let (mic, _pcm, mic_joined) = AudioCapture::fixture(true)?;
+                let mic_control = mic.control();
+                let (candidate, _candidate_pcm, candidate_joined) = AudioCapture::fixture(false)?;
+                let candidate_control = candidate.control();
+                let (opening, opened) = oneshot::channel();
+                let inputs = Mutex::new(VecDeque::from([(mic, None), (candidate, Some(opening))]));
+                let (control, task) = run(
+                    Uuid::new_v4(),
+                    epoch,
+                    SystemInstant::now(epoch),
+                    sources,
+                    events,
+                    Relay::default(),
+                    cancelled,
+                    joined,
+                    move |_| {
+                        let (input, opening) = inputs.lock().unwrap().pop_front().unwrap();
+                        if let Some(opening) = opening {
+                            let _ = opening.send(());
+                        }
+                        Ok(input)
+                    },
+                );
+                control
+                    .configure_microphone(SourceMicrophoneSettings {
+                        enabled: true,
+                        device_id: "active".into(),
+                        volume: 1.0,
+                    })
+                    .await?;
+                let (system, _system_pcm, system_joined) = AudioCapture::fixture(false)?;
+                let system_control = system.control();
+                let changing;
+                let system_started;
+                if preparing_microphone {
+                    let selected = control.clone();
+                    changing = Some(tokio::spawn(async move {
+                        selected
+                            .configure_microphone(SourceMicrophoneSettings {
+                                enabled: true,
+                                device_id: "pending".into(),
+                                volume: 1.0,
+                            })
+                            .await
+                    }));
+                    opened.await?;
+                    system_started = None;
+                } else {
+                    let (_lease, started, _) = control.prepare_system(Some(system)).await?;
+                    // Barrier on the real actor, preserving its pending system input.
+                    control.cancel_microphone().await?;
+                    system_started = Some(started);
+                    changing = None;
+                }
+                let off = control
+                    .configure_microphone(SourceMicrophoneSettings {
+                        enabled: false,
+                        device_id: "active".into(),
+                        volume: 1.0,
+                    })
+                    .await;
+                let stopped = mic_control.is_stopped();
+                let state = control.state.borrow().clone();
+                let pending_mic_stopped = candidate_control.is_stopped();
+                let pending_system_stopped = system_control.is_stopped();
+                if preparing_microphone {
+                    system_control.stop();
+                }
+                control.stop();
+                task.await?;
+                mic_joined.await?;
+                candidate_joined.await?;
+                system_joined.await?;
+                if let Some(changing) = changing {
+                    assert_eq!(
+                        changing.await?.unwrap_err().to_string(),
+                        "capture_cancelled"
+                    );
+                }
+                if let Some(started) = system_started {
+                    assert!(started.await?.is_err());
+                }
+                off?;
+                assert!(stopped && !state.microphone.enabled);
+                if preparing_microphone {
+                    assert!(pending_mic_stopped);
+                } else {
+                    assert!(
+                        !pending_system_stopped,
+                        "microphone off cannot cancel system preparation"
+                    );
+                }
+            }
+            Ok::<_, anyhow::Error>(())
+        })
+        .await?
     }
 
     #[cfg(target_os = "windows")]
