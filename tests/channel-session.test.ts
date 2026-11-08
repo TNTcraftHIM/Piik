@@ -5994,6 +5994,59 @@ test("voice forwards without local listening and the same pair carries the rever
 });
 
 
+test("history failure survives allocated-hop snapshots and recovers only when its control hop opens", async () => {
+  vi.useFakeTimers();
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const { session, socket, peer } = await setup(1000, false);
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    const delivery = state.channel.rooms[0].delivery!;
+    delivery.nextHops = {};
+    state.pairs = [{ id: "control-pair", peerId: "host", canReceiveVideoLayers: false,
+      rooms: ["first"], incoming: [], outgoing: [] }];
+    socket.receive({ type: "state", state });
+    const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    socket.receive({ type: "ack", requestId: browse.requestId });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(session.getSnapshot().pending.has("history:first")).toBe(true);
+    delivery.nextHops = { host: "host" };
+    socket.receive({ type: "state", state });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(session.getSnapshot().error).toBe("request_timeout");
+    expect(session.getSnapshot().pending.has("history:first")).toBe(false);
+    expect(peer.sent).toHaveLength(1);
+    const unreadyRoutes: Array<Record<string, string>> = [{}, { host: "host" }];
+    for (const nextHops of unreadyRoutes) {
+      delivery.nextHops = nextHops;
+      socket.receive({ type: "state", state });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(session.getSnapshot().pending.has("history:first")).toBe(false);
+      expect(session.getSnapshot().error).toBe("request_timeout");
+    }
+    const pc = RoomPeerConnection.instances[0];
+    pc.connected();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(peer.sent).toHaveLength(1);
+    pc.channels.find(channel => channel.label === "piik-room")!.open();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(peer.sent).toHaveLength(2);
+    peer.page(peer.sent[1], [message(7)]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(session.getSnapshot().pending.has("history:first")).toBe(false);
+    expect(session.getSnapshot().messagesByRoom.first.map(value => value.seq)).toEqual([7]);
+    expect(session.getSnapshot().error).toBeNull();
+    state.channel.rooms[0].delivery = { ...delivery, hostSessionId: "endpoint", nextHops: {} };
+    state.pairs = [];
+    socket.receive({ type: "state", state });
+    const local = session.loadLatestHistory("first");
+    await vi.advanceTimersByTimeAsync(0);
+    peer.page(peer.sent.at(-1)!, [message(8)]);
+    await local;
+    expect(session.getSnapshot().messagesByRoom.first.map(value => value.seq)).toEqual([8]);
+  } finally { session.close(); }
+});
+
 test("browse waits for the current room path and reconnect cancels unsent history before refreshing", async () => {
   const { session, socket, peer } = await setup(1000, false);
   try {

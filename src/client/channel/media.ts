@@ -207,6 +207,11 @@ export class ChannelMedia {
     });
   }
 
+  isControlReady(peerId: string, roomId: string): boolean {
+    return [...this.peers.values()].some(peer => peer.plan.peerId === peerId
+      && peer.plan.rooms.includes(roomId) && peer.transport.isBaseReady());
+  }
+
   sendInput(peerId: string, frame: string): boolean {
     const peer = [...this.peers.values()].find(peer => peer.plan.peerId === peerId);
     return peer?.transport.sendInput(frame) ?? false;

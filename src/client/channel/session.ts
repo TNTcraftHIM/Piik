@@ -152,7 +152,13 @@ export class ChannelSession {
     send: (peer, frame) => this.media.sendInput(peer, frame),
     changed: inputChannels => this.patch({ inputChannels }),
   });
-  private media = new ChannelMedia(command => this.send(command), (streams, screenInputs) => this.patch({ streams, screenInputs }),
+  private media = new ChannelMedia(command => {
+    this.send(command);
+    if (command.type === "base_state" && command.ready) {
+      const peer = this.view.state?.pairs.find(pair => pair.id === command.pairId)?.peerId;
+      if (peer) this.syncReading(peer);
+    }
+  }, (streams, screenInputs) => this.patch({ streams, screenInputs }),
     (peer, kind, data) => {
       if (kind === "chunk") this.attachments.data(peer, kind, data);
       else void this.conversation.receive(peer, data as string).catch(() => {});
@@ -945,6 +951,13 @@ export class ChannelSession {
         const refresh = () => {
           if (this.readings.get(reading.roomId) !== reading || this.socket !== reading.socket || reading.history !== history
             || this.view.historyByRoom[reading.roomId]?.atLatest === false || this.view.pending.has(`history:${reading.roomId}`)) return;
+          const current = this.view.state?.channel.rooms.find(room => room.id === reading.roomId
+            && room.authorized && room.available && room.delivery?.bindingId === reading.bindingId)?.delivery;
+          if (!current) return;
+          if (current.hostSessionId !== this.view.sessionId) {
+            const hop = current.nextHops[current.hostSessionId];
+            if (!hop || !this.media.isControlReady(hop, reading.roomId)) return;
+          }
           void this.loadLatestHistory(reading.roomId).catch(() => {});
         };
         if (this.view.pending.has(`history:${reading.roomId}`)) void history?.catch(refresh);
