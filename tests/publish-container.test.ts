@@ -36,7 +36,7 @@ async function publish(options: Scenario = {}) {
   const manifests = new Map<string, object>();
   if (options.existing) manifests.set(tag, index);
   if (options.partial) manifests.set(`${tag}-arm64`, {});
-  const images = new Map(servers.map(server => [`${image}-${server.arch}`, server.arch]));
+  const images = new Map(linuxServers.map(server => [`${image}-${server.arch}`, new Set([server.arch])]));
   command.mockReset().mockImplementation((program: string, args: string[]) => {
     if (program === "gh") {
       if (args[1].endsWith("/commits/" + version)) {
@@ -53,9 +53,15 @@ async function publish(options: Scenario = {}) {
           digest: `sha256:${options.badArchive && server.arch === "arm64" ? "c".repeat(64) : server.sha256}` })) });
     }
     if (args[0] === "image" && args[1] === "inspect") {
-      const arch = images.get(args[2]);
+      const reference = args.at(-1)!;
+      const stored = images.get(reference);
+      // A multi-platform store retains both variants. Inspect defaults to the
+      // host architecture, independently of the last platform pulled.
+      const requested = args.includes("--platform") ? args[args.indexOf("--platform") + 1].slice("linux/".length) : undefined;
+      const arch = requested ?? (stored?.has("amd64") ? "amd64" : [...stored ?? []][0]);
       expect(arch).toBeDefined();
-      const remote = args[2].startsWith("ghcr.io/");
+      expect(stored?.has(arch!)).toBe(true);
+      const remote = reference.startsWith("ghcr.io/");
       return JSON.stringify([{ Os: "linux", Architecture: options.wrongPlatform && arch === "arm64" ? "amd64" : arch, Config: { Labels: {
         "org.opencontainers.image.version": version,
         "org.opencontainers.image.revision": (options.wrongImage && arch === "arm64") || (options.remoteMismatch && remote)
@@ -78,7 +84,11 @@ async function publish(options: Scenario = {}) {
       }
       return JSON.stringify(manifests.get(reference));
     }
-    if (args[0] === "pull") images.set(args[3], args[2].slice("linux/".length));
+    if (args[0] === "pull") {
+      const variants = images.get(args[3]) ?? new Set<string>();
+      variants.add(args[2].slice("linux/".length));
+      images.set(args[3], variants);
+    }
     if (args[0] === "tag") images.set(args[2], images.get(args[1])!);
     if (args[0] === "push") manifests.set(args[1], {});
     if (args[0] === "buildx" && args[2] === "create") manifests.set(args[4], index);

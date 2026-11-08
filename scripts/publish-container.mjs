@@ -30,7 +30,7 @@ for (const server of servers) {
 }
 
 function verifyImage(reference, server) {
-  const metadata = JSON.parse(run("docker", "image", "inspect", reference))[0];
+  const metadata = JSON.parse(run("docker", "image", "inspect", "--platform", `linux/${server.arch}`, reference))[0];
   assert.equal(metadata.Os, "linux");
   assert.equal(metadata.Architecture, server.arch);
   const labels = metadata.Config.Labels;
