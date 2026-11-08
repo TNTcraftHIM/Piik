@@ -639,8 +639,9 @@ impl BaseTree {
         }
         if self.operation.as_ref().is_some_and(|operation| {
             self.plan.parents.get(&operation.child).copied() != operation.replaces
-                || !connected.contains(&operation.child)
-                || (operation.replaces.is_none() && !demand.contains(&operation.child))
+                || (operation.replaces.is_none()
+                    && (!connected.contains(&operation.child)
+                        || !demand.contains(&operation.child)))
                 || operation.replaces.is_some_and(|parent| {
                     self.plan.wan_outputs(parent, None, &BTreeMap::new())
                         <= limits.get(parent, self.root())
@@ -738,6 +739,9 @@ impl BaseTree {
         connected: &BTreeSet<Uuid>,
         limits: &RelayLimits,
     ) -> bool {
+        if !connected.contains(&child) {
+            return false;
+        }
         let failed = |parent| {
             self.plan
                 .failed_parents
@@ -963,6 +967,51 @@ mod tests {
             "the parent slot's healthy leaf is not the edge the user withdrew"
         );
         assert!(!base.plan.parents.contains_key(&id(3)));
+    }
+
+    #[test]
+    fn required_capacity_deadline_survives_same_session_signaling_recovery() {
+        let all = set(&[1, 2, 3]);
+        let mut demand = BTreeSet::new();
+        let mut base = BaseTree::new(id(1));
+        let mut limits = RelayLimits {
+            default: 1,
+            host: id(1),
+            overrides: BTreeMap::new(),
+        };
+        for endpoint in [2, 3] {
+            demand.insert(id(endpoint));
+            base.reconcile(&demand, &all, &all, &limits, 0);
+            for (parent, child) in base.links().collect::<Vec<_>>() {
+                base.state(parent, child, true);
+                base.state(child, parent, true);
+            }
+        }
+        assert_eq!(base.plan.parents, [(id(2), id(1)), (id(3), id(2))].into());
+        limits.overrides = [(id(2), 0), (id(3), 2)].into();
+        base.reconcile(&demand, &all, &all, &limits, 10);
+        assert_eq!(base.deadline(), Some(20_010));
+        assert_eq!(base.candidate_links(), [(id(1), id(3)), (id(3), id(2))]);
+        // Signaling recovery retains this endpoint and its healthy media. It may
+        // retire the candidate, but cannot renew the explicit reduction's TTL.
+        let connected = set(&[1, 2]);
+        for now in [11, 1000] {
+            base.reconcile(&demand, &all, &connected, &limits, now);
+            assert_eq!(base.deadline(), Some(20_010));
+            assert!(base.candidate_links().is_empty());
+        }
+        base.reconcile(&demand, &all, &all, &limits, 1500);
+        assert_eq!(base.deadline(), Some(20_010));
+        base.reconcile(&demand, &all, &all, &limits, 20_010);
+        assert_eq!(base.plan.parents.get(&id(2)), Some(&id(1)));
+        assert!(
+            base.ready(id(2)),
+            "the retained healthy branch keeps its proof"
+        );
+        assert!(
+            !base.links().any(|(parent, _)| parent == id(2)),
+            "zero must stop forwarding at the original required deadline"
+        );
     }
 
     #[test]
