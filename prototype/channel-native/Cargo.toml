@@ -15,7 +15,7 @@ capture = ["dep:ashpd", "dep:reis", "dep:gst", "dep:gst-app", "dep:gst-video", "
 [dependencies]
 bytes = "=1.12.1"
 piik-channel-core = { path = "../channel-core", features = ["sqlite"] }
-str0m = { version = "=0.25.0", git = "https://github.com/algesten/str0m", rev = "8e0067cca6a45ae4ea0532148d08a3d803d29841", default-features = false, features = ["rust-crypto"] }
+str0m = { version = "=0.25.0", git = "https://github.com/TNTcraftHIM/str0m", rev = "f3196495983841061e63d30704024f87ffb09c6b", default-features = false, features = ["rust-crypto"] }
 rtc-rtp = "=0.21.1"
 rtc-shared = { version = "=0.21.1", default-features = false, features = ["marshal"] }
 url = "=2.5.8"

@@ -211,26 +211,30 @@ When an upstream release includes the repair, return both direct entries
 to that release and regenerate Native, Server and Android locks, then run the
 existing mapping timer/lifecycle checks and package notice collection.
 
-Native uses str0m's public RTP/Sans-I/O interface, pinned to the official Git
-[snapshot `8e0067cc`](https://github.com/algesten/str0m/commit/8e0067cca6a45ae4ea0532148d08a3d803d29841).
-It also refreshes the ICE username fragment when a discarded local candidate is
-reactivated after direct credential replacement. Piik's current SDP restart path
-already refreshes retained candidates; this is an upstream lifecycle correction.
-Published 0.25.0 contains the earlier pacing and TWCC repairs below, but predates
-the merged [RTX jitter-statistics repair](https://github.com/algesten/str0m/pull/1121).
-This pin includes that repair: recovered packets still deliver once, without
-their retransmission delay changing the primary stream's jitter estimate.
-Released 0.24.1 omits authentic early simulcast RTX padding from TWCC feedback
-before the main SSRC is known. This pin includes the upstream
-[receipt-accounting repair](https://github.com/algesten/str0m/pull/1086) and
-[TWCC timestamp precision repair](https://github.com/algesten/str0m/pull/1071),
-plus [persistent-queue pacing](https://github.com/algesten/str0m/pull/1115),
-[allocation probing](https://github.com/algesten/str0m/pull/1108) and
-[idle output readiness](https://github.com/algesten/str0m/issues/1011), without a
-private RTC fork. Selected Original supply provides the SDK's minimum transmit
-demand; the SDK owns padding and probing within its estimate. Return to a release
-containing these repairs and regenerate the Native, Server and Android locks
-when one is available.
+Native uses str0m's public RTP/Sans-I/O interface, temporarily pinned to
+[`f3196495`](https://github.com/TNTcraftHIM/str0m/commit/f3196495983841061e63d30704024f87ffb09c6b)
+on the [official `8e0067cc` baseline](https://github.com/algesten/str0m/commit/8e0067cca6a45ae4ea0532148d08a3d803d29841).
+The fork preserves the original commits from
+[PR #1134](https://github.com/algesten/str0m/pull/1134): repeated NACKs cannot
+enqueue the same packet within one round trip, while later loss can still be
+repaired. One additional reset correction clears that resend history with the
+transmit buffers; its regression is
+[reported upstream](https://github.com/algesten/str0m/pull/1134#issuecomment-6717243518).
+The [Native consumer comparison](../../docs/research/network-lab.md#duplicate-nack-feedback)
+records the effect through Piik's transport. Upstream MIT/Apache-2.0 licensing,
+public APIs and Piik's retransmission policy remain unchanged.
+
+The official baseline includes [RTX jitter accounting](https://github.com/algesten/str0m/pull/1121),
+[early RTX receipt accounting](https://github.com/algesten/str0m/pull/1086),
+[TWCC timestamp precision](https://github.com/algesten/str0m/pull/1071),
+[persistent-queue pacing](https://github.com/algesten/str0m/pull/1115),
+[allocation probing](https://github.com/algesten/str0m/pull/1108),
+[idle output readiness](https://github.com/algesten/str0m/issues/1011) and the
+candidate-credential refresh repair. Selected Original supply provides the
+SDK's minimum transmit demand; the SDK owns padding and probing within its estimate.
+When an official revision includes equivalent resend and reset repairs, return
+the pin to upstream and regenerate Native, Server and Android locks. Reuse the
+consumer loss/retirement checks and package notice collection before adoption.
 The SDK owns ICE, DTLS/SRTP, SCTP, pacing, retransmission and congestion control.
 Piik owns source clocks, shared encodings, output demand and pair-scoped socket
 handoff; Server owns its fixed UDP listeners. The `rust-crypto` provider requires

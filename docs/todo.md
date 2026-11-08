@@ -51,12 +51,11 @@ the feedback period; they do not delay that delivery.
   verify an official release containing the repair.
   [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency)
   owns the temporary pin and removal procedure.
-- [ ] **3.0 duplicate video retransmissions.** Follow
-  [str0m #1134](https://github.com/algesten/str0m/pull/1134). The current SDK
-  queues repeated NACKs within one round trip. Verify the official fix also
-  clears recent-resend history when transmit buffers reset before updating
-  the pin; the [reproduced reset case](https://github.com/algesten/str0m/pull/1134#issuecomment-6717243518)
-  is reported upstream. Keep retransmission ownership in the SDK.
+- [ ] **Return str0m to an upstream pin.** Follow
+  [str0m #1134](https://github.com/algesten/str0m/pull/1134) and its transmit-reset
+  correction. Once upstream covers both repairs, replace the temporary pin
+  through the existing consumer checks and
+  [dependency provenance](../prototype/channel-native/README.md#rtc-dependency).
 - [ ] **GNOME cancellation cleanup submission.** Submit the independently
   verified Mutter repair when GitLab authentication is available, under the upstream
   contribution rules. The

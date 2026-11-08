@@ -1933,7 +1933,7 @@ dependencies = [
 [[package]]
 name = "is"
 version = "0.12.0"
-source = "git+https://github.com/algesten/str0m?rev=8e0067cca6a45ae4ea0532148d08a3d803d29841#8e0067cca6a45ae4ea0532148d08a3d803d29841"
+source = "git+https://github.com/TNTcraftHIM/str0m?rev=f3196495983841061e63d30704024f87ffb09c6b#f3196495983841061e63d30704024f87ffb09c6b"
 dependencies = [
  "crc",
  "serde",
@@ -3847,7 +3847,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.25.0"
-source = "git+https://github.com/algesten/str0m?rev=8e0067cca6a45ae4ea0532148d08a3d803d29841#8e0067cca6a45ae4ea0532148d08a3d803d29841"
+source = "git+https://github.com/TNTcraftHIM/str0m?rev=f3196495983841061e63d30704024f87ffb09c6b#f3196495983841061e63d30704024f87ffb09c6b"
 dependencies = [
  "arrayvec",
  "base64ct",
@@ -3867,7 +3867,7 @@ dependencies = [
 [[package]]
 name = "str0m-proto"
 version = "0.8.0"
-source = "git+https://github.com/algesten/str0m?rev=8e0067cca6a45ae4ea0532148d08a3d803d29841#8e0067cca6a45ae4ea0532148d08a3d803d29841"
+source = "git+https://github.com/TNTcraftHIM/str0m?rev=f3196495983841061e63d30704024f87ffb09c6b#f3196495983841061e63d30704024f87ffb09c6b"
 dependencies = [
  "base64ct",
  "dimpl",
@@ -3880,7 +3880,7 @@ dependencies = [
 [[package]]
 name = "str0m-rust-crypto"
 version = "0.7.0"
-source = "git+https://github.com/algesten/str0m?rev=8e0067cca6a45ae4ea0532148d08a3d803d29841#8e0067cca6a45ae4ea0532148d08a3d803d29841"
+source = "git+https://github.com/TNTcraftHIM/str0m?rev=f3196495983841061e63d30704024f87ffb09c6b#f3196495983841061e63d30704024f87ffb09c6b"
 dependencies = [
  "aes 0.9.4",
  "aes-gcm 0.11.1",

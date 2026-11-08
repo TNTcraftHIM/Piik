@@ -202,6 +202,24 @@ media and clean teardown. Exact source closures and failed controls remain in th
 [Native evidence index](../../prototype/channel-native/README.md#rtc-dependency).
 The older Go runners below require their matching snapshot.
 
+### Duplicate NACK Feedback
+
+A controlled Windows UDP comparison uses Piik's `Transport.write_au`, real
+SDP/DTLS/SRTP/RTCP and received RTP events. The same proxy adds 25 ms each way,
+holds original reverse feedback for 350 ms and delays repair packets by 120 ms.
+For one lost video packet, official str0m `8e0067cc` emits five repairs within
+its measured 53 ms round trip; the
+[patched dependency](../../prototype/channel-native/README.md#rtc-dependency)
+emits one and recovers. A second loss also drops the first repair: the candidate
+retries after 68 ms, exceeding its measured 54 ms round trip, and recovers.
+This exercises encrypted transport repair; it does not measure decoded picture
+quality or public-network success rates.
+
+The SDK reset regression additionally clears resend history when transmit buffers
+or the SSRC reset. Piik's existing immediate-retirement check preserves another
+sender on the same transport. Retransmission stays in the SDK; the adapter adds
+no packet-deduplication state.
+
 ## Running The Process Layer
 
 The remainder of this section describes the archived 2.x runner and its CI inputs.
