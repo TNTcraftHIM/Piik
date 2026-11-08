@@ -20,6 +20,38 @@ afterEach(() => {
 });
 
 describe("opt-in Browser diagnostics", () => {
+  it.each([false, true])("3.0 transport uses the shared opt-in collector and retires it with its peer (%s)", async enabled => {
+    vi.useFakeTimers();
+    const page = browser(enabled ? "?debug=1" : "");
+    class Connection extends EventTarget {
+      connectionState = "new";
+      signalingState = "stable";
+      getSenders = () => [];
+      getReceivers = () => [];
+      getStats = vi.fn(async () => new Map([["transport", { id: "transport", type: "transport", dtlsState: "new" }]]));
+      close() { this.connectionState = "closed"; }
+    }
+    vi.stubGlobal("RTCPeerConnection", Connection);
+    const debug = await import("../src/client/lib/debug");
+    const { ChannelTransport } = await import("../src/client/channel/transport");
+    const release = debug.installBrowserDebug();
+    const transport = new ChannelTransport({ polite: true, iceServers: [], send: vi.fn(), receive: vi.fn(),
+      connected: vi.fn(), base: vi.fn(), failed: vi.fn() });
+    const error = new Event("error");
+    Object.assign(error, { error: new Error("Synthetic browser diagnostic") });
+    page.dispatchEvent(error);
+    const report = JSON.parse(await debug.exportBrowserDebug());
+    expect(report.events.some((record: { scope: string }) => record.scope === "window")).toBe(enabled);
+    expect(report.events.some((record: { event: string; details: { role?: string } }) => record.event === "stats" && record.details.role === "channel-peer")).toBe(enabled);
+    const connection = transport.pc as unknown as Connection;
+    expect(connection.getStats).toHaveBeenCalledTimes(enabled ? 1 : 0);
+    transport.close();
+    await debug.exportBrowserDebug();
+    expect(connection.getStats).toHaveBeenCalledTimes(enabled ? 1 : 0);
+    expect(vi.getTimerCount()).toBe(0);
+    release?.();
+  });
+
   it("records native video frame counters while retaining track facts when statistics are unavailable", async () => {
     browser();
     const debug = await import("../src/client/lib/debug");

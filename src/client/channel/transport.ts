@@ -1,6 +1,6 @@
 import { addRemoteIceCandidate } from "../webrtc/remote-ice-candidate";
 import { collectTrackConnectionMetrics, decodedVideoFrameSamples, type StatsAccumulator } from "../webrtc/stats";
-import { debugTrack } from "../lib/debug-webrtc";
+import { debugTrack, observeDebugConnection } from "../lib/debug-webrtc";
 import type { ConnectionMetrics } from "../types";
 import { preferOpusStereoReceive } from "../webrtc/opus-receive-sdp";
 import { applyVideoCodecPreference, normalizeVideoOfferSdp, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
@@ -97,6 +97,7 @@ export class ChannelTransport {
   private operations: Promise<void> = Promise.resolve();
   private deadline: ReturnType<typeof setTimeout> | null;
   private closed = false;
+  private releaseDebug: () => void;
   private rooms = new Set<string>();
   private channel: RTCDataChannel | null = null;
   private bulk: RTCDataChannel | null = null;
@@ -127,6 +128,7 @@ export class ChannelTransport {
 
   constructor(private options: TransportOptions) {
     this.pc = new RTCPeerConnection({ iceServers: options.iceServers, bundlePolicy: "max-bundle" });
+    this.releaseDebug = observeDebugConnection(this.pc, { role: "channel-peer" });
     this.deadline = setTimeout(() => this.timeout(), 20000);
     this.pc.onicecandidate = ({ candidate }) => {
       if (candidate) options.send({ candidate: candidate.toJSON() });
@@ -923,6 +925,7 @@ export class ChannelTransport {
     if (this.closed) return false;
     const released = [...this.sending.values()].some(output => output.senders.length > 0);
     this.closed = true;
+    this.releaseDebug();
     this.closeData();
     this.options.input?.(null);
     this.clearDeadline();
