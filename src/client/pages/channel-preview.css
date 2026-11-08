@@ -37,7 +37,7 @@
 .c3-identity > .c3-name-editor { margin-inline-start: auto; }
 .c3-identity strong { display: block; font-size: 13px; overflow-wrap: anywhere; }
 .c3-identity small { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; }
-.c3-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; container: channel-room / size; }
+.c3-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; container: channel-room / size; overflow-y: auto; overscroll-behavior: contain; }
 .c3-room-heading { display: grid; grid-template-areas: "title actions tools" "company company company"; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px 16px; flex: none; padding: 16px 24px 8px; border-bottom: 1px solid var(--line); }
 .c3-room-name { grid-area: title; min-width: 0; display: flex; align-items: center; gap: 10px; }
 .c3-room-company { grid-area: company; justify-self: center; }
@@ -59,7 +59,7 @@
 .c3-input { min-width: 0; width: 100%; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; font: inherit; font-size: 13px; }
 .c3-input:focus { outline: 2px solid var(--action); outline-offset: 2px; }
 .c3-copy-fallback { display: grid; gap: 8px; font-size: 12px; color: var(--muted); }
-.c3-workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+.c3-workspace { flex: 1; min-height: min-content; display: grid; grid-template-columns: minmax(0, 1fr); }
 .c3-workspace:not(.has-screens):has(> .c3-monitor) { grid-template-rows: auto minmax(0, 1fr); }
 .c3-workspace:not(.has-screens) > .c3-monitor { max-height: 180px; border-bottom: 1px solid var(--line); }
 .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr) 300px; }
@@ -118,6 +118,7 @@
 @container (max-width: 900px) {
   .c3-room-heading { grid-template-areas: "title title" "actions tools" "company company"; grid-template-columns: minmax(0, 1fr) auto; }
   .c3-room-actions { flex-wrap: wrap; }
+  .c3-room-tools .lr-cap:where(:not([popover] .lr-cap)) { display: none; }
 }
 @container (max-width: 600px) {
   .c3-room-heading { display: flex; flex-wrap: wrap; }
@@ -130,8 +131,8 @@
   .c3-room-heading .lr-cap:where(:not([popover] .lr-cap)) { display: none; }
   .c3-room-heading .c3-app-confirmation .lr-cap { display: inline; }
 }
-@container (max-width: 800px) {
-  .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, .8fr); }
+@container (width < 600px) {
+  .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(min-content, 1fr) minmax(min-content, .8fr); }
   .c3-workspace.has-screens.chat-collapsed { grid-template-rows: minmax(0, 1fr); }
   .c3-workspace.has-screens > .c3-monitor { border-inline-end: 0; border-bottom: 1px solid var(--line); overflow-y: auto; }
   .c3-workspace.has-screens .c3-conversation { padding: 12px 18px; gap: 10px; }
@@ -194,8 +195,6 @@
   .c3-room-actions, .c3-room-tools { flex-wrap: wrap; }
   .c3-room-tools { margin-inline-start: auto; }
   .c3-room-company { flex: 1 0 100%; max-width: none; }
-  .c3-workspace.has-screens:not(.chat-collapsed) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-  .c3-workspace.has-screens:not(.chat-collapsed) > .c3-monitor { border-inline-end: 1px solid var(--line); border-bottom: 0; }
 }
 @container channel-room (max-height: 420px) {
   .c3-workspace.has-screens .c3-monitor { padding-block: 0; }
@@ -207,7 +206,7 @@
   .c3-room-heading > .c3-room-slot { display: none; }
   .c3-room-heading .lr-cap:where(:not([popover] .lr-cap)) { display: none; }
   .c3-room-heading .c3-app-confirmation .lr-cap { display: inline; }
-  .c3-main > .c3-workspace .c3-conversation { min-height: 0; padding: 6px 12px; gap: 6px; }
+  .c3-main > .c3-workspace .c3-conversation { padding: 6px 12px; gap: 6px; }
   .c3-main > .c3-workspace .c3-composer textarea { max-height: var(--control-compact-size); }
   .c3-voice-dock { padding-block: 4px; }
   .c3-voice-participants { display: none; }
@@ -221,7 +220,6 @@
 
 /* One room and its live players; the presentation only folds navigation away. */
 .c3-view-toggle { display: inline-flex; flex: none; }
-.c3-view-toggle .lr-cap { display: inline; }
 .c3-shell[data-view="share"] { grid-template-columns: minmax(0, 1fr); max-width: 1180px; grid-template-rows: minmax(0, 1fr); }
 .c3-shell[data-view="share"] > :is(.c3-domain-rail, .c3-sidebar, .c3-people-panel) { display: none; }
 .c3-shell[data-view="share"] > .c3-main { grid-column: 1; grid-row: 1; }
