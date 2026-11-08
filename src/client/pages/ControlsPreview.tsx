@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { VideoFit, VideoRotation } from "../media/video-geometry";
-import { BackButton, Btn, Chip, NameTag, Pill, SwitchItem } from "../components/living/primitives";
-import { RoomChip, RoomCodePlaceholder, RoomAdmissionBadge } from "../components/living/RoomChip";
+import { BackButton, Btn, Chip, FieldCap, NameTag, Pill, SwitchItem } from "../components/living/primitives";
+import { Lcd, RoomChip, RoomCodePlaceholder, RoomAdmissionBadge } from "../components/living/RoomChip";
 import { CaptureSourcePicker, type NativeSourceList } from "../components/living/CaptureSourcePicker";
 import { LedStrip } from "../components/living/Header";
 import { StageOverlay, StageTv } from "../components/living/Stage";
@@ -90,6 +90,7 @@ export function ControlsPreview() {
   const [paused, setPaused] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [name, setName] = useState("Piik friend");
+  const [editingName, setEditingName] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(displayPreview);
   const [sourceRevision, setSourceRevision] = useState(0);
@@ -269,6 +270,25 @@ export function ControlsPreview() {
           <label className="lr-input"><Glyph name="pencil" size={17} /><input value={name} aria-label={t("host.name")}
             autoComplete="off" onChange={event => setName(event.target.value)} /></label>
         </div>
+        {(["host", "viewer"] as const).map(role => <div key={role} className={`lr-row lr-${role}-summary-row`}>
+          <div className={`lr-row-group lr-${role}-room-slot`}><FieldCap k="common.roomCode" />
+            {role === "host" ? <RoomChip roomId="9527" onReplace={notify} /> : <Lcd code="9527" />}</div>
+          {role === "viewer" && <div className="lr-row-group lr-viewer-host-slot"><Glyph name="tv" size={17} />
+            <Tooltip overflow={{ text: name || "Piik friend", selector: "b" }} className="lr-name-hint"><b>{name || "Piik friend"}</b></Tooltip></div>}
+          <div className={`lr-row-group lr-group-name lr-${role === "host" ? "host-identity" : "viewer-self"}-slot`}>
+            {editingName ? <>
+              <span className="lr-input lr-name-editor"><input value={name} aria-label={t("host.name")}
+                onChange={event => setName(event.target.value)} /></span>
+              <Btn icon="check" title="host.nameSave" onClick={() => setEditingName(false)} />
+              <Btn icon="x" title="host.nameCancel" onClick={() => setEditingName(false)} />
+            </> : <><NameTag name={name || "Piik friend"} identity={`preview-${role}-name`} />
+              <Btn icon="pencil" cap="common.edit" collapsibleCaption title="host.nameEdit" hint="hint-rename" onClick={() => setEditingName(true)} /></>}
+          </div>
+          <div className={`lr-row-group lr-group-actions lr-${role === "host" ? "host-diagnostics" : "viewer-actions"}-slot`}>
+            <Btn icon="gauge" cap="host.details" title="host.details" onClick={notify} />
+            <Btn icon="network" cap="host.topology" title="host.topology.show" onClick={notify} />
+          </div>
+        </div>)}
         <div className="cp-tools">
           <label className="lr-input is-password"><Glyph name="key" size={17} /><input type={passwordVisible ? "text" : "password"}
             placeholder={t("join.password")} aria-label={t("join.password")} aria-invalid={invalid} aria-describedby={invalid ? "preview-input-error" : undefined} autoComplete="off" />

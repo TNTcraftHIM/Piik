@@ -97,9 +97,11 @@ the **AtomGit mirror** GitHub workflow separately copies published binary assets
 Its repository Actions secret is `ATOMGIT_TOKEN`. Never put this token in source,
 a remote URL or a distributed package. GitHub publication keeps its scoped token.
 
-After a successful main-push CI run, the workflow downloads that run's complete
+After a completed main-push CI run, the workflow checks whether that run published
+the current stable GitHub release. A later failed container step does not prevent
+mirroring already-published packages. It downloads the matching run's complete
 original Server and App artifacts and invokes `scripts/mirror-release.mjs`.
-It skips runs that did not publish the current GitHub release. GitHub publication
+Runs without the current published release are skipped. GitHub publication
 and **Website** do not depend on mirror success. An unfinished mirror remains a
 prerelease until every package passes anonymous full-download SHA-256 validation.
 This includes the original signed APK and its already-built ZIP wrapper.

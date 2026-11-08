@@ -34,6 +34,15 @@
 每次开始新的分享时默认关闭，停止分享也会停止这路麦克风。观众通过画面声音收听，无须加入房间语音。
 房间语音独立运行。如果同时开启两路麦克风，听众可能听到两次你的声音；Piik 会提示，由你决定保留哪一路。
 
+## iPhone 与 iPad 屏幕分享
+
+请使用 **iOS／iPadOS 27 及以上的 Safari**，选择 **浏览器** 分享屏幕。
+观看朋友的画面和分享摄像头使用浏览器已有能力，不受此屏幕分享版本门槛限制。
+
+Safari 屏幕分享**不采集系统声音**。需要随画面讲话时，可主动开启[分享麦克风](#分享麦克风)。
+依据 MDN 的 [Safari 27 实测记录](https://github.com/mdn/browser-compat-data/pull/30732)
+及[屏幕／音频兼容数据](https://github.com/mdn/browser-compat-data/blob/main/api/MediaDevices.json)，两者支持情况不同。
+
 ## 摄像头与虚拟音频输入
 
 ![来源声音与分享麦克风随画面传输，使用播放音量；房间语音使用独立的收听音量。](../assets/guide/audio-paths.zh-CN.svg)

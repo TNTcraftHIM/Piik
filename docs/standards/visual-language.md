@@ -66,6 +66,35 @@ Keep existing controls in their established positions as a room becomes active.
 Represent missing room identity with a passive placeholder in its own slot;
 do not move unrelated controls into that space to fill an empty state.
 
+### Space Priority
+
+Assign space by meaning before choosing a breakpoint. The containing row or
+toolbar owns its layout; the shared control declares whether its caption may
+collapse. Primary styling, a quiet appearance or a particular icon does not
+determine that priority.
+
+| Content or action | Behavior when space is limited |
+| --- | --- |
+| A name, selected device or other object being acted on | Give the value space before its supporting action's caption. After that, keep the group together where possible; long names may use the full available line and then ellipsis with their existing full-value hint. |
+| Exact short values, units, entry fields and validation | Keep the value and unit together; preserve usable editing width. Wrap the field group or explanation instead of clipping the value or shrinking its type. |
+| Contextual actions with a familiar icon, such as Edit or Copy | Explicitly allow the caption to collapse first. Retain the same icon, accessible name, hint and normal click target. |
+| Primary, destructive or unfamiliar choices | Keep enough visible identity to distinguish the action and its scope; retain wording when an icon would be ambiguous. Wrap complete actions or their group. |
+| Secondary utilities and detail settings | Reuse the surface's existing More/settings disclosure when needed. Keep frequent playback, mute and stop/release controls directly reachable. |
+
+Use this order: remove surplus spacing, collapse eligible supporting captions,
+reflow coherent groups, then shorten long descriptive values. Do not reduce all
+children equally or use blanket `nowrap` to force a row to fit. For example,
+the nickname gets space before the word **Edit**; the pencil remains beside it
+until the whole identity group needs its own line.
+
+`Btn` owns optional caption collapse and button geometry. Layout owners select
+the applicable container state; they must not copy per-page glyph sizes or hide
+all captions indiscriminately. Header overflow remains its existing single
+disclosure and focus owner. The website and room UI follow these same priorities
+while keeping their distinct layouts. Check real short/long values, translated
+labels, active/editing states and text zoom; fitting inside the viewport alone
+does not prove the important content stayed readable.
+
 ### Control Selection
 
 Choose by the user's task, then reuse its interaction and visual primitive.
@@ -816,6 +845,11 @@ stationary and manually scrollable instead of discarding the hidden words.
   here instead of copying the palette, cast or animation table.
 
 ## Interaction References
+
+[Fluent toolbars](https://fluent2.microsoft.design/components/web/react/core/toolbar/usage)
+and [Atlassian navigation layout](https://atlassian.design/components/navigation-system/layout/code)
+distinguish directly available actions from overflow. Piik applies those priorities
+through its existing controls and layout owners, not a second toolbar framework.
 
 [Radix colour roles](https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale)
 separate surfaces, interaction states, borders and text instead of tinting every

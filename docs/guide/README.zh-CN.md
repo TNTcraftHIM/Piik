@@ -28,8 +28,8 @@
 
 ## 遇到问题
 
-- **App、分享或声音异常：** 从[问题排查的症状索引](./troubleshooting.zh-CN.md#常见问题)开始。
-- **校园网、画面连不上或虚拟局域网：** 查看[进阶网络排查](./network.zh-CN.md)，按现象选择连接方案。
+- **进不了房间、无法分享或听不到朋友：** 先看[对应的排查步骤](./troubleshooting.zh-CN.md#常见问题)。
+- **网页能打开，基本检查后画面或语音仍连不上：** 再看[进阶网络排查](./network.zh-CN.md)，对照浏览器、网络或虚拟局域网。
 
 仍然没解决？可以[反馈问题](https://github.com/TNTcraftHIM/Piik/issues/new/choose)，
 附上版本、系统、浏览器和复现步骤。需要收集报告时，按[反馈说明](./troubleshooting.zh-CN.md#反馈问题)导出。

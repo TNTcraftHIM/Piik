@@ -2517,6 +2517,7 @@ export function ViewerPage({
                       key="edit-name"
                       icon="pencil"
                       cap="common.edit"
+                      collapsibleCaption
                       title="host.nameEdit"
                       hint="hint-rename"
                       onClick={() => {

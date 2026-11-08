@@ -319,7 +319,7 @@ function Screen({ shot }: { shot: Shot }) {
               <div className={viewer ? "lr-viewer-personal-controls" : "lr-host-personal-controls"}>
                 <div className={`lr-row-group lr-group-name ${viewer ? "lr-viewer-self-slot" : "lr-host-identity-slot"}`}>
                   <NameTag name={viewer ? names[0] : name} identity={viewer ? guests[0] : host} />
-                  <Btn icon="pencil" cap="common.edit" title="host.nameEdit" hint="hint-rename" />
+                  <Btn icon="pencil" cap="common.edit" collapsibleCaption title="host.nameEdit" hint="hint-rename" />
                 </div>
                 <div className={`lr-row-group lr-group-actions ${viewer ? "lr-viewer-actions-slot" : "lr-host-diagnostics-slot"}`}>
                   <Btn icon="gauge" cap="host.details" title="host.details.show" hint="hint-details" disabled={!live} />

@@ -4462,6 +4462,7 @@ export function HostPage({
                     <Btn
                       icon="pencil"
                       cap="common.edit"
+                      collapsibleCaption
                       title="host.nameEdit"
                       hint="hint-rename"
                       onClick={() => {

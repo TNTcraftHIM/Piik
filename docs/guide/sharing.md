@@ -41,6 +41,18 @@ sharing. Viewers hear it through the picture's sound without joining room voice.
 Room voice remains independent. If you enable both microphones, listeners may
 hear you twice; Piik warns you and leaves the choice to you.
 
+## iPhone and iPad screen sharing
+
+Use **Safari on iOS/iPadOS 27 or later** and select **Browser** to share your screen.
+Watching a friend and camera sharing use the browser's existing capabilities
+and do not require this screen-sharing version.
+
+Safari screen sharing does **not** capture system audio. To speak with the picture,
+explicitly enable [Include my microphone](#include-your-microphone).
+MDN's [verified Safari 27 support](https://github.com/mdn/browser-compat-data/pull/30732)
+and [screen/audio compatibility data](https://github.com/mdn/browser-compat-data/blob/main/api/MediaDevices.json)
+distinguish screen capture from audio capture.
+
 ## Cameras and virtual audio inputs
 
 Picture sound and conversation use separate controls. Muting one does not mute the other.

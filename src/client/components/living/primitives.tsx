@@ -43,6 +43,7 @@ export function Btn({
   id,
   icon,
   cap,
+  collapsibleCaption = false,
   tone,
   size,
   quiet = false,
@@ -66,6 +67,8 @@ export function Btn({
   id?: string;
   icon: GlyphName;
   cap?: CopyKey;
+  /** Auxiliary caption may yield space while its icon, label and hint remain. */
+  collapsibleCaption?: boolean;
   tone?: "primary" | "danger" | "on";
   size?: "compact" | "dense";
   quiet?: boolean;
@@ -100,6 +103,7 @@ export function Btn({
       id={id}
       type={type}
       className={`lr-btn${size ? ` is-${size}` : ""}${quiet ? " is-quiet" : ""}${activeTone ? ` is-${activeTone}` : ""}`}
+      data-caption={collapsibleCaption ? "collapsible" : undefined}
       aria-label={label}
       disabled={disabled && !softDisabled}
       aria-disabled={softDisabled || undefined}

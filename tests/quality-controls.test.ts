@@ -29,7 +29,7 @@ function editor() {
   const setInvalid = vi.fn();
   const render = runInNewContext(executable, {
     exports: {}, require: () => jsxRuntime, useRef: () => ({ current: input }), Number,
-    useState: () => [false, setInvalid], useId: () => "validation", useCopy: () => ({ t: vi.fn() }),
+    useState: () => [false, setInvalid], useId: () => "validation", useCopy: () => ({ t: vi.fn() }), Glyph: () => null,
     useEffect: (effect: () => void) => effect(),
   });
   let choose!: (next: number) => void;
@@ -95,7 +95,7 @@ describe("Numeric quality editing group", () => {
       expect(fields[index]).toContain(`value="${value}"`);
       expect(fields[index]).not.toContain('type="range"');
       expect(fields[index]).toContain('class="lr-quality-custom"');
-      if (nearest === null) expect(fields[index]).not.toContain('<button');
+      if (nearest === null) expect(fields[index]).not.toContain('class="lr-btn is-dense"');
       else expect(fields[index]).toMatch(new RegExp(`<button[^>]*aria-label="[^"]*${nearest} ${unit}`));
     }
     expect(onChange).not.toHaveBeenCalled();

@@ -80,7 +80,7 @@ export function parseMirrorReleaseMetadata(value: unknown, packageTarget?: strin
   if (release.prerelease !== false || typeof release.body !== "string") return null;
   const sources = [...release.body.matchAll(/^<!-- piik-source: ([0-9a-f]{40}) -->\r?$/gm)];
   if (sources.length !== 1) return null;
-  // The mirror tag identifies its README commit, never the original Piik source.
+  // The mirror publisher records original source identity in this marker.
   const normalized = parseReleaseMetadata({
     tag_name: release.tag_name, html_url: RELEASE_PAGE + String(release.tag_name),
     target_commitish: sources[0][1],

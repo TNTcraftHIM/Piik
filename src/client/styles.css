@@ -783,6 +783,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-row.is-sub { background: var(--wall-2); border-color: transparent; }
 .lr-row-group { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; }
 .lr-group-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+:is(.lr-host-summary-row, .lr-viewer-summary-row) { container: value-actions / inline-size; }
 .lr-host-summary-row { justify-content: flex-end; column-gap: 8px; }
 .lr-host-room-slot { margin-inline-end: auto; }
 .lr-host-personal-controls,
@@ -1076,7 +1077,9 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-input:is(.lr-quality-number, .lr-video-size):has(:disabled) { opacity: .55; }
 .lr-input:is(.lr-quality-number, .lr-video-size):has([aria-invalid="true"]) { border-color: var(--danger); }
 .lr-quality-validation { color: color-mix(in srgb, var(--danger) 70%, var(--ink)); font-size: 12px; line-height: 1.5; }
-.lr-input.lr-quality-number { width: 110px; gap: 6px; }
+.lr-input.lr-quality-number { width: 144px; height: 52px; padding: 1px 3px 1px 10px; gap: 6px; }
+.lr-number-steppers { display: flex; flex: none; flex-direction: column; }
+.lr-number-steppers .lr-btn { --button-size: 24px; --button-padding: 0; --button-icon-size: 14px; --control-hover-transform: none; border-radius: 7px; }
 .lr-quality-number input, .lr-video-size input { font-size: 13px; font-weight: 650; appearance: textfield; }
 .lr-quality-number input { text-align: right; }
 .lr-quality-number span, .lr-video-size span { color: var(--muted); font-size: 11px; }
@@ -1122,15 +1125,15 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-welcome-catalog li > span:first-child { display: block; }
 .lr-welcome-catalog .lr-welcome-cipher { margin-top: 6px; }
 .lr-input.lr-name-editor {
-  flex: 1;
-  min-width: 0;
-  width: 0;
+  flex: 1 1 224px;
+  min-width: min(160px, 100%);
+  width: 224px;
   height: 40px;
   border-radius: 999px;
 }
-.lr-group-name { width: 224px; max-width: 100%; }
+.lr-group-name { width: max-content; max-width: 100%; }
 .lr-group-name > [role="alert"] { flex-basis: 100%; }
-.lr-group-name > .lr-name-hint { flex: 1; width: 0; }
+.lr-group-name > .lr-name-hint { flex: 1 0 max-content; }
 .lr-group-name .lr-name-tag { width: 100%; }
 
 .lr-name-tag {

@@ -45,6 +45,10 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
 .lr-btn > .lr-glyph { width: var(--button-icon-size, var(--control-icon-size)); height: var(--button-icon-size, var(--control-icon-size)); }
 .lr-btn.is-compact { --button-size: var(--control-compact-size); --button-padding: 10px; }
 .lr-btn.is-dense { --button-size: var(--control-dense-size); --button-padding: 8px; --button-icon-size: 16px; }
+@container value-actions (max-width: 420px) {
+  .lr-btn[data-caption="collapsible"] { width: var(--button-size, var(--control-size)); padding-inline: 0; }
+  .lr-btn[data-caption="collapsible"] > .lr-cap { display: none; }
+}
 .lr-btn.is-quiet { border-radius: 12px; }
 .lr-btn.is-quiet:not(.is-on):not(.is-primary):not(.is-danger) { background: transparent; border-color: transparent; color: var(--muted); box-shadow: none; }
 .lr-btn.is-quiet:not(.is-on):not(.is-primary):not(.is-danger):is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: var(--control-hover); border-color: transparent; color: var(--ink); }
