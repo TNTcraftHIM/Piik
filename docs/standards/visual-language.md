@@ -469,7 +469,10 @@ boom extends toward the mouth when open and folds up when muted, independently
 of listening. The toolbar's shared `mouse` glyph sits
 centred on the body for an approved remote-control participant, regardless of
 input device. These marks follow the existing membership and control grant;
-they do not assert speech, input activity or media-route readiness.
+their positions do not assert speech, input activity or media-route readiness.
+Measured speech may tint the open microphone boom and tip with `--live`, using
+the same level scale as the toolbar microphone fill. Keep the headband, body,
+name and layout stable; missing measurements leave the ordinary appearance.
 
 The couch has a back, seat, arms and feet. A full room reflows into rows of seats
 without hiding people or requiring horizontal scrolling. Topology preserves

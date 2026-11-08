@@ -50,6 +50,8 @@ Hover over a microphone, headphones or a person's speaker to adjust its volume;
 on a touchscreen, press and hold. Muting a person changes only what you hear.
 Microphone and listening controls do not change the shared picture's sound.
 Room managers can change **Room voice bitrate** in voice settings.
+The microphone's green fill follows your voice level. Friends' microphone booms
+light up as their voices arrive; an unfolded boom by itself means the microphone is on.
 
 You can join voice in more than one room. When several are joined, use the voice
 room selector to choose which room's microphone, listening and leave controls

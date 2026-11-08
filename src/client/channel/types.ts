@@ -127,6 +127,8 @@ export interface ChannelActions {
   leaveVoice(roomId: string): Promise<void>;
   setMuted(roomId: string, muted: boolean): Promise<void>;
   canUnmute(roomId: string): boolean;
+  /** Post-gain linear levels keyed by the speaking endpoint/session, never its relay. */
+  voiceActivity(roomId: string, localOnly?: boolean): Promise<ReadonlyMap<string, number>>;
   setDeafened(roomId: string, deafened: boolean): Promise<void>;
   setInputVolume(volume: number): void;
   microphones(): Promise<CaptureDevice[]>;

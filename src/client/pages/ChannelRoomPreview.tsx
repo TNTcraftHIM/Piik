@@ -104,6 +104,13 @@ export function ChannelRoomPreview() {
             }}>{zh ? "横竖混合" : "Mixed orientation"}</Chip>
             <Chip title={zh ? "长名字" : "Long names"} selected={longNames} onClick={() => setLongNames(!longNames)}>{zh ? "长名字" : "Long names"}</Chip>
           </div>
+          <fieldset><legend>{zh ? "合成语音电平（不采集设备）" : "Synthetic voice level (no device capture)"}</legend><div className="c3-room-preview-tools">
+            {([undefined, .05, .2] as const).map((level, index) => <Chip key={index}
+              title={zh ? ["无采样", "低电平", "高电平"][index] : ["No sample", "Low level", "High level"][index]}
+              selected={sample.voiceLevel === level} onClick={() => sample.setVoiceLevel(level)}>
+              {zh ? ["无采样", "低", "高"][index] : ["No sample", "Low", "High"][index]}
+            </Chip>)}
+          </div></fieldset>
           <a className="lr-btn is-compact is-quiet" href="/__tooltip-preview#channel-guide-preview"><Glyph name="book" size={18} />{zh ? "返回控件目录" : "Back to UI catalogue"}</a>
     </div><span className="visually-hidden" role="status">{sample.notice}</span>
   </div>;

@@ -3,8 +3,9 @@ import { HostMark } from "./HostMark";
 import { bindParticipantMotion, participantMotion } from "./participant-motion";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { Glyph } from "../../ui/icons";
+import { microphoneLevelFill } from "../../room-voice/MicrophoneLevel";
 
-export interface PawnVoice { microphone: boolean; deafened?: boolean }
+export interface PawnVoice { microphone: boolean; deafened?: boolean; level?: number }
 export interface PawnState { voice?: PawnVoice; collaboration?: boolean; host?: boolean }
 
 /** The accepted A silhouette, shared with the explanatory cast. */
@@ -28,6 +29,7 @@ export function PersonShape({ eyes = true, gaze = 0, eyeClassName, host }: {
 function PawnAdornment({ voice, collaboration, host }: PawnState) {
   return <g className="lr-person-status" data-voice={voice ? "" : undefined}
     data-deafened={voice?.deafened || undefined} data-microphone={voice?.microphone || undefined}
+    style={voice?.microphone && voice.level !== undefined ? { "--voice-level": `${microphoneLevelFill(voice.level) * 100}%` } as CSSProperties : undefined}
     data-collaboration={collaboration || undefined} color="var(--person-ink, #263b43)" fill="none"
     stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
     <g className="lr-person-headset">

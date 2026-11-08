@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
 import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
 import { ChannelRoomControls } from "../channel/components/ChannelRoomControls";
@@ -29,6 +29,10 @@ export function useChannelGuideSample() {
   const [codec, setCodec] = useState<BrowserVideoCodecMode>("auto");
   const [muted, setMuted] = useState(false), [deafened, setDeafened] = useState(false);
   const [joined, setJoined] = useState(true);
+  const [voiceLevel, setVoiceLevel] = useState<number>();
+  const voiceActivity = useCallback(async () => new Map(voiceLevel === undefined ? [] : [
+    ["sample-ada-session", voiceLevel], ["sample-bo-session", voiceLevel / 2],
+  ]), [voiceLevel]);
   const [voiceInput, setVoiceInput] = useState({ deviceId: "", voiceProcessing: true, volume: 1 });
   const [listeningVolume, setListeningVolume] = useState(1);
   const [invite, setInvite] = useState(invitation);
@@ -62,7 +66,7 @@ export function useChannelGuideSample() {
     nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined,
     nativeSources: async () => sources, nativePreview: previewSource, cameraPreviews: previewCameras,
     sourceMicrophones: async () => [], startScreen: async () => received(), startNativeScreen: async () => received(),
-    voiceInput, listeningVolume,
+    voiceInput, listeningVolume, voiceActivity,
     canUnmute: () => true, setMuted: async (_room: string, next: boolean) => setMuted(next),
     setDeafened: async (_room: string, next: boolean) => setDeafened(next), leaveVoice: async () => setJoined(false),
     joinVoice: async () => setJoined(true),
@@ -75,7 +79,7 @@ export function useChannelGuideSample() {
     setMessages(previous => [...previous, { id: `sample-${previous.length}`, seq: previous.length + 3,
       userId: "sample-ada", text, time: new Date(2020, 0, 1, 20, 2 + previous.length).getTime(), attachments: [] }]);
   };
-  return { channel, roomName, sampleMessages, notice, received, onSend };
+  return { channel, roomName, sampleMessages, notice, received, onSend, voiceLevel, setVoiceLevel };
 }
 
 /** Guide images use these production controls with local sample props. */

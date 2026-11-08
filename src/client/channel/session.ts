@@ -2008,6 +2008,23 @@ export class ChannelSession {
       || this.view.connection === "connected" && room.available && !this.view.pending.has(`voice:${roomId}`);
   };
 
+  voiceActivity = async (roomId: string, localOnly = false): Promise<ReadonlyMap<string, number>> => {
+    const sessionId = this.view.sessionId;
+    const intent = this.voiceParticipation.get(roomId);
+    if (!sessionId || !intent || !this.view.state?.channel.rooms.some(room => room.id === roomId && room.authorized)) return new Map();
+    const levels = new Map(localOnly ? [] : await this.media.voiceActivity(roomId));
+    if (this.view.sessionId !== sessionId || this.voiceParticipation.get(roomId) !== intent
+      || !this.view.state?.channel.rooms.some(room => room.id === roomId && room.authorized)) return new Map();
+    for (const id of levels.keys()) if (id === sessionId || intent.deafened
+      || !this.view.state.voice.some(voice => voice.roomId === roomId && voice.sessionId === id && !voice.muted)) levels.delete(id);
+    const capture = intent.publicationId ? this.local.get(intent.publicationId) : undefined;
+    if (!intent.muted && capture?.roomId === roomId && capture.kind === "voice" && capture.microphone
+      && capture.stream.getAudioTracks().some(track => track.readyState === "live" && track.enabled)) {
+      levels.set(sessionId, capture.microphone.level());
+    }
+    return levels;
+  };
+
   setMuted = (roomId: string, muted: boolean): Promise<void> => {
     const intent = this.voiceParticipation.get(roomId);
     if (!intent) return Promise.resolve();

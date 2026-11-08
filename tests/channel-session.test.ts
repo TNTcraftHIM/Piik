@@ -10,6 +10,7 @@ import * as nativeActivation from "../src/client/native/activation";
 import * as launchSession from "../src/client/lib/app-launch";
 import * as cameraPreviews from "../src/client/media/camera-previews";
 import { ChannelMedia } from "../src/client/channel/media";
+import { MicrophoneInput } from "../src/client/media/microphone-input";
 import { ChannelTransport } from "../src/client/channel/transport";
 import { QUALITY_PROFILES, screenVideoCeiling, type VideoCeiling } from "../src/client/media/quality";
 import { ChannelAttachments } from "../src/client/channel/attachments";
@@ -824,6 +825,7 @@ test("sharing quality is remembered by the actual session across endpoint lifeti
 });
 
 test("recovery mute stops only this room's retained voice immediately", async () => {
+  vi.spyOn(MicrophoneInput.prototype, "level").mockReturnValue(.3);
   const { session, socket } = await setup(3, false);
   const first = remoteTrack("audio"), second = remoteTrack("audio");
   const contexts = microphoneMixer([remoteStream("first", [first]), remoteStream("second", [second])]);
@@ -847,6 +849,7 @@ test("recovery mute stops only this room's retained voice immediately", async ()
     }
     expect(getUserMedia).toHaveBeenCalledOnce();
     expect(contexts).toHaveLength(1);
+    expect(await session.voiceActivity("first", true)).toEqual(new Map([["endpoint", .3]]));
     state.publications.push(...["first", "second"].map(roomId => ({ id: `heard-${roomId}`, roomId, kind: "voice" as const, sessionId: "friend-endpoint", userId: "friend", paused: false })));
     state.subscriptions = ["heard-first", "heard-second"];
     socket.receive({ type: "state", state });
@@ -855,6 +858,8 @@ test("recovery mute stops only this room's retained voice immediately", async ()
     const earlier = session.setMuted("first", false), earlierRequest = socket.sent.at(-1)!;
     await session.setMuted("first", true);
     expect(first.enabled).toBe(false); expect(second.enabled).toBe(true);
+    expect(await session.voiceActivity("first", true)).toEqual(new Map());
+    expect(await session.voiceActivity("second", true)).toEqual(new Map([["endpoint", .3]]));
     socket.receive({ type: "state", state });
     socket.receive({ type: "ack", requestId: earlierRequest.requestId });
     await earlier;
@@ -3664,6 +3669,38 @@ test("room metrics read each PC once and follow current selected flows without m
     fixture.media.update("a", fixture.state);
     complete(report(3000));
     expect(await reading).toMatchObject([{ publicationId: "voice", media: "audio" }]);
+  } finally { fixture.media.reset(); fixture.session.close(); }
+});
+
+test("voice activity follows subscribed speaking endpoints and discards retired input stats", async () => {
+  const fixture = await setupRoomMedia();
+  try {
+    fixture.state.publications = [
+      { id: "voice-a", roomId: "first", sessionId: "speaker-a", userId: "friend", kind: "voice", paused: false },
+      { id: "voice-b", roomId: "first", sessionId: "speaker-b", userId: "friend", kind: "voice", paused: false },
+      { id: "relay-only", roomId: "first", sessionId: "relay-source", userId: "other", kind: "voice", paused: false },
+      { id: "candidate", roomId: "first", sessionId: "candidate-source", userId: "other", kind: "voice", paused: false },
+      { id: "another-room", roomId: "second", sessionId: "other-source", userId: "other", kind: "voice", paused: false },
+      { id: "screen-sound", roomId: "first", sessionId: "screen-source", userId: "other", kind: "screen", paused: false, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]) },
+    ];
+    fixture.state.subscriptions = ["voice-a", "voice-b", "candidate", "another-room", "screen-sound"];
+    fixture.state.pairs[0].incoming = fixture.state.publications.map(publication => ({ id: `${publication.id}-flow`, publicationId: publication.id, selected: publication.id !== "candidate", inputFlowId: null }));
+    fixture.media.update("a", fixture.state); fixture.pc.connected();
+    const streams = fixture.state.publications.map(publication => remoteStream(publication.id, [remoteTrack("audio")]));
+    fixture.media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "voice-activity" },
+      tracks: streams.map((stream, index) => ({ flowId: fixture.state.pairs[0].incoming[index].id, streamId: stream.id })) });
+    await vi.waitFor(() => expect(fixture.pc.remoteDescription?.sdp).toBe("voice-activity"));
+    for (const stream of streams) fixture.pc.ontrack?.({ streams: [stream] });
+    const report = new Map(streams.map((stream, index) => [stream.id, { id: stream.id, type: "inbound-rtp", kind: "audio", trackIdentifier: stream.getAudioTracks()[0].id, audioLevel: index < 2 ? .2 + index * .2 : .9 }])) as unknown as RTCStatsReport;
+    fixture.pc.getStats.mockClear().mockResolvedValue(report);
+    expect(await fixture.media.voiceActivity("first")).toEqual(new Map([["speaker-a", .2], ["speaker-b", .4]]));
+    expect(fixture.pc.getStats).toHaveBeenCalledOnce();
+    let complete!: (report: RTCStatsReport) => void;
+    fixture.pc.getStats.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+    const pending = fixture.media.voiceActivity("first");
+    fixture.state.subscriptions = [];
+    fixture.media.update("a", fixture.state); complete(report);
+    expect(await pending).toEqual(new Map());
   } finally { fixture.media.reset(); fixture.session.close(); }
 });
 

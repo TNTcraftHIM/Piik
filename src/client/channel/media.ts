@@ -501,6 +501,36 @@ export class ChannelMedia {
     }
   }
 
+  async voiceActivity(roomId: string): Promise<ReadonlyMap<string, number>> {
+    const levels = new Map<string, number>();
+    const incoming = (peer: Peer) => peer.plan.incoming.flatMap(flow => {
+      const publication = this.publications.find(value => value.id === flow.publicationId && value.roomId === roomId
+        && value.kind === "voice" && !value.paused && this.subscriptions.includes(value.id));
+      const input = peer.inputs.get(flow.id), track = input?.stream.getAudioTracks().find(track => track.readyState === "live");
+      return flow.selected && publication && input?.ready && track && this.ownsInput(peer, flow.id, input)
+        ? [{ flowId: flow.id, publication, input, track }] : [];
+    });
+    const samples = await Promise.all([...this.peers.values()].map(async peer => {
+      const bindings = peer.transport.pc.connectionState === "connected" ? incoming(peer) : [];
+      if (!bindings.length) return null;
+      const stats = await peer.transport.pc.getStats().catch(() => null);
+      return stats ? { peer, bindings, stats } : null;
+    }));
+    for (const sample of samples) {
+      if (!sample) continue;
+      const { peer, bindings, stats } = sample;
+      if (this.peers.get(peer.plan.id) !== peer || peer.transport.pc.connectionState !== "connected") continue;
+      for (const current of incoming(peer)) {
+        if (!bindings.some(binding => binding.flowId === current.flowId && binding.input === current.input && binding.track === current.track)) continue;
+        for (const row of stats.values()) if (row.type === "inbound-rtp" && row.kind === "audio" && row.trackIdentifier === current.track.id
+          && Number.isFinite(row.audioLevel)) {
+          levels.set(current.publication.sessionId, Math.max(levels.get(current.publication.sessionId) ?? 0, Math.min(1, Math.max(0, row.audioLevel))));
+        }
+      }
+    }
+    return levels;
+  }
+
   async stats(): Promise<Array<{ pairId: string; peerId: string; reports: Record<string, unknown>[] }>> {
     return Promise.all([...this.peers].map(async ([pairId, peer]) => {
       const values: Record<string, unknown>[] = [];

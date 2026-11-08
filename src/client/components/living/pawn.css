@@ -14,6 +14,7 @@
 .lr-person-status[data-deafened] .lr-person-earcup-left { transform: translate(.2px, 14px); }
 .lr-person-status[data-deafened] .lr-person-earcup-right { transform: translate(-.2px, 14px); }
 .lr-person-mic-position { transform: translate(33px, 17px); --mic-fold-angle: 140deg; }
+.lr-person-status[data-microphone] .lr-person-mic-position { color: color-mix(in srgb, currentColor calc(100% - var(--voice-level, 0%)), var(--live)); }
 .lr-person-status[data-deafened] .lr-person-mic-position { transform: translate(33px, 28px); --mic-fold-angle: 50deg; }
 .lr-person-mic-open { transform: rotate(var(--mic-fold-angle)); opacity: 0; }
 .lr-person-status[data-microphone] .lr-person-mic-head { transform: none; opacity: 1; }

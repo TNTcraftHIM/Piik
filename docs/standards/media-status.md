@@ -72,7 +72,10 @@ over a reused comic's default; text and pure-visual tooltips retain that context
   local listening and native grants; leaving an activity removes its marker.
   Pausing listening does not mute the
   microphone or change forwarding or routes. The route lamp remains separate;
-  these accessories do not assert connection health or speaking activity.
+  accessory positions do not assert connection health or speaking activity.
+  When measured voice levels are available, the microphone boom may show that
+  activity. Use the speaking endpoint's current room stream; forwarding a voice
+  or sharing its user identity does not make it the local microphone.
 - Header: the page's connection to the room server. Its control-link comics
   show a Browser and server, not a failed video path. A media-route failure can
   coexist with a healthy server connection, and vice versa.

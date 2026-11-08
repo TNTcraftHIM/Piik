@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { Btn } from "../components/living/primitives";
 import { MicrophoneSettings } from "../components/living/MicrophoneSettings";
 import { AudioBitrateControl } from "../components/living/QualityPresets";
@@ -16,6 +16,7 @@ import type { CaptureDevice } from "../media/capture-devices";
 import { MicrophoneLevel } from "./MicrophoneLevel";
 import { VoiceListeningButton, VoiceMicrophoneButton } from "./VoiceAudioButtons";
 import { describeVoiceParticipant, type RoomVoiceSnapshot } from "./participant-presentation";
+import { useVoiceLevels } from "./use-voice-levels";
 import "./room-voice.css";
 
 export interface RoomVoiceView {
@@ -36,27 +37,12 @@ export interface RoomVoiceView {
 }
 interface Props { session: RoomVoiceView }
 
-function useVoiceLevels(session: RoomVoiceView, enabled: boolean, localOnly = false): ReadonlyMap<string, number> {
-  const [levels, setLevels] = useState<ReadonlyMap<string, number>>(new Map());
-  useEffect(() => {
-    if (!enabled) { setLevels(new Map()); return; }
-    let current = true, timer: ReturnType<typeof setTimeout>;
-    const sample = async () => {
-      try { const levels = await session.activity(localOnly); if (current) setLevels(levels); }
-      catch { if (current) setLevels(new Map()); }
-      finally { if (current) timer = setTimeout(() => void sample(), 150); }
-    };
-    void sample();
-    return () => { current = false; clearTimeout(timer); };
-  }, [session, enabled, localOnly]);
-  return levels;
-}
-
 export function RoomVoiceControls({ session }: Props) {
   const { t, vis } = useCopy();
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const me = state.room?.members.find(member => member.peerId === state.peerId);
-  const levels = useVoiceLevels(session, state.microphone, true);
+  const readLevels = useCallback(() => session.activity(true), [session]);
+  const levels = useVoiceLevels(readLevels, state.microphone);
   const microphoneUnavailable = !state.microphone && !state.capturePending && !navigator.mediaDevices?.getUserMedia;
   const joined = Boolean(me?.joined);
   const host = state.role === "host";
@@ -123,7 +109,8 @@ export function RoomVoicePanel({ session, names, onSelectParticipant }: Props & 
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const { t, vis } = useCopy();
   const me = state.room?.members.find(member => member.peerId === state.peerId);
-  const levels = useVoiceLevels(session, Boolean(me?.joined));
+  const readLevels = useCallback(() => session.activity(), [session]);
+  const levels = useVoiceLevels(readLevels, Boolean(me?.joined));
   const members = labelParticipantNames((state.room?.members ?? []).filter(member => member.connected).map(member => ({
     ...member, displayName: names?.get(member.peerId) ?? t("voice.participant"),
   })));
