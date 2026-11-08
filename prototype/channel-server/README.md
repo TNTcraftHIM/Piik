@@ -55,8 +55,9 @@ node node_modules/vite/bin/vite.js --config prototype/channel-server/vite.config
 ```
 
 Open `http://127.0.0.1:8790/__channel-preview#owner=<owner-key>` with your own key.
-Use **Invite** in the interface to obtain a member link. Separate browser profiles
-represent separate users; tabs in one profile share a saved user credential but
+Use **Copy domain address** for a public domain or **Copy domain invitation** for
+a private domain. Room invitations are separate controls in room settings.
+Separate browser profiles represent separate users; tabs in one profile share a saved user credential but
 have independent live sessions. The default loopback ports are 8791 for Rust and
 8790 for the interface. `PIIK_CHANNEL_PORT`, `PIIK_CHANNEL_UI_PORT` and
 `PIIK_CHANNEL_WEB_ORIGIN` allow an isolated instance with matching ports/origin.
@@ -128,7 +129,11 @@ current hosting runtime. Existing Browser rooms remain in their pages and are
 not migrated; a remembered App preference cannot prevent Browser hosting when
 the App is absent.
 
-**Share screen** reuses the product source picker for Browser capture and the
+After updating the 3.0 test App, refresh the Web page you use. An incompatible
+App Link shows the existing update prompt; [versioning](../../docs/standards/versioning.md)
+owns interface compatibility.
+
+**Start sharing** reuses the product source picker for Browser capture and the
 App's available sources, with small Native window/display thumbnails. Closing
 the picker cancels its pending thumbnails. App capture publishes through that same Native participant;
 the selecting page previews it as an ordinary subscriber. Stopping the share or
@@ -159,7 +164,8 @@ uses `domain/channel.sqlite`, and room databases stay under `rooms/`. A new loca
 port or public tunnel address does not select another copy of those rooms.
 External sites retain their separate exact-origin approval boundary.
 App shutdown retires its Native hosts before the domain and tunnel. A local-domain
-failure leaves unrelated approved sites' hosting alone.
+failure leaves unrelated approved sites' hosting alone. In a terminal, Ctrl+C
+requests normal App shutdown.
 
 The App uses the platform's local application-data directory under `Piik/channel-app`.
 `PIIK_CHANNEL_APP_DATA_DIR` selects isolated development data. One process owns
@@ -330,6 +336,9 @@ A signaling interruption has one 20-second recovery window. A resumed endpoint
 retains its committed media and resumes unfinished negotiation on the same
 connections; expiry releases captures and transports. Offline
 stop, unwatch and leave take effect locally and are reconciled on reconnect.
+Browser source pause and local voice mute/deafen also apply during this window.
+Pausing an App-produced picture requires domain signaling; stopping its capture
+uses the separate App connection.
 
 ## Saved data and files
 

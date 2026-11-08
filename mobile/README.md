@@ -58,7 +58,7 @@ source. [TODO](../docs/todo.md) owns remaining device acceptance and publication
 
 ## Signed release APK
 
-GitHub and AtomGit distribute the same universal APK for ARM64 and x64;
+The signed release command produces one universal APK for ARM64 and x64;
 install it directly without extracting an archive.
 
 Gradle reads signing material from `PIIK_ANDROID_KEYSTORE` (an absolute path),
