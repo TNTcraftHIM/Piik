@@ -117,7 +117,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
     : audio.boostAvailable ? "playback.volume" : "playback.volumeBasic";
   const playbackRef = useMemo(() => ({ current: activeVideo }), [activeVideo]);
   const picture = usePictureInPicture(playbackRef);
-  useHostPreviewPlayback(playbackRef, local ? displayed.stream : null, previewAutoPause);
+  const previewPlayback = useHostPreviewPlayback(playbackRef, local ? displayed.stream : null, previewAutoPause);
   useVideoRotation(playbackRef, pictureFit, pictureRotation);
   useAnchoredPopover(pictureTrigger, picturePanel, { side: "above", align: "center" });
   const visibility = usePlaybackControlsVisibility(playbackRef, controls, paused || blocked || !ready);
@@ -186,20 +186,24 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
     if (!binding) return;
     const swapping = target.flowId !== displayed.flowId || target.stream !== displayed.stream;
     if (swapping && !binding.composited) return;
-    if (ref.current !== binding.element) {
+    // Only remote playback owns a listening output, even when the video stays.
+    if (ref.current !== binding.element || Boolean(output.current) !== !local) {
       const previous = ref.current, listening = output.current;
       const saved = listening?.snapshot ?? audio;
       const keepPaused = previous?.paused ?? false;
       listening?.setMuted(true);
+      listening?.dispose();
       if (previous) previous.muted = true;
       const element = binding.element;
+      if (local && keepPaused) previewPlayback.onPause();
       if (keepPaused && !local) element.pause();
       element.volume = Math.min(saved.level, 1); element.muted = true;
       const nextAudio = local ? null : new ViewerAudio(element, setAudio);
       nextAudio?.bind(target.stream); nextAudio?.setLevel(saved.level); nextAudio?.setMuted(saved.muted);
+      if (local) setAudio(saved);
       output.current = nextAudio; ref.current = element;
       setActiveVideo(element); setPaused(local ? element.paused : keepPaused); setBlocked(false);
-      listening?.dispose(); previous?.pause();
+      if (previous !== element) previous?.pause();
     }
     setReady(binding.composited);
     if (swapping) setDisplayed(target);
