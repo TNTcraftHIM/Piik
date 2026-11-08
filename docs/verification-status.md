@@ -22,7 +22,9 @@ The newer conversation path passes normal Browser-hosted and App-hosted room
 checks with peer signaling blocked: history, bidirectional messages and saved
 reactions work without RTC connections. Attachment descriptions also arrive
 without RTC; their file content downloads over P2P once that path is available.
-This source-level acceptance follows the delivered internal package.
+The current internal Windows and Android packages include this path. Windows
+upgrade checks used a copy of the previous candidate's data; Android's same-signature
+update retained its existing room/history and kept a generated invitation after reload.
 
 The current Windows package also passes normal control request and Host
 approval, real pointer and keyboard input to an isolated window, and **End

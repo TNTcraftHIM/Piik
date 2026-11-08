@@ -12,11 +12,6 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **3.0 internal package update.** Build matching Windows and Android packages
-  with the domain-WebSocket conversation path and current room controls. Check
-  upgrade/data retention and normal App entry before replacing the delivered
-  internal candidate. The [network model](./research/channel-network-design.md#authority-and-information-boundaries)
-  owns the accepted transport; normal Browser and App room flows are verified.
 - [ ] **3.0 iOS/iPadOS room voice feedback.** With noise processing disabled on
   the phone/tablet, a computer listener reports mono sound. Check that device's
   raw capture channels against its received sound; the shared microphone,

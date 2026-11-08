@@ -61,8 +61,9 @@ First-beta feedback and confirmed blocking defects take priority. Follow-up UI,
 terminal and documentation work stays separate from the delivered test package.
 Conversation now uses the domain WebSocket to reach its actual room host,
 independently of peer reachability. Media and file bytes retain their peer paths.
-Normal Browser and App room flows are verified; the next internal package will
-include this change. Delivered package receipts retain their own tested scope.
+The current internal Windows and Android packages include this path and the
+reorganized room controls. Upgrade checks preserve existing room data and history;
+delivered package receipts retain their exact source and tested scope.
 [TODO](./todo.md) owns remaining work and owner holds. Applicable defects continue
 to feed the separate 2.x maintenance line, which preserves its published contracts.
 
