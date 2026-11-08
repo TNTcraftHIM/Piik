@@ -46,6 +46,7 @@ export function ChannelPreviewPage() {
     setSelected(id); setMobilePane("room");
   }, []);
   const channel = useChannel(selectRoom);
+  const [domainControlSlot, setDomainControlSlot] = useState<HTMLSpanElement | null>(null);
   const { state, self, sessionId, connection, pending, streams } = channel;
   const [sharingView, setSharingView] = useState(() => readRoomPreferences().sharingView);
   const [chatOpen, setChatOpen] = useState(!sharingView);
@@ -115,6 +116,7 @@ export function ChannelPreviewPage() {
     {state && failure.message && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span>{failure.message}</span>
       <Btn icon="x" title="notice.dismiss" size="compact" quiet onClick={channel.clearError} />
     </div>}
+    <ChannelDomainControls channel={channel} triggerSlot={domainControlSlot} />
     {!state ? <ChannelDomainEntry channel={channel} failure={failure} /> : <main className="c3-shell" data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"}>
       <ChannelBookmarks currentName={state?.channel.name ?? location.host}
         currentIcon={<ChannelIdentityMark icon={state?.channel.icon ?? "couch"} size={26} />} onCurrent={() => setMobilePane("rooms")} />
@@ -122,7 +124,7 @@ export function ChannelPreviewPage() {
         <div className="c3-sidebar-browse">
         <div className="c3-channel-title c3-editable"><div><h1 id="c3-room-list-heading" tabIndex={-1}>{state?.channel.name ?? copy("你的域", "Your domain")}</h1>
           <span className="c3-channel-caption">{copy("域", "Domain")}</span></div>
-          {state && owner && <ChannelDomainControls channel={channel} />}
+          {owner && <span ref={setDomainControlSlot} />}
           <span className="c3-pane-back"><BackButton onClick={() => setMobilePane("room")} /></span>
         </div>
         {channel.inviteURL && <div className="c3-invite" role="group" aria-label={state.channel.access === "public" ? copy("域地址", "Domain address") : copy("域邀请", "Domain invitation")}>

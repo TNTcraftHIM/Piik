@@ -1270,7 +1270,7 @@ export class ChannelSession {
     return archive;
   }, false);
 
-  restoreDomainBackup = (archive: Blob): Promise<void> => this.action("domain-backup", async () => {
+  restoreDomainBackup = (archive: Blob): Promise<DomainSettings> => this.action("domain-backup", async () => {
     const owner = this.domainBackupOwner();
     const metadata = await readBackup(archive, { metadata(value) {
       if (value.kind !== "domain") throw new Error("expected_domain_backup");
@@ -1285,8 +1285,11 @@ export class ChannelSession {
       if (domainId !== metadata.state.id) throw new Error("backup_identity_required");
       await this.connectBackupIdentity(domainId, metadata.state.ownerId, { key: metadata.ownerKey });
       if (typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search);
+      const { name, icon, access } = this.view.state!.channel;
+      return { name, icon, access };
     } catch (error) {
       if (!committed) this.start();
+      else throw new Error("domain_restored_connection_failed");
       throw error;
     }
   }, false);

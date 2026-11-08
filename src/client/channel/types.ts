@@ -94,7 +94,7 @@ export interface ChannelActions {
   resetDomainInvite(): Promise<void>;
   updateDomain(settings: DomainSettings): Promise<void>;
   exportDomainBackup(): Promise<Blob>;
-  restoreDomainBackup(archive: Blob): Promise<void>;
+  restoreDomainBackup(archive: Blob): Promise<DomainSettings>;
   createRoom(settings: RoomSettings): Promise<string>;
   updateRoom(roomId: string, settings: RoomSettings): Promise<void>;
   deleteRoom(roomId: string, deleteData: boolean): Promise<{ dataRemoved: boolean }>;

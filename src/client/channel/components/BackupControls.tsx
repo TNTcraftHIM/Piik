@@ -19,8 +19,10 @@ export function BackupControls({ disabled, busy, onExport, onRestore, replacing 
     catch (error) {
       setFailed(true);
       const code = error instanceof Error ? error.message : "";
+      if (code === "domain_restored_connection_failed") setFile(null);
       setMessage(code === "room_host_conflict" || code === "room_host_unavailable" || code === "stale_backup"
         ? (zh ? "房间的托管者已改变，请重新打开房间设置。" : "The room host changed. Reopen room settings.")
+        : code === "domain_restored_connection_failed" ? (zh ? "域已恢复，但未能重新连接。请重新连接或打开恢复后的域入口，无需再次恢复备份。" : "The domain was restored, but reconnection failed. Reconnect or open the restored domain's entry. You do not need to restore the backup again.")
         : code === "backup_identity_required" ? (zh ? "无法使用备份中的账号，请确认这是你在此域的备份。" : "The backup account could not be verified in this domain.")
         : code === "backup_room_mismatch" ? (zh ? "请选择此域、此房间的备份。" : "Choose a backup for this domain and room.")
         : (zh ? "备份操作未完成，请检查文件后重试。" : "The backup operation could not finish. Check the file and try again."));
@@ -28,7 +30,7 @@ export function BackupControls({ disabled, busy, onExport, onRestore, replacing 
   };
   if (!available && !file && !message) return null;
   return <section className="c3-backup-controls" aria-label={kind === "domain" ? (zh ? "域备份" : "Domain backup") : (zh ? "房间备份" : "Room backup")}>
-    {kind === "domain" && <p>{zh ? "备份包含域配置、权限与房间目录，不包含房间消息或文件。" : "Includes domain settings, access and the room directory, without room messages or files."}</p>}
+    {kind === "domain" && <p>{zh ? "备份包含域设置、用户信息和房间目录，不包含房间消息或文件。" : "Includes domain settings, users and the room directory, without room messages or files."}</p>}
     {available && !file && <div className="c3-backup-actions">
       {onExport && <ChannelAction icon="save" quiet label={zh ? "导出备份" : "Export backup"} busy={busy} disabled={disabled}
         onClick={() => { void run(async () => {
@@ -41,7 +43,7 @@ export function BackupControls({ disabled, busy, onExport, onRestore, replacing 
       setFile(event.target.files?.[0] ?? null); setMessage(""); setFailed(false); event.target.value = "";
     }} />
     {file && <div className="c3-backup-confirm"><p>{file.name}</p><p>{kind === "domain"
-      ? (zh ? "恢复会替换当前域的配置、权限与房间目录，并重新接入恢复的域。房间消息与文件不会随之恢复。" : "Restoring replaces this domain’s settings, access and room directory, then reconnects to the restored domain. Room messages and files are restored separately.") : replacing
+      ? (zh ? "恢复会替换当前域的设置、用户信息和房间目录，并重新接入恢复的域。房间消息与文件不会随之恢复。" : "Restoring replaces this domain’s settings, users and room directory, then reconnects to the restored domain. Room messages and files are restored separately.") : replacing
       ? (zh ? "恢复会替换房间设置与消息。" : "Restoring replaces this room’s settings and messages.")
       : (zh ? "将导入房间，并使用备份中的房间身份。" : "Import this room using the account saved in its backup.")}</p>
       <div className="c3-form-actions"><ChannelAction icon="x" quiet label={zh ? "取消" : "Cancel"} disabled={busy} onClick={() => setFile(null)} />

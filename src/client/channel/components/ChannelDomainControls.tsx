@@ -1,48 +1,54 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { Tooltip } from "../../components/living/Tooltip";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import type { ChannelController } from "../types";
+import type { DomainSettings } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
 import { ChannelIdentityFields } from "./ChannelIdentity";
 import { BackupControls } from "./BackupControls";
 import "./channel-name-editor.css";
 import "./channel-room-controls.css";
 
-export function ChannelDomainControls({ channel }: { channel: ChannelController }) {
+export function ChannelDomainControls({ channel, triggerSlot }: { channel: ChannelController; triggerSlot: HTMLElement | null }) {
   const { lang, vis } = useCopy();
   const zh = lang === "zh";
-  const current = channel.state!.channel;
+  const current = channel.state?.channel ?? null;
+  const owner = !!channel.self && current?.ownerId === channel.self.id;
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const [name, setName] = useState(current.name);
-  const [icon, setIcon] = useState(current.icon);
+  const [name, setName] = useState(current?.name ?? "");
+  const [icon, setIcon] = useState(current?.icon ?? "couch");
   const [open, setOpen] = useState(false);
   const [imageBusy, setImageBusy] = useState(false);
-  const [access, setAccess] = useState(current.access);
+  const [access, setAccess] = useState<"public" | "private">(current?.access ?? "private");
   const [password, setPassword] = useState("");
   const [removePassword, setRemovePassword] = useState(false);
   const [inviteReset, setInviteReset] = useState(false);
   const busy = channel.pending.has("domain");
   const inviteBusy = channel.pending.has("domain-invite");
   const backupBusy = channel.pending.has("domain-backup");
-  const disabled = channel.connection !== "connected" || busy || inviteBusy || backupBusy;
+  const unavailable = !owner || channel.connection !== "connected";
+  const disabled = unavailable || busy || inviteBusy || backupBusy;
+  const resetDraft = (value: DomainSettings | null) => {
+    setName(value?.name ?? ""); setIcon(value?.icon ?? "couch"); setAccess(value?.access ?? "private");
+    setPassword(""); setRemovePassword(false); setInviteReset(false);
+  };
   const title = zh ? "域设置" : "Domain settings";
   useAnchoredPopover(trigger, panel, { side: "below", align: "end" });
   useEffect(() => {
     if (open) { const input = panel.current?.querySelector("input"); input?.focus({ preventScroll: true }); input?.select(); }
   }, [open]);
+  useEffect(() => { if (!owner) setPassword(""); }, [owner]);
   return <>
-    <span className="c3-edit-action"><Tooltip kind="hint-rename" disabled={open} text={vis ? undefined : title}>
+    {owner && triggerSlot && createPortal(<span className="c3-edit-action"><Tooltip kind="hint-rename" disabled={open} text={vis ? undefined : title}>
       <button ref={trigger} type="button" className="lr-btn is-dense is-quiet" aria-label={title}
         aria-expanded={open} aria-controls={id} aria-haspopup="dialog" disabled={disabled} popoverTarget={id}
-        onClick={() => {
-          setName(current.name); setIcon(current.icon); setAccess(current.access);
-          setPassword(""); setRemovePassword(false); setInviteReset(false);
-        }}><Glyph name="pencil" size={18} /></button>
-    </Tooltip></span>
+        onClick={() => resetDraft(current)}><Glyph name="pencil" size={18} /></button>
+    </Tooltip></span>, triggerSlot)}
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={title} className="lr-anchored-card c3-room-panel"
       onToggle={event => {
         if (event.target !== event.currentTarget) return;
@@ -73,9 +79,9 @@ export function ChannelDomainControls({ channel }: { channel: ChannelController 
         {access === "private" && <div className="c3-private-options">
           <label><span>{zh ? "域口令（可选）" : "Domain passphrase (optional)"}</span>
             <input className="c3-input" type="password" maxLength={128} autoComplete="new-password" value={password}
-              disabled={disabled || removePassword} placeholder={current.hasPassword ? (zh ? "留空保留现有口令" : "Leave blank to keep the passphrase") : undefined}
+              disabled={disabled || removePassword} placeholder={current?.hasPassword ? (zh ? "留空保留现有口令" : "Leave blank to keep the passphrase") : undefined}
               onChange={event => setPassword(event.target.value)} /></label>
-          {current.hasPassword && <label className="c3-check"><input type="checkbox" checked={removePassword} disabled={disabled}
+          {current?.hasPassword && <label className="c3-check"><input type="checkbox" checked={removePassword} disabled={disabled}
             onChange={event => { setRemovePassword(event.target.checked); setPassword(""); }} />{zh ? "移除域口令" : "Remove domain passphrase"}</label>}
         </div>}
         <div className="c3-form-actions">
@@ -83,7 +89,7 @@ export function ChannelDomainControls({ channel }: { channel: ChannelController 
           <ChannelAction icon="check" primary type="submit" label={zh ? "保存" : "Save"} busy={busy} disabled={disabled || imageBusy || !name.trim()} />
         </div>
       </form>
-      {current.access === "private" && <section className="c3-room-invitation" aria-label={zh ? "域邀请" : "Domain invitation"}>
+      {current?.access === "private" && <section className="c3-room-invitation" aria-label={zh ? "域邀请" : "Domain invitation"}>
         <ChannelAction icon="link" label={zh ? "重置域邀请" : "Reset domain invitation"} hint="hint-rotate-invite"
           disabled={disabled} busy={inviteBusy} onClick={() => {
             void channel.resetDomainInvite().then(() => setInviteReset(true)).catch(() => {});
@@ -91,8 +97,16 @@ export function ChannelDomainControls({ channel }: { channel: ChannelController 
         <p>{zh ? "旧邀请将失效，已加入的用户保留访问。房间邀请不受影响。" : "Old invitations stop working. Existing users keep access. Room invitations are unchanged."}</p>
         {inviteReset && <p role="status">{zh ? "域邀请已更新，请复制新的邀请。" : "Domain invitation updated. Copy the new invitation."}</p>}
       </section>}
-      <BackupControls kind="domain" busy={backupBusy} disabled={channel.connection !== "connected" || busy || inviteBusy}
-        onExport={channel.exportDomainBackup} onRestore={channel.restoreDomainBackup} />
+      <BackupControls kind="domain" busy={backupBusy} disabled={unavailable || busy || inviteBusy}
+        onExport={channel.exportDomainBackup} onRestore={async file => {
+          setPassword("");
+          try {
+            resetDraft(await channel.restoreDomainBackup(file));
+          } catch (error) {
+            if (error instanceof Error && error.message === "domain_restored_connection_failed") resetDraft(null);
+            throw error;
+          }
+        }} />
       </>}
     </div>
   </>;
