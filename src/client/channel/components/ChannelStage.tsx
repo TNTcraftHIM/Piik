@@ -11,7 +11,7 @@ import type { RoomInteractionSession } from "../../lib/room-interactions";
 import type { RemoteControlMode } from "../../remote-control/protocol";
 import type { ChannelRemoteControlState, ChannelStopShortcut } from "../app-link";
 import { HostRemoteControl } from "../../components/living/HostRemoteControl";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { stageColumns } from "../stage-layout";
 import { useTheaterMode } from "../../components/living/use-theater-mode";
 import { VoiceMicrophoneButton } from "../../room-voice/VoiceAudioButtons";
@@ -30,6 +30,7 @@ export interface ChannelStageSource {
   deliveryFailed?: boolean;
   stream?: MediaStream;
   sourceAudio?: SourceAudioControl;
+  shareControls?: ReactNode;
   interaction?: RoomInteractionSession | null;
   sourceMicrophone?: { enabled: boolean; busy?: boolean; disabled?: boolean; canDisable?: boolean; onEnabled: (enabled: boolean) => void };
   inputs?: readonly ChannelScreenInput[];
@@ -142,7 +143,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
             data-publication-id={source.id} data-focusable={focusable || undefined}
             aria-label={`${source.name} — ${source.roomName}`}
             onClick={event => {
-              if (!focusable || (event.target instanceof Element && event.target.closest("button, input, select, a"))) return;
+              if (!focusable || (event.target instanceof Element && event.target.closest("button, input, select, a, [popover]"))) return;
               onFocus(source.id);
             }}>
             {source.stream ? <ChannelVideo stream={source.stream} local={source.owned} inputs={source.inputs} onPresentation={onPresentation} input={source.input}
@@ -165,6 +166,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
                 </small></Tooltip>
               </div>
               <div className="c3-monitor-tile-actions">
+                {source.owned && source.shareControls}
                 {source.owned && source.remoteControl && <SourceControl source={{ ...source, remoteControl: source.remoteControl }}
                   onInputPolicy={onInputPolicy} onInputDecide={onInputDecide} onInputSimultaneous={onInputSimultaneous} onInputShortcut={onInputShortcut} />}
                 {active.length > 1 && <ChannelAction icon={isFocused ? "contract" : "expand"} quiet iconOnly

@@ -28,7 +28,7 @@
 .c3-monitor-source > .lr-comic-tip-wrap { display: block; min-width: 0; }
 .c3-monitor-source small > svg { vertical-align: -2px; margin-inline-end: 4px; }
 .c3-monitor-source :is(strong, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.c3-monitor-tile-actions { display: flex; align-items: center; gap: 2px; flex: none; margin-inline: auto; }
+.c3-monitor-tile-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 2px; min-width: 0; margin-inline-start: auto; }
 .c3-monitor-wait { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; aspect-ratio: 16 / 9; padding: 18px; border-radius: 14px 14px 0 0; background: var(--stage, var(--wall-2)); color: var(--muted); font-size: 12px; }
 .c3-monitor-wait[data-failed] > svg { color: var(--danger); }
 /* Theater changes the existing stage's layout; every subscription stays mounted. */

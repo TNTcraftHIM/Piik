@@ -13,8 +13,8 @@ import type { NativeCaptureSources } from "../app-link";
 import type { ChannelController } from "../types";
 import "./channel-share-control.css";
 
-export function ChannelShareControl({ channel, roomId, disabled }: {
-  channel: ChannelController; roomId: string; disabled: boolean;
+export function ChannelShareControl({ channel, roomId, publicationId, compact = false, disabled }: {
+  channel: ChannelController; roomId: string; publicationId?: string; compact?: boolean; disabled: boolean;
 }) {
   const { t, vis, lang } = useCopy();
   const settingsLabel = lang === "zh" ? "画质与声音" : "Picture and sound";
@@ -34,7 +34,8 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   const selectedNative = channel.nativeCaptureSelection(roomId);
   const available = browserSupported || cameraSupported || appConnected;
   const pickerAvailable = appConnected || cameraSupported;
-  const sharing = channel.state?.publications.find(publication => publication.roomId === roomId && channel.ownedScreens.has(publication.id));
+  const sharing = publicationId ? channel.state?.publications.find(publication =>
+    publication.id === publicationId && publication.roomId === roomId && channel.ownedScreens.has(publication.id)) : undefined;
   const roomName = sharing ? channel.state?.channel.rooms.find(room => room.id === roomId)?.name : undefined;
   const settingsTitle = roomName
     ? lang === "zh" ? `${roomName}的画质与声音` : `Picture and sound in ${roomName}`
@@ -58,7 +59,6 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   const microphonePending = !!sharing && channel.pending.has(`source-microphone:${sharing.id}`);
   const { sourceMicrophones } = channel;
   const loadAudioApplications = useCallback(async () => (await nativeSources()).sources, [nativeSources]);
-  const publicationId = sharing?.id;
   const loadMicrophones = useCallback(() => publicationId ? sourceMicrophones(publicationId) : Promise.resolve([]), [publicationId, sourceMicrophones]);
   const roomMicrophone = channel.state?.voice.some(voice => voice.sessionId === channel.sessionId && !voice.muted);
   const busy = channel.pending.has(`screen:${roomId}`) || !!sharing && channel.pending.has(`source-audio:${sharing.id}`);
@@ -84,11 +84,12 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
     if (open || settingsOpen) refresh();
     return () => { request.current = null; };
   }, [open, settingsOpen, refresh]);
-  useLayoutEffect(() => { close(); }, [roomId, disabled, close]);
+  useLayoutEffect(() => { close(); }, [roomId, publicationId, disabled, close]);
   const start = (operation: () => Promise<void>) => {
     close();
     void operation().catch(() => {}); // The session owns the operation's error.
   };
+  if (publicationId && !sharing) return null;
   return <><span className="c3-share-actions" role="group" aria-label={lang === "zh" ? "分享画面" : "Screen sharing"}>
     <span ref={trigger} className="c3-share-control">
       {captureRequest ? <>
@@ -98,14 +99,14 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
         </span>
         <Btn icon="x" title="common.cancel" cap="common.cancel" size="compact" quiet
           onClick={() => { if (channel.nativeCaptureRequest(roomId)) void channel.cancelScreenSelection(roomId).catch(() => {}); }} />
-      </> : <Btn icon={sharing ? "switchSource" : "cast"} title={{ text: sourceTitle }} cap={{ text: label }} size="compact" tone="primary"
-        hint={available ? "hint-share-start" : "hint-no-sources"} hintText={available ? undefined : "host.capture.noSource"}
+      </> : <Btn icon={sharing ? "switchSource" : "cast"} title={{ text: sourceTitle }} cap={compact ? undefined : { text: label }} size="compact" tone={sharing ? undefined : "primary"} quiet={compact}
+        hint={available ? sharing ? "hint-switch-source" : "hint-share-start" : "hint-no-sources"} hintText={available ? undefined : "host.capture.noSource"}
         disabled={disabled || busy || qualityPending || microphonePending || !available} busy={busy || qualityPending} expanded={pickerAvailable || open ? open : undefined}
         controls={pickerAvailable || open ? id : undefined} popoverTarget={pickerAvailable ? id : undefined}
         onClick={() => { if (!pickerAvailable) start(() => startScreen(roomId)); }} />}
     </span>
     <span ref={settingsTrigger} className="c3-share-control">
-      <Btn icon="sliders" title={{ text: settingsTitle }} cap={vis ? undefined : { text: settingsLabel }} hint="hint-quality" size="compact" quiet
+      <Btn icon="sliders" title={{ text: settingsTitle }} cap={vis || compact ? undefined : { text: settingsLabel }} hint="hint-quality" size="compact" quiet
         disabled={disabled || busy} busy={qualityPending} popoverTarget={`${id}-settings`} controls={`${id}-settings`} expanded={settingsOpen} />
     </span>
     </span>

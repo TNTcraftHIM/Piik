@@ -289,6 +289,9 @@ Watch selected pictures in
 a grid or focus one picture, with chat alongside or tucked away. These presentation
 choices do not implement media layering or a new quality policy. Local previews
 stay muted, and pausing a player does not stop forwarding its source.
+Start sharing from the selected room's header. Once active, source selection and
+picture/sound settings belong to that share's card; changing the room selection
+or focused picture never retargets those settings to another publication.
 
 In the accepted model, reading and writing conversation require the domain
 connection and current room host, independently of ICE. Domain Join/Welcome check

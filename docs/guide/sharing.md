@@ -24,7 +24,7 @@ does not include system sound; see the [browser compatibility record](https://gi
 ![Source picker with example app windows and the source-audio switch.](../assets/guide/channel-source.en.png#gh-light-mode-only)
 ![Source picker with example app windows and the source-audio switch.](../assets/guide/channel-source.en.dark.png#gh-dark-mode-only)
 
-Use **Switch source** to replace your picture in that room. You can also share
+Use **Switch source** on your picture card to replace that share. You can also share
 in another room without ending the first share. Switching the sidebar selection
 keeps existing shares, watched pictures and voice running.
 
@@ -36,7 +36,9 @@ invitation resets; see [getting started](./getting-started.md).
 
 ## Picture and sound settings
 
-Open **Picture and sound → Picture** beside your sharing control. Choose a
+Before starting, open **Picture and sound → Picture** beside **Start sharing**.
+During a share, use the same control on that picture's card, even when browsing
+another room. Choose a
 preset, or expand **Fine-tune picture** to set resolution, frame rate and bitrate.
 Choose the video codec before starting the share. Available codecs depend on
 the browser or connected App.

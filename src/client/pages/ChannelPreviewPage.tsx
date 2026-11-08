@@ -189,7 +189,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
             {(room?.authorized || room?.canManage) && <ChannelRoomControls key={`controls:${room.id}`} channel={channel} room={room} />}
           </div>
           <div className="c3-room-actions">
-            {room?.authorized && <><ChannelShareControl channel={channel} roomId={roomId} disabled={!connected || !room.available} />
+            {room?.authorized && <>{!mine.some(source => source.roomId === roomId) &&
+              <ChannelShareControl channel={channel} roomId={roomId} disabled={!connected || !room.available} />}
               <ChannelJoinVoice joined={joined} disabled={!connected || !room.available} busy={busy("voice", roomId)}
                 onJoin={listenOnly => run(channel.joinVoice(roomId, listenOnly).then(() => setVoiceFocus(roomId)))} /></>}
           </div>
@@ -231,6 +232,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
           <ChannelStage sources={[...visibleScreens, ...availableScreens].map(publication => ({
             id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id),
+            shareControls: channel.ownedScreens.has(publication.id) && <ChannelShareControl channel={channel}
+              roomId={publication.roomId} publicationId={publication.id} compact
+              disabled={!connected || !rooms.find(room => room.id === publication.roomId)?.available} />,
             paused: publication.paused, pausePending: publication.sessionId !== sessionId && busy("pause", publication.id),
             pauseAvailable: publication.sessionId === sessionId || connected,
             deliveryFailed: state?.failedSubscriptions.includes(publication.id),

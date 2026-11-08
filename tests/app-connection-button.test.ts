@@ -63,19 +63,23 @@ describe("shared App connection entry", () => {
     expect(html.match(/<button\b/g)).toHaveLength(2);
     expect(html).toMatch(/aria-label="(?:Picture and sound|画质与声音)"/);
   });
-  it("reuses the sharing entry as Switch source only for this page's active room share", () => {
+  it("binds live controls to their owned publication without retargeting a retired source", () => {
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn() } });
+    const ownedScreens = new Set(["mine"]);
     const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined,
       screenQuality: () => undefined, screenCodecMode: () => undefined,
       sourceAudio: () => undefined, sourceMicrophone: () => undefined,
-      ownedScreens: new Set(["mine"]), streams: new Map(), state: { channel: { rooms: [{ id: "room", name: "Friday" }] }, publications: [{ id: "mine", roomId: "room" }], voice: [] },
+      ownedScreens, streams: new Map(), state: { channel: { rooms: [{ id: "room", name: "Friday" }] }, publications: [{ id: "mine", roomId: "room" }], voice: [] },
     } as unknown as ChannelController;
-    const html = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", disabled: false }));
+    const html = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", publicationId: "mine", compact: true, disabled: false }));
     expect(html).toMatch(/aria-label="(?:Switch source in Friday|切换Friday的分享源)"/);
     expect(html.match(/<button\b/g)).toHaveLength(2);
     expect(html).toMatch(/aria-label="(?:Picture and sound in Friday|Friday的画质与声音)"/);
     const elsewhere = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "other", disabled: false }));
     expect(elsewhere).not.toMatch(/aria-label="(?:Switch source|切换来源)"/);
+    expect(renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "other", publicationId: "mine", disabled: false }))).toBe("");
+    ownedScreens.clear();
+    expect(renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", publicationId: "mine", disabled: false }))).toBe("");
   });
 });
 
@@ -96,7 +100,8 @@ describe("Native sharing capabilities", () => {
       // Open the real picker with the same completed targets response on each render.
       vi.mocked(useState).mockReturnValueOnce([!settings, vi.fn()]).mockReturnValueOnce([settings, vi.fn()])
         .mockReturnValueOnce([sources, vi.fn()]);
-      return renderToStaticMarkup(createElement(ChannelShareControl, { channel: channel as unknown as ChannelController, roomId: "room", disabled: false }));
+      return renderToStaticMarkup(createElement(ChannelShareControl, { channel: channel as unknown as ChannelController,
+        roomId: "room", publicationId: channel.ownedScreens.has("mine") ? "mine" : undefined, disabled: false }));
     };
     const unsupported = render();
     expect(unsupported.replaceAll("&#x27;", "'")).toContain(t("en", "host.sourcePicker.unsupported"));
