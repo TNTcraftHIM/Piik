@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { AppHeader, LedStrip } from "../components/living/Header";
-import { BackButton, Btn } from "../components/living/primitives";
+import { BackButton, Btn, Cap } from "../components/living/primitives";
 import { PawnSvg } from "../components/living/Pawn";
 import { participantColor } from "../components/living/participant-color";
 import { Tooltip } from "../components/living/Tooltip";
@@ -124,7 +124,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
       led={<LedStrip state={connected ? "live" : connection === "closed" ? "bad" : "busy"}
         label={connectionLabel} comic={connected ? "signal-connected" : "signal-connecting"} />} />
     {state && failure.message && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span>{failure.message}</span>
-      <Btn icon="x" title="notice.dismiss" size="compact" quiet onClick={channel.clearError} />
+      <Btn icon="x" title="notice.dismiss" hint="hint-close" size="compact" quiet onClick={channel.clearError} />
     </div>}
     <ChannelDomainControls channel={channel} triggerSlot={domainControlSlot} />
     {!state ? <ChannelDomainEntry channel={channel} failure={failure} /> : <main className="c3-shell" data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"}>
@@ -149,7 +149,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
           <input className="c3-input" readOnly value={channel.inviteURL ?? ""} onFocus={event => event.currentTarget.select()} />
         </label>}
         <div className={`c3-room-navigation${!rooms.length ? " is-empty" : ""}`}>
-          <div className="c3-section-label"><span className="c3-section-caption">{copy("房间", "Rooms")}</span>
+          <div className="c3-section-label"><span className="c3-section-caption"><Cap k={{ text: copy("房间", "Rooms") }} /></span>
             {self && <ChannelRoomControls channel={channel} onCreated={selectRoom} />}
           </div>
           <nav className="c3-rooms" aria-label={copy("房间", "Rooms")}>
@@ -223,7 +223,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
           <div ref={couchSlot} className="c3-room-slot" />
         </header>
         {!connected && <div className="c3-notice" role="status"><Glyph name="signal" size={20} /><span>{connectionLabel}</span>
-          {connection === "closed" && <Btn icon="refresh" title="common.retry" cap="common.retry" size="compact" onClick={channel.reconnect} />}
+          {connection === "closed" && <Btn icon="refresh" title="common.retry" cap="common.retry" hint="hint-reconnect" size="compact" onClick={channel.reconnect} />}
         </div>}
         {room && !room.available && <div className="c3-notice" role="status"><Glyph name="couch" size={20} />
           <span>{copy("房间暂不可用，请等待恢复托管。", "This room is unavailable. Wait for hosting to resume.")}</span></div>}

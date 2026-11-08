@@ -25,6 +25,9 @@ import { comicStyle, getComicPresentation, type ComicTone, type ComicMotion } fr
 export type { HintKind, HintScene };
 
 export const HINT_KINDS: readonly HintKind[] = [
+  "hint-watch",
+  "hint-screen-grid",
+  "hint-screen-focus",
   "hint-fit-contain",
   "hint-fit-cover",
   "hint-fit-fill",

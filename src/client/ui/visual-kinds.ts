@@ -109,6 +109,9 @@ export type Set4Kind =
   | "hint-client-site";
 
 export type PlaybackHintKind =
+  | "hint-watch"
+  | "hint-screen-grid"
+  | "hint-screen-focus"
   | "hint-fit-contain"
   | "hint-fit-cover"
   | "hint-fit-fill"

@@ -15,6 +15,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { stageColumns } from "../stage-layout";
 import { useTheaterMode } from "../../components/living/use-theater-mode";
 import { VoiceMicrophoneButton } from "../../room-voice/VoiceAudioButtons";
+import { Cap } from "../../components/living/primitives";
+import { Tooltip } from "../../components/living/Tooltip";
 
 export interface ChannelStageSource {
   id: string;
@@ -117,12 +119,12 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
 
     {active.length > 0 && <>
       <header className="c3-monitor-heading">
-        <div><Glyph name="tv" size={18} /><span>{copy("画面", "Screens")}</span><small>{active.length}</small></div>
+        <div><Glyph name="tv" size={18} /><Cap k={{ text: copy("画面", "Screens") }} /><small>{active.length}</small></div>
         {active.length > 1 && <div className="c3-monitor-layout" role="group" aria-label={copy("画面布局", "Screen layout")}>
           <ChannelAction icon="frames" label={copy("平铺画面", "Grid view")} quiet pressed={!focused}
-            onClick={() => onFocus(null)} />
+            hint="hint-screen-grid" onClick={() => onFocus(null)} />
           {focused && <span className="c3-monitor-focus-name"><Glyph name="eye" size={15} />{focused.name}</span>}
-          {theater && <label className="c3-theater-source"><span>{copy("切换画面", "Switch screen")}</span>
+          {theater && <label className="c3-theater-source"><Cap k={{ text: copy("切换画面", "Switch screen") }} />
             <select className="lr-select" aria-label={copy("切换画面", "Switch screen")} value={focused?.id ?? ""} onChange={event => onFocus(event.target.value)}>
               {active.map(source => <option key={source.id} value={source.id}>{source.name} — {source.roomName}</option>)}
             </select></label>}
@@ -134,6 +136,8 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
           const isFocused = source.id === focused?.id;
           const focusable = active.length > 1 && !isFocused;
           const microphone = source.sourceMicrophone;
+          const sourceStatus = source.paused ? t("host.paused") : source.owned ? copy("本机预览", "Local preview") : "";
+          const sourceDetail = (!vis && sourceStatus ? `${sourceStatus} / ` : "") + source.roomName;
           return <article key={source.id} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}`}
             data-publication-id={source.id} data-focusable={focusable || undefined}
             aria-label={`${source.name} — ${source.roomName}`}
@@ -154,14 +158,18 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
                   : copy("正在连接画面", "Connecting picture")}</span></div>}
             <footer>
               <PawnSvg color={participantColor(source.userId)} identity={source.userId} />
-              <div className="c3-monitor-source"><strong>{source.name}</strong>
-                <small>{source.paused ? `${t("host.paused")} / ` : source.owned ? `${copy("本机预览", "Local preview")} / ` : ""}{source.roomName}</small>
+              <div className="c3-monitor-source">
+                <Tooltip overflow={{ text: source.name, selector: "strong" }}><strong>{source.name}</strong></Tooltip>
+                <Tooltip overflow={{ text: sourceDetail, selector: "small" }}><small aria-label={sourceStatus ? `${sourceStatus} / ${source.roomName}` : undefined}>
+                  {vis && sourceStatus && <Glyph name={source.paused ? "pause" : "tv"} size={10} />}{sourceDetail}
+                </small></Tooltip>
               </div>
               <div className="c3-monitor-tile-actions">
                 {source.owned && source.remoteControl && <SourceControl source={{ ...source, remoteControl: source.remoteControl }}
                   onInputPolicy={onInputPolicy} onInputDecide={onInputDecide} onInputSimultaneous={onInputSimultaneous} onInputShortcut={onInputShortcut} />}
                 {active.length > 1 && <ChannelAction icon={isFocused ? "contract" : "expand"} quiet iconOnly
                   label={isFocused ? copy("返回平铺", "Return to grid") : copy(`聚焦 ${source.name}`, `Focus ${source.name}`)}
+                  hint={isFocused ? "hint-screen-grid" : "hint-screen-focus"}
                   pressed={isFocused} onClick={() => onFocus(isFocused ? null : source.id)} />}
                 {source.owned && microphone && <VoiceMicrophoneButton active={microphone.enabled}
                   quiet busy={microphone.busy && !(microphone.enabled && microphone.canDisable)}
@@ -187,7 +195,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
     </>}
     {available.length > 0 && <section className="c3-monitor-directory" aria-label={copy("可观看的画面", "Available screens")}>
       <div className="c3-monitor-directory-heading"><Glyph name="tv" size={17} />
-        <span>{copy("正在分享", "Available to watch")}</span><small>{available.length}</small>
+        <Cap k={{ text: copy("正在分享", "Available to watch") }} /><small>{available.length}</small>
       </div>
       <div className="c3-monitor-offers">
         {available.map(source => <div key={source.id} className="c3-monitor-offer" data-source-id={source.id}
@@ -195,6 +203,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
           <PawnSvg color={participantColor(source.userId)} identity={source.userId} />
           <div><strong>{source.name}</strong><small>{source.paused ? `${t("host.paused")} / ` : ""}{source.roomName}</small></div>
           <ChannelAction icon="eye" label={copy("观看", "Watch")}
+            hint="hint-watch"
             iconOnly={vis} disabled={!canSubscribe || source.available === false} busy={source.pending}
             onClick={() => onWatch(source.id)} />
         </div>)}

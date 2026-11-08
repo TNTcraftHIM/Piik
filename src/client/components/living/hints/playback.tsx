@@ -236,7 +236,50 @@ const PictureRotationHint: HintScene = ({ theme }) => <>
   })}
 </>;
 
+// The same four pictures stay present; focus gives one more space, grid gives
+// each equal space. Neither action changes a subscription or playback.
+function ScreenLayoutHint({ theme, focus }: Parameters<HintScene>[0] & { focus: boolean }) {
+  return <>
+    <PlaybackMotion />
+    {[!focus, focus].map((focused, index) => {
+      const x = index * 160;
+      const tiles = focused ? [[22, 27, 76, 48], [108, 19, 29, 16], [108, 43, 29, 16], [108, 67, 29, 16]]
+        : [[22, 20, 52, 26], [86, 20, 52, 26], [22, 57, 52, 26], [86, 57, 52, 26]];
+      return <g key={index}>
+        <Frame x={x + 4} w={152} theme={theme} result={index === 1} />
+        <g className={index ? "vls-pb-cue" : undefined}>
+          {tiles.map(([left, top, width, height], tile) => <g key={tile}>
+            <MiniTv x={x + left} y={top} w={width} h={height} />
+            <rect x={x + left + 5} y={top + 4} width={width - 10} height={height - 8} rx={2}
+              fill={[SKY, YOU, "var(--couch)", "var(--warn)"][tile]} opacity={.7} />
+          </g>)}
+        </g>
+      </g>;
+    })}
+  </>;
+}
+
+const WatchHint: HintScene = ({ theme }) => <>
+  <PlaybackMotion />
+  {[0, 1].map(index => <g key={index}>
+    <Frame x={index * 160 + 4} w={152} theme={theme} result={index === 1} />
+    <MiniTv x={index * 160 + 55} y={22} w={86} h={54} />
+    {index ? <g className="vls-pb-play">
+      <circle cx={index * 160 + 119} cy={36} r={5} fill={SKY} />
+      <path d={`M${index * 160 + 63} 65l18-22 13 15 12-10 28 17Z`} fill={YOU} />
+    </g> : <path d="M83 49h30" stroke={FAINT} strokeWidth={2} strokeDasharray="3 4" />}
+    <Pawn x={index * 160 + 29} yb={81} s={12} color={YOU} eyes gaze={1} />
+    <g className={index ? "vls-pb-cue" : undefined} stroke={YOU} strokeWidth={2} fill="none">
+      <path d={`M${index * 160 + 17} 28q12-14 24 0-12 14-24 0Z`} />
+      <circle cx={index * 160 + 29} cy={28} r={3} fill={YOU} />
+    </g>
+  </g>)}
+</>;
+
 export const PLAYBACK_SCENES: Record<PlaybackHintKind, HintScene> = {
+  "hint-watch": WatchHint,
+  "hint-screen-grid": props => <ScreenLayoutHint {...props} focus={false} />,
+  "hint-screen-focus": props => <ScreenLayoutHint {...props} focus />,
   "hint-fit-contain": props => <PictureFitHint {...props} fit="contain" />,
   "hint-fit-cover": props => <PictureFitHint {...props} fit="cover" />,
   "hint-fit-fill": props => <PictureFitHint {...props} fit="fill" />,

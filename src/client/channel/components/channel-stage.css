@@ -25,6 +25,8 @@
 .c3-monitor-tile > footer { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; }
 .c3-monitor-tile > footer > svg { width: 25px; height: 32px; flex: none; }
 .c3-monitor-source { min-width: 0; flex: 1 1 100px; }
+.c3-monitor-source > .lr-comic-tip-wrap { display: block; min-width: 0; }
+.c3-monitor-source small > svg { vertical-align: -2px; margin-inline-end: 4px; }
 .c3-monitor-source :is(strong, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .c3-monitor-tile-actions { display: flex; align-items: center; gap: 2px; flex: none; margin-inline: auto; }
 .c3-monitor-wait { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; aspect-ratio: 16 / 9; padding: 18px; border-radius: 14px 14px 0 0; background: var(--stage, var(--wall-2)); color: var(--muted); font-size: 12px; }
