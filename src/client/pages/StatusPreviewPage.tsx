@@ -22,6 +22,7 @@ import { HOST_STATUS_SCENARIOS, STATUS_SCENARIOS } from "./status-preview-scenar
 import "./status-preview.css";
 import { usePreviewAnchor } from "./use-preview-anchor";
 import { usePreviewReducedMotion } from "./use-preview-reduced-motion";
+import { ChannelEntryPreview } from "./ChannelEntryPreview";
 
 const SHARING_FAILURES = [
   ["native.fail.captureStart", "app/start-share/rejected", "source-failed"],
@@ -45,7 +46,8 @@ function StatusMark({ status }: { status: StatusDescriptor }) {
 }
 
 export function StatusPreviewPage() {
-  return new URLSearchParams(location.search).has("startup-failure")
+  const query = new URLSearchParams(location.search);
+  return query.has("channel-entry") ? <ChannelEntryPreview /> : query.has("startup-failure")
     ? <StartupFailure /> : <StatusCatalog />;
 }
 

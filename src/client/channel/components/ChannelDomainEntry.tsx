@@ -9,7 +9,10 @@ import { ChannelAction } from "./ChannelAction";
 import "./channel-room-controls.css";
 
 /** Domain admission precedes Welcome; no room or user snapshot is available yet. */
-export function ChannelDomainEntry({ channel, failure }: { channel: ChannelController; failure: ChannelErrorPresentation }) {
+export function ChannelDomainEntry({ channel, failure }: {
+  channel: Pick<ChannelController, "error" | "connection" | "enterDomain" | "reconnect">;
+  failure: ChannelErrorPresentation;
+}) {
   const { lang, vis } = useCopy(), zh = lang === "zh";
   const [password, setPassword] = useState("");
   const needsPassword = channel.error === "domain_password_required" || channel.error === "domain_password_incorrect";

@@ -92,6 +92,7 @@ export function TooltipPreviewPage() {
           <a href="#metrics-preview">{en ? "Metrics" : "连接数据"}</a>
           <a href="#welcome-preview">{en ? "Opening lines" : "开场白"}</a>
           <a href="/__status-preview">{en ? "Status gallery" : "完整状态预览"}</a>
+          <a href="/__status-preview?channel-entry">{en ? "Domain entry" : "域入口"}</a>
         </nav>
         <details className="cp-catalog-scope">
           <summary>{en ? "Shared controls and surfaces" : "控件与容器的复用范围"}</summary>
