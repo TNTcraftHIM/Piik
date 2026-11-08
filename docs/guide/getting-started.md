@@ -86,6 +86,9 @@ Use **Reset room invitation** only when you want a new link: the old link stops
 working, while people who already have access keep it. If an older invitation
 cannot be recovered, the panel explains this before you generate a replacement.
 
+![Room options show the invitation, copy and QR buttons first, with reset and room settings below.](../assets/guide/channel-invitation.en.png#gh-light-mode-only)
+![Room options show the invitation, copy and QR buttons first, with reset and room settings below.](../assets/guide/channel-invitation.en.dark.png#gh-dark-mode-only)
+
 ### Use App with an existing site
 
 1. Keep the 3.0 App running and open your group's **3.0** site.
@@ -135,5 +138,4 @@ the native sources supported by your device.
 
 - [Sharing and playback](./sharing.md#playback-controls): viewing and sound controls.
 - [Room tools](./room-tools.md): chat, voice and remote-control details.
-- [Troubleshooting](./troubleshooting.md#common-problems): find your symptom;
-  some detailed steps still describe published 2.x controls, so check the version before following them.
+- [Troubleshooting](./troubleshooting.md#common-problems): start from the symptom you see.

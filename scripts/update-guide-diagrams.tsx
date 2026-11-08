@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Glyph, type GlyphName } from "../src/client/ui/icons";
+import { locales } from "../src/client/locales";
 
 // Diagrams explain relationships; controls and colour still come from the UI.
 // Embed the palette so GitHub's image renderer needs no external stylesheet.
@@ -42,33 +43,33 @@ function AudioPaths({ english }: { english: boolean }) {
 
 function NetworkPaths({ english }: { english: boolean }) {
   return <svg xmlns="http://www.w3.org/2000/svg" width="600" height="340" viewBox="0 0 600 340" role="img" aria-labelledby="title desc">
-    <title id="title">{english ? "Web and media use separate connections" : "网页与媒体使用不同的连接"}</title>
-    <desc id="desc">{english ? "The Host and friend connect to the Piik site for the web page and chat. Picture and sound need a separate media connection, directly or through forwarding." : "房主和朋友通过 Piik 站点访问网页与聊天；画面和声音需要另建媒体连接，可通过直连或服务器转发传输。"}</desc>
+    <title id="title">{english ? "Chat and media use separate connections" : "聊天与媒体使用不同的连接"}</title>
+    <desc id="desc">{english ? "Messages and history reach the room host through the domain. Voice, pictures and file content use peer connections, directly or through other participants." : "消息与历史通过域到达房间托管端。语音、画面和文件内容使用设备间连接，可直连或由其他参与者转发。"}</desc>
     <style>{style}</style>
     <path className="path" d="M164 174h28V64h32m152 0h28v110h28" />
     <rect className="node" x="224" y="8" width="152" height="112" rx="20" />
     <g className="glyph" transform="translate(274 18)"><Glyph name="server" size={52} /></g>
-    <text x="300" y="101">{english ? "Piik site" : "Piik 站点"}</text>
-    {[{ x: 12, label: english ? "Host" : "房主" }, { x: 436, label: english ? "Friend" : "朋友" }].map(node => <g key={node.x}>
+    <text x="300" y="101">{english ? "Domain" : "域"}</text>
+    {[{ x: 12, label: english ? "Room host" : "房主" }, { x: 436, label: english ? "Friend" : "朋友" }].map(node => <g key={node.x}>
       <rect className="node" x={node.x} y="136" width="152" height="160" rx="20" />
       <g className="glyph" transform={`translate(${node.x + 46} 164)`}><Glyph name="window" size={60} /></g>
       <text x={node.x + 76} y="268">{node.label}</text>
     </g>)}
-    <text x="300" y="173" style={{ fontSize: 24 }}>{english ? "Web & chat" : "网页与聊天"}</text>
-    <text x="300" y="232" style={{ fontSize: 24 }}>{english ? "Picture & sound" : "画面与声音"}</text>
+    <text x="300" y="173" style={{ fontSize: 24 }}>{english ? "Messages & history" : "消息与历史"}</text>
+    <text x="300" y="232" style={{ fontSize: 24 }}>{english ? "Media & files" : "语音、画面与文件"}</text>
     <path className="path" d="M164 252h272m-262-8-10 8 10 8m252-16 10 8-10 8" />
-    <text x="300" y="326" style={{ fontSize: 22, fill: "var(--muted)" }}>{english ? "Direct or forwarded media connection" : "独立的媒体连接：直连或服务器转发"}</text>
+    <text x="300" y="326" style={{ fontSize: 22, fill: "var(--muted)" }}>{english ? "Chat works before a peer connection is ready" : "聊天无需等待设备间连接"}</text>
   </svg>;
 }
 
 function VirtualLanSteps({ english }: { english: boolean }) {
   const steps: { icon: GlyphName; title: string; detail: string }[] = english ? [
     { icon: "network", title: "Join the same virtual LAN", detail: "Keep the tool running on both sides." },
-    { icon: "window", title: "Choose the virtual address", detail: "Local room → select the virtual IP" },
+    { icon: "window", title: "Choose the virtual address", detail: `${locales.en.copy["client.launch.local"]} → select the virtual IP` },
     { icon: "link", title: "Send the complete invitation", detail: "Confirm the certificate and join." },
   ] : [
     { icon: "network", title: "加入同一虚拟网络", detail: "房主和朋友都保持组网工具运行" },
-    { icon: "window", title: "选择虚拟地址", detail: "本地房间 → 局域网邀请地址" },
+    { icon: "window", title: "选择虚拟地址", detail: `${locales.zh.copy["client.launch.local"]} → ${locales.zh.copy["client.launch.lanAddress"]}` },
     { icon: "link", title: "发送完整邀请链接", detail: "朋友核对本地证书，进入房间" },
   ];
   return <svg xmlns="http://www.w3.org/2000/svg" width="600" height="380" viewBox="0 0 600 380" role="img" aria-labelledby="title desc">

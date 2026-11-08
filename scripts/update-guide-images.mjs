@@ -1,109 +1,96 @@
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 
-// Capture the real controls with the catalogue's sample data, never a live room.
-// Pass the product dev URL, and optionally a built website URL for README captures.
+// 3.0 guide images have one source: production components in the dev catalogue.
+// The maintenance branch owns its 2.x screenshots and README film stills.
 const preview = new URL('/__tooltip-preview', process.argv[2] || 'http://127.0.0.1:8787');
-// The README fixture is bundled by build:website; it is separate from the dev catalogue.
-const readmePreview = process.argv[3] ? new URL('/film/ui/index.html', process.argv[3]) : null;
+if (process.argv.length > 3) throw new Error('Usage: node scripts/update-guide-images.mjs [dev-origin]');
 const output = fileURLToPath(new URL('../docs/assets/guide/', import.meta.url));
 const browser = process.env.AGENT_BROWSER_PATH || (process.platform === 'win32'
   ? join(process.env.APPDATA, 'npm/node_modules/agent-browser/bin/agent-browser-win32-x64.exe')
   : 'agent-browser');
-const execute = promisify(execFile);
 const session = `piik-guide-images-${process.pid}`;
-await execute(process.execPath, [fileURLToPath(import.meta.resolve('tsx/cli')), '--tsconfig',
-  fileURLToPath(new URL('./tsconfig.json', import.meta.url)),
-  fileURLToPath(new URL('./update-guide-diagrams.tsx', import.meta.url))]);
-const run = async (...args) => {
-  const { stdout } = await execute(browser, ['--session', session, ...args], { timeout: 30000 });
+
+async function execute(command, args, timeout = 30000) {
+  const child = spawn(command, args, { windowsHide: true, timeout, stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout = '', stderr = '';
+  child.stdout.on('data', bytes => { stdout += bytes; });
+  child.stderr.on('data', bytes => { stderr += bytes; });
+  const code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', resolve); });
+  // A newly launched browser daemon can inherit these pipes after its CLI exits.
+  child.stdout.destroy(); child.stderr.destroy();
+  if (code !== 0) throw new Error(stderr || stdout || `${command} exited with ${code}`);
   return stdout;
+}
+const run = async (...args) => {
+  const result = JSON.parse(await execute(browser, ['--session', session, '--json', ...args]));
+  if (!result.success) throw new Error(result.error);
+  return result.data;
 };
 const evaluate = script => run('eval', '-b', Buffer.from(script).toString('base64'));
 
-async function openSection(section, lang, theme, path = '/__tooltip-preview') {
-  await run('open', new URL(path, preview).href);
-  await run('wait', `#${section}`);
-  await run('click', `.lr-top button[aria-label="${lang === 'en' ? 'English' : '简体中文'}"]`);
-  await evaluate(`localStorage.setItem('piik:ui-theme', ${JSON.stringify(theme)})`);
-  await run('reload');
-  await run('wait', `#${section}`);
-  await evaluate(`(async () => {
-    const style = document.createElement('style');
-    style.textContent = ${JSON.stringify(`
-      .lr-top, .lr-tooltip-preview > :not(#${section}):not(:has(#${section})),
-      #control-preview > :not(#${section}),
-      #${section} > header, #${section} > .cp-tools { display: none !important; }
-    `)};
-    document.head.append(style);
-    await document.fonts.ready;
-    scrollTo(0, 0);
-  })()`);
-}
-
-async function capture(selector, name, directory = output) {
+async function capture(selector, name) {
   await run('wait', selector);
   await run('mouse', 'move', '1', '1');
   await evaluate(`(async () => {
     const target = document.querySelector(${JSON.stringify(selector)});
+    await document.fonts.ready;
     await Promise.all(Array.from(target.querySelectorAll('img')).map(img => img.decode()));
-    // Fixed top-layer panels need a settled viewport origin for element captures.
-    scrollTo(0, 0);
+    await Promise.all(target.getAnimations({ subtree: true })
+      .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity)
+      .map(animation => animation.finished.catch(() => {})));
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   })()`);
-  await run('screenshot', selector, join(directory, `${name}.png`));
+  const isolation = selector === '.c3-guide-room' ? null : (await evaluate(`(() => {
+    const guide = document.querySelector('#channel-guide-preview');
+    const target = document.querySelector(${JSON.stringify(selector)});
+    const previous = [guide, target].map(node => [node.style.getPropertyValue('visibility'), node.style.getPropertyPriority('visibility')]);
+    guide.style.visibility = 'hidden'; target.style.visibility = 'visible';
+    return previous;
+  })()`)).result;
+  try {
+    await run('screenshot', selector, join(output, `${name}.png`));
+  } finally {
+    if (isolation) await evaluate(`(() => {
+      const nodes = [document.querySelector('#channel-guide-preview'), document.querySelector(${JSON.stringify(selector)})];
+      ${JSON.stringify(isolation)}.forEach(([value, priority], index) => nodes[index]?.style.setProperty('visibility', value, priority));
+    })()`);
+  }
   console.log(`${name}.png`);
 }
 
+await execute(process.execPath, [fileURLToPath(import.meta.resolve('tsx/cli')), '--tsconfig',
+  fileURLToPath(new URL('./tsconfig.json', import.meta.url)),
+  fileURLToPath(new URL('./update-guide-diagrams.tsx', import.meta.url))]);
 await mkdir(output, { recursive: true });
 try {
   await run('set', 'viewport', '1280', '900');
   for (const theme of ['light', 'dark']) {
     await run('set', 'media', theme, 'reduced-motion');
     for (const [lang, locale] of [['en', 'en'], ['zh', 'zh-CN']]) {
+      await run('open', preview.href);
+      await run('wait', '#channel-guide-preview');
+      await evaluate(`(async () => {
+        (await import('/src/client/ui/copy.ts')).setCopy({lang:${JSON.stringify(lang)},vis:false});
+        (await import('/src/client/ui/theme.ts')).applyTheme(${JSON.stringify(theme)});
+        const style = document.createElement('style');
+        style.textContent = '.lr-top, .lr-tooltip-preview > :not(#channel-guide-preview), #channel-guide-preview > :not(.c3-guide-room) { display:none !important }';
+        document.head.append(style); scrollTo(0, 0);
+      })()`);
       const suffix = `${locale}${theme === 'dark' ? '.dark' : ''}`;
-      await openSection('launcher-preview', lang, theme);
-      await capture('.lr-client-modes', `app-modes.${suffix}`);
-
-      await openSection('source-preview', lang, theme);
-      await run('click', '#source-preview .cp-stage-action button');
-      await run('wait', '.lr-source-picker-list img');
-      await evaluate(`document.querySelector('#source-preview .lr-tv-screen').style.minHeight = '650px'`);
-      await capture('#source-preview .lr-source-picker-panel', `share-source.${suffix}`);
-
-      await openSection('sharing-preview', lang, theme);
-      await run('wait', '#sharing-preview button[aria-controls="preview-sharing-settings"]');
-      await run('click', '#sharing-preview button[aria-controls="preview-sharing-settings"]');
-      await capture('.lr-sharing-panel', `sharing-settings.${suffix}`);
-
-      await run('set', 'viewport', '1280', '420');
-      await openSection('interaction-preview', lang, theme);
-      await run('click', `#interaction-preview button[aria-label="${lang === 'en' ? 'Interact' : '互动'}"]`);
-      await run('wait', '.lr-interaction-panel');
-      await run('click', '.lr-interaction-panel [role="tab"][id$="-voice-tab"]');
-      await capture('.lr-interaction-panel', `room-voice.${suffix}`);
-      await run('set', 'viewport', '1280', '900');
-
-      await openSection('sharing-troubleshooting', lang, theme, '/__status-preview');
-      await run('click', '#sharing-troubleshooting article:first-child button');
-      await capture('dialog.lr-share-help[open]', `share-failure.${suffix}`);
-    }
-  }
-  if (readmePreview) {
-    await run('set', 'viewport', '1160', '1040');
-    for (const theme of ['light', 'dark']) {
-      await run('set', 'media', theme, 'reduced-motion');
-      for (const lang of ['en', 'zh']) {
-        const url = new URL(readmePreview);
-        url.search = new URLSearchParams({ still: 'viewer', lang, theme });
-        await run('open', url.href);
-        await run('wait', '.is-still .lr-app');
-        await evaluate('document.fonts.ready');
-        await capture('.is-still .lr-app', 'room-' + lang + '-' + theme, join(output, '..'));
-      }
+      await capture('.c3-guide-room', `channel-room.${suffix}`);
+      await run('find', 'role', 'button', 'click', '--name', lang === 'en' ? 'Room options' : '房间选项', '--exact');
+      await run('wait', '.c3-invite-copy input');
+      await capture('.c3-room-panel:popover-open', `channel-invitation.${suffix}`);
+      await run('press', 'Escape');
+      await run('find', 'role', 'button', 'click', '--name', lang === 'en' ? 'Start sharing' : '开始分享', '--exact');
+      await run('wait', '.c3-share-picker .lr-source-picker-list img');
+      await capture('.c3-share-picker:popover-open', `channel-source.${suffix}`);
+      await run('press', 'Escape');
+      await run('find', 'role', 'button', 'click', '--name', lang === 'en' ? 'Picture and sound' : '画质与声音', '--exact');
+      await capture('.c3-quality-picker:popover-open', `channel-quality.${suffix}`);
     }
   }
 } finally {

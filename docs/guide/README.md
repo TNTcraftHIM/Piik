@@ -27,13 +27,12 @@ remains available separately.
 - [Sharing and playback](./sharing.md): picture quality, cameras, source sound and viewing controls.
 - [Chat, voice and remote control](./room-tools.md): reactions, conversations and letting a friend take control.
 - [Remote control and playing together](./remote-control.md): permissions, shared keyboard/mouse and gamepads.
-- [App reference](../../prototype/channel-server/README.md#local-app-link): local/public modes, site approval and diagnostics.
+- [App reference](../../cmd/piik-app/README.md): local/public modes, site approval and diagnostics.
 
 ## Get help
 
 - **Cannot join, share or hear a friend:** [find the checks for your problem](./troubleshooting.md#common-problems).
-  Some detailed steps there still use published 2.x controls; check the version before following them.
-- **Published 2.x network reference:** [network checks](./network.md) covers that version's deployment and forwarding options.
+- **Chat works, but picture, voice or files will not connect:** use [network checks](./network.md).
 
 Still stuck? [Report a problem](https://github.com/TNTcraftHIM/Piik/issues/new/choose)
 with your version, system, browser and reproduction steps. Follow the

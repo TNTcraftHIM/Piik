@@ -13,6 +13,7 @@ import { MetricCells } from "../components/living/Metrics";
 import { PREVIEW_METRICS } from "./preview-metrics";
 import { usePreviewAnchor } from "./use-preview-anchor";
 import { usePreviewReducedMotion } from "./use-preview-reduced-motion";
+import { ChannelGuidePreview } from "./ChannelGuidePreview";
 
 const EXAMPLES: { label: string; kind: HintKind | ComicKind; tone: ComicTone; motion: ComicMotion; text: CopyKey }[] = [
   { label: "说明 / Neutral", kind: "hint-volume", tone: "off", motion: "demo", text: "playback.volume" },
@@ -93,6 +94,7 @@ export function TooltipPreviewPage() {
           <a href="#welcome-preview">{en ? "Opening lines" : "开场白"}</a>
           <a href="/__status-preview">{en ? "Status gallery" : "完整状态预览"}</a>
           <a href="/__status-preview?channel-entry">{en ? "Domain entry" : "域入口"}</a>
+          <a href="#channel-guide-preview">{en ? "3.0 rooms" : "3.0 房间"}</a>
         </nav>
         <details className="cp-catalog-scope">
           <summary>{en ? "Shared controls and surfaces" : "控件与容器的复用范围"}</summary>
@@ -109,6 +111,7 @@ export function TooltipPreviewPage() {
           <p>{en ? "Source selection stays inside the television. Browser capture permissions, native select menus and operating-system window frames are platform UI, verified in their actual environment. Website and documentation navigation retain their page-specific layouts."
             : "选源界面留在电视内。浏览器采集授权、原生下拉菜单和操作系统窗框属于平台界面，在实际环境验收；官网与文档导航保留各自的页面布局。"}</p>
         </details>
+        <ChannelGuidePreview />
         <ControlsPreview />
         <MetricPreview />
         <WelcomeLine still={reducedMotion} />

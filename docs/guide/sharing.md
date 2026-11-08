@@ -17,6 +17,9 @@ You choose which pictures to watch.
 3. Check your local preview. Friends see your share under **Available to watch**
    and select **Watch** to receive it.
 
+![Source picker with example app windows and the source-audio switch.](../assets/guide/channel-source.en.png#gh-light-mode-only)
+![Source picker with example app windows and the source-audio switch.](../assets/guide/channel-source.en.dark.png#gh-dark-mode-only)
+
 Use **Switch source** to replace your picture in that room. You can also share
 in another room without ending the first share. Switching the sidebar selection
 keeps existing shares, watched pictures and voice running.
@@ -34,14 +37,16 @@ preset, or expand **Fine-tune picture** to set resolution, frame rate and bitrat
 Choose the video codec before starting the share. Available codecs depend on
 the browser or connected App.
 
+![Picture and sound settings with presets and a separate section for detailed picture controls.](../assets/guide/channel-quality.en.png#gh-light-mode-only)
+![Picture and sound settings with presets and a separate section for detailed picture controls.](../assets/guide/channel-quality.en.dark.png#gh-dark-mode-only)
+
 - **Resolution** is a ceiling; portrait and ultrawide sources keep their proportions.
 - **Sliders** offer common values. Type another allowed value in the field;
   **Use common range** returns to the slider's range.
 - **Sound** contains source audio quality and, during a share, your commentary controls.
 
-The applied limits do not guarantee a particular received picture quality;
-the source, device and connection still matter. Native platform support is
-listed in the [Native reference](../../prototype/channel-native/README.md).
+Piik adapts the picture within these limits according to the source, device and
+connection. Platform support is listed in the [Native reference](../../prototype/channel-native/README.md).
 
 ### Include your microphone
 

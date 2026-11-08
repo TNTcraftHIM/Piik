@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitepress';
-import { pages, documentLink, documentImage, repository } from '../pages.mjs';
+import { pages, documentLink, documentImage, repository, hostingGroups } from '../pages.mjs';
 import { githubSlug } from '../../../scripts/markdown-slug.mjs';
 import { THEME_STORAGE_KEY } from '../../../src/client/ui/theme.ts';
 
@@ -12,7 +12,7 @@ const sidebar = chinese => {
     if (!groups.has(page.group)) groups.set(page.group, []);
     groups.get(page.group).push({ text: page.text, link: `/${page.path.replace(/\.md$/, '.html')}` });
   }
-  groups.get(chinese ? '自部署' : 'Self-hosting').push({
+  groups.get(chinese ? hostingGroups.zh : hostingGroups.en).push({
     text: chinese ? '完整配置参考（英文）' : 'Configuration reference',
     link: `${repository}/blob/main/docs/standards/configuration.md`,
   });
@@ -53,7 +53,7 @@ export default defineConfig({
       label: '简体中文', lang: 'zh-CN', description: 'Piik 使用教程、问题排查与自部署指南。',
       themeConfig: {
         sidebar: sidebar(true),
-        nav: [{ text: '官网', link: 'https://piik.tv/?lang=zh-CN' }, { text: '在线使用', link: 'https://demo.piik.tv' }],
+        nav: [{ text: '官网', link: 'https://piik.tv/?lang=zh-CN' }, { text: '2.x 在线版', link: 'https://demo.piik.tv' }],
         outline: { level: [2, 3], label: '本页内容' },
         docFooter: { prev: '上一页', next: '下一页' },
         editLink: { pattern: editPattern, text: '在 GitHub 上改进此页' },
@@ -65,7 +65,7 @@ export default defineConfig({
   },
   themeConfig: {
     siteTitle: false,
-    nav: [{ text: 'Website', link: 'https://piik.tv/?lang=en' }, { text: 'Use online', link: 'https://demo.piik.tv' }],
+    nav: [{ text: 'Website', link: 'https://piik.tv/?lang=en' }, { text: '2.x online', link: 'https://demo.piik.tv' }],
     socialLinks: [{ icon: 'github', link: repository }],
     outline: [2, 3],
     editLink: {

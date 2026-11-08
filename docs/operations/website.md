@@ -195,11 +195,13 @@ node scripts/update-guide-images.mjs http://127.0.0.1:8787
 npm run build:website
 ```
 
-The script regenerates the audio and network diagrams from shared icons and
-palette, then captures `/__tooltip-preview` production components using sample data,
-both languages, light/dark themes and reduced motion. It closes its own session.
-Captures cover the mode selector, source picker, sharing settings, voice panel
-and sample sharing-failure dialog. Place each beside the task it explains. Markdown uses GitHub's
+The script regenerates diagrams from shared icons, palette and UI labels, then
+captures the production components in `/__tooltip-preview#channel-guide-preview`
+with local sample data, both languages, light/dark themes and reduced motion.
+The four views show room chat and voice controls, the invitation panel, source
+selection, and picture settings. These sample controls use no live room or device.
+The script waits for their entrance animations and closes its own browser session.
+Place each image beside the task it explains. Markdown uses GitHub's
 `#gh-light-mode-only` / `#gh-dark-mode-only` image hints, which the documentation
 theme also follows when its appearance control changes. Do not invert or tint
 screenshots: capture the actual theme. SVG explanations inherit the page's
@@ -208,24 +210,18 @@ generates the audio-path, network-path and virtual-LAN SVGs and embeds the share
 illustration; `build:website` checks these generated parts for source freshness.
 Adjust capture viewport/panel size to show complete choices and avoid unused space;
 do not edit controls or labels inside the saved image.
-`AGENT_BROWSER_PATH` overrides the CLI path. Inspect `docs/assets/guide/` before
+`AGENT_BROWSER_PATH` overrides the CLI path. Inspect the generated
+`docs/assets/guide/channel-*.png` files before
 committing with UI/copy changes. Keep example captions; use no live-room data,
 hand-edited text or duplicate mockups.
 
 The build stages `docs/assets/` and rewrites Markdown image paths to hashed URLs.
 GitHub and the docs center share the sources; README links to the full tutorial.
 
-To refresh the README's four room PNGs in the same run, pass an already-built
-website preview as the second URL:
-
-```sh
-node scripts/update-guide-images.mjs http://127.0.0.1:8787 http://127.0.0.1:18890
-```
-
-Build that preview from the current UI first. The README captures use the
-[film's real-component fixture](../../site/film/README.md), with sample people
-and generated game artwork. The room illustration and quickstart SVG are
-authored explanations, not screenshots.
+Published 2.x screenshots and README film stills keep their
+[maintenance-line workflow](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/operations/website.md#guide-screenshots).
+The 3.0 capture script has one current UI source. The room illustration and
+quickstart SVG remain authored explanations, not screenshots.
 
 After changing pictured UI, refresh the affected PNGs with the capture command,
 inspect them, then rebuild. `build:website` bundles components and guides and

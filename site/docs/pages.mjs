@@ -1,5 +1,7 @@
 import { posix } from 'node:path';
 
+export const hostingGroups = { en: 'Published 2.x hosting', zh: '2.x 正式版部署' };
+
 // Explicit publication list: adding a repository document never publishes it automatically.
 export const pages = [
   ['docs/guide/README.md', 'index.md', 'Documentation', 'Start here'],
@@ -10,8 +12,8 @@ export const pages = [
   ['cmd/piik-app/README.md', 'app.md', 'App reference', 'Using Piik'],
   ['docs/guide/troubleshooting.md', 'troubleshooting.md', 'Troubleshooting', 'Get help'],
   ['docs/guide/network.md', 'network.md', 'Network connections', 'Get help'],
-  ['docs/operations/self-hosting.md', 'self-hosting.md', 'Deploy a site', 'Self-hosting'],
-  ['docs/operations/service-management.md', 'service-management.md', 'Run and update', 'Self-hosting'],
+  ['docs/operations/self-hosting.md', 'self-hosting.md', 'Deploy a site', hostingGroups.en],
+  ['docs/operations/service-management.md', 'service-management.md', 'Run and update', hostingGroups.en],
   ['docs/guide/translating.md', 'translating.md', 'Translate Piik', 'Contribute'],
   ['docs/guide/README.zh-CN.md', 'zh/index.md', '文档中心', '开始使用'],
   ['docs/guide/getting-started.zh-CN.md', 'zh/getting-started.md', '快速上手', '开始使用'],
@@ -21,8 +23,8 @@ export const pages = [
   ['cmd/piik-app/README.zh-CN.md', 'zh/app.md', 'App 使用参考', '使用 Piik'],
   ['docs/guide/troubleshooting.zh-CN.md', 'zh/troubleshooting.md', '问题排查', '遇到问题'],
   ['docs/guide/network.zh-CN.md', 'zh/network.md', '进阶网络排查', '遇到问题'],
-  ['docs/operations/self-hosting.zh-CN.md', 'zh/self-hosting.md', '部署站点', '自部署'],
-  ['docs/operations/service-management.zh-CN.md', 'zh/service-management.md', '运行与更新', '自部署'],
+  ['docs/operations/self-hosting.zh-CN.md', 'zh/self-hosting.md', '部署站点', hostingGroups.zh],
+  ['docs/operations/service-management.zh-CN.md', 'zh/service-management.md', '运行与更新', hostingGroups.zh],
   ['docs/guide/translating.zh-CN.md', 'zh/translating.md', '参与翻译', '参与项目'],
 ].map(([source, path, text, group]) => ({ source, path, text, group }));
 

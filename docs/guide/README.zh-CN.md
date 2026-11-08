@@ -26,13 +26,12 @@
 - [分享与播放](./sharing.zh-CN.md)：画质、摄像头、来源声音与观看控制。
 - [聊天、语音与远程控制](./room-tools.zh-CN.md)：表情互动、聊天，或让朋友接手操作。
 - [远程控制与多人同乐](./remote-control.zh-CN.md)：授权、共用键鼠与手柄设置。
-- [App 使用参考](../../prototype/channel-server/README.md#local-app-link)：本地／公网模式、站点授权与诊断。
+- [App 使用参考](../../cmd/piik-app/README.zh-CN.md)：本地／公网模式、站点授权与诊断。
 
 ## 遇到问题
 
 - **进不了房间、无法分享或听不到朋友：** 先看[对应的排查步骤](./troubleshooting.zh-CN.md#常见问题)。
-  部分详细步骤仍使用公开 2.x 控件名称，操作前请核对版本。
-- **公开 2.x 网络参考：** [进阶网络排查](./network.zh-CN.md)说明该版本的部署和转发选项。
+- **聊天正常，但画面、语音或文件连不上：** 再看[进阶网络排查](./network.zh-CN.md)。
 
 仍然没解决？可以[反馈问题](https://github.com/TNTcraftHIM/Piik/issues/new/choose)，
 附上版本、系统、浏览器和复现步骤。需要收集报告时，按[反馈说明](./troubleshooting.zh-CN.md#反馈问题)导出。

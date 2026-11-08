@@ -1,0 +1,6 @@
+.c3-guide-room { width: min(780px, 100%); margin: 20px auto 0; border: 1px solid var(--line); border-radius: 24px; background: var(--paper); overflow: hidden; }
+.c3-guide-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 18px 24px; border-bottom: 1px solid var(--line); }
+.c3-guide-title { display: flex; align-items: center; gap: 8px; }
+.c3-guide-room > .c3-conversation { height: 300px; min-height: 0; }
+.c3-guide-room .c3-room-start { display: none; }
+.c3-guide-room .c3-voice-dock { margin: 0; border-radius: 0; border-inline: 0; border-bottom: 0; }

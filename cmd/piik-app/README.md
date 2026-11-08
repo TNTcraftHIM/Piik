@@ -1,178 +1,180 @@
 # Piik App
 
+This reference covers the 3.0 internal test App supplied to testers. Public
+downloads and the online Demo still use 2.x; use the [2.6.0 App reference](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/cmd/piik-app/README.md) for those versions.
+
 English · [简体中文](./README.zh-CN.md) · [Getting started](../../docs/guide/getting-started.md)
 
-Piik App provides local rooms and native screen capture through the Piik web
-interface in your system Browser.
+Piik App opens its controls in your browser. It can run your group's domain,
+host rooms while their pages are closed, and provide the picture and sound
+capture available on your device.
 
 ## Run A Package
 
-For Android APK installation and the shared browser workflow, follow
-[Getting started](../../docs/guide/getting-started.md#share-with-piik-app).
-The package, terminal and command-line instructions below apply to desktop App.
+Use the matching platform package supplied for this test:
 
-Extract the matching platform bundle in full. On Windows and Linux, keep
-`runtime` beside the App executable and run `piik-app.exe` or `./piik-app`.
-On macOS, open `Piik App.app`; you can move the whole `.app` to Applications.
-The launcher opens in the system Browser.
-If macOS blocks the first launch, follow the [Mac opening steps](../../docs/guide/troubleshooting.md#macos-blocks-first-launch).
-Linux native capture uses the system dependencies described
-in the [Linux capture guide](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/linux/README.md).
+- **Windows:** extract the whole ZIP, keeping `web/` and `runtime/` beside
+  `piik-app.exe`, then open that executable.
+- **Android:** install the supplied APK, then open Piik. Keep App data when
+  updating the same test channel. See [installation steps](../../docs/guide/getting-started.md#share-with-piik-app).
+- **Linux/macOS, when supplied:** keep the complete package. Run `./piik-app`
+  on Linux, or open `Piik App.app` on macOS. Platform requirements and device
+  coverage are in the [Native reference](../../prototype/channel-native/README.md)
+  and [verification status](../../docs/verification-status.md).
 
-If the page does not open automatically, open the address shown in the terminal
-or press **O** there to retry. Keep the App running while using that page.
-
-macOS native capture requires macOS 13 or newer. Windows App and browser sharing
-are the primary tested paths; [macOS/Linux feedback is welcome](https://github.com/TNTcraftHIM/Piik/issues).
+The launcher opens in the system browser. If it does not, open the **App launcher**
+address printed in the terminal. Keep the App running while using its services.
+For a blocked Mac build, follow the [Mac opening steps](../../docs/guide/troubleshooting.md#macos-blocks-first-launch).
 
 ## Modes
 
-Choose **Local room** or **Public invite**, then **Open Piik**, to start a room
-service. To supply capture to an existing site, leave the launcher open and
-[approve that site](#approved-site).
+Choose **Local network** or **Public invite**, then **Open Piik**. This starts
+one domain containing your rooms. A domain invitation opens that space; a
+private room may also need its own invitation or password.
 
-App remembers the last confirmed room mode. On first use, **Public invite** is
-selected and waits for confirmation. A starred site opens on startup instead.
+The mode preference stays in this browser. Returning to an already running
+domain does not replace that preference or create another domain. To change
+the running mode, finish its shares, quit App normally and reopen it before
+selecting the other mode. An approved starred site can open instead on startup.
 
-The launcher checks releases through GitHub. Published binaries retain their
-Gitee fallback; use AtomGit for current manual mirror downloads.
-Its update button downloads your platform's ZIP, or opens Releases if no package
-matches. **Release notes** opens the changes; major upgrades show a warning.
-Follow the [upgrade steps](#upgrading) to replace App.
+### Local Network
 
-### Local Room
+Use this mode when friends can reach your device on the same LAN or
+[virtual LAN](../../docs/guide/network.md#optional-a-virtual-lan).
+If several addresses appear, choose one on the network your friends use.
 
-Choose **Local room** for a reachable LAN. Rooms last for this App run.
-
-App selects a sole active address or sole private IPv4 automatically. When
-several are available, choose **Local invitation address** in the launcher.
-For a [virtual LAN](../../docs/guide/network.md#optional-a-virtual-lan), choose its virtual IPv4.
-
-Friends use the HTTPS invitation on that address; the Host uses the local
-loopback page. On first access, friends must [confirm the certificate](../../docs/guide/troubleshooting.md#local-https-certificate-warning)
-against the App terminal. Repeat confirmation after App restarts.
+Friends open the full HTTPS invitation on that address. On their first visit,
+compare the [local certificate fingerprint](../../docs/guide/troubleshooting.md#local-https-certificate-warning)
+with **Certificate SHA-256** in the App terminal. Use **Open Piik** in your own
+App launcher; send friends the generated invitation instead of a `localhost` address.
 
 ### Public Invite
 
-Choose **Public invite**, create a room in the opened browser, and send its invitation.
-The packaged Cloudflare Tunnel helper supplies a temporary `trycloudflare.com`
-HTTPS address. It expires when App closes; a later run gets a new address.
-For a permanent address, use a configured Piik site.
+The packaged Cloudflare helper provides a temporary HTTPS address. Send the
+domain or room invitation from the opened Piik page. Keep App running: stopping
+it ends access through that address. A later run may get a different address,
+while the saved domain and rooms remain the same.
 
-Local and Public invite use P2P picture and sound, outside the web tunnel.
-They need a usable UDP media path and provide no server media forwarding (SFU)
-or TURN relay. If the tunnel or media fails, use the [network checks](../../docs/guide/network.md)
-and [public-invitation checks](../../docs/guide/troubleshooting.md#public-invitation-fails-or-shows-1033).
+Text, history and attachment descriptions use the domain connection. Pictures,
+room voice and file content use peer connections separately. If chat works but a
+transfer fails, use the [matching connection checks](../../docs/guide/troubleshooting.md#common-problems).
 
-Public invite uses Cloudflare, MiWiFi (Xiaomi) and Bilibili STUN services to
-discover reachable addresses. Each contacted operator can see your public IP,
-port and request timing; these requests contain no media, chat or room password.
-To choose your own STUN services for public invitations, set `PIIK_STUN_URLS`
-before starting App; see [App configuration](../../docs/standards/configuration.md#piik-app-configuration).
-An approved Site supplies its own `STUN_URLS`; App Local rooms configure no public STUN.
+## Join Or Create A Room
+
+To visit someone else's group, open their complete **3.0** invitation in a
+browser. Starting your own App domain creates a separate place; it does not
+join or take over theirs.
+
+To make a room, enter your domain or an admitted 3.0 domain and select
+**Create room**. Read the form's hosting note:
+
+- **Hosted by App:** the linked App saves the room and keeps it available after
+  this page closes, while the App remains running.
+- **Hosted by this page:** the browser saves the room; closing this page pauses
+  hosting. Connecting App later does not move that room automatically.
+
+People admitted to a room can chat, join voice, share and watch. See
+[sharing controls](../../docs/guide/sharing.md) and [room tools](../../docs/guide/room-tools.md).
 
 ### Approved Site
 
-Keep App running, click **App** at the top of the Piik site, and confirm its
-address on the local approval page. See the [connection steps](../../docs/guide/getting-started.md#use-app-with-an-existing-site).
+To use App with an existing **3.0** domain:
 
-The launcher lists approved sites:
+1. Keep App running. On that site's page, select **App → Open App page**.
+2. On the local approval page, check the complete site address, then **Allow access**.
+   Allow browser local-network access if asked.
+3. Return to the site. Wait until App is ready before creating an App-hosted
+   room or choosing an App capture source.
 
-- Click a site to open it. **×** revokes its App connections while other sites and Local rooms continue.
-- **☆** selects one site to open on startup. Clear the star to restore the launcher;
-  revoking the starred site also clears it. Approving another site keeps existing approvals.
-- Click a connected site's **App** button to reopen the launcher, or use the
-  **App launcher** address in the terminal.
+You can also use **Open a site** in the launcher to enter and approve an address.
+Approval applies to that exact site address. Another address or browser may need
+its own connection step. Room admission and remote-control consent remain separate.
 
-The browser remembers activation. Reconnect after changing browsers, using a
-private window or clearing site data. A new public-invite address needs its own
-approval. The site continues to own its rooms and enabled SFU forwarding.
+In the approved-site list:
 
-## Capture
+- Select a site to open it.
+- Use its star to open that one site when App starts. Clear the star to return
+  to the launcher on startup.
+- Remove approval to stop that site's App hosting and control connections.
+  Saved rooms remain and other sites continue. Reapprove the same site and use
+  the same domain account to reopen its rooms.
 
-The Host page offers Browser and Camera capture alongside available native
-windows or screens; select the source explicitly. Windows native capture offers VP8/Auto/H264;
-Auto chooses one codec for the share. macOS and Linux native capture require
-hardware H264. Source and audio support vary by platform; their setup is covered
-in the [Windows](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/windows/README.md),
-[macOS](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/darwin/README.md) and
-[Linux](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/linux/README.md) capture guides.
-Adjust native capture through [Sharing settings](../../docs/guide/sharing.md#picture-and-sound-settings).
+## Return To App Or Stop It
 
-When the Windows App's capture runtime supports it, the **Apps / Windows** and
-**Screens** tabs offer **Show capture border**, off by default. Change it when selecting or switching a
-source; the Host page remembers your choice. Windows 10, system policy or another
-active capture can keep the yellow border visible; sharing remains available.
-See [capture-border troubleshooting](../../docs/guide/troubleshooting.md#yellow-capture-border-on-windows)
-for an optional Windows 10 workaround.
+From a connected page, **App → Open App page** returns to the local controls.
+On desktop, you can also reopen the launcher address in the terminal; on Android,
+open Piik or its running notification. Returning to the launcher keeps the domain running.
 
-## Configuration And Command Line
+Closing a page stops its personal voice, shares, watches and control permission.
+App-hosted rooms continue; Browser-hosted rooms need their hosting page.
+Switching rooms within a page keeps its other activities running.
 
-The App configuration keeps an optional Local site passphrase. Leave it
-blank for an open Local site, or enter a password in the launcher before
-starting. Viewer invitations grant access to their room independently; see
-[rooms and access](../../docs/standards/rooms-access.md).
+To stop App, use **Ctrl+C** in its terminal. On macOS, the App's **Quit** action
+requests normal shutdown; on Android, use the running notification's stop action.
+This ends App hosting, captures and the temporary public entry. Saved rooms and
+confirmed history remain for the next start. Do not delete data to close a room.
 
-For saved preferences, configuration paths and environment variables, see
-[App configuration](../../docs/standards/configuration.md#piik-app-configuration).
-To bypass the launcher in development or automation, select a mode explicitly:
+## Data And Backups
 
-| Flag | Mode |
-| --- | --- |
-| `--local` | Local room; add `--lan-address <address>` when several LAN addresses are possible |
-| `--link` | Temporary Public invite |
-| `--site <origin>` | Save and open a Piik Site |
+App saves domain identity, approved sites and hosted room databases in its
+application-data directory. A changed local port or temporary public address
+does not create new copies of those local rooms. Browser-hosted rooms instead
+use that browser's site storage; clearing it can delete their data.
+
+Use **Room options → Chat text and backups** for a room backup when you manage
+the room. A text export keeps the loaded messages for reading; it is not a
+restorable room backup. **Domain settings → Domain backup** saves domain identity and
+directory; room histories need their room backups separately. Attachment file
+copies are separate from their history descriptions.
+
+Keep backups private. Back up needed data before changing installation channels,
+moving data or uninstalling. Do not clear App/browser storage to repair a
+connection. The [saved-data reference](../../prototype/channel-server/README.md#saved-data-and-files)
+explains backup scope and restore behavior.
 
 ## Upgrading
 
-App and site must use the same major version; **2.x and 1.x cannot be used together**.
-Different 2.x versions preserve established sharing and viewing. New features
-require support from the relevant App and site.
+Use the next matching package supplied for this 3.0 test, including its Web UI.
+A public 2.x release is not an update for the test App. When versions are
+incompatible, update the domain's Server and connected Apps together, then refresh its pages.
 
-1. Read the release notes on [GitHub](https://github.com/TNTcraftHIM/Piik/releases/latest)
-   or [AtomGit](https://atomgit.com/TNTcraftHIM/Piik/releases).
-2. For Local room or Public invite, stop sharing, close App and extract the
-   complete new package. Start it and send a fresh invitation.
-3. For a group's site, the administrator [updates Server](../../docs/operations/service-management.md)
-   first. Then update connected Apps and refresh all sharing/viewing pages.
+1. Save needed backups, finish transfers and stop personal activities.
+2. Stop App normally. Extract the full desktop update into a new directory,
+   or install the matching Android update over the existing test App.
+3. Start with the same application-data directory. Send the current invitation
+   if its address changed.
 
-The launcher update button downloads the package; the
-[AtomGit mirror](https://atomgit.com/TNTcraftHIM/Piik/releases) is an alternative source. Restarting App or Server interrupts active shares.
-
-## Terminal And Shutdown
-
-The terminal shows the current mode, entry links and startup state; its language
-follows the launcher and App-enabled pages.
-Press `o` to reopen the Browser, or `q` / Ctrl+C to end Local
-rooms and stop the local server and temporary public link. Plain-text output
-uses Ctrl+C. The Linux desktop entry also opens this terminal. The App keeps
-running after a Site tab closes.
-When launched in its own Windows console, a startup or runtime error leaves the
-error visible until Enter is pressed. Normal shutdown, existing terminals and
-redirected or automated runs exit directly.
+The launcher checks published releases and links to their notes. During this
+unpublished test, follow the supplied test-update instructions rather than
+switching to a different public channel.
 
 ## Troubleshooting
 
+Start with [the symptom index](../../docs/guide/troubleshooting.md#common-problems).
+Chat/history needs the domain connection and actual room host. Picture, voice
+and file content also need their peer connections.
+
 ### Chromium WebRTC Connections
 
-Browser settings, extensions or managed policies can block WebRTC UDP, including
-the local Browser-to-App media connection. Follow the documentation center's
-[browser WebRTC checks](../../docs/guide/network.md#browser-webrtc-restrictions).
-For codec-specific failures, see [Windows H264 troubleshooting](../../docs/guide/troubleshooting.md#h264-sharing-fails-on-windows).
+When chat works but peer transfers do not, compare
+[browser WebRTC settings](../../docs/guide/network.md#browser-webrtc-restrictions).
+For a codec-specific failure, use the [Windows H264 checks](../../docs/guide/troubleshooting.md#h264-sharing-fails-on-windows).
 
 ### Diagnostics
 
-Enable **Debug launch** in the launcher before starting a room or connecting a Site, reproduce the
-problem, then press `D` in the interactive terminal to export a local ZIP.
-Use `--debug` for failures before the selector opens. Exporting does not stop
-the share or upload the archive. For Browser diagnostics, open **Help → Debug**
-after the theme control, confirm the reload, then use **Help → Web report** to download.
-For cooperation failures, include both reports from the same reproduction. The
-[diagnostic reference](../../docs/standards/configuration.md#diagnostics) owns
-log locations, export commands, retention and privacy boundaries.
+On the local launcher, open **Help → Debug**, reproduce the problem, then
+select **Help → App report**. On a narrow screen, these entries are under **More options**.
+This saves a local ZIP. Restarting App ends
+that process's diagnostic collection.
 
-## For Developers
+For a browser report, open **Help → Debug**, confirm the reload, reproduce once,
+then use **Help → Web report**. Check private information before sharing reports
+from the same attempt; see [reporting steps](../../docs/guide/troubleshooting.md#reporting-a-problem).
 
-[App development](./DEVELOPMENT.md) covers source builds, packaging, desktop icons
-and validation gates. [Deployment](../../docs/deployment.md) covers maintained
-release publication.
+## Configuration And Developer Reference
+
+Normal use starts with the launcher. Isolated data, a specific loopback port and
+source development use the [current Rust App settings](../../prototype/channel-server/README.md#local-app-link).
+The [Native reference](../../prototype/channel-native/README.md) owns capture,
+encoding and input requirements; [Android runtime](../../mobile/README.md) owns
+the shell. [App development](./DEVELOPMENT.md) covers source builds and packaging.

@@ -44,7 +44,7 @@ with `PIIK_CHANNEL_WEB_ORIGIN=http://127.0.0.1:8787` for this development UI.
 It describes the private startup keys and listener configuration;
 [saved data and files](../prototype/channel-server/README.md#saved-data-and-files)
 covers storage.
-Open [127.0.0.1:8787](http://127.0.0.1:8787), using its owner-entry and **Invite**
+Open [127.0.0.1:8787](http://127.0.0.1:8787), using its owner-entry and domain-invitation
 instructions. Vite serves the UI and proxies signaling to the Rust domain.
 Browser capture requires loopback or HTTPS.
 

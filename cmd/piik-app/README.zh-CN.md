@@ -1,149 +1,141 @@
 # Piik App
 
+本页适用于提供给测试者的 3.0 内测 App。公开下载和在线 Demo 仍是 2.x，
+使用这些版本时请看 [2.6.0 App 参考](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/cmd/piik-app/README.zh-CN.md)。
+
 [English](./README.md) · 简体中文 · [上手指南](../../docs/guide/getting-started.zh-CN.md)
 
-Piik App 通过系统浏览器中的 Piik 网页界面，提供本地房间与原生屏幕采集。
+Piik App 在浏览器中提供操作界面，可以运行你们的域、在网页关闭后继续托管房间，
+并提供当前设备支持的画面与声音采集。
 
 ## 运行程序包
 
-安卓 APK 安装与共用的浏览器操作流程见[上手指南](../../docs/guide/getting-started.zh-CN.md#用-piik-app-分享)。
-下方程序包、终端与命令行说明适用于桌面 App。
+使用本次测试提供的对应平台程序包：
 
-完整解压对应平台的程序包。Windows 和 Linux 保留 App 程序旁的 `runtime` 目录，
-分别运行 `piik-app.exe` 或 `./piik-app`。
-macOS 打开 `Piik App.app`，也可以将整个 `.app` 移到「应用程序」。
-首次打开被拦截时，按 [Mac 打开说明](../../docs/guide/troubleshooting.zh-CN.md#macos-提示已损坏或无法验证开发者)处理。
-启动页会在系统浏览器中打开。Linux 原生采集所需的系统依赖见
-[Linux 采集指南](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/linux/README.md)。
+- **Windows：** 完整解压 ZIP，保留 `piik-app.exe` 旁的 `web/` 和 `runtime/`，再打开程序。
+- **Android：** 安装测试 APK 后打开 Piik。同一测试渠道更新时保留 App 数据，步骤见[上手指南](../../docs/guide/getting-started.zh-CN.md#用-piik-app-分享)。
+- **Linux／macOS（提供相应测试包时）：** 保留完整程序包；Linux 运行 `./piik-app`，macOS 打开 `Piik App.app`。
+  平台要求与实机覆盖见 [Native 说明](../../prototype/channel-native/README.md)和[验证范围](../../docs/verification-status.md)（英文）。
 
-网页没有自动打开时，可手动打开终端中显示的地址，或在终端按 **O** 重试。
-使用网页期间，请保持 App 运行。
-
-macOS 原生采集需要 macOS 13 或更新版本。目前主要测试 Windows App 与浏览器分享，
-欢迎 macOS/Linux 用户[反馈使用结果](https://github.com/TNTcraftHIM/Piik/issues)。
+启动页会在系统浏览器中打开。没有自动打开时，手动打开终端显示的 **App 启动页** 地址。
+使用服务期间保持 App 运行。macOS 拦截相应测试包时，按 [Mac 打开说明](../../docs/guide/troubleshooting.zh-CN.md#macos-提示已损坏或无法验证开发者)处理。
 
 ## 运行模式
 
-选择 **本地房间** 或 **公网邀请**，点击 **进入 Piik** 启动房间服务。
-搭配已有站点使用采集时，保持启动页打开，[授权该站点](#已授权站点)即可。
+选择 **局域网使用** 或 **公网邀请**，再点击 **进入 Piik**，启动包含你们房间的域。
+域邀请打开整个域；私密房间可能另需自己的邀请或密码。
 
-App 会记住上次确认的房间模式。首次使用默认选中 **公网邀请**，确认后才启动；
-有收藏站点时，启动后直接打开该站点。
+模式偏好保存在当前浏览器。返回已运行的域不会覆盖偏好，也不会另建一个域。
+要切换已运行的模式，先结束分享，正常退出并重新打开 App，再选择另一模式。
+为已授权站点加了星标时，App 启动也可以直接打开它。
 
-启动页通过 GitHub 检查更新；已发布客户端仍内置 Gitee 备用来源，当前手动备用下载请使用 AtomGit。
-没有匹配包时打开发布页。**版本说明** 可查看改动，大版本升级会另行提示。
-替换 App 的操作见[升级步骤](#升级)。
+### 局域网使用
 
-### 本地房间
+朋友能通过同一局域网或[虚拟局域网](../../docs/guide/network.zh-CN.md#可选虚拟局域网)访问你的设备时，使用此模式。
+列出多个地址时，选择与朋友相同网络上的地址。
 
-选择 **本地房间**，在设备间可互相访问的局域网中使用。房间仅在本次 App 运行期间有效。
-
-App 自动选择唯一的活动地址或私有 IPv4；有多个地址时，在启动页的 **局域网邀请地址** 中选择。
-使用[虚拟局域网](../../docs/guide/network.zh-CN.md#可选虚拟局域网)时，选择对应的虚拟 IPv4。
-
-朋友使用该地址下的 HTTPS 邀请，房主使用本机页面。朋友首次访问时，需与 App 终端核对
-[证书指纹](../../docs/guide/troubleshooting.zh-CN.md#本地-https-证书提示)；App 重启后重新确认。
+朋友使用该地址下的完整 HTTPS 邀请。首次访问时，按[本地证书说明](../../docs/guide/troubleshooting.zh-CN.md#本地-https-证书提示)，
+与 App 终端的 **Certificate SHA-256** 核对指纹。自己从 App 启动页点击 **进入 Piik**；
+给朋友发送生成的邀请，不要发送 `localhost` 地址。
 
 ### 公网邀请
 
-选择 **公网邀请**，在打开的浏览器中创建房间，再发送邀请链接。
-程序包中的 Cloudflare Tunnel 提供临时 `trycloudflare.com` HTTPS 地址，App 关闭后失效，
-下次启动会生成新地址。需要固定地址时，请使用配置好的 Piik 站点。
+随包的 Cloudflare 组件提供临时 HTTPS 地址。在打开的 Piik 页面复制域或房间邀请并发送。
+保持 App 运行，退出后该地址不再提供访问；下次可能更换地址，保存的域和房间仍是原来的。
 
-本地房间和公网邀请的画面、声音通过 P2P 传输，不经过网页隧道；需要可用的 UDP 媒体路径，
-没有服务器媒体转发（SFU）或 TURN 中继。隧道或媒体连接失败时，查看
-[网络排查](../../docs/guide/network.zh-CN.md)与[公网邀请排查](../../docs/guide/troubleshooting.zh-CN.md#公网邀请创建失败或出现-1033)。
+文字、历史和附件描述走域连接，画面、房间语音与文件内容另走点对点连接。
+聊天正常但传输失败时，按[对应步骤排查连接](../../docs/guide/troubleshooting.zh-CN.md#常见问题)。
 
-公网邀请使用 Cloudflare、小米和 Bilibili 的 STUN 服务发现可连接地址。
-被联系的服务商能看到你的公网 IP、端口和请求时间；这些请求不包含分享画面、声音、
-聊天或房间密码。公网邀请可在启动 App 前通过
-`PIIK_STUN_URLS` 替换 STUN 服务，示例见 [App 配置](../../docs/standards/configuration.md#piik-app-configuration)。
-搭配已授权站点时使用站点的 `STUN_URLS`；App 本地房间不配置公共 STUN。
+## 加入或创建房间
+
+到朋友那里时，在浏览器打开对方的完整 **3.0** 邀请即可。
+启动自己的 App 域会进入另一处空间，不会加入或接管朋友的域。
+
+在自己的域或已获准进入的 3.0 域中，点击 **创建房间**，留意表单中的托管说明：
+
+- **由 App 托管：** 连接的 App 保存房间。关闭当前网页后，只要 App 继续运行，房间就继续可用。
+- **由此网页托管：** 浏览器保存房间，关闭该页后暂停托管；之后连接 App 不会自动迁移这个房间。
+
+获准进入房间的人都可以聊天、加入语音、分享和观看。
+画面操作见[分享与播放](../../docs/guide/sharing.zh-CN.md)，聊天与语音见[房间工具](../../docs/guide/room-tools.zh-CN.md)。
 
 ### 已授权站点
 
-保持 App 运行，点击 Piik 站点顶部的 **App**，在本机确认页核对网址并允许使用。
-详细操作见[连接步骤](../../docs/guide/getting-started.zh-CN.md#通过已有站点使用-app)。
+搭配已有 **3.0** 域使用时：
 
-启动页会列出已授权站点：
+1. 保持 App 运行，在该站点页面点击 **App → 打开 App 页面**。
+2. 在本机确认页核对完整网址，点击 **允许使用**；浏览器询问本地网络权限时允许访问。
+3. 返回站点，等 App 显示就绪后，再创建 App 托管的房间或选择 App 采集来源。
 
-- 点击站点打开，**×** 取消该站点的 App 连接，其他站点与本地房间继续运行。
-- **☆** 选择一个下次启动时打开的站点；取消星标可恢复启动页，撤销对应授权也会清除星标。
-  授权新站点会保留已有授权。
-- 点击站点上已连接的 **App** 按钮可重开启动页，也可使用终端中的 **App 启动页** 地址。
+也可在启动页的 **打开站点** 中填写网址并授权。授权只适用于该站点的完整来源地址，
+换地址或浏览器后可能需要重新连接。房间准入与远程控制许可分别处理。
 
-浏览器会记住启用选择；换浏览器、使用无痕窗口或清除站点数据后需重新连接。
-新的公网邀请网址需要单独授权。房间与已启用的 SFU 转发仍由站点提供。
+在已授权站点列表中：
 
-## 采集
+- 点击站点打开它。
+- 星标选择下次 App 启动时直接打开的一个站点；取消星标后恢复打开启动页。
+- 撤销授权会停止该站点的 App 托管与控制连接，保留保存的房间，不影响其他站点。
+  重新授权同一站点并使用原域账号，可再次打开原来的房间。
 
-房主页面提供浏览器、摄像头采集，以及可用的原生窗口或屏幕，请明确选择来源。
-Windows 原生采集提供 VP8/Auto/H264，Auto 会为本次分享选定一种编码。
-macOS 和 Linux 原生采集需要硬件 H264。可选来源与音频支持取决于平台，设置要求见
-[Windows](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/windows/README.md)、[macOS](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/darwin/README.md)
-和 [Linux](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/linux/README.md) 采集指南。
-原生采集的画质可在[分享设置](../../docs/guide/sharing.zh-CN.md#画面与声音设置)中调整。
+## 返回 App 或结束运行
 
-Windows App 检测到采集能力支持时，选源器的 **程序 / 窗口** 和 **屏幕** 页会出现
-**显示采集边框** 开关，默认关闭。
-选取或切换来源时可以修改，本次房主页面会记住选择。
-Windows 10、系统策略或其他正在进行的采集可能让黄框保持可见，分享仍可正常进行。
-Windows 10 的可选处理方法见[采集边框问题排查](../../docs/guide/troubleshooting.zh-CN.md#windows-分享时出现黄框)。
+在已连接的网页中点击 **App → 打开 App 页面**，回到本机控件。
+电脑上也可打开终端中的启动页地址；Android 可打开 Piik 或运行通知。返回启动页不会停止当前域。
 
-## 配置与命令行
+关闭网页会结束该页的个人语音、分享、观看和控制许可。App 托管的房间继续运行，
+Browser 托管的房间需要原托管页。只在网页里切换房间，不会停止其他已开始的活动。
 
-App 配置保存可选的本地站点口令。留空表示本地站点开放进入；需要口令时，在启动页填写后再启动。
-观众邀请独立授予对应房间的访问权，详见[房间与访问](../../docs/standards/rooms-access.md)。
+结束 App 时，在终端按 **Ctrl+C**；macOS 的 App **退出** 操作请求正常关闭，Android 可使用运行通知中的停止操作。
+App 退出会结束它的托管、采集和临时公网入口，保存的房间与确认历史留待下次启动。
+不要通过删除数据来关闭房间。
 
-保存的偏好、配置路径与环境变量见
-[App 配置](../../docs/standards/configuration.md#piik-app-configuration)。
-开发或自动化运行时，可直接指定模式，跳过启动页：
+## 数据与备份
 
-| 参数 | 模式 |
-| --- | --- |
-| `--local` | 本地房间；有多个可能的局域网地址时，添加 `--lan-address <address>` |
-| `--link` | 临时公网邀请 |
-| `--site <origin>` | 保存并打开 Piik 站点 |
+App 将域身份、站点授权和托管房间的数据库保存在应用数据目录。
+本地端口或临时公网地址变化，不会为这些本地房间另建一份数据。
+Browser 托管房间使用该浏览器的站点存储，清除它可能删除房间数据。
+
+管理房间时，可在 **房间选项 → 文字记录与备份** 中导出房间备份。
+文字导出只保存当前已加载的消息供阅读，不能作为房间备份恢复。
+**域设置 → 域备份** 保存域身份和目录，房间历史需要各自的房间备份。
+附件文件副本与聊天里的描述也各自存放。
+
+备份应私下保存。换安装渠道、迁移数据或卸载前，先备份需要的内容；
+不要为修复连接清除 App 或浏览器存储。[保存数据参考](../../prototype/channel-server/README.md#saved-data-and-files)说明备份范围与恢复行为（英文）。
 
 ## 升级
 
-App 与站点需要使用同一大版本，**2.x 与 1.x 不能混用**。
-不同 2.x 版本保留已有的分享和观看功能，新功能需要相关 App 与站点支持。
+使用这次 3.0 测试后续提供的匹配程序包，包括其中的网页界面。
+公开的 2.x Release 不是测试 App 的更新。出现版本不兼容时，域需同步更新 Server 和连接的 App，再刷新网页。
 
-1. 查看 [GitHub](https://github.com/TNTcraftHIM/Piik/releases/latest) 或
-   [AtomGit](https://atomgit.com/TNTcraftHIM/Piik/releases) 上的版本说明。
-2. 使用本地房间或公网邀请时，停止分享并关闭 App，完整解压新版程序包，重新启动后发送新邀请。
-3. 使用已有站点时，由管理员先[更新 Server](../../docs/operations/service-management.zh-CN.md)，
-   再更新连接的 App，并刷新所有分享与观看页面。
+1. 保存需要的备份，结束传输和个人活动。
+2. 正常关闭 App。电脑上把完整新版解压到新目录；Android 使用同一测试渠道的新版覆盖安装。
+3. 使用原应用数据目录启动；邀请地址变化后，再发送当前链接。
 
-启动页的更新按钮可下载程序包；[AtomGit 镜像](https://atomgit.com/TNTcraftHIM/Piik/releases)提供当前备用下载。
-重启 App 或 Server 会中断当前分享。
-
-## 终端与关闭
-
-终端显示当前模式、入口链接与启动状态，语言跟随启动页和已启用 App 的页面。
-按 `o` 重新打开浏览器，按 `q` 或 Ctrl+C 结束本地房间，停止本地服务与临时公网链接。
-纯文本输出时使用 Ctrl+C。Linux 桌面入口也会打开此终端。关闭站点标签页后，App 仍会继续运行。
-App 在独立 Windows 控制台中启动时，启动或运行错误会保留在窗口中，按 Enter 后退出。
-正常关闭、在已有终端中运行、重定向输出或自动化运行时，会直接退出。
+启动页会检查已发布版本并链接版本说明。当前内测应按收到的测试包与说明升级，不要改装成另一个公开渠道。
 
 ## 问题排查
 
+从[症状索引](../../docs/guide/troubleshooting.zh-CN.md#常见问题)开始。
+聊天与历史先查域连接和实际房间托管；画面、语音、文件内容分别检查点对点连接。
+
 ### Chromium WebRTC 连接
 
-浏览器设置、扩展或管理策略可能阻止 WebRTC UDP，包括本机网页与 App 之间的媒体连接。
-按文档中心的 [浏览器 WebRTC 排查](../../docs/guide/network.zh-CN.md#浏览器限制了-webrtc)操作。
-特定编码失败时，另见 [Windows H264 排查](../../docs/guide/troubleshooting.zh-CN.md#windows-上-h264-分享失败)。
+聊天正常、点对点传输不通时，对照[浏览器 WebRTC 设置](../../docs/guide/network.zh-CN.md#浏览器限制了-webrtc)。
+特定编码失败时，按 [Windows H264 检查](../../docs/guide/troubleshooting.zh-CN.md#windows-上-h264-分享失败)处理。
 
 ### 诊断
 
-在启动房间或连接站点前，先在启动页开启 **诊断启动**，复现问题后在交互终端按 `D` 导出本地 ZIP。
-启动页出现前就失败时，使用 `--debug`。导出不会停止分享或上传文件。
-浏览器诊断通过主题按钮后的 **帮助 → 诊断** 开启：确认重新加载后，使用 **帮助 → 网页报告** 下载。
-调查浏览器与 App 配合的问题时，请提供同一次复现的两份报告。
-[诊断参考](../../docs/standards/configuration.md#diagnostics)说明日志位置、导出命令、保留规则与隐私边界。
+在本机启动页打开 **帮助 → 诊断**，复现后点击 **帮助 → App 报告**，下载本地 ZIP。
+窄屏时，这些入口位于右上角的 **更多选项** 中。
+App 重启后，上次进程的诊断收集结束。
 
-## 开发者参考
+浏览器报告通过 **帮助 → 诊断** 开启；确认重新加载，复现一次，再用 **帮助 → 网页报告** 下载。
+检查报告中的私人信息后，提供同一次尝试的相关报告，步骤见[反馈问题](../../docs/guide/troubleshooting.zh-CN.md#反馈问题)。
 
-[App 开发指南（英文）](./DEVELOPMENT.md)集中说明源码构建、打包、桌面图标与验证入口。
-维护者的 Release 发布流程见[部署与发布（英文）](../../docs/deployment.md)。
+## 配置与开发者参考
+
+日常使用从启动页开始。隔离数据目录、指定本机端口或源码开发，见[当前 Rust App 设置](../../prototype/channel-server/README.md#local-app-link)。
+[Native 说明](../../prototype/channel-native/README.md)负责采集、编码与输入要求；
+[Android 运行说明](../../mobile/README.md)负责 Android 外壳；
+[App 开发指南](./DEVELOPMENT.md)集中说明源码与打包（英文）。

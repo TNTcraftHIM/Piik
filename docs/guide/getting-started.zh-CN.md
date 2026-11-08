@@ -73,6 +73,9 @@
 需要换新链接时才使用**重置房间邀请**：旧链接会失效，已获准的用户仍保留访问。
 旧邀请无法取回时，面板会先说明，再由你决定是否生成新邀请。
 
+![房间选项将邀请链接、复制和二维码放在前面，下方可展开重置和房间设置。](../assets/guide/channel-invitation.zh-CN.png#gh-light-mode-only)
+![房间选项将邀请链接、复制和二维码放在前面，下方可展开重置和房间设置。](../assets/guide/channel-invitation.zh-CN.dark.png#gh-dark-mode-only)
+
 ### 通过已有站点使用 App
 
 1. 保持 3.0 App 运行，在浏览器打开你们的 **3.0** 站点。
@@ -112,5 +115,4 @@
 
 - [分享与播放](./sharing.zh-CN.md#播放控制)：观看和音量控制。
 - [房间工具](./room-tools.zh-CN.md)：聊天、语音与远程控制细节。
-- [问题排查](./troubleshooting.zh-CN.md#常见问题)：先找对应现象；
-  部分详细步骤仍使用公开 2.x 控件名称，操作前请核对版本。
+- [问题排查](./troubleshooting.zh-CN.md#常见问题)：按遇到的现象查找步骤。

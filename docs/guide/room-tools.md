@@ -43,6 +43,9 @@ System video fullscreen and video picture in picture do not show chat overlays.
 3. Use the persistent voice controls to mute your microphone, pause listening
    or **Leave voice**. **Voice settings** selects the input and noise/echo processing.
 
+![Example room conversation with joined voice controls below it: microphone, listening, settings and leave.](../assets/guide/channel-room.en.png#gh-light-mode-only)
+![Example room conversation with joined voice controls below it: microphone, listening, settings and leave.](../assets/guide/channel-room.en.dark.png#gh-dark-mode-only)
+
 Hover over a microphone, headphones or a person's speaker to adjust its volume;
 on a touchscreen, press and hold. Muting a person changes only what you hear.
 Microphone and listening controls do not change the shared picture's sound.
