@@ -25,6 +25,13 @@ function api(source = run, latest = release) {
 beforeEach(() => { command.mockReset(); api(); });
 
 describe("mirror source authority", () => {
+  it("scheduled recovery finds the original completed main CI by published source", () => {
+    const existing = command.getMockImplementation()!;
+    command.mockImplementation((program: string, args: string[]) => args[1].includes("actions/workflows/")
+      ? JSON.stringify({ workflow_runs: [run] }) : existing(program, args));
+    expect(resolveMirrorSource("", true)).toEqual({ run_id: "12345", version: release.tag_name, revision });
+    expect(command.mock.calls.some(([, args]) => args[1].includes(`head_sha=${revision}`))).toBe(true);
+  });
   it("binds automatic and manual retries to the published source run", () => {
     const expected = { run_id: "12345", version: release.tag_name, revision };
     expect(resolveMirrorSource("12345", true)).toEqual(expected);

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { openAsBlob } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import { readReleaseArtifacts } from "./release-artifacts.mjs";
+import { mirrorSourceReady } from "./release-mirror-ready.mjs";
 
 const [directory, version, revision, option] = process.argv.slice(2);
 if (option && option !== "--dry-run") {
@@ -111,6 +112,8 @@ if (option === "--dry-run") {
   const body = `${source.body ?? ""}\n\nSource: https://github.com/${repository}/commit/${revision}\n\n${marker}\n`;
   if (!release || release.prerelease) requireLatestSource();
   if (!release) {
+    if (!await mirrorSourceReady(version, revision, request))
+      throw new Error("AtomGit Git synchronization is pending; the scheduled mirror check will resume after the matching commit and tag arrive");
     const repo = await request("");
     if (!repo || repo.private || !repo.default_branch) throw new Error("A public initialized AtomGit mirror is required");
     release = await request("/releases", "POST", {
@@ -133,8 +136,9 @@ if (option === "--dry-run") {
       // Signed locations and callback headers are credentials; never log them.
       let response;
       try {
+        // The signed APK exceeded three minutes on the cross-border upload path.
         response = await fetch(upload.url, { method: "PUT", redirect: "error", headers: upload.headers,
-          body: await openAsBlob(file.path), signal: AbortSignal.timeout(180_000) });
+          body: await openAsBlob(file.path), signal: AbortSignal.timeout(600_000) });
         if (!response.ok) throw new Error("HTTP " + response.status);
         await response.arrayBuffer();
       } catch (error) {

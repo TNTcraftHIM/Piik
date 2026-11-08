@@ -1,6 +1,8 @@
 name: AtomGit mirror
 
 on:
+  schedule:
+    - cron: '17 */3 * * *'
   workflow_run:
     workflows: [CI]
     types: [completed]
@@ -8,8 +10,8 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: Original CI run that published the current GitHub release
-        required: true
+        description: Original CI run (optional; otherwise find the current published source)
+        required: false
         type: string
 
 permissions:
@@ -25,7 +27,7 @@ jobs:
   mirror:
     if: >-
       github.repository == 'TNTcraftHIM/Piik' && github.ref == 'refs/heads/main' &&
-      (github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' ||
        (github.event.workflow_run.event == 'push' &&
         github.event.workflow_run.head_branch == 'main'))
     runs-on: ubuntu-latest
@@ -35,17 +37,30 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/
+            /package.json
+            /package-lock.json
+            /.node-version
       - uses: actions/setup-node@v6
         with:
           node-version-file: .node-version
           cache: npm
+      - name: Check mirror readiness without build dependencies
+        id: readiness
+        run: node scripts/release-mirror-ready.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
       - run: npm ci --ignore-scripts
+        if: steps.readiness.outputs.status == 'ready'
       - name: Resolve the published source
         id: source
+        if: steps.readiness.outputs.status == 'ready'
         run: node scripts/release-mirror-source.mjs "$PIIK_SOURCE_RUN_ID"
         env:
           GH_TOKEN: ${{ github.token }}
-          PIIK_SOURCE_RUN_ID: ${{ inputs.run_id || github.event.workflow_run.id }}
+          PIIK_SOURCE_RUN_ID: ${{ inputs.run_id }}
       - name: Download original Server artifacts
         if: steps.source.outputs.mirror == 'true'
         uses: actions/download-artifact@v8
@@ -77,6 +92,6 @@ jobs:
       - name: Explain recovery
         if: failure() && steps.source.outputs.mirror == 'true'
         run: |
-          printf 'Mirror failed; GitHub publication and Website are independent. Retry this workflow with original CI run %s. If artifacts expired, recover the retained original build output; do not rebuild this version. See docs/operations/github.md.\n' "$PIIK_SOURCE_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Mirror failed; the scheduled check will retry from original CI run %s. GitHub publication and Website are independent. If artifacts expired, recover the retained original build output; do not rebuild this version. See docs/operations/github.md.\n' "$PIIK_SOURCE_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
         env:
           PIIK_SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}

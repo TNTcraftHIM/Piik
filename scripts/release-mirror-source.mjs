@@ -9,6 +9,15 @@ const gh = (path) => JSON.parse(execFileSync("gh", ["api", `repos/${repository}/
 }));
 
 export function resolveMirrorSource(runId, automatic = false) {
+  if (!runId && automatic) {
+    const latest = gh("releases/latest");
+    if (latest.draft !== false || latest.prerelease !== false || !isReleaseVersion(latest.tag_name)
+      || !/^[a-f0-9]{40}$/.test(latest.target_commitish)) throw new Error("A published stable GitHub release with a full source SHA is required");
+    const runs = gh(`actions/workflows/repository-hygiene.yml/runs?event=push&branch=main&status=completed&head_sha=${latest.target_commitish}&per_page=100`);
+    const source = runs.workflow_runs?.find(run => run.head_sha === latest.target_commitish);
+    if (!source) throw new Error("The published release's original completed CI run is unavailable; do not rebuild its packages");
+    return resolveMirrorSource(String(source.id), true);
+  }
   if (!/^[1-9]\d*$/.test(runId) || !Number.isSafeInteger(Number(runId))) {
     throw new Error("Provide the original CI run's numeric ID");
   }
@@ -34,7 +43,7 @@ export function resolveMirrorSource(runId, automatic = false) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const source = resolveMirrorSource(process.argv[2], process.env.GITHUB_EVENT_NAME === "workflow_run");
+  const source = resolveMirrorSource(process.argv[2], ["workflow_run", "schedule"].includes(process.env.GITHUB_EVENT_NAME) || !process.argv[2]);
   const output = { mirror: source !== null, ...source };
   if (process.env.GITHUB_OUTPUT) {
     appendFileSync(process.env.GITHUB_OUTPUT,
