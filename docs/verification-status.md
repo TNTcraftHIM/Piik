@@ -39,6 +39,12 @@ and Document PiP surfaces, source replacement, and signaling recovery with
 progressing media on retained connections. Native App and Server package checks
 verify bundled Web/WASM identity, notices, startup and orderly shutdown.
 
+Packaged Windows checks also combine multiple rooms, pictures, conversation and
+voice: source settings remain tied to their own picture, moving the room tool
+preserves its draft, and stopping one picture retains the other activities.
+On the Android emulator, cancelling a new system source choice retains the active
+Native picture; stopping that picture retains independently joined voice.
+
 ## Device Evidence Boundary
 
 ### Windows And Android

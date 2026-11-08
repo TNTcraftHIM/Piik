@@ -12,11 +12,6 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **3.0 room and sharing interface.** Complete the reported interaction
-  review of domain/room management, source actions, control grouping and
-  pure-visual guidance. Verify empty rooms, long names, constrained heights
-  and multiple watched sources through the shared room view and normal App.
-  Reuse that view in the UI catalogue instead of maintaining a second layout.
 - [ ] **3.0 Windows shared-sound noise.** A beta2 Host reports noise that stops
   when excluding the Piik console's process tree, but returns when excluding a
   silent unrelated window. Verify which Browser playback belongs to that tree
