@@ -114,6 +114,7 @@ async fn participant() -> Result<()> {
     send(
         &mut socket,
         Command::Join {
+            protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
             password: None,
             name: "Kernel Native reader".into(),
             credential: None,
@@ -146,11 +147,6 @@ async fn participant() -> Result<()> {
                             "description":signal["description"]["type"], "candidate":signal.get("candidate").is_some()}));
                     } else { emit(json!({"type":"native-command", "command":value})); }
                     send(&mut socket, command).await?;
-                }
-                NativeEvent::Conversation { .. } => {
-                    // This probe owns transport/media only. Normal-session history
-                    // and file-control acceptance remains in the ordinary control.
-                    emit(json!({"type":"unhandled-probe-conversation"}));
                 }
                 NativeEvent::CaptureEnded { .. } => bail!("unexpected capture in transport-only participant"),
             },

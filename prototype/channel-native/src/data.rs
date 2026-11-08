@@ -2,7 +2,7 @@
 use crate::peer::{transport::Channel, PeerState};
 use piik_channel_core::file_delivery::{FILE_MAX_PENDING_RANGES, FILE_MAX_RANGE_FRAMES};
 use piik_channel_core::{
-    conversation::{self, ControlFrame, SignedPacket},
+    conversation::{self, ControlFrame},
     wire::Snapshot,
 };
 use std::sync::{
@@ -39,18 +39,6 @@ pub(crate) struct Message {
     pub scope: MessageScope,
     pub report_failure: bool,
 }
-pub(crate) fn queue_controls(
-    sender: &mpsc::Sender<Message>,
-    messages: Vec<Message>,
-) -> Result<(), &'static str> {
-    let permits = sender
-        .try_reserve_many(messages.len())
-        .map_err(|_| "room_control_busy")?;
-    for (permit, message) in permits.zip(messages) {
-        permit.send(message);
-    }
-    Ok(())
-}
 #[derive(Clone)]
 pub(crate) enum MessageScope {
     File(crate::file::FileScope),
@@ -58,13 +46,6 @@ pub(crate) enum MessageScope {
         snapshot: watch::Receiver<Option<Snapshot>>,
         local: Uuid,
         binding: piik_channel_core::input::InputBinding,
-    },
-    Conversation {
-        snapshot: watch::Receiver<Option<Snapshot>>,
-        local: Uuid,
-        peer: Uuid,
-        from: Option<Uuid>,
-        packet: SignedPacket,
     },
 }
 impl MessageScope {
@@ -79,27 +60,12 @@ impl MessageScope {
                 .borrow()
                 .as_ref()
                 .is_some_and(|state| binding.current(*local, state)),
-            Self::Conversation {
-                snapshot,
-                local,
-                peer,
-                from,
-                packet,
-            } => {
-                let mut packet = packet.clone();
-                snapshot.borrow().as_ref().is_some_and(|snapshot| {
-                    conversation::route(&mut packet, *local, snapshot, *from)
-                        .is_ok_and(|route| route.next_hop == Some(*peer))
-                })
-            }
         }
     }
     async fn changed(&mut self) -> bool {
         match self {
             Self::File(scope) => scope.changed().await,
-            Self::Conversation { snapshot, .. } | Self::Input { snapshot, .. } => {
-                snapshot.changed().await.is_ok()
-            }
+            Self::Input { snapshot, .. } => snapshot.changed().await.is_ok(),
         }
     }
 }
@@ -377,53 +343,5 @@ fn writer(
         binding,
         cancel,
         task,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn record(index: u8) -> Message {
-        Message {
-            bytes: vec![index],
-            scope: MessageScope::Conversation {
-                snapshot: watch::channel(None).1,
-                local: Uuid::nil(),
-                peer: Uuid::nil(),
-                from: None,
-                packet: conversation::SessionSigner::from_seed([1; 32])
-                    .sign(Uuid::nil(), &index)
-                    .unwrap(),
-            },
-            report_failure: true,
-        }
-    }
-
-    #[tokio::test]
-    async fn history_page_reserves_all_records_or_keeps_the_existing_queue_unchanged() {
-        let (sender, mut receiver) = mpsc::channel(CONTROL_QUEUE);
-        for index in 0..28 {
-            sender
-                .try_send(record(index))
-                .unwrap_or_else(|_| panic!("queue should have capacity"));
-        }
-        let page = || (0..101).map(record).collect();
-        assert_eq!(queue_controls(&sender, page()), Err("room_control_busy"));
-        assert_eq!(sender.capacity(), 100);
-        for index in 0..28 {
-            assert_eq!(receiver.recv().await.unwrap().bytes, vec![index]);
-        }
-        assert!(
-            receiver.try_recv().is_err(),
-            "no partial history page was admitted"
-        );
-
-        queue_controls(&sender, page()).unwrap();
-        assert_eq!(sender.capacity(), CONTROL_QUEUE - 101);
-        for index in 0..101 {
-            assert_eq!(receiver.recv().await.unwrap().bytes, vec![index]);
-        }
-        assert!(receiver.try_recv().is_err());
     }
 }

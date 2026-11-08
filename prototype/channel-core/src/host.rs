@@ -140,6 +140,9 @@ pub enum RoomResult {
     Invite {
         key: String,
     },
+    InviteState {
+        invitation: crate::wire::RoomInvitation,
+    },
     Invited,
     Error {
         code: String,
@@ -275,6 +278,11 @@ impl RoomRuntime {
                     key: self.invite(member)?,
                 };
                 op.policy_changed = true;
+            }
+            Command::GetRoomInvite { .. } => {
+                op.result = RoomResult::InviteState {
+                    invitation: self.invitation(member)?,
+                };
             }
             Command::Publish { publication } => self.publish(
                 member,

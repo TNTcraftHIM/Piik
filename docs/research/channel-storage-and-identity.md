@@ -1,6 +1,6 @@
 # Piik 3.0 Room Data And Hosting
 
-Reviewed 2026-11-07. The [accepted network model](./channel-network-design.md)
+Reviewed 2026-11-08. The [accepted network model](./channel-network-design.md)
 owns responsibilities, routing and live lifecycles. This document records the
 accepted data ownership and develops synchronization, delivery and recovery. The
 [prototype README](../../prototype/channel-server/README.md) describes running
@@ -86,18 +86,24 @@ locate a description for authorization; no separate metadata service is needed.
 
 Keep one confirmed order at the actual room runtime:
 
-1. A participant sends a command along its room path with a stable send identity.
-   The authenticated user is its author; a relay's identity or a nickname cannot
+1. A participant sends a signed command through the domain WebSocket to its
+   actual room host with a stable send identity.
+   The authenticated user is its author; the carrier's identity or a nickname cannot
    replace that author.
 2. The room owner authorizes the command and commits the message, its order and
    retry identity in one transaction. Failed storage means the send is not confirmed.
-3. Return the confirmed message identity and order, then distribute the result
-   over the room tree. A retry resolves to the same retained result.
+3. Return the host-signed confirmed message identity and order through the domain
+   WebSocket, and send confirmed changes to the room's current readers over that
+   same carrier. A retry resolves to the same retained result.
 4. Participants replace their pending local echo with that result and cache only
    confirmed history. An unconfirmed send stays separate from readable history.
 
 Confirmation means the room owner saved the message, not that every participant
-received it or that its attachment was copied. Keep retry association with the
+received it or that its attachment was copied. The domain only forwards live
+packets: it stores no conversation, issues no second confirmation and cannot
+serve an offline host's history. Its operator can see the forwarded plaintext;
+the signing boundary authenticates the host, not confidentiality from the domain.
+Keep retry association with the
 retained message rather than a permanent second ledger. Automatic retries stay
 within the advertised retention/recovery boundary; an expired pending send is
 not silently submitted again as a new message.
@@ -117,8 +123,9 @@ serializes room operations through the transaction's
 not an individual write's success. Failure ends that operation without advancing
 the confirmed order or blocking the next command.
 
-Participants synchronize from the room owner over the established room path.
-Intermediate peers forward the authenticated response; they do not confirm it.
+Participants synchronize from the room owner through the existing domain WebSocket.
+No peer connection is needed to read or send conversation. The domain forwards
+the authenticated response; it does not confirm it.
 Load a bounded recent window at a fixed history boundary, then continue with
 confirmed changes after that boundary. Older pages are requested when needed.
 Snapshot and live delivery share the same room order so a message arriving during
@@ -126,7 +133,7 @@ loading is neither missed nor rendered twice. The
 [Matrix sync model](https://spec.matrix.org/latest/client-server-api/#syncing)
 illustrates separating recent history, older pagination and subsequent events.
 
-Refresh the latest reading window when its room path recovers or changes,
+Refresh the latest reading window when its domain connection or room-host binding recovers or changes,
 including when the room-host binding stays the same. A reader browsing older
 history keeps that selected window. Refresh from the room owner's current result,
 including removals. Participants keep a bounded reading window in page memory;
@@ -153,14 +160,14 @@ and cursors; storage adapters supply atomic reads and writes.
 Do not silently evict the owner's confirmed history as if it were a participant
 cache. If storage cannot accept a message, report that failed send and preserve
 existing data. Participants may reclaim their reading cache independently.
-Peer-supplied history pages remain a later optimization: they require verifiable
-room confirmation and a current history boundary. The base model already keeps
-history off the domain owner without adding consensus or per-user signed logs.
+History is read from its actual room owner; no peer history replica or domain
+history store is needed. The room remains the single writer and confirmation owner.
 
 ## File Sources And Reachability
 
-Attachment records are distributed with chat; file bytes use the existing room
-network. The sender prepares a readable source before submitting the description.
+Attachment records are distributed with chat through the domain WebSocket; file
+bytes and pull control use the existing room peer network. A readable description
+does not prove that its bytes are currently reachable. The sender prepares a readable source before submitting the description.
 A complete, verified copy can become another source while its holder remains
 admitted and able to read it. The room runtime keeps this source index in live
 state; holders announce their actual copies again after reconnecting. The original

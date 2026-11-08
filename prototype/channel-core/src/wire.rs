@@ -4,6 +4,8 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
+pub const CHANNEL_PROTOCOL: u8 = 1;
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(
     tag = "type",
@@ -13,6 +15,8 @@ use uuid::Uuid;
 )]
 pub enum Command {
     Join {
+        #[serde(default)]
+        protocol: u8,
         name: String,
         credential: Option<String>,
         key: Option<String>,
@@ -41,6 +45,9 @@ pub enum Command {
         password: Option<Option<String>>,
     },
     DomainInvite {},
+    Conversation {
+        packet: crate::conversation::SignedPacket,
+    },
     Browse {
         room_id: String,
         active: bool,
@@ -109,6 +116,9 @@ pub enum Command {
         capacity: Option<u8>,
     },
     RoomInvite {
+        room_id: String,
+    },
+    GetRoomInvite {
         room_id: String,
     },
     RoomTopology {
@@ -560,6 +570,14 @@ pub struct RoomCapabilities {
     pub attachments: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum RoomInvitation {
+    Missing,
+    Available { key: String },
+    Unrecoverable,
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublicationInfo {
@@ -694,6 +712,7 @@ pub enum Event {
         input: crate::host::HostInput,
     },
     Welcome {
+        protocol: u8,
         credential: String,
         session_id: Uuid,
         state: Snapshot,
@@ -710,9 +729,18 @@ pub enum Event {
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },
+    Conversation {
+        packet: crate::conversation::SignedPacket,
+    },
     RoomInvite {
         room_id: String,
         key: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    RoomInviteState {
+        room_id: String,
+        invitation: RoomInvitation,
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },

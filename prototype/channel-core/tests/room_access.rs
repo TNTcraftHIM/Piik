@@ -87,6 +87,7 @@ fn zero_leaf_join_order_insertion_passes_the_domain_projection_and_preserves_exi
             json!({"type":"voice","roomId":room,"joined":true,"muted":false,"deafened":false}),
         );
     }
+    ack(&mut network);
     let first_voice = Uuid::new_v4();
     apply(
         &mut network,
@@ -212,6 +213,11 @@ fn capacity_transition_keeps_candidate_hops_out_of_the_directory_and_other_room_
                 connection,
                 json!({"type":"browse","roomId":id,"active":true}),
             );
+            command(
+                &mut network,
+                connection,
+                json!({"type":"voice","roomId":id,"joined":true,"muted":true,"deafened":true}),
+            );
         }
         for _ in 0..2 {
             for connection in [owner, first, second] {
@@ -312,7 +318,7 @@ fn capacity_transition_keeps_candidate_hops_out_of_the_directory_and_other_room_
     assert_eq!(
         hops(&network, &a),
         old_a,
-        "candidate ACKs cannot publish a new conversation next hop before voice proof"
+        "candidate ACKs cannot publish a new file next hop before voice proof"
     );
     let shadows: Vec<_> = [owner, first, second]
         .into_iter()
@@ -652,6 +658,106 @@ fn rejected(effects: Effects) {
 }
 fn core() -> RoomNetwork {
     RoomNetwork::new()
+}
+
+#[test]
+fn room_invitation_reads_are_private_and_never_rotate_the_current_link() {
+    use piik_channel_core::wire::RoomInvitation;
+    let mut network = core();
+    let owner = Uuid::new_v4();
+    let creator = Uuid::new_v4();
+    let reader = Uuid::new_v4();
+    for (connection, key) in [(owner, "owner"), (creator, "invite"), (reader, "invite")] {
+        admit(
+            &mut network,
+            connection,
+            json!({"type":"join","name":"User","key":key}),
+        );
+    }
+    let room = room(&mut network, creator, "private", false);
+    let read = |network: &mut RoomNetwork, connection| {
+        command(
+            network,
+            connection,
+            json!({"type":"get_room_invite","roomId":room,"requestId":"read-invite"}),
+        )
+        .events
+        .into_iter()
+        .find_map(|(recipient, event)| match event {
+            Event::RoomInviteState {
+                room_id,
+                invitation,
+                request_id,
+            } => {
+                assert_eq!(recipient, connection);
+                assert_eq!(room_id, room);
+                assert_eq!(request_id.as_deref(), Some("read-invite"));
+                Some(invitation)
+            }
+            _ => None,
+        })
+        .unwrap()
+    };
+    assert_eq!(read(&mut network, creator), RoomInvitation::Missing);
+    let key = invite(&mut network, creator, &room);
+    let saved = serde_json::to_value(network.policy(&room)).unwrap();
+    for manager in [creator, owner, creator] {
+        assert_eq!(
+            read(&mut network, manager),
+            RoomInvitation::Available { key: key.clone() }
+        );
+        assert_eq!(serde_json::to_value(network.policy(&room)).unwrap(), saved);
+    }
+    command(
+        &mut network,
+        reader,
+        json!({"type":"enter_room","roomId":room,"inviteKey":key}),
+    );
+    let denied = command(
+        &mut network,
+        reader,
+        json!({"type":"get_room_invite","roomId":room}),
+    );
+    assert!(!denied
+        .events
+        .iter()
+        .any(|(_, event)| matches!(event, Event::RoomInviteState { .. })));
+    rejected(denied);
+    for connection in [owner, creator, reader] {
+        let snapshot = serde_json::to_string(network.state(connection)).unwrap();
+        assert!(!snapshot.contains(&key));
+    }
+    let replacement = invite(&mut network, creator, &room);
+    assert_ne!(key, replacement);
+    assert_eq!(
+        read(&mut network, creator),
+        RoomInvitation::Available { key: replacement }
+    );
+    assert!(network
+        .state(reader)
+        .channel
+        .rooms
+        .iter()
+        .any(|value| value.id == room && value.authorized));
+    let mut legacy = serde_json::to_value(network.policy(&room)).unwrap();
+    legacy.as_object_mut().unwrap().remove("inviteKey");
+    network.restore_room(creator, serde_json::from_value(legacy).unwrap());
+    assert_eq!(read(&mut network, creator), RoomInvitation::Unrecoverable);
+    command(
+        &mut network,
+        creator,
+        json!({"type":"update_room","roomId":room,"name":"Public","icon":"couch","access":"public","hidden":false}),
+    );
+    rejected(command(
+        &mut network,
+        creator,
+        json!({"type":"get_room_invite","roomId":room}),
+    ));
+    rejected(command(
+        &mut network,
+        creator,
+        json!({"type":"room_invite","roomId":room}),
+    ));
 }
 
 #[test]
@@ -1423,7 +1529,7 @@ fn late_room_results_ignore_unrelated_profile_changes_and_departures() {
         returning,
         Request::parse(
             &json!({
-                "type": "join", "name": "Returning", "credential": credential,
+                "type": "join", "protocol": piik_channel_core::wire::CHANNEL_PROTOCOL, "name": "Returning", "credential": credential,
                 "key": invitation, "roomId": private, "signingKey": signing_key,
             })
             .to_string(),
@@ -1473,7 +1579,7 @@ fn late_room_results_ignore_unrelated_profile_changes_and_departures() {
         newcomer,
         Request::parse(
             &json!({
-                "type": "join", "name": "Newcomer", "key": invitation,
+                "type": "join", "protocol": piik_channel_core::wire::CHANNEL_PROTOCOL, "name": "Newcomer", "key": invitation,
                 "roomId": private, "signingKey": signing_key,
             })
             .to_string(),

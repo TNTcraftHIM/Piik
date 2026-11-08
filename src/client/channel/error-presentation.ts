@@ -11,6 +11,8 @@ export function channelErrorPresentation(error: string | null, copy: (zh: string
     return display("当前浏览器无法运行 Piik 房间，请更新或更换浏览器。", "This browser cannot run Piik rooms. Update it or use another browser.");
   if (error === "room_runtime_unavailable")
     return display("未能加载房间组件。请刷新页面后重试。", "Could not load room components. Reload the page and try again.");
+  if (error === "incompatible_protocol" || error.endsWith(": incompatible_protocol"))
+    return display("版本不兼容。请刷新页面，并更新所用的 Piik App 或站点。", "Incompatible Piik versions. Refresh the page and update the App or site you are using.");
   if (error === "channel_full")
     return display("域内的同时连接数已满。请关闭不再使用的页面或 App 后重试。", "This domain has reached its connection limit. Close unused pages or Apps, then retry.");
   if (error === "user_limit")
@@ -39,7 +41,7 @@ export function channelErrorPresentation(error: string | null, copy: (zh: string
     return display("房间密码不正确，请重新输入。", "The room password is incorrect. Please try again.");
   if (/room_access|room_forbidden/i.test(error))
     return display("你还没有这间房间的访问权限。", "You don't have access to this room.");
-  if (/invite|credential|unauthorized|join_required/i.test(error))
+  if (/invit(?:e|ation)|credential|unauthorized|join_required/i.test(error))
     return display("需要有效邀请。请打开域主提供的完整邀请链接。", "A valid invitation is required. Open the full link from the domain owner.");
   if (error === "session_expired")
     return display("连接超时，采集已停止。重新连接后可再次分享或加入语音。", "Connection timed out. Capture stopped. Reconnect to share or join voice again.", true);

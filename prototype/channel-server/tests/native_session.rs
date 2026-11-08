@@ -409,7 +409,7 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
     let guest = Uuid::new_v4();
     let signer = piik_channel_core::conversation::SessionSigner::from_seed([9; 32]);
     domain.command(guest, json!({
-        "type": "join", "name": "Observer", "key": "invite", "signingKey": signer.signing_key()
+        "type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL, "name": "Observer", "key": "invite", "signingKey": signer.signing_key()
     })).await;
     domain
         .command(
@@ -716,7 +716,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let mut authority = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
     let (channel, user) = authority.identity();
     let browser = Uuid::new_v4();
-    let admitted = authority.handle(browser, Request::parse(&json!({"type":"join","key":"owner","name":"Owner", "signingKey":SessionSigner::from_seed([1;32]).signing_key()}).to_string()).unwrap(), 100);
+    let admitted = authority.handle(browser, Request::parse(&json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"key":"owner","name":"Owner", "signingKey":SessionSigner::from_seed([1;32]).signing_key()}).to_string()).unwrap(), 100);
     let (credential, browser_session) = admitted
         .events
         .into_iter()
@@ -729,7 +729,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
             _ => None,
         })
         .unwrap();
-    let guest = authority.handle(Uuid::new_v4(), Request::parse(&json!({"type":"join","key":"invite","name":"Guest", "signingKey":SessionSigner::from_seed([2;32]).signing_key()}).to_string()).unwrap(), 100);
+    let guest = authority.handle(Uuid::new_v4(), Request::parse(&json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"key":"invite","name":"Guest", "signingKey":SessionSigner::from_seed([2;32]).signing_key()}).to_string()).unwrap(), 100);
     let guest_credential = guest
         .events
         .into_iter()
@@ -1539,7 +1539,7 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
         let (mut guest, _) = connect_async(upgrade).await.unwrap();
         guest
             .send(Message::Text(
-                json!({"type":"join","name":"LAN guest", "key":metadata.invite_key,
+                json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"name":"LAN guest", "key":metadata.invite_key,
             "signingKey":SessionSigner::from_seed([31;32]).signing_key()})
                 .to_string()
                 .into(),
@@ -1633,7 +1633,7 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
                 .headers_mut()
                 .insert("Origin", origin.parse().unwrap());
             let (mut admin, _) = connect_async(request).await.unwrap();
-            admin.send(Message::Text(json!({"type":"join","key":owner,"name":"Owner", "signingKey":SessionSigner::from_seed([32;32]).signing_key()}).to_string().into())).await.unwrap();
+            admin.send(Message::Text(json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"key":owner,"name":"Owner", "signingKey":SessionSigner::from_seed([32;32]).signing_key()}).to_string().into())).await.unwrap();
             let admitted: Value =
                 serde_json::from_str(&admin.next().await.unwrap().unwrap().into_text().unwrap())
                     .unwrap();

@@ -10,8 +10,10 @@ constrained H264 outputs through one demand-driven decoder; Windows also support
 VP8. The original encoded feed remains available. Server forwarding builds without capture.
 
 The [network design](../../docs/research/channel-network-design.md) owns the model.
-This executable is an explicitly started development host. Chat, history, room voice and files
-use the base paths, and screen startup reuses those paths through the same participant.
+This executable is an explicitly started development host. Signed chat/history
+and replies travel through the domain WebSocket to this room's SQLite owner.
+Reading does not create a peer path. Voice, file bytes and file-pull control use
+the base paths, and screen startup reuses them through the same participant.
 The default Server embeds one participant for its three rooms and owns its
 service lifetime. The [App composition](../channel-server/README.md#local-app-link) owns its Native hosting endpoint, separately
 from the Browser's personal activities. The App reuses the product's site approval

@@ -16,7 +16,8 @@ import "./channel-share-control.css";
 export function ChannelShareControl({ channel, roomId, disabled }: {
   channel: ChannelController; roomId: string; disabled: boolean;
 }) {
-  const { t, vis } = useCopy();
+  const { t, vis, lang } = useCopy();
+  const settingsLabel = lang === "zh" ? "画质与声音" : "Picture and sound";
   const id = useId();
   const trigger = useRef<HTMLSpanElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -81,7 +82,7 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
     close();
     void operation().catch(() => {}); // The session owns the operation's error.
   };
-  return <>
+  return <><span className="c3-share-actions" role="group" aria-label={lang === "zh" ? "分享画面" : "Screen sharing"}>
     <span ref={trigger} className="c3-share-control">
       {captureRequest ? <>
         <span className="c3-app-confirmation">
@@ -97,13 +98,16 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
         onClick={() => { if (!pickerAvailable) start(() => startScreen(roomId)); }} />}
     </span>
     <span ref={settingsTrigger} className="c3-share-control">
-      <Btn icon="sliders" title="host.advanced" hint="hint-quality" size="compact" quiet
+      <Btn icon="sliders" title={{ text: settingsLabel }} cap={vis ? undefined : { text: settingsLabel }} hint="hint-quality" size="compact" quiet
         disabled={disabled || busy} busy={qualityPending} popoverTarget={`${id}-settings`} controls={`${id}-settings`} expanded={settingsOpen} />
+    </span>
     </span>
     <div ref={settingsPanel} id={`${id}-settings`} popover="auto" className="lr-anchored-card c3-quality-picker"
       onToggle={event => { if (event.target === event.currentTarget) setSettingsOpen(event.newState === "open"); }}>
       <SharingSettings id={`${id}-quality`} open={settingsOpen} busy={qualityPending || microphonePending}
-        presets={<>{!vis && <div className="c3-quality-heading"><h3>{t("host.advanced")}</h3></div>}
+        presets={<>{!vis && <div className="c3-quality-heading"><h3>{settingsLabel}</h3>
+          <p>{sharing ? (lang === "zh" ? "调整当前分享，修改即时生效。" : "Changes apply to your current share.")
+            : (lang === "zh" ? "用于你接下来开始的分享。" : "Used when you start your next share.")}</p></div>}
           <QualityPresets selected={matchingQualityProfileId(quality)} disabled={busy} busy={qualityPending}
             onSelect={preset => setQuality({ ...QUALITY_PROFILES[preset], maxAudioBitrate: quality.maxAudioBitrate })} /></>}
         pictureSummary={<PictureSettingsSummary value={screenQuality?.applied ?? quality} />}

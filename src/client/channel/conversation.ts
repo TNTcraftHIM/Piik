@@ -7,7 +7,7 @@ interface Context { sessionId: string | null; state: ChannelSnapshot | null; con
 interface ConversationOptions {
   context(): Context;
   host(roomId: string): HostedRoom | undefined;
-  send(peer: string, frame: string, allowed: () => boolean): Promise<void>;
+  send(packet: SignedConversationPacket, requestId: string): void;
   file(peer: string, control: string): void;
   reply(reply: ConversationReply): void;
 }
@@ -15,23 +15,7 @@ interface ConversationOptions {
 /** Browser I/O for the shared Rust conversation protocol. Callers own requests. */
 export class ChannelConversation {
   private identity: Promise<{ runtime: Runtime; signer: SessionSigner }> | undefined;
-  private waiting = new Set<(error?: Error) => void>();
   constructor(private options: ConversationOptions) {}
-
-  update(): void { for (const resume of [...this.waiting]) resume(); }
-
-  private waitForState(deadline: number): Promise<void> {
-    if (this.waiting.size >= 128) return Promise.reject(new Error("room_control_busy"));
-    return new Promise((resolve, reject) => {
-      const resume = (error?: Error) => {
-        clearTimeout(timer);
-        this.waiting.delete(resume);
-        if (error) reject(error); else resolve();
-      };
-      const timer = setTimeout(() => resume(new Error("room_path_unavailable")), Math.max(0, deadline - performance.now()));
-      this.waiting.add(resume);
-    });
-  }
 
   private async ready() {
     const identity = this.identity;
@@ -56,7 +40,7 @@ export class ChannelConversation {
   }
 
   async send(command: Extract<ChannelCommand, { type: "chat" | "history" | "set_reaction" | "interaction_ready" | "interaction" }>, requestId: string): Promise<void> {
-    const { runtime, signer } = await this.ready();
+    const { signer } = await this.ready();
     const { state, sessionId, connected } = this.options.context();
     if (!connected || !sessionId) throw new Error("disconnected");
     const delivery = state?.channel.rooms.find(room => room.id === command.roomId)?.delivery;
@@ -65,53 +49,20 @@ export class ChannelConversation {
     const packet: SignedConversationPacket = JSON.parse(signer.sign(sessionId, JSON.stringify({
       roomId, bindingId: delivery.bindingId, sender: sessionId, recipient: delivery.hostSessionId, requestId, command: body,
     })));
-    await this.deliver(packet, runtime);
+    this.options.send(packet, requestId);
   }
 
-  async receive(peer: string, frame: string): Promise<void> {
+  async receiveFile(peer: string, frame: string): Promise<void> {
     const { runtime } = await this.ready();
-    const control = JSON.parse(runtime.decode_control(new TextEncoder().encode(frame))) as
-      { kind: "file"; body: unknown } | { kind: "conversation"; body: SignedConversationPacket };
+    const control = JSON.parse(runtime.decode_control(new TextEncoder().encode(frame))) as { kind: "file"; body: unknown };
     if (control.kind === "file") this.options.file(peer, JSON.stringify(control.body));
-    else await this.deliver(control.body, runtime, peer);
   }
 
-  private async route(packet: SignedConversationPacket, runtime: Runtime, from?: string) {
-    const identity = this.identity;
-    const deadline = performance.now() + 5000;
-    for (;;) {
-      const { state, sessionId, connected } = this.options.context();
-      if (!connected || !state || !sessionId) throw new Error("disconnected");
-      try {
-        const routed = JSON.parse(runtime.route_conversation(JSON.stringify(packet), sessionId, JSON.stringify(state), from)) as {
-          packet: SignedConversationPacket; route: { address: ConversationAddress; nextHop: string | null };
-        };
-        return { routed, state, sessionId };
-      } catch (error) {
-        if ((error instanceof Error ? error.message : String(error)) !== "room_path_unavailable") throw error;
-        if (performance.now() >= deadline) throw error;
-        await this.waitForState(deadline);
-        if (this.identity !== identity) throw new Error("disconnected");
-      }
-    }
-  }
-
-  private async deliver(packet: SignedConversationPacket, runtime: Runtime, from?: string): Promise<void> {
-    const { routed, state, sessionId } = await this.route(packet, runtime, from);
-    if (routed.route.nextHop) {
-      const peer = routed.route.nextHop;
-      const frame = runtime.encode_control(JSON.stringify({ kind: "conversation", body: routed.packet }));
-      await this.options.send(peer, new TextDecoder().decode(frame), () => {
-        const current = this.options.context();
-        if (!current.connected || current.sessionId !== sessionId || !current.state) return false;
-        try {
-          const route = JSON.parse(runtime.route_conversation(JSON.stringify(packet), sessionId, JSON.stringify(current.state), from));
-          return route.route.nextHop === peer;
-        } catch { return false; }
-      });
-      return;
-    }
-    const address = routed.route.address;
+  async receive(packet: SignedConversationPacket): Promise<void> {
+    const { runtime } = await this.ready();
+    const { state, sessionId, connected } = this.options.context();
+    if (!connected || !state || !sessionId) throw new Error("disconnected");
+    const address = JSON.parse(runtime.verify_conversation(JSON.stringify(packet), sessionId, JSON.stringify(state))) as ConversationAddress;
     if ("record" in JSON.parse(packet.payload)) {
       const hostSessionId = state.channel.rooms.find(room => room.id === address.roomId)?.delivery?.hostSessionId;
       if (address.sender !== hostSessionId) throw new Error("invalid_conversation_sender");
@@ -127,7 +78,7 @@ export class ChannelConversation {
       const current = this.options.context();
       if (!current.connected || current.sessionId !== sessionId
         || current.state?.channel.rooms.find(room => room.id === reply.roomId)?.delivery?.bindingId !== reply.bindingId) return;
-      await this.deliver(JSON.parse(signer.sign(sessionId, JSON.stringify(reply))), runtime);
+      this.options.send(JSON.parse(signer.sign(sessionId, JSON.stringify(reply))), reply.requestId);
     };
     const broadcasts: ConversationReply[] = [];
     for (const reply of replies) {
@@ -145,7 +96,6 @@ export class ChannelConversation {
   close(): void {
     const identity = this.identity;
     this.identity = undefined;
-    for (const resume of [...this.waiting]) resume(new Error("disconnected"));
     void identity?.then(({ signer }) => signer.free()).catch(() => {});
   }
 }

@@ -10,7 +10,6 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use uuid::Uuid;
 
 pub const CONTROL_FRAME_BYTES: usize = 32768;
-pub const CONVERSATION_HOPS: u8 = 20;
 pub const INTERACTION_INTERVAL_MS: u64 = 800;
 pub const INTERACTION_REACTIONS: &[&str] = &[
     "thumbsup",
@@ -54,7 +53,6 @@ impl SessionSigner {
             sender,
             payload,
             signature,
-            remaining_hops: CONVERSATION_HOPS,
         })
     }
 }
@@ -64,7 +62,6 @@ pub struct SignedPacket {
     pub sender: Uuid,
     pub payload: String,
     pub signature: Vec<u8>,
-    pub remaining_hops: u8,
 }
 fn signing_bytes(payload: &str) -> Vec<u8> {
     [SIGNING_PREFIX, payload.as_bytes()].concat()
@@ -92,7 +89,6 @@ pub fn verify<T: DeserializeOwned>(
 )]
 pub enum ControlFrame {
     File(FileControl),
-    Conversation(SignedPacket),
 }
 pub fn encode_control(frame: &ControlFrame) -> Result<Vec<u8>, &'static str> {
     let bytes = serde_json::to_vec(frame).map_err(|_| "invalid_control_frame")?;
@@ -106,68 +102,6 @@ pub fn decode_control(bytes: &[u8]) -> Result<ControlFrame, &'static str> {
         return Err("control_frame_too_large");
     }
     serde_json::from_slice(bytes).map_err(|_| "invalid_control_frame")
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ConversationRoute {
-    pub address: ConversationAddress,
-    pub next_hop: Option<Uuid>,
-}
-/// Uses only the current domain projection. The mutable hop allowance bounds
-/// forwarding while adjacent participants are applying different snapshots.
-pub fn route(
-    packet: &mut SignedPacket,
-    local: Uuid,
-    snapshot: &crate::wire::Snapshot,
-    from: Option<Uuid>,
-) -> Result<ConversationRoute, &'static str> {
-    let sender = snapshot
-        .sessions
-        .iter()
-        .find(|session| session.id == packet.sender)
-        .ok_or("session_expired")?;
-    let address = verify_address(packet, sender.signing_key)?;
-    let room = snapshot
-        .channel
-        .rooms
-        .iter()
-        .find(|room| room.id == address.room_id && room.authorized && room.available)
-        .ok_or("room_unavailable")?;
-    let delivery = room.delivery.as_ref().ok_or("room_delivery_unavailable")?;
-    if address.binding_id != delivery.binding_id
-        || (address.sender != delivery.host_session_id
-            && address.recipient != delivery.host_session_id)
-        || packet.remaining_hops > CONVERSATION_HOPS
-    {
-        return Err("invalid_conversation_scope");
-    }
-    let neighbor = |peer| {
-        snapshot
-            .pairs
-            .iter()
-            .any(|pair| pair.peer_id == peer && pair.rooms.contains(&address.room_id))
-    };
-    if from.is_some_and(|peer| !neighbor(peer)) || (from.is_none() && address.sender != local) {
-        return Err("unassigned_room_peer");
-    }
-    let next_hop = if address.recipient == local {
-        None
-    } else {
-        let peer = *delivery
-            .next_hops
-            .get(&address.recipient)
-            .ok_or("room_path_unavailable")?;
-        if Some(peer) == from || peer == local || !neighbor(peer) {
-            return Err("room_path_unavailable");
-        }
-        if packet.remaining_hops == 0 {
-            return Err("conversation_hop_limit");
-        }
-        packet.remaining_hops -= 1;
-        Some(peer)
-    };
-    Ok(ConversationRoute { address, next_hop })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -186,6 +120,37 @@ pub fn verify_address(
     let address: ConversationAddress = verify(packet, key)?;
     if address.sender != packet.sender {
         return Err("invalid_conversation_sender");
+    }
+    Ok(address)
+}
+
+/// Verify a packet delivered by the authenticated domain connection. The domain
+/// is a carrier, not a room-tree neighbor or the room's conversation authority.
+pub fn verify_delivery(
+    packet: &SignedPacket,
+    local: Uuid,
+    snapshot: &crate::wire::Snapshot,
+) -> Result<ConversationAddress, &'static str> {
+    let sender = snapshot
+        .sessions
+        .iter()
+        .find(|session| session.id == packet.sender)
+        .ok_or("session_expired")?;
+    let address = verify_address(packet, sender.signing_key)?;
+    let room = snapshot
+        .channel
+        .rooms
+        .iter()
+        .find(|room| room.id == address.room_id && room.authorized && room.available)
+        .ok_or("room_unavailable")?;
+    let delivery = room.delivery.as_ref().ok_or("room_host_offline")?;
+    if address.recipient != local
+        || address.binding_id != delivery.binding_id
+        || !crate::wire::valid_id(&address.request_id)
+        || (address.sender != delivery.host_session_id
+            && address.recipient != delivery.host_session_id)
+    {
+        return Err("invalid_conversation_scope");
     }
     Ok(address)
 }
@@ -450,10 +415,10 @@ mod tests {
             SessionSigner::from_seed([8; 32]).signing_key()
         )
         .is_err());
-        let bytes = encode_control(&ControlFrame::Conversation(packet)).unwrap();
+        let bytes = serde_json::to_vec(&crate::wire::Command::Conversation { packet }).unwrap();
         assert!(matches!(
-            decode_control(&bytes).unwrap(),
-            ControlFrame::Conversation(_)
+            serde_json::from_slice::<crate::wire::Command>(&bytes).unwrap(),
+            crate::wire::Command::Conversation { .. }
         ));
         assert!(decode_control(&vec![0; CONTROL_FRAME_BYTES + 1]).is_err());
     }
@@ -486,7 +451,7 @@ mod tests {
             attachments: draft.attachments.clone(),
         };
         let packet = signer.sign(request.address.sender, &request).unwrap();
-        let bytes = encode_control(&ControlFrame::Conversation(packet)).unwrap();
+        let bytes = serde_json::to_vec(&crate::wire::Command::Conversation { packet }).unwrap();
         assert!(bytes.len() <= CONTROL_FRAME_BYTES);
         let mut message = draft
             .prepare_confirmation(crate::history::ConfirmationInput::New { last_seq: 0 })
@@ -533,7 +498,7 @@ mod tests {
         assert!(serde_json::from_value::<ConversationRecord>(serde_json::json!({"type":"history_end","count":101,"hasMore":false,"oldestSeq":null,"before":null})).is_err());
         for reply in replies {
             let packet = signer.sign(reply.address.sender, &reply).unwrap();
-            let bytes = encode_control(&ControlFrame::Conversation(packet)).unwrap();
+            let bytes = serde_json::to_vec(&crate::wire::Command::Conversation { packet }).unwrap();
             assert!(bytes.len() <= CONTROL_FRAME_BYTES);
         }
     }

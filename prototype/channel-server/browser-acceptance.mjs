@@ -784,7 +784,11 @@ async function identityControls(serverRoom) {
   })()`);
   await writeFile(png, Buffer.from(data.split(',')[1], "base64"));
   await writeFile(invalid, "This is not a picture.");
-  const openDomain = () => browser(0, "find", "role", "button", "click", "--name", "Domain appearance", "--exact");
+  const openDomain = async () => {
+    await browser(0, "find", "role", "button", "click", "--name", "Domain settings", "--exact");
+    await browser(0, "click", ".c3-settings-editor > summary");
+    await browser(0, "click", ".c3-identity-appearance > summary");
+  };
   const upload = async path => {
     await browser(0, "upload", '.c3-identity-picker input[type="file"]', path);
   };
@@ -799,24 +803,29 @@ async function identityControls(serverRoom) {
   await openDomain();
   assert.equal(await evaluate(0, "!!document.querySelector('.c3-identity-upload img')"), false);
   await upload(png); await preview();
-  await browser(0, "click", ".c3-identity-form button[type=submit]");
+  await browser(0, "click", ".c3-room-form button[type=submit]");
   const domainIcon = await until("domain image reaches the other user", () => evaluate(1,
     `${hook}.snapshot().state.channel.icon`), value => value.startsWith("data:image/"));
   await until("domain rail renders the saved image", () => evaluate(1,
     "[...document.querySelectorAll('.c3-domain-icon img')].some(image => image.naturalWidth > 0)"), Boolean);
 
-  await browser(0, "find", "role", "button", "click", "--name", "Room settings", "--exact");
+  await browser(0, "find", "role", "button", "click", "--name", "Room options", "--exact");
+  await browser(0, "click", ".c3-settings-editor > summary");
+  await browser(0, "click", ".c3-identity-appearance > summary");
   await upload(png); await preview();
   await browser(0, "click", ".c3-room-form button[type=submit]");
   await until("Native room projects its saved image", () => view(1), value =>
     value.state.channel.rooms.find(room => room.id === serverRoom)?.icon.startsWith("data:image/"));
-  await browser(0, "find", "role", "button", "click", "--name", "Room settings", "--exact");
+  await browser(0, "find", "role", "button", "click", "--name", "Room options", "--exact");
+  await browser(0, "click", ".c3-settings-editor > summary");
+  await browser(0, "click", ".c3-identity-appearance > summary");
   await browser(0, "find", "role", "button", "click", "--name", "Star", "--exact");
   await browser(0, "click", ".c3-room-form button[type=submit]");
   await until("preset replaces Native room image", () => view(1), value => value.state.channel.rooms.find(room => room.id === serverRoom)?.icon === "star");
 
   await browser(0, "find", "role", "button", "click", "--name", "Create room", "--exact");
   await browser(0, "fill", ".c3-room-form input[type=text], .c3-room-form input:not([type])", "Identity room");
+  await browser(0, "click", ".c3-identity-appearance > summary");
   await upload(png); await preview();
   await browser(0, "click", ".c3-room-form button[type=submit]");
   const created = await until("Browser room is created with its image", () => view(1), value =>
@@ -829,7 +838,9 @@ async function identityControls(serverRoom) {
   await browser(0, "click", '.c3-room-link[aria-label="Identity room"]');
   await until("conversation welcome renders its room image", () => evaluate(0,
     "!!document.querySelector('.c3-room-start-mark img')?.naturalWidth"), Boolean);
-  await browser(0, "find", "role", "button", "click", "--name", "Room settings", "--exact");
+  await browser(0, "find", "role", "button", "click", "--name", "Room options", "--exact");
+  await browser(0, "click", ".c3-settings-editor > summary");
+  await browser(0, "click", ".c3-identity-appearance > summary");
   await until("identity editor opens", () => evaluate(0, "!!document.querySelector('.c3-room-form')"), Boolean);
   await browser(0, "screenshot", join(output, "identity-desktop.png"));
   await browser(0, "press", "Escape");
@@ -841,6 +852,8 @@ async function identityControls(serverRoom) {
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); return true;
     })()`);
     await browser(0, "click", 'button[aria-controls="c3-room-settings"]');
+    await browser(0, "click", ".c3-settings-editor > summary");
+    await browser(0, "click", ".c3-identity-appearance > summary");
     await until("translated identity editor opens", () => evaluate(0, "!!document.querySelector('.c3-room-form')"), Boolean);
     const bounds = await evaluate(0, `(() => { const form = document.querySelector('.c3-room-form').getBoundingClientRect();
       return {left:form.left, right:form.right, width:innerWidth, scroll:document.documentElement.scrollWidth}; })()`);
@@ -850,6 +863,8 @@ async function identityControls(serverRoom) {
   }
   await evaluate(0, `(async () => { (await import('/src/client/ui/copy.ts')).setCopy({lang:'en',vis:false}); return true; })()`);
   await browser(0, "click", 'button[aria-controls="c3-room-settings"]');
+  await browser(0, "click", ".c3-settings-editor > summary");
+  await browser(0, "click", ".c3-identity-appearance > summary");
   await browser(0, "find", "role", "button", "click", "--name", "Remove", "--exact");
   await browser(0, "click", ".c3-room-form button[type=submit]");
   await until("removing Browser image restores a preset", () => view(1), value => value.state.channel.rooms.find(item => item.id === room.id)?.icon === "couch");
@@ -881,7 +896,10 @@ async function roomBackupControls() {
     await browser(index, "fill", ".c3-composer textarea", text);
     await browser(index, "click", ".c3-composer button[type=submit]");
   };
-  const settings = () => browser(index, "find", "role", "button", "click", "--name", "Room settings", "--exact");
+  const settings = async () => {
+    await browser(index, "find", "role", "button", "click", "--name", "Room options", "--exact");
+    await browser(index, "click", "#c3-room-settings > details:last-of-type > summary");
+  };
   await send(first);
   const before = await until("A is authoritative and visible", current, value => value.messages.length === 1 && value.messages[0].text === first && value.text.includes(first));
   await settings();
@@ -1023,12 +1041,13 @@ async function roomsAndFiles() {
     `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]?.at(-1)?.text`), text => text === "Latest response");
   console.log("Room history retains old messages, advances a bounded reading window and returns to latest without live interruptions");
 
-  await browser(0, "find", "role", "button", "click", "--name", "Room settings", "--exact");
+  await browser(0, "find", "role", "button", "click", "--name", "Room options", "--exact");
+  await browser(0, "click", ".c3-settings-editor > summary");
   await browser(0, "find", "label", "Hide from users without access", "check");
   await browser(0, "click", ".c3-room-form button[type=submit]");
   await until("unadmitted user loses hidden directory entry", () => view(2), value => !value.state.channel.rooms.some(value => value.id === room.id));
-  await browser(0, "find", "role", "button", "click", "--name", "Room settings", "--exact");
-  await browser(0, "find", "role", "button", "click", "--name", "Create room invitation", "--exact");
+  await browser(0, "find", "role", "button", "click", "--name", "Room options", "--exact");
+  await browser(0, "find", "role", "button", "click", "--name", "Generate new invitation", "--exact");
   const invite = await until("room invitation is ready", () => evaluate(0, "document.querySelector('.c3-invite-copy input')?.value"), value => !!value);
   const invitedSession = (await view(2)).sessionId;
   await browser(2, "open", invite);
@@ -1047,7 +1066,7 @@ async function roomsAndFiles() {
     value => !value.view.state.channel.rooms.some(value => value.id === room.id) && !value.history && value.probe.captures.every(track => track.state === "ended"));
   console.log("Hidden-room invitation admits a new user; revocation clears private history and capture");
   await browser(0, "set", "viewport", "390", "844");
-  await browser(0, "find", "role", "button", "click", "--name", "Room settings", "--exact");
+  await browser(0, "find", "role", "button", "click", "--name", "Room options", "--exact");
   assert.equal((await sample(0)).overflow, false);
   await browser(0, "screenshot", join(output, "private-room-settings-mobile.png"), "--full");
   await browser(0, "press", "Escape");

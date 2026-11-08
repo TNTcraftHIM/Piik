@@ -48,6 +48,7 @@ impl Endpoint {
 
     fn request(&self, hub: &mut Hub, mut command: Value) {
         if command["type"] == "join" {
+            command["protocol"] = json!(piik_channel_core::wire::CHANNEL_PROTOCOL);
             command["signingKey"] = json!(
                 piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key()
             );
@@ -236,7 +237,7 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
         .starts_with("$argon2"));
     let old = Uuid::new_v4();
     let join = |key: Option<&str>, password: Option<&str>| {
-        Request::parse(&json!({"type":"join","name":"Visitor","key":key,"password":password,
+        Request::parse(&json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"name":"Visitor","key":key,"password":password,
         "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1;32]).signing_key()}).to_string()).unwrap()
     };
     assert!(restored.handle(old, join(Some("invite"), None), 1).events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "domain_password_required")));
@@ -754,6 +755,7 @@ async fn state_when(socket: &mut Socket, predicate: impl Fn(&Snapshot) -> bool) 
 async fn send_request(socket: &mut Socket, mut value: Value) {
     value["requestId"] = json!(Uuid::new_v4().to_string());
     if value["type"] == "join" {
+        value["protocol"] = json!(piik_channel_core::wire::CHANNEL_PROTOCOL);
         value["signingKey"] =
             json!(piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key());
     }
@@ -1120,6 +1122,167 @@ async fn invitation_origin_is_only_a_second_exact_http_entry() {
 }
 
 #[tokio::test]
+async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
+    use piik_channel_core::conversation::{
+        ConversationAddress, ConversationCommand, ConversationRecord, ConversationReply,
+        ConversationRequest, SessionSigner,
+    };
+    let folder = tempfile::tempdir().unwrap();
+    let (address, stop, task, _) = start_server(folder.path()).await;
+    let (mut socket, session, initial) = connect(address, "owner", "Reader").await;
+    let state = if initial
+        .channel
+        .rooms
+        .iter()
+        .any(|room| room.id == "living" && room.available)
+    {
+        initial
+    } else {
+        state_when(&mut socket, |state| {
+            state
+                .channel
+                .rooms
+                .iter()
+                .any(|room| room.id == "living" && room.available)
+        })
+        .await
+    };
+    let delivery = state
+        .channel
+        .rooms
+        .iter()
+        .find(|room| room.id == "living")
+        .unwrap()
+        .delivery
+        .clone()
+        .unwrap();
+    let host_key = state
+        .sessions
+        .iter()
+        .find(|peer| peer.id == delivery.host_session_id)
+        .unwrap()
+        .signing_key;
+    send_request(
+        &mut socket,
+        json!({"type":"browse", "roomId":"living", "active":true}),
+    )
+    .await;
+    let state = state_when(&mut socket, |state| {
+        state
+            .channel
+            .rooms
+            .iter()
+            .any(|room| room.id == "living" && room.reading)
+    })
+    .await;
+    assert!(
+        state.pairs.is_empty(),
+        "reading does not allocate an RTP/DataChannel pair"
+    );
+    let signer = SessionSigner::from_seed([1; 32]);
+    for index in 0..50 {
+        let request_id = format!("message-{index}");
+        let packet = signer
+            .sign(
+                session,
+                &ConversationRequest {
+                    address: ConversationAddress {
+                        room_id: "living".into(),
+                        binding_id: delivery.binding_id,
+                        sender: session,
+                        recipient: delivery.host_session_id,
+                        request_id: request_id.clone(),
+                    },
+                    command: ConversationCommand::Chat {
+                        text: format!("Saved message {index}"),
+                        nonce: request_id.clone(),
+                        attachments: vec![],
+                    },
+                },
+            )
+            .unwrap();
+        send_request(&mut socket, json!({"type":"conversation", "packet":packet})).await;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                match event(&mut socket).await {
+                    Event::Conversation { packet } => {
+                        let reply = ConversationReply::verify(&packet, host_key).unwrap();
+                        if reply.address.request_id == request_id
+                            && matches!(reply.record, ConversationRecord::Confirmed { .. })
+                        {
+                            break;
+                        }
+                    }
+                    Event::Error { code, .. } => panic!("conversation failed: {code}"),
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .unwrap();
+    }
+    let packet = signer
+        .sign(
+            session,
+            &ConversationRequest {
+                address: ConversationAddress {
+                    room_id: "living".into(),
+                    binding_id: delivery.binding_id,
+                    sender: session,
+                    recipient: delivery.host_session_id,
+                    request_id: "page".into(),
+                },
+                command: ConversationCommand::History { before: None },
+            },
+        )
+        .unwrap();
+    send_request(&mut socket, json!({"type":"conversation", "packet":packet})).await;
+    let (mut messages, mut reactions, mut frames) = (0, 0, 0);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match event(&mut socket).await {
+                Event::Conversation { packet } => {
+                    let reply = ConversationReply::verify(&packet, host_key).unwrap();
+                    if reply.address.request_id != "page" {
+                        continue;
+                    }
+                    frames += 1;
+                    match reply.record {
+                        ConversationRecord::HistoryMessage { .. } => messages += 1,
+                        ConversationRecord::MessageReactions { .. } => reactions += 1,
+                        ConversationRecord::HistoryEnd { count, .. } => {
+                            assert_eq!(count, 50);
+                            break;
+                        }
+                        _ => panic!("unexpected history record"),
+                    }
+                }
+                Event::Error { code, .. } => panic!("history failed: {code}"),
+                _ => {}
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!((frames, messages, reactions), (101, 50, 50));
+    send_request(
+        &mut socket,
+        json!({"type":"set_name", "name":"Still connected"}),
+    )
+    .await;
+    state_when(&mut socket, |state| {
+        state
+            .users
+            .iter()
+            .any(|user| user.name == "Still connected")
+    })
+    .await;
+    socket.close(None).await.unwrap();
+    stop.send(()).unwrap();
+    task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
 async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_restart() {
     use piik_channel_core::{wire::RoomAccess, StoredRoomHost};
     let folder = std::env::temp_dir().join(format!("piik-server-hosting-{}", Uuid::new_v4()));
@@ -1238,6 +1401,12 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
             json!({"type":"browse", "roomId":room, "active":true}),
         )
         .await;
+        send_request(
+            &mut admin,
+            json!({"type":"voice", "roomId":room,
+            "joined":true, "muted":true, "deafened":false}),
+        )
+        .await;
     }
     let both = state_when(&mut admin, |state| {
         state
@@ -1247,6 +1416,11 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
             .filter(|room| room.reading)
             .count()
             == 2
+            && state.pairs.iter().any(|pair| {
+                pair.peer_id == native
+                    && pair.rooms.iter().any(|id| id == "living")
+                    && pair.rooms.iter().any(|id| id == "studio")
+            })
     })
     .await;
     let pair = both
@@ -1262,6 +1436,12 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
     send_request(
         &mut admin,
         json!({"type":"browse", "roomId":"living", "active":false}),
+    )
+    .await;
+    send_request(
+        &mut admin,
+        json!({"type":"voice", "roomId":"living",
+        "joined":false, "muted":true, "deafened":false}),
     )
     .await;
     let remaining = state_when(&mut admin, |state| {

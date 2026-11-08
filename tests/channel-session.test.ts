@@ -105,7 +105,7 @@ async function setup(window = 1000, read = true, hash = "", readyInteractions = 
   session.start();
   const socket = ChannelSocket.current;
   await socket.onopen?.();
-  socket.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state: {
+  socket.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state: {
     channel: { id: "domain", name: "Friends", icon: "future-domain_7", ownerId: "self", historyWindow: window,
       access: "private", hasPassword: false, inviteHash: inviteHash("domain-invite"),
       rooms: roomIds.map(id => ({ id, name: id, icon: "couch", creatorId: "self", access: "public",
@@ -153,7 +153,7 @@ test("a saved owner credential retires only the consumed owner URL parameter and
   let reloaded: ChannelSession | undefined;
   try {
     const state = session.getSnapshot().state!;
-    socket.receive({ type: "welcome", credential: "personal-owner-credential", sessionId: "endpoint", state, inviteKey: "domain-invite" });
+    socket.receive({ type: "welcome", protocol: 1, credential: "personal-owner-credential", sessionId: "endpoint", state, inviteKey: "domain-invite" });
     expect(replaceState).toHaveBeenCalledWith(previousHistory, "", "/__channel-preview?theme=dark#room=first&invite=friend-link&other=keep");
     await vi.waitFor(() => expect(session.getSnapshot().inviteURL).toBe("https://channel.test/__channel-preview#invite=domain-invite"));
     expect(values.get("piik.channel.prototype.credential")).toBe("personal-owner-credential");
@@ -176,7 +176,7 @@ test.each(["throws", "ignores-write"] as const)("owner bootstrap stays recoverab
   const replaceState = vi.fn(); vi.stubGlobal("history", { state: null, replaceState });
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => { if (failure === "throws") throw new Error("storage unavailable"); } });
   try {
-    socket.receive({ type: "welcome", credential: "personal-owner-credential", sessionId: "endpoint", state: session.getSnapshot().state! });
+    socket.receive({ type: "welcome", protocol: 1, credential: "personal-owner-credential", sessionId: "endpoint", state: session.getSnapshot().state! });
     expect(replaceState).not.toHaveBeenCalled();
     expect(location.hash).toBe("#owner=owner-secret&other=keep");
     expect(session.getSnapshot().connection).toBe("connected");
@@ -193,14 +193,14 @@ test("saving a member credential preserves the ordinary invitation URL and forwa
   try {
     const state = structuredClone(session.getSnapshot().state!); state.channel.ownerId = "another-user";
     state.channel.inviteHash = inviteHash("friend-link");
-    socket.receive({ type: "welcome", credential: "member-credential", sessionId: "endpoint", state });
+    socket.receive({ type: "welcome", protocol: 1, credential: "member-credential", sessionId: "endpoint", state });
     expect(replaceState).not.toHaveBeenCalled();
     expect(location.hash).toBe("#invite=friend-link&other=keep");
     await vi.waitFor(() => expect(session.getSnapshot().inviteURL).toBe("https://channel.test/__channel-preview#invite=friend-link"));
     state.channel.inviteHash = inviteHash("new-link");
     socket.receive({ type: "state", state });
     expect(session.getSnapshot().inviteURL).toBeNull();
-    socket.receive({ type: "welcome", credential: "member-credential", sessionId: "endpoint", state });
+    socket.receive({ type: "welcome", protocol: 1, credential: "member-credential", sessionId: "endpoint", state });
     await Promise.resolve();
     expect(session.getSnapshot().connection).toBe("connected");
     expect(session.getSnapshot().inviteURL).toBeNull();
@@ -226,7 +226,7 @@ test("domain passphrase retries use the same session and retire the submitted se
     session.enterDomain("right-passphrase");
     await ChannelSocket.current.onopen?.();
     expect(ChannelSocket.current.sent[0]).toMatchObject({ password: "right-passphrase" });
-    ChannelSocket.current.receive({ type: "welcome", credential: "personal", sessionId: "endpoint", state });
+    ChannelSocket.current.receive({ type: "welcome", protocol: 1, credential: "personal", sessionId: "endpoint", state });
     expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null });
     expect([...saved.values()]).toEqual(["personal"]);
     session.reconnect(); await ChannelSocket.current.onopen?.();
@@ -239,7 +239,7 @@ test("domain invitation rotation follows canonical state and the owner reply, pr
   const { session, socket } = await setup(3, false);
   const state = structuredClone(session.getSnapshot().state!);
   try {
-    socket.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state, inviteKey: "domain-invite" });
+    socket.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state, inviteKey: "domain-invite" });
     await vi.waitFor(() => expect(session.getSnapshot().inviteURL).toContain("invite=domain-invite"));
     const resetting = session.resetDomainInvite();
     const request = socket.sent.findLast(command => command.type === "domain_invite")!;
@@ -276,7 +276,7 @@ test.each(["", "first"])("a new invitation replaces failed admission in the same
     await ChannelSocket.current.onopen?.();
     expect(ChannelSocket.current.sent[0]).toMatchObject({ type: "join", key: "new-invite", ...(roomId ? { roomId } : {}) });
     if (!roomId) expect(ChannelSocket.current.sent[0]).not.toHaveProperty("roomId");
-    ChannelSocket.current.receive({ type: "welcome", credential: "personal", sessionId: "endpoint", state });
+    ChannelSocket.current.receive({ type: "welcome", protocol: 1, credential: "personal", sessionId: "endpoint", state });
     expect(session.getSnapshot().connection).toBe("connected");
   } finally { session.close(); }
 });
@@ -398,7 +398,7 @@ test("room interactions reuse their original acknowledgement and user identity w
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
     const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
     resumed.receive({ type: "ack", requestId: browse.requestId });
     peer.page(await peer.next(), [], false, null);
@@ -412,7 +412,7 @@ test("room interactions reuse their original acknowledgement and user identity w
   } finally { session.close(); }
 });
 
-test("interaction readiness follows read admission and existing peer readiness, then clears with room availability", async () => {
+test("interaction readiness follows Domain read admission without waiting for a peer path", async () => {
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const { session, socket, peer } = await setup(1000, false, "", false);
@@ -422,121 +422,44 @@ test("interaction readiness follows read admission and existing peer readiness, 
     socket.receive({ type: "state", state });
     const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
     socket.receive({ type: "ack", requestId: browse.requestId });
-    await Promise.resolve(); await Promise.resolve();
-    expect(peer.interactions).toEqual([]);
-    expect(session.getSnapshot().interactionsByRoom.size).toBe(0);
-    const send = vi.mocked(ChannelConversation.prototype.send), original = send.getMockImplementation()!;
-    let attempts = 0;
-    send.mockImplementation(async (command, requestId) => {
-      if (command.type === "interaction_ready") attempts++;
-      return original(command, requestId);
-    });
-    state.channel.rooms[0].delivery!.nextHops = { host: "host" };
-    state.pairs = [{ id: "room-base", peerId: "host", canReceiveVideoLayers: false, rooms: ["first"], outgoing: [], incoming: [] }];
-    socket.receive({ type: "state", state });
-    await vi.waitFor(() => expect(attempts).toBe(1));
+    await vi.waitFor(() => expect(peer.interactions).toHaveLength(1));
     const pending = session.getSnapshot().interactionsByRoom.get("first")!;
     expect(pending.getSnapshot().ready).toBe(false);
-    RoomPeerConnection.instances[0].connected();
-    await vi.waitFor(() => expect(attempts).toBe(2));
-    const request = peer.interactions.at(-1)!;
-    expect(request.type).toBe("interaction_ready");
+    expect(RoomPeerConnection.instances).toHaveLength(0);
+    state.channel.rooms[0].delivery!.nextHops = { host: "unused-route" };
+    socket.receive({ type: "state", state });
+    await Promise.resolve();
+    expect(peer.interactions).toHaveLength(1);
+    const request = peer.interactions[0];
     peer.reply(request, { type: "interaction_ready", serverTime: Date.now(), reactionIds: ["wave", "future-decoration"] });
-    const interaction = session.getSnapshot().interactionsByRoom.get("first")!;
-    expect(interaction).toBe(pending);
-    expect(interaction.getSnapshot()).toMatchObject({ ready: true, reactionIds: ["wave"] });
+    expect(pending.getSnapshot()).toMatchObject({ ready: true, reactionIds: ["wave"] });
     state.channel.rooms[0].available = false;
     socket.receive({ type: "state", state });
     expect(session.getSnapshot().interactionsByRoom.size).toBe(0);
     peer.reply(request, { type: "interaction", id: "late", occurredAt: Date.now(), senderUserId: "self", reaction: "wave" });
-    expect(interaction.getSnapshot().reactions).toEqual([]);
-    expect(interaction.getSnapshot().ready).toBe(false);
+    expect(pending.getSnapshot()).toMatchObject({ ready: false, reactions: [] });
   } finally { session.close(); }
 });
 
-test.each(["new-pair", "shared-carrier", "pending-carrier", "historical"] as const)("base recovery refreshes the current history window without moving a historical reader (%s)", async mode => {
-  RoomPeerConnection.instances = [];
-  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
-  const { session, socket, peer } = await setup(2, false);
+test.each([false, true])("peer path changes do not reload the Domain conversation or move historical reading (%s)", async historical => {
+  const { session, socket, peer } = await setup(2);
   try {
+    await peer.history([message(3), message(4)], true);
+    if (historical) await peer.history([message(1), message(2)], false, true);
+    const before = session.getSnapshot().messagesByRoom.first;
+    const sent = peer.sent.length;
     const state = structuredClone(session.getSnapshot().state!);
-    const room = state.channel.rooms[0];
-    const base = (id: string, peerId = "host", rooms = ["first"]) => ({ id, peerId, canReceiveVideoLayers: false, rooms, outgoing: [], incoming: [] });
-    const carrier = base("kept-carrier", "relay", ["second"]);
-    const sharedCarrier = mode === "shared-carrier" || mode === "pending-carrier";
-    state.pairs = [base("base-before"), ...(sharedCarrier ? [carrier] : [])];
-    socket.receive({ type: "state", state });
-    const original = RoomPeerConnection.instances[0];
-    original.connected();
-    original.channels.forEach(channel => channel.open());
-    if (sharedCarrier) {
-      const shared = RoomPeerConnection.instances[1];
-      shared.connected();
-      shared.channels.forEach(channel => channel.open());
-    }
-    const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
-    socket.receive({ type: "ack", requestId: browse.requestId });
-    peer.page(await peer.next(), [message(3), message(4)], true);
-    await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:first")).toBe(false));
-    expect(peer.sent).toHaveLength(1);
-    if (mode === "historical") {
-      const older = session.loadHistory("first");
-      peer.page(await peer.next(), [message(1), message(2)]);
-      await older;
-      expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(false);
-    }
-    let rejectOldWrite: (() => void) | undefined, oldSettled: Promise<unknown> | undefined;
-    if (mode === "pending-carrier") {
-      const send = vi.mocked(ChannelConversation.prototype.send), originalSend = send.getMockImplementation()!;
-      let held = true, reject!: (error: Error) => void;
-      const writing = new Promise<void>((_resolve, fail) => { reject = fail; });
-      send.mockImplementation(async (command, requestId) => {
-        await originalSend(command, requestId);
-        if (held && command.type === "history") await writing;
-      });
-      oldSettled = expect(session.loadLatestHistory("first")).rejects.toThrow("room_unavailable");
-      await peer.next();
-      rejectOldWrite = () => { held = false; reject(new Error("room_unavailable")); };
-    }
-    peer.sent.length = 0;
-    socket.receive({ type: "state", state });
-    await Promise.resolve(); await Promise.resolve();
-    expect(peer.sent).toEqual([]);
-
-    original.connectionState = "failed";
-    original.onconnectionstatechange?.();
-    state.pairs = sharedCarrier ? [carrier] : [];
-    room.delivery!.nextHops = {};
-    socket.receive({ type: "state", state });
-    // The host confirms message 5 while this reader has no room-data path.
-    state.pairs = sharedCarrier ? [{ ...carrier, rooms: ["first", "second"] }] : [base("base-after")];
-    room.delivery!.nextHops = { host: sharedCarrier ? "relay" : "host" };
-    socket.receive({ type: "state", state });
-    const recovered = RoomPeerConnection.instances[1];
-    if (!sharedCarrier) {
-      recovered.connected();
-      recovered.channels.forEach(channel => channel.open());
-    }
-    rejectOldWrite?.();
-    await oldSettled;
-    if (mode === "historical") {
+    for (const nextHops of [{}, { host: "unopened-peer" }] as Array<Record<string, string>>) {
+      state.channel.rooms[0].delivery!.nextHops = nextHops;
+      socket.receive({ type: "state", state });
       await Promise.resolve(); await Promise.resolve();
-      expect(peer.sent).toEqual([]);
-      expect(session.getSnapshot().messagesByRoom.first.map(message => message.seq)).toEqual([1, 2]);
-    } else {
-      const refresh = await peer.next();
-      expect(refresh).toMatchObject({ type: "history", roomId: "first" });
-      expect(refresh).not.toHaveProperty("before");
-      peer.live(message(6));
-      peer.page(refresh, [message(4), message(5)]);
-      await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:first")).toBe(false));
-      expect(session.getSnapshot().messagesByRoom.first.map(message => message.seq)).toEqual([5, 6]);
+      expect(peer.sent).toHaveLength(sent);
+      expect(session.getSnapshot().messagesByRoom.first).toEqual(before);
     }
-    expect(session.getSnapshot().state?.channel.rooms[0]).toMatchObject({ reading: true, available: true, delivery: { bindingId: "binding" } });
-    expect(socket.sent.filter(command => command.type === "browse" && command.active)).toEqual([browse]);
+    peer.live(message(5));
+    expect(session.getSnapshot().messagesByRoom.first.map(value => value.seq)).toEqual(historical ? [1, 2] : [4, 5]);
   } finally { session.close(); }
 });
-
 test("domain and room invitations use the current Welcome origin without local bootstrap data", async () => {
   const { session, peer } = await setup();
   const state = session.getSnapshot().state!;
@@ -546,7 +469,7 @@ test("domain and room invitations use the current Welcome origin without local b
       session.reconnect();
       const socket = ChannelSocket.current;
       await socket.onopen?.();
-      socket.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state,
+      socket.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state,
         inviteKey: "domain-invite", ...(invitationOrigin ? { invitationOrigin } : {}) });
       const origin = invitationOrigin ?? "https://channel.test";
       await vi.waitFor(() => expect(session.getSnapshot().inviteURL).toBe(`${origin}/__channel-preview#invite=domain-invite`));
@@ -719,7 +642,7 @@ test.each([false, true])("App viewing assistance withdraws without ending the wa
       session.reconnect();
       current = ChannelSocket.current;
       await current.onopen?.();
-      current.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+      current.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
     }
     const ordinary = current.sent.findLast(command => command.type === "subscribe")!;
     expect(ordinary).toMatchObject({ publicationId: "screen", enabled: true });
@@ -759,7 +682,7 @@ test("temporary helper unavailability cannot retire a retained watch on Domain r
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
     for (const command of resumed.sent.filter(command => command.type === "subscribe")) {
       resumed.receive(command.helperSessionId === helperSessionId
         ? { type: "error", requestId: command.requestId, code: "helper_unavailable" }
@@ -955,14 +878,14 @@ test("recovery mute stops only this room's retained voice immediately", async ()
     expect(contexts[0].close).not.toHaveBeenCalled();
     session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
-    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
     expect(resumed.sent).toContainEqual({ type: "voice", roomId: "first", joined: true, muted: true, deafened: true });
     expect(first.enabled).toBe(false); expect(second.enabled).toBe(true);
     expect(listening()).toEqual(["heard-second"]);
     resumed.receive({ type: "state", state });
     expect(first.enabled).toBe(false);
     expect(session.getSnapshot().state?.voice.find(value => value.roomId === "first")).toMatchObject({ muted: true, deafened: true });
-    resumed.receive({ type: "welcome", credential: "credential", sessionId: "new-endpoint", state: { ...state, sessions: state.sessions.map(value => value.id === "endpoint" ? { ...value, id: "new-endpoint" } : value) } });
+    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "new-endpoint", state: { ...state, sessions: state.sessions.map(value => value.id === "endpoint" ? { ...value, id: "new-endpoint" } : value) } });
     expect(session.canUnmute("first")).toBe(false);
     expect(session.getSnapshot().state?.voice.some(value => value.sessionId === "new-endpoint")).toBe(false);
   } finally { session.close(); }
@@ -1113,7 +1036,7 @@ test("a new admitted session can request a microphone while retired permission i
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
     state.sessions = state.sessions.map(value => value.id === "endpoint" ? { ...value, id: "new-endpoint" } : value);
-    resumed.receive({ type: "welcome", credential: "credential", sessionId: "new-endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "new-endpoint", state });
     nextJoin = session.joinVoice("first").catch(error => error);
     expect(getUserMedia).toHaveBeenCalledTimes(2);
     grants.shift()!(remoteStream("late-source", [late]));
@@ -1236,7 +1159,7 @@ test("ending a Browser microphone retires its publication while room listening r
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
     expect(resumed.sent).toContainEqual({ type: "unpublish", publicationId: nextPublication.id });
     expect(resumed.sent).toContainEqual({ type: "voice", roomId: "first", joined: true, muted: true, deafened: true });
     expect(resumed.sent.some(command => command.type === "voice" && command.joined === false)).toBe(false);
@@ -1412,7 +1335,7 @@ test("Browser screen pause stops the retained picture and source sound before re
     expect(session.getSnapshot().state?.publications[0].paused).toBe(true);
     session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
-    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
     expect(resumed.sent).toContainEqual({ type: "set_paused", publicationId: publication.id, paused: true });
     resumed.receive({ type: "state", state });
     expect(video.enabled).toBe(false); expect(sound.enabled).toBe(false);
@@ -2369,7 +2292,7 @@ test.each(["before-subscribe", "awaiting-ack", "helper-awaiting-ack"])("committe
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
     await vi.waitFor(() => expect(resumed.sent).toContainEqual(expect.objectContaining({
       type: "subscribe", publicationId, enabled: true,
       ...(interrupted === "helper-awaiting-ack" ? { helperSessionId: nativeSessionId } : {}),
@@ -2576,7 +2499,7 @@ test("same-session recovery retires its own host binding when the committed room
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state: retained });
+    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state: retained });
     await vi.waitFor(() => expect(resumed.sent.some(command => command.type === "host_stop" && command.roomId === "first" && command.bindingId === "owned-binding")).toBe(true));
     expect(host.close).toHaveBeenCalledOnce();
     expect(resumed.sent.some(command => command.type === "host_register")).toBe(false);
@@ -5489,7 +5412,7 @@ test.each(["connected", "disconnected", "failed", "deadline"] as const)("a resum
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
     state.pairs.pop();
-    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
     await vi.waitFor(() => expect(resumed.sent.filter(command => command.type === "signal")).toEqual(failed ? [] : [
       { type: "signal", pairId: "kept", payload: { resync: true } },
     ]));
@@ -5699,7 +5622,7 @@ test("browsing keeps watched-room reading and resumes the offline selection with
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
     state.channel.rooms.forEach(room => { room.reading = room.id === "second"; });
-    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
     const first = resumed.sent.findLast(command => command.type === "browse" && command.roomId === "first" && command.active)!;
     expect(first).toMatchObject({ type: "browse", roomId: "first", active: true });
     expect(resumed.sent.some(command => command.type === "browse" && command.active === false)).toBe(false);
@@ -5739,7 +5662,7 @@ test("relay overrides persist per room only after acceptance and accompany read 
     socket.close(); session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
     expect(resumed.sent.some(command => command.type === "relay_capacity")).toBe(false);
     const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
     expect(browse).toMatchObject({ roomId: "first", relayCapacity: 0 });
@@ -5905,7 +5828,7 @@ test("reconnect retires unprojected old read intents only after the selected rea
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
     const first = resumed.sent.at(-1)!;
     expect(first).toMatchObject({ type: "browse", roomId: "first", active: true });
     expect(resumed.sent.some(command => command.type === "browse" && command.active === false)).toBe(false);
@@ -5994,60 +5917,32 @@ test("voice forwards without local listening and the same pair carries the rever
 });
 
 
-test("history failure survives allocated-hop snapshots and recovers only when its control hop opens", async () => {
+test("history timeout remains explicit until a Domain retry, independently of peer readiness", async () => {
   vi.useFakeTimers();
-  RoomPeerConnection.instances = [];
-  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const { session, socket, peer } = await setup(1000, false);
   try {
     const state = structuredClone(session.getSnapshot().state!);
-    const delivery = state.channel.rooms[0].delivery!;
-    delivery.nextHops = {};
-    state.pairs = [{ id: "control-pair", peerId: "host", canReceiveVideoLayers: false,
-      rooms: ["first"], incoming: [], outgoing: [] }];
+    state.channel.rooms[0].delivery!.nextHops = {};
     socket.receive({ type: "state", state });
     const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
     socket.receive({ type: "ack", requestId: browse.requestId });
     await vi.advanceTimersByTimeAsync(0);
-    expect(session.getSnapshot().pending.has("history:first")).toBe(true);
-    delivery.nextHops = { host: "host" };
-    socket.receive({ type: "state", state });
+    expect(peer.sent).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(10_000);
     expect(session.getSnapshot().error).toBe("request_timeout");
-    expect(session.getSnapshot().pending.has("history:first")).toBe(false);
-    expect(peer.sent).toHaveLength(1);
-    const unreadyRoutes: Array<Record<string, string>> = [{}, { host: "host" }];
-    for (const nextHops of unreadyRoutes) {
-      delivery.nextHops = nextHops;
-      socket.receive({ type: "state", state });
-      await vi.advanceTimersByTimeAsync(0);
-      expect(session.getSnapshot().pending.has("history:first")).toBe(false);
-      expect(session.getSnapshot().error).toBe("request_timeout");
-    }
-    const pc = RoomPeerConnection.instances[0];
-    pc.connected();
+    state.channel.rooms[0].delivery!.nextHops = { host: "unused-peer" };
+    socket.receive({ type: "state", state });
     await vi.advanceTimersByTimeAsync(0);
     expect(peer.sent).toHaveLength(1);
-    pc.channels.find(channel => channel.label === "piik-room")!.open();
+    const loading = session.loadLatestHistory("first");
     await vi.advanceTimersByTimeAsync(0);
-    expect(peer.sent).toHaveLength(2);
-    peer.page(peer.sent[1], [message(7)]);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(session.getSnapshot().pending.has("history:first")).toBe(false);
+    peer.page(peer.sent.at(-1)!, [message(7)]);
+    await loading;
     expect(session.getSnapshot().messagesByRoom.first.map(value => value.seq)).toEqual([7]);
     expect(session.getSnapshot().error).toBeNull();
-    state.channel.rooms[0].delivery = { ...delivery, hostSessionId: "endpoint", nextHops: {} };
-    state.pairs = [];
-    socket.receive({ type: "state", state });
-    const local = session.loadLatestHistory("first");
-    await vi.advanceTimersByTimeAsync(0);
-    peer.page(peer.sent.at(-1)!, [message(8)]);
-    await local;
-    expect(session.getSnapshot().messagesByRoom.first.map(value => value.seq)).toEqual([8]);
   } finally { session.close(); }
 });
-
-test("browse waits for the current room path and reconnect cancels unsent history before refreshing", async () => {
+test("browse admission gates Domain history and reconnect cancels the old socket before refreshing", async () => {
   const { session, socket, peer } = await setup(1000, false);
   try {
     const first = socket.sent.findLast(command => command.type === "browse" && command.active)!;
@@ -6064,10 +5959,7 @@ test("browse waits for the current room path and reconnect cancels unsent histor
     expect(peer.sent).toEqual([]);
     socket.receive({ type: "room_reply", roomId: "second", requestId: second.requestId, result: { type: "done" } });
     await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:second")).toBe(true));
-    expect(peer.sent).toEqual([]);
     expect(session.getSnapshot().error).toBeNull();
-    delivery.nextHops = { host: "host" };
-    socket.receive({ type: "state", state });
     const history = await peer.next();
     expect(history).toMatchObject({ type: "history", roomId: "second" });
     session.browse("second");
@@ -6084,17 +5976,18 @@ test("browse waits for the current room path and reconnect cancels unsent histor
     socket.receive({ type: "state", state });
     const canceled = expect(session.loadLatestHistory("second")).rejects.toThrow("disconnected");
     await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:second")).toBe(true));
-    expect(peer.sent).toHaveLength(2);
+    expect(await peer.next()).toMatchObject({ type: "history", roomId: "second" });
+    expect(peer.sent).toHaveLength(3);
     session.reconnect();
     await canceled;
     delivery.nextHops = { host: "host" };
     const resumed = ChannelSocket.current; await resumed.onopen?.();
-    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
-    expect(peer.sent).toHaveLength(2);
+    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
+    expect(peer.sent).toHaveLength(3);
     const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
     resumed.receive({ type: "ack", requestId: browse.requestId });
     expect(await peer.next()).toMatchObject({ type: "history", roomId: "second" });
-    expect(peer.sent).toHaveLength(3);
+    expect(peer.sent).toHaveLength(4);
     expect(resumed.sent.some(command => command.type === "history")).toBe(false);
   } finally { session.close(); }
 });
@@ -6174,7 +6067,7 @@ test("domain restore closes the old connection, admits archived keys only after 
     expect(join).toMatchObject({ key: "restored-owner" });
     for (const field of ["credential", "sessionId", "roomId"]) expect(join).not.toHaveProperty(field);
     expect(saved).not.toHaveBeenCalled();
-    admission.receive({ type: "welcome", credential: "restored-personal-credential", sessionId: "endpoint", state });
+    admission.receive({ type: "welcome", protocol: 1, credential: "restored-personal-credential", sessionId: "endpoint", state });
     await expect(restoring).resolves.toEqual({ name: state.channel.name, icon: state.channel.icon, access: state.channel.access });
     expect(session.getSnapshot().self?.id).toBe(ownerId); expect(session.getSnapshot().state?.channel.id).toBe(domainId);
     expect(saved).toHaveBeenCalledWith("piik.channel.prototype.credential", "restored-personal-credential");
@@ -6193,7 +6086,7 @@ test("a rejected domain replacement restarts the unchanged personal identity wit
     const resumed = ChannelSocket.current; expect(resumed).not.toBe(socket); await resumed.onopen?.();
     expect(resumed.sent.find(command => command.type === "join")).toMatchObject({ credential: "credential" });
     expect(resumed.sent.some(command => command.key === metadata.ownerKey)).toBe(false);
-    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
     expect(session.getSnapshot().self?.id).toBe("self");
     expect(session.getSnapshot().pending.has("domain-backup")).toBe(false);
   } finally { session.close(); }
@@ -6211,7 +6104,7 @@ test("domain admission does not save a Welcome whose current owner differs from 
     const restoring = session.restoreDomainBackup(new Blob()), rejected = expect(restoring).rejects.toThrow("domain_restored_connection_failed");
     await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
     const admission = ChannelSocket.current; await admission.onopen?.();
-    admission.receive({ type: "welcome", credential: "not-verified", sessionId: "endpoint", state });
+    admission.receive({ type: "welcome", protocol: 1, credential: "not-verified", sessionId: "endpoint", state });
     await rejected; expect(saved).not.toHaveBeenCalled();
     expect(session.getSnapshot().state).toBeNull(); expect(admission.readyState).toBe(3);
     expect(session.getSnapshot().pending.has("domain-backup")).toBe(false);
@@ -6352,7 +6245,7 @@ test("portable import validates the full archive before switching accounts and r
     const admission = ChannelSocket.current; await admission.onopen?.();
     expect(admission.sent.find(command => command.type === "join")).toMatchObject({ credential: "archived-credential" });
     expect(admission.sent.find(command => command.type === "join")).not.toHaveProperty("sessionId");
-    admission.receive({ type: "welcome", credential: "wrong-credential", sessionId: "endpoint", state: original });
+    admission.receive({ type: "welcome", protocol: 1, credential: "wrong-credential", sessionId: "endpoint", state: original });
     await failed;
     expect(persist.mock.calls.some(call => call[1] === "wrong-credential")).toBe(false);
     const restored = ChannelSocket.current; expect(restored).not.toBe(admission); await restored.onopen?.();
@@ -6419,7 +6312,7 @@ test("portable import admits the archived identity through Welcome before commit
     expect(join).toMatchObject({ credential: "archived-credential" });
     expect(join).not.toHaveProperty("key"); expect(join).not.toHaveProperty("roomId"); expect(join).not.toHaveProperty("sessionId");
     expect(stage.replace).not.toHaveBeenCalled(); expect(saved).not.toHaveBeenCalled();
-    admission.receive({ type: "welcome", credential: "accepted-credential", sessionId: "new-endpoint", state });
+    admission.receive({ type: "welcome", protocol: 1, credential: "accepted-credential", sessionId: "new-endpoint", state });
     await vi.waitFor(() => expect(admission.sent.some(command => command.type === "host_register")).toBe(true));
     expect(read).toHaveBeenCalledOnce(); expect(stage.replace).toHaveBeenCalledOnce(); expect(saved).toHaveBeenCalledWith("piik.channel.prototype.credential", "accepted-credential");
     const registration = admission.sent.find(command => command.type === "host_register")!;
@@ -6543,4 +6436,30 @@ test("a delayed source busy error cannot fail a cancelled file's successful retr
     }
     expect(new Uint8Array(await (await retry).arrayBuffer())).toEqual(bytes);
   } finally { next.abort(); files.reset(); upstream.free(); }
+});
+
+test.each([undefined, 0, 2])("an incompatible Domain Welcome protocol (%s) is rejected before accepting its state", async protocol => {
+  const { session, socket } = await setup(1000, false);
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.name = "Must not be accepted";
+    expect(socket.sent.find(command => command.type === "join")).toMatchObject({ protocol: 1 });
+    socket.receive({ type: "welcome", protocol, credential: "other-credential", sessionId: "other-endpoint", state });
+    expect(session.getSnapshot()).toMatchObject({ connection: "closed", sessionId: null, state: null, error: "incompatible_protocol" });
+    expect(socket.readyState).toBe(3);
+  } finally { session.close(); }
+});
+
+test.each([{ state: "missing" }, { state: "unrecoverable" }, { state: "available", key: "private-room-key" }] as const)("reading a room invitation returns $state without rotating it", async invitation => {
+  const { session, socket } = await setup();
+  try {
+    const reading = session.getRoomInvite("first");
+    const request = socket.sent.findLast(command => command.type === "get_room_invite")!;
+    expect(request).toMatchObject({ roomId: "first" });
+    socket.receive({ type: "room_invite_state", roomId: "first", invitation, requestId: request.requestId });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "done" } });
+    await expect(reading).resolves.toEqual(invitation.state === "available"
+      ? { state: "available", url: "https://channel.test/__channel-preview#room=first&invite=private-room-key" } : invitation);
+    expect(socket.sent.some(command => command.type === "room_invite")).toBe(false);
+  } finally { session.close(); }
 });

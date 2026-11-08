@@ -2,235 +2,244 @@
 mod support;
 use piik_channel_core::{
     conversation::{
-        route, ConversationAddress, ConversationCommand, ConversationRecord, ConversationReply,
-        ConversationRequest, SessionSigner,
+        verify, verify_delivery, ConversationAddress, ConversationCommand, ConversationRecord,
+        ConversationReply, ConversationRequest, SessionSigner, SignedPacket,
     },
-    wire::{Event, Request, RoomAccess},
+    wire::{Event, RoomAccess},
 };
 use serde_json::json;
 use support::RoomNetwork;
 use uuid::Uuid;
 
-#[test]
-fn signed_conversation_routes_on_actual_authority_base_and_bounds_stale_projection_loops() {
-    let mut network = RoomNetwork::new();
-    let connections: Vec<_> = (0..4).map(|_| Uuid::new_v4()).collect();
-    let signers: Vec<_> = (1..=4)
-        .map(|seed| SessionSigner::from_seed([seed; 32]))
-        .collect();
-    let mut sessions = Vec::new();
-    for index in 0..3 {
-        let joined = network.command(connections[index], json!({"type":"join","name":"Conversation", "key":"invite", "signingKey":signers[index].signing_key()}));
-        sessions.push(
-            joined
-                .events
-                .into_iter()
-                .find_map(|(_, event)| {
-                    if let Event::Welcome { session_id, .. } = event {
-                        Some(session_id)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap(),
-        );
-    }
-    let created = network.create(connections[0], RoomAccess::Public, false);
-    let room = network.policy(&created).id;
-    for index in [1, 2] {
-        network.command(
-            connections[index],
-            json!({"type":"browse","roomId":room,"active":true}),
-        );
-    }
-    let root_relay = network
-        .state(connections[1])
-        .pairs
-        .iter()
-        .find(|pair| pair.peer_id == sessions[0])
+fn join(network: &mut RoomNetwork, connection: Uuid) -> Uuid {
+    network
+        .command(
+            connection,
+            json!({"type":"join","name":"Reader","key":"invite"}),
+        )
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::Welcome { session_id, .. } => Some(session_id),
+            _ => None,
+        })
         .unwrap()
-        .id;
-    for index in [0, 1] {
-        network.command(
-            connections[index],
-            json!({"type":"base_state","roomId":room,"pairId":root_relay,"ready":true}),
-        );
-    }
-    let joined = network.command(connections[3], json!({"type":"join","name":"Sender", "key":"invite", "signingKey":signers[3].signing_key()}));
-    sessions.push(
-        joined
+}
+
+fn relay(
+    network: &mut RoomNetwork,
+    connection: Uuid,
+    target: Uuid,
+    packet: &SignedPacket,
+) -> SignedPacket {
+    let effects = network.command(
+        connection,
+        json!({"type":"conversation","packet":packet,"requestId":"chat"}),
+    );
+    assert!(
+        !effects
             .events
-            .into_iter()
-            .find_map(|(_, event)| {
-                if let Event::Welcome { session_id, .. } = event {
-                    Some(session_id)
-                } else {
-                    None
-                }
-            })
-            .unwrap(),
+            .iter()
+            .any(|(_, event)| matches!(event, Event::Ack { .. })),
+        "forwarding is not confirmation"
     );
-    network.command(
-        connections[3],
-        json!({"type":"browse","roomId":room,"active":true}),
+    effects
+        .events
+        .into_iter()
+        .find_map(|(recipient, event)| match event {
+            Event::Conversation { packet } => {
+                assert_eq!(recipient, target);
+                Some(packet)
+            }
+            _ => None,
+        })
+        .expect("domain forwards to the intended endpoint")
+}
+
+fn rejected(network: &mut RoomNetwork, connection: Uuid, packet: &SignedPacket, code: &str) {
+    let effects = network.command(
+        connection,
+        json!({"type":"conversation","packet":packet,"requestId":"chat"}),
     );
-    let relay_sender = network
-        .state(connections[3])
-        .pairs
+    assert!(effects.events.iter().any(|(recipient, event)| *recipient == connection && matches!(event,
+        Event::Error { code: actual, request_id } if actual == code && request_id.as_deref() == Some("chat"))));
+    assert!(!effects
+        .events
         .iter()
-        .find(|pair| pair.peer_id == sessions[1])
-        .unwrap()
-        .id;
-    for index in [1, 3] {
-        network.command(
-            connections[index],
-            json!({"type":"base_state","roomId":room,"pairId":relay_sender,"ready":true}),
-        );
+        .any(|(_, event)| matches!(event, Event::Conversation { .. })));
+}
+
+#[test]
+fn signed_conversation_uses_domain_carriage_without_media_paths_or_a_second_confirmation() {
+    let mut network = RoomNetwork::new();
+    let owner = Uuid::new_v4();
+    let reader = Uuid::new_v4();
+    let outsider = Uuid::new_v4();
+    let owner_session = join(&mut network, owner);
+    let reader_session = join(&mut network, reader);
+    join(&mut network, outsider);
+    let room = network.create(owner, RoomAccess::Private, false);
+    let key = network
+        .command(owner, json!({"type":"room_invite","roomId":room}))
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::RoomInvite { key, .. } => Some(key),
+            _ => None,
+        })
+        .unwrap();
+    network.command(
+        reader,
+        json!({"type":"enter_room","roomId":room,"inviteKey":key}),
+    );
+    network.command(reader, json!({"type":"browse","roomId":room,"active":true}));
+    for connection in [owner, reader] {
+        assert!(network.state(connection).pairs.is_empty());
     }
-    for command in [
-        json!({"type":"history","roomId":room,"requestId":"blocked-history"}),
-        json!({"type":"chat","roomId":room,"text":"No domain content","nonce":"blocked-chat","requestId":"blocked-chat"}),
-    ] {
-        assert!(matches!(
-            Request::parse(&command.to_string()),
-            Err((_, "invalid_request"))
-        ));
-    }
-    let delivery = network
-        .state(connections[3])
+    let view = network
+        .state(reader)
         .channel
         .rooms
         .iter()
-        .find(|entry| entry.id == room)
-        .unwrap()
-        .delivery
-        .as_ref()
+        .find(|value| value.id == room)
         .unwrap();
+    assert!(
+        view.participant_session_ids.contains(&reader_session),
+        "reading still has room presence"
+    );
     let address = ConversationAddress {
         room_id: room.clone(),
-        binding_id: delivery.binding_id,
-        sender: sessions[3],
-        recipient: sessions[0],
-        request_id: "history".into(),
+        binding_id: view.delivery.as_ref().unwrap().binding_id,
+        sender: reader_session,
+        recipient: owner_session,
+        request_id: "chat".into(),
     };
-    let request = ConversationRequest {
-        address: address.clone(),
-        command: ConversationCommand::History { before: None },
-    };
-    let mut packet = signers[3].sign(sessions[3], &request).unwrap();
-    assert_eq!(
-        route(
-            &mut packet,
-            sessions[3],
-            network.state(connections[3]),
-            None
+    let signer = SessionSigner::from_seed([1; 32]);
+    let packet = signer
+        .sign(
+            reader_session,
+            &ConversationRequest {
+                address: address.clone(),
+                command: ConversationCommand::Chat {
+                    text: "Works without ICE".into(),
+                    nonce: "one-write".into(),
+                    attachments: vec![],
+                },
+            },
         )
-        .unwrap()
-        .next_hop,
-        Some(sessions[1])
-    );
-    assert_eq!(packet.remaining_hops, 19);
-    let mut stale = network.state(connections[1]).clone();
-    stale
-        .channel
-        .rooms
-        .iter_mut()
-        .find(|entry| entry.id == room)
-        .unwrap()
-        .delivery
-        .as_mut()
-        .unwrap()
-        .next_hops
-        .insert(sessions[0], sessions[3]);
-    assert!(matches!(
-        route(&mut packet, sessions[1], &stale, Some(sessions[3])),
-        Err("room_path_unavailable")
-    ));
-    assert_eq!(packet.remaining_hops, 19);
-    assert_eq!(
-        route(
-            &mut packet,
-            sessions[1],
-            network.state(connections[1]),
-            Some(sessions[3])
+        .unwrap();
+    let mut confirmed = None;
+    for retry in [false, true] {
+        let forwarded = relay(&mut network, reader, owner, &packet);
+        assert_eq!(
+            verify_delivery(&forwarded, owner_session, network.state(owner)).unwrap(),
+            address
+        );
+        let replies = network.conversation(&room, &forwarded).replies().unwrap();
+        for reply in replies {
+            let returned = signer.sign(owner_session, &reply).unwrap();
+            let returned = relay(&mut network, owner, reader, &returned);
+            verify_delivery(&returned, reader_session, network.state(reader)).unwrap();
+            let parsed: ConversationReply = verify(&returned, signer.signing_key()).unwrap();
+            if let ConversationRecord::Confirmed { message, inserted } = parsed.record {
+                assert_eq!(inserted, !retry);
+                if retry {
+                    assert_eq!(confirmed, Some(message.id));
+                } else {
+                    confirmed = Some(message.id);
+                }
+                assert_eq!(message.seq, 1);
+            }
+        }
+    }
+    assert!(confirmed.is_some());
+    let history = signer
+        .sign(
+            reader_session,
+            &ConversationRequest {
+                address: address.clone(),
+                command: ConversationCommand::History { before: None },
+            },
         )
-        .unwrap()
-        .next_hop,
-        Some(sessions[0])
-    );
-    assert_eq!(packet.remaining_hops, 18);
-    assert!(route(
-        &mut packet,
-        sessions[0],
-        network.state(connections[0]),
-        Some(sessions[1])
-    )
-    .unwrap()
-    .next_hop
-    .is_none());
-    let mut exhausted = signers[3].sign(sessions[3], &request).unwrap();
-    exhausted.remaining_hops = 0;
+        .unwrap();
+    let forwarded = relay(&mut network, reader, owner, &history);
+    let replies = network.conversation(&room, &forwarded).replies().unwrap();
+    assert!(replies.iter().any(|reply| matches!(&reply.record, ConversationRecord::HistoryMessage { message } if message.id == confirmed.unwrap())));
     assert!(matches!(
-        route(
-            &mut exhausted,
-            sessions[3],
-            network.state(connections[3]),
-            None
-        ),
-        Err("conversation_hop_limit")
+        replies.last().unwrap().record,
+        ConversationRecord::HistoryEnd { count: 1, .. }
     ));
-    assert!(route(
-        &mut exhausted,
-        sessions[0],
-        network.state(connections[0]),
-        Some(sessions[1])
-    )
-    .unwrap()
-    .next_hop
-    .is_none());
-    assert!(matches!(
-        route(
-            &mut packet,
-            sessions[1],
-            network.state(connections[1]),
-            Some(sessions[2])
-        ),
-        Err("unassigned_room_peer")
-    ));
-    let reply = ConversationReply {
-        address: address.reply(),
-        record: ConversationRecord::HistoryEnd {
-            count: 0,
-            has_more: false,
-            oldest_seq: None,
-            before: None,
-        },
-    };
-    let mut reply = signers[0].sign(sessions[0], &reply).unwrap();
-    assert_eq!(
-        route(&mut reply, sessions[0], network.state(connections[0]), None)
-            .unwrap()
-            .next_hop,
-        Some(sessions[1])
+    rejected(
+        &mut network,
+        outsider,
+        &packet,
+        "invalid_conversation_sender",
     );
-    assert_eq!(
-        route(
-            &mut reply,
-            sessions[1],
-            network.state(connections[1]),
-            Some(sessions[0])
+    let mut forged = packet.clone();
+    forged.payload.push(' ');
+    rejected(
+        &mut network,
+        reader,
+        &forged,
+        "invalid_conversation_signature",
+    );
+    let mut peer_address = address.clone();
+    peer_address.recipient = reader_session;
+    let peer_packet = signer
+        .sign(
+            reader_session,
+            &ConversationRequest {
+                address: peer_address,
+                command: ConversationCommand::History { before: None },
+            },
         )
-        .unwrap()
-        .next_hop,
-        Some(sessions[3])
+        .unwrap();
+    rejected(
+        &mut network,
+        reader,
+        &peer_packet,
+        "invalid_conversation_scope",
     );
-    assert!(route(
-        &mut reply,
-        sessions[3],
-        network.state(connections[3]),
-        Some(sessions[1])
-    )
-    .unwrap()
-    .next_hop
-    .is_none());
+    let reader_user = network
+        .state(reader)
+        .sessions
+        .iter()
+        .find(|session| session.id == reader_session)
+        .unwrap()
+        .user_id;
+    network.command(
+        owner,
+        json!({"type":"revoke_room_access","roomId":room,"userId":reader_user}),
+    );
+    rejected(&mut network, reader, &packet, "room_access_required");
+    network.command(
+        reader,
+        json!({"type":"enter_room","roomId":room,"inviteKey":key}),
+    );
+    let policy = network.policy(&room);
+    network.restore_room(owner, policy);
+    rejected(&mut network, reader, &packet, "invalid_conversation_scope");
+    assert!(verify_delivery(&packet, owner_session, network.state(owner)).is_err());
+}
+
+#[test]
+fn reading_does_not_open_base_links_but_voice_still_does() {
+    let mut network = RoomNetwork::new();
+    let owner = Uuid::new_v4();
+    let reader = Uuid::new_v4();
+    join(&mut network, owner);
+    join(&mut network, reader);
+    let room = network.create(owner, RoomAccess::Public, false);
+    network.command(reader, json!({"type":"browse","roomId":room,"active":true}));
+    assert!(network.state(reader).pairs.is_empty());
+    network.command(
+        reader,
+        json!({"type":"voice","roomId":room,"joined":true,"muted":true,"deafened":false}),
+    );
+    assert!(!network.state(reader).pairs.is_empty());
+    network.command(
+        reader,
+        json!({"type":"voice","roomId":room,"joined":false,"muted":true,"deafened":false}),
+    );
+    assert!(network.state(reader).pairs.is_empty());
 }

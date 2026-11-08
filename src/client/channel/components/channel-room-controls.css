@@ -1,5 +1,16 @@
 .c3-room-panel { width: min(360px, calc(100vw - 32px)); padding: 20px; }
 .c3-room-panel h3 { font-size: 16px; margin: 0 0 18px; }
+.c3-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.c3-settings-heading h3 { margin: 0; }
+.c3-settings-access { display: grid; gap: 12px; }
+.c3-settings-access h4 { margin: 0; font-size: 13px; }
+.c3-invite-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.c3-settings-details { min-width: 0; }
+.c3-settings-details > summary { min-height: var(--control-size); padding-block: 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.c3-room-panel > .c3-settings-details { margin-top: 14px; border-top: 1px solid var(--line); }
+.c3-settings-details[open] > :not(summary) { margin-top: 12px; }
+.c3-settings-details > :is(.c3-room-relay, .c3-room-transcript, .c3-backup-controls) { border-top: 0; padding-top: 0; }
+.c3-settings-access .c3-room-invitation { margin: 0; padding: 0; border: 0; }
 .c3-room-relay { display: grid; gap: 14px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
 .c3-room-transcript { display: grid; gap: 12px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
 .c3-relay-limit .lr-quality-heading { display: flex; }

@@ -8,7 +8,7 @@ import { useCopy } from "../../ui/copy";
 import { useClipboardResult } from "../../ui/use-clipboard-result";
 import { downloadBlob } from "../../lib/download";
 import { formatChatTranscript } from "../../lib/room-chat-export";
-import type { ChannelMessage, ChannelUser, ChannelRoom, RoomSettings } from "../protocol";
+import type { ChannelMessage, ChannelUser, ChannelRoom, RoomInvitationState, RoomSettings } from "../protocol";
 import { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../protocol";
 import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelAction";
@@ -109,9 +109,10 @@ function RoomForm({ room, appHosted, disabled, busy, onSave, onCancel }: {
       <label className="c3-check"><input type="checkbox" checked={hidden} disabled={disabled} onChange={event => setHidden(event.target.checked)} />
         {zh ? "对未获准的用户隐藏房间" : "Hide from users without access"}</label>
     </div>}
+    <details className="c3-settings-details"><summary>{zh ? "房间默认转发" : "Room forwarding default"}</summary>
     <RelayLimit value={relayCapacity} min={1} label={zh ? "房间默认转发上限" : "Room forwarding default"}
       note={zh ? "房间内默认的转发上限，其他人可以单独调整。" : "The default forwarding limit in this room. Others can adjust their own."}
-      disabled={disabled} onChange={setRelayCapacity} />
+      disabled={disabled} onChange={setRelayCapacity} /></details>
     <div className="c3-form-actions"><ChannelAction icon="x" quiet label={zh ? "取消" : "Cancel"} onClick={onCancel} />
       <ChannelAction icon={room ? "check" : "plus"} label={room ? (zh ? "保存" : "Save") : (zh ? "创建房间" : "Create room")}
         primary type="submit" disabled={disabled || imageBusy || !name.trim()} busy={busy} /></div>
@@ -127,17 +128,29 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const [invite, setInvite] = useState("");
+  const [invitation, setInvitation] = useState<RoomInvitationState | { state: "loading" | "failed" }>({ state: "loading" });
+  const [inviteRetry, setInviteRetry] = useState(0);
+  const invite = invitation.state === "available" ? invitation.url : "";
   const invitationCopy = useClipboardResult(invite);
   const [backupAvailable, setBackupAvailable] = useState(false);
   const id = room ? "c3-room-settings" : "c3-create-room";
   const title = room ? (zh ? "房间设置" : "Room settings") : (zh ? "创建房间" : "Create room");
+  const triggerTitle = room ? (zh ? "房间选项" : "Room options") : title;
   useAnchoredPopover(trigger, panel, { side: "below", align: "end" });
   useEffect(() => { panel.current?.hidePopover(); }, [room?.id]);
   useEffect(() => {
-    setInvite("");
     if (!channel.pending.has("room-backup")) panel.current?.hidePopover();
   }, [room?.id, room?.access]);
+  const { getRoomInvite } = channel;
+  useEffect(() => {
+    let current = true;
+    setInvitation({ state: "loading" });
+    if (open && room?.canManage && room.access === "private" && room.available && channel.connection === "connected") {
+      void getRoomInvite(room.id).then(value => { if (current) setInvitation(value); },
+        () => { if (current) setInvitation({ state: "failed" }); });
+    }
+    return () => { current = false; };
+  }, [open, room?.id, room?.access, room?.canManage, room?.available, room?.delivery?.bindingId, channel.connection, getRoomInvite, inviteRetry]);
   useEffect(() => {
     let current = true; setBackupAvailable(false);
     if (open && room?.canManage) void channel.roomBackupAvailable(room.id).then(value => { if (current) setBackupAvailable(value); });
@@ -151,44 +164,47 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
   const working = busy || backupBusy || removing;
   const members = room?.members?.filter(userId => userId !== room.creatorId && userId !== channel.state?.channel.ownerId) ?? [];
   const run = (work: Promise<unknown>) => { void work.catch(() => {}); };
+  const generateInvitation = room && <ChannelAction icon="link" label={zh ? "生成新邀请" : "Generate new invitation"}
+    busy={channel.pending.has(`invite:${room.id}`)} disabled={!available || working || invitation.state === "loading"} hint="hint-rotate-invite"
+    onClick={() => run(channel.createRoomInvite(room.id).then(url => setInvitation({ state: "available", url })))} />;
   return <>
-    <Tooltip kind={room ? "hint-details" : "hint-create-room"} disabled={open} text={vis ? undefined : title}>
+    <Tooltip kind={room ? "hint-details" : "hint-create-room"} disabled={open} text={vis ? undefined : triggerTitle}>
       <button ref={trigger} type="button" className="lr-btn is-dense is-quiet" popoverTarget={id}
-        aria-label={title} aria-haspopup="dialog" aria-expanded={open} aria-controls={id} disabled={!connected && !room?.authorized}>
-        <Glyph name={room ? "sliders" : "plus"} size={18} />
+        aria-label={triggerTitle} aria-haspopup="dialog" aria-expanded={open} aria-controls={id} disabled={!connected && !room?.authorized}>
+        <Glyph name={room ? "chevron" : "plus"} size={18} />
         {!room && !channel.state?.channel.rooms.length && !vis && <span className="lr-cap">{title}</span>}
       </button>
     </Tooltip>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={title}
       className="lr-anchored-card c3-room-panel" onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
-      {open && <><h3>{title}</h3>
+      {open && <><header className="c3-settings-heading"><h3>{title}</h3>
+        <ChannelAction icon="x" iconOnly quiet label={zh ? "关闭" : "Close"} onClick={() => panel.current?.hidePopover()} /></header>
       {room && !room.available && <p>{room.canManage ? (zh ? "房间当前未托管，可以从域中移除。" : "This room is offline. You can remove it from the domain.")
         : (zh ? "房间当前未托管，恢复后可调整转发设置。" : "The room is offline. Forwarding settings will be available when hosting resumes.")}</p>}
-      {(!room || room.canManage) && <div hidden={!!room && !room.available}><RoomForm key={`form:${room?.delivery?.bindingId ?? room?.id ?? "create"}`} room={room} appHosted={channel.appConnected} disabled={!available || working} busy={busy} onCancel={() => panel.current?.hidePopover()} onSave={async settings => {
-        const form = panel.current?.querySelector("form");
-        if (room) await channel.updateRoom(room.id, settings);
-        else onCreated?.(await channel.createRoom(settings));
-        if (panel.current?.matches(":popover-open") && panel.current.querySelector("form") === form) panel.current.hidePopover();
-      }} />
-      <BackupControls key={room?.id ?? "import"} available={!room || backupAvailable} disabled={!available || busy || removing || (!!room && !backupAvailable)}
-        busy={backupBusy} replacing={!!room}
-        onExport={room ? () => channel.exportRoomBackup(room.id) : undefined}
-        onRestore={async file => {
-          const result = await channel.restoreRoomBackup(file, room?.id);
-          if (!room) onCreated?.(result.roomId);
-          return result;
-        }} />
-      {room?.access === "private" && <section className="c3-room-invitation">
-        <ChannelAction icon="link" label={invite ? (zh ? "更换邀请链接" : "Replace invitation") : (zh ? "创建房间邀请" : "Create room invitation")}
-          busy={channel.pending.has(`invite:${room.id}`)} disabled={!available || working} hint="hint-copy-invite"
-          onClick={() => run(channel.createRoomInvite(room.id).then(setInvite))} />
+      {room && <section className="c3-settings-access" aria-label={zh ? "邀请与访问" : "Invitation and access"}>
+        <h4>{zh ? "邀请与访问" : "Invitation and access"}</h4>
+        <p>{room.access === "public" ? (zh ? "公开房间，域内用户都可进入。" : "Public room. Anyone in this domain can enter.")
+          : room.hasPassword ? (zh ? "私密房间，凭邀请或密码进入。" : "Private room. Enter with an invitation or password.")
+            : (zh ? "私密房间，凭邀请进入。" : "Private room. Enter with an invitation.")}
+          {room.hidden && (zh ? " 对未获准的用户隐藏。" : " Hidden from users without access.")}</p>
+        {room.access === "public" && <p>{zh ? "在房间列表复制域地址或域邀请，并告诉朋友房间名称。" : "Copy the domain address or invitation from the room list and tell friends this room's name."}</p>}
+      {room.canManage && room.access === "private" && <section className="c3-room-invitation">
+        {available && invitation.state === "loading" && <p role="status">{zh ? "正在读取邀请…" : "Loading invitation…"}</p>}
+        {invitation.state === "failed" && <><p role="status">{zh ? "未能读取邀请，请重试。" : "Could not load the invitation. Try again."}</p>
+          <ChannelAction icon="refresh" quiet label={zh ? "重试" : "Retry"} onClick={() => setInviteRetry(value => value + 1)} /></>}
+        {invitation.state === "missing" && generateInvitation}
+        {invitation.state === "unrecoverable" && <p>{zh ? "旧邀请仍有效，但无法取回链接。需要新链接时，请主动生成新邀请。" : "The old invitation still works, but its link cannot be recovered. Generate a new invitation when you need a new link."}</p>}
         {invite && <div className="c3-invite-copy"><input className="c3-input" value={invite} readOnly
           aria-label={zh ? "房间邀请链接" : "Room invitation link"} onFocus={event => event.currentTarget.select()} />
           <ChannelAction icon={invitationCopy.status === "copied" ? "check" : "copy"} iconOnly label={invitationCopy.status === "copied" ? (zh ? "已复制" : "Copied") : (zh ? "复制邀请" : "Copy invitation")}
             hint="hint-copy-invite" onClick={invitationCopy.copy} />
           <ChannelInviteQrCode url={invite} disabled={!available || working}
             label={zh ? "房间邀请二维码" : "Room invitation QR code"} /></div>}
-        <p>{zh ? "更换邀请或密码不会移除已获准的用户。" : "Replacing an invitation or password keeps existing access."}</p>
+        {(invitation.state === "available" || invitation.state === "unrecoverable") && <details className="c3-settings-details">
+          <summary>{zh ? "重置房间邀请" : "Reset room invitation"}</summary>
+          <p>{zh ? "生成新邀请会使旧链接失效，已获准的用户保留访问。" : "A new invitation invalidates old links. Existing users keep access."}</p>
+          {generateInvitation}
+        </details>}
         {members.length > 0 && <details className="c3-room-members">
           <summary>{zh ? "已获准的用户" : "Users with access"}</summary>
           {members.map(userId =>
@@ -197,9 +213,30 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
                 busy={channel.pending.has(`revoke:${room.id}:${userId}`)} disabled={!available || working}
                 onClick={() => run(channel.revokeRoomAccess(room.id, userId))} /></div>)}
         </details>}
-      </section>}</div>}
-      {room?.authorized && <PersonalRelay channel={channel} room={room} disabled={!available || working} />}
-      {room?.authorized && <RoomChatExport messages={channel.messagesByRoom[room.id] ?? []} users={channel.state?.users ?? []} />}
+      </section>}</section>}
+      {(!room || room.canManage) && <details className="c3-settings-details c3-settings-editor" open={!room || undefined} hidden={!!room && !room.available}>
+        <summary>{room ? (zh ? "编辑房间设置" : "Edit room settings") : (zh ? "新房间" : "New room")}</summary>
+        <RoomForm key={`form:${room?.delivery?.bindingId ?? room?.id ?? "create"}`} room={room} appHosted={channel.appConnected} disabled={!available || working} busy={busy} onCancel={() => panel.current?.hidePopover()} onSave={async settings => {
+          const form = panel.current?.querySelector("form");
+          if (room) await channel.updateRoom(room.id, settings);
+          else onCreated?.(await channel.createRoom(settings));
+          if (panel.current?.matches(":popover-open") && panel.current.querySelector("form") === form) panel.current.hidePopover();
+        }} />
+      </details>}
+      {room?.authorized && <details className="c3-settings-details"><summary>{zh ? "我的转发设置" : "My forwarding settings"}</summary>
+        <PersonalRelay channel={channel} room={room} disabled={!available || working} />
+      </details>}
+      {(!room || room.authorized || room.canManage) && <details className="c3-settings-details"><summary>{room ? (zh ? "文字记录与备份" : "Chat text and backups") : (zh ? "从备份导入房间" : "Import a room backup")}</summary>
+        {room?.authorized && <RoomChatExport messages={channel.messagesByRoom[room.id] ?? []} users={channel.state?.users ?? []} />}
+        {(!room || room.canManage) && <BackupControls key={room?.id ?? "import"} available={!room || backupAvailable} disabled={!available || busy || removing || (!!room && !backupAvailable)}
+          busy={backupBusy} replacing={!!room}
+          onExport={room ? () => channel.exportRoomBackup(room.id) : undefined}
+          onRestore={async file => {
+            const result = await channel.restoreRoomBackup(file, room?.id);
+            if (!room) onCreated?.(result.roomId);
+            return result;
+          }} />}
+      </details>}
       {room?.canManage && <section className="c3-room-removal">
         <Btn icon="x" size="dense" quiet tone="danger" busy={removing} disabled={!connected || working}
           title={{ text: room.available ? (zh ? "删除房间" : "Delete room") : (zh ? "从域移除" : "Remove from domain") }}

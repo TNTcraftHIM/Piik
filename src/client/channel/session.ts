@@ -3,7 +3,7 @@ import { ChannelMedia } from "./media";
 import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
 import { selectedRoom } from "./navigation";
-import { channelTopologySchema, eventSchema, roomSummarySchema, userSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomSettings, type RoomSummary } from "./protocol";
+import { CHANNEL_PROTOCOL, channelTopologySchema, eventSchema, roomSummarySchema, userSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary } from "./protocol";
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView, ScreenPresentation, SourceMicrophoneConfiguration, SourceMicrophoneSettings } from "./types";
 import { domainInviteHash, loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage } from "./hosting";
@@ -118,7 +118,6 @@ export class ChannelSession {
   private requests = new Map<string, {
     roomId?: string; bindingId?: string;
     history?: { before?: number; entries: Map<number, { message?: ChannelMessage; snapshot?: MessageReactionSnapshot }> };
-    pendingSend?: Extract<ChannelCommand, { type: "chat" | "history" | "set_reaction" }>;
     resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void; timer: ReturnType<typeof setTimeout>;
   }>();
   private hostedRooms = new Map<string, { host: HostedRoom; bindingId?: string }>();
@@ -141,7 +140,10 @@ export class ChannelSession {
   private conversation = new ChannelConversation({
     context: () => ({ sessionId: this.view.sessionId, state: this.view.state, connected: this.view.connection === "connected" }),
     host: roomId => this.hostedRooms.get(roomId)?.host,
-    send: (peer, frame, allowed) => this.media.sendData(peer, "control", frame, allowed),
+    send: (packet, requestId) => {
+      if (this.view.connection !== "connected" || this.socket?.readyState !== WebSocket.OPEN) throw new Error("disconnected");
+      this.write({ type: "conversation", packet, requestId });
+    },
     file: (peer, control) => this.attachments.data(peer, "control", control),
     reply: reply => this.receiveConversation(reply),
   });
@@ -152,17 +154,11 @@ export class ChannelSession {
     send: (peer, frame) => this.media.sendInput(peer, frame),
     changed: inputChannels => this.patch({ inputChannels }),
   });
-  private media = new ChannelMedia(command => {
-    this.send(command);
-    if (command.type === "base_state" && command.ready) {
-      const peer = this.view.state?.pairs.find(pair => pair.id === command.pairId)?.peerId;
-      if (peer) this.syncReading(peer);
-    }
-  }, (streams, screenInputs) => this.patch({ streams, screenInputs }),
+  private media = new ChannelMedia(command => this.send(command), (streams, screenInputs) => this.patch({ streams, screenInputs }),
     (peer, kind, data) => {
       if (kind === "chunk") this.attachments.data(peer, kind, data);
-      else void this.conversation.receive(peer, data as string).catch(() => {});
-    }, (peer, ready) => { this.attachments.peerState(peer, ready); if (ready) this.syncReading(peer); }, peer => this.attachments.bulkClosed(peer),
+      else void this.conversation.receiveFile(peer, data as string).catch(() => {});
+    }, (peer, ready) => this.attachments.peerState(peer, ready), peer => this.attachments.bulkClosed(peer),
     (pair, channel) => this.input.setChannel(pair, channel));
   readonly attachments = new ChannelAttachments(command => this.request(command), async (peer, kind, data, allowed) =>
     this.media.sendData(peer, kind, kind === "control" ? await this.conversation.fileFrame(data as string) : data, allowed));
@@ -181,13 +177,11 @@ export class ChannelSession {
   };
 
   private patch(patch: Partial<ChannelView>): void {
-    const previous = this.view;
     const ownedScreens = new Set(this.app?.screens);
     for (const share of this.screenShares.values()) ownedScreens.add(share.id);
     for (const [id, capture] of this.local) if (capture.kind === "screen") ownedScreens.add(id);
     const remoteControls = new Map([...(patch.remoteControls ?? this.view.remoteControls)].filter(([id]) => ownedScreens.has(id)));
     this.view = { ...this.view, ...patch, appConnected: this.app?.connected ?? false, ownedScreens, remoteControls };
-    if (previous.state !== this.view.state || previous.connection !== this.view.connection) this.conversation.update();
     for (const listener of this.listeners) listener();
   }
 
@@ -208,7 +202,7 @@ export class ChannelSession {
       try {
         const signingKey = await this.conversation.initialize();
         if (this.socket !== socket || this.closed) return;
-        this.write({ type: "join", signingKey, name: stored(nameKey) ?? "Guest", credential: this.credential, key: this.key, password: this.password, roomId: this.invitedRoom, sessionId: this.view.sessionId ?? undefined });
+        this.write({ type: "join", protocol: CHANNEL_PROTOCOL, signingKey, name: stored(nameKey) ?? "Guest", credential: this.credential, key: this.key, password: this.password, roomId: this.invitedRoom, sessionId: this.view.sessionId ?? undefined });
       } catch (error) {
         if (this.socket === socket && !this.closed) {
           this.close();
@@ -219,7 +213,11 @@ export class ChannelSession {
     socket.onmessage = ({ data }) => {
       if (this.socket !== socket) return;
       try {
-        const result = eventSchema.safeParse(JSON.parse(String(data)));
+        const raw = JSON.parse(String(data));
+        if (raw.type === "welcome" && raw.protocol !== CHANNEL_PROTOCOL) {
+          this.close(); this.patch({ error: "incompatible_protocol" }); return;
+        }
+        const result = eventSchema.safeParse(raw);
         if (!result.success) { console.warn("Invalid channel event", result.error); this.patch({ error: "invalid_response" }); return; }
         const skipRoom = result.data.type === "welcome" ? acceptWelcome?.(result.data) : undefined;
         if (result.data.type === "welcome") acceptWelcome = undefined;
@@ -301,6 +299,8 @@ export class ChannelSession {
       for (const command of this.signals.splice(0)) {
         if (event.state.pairs.some(pair => pair.id === command.pairId)) this.write(command);
       }
+    } else if (event.type === "conversation") {
+      void this.conversation.receive(event.packet).catch(() => {});
     } else if (event.type === "host_bound") {
       const hosted = this.hostedRooms.get(event.roomId), socket = this.socket;
       if (!hosted) return;
@@ -355,8 +355,11 @@ export class ChannelSession {
         clearTimeout(request.timer); this.requests.delete(event.requestId); request.resolve();
       }
     } else if (event.type === "state") this.applyState(event.state);
-    else if (event.type === "room_invite") {
-      if (event.requestId) this.requests.get(event.requestId)?.result?.(event);
+    else if (event.type === "room_invite" || event.type === "room_invite_state") {
+      if (event.requestId) {
+        const request = this.requests.get(event.requestId);
+        if (request?.roomId === event.roomId) request.result?.(event);
+      }
     } else if (event.type === "signal") this.media.signal(event.pairId, event.payload);
     else if (event.type === "ack" || event.type === "error") {
       const request = event.requestId ? this.requests.get(event.requestId) : null;
@@ -366,6 +369,9 @@ export class ChannelSession {
         if (event.type === "ack") request.resolve();
         else request.reject(new Error(event.code));
       } else if (event.type === "error" && !event.requestId) {
+        if (event.code === "incompatible_protocol") {
+          this.close(); this.patch({ error: event.code }); return;
+        }
         this.password = undefined;
         this.patch({ error: event.code });
         if (!this.view.sessionId) {
@@ -458,13 +464,7 @@ export class ChannelSession {
     this.input.update();
     if (userId) this.attachments.update(sessionId, { domainId: state.channel.id, userId }, state.files, state.channel.rooms, state.pairs);
     else this.attachments.reset();
-    this.sendConversations();
-    const room = state.channel.rooms.find(room => room.id === this.reading?.roomId);
-    const previous = previousRooms?.find(previous => previous.id === room?.id);
-    const nextHop = room?.delivery?.nextHops[room.delivery.hostSessionId];
-    const previousHop = previous?.delivery?.nextHops[previous.delivery.hostSessionId];
     this.browseRooms();
-    this.syncReading(undefined, nextHop !== undefined && nextHop !== previousHop);
     this.releaseUnusedMicrophone();
   }
 
@@ -519,31 +519,18 @@ export class ChannelSession {
       const timer = setTimeout(() => { this.requests.delete(requestId); reject(new Error("request_timeout")); }, 10000);
       this.requests.set(requestId, { resolve, reject, timer, result, roomId,
         ...(delivery && (conversation || command.type === "browse" || command.type === "room_topology") ? { bindingId: delivery.bindingId } : {}),
-        ...(conversation ? { pendingSend: command,
-          ...(command.type === "history" ? { history: { before: command.before, entries: new Map() } } : {}) } : {}) });
+        ...(command.type === "history" ? { history: { before: command.before, entries: new Map() } } : {}) });
       signal?.addEventListener("abort", abort, { once: true });
-      if (conversation) this.sendConversations();
+      if (conversation) void this.conversation.send(command, requestId).catch(error => {
+        if (!this.requests.delete(requestId)) return;
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      });
       else {
         if (command.type === "browse" && command.active) this.readingRooms.add(command.roomId);
         this.write({ ...command, requestId });
       }
     }).finally(() => signal?.removeEventListener("abort", abort));
-  }
-
-  private sendConversations(): void {
-    if (this.view.connection !== "connected") return;
-    for (const [requestId, request] of this.requests) {
-      const command = request.pendingSend;
-      if (!command) continue;
-      const delivery = this.view.state?.channel.rooms.find(room => room.id === command.roomId)?.delivery;
-      if (!delivery || (delivery.hostSessionId !== this.view.sessionId && !delivery.nextHops[delivery.hostSessionId])) continue;
-      delete request.pendingSend;
-      void this.conversation.send(command, requestId).catch(error => {
-        if (!this.requests.delete(requestId)) return;
-        clearTimeout(request.timer);
-        request.reject(error instanceof Error ? error : new Error(String(error)));
-      });
-    }
   }
 
   private receiveConversation(reply: ConversationReply): void {
@@ -935,41 +922,13 @@ export class ChannelSession {
     for (const id of this.view.interactionsByRoom.keys()) this.closeInteraction(id);
   }
 
-  private syncReading(peerId?: string, refreshHistory = false): void {
-    for (const reading of this.readings.values()) this.syncRoomReading(reading, peerId, refreshHistory && reading.roomId === this.roomId);
-  }
-
-  private syncRoomReading(reading: RoomReading, peerId?: string, refreshHistory = false): void {
+  private syncRoomReading(reading: RoomReading): void {
     void reading.ready.then(() => {
       if (this.readings.get(reading.roomId) !== reading || this.socket !== reading.socket || this.view.connection !== "connected" || !this.view.self) return;
       const room = this.view.state?.channel.rooms.find(room => room.id === reading.roomId && room.authorized && room.available);
       const delivery = room?.delivery;
       if (!delivery) return;
-      const isCurrentHop = peerId !== undefined && delivery.nextHops[delivery.hostSessionId] === peerId;
-      if (reading.roomId === this.roomId && (refreshHistory || isCurrentHop)) {
-        const history = reading.history;
-        const refresh = () => {
-          if (this.readings.get(reading.roomId) !== reading || this.socket !== reading.socket || reading.history !== history
-            || this.view.historyByRoom[reading.roomId]?.atLatest === false || this.view.pending.has(`history:${reading.roomId}`)) return;
-          const current = this.view.state?.channel.rooms.find(room => room.id === reading.roomId
-            && room.authorized && room.available && room.delivery?.bindingId === reading.bindingId)?.delivery;
-          if (!current) return;
-          if (current.hostSessionId !== this.view.sessionId) {
-            const hop = current.nextHops[current.hostSessionId];
-            if (!hop || !this.media.isControlReady(hop, reading.roomId)) return;
-          }
-          void this.loadLatestHistory(reading.roomId).catch(() => {});
-        };
-        if (this.view.pending.has(`history:${reading.roomId}`)) void history?.catch(refresh);
-        else refresh();
-      }
-      if (reading.interaction) {
-        if (isCurrentHop && !reading.interaction.getSnapshot().ready) {
-          reading.interaction.authenticated(this.view.self.id);
-        }
-        return;
-      }
-      if (delivery.hostSessionId !== this.view.sessionId && !delivery.nextHops[delivery.hostSessionId]) return;
+      if (reading.interaction) return;
       const interaction = this.view.interactionsByRoom.get(reading.roomId) ?? new RoomInteractionSession(message => {
         const current = this.readings.get(reading.roomId);
         if (current?.interaction !== interaction || this.view.connection !== "connected") return false;
@@ -1425,13 +1384,25 @@ export class ChannelSession {
     return this.updateRoom(roomId, { name: room.name, icon: room.icon, access: room.access, hidden: room.hidden, voiceBitrate });
   };
   enterRoom = (roomId: string, password: string): Promise<void> => this.action(`enter:${roomId}`, () => this.request({ type: "enter_room", roomId, password }));
+  private roomInvitationURL(roomId: string, key: string): string {
+    const url = new URL(location.pathname, this.invitationOrigin);
+    url.hash = new URLSearchParams({ room: roomId, invite: key }).toString();
+    return url.href;
+  }
+  getRoomInvite = (roomId: string): Promise<RoomInvitationState> => this.action(`invite-state:${roomId}`, async () => {
+    let invitation: RoomInvitationState | undefined;
+    await this.request({ type: "get_room_invite", roomId }, event => {
+      if (event.type === "room_invite_state") invitation = event.invitation.state === "available"
+        ? { state: "available", url: this.roomInvitationURL(roomId, event.invitation.key) } : event.invitation;
+    });
+    if (!invitation) throw new Error("invalid_response");
+    return invitation;
+  }, false);
   createRoomInvite = (roomId: string): Promise<string> => this.action(`invite:${roomId}`, async () => {
     let key: string | undefined;
     await this.request({ type: "room_invite", roomId }, event => { if (event.type === "room_invite") key = event.key; });
     if (!key) throw new Error("invalid_response");
-    const url = new URL(location.pathname, this.invitationOrigin);
-    url.hash = new URLSearchParams({ room: roomId, invite: key }).toString();
-    return url.href;
+    return this.roomInvitationURL(roomId, key);
   });
   revokeRoomAccess = (roomId: string, userId: string): Promise<void> => this.action(`revoke:${roomId}:${userId}`, () => this.request({ type: "revoke_room_access", roomId, userId }));
   watch = (publicationId: string, roomId?: string, signal?: AbortSignal): Promise<void> => this.action(`watch:${publicationId}`, async () => {

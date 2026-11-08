@@ -334,6 +334,74 @@ mod tests {
         }
     }
 
+    #[test]
+    fn room_invitation_recovery_preserves_hash_only_policy_and_history() {
+        let path = std::env::temp_dir().join(format!("piik-invitation-{}.sqlite", Uuid::new_v4()));
+        let mut policy = crate::RoomState::new(
+            "room".into(),
+            "Friends".into(),
+            Default::default(),
+            Uuid::new_v4(),
+            crate::wire::RoomAccess::Private,
+            false,
+            None,
+        )
+        .unwrap();
+        let previous = policy.invite().unwrap();
+        let guest = Uuid::new_v4();
+        policy.enter(guest, false, None, Some(&previous)).unwrap();
+        let mut legacy = serde_json::to_value(&policy).unwrap();
+        legacy.as_object_mut().unwrap().remove("inviteKey");
+        let draft =
+            MessageDraft::new(guest, "kept".into(), "Retained history".into(), vec![], 1).unwrap();
+        {
+            let mut store = Storage::open(&path).unwrap();
+            store.save(&legacy).unwrap();
+            confirmed(&mut store, "room", &draft);
+        }
+        let key;
+        {
+            let mut store = Storage::open(&path).unwrap();
+            let value = store.load().unwrap().unwrap();
+            assert_eq!(
+                value, legacy,
+                "opening does not rotate or rewrite beta policy"
+            );
+            let mut restored: crate::RoomState = serde_json::from_value(value).unwrap();
+            restored.validate().unwrap();
+            assert!(restored.accepts_invite(&previous));
+            assert!(restored.reads(guest, false));
+            key = restored.invite().unwrap();
+            store
+                .save(&serde_json::to_value(restored).unwrap())
+                .unwrap();
+        }
+        {
+            let mut store = Storage::open(&path).unwrap();
+            let saved = store.load().unwrap().unwrap();
+            assert_eq!(saved["inviteKey"], key);
+            let mut restored: crate::RoomState = serde_json::from_value(saved).unwrap();
+            restored.validate().unwrap();
+            assert!(restored.accepts_invite(&key));
+            assert!(!restored.accepts_invite(&previous));
+            assert!(restored.reads(guest, false));
+            assert_eq!(page(&mut store, "room", None).0[0].text, "Retained history");
+            restored
+                .update(
+                    "Friends".into(),
+                    Default::default(),
+                    crate::wire::RoomAccess::Public,
+                    false,
+                    None,
+                )
+                .unwrap();
+            let public = serde_json::to_value(restored).unwrap();
+            assert!(public.get("inviteKey").is_none());
+            assert!(public["inviteHash"].is_null());
+        }
+        std::fs::remove_file(path).unwrap();
+    }
+
     fn confirmed(store: &mut Storage, room: &str, draft: &MessageDraft) -> (ChatMessage, bool) {
         match store
             .history(&HistoryRequest::Send {

@@ -1,6 +1,6 @@
 # Piik 3.0 Channels, Rooms And Networking
 
-Accepted direction 2026-10-27. This document owns the isolated 3.0 responsibility
+Accepted direction updated 2026-11-08. This document owns the isolated 3.0 responsibility
 and networking design. The [prototype README](../../prototype/channel-server/README.md)
 describes running behavior; [TODO](../todo.md) owns implementation and decisions.
 The [2.x routing contract](../standards/routing-transport.md) remains unchanged.
@@ -16,16 +16,18 @@ runtime: closing its Browser page ends Browser hosting; an App-owned room runs
 until hosting is stopped or the App process ends. Server remains the explicitly
 started service for unattended operation.
 
-Use one room routing owner: a base tree carries conversation, voice and
-files. Pictures start on usable existing paths, then converge locally towards
+Conversation uses the existing domain WebSocket to reach its actual room owner.
+Use one room routing owner for media and files: a base tree carries voice,
+file bytes and file-pull control. Pictures start on usable existing paths, then converge locally towards
 source-rooted delivery through bounded background transitions. All authorized,
 capable room peers can be relay candidates; only viewers and necessary transit
 nodes receive the picture. Both stages use the same route state and transports.
 The owner accepted this routing foundation and durable room records with cached
 attachments. The [room-data model](./channel-storage-and-identity.md) owns simple
 shared file delivery on those same paths. Browser and Native room owners run the
-shared Rust core with local confirmation/storage. Their base paths carry authenticated
-chat/history, voice and verified file ranges; TODO owns remaining route and platform integration.
+shared Rust core with local confirmation/storage. Text, history, reactions and
+attachment descriptions use domain WebSocket carriage; reading alone needs no
+peer connection. TODO owns remaining implementation and platform integration.
 
 ## Terminology And Responsibilities
 
@@ -53,7 +55,7 @@ transfer of its operation and saved state; automatic takeover is not selected.
 
 | Owner | Its authoritative state and work |
 | --- | --- |
-| Domain runtime | Domain identity, users, room-to-owner bindings and authorized room-directory summaries; initial contact and signaling rendezvous. |
+| Domain runtime | Domain identity, users, room-to-owner bindings and authorized room-directory summaries; signaling rendezvous and live conversation carriage to the actual room owner. |
 | Room runtime, operated by its room owner | Detailed room metadata, room admission and grants, confirmed conversation, file descriptions/available holders, base-tree planning and screen-route scheduling. |
 | Participant runtime | Local captures, playback, file copies and the actual peer transports/forwarding work it has admitted. |
 
@@ -99,21 +101,28 @@ operates that room. B needs no new domain, and A's domain service does not take
 over its execution or history.
 
 After room admission, the room owner confirms room changes and message order.
-Chat and history requests use the base paths after room admission.
+Chat, history, message reactions and live room interactions use the existing
+domain WebSocket after room admission. This is their normal, single transport,
+not a fallback after ICE failure. The domain verifies the sending connection,
+current room-host binding and destination admission, then forwards the signed
+packet. It neither stores conversation content nor acknowledges a room commit.
+The domain operator can see the forwarded text: signatures authenticate content
+but do not encrypt it from the carrier. File bytes and file-pull control remain
+on the room's peer paths.
 Use short-lived session signing keys, bound to admitted sessions and the current
 room-host binding through authenticated domain rendezvous. Sign the original
 payload bytes with a maintained Ed25519 implementation, verify before parsing,
 and resolve the author and permissions from current trusted domain facts. A
-relay cannot substitute its identity or supply its own permission snapshot.
-Long-lived admission credentials never enter the peer carrier.
+carrier cannot substitute its identity or supply its own permission snapshot.
+Long-lived admission credentials are not conversation payloads.
 
-Peer requests use the same room authorization and storage operations as local
+Forwarded requests use the same room authorization and storage operations as local
 execution. They run in the room owner's existing serialized turn without
 changing its routing state or becoming domain-issued turns. Their confirmations
 return to the request; domain revisions retain their authority/reply-fencing purpose.
 Projection order and request authority remain separate: an older room snapshot
 cannot replace newer routes, but an earlier authorized action can still complete.
-Successful room actions are acknowledged after the domain has installed a
+Successful domain-mediated policy/activity actions are acknowledged after the domain has installed a
 projection covering that turn. Until then, the existing pending request retains
 its result; explicit failures do not wait for a projection.
 Confirmation follows the requester's current session and permission facts;
@@ -123,8 +132,10 @@ requirement for someone who has not joined yet.
 The [room-data model](./channel-storage-and-identity.md) owns persistence, chat
 retry identity, history correlation/complete pages, file copies and manual address
 replacement. Live results are room-host signed without a permanent signed history
-log; bounded queued output rechecks current authority. File delivery consumes the
-shared control transport rather than owning unrelated room commands. Domain and
+log; bounded queued output rechecks current authority. Domain Join/Welcome use
+one explicit protocol version, rejecting incompatible endpoints before admission;
+there is no legacy P2P conversation path. File delivery consumes its existing
+peer control transport rather than owning conversation. Domain and
 room data may reside on different devices; an App may compose both runtimes locally.
 The domain's public listener serves its Web UI and signaling; local approval and
 App control stay on a separate loopback listener. Local and public entries address
@@ -155,7 +166,7 @@ those forwarding endpoints.
 
 | Model | Benefit | Cost and choice |
 | --- | --- | --- |
-| One tree for every kind of traffic | One stable set of paths; any connected members can exchange data. | Some pictures incur extra hops. Use established paths as the baseline; a non-viewing relay can still be essential for connectivity. |
+| One tree for peer media and file traffic | One stable set of paths; connected members can exchange media and file bytes. | Some pictures incur extra hops. Use established paths as the baseline; a non-viewing relay can still be essential for connectivity. |
 | A new distribution plan for every source or transfer | Paths can follow each source's recipients. | Repeats planning for room-wide voice and ordinary files. Keep source-specific demand only where it changes useful forwarding work. |
 | Base paths for startup, then selective source-rooted convergence | Reuses room connectivity where media can be admitted; improves affected paths while preserving playback. | Needs distinct viewing/transit demand and temporary transition resources. Selected; both stages use the same admission and transition owner. |
 
@@ -168,8 +179,8 @@ path incur that path's forwarding work. A star still places that work on its roo
 The room owner maintains one committed, bounded tree among admitted room
 participants. Its root identifies the coordination owner; data may travel in
 both directions. A connected tree already provides a unique path between any
-two members. Room entry can establish this base path before microphone or screen
-sharing begins; browsing the channel directory does not connect every room.
+two members. Voice, sharing, watching and active file delivery establish the base
+paths they need; reading or writing conversation does not establish peer paths.
 The base tree also considers better edges after relevant connectivity or capacity
 changes, using the same bounded admission and transition rules as screen plans.
 Replacing a base edge preserves its admitted flows until their replacement paths
@@ -177,12 +188,12 @@ are ready; an open candidate DataChannel alone does not retire active media work
 
 | Traffic | Route and lifecycle |
 | --- | --- |
-| Room commands and confirmed chat | Send to the room owner for authorization/confirmation, then distribute confirmed changes to authorized room participants. |
+| Room commands and conversation | The domain WebSocket carries commands to the actual room owner and signed conversation replies to authorized recipients; the room owns authorization and confirmation. |
 | Voice | Project each joined source to its listeners over the base tree's unique paths; send each source at most once over a required directed edge. |
-| File bytes | Use the existing base paths; the [room-data model](./channel-storage-and-identity.md#shared-delivery-on-existing-room-paths) develops shared range delivery and cached-source selection without another topology planner. |
+| File bytes and pull control | Use the existing base paths; the [room-data model](./channel-storage-and-identity.md#shared-delivery-on-existing-room-paths) develops shared range delivery and cached-source selection without another topology planner. |
 | Screen picture and source audio | One distribution plan per publication: start on usable existing paths, then improve affected branches while preserving selected viewers and necessary relays. |
 
-Chat and files use reliable DataChannels; voice stays on WebRTC media tracks.
+Files use reliable DataChannels; voice stays on WebRTC media tracks.
 Using one tree does not mean putting voice into an ordered file stream.
 The data stack is SCTP over DTLS over ICE/UDP. Configure ordered, fully reliable
 DataChannels for file delivery; SCTP supplies retransmission without adding a
@@ -302,8 +313,8 @@ domain-wide resource budget among rooms.
 Reducing a limit stops new excess branches and moves affected children through
 one bounded transition at that tree's existing owner. Keep the old branch until
 the candidate base transport and affected voice flows are proved; picture changes
-retain their existing forwarding, decoded and presentation proof. Conversation
-next hops and file paths use only the committed base, while candidate connections
+retain their existing forwarding, decoded and presentation proof. File
+next hops use only the committed base, while candidate connections
 hold ordinary transport leases. An explicit reduction is necessary capacity work:
 if its bounded alternatives cannot succeed, retire the excess old branch and use
 ordinary route failure/recovery. Optional optimization still preserves a healthy
@@ -324,7 +335,7 @@ branch; a participant without a feasible candidate does not block another one.
    media proof and the applicable non-regression evidence before committing.
    Replace one affected branch, then release only its old media work. The player
    renders one committed input; source sound switches with its picture.
-4. Keep the base connections needed by conversation, voice, files or other
+4. Keep the base connections needed by voice, files or other
    publications. They remain available to attempt media recovery, but do not
    continuously carry a second copy of an already-converged picture.
 
@@ -533,9 +544,9 @@ source generation and controller session. Domain/room administration alone grant
 no desktop control. Changing the focused picture never retargets an input grant.
 
 Input follows the committed screen flow back to its source, using a separate
-encrypted logical DataChannel on the same peer connection. Room conversation
-and file readiness keep their base-path scope; input failure does not retire
-those consumers. A failed route trial preserves current grants, while replacing
+encrypted logical DataChannel on the same peer connection. File readiness keeps
+its base-path scope; input failure does not retire other consumers or affect
+domain-carried conversation. A failed route trial preserves current grants, while replacing
 the selected flow retires the affected grants and held input. Native input uses
 the existing capture-source identity and page-owned capture lifetime. One App
 process owns the physical desktop executor across its approved sites; hosting a

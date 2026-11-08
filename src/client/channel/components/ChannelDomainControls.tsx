@@ -4,11 +4,13 @@ import { useAnchoredPopover } from "../../components/living/use-anchored-popover
 import { Tooltip } from "../../components/living/Tooltip";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
+import { useClipboardResult } from "../../ui/use-clipboard-result";
 import type { ChannelController } from "../types";
 import type { DomainSettings } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
 import { ChannelIdentityFields } from "./ChannelIdentity";
 import { BackupControls } from "./BackupControls";
+import { ChannelInviteQrCode } from "./ChannelInviteQrCode";
 import "./channel-name-editor.css";
 import "./channel-room-controls.css";
 
@@ -28,6 +30,7 @@ export function ChannelDomainControls({ channel, triggerSlot }: { channel: Chann
   const [password, setPassword] = useState("");
   const [removePassword, setRemovePassword] = useState(false);
   const [inviteReset, setInviteReset] = useState(false);
+  const invitationCopy = useClipboardResult(channel.inviteURL ?? "");
   const busy = channel.pending.has("domain");
   const inviteBusy = channel.pending.has("domain-invite");
   const backupBusy = channel.pending.has("domain-backup");
@@ -39,9 +42,6 @@ export function ChannelDomainControls({ channel, triggerSlot }: { channel: Chann
   };
   const title = zh ? "域设置" : "Domain settings";
   useAnchoredPopover(trigger, panel, { side: "below", align: "end" });
-  useEffect(() => {
-    if (open) { const input = panel.current?.querySelector("input"); input?.focus({ preventScroll: true }); input?.select(); }
-  }, [open]);
   useEffect(() => { if (!owner) setPassword(""); }, [owner]);
   return <>
     {owner && triggerSlot && createPortal(<span className="c3-edit-action"><Tooltip kind="hint-rename" disabled={open} text={vis ? undefined : title}>
@@ -55,7 +55,35 @@ export function ChannelDomainControls({ channel, triggerSlot }: { channel: Chann
         setOpen(event.newState === "open");
         if (event.newState === "closed") { setImageBusy(false); setPassword(""); }
       }}>
-      {open && <><h3>{title}</h3><form className="c3-room-form" onKeyDown={event => {
+      {open && <><header className="c3-settings-heading"><h3>{title}</h3>
+        <ChannelAction icon="x" iconOnly quiet label={zh ? "关闭" : "Close"} onClick={() => panel.current?.hidePopover()} /></header>
+      <section className="c3-settings-access" aria-label={zh ? "邀请与访问" : "Invitation and access"}>
+        <h4>{zh ? "邀请与访问" : "Invitation and access"}</h4>
+        <p>{!current ? (zh ? "域连接暂不可用。" : "The domain connection is unavailable.")
+          : current.access === "public" ? (zh ? "公开域，任何人可通过域地址进入。" : "Public domain. Anyone with its address can enter.")
+            : current.hasPassword ? (zh ? "私密域，凭邀请或口令进入。" : "Private domain. Enter with an invitation or passphrase.")
+              : (zh ? "私密域，凭邀请进入。" : "Private domain. Enter with an invitation.")}</p>
+        {channel.inviteURL && <div className="c3-invite-actions">
+          <ChannelAction icon={invitationCopy.status === "copied" ? "check" : "copy"}
+            label={invitationCopy.status === "copied" ? (zh ? "已复制" : "Copied") : current?.access === "public" ? (zh ? "复制域地址" : "Copy domain address") : (zh ? "复制域邀请" : "Copy domain invitation")}
+            disabled={disabled} hint="hint-copy-invite" onClick={invitationCopy.copy} />
+          <ChannelInviteQrCode url={channel.inviteURL} disabled={disabled}
+            label={current?.access === "public" ? (zh ? "域地址二维码" : "Domain address QR code") : (zh ? "域邀请二维码" : "Domain invitation QR code")} />
+        </div>}
+        {invitationCopy.status === "failed" && <label className="c3-copy-fallback">{zh ? "请手动复制链接" : "Copy the link manually"}
+          <input className="c3-input" readOnly value={channel.inviteURL ?? ""} onFocus={event => event.currentTarget.select()} /></label>}
+        {current?.access === "private" && <details className="c3-settings-details">
+          <summary>{zh ? "重置域邀请" : "Reset domain invitation"}</summary>
+          <p>{zh ? "旧邀请将失效，已加入的用户保留访问。房间邀请不受影响。" : "Old invitations stop working. Existing users keep access. Room invitations are unchanged."}</p>
+          <ChannelAction icon="refresh" label={zh ? "生成新域邀请" : "Generate new domain invitation"} hint="hint-rotate-invite"
+            disabled={disabled} busy={inviteBusy} onClick={() => {
+              void channel.resetDomainInvite().then(() => setInviteReset(true)).catch(() => {});
+            }} />
+          {inviteReset && <p role="status">{zh ? "域邀请已更新，请复制新的邀请。" : "Domain invitation updated. Copy the new invitation."}</p>}
+        </details>}
+      </section>
+      <details className="c3-settings-details c3-settings-editor"><summary>{zh ? "编辑域设置" : "Edit domain settings"}</summary>
+      <form className="c3-room-form" onKeyDown={event => {
         if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault();
       }} onSubmit={event => {
         event.preventDefault();
@@ -88,15 +116,8 @@ export function ChannelDomainControls({ channel, triggerSlot }: { channel: Chann
           <ChannelAction icon="x" quiet label={zh ? "取消" : "Cancel"} onClick={() => panel.current?.hidePopover()} />
           <ChannelAction icon="check" primary type="submit" label={zh ? "保存" : "Save"} busy={busy} disabled={disabled || imageBusy || !name.trim()} />
         </div>
-      </form>
-      {current?.access === "private" && <section className="c3-room-invitation" aria-label={zh ? "域邀请" : "Domain invitation"}>
-        <ChannelAction icon="link" label={zh ? "重置域邀请" : "Reset domain invitation"} hint="hint-rotate-invite"
-          disabled={disabled} busy={inviteBusy} onClick={() => {
-            void channel.resetDomainInvite().then(() => setInviteReset(true)).catch(() => {});
-          }} />
-        <p>{zh ? "旧邀请将失效，已加入的用户保留访问。房间邀请不受影响。" : "Old invitations stop working. Existing users keep access. Room invitations are unchanged."}</p>
-        {inviteReset && <p role="status">{zh ? "域邀请已更新，请复制新的邀请。" : "Domain invitation updated. Copy the new invitation."}</p>}
-      </section>}
+      </form></details>
+      <details className="c3-settings-details"><summary>{zh ? "域备份" : "Domain backup"}</summary>
       <BackupControls kind="domain" busy={backupBusy} disabled={unavailable || busy || inviteBusy}
         onExport={channel.exportDomainBackup} onRestore={async file => {
           setPassword("");
@@ -106,7 +127,7 @@ export function ChannelDomainControls({ channel, triggerSlot }: { channel: Chann
             if (error instanceof Error && error.message === "domain_restored_connection_failed") resetDraft(null);
             throw error;
           }
-        }} />
+        }} /></details>
       </>}
     </div>
   </>;

@@ -2,6 +2,10 @@
 .c3-identity-mark img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 25%; }
 .c3-identity-name { display: grid; gap: 10px; min-width: 0; }
 .c3-identity-picker { min-width: 0; margin: 0; padding: 0; border: 0; }
+.c3-identity-appearance { min-width: 0; }
+.c3-identity-appearance > summary { min-height: var(--control-size); padding-block: 8px; cursor: pointer; font-size: 13px; }
+.c3-identity-appearance > summary .c3-identity-mark { margin-inline: 6px 10px; }
+.c3-identity-appearance[open] > .c3-identity-picker { margin-top: 10px; }
 .c3-identity-picker legend { padding: 0; margin-bottom: 10px; font-size: 13px; }
 .c3-identity-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .c3-identity-options .lr-chip { width: 100%; min-width: 0; padding: 8px 3px; border-radius: 12px; flex-direction: column; gap: 4px; justify-content: center; }

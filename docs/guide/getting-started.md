@@ -1,161 +1,139 @@
 # Your first Piik room
 
-English · [简体中文](./getting-started.zh-CN.md) · [Back to Piik](../../README.md)
+English · [简体中文](./getting-started.zh-CN.md) · [Documentation](./README.md)
 
-Piik lets one Host share with up to 20 invited Viewers. Choose your starting point:
+This guide is for the **3.0 test App and 3.0 links** supplied to testers.
+The public online site and published downloads still belong to 2.x; use the
+[published 2.6 guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/guide/getting-started.md)
+for those versions.
 
-| You want to… | Start here |
+| You have… | Start here |
 | --- | --- |
-| Watch a friend | [Open their invitation](#join-a-friends-room). No installation. |
-| Share with friends elsewhere | [Piik App → Public invite](#share-with-piik-app). Keep App running. |
-| Share without installing | [Piik online](#use-piik-online), in your browser. |
-| Use your group's site | [Open that site](#share-from-an-existing-site); App capture is optional. |
+| A friend's 3.0 link | [Join their room](#join-a-friends-room). A browser is enough to watch. |
+| A 3.0 test App package | [Create a room with App](#share-with-piik-app). |
+| An existing 3.0 site | [Create a room in that domain](#share-from-an-existing-site), with Browser or App hosting. |
 
-![Three steps: pick a window, copy its room invitation, and join friends on the sofa.](../assets/quickstart.svg)
+A **domain** is the space containing your group's rooms. People in a room can
+chat, join voice, share their own picture and choose which pictures to watch.
 
 ## Join a friend's room
 
-1. Open the invitation link your friend sent in a desktop or mobile browser.
-2. Wait for their screen to appear. If the browser blocks autoplay, press **Play**.
-3. Move the pointer over the picture or tap it to show the playback bar.
+1. Open the complete 3.0 link in a computer or phone browser. If asked, enter
+   the **domain passphrase**, or ask your friend for a current domain invitation.
+2. Choose a room from the room list. On a narrow screen, **Rooms** opens that
+   list. A private room may need its own invitation or **room password**.
+3. In the room's available screens, choose the person whose picture you want
+   and select **Watch**. If playback is blocked, press **Play**.
+4. Write in the message box to chat. Select **Join voice** to talk; the arrow
+   beside it also offers a listen-only option. Allow microphone access if you
+   choose to speak.
 
-The playback bar controls only your own picture and sound.
-See [playback controls](./sharing.md#playback-controls) for fullscreen, display and sound options.
+Several people can share at once. You choose which pictures to watch; playback
+volume and local pause affect only your own viewing. Move the pointer over the
+picture, tap it or focus a playback button to reveal its controls.
 
-Only have a four-digit code? Open the same Piik site and select **Join a room**.
-Enter the site passphrase or room password if asked. If code entry is unavailable
-or an old link fails, ask the Host for their current invitation.
+You do not need to launch your own App or create another room to watch a friend.
+Keep their full link: opening your own App starts a different domain.
 
-Each App's Local room or Public invite creates a separate site, so your friend's
-code does not work on your own App page. Open their full invitation instead;
-you do not need to create a room in your App to watch them.
+## Use a 3.0 link without installing
 
-## Use Piik online
-
-1. Open [demo.piik.tv](https://demo.piik.tv) in your browser.
-2. Select **Start sharing**, then **Browser** for a screen, window or tab, or
-   **Camera** where your computer or phone browser supports it. Enable source
-   audio if the picker offers it.
-3. Confirm the preview and select **Copy invite link**. Open that link on a
-   second device or send it to a friend.
-4. Select **Stop sharing** when finished.
-
-The online version is provided by the project. Media travels only between participants (P2P);
-restrictive networks may load the page but block video.
+Open a friend's 3.0 link or a 3.0 site supplied by your group, then follow
+[joining a room](#join-a-friends-room). You can also share from the browser
+where screen or camera capture is supported. `demo.piik.tv` is the public 2.x
+site, not the entry for this test version.
 
 ## Share with Piik App
 
-1. Download **Piik App** for your platform from
-   [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) or the
-   [AtomGit mirror](https://atomgit.com/TNTcraftHIM/Piik/releases). On phones and tablets,
-   install the APK directly. On a computer,
-   extract the whole archive and keep its directory structure intact.
-2. Open `piik-app.exe` on Windows, `Piik App.app` on macOS, or `./piik-app` on Linux.
-   On phones and tablets, open Piik after installation. The launcher opens in your system browser.
-3. Choose **Public invite** for friends outside your local network, then select
-   **Open Piik**. Other modes are explained below.
-4. Choose **Start sharing**, then select **Browser**, **Camera**, **Apps / Windows**, or
-   **Screens** as available. Pick the actual source and sound option.
-5. Copy and send the room invitation. Keep both the App and sharing tab open.
-
-![App source selector with Browser, Camera, Apps / Windows and Screens tabs, window previews and source-audio controls.](../assets/guide/share-source.en.png#gh-light-mode-only)
-![App source selector with Browser, Camera, Apps / Windows and Screens tabs, window previews and source-audio controls.](../assets/guide/share-source.en.dark.png#gh-dark-mode-only)
-
-If macOS blocks the first launch, follow the [Mac opening steps](./troubleshooting.md#macos-blocks-first-launch).
-
-<details>
-<summary>Which download should I choose?</summary>
-
-| Filename contains | Platform |
-| --- | --- |
-| `windows-amd64` | Windows x64 |
-| `darwin-arm64` | Apple silicon; native capture requires macOS 13+ |
-| `darwin-amd64` | Intel Mac; native capture requires macOS 13+ |
-| `linux-amd64` | Linux x64 |
-| `linux-arm64` | Linux ARM64 |
-| `android-universal` | Android 10+; ARM64 and x64 in one APK |
-
-Linux native capture also needs [system components](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/linux/README.md).
-See the [App guide](../../cmd/piik-app/README.md) for package and runtime details.
-
-</details>
+1. Use the **3.0 test package you received**. On Windows, extract the whole
+   archive and open `piik-app.exe`; on Android, install the supplied APK and
+   open Piik. Keep the desktop package's files together.
+2. The launcher opens in your system browser. Choose a mode below, then
+   select **Open Piik**. The domain opens with its room list.
+3. Select **Create room**, enter a name and choose **Public** for a first room
+   everyone in the domain can enter. Check the hosting note, then select
+   **Create room**. You are now in a usable room: send a message to try it.
+4. [Invite your friends](#invite-friends), then select **Start sharing**.
+   Choose **Browser**, **Camera**, or an available App window/screen source.
+   Select the actual source and enable source sound if offered.
+5. Your friends enter the room and select **Watch** on your picture.
+   Each person joins voice separately; picture sharing does not start a call.
 
 ### Choose an App mode
 
-![The App mode selector: Public invite is selected; Local room is the alternative.](../assets/guide/app-modes.en.png#gh-light-mode-only)
-![The App mode selector: Public invite is selected; Local room is the alternative.](../assets/guide/app-modes.en.dark.png#gh-dark-mode-only)
+- **Local network:** for friends on the same LAN or virtual LAN. If several
+  invitation addresses are offered, choose the interface they can reach.
+- **Public invite:** for friends elsewhere. It creates a temporary Internet
+  address while App is running. Send a new link if that address changes.
 
-- **Public invite:** send a temporary web link to friends elsewhere. It needs
-  Internet access and lasts until you close the App.
-- **Local room:** friends are on the same LAN or virtual LAN. Your computer
-  must be reachable from theirs. If needed, expand **Local invitation address**
-  and select the network interface your friends use.
+Local invitations use HTTPS. Before accepting the first certificate warning,
+compare it with the fingerprint in the App terminal; see the
+[certificate steps](./troubleshooting.md#local-https-certificate-warning).
+The domain owner can set **Public** or **Private** entry and an optional domain
+passphrase in **Domain settings → Edit domain settings**, beside the domain name.
 
-For Local room and Public invite, expand **Site passphrase** to set an optional
-access passphrase.
-Local invitations use HTTPS. On first access, confirm the local certificate
-against the Host's App terminal before continuing; see the
-[certificate guide](./troubleshooting.md#local-https-certificate-warning).
+### Invite friends
 
-<details>
-<summary>Return to the launcher or change mode</summary>
+- **To the domain:** open the room list and use **Copy domain address** for a
+  public domain or **Copy domain invitation** for a private domain. Tell your
+  friends which room to choose. The nearby QR button shares the same link.
+- **To a private room:** its owner opens **Room options**, then uses **Copy invitation**
+  or the room QR button. If no invitation exists, select **Generate new invitation**.
+  That invitation admits its recipient to the domain and the specified private room.
 
-Once the room service starts, click the connected **App** button at the top right
-to return to the launcher, manage site access or reopen the room. The App terminal
-also keeps an **App launcher** address. To change between Local room and Public
-invite, close and reopen the App, then choose again. This ends the previous room
-and generates a new public-invitation address.
-
-</details>
+Send invitations only to people you want to admit. Domain entry and private-room
+entry are different: a domain invitation alone does not unlock every private room.
+Use **Reset room invitation** only when you want a new link: the old link stops
+working, while people who already have access keep it. If an older invitation
+cannot be recovered, the panel explains this before you generate a replacement.
 
 ### Use App with an existing site
 
-1. Keep Piik App running and open the Piik site in your browser. Enter its site
-   passphrase if asked; [Piik online](https://demo.piik.tv) needs no site passphrase.
-   No room mode needs to be selected in the App launcher.
-2. Click **App** at the top. Allow local-network access if the browser asks.
-   When App is found, choose **Open App page**.
-3. Check the site address on the local confirmation page, then choose **Allow access**.
-4. Return to the site, choose **Start sharing**, then **Apps / Windows** or **Screens**.
-   Select a source and send the new room invitation to your friends.
+1. Keep the 3.0 App running and open your group's **3.0** site.
+2. Select **App → Open App page**. Allow local-network access if your browser
+   asks. Check the site's address on the local page, then select **Allow access**.
+3. Return to the site. Connect App **before creating a room** if you want App
+   hosting; the creation form tells you which runtime will host it.
+4. In a room, **Start sharing** now also offers the App's supported sources.
 
-You can also choose **Connect Piik App** inside the **Start sharing** source
-selector; its list updates as soon as the connection completes.
-If connection fails, the App button offers **Retry** and **Download App**.
-You can still share and watch in your browser.
-
-Manage [approved sites and the startup favorite](../../cmd/piik-app/README.md#approved-site)
-in the App launcher. If video cannot connect, use the [network guide](./network.md).
+Connecting App keeps an existing Browser-hosted room with its current host.
+Manage approved sites from the App launcher. See the
+[App reference](../../prototype/channel-server/README.md#local-app-link) for details.
 
 ### Upgrading
 
-App and site must use the same major version; **2.x and 1.x cannot be used together**.
-To replace App or update a group's site, follow the [upgrade steps](../../cmd/piik-app/README.md#upgrading).
+Use the 3.0 test update supplied to you and keep your existing App data when
+updating. After updating App, refresh the Web page. If its App connection reports
+an incompatible interface, follow the update prompt. Public 2.x downloads are
+not the 3.0 test update.
 
 ## Share from an existing site
 
-Use an HTTPS Piik site provided by your group or administrator.
-To run your own site, follow [self-hosting](../operations/self-hosting.md).
+Open your group's 3.0 address or invitation, enter the domain, then select
+**Create room** or choose a room you can enter. Follow
+[the room and sharing steps above](#share-with-piik-app), starting at step 3.
+You can chat and join voice before anyone shares a picture.
 
-1. Open your group's Piik site. Enter its site passphrase if asked.
-2. Choose **Start sharing**, then **Browser** to select a screen, window or tab,
-   or **Camera** where your computer or phone browser supports it.
-   Enable source audio if the picker offers it.
-3. Check the preview, then choose **Copy invite link** and send it to your friends.
-4. Keep the sharing tab open. Use **Pause sharing**, **Switch source**, or
-   **Stop sharing** when you need them.
+Browser screen/camera access needs HTTPS or a localhost address. Available
+sources and sound options depend on the browser and operating system. App is
+optional for Browser capture; [connect it](#use-app-with-an-existing-site) for
+the native sources supported by your device.
 
-Screen capture requires an HTTPS site or `localhost`. The sources and audio
-offered by the picker depend on your browser and operating system.
-Invitation links grant access to that room; share them with the people you want there.
+## When you leave or refresh
 
-To use App capture on that same site, follow [Use App with an existing site](#use-app-with-an-existing-site).
-The site manages rooms and invitations; the App supplies native capture.
-If its operator has enabled SFU forwarding, turn off **Privacy mode** before
-sharing to allow that fallback. The project's online site uses P2P only.
+- **Stop sharing** ends that share. **Stop watching** ends your viewing;
+  **Leave voice** ends your participation in that room's call.
+- Closing your page ends its personal shares, viewing and voice. An
+  **App-hosted room** continues while App runs; a **Browser-hosted room** is
+  unavailable while its hosting page is closed. Switching rooms or toggling
+  **Sharing view** keeps your other room activities running.
+- Confirmed chat history belongs to the room's host. Refreshing reloads history
+  when that host is available; use **Earlier messages** for older pages.
+  An unsent draft does not survive a page refresh. Captures and voice do not
+  restart automatically when you reopen a page or App.
 
 ## Next steps
 
-- [Sharing and playback](./sharing.md): picture settings, camera inputs and source sound.
-- [Chat, voice and remote control](./room-tools.md): talk, react or let a friend take control.
-- [Troubleshooting](./troubleshooting.md): start from the symptom you see.
+- [Sharing and playback](./sharing.md#playback-controls): viewing and sound controls.
+- [Room tools](./room-tools.md): chat, voice and remote-control details.
+- [Troubleshooting](./troubleshooting.md#common-problems): find your symptom;
+  some detailed steps still describe published 2.x controls, so check the version before following them.

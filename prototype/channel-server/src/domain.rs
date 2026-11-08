@@ -29,6 +29,7 @@ use std::{
 use tokio::sync::{mpsc, watch, Semaphore};
 use uuid::Uuid;
 
+#[derive(Clone)]
 struct Client {
     events: mpsc::Sender<Event>,
     close: watch::Sender<bool>,
@@ -228,6 +229,57 @@ async fn send_frame(
     )
 }
 
+async fn dispatch_request(state: &Domain, connection: Uuid, request: Request) {
+    let (events, close) = {
+        let mut hub = state.hub.lock().unwrap();
+        if !matches!(
+            request.command,
+            piik_channel_core::wire::Command::Conversation { .. }
+        ) {
+            hub.request(connection, request);
+            return;
+        }
+        if !hub
+            .clients
+            .get(&connection)
+            .is_some_and(|client| !*client.close.borrow())
+        {
+            return;
+        }
+        let effects = hub.authority.handle(connection, request, now());
+        let events = effects
+            .events
+            .into_iter()
+            .filter_map(|(connection, event)| {
+                hub.clients
+                    .get(&connection)
+                    .cloned()
+                    .map(|client| (client, event))
+            })
+            .collect::<Vec<_>>();
+        (events, effects.close)
+    };
+    // A history page produces more frames than the socket's 64-event queue.
+    // Backpressure belongs to this reader turn, never the shared authority lock.
+    for (client, event) in events {
+        let mut closing = client.close.subscribe();
+        if *closing.borrow() {
+            continue;
+        }
+        let sent = tokio::select! {
+            _ = closing.changed() => continue,
+            sent = tokio::time::timeout(Duration::from_secs(5), client.events.send(event)) => sent,
+        };
+        if !matches!(sent, Ok(Ok(()))) {
+            let _ = client.close.send(true);
+        }
+    }
+    state.hub.lock().unwrap().apply(Effects {
+        events: Vec::new(),
+        close,
+    });
+}
+
 async fn session(mut socket: WebSocket, state: Domain) {
     let first = tokio::time::timeout(Duration::from_secs(10), socket.recv()).await;
     let text = match first {
@@ -294,7 +346,7 @@ async fn session(mut socket: WebSocket, state: Domain) {
                 last_seen = tokio::time::Instant::now();
                 match incoming {
                     Some(Ok(Message::Text(text))) => match Request::parse(&text) {
-                        Ok(request) => state.hub.lock().unwrap().request(connection, request),
+                        Ok(value) => dispatch_request(&state, connection, value).await,
                         Err((request_id, code)) => state.hub.lock().unwrap().send(
                             connection,
                             Event::Error {
@@ -590,7 +642,12 @@ mod tests {
             invitation_origin: None,
             room_commands: None,
         };
-        let request = |value: serde_json::Value| Request::parse(&value.to_string()).unwrap();
+        let request = |mut value: serde_json::Value| {
+            if value["type"] == "join" {
+                value["protocol"] = serde_json::json!(piik_channel_core::wire::CHANNEL_PROTOCOL);
+            }
+            Request::parse(&value.to_string()).unwrap()
+        };
         let drain = |receiver: &mut mpsc::Receiver<Event>| {
             let mut events = Vec::new();
             while let Ok(event) = receiver.try_recv() {

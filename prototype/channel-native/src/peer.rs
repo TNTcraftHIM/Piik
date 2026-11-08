@@ -9,7 +9,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
-use piik_channel_core::conversation::{ControlFrame, SignedPacket};
+use piik_channel_core::conversation::ControlFrame;
 use piik_channel_core::file_room::FilePlan;
 use piik_channel_core::wire::Snapshot;
 use piik_channel_core::wire::{
@@ -21,7 +21,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::{
         atomic::{AtomicBool, AtomicU8, Ordering},
-        Arc, Mutex,
+        Arc,
     },
     time::{Duration, Instant},
 };
@@ -117,19 +117,12 @@ pub struct NativePeers {
     cancel: watch::Sender<bool>,
     input: mpsc::Sender<Input>,
     task: JoinHandle<()>,
-    links: Arc<Mutex<HashMap<Uuid, (Uuid, data::Senders)>>>,
 }
 pub enum NativeEvent {
     Command(Command),
     CaptureEnded {
         publication_id: Uuid,
         error: Option<String>,
-    },
-    Conversation {
-        peer: Uuid,
-        pair: Uuid,
-        token: Uuid,
-        packet: SignedPacket,
     },
 }
 /// The controlling page owns cancellation; the Driver owns and joins the worker.
@@ -596,7 +589,6 @@ struct Driver {
     ice: Vec<IceServer>,
     server_udp: Option<Arc<server_udp::ServerUdp>>,
     commands: mpsc::Sender<NativeEvent>,
-    links: Arc<Mutex<HashMap<Uuid, (Uuid, data::Senders)>>>,
     cancel: watch::Receiver<bool>,
     events: mpsc::Sender<Event>,
     ready_sources: mpsc::Sender<SourceReady>,
@@ -653,8 +645,6 @@ impl NativePeers {
         let (input, mut inputs) = mpsc::channel(64);
         let (events, mut event_rx) = mpsc::channel(1024);
         let (ready_sources, mut ready_rx) = mpsc::channel(256);
-        let links = Arc::new(Mutex::new(HashMap::new()));
-        let driver_links = links.clone();
         let bandwidth_changed = Arc::new(Notify::new());
         let task = tokio::spawn(async move {
             let transport = transport::Runtime::new(server_udp.clone());
@@ -664,7 +654,6 @@ impl NativePeers {
                 ice: ice_servers,
                 server_udp,
                 commands,
-                links: driver_links,
                 cancel: cancelled.clone(),
                 events,
                 ready_sources,
@@ -888,52 +877,7 @@ impl NativePeers {
             cancel,
             input,
             task,
-            links,
         }
-    }
-    pub(crate) fn control_current(&self, peer: Uuid, pair: Uuid, token: Uuid) -> bool {
-        self.links
-            .lock()
-            .unwrap()
-            .get(&peer)
-            .is_some_and(|(current, senders)| {
-                *current == pair && senders.current(Lane::Control, token, true)
-            })
-    }
-    /// Queue directly on the existing pair writer; no peer control turn is needed.
-    pub(crate) fn conversations(
-        &self,
-        peer: Uuid,
-        packets: Vec<(SignedPacket, SignedPacket)>,
-        snapshot: watch::Receiver<Option<Snapshot>>,
-        local: Uuid,
-        from: Option<Uuid>,
-    ) -> Result<()> {
-        let messages = packets
-            .into_iter()
-            .map(|(packet, original)| {
-                let bytes = piik_channel_core::conversation::encode_control(
-                    &ControlFrame::Conversation(packet),
-                )?;
-                Ok(data::Message {
-                    bytes,
-                    scope: data::MessageScope::Conversation {
-                        snapshot: snapshot.clone(),
-                        local,
-                        peer,
-                        from,
-                        packet: original,
-                    },
-                    report_failure: true,
-                })
-            })
-            .collect::<Result<Vec<_>, &'static str>>()
-            .map_err(anyhow::Error::msg)?;
-        let links = self.links.lock().unwrap();
-        let (_, link) = links
-            .get(&peer)
-            .ok_or_else(|| anyhow!("room_path_unavailable"))?;
-        data::queue_controls(&link.control, messages).map_err(anyhow::Error::msg)
     }
     pub async fn update(
         &self,
@@ -1800,10 +1744,6 @@ impl Driver {
         ))
         .await?;
         let data = DataLink::new(plan.id, state.clone(), self.events.clone());
-        self.links
-            .lock()
-            .unwrap()
-            .insert(plan.peer_id, (plan.id, data.senders()));
         self.pairs.insert(
             plan.id,
             Pair {
@@ -2258,7 +2198,6 @@ impl Driver {
         let events = self.events.clone();
         let files = self.files.receiver();
         let peer = p.plan.peer_id;
-        let commands = self.commands.clone();
         let state = p.state.clone();
         let channel = dc.clone();
         let task = tokio::spawn(async move {
@@ -2277,20 +2216,6 @@ impl Driver {
                             match data::control(message.as_slice()) {
                                 Some(ControlFrame::File(control)) => {
                                     files.control(peer, token, control).await
-                                }
-                                Some(ControlFrame::Conversation(packet)) => {
-                                    if commands
-                                        .send(NativeEvent::Conversation {
-                                            peer,
-                                            pair: id,
-                                            token,
-                                            packet,
-                                        })
-                                        .await
-                                        .is_err()
-                                    {
-                                        break;
-                                    }
                                 }
                                 None => {}
                             }
@@ -2418,7 +2343,6 @@ impl Driver {
         );
         self.relay.retain(&self.sources.keys().copied().collect());
         let released = !pair.outputs.is_empty();
-        self.links.lock().unwrap().remove(&pair.plan.peer_id);
         self.files.detach(pair.plan.peer_id).await;
         close_pair(pair).await;
         released

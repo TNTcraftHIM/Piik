@@ -185,20 +185,10 @@ pub fn domain_invite_hash(key: &str) -> String {
 }
 
 #[wasm_bindgen]
-pub fn route_conversation(
-    packet: &str,
-    local: &str,
-    state: &str,
-    from: Option<String>,
-) -> Result<String, JsValue> {
-    let mut packet = parse::<SignedPacket>(packet)?;
+pub fn verify_conversation(packet: &str, local: &str, state: &str) -> Result<String, JsValue> {
+    let packet = parse::<SignedPacket>(packet)?;
     let local = Uuid::parse_str(local).map_err(|_| error("invalid_request"))?;
-    let from = from
-        .map(|id| Uuid::parse_str(&id))
-        .transpose()
-        .map_err(|_| error("invalid_request"))?;
-    let route = conversation::route(&mut packet, local, &parse(state)?, from).map_err(error)?;
-    encode(&serde_json::json!({ "packet": packet, "route": route }))
+    encode(&conversation::verify_delivery(&packet, local, &parse(state)?).map_err(error)?)
 }
 
 #[wasm_bindgen]

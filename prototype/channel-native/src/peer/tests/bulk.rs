@@ -96,12 +96,7 @@ fn window() -> Result<(Vec<Vec<u8>>, FileDelivery, Uuid)> {
     );
     Ok((frames, receiver, source))
 }
-pub(super) enum Window {
-    Bulk,
-    History,
-}
-pub(super) async fn scenario(window: Window) -> Result<serde_json::Value> {
-    let history = matches!(window, Window::History);
+async fn scenario() -> Result<serde_json::Value> {
     let a_socket = std::net::UdpSocket::bind("127.0.0.1:0")?;
     let a_addr = a_socket.local_addr()?;
     let b_socket = std::net::UdpSocket::bind("127.0.0.1:0")?;
@@ -136,7 +131,7 @@ pub(super) async fn scenario(window: Window) -> Result<serde_json::Value> {
         Ok::<(), anyhow::Error>(())
     });
     let result = async {
-    let label = if history { "piik-room" } else { "piik-file" };
+    let label = "piik-file";
     let sent = a.create_channel(label).await?;
     let video = Uuid::new_v4();
     let (_feedback, writable, _) = a
@@ -205,17 +200,9 @@ pub(super) async fn scenario(window: Window) -> Result<serde_json::Value> {
         anyhow::bail!("sibling video missing")
     })
     .await??;
-    let (frames, scopes, mut core) = if history {
-        let (frames, scopes) = super::history::pages()?
-            .into_iter()
-            .unzip::<_, _, Vec<_>, Vec<_>>();
-        (frames, scopes, None)
-    } else {
-        let (frames, core, source) = self::window()?;
-        let (_, scope) = message("owned bulk-window authorization")?;
-        let scopes = vec![scope; frames.len()];
-        (frames, scopes, Some((core, source)))
-    };
+    let (frames, mut core, source) = self::window()?;
+    let (_, scope, _lease) = message("owned bulk-window authorization")?;
+    let scopes = vec![scope; frames.len()];
     armed.store(true, Ordering::Release);
     for (frame, scope) in frames.iter().zip(&scopes) {
         loop {
@@ -223,7 +210,7 @@ pub(super) async fn scenario(window: Window) -> Result<serde_json::Value> {
             tokio::pin!(ready);
             ready.as_mut().enable();
             if sent
-                .write(!history, frame.clone(), scope.clone(), false)
+                .write(true, frame.clone(), scope.clone(), false)
                 .await?
             {
                 break;
@@ -262,14 +249,10 @@ pub(super) async fn scenario(window: Window) -> Result<serde_json::Value> {
                 actual == *expected,
                 "ordered file frames changed or duplicated"
             );
-            let effects = if let Some((core, source)) = core.as_mut() {
-                core.chunk(*source, &actual).map_err(anyhow::Error::msg)?
-            } else {
-                Vec::new()
-            };
+            let effects = core.chunk(source, &actual).map_err(anyhow::Error::msg)?;
             for effect in effects {
                 if let FileEffect::Write { key, offset, bytes } = effect {
-                    for effect in core.as_mut().unwrap().0.written(&key, offset, bytes.len()) {
+                    for effect in core.written(&key, offset, bytes.len()) {
                         if matches!(effect, FileEffect::Complete { .. }) {
                             complete += 1;
                         }
@@ -277,11 +260,7 @@ pub(super) async fn scenario(window: Window) -> Result<serde_json::Value> {
                 }
             }
         }
-        if history {
-            super::history::verify_pages(&frames)?;
-        } else {
-            ensure!(complete == 15, "Core file digests did not all complete");
-        }
+        ensure!(complete == 15, "Core file digests did not all complete");
         send(&a, video, emit(93_000), Instant::now(), &writable).await?;
         tokio::time::timeout(Duration::from_secs(5), async {
             while let Some(event) = track.poll().await {
@@ -298,15 +277,14 @@ pub(super) async fn scenario(window: Window) -> Result<serde_json::Value> {
         );
     }
 
-    let mut reclaimed = false;
-    if history {
-        // Leave one real page queued; retained closed bindings keep Arc<Channel>.
+    {
+        // Retained closed file bindings must reclaim their queued receive memory.
         for (frame, scope) in frames.iter().zip(&scopes).take(101) {
             loop {
                 let ready = sent.low.notified();
                 tokio::pin!(ready);
                 ready.as_mut().enable();
-                if sent.write(false, frame.clone(), scope.clone(), false).await? { break; }
+                if sent.write(true, frame.clone(), scope.clone(), false).await? { break; }
                 ready.await;
             }
         }
@@ -327,10 +305,9 @@ pub(super) async fn scenario(window: Window) -> Result<serde_json::Value> {
             anyhow::bail!("closing Control stopped retained video")
         }).await??;
         ensure!(a.call(|e|Ok(e.rtc.is_connected())).await? && b.call(|e|Ok(e.rtc.is_connected())).await?);
-        reclaimed = true;
     }
     Ok(
-        serde_json::json!({"overflow":overflow,"frames":frames.len(),"queuedBeforeRead":queued,"heldEncryptedDatagramBytes":held_bytes,"completeCoreDigests":complete,"mediaContinues":true,"retainedCloseReclaimed":reclaimed,"receiveEventMemory":RECEIVE_EVENT_MEMORY,"receiveMemory":RECEIVE_MEMORY}),
+        serde_json::json!({"overflow":overflow,"frames":frames.len(),"queuedBeforeRead":queued,"heldEncryptedDatagramBytes":held_bytes,"completeCoreDigests":complete,"mediaContinues":true,"retainedCloseReclaimed":true,"receiveEventMemory":RECEIVE_EVENT_MEMORY,"receiveMemory":RECEIVE_MEMORY}),
     )
     }.await;
     a.close().await?;
@@ -344,7 +321,7 @@ pub(super) async fn scenario(window: Window) -> Result<serde_json::Value> {
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn ordered_bulk_window_uses_core_bound_and_keeps_media_alive() -> Result<()> {
-    let after = scenario(Window::Bulk).await?;
+    let after = scenario().await?;
     ensure!(after["overflow"] == false && after["completeCoreDigests"] == 15);
     println!("BULK_WINDOW_RECEIPT {after}");
     Ok(())

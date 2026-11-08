@@ -36,6 +36,9 @@ impl RoomNetwork {
     }
 
     pub fn command_at(&mut self, connection: Uuid, mut value: Value, now: u64) -> Effects {
+        if value["type"] == "join" && value.get("protocol").is_none() {
+            value["protocol"] = json!(piik_channel_core::wire::CHANNEL_PROTOCOL);
+        }
         if value["type"] == "join" && value.get("signingKey").is_none() {
             value["signingKey"] = json!(piik_channel_core::conversation::SessionSigner::from_seed(
                 [1; 32]
@@ -205,6 +208,20 @@ impl RoomNetwork {
     #[allow(dead_code)]
     pub fn policy(&self, room: &str) -> RoomState {
         self.hosts[room].host.policy().clone()
+    }
+
+    #[allow(dead_code)]
+    pub fn conversation(
+        &mut self,
+        room: &str,
+        packet: &piik_channel_core::conversation::SignedPacket,
+    ) -> piik_channel_core::conversation::ConversationOutcome {
+        self.hosts
+            .get_mut(room)
+            .unwrap()
+            .host
+            .dispatch_peer(packet, 100)
+            .unwrap()
     }
 
     pub fn state(&self, connection: Uuid) -> &Snapshot {

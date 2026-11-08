@@ -123,6 +123,7 @@ impl Channel {
                 broadcast = true;
             }
             Command::HostRegister { .. }
+            | Command::Conversation { .. }
             | Command::DomainInvite {}
             | Command::CreateRoom { .. }
             | Command::AdmitRoom { .. }
@@ -467,6 +468,7 @@ impl Channel {
             | Command::UpdateRoom { room_id, .. }
             | Command::EnterRoom { room_id, .. }
             | Command::RoomInvite { room_id }
+            | Command::GetRoomInvite { room_id }
             | Command::RevokeRoomAccess { room_id, .. }
             | Command::Voice { room_id, .. } => Some(room_id.clone()),
             Command::RelayCapacity { room_id, .. } => Some(room_id.clone()),
@@ -636,6 +638,61 @@ impl Channel {
         self.remote
             .get(id)
             .is_some_and(|room| Self::host_online(&self.identity, room))
+    }
+
+    pub(crate) fn relay_conversation(
+        &self,
+        session: Uuid,
+        packet: &crate::conversation::SignedPacket,
+    ) -> Result<Uuid, &'static str> {
+        if packet.sender != session {
+            return Err("invalid_conversation_sender");
+        }
+        let sender = self
+            .identity
+            .sessions
+            .get(&session)
+            .ok_or("session_expired")?;
+        let address = crate::conversation::verify_address(packet, sender.signing_key)?;
+        let room = self
+            .remote
+            .get(&address.room_id)
+            .ok_or("room_unavailable")?;
+        if !Self::host_online(&self.identity, room) {
+            return Err("room_host_offline");
+        }
+        let binding = room.binding.as_ref().ok_or("room_host_offline")?;
+        if address.binding_id != binding.id || !valid_id(&address.request_id) {
+            return Err("invalid_conversation_scope");
+        }
+        let participant = if address.sender == binding.session {
+            address.recipient
+        } else if address.recipient == binding.session {
+            address.sender
+        } else {
+            return Err("invalid_conversation_scope");
+        };
+        let recipient = self
+            .identity
+            .sessions
+            .get(&address.recipient)
+            .ok_or("session_expired")?;
+        if recipient.connection.is_none() {
+            return Err("disconnected");
+        }
+        let endpoint = self
+            .identity
+            .sessions
+            .get(&participant)
+            .ok_or("session_expired")?;
+        let member = self.identity.member(endpoint.user_id)?;
+        let view = room
+            .snapshot(member, participant, true)
+            .ok_or("room_access_required")?;
+        if !view.room.authorized || binding.applied_revision < binding.projection_floor {
+            return Err("room_access_required");
+        }
+        Ok(address.recipient)
     }
 
     pub(crate) fn remove_room(&mut self, id: &str) -> Vec<RetiredRoomReply> {

@@ -1,21 +1,24 @@
-# Piik documentation
+# Piik 3.0 test documentation
 
 English · [简体中文](./README.zh-CN.md) · [Website](https://piik.tv/?lang=en)
 
-Choose a guide to start sharing, use room tools or solve a problem.
+Start with the 3.0 test App you received or a friend's 3.0 link.
+Public online rooms and published downloads still use 2.x; their
+[2.6 getting-started guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/guide/getting-started.md)
+remains available separately.
 
 ## Start using Piik
 
 <div class="guide-task-index">
 
 - **[Watch a friend](./getting-started.md#join-a-friends-room)**<br>
-  Open an invitation in a computer or phone browser. No installation needed.
-- **[Share my screen](./getting-started.md#share-with-piik-app)**<br>
-  Download and run Piik App, choose a picture and send an invitation.
-- **[Use Piik without installing](./getting-started.md#use-piik-online)**<br>
-  Share a screen or camera from the online site.
+  Open the 3.0 invitation, choose a room and select the picture to watch.
+- **[Create a room with App](./getting-started.md#share-with-piik-app)**<br>
+  Open your test App, enter its domain, create a room and invite friends.
+- **[Use Piik without installing](./getting-started.md#use-a-30-link-without-installing)**<br>
+  Use a friend's 3.0 link to watch, chat, join voice or share from your browser.
 - **[Use my group's Piik site](./getting-started.md#share-from-an-existing-site)**<br>
-  Share in your browser, or connect App for more features.
+  Enter its 3.0 domain. Choose Browser or App hosting before creating a room.
 
 </div>
 
@@ -28,8 +31,9 @@ Choose a guide to start sharing, use room tools or solve a problem.
 
 ## Get help
 
-- **Cannot join, share or hear a friend:** start with the [symptom index](./troubleshooting.md#common-problems).
-- **The page opens, but picture or voice still will not connect:** after the basic checks, use [network checks](./network.md) to compare browsers and networks.
+- **Cannot join, share or hear a friend:** [find the checks for your problem](./troubleshooting.md#common-problems).
+  Some detailed steps there still use published 2.x controls; check the version before following them.
+- **Published 2.x network reference:** [network checks](./network.md) covers that version's deployment and forwarding options.
 
 Still stuck? [Report a problem](https://github.com/TNTcraftHIM/Piik/issues/new/choose)
 with your version, system, browser and reproduction steps. Follow the
@@ -37,14 +41,8 @@ with your version, system, browser and reproduction steps. Follow the
 
 ## Run a site for your group
 
-<p><a href="../operations/self-hosting.md#docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="Deploy Piik Server with Docker Compose"></a></p>
-
-For a permanent group site, deploy Piik Server on a reachable address with HTTPS
-and the required network ports.
-
-- [Deploy Piik Server](../operations/self-hosting.md) with Docker Compose or the server package.
-- [Keep it running and update](../operations/service-management.md).
-- [Look up configuration settings](../standards/configuration.md).
+For a 3.0 test domain, use the current [Server runtime instructions](../../prototype/channel-server/README.md#run).
+For a published 2.x deployment, use the [2.6 self-hosting guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/operations/self-hosting.md).
 
 ## Help improve Piik
 

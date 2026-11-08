@@ -21,11 +21,12 @@ their owner's [Browser/WASM runtime](../channel-browser/README.md) or the
 policy, activities, publication plans and confirmed history. The domain binds
 authenticated runtimes to directory entries and combines their transport demand;
 a physical pair remains while any room needs it. Domain WebSocket rendezvous
-carries admission, activity changes and repair. Browser-hosted rooms and the
-explicit [Native participant](../channel-native/README.md) establish a shared
-base tree when an activity needs it. Chat/history use signed requests and room-owner
-replies on that tree; files reuse its admitted paths, with the same Rust range-delivery
-core running in Browser/WASM and Native participants.
+carries admission, activity changes and repair. Conversation uses that same
+WebSocket for signed text/history requests and room-owner replies.
+The domain can see forwarded text but does not store or confirm it. Browser-hosted
+rooms and the explicit [Native participant](../channel-native/README.md) establish
+a shared base tree for media and file demand. File bytes and pull control reuse
+its admitted paths, with the same Rust range-delivery core in both participants.
 
 ## Run
 
@@ -289,8 +290,11 @@ a grid or focus one picture, with chat alongside or tucked away. These presentat
 choices do not implement media layering or a new quality policy. Local previews
 stay muted, and pausing a player does not stop forwarding its source.
 
-In Browser- and Native-hosted rooms, reading, voice, sharing and watching share a bounded
-base tree rooted at the actual hosting session. Each edge requires an open reliable
+In the accepted model, reading and writing conversation require the domain
+connection and current room host, independently of ICE. Domain Join/Welcome check
+one protocol version and reject older incompatible endpoints explicitly.
+Voice, sharing, watching and active file delivery use a bounded base tree rooted
+at the actual hosting session. Each edge requires an open reliable
 DataChannel at both endpoints. Voice follows the needed paths of that tree in
 either direction; a participant can forward without joining or hearing the call.
 Leaving the room view ends reading, while active media and necessary transit remain.

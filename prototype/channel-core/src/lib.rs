@@ -43,7 +43,7 @@ use identity::Admission;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
-use wire::{Command, Event, Request};
+use wire::{Command, Event, Request, CHANNEL_PROTOCOL};
 
 /// Events are addressed to physical connections, not reusable endpoint sessions.
 /// Deliver events before closing the listed connections so leave can acknowledge.
@@ -207,6 +207,19 @@ impl Authority {
             now,
         };
         match &request.command {
+            Command::Conversation { packet } => {
+                match self.channel.relay_conversation(session_id, packet) {
+                    Ok(recipient) => self.deliver(
+                        recipient,
+                        Event::Conversation {
+                            packet: packet.clone(),
+                        },
+                        &mut effects,
+                    ),
+                    Err(code) => Self::error(connection, request.request_id, code, &mut effects),
+                }
+                return effects;
+            }
             Command::DomainInvite {} => {
                 if self.channel.identity.sessions[&session_id].user_id
                     != self.channel.identity.owner_id
@@ -504,6 +517,17 @@ impl Authority {
     }
 
     fn join(&mut self, connection: Uuid, request: Request, now: u64, effects: &mut Effects) {
+        if matches!(&request.command, Command::Join { protocol, .. } if *protocol != CHANNEL_PROTOCOL)
+        {
+            Self::error(
+                connection,
+                request.request_id,
+                "incompatible_protocol",
+                effects,
+            );
+            effects.close.push(connection);
+            return;
+        }
         if let Command::Join {
             room_id: Some(id),
             key: Some(key),
@@ -554,6 +578,7 @@ impl Authority {
             }
         }
         let Command::Join {
+            protocol: _,
             name,
             credential,
             key,
@@ -600,6 +625,7 @@ impl Authority {
                 effects.events.push((
                     connection,
                     Event::Welcome {
+                        protocol: CHANNEL_PROTOCOL,
                         credential: admitted.credential,
                         session_id: admitted.session_id,
                         state: self.channel.snapshot(admitted.session_id),
@@ -786,6 +812,7 @@ impl Authority {
                     effects.events.push((
                         context.connection,
                         Event::Welcome {
+                            protocol: CHANNEL_PROTOCOL,
                             credential: admitted.credential,
                             session_id: admitted.session_id,
                             state: self.channel.snapshot(admitted.session_id),
@@ -822,6 +849,14 @@ impl Authority {
                 Event::RoomInvite {
                     room_id: room_id.into(),
                     key,
+                    request_id: context.request_id.clone(),
+                },
+            )),
+            RoomResult::InviteState { invitation } => effects.events.push((
+                context.connection,
+                Event::RoomInviteState {
+                    room_id: room_id.into(),
+                    invitation,
                     request_id: context.request_id.clone(),
                 },
             )),

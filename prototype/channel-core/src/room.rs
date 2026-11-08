@@ -105,7 +105,17 @@ impl RoomRuntime {
             failed_subscriptions: Vec::new(),
         };
         if snapshot.room.authorized {
-            snapshot.room.participant_session_ids = self.personal_sessions().into_iter().collect();
+            snapshot.room.participant_session_ids = self
+                .media_sessions()
+                .into_iter()
+                .chain(
+                    self.activity
+                        .iter()
+                        .filter_map(|(session, activity)| activity.reading.then_some(*session)),
+                )
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect();
             snapshot.files = self
                 .base
                 .as_ref()
@@ -216,12 +226,11 @@ impl RoomRuntime {
             .get(&session)
             .is_some_and(|activity| activity.reading)
     }
-    fn personal_sessions(&self) -> BTreeSet<Uuid> {
+    fn media_sessions(&self) -> BTreeSet<Uuid> {
         self.activity
             .iter()
             .filter_map(|(session, activity)| {
-                (activity.reading || activity.voice.is_some() || !activity.watching.is_empty())
-                    .then_some(*session)
+                (activity.voice.is_some() || !activity.watching.is_empty()).then_some(*session)
             })
             .chain(self.publications.values().map(|p| p.info.session_id))
             .collect()
@@ -316,6 +325,11 @@ impl RoomRuntime {
     pub fn invite(&mut self, member: Member) -> Result<String, &'static str> {
         self.authorize(member, RoomPermission::Manage)?;
         self.policy.invite()
+    }
+
+    pub fn invitation(&self, member: Member) -> Result<crate::wire::RoomInvitation, &'static str> {
+        self.authorize(member, RoomPermission::Manage)?;
+        self.policy.invitation()
     }
 
     pub fn revoke(&mut self, member: Member, target: Member) -> Result<(), &'static str> {
@@ -645,7 +659,7 @@ impl RoomRuntime {
                 (endpoint.connected && readable.contains(session)).then_some(*session)
             })
             .collect();
-        let mut demand = self.personal_sessions();
+        let mut demand = self.media_sessions();
         if let Some(base) = &mut self.base {
             demand.extend(self.files.demand());
             if repair_due {
@@ -1220,6 +1234,8 @@ mod tests {
         room.set_host_session(id(1));
         for (session, endpoint) in &endpoints {
             room.browse(endpoint.member, *session, true).unwrap();
+            room.set_voice(endpoint.member, *session, true, true, false)
+                .unwrap();
         }
         for _ in 0..2 {
             room.reconcile(&endpoints, 0);
@@ -1366,8 +1382,10 @@ mod tests {
             );
             room.set_host_session(id(1));
             room.set_default_relay_capacity(1);
-            room.browse(endpoints[&id(1)].member, id(1), true).unwrap();
-            room.browse(endpoints[&id(2)].member, id(2), true).unwrap();
+            room.set_voice(endpoints[&id(1)].member, id(1), true, true, false)
+                .unwrap();
+            room.set_voice(endpoints[&id(2)].member, id(2), true, true, false)
+                .unwrap();
             room.set_relay_capacity(
                 endpoints[&id(2)].member,
                 id(2),
@@ -1752,6 +1770,7 @@ mod tests {
             room.publish(member, id(3), id(11), Kind::Voice, Some(ceiling)),
             Err("invalid_video_ceiling")
         );
+        room.set_voice(member, id(3), false, true, false).unwrap();
         assert_eq!(
             room.publish(member, id(3), id(11), Kind::Voice, None),
             Err("voice_not_joined")
@@ -1832,8 +1851,14 @@ mod tests {
         room.set_host_session(id(3));
         // Source=1 is ready; Relay=4 still owns the other root slot.
         for endpoint in [1, 4] {
-            room.browse(endpoints[&id(endpoint)].member, id(endpoint), true)
-                .unwrap();
+            room.set_voice(
+                endpoints[&id(endpoint)].member,
+                id(endpoint),
+                true,
+                true,
+                false,
+            )
+            .unwrap();
         }
         room.reconcile(&endpoints, 0);
         room.base_state(id(3), id(1), true).unwrap();
@@ -1853,7 +1878,8 @@ mod tests {
 
         // The new Viewer=2 exhausts its assigned Source path. Its cooldown
         // cannot revoke Relay's independent, still-valid connection attempt.
-        room.browse(endpoints[&id(2)].member, id(2), true).unwrap();
+        room.set_voice(endpoints[&id(2)].member, id(2), true, true, false)
+            .unwrap();
         room.reconcile(&endpoints, 100);
         assert!(room
             .base_links()
@@ -1934,6 +1960,8 @@ mod tests {
             room.set_host_session(id(1));
             for (session, endpoint) in &endpoints {
                 room.browse(endpoint.member, *session, true).unwrap();
+                room.set_voice(endpoint.member, *session, true, true, false)
+                    .unwrap();
             }
             room.reconcile(&endpoints, 0);
             for link in room.base_links().collect::<Vec<_>>() {
@@ -2062,6 +2090,8 @@ mod tests {
                 room.subscribe(endpoints[&id(2)].member, id(2), id(10), false, None)
                     .unwrap();
                 room.browse(endpoints[&id(2)].member, id(2), false).unwrap();
+                room.set_voice(endpoints[&id(2)].member, id(2), false, true, false)
+                    .unwrap();
                 room.reconcile(&endpoints, 10_003);
                 assert_eq!(
                     room.next_route_deadline(),

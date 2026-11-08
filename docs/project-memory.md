@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-11-07
+Last updated: 2026-11-08
 
 This working tree develops the isolated 3.0 model: a shared Rust core across
 Server, Native and Browser/WASM, with one shared Web UI for rooms, conversation,
@@ -34,8 +34,11 @@ The 3.0 owners below define this tree's domain, room and participant model.
   SQLite. Room confirmation follows the owner's storage commit. Saved identity,
   policy and history survive runtime retirement; live transports, captures and
   grants do not become saved activities. There is no automatic room takeover.
+- Conversation uses the existing domain WebSocket to reach the actual room host,
+  which alone authorizes, stores and signs confirmations. The domain forwards
+  plaintext without retaining history. Reading and writing need no peer path.
 - One room routing owner plans its base tree and source-specific screen delivery.
-  Conversation, voice and files reuse base paths; selected viewers and necessary
+  Voice and file bytes/control reuse base paths; selected viewers and necessary
   relays receive pictures. Shared physical connections retain their own leases,
   so retiring one flow does not retire unrelated work. Browser WebRTC and the
   Native RTC SDK own congestion control and transport adaptation; Piik owns

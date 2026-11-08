@@ -91,11 +91,15 @@ export function ChannelIdentityFields({ name, icon, label, disabled, onName, onI
   imageBusy: boolean; onImageBusyChange(busy: boolean): void;
 }) {
   const id = useId();
+  const { lang } = useCopy();
   return <>
     <label className="c3-identity-name" htmlFor={id}><span>{label}</span>
       <input id={id} className="c3-input" required maxLength={64} autoComplete="off" value={name}
         disabled={disabled} onChange={event => onName(event.target.value)} />
     </label>
-    <ChannelIdentityPicker value={icon} onChange={onIcon} disabled={disabled} busy={imageBusy} onBusyChange={onImageBusyChange} />
+    <details className="c3-identity-appearance">
+      <summary><ChannelIdentityMark icon={icon} size={24} /><span>{lang === "zh" ? "更改图标或图片" : "Change icon or image"}</span></summary>
+      <ChannelIdentityPicker value={icon} onChange={onIcon} disabled={disabled} busy={imageBusy} onBusyChange={onImageBusyChange} />
+    </details>
   </>;
 }

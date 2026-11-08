@@ -61,7 +61,6 @@ impl Fixture {
             ice: vec![],
             server_udp: Some(fixed),
             commands,
-            links: Default::default(),
             cancel,
             events,
             ready_sources: ready,
@@ -525,11 +524,6 @@ pub(in crate::peer) async fn send_rid(
 
 use crate::data::MessageScope;
 use crate::peer::transport::{Channel, ChannelEvent};
-use piik_channel_core::{
-    conversation::{encode_control, ControlFrame, ConversationAddress, SessionSigner},
-    wire::{ChannelInfo, Room, RoomAccess, RoomCapabilities, RoomDelivery, SessionInfo, Snapshot},
-};
-use std::collections::BTreeMap;
 pub(in crate::peer) async fn open(
     left: &Transport,
     right: &Transport,
@@ -562,95 +556,28 @@ pub(in crate::peer) async fn open(
     Ok((local, remote))
 }
 
-pub(in crate::peer) fn message(tag: &str) -> Result<(Vec<u8>, MessageScope)> {
-    let sender = Uuid::from_u128(1);
-    let receiver = Uuid::from_u128(2);
-    let pair = Uuid::from_u128(3);
-    let binding = Uuid::from_u128(4);
-    let signer = SessionSigner::from_seed([6; 32]);
-    let packet = signer
-        .sign(
-            sender,
-            &ConversationAddress {
-                room_id: "transport-check".into(),
-                binding_id: binding,
-                sender,
-                recipient: receiver,
-                request_id: tag.into(),
+pub(in crate::peer) fn message(_tag: &str) -> Result<(Vec<u8>, MessageScope, impl Clone)> {
+    let key = piik_channel_core::file_room::FileKey {
+        room_id: "transport-check".into(),
+        message_seq: 1,
+        attachment_id: Uuid::from_u128(7),
+    };
+    let (scope, lease) = crate::file::scope_fixture(key.clone());
+    let bytes = piik_channel_core::conversation::encode_control(
+        &piik_channel_core::conversation::ControlFrame::File(
+            piik_channel_core::file_delivery::FileControl::Cancel {
+                key,
+                offset: 0,
+                request_id: Uuid::new_v4(),
             },
-        )
-        .map_err(anyhow::Error::msg)?;
-    let snapshot = Snapshot {
-        files: vec![],
-        channel: ChannelInfo {
-            history_window: 1,
-            id: Uuid::nil(),
-            name: "Transport check".into(),
-            icon: Default::default(),
-            owner_id: None,
-            access: RoomAccess::Private,
-            has_password: false,
-            invite_hash: piik_channel_core::domain_invite_hash("fixture"),
-            rooms: vec![Room {
-                id: "transport-check".into(),
-                name: "Transport check".into(),
-                icon: Default::default(),
-                creator_id: sender,
-                access: RoomAccess::Public,
-                hidden: false,
-                has_password: false,
-                voice_bitrate: 64_000,
-                relay_capacity: 2,
-                relay_override: None,
-                authorized: true,
-                can_manage: true,
-                available: true,
-                reading: true,
-                participant_session_ids: vec![sender, receiver],
-                capabilities: RoomCapabilities { attachments: false },
-                delivery: Some(RoomDelivery {
-                    host_session_id: sender,
-                    binding_id: binding,
-                    next_hops: BTreeMap::from([(receiver, receiver)]),
-                }),
-                members: None,
-            }],
-        },
-        users: vec![],
-        sessions: vec![SessionInfo {
-            id: sender,
-            user_id: sender,
-            online: true,
-            signing_key: signer.signing_key(),
-        }],
-        publications: vec![],
-        voice: vec![],
-        subscriptions: vec![],
-        failed_subscriptions: vec![],
-        pairs: vec![PairInfo {
-            id: pair,
-            udp_preparation: None,
-            peer_id: receiver,
-            can_receive_video_layers: false,
-            rooms: vec!["transport-check".into()],
-            incoming: vec![],
-            outgoing: vec![],
-        }],
-        ice_servers: vec![],
-    };
-    let scope = MessageScope::Conversation {
-        snapshot: watch::channel(Some(snapshot)).1,
-        local: sender,
-        peer: receiver,
-        from: None,
-        packet: packet.clone(),
-    };
-    let bytes = encode_control(&ControlFrame::Conversation(packet)).map_err(anyhow::Error::msg)?;
-    Ok((bytes, scope))
+        ),
+    )
+    .map_err(anyhow::Error::msg)?;
+    Ok((bytes, MessageScope::File(scope), lease))
 }
 
 pub(in crate::peer) async fn exchange(send: &Channel, receive: &Channel, tag: &str) -> Result<()> {
-    let (bytes, scope) = message(tag)?;
+    let (bytes, scope, _lease) = message(tag)?;
     ensure!(
         send.write(false, bytes.clone(), scope, false).await?,
         "small scoped message was not admitted"

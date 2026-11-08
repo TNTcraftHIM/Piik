@@ -29,6 +29,8 @@ pub struct RoomState {
     pub relay_capacity: u8,
     password_hash: Option<String>,
     invite_hash: Option<[u8; 32]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    invite_key: Option<String>,
     pub grants: BTreeSet<Uuid>,
 }
 
@@ -80,6 +82,9 @@ impl RoomState {
                 .password_hash
                 .as_ref()
                 .is_some_and(|hash| PasswordHash::new(hash).is_err())
+            || self.invite_key.as_ref().is_some_and(|key| {
+                !crate::wire::valid_id(key) || self.invite_hash != Some(digest(key))
+            })
         {
             return Err("invalid_room_policy");
         }
@@ -106,6 +111,7 @@ impl RoomState {
             relay_capacity: default_relay_capacity(),
             password_hash: None,
             invite_hash: None,
+            invite_key: None,
             grants: BTreeSet::new(),
         };
         room.update(name, icon, access, hidden, password.map(Some))?;
@@ -153,6 +159,7 @@ impl RoomState {
         if access == RoomAccess::Public {
             self.password_hash = None;
             self.invite_hash = None;
+            self.invite_key = None;
         }
         Ok(())
     }
@@ -190,7 +197,20 @@ impl RoomState {
         }
         let key = Uuid::new_v4().to_string();
         self.invite_hash = Some(digest(&key));
+        self.invite_key = Some(key.clone());
         Ok(key)
+    }
+
+    pub fn invitation(&self) -> Result<crate::wire::RoomInvitation, &'static str> {
+        use crate::wire::RoomInvitation;
+        if self.access != RoomAccess::Private {
+            return Err("room_not_private");
+        }
+        Ok(match &self.invite_key {
+            Some(key) => RoomInvitation::Available { key: key.clone() },
+            None if self.invite_hash.is_some() => RoomInvitation::Unrecoverable,
+            None => RoomInvitation::Missing,
+        })
     }
 
     pub fn view(&self, user: Uuid, domain_owner: bool) -> Option<Room> {

@@ -61,7 +61,7 @@ describe("shared App connection entry", () => {
     expect(button.includes("disabled")).toBe(!entry.available);
     expect(button.toLowerCase().includes("popovertarget=")).toBe(entry.picker);
     expect(html.match(/<button\b/g)).toHaveLength(2);
-    expect(html).toMatch(/aria-label="(?:Sharing settings|分享设置)"/);
+    expect(html).toMatch(/aria-label="(?:Picture and sound|画质与声音)"/);
   });
   it("reuses the sharing entry as Switch source only for this page's active room share", () => {
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn() } });
@@ -73,7 +73,7 @@ describe("shared App connection entry", () => {
     const html = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", disabled: false }));
     expect(html).toMatch(/aria-label="(?:Switch source|切换来源)"/);
     expect(html.match(/<button\b/g)).toHaveLength(2);
-    expect(html).toMatch(/aria-label="(?:Sharing settings|分享设置)"/);
+    expect(html).toMatch(/aria-label="(?:Picture and sound|画质与声音)"/);
     const elsewhere = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "other", disabled: false }));
     expect(elsewhere).not.toMatch(/aria-label="(?:Switch source|切换来源)"/);
   });

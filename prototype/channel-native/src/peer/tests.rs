@@ -360,7 +360,6 @@ pub(super) fn driver() -> (
             ice: vec![],
             server_udp: None,
             commands,
-            links: Arc::new(Mutex::new(HashMap::new())),
             cancel,
             events,
             ready_sources,

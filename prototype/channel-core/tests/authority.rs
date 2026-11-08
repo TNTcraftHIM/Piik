@@ -7,6 +7,9 @@ use uuid::Uuid;
 
 fn apply(core: &mut Authority, connection: Uuid, mut command: Value, now: u64) -> Effects {
     if command["type"] == "join" {
+        if command.get("protocol").is_none() {
+            command["protocol"] = json!(piik_channel_core::wire::CHANNEL_PROTOCOL);
+        }
         command["signingKey"] =
             json!(piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key());
     }
@@ -43,6 +46,36 @@ fn join(core: &mut Authority, connection: Uuid, owner: bool, now: u64) -> (Uuid,
         ),
         connection,
     )
+}
+
+#[test]
+fn domain_protocol_rejects_old_clients_before_admission() {
+    let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+    let before = serde_json::to_value(core.export_backup()).unwrap();
+    for protocol in [None, Some(0), Some(2)] {
+        let connection = Uuid::new_v4();
+        let mut join = json!({"type":"join","name":"Old","key":"invite","requestId":"join",
+            "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key()});
+        if let Some(protocol) = protocol {
+            join["protocol"] = json!(protocol);
+        }
+        let effects = core.handle(connection, Request::parse(&join.to_string()).unwrap(), 0);
+        assert!(effects.close.contains(&connection));
+        assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "incompatible_protocol")));
+        assert!(!effects
+            .events
+            .iter()
+            .any(|(_, event)| matches!(event, Event::Welcome { .. } | Event::HostInput { .. })));
+        assert_eq!(serde_json::to_value(core.export_backup()).unwrap(), before);
+    }
+    let connection = Uuid::new_v4();
+    let effects = apply(
+        &mut core,
+        connection,
+        json!({"type":"join","name":"Current","key":"invite"}),
+        0,
+    );
+    assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::Welcome { protocol, .. } if *protocol == piik_channel_core::wire::CHANNEL_PROTOCOL)));
 }
 
 #[test]

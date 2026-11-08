@@ -45,6 +45,14 @@ fn browse(network: &mut RoomNetwork, connection: Uuid, room: &str, active: bool)
         json!({"type":"browse", "roomId":room, "active":active}),
     );
 }
+fn join_base(network: &mut RoomNetwork, connection: Uuid, room: &str) {
+    browse(network, connection, room, true);
+    command(
+        network,
+        connection,
+        json!({"type":"voice","roomId":room,"joined":true,"muted":true,"deafened":true}),
+    );
+}
 fn voice(network: &mut RoomNetwork, connection: Uuid, room: &str, joined: bool) {
     command(
         network,
@@ -315,7 +323,7 @@ fn screen_pause_is_authoritative_and_retains_voice_and_transport() {
     let (source, _) = join(&mut network, host, None);
     let (receiver, _) = join(&mut network, viewer, None);
     let room = network.create(host, RoomAccess::Public, false);
-    browse(&mut network, viewer, &room, true);
+    join_base(&mut network, viewer, &room);
     let transport = pair(&network, viewer, source, &room);
     assert!(topology(&mut network, viewer, &room, None)
         .base
@@ -460,7 +468,7 @@ fn required_repair_wakes_the_existing_host_and_renews_only_retired_transport() {
         let (source, _) = join(&mut network, host, None);
         let (receiver, _) = join(&mut network, viewer, None);
         let room = network.create(host, RoomAccess::Public, false);
-        browse(&mut network, viewer, &room, true);
+        join_base(&mut network, viewer, &room);
         let old = pair(&network, viewer, source, &room);
         for connection in [host, viewer] {
             command(
@@ -658,7 +666,7 @@ fn input_registration_is_private_and_follows_only_the_committed_picture() {
             .collect();
         let room = network.create(connections[0], RoomAccess::Public, false);
         for index in 1..4 {
-            browse(&mut network, connections[index], &room, true);
+            join_base(&mut network, connections[index], &room);
             let edge = network
                 .state(connections[index])
                 .pairs
@@ -879,7 +887,7 @@ fn revoking_a_private_transit_retires_its_branch_and_keeps_its_public_pair() {
             connections[index],
             json!({"type":"enter_room","roomId":room,"inviteKey":invitation}),
         );
-        browse(&mut network, connections[index], &room, true);
+        join_base(&mut network, connections[index], &room);
         let edge = network
             .state(connections[index])
             .pairs
@@ -1036,7 +1044,7 @@ fn room_base_root_is_the_actual_host_session_and_stopping_reading_preserves_acti
     let (other_session, _) = join(&mut network, other_page, Some(&credential));
     let (viewer_session, _) = join(&mut network, viewer, None);
     let room = network.create(host, RoomAccess::Public, false);
-    browse(&mut network, viewer, &room, true);
+    join_base(&mut network, viewer, &room);
     let base = pair(&network, viewer, host_session, &room);
     assert_ne!(
         base.peer_id, other_session,
@@ -1197,7 +1205,8 @@ fn voice_uses_only_mutually_ready_tree_paths_and_non_listeners_can_forward_both_
     let (ds, _) = join(&mut network, d, None);
     let room = network.create(b, RoomAccess::Public, false);
     browse(&mut network, c, &room, true);
-    browse(&mut network, d, &room, true);
+    let relay_picture = publish(&mut network, c, &room, "screen");
+    join_base(&mut network, d, &room);
     voice(&mut network, b, &room, true);
     voice(&mut network, d, &room, true);
     let from_b = publish(&mut network, b, &room, "voice");
@@ -1306,6 +1315,11 @@ fn voice_uses_only_mutually_ready_tree_paths_and_non_listeners_can_forward_both_
             "a speaker never gets its own publication back"
         );
     }
+    command(
+        &mut network,
+        c,
+        json!({"type":"unpublish","publicationId":relay_picture}),
+    );
     browse(&mut network, c, &room, false);
     assert!(
         !network
@@ -1401,8 +1415,8 @@ fn failed_base_data_channel_repairs_its_lease_without_closing_a_shared_screen_pa
     let (cs, _) = join(&mut network, c, None);
     let (ds, _) = join(&mut network, d, None);
     let room = network.create(b, RoomAccess::Public, false);
-    browse(&mut network, c, &room, true);
-    browse(&mut network, d, &room, true);
+    join_base(&mut network, c, &room);
+    join_base(&mut network, d, &room);
     let bc = pair(&network, b, cs, &room);
     let bd = pair(&network, b, ds, &room);
     for (first, second, id) in [(b, c, bc.id), (b, d, bd.id)] {
@@ -1626,7 +1640,7 @@ fn retired_picture_report_cannot_fail_recreated_flow_on_retained_base_pair() {
     let (source_session, _) = join(&mut network, source, None);
     join(&mut network, viewer, None);
     let room = network.create(source, RoomAccess::Public, false);
-    browse(&mut network, viewer, &room, true);
+    join_base(&mut network, viewer, &room);
     let lease = pair(&network, viewer, source_session, &room);
     for endpoint in [source, viewer] {
         command(
@@ -1741,7 +1755,7 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
     join(&mut network, stranger, None);
     let room = network.create(source, RoomAccess::Public, false);
     for connection in [relay, viewer] {
-        browse(&mut network, connection, &room, true);
+        join_base(&mut network, connection, &room);
     }
     for connection in [relay, viewer] {
         let lease = pair(&network, connection, source_session, &room);
@@ -1926,7 +1940,7 @@ fn internal_screen_source_uses_three_existing_base_directions_and_shared_nonview
         .collect();
     let room = network.create(connections[0], RoomAccess::Public, false);
     for connection in &connections[1..] {
-        browse(&mut network, *connection, &room, true);
+        join_base(&mut network, *connection, &room);
     }
     // Establish the real bounded room tree through both endpoint DC proofs.
     for _ in 0..4 {
@@ -2194,9 +2208,9 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
         let host = Uuid::new_v4();
         let publisher = Uuid::new_v4();
         network.command(host, json!({"type":"join","name":"Host","key":"owner"}));
-        let (publisher_session, _) = join(&mut network, publisher, None);
+        let (_publisher_session, _) = join(&mut network, publisher, None);
         let room = network.create(host, RoomAccess::Public, false);
-        browse(&mut network, publisher, &room, true);
+        join_base(&mut network, publisher, &room);
         let pair_id = network
             .state(publisher)
             .pairs
@@ -2207,7 +2221,7 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
         let publication = Uuid::new_v4();
         let effects = network.authority.handle(publisher, Request::parse(&json!({
             "type":"publish","requestId":"publication-order",
-            "publication":{"id":publication,"roomId":room,"kind":if outcome == "error" { "voice" } else { "screen" },"videoCeiling":if outcome == "error" { None } else { Some(json!({"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000})) }}
+            "publication":{"id":publication,"roomId":room,"kind":if outcome == "error" { "voice" } else { "screen" },"videoCeiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000}}
         }).to_string()).unwrap(), 100);
         let input = effects
             .events
@@ -2374,7 +2388,7 @@ fn hosted_media_deadline_wakes_room_without_fencing_an_earlier_request() {
     join(&mut network, b, None);
     let room = network.create(source, RoomAccess::Public, false);
     for viewer in [a, b] {
-        browse(&mut network, viewer, &room, true);
+        join_base(&mut network, viewer, &room);
     }
     for viewer in [a, b] {
         let lease = pair(&network, viewer, source_session, &room);
@@ -2545,7 +2559,7 @@ fn failed_pair_does_not_invalidate_an_earlier_browse_reply_or_revive_old_project
     let (host_session, _) = join(&mut network, host, None);
     join(&mut network, viewer, None);
     let room = network.create(host, RoomAccess::Public, false);
-    browse(&mut network, viewer, &room, true);
+    join_base(&mut network, viewer, &room);
     let original = pair(&network, viewer, host_session, &room);
     for endpoint in [host, viewer] {
         command(
@@ -2626,7 +2640,7 @@ fn unrelated_leave_does_not_invalidate_an_earlier_browse_reply_or_revive_retired
     let (c_session, _) = join(&mut network, c, None);
     let room = network.create(host, RoomAccess::Public, false);
     for viewer in [b, c] {
-        browse(&mut network, viewer, &room, true);
+        join_base(&mut network, viewer, &room);
     }
     let c_pair = pair(&network, c, host_session, &room).id;
     let c_picture = publish(&mut network, c, &room, "screen");
@@ -2755,7 +2769,7 @@ fn coordinated_udp_preparation_replaces_only_the_physical_attempt_and_preserves_
     let (host_session, _) = prepare_capable_join(&mut network, host);
     prepare_capable_join(&mut network, viewer);
     let room = network.create(host, RoomAccess::Public, false);
-    browse(&mut network, viewer, &room, true);
+    join_base(&mut network, viewer, &room);
     let picture = publish(&mut network, host, &room, "screen");
     command(
         &mut network,
@@ -2911,7 +2925,7 @@ fn coordinated_udp_preparation_uses_current_capability_and_never_restarts_a_conn
         let (host_session, _) = prepare_capable_join(&mut network, host);
         let (viewer_session, credential) = prepare_capable_join(&mut network, viewer);
         let room = network.create(host, RoomAccess::Public, false);
-        browse(&mut network, viewer, &room, true);
+        join_base(&mut network, viewer, &room);
         let original = pair(&network, viewer, host_session, &room);
         if connected {
             command(
@@ -2994,7 +3008,7 @@ fn coordinated_udp_preparation_requires_distinct_configured_stun_authorities() {
         let (host_session, _) = prepare_capable_join(&mut network, host);
         prepare_capable_join(&mut network, viewer);
         let room = network.create(host, RoomAccess::Public, false);
-        browse(&mut network, viewer, &room, true);
+        join_base(&mut network, viewer, &room);
         let original = pair(&network, viewer, host_session, &room);
         assert_eq!(
             original.udp_preparation,
@@ -3029,7 +3043,7 @@ fn coordinated_udp_signals_use_only_the_required_pair_and_fixed_endpoint_roles()
         (viewer, host)
     };
     let room = network.create(host, RoomAccess::Public, false);
-    browse(&mut network, viewer, &room, true);
+    join_base(&mut network, viewer, &room);
     let original = pair(&network, viewer, host_session, &room);
     let prediction = json!({"address":"203.0.113.5","port":42000,"step":2});
     let offer = json!({"udp":{"type":"offer","secret":vec![7u8;32],"prediction":prediction}});

@@ -9,7 +9,7 @@ declare global { interface Window { runBrowserRoomCheck(): Promise<object> } }
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 interface Output {
   projection: { views: Record<string, { room: { icon: string; canManage: boolean; participantSessionIds: string[] }; publications: unknown[] }> };
-  reply: { result: { type: string; code?: string; key?: string } } | null;
+  reply: { result: { type: string; code?: string; key?: string; invitation?: { state: string; key?: string } } } | null;
   invitation: { accepted: boolean } | null;
 }
 window.runBrowserRoomCheck = async () => {
@@ -147,7 +147,14 @@ window.runBrowserRoomCheck = async () => {
           command: { type: "browse", roomId: privateHost.roomId, active: true } },
       }) as Output;
       check(!output.projection.views[guestSession] && output.reply?.result.type === "error", "shared private-room policy hides its view");
+      check((await dispatch({ type: "get_room_invite", roomId: privateHost.roomId }, undefined, privateHost)).reply?.result.invitation?.state === "missing",
+        "a private room without an invitation reports missing without generating one");
       const invitation = await dispatch({ type: "room_invite", roomId: privateHost.roomId }, undefined, privateHost);
+      for (let index = 0; index < 2; index++) {
+        const read = await dispatch({ type: "get_room_invite", roomId: privateHost.roomId }, undefined, privateHost);
+        check(read.reply?.result.invitation?.state === "available" && read.reply.result.invitation.key === invitation.reply!.result.key,
+          "repeated invitation reads preserve the committed key");
+      }
       const verified = await privateHost.dispatch({ now: Date.now(), bindingId, hostSessionId: session, revision: ++revision, endpoints,
         action: { type: "verify_invite", ticket: crypto.randomUUID(), key: invitation.reply!.result.key, member: null },
       }) as Output;
@@ -164,6 +171,20 @@ window.runBrowserRoomCheck = async () => {
       try {
         const restored = await reopened.dispatch({ now: Date.now(), bindingId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
         check(restored.projection.views[guestSession], "private invitation grant survives runtime reopen");
+        const read = await dispatch({ type: "get_room_invite", roomId: reopened.roomId }, undefined, reopened);
+        check(read.reply?.result.invitation?.key === invitation.reply!.result.key, "IndexedDB reopen preserves the readable invitation");
+        const privatePacket = (command: object): SignedConversationPacket => JSON.parse(signer.sign(session, JSON.stringify({
+          roomId: reopened.roomId, bindingId, sender: session, recipient: session, requestId: crypto.randomUUID(), command,
+        })));
+        const saved = await reopened.dispatchPeer(privatePacket({ type: "chat", text: "Before invitation reset", nonce: "invite-reset", attachments: [] }), Date.now());
+        check(saved[0]?.record.type === "confirmed", "private room history is committed before invitation reset");
+        const reset = await dispatch({ type: "room_invite", roomId: reopened.roomId }, undefined, reopened);
+        check(reset.reply?.result.key && reset.reply.result.key !== invitation.reply!.result.key, "only an explicit reset changes the invitation");
+        const afterReset = await reopened.dispatchPeer(privatePacket({ type: "history", before: null }), Date.now());
+        check(afterReset.some(reply => reply.record.type === "history_message" && reply.record.message.text === "Before invitation reset"),
+          "resetting an invitation preserves committed IndexedDB history");
+        const grantedAgain = await reopened.dispatch({ now: Date.now(), bindingId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
+        check(grantedAgain.projection.views[guestSession], "resetting an invitation preserves an existing user's grant");
       } finally { await reopened.close(); }
     } finally { await privateHost.close(); }
     const file: SentResult["message"]["attachments"][number] = { id: crypto.randomUUID(), name: "file.bin", size: 3, mediaType: "application/octet-stream",
@@ -297,9 +318,10 @@ window.runBrowserRoomCheck = async () => {
     await dispatch({ type: "browse", roomId: host.roomId, active: true });
     check(host.currentReaders().length === 1 && host.currentReaders()[0] === session, "reading audience comes from shared room state");
     const packet = peerPacket({ type: "chat", text: "Signed peer", nonce: "peer-send", attachments: [] });
-    const frame = JSON.parse(decode_control(encode_control(JSON.stringify({ kind: "conversation", body: packet }))));
-    check(frame.kind === "conversation" && frame.body.payload === packet.payload, "Rust control framing preserves signed payload bytes");
-    const replies = await host.dispatchPeer(frame.body, Date.now());
+    const fileControl = { type: "cancel", key: { roomId: host.roomId, messageSeq: 1, attachmentId: crypto.randomUUID() }, offset: 0, requestId: crypto.randomUUID() };
+    const frame = JSON.parse(decode_control(encode_control(JSON.stringify({ kind: "file", body: fileControl }))));
+    check(frame.kind === "file" && JSON.stringify(frame.body) === JSON.stringify(fileControl), "Rust peer control framing preserves file controls");
+    const replies = await host.dispatchPeer(packet, Date.now());
     const confirmation = replies[0];
     check(replies.length === 2 && confirmation.record.type === "confirmed" && confirmation.record.message.seq === 112 && confirmation.record.inserted,
       "signed peer send confirms persisted room sequence");
@@ -485,6 +507,7 @@ window.runBrowserRoomCheck = async () => {
       reopen: true, abortAfterInsertSuccess: insertSucceeded, abortConfirmed: false, unavailableSourceRejected: true, missingAttachmentRejected: true,
       latest: latest.messages.length, older: older.messages.length, beforeZero: true, versionChangeClearsPending: true,
       bindingWriteOwner: true, lateBindingClaim: true, sameBindingActivity: true, privateRoomProjection: true, privateInvitationGrant: true, restoredWithoutCapture: true,
+      invitationReadOnly: true, invitationReopen: true, invitationExplicitResetKeepsGrantAndHistory: true,
       signedPeerHistory: true, signedPeerIdentity: true, immediateAdmission: true, immediateBindingFence: true, immediateNotHistory: true,
       retainedReactions: true, independentUserChoices: true, reactionAbortAfterPutSuccess: reactionWriteSucceeded,
       identityImage: true, identityPngFallback: true, identityAbortAfterPutSuccess: true, identityPresetReplacement: true,

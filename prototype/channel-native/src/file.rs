@@ -33,6 +33,20 @@ impl FileScope {
         self.lease.changed().await.is_ok()
     }
 }
+
+#[cfg(test)]
+pub(crate) fn scope_fixture(key: FileKey) -> (FileScope, impl Clone) {
+    let (lease, _) = watch::channel(Lease {
+        rooms: BTreeSet::from([key.room_id.clone()]),
+        keys: BTreeSet::from([key.clone()]),
+    });
+    let scope = FileScope {
+        lease: lease.subscribe(),
+        key,
+        allow_unplanned: false,
+    };
+    (scope, lease)
+}
 struct Link {
     senders: Senders,
     lease: watch::Sender<Lease>,

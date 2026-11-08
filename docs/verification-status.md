@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-07
+Last updated: 2026-11-08
 
 This page summarizes the current 3.0 evidence and limits that affect product
 claims. [Status](./status.md#isolated-30-prototype) owns delivery readiness;
@@ -17,6 +17,12 @@ received digest, Native picture reception in both directions, and room voice
 with advancing received packets and energy from a synthetic microphone.
 Windows Browser camera and Native window checks used owned synthetic inputs.
 These package checks ran on a controlled local network.
+
+The newer conversation path passes normal Browser-hosted and App-hosted room
+checks with peer signaling blocked: history, bidirectional messages and saved
+reactions work without RTC connections. Attachment descriptions also arrive
+without RTC; their file content downloads over P2P once that path is available.
+This source-level acceptance follows the delivered internal package.
 
 The current Windows package also passes normal control request and Host
 approval, real pointer and keyboard input to an isolated window, and **End

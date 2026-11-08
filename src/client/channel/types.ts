@@ -1,4 +1,4 @@
-import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomSettings } from "./protocol";
+import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomInvitationState, RoomSettings } from "./protocol";
 import type { ChannelAttachments, DraftFile } from "./attachments";
 import type { NativeCaptureTarget } from "../native/wire";
 import type { NativeCaptureRequest, NativeCaptureSources, ChannelRemoteControlState, NativeConnectionMetrics } from "./app-link";
@@ -105,6 +105,7 @@ export interface ChannelActions {
   restoreRoomBackup(archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }>;
   enterRoom(roomId: string, password: string): Promise<void>;
   createRoomInvite(roomId: string): Promise<string>;
+  getRoomInvite(roomId: string): Promise<RoomInvitationState>;
   revokeRoomAccess(roomId: string, userId: string): Promise<void>;
   startScreen(roomId: string, source?: BrowserCaptureSource, deviceId?: string): Promise<void>;
   cameraPreviews: typeof loadCameraPreviews;

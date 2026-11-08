@@ -7,8 +7,6 @@ mod bulk;
 mod codec_change;
 #[path = "feedback.rs"]
 mod feedback;
-#[path = "history.rs"]
-mod history;
 #[path = "media_reuse.rs"]
 mod media_reuse;
 
@@ -207,7 +205,7 @@ async fn native_opus_offer_and_answer_request_stereo_receive() -> Result<()> {
 
 #[tokio::test]
 async fn rebinding_writer_preserves_messages_queued_for_current_channel() -> Result<()> {
-    use crate::data::{queue_controls, DataLink, Lane, Message, MessageScope};
+    use crate::data::{DataLink, Lane, Message};
     use crate::peer::tests::support::{endpoint, message, open};
 
     let runtime = Runtime::new(None);
@@ -247,19 +245,12 @@ async fn rebinding_writer_preserves_messages_queued_for_current_channel() -> Res
         let senders = link.senders();
         let old_ready = link.bind(Lane::Control, Uuid::new_v4(), old);
         ensure!(old_ready.set(true));
-        let (_, MessageScope::Conversation { snapshot, .. }) = message("scope owner")? else {
-            unreachable!()
-        };
-        let (authority, _) = watch::channel(snapshot.borrow().clone());
+        let (_, scope, _lease) = message("scope owner")?;
         let record = |tag: &str| -> Result<Message> {
-            let (bytes, mut scope) = message(tag)?;
-            let MessageScope::Conversation { snapshot, .. } = &mut scope else {
-                unreachable!()
-            };
-            *snapshot = authority.subscribe();
+            let (bytes, _, _) = message(tag)?;
             Ok(Message {
                 bytes,
-                scope,
+                scope: scope.clone(),
                 report_failure: true,
             })
         };
@@ -267,8 +258,10 @@ async fn rebinding_writer_preserves_messages_queued_for_current_channel() -> Res
         // Hold only admission to the real command loop, so the old Channel::write
         // remains pending while the pair writer observes its replacement.
         let held = left.tx.reserve_many(left.tx.max_capacity()).await?;
-        queue_controls(&senders.control, vec![record("old in-flight")?])
-            .map_err(anyhow::Error::msg)?;
+        senders
+            .control
+            .try_send(record("old in-flight")?)
+            .map_err(|_| anyhow!("control queue full"))?;
         tokio::time::timeout(Duration::from_secs(5), async {
             while senders.control.capacity() != senders.control.max_capacity() {
                 tokio::task::yield_now().await;
@@ -285,8 +278,12 @@ async fn rebinding_writer_preserves_messages_queued_for_current_channel() -> Res
             .iter()
             .map(|message| message.bytes.clone())
             .collect();
-        queue_controls(&senders.control, expected.into_iter().collect())
-            .map_err(anyhow::Error::msg)?;
+        for message in expected {
+            senders
+                .control
+                .try_send(message)
+                .map_err(|_| anyhow!("control queue full"))?;
+        }
         tokio::time::timeout(Duration::from_secs(5), async {
             while senders.control.capacity() == senders.control.max_capacity() - 2 {
                 tokio::task::yield_now().await;

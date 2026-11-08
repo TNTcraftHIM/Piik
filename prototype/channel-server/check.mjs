@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { test } from "node:test";
 import WebSocket from "ws";
-import { eventSchema } from "../../src/client/channel/protocol.ts";
+import { CHANNEL_PROTOCOL, eventSchema } from "../../src/client/channel/protocol.ts";
 
 const endpoint = process.env.CHANNEL_WS_URL ?? "ws://127.0.0.1:8791/prototype/channel";
 const origin = process.env.CHANNEL_UI_ORIGIN ?? "http://127.0.0.1:8790";
@@ -63,7 +63,7 @@ async function connect(t, join) {
     },
   };
   const signingKey = [...Buffer.from(generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x, "base64url")];
-  socket.send(JSON.stringify({ type: "join", name: "Protocol check", signingKey, ...join }));
+  socket.send(JSON.stringify({ type: "join", protocol: CHANNEL_PROTOCOL, name: "Protocol check", signingKey, ...join }));
   client.welcome = await wait(event => ["welcome", "error"].includes(event.type), "join result");
   return client;
 }
@@ -103,7 +103,7 @@ test("the frontend accepts real cross-room publications and subscriptions", { ti
   }
 });
 
-test("authenticated users, peer-only conversation and selective source ownership", { timeout: 30_000 }, async t => {
+test("authenticated users, signed conversation and selective source ownership", { timeout: 30_000 }, async t => {
   const owner = await connect(t, { key: ownerKey, name: "Owner check" });
   const friend = await connect(t, { key: inviteKey, name: "Friend check" });
   const other = await connect(t, { key: inviteKey, name: "Other check" });

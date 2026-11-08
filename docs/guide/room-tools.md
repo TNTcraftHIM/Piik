@@ -1,110 +1,91 @@
 # Chat, voice and remote control
 
+This guide covers the 3.0 internal test. For the published version, use the [2.6.0 guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/guide/room-tools.md).
+
 English · [简体中文](./room-tools.zh-CN.md) · [Documentation](./README.md)
 
-Chat and voice work before, during and after picture sharing.
-Remote control requires an active App window or screen share.
-
-- **[Chat and reactions](#chat-and-reactions):** join the room and open **Interact → Chat**.
-- **[Room voice](#room-voice):** the Host opens room voice; each speaker enables their own microphone.
-- **[Remote control](#let-a-friend-control-your-shared-screen):** the Host shares an App window/screen, then enables and authorizes control.
+A domain contains rooms. Select a room in the sidebar to read its conversation.
+Once admitted to that room, you can chat, join voice, share a picture or watch
+someone else's share. Domain and room owners manage their respective settings;
+you do not need a separate participant role to use these activities.
 
 ## Chat and reactions
 
-1. Select **Interact** below the sofa, then open **Chat** and send a message.
-2. Select a person on the sofa or an avatar in Chat/Voice to open their reaction
-   menu. **More reactions** opens the full palette.
-3. Move or resize the interaction window to keep it beside what you are watching.
+1. Select a room and send a message in its conversation. Use the attachment
+   button to add an image or file; you can include text with it.
+2. Use **React to this message** to add a reaction. Select your reaction again
+   to remove it.
+3. To read back, select **Earlier messages**. **Latest messages** returns to
+   the current conversation.
 
-Your own reactions appear above you; reactions sent to a friend fly towards them.
+Confirmed messages and their reactions are saved by the room's host. Refreshing
+or returning to the room loads its history again when that host is available.
+Chat and history use the domain connection and do not wait for a P2P link.
+The domain forwards message text; it does not keep the room's history.
+An attachment's history entry can remain after its readable file copies go
+offline; open or download it when a participant with a copy is available.
+File content, voice and shared pictures use their own P2P connections.
 
-<details>
-<summary>Keep chat above a game</summary>
+Selecting a person in the room opens their interaction menu. Expressions and
+thrown props are live effects; they are not saved as message reactions.
 
-Supported desktop browsers show **Open in always-on-top window** in its top-right
-corner. You can read messages, see reactions and select someone to interact with
-while playing. Keep the Piik page open; closing the small window returns it to the page.
-Use a windowed or borderless game; exclusive fullscreen may cover the window.
-The window has an opaque background and receives mouse clicks.
-
-</details>
-
-**On screen**, beside the message box or in the playback bar, shows new
-messages over the picture. It is off by default and only changes your own view.
-Use **Playback settings → On-screen chat** for text size, opacity, scroll speed
-and **Use participant colors**. The default is white; participant colors follow
-the sender's seat. Speed changes apply to new messages.
-System video fullscreen and picture in picture cannot show these overlays.
-
-Stopping a share keeps the room's chat available. App Local and Public invite
-rooms require the App to stay open. Each page retains only its latest received
-messages: refreshing clears them, and late joiners receive no earlier history.
-To keep a copy, use **Chat settings → Export chat** to save the latest messages
-retained on this page (up to 1,000) as a text file.
-Chat travels through the room's server and is **not end-to-end encrypted**.
+While watching a picture, **On screen** in its playback bar shows that room's
+new messages over the picture. **Playback settings → On-screen chat** adjusts
+their appearance. Loading earlier history does not replay these effects.
+System video fullscreen and video picture in picture do not show chat overlays.
 
 ## Room voice
 
-1. The Host creates a room and sends its invitation; no picture share is needed.
-2. The Host opens **Interact → Voice** and selects **Open room voice**.
-   Room members can then select **Join voice**, without another approval.
-3. To speak, select **Microphone** and grant browser access. Joining alone never
-   turns on your microphone.
+1. In the selected room's header, select **Join voice** and allow microphone
+   access when asked. No one needs to open a room-wide call first.
+2. To join without capturing a microphone, open the arrow beside **Join voice**
+   and select **Listen without a microphone**.
+3. Use the persistent voice controls to mute your microphone, pause listening
+   or **Leave voice**. **Voice settings** selects the input and noise/echo processing.
 
-![Room voice with two sample participants. Microphone and listening controls are at the bottom; voice settings are beside the tabs.](../assets/guide/room-voice.en.png#gh-light-mode-only)
-![Room voice with two sample participants. Microphone and listening controls are at the bottom; voice settings are beside the tabs.](../assets/guide/room-voice.en.dark.png#gh-dark-mode-only)
+Hover over a microphone, headphones or a person's speaker to adjust its volume;
+on a touchscreen, press and hold. Muting a person changes only what you hear.
+Microphone and listening controls do not change the shared picture's sound.
+Room managers can change **Room voice bitrate** in voice settings.
 
-*Host view with sample participants. A Viewer sees Leave voice instead of Close room voice.*
+You can join voice in more than one room. When several are joined, use the voice
+room selector to choose which room's microphone, listening and leave controls
+you are changing. Switching the conversation or stopping a picture does not
+leave those voice rooms. Leave each room when you are finished.
 
-Microphone capture needs browser-accepted HTTPS or `localhost`. Use the App's
-HTTPS invitation for LAN and [virtual-LAN rooms](./network.md#optional-a-virtual-lan).
+Browser microphone access requires a secure context, such as accepted HTTPS
+or localhost. The [App reference](../../prototype/channel-server/README.md#local-app-link)
+explains local access; [Native media setup](../../prototype/channel-native/README.md)
+owns platform requirements.
 
-- **Microphone:** a slashed icon means off; its green fill rises with your input
-  level. A participant's microphone icon lights up when speech is received.
-- **Listening:** the headphone button pauses room voice only for you. A person's
-  speaker button mutes just that person locally. Neither changes your microphone
-  or the shared picture's sound.
-- **Volume:** hover over the microphone, headphones or a person's speaker to
-  adjust it; on touchscreens, press and hold. Each level is 0%–200%, default 100%.
-  A person's volume combines with your master listening level.
+### Source sound, commentary and room voice
 
-**Voice settings**, beside the tabs, contains the input device, microphone and
-listening volumes, and noise/echo reduction. On supporting sites, the Host can
-also set **Room voice bitrate**; the default is 64 kbps per speaker.
-Browser and App-backed sharing use these same voice controls.
+- **Source sound** comes from the shared tab, application or screen and follows
+  the picture's playback controls.
+- **Include my microphone** adds commentary to your picture. Its viewers hear
+  you without joining room voice; it ends when that share stops.
+- **Room voice** is a separate conversation with its own membership and listening controls.
 
-**Connection topology** at the bottom of the room shows current media routes.
-Idle room members stay visible without a connecting state. **Connection details**
-groups shared picture/audio and room voice separately; voice routes remain
-available after picture sharing stops.
+Enabling commentary and room voice together can send your voice twice. Keep
+the one you need. Use headphones; system-sound capture can also recapture
+voices playing in your browser. See [sharing sound controls](./sharing.md#exclude-a-voice-app-from-screen-audio).
 
-Voice stays connected when picture sharing stops. It also stays active when you
-close or detach the interaction window. Viewers choose **Leave voice** to leave;
-the Host's **Close room voice** ends voice for everyone. Reopening does not
-rejoin Viewers or turn on their microphones.
+## Keep the room beside a picture or game
 
-<details>
-<summary>Source sound, echo and remembered settings</summary>
+Select **Mini window** in the room header to move its conversation, people and
+voice controls into a movable room window. On supported desktop browsers,
+**Open in always-on-top window** detaches it. Keep the original page open;
+closing the small window returns its controls to the page.
 
-Host speech in room voice uses this same room microphone; viewers join voice to hear it.
-The optional [share microphone](./sharing.md#include-your-microphone) instead travels
-with the picture and stops with sharing. Enabling both may deliver your speech twice;
-neither microphone switches or mutes the other automatically.
-
-Source sound stays with the picture. Room voice favors timely conversation and
-can arrive ahead of a delayed picture. Use headphones; whole-system sound sharing can include
-received voices, so [audio exclusion](./sharing.md#exclude-a-voice-app-from-screen-audio)
-may help on supported App capture paths.
-
-Microphone and master listening settings stay in this browser on the current
-site; person volumes apply to current room participants. Settings never reopen
-your microphone automatically. Keep noise and echo reduction on for ordinary
-speech, or turn it off when the selected input already processes your voice.
-
-</details>
+Opening or closing this window does not join or leave voice. A windowed or
+borderless game lets you keep it visible; exclusive fullscreen may cover it.
 
 ## Let a friend control your shared screen
 
-Share an App window or screen, enable **Remote control**, then approve your friend.
-See [remote control and playing together](./remote-control.md) for keyboard, mouse,
-multiplayer and optional gamepad setup.
+Share an App window or screen, enable **Remote control** on that share and
+approve the friend's request. Room admission alone does not permit control.
+The viewer requests control from that picture's playback bar and can select
+**End control** when finished. The sharer can withdraw permission or stop that share.
+
+See [Native input setup](../../prototype/channel-native/README.md) for platform
+requirements. Another person's share has its own control permission.

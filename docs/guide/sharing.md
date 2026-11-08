@@ -1,116 +1,110 @@
 # Sharing and playback
 
+This guide covers the 3.0 internal test. For the published version, use the [2.6.0 guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/guide/sharing.md).
+
 English · [简体中文](./sharing.zh-CN.md) · [Documentation](./README.md)
 
-Use this guide to adjust your share, manage invitations and control playback.
-To create or join a room, start with [your first room](./getting-started.md).
+To enter a domain or create a room, start with [getting started](./getting-started.md).
+Each admitted participant can share in a room; several people can share at once.
+You choose which pictures to watch.
 
-## Invitations
+## Start or change a share
 
-**Copy invite link** grants access to your room. Send it only to intended guests.
-Turn off **Skip passwords** beside the link to copy the ordinary room address;
-visitors then enter the site passphrase or room password as required.
-Invite-only rooms require an invitation credential. Existing invitations remain
-valid until you use **Rotate link** or **Revoke link**; both disconnect Viewers
-who joined with the old invitation.
+1. Select the room, then **Start sharing** in its header.
+2. Choose **Browser**, **Camera**, or an App window/screen where available.
+   Select the source and its sound options. An App picker may ask you to finish
+   the selection in the App.
+3. Check your local preview. Friends see your share under **Available to watch**
+   and select **Watch** to receive it.
+
+Use **Switch source** to replace your picture in that room. You can also share
+in another room without ending the first share. Switching the sidebar selection
+keeps existing shares, watched pictures and voice running.
+
+Domain and room invitations are different: the domain invitation opens the
+domain, while a room invitation leads to that room and can grant its access.
+Use the corresponding copy or QR control and send private invitations only to
+intended guests. Domain and room owners manage their own access, passwords and
+invitation resets; see [getting started](./getting-started.md).
 
 ## Picture and sound settings
 
-1. Below the picture, open **Sharing settings → Picture**.
-2. Choose a preset. Use **Fine-tune picture** only when you need a specific
-   resolution, frame rate, bitrate, picture preference or codec.
-3. Open **Sound** to choose the source audio and its output quality.
+Open **Picture and sound → Picture** beside your sharing control. Choose a
+preset, or expand **Fine-tune picture** to set resolution, frame rate and bitrate.
+Choose the video codec before starting the share. Available codecs depend on
+the browser or connected App.
 
-![Sharing settings on the Picture tab, with presets above the collapsed fine-tuning controls.](../assets/guide/sharing-settings.en.png#gh-light-mode-only)
-![Sharing settings on the Picture tab, with presets above the collapsed fine-tuning controls.](../assets/guide/sharing-settings.en.dark.png#gh-dark-mode-only)
+- **Resolution** is a ceiling; portrait and ultrawide sources keep their proportions.
+- **Sliders** offer common values. Type another allowed value in the field;
+  **Use common range** returns to the slider's range.
+- **Sound** contains source audio quality and, during a share, your commentary controls.
 
-| Setting | What to expect |
-| --- | --- |
-| Resolution | A ceiling. Portrait and ultrawide sources keep their proportions. |
-| Slider or custom value | Sliders cover common values. Type within the field's allowed range for other values; **Use common range** returns to a nearby slider value. |
-| Picture and sound quality | Both still adapt to the source, device and available bandwidth. |
-
-Applied settings are remembered for the current site. Opening Piik through an
-updated App also keeps sharing-quality settings when a public-invite address changes.
+The applied limits do not guarantee a particular received picture quality;
+the source, device and connection still matter. Native platform support is
+listed in the [Native reference](../../prototype/channel-native/README.md).
 
 ### Include your microphone
 
-Under **Sharing settings → Sound**, enable **Include my microphone** to add your
-voice to the shared picture. It starts off for each new share and stops with
-sharing. Viewers hear it through the picture's sound without joining room voice.
-Room voice remains independent. If you enable both microphones, listeners may
-hear you twice; Piik warns you and leaves the choice to you.
+During a share, enable **Picture and sound → Sound → Include my microphone** to
+add commentary to the picture. Select its input, volume and voice processing
+there. The microphone starts off for each new share and ends when it stops.
+
+Viewers hear commentary through the picture without joining room voice.
+[Room voice](./room-tools.md#room-voice) remains independent. Enabling both can
+deliver your speech twice; choose the one you need.
 
 ## Cameras and virtual audio inputs
 
-Picture sound and conversation use separate controls. Muting one does not mute the other.
+In **Camera**, allow video access and select a picture card. While one camera
+is sharing, the other cameras are listed by name. Select a camera's microphone
+separately as commentary or room-voice input.
 
-![Source audio and share microphone follow the picture and playback volume. Room voice uses its separate listening volume.](../assets/guide/audio-paths.en.svg)
-
-In **Camera**, allow video access and select a picture card. While sharing one
-camera, the others are listed by name. Select a camera's built-in microphone
-separately for source commentary or room voice. For OBS Virtual Camera audio, follow
-the [OBS audio-routing guide](https://obsproject.com/kb/video-call-streaming-tutorial/),
-then choose that input for source commentary under **Sharing settings → Sound**,
-or use [room voice’s microphone settings](./room-tools.md#room-voice) for the separate conversation channel.
+OBS Virtual Camera supplies video. To include OBS audio, follow the
+[OBS audio-routing guide](https://obsproject.com/kb/video-call-streaming-tutorial/),
+then select that input in the commentary controls or the separate room-voice settings.
 
 ## Exclude a voice app from screen audio
 
-On Windows, this control applies to system sound from **Screens**. **Apps / Windows**
-captures only the selected application's process tree. **Camera** shares video;
-its microphone or virtual audio input requires explicitly enabled source commentary or room voice.
+When a connected Windows App offers audio exclusion, **Screens → System sound**
+can exclude a selected application's process tree. **Apps / Windows** instead
+captures the selected application's sound where supported.
 
-1. Open **Screens** and enable **System sound**.
-2. Under **Exclude application audio**, select the voice app's window. Open its
-   window and refresh the list if missing.
-3. Select the screen to share.
+1. In **Screens**, enable **System sound**.
+2. Under **Exclude application audio**, choose the voice application's window.
+   Open its window and refresh the list if it is missing.
+3. Select the screen. While sharing, the supported live controls remain in
+   **Picture and sound → Sound**.
 
-This excludes that process and its children from system sound. Other apps,
-including separate mixers and apps using other playback devices, remain audible.
-For a single application's sound, share it through **Apps / Windows** instead.
-Use headphones to prevent speaker sound entering your microphone.
-
-If your virtual microphone is audible while muted in Piik, temporarily turn off
-**System sound**. If that removes the voice, check your mixer's playback output
-and monitoring, or share only the desired application's audio.
-
-While sharing, use **Sharing settings → Sound** to change system sound or the
-excluded app without stopping the share. If the app closes or restarts, source
-audio stops; refresh the application list and select it again.
-Turning source audio off retains the exclusion choice;
-select **None** to restore unfiltered system audio.
-The option appears when the connected Windows App and system support exclusion.
-If the option is absent, share a single application window or route the voice
-app to a different playback device.
+Other applications or mixers can still carry that sound. If your voice remains
+audible after muting the Piik microphone, turn off source sound to check whether
+it comes through a mixer's playback or monitoring. Share just the application's
+audio or use a different playback device when exclusion is unavailable.
 
 ## Playback controls
 
-Move the pointer over the picture or tap it to show the playback bar.
+### Watch and arrange pictures
 
-- **Playback and sound:** pausing the picture affects only your own preview. The Host's volume changes the shared sound for everyone (0%–200%); Viewer volume changes only their own listening. The Host's preview stays muted to avoid playing the source twice. Room voice has separate controls.
-- **Pause the picture for friends:** select **Pause sharing** below the picture. This affects everyone watching.
-- **Control your microphone and listening:** open **Interact → Voice**. These controls are separate from picture sound.
+Select **Watch** beside a person's share. You can watch several pictures,
+including pictures from different rooms. Select a tile or **Focus** to enlarge
+one; **Grid view** or **Return to grid** shows the others again.
 
-<div class="guide-control-reference">
+Move the pointer over a picture or tap it to reveal its playback bar.
 
-| Control | What it does |
+| Control | What it changes |
 | --- | --- |
-| **Volume** | Goes up to 200% with audio boost, or 100% otherwise. Lower it if the sound distorts. |
-| **Picture fit** | Click to cycle: **Fit** keeps the whole picture visible; **Fill** crops its edges; **Stretch** changes its proportions. |
-| **Rotate picture** | Switches between portrait and landscape locally, without rotating the device or changing the shared source. |
-| **Theater mode** | Expands the picture inside the browser tab. |
-| **Picture in picture** | Opens a floating video where supported. |
-| **Fullscreen** | Expands the picture to the full screen. |
-| **Playback settings** | Adjust on-screen chat and connection preferences. Connections default to **Auto**; available alternatives depend on the host and site. |
+| Play / pause | Only your local playback. |
+| Volume | Your listening for a remote picture. On your own preview, source volume changes the shared sound for viewers; the preview stays muted locally. |
+| Playback settings | Local fit, rotation and on-screen chat appearance. |
+| Theater mode | Expands the focused picture inside the tab. |
+| Picture in picture / Fullscreen | Opens the browser's supported video window or fullscreen view. |
+| Mini window | Keeps the room's people, conversation and voice controls beside the picture; see [room tools](./room-tools.md#keep-the-room-beside-a-picture-or-game). |
 
-</div>
+## Finish one activity
 
-### Connection preferences
+- **Stop watching** closes that picture for you; it does not stop its source or other pictures.
+- **Pause sharing** on your own tile pauses that share for its viewers; **Resume sharing** continues it.
+- **Stop sharing** ends that source and its commentary; it does not end room chat or your joined voice rooms.
 
-Leave the connection setting on **Auto** for ordinary use. To compare routes,
-select one of the alternatives offered by the Host and site.
-
-On supporting sites, **Playback settings → Connection → Help relay to more
-viewers** lets a Viewer volunteer more upload for the current visit. It starts
-with one extra Viewer; adjust **Maximum relay viewers** to set your limit.
-It remains an ordinary P2P relay; enable it on a stable connection with upload to spare.
+To leave voice, use its separate **Leave voice** control. Keep the App and page
+needed for your current activities open; [getting started](./getting-started.md)
+explains Browser and App room hosting.
