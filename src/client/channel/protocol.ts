@@ -43,8 +43,9 @@ export const filePlanSchema = z.object({
   roomId: id, messageSeq: z.number().int().positive(), attachment: attachmentSchema,
   sourceId: id.nullable(), upstream: id.nullable(), downstream: z.array(id), receiving: z.boolean(),
 });
+export const MAX_MESSAGE_CODE_POINTS = 2000;
 export const messageSchema = z.object({
-  id, userId: id, text: z.string().max(4000), time: z.number(), seq: z.number().int().positive(), attachments: z.array(attachmentSchema),
+  id, userId: id, text: z.string().max(MAX_MESSAGE_CODE_POINTS * 2), time: z.number(), seq: z.number().int().positive(), attachments: z.array(attachmentSchema),
 });
 export const snapshotSchema = z.object({
   channel: z.object({

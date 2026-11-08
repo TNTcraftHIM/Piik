@@ -1,9 +1,9 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { memo, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
-import type { ChannelMessage, ChannelUser } from "../protocol";
+import { MAX_MESSAGE_CODE_POINTS, type ChannelMessage, type ChannelUser } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
 import { ChannelAttachment } from "./ChannelAttachment";
 import { type AttachmentLimits, type DraftFile, type ChannelAttachments, fileSize } from "../attachments";
@@ -44,6 +44,10 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   const reading = useRef({ position: 0, following: true });
   const readingAnchor = useRef<{ room: string; message: string; offset: number } | null>(null);
   const draft = drafts[roomId] ?? "";
+  const text = draft.trim();
+  const textLength = Array.from(text).length;
+  const textTooLong = textLength > MAX_MESSAGE_CODE_POINTS;
+  const textErrorId = useId();
   const files = filesByRoom[roomId] ?? [];
   const fileError = fileErrorsByRoom[roomId] ?? "";
   const setFileError = (error: string) => setFileErrorsByRoom(previous => ({ ...previous, [roomId]: error }));
@@ -105,13 +109,13 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   }
   async function send(event: FormEvent) {
     event.preventDefault();
-    if ((!draft.trim() && !files.length) || !canSend || working) return;
+    if ((!text && !files.length) || textTooLong || !canSend || working) return;
     reading.current.following = true;
     const request = new AbortController();
     preparing.current = request;
     setFileError("");
     try {
-      await onSend(roomId, draft.trim(), files, request.signal);
+      await onSend(roomId, text, files, request.signal);
       setDrafts(previous => previous[roomId] === draft ? { ...previous, [roomId]: "" } : previous);
       setFilesByRoom(previous => ({ ...previous, [roomId]: (previous[roomId] ?? []).filter(value => !files.some(file => file.id === value.id)) }));
     } catch (error) {
@@ -170,6 +174,9 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
         onClick={() => { void removeFile(entry); }} />
     </div>)}</div>}
     {fileError && <p className="c3-file-error" role="status">{fileError}</p>}
+    {textTooLong && <p id={textErrorId} className="c3-file-error" role="status">{zh
+      ? `消息最多 ${MAX_MESSAGE_CODE_POINTS} 个字符，当前 ${textLength} 个。请缩短后发送。`
+      : `Messages can contain up to ${MAX_MESSAGE_CODE_POINTS} characters (currently ${textLength}). Shorten your draft to send.`}</p>}
     {limitsFailed && <div className="c3-file-retry"><span>{zh ? "文件处理暂不可用" : "File preparation unavailable"}</span>
       <ChannelAction icon="refresh" quiet label={zh ? "重试" : "Retry"} onClick={() => setLimitsRetry(value => value + 1)} /></div>}
     {roomId && <form className="c3-composer" onSubmit={event => { void send(event); }}
@@ -178,7 +185,8 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
       {attachmentsAvailable && <><input ref={chooser} type="file" multiple hidden onChange={event => { addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ""; }} />
         <ChannelAction icon="plus" label={zh ? "添加文件" : "Add files"} iconOnly quiet hint="hint-file-add"
           disabled={!canSend || working || !limits} onClick={() => chooser.current?.click()} /></>}
-      <textarea rows={1} maxLength={2000} aria-label={zh ? "消息内容" : "Message"} value={draft}
+      <textarea rows={1} aria-label={zh ? "消息内容" : "Message"} value={draft}
+        aria-invalid={textTooLong || undefined} aria-describedby={textTooLong ? textErrorId : undefined}
         placeholder={zh ? "说点什么…" : "Say something…"} disabled={!roomId}
         onPaste={event => { if (attachmentsAvailable && event.clipboardData.files.length) { event.preventDefault(); addFiles([...event.clipboardData.files]); } }}
         onChange={event => setDrafts(previous => ({ ...previous, [roomId]: event.target.value }))}
@@ -186,7 +194,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
           event.preventDefault(); event.currentTarget.form?.requestSubmit();
         } }} />
       <ChannelAction icon="send" label={zh ? "发送" : "Send"} type="submit" primary iconOnly
-        disabled={!canSend || (!draft.trim() && !files.length)} busy={working} hint="hint-chat-send" />
+        disabled={!canSend || textTooLong || (!text && !files.length)} busy={working} hint="hint-chat-send" />
     </form>}
   </section>;
 }
