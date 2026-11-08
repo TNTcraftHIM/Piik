@@ -1389,7 +1389,7 @@ export class ChannelSession {
     url.hash = new URLSearchParams({ room: roomId, invite: key }).toString();
     return url.href;
   }
-  getRoomInvite = (roomId: string): Promise<RoomInvitationState> => this.action(`invite-state:${roomId}`, async () => {
+  getRoomInvite = async (roomId: string): Promise<RoomInvitationState> => {
     let invitation: RoomInvitationState | undefined;
     await this.request({ type: "get_room_invite", roomId }, event => {
       if (event.type === "room_invite_state") invitation = event.invitation.state === "available"
@@ -1397,7 +1397,7 @@ export class ChannelSession {
     });
     if (!invitation) throw new Error("invalid_response");
     return invitation;
-  }, false);
+  };
   createRoomInvite = (roomId: string): Promise<string> => this.action(`invite:${roomId}`, async () => {
     let key: string | undefined;
     await this.request({ type: "room_invite", roomId }, event => { if (event.type === "room_invite") key = event.key; });

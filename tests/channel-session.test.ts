@@ -6463,3 +6463,20 @@ test.each([{ state: "missing" }, { state: "unrecoverable" }, { state: "available
     expect(socket.sent.some(command => command.type === "room_invite")).toBe(false);
   } finally { session.close(); }
 });
+
+test("reopening room settings can read its invitation while the dismissed panel's read is pending", async () => {
+  const { session, socket } = await setup();
+  try {
+    const dismissed = session.getRoomInvite("first").catch(error => error);
+    const reopened = session.getRoomInvite("first").catch(error => error);
+    const reads = socket.sent.filter(command => command.type === "get_room_invite");
+    expect(reads).toHaveLength(2);
+    for (const [index, key] of [[1, "current-key"], [0, "previous-read-key"]] as const) {
+      socket.receive({ type: "room_invite_state", roomId: "first", invitation: { state: "available", key }, requestId: reads[index].requestId });
+      socket.receive({ type: "room_reply", roomId: "first", requestId: reads[index].requestId, result: { type: "done" } });
+    }
+    await expect(reopened).resolves.toEqual({ state: "available", url: "https://channel.test/__channel-preview#room=first&invite=current-key" });
+    await expect(dismissed).resolves.toMatchObject({ url: "https://channel.test/__channel-preview#room=first&invite=previous-read-key" });
+    expect(socket.sent.some(command => command.type === "room_invite")).toBe(false);
+  } finally { session.close(); }
+});
