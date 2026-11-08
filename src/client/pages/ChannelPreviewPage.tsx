@@ -8,6 +8,7 @@ import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
 import { useClipboardResult } from "../ui/use-clipboard-result";
 import { useChannel } from "../channel/use-channel";
+import { channelErrorPresentation } from "../channel/error-presentation";
 import { rememberRoom, selectedRoom } from "../channel/navigation";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelAction } from "../channel/components/ChannelAction";
@@ -89,56 +90,13 @@ export function ChannelPreviewPage() {
   }, []);
   useEffect(() => { if (!voiceStreams.length) closeVoiceAudioContext(); }, [voiceStreams.length, closeVoiceAudioContext]);
   useEffect(() => closeVoiceAudioContext, [closeVoiceAudioContext]);
-  const failure = channel.error ? channel.error === "webassembly_unavailable"
-    ? copy("当前浏览器无法运行 Piik 房间，请更新或更换浏览器。", "This browser cannot run Piik rooms. Update it or use another browser.")
-    : channel.error === "room_runtime_unavailable"
-      ? copy("未能加载房间组件。请刷新页面后重试。", "Could not load room components. Reload the page and try again.")
-    : channel.error === "directory_storage_failed"
-      ? copy("房间操作已成功，但域目录保存失败。", "The room operation succeeded, but the domain directory could not be saved.")
-    : channel.error === "app_disconnected"
-      ? copy("与 App 的连接已断开。请确认 App 正在运行，然后重试。", "Connection to the App was lost. Check that it is running, then retry.")
-    : channel.error === "capture_failed"
-      ? copy("分享遇到问题，请重新选择窗口或屏幕。", "Sharing encountered a problem. Choose a window or screen again.")
-    : channel.error === "capture_audio_failed"
-      ? copy("无法分享声音，画面分享仍在继续。", "Could not share sound. Screen sharing continues.")
-    : channel.error === "capture_codec_unsupported"
-      ? copy("App 不支持所选视频编码。请在分享前选择自动，或更换选源。", "The App does not support this video codec. Choose Auto before sharing, or select another source.")
-    : channel.error === "video_codec_unsupported"
-      ? copy("浏览器不支持所选视频编码。请在分享前选择自动或另一种编码。", "The browser does not support this video codec. Choose Auto or another codec before sharing.")
-    : channel.error === "owner_mismatch"
-      ? copy("App 中的房间数据属于另一个域或账号。请确认当前站点和登录账号。", "The App room data belongs to another domain or account. Check the current site and signed-in account.")
-    : /room_host_conflict|room_storage_in_use/.test(channel.error)
-      ? copy("这间房间已在另一处打开。请回到正在托管它的页面或 App。", "This room is already open elsewhere. Return to the page or App hosting it.")
-    : channel.error === "room_host_offline"
-      ? copy("房间暂不可用，请等待恢复托管。", "This room is unavailable. Wait for hosting to resume.")
-    : /domain_password/.test(channel.error)
-    ? copy("域口令不正确，请重新输入。", "The domain passphrase is incorrect. Please try again.")
-    : /password/i.test(channel.error)
-    ? copy("房间密码不正确，请重新输入。", "The room password is incorrect. Please try again.")
-    : /room_access|room_forbidden/i.test(channel.error)
-      ? copy("你还没有这间房间的访问权限。", "You don't have access to this room.")
-    : /invite|credential|unauthorized|join_required/i.test(channel.error)
-    ? copy("需要有效邀请。请打开域主提供的完整邀请链接。", "A valid invitation is required. Open the full link from the domain owner.")
-    : channel.error === "session_expired"
-      ? copy("连接超时，采集已停止。重新连接后可再次分享或加入语音。", "Connection timed out. Capture stopped. Reconnect to share or join voice again.")
-    : channel.error === "forbidden"
-      ? copy("此操作需要由负责人完成。", "This action needs to be performed by its owner.")
-    : /permission|denied|notallowed/i.test(channel.error)
-      ? copy("设备访问未获允许，请检查浏览器或系统设置。", "Device access was declined. Check browser or system settings.")
-    : /room_(path_unavailable|delivery_unavailable|unavailable|control_busy)|peer_data_unavailable|data_channel_(unavailable|busy)|request_timeout/.test(channel.error)
-      ? copy("房间通信未能完成，请重试。", "Room communication did not complete. Please try again.")
-    : channel.error === "incomplete_history"
-      ? copy("聊天记录接收不完整，请重新加载。", "Chat history was interrupted. Please load it again.")
-    : /unavailable|notfound|notreadable/i.test(channel.error)
-      ? copy("设备暂不可用，请检查浏览器权限及设备占用。", "Device unavailable. Check browser permissions and other apps.")
-    : /disconnect|closed|offline/i.test(channel.error)
-      ? copy("连接已断开，请重新连接后再试。", "Connection lost. Reconnect and try again.")
-      : copy("未能完成操作，请重试。", "Could not complete the action. Please try again.") : null;
+  const failure = channelErrorPresentation(channel.error, copy);
   useEffect(() => {
-    if (!roomId) return;
+    if (!state) return;
+    rememberRoom(roomId);
     setSelected(roomId);
     channel.browse(roomId);
-  }, [roomId, room?.authorized, room?.available]);
+  }, [state?.channel.id, roomId, room?.authorized, room?.available]);
   useEffect(() => {
     if (mobilePane === "room") return;
     const heading = document.getElementById(mobilePane === "rooms" ? "c3-room-list-heading" : "c3-people-heading");
@@ -154,7 +112,7 @@ export function ChannelPreviewPage() {
       appControl={<AppConnectionButton discovery={channelAppDiscovery} connected={channel.appConnected} onConnected={() => run(channel.activateApp())} />} diagnosticControl={null}
       led={<LedStrip state={connected ? "live" : connection === "closed" ? "bad" : "busy"}
         label={connectionLabel} comic={connected ? "signal-connected" : "signal-connecting"} />} />
-    {state && failure && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span>{failure}</span>
+    {state && failure.message && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span>{failure.message}</span>
       <Btn icon="x" title="notice.dismiss" size="compact" quiet onClick={channel.clearError} />
     </div>}
     {!state ? <ChannelDomainEntry channel={channel} failure={failure} /> : <main className="c3-shell" data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"}>

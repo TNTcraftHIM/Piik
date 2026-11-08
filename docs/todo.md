@@ -78,8 +78,6 @@ the feedback period; they do not delay that delivery.
   and Linux hardware encoding and physical sound. Retain the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-- [ ] **Website entry wording.** Review the prepared website/help wording for
-  joining a friend's room.
 - [ ] **Native H264 scene-change latency.** Reduce encoded bursts while
   preserving low-rate startup and live bitrate restoration. Keep CBR; the
   [encoder assessment](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)
