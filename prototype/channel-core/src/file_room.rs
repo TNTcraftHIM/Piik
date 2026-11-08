@@ -102,6 +102,25 @@ impl FileRoom {
             .copied()
             .collect()
     }
+    pub fn select_ready_sources(&mut self, base: &BaseTree) -> bool {
+        let mut changed = false;
+        for file in self.files.values_mut() {
+            let reaches_receivers = |source| !base.project(source, &file.receivers).is_empty();
+            if file.source.is_some_and(reaches_receivers) {
+                continue;
+            }
+            if let Some(source) = file
+                .holders
+                .iter()
+                .copied()
+                .find(|id| reaches_receivers(*id))
+            {
+                changed |= file.source != Some(source);
+                file.source = Some(source);
+            }
+        }
+        changed
+    }
     pub fn plans(&self, room_id: &str, session: Uuid, base: &BaseTree) -> Vec<FilePlan> {
         self.files
             .iter()

@@ -212,7 +212,10 @@ another topology planner or mandatory direct ICE connections.
 2. Reuse an active distribution or a suitable complete cached source using known
    room connectivity and capacity. Keep a working flow. Source changes are
    explicit and admitted; an intermediate peer cannot silently substitute its
-   copy or expected digest.
+   copy or expected digest. If the current source has no ready path to any remote
+   recipient, select an admitted complete copy that does over the committed base
+   tree. With no ready alternative, retain the source while ordinary route repair
+   continues; holder signaling alone does not establish file reachability.
 3. Aggregate concurrent requests for the same attachment, range and authorized
    distribution. A shared upstream path carries one response, copied only at
    branches with demand. Keep recipients' progress separate from this shared work.

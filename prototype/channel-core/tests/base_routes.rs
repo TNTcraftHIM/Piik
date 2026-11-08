@@ -1498,6 +1498,238 @@ fn failed_base_data_channel_repairs_its_lease_without_closing_a_shared_screen_pa
 }
 
 #[test]
+fn file_copy_selection_uses_the_last_base_candidate_ack_without_an_extra_sync() {
+    let mut network = RoomNetwork::new();
+    let host = Uuid::new_v4();
+    let source = Uuid::new_v4();
+    let copy = Uuid::new_v4();
+    let viewer = Uuid::new_v4();
+    let (host_session, _) = join(&mut network, host, None);
+    let (source_session, _) = join(&mut network, source, None);
+    let (copy_session, _) = join(&mut network, copy, None);
+    let (viewer_session, _) = join(&mut network, viewer, None);
+    let room = network.create(host, RoomAccess::Public, false);
+    command(
+        &mut network,
+        host,
+        json!({"type":"update_room","roomId":room,"name":"Friends","icon":"couch","access":"public","hidden":false,"relayCapacity":1}),
+    );
+    join_base(&mut network, viewer, &room);
+    let original = pair(&network, viewer, host_session, &room);
+    for endpoint in [host, viewer] {
+        command(
+            &mut network,
+            endpoint,
+            json!({"type":"base_state","roomId":room,"pairId":original.id,"ready":true}),
+        );
+    }
+    for endpoint in [source, viewer] {
+        browse(&mut network, endpoint, &room, true);
+        command(
+            &mut network,
+            endpoint,
+            json!({"type":"relay_capacity","roomId":room,"capacity":0}),
+        );
+    }
+    let attachment = json!({"id":Uuid::new_v4(),"name":"committed-copy.bin","size":3,"mediaType":"application/octet-stream",
+        "sha256":piik_channel_core::attachment::sha256_hex(b"abc")});
+    assert!(network
+        .peer_request(
+            source,
+            &room,
+            ConversationCommand::Chat {
+                text: String::new(),
+                nonce: "committed-copy".into(),
+                attachments: vec![serde_json::from_value(attachment.clone()).unwrap()],
+            }
+        )
+        .result
+        .is_ok());
+    command(
+        &mut network,
+        source,
+        json!({"type":"file_offer","roomId":room,"messageSeq":1,"attachmentId":attachment["id"],"sha256":attachment["sha256"],"available":true}),
+    );
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"file_receive","roomId":room,"messageSeq":1,"attachmentId":attachment["id"],"enabled":true}),
+    );
+    assert_eq!(
+        network.state(viewer).files[0].source_id,
+        Some(source_session)
+    );
+    assert_eq!(network.state(viewer).files[0].upstream, None);
+    command(
+        &mut network,
+        copy,
+        json!({"type":"file_offer","roomId":room,"messageSeq":1,"attachmentId":attachment["id"],"sha256":attachment["sha256"],"available":true}),
+    );
+    assert_eq!(
+        network.state(viewer).files[0].source_id,
+        Some(source_session),
+        "a complete copy without a committed path is not a usable replacement"
+    );
+    join_base(&mut network, copy, &room);
+    let first = pair(&network, copy, host_session, &room);
+    let second = pair(&network, copy, viewer_session, &room);
+    let acknowledgements = [
+        (host, first.id),
+        (copy, first.id),
+        (copy, second.id),
+        (viewer, second.id),
+    ];
+    for (index, (endpoint, pair_id)) in acknowledgements.into_iter().enumerate() {
+        assert_eq!(
+            network.state(viewer).files[0].source_id,
+            Some(source_session),
+            "uncommitted candidates must not select the offered copy"
+        );
+        command(
+            &mut network,
+            endpoint,
+            json!({"type":"base_state","roomId":room,"pairId":pair_id,"ready":true}),
+        );
+        if index < 3 {
+            assert_eq!(
+                network.state(viewer).files[0].source_id,
+                Some(source_session)
+            );
+        }
+    }
+    assert_eq!(
+        network.state(viewer).files[0].source_id,
+        Some(copy_session),
+        "the last ACK's own projection must expose the now-ready offered copy"
+    );
+    assert_eq!(network.state(viewer).files[0].upstream, Some(copy_session));
+    assert!(network.state(copy).files[0]
+        .downstream
+        .contains(&viewer_session));
+}
+
+#[test]
+fn file_delivery_uses_a_ready_copy_when_its_online_source_loses_every_receiver_path() {
+    let mut network = RoomNetwork::new();
+    let host = Uuid::new_v4();
+    let source = Uuid::new_v4();
+    let copy = Uuid::new_v4();
+    let viewer = Uuid::new_v4();
+    let (host_session, _) = join(&mut network, host, None);
+    let (source_session, _) = join(&mut network, source, None);
+    let (copy_session, _) = join(&mut network, copy, None);
+    let (viewer_session, _) = join(&mut network, viewer, None);
+    let room = network.create(host, RoomAccess::Public, false);
+    join_base(&mut network, source, &room);
+    join_base(&mut network, copy, &room);
+    for connection in [source, copy] {
+        let lease = pair(&network, connection, host_session, &room);
+        for endpoint in [host, connection] {
+            command(
+                &mut network,
+                endpoint,
+                json!({"type":"base_state","roomId":room,"pairId":lease.id,"ready":true}),
+            );
+        }
+    }
+    join_base(&mut network, viewer, &room);
+    if let Some(branch) = network
+        .state(viewer)
+        .pairs
+        .iter()
+        .find(|pair| pair.peer_id != copy_session)
+        .cloned()
+    {
+        command(
+            &mut network,
+            viewer,
+            json!({"type":"link_state","pairId":branch.id,"state":"failed"}),
+        );
+    }
+    let branch = pair(&network, viewer, copy_session, &room);
+    for endpoint in [copy, viewer] {
+        command(
+            &mut network,
+            endpoint,
+            json!({"type":"base_state","roomId":room,"pairId":branch.id,"ready":true}),
+        );
+    }
+    let attachment = json!({"id":Uuid::new_v4(),"name":"reachable-copy.bin","size":3,"mediaType":"application/octet-stream",
+        "sha256":piik_channel_core::attachment::sha256_hex(b"abc")});
+    let confirmation = network.peer_request(
+        source,
+        &room,
+        ConversationCommand::Chat {
+            text: String::new(),
+            nonce: "reachable-copy".into(),
+            attachments: vec![serde_json::from_value(attachment.clone()).unwrap()],
+        },
+    );
+    assert!(confirmation.result.is_ok());
+    command(
+        &mut network,
+        source,
+        json!({"type":"file_offer","roomId":room,"messageSeq":1,"attachmentId":attachment["id"],"sha256":attachment["sha256"],"available":true}),
+    );
+    for endpoint in [host, viewer] {
+        command(
+            &mut network,
+            endpoint,
+            json!({"type":"file_receive","roomId":room,"messageSeq":1,"attachmentId":attachment["id"],"enabled":true}),
+        );
+    }
+    command(
+        &mut network,
+        copy,
+        json!({"type":"file_offer","roomId":room,"messageSeq":1,"attachmentId":attachment["id"],"sha256":attachment["sha256"],"available":true}),
+    );
+    assert_eq!(
+        network.state(host).files[0].source_id,
+        Some(source_session),
+        "a new readable copy must not displace an active healthy source"
+    );
+    assert_eq!(network.state(host).files[0].upstream, Some(source_session));
+    assert_eq!(
+        network.state(viewer).files[0].source_id,
+        Some(source_session)
+    );
+    assert_eq!(network.state(viewer).files[0].upstream, Some(copy_session));
+    command(
+        &mut network,
+        host,
+        json!({"type":"file_receive","roomId":room,"messageSeq":1,"attachmentId":attachment["id"],"enabled":false}),
+    );
+    let source_pair = pair(&network, source, host_session, &room);
+    command(
+        &mut network,
+        source,
+        json!({"type":"link_state","pairId":source_pair.id,"state":"failed"}),
+    );
+    assert!(
+        network
+            .state(viewer)
+            .sessions
+            .iter()
+            .any(|session| session.id == source_session && session.online),
+        "RTC path loss is not holder signaling retirement"
+    );
+    assert_eq!(
+        pair(&network, copy, viewer_session, &room).id,
+        branch.id,
+        "the existing ready copy-to-receiver branch is retained"
+    );
+    assert_eq!(
+        network.state(viewer).files[0].source_id,
+        Some(copy_session),
+        "an online but unreachable source must yield to its ready authorized complete copy"
+    );
+    assert_eq!(network.state(viewer).files[0].upstream, Some(copy_session));
+    assert!(network.state(copy).files[0]
+        .downstream
+        .contains(&viewer_session));
+}
+
+#[test]
 fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_delivery() {
     let mut network = RoomNetwork::new();
     let host = Uuid::new_v4();

@@ -666,7 +666,6 @@ impl RoomRuntime {
                 base.retry_required(&demand, &connected);
             }
             base.reconcile(&demand, &readable, &connected, &limits, now);
-            needs_repair |= base.needs_repair(&demand, &connected);
         }
         for (id, publication) in &mut self.publications {
             publication.retain_sessions(endpoints);
@@ -700,6 +699,57 @@ impl RoomRuntime {
             );
             needs_repair |= publication.needs_repair(&subscribers, &connected);
         }
+        self.prepare_base(&requested);
+        if self.base.as_ref().is_some_and(BaseTree::candidate_ready)
+            && self.publications.values().all(Publication::base_ready)
+        {
+            self.base.as_mut().unwrap().commit();
+            for (id, publication) in &mut self.publications {
+                publication.commit_base();
+                if publication.info.kind == Kind::Voice {
+                    let subscribers = requested
+                        .iter()
+                        .filter_map(|(session, ids)| ids.contains(id).then_some(*session))
+                        .collect();
+                    publication.reconcile(
+                        &subscribers,
+                        &readable,
+                        &connected,
+                        self.base.as_ref(),
+                        &BTreeMap::new(),
+                        &limits,
+                        now,
+                    );
+                }
+            }
+        }
+        // The final base ACK can make a cached copy reachable in this same turn.
+        if self
+            .base
+            .as_ref()
+            .is_some_and(|base| self.files.select_ready_sources(base))
+        {
+            demand = self.media_sessions();
+            demand.extend(self.files.demand());
+            self.base
+                .as_mut()
+                .unwrap()
+                .reconcile(&demand, &readable, &connected, &limits, now);
+            self.prepare_base(&requested);
+        }
+        needs_repair |= self
+            .base
+            .as_ref()
+            .is_some_and(|base| base.needs_repair(&demand, &connected));
+        if needs_repair {
+            self.repair_at
+                .get_or_insert(now.saturating_add(REQUIRED_REPAIR_MS));
+        } else {
+            self.repair_at = None;
+        }
+    }
+
+    fn prepare_base(&mut self, requested: &BTreeMap<Uuid, BTreeSet<Uuid>>) {
         if let Some(candidate) = self.base.as_ref().and_then(BaseTree::candidate_tree) {
             let deadline = self.base.as_ref().unwrap().deadline().unwrap();
             for (id, publication) in &mut self.publications {
@@ -709,39 +759,10 @@ impl RoomRuntime {
                     .collect();
                 publication.prepare_base(&candidate, &subscribers, deadline);
             }
-            if self.base.as_ref().unwrap().candidate_ready()
-                && self.publications.values().all(Publication::base_ready)
-            {
-                self.base.as_mut().unwrap().commit();
-                for (id, publication) in &mut self.publications {
-                    publication.commit_base();
-                    if publication.info.kind == Kind::Voice {
-                        let subscribers = requested
-                            .iter()
-                            .filter_map(|(session, ids)| ids.contains(id).then_some(*session))
-                            .collect();
-                        publication.reconcile(
-                            &subscribers,
-                            &readable,
-                            &connected,
-                            self.base.as_ref(),
-                            &BTreeMap::new(),
-                            &limits,
-                            now,
-                        );
-                    }
-                }
-            }
         } else {
             for publication in self.publications.values_mut() {
                 publication.abort_base();
             }
-        }
-        if needs_repair {
-            self.repair_at
-                .get_or_insert(now.saturating_add(REQUIRED_REPAIR_MS));
-        } else {
-            self.repair_at = None;
         }
     }
 
@@ -1258,6 +1279,111 @@ mod tests {
             .unwrap();
         room.reconcile(&endpoints, 0);
         (room, endpoints)
+    }
+
+    #[test]
+    fn ready_file_copy_retires_unneeded_insertion_and_its_voice_candidate() {
+        let id = Uuid::from_u128;
+        let endpoints: BTreeMap<_, _> = (1..=3)
+            .map(|value| {
+                (
+                    id(value),
+                    Endpoint {
+                        signing_key: [value as u8; 32],
+                        member: Member {
+                            user_id: id(value),
+                            domain_owner: value == 1,
+                        },
+                        connected: true,
+                    },
+                )
+            })
+            .collect();
+        let mut room = RoomRuntime::new(
+            RoomState::new(
+                "friends".into(),
+                "Friends".into(),
+                Default::default(),
+                id(1),
+                RoomAccess::Public,
+                false,
+                None,
+            )
+            .unwrap(),
+        );
+        room.set_host_session(id(1));
+        room.set_default_relay_capacity(1);
+        room.set_relay_capacity(endpoints[&id(2)].member, id(2), Some(0))
+            .unwrap();
+        for session in [id(1), id(2)] {
+            room.set_voice(endpoints[&session].member, session, true, false, false)
+                .unwrap();
+        }
+        room.reconcile(&endpoints, 0);
+        room.base_state(id(1), id(2), true).unwrap();
+        room.base_state(id(2), id(1), true).unwrap();
+        room.publish(endpoints[&id(1)].member, id(1), id(20), Kind::Voice, None)
+            .unwrap();
+        room.reconcile(&endpoints, 1);
+        let voice = room
+            .flows()
+            .find(|flow| flow.publication_id == id(20))
+            .unwrap();
+        room.flow_state(
+            voice.id,
+            voice.receiver,
+            voice.sender,
+            FlowState::Forwardable,
+            1,
+        )
+        .unwrap();
+
+        let attachment = crate::AttachmentDescriptor {
+            id: id(30),
+            name: "copy.bin".into(),
+            size: 3,
+            media_type: "application/octet-stream".into(),
+            sha256: crate::attachment::sha256_hex(b"abc"),
+        };
+        room.finish_file(id(3), 1, attachment.clone(), true, true)
+            .unwrap();
+        room.finish_file(id(2), 1, attachment.clone(), false, true)
+            .unwrap();
+        room.reconcile(&endpoints, 2);
+        assert!(room
+            .base_links()
+            .any(|link| !link.selected && (link.parent == id(3) || link.child == id(3))));
+        assert!(
+            room.flows()
+                .any(|flow| flow.publication_id == id(20) && !flow.selected),
+            "inserting the unavailable file source prepares a replacement voice route"
+        );
+
+        room.finish_file(id(1), 1, attachment, true, true).unwrap();
+        room.reconcile(&endpoints, 3);
+        assert_eq!(
+            room.snapshot(endpoints[&id(2)].member, id(2))
+                .unwrap()
+                .files[0]
+                .source_id,
+            Some(id(1))
+        );
+        assert!(
+            room.base_links()
+                .all(|link| link.selected && link.parent != id(3) && link.child != id(3)),
+            "the unused file source must not retain a candidate or base lease"
+        );
+        let retained: Vec<_> = room
+            .flows()
+            .filter(|flow| flow.publication_id == id(20))
+            .collect();
+        assert_eq!(
+            retained.len(),
+            1,
+            "the discarded base candidate must retire its voice shadow"
+        );
+        assert_eq!(retained[0].id, voice.id);
+        assert!(retained[0].selected);
     }
 
     #[test]
