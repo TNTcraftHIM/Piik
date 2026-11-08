@@ -207,7 +207,10 @@ to that release and regenerate Native, Server and Android locks, then run the
 existing mapping timer/lifecycle checks and package notice collection.
 
 Native uses str0m's public RTP/Sans-I/O interface, pinned to the official Git
-[snapshot `3b5b7ed1`](https://github.com/algesten/str0m/commit/3b5b7ed1ff25d9432a87336a20bc2de336896db3).
+[snapshot `8e0067cc`](https://github.com/algesten/str0m/commit/8e0067cca6a45ae4ea0532148d08a3d803d29841).
+It also refreshes the ICE username fragment when a discarded local candidate is
+reactivated after direct credential replacement. Piik's current SDP restart path
+already refreshes retained candidates; this is an upstream lifecycle correction.
 Published 0.25.0 contains the earlier pacing and TWCC repairs below, but predates
 the merged [RTX jitter-statistics repair](https://github.com/algesten/str0m/pull/1121).
 This pin includes that repair: recovered packets still deliver once, without
