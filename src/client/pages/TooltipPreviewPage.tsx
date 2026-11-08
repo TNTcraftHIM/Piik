@@ -14,6 +14,7 @@ import { PREVIEW_METRICS } from "./preview-metrics";
 import { usePreviewAnchor } from "./use-preview-anchor";
 import { usePreviewReducedMotion } from "./use-preview-reduced-motion";
 import { ChannelGuidePreview } from "./ChannelGuidePreview";
+import { ChannelRoomPreview } from "./ChannelRoomPreview";
 
 const EXAMPLES: { label: string; kind: HintKind | ComicKind; tone: ComicTone; motion: ComicMotion; text: CopyKey }[] = [
   { label: "说明 / Neutral", kind: "hint-volume", tone: "off", motion: "demo", text: "playback.volume" },
@@ -59,6 +60,11 @@ function PreviewCard({ kind, tone, motion, label, text }: {
 }
 
 export function TooltipPreviewPage() {
+  if (new URLSearchParams(location.search).has("channel-room")) return <ChannelRoomPreview />;
+  return <TooltipCatalogue />;
+}
+
+function TooltipCatalogue() {
   usePreviewAnchor();
   const { t, lang } = useCopy();
   const en = lang === "en";
@@ -95,6 +101,7 @@ export function TooltipPreviewPage() {
           <a href="/__status-preview">{en ? "Status gallery" : "完整状态预览"}</a>
           <a href="/__status-preview?channel-entry">{en ? "Domain entry" : "域入口"}</a>
           <a href="#channel-guide-preview">{en ? "3.0 rooms" : "3.0 房间"}</a>
+          <a href="/__tooltip-preview?channel-room">{en ? "3.0 sharing view" : "3.0 分享视图"}</a>
         </nav>
         <details className="cp-catalog-scope">
           <summary>{en ? "Shared controls and surfaces" : "控件与容器的复用范围"}</summary>

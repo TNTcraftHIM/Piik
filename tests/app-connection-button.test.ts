@@ -68,12 +68,12 @@ describe("shared App connection entry", () => {
     const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined,
       screenQuality: () => undefined, screenCodecMode: () => undefined,
       sourceAudio: () => undefined, sourceMicrophone: () => undefined,
-      ownedScreens: new Set(["mine"]), streams: new Map(), state: { publications: [{ id: "mine", roomId: "room" }], voice: [] },
+      ownedScreens: new Set(["mine"]), streams: new Map(), state: { channel: { rooms: [{ id: "room", name: "Friday" }] }, publications: [{ id: "mine", roomId: "room" }], voice: [] },
     } as unknown as ChannelController;
     const html = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", disabled: false }));
-    expect(html).toMatch(/aria-label="(?:Switch source|切换来源)"/);
+    expect(html).toMatch(/aria-label="(?:Switch source in Friday|切换Friday的分享源)"/);
     expect(html.match(/<button\b/g)).toHaveLength(2);
-    expect(html).toMatch(/aria-label="(?:Picture and sound|画质与声音)"/);
+    expect(html).toMatch(/aria-label="(?:Picture and sound in Friday|Friday的画质与声音)"/);
     const elsewhere = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "other", disabled: false }));
     expect(elsewhere).not.toMatch(/aria-label="(?:Switch source|切换来源)"/);
   });
@@ -90,7 +90,7 @@ describe("Native sharing capabilities", () => {
     const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: true, pending: new Set(),
       videoCodecMode: "vp8", nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined,
       screenQuality: () => undefined, screenCodecMode: () => "h264", sourceAudio: () => undefined, sourceMicrophone: () => undefined,
-      ownedScreens: new Set<string>(), streams: new Map(), state: { publications: [] as { id: string; roomId: string }[], voice: [] },
+      ownedScreens: new Set<string>(), streams: new Map(), state: { channel: { rooms: [{ id: "room", name: "Friday" }] }, publications: [] as { id: string; roomId: string }[], voice: [] },
     };
     const render = (settings = false) => {
       // Open the real picker with the same completed targets response on each render.

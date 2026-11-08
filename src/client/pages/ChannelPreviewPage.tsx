@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { AppHeader, LedStrip } from "../components/living/Header";
 import { BackButton, Btn } from "../components/living/primitives";
 import { PawnSvg } from "../components/living/Pawn";
@@ -32,20 +32,31 @@ import { listeningVoicePublications, roomPeople } from "../channel/presentation"
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { channelAppDiscovery } from "../channel/app-link";
 import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preferences";
+import type { ChannelController } from "../channel/types";
 import "../channel/bootstrap";
 import "./channel-preview.css";
 
 export function ChannelPreviewPage() {
+  const [selected, setSelected] = useState(selectedRoom);
+  const onSelect = useCallback((id: string) => { rememberRoom(id); setSelected(id); }, []);
+  const channel = useChannel(onSelect);
+  return <ChannelRoomPage channel={channel} selected={selected} onSelect={onSelect}
+    appControl={<AppConnectionButton discovery={channelAppDiscovery} connected={channel.appConnected}
+      onConnected={() => { void channel.activateApp().catch(() => {}); }} />} />;
+}
+
+/** Session and App connection owners supply data; this view keeps one set of room slots. */
+export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
+  channel: ChannelController; selected: string; onSelect(id: string): void; appControl: ReactNode;
+}) {
   const { lang, vis } = useCopy();
   const zh = lang === "zh";
   const copy = (cn: string, en: string) => zh ? cn : en;
-  const [selected, setSelected] = useState(selectedRoom);
   const [mobilePane, setMobilePane] = useState<"room" | "rooms" | "people">("room");
   const selectRoom = useCallback((id: string) => {
-    rememberRoom(id);
-    setSelected(id); setMobilePane("room");
-  }, []);
-  const channel = useChannel(selectRoom);
+    onSelect(id); setMobilePane("room");
+  }, [onSelect]);
+  useEffect(() => { setMobilePane("room"); }, [selected]);
   const [domainControlSlot, setDomainControlSlot] = useState<HTMLSpanElement | null>(null);
   const { state, self, sessionId, connection, pending, streams } = channel;
   const [sharingView, setSharingView] = useState(() => readRoomPreferences().sharingView);
@@ -94,8 +105,7 @@ export function ChannelPreviewPage() {
   const failure = channelErrorPresentation(channel.error, copy);
   useEffect(() => {
     if (!state) return;
-    rememberRoom(roomId);
-    setSelected(roomId);
+    onSelect(roomId);
     channel.browse(roomId);
   }, [state?.channel.id, roomId, room?.authorized, room?.available]);
   useEffect(() => {
@@ -110,7 +120,7 @@ export function ChannelPreviewPage() {
 
   return <div className={`lr-app c3-app${vis ? " c3-visual" : ""}`}>
     <AppHeader homeHref={`${location.pathname}${location.search}${location.hash}`} atHome
-      appControl={<AppConnectionButton discovery={channelAppDiscovery} connected={channel.appConnected} onConnected={() => run(channel.activateApp())} />}
+      appControl={appControl}
       led={<LedStrip state={connected ? "live" : connection === "closed" ? "bad" : "busy"}
         label={connectionLabel} comic={connected ? "signal-connected" : "signal-connecting"} />} />
     {state && failure.message && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span>{failure.message}</span>

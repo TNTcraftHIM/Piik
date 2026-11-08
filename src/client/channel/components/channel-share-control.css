@@ -5,6 +5,7 @@
   padding: 0;
 }
 .c3-quality-picker .lr-sharing-panel { margin: 0; border: 0; border-radius: inherit; box-shadow: none; animation: none; }
+.c3-quality-picker > .c3-quality-heading { padding: 16px 18px 0; }
 .c3-quality-heading h3 { margin: 0; font-size: 16px; }
 .c3-quality-heading p { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .lr-anchored-card.c3-share-picker {

@@ -1,5 +1,5 @@
 /* Layout belongs to the channel; palette, controls, cast and motion stay shared. */
-.c3-app { --c3-content-width: min(1480px, calc(100% - 40px)); height: 100dvh; min-height: 0; }
+.c3-app { --c3-content-width: calc(100% - 40px); height: 100dvh; min-height: 0; }
 .c3-app > .lr-top { flex: none; padding-block: 16px; }
 .c3-shell { flex: 1; min-height: 0; width: var(--c3-content-width); margin: 0 auto 24px; display: grid; grid-template-columns: 58px 220px minmax(0, 1fr) 224px; background: var(--paper); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--panel-shadow); overflow: clip; }
 .c3-shell > .c3-domain-rail { border-radius: 22px 0 0 22px; }
@@ -62,8 +62,9 @@
 .c3-workspace { flex: 1; min-height: min-content; display: grid; grid-template-columns: minmax(0, 1fr); }
 .c3-workspace:not(.has-screens):has(> .c3-monitor) { grid-template-rows: auto minmax(0, 1fr); }
 .c3-workspace:not(.has-screens) > .c3-monitor { max-height: 180px; border-bottom: 1px solid var(--line); }
-.c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr) 300px; }
-.c3-workspace.has-screens > .c3-monitor { background: var(--wall); border-inline-end: 1px solid var(--line); }
+.c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr) 300px; grid-template-rows: minmax(0, 1fr); }
+.c3-workspace.has-screens .c3-message-log { min-height: 0; }
+.c3-workspace.has-screens > .c3-monitor { contain: size; min-height: calc(var(--control-size) + 2 * var(--stage-padding)); background: var(--wall); border-inline-end: 1px solid var(--line); }
 .c3-workspace.has-screens.chat-collapsed { grid-template-columns: minmax(0, 1fr); }
 .c3-voice-dock { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 14px 24px; border-top: 1px solid var(--line); }
 .c3-voice-dock > svg { color: var(--live); flex: none; }
@@ -113,7 +114,11 @@
   .c3-room-actions { gap: 6px; }
 }
 @container (min-width: 1000px) {
-  .c3-room-heading { grid-template-areas: "title company actions tools"; grid-template-columns: minmax(0, 1fr) auto auto auto; padding-block: 8px; }
+  .c3-room-heading { display: flex; flex-wrap: wrap; padding-block: 8px; }
+  .c3-room-name { flex: 1 1 18ch; }
+  .c3-room-company { flex: 0 1 240px; }
+  .c3-room-actions { flex-wrap: wrap; }
+  .c3-room-tools { margin-inline-start: auto; flex-wrap: wrap; }
 }
 @container (max-width: 900px) {
   .c3-room-heading { grid-template-areas: "title title" "actions tools" "company company"; grid-template-columns: minmax(0, 1fr) auto; }
@@ -132,7 +137,7 @@
   .c3-room-heading .c3-app-confirmation .lr-cap { display: inline; }
 }
 @container (width < 600px) {
-  .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(min-content, 1fr) minmax(min-content, .8fr); }
+  .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(min-content, .8fr); }
   .c3-workspace.has-screens.chat-collapsed { grid-template-rows: minmax(0, 1fr); }
   .c3-workspace.has-screens > .c3-monitor { border-inline-end: 0; border-bottom: 1px solid var(--line); overflow-y: auto; }
   .c3-workspace.has-screens .c3-conversation { padding: 12px 18px; gap: 10px; }
@@ -186,7 +191,7 @@
 }
 @container channel-room (max-height: 680px) {
   .c3-main:has(.c3-voice-dock) .c3-room-actions .c3-voice-joined { display: none; }
-  .c3-workspace.has-screens .c3-monitor { padding: 10px; gap: 8px; }
+  .c3-workspace.has-screens .c3-monitor { --stage-padding: 10px; gap: 8px; }
   .c3-workspace.has-screens .c3-conversation { padding: 8px 12px; gap: 8px; }
 }
 @container channel-room (min-width: 600px) and (max-height: 680px) {
@@ -220,7 +225,7 @@
 
 /* One room and its live players; the presentation only folds navigation away. */
 .c3-view-toggle { display: inline-flex; flex: none; }
-.c3-shell[data-view="share"] { grid-template-columns: minmax(0, 1fr); max-width: 1180px; grid-template-rows: minmax(0, 1fr); }
+.c3-shell[data-view="share"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .c3-shell[data-view="share"] > :is(.c3-domain-rail, .c3-sidebar, .c3-people-panel) { display: none; }
 .c3-shell[data-view="share"] > .c3-main { grid-column: 1; grid-row: 1; }
 .c3-shell[data-view="share"] :is(.c3-pane-navigation, .c3-pane-back),

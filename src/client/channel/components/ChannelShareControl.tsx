@@ -35,6 +35,10 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   const available = browserSupported || cameraSupported || appConnected;
   const pickerAvailable = appConnected || cameraSupported;
   const sharing = channel.state?.publications.find(publication => publication.roomId === roomId && channel.ownedScreens.has(publication.id));
+  const roomName = sharing ? channel.state?.channel.rooms.find(room => room.id === roomId)?.name : undefined;
+  const settingsTitle = roomName
+    ? lang === "zh" ? `${roomName}的画质与声音` : `Picture and sound in ${roomName}`
+    : settingsLabel;
   const currentCamera = sharing ? channel.streams.get(sharing.id)?.getVideoTracks()
     .find(track => track.readyState === "live")?.getSettings().deviceId : undefined;
   const codecMode = (sharing ? channel.screenCodecMode(sharing.id) : undefined) ?? channel.videoCodecMode;
@@ -59,6 +63,9 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   const roomMicrophone = channel.state?.voice.some(voice => voice.sessionId === channel.sessionId && !voice.muted);
   const busy = channel.pending.has(`screen:${roomId}`) || !!sharing && channel.pending.has(`source-audio:${sharing.id}`);
   const label = t(sharing ? "host.switchSource" : "host.start");
+  const sourceTitle = roomName
+    ? lang === "zh" ? `切换${roomName}的分享源` : `Switch source in ${roomName}`
+    : label;
   useAnchoredPopover(trigger, panel, { maxHeight: 560, minVisibleHeight: 240 });
   useAnchoredPopover(settingsTrigger, settingsPanel, { maxHeight: 640, minVisibleHeight: 240 });
   const close = useCallback(() => { panel.current?.hidePopover(); settingsPanel.current?.hidePopover(); }, []);
@@ -91,25 +98,25 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
         </span>
         <Btn icon="x" title="common.cancel" cap="common.cancel" size="compact" quiet
           onClick={() => { if (channel.nativeCaptureRequest(roomId)) void channel.cancelScreenSelection(roomId).catch(() => {}); }} />
-      </> : <Btn icon={sharing ? "switchSource" : "cast"} title={{ text: label }} cap={{ text: label }} size="compact" tone="primary"
+      </> : <Btn icon={sharing ? "switchSource" : "cast"} title={{ text: sourceTitle }} cap={{ text: label }} size="compact" tone="primary"
         hint={available ? "hint-share-start" : "hint-no-sources"} hintText={available ? undefined : "host.capture.noSource"}
         disabled={disabled || busy || qualityPending || microphonePending || !available} busy={busy || qualityPending} expanded={pickerAvailable || open ? open : undefined}
         controls={pickerAvailable || open ? id : undefined} popoverTarget={pickerAvailable ? id : undefined}
         onClick={() => { if (!pickerAvailable) start(() => startScreen(roomId)); }} />}
     </span>
     <span ref={settingsTrigger} className="c3-share-control">
-      <Btn icon="sliders" title={{ text: settingsLabel }} cap={vis ? undefined : { text: settingsLabel }} hint="hint-quality" size="compact" quiet
+      <Btn icon="sliders" title={{ text: settingsTitle }} cap={vis ? undefined : { text: settingsLabel }} hint="hint-quality" size="compact" quiet
         disabled={disabled || busy} busy={qualityPending} popoverTarget={`${id}-settings`} controls={`${id}-settings`} expanded={settingsOpen} />
     </span>
     </span>
-    <div ref={settingsPanel} id={`${id}-settings`} popover="auto" className="lr-anchored-card c3-quality-picker"
+    <div ref={settingsPanel} id={`${id}-settings`} popover="auto" role="dialog" aria-label={settingsTitle} className="lr-anchored-card c3-quality-picker"
       onToggle={event => { if (event.target === event.currentTarget) setSettingsOpen(event.newState === "open"); }}>
+      {(!vis || roomName) && <div className="c3-quality-heading"><h3>{vis ? roomName : settingsLabel}</h3>
+        {!vis && <p>{sharing ? (lang === "zh" ? `调整${roomName ?? "当前房间"}中的分享，修改即时生效。` : `Changes apply to your share in ${roomName ?? "this room"}.`)
+          : (lang === "zh" ? "用于你接下来开始的分享。" : "Used when you start your next share.")}</p>}</div>}
       <SharingSettings id={`${id}-quality`} open={settingsOpen} busy={qualityPending || microphonePending}
-        presets={<>{!vis && <div className="c3-quality-heading"><h3>{settingsLabel}</h3>
-          <p>{sharing ? (lang === "zh" ? "调整当前分享，修改即时生效。" : "Changes apply to your current share.")
-            : (lang === "zh" ? "用于你接下来开始的分享。" : "Used when you start your next share.")}</p></div>}
-          <QualityPresets selected={matchingQualityProfileId(quality)} disabled={busy} busy={qualityPending}
-            onSelect={preset => setQuality({ ...QUALITY_PROFILES[preset], maxAudioBitrate: quality.maxAudioBitrate })} /></>}
+        presets={<QualityPresets selected={matchingQualityProfileId(quality)} disabled={busy} busy={qualityPending}
+          onSelect={preset => setQuality({ ...QUALITY_PROFILES[preset], maxAudioBitrate: quality.maxAudioBitrate })} />}
         pictureSummary={<PictureSettingsSummary value={screenQuality?.applied ?? quality} />}
         picture={<><ResolutionControl value={quality.resolution} limits={VIDEO_CAPTURE_LIMITS} disabled={busy}
           onChange={resolution => setQuality({ ...quality, resolution,

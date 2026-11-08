@@ -5,12 +5,16 @@ import { createOpaqueId } from "../lib/opaque-id";
 import { RoomInteractionSession } from "../lib/room-interactions";
 
 /** A local participant and friend exercise the real interaction view, without signaling. */
-export function usePreviewInteractions(viewer: boolean) {
+export function usePreviewInteractions(viewer: boolean, people?: {
+  self: { peerId: string; displayName: string }; friend: { peerId: string; displayName: string };
+}) {
   const [session, setSession] = useState<RoomInteractionSession | null>(null);
+  const selfId = people?.self.peerId ?? (viewer ? "preview-friend" : "preview-host");
+  const selfName = people?.self.displayName ?? (viewer ? "Piik friend" : "Piik");
+  const friendId = people?.friend.peerId ?? (viewer ? "preview-host" : "preview-friend");
+  const friendName = people?.friend.displayName ?? (viewer ? "Piik" : "Piik friend");
   useEffect(() => {
-    const sender = viewer
-      ? { peerId: "preview-friend", role: "viewer" as const, displayName: "Piik friend" }
-      : { peerId: "preview-host", role: "host" as const, displayName: "Piik" };
+    const sender = { peerId: selfId, role: viewer ? "viewer" as const : "host" as const, displayName: selfName };
     const model = new RoomInteractionSession(message => {
       queueMicrotask(() => {
         if (message.type === "subscribe-room-interactions") model.receive({ type: "room-interactions-ready", serverTime: Date.now() });
@@ -22,11 +26,10 @@ export function usePreviewInteractions(viewer: boolean) {
     model.authenticated(sender.peerId);
     setSession(model);
     return () => model.close();
-  }, [viewer]);
+  }, [viewer, selfId, selfName]);
   const receiveSample = (payload: InteractionPayload) => session?.receive({
     type: "room-interaction", id: createOpaqueId(), requestId: createOpaqueId(), occurredAt: Date.now(),
-    sender: viewer ? { peerId: "preview-host", role: "host", displayName: "Piik" }
-      : { peerId: "preview-friend", role: "viewer", displayName: "Piik friend" }, payload,
+    sender: { peerId: friendId, role: viewer ? "host" : "viewer", displayName: friendName }, payload,
   });
   return { session, receiveSample };
 }

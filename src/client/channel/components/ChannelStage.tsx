@@ -11,7 +11,8 @@ import type { RoomInteractionSession } from "../../lib/room-interactions";
 import type { RemoteControlMode } from "../../remote-control/protocol";
 import type { ChannelRemoteControlState, ChannelStopShortcut } from "../app-link";
 import { HostRemoteControl } from "../../components/living/HostRemoteControl";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { stageColumns } from "../stage-layout";
 import { useTheaterMode } from "../../components/living/use-theater-mode";
 import { VoiceMicrophoneButton } from "../../room-voice/VoiceAudioButtons";
 
@@ -74,26 +75,46 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
   const active = sources.filter(source => source.owned || source.subscribed);
   const available = sources.filter(source => !source.owned && !source.subscribed);
   const focused = active.find(source => source.id === focusedId);
+  const layoutSources = JSON.stringify([active.map(source => source.id), available.map(source => source.id)]);
   const [theater, setTheater] = useTheaterMode();
+  const stage = useRef<HTMLElement>(null), grid = useRef<HTMLDivElement>(null);
+  const [columns, setColumns] = useState<number>();
+  useLayoutEffect(() => {
+    const parent = stage.current, tiles = grid.current;
+    if (!parent || !tiles || focused || theater || active.length < 2) { setColumns(undefined); return; }
+    const measure = () => {
+      const style = getComputedStyle(parent), children = [...parent.children] as HTMLElement[];
+      const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+      const gap = parseFloat(style.rowGap) || 0;
+      const height = parent.clientHeight - padding - children.filter(child => child !== tiles).reduce((sum, child) => sum + child.offsetHeight, 0)
+        - gap * (children.length - 1);
+      const footer = Math.max(...[...tiles.querySelectorAll("article > footer")].map(node => node.getBoundingClientRect().height)) + 2;
+      const layout = getComputedStyle(tiles);
+      const ratios = [...tiles.children].map(tile => {
+        const video = tile.querySelector<HTMLVideoElement>('video[data-selected="true"]');
+        return video?.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9;
+      });
+      setColumns(stageColumns(tiles.clientWidth, height, ratios, parseFloat(layout.columnGap) || 0, footer,
+        parseFloat(layout.getPropertyValue("--stage-tile-min"))));
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(parent);
+    for (const child of parent.children) if (child !== tiles) observer.observe(child);
+    for (const footer of tiles.querySelectorAll("article > footer")) observer.observe(footer);
+    tiles.addEventListener("loadedmetadata", measure, true);
+    tiles.addEventListener("resize", measure, true);
+    measure();
+    return () => {
+      observer.disconnect();
+      tiles.removeEventListener("loadedmetadata", measure, true);
+      tiles.removeEventListener("resize", measure, true);
+    };
+  }, [layoutSources, focused?.id, theater, lang]);
   useEffect(() => { if (!focused?.stream) setTheater(false); }, [focused?.id, focused?.stream, setTheater]);
   if (!sources.length) return null;
 
-  return <section className={`c3-monitor${theater && focused ? " is-theater" : ""}`} aria-label={copy("共享画面", "Shared screens")}>
-    {available.length > 0 && <section className="c3-monitor-directory" aria-label={copy("可观看的画面", "Available screens")}>
-      <div className="c3-monitor-directory-heading"><Glyph name="tv" size={17} />
-        <span>{copy("正在分享", "Available to watch")}</span><small>{available.length}</small>
-      </div>
-      <div className="c3-monitor-offers">
-        {available.map(source => <div key={source.id} className="c3-monitor-offer" data-source-id={source.id}
-          role="group" aria-label={source.name}>
-          <PawnSvg color={participantColor(source.userId)} identity={source.userId} />
-          <div><strong>{source.name}</strong><small>{source.paused ? `${t("host.paused")} / ` : ""}{source.roomName}</small></div>
-          <ChannelAction icon="eye" label={copy("观看", "Watch")}
-            iconOnly={vis} disabled={!canSubscribe || source.available === false} busy={source.pending}
-            onClick={() => onWatch(source.id)} />
-        </div>)}
-      </div>
-    </section>}
+  return <section ref={stage} className={`c3-monitor${theater && focused ? " is-theater" : ""}`} aria-label={copy("共享画面", "Shared screens")}>
+
     {active.length > 0 && <>
       <header className="c3-monitor-heading">
         <div><Glyph name="tv" size={18} /><span>{copy("画面", "Screens")}</span><small>{active.length}</small></div>
@@ -101,9 +122,14 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
           <ChannelAction icon="frames" label={copy("平铺画面", "Grid view")} quiet pressed={!focused}
             onClick={() => onFocus(null)} />
           {focused && <span className="c3-monitor-focus-name"><Glyph name="eye" size={15} />{focused.name}</span>}
+          {theater && <label className="c3-theater-source"><span>{copy("切换画面", "Switch screen")}</span>
+            <select className="lr-select" aria-label={copy("切换画面", "Switch screen")} value={focused?.id ?? ""} onChange={event => onFocus(event.target.value)}>
+              {active.map(source => <option key={source.id} value={source.id}>{source.name} — {source.roomName}</option>)}
+            </select></label>}
         </div>}
       </header>
-      <div className={`c3-monitor-grid${focused ? " is-focused" : ""}`}>
+      <div ref={grid} className={`c3-monitor-grid${focused ? " is-focused" : ""}`}
+        style={columns && !focused && !theater ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined}>
         {active.map(source => {
           const isFocused = source.id === focused?.id;
           const focusable = active.length > 1 && !isFocused;
@@ -159,5 +185,20 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
         })}
       </div>
     </>}
+    {available.length > 0 && <section className="c3-monitor-directory" aria-label={copy("可观看的画面", "Available screens")}>
+      <div className="c3-monitor-directory-heading"><Glyph name="tv" size={17} />
+        <span>{copy("正在分享", "Available to watch")}</span><small>{available.length}</small>
+      </div>
+      <div className="c3-monitor-offers">
+        {available.map(source => <div key={source.id} className="c3-monitor-offer" data-source-id={source.id}
+          role="group" aria-label={source.name}>
+          <PawnSvg color={participantColor(source.userId)} identity={source.userId} />
+          <div><strong>{source.name}</strong><small>{source.paused ? `${t("host.paused")} / ` : ""}{source.roomName}</small></div>
+          <ChannelAction icon="eye" label={copy("观看", "Watch")}
+            iconOnly={vis} disabled={!canSubscribe || source.available === false} busy={source.pending}
+            onClick={() => onWatch(source.id)} />
+        </div>)}
+      </div>
+    </section>}
   </section>;
 }

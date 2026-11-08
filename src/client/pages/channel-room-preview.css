@@ -1,0 +1,4 @@
+.c3-room-preview { height: 100dvh; display: flex; flex-direction: column; min-width: 0; }
+.c3-room-preview-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: none; }
+.c3-room-preview-tools .lr-chip { padding: 2px 8px; min-height: 26px; }
+.c3-room-preview > .c3-app { flex: 1; min-height: 0; height: auto; }
