@@ -12,6 +12,11 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **3.0 Windows shared-sound noise.** A beta2 Host reports noise that stops
+  when excluding the Piik console's process tree, but returns when excluding a
+  silent unrelated window. Verify which Browser playback belongs to that tree
+  and whether the intended source sound remains after exclusion; trace the
+  actual capture/playback loop before changing audio processing.
 - [ ] **3.0 iOS/iPadOS room voice feedback.** With noise processing disabled on
   the phone/tablet, a computer listener reports mono sound. Check that device's
   raw capture channels against its received sound; the shared microphone,
