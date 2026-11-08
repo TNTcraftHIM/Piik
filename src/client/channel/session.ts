@@ -1876,7 +1876,7 @@ export class ChannelSession {
     request.promise = (async () => {
       let stream: MediaStream | undefined, input: MicrophoneInput | undefined;
       try {
-        stream = await acquireMediaStream(() => navigator.mediaDevices.getUserMedia(this.microphoneConstraints(this.view.voiceInput)), signal);
+        stream = await this.captureVoiceMicrophone(this.view.voiceInput, signal);
         signal.throwIfAborted();
         if (stream.getAudioTracks()[0]?.readyState !== "live") throw new Error("microphone_unavailable");
         const captured = input = new MicrophoneInput(stream, context, this.view.voiceInput.volume, () => {
@@ -1920,6 +1920,13 @@ export class ChannelSession {
       ...(settings.deviceId ? { deviceId: { exact: settings.deviceId } } : {}) }, video: false };
   }
 
+  private captureVoiceMicrophone(settings: RoomPreferences["voiceInput"], signal: AbortSignal): Promise<MediaStream> {
+    return acquireMediaStream(() => navigator.mediaDevices.getUserMedia(this.microphoneConstraints(settings)), signal).catch(error => {
+      if (error instanceof DOMException && error.name === "NotAllowedError") throw new Error("voice_microphone_permission_denied");
+      throw error;
+    });
+  }
+
   configureVoiceInput = (settings: Partial<Pick<RoomPreferences["voiceInput"], "deviceId" | "voiceProcessing">>): Promise<void> => this.action("voice-input", async () => {
     const signal = this.captureLifetime.signal;
     if (this.microphoneRequest) await this.microphoneRequest.promise;
@@ -1927,7 +1934,7 @@ export class ChannelSession {
     const voiceInput = { ...this.view.voiceInput, ...settings };
     const input = this.microphone;
     if (input) {
-      let captured: MediaStream | undefined = await acquireMediaStream(() => navigator.mediaDevices.getUserMedia(this.microphoneConstraints(voiceInput)), input.signal);
+      let captured: MediaStream | undefined = await this.captureVoiceMicrophone(voiceInput, input.signal);
       try {
         signal.throwIfAborted();
         if (this.microphone !== input) throw new DOMException("Microphone capture cancelled", "AbortError");

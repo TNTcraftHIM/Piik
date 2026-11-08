@@ -824,6 +824,36 @@ test("sharing quality is remembered by the actual session across endpoint lifeti
   } finally { resumed?.close(); session.close(); }
 });
 
+test("voice microphone permission denial keeps listen-only available and reports the same failure on unmute", async () => {
+  const { session, socket } = await setup(3, false);
+  const contexts = microphoneMixer([]);
+  const getUserMedia = vi.fn().mockRejectedValue(new DOMException("Microphone declined", "NotAllowedError"));
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+  const state = structuredClone(session.getSnapshot().state!);
+  try {
+    const joining = session.joinVoice("first");
+    const denied = expect(joining).rejects.toThrow("voice_microphone_permission_denied");
+    expect(getUserMedia).toHaveBeenCalledOnce(); // Permission starts in the user gesture.
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "voice", roomId: "first", joined: false }));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await denied;
+    expect(session.getSnapshot().error).toBe("voice_microphone_permission_denied");
+    expect(contexts[0].close).toHaveBeenCalledOnce();
+    const listening = session.joinVoice("first", true);
+    state.voice.push({ sessionId: "endpoint", roomId: "first", muted: true, deafened: false });
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await listening;
+    expect(getUserMedia).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().error).toBeNull();
+    await expect(session.setMuted("first", false)).rejects.toThrow("voice_microphone_permission_denied");
+    expect(session.getSnapshot().error).toBe("voice_microphone_permission_denied");
+    expect(session.getSnapshot().state?.voice[0]).toMatchObject({ muted: true, deafened: false });
+    expect(contexts[1].close).toHaveBeenCalledOnce();
+    expect(socket.sent.some(command => command.type === "publish")).toBe(false);
+  } finally { session.close(); }
+});
+
 test("recovery mute stops only this room's retained voice immediately", async () => {
   vi.spyOn(MicrophoneInput.prototype, "level").mockReturnValue(.3);
   const { session, socket } = await setup(3, false);
@@ -977,6 +1007,11 @@ test("voice rooms share one microphone gain graph and release it after the last 
     expect(socket.sent).toHaveLength(commands); // No replacement publication, join or route command.
     expect(session.getSnapshot().voiceInput).toEqual({ deviceId: "next-device", volume: 1.6, voiceProcessing: true });
     expect(JSON.parse(preferences.get("piik:room-preferences:v1")!).voiceInput).toEqual(session.getSnapshot().voiceInput);
+    getUserMedia.mockRejectedValueOnce(new DOMException("Microphone declined", "NotAllowedError"));
+    await expect(session.configureVoiceInput({ deviceId: "denied-device" })).rejects.toThrow("voice_microphone_permission_denied");
+    expect(session.getSnapshot().error).toBe("voice_microphone_permission_denied");
+    expect(session.getSnapshot().voiceInput.deviceId).toBe("next-device");
+    expect(replacement.stop).not.toHaveBeenCalled();
     getUserMedia.mockRejectedValueOnce(new DOMException("Cannot open device", "NotReadableError"));
     await expect(session.configureVoiceInput({ deviceId: "failed-device" })).rejects.toThrow("Cannot open device");
     expect(session.getSnapshot().voiceInput.deviceId).toBe("next-device");

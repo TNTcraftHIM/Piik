@@ -25,6 +25,8 @@ export function channelErrorPresentation(error: string | null, copy: (zh: string
     return display("分享遇到问题，请重新选择窗口或屏幕。", "Sharing encountered a problem. Choose a window or screen again.");
   if (error === "capture_audio_failed")
     return display("无法分享声音，画面分享仍在继续。", "Could not share sound. Screen sharing continues.");
+  if (error === "voice_microphone_permission_denied")
+    return display("麦克风未获允许。请允许此网站使用麦克风；加入语音也可选择只收听。", "Microphone access was declined. Allow it for this site; you can also join voice as listen-only.");
   if (error === "capture_codec_unsupported")
     return display("App 不支持所选视频编码。请在分享前选择自动，或更换选源。", "The App does not support this video codec. Choose Auto before sharing, or select another source.");
   if (error === "video_codec_unsupported")
