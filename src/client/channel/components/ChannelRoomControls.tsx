@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ToggleEvent } from "react";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { Tooltip } from "../../components/living/Tooltip";
 import { Btn, SwitchItem } from "../../components/living/primitives";
@@ -134,6 +134,11 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
   const invitationCopy = useClipboardResult(invite);
   const [backupAvailable, setBackupAvailable] = useState(false);
   const id = room ? "c3-room-settings" : "c3-create-room";
+  const taskGroup = useId();
+  const revealTask = (event: ToggleEvent<HTMLDetailsElement>) => {
+    if (event.target === event.currentTarget && event.newState === "open" && panel.current?.matches(":popover-open"))
+      event.currentTarget.querySelector("summary")?.scrollIntoView({ block: "nearest" });
+  };
   const title = room ? (zh ? "房间设置" : "Room settings") : (zh ? "创建房间" : "Create room");
   const triggerTitle = room ? (zh ? "房间选项" : "Room options") : title;
   useAnchoredPopover(trigger, panel, { side: "below", align: "end" });
@@ -178,11 +183,11 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={title}
       className="lr-anchored-card c3-room-panel" onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
       {open && <><header className="c3-settings-heading"><h3>{title}</h3>
-        <ChannelAction icon="x" iconOnly quiet label={zh ? "关闭" : "Close"} onClick={() => panel.current?.hidePopover()} /></header>
+        <ChannelAction icon="x" iconOnly quiet hint="hint-close" label={zh ? "关闭" : "Close"} onClick={() => panel.current?.hidePopover()} /></header>
       {room && !room.available && <p>{room.canManage ? (zh ? "房间当前未托管，可以从域中移除。" : "This room is offline. You can remove it from the domain.")
         : (zh ? "房间当前未托管，恢复后可调整转发设置。" : "The room is offline. Forwarding settings will be available when hosting resumes.")}</p>}
-      {room && <section className="c3-settings-access" aria-label={zh ? "邀请与访问" : "Invitation and access"}>
-        <h4>{zh ? "邀请与访问" : "Invitation and access"}</h4>
+      {room && <details className="c3-settings-details c3-settings-access" name={taskGroup} onToggle={revealTask} open>
+        <summary>{zh ? "邀请与访问" : "Invitation and access"}</summary>
         <p>{room.access === "public" ? (zh ? "公开房间，域内用户都可进入。" : "Public room. Anyone in this domain can enter.")
           : room.hasPassword ? (zh ? "私密房间，凭邀请或密码进入。" : "Private room. Enter with an invitation or password.")
             : (zh ? "私密房间，凭邀请进入。" : "Private room. Enter with an invitation.")}
@@ -213,8 +218,8 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
                 busy={channel.pending.has(`revoke:${room.id}:${userId}`)} disabled={!available || working}
                 onClick={() => run(channel.revokeRoomAccess(room.id, userId))} /></div>)}
         </details>}
-      </section>}</section>}
-      {(!room || room.canManage) && <details className="c3-settings-details c3-settings-editor" open={!room || undefined} hidden={!!room && !room.available}>
+      </section>}</details>}
+      {(!room || room.canManage) && <details className="c3-settings-details c3-settings-editor" name={taskGroup} onToggle={revealTask} open={!room || undefined} hidden={!!room && !room.available}>
         <summary>{room ? (zh ? "编辑房间设置" : "Edit room settings") : (zh ? "新房间" : "New room")}</summary>
         <RoomForm key={`form:${room?.delivery?.bindingId ?? room?.id ?? "create"}`} room={room} appHosted={channel.appConnected} disabled={!available || working} busy={busy} onCancel={() => panel.current?.hidePopover()} onSave={async settings => {
           const form = panel.current?.querySelector("form");
@@ -223,10 +228,10 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
           if (panel.current?.matches(":popover-open") && panel.current.querySelector("form") === form) panel.current.hidePopover();
         }} />
       </details>}
-      {room?.authorized && <details className="c3-settings-details"><summary>{zh ? "我的转发设置" : "My forwarding settings"}</summary>
+      {room?.authorized && <details className="c3-settings-details" name={taskGroup} onToggle={revealTask}><summary>{zh ? "我的转发设置" : "My forwarding settings"}</summary>
         <PersonalRelay channel={channel} room={room} disabled={!available || working} />
       </details>}
-      {(!room || room.authorized || room.canManage) && <details className="c3-settings-details"><summary>{room ? (zh ? "文字记录与备份" : "Chat text and backups") : (zh ? "从备份导入房间" : "Import a room backup")}</summary>
+      {(!room || room.authorized || room.canManage) && <details className="c3-settings-details" name={taskGroup} onToggle={revealTask}><summary>{room ? (zh ? "文字记录与备份" : "Chat text and backups") : (zh ? "从备份导入房间" : "Import a room backup")}</summary>
         {room?.authorized && <RoomChatExport messages={channel.messagesByRoom[room.id] ?? []} users={channel.state?.users ?? []} />}
         {(!room || room.canManage) && <BackupControls key={room?.id ?? "import"} available={!room || backupAvailable} disabled={!available || busy || removing || (!!room && !backupAvailable)}
           busy={backupBusy} replacing={!!room}
