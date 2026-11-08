@@ -14,6 +14,9 @@
    App 选源器可能提示你到 App 中完成选择。
 3. 确认本机预览。朋友会在 **正在分享** 列表看到你的画面，点击 **观看** 即可接收。
 
+iPhone／iPad 分享屏幕需使用 iOS／iPadOS 27 及以上的 Safari；观看和摄像头分享不受此屏幕分享门槛限制。
+Safari 的屏幕采集不包含系统声音，参阅[浏览器兼容记录](https://github.com/mdn/browser-compat-data/pull/30732)。
+
 ![选源器中的示例应用窗口与来源声音开关。](../assets/guide/channel-source.zh-CN.png#gh-light-mode-only)
 ![选源器中的示例应用窗口与来源声音开关。](../assets/guide/channel-source.zh-CN.dark.png#gh-dark-mode-only)
 
@@ -54,7 +57,8 @@ Piik 会根据来源、设备与连接，在这些上限内调整画面。
 
 OBS 虚拟摄像头提供画面；需要带上 OBS 声音时，按
 [OBS 音频转接教程](https://obsproject.com/kb/video-call-streaming-tutorial/)设置音频输入，
-再在分享麦克风或独立的房间语音设置中选择它。
+再在 **画质与声音 → 声音 → 分享麦克风** 中选择该音频输入，声音就会随画面传给观看者。
+播放音乐或已处理的虚拟音频时，可关闭这里的语音处理。
 
 ## 分享屏幕时排除语音软件的声音
 

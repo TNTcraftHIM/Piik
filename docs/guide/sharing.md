@@ -17,6 +17,10 @@ You choose which pictures to watch.
 3. Check your local preview. Friends see your share under **Available to watch**
    and select **Watch** to receive it.
 
+Screen sharing on iPhone/iPad requires Safari on iOS/iPadOS 27 or later.
+Watching and camera sharing are separate capabilities. Safari screen capture
+does not include system sound; see the [browser compatibility record](https://github.com/mdn/browser-compat-data/pull/30732).
+
 ![Source picker with example app windows and the source-audio switch.](../assets/guide/channel-source.en.png#gh-light-mode-only)
 ![Source picker with example app windows and the source-audio switch.](../assets/guide/channel-source.en.dark.png#gh-dark-mode-only)
 
@@ -66,7 +70,9 @@ separately as commentary or room-voice input.
 
 OBS Virtual Camera supplies video. To include OBS audio, follow the
 [OBS audio-routing guide](https://obsproject.com/kb/video-call-streaming-tutorial/),
-then select that input in the commentary controls or the separate room-voice settings.
+then select that input under **Picture and sound → Sound → Include my microphone**.
+Its sound travels with the picture. Turn off voice processing for music or
+virtual audio that has already been processed.
 
 ## Exclude a voice app from screen audio
 
