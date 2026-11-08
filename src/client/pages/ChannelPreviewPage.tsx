@@ -123,7 +123,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
       appControl={appControl}
       led={<LedStrip state={connected ? "live" : connection === "closed" ? "bad" : "busy"}
         label={connectionLabel} comic={connected ? "signal-connected" : "signal-connecting"} />} />
-    {state && failure.message && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span>{failure.message}</span>
+    {state && failure.message && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span className="c3-notice-message">{failure.message}</span>
       <Btn icon="x" title="notice.dismiss" hint="hint-close" size="compact" quiet onClick={channel.clearError} />
     </div>}
     <ChannelDomainControls channel={channel} triggerSlot={domainControlSlot} />
@@ -223,11 +223,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
           </div>
           <div ref={couchSlot} className="c3-room-slot" />
         </header>
-        {!connected && <div className="c3-notice" role="status"><Glyph name="signal" size={20} /><span>{connectionLabel}</span>
+        {!connected && <div className="c3-notice" role="status"><Glyph name="signal" size={20} /><span className="c3-notice-message">{connectionLabel}</span>
           {connection === "closed" && <Btn icon="refresh" title="common.retry" cap="common.retry" hint="hint-reconnect" size="compact" onClick={channel.reconnect} />}
         </div>}
         {room && !room.available && <div className="c3-notice" role="status"><Glyph name="couch" size={20} />
-          <span>{copy("房间暂不可用，请等待恢复托管。", "This room is unavailable. Wait for hosting to resume.")}</span></div>}
+          <span className="c3-notice-message">{copy("房间暂不可用，请等待恢复托管。", "This room is unavailable. Wait for hosting to resume.")}</span></div>}
         <div className={`c3-workspace${visibleScreens.length ? " has-screens" : ""}${chatOpen && !toolSurface.open ? "" : " chat-collapsed"}`}>
           <ChannelStage sources={[...visibleScreens, ...availableScreens].map(publication => ({
             id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),

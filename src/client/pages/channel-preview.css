@@ -80,7 +80,7 @@
 .c3-voice-participants small { color: var(--muted); font-size: 11px; }
 .c3-control-divider { align-self: stretch; width: 1px; background: var(--line); margin: 7px 3px; }
 .c3-notice { flex: none; margin: 12px 24px 0; padding: 10px 12px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 12px; font-size: 12px; line-height: 1.6; }
-.c3-notice > span { flex: 1; min-width: 0; }
+.c3-notice-message { flex: 1; min-width: 0; }
 .c3-notice > svg { flex: none; }
 .c3-notice.is-error > svg { color: var(--danger); }
 .c3-app > .c3-notice { width: var(--c3-content-width); margin: 0 auto 12px; background: var(--paper); }
