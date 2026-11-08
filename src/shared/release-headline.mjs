@@ -1,3 +1,4 @@
+// Release notes, website and update notices share this authored opening.
 // Each language opens with a bold title and one plain description paragraph.
 // Published title-only pairs remain readable; ordinary release prose is not a headline.
 const gap = String.raw`[ \t]*\r?\n(?:[ \t]*\r?\n)+`;

@@ -97,9 +97,6 @@ the feedback period; they do not delay that delivery.
   [requested speech-processing option](https://github.com/TNTcraftHIM/Piik/issues/518)
   through the shared microphone input. Browser voice processing is already the
   default; keep screen and system audio unprocessed.
-- [ ] **Release headlines in App and Server update checks.** Keep the prepared
-  implementation on `archive/deferred-prototypes` for a later feature release. It consumes
-  the existing [headline contract](./standards/versioning.md#release-notes).
 
 ## Held By Owner
 

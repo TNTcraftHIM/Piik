@@ -2,7 +2,7 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import semver from "semver";
 import { hasProductChanges, isReleaseVersion, releaseCommits, stableTags } from "./release-version.mjs";
-import { splitReleaseHeadline } from "./release-headline.mjs";
+import { splitReleaseHeadline } from "../src/shared/release-headline.mjs";
 
 export function releaseNotesSection(message, source) {
   const sections = message.replace(/\r\n/g, "\n").split(/^## /m).slice(1)

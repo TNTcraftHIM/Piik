@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { pullRequestNotes, releaseNotes } from "../scripts/release-notes.mjs";
-import { splitReleaseHeadline } from "../scripts/release-headline.mjs";
+import { splitReleaseHeadline } from "../src/shared/release-headline.mjs";
 import { buildVersion, isReleaseVersion, stableTags } from "../scripts/release-version.mjs";
 import { readReleaseArtifacts } from "../scripts/release-artifacts.mjs";
 

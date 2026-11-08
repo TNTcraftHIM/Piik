@@ -1553,6 +1553,9 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-client-launch-technical > summary:focus-visible { outline: 2px solid var(--action); outline-offset: 4px; border-radius: 3px; }
 .lr-client-launch-detail { max-width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; font: 13px/1.6 var(--mono); }
 .lr-client-release { display: grid; justify-items: center; gap: 6px; max-width: 100%; }
+.lr-client-release-headline { display: grid; gap: 4px; max-width: 42ch; margin-block-end: 4px; color: var(--ink); text-align: center; overflow-wrap: anywhere; }
+.lr-client-release-headline > strong { font-size: 14px; line-height: 1.45; text-wrap: balance; }
+.lr-client-release-headline > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; text-wrap: pretty; }
 .lr-client-release-mirror { display: inline-block; min-height: 28px; color: var(--muted); font-size: 12px; line-height: 28px; text-underline-offset: 3px; }
 .lr-client-release-mirror > .lr-glyph { vertical-align: middle; }
 .lr-client-release-mirror:is(:hover, :focus-visible) { color: var(--ink); }

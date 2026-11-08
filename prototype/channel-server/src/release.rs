@@ -60,6 +60,77 @@ pub struct ReleaseResult {
     current_revision: Option<String>,
     latest_revision: Option<String>,
     release_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    headline: Option<ReleaseHeadline>,
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+struct ReleaseHeadlineText {
+    title: String,
+    description: String,
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+struct ReleaseHeadline {
+    en: ReleaseHeadlineText,
+    #[serde(rename = "zh-CN")]
+    chinese: ReleaseHeadlineText,
+}
+
+// Match the authored opening consumed by src/shared/release-headline.mjs, not
+// arbitrary Markdown or a summary inferred from the release notes.
+fn release_headline(body: &str) -> Option<ReleaseHeadline> {
+    let mut paragraphs = vec![Vec::new()];
+    for line in body.trim_start().lines() {
+        if line.trim_matches([' ', '\t']).is_empty() {
+            if !paragraphs.last()?.is_empty() {
+                if paragraphs.len() == 4 {
+                    break;
+                }
+                paragraphs.push(Vec::new());
+            }
+        } else {
+            paragraphs.last_mut()?.push(line);
+        }
+    }
+    let line = |index: usize| {
+        let paragraph = paragraphs.get(index)?;
+        (paragraph.len() == 1).then(|| paragraph[0].trim_end_matches([' ', '\t']))
+    };
+    let title = |index| {
+        let text = line(index)?.strip_prefix("**")?.strip_suffix("**")?;
+        (!text.contains('*') && !text.trim().is_empty()).then(|| text.trim().to_owned())
+    };
+    let description = |index| {
+        let text = line(index)?;
+        (!text.contains(['*', '#', '<', '>']) && !text.trim().is_empty())
+            .then(|| text.trim().to_owned())
+    };
+    let english = title(0)?;
+    if let (Some(explanation), Some(chinese), Some(chinese_explanation)) =
+        (description(1), title(2), description(3))
+    {
+        return Some(ReleaseHeadline {
+            en: ReleaseHeadlineText {
+                title: english,
+                description: explanation,
+            },
+            chinese: ReleaseHeadlineText {
+                title: chinese,
+                description: chinese_explanation,
+            },
+        });
+    }
+    Some(ReleaseHeadline {
+        en: ReleaseHeadlineText {
+            title: english,
+            description: String::new(),
+        },
+        chinese: ReleaseHeadlineText {
+            title: title(1)?,
+            description: String::new(),
+        },
+    })
 }
 
 impl ReleaseResult {
@@ -90,12 +161,23 @@ impl ReleaseResult {
             Status::OfficialRelease => "An official Piik release is available",
             _ => return None,
         };
-        Some(format!(
+        let mut notice = format!(
             "{message} currentVersion={} latestVersion={} releaseUrl={}",
             self.current_version.as_deref().unwrap_or("development"),
             self.latest_version.as_deref()?,
             self.release_url.as_deref()?
-        ))
+        );
+        if let Some(headline) = &self.headline {
+            for text in [&headline.en, &headline.chinese] {
+                for line in [&text.title, &text.description] {
+                    if !line.is_empty() {
+                        notice.push('\n');
+                        notice.extend(line.chars().filter(|character| !character.is_control()));
+                    }
+                }
+            }
+        }
+        Some(notice)
     }
 }
 
@@ -132,6 +214,7 @@ struct PublishedRelease {
     version: Version,
     revision: Option<String>,
     url: String,
+    headline: Option<ReleaseHeadline>,
 }
 
 fn version(value: &str) -> Option<Version> {
@@ -171,6 +254,10 @@ fn published(value: &Value, mirror: bool) -> Option<PublishedRelease> {
             version,
             revision: Some(source.into()),
             url: MIRROR_PAGE.to_owned(),
+            headline: value
+                .get("body")
+                .and_then(Value::as_str)
+                .and_then(release_headline),
         })
     } else {
         if value.get("draft").is_some_and(|value| value != false)
@@ -186,6 +273,10 @@ fn published(value: &Value, mirror: bool) -> Option<PublishedRelease> {
                 .and_then(Value::as_str)
                 .and_then(revision),
             url: format!("{GITHUB_PAGE}{tag}"),
+            headline: value
+                .get("body")
+                .and_then(Value::as_str)
+                .and_then(release_headline),
         })
     }
 }
@@ -210,6 +301,7 @@ fn check(
         latest_version: None,
         latest_revision: None,
         release_url: None,
+        headline: None,
     };
     if current.is_none() && result.current_revision.is_none() {
         return result;
@@ -246,6 +338,7 @@ fn check(
     result.latest_version = Some(format!("v{}", latest.version));
     result.latest_revision = latest.revision;
     result.release_url = Some(latest.url);
+    result.headline = latest.headline;
     result
 }
 

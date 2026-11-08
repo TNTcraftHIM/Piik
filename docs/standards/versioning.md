@@ -318,10 +318,11 @@ remote control and remote co-play; **远程同乐，轮到你啦！** / Piik 现
 The explanation states the feature or fact, rather than adding another slogan;
 it does not replace the description of this update below. Keep each title and
 explanation to one authored line, using plain text inside `**...**` and the
-description. The website reads these same pairs from
-the published Release body and displays the current language; it does not keep
-another copy, interpret arbitrary Markdown or guess a headline from older
-releases. AtomGit retains the same body. Do not add a campaign registry or automatic
+description. The website and App update notices read these same pairs from
+the published Release body and display the current language; Server notices use
+English first. They do not keep another copy, interpret arbitrary Markdown or
+guess a headline from older releases. A missing headline does not invalidate an
+otherwise valid update. AtomGit retains the same body. Do not add a campaign registry or automatic
 version-based inheritance; review any reused headline when preparing the PR.
 
 Then introduce **this update** in each language with one or two factual sentences:

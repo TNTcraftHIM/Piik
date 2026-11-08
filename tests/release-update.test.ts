@@ -4,6 +4,8 @@ import {
   parseMirrorReleaseMetadata, parseReleaseMetadata, releaseUpdateNotice,
 } from "../src/client/lib/release-update";
 import mirrorReleases from "./fixtures/mirror-releases.json";
+import headlineFixtures from "./fixtures/release-headlines.json";
+import { splitReleaseHeadline } from "../src/shared/release-headline.mjs";
 
 const currentRevision = "a".repeat(40);
 const latestRevision = "b".repeat(40);
@@ -19,6 +21,19 @@ const packageAsset = (target: string, suffix = "") => {
 };
 
 describe("App release update notice", () => {
+  it.each(headlineFixtures)("keeps the shared authored headline across release providers: $body", ({ body, headline }) => {
+    expect(splitReleaseHeadline(body).headline).toEqual(headline);
+    const expected = headline ?? undefined;
+    const github = parseReleaseMetadata({ ...release, body });
+    const mirror = parseMirrorReleaseMetadata({ ...release, prerelease: false,
+      body: `${body}\n\n<!-- piik-source: ${latestRevision} -->` });
+    for (const parsed of [github, mirror]) {
+      expect(parsed?.headline).toEqual(expected);
+      expect(parsed && releaseUpdateNotice({ version: "v1.1.0", revision: currentRevision }, parsed))
+        .toMatchObject({ kind: "update-available", version: release.tag_name });
+    }
+  });
+
   it("reads publication time without making optional metadata an update prerequisite", () => {
     expect(parseReleaseMetadata({ ...release, published_at: "2026-10-01T12:34:56Z" }))
       .toMatchObject({ version: release.tag_name, publishedAt: "2026-10-01T12:34:56.000Z" });

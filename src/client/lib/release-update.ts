@@ -1,4 +1,5 @@
 import { compare, major, valid } from "semver";
+import { splitReleaseHeadline, type ReleaseHeadline } from "../../shared/release-headline.mjs";
 
 export const DEFAULT_RELEASE_API_URL =
   "https://api.github.com/repos/TNTcraftHIM/Piik/releases/latest";
@@ -19,6 +20,7 @@ interface PublishedRelease {
   url: string;
   releaseURL: string;
   publishedAt?: string;
+  headline?: ReleaseHeadline;
 }
 export interface ReleaseUpdateNotice extends PublishedRelease {
   kind: "update-available" | "major-update" | "different-build" | "official-release";
@@ -63,12 +65,14 @@ export function parseReleaseMetadata(value: unknown, packageTarget?: string): Pu
       release.html_url !== RELEASE_PAGE + version) return null;
   const publishedTime = typeof release.published_at === "string" && /^\d{4}-\d{2}-\d{2}T/.test(release.published_at)
     ? Date.parse(release.published_at) : NaN;
+  const { headline } = splitReleaseHeadline(release.body);
   const normalized = {
     version,
     // GitHub permits a branch here; only our publisher's full SHA is provenance.
     revision: normalizeReleaseRevision(release.target_commitish),
     url: RELEASE_PAGE + version,
     releaseURL: RELEASE_PAGE + version,
+    ...(headline ? { headline } : {}),
     ...(Number.isFinite(publishedTime) ? { publishedAt: new Date(publishedTime).toISOString() } : {}),
   };
   return { ...normalized, url: packageDownloadURL(normalized, release.assets, packageTarget) };
@@ -84,6 +88,7 @@ export function parseMirrorReleaseMetadata(value: unknown, packageTarget?: strin
   const normalized = parseReleaseMetadata({
     tag_name: release.tag_name, html_url: RELEASE_PAGE + String(release.tag_name),
     target_commitish: sources[0][1],
+    body: release.body,
   });
   if (!normalized) return null;
   const mirror = { ...normalized, url: MIRROR_RELEASE_PAGE,

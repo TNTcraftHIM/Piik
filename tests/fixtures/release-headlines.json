@@ -1,0 +1,54 @@
+[
+  {
+    "source": "https://github.com/TNTcraftHIM/Piik/releases/tag/v2.6.0",
+    "body": "**Piik, now in your pocket.**\n\nPiik App supports Android screen sharing, with touch controls for a friend's computer.\n\n**手机，也能开播。**\n\nPiik App 支持 Android 屏幕分享，也能用手机控制朋友的电脑。",
+    "headline": {
+      "en": {
+        "title": "Piik, now in your pocket.",
+        "description": "Piik App supports Android screen sharing, with touch controls for a friend's computer."
+      },
+      "zh-CN": {
+        "title": "手机，也能开播。",
+        "description": "Piik App 支持 Android 屏幕分享，也能用手机控制朋友的电脑。"
+      }
+    }
+  },
+  {
+    "body": "**Play together. Your turn!**\n\nPiik now supports remote control and remote co-play.\n\n**远程同乐，轮到你啦！**\n\nPiik 现已支持远程控制与远程同乐。\n\n### English\n\nSharing fixes.",
+    "headline": {
+      "en": {
+        "title": "Play together. Your turn!",
+        "description": "Piik now supports remote control and remote co-play."
+      },
+      "zh-CN": {
+        "title": "远程同乐，轮到你啦！",
+        "description": "Piik 现已支持远程控制与远程同乐。"
+      }
+    }
+  },
+  {
+    "body": "**Your turn!**\r\n\r\n**轮到你啦！**\r\n\r\n### English\r\n\r\nA published older release.",
+    "headline": {
+      "en": {
+        "title": "Your turn!",
+        "description": ""
+      },
+      "zh-CN": {
+        "title": "轮到你啦！",
+        "description": ""
+      }
+    }
+  },
+  {
+    "body": "### English\n\nOrdinary release prose.\n\n**Not a headline**",
+    "headline": null
+  },
+  {
+    "body": "**Incomplete**\n\nOnly an explanation.",
+    "headline": null
+  },
+  {
+    "body": "**English**\n\n<script>not plain text</script>\n\n**中文**\n\n说明。",
+    "headline": null
+  }
+]

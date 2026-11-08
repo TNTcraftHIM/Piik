@@ -3,7 +3,7 @@ import { initialLanguage, rememberLanguage } from './assets/language.js';
 import { createTextCycle } from '../src/client/ui/text-rotation.ts';
 import { applyTheme, currentTheme, currentThemePreference, initTheme, subscribeTheme } from '../src/client/ui/theme.ts';
 import { DEFAULT_RELEASE_API_URL, parseReleaseMetadata } from '../src/client/lib/release-update.ts';
-import { splitReleaseHeadline } from '../scripts/release-headline.mjs';
+import { splitReleaseHeadline } from '../src/shared/release-headline.mjs';
 mountBrands();
 const architecturePickers = document.querySelectorAll('.download-architecture');
 function syncDownloadLinks(picker) {

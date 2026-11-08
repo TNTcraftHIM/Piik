@@ -34,8 +34,39 @@ async fn fixture(routes: Router) -> Fixture {
 }
 
 fn github() -> Value {
+    let headlines: Value = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/release-headlines.json"
+    ))
+    .unwrap();
     json!({"tag_name":"v3.0.0", "target_commitish":SOURCE,
-        "html_url":format!("{GITHUB_PAGE}v3.0.0"), "draft":false, "prerelease":false})
+        "html_url":format!("{GITHUB_PAGE}v3.0.0"), "draft":false, "prerelease":false,
+        "body":headlines[0]["body"]})
+}
+
+#[test]
+fn published_headlines_share_the_website_body_contract() {
+    let fixtures: Vec<Value> = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/release-headlines.json"
+    ))
+    .unwrap();
+    for fixture in fixtures {
+        let mut release = github();
+        release["body"] = fixture["body"].clone();
+        for mirror in [false, true] {
+            if mirror {
+                release["body"] = json!(format!(
+                    "{}\n\n<!-- piik-source: {SOURCE} -->",
+                    fixture["body"].as_str().unwrap()
+                ));
+            }
+            let published = published(&release, mirror)
+                .expect("Headline validity does not determine release validity");
+            assert_eq!(
+                serde_json::to_value(published.headline).unwrap(),
+                fixture["headline"]
+            );
+        }
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -78,8 +109,11 @@ async fn operator_results_preserve_version_precedence_and_manual_build_choices()
         assert_eq!(json["currentRevision"], source);
         assert_eq!(json["latestVersion"], "v3.0.0");
         assert_eq!(json["releaseUrl"], format!("{GITHUB_PAGE}v3.0.0"));
+        assert_eq!(json["headline"]["en"]["title"], "Piik, now in your pocket.");
         if version == "v2.9.0" {
-            assert!(result.notice().unwrap().contains("review breaking changes"));
+            let notice = result.notice().unwrap();
+            assert!(notice.contains("review breaking changes"));
+            assert!(notice.ends_with("Piik, now in your pocket.\nPiik App supports Android screen sharing, with touch controls for a friend's computer.\n手机，也能开播。\nPiik App 支持 Android 屏幕分享，也能用手机控制朋友的电脑。"));
         }
         if result.status == Status::UpToDate {
             assert!(result.notice().is_none());
@@ -145,6 +179,10 @@ async fn fallback_pages_share_the_published_mirror_fixture_and_keep_github_prima
     assert_eq!(result.status, Status::UpdateAvailable);
     assert_eq!(result.latest_version.as_deref(), Some("v1.10.0"));
     assert_eq!(result.latest_revision.as_deref(), Some(SOURCE));
+    assert!(serde_json::to_value(&result)
+        .unwrap()
+        .get("headline")
+        .is_none());
     assert_eq!(
         result.release_url.as_deref(),
         Some("https://atomgit.com/TNTcraftHIM/Piik/releases")
