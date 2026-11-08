@@ -4,7 +4,7 @@ import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
 import { ChannelRoomControls } from "../channel/components/ChannelRoomControls";
 import { ChannelShareControl } from "../channel/components/ChannelShareControl";
 import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
-import { snapshotSchema, type ChannelMessage, type RoomSettings } from "../channel/protocol";
+import { snapshotSchema, type ChannelMessage, type ChannelSnapshot, type ChannelTopology, type RoomSettings } from "../channel/protocol";
 import type { ChannelController } from "../channel/types";
 import { QUALITY_PROFILES, type QualityProfile } from "../media/quality";
 import { useCopy } from "../ui/copy";
@@ -19,6 +19,14 @@ const pending = new Set<string>();
 const roomBackupAvailable = async () => false;
 const sources: NativeCaptureSources = { ...SOURCES, codecs: ["h264", "vp8"],
   sources: SOURCES.sources.filter(source => source.kind === "display" || source.sourceId === "101" || source.sourceId === "102") };
+
+/** Local samples have identities, but no measured or simulated network paths. */
+export function sampleRoomTopology(state: ChannelSnapshot, roomId: string, publicationId?: string): ChannelTopology {
+  const delivery = state.channel.rooms.find(room => room.id === roomId)!.delivery!;
+  const screen = state.publications.find(value => value.roomId === roomId && value.id === publicationId && value.kind === "screen");
+  return { bindingId: delivery.bindingId, base: { rootSessionId: delivery.hostSessionId, edges: [] },
+    screen: screen ? { publicationId: screen.id, sourceSessionId: screen.sessionId, edges: [] } : null };
+}
 
 /** Guide and room previews share local sample props, never a Session or backend. */
 export function useChannelGuideSample() {
@@ -47,6 +55,7 @@ export function useChannelGuideSample() {
   const state = snapshotSchema.parse({ channel: { id: "sample", name: "Friends", icon: "couch", ownerId: "sample-ada", historyWindow: 1000,
     access: "private", hasPassword: false, inviteHash: "0".repeat(64), rooms: [{ id: "friday", name: roomName, icon: "couch", creatorId: "sample-ada",
       access: "private", hidden: false, hasPassword: false, authorized: true, canManage: true, available: true, reading: true,
+      delivery: { hostSessionId: "sample-ada-session", bindingId: "sample-binding", nextHops: {} },
       participantSessionIds: ["sample-ada-session", "sample-bo-session"], capabilities: { attachments: false }, ...settings }] },
     users: [{ id: "sample-ada", name: "Ada" }, { id: "sample-bo", name: "Bo" }],
     sessions: ["sample-ada", "sample-bo"].map(id => ({ id: `${id}-session`, userId: id, online: true, signingKey: Array(32).fill(0) })),
@@ -67,6 +76,9 @@ export function useChannelGuideSample() {
     nativeSources: async () => sources, nativePreview: previewSource, cameraPreviews: previewCameras,
     sourceMicrophones: async () => [], startScreen: async () => received(), startNativeScreen: async () => received(),
     voiceInput, listeningVolume, voiceActivity,
+    roomTopology: async (roomId: string, publicationId?: string) => sampleRoomTopology(state, roomId, publicationId),
+    connectionMetrics: async () => [],
+    appConnectionMetrics: async () => { throw new Error("No native room in this preview"); },
     canUnmute: () => true, setMuted: async (_room: string, next: boolean) => setMuted(next),
     setDeafened: async (_room: string, next: boolean) => setDeafened(next), leaveVoice: async () => setJoined(false),
     joinVoice: async () => setJoined(true),

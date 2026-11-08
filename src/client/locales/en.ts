@@ -695,6 +695,8 @@ export const en: Record<CopyKey, string> = {
 
   "host.details": "Connection details",
   "connection.room": "Room connections",
+  "connection.roomDetails": "Connection details for {room}",
+  "connection.scope": "View",
   "connection.localDisplay": "Local display hop",
   "connection.localDisplayHint": "The App receives the picture for this page. Expand details to inspect the display hop.",
   "connection.noMedia": "No media measurements yet.",

@@ -79,8 +79,9 @@ function ConnectionBody({ channel, roomId, active }: { channel: ChannelControlle
   }, [active, scope, room?.authorized, room?.available]);
   const observation = result?.scope === scope ? result : null;
   return <>
-    <label className="c3-connection-scope"><span className={vis ? "visually-hidden" : undefined}>{t("host.topology")}</span>
-      <select className="lr-select" aria-label={t("host.topology")} value={selected} onChange={event => setPublication(event.target.value)}>
+    {vis && room && <p className="c3-connection-room">{room.name}</p>}
+    <label className="c3-connection-scope"><span className={vis ? "visually-hidden" : undefined}>{t("connection.scope")}</span>
+      <select className="lr-select" aria-label={t("connection.scope")} value={selected} onChange={event => setPublication(event.target.value)}>
         <option value="">{t("connection.room")}</option>
         {screens.map(screen => <option key={screen.id} value={screen.id}>
           {state && connectionSessionName(state, screen.sessionId, t)}
@@ -100,10 +101,12 @@ export function ChannelConnections({ channel, roomId }: { channel: ChannelContro
   const { t } = useCopy();
   const id = useId(), trigger = `${id}-trigger`;
   const [open, setOpen] = useState(false);
+  const roomName = channel.state?.channel.rooms.find(room => room.id === roomId)?.name;
+  const title = roomName ? t("connection.roomDetails", { room: roomName }) : t("host.details");
   return <>
-    <Btn id={trigger} icon="gauge" quiet size="compact" title={open ? "host.details.hide" : "host.details.show"}
+    <Btn id={trigger} icon="gauge" quiet size="compact" title={{ text: title }}
       hint="hint-details" expanded={open} controls={id} popoverTarget={id} />
-    <FloatingPanel id={id} trigger={trigger} title={t("host.details")} icon="network" detachable className="c3-connections"
+    <FloatingPanel id={id} trigger={trigger} title={title} icon="network" detachable className="c3-connections"
       onOpenChange={setOpen}>
       <ConnectionBody channel={channel} roomId={roomId} active={open} />
     </FloatingPanel>

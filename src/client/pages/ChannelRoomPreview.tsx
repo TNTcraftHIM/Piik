@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ChannelRoomPage } from "./ChannelPreviewPage";
-import { useChannelGuideSample } from "./ChannelGuidePreview";
+import { sampleRoomTopology, useChannelGuideSample } from "./ChannelGuidePreview";
 import { usePreviewInteractions } from "./use-preview-interactions";
 import { Btn, Chip } from "../components/living/primitives";
 import { Glyph } from "../ui/icons";
@@ -64,6 +64,7 @@ export function ChannelRoomPreview() {
     browse: () => {}, sendMessage: sample.onSend, setMessageReaction: async () => sample.received(),
     loadHistory: async () => sample.received(), loadLatestHistory: async () => sample.received(),
     historyByRoom: { friday: { hasMore: false, atLatest: true } },
+    roomTopology: async (roomId, publicationId) => sampleRoomTopology(state, roomId, publicationId),
     screenQuality: () => ({ requested: sample.channel.quality, applied: sample.channel.quality }), screenCodecMode: () => sample.channel.videoCodecMode,
     sourceAudio: () => undefined, sourceMicrophone: () => undefined,
     setSourceAudio: async () => sample.received(),
@@ -93,6 +94,7 @@ export function ChannelRoomPreview() {
           }}>
           <header><h2>{zh ? "预览选项" : "Preview options"}</h2><Btn icon="x" title="common.close" hint="hint-close" quiet size="compact"
             onClick={() => optionsPanel.current?.hidePopover()} /></header>
+          <p>{zh ? "画面为本地合成样本，没有实际网络连接。" : "Pictures are local synthetic samples, without network connections."}</p>
           <fieldset><legend>{zh ? "画面数量" : "Screens"}</legend><div className="c3-room-preview-tools">
             {[0, 1, 3, 4].map(value => <Chip key={value} title={zh ? `${value} 个画面` : `${value} screen${value === 1 ? "" : "s"}`} selected={count === value}
               onClick={() => { setCount(value); setStopped(new Set()); setUnwatched(new Set()); }}>{value}</Chip>)}

@@ -695,6 +695,8 @@ export const zh = {
 
   "host.details": "连接详情",
   "connection.room": "房间连接",
+  "connection.roomDetails": "{room}的连接详情",
+  "connection.scope": "查看",
   "connection.localDisplay": "本机显示链路",
   "connection.localDisplayHint": "App 接收画面，本页负责显示。展开详情可查看显示链路。",
   "connection.noMedia": "暂无媒体统计。",
