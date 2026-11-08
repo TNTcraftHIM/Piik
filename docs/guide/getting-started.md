@@ -4,7 +4,7 @@ English · [简体中文](./getting-started.zh-CN.md) · [Documentation](./READM
 
 This guide is for the **3.0 test App and 3.0 links** supplied to testers.
 The public online site and published downloads still belong to 2.x; use the
-[published 2.6 guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/guide/getting-started.md)
+[published 2.6 guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/getting-started.md)
 for those versions.
 
 | You have… | Start here |

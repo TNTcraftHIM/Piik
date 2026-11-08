@@ -4,7 +4,7 @@
 
 从收到的 3.0 内测 App 或朋友的 3.0 链接开始。
 公开在线版与正式下载仍使用 2.x，对应的
-[2.6 入门指南](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/guide/getting-started.zh-CN.md)可单独查阅。
+[2.6 入门指南](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/getting-started.zh-CN.md)可单独查阅。
 
 ## 开始使用
 
@@ -39,7 +39,7 @@
 ## 为朋友搭建站点
 
 搭建 3.0 测试域时，请看当前 [Server 运行说明](../../prototype/channel-server/README.md#run)。
-部署已发布的 2.x 时，请看 [2.6 自部署指南](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/operations/self-hosting.zh-CN.md)。
+部署已发布的 2.x 时，请看 [2.6 自部署指南](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/operations/self-hosting.zh-CN.md)。
 
 ## 一起改进 Piik
 

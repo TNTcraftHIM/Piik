@@ -1,6 +1,6 @@
 # 分享与播放
 
-本页适用于 3.0 内测版；正式版请看 [2.6.0 指南](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/guide/sharing.zh-CN.md)。
+本页适用于 3.0 内测版；正式版请看 [2.6.1 指南](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/sharing.zh-CN.md)。
 
 [English](./sharing.md) · 简体中文 · [文档中心](./README.zh-CN.md)
 

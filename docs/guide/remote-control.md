@@ -3,7 +3,7 @@
 English · [简体中文](./remote-control.zh-CN.md) · [Documentation](./README.md)
 
 This guide covers the 3.0 test version. For published 2.x, use the
-[2.6.0 guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/guide/remote-control.md).
+[2.6.1 guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/remote-control.md).
 
 Let a friend operate your shared computer, or play a local multiplayer game
 together. Each sharer controls access to their own picture, independently of

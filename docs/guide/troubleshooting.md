@@ -4,7 +4,7 @@ outline: 2
 
 # Troubleshooting
 
-This guide covers the 3.0 internal test. For published 2.x, use the [2.6.0 troubleshooting guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/guide/troubleshooting.md).
+This guide covers the 3.0 internal test. For published 2.x, use the [2.6.1 troubleshooting guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/troubleshooting.md).
 
 English · [简体中文](./troubleshooting.zh-CN.md) · [Documentation](./README.md)
 

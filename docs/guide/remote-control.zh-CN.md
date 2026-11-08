@@ -2,7 +2,7 @@
 
 [English](./remote-control.md) · 简体中文 · [文档中心](./README.zh-CN.md)
 
-本页适用于 3.0 内测版；正式 2.x 请看 [2.6.0 指南](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/guide/remote-control.zh-CN.md)。
+本页适用于 3.0 内测版；正式 2.x 请看 [2.6.1 指南](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/remote-control.zh-CN.md)。
 
 让朋友操作共享的电脑，或一起玩本地多人游戏。每位分享者决定谁能控制自己的画面，
 与域主、房主身份无关。朋友用浏览器观看并申请控制。

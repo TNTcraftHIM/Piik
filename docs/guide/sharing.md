@@ -1,6 +1,6 @@
 # Sharing and playback
 
-This guide covers the 3.0 internal test. For the published version, use the [2.6.0 guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/guide/sharing.md).
+This guide covers the 3.0 internal test. For the published version, use the [2.6.1 guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/sharing.md).
 
 English · [简体中文](./sharing.zh-CN.md) · [Documentation](./README.md)
 

@@ -4,7 +4,7 @@
 
 本指南适用于提供给测试者的 **3.0 内测 App 和 3.0 链接**。
 公开在线版与正式下载仍属于 2.x；使用这些版本时，请看
-[已发布的 2.6 指南](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/guide/getting-started.zh-CN.md)。
+[已发布的 2.6 指南](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/getting-started.zh-CN.md)。
 
 | 你已经有… | 从这里开始 |
 | --- | --- |

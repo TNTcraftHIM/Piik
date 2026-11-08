@@ -1,6 +1,6 @@
 # Advanced network checks
 
-This guide covers the 3.0 internal test. For the published version, use the [2.6.0 network guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/guide/network.md).
+This guide covers the 3.0 internal test. For the published version, use the [2.6.1 network guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/network.md).
 
 English · [简体中文](./network.zh-CN.md) · [Troubleshooting](./troubleshooting.md)
 

@@ -1,6 +1,6 @@
 # 进阶网络排查
 
-本页适用于 3.0 内测版；正式版请看 [2.6.0 网络指南](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/guide/network.zh-CN.md)。
+本页适用于 3.0 内测版；正式版请看 [2.6.1 网络指南](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/network.zh-CN.md)。
 
 [English](./network.md) · 简体中文 · [问题排查](./troubleshooting.zh-CN.md)
 

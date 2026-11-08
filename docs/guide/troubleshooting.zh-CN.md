@@ -4,7 +4,7 @@ outline: 2
 
 # 问题排查
 
-本页适用于 3.0 内测版；正式 2.x 请看 [2.6.0 问题排查](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/guide/troubleshooting.zh-CN.md)。
+本页适用于 3.0 内测版；正式 2.x 请看 [2.6.1 问题排查](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/troubleshooting.zh-CN.md)。
 
 [English](./troubleshooting.md) · 简体中文 · [文档中心](./README.zh-CN.md)
 

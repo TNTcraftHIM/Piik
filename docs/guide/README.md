@@ -4,7 +4,7 @@ English · [简体中文](./README.zh-CN.md) · [Website](https://piik.tv/?lang=
 
 Start with the 3.0 test App you received or a friend's 3.0 link.
 Public online rooms and published downloads still use 2.x; their
-[2.6 getting-started guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/guide/getting-started.md)
+[2.6 getting-started guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/getting-started.md)
 remains available separately.
 
 ## Start using Piik
@@ -41,7 +41,7 @@ with your version, system, browser and reproduction steps. Follow the
 ## Run a site for your group
 
 For a 3.0 test domain, use the current [Server runtime instructions](../../prototype/channel-server/README.md#run).
-For a published 2.x deployment, use the [2.6 self-hosting guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.0/docs/operations/self-hosting.md).
+For a published 2.x deployment, use the [2.6 self-hosting guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/operations/self-hosting.md).
 
 ## Help improve Piik
 
