@@ -25,13 +25,20 @@ function api(source = run, latest = release) {
 beforeEach(() => { command.mockReset(); api(); });
 
 describe("mirror source authority", () => {
+  it("scheduled recovery finds the original completed main CI by published source", () => {
+    const existing = command.getMockImplementation()!;
+    command.mockImplementation((program: string, args: string[]) => args[1].includes("actions/workflows/")
+      ? JSON.stringify({ workflow_runs: [run] }) : existing(program, args));
+    expect(resolveMirrorSource("", true)).toEqual({ run_id: "12345", version: release.tag_name, revision });
+    expect(command.mock.calls.some(([, args]) => args[1].includes(`head_sha=${revision}`))).toBe(true);
+  });
   it("binds automatic and manual retries to the published source run", () => {
     const expected = { run_id: "12345", version: release.tag_name, revision };
     expect(resolveMirrorSource("12345", true)).toEqual(expected);
     expect(resolveMirrorSource("12345")).toEqual(expected);
     api({ ...run, conclusion: "failure" });
     expect(resolveMirrorSource("12345")).toEqual(expected);
-    expect(() => resolveMirrorSource("12345", true)).toThrow(/completed main push/);
+    expect(resolveMirrorSource("12345", true)).toEqual(expected);
   });
 
   it.each(["", "012345", "1e3", "-1", "12345\nmirror=true", "9007199254740992", undefined])
@@ -52,9 +59,11 @@ describe("mirror source authority", () => {
   });
 
   it("skips automatic runs without a current release and refuses an explicit stale retry", () => {
-    api(run, { ...release, target_commitish: "b".repeat(40) });
-    expect(resolveMirrorSource("12345", true)).toBeNull();
-    expect(() => resolveMirrorSource("12345")).toThrow(/does not match the latest/);
+    for (const conclusion of ["success", "failure", "cancelled"]) {
+      api({ ...run, conclusion }, { ...release, target_commitish: "b".repeat(40) });
+      expect(resolveMirrorSource("12345", true)).toBeNull();
+      expect(() => resolveMirrorSource("12345")).toThrow(/does not match the latest/);
+    }
   });
 
   it.each([{ draft: true }, { prerelease: true }, { tag_name: "preview" }, { target_commitish: "main" }])
