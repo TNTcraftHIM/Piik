@@ -94,23 +94,46 @@ Image checks, version identity and retries follow
 source and Release mirror. GitHub owns development, issues and original packages.
 AtomGit's configured repository synchronization handles branches, tags and commits;
 the **AtomGit mirror** GitHub workflow separately copies published binary assets.
+Git synchronization remains AtomGit's responsibility; this workflow does not push,
+create or change Git references, and does not ask users to synchronize them manually.
 Its repository Actions secret is `ATOMGIT_TOKEN`. Never put this token in source,
 a remote URL or a distributed package. GitHub publication keeps its scoped token.
 
-After a completed main-push CI run, the workflow checks whether that run published
-the current stable GitHub release. A later failed container step does not prevent
-mirroring already-published packages. It downloads the matching run's complete
+After a completed main-push CI run, the workflow checks the current stable GitHub
+release and finds its original publishing CI run, even when the triggering run
+only updated tooling. A later failed container step does not prevent
+mirroring already-published packages. It downloads the source run's complete
 original Server and App artifacts and invokes `scripts/mirror-release.mjs`.
-Runs without the current published release are skipped. GitHub publication
-and **Website** do not depend on mirror success. An unfinished mirror remains a
+GitHub publication and **Website** do not depend on mirror success. An unfinished mirror remains a
 prerelease until every package passes anonymous full-download SHA-256 validation.
 This includes the original signed APK and its already-built ZIP wrapper.
+
+Every three hours the same workflow also checks the latest GitHub release's mirror
+metadata. A stable mirror with the matching source marker and complete package
+inventory of uploaded attachments needs no further work; provider-generated source
+archives do not count as packages. A missing source commit or matching tag is
+reported as deferred until AtomGit's scheduled Git synchronization completes.
+Both outcomes use a sparse tools-only checkout and skip dependency installation
+and artifact downloads. API failures
+or conflicting source identities remain failures, not successful deferrals.
+
+When ready, recovery locates the completed main-push CI run for that exact source,
+downloads its original artifacts and resumes the existing publisher. It never
+builds software. The publisher verifies every package anonymously before marking
+the mirror stable; the periodic metadata check reuses that completion boundary.
+Expired original artifacts require retained original build output, not rebuilding
+the same published version. A stable release missing packages is an explicit
+integrity failure and is never silently replaced.
 
 For recovery, rerun **AtomGit mirror** with the original publishing CI run ID:
 
 ```sh
 gh workflow run atomgit-mirror.yml --repo TNTcraftHIM/Piik --ref main -f run_id=RUN_ID
 ```
+
+The run ID is optional for a manual status check; without it, the workflow uses
+the same latest-release lookup as its scheduled check. Ordinary delayed source
+synchronization or interrupted uploads need no manual trigger.
 
 The source must be a completed main-push CI run matching the latest published
 GitHub release. The workflow runs trusted main tooling and treats artifacts only
