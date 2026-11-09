@@ -54,7 +54,8 @@ export function ChannelRoomPreview() {
     setStreams(new Map(captures.map((capture, index) => [`sample-screen-${index}`, capture.stream])));
     return () => { for (const capture of captures) { clearInterval(capture.timer); capture.stream.getTracks().forEach(track => track.stop()); } };
   }, []);
-  const rooms = [...sample.channel.state!.channel.rooms.slice(0, roomCount), ...createdRooms];
+  const rooms = [...sample.channel.state!.channel.rooms.slice(0, roomCount),
+    ...createdRooms.map(room => ({ ...room, ...sample.settingsByRoom[room.id] }))];
   const roomIds = new Set(rooms.map(room => room.id));
   const publications = (sharingRoom ? [{ id: "sample-screen-2", roomId: sharingRoom,
     sessionId: sample.channel.sessionId!, userId: users[0].id, kind: "screen" as const, paused: false,

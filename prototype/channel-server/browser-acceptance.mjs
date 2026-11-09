@@ -70,6 +70,20 @@ const voicePlayersRetired = values => values.length > 0 && values.every(value =>
   && value.current.every(player => player.paused || player.muted || player.volume === 0));
 const dropSignaling = index => evaluate(index,
   "window.__channelProbe.sockets.filter(socket => socket.readyState === WebSocket.OPEN && new URL(socket.url).pathname === '/prototype/channel').forEach(socket => socket.close())");
+async function showRoomList(index) {
+  if (!await evaluate(index, "document.querySelector('#c3-room-list')?.checkVisibility() ?? false")) {
+    await browser(index, "click", "#c3-rooms-trigger");
+  }
+}
+async function settingsTask(index, task) {
+  await browser(index, "click", `dialog.c3-settings-dialog[open] [role="tab"][aria-controls$="-${task}"]`);
+}
+async function roomSettings(index, roomId, task = "room") {
+  await showRoomList(index);
+  await browser(index, "click", `button[data-room-settings=${JSON.stringify(roomId)}]`);
+  await browser(index, "wait", "dialog.c3-settings-dialog[open]");
+  await settingsTask(index, task);
+}
 
 async function senderAllocationFailure() {
   const result = await evaluate(0, `(async () => {
@@ -894,8 +908,9 @@ async function identityControls(serverRoom) {
   await writeFile(png, Buffer.from(data.split(',')[1], "base64"));
   await writeFile(invalid, "This is not a picture.");
   const openDomain = async () => {
+    await showRoomList(0);
     await browser(0, "find", "role", "button", "click", "--name", "Domain settings", "--exact");
-    await browser(0, "click", ".c3-settings-editor > summary");
+    await settingsTask(0, "domain");
     await browser(0, "click", ".c3-identity-appearance > summary");
   };
   const upload = async path => {
@@ -918,15 +933,13 @@ async function identityControls(serverRoom) {
   await until("domain rail renders the saved image", () => evaluate(1,
     "[...document.querySelectorAll('.c3-domain-icon img')].some(image => image.naturalWidth > 0)"), Boolean);
 
-  await browser(0, "find", "role", "button", "click", "--name", "Room options", "--exact");
-  await browser(0, "click", ".c3-settings-editor > summary");
+  await roomSettings(0, serverRoom);
   await browser(0, "click", ".c3-identity-appearance > summary");
   await upload(png); await preview();
   await browser(0, "click", ".c3-room-form button[type=submit]");
   await until("Native room projects its saved image", () => view(1), value =>
     value.state.channel.rooms.find(room => room.id === serverRoom)?.icon.startsWith("data:image/"));
-  await browser(0, "find", "role", "button", "click", "--name", "Room options", "--exact");
-  await browser(0, "click", ".c3-settings-editor > summary");
+  await roomSettings(0, serverRoom);
   await browser(0, "click", ".c3-identity-appearance > summary");
   await browser(0, "find", "role", "button", "click", "--name", "Star", "--exact");
   await browser(0, "click", ".c3-room-form button[type=submit]");
@@ -947,8 +960,7 @@ async function identityControls(serverRoom) {
   await browser(0, "click", '.c3-room-link[aria-label="Identity room"]');
   await until("conversation welcome renders its room image", () => evaluate(0,
     "!!document.querySelector('.c3-room-start-mark img')?.naturalWidth"), Boolean);
-  await browser(0, "find", "role", "button", "click", "--name", "Room options", "--exact");
-  await browser(0, "click", ".c3-settings-editor > summary");
+  await roomSettings(0, room.id);
   await browser(0, "click", ".c3-identity-appearance > summary");
   await until("identity editor opens", () => evaluate(0, "!!document.querySelector('.c3-room-form')"), Boolean);
   await browser(0, "screenshot", join(output, "identity-desktop.png"));
@@ -960,8 +972,7 @@ async function identityControls(serverRoom) {
       (await import('/src/client/ui/theme.ts')).applyTheme(${JSON.stringify(theme)});
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); return true;
     })()`);
-    await browser(0, "click", 'button[aria-controls="c3-room-settings"]');
-    await browser(0, "click", ".c3-settings-editor > summary");
+    await roomSettings(0, room.id);
     await browser(0, "click", ".c3-identity-appearance > summary");
     await until("translated identity editor opens", () => evaluate(0, "!!document.querySelector('.c3-room-form')"), Boolean);
     const bounds = await evaluate(0, `(() => { const form = document.querySelector('.c3-room-form').getBoundingClientRect();
@@ -971,8 +982,7 @@ async function identityControls(serverRoom) {
     await browser(0, "press", "Escape");
   }
   await evaluate(0, `(async () => { (await import('/src/client/ui/copy.ts')).setCopy({lang:'en',vis:false}); return true; })()`);
-  await browser(0, "click", 'button[aria-controls="c3-room-settings"]');
-  await browser(0, "click", ".c3-settings-editor > summary");
+  await roomSettings(0, room.id);
   await browser(0, "click", ".c3-identity-appearance > summary");
   await browser(0, "find", "role", "button", "click", "--name", "Remove", "--exact");
   await browser(0, "click", ".c3-room-form button[type=submit]");
@@ -1006,8 +1016,7 @@ async function roomBackupControls() {
     await browser(index, "click", ".c3-composer button[type=submit]");
   };
   const settings = async () => {
-    await browser(index, "find", "role", "button", "click", "--name", "Room options", "--exact");
-    await browser(index, "click", "#c3-room-settings > details:last-of-type > summary");
+    await roomSettings(index, roomId, "data");
   };
   await send(first);
   const before = await until("A is authoritative and visible", current, value => value.messages.length === 1 && value.messages[0].text === first && value.text.includes(first));
@@ -1034,7 +1043,8 @@ async function roomBackupControls() {
     && value.room.delivery.hostSessionId === changed.room.delivery.hostSessionId && readingReady(value));
   assert.equal(restored.sessionId, changed.sessionId);
   assert.equal(restored.messages[0].id, before.messages[0].id);
-  assert.equal(await evaluate(index, "document.querySelectorAll('#c3-room-settings .c3-room-form').length"), 1);
+  assert.equal(await evaluate(index, "document.querySelectorAll('dialog.c3-settings-dialog[open]').length"), 1);
+  assert.equal(await evaluate(index, "document.querySelector('dialog.c3-settings-dialog[open] [role=tab][aria-controls$=\"-data\"]')?.getAttribute('aria-selected')"), "true");
   assert.deepEqual((await browser(index, "console")).messages.filter(message => message.type === "error"), []);
   await browser(index, "screenshot", join(output, "room-backup-restored.png"));
   await browser(index, "reload");
@@ -1150,14 +1160,31 @@ async function roomsAndFiles() {
     `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]?.at(-1)?.text`), text => text === "Latest response");
   console.log("Room history retains old messages, advances a bounded reading window and returns to latest without live interruptions");
 
-  await browser(0, "find", "role", "button", "click", "--name", "Room options", "--exact");
-  await browser(0, "click", ".c3-settings-editor > summary");
+  await roomSettings(0, room.id);
   await browser(0, "find", "label", "Hide from users without access", "check");
   await browser(0, "click", ".c3-room-form button[type=submit]");
   await until("unadmitted user loses hidden directory entry", () => view(2), value => !value.state.channel.rooms.some(value => value.id === room.id));
-  await browser(0, "find", "role", "button", "click", "--name", "Room options", "--exact");
+  await roomSettings(0, room.id, "invitation");
+  const invitationState = await until("room invitation controls finish loading", () => evaluate(0, `(() => {
+    const panel = document.querySelector('dialog.c3-settings-dialog[open] .c3-room-invitation');
+    const generate = panel?.querySelector('button[aria-label="Generate new invitation"]');
+    return { url: panel?.querySelector('.c3-invite-copy input')?.value,
+      canGenerate: !!generate?.checkVisibility() && !generate.disabled && generate.getAttribute('aria-disabled') !== 'true' };
+  })()`), value => value.url || value.canGenerate);
+  if (!invitationState.url) {
+    await browser(0, "find", "role", "button", "click", "--name", "Generate new invitation", "--exact");
+  }
+  const previousInvite = await until("current room invitation is loaded", () => evaluate(0,
+    "document.querySelector('dialog.c3-settings-dialog[open] .c3-invite-copy input')?.value"), Boolean);
+  await browser(0, "click", "dialog.c3-settings-dialog[open] .c3-room-invitation > details.c3-settings-details > summary");
   await browser(0, "find", "role", "button", "click", "--name", "Generate new invitation", "--exact");
-  const invite = await until("room invitation is ready", () => evaluate(0, "document.querySelector('.c3-invite-copy input')?.value"), value => !!value);
+  const invite = await until("replacement room invitation is ready", () => evaluate(0,
+    "document.querySelector('dialog.c3-settings-dialog[open] .c3-invite-copy input')?.value"), value => !!value && value !== previousInvite);
+  await browser(0, "find", "role", "button", "click", "--name", "Room invitation QR code", "--exact");
+  await until("the replacement invitation has its actual QR image", () => evaluate(0,
+    "!!document.querySelector('.c3-invite-qr:popover-open svg[data-invitation-code]')"), Boolean);
+  await browser(0, "screenshot", join(output, "room-invitation-qr.png"));
+  await browser(0, "press", "Escape");
   const invitedSession = (await view(2)).sessionId;
   await browser(2, "open", invite);
   await until("open page enters hidden room from room invitation", () => view(2), value => value.connection === "connected" && value.state.channel.rooms.some(value => value.id === room.id && value.authorized));
@@ -1168,14 +1195,20 @@ async function roomsAndFiles() {
   await browser(0, "press", "Escape");
 
   await capturedScreen(1, room.id);
-  const member = (await view(1)).self.id;
-  await action(0, `revokeRoomAccess(${JSON.stringify(room.id)}, ${JSON.stringify(member)})`);
+  const memberName = (await view(1)).self.name;
+  await roomSettings(0, room.id, "invitation");
+  await browser(0, "click", "dialog.c3-settings-dialog[open] .c3-room-members > summary");
+  const memberRows = await evaluate(0, "[...document.querySelectorAll('dialog.c3-settings-dialog[open] .c3-room-members > div')].map(row => row.querySelector(':scope > span')?.textContent)");
+  const memberRow = memberRows.indexOf(memberName);
+  assert(memberRow >= 0, "the admitted member has a real access-management row");
+  await browser(0, "click", `dialog.c3-settings-dialog[open] .c3-room-members > div:nth-of-type(${memberRow + 1}) button[aria-label="Remove room access"]`);
   await until("revocation retires capture and history", async () => ({ view: await view(1), probe: await sample(1),
     history: await evaluate(1, `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]`) }),
     value => !value.view.state.channel.rooms.some(value => value.id === room.id) && !value.history && value.probe.captures.every(track => track.state === "ended"));
   console.log("Hidden-room invitation admits a new user; revocation clears private history and capture");
+  await browser(0, "press", "Escape");
   await browser(0, "set", "viewport", "390", "844");
-  await browser(0, "find", "role", "button", "click", "--name", "Room options", "--exact");
+  await roomSettings(0, room.id);
   assert.equal((await sample(0)).overflow, false);
   await browser(0, "screenshot", join(output, "private-room-settings-mobile.png"), "--full");
   await browser(0, "press", "Escape");

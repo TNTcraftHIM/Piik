@@ -91,10 +91,6 @@ the feedback period; they do not delay that delivery.
   and Linux hardware encoding and physical sound. Retain the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-- [ ] **Native H264 scene-change latency.** Reduce encoded bursts while
-  preserving low-rate startup and live bitrate restoration. Keep CBR; the
-  [encoder assessment](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)
-  records why the low-delay VBR candidate was rejected.
 - [ ] **Stronger microphone noise suppression (#518).** Compare RNNoise's voice
   clarity and mobile runtime cost before deciding on an enhanced mode. The
   [microphone assessment](./research/media-fidelity.md#stronger-microphone-suppression)
@@ -127,6 +123,11 @@ the feedback period; they do not delay that delivery.
 
 ## Parked Product Work
 
+- **Native H264 scene-change latency.** Revisit when a concrete encoder or SDK
+  improvement can reduce coded-frame bursts while preserving quality and live
+  recovery. The available small parameter changes were evaluated and rejected;
+  keep CBR. The [encoder assessment](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)
+  owns those controls and the current tradeoff.
 - **Virtual gamepads beyond Windows.** Linux uinput passed its isolated kernel
   gate; desktop permissions and game recognition need physical checks. macOS
   virtual HID needs an entitled App and macOS SDK/runtime checks. The

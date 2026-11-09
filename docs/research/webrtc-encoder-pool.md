@@ -576,6 +576,15 @@ applies only to VBR. The pinned SDK's
 [pacing factor](https://github.com/algesten/str0m/blob/3b5b7ed1ff25d9432a87336a20bc2de336896db3/src/pacer/control.rs)
 is internal SDK policy. CBR retains the existing encoder and SDK demand adapter.
 
+The later source-cadence correction changes MF bitrate compensation only when
+configured and observed FPS differ. It does not reduce the original 30-FPS
+scene-change AU's coded picture data. The shared QP policy adapts subsequent
+inputs, not the size of an already encoded first scene frame. The current
+Microsoft properties, Chromium hardware-CBR path and FFmpeg MF options provide
+no additional small burst-control setting that meets both quality and recovery
+requirements. Keep this as an encoder improvement boundary rather than repeat
+the rejected buffer, VBR or latency controls.
+
 ### Budget Restoration
 
 Transport allocation and encoder resolution recover separately. Replaying the

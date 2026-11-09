@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-11-08
+Last updated: 2026-11-09
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -64,6 +64,10 @@ independently of peer reachability. Media and file bytes retain their peer paths
 The current internal Windows and Android packages include this path and the
 reorganized room controls. Upgrade checks preserve existing room data and history;
 delivered package receipts retain their exact source and tested scope.
+Newer source includes room-list management, responsive grid/focus viewing and
+the shared Native picture-quality policy across Windows, Android, macOS and Linux.
+The next internal package follows workspace design acceptance; existing delivered
+packages retain their recorded revisions and matched protocols.
 [TODO](./todo.md) owns remaining work and owner holds. Applicable defects continue
 to feed the separate 2.x maintenance line, which preserves its published contracts.
 
