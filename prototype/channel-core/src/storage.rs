@@ -17,7 +17,18 @@ pub struct Storage {
 }
 impl Storage {
     pub fn open(path: &Path) -> StoreResult<Self> {
-        let connection = Connection::open(path)?;
+        // Resolve the existing directory before SQLite creates the file and its journals.
+        let normalized = match path.file_name() {
+            Some(name) if path != Path::new(":memory:") => {
+                let parent = path
+                    .parent()
+                    .filter(|parent| !parent.as_os_str().is_empty())
+                    .unwrap_or(Path::new("."));
+                Some(std::fs::canonicalize(parent)?.join(name))
+            }
+            _ => None,
+        };
+        let connection = Connection::open(normalized.as_deref().unwrap_or(path))?;
         let version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         let existing: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message','attachment'))", [], |row| row.get(0))?;
         if version != 3 && (version != 0 || existing) {
@@ -314,6 +325,39 @@ fn read_message(row: &Row<'_>) -> rusqlite::Result<StoredMessage> {
 mod tests {
     use super::*;
     use crate::history::MessageDraft;
+
+    #[test]
+    fn long_directory_database_can_write_and_reopen() {
+        let root = std::env::temp_dir().join(format!("piik-long-storage-{}", Uuid::new_v4()));
+        let mut directory = root.clone();
+        while directory.as_os_str().len() < 270 {
+            directory.push("nested-room-history-data");
+        }
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("room.sqlite");
+        let checkpoint = serde_json::json!({ "name": "Retained room" });
+        let result = (|| -> StoreResult<()> {
+            let mut store = Storage::open(&path)?;
+            store.save(&checkpoint)?;
+            drop(store);
+            assert_eq!(Storage::open(&path)?.load()?, Some(checkpoint));
+            Ok(())
+        })();
+        std::fs::remove_dir_all(root).unwrap();
+        result.unwrap();
+
+        let relative = std::path::PathBuf::from(format!("piik-relative-{}.sqlite", Uuid::new_v4()));
+        let result = (|| -> StoreResult<()> {
+            let mut store = Storage::open(&relative)?;
+            store.save(&serde_json::json!({ "name": "Relative room" }))?;
+            drop(store);
+            assert!(Storage::open(&relative)?.load()?.is_some());
+            Ok(())
+        })();
+        std::fs::remove_file(relative).unwrap();
+        result.unwrap();
+    }
+
     fn attachment() -> crate::AttachmentDescriptor {
         crate::AttachmentDescriptor {
             id: Uuid::new_v4(),
