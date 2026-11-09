@@ -1,8 +1,9 @@
 # Channel prototype
 
-An isolated Piik 3.0 experiment: a shared Rust authority, the existing React
-interface, and real Browser WebRTC. It does not replace the production 2.x
-App or Server. The [network design](../../docs/research/channel-network-design.md)
+This reference describes the internal Piik 3.0 runtime: a shared Rust authority,
+the shared React interface and Browser WebRTC. Published 2.x App and Server
+instructions remain with the [maintenance reference](https://github.com/TNTcraftHIM/Piik/blob/main/docs/deployment.md).
+The [network design](../../docs/research/channel-network-design.md)
 owns the accepted routing foundation; this file describes what currently runs.
 
 The Server executable consumes [channel-core](../channel-core/README.md), the same

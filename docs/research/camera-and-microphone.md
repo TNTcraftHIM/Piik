@@ -1,15 +1,25 @@
 # Camera And Host Microphone
 
-Status: integrated into the ordinary Host UI and accepted for release.
-Platform evidence is summarized in [verification status](../verification-status.md#device-evidence-boundary).
+This assessment records the published 2.x single-Host camera and commentary
+implementation, including its UI and compatibility decisions. Its one-picture,
+SFU and old-App capability descriptions below are 2.x scope.
+The [published microphone contract](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/media-quality.md#capture-and-controls)
+owns maintained 2.x behavior.
+
+For current 3.0 activities and source lifetimes, use the
+[network model](./channel-network-design.md#activity-and-lifecycle) and
+[Native runtime reference](../../prototype/channel-native/README.md).
+[Media fidelity](./media-fidelity.md#30-room-microphone) and
+[verification status](../verification-status.md#device-evidence-boundary) own
+current evidence and platform limits.
 
 ## Scope And Ownership
 
-The current source restores optional commentary under **Sharing settings →
+The 2.x source provides optional commentary under **Sharing settings →
 Sound → Include my microphone**, independently of room voice. The stable Browser
 output and Native mixer described below have a current UI consumer. Commentary
 starts off for each new share; enabling room voice does not change it. Both may
-remain enabled under the [current microphone contract](../standards/media-quality.md#capture-and-controls).
+remain enabled under the published microphone contract above.
 The normal-page room-voice gate verified simultaneous room microphone and source
 commentary delivery, commentary retirement on share stop, and the next share's
 default-off state with synthetic devices. This does not establish physical echo

@@ -1,6 +1,6 @@
 # Native channel participant
 
-This isolated Rust participant operates rooms through the same [shared `RoomHost` core](../channel-core/README.md)
+This 3.0 Rust participant operates rooms through the same [shared `RoomHost` core](../channel-core/README.md)
 as the Browser adapter. SQLite stores each room's policy and confirmed history;
 the domain supplies admission, directory views and transport leases. Its
 str0m endpoint carries room DataChannels, encoded media and requested file
@@ -242,10 +242,12 @@ Piik owns source clocks, shared encodings, output demand and pair-scoped socket
 handoff; Server owns its fixed UDP listeners. The `rust-crypto` provider requires
 AWS-LC through its published dependency graph.
 
-`build/native-current-assembly/receipt.json` indexes separately frozen source and
-runtime evidence, including earlier dependency candidates. Each receipt records
-its tested revision. [TODO](../../docs/todo.md) owns remaining platform and
-packaging acceptance.
+[Verification status](../../docs/verification-status.md) owns current evidence
+boundaries. Package receipts retain their exact source and tested runtime;
+[TODO](../../docs/todo.md) owns remaining platform and adaptation work.
+Earlier local runtime and dependency checks remain indexed by
+`build/native-current-assembly/receipt.json`; each entry applies to its recorded
+source and environment, rather than the current build by default.
 
 ## Run
 

@@ -76,13 +76,13 @@ and [website preview and publishing](./operations/website.md).
 
 | Topic | Its reference |
 | --- | --- |
-| Invitations, room codes and passwords | [Rooms and access](./standards/rooms-access.md) |
-| How viewers connect | [Routing and transport](./standards/routing-transport.md) |
-| Screen capture, quality controls and sound | [Media quality](./standards/media-quality.md) |
-| Host and viewer behavior | [Presentation and lifecycle](./standards/presentation-lifecycle.md) |
+| Published 2.x invitations, room codes and passwords | [Rooms and access](./standards/rooms-access.md) |
+| Published 2.x viewer connections | [Routing and transport](./standards/routing-transport.md) |
+| Published 2.x screen capture, quality controls and sound | [Media quality](./standards/media-quality.md) |
+| Published 2.x Host and Viewer behavior | [Presentation and lifecycle](./standards/presentation-lifecycle.md) |
 | Why a design was chosen | [Architecture decisions](./adr/) |
 | Measurements and platform limits | [Research](./research/) and [verification status](./verification-status.md) |
-| Camera and Host microphone | [Capture scope and limits](./research/camera-and-microphone.md) |
+| Published 2.x camera and Host microphone research | [Capture scope and limits](./research/camera-and-microphone.md) |
 | Text, reactions and floating room tools | [Room-interaction design](./research/room-interactions.md) |
 | Accepted 3.0 channel/room foundation, Rust direction and multi-source routing | [Channel and network design](./research/channel-network-design.md) |
 | 3.0 room-data ownership, cached attachments and file-delivery design | [Room data and hosting](./research/channel-storage-and-identity.md) |

@@ -14,10 +14,12 @@ visual language and delivery rules apply to both lines.
 | --- | --- |
 | Module responsibility, resources, interfaces and contextual consistency | [Engineering](./engineering.md) |
 | Product names, terminology, Chinese/English voice and content layers | [Naming and copy](./naming.md) |
-| Room authority, invitation/password access and persistence | [Rooms and access](./rooms-access.md) |
-| Automatic routes, capacity, P2P/SFU transitions and route operations | [Routing and transport](./routing-transport.md) |
-| Capture, encoders, media adaptation and audio | [Media quality](./media-quality.md) |
-| Workflow, playback, presentation and Browser/App lifecycle | [Presentation and lifecycle](./presentation-lifecycle.md) |
+| 3.0 authority, activities, routing and runtime lifetimes | [Channel/network model](../research/channel-network-design.md) |
+| 3.0 room policy, history, identity and file storage | [Room-data model](../research/channel-storage-and-identity.md) |
+| Published 2.x room authority, invitation/password access and persistence | [Rooms and access](./rooms-access.md) |
+| Published 2.x routes, capacity, P2P/SFU transitions and route operations | [Routing and transport](./routing-transport.md) |
+| Published 2.x capture, encoders, media adaptation and audio | [Media quality](./media-quality.md) |
+| Published 2.x workflow, playback and Browser/App lifecycle | [Presentation and lifecycle](./presentation-lifecycle.md) |
 | Evidence behind each status, indicator, overlay and notice | [Media status](./media-status.md) |
 | Cast, symbols, colour, animation, tooltips and playful copy | [Visual language](./visual-language.md) |
 | Website, README and introduction-film composition | [Public introduction](./public-introduction.md) |
