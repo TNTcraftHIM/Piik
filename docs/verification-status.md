@@ -82,13 +82,18 @@ retain platform details and tested-source records.
 
 macOS SDK/package checks cover capture, encoding, sound and input compilation,
 synthetic encode/decode, LaunchServices startup and startup-error cleanup.
+The [current VideoToolbox control](https://github.com/TNTcraftHIM/Piik/actions/runs/42697708222)
+also verifies QP feedback, independent geometry changes, a continuing sibling
+and source-time preservation in the shared quality implementation.
 System Quit, Dock/Finder return, permissions, physical capture, sound and input
 still need device acceptance. Automated Quit requires the runner's normal
 Automation consent.
 
 Linux VM checks cover software encoding, decoded Browser picture and Opus,
 source-picker cancellation and retry, normal sharing stop, and sound-service
-loss while picture and chat continue. Real GNOME Portal/PipeWire checks cover
+loss while picture and chat continue. Software-encoder comparisons also verify
+source-cadence correction, balanced FPS/geometry changes and independent output
+under a constrained budget. Real GNOME Portal/PipeWire checks cover
 capture consent, encrypted keyboard/pointer execution, pending-permission
 cancellation and global-stop activation with capture continuity. Hardware
 encoding and physical sound still need platform acceptance.

@@ -24,10 +24,7 @@ pub fn capture_border_control() -> bool {
     false
 }
 pub const fn supports_video_adaptation() -> bool {
-    cfg!(all(
-        feature = "capture",
-        any(target_os = "windows", target_os = "android", target_os = "linux")
-    ))
+    cfg!(feature = "capture")
 }
 #[cfg(any(feature = "capture", test))]
 mod adaptation;

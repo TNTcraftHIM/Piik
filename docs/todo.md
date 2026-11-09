@@ -80,10 +80,6 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **macOS Native quality acceptance.** Run the updated VideoToolbox SDK build
-  and synthetic codec control before advertising the shared quality preference.
-  The [implementation boundary](./research/channel-network-design.md#implementation-boundary)
-  owns the worker policy and retained upstream recovery hysteresis.
 - [ ] **Routing parity decisions.** Review the current domain-wide 20-endpoint
   limit, which counts Browser and App separately, against the intended user
   capacity. The current direct-source/helper trials cover fewer improvement

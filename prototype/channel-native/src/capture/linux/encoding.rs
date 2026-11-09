@@ -482,7 +482,7 @@ impl Codec {
         mut raw: RawFrame,
         time: Instant,
         settings: Settings,
-        frame_limit: Option<u32>,
+        rate: gst::Fraction,
         duration: gst::ClockTime,
         clock: &Clock,
         force: bool,
@@ -496,13 +496,6 @@ impl Codec {
             self.fitted.set_property("caps", &fitted_caps);
         }
         let mut caps = raw.info.to_caps()?;
-        // Known source cadence owns rate control. With no rate, keep the codec
-        // startup hint: x264's VFR mode buffers a second frame even in zerolatency.
-        let rate = match raw.info.fps() {
-            rate if rate.numer() > 0 => rate,
-            _ => gst::Fraction::new(settings.fps as i32, 1),
-        };
-        let rate = frame_limit.map_or(rate, |limit| rate.min(gst::Fraction::new(limit as i32, 1)));
         caps.make_mut()
             .structure_mut(0)
             .unwrap()
@@ -591,6 +584,8 @@ async fn run(
     let mut frame_limit = requested_max;
     let mut cadence = Cadence::new(settings.fps);
     let mut admission_rate = AdmissionRate::default();
+    let mut input_rate = None;
+    let mut last_rate_update_ms = 0;
     let mut current = settings;
     let mut previous = None;
     let mut presentation = None;
@@ -669,6 +664,14 @@ async fn run(
         }
         if !repeated {
             if let Some(fps) = admission_rate.observe(timestamp) {
+                let now_ms = started.elapsed().as_millis() as u64;
+                if now_ms - last_rate_update_ms >= 1_000 {
+                    last_rate_update_ms = now_ms;
+                    let measured = fps.round() as u32;
+                    if measured > 0 {
+                        input_rate = Some(gst::Fraction::new(measured as i32, 1));
+                    }
+                }
                 let mut feedback = feedback.lock().unwrap();
                 feedback
                     .dropper
@@ -696,7 +699,15 @@ async fn run(
                 .round()
                 .max(1.0) as u64,
         );
-        let sample = codec.sample(raw, time, current, frame_limit, duration, &clock, force)?;
+        // SPS/decoder FPS can be nominal even for variable-rate video. Use
+        // observed input once available; refresh at the encoder parameter cadence.
+        // Zero/VFR adds a frame of latency in x264, so static startup keeps a hint.
+        let rate = input_rate.unwrap_or_else(|| match raw.info.fps() {
+            rate if rate.numer() > 0 => rate,
+            _ => gst::Fraction::new(settings.fps as i32, 1),
+        });
+        let rate = frame_limit.map_or(rate, |limit| rate.min(gst::Fraction::new(limit as i32, 1)));
+        let sample = codec.sample(raw, time, current, rate, duration, &clock, force)?;
         loop {
             let changed = shared.changed.notified();
             tokio::pin!(changed);

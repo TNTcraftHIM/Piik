@@ -233,8 +233,21 @@ impl Encoder {
             }
         }
     }
+    // Chromium MFVEA keeps media-type FPS fixed and compensates the hardware
+    // bitrate in both directions instead of restarting for cadence changes:
+    // https://chromium.googlesource.com/chromium/src/+/6ffa76bb4156526eb14d582183f2bd725e3cd262/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc#119
+    fn bitrate(&self, bitrate: u32, configured_fps: u32, input_fps: u32) -> Result<()> {
+        let adjusted = (u64::from(bitrate) * u64::from(configured_fps) / u64::from(input_fps))
+            .clamp(1, u64::from(u32::MAX)) as u32;
+        unsafe {
+            self.api
+                .SetValue(&CODECAPI_AVEncCommonMeanBitRate, &VARIANT::from(adjusted))
+                .context("hardware H264 live bitrate")
+        }
+    }
+
     /// Called only after DrainComplete has delivered every old-format output.
-    fn resize(&mut self, settings: Settings) -> Result<()> {
+    fn resize(&mut self, settings: Settings, input_fps: u32) -> Result<()> {
         unsafe {
             self.transform
                 .ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0)?;
@@ -243,10 +256,7 @@ impl Encoder {
             self.transform.SetInputType(0, None::<&IMFMediaType>, 0)?;
             self.transform.SetOutputType(0, None::<&IMFMediaType>, 0)?;
             self.info = set_format(&self.transform, settings)?;
-            self.api.SetValue(
-                &CODECAPI_AVEncCommonMeanBitRate,
-                &VARIANT::from(settings.bitrate),
-            )?;
+            self.bitrate(settings.bitrate, settings.fps, input_fps)?;
             self.transform
                 .ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0)?;
             self.transform
@@ -354,6 +364,8 @@ impl Encoder {
         let mut origin: Option<i64> = None;
         let mut last_pts = -1;
         let started = Instant::now();
+        let mut rate_control_fps = current.fps;
+        let mut last_rate_update_ms = 0;
         let mut policy = QualityPolicy::new(VideoCodec::H264, settings.degradation_preference, 0);
         let requested_max = (timing == FrameTiming::Capture).then_some(settings.fps);
         let mut frame_limit = requested_max;
@@ -432,15 +444,12 @@ impl Encoder {
             }
             match work {
                 Work::Stop => break,
-                Work::Bitrate(bitrate) => unsafe {
-                    encoder
-                        .api
-                        .SetValue(&CODECAPI_AVEncCommonMeanBitRate, &VARIANT::from(bitrate))
-                        .context("hardware H264 live bitrate")?;
+                Work::Bitrate(bitrate) => {
+                    encoder.bitrate(bitrate, current.fps, rate_control_fps)?;
                     target_kbps = bitrate as f32 / 1000.0;
                     current.bitrate = bitrate;
                     dropper.set_rates(target_kbps, admission_rate.fps.unwrap_or(0.0));
-                },
+                }
                 Work::Event(event) => {
                     let kind = event?;
                     unsafe {
@@ -483,8 +492,11 @@ impl Encoder {
                                 state.force_keyframe = true;
                                 next
                             };
-                            current = next;
-                            encoder.resize(current).context("hardware H264 resize")?;
+                            current.width = next.width;
+                            current.height = next.height;
+                            encoder
+                                .resize(current, rate_control_fps)
+                                .context("hardware H264 resize")?;
                             converter = Converter::new(&device, current)?;
                             resizing = false;
                             discontinuity = true;
@@ -502,9 +514,7 @@ impl Encoder {
                         ),
                         requested_max,
                     );
-                    if (next.width, next.height, next.fps)
-                        != (current.width, current.height, current.fps)
-                    {
+                    if (next.width, next.height) != (current.width, current.height) {
                         // The raw slot retains the latest source during the drain;
                         // old access units keep their order and the same clock.
                         resizing = true;
@@ -536,6 +546,15 @@ impl Encoder {
                     // candidate still counts as input, never as encoded output.
                     if !repeated {
                         if let Some(fps) = admission_rate.observe(frame.qpc) {
+                            let now_ms = started.elapsed().as_millis() as u64;
+                            if now_ms - last_rate_update_ms >= 1_000 {
+                                last_rate_update_ms = now_ms;
+                                let measured_fps = fps.round() as u32;
+                                if measured_fps > 0 && measured_fps != rate_control_fps {
+                                    encoder.bitrate(current.bitrate, current.fps, measured_fps)?;
+                                    rate_control_fps = measured_fps;
+                                }
+                            }
                             dropper.set_rates(target_kbps, fps);
                             dropper.leak(fps.round() as u32);
                             let dropped = dropper.drop_frame() && !force;

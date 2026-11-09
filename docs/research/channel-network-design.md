@@ -708,8 +708,7 @@ Core publication metadata carries them together as `VideoSettings`; Browser rela
 senders and Native derived encodings consume that source intent. Decoder format
 and transport counters are not preference authorities. The shared picture control
 edits the same setting for Browser and supported Native captures. Native advertises
-adaptation on Windows, Android and Linux. The macOS implementation awaits its
-SDK/runtime acceptance before advertising this capability.
+adaptation on Windows, Android, macOS and Linux.
 
 Native workers use the shared Rust
 [WebRTC quality-adaptation port](../../native/third_party/webrtc-adaptation/README.md).
@@ -762,13 +761,22 @@ timestamps. Source admission uses only an explicit per-encoding max-FPS restrict
 its nominal format hint cannot become an extra cap. Local capture intersects the
 policy cap with its requested FPS. Neither changes the shared capture rate or
 retimestamps selected source frames.
-Linux also preserves the raw format's known frame rate in encoder caps, applying
-only the real cadence limit. Overwriting it with a decoder hint misconfigures
-rate control and causes avoidable FrameDropper drops. An unknown raw rate uses
-the startup hint: x264's variable-rate mode buffers a second frame, which prevents
-a static source's first picture from appearing. The controlled Linux comparison
-retained all 1,200 source frames after this correction, with unchanged input and
-budget; its static-source and decode/re-encode controls also pass.
+Codec frame-rate metadata is also a startup hint. GStreamer can project a nonzero
+rate from H264 VUI even when `fixed_frame_rate_flag` is false. Native workers
+observe original frame times after cadence selection and before FrameDropper;
+Linux updates its encoder caps from that existing rate once per second, bounded
+by the explicit cadence limit. Startup uses the raw-format rate when present,
+otherwise the requested hint: x264's variable-rate mode buffers a second frame
+and would prevent a static source's first picture from appearing.
+
+Windows MF keeps its configured media-type FPS and uses
+[Chromium's hardware bitrate compensation](https://chromium.googlesource.com/chromium/src/+/6ffa76bb4156526eb14d582183f2bd725e3cd262/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc#119):
+logical bitrate × configured FPS ÷ observed FPS. Only the driver property changes;
+transport and FrameDropper retain the logical budget. Observed-rate refresh uses
+the same one-second parameter cadence; budget updates apply immediately. FPS-only
+changes no longer drain/restart the MFT, while geometry changes retain the existing
+drain and independent-keyframe owner. Controlled runs verify both compensation
+directions, bitrate/size updates, immediate static startup and sibling continuity.
 
 Default Server adaptation remains forwarding-only under
 [ADR-0013](../adr/0013-embedded-node-local-media.md). [Simulcast](https://www.rfc-editor.org/rfc/rfc8853)

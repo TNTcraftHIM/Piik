@@ -42,11 +42,11 @@ the existing capture lease.
 Windows encoders feed their actual output size into the existing WebRTC FrameDropper
 algorithm; raw-frame admission adjusts when hardware rate control overshoots,
 without discarding encoded reference frames or changing the source clock.
-Windows, Android and Linux expose the shared detail/balanced/motion preference
+Windows, Android, macOS and Linux expose the shared detail/balanced/motion preference
 inside each encoder through the pinned [WebRTC quality policy](../../native/third_party/webrtc-adaptation/README.md)
 and optional codec QP feedback. The [network owner](../../docs/research/channel-network-design.md#implementation-boundary)
-defines source intent, restrictions and recovery. The macOS worker uses the same
-policy; its capability remains off pending SDK/runtime acceptance in [TODO](../../docs/todo.md).
+defines source intent, restrictions and recovery. Remaining platform acceptance
+stays in [TODO](../../docs/todo.md).
 Windows hardware H264 uses CBR so live bitrate updates also restore encoding quality
 after low-rate startup. The [encoder assessment](../../docs/research/webrtc-encoder-pool.md#h264-burst-and-recovery)
 records the rejected low-delay VBR control. Live updates keep the same owner.
