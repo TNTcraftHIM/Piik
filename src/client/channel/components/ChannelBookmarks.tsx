@@ -71,7 +71,7 @@ export function ChannelBookmarks({ currentName, currentIcon, onCurrent, classNam
   }
   return <>
     <nav className={`c3-domain-rail ${className}`} aria-label={copy("域列表", "Domains")}>
-      <Tooltip kind="hint-join-go" text={vis ? undefined : currentName}>
+      <Tooltip kind="hint-room-list" text={vis ? undefined : currentName}>
         <button type="button" className="lr-btn c3-domain-icon is-on" aria-current="page" aria-label={currentName} onClick={onCurrent}>
           {currentIcon ?? <Glyph name="couch" size={26} />}
         </button>

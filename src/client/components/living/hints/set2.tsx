@@ -6,6 +6,7 @@
 // room codes are always 4 abstract digit slots, never real digits.
 import {
   BrowserWindow,
+  Door,
   FAINT,
   Frame,
   INK_STAGE,
@@ -127,9 +128,9 @@ ${rmBlock(
 );
 
 /* ------------------------------------------------------------------ */
-/* Create/replace a code: empty/resting slots → rolling slots + spark. */
+/* Replace a code: resting slots → rolling slots + spark. */
 /* ------------------------------------------------------------------ */
-const RoomCodeHint = ({ theme, create = false }: Parameters<HintScene>[0] & { create?: boolean }) => (
+const RoomCodeHint: HintScene = ({ theme }) => (
   <>
     <RoomResultMotion />
     <style>{`
@@ -149,9 +150,7 @@ ${rmBlock(
     <Frame x={4} w={152} theme={theme} />
     <Frame x={164} w={152} theme={theme} result />
     <LcdBase x={41} y={25} />
-    {create ? <g stroke={INK_STAGE} strokeWidth={2} strokeLinecap="round">
-      {SLOT_DX.map((dx) => <path key={dx} d={`M${42 + dx} 48h7`} />)}
-    </g> : <LcdSlots x={41} y={25} />}
+    <LcdSlots x={41} y={25} />
     <g className="vls-room-result">
     <LcdBase x={201} y={25} />
     <LcdSlots x={201} y={25} className="vls-shuf-slots" />
@@ -168,6 +167,27 @@ ${rmBlock(
     <Spark x={288} y={30} className="vls-shuf-spark" />
   </>
 );
+
+/* Create a place for people; neither a room code nor sharing is required. */
+const CreateRoomHint: HintScene = ({ theme }) => <>
+  <RoomResultMotion />
+  <style>{`
+.vls-room-create-people{animation:vlsRoomCreatePeople var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+@keyframes vlsRoomCreatePeople{0%,10%{transform:translateY(5px);opacity:0}32%,100%{transform:none;opacity:1}}
+${rmBlock(["vls-room-create-people"], [[".vls-room-create-people", "transform:none;opacity:1"]])}
+`}</style>
+  <Frame x={4} w={152} theme={theme} />
+  <Frame x={164} w={152} theme={theme} result />
+  <path d="M22 77V20h116v57Z" fill="none" stroke={FAINT} strokeWidth={2} strokeDasharray="4 5" />
+  <circle cx={80} cy={48} r={17} fill="var(--paper)" stroke="var(--ink)" strokeWidth={2} />
+  <path d="M72 48h16m-8-8v16" fill="none" stroke="var(--ink)" strokeWidth={2.5} strokeLinecap="round" />
+  <g className="vls-room-result">
+    <path d="M182 77V20h116v57Z" fill="var(--wall-2)" stroke="var(--ink)" strokeWidth={2} />
+    <Door x={190} y={23} />
+    <g className="vls-room-create-people"><Pawn x={247} yb={76} s={10} eyes gaze={1} />
+      <Pawn x={278} yb={76} s={10} color={SKY} eyes gaze={-1} /></g>
+  </g>
+</>;
 
 /* ------------------------------------------------------------------ */
 /* Copy writes a link to this device's clipboard; it sends no invitation. */
@@ -299,7 +319,7 @@ ${rmBlock(["vls-pass-input"], [[".vls-pass-input", "transform:none;opacity:1"]])
 export const SET2_SCENES: Record<Set2Kind, HintScene> = {
   "hint-copy-code": SceneCopyCode,
   "hint-shuffle-code": RoomCodeHint,
-  "hint-create-room": (props) => <RoomCodeHint {...props} create />,
+  "hint-create-room": CreateRoomHint,
   "hint-copy-invite": SceneCopyInvite,
   "hint-invite-link": (props) => <InviteLinkHint {...props} />,
   "hint-client-link": HintClientLink,

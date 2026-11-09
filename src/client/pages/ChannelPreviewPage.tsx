@@ -181,7 +181,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
       <section className="c3-main" aria-label={room?.name ?? copy("房间", "Room")}>
         <header className="c3-room-heading">
           <div className="c3-room-name"><span className="c3-pane-navigation"><Btn id="c3-rooms-trigger" icon="arrowLeft" quiet size="compact"
-            title={{ text: copy("房间列表", "Rooms") }} hint="hint-collapse" controls="c3-room-list" expanded={mobilePane === "rooms"}
+            title={{ text: copy("房间列表", "Rooms") }} hint="hint-room-list" controls="c3-room-list" expanded={mobilePane === "rooms"}
             onClick={() => setMobilePane("rooms")} /></span><ChannelIdentityMark icon={room?.icon ?? "couch"} size={25} />
             <Tooltip className="c3-room-title" overflow={{ text: room?.name ?? copy("欢迎回来", "Welcome back"), selector: "h2" }}>
               <h2>{room?.name ?? copy("欢迎回来", "Welcome back")}</h2>

@@ -131,6 +131,7 @@ export type PlaybackHintKind =
   | "hint-pip-unavailable";
 
 export type ControlHintKind =
+  | "hint-room-list"
   | "hint-collapse"
   | "hint-refresh-sources"
   | "hint-source-picker"

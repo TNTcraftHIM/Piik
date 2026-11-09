@@ -29,6 +29,10 @@ rooms and the explicit [Native participant](../channel-native/README.md) establi
 a shared base tree for media and file demand. File bytes and pull control reuse
 its admitted paths, with the same Rust range-delivery core in both participants.
 
+For an internal App package, follow the [first-room guide](../../docs/guide/getting-started.md#share-with-piik-app)
+for the launcher, invitations and sharing. The [App data and backups reference](../../cmd/piik-app/README.md#data-and-backups)
+explains saved data and backup scope.
+
 ## Run
 
 Use Rust 1.91 or newer, the repository's Node/npm environment and installed npm

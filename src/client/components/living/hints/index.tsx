@@ -78,6 +78,7 @@ export const HINT_KINDS: readonly HintKind[] = [
   "hint-theme-light",
   "hint-theme-dark",
   "hint-collapse",
+  "hint-room-list",
   "hint-password-show",
   "hint-password-hide",
   "hint-password-remove",

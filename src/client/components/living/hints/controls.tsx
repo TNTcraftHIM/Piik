@@ -2,6 +2,31 @@ import { BrowserWindow, FAINT, Frame, LIVE, MiniTv, Pawn, SKY, STAR_GOLD, rmBloc
 import type { ComicTheme } from "../Comic";
 import type { ControlHintKind, HintScene } from "../../../ui/visual-kinds";
 
+// Room navigation opens a list; it does not join through a code or close a tool.
+const RoomListHint: HintScene = ({ theme }) => <>
+  <style>{`
+.vls-room-list-reveal{animation:vlsRoomListReveal var(--comic-duration,3.2s) ease-out var(--comic-repeat,1) both}
+@keyframes vlsRoomListReveal{0%,10%{transform:translateX(-8px);opacity:0}32%,100%{transform:none;opacity:1}}
+${rmBlock(["vls-room-list-reveal"], [[".vls-room-list-reveal", "transform:none;opacity:1"]])}
+`}</style>
+  {[0, 160].map((x, index) => <g key={x}>
+    <Frame x={x + 4} w={152} theme={theme} result={index === 1} />
+    <BrowserWindow x={x + 20} y={18} w={120} h={62} />
+    {index ? <g className="vls-room-list-reveal">
+      {[0, 1, 2].map(row => <g key={row}>
+        <rect x={x + 28} y={31 + row * 14} width={104} height={11} rx={3}
+          fill={row === 1 ? "var(--control-selected)" : "var(--wall-2)"} />
+        <rect x={x + 33} y={34 + row * 14} width={6} height={5} rx={1} fill={row === 1 ? "var(--control-selected-ink)" : "var(--ink)"} />
+        <path d={`M${x + 45} ${36.5 + row * 14}h${row === 1 ? 64 : 48}`} stroke={row === 1 ? "var(--control-selected-ink)" : "var(--ink)"} strokeWidth={2} strokeLinecap="round" />
+        {row === 1 && <path d={`M${x + 29} 47v7`} stroke="var(--action)" strokeWidth={2.5} strokeLinecap="round" />}
+      </g>)}
+    </g> : <>
+      <path d={`M${x + 42} 31h76v40H42Z`} fill="var(--wall-2)" stroke={FAINT} strokeWidth={1.5} />
+      <path d={`M${x + 25} 46h11m-7-4-4 4 4 4`} fill="none" stroke="var(--ink)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </>}
+  </g>)}
+</>;
+
 // One folding idiom for every disclosure: keep the header, put its contents away.
 const CollapseHint: HintScene = ({ theme }) => (
   <>
@@ -183,6 +208,7 @@ ${rmBlock(["vls-source-cursor", "vls-source-look"], [[".vls-source-cursor,.vls-s
 }
 
 export const CONTROL_SCENES: Record<ControlHintKind, HintScene> = {
+  "hint-room-list": RoomListHint,
   "hint-collapse": CollapseHint,
   "hint-refresh-sources": RefreshSourcesHint,
   "hint-source-picker": (props) => <SourceListHint {...props} />,
