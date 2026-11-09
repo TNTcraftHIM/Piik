@@ -155,7 +155,12 @@ pub async fn serve_server(
                 match NativeService::start(&domain, address, &directory, udp.clone(), false) {
                     Ok(next) => hosting = next,
                     Err(error) => {
-                        let _ = request.result.send(Err(error.to_string()));
+                        let code = if result.is_ok() {
+                            "domain_restored_connection_failed".into()
+                        } else {
+                            error.to_string()
+                        };
+                        let _ = request.result.send(Err(code));
                         break (Err(error), None);
                     }
                 }

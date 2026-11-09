@@ -154,6 +154,127 @@ async fn app_http(
 }
 
 #[tokio::test]
+async fn committed_domain_restore_reports_native_restart_failure_without_rolling_back_authority() {
+    use piik_channel_core::{backup::DomainMetadata, storage::Storage};
+    use piik_channel_native::peer::server_udp::ServerUdp;
+    use piik_channel_prototype::{domain::Domain as ServerDomain, serve_server};
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+
+    let directory = tempfile::tempdir().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let origin = format!("http://{address}");
+    let domain = ServerDomain::open(
+        directory.path(),
+        "old-owner",
+        "old-invite",
+        origin.clone(),
+        None,
+        vec![],
+    )
+    .unwrap();
+    let old_identity = domain.identity();
+    let replacement =
+        Authority::new("restored-owner".into(), "restored-invite".into(), vec![]).unwrap();
+    let identity = replacement.identity();
+    let metadata = replacement.export_backup();
+    let mut archive = Vec::new();
+    piik_channel_native::backup::write_domain(&metadata, &mut archive).unwrap();
+    std::fs::create_dir_all(directory.path().join("rooms")).unwrap();
+    let obstruction = directory.path().join("rooms").join(identity.0.to_string());
+    std::fs::write(
+        &obstruction,
+        b"owned fixture blocking the new room directory",
+    )
+    .unwrap();
+    let udp = ServerUdp::bind(&[("127.0.0.1:0".parse().unwrap(), None)]).unwrap();
+    let service = tokio::spawn(serve_server(
+        listener,
+        domain,
+        directory.path().to_owned(),
+        axum::Router::new(),
+        udp,
+        std::future::pending(),
+    ));
+    let mut upgrade = format!("ws://{address}/prototype/channel")
+        .into_client_request()
+        .unwrap();
+    upgrade
+        .headers_mut()
+        .insert("Origin", origin.parse().unwrap());
+    let (mut page, _) = tokio_tungstenite::connect_async(upgrade).await.unwrap();
+    page.send(Message::Text(json!({"type":"join","protocol":1,"name":"Owner","key":"old-owner","signingKey":vec![7u8;32]}).to_string().into())).await.unwrap();
+    let credential = tokio::time::timeout(Duration::from_secs(10), async {
+        let mut credential = None;
+        loop {
+            let frame = page.next().await.unwrap().unwrap();
+            let Message::Text(text) = frame else {
+                continue;
+            };
+            let event: Event = serde_json::from_str(&text).unwrap();
+            let state = match event {
+                Event::Welcome {
+                    credential: value,
+                    state,
+                    ..
+                } => {
+                    credential = Some(value);
+                    state
+                }
+                Event::State { state } => state,
+                _ => continue,
+            };
+            if state.channel.rooms.iter().any(|room| room.available) {
+                break credential.unwrap();
+            }
+        }
+    })
+    .await
+    .unwrap();
+    let (status, body) = tokio::task::spawn_blocking(move || {
+        let agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .timeout_global(Some(Duration::from_secs(10)))
+            .build()
+            .new_agent();
+        let mut response = agent
+            .put(format!("http://{address}/prototype/channel/backup"))
+            .header("Authorization", format!("Bearer {credential}"))
+            .header("Content-Type", "application/zip")
+            .send(&archive)
+            .unwrap();
+        (
+            response.status().as_u16(),
+            serde_json::from_str::<Value>(&response.body_mut().read_to_string().unwrap()).unwrap(),
+        )
+    })
+    .await
+    .unwrap();
+    let stopped = tokio::time::timeout(Duration::from_secs(10), service)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        stopped.is_err(),
+        "the actual Native startup must fail at the obstructed directory"
+    );
+    assert_eq!(status, 409);
+    assert_eq!(body["error"], "domain_restored_connection_failed");
+    let saved: DomainMetadata = serde_json::from_value(
+        Storage::open(&directory.path().join("channel.sqlite"))
+            .unwrap()
+            .load()
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_ne!(identity, old_identity);
+    assert_eq!(saved.owner_key, "restored-owner");
+    assert_eq!(saved.into_authority(vec![]).unwrap().identity(), identity);
+    assert!(obstruction.is_file());
+}
+
+#[tokio::test]
 async fn interrupted_unconfirmed_native_creation_reports_failure_without_replaying_it() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("pending.sqlite");

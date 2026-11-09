@@ -397,6 +397,11 @@ scoped to their domain and owner; importing another domain preserves the former
 files without registering them under the new authority. A missing room database
 remains unavailable rather than being recreated from its directory summary.
 
+Storage commit and renewed connectivity have separate outcomes. If room or domain
+data was restored but registration or reconnection fails, report that committed
+result, retain the restored identity and offer reconnection. Do not ask the user
+to reapply the archive or roll back the account after its data has been replaced.
+
 A conversation export for reading contains no authentication secrets. A hosting
 backup needs private handling because it preserves authority. Exact export
 format and controls follow the ownership decision, rather than becoming another

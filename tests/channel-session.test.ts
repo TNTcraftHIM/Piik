@@ -6200,6 +6200,34 @@ test("domain admission does not save a Welcome whose current owner differs from 
   } finally { session.close(); }
 });
 
+test("a committed domain restore with unavailable hosting keeps the restored identity for reconnect", async () => {
+  const { session, socket } = await setup();
+  const oldState = structuredClone(session.getSnapshot().state!);
+  const domainId = crypto.randomUUID(), ownerId = crypto.randomUUID();
+  const metadata = { kind: "domain" as const, version: 1 as const,
+    state: { id: domainId, ownerId }, ownerKey: "restored-owner", inviteKey: "restored-invite" };
+  vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => { await visitor.metadata(metadata); return metadata; });
+  const fetch = vi.fn(async () => new Response(JSON.stringify({ error: "domain_restored_connection_failed" }), { status: 409 }));
+  vi.stubGlobal("fetch", fetch);
+  const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
+  try {
+    const restoring = session.restoreDomainBackup(new Blob());
+    const failed = expect(restoring).rejects.toThrow("domain_restored_connection_failed");
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
+    const admission = ChannelSocket.current; await admission.onopen?.();
+    expect(admission.sent.find(command => command.type === "join")).toMatchObject({ key: metadata.ownerKey });
+    expect(admission.sent.find(command => command.type === "join")).not.toHaveProperty("credential");
+    admission.receive({ type: "welcome", protocol: 1, credential: "old-authority", sessionId: "endpoint", state: oldState });
+    await failed;
+    expect(saved).not.toHaveBeenCalled();
+    session.reconnect();
+    const retry = ChannelSocket.current; await retry.onopen?.();
+    expect(retry.sent.find(command => command.type === "join")).toMatchObject({ key: metadata.ownerKey });
+    expect(retry.sent.find(command => command.type === "join")).not.toHaveProperty("credential");
+    expect(fetch).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
 test("room backup exports its actual Browser host snapshot, full nonce/reactions and only matching retained copies", async () => {
   const { session, host, snapshot, row } = await setupRoomBackup();
   const attachment = { id: "file", name: "pixel.png", size: 3, mediaType: "image/png" as const, sha256: "a".repeat(64) };
@@ -6270,6 +6298,41 @@ test("room restore rebinds before installing file copies, and optional cache fai
     await expect(restoring).resolves.toEqual({ roomId: "first", cached: false });
     expect(nextHost.bind).toHaveBeenCalledWith("restored-binding");
     expect(stage.close).toHaveBeenCalledOnce(); expect(cache).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+test("room restore reports a committed replacement when its fresh registration fails", async () => {
+  const { session, socket, host, stage } = await setupRoomBackup();
+  try {
+    const restoring = session.restoreRoomBackup(new Blob(), "first");
+    const failed = expect(restoring).rejects.toThrow("room_restored_connection_failed");
+    await vi.waitFor(() => expect(socket.sent.filter(command => command.type === "host_register")).toHaveLength(2));
+    const request = socket.sent.findLast(command => command.type === "host_register")!;
+    socket.receive({ type: "error", requestId: request.requestId, code: "room_host_conflict" });
+    await failed;
+    expect(stage.replace).toHaveBeenCalledOnce();
+    expect(host.close).toHaveBeenCalledOnce();
+    expect(stage.close).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().pending.has("room-backup")).toBe(false);
+  } finally { session.close(); }
+});
+
+test("Native room restore preserves the explicit committed failure from its storage owner", async () => {
+  const { session, socket, stage } = await setupRoomBackup();
+  const hostSessionId = crypto.randomUUID();
+  const state = structuredClone(session.getSnapshot().state!);
+  state.channel.rooms[0].delivery!.hostSessionId = hostSessionId;
+  socket.receive({ type: "state", state });
+  const fetch = vi.fn().mockResolvedValueOnce(Response.json({ sessionId: hostSessionId, roomIds: ["first"] }))
+    .mockResolvedValueOnce(Response.json({ error: "room_restored_connection_failed" }, { status: 409 }));
+  vi.stubGlobal("fetch", fetch);
+  try {
+    await expect(session.restoreRoomBackup(new Blob(), "first")).rejects.toThrow("room_restored_connection_failed");
+    expect(fetch.mock.calls.map(call => call[0])).toEqual(["/prototype/channel/hosting", "/prototype/channel/rooms/backup"]);
+    expect(stage.replace).not.toHaveBeenCalled();
+    expect(stage.close).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().self?.id).toBe("self");
+    expect(session.getSnapshot().pending.has("room-backup")).toBe(false);
   } finally { session.close(); }
 });
 
@@ -6371,7 +6434,7 @@ test("an approved App exports only rooms positively matched to its Native sessio
   } finally { session.close(); }
 });
 
-test("portable import admits the archived identity through Welcome before committing and omits old owner/resume context", async () => {
+test.each(["registered", "registration-failed"])("portable import retains its verified identity across committed restore (%s)", async outcome => {
   const { session, socket, stage, metadata, nextHost, read } = await setupRoomBackup();
   metadata.policy = { ...metadata.policy, id: "imported", creatorId: "archived-user" }; stage.policy = JSON.stringify(metadata.policy);
   Object.assign(metadata, { ownCredential: { userId: "archived-user", credential: "archived-credential" } });
@@ -6388,6 +6451,7 @@ test("portable import admits the archived identity through Welcome before commit
   state.sessions = [{ id: "new-endpoint", userId: "archived-user", online: true, signingKey: testSigningKey }];
   try {
     const importing = session.restoreRoomBackup(new Blob());
+    const failed = outcome === "registration-failed" ? expect(importing).rejects.toThrow("room_restored_connection_failed") : null;
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("admit_room"));
     const admissionRequest = socket.sent.at(-1)!;
     expect(admissionRequest.room).toMatchObject({ id: "imported", creatorId: "archived-user" });
@@ -6404,6 +6468,15 @@ test("portable import admits the archived identity through Welcome before commit
     await vi.waitFor(() => expect(admission.sent.some(command => command.type === "host_register")).toBe(true));
     expect(read).toHaveBeenCalledOnce(); expect(stage.replace).toHaveBeenCalledOnce(); expect(saved).toHaveBeenCalledWith("piik.channel.prototype.credential", "accepted-credential");
     const registration = admission.sent.find(command => command.type === "host_register")!;
+    if (outcome === "registration-failed") {
+      admission.receive({ type: "error", requestId: registration.requestId, code: "room_host_conflict" });
+      await failed;
+      expect(ChannelSocket.current).toBe(admission);
+      expect(session.getSnapshot().self?.id).toBe("archived-user");
+      expect(saved).toHaveBeenLastCalledWith("piik.channel.prototype.credential", "accepted-credential");
+      expect(cache).not.toHaveBeenCalled();
+      return;
+    }
     admission.receive({ type: "host_bound", roomId: "imported", bindingId: "imported-binding" });
     admission.receive({ type: "ack", requestId: registration.requestId });
     const restored = structuredClone(state);

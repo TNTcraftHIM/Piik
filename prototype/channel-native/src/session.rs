@@ -193,17 +193,33 @@ struct OpeningRoom {
 enum OpeningWork {
     Register {
         previous_binding: Option<Uuid>,
-        replies: Vec<oneshot::Sender<Result<RoomSummary, String>>>,
+        replies: Vec<OpeningReply>,
     },
     AdmitRestore(RestoreRoom),
     Create(RoomFile),
+}
+struct OpeningReply {
+    result: oneshot::Sender<Result<RoomSummary, String>>,
+    restored: bool,
+}
+impl OpeningReply {
+    fn finish(self, result: Result<RoomSummary, String>) {
+        let result = result.map_err(|code| {
+            if self.restored {
+                "room_restored_connection_failed".into()
+            } else {
+                code
+            }
+        });
+        let _ = self.result.send(result);
+    }
 }
 impl OpeningRoom {
     fn fail(self, code: &str) {
         match self.work {
             OpeningWork::Register { replies, .. } => {
                 for reply in replies {
-                    let _ = reply.send(Err(code.into()));
+                    reply.finish(Err(code.into()));
                 }
             }
             OpeningWork::AdmitRestore(request) => {
@@ -1059,8 +1075,7 @@ impl Session {
                         .filter(|host| host.binding().is_some())
                         .map(HostedRoom::summary);
                     for reply in replies {
-                        let _ =
-                            reply.send(summary.clone().ok_or_else(|| "room_unavailable".into()));
+                        reply.finish(summary.clone().ok_or_else(|| "room_unavailable".into()));
                     }
                 }
             }
@@ -1571,8 +1586,16 @@ impl Session {
             let _ = request.result.send(Ok(summary));
             return Ok(());
         }
-        self.register_room(summary, None, request.result, socket)
-            .await
+        self.register_room(
+            summary,
+            None,
+            OpeningReply {
+                result: request.result,
+                restored: false,
+            },
+            socket,
+        )
+        .await
     }
 
     fn snapshot_room(&self, request: SnapshotRoom) {
@@ -1692,8 +1715,16 @@ impl Session {
         drop(request.snapshot);
         match restored {
             Ok((summary, previous)) => {
-                self.register_room(summary, previous, request.result, socket)
-                    .await
+                self.register_room(
+                    summary,
+                    previous,
+                    OpeningReply {
+                        result: request.result,
+                        restored: true,
+                    },
+                    socket,
+                )
+                .await
             }
             Err(error) => {
                 let _ = request.result.send(Err(error.to_string()));
@@ -1706,7 +1737,7 @@ impl Session {
         &mut self,
         summary: RoomSummary,
         previous_binding: Option<Uuid>,
-        result: oneshot::Sender<Result<RoomSummary, String>>,
+        reply: OpeningReply,
         socket: &mut Socket,
     ) -> Result<()> {
         let id = summary.id.clone();
@@ -1721,10 +1752,10 @@ impl Session {
                 },
             });
         let OpeningWork::Register { replies, .. } = &mut opening.work else {
-            let _ = result.send(Err("room_busy".into()));
+            reply.finish(Err("room_busy".into()));
             return Ok(());
         };
-        replies.push(result);
+        replies.push(reply);
         if replies.len() == 1 {
             write(
                 socket,

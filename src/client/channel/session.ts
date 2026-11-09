@@ -1277,8 +1277,14 @@ export class ChannelSession {
       const { name, icon, access } = this.view.state!.channel;
       return { name, icon, access };
     } catch (error) {
-      if (!committed) this.start();
-      else throw new Error("domain_restored_connection_failed");
+      const restored = error instanceof Error && error.message === "domain_restored_connection_failed";
+      if (committed || restored) {
+        if (!committed && this.closed && !this.socket) {
+          await this.connectBackupIdentity(metadata.state.id, metadata.state.ownerId, { key: metadata.ownerKey }).catch(() => {});
+        }
+        throw new Error("domain_restored_connection_failed");
+      }
+      this.start();
       throw error;
     }
   }, false);
@@ -1351,7 +1357,13 @@ export class ChannelSession {
         attachment: value.attachment, file: contents.get(value.attachment.sha256.toLowerCase())! }));
       const cached = await this.attachments.restoreRetained(target, entries);
       return { roomId: target, cached };
-    } catch (error) { if (!committed) await rollback?.(); throw error; }
+    } catch (error) {
+      if (committed || error instanceof Error && error.message === "room_restored_connection_failed") {
+        throw new Error("room_restored_connection_failed");
+      }
+      await rollback?.();
+      throw error;
+    }
     finally { await stage?.close(); }
   }, false);
 

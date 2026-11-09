@@ -19,10 +19,11 @@ export function BackupControls({ disabled, busy, onExport, onRestore, replacing 
     catch (error) {
       setFailed(true);
       const code = error instanceof Error ? error.message : "";
-      if (code === "domain_restored_connection_failed") setFile(null);
+      if (code === "domain_restored_connection_failed" || code === "room_restored_connection_failed") setFile(null);
       setMessage(code === "room_host_conflict" || code === "room_host_unavailable" || code === "stale_backup"
         ? (zh ? "房间的托管者已改变，请重新打开房间设置。" : "The room host changed. Reopen room settings.")
         : code === "domain_restored_connection_failed" ? (zh ? "域已恢复，但未能重新连接。请重新连接或打开恢复后的域入口，无需再次恢复备份。" : "The domain was restored, but reconnection failed. Reconnect or open the restored domain's entry. You do not need to restore the backup again.")
+        : code === "room_restored_connection_failed" ? (zh ? "房间数据已恢复，但未能重新连接。请重新连接，无需再次恢复备份。" : "Room data was restored, but reconnection failed. Reconnect without restoring the backup again.")
         : code === "backup_identity_required" ? (zh ? "无法使用备份中的账号，请确认这是你在此域的备份。" : "The backup account could not be verified in this domain.")
         : code === "backup_room_mismatch" ? (zh ? "请选择此域、此房间的备份。" : "Choose a backup for this domain and room.")
         : (zh ? "备份操作未完成，请检查文件后重试。" : "The backup operation could not finish. Check the file and try again."));

@@ -232,6 +232,166 @@ async fn missing_room_restore_waits_for_domain_admission_and_drops_denied_or_ret
     }
 }
 
+#[tokio::test]
+async fn committed_restore_registration_failure_is_distinct_from_an_open_waiting_on_the_same_room()
+{
+    use piik_channel_core::{backup::RoomMetadata, wire::Request, RoomBackup};
+    for failure in ["rejected", "missing-binding", "disconnected"] {
+        let (mut session, mut socket, mut remote, mut state) = capture_projection_session().await;
+        let native = session.live.as_ref().unwrap().session;
+        let user = state
+            .sessions
+            .iter()
+            .find(|s| s.id == native)
+            .unwrap()
+            .user_id;
+        let directory = tempfile::tempdir().unwrap();
+        let (_commands, received) = mpsc::channel(1);
+        session.hosting = Some(Hosting {
+            directory: directory.path().into(),
+            identity: (state.channel.id, user),
+            commands: received,
+            ready: watch::channel(None).0,
+            desktop: None,
+        });
+        let policy = RoomState::new(
+            "target".into(),
+            "Original".into(),
+            Default::default(),
+            user,
+            RoomAccess::Public,
+            false,
+            None,
+        )
+        .unwrap();
+        let path = directory.path().join("target.sqlite");
+        let binding = state.channel.rooms[0].delivery.as_ref().unwrap().binding_id;
+        let mut host = HostedRoom::create(&path, policy.clone()).unwrap();
+        host.bind(binding).unwrap();
+        session
+            .live
+            .as_mut()
+            .unwrap()
+            .room
+            .rooms
+            .insert("target".into(), host);
+        session.files.push(RoomFile {
+            path: path.clone(),
+            id: "target".into(),
+            name: "Original".into(),
+            bootstrap: false,
+        });
+        state.channel.rooms[0].creator_id = user;
+        state.channel.rooms[0]
+            .delivery
+            .as_mut()
+            .unwrap()
+            .host_session_id = native;
+        session.state(state.clone(), &mut socket).await.unwrap();
+        let staging = tempfile::tempdir().unwrap();
+        let stage_path = staging.path().to_owned();
+        let mut replacement = policy.clone();
+        replacement.name = "Restored".into();
+        let room = RoomBackup::stage(
+            &stage_path.join("room.sqlite"),
+            RoomMetadata {
+                version: 1,
+                domain_id: state.channel.id,
+                policy: replacement,
+                own_credential: None,
+                retained_files: vec![],
+            },
+            std::iter::empty(),
+        )
+        .unwrap();
+        let (restored, restored_reply) = oneshot::channel();
+        session
+            .restore_room(
+                RestoreRoom {
+                    snapshot: RoomSnapshot {
+                        room,
+                        directory: staging,
+                    },
+                    result: restored,
+                },
+                &mut socket,
+            )
+            .await
+            .unwrap();
+        let registration =
+            Request::parse(remote.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+        assert!(matches!(registration.command, Command::HostRegister { .. }));
+        assert!(
+            !stage_path.exists(),
+            "the committed restore released its staging data"
+        );
+        let (opened, open_reply) = oneshot::channel();
+        session
+            .open_room(
+                OpenRoom {
+                    policy,
+                    result: opened,
+                },
+                &mut socket,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            session.opening.len(),
+            1,
+            "Open joins the existing registration"
+        );
+        match failure {
+            "rejected" => session
+                .event(
+                    Event::Error {
+                        code: "forbidden".into(),
+                        request_id: registration.request_id,
+                    },
+                    &mut socket,
+                )
+                .await
+                .unwrap(),
+            "missing-binding" => session
+                .event(
+                    Event::Ack {
+                        request_id: registration.request_id.unwrap(),
+                    },
+                    &mut socket,
+                )
+                .await
+                .unwrap(),
+            _ => {
+                remote.close(None).await.unwrap();
+                session.release().await.unwrap();
+                // run_host completes these retained registration replies when
+                // its connection/recovery owner finally exits.
+                for opening in std::mem::take(&mut session.opening).into_values() {
+                    opening.fail("hosting_unavailable");
+                }
+            }
+        }
+        assert_eq!(
+            restored_reply.await.unwrap().err().unwrap(),
+            "room_restored_connection_failed",
+            "{failure}: restored bytes cannot be reported as uncommitted"
+        );
+        let expected_open = match failure {
+            "rejected" => "forbidden",
+            "missing-binding" => "room_unavailable",
+            _ => "hosting_unavailable",
+        };
+        assert_eq!(open_reply.await.unwrap().err().unwrap(), expected_open);
+        session.release().await.unwrap();
+        let reopened = HostedRoom::open(&path, "target", user).unwrap();
+        assert_eq!(
+            reopened.summary().name,
+            "Restored",
+            "registration failure does not roll back committed room storage"
+        );
+    }
+}
+
 async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpStream>, Snapshot) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
