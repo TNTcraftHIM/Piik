@@ -8,6 +8,7 @@ import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
 import { screenVideoSettings } from "../media/quality";
 import type { ChannelController } from "../channel/types";
+import type { ChannelRoom } from "../channel/protocol";
 import { useAnchoredPopover } from "../components/living/use-anchored-popover";
 import "./channel-room-preview.css";
 
@@ -18,6 +19,10 @@ export function ChannelRoomPreview() {
   const { lang } = useCopy(), zh = lang === "zh";
   const sample = useChannelGuideSample(true);
   const [longNames, setLongNames] = useState(() => new URLSearchParams(location.search).has("long-names"));
+  const [roomCount, setRoomCount] = useState(() => new URLSearchParams(location.search).has("no-rooms") ? 0 : 2);
+  const [emptyChat, setEmptyChat] = useState(() => new URLSearchParams(location.search).has("empty-chat"));
+  const [createdRooms, setCreatedRooms] = useState<ChannelRoom[]>([]);
+  const [sharingRoom, setSharingRoom] = useState<string | null>(null);
   const optionsId = useId(), optionsTrigger = useRef<HTMLSpanElement>(null), optionsPanel = useRef<HTMLDivElement>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   useAnchoredPopover(optionsTrigger, optionsPanel);
@@ -27,7 +32,7 @@ export function ChannelRoomPreview() {
   const { session: interactions } = usePreviewInteractions(false, {
     self: { peerId: users[0].id, displayName: users[0].name }, friend: { peerId: users[1].id, displayName: users[1].name },
   });
-  const [selected, setSelected] = useState("friday"), [count, setCount] = useState(() => {
+  const [selected, setSelected] = useState(() => roomCount ? "friday" : ""), [count, setCount] = useState(() => {
     const value = Number(new URLSearchParams(location.search).get("screens"));
     return screenCounts.includes(value) ? value : 0;
   });
@@ -49,20 +54,26 @@ export function ChannelRoomPreview() {
     setStreams(new Map(captures.map((capture, index) => [`sample-screen-${index}`, capture.stream])));
     return () => { for (const capture of captures) { clearInterval(capture.timer); capture.stream.getTracks().forEach(track => track.stop()); } };
   }, []);
-  const publications = Array.from({ length: count }, (_, index) => ({ id: `sample-screen-${index}`, roomId: "friday",
+  const rooms = [...sample.channel.state!.channel.rooms.slice(0, roomCount), ...createdRooms];
+  const roomIds = new Set(rooms.map(room => room.id));
+  const publications = (sharingRoom ? [{ id: "sample-screen-2", roomId: sharingRoom,
+    sessionId: sample.channel.sessionId!, userId: users[0].id, kind: "screen" as const, paused: false,
+    videoSettings: screenVideoSettings(sample.channel.quality) }] : Array.from({ length: count }, (_, index) => ({ id: `sample-screen-${index}`, roomId: "friday",
     sessionId: `${screenUsers[index].id}-session`, userId: screenUsers[index].id,
-    kind: "screen" as const, paused: false, videoSettings: screenVideoSettings(sample.channel.quality) })).filter(publication => !stopped.has(publication.id));
+    kind: "screen" as const, paused: false, videoSettings: screenVideoSettings(sample.channel.quality) }))).filter(publication => roomIds.has(publication.roomId) && !stopped.has(publication.id));
   const state = { ...sample.channel.state!, channel: { ...sample.channel.state!.channel,
-    rooms: sample.channel.state!.channel.rooms.map(room => ({ ...room,
+    rooms: rooms.map(room => ({ ...room,
       name: longNames && room.id === "friday" ? zh ? "周五一起看电影与交流的朋友们" : "Friday with friends: a shared evening together" : room.name,
       participantSessionIds: [...new Set([
       ...room.participantSessionIds, ...publications.filter(publication => publication.roomId === room.id).map(publication => publication.sessionId),
     ])] })),
-  }, publications: [...sample.channel.state!.publications, ...publications],
+  }, publications: [...sample.channel.state!.publications.filter(publication => roomIds.has(publication.roomId)), ...publications],
+    voice: sample.channel.state!.voice.filter(voice => roomIds.has(voice.roomId)),
     users,
     subscriptions: publications.filter(publication => !unwatched.has(publication.id)).map(publication => publication.id),
   };
   const channel = { ...sample.channel, state, self: state.users[0], streams, error: null, inviteURL: "https://friends.example/#invite=sample",
+    messagesByRoom: emptyChat ? { ...sample.channel.messagesByRoom, friday: sample.channel.messagesByRoom.friday.filter(message => message.seq > 2) } : sample.channel.messagesByRoom,
     interactionsByRoom: new Map(interactions ? [["friday", interactions]] : []),
     ownedScreens: new Set(publications.filter(publication => publication.userId === "sample-ada").map(publication => publication.id)),
     screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), voicePlaybackByUser: new Map(),
@@ -76,15 +87,22 @@ export function ChannelRoomPreview() {
     setScreenQuality: async (_id, profile) => sample.channel.setQuality(profile),
     watch: async id => setUnwatched(previous => { const next = new Set(previous); next.delete(id); return next; }),
     unwatch: async id => setUnwatched(previous => new Set(previous).add(id)), stopScreen: async id => { setStopped(previous => new Set(previous).add(id)); sample.received(); },
-    startScreen: async () => { setStopped(new Set()); setCount(previous => Math.max(3, previous)); },
-    startNativeScreen: async () => { setStopped(new Set()); setCount(previous => Math.max(3, previous)); },
+    startScreen: async roomId => { setStopped(new Set()); setSharingRoom(roomId); },
+    startNativeScreen: async roomId => { setStopped(new Set()); setSharingRoom(roomId); },
     setScreenPaused: async () => sample.received(),
     inputPolicy: async () => sample.received(), inputDecide: async () => sample.received(), inputSimultaneous: async () => sample.received(),
     inputShortcut: async () => { throw new Error("No input device in this preview"); },
     screenPresentation: () => {}, reconnect: sample.received, clearError: sample.received,
     setVoiceMuted: () => sample.received(), setVoiceVolume: () => sample.received(),
     renameSelf: async () => sample.received(), resetDomainInvite: async () => sample.received(), updateDomain: async () => sample.received(),
-    createRoom: async () => { sample.received(); return "friday"; }, enterRoom: async () => sample.received(), revokeRoomAccess: async () => sample.received(),
+    createRoom: async settings => {
+      const id = `sample-room-${crypto.randomUUID()}`;
+      setCreatedRooms(previous => [...previous, { ...sample.channel.state!.channel.rooms[0], ...settings,
+        id, name: settings.name, participantSessionIds: [sample.channel.sessionId!],
+        delivery: { hostSessionId: sample.channel.sessionId!, bindingId: `sample-binding-${id}`, nextHops: {} } }]);
+      setSelected(id);
+      return id;
+    }, enterRoom: async () => sample.received(), revokeRoomAccess: async () => sample.received(),
     restoreDomainBackup: async () => { sample.received(); throw new Error("preview_storage_unavailable"); },
     restoreRoomBackup: async () => { sample.received(); throw new Error("preview_storage_unavailable"); },
   } satisfies Partial<ChannelController> as unknown as ChannelController;
@@ -102,7 +120,7 @@ export function ChannelRoomPreview() {
           <p>{zh ? "画面为本地合成样本，没有实际网络连接。" : "Pictures are local synthetic samples, without network connections."}</p>
           <fieldset><legend>{zh ? "画面数量" : "Screens"}</legend><div className="c3-room-preview-tools">
             {screenCounts.map(value => <Chip key={value} title={zh ? `${value} 个画面` : `${value} screen${value === 1 ? "" : "s"}`} selected={count === value}
-              onClick={() => { setCount(value); setStopped(new Set()); setUnwatched(new Set()); }}>{value}</Chip>)}
+              onClick={() => { setCount(value); setSharingRoom(null); setStopped(new Set()); setUnwatched(new Set()); }}>{value}</Chip>)}
           </div></fieldset>
           <div className="c3-room-preview-tools">
             <Chip title={zh ? "横竖混合" : "Mixed orientation"} selected={mixed} onClick={() => {
@@ -110,6 +128,8 @@ export function ChannelRoomPreview() {
               canvases.current.forEach((canvas, index) => { canvas.width = next && index % 2 === 0 ? 540 : 960; canvas.height = next && index % 2 === 0 ? 960 : 540; });
             }}>{zh ? "横竖混合" : "Mixed orientation"}</Chip>
             <Chip title={zh ? "长名字" : "Long names"} selected={longNames} onClick={() => setLongNames(!longNames)}>{zh ? "长名字" : "Long names"}</Chip>
+            <Chip title={zh ? "没有房间" : "No rooms"} selected={!rooms.length} onClick={() => { setRoomCount(rooms.length ? 0 : 2); setSelected(rooms.length ? "" : "friday"); setCreatedRooms([]); setCount(0); setSharingRoom(null); }}>{zh ? "没有房间" : "No rooms"}</Chip>
+            <Chip title={zh ? "空聊天" : "Empty chat"} selected={emptyChat} onClick={() => setEmptyChat(!emptyChat)}>{zh ? "空聊天" : "Empty chat"}</Chip>
           </div>
           <fieldset><legend>{zh ? "合成语音电平（不采集设备）" : "Synthetic voice level (no device capture)"}</legend><div className="c3-room-preview-tools">
             {([undefined, .05, .2] as const).map((level, index) => <Chip key={index}

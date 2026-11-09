@@ -28,6 +28,15 @@
   .c3-main:has(.has-screens) .c3-couch-seat .lr-pawn-name { display: none; }
   .c3-main:has(.has-screens) .c3-couch-browse { top: 8px; }
 }
+@container channel-room (max-width: 600px) and (max-height: 680px) {
+  .c3-main:not(:has(.has-screens)) .c3-couch-scene { height: 44px; }
+  .c3-main:not(:has(.has-screens)) .c3-couch-bench { display: none; }
+  .c3-main:not(:has(.has-screens)) :is(.c3-couch-guests, .c3-couch-people > .c3-couch-seat) { padding-block: 0; }
+  .c3-main:not(:has(.has-screens)) .c3-couch-seat .lr-pawn { min-height: 44px; }
+  .c3-main:not(:has(.has-screens)) .c3-couch-seat .lr-person { width: 30px; height: 36px; }
+  .c3-main:not(:has(.has-screens)) .c3-couch-seat .lr-pawn-name { display: none; }
+  .c3-main:not(:has(.has-screens)) .c3-couch-browse { top: 8px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .c3-couch-guests { scroll-behavior: auto; }
 }
