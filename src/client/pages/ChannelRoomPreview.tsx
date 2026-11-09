@@ -3,6 +3,7 @@ import { ChannelRoomPage } from "./ChannelPreviewPage";
 import { sampleRoomTopology, useChannelGuideSample } from "./ChannelGuidePreview";
 import { usePreviewInteractions } from "./use-preview-interactions";
 import { Btn, Chip } from "../components/living/primitives";
+import { participantColor } from "../components/living/participant-color";
 import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
 import { screenVideoCeiling } from "../media/quality";
@@ -10,51 +11,55 @@ import type { ChannelController } from "../channel/types";
 import { useAnchoredPopover } from "../components/living/use-anchored-popover";
 import "./channel-room-preview.css";
 
+const screenCounts = [0, 1, 2, 3, 4, 8];
+
 /** The production room view with local samples. No Session, device access or App discovery. */
 export function ChannelRoomPreview() {
   const { lang } = useCopy(), zh = lang === "zh";
-  const sample = useChannelGuideSample();
+  const sample = useChannelGuideSample(true);
   const [longNames, setLongNames] = useState(() => new URLSearchParams(location.search).has("long-names"));
   const optionsId = useId(), optionsTrigger = useRef<HTMLSpanElement>(null), optionsPanel = useRef<HTMLDivElement>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   useAnchoredPopover(optionsTrigger, optionsPanel);
-  const names = longNames
-    ? ["一起看电影的阿达和她的小伙伴们", "Benjamin watching with friends tonight", "Coco", "Dora"]
-    : ["Ada", "Bo", "Coco", "Dora"];
+  const users = sample.channel.state!.users.map((user, index) => ({ ...user, name: longNames && index < 2
+    ? ["一起看电影的阿达和她的小伙伴们", "Benjamin watching with friends tonight"][index] : user.name }));
+  const screenUsers = [users[1], users[2], users[0], ...users.slice(3)];
   const { session: interactions } = usePreviewInteractions(false, {
-    self: { peerId: "sample-ada", displayName: names[0] }, friend: { peerId: "sample-bo", displayName: names[1] },
+    self: { peerId: users[0].id, displayName: users[0].name }, friend: { peerId: users[1].id, displayName: users[1].name },
   });
-  const [selected, setSelected] = useState("friday"), [count, setCount] = useState(0);
+  const [selected, setSelected] = useState("friday"), [count, setCount] = useState(() => {
+    const value = Number(new URLSearchParams(location.search).get("screens"));
+    return screenCounts.includes(value) ? value : 0;
+  });
   const [streams, setStreams] = useState(new Map<string, MediaStream>());
   const [unwatched, setUnwatched] = useState(new Set<string>());
   const [stopped, setStopped] = useState(new Set<string>());
   const [mixed, setMixed] = useState(false);
   const canvases = useRef<HTMLCanvasElement[]>([]);
   useEffect(() => {
-    const captures = ["#375c63", "#626348", "#5b4e68", "#795443"].map((color, index) => {
+    const palette = getComputedStyle(document.documentElement);
+    const captures = screenUsers.map((user, index) => {
       const canvas = document.createElement("canvas"); canvas.width = 960; canvas.height = 540; canvases.current[index] = canvas;
       const context = canvas.getContext("2d")!;
-      const paint = () => { context.fillStyle = color; context.fillRect(0, 0, canvas.width, canvas.height);
-        context.fillStyle = "#f4ecd8"; context.font = "32px sans-serif"; context.fillText(["A quiet evening", "Sketchbook", "A short film", "Drawing together"][index], 44, 64);
-        context.fillStyle = "#8ebda5"; context.beginPath(); context.arc(670, 270, 130, 0, Math.PI * 2); context.fill(); };
+      const paint = () => { context.fillStyle = palette.getPropertyValue("--paper").trim(); context.fillRect(0, 0, canvas.width, canvas.height);
+        context.fillStyle = palette.getPropertyValue("--ink").trim(); context.font = "32px sans-serif"; context.fillText(user.name, 44, 64);
+        context.fillStyle = participantColor(user.id); context.beginPath(); context.arc(canvas.width * .7, canvas.height / 2, Math.min(canvas.width, canvas.height) / 4, 0, Math.PI * 2); context.fill(); };
       paint(); return { stream: canvas.captureStream(4), timer: setInterval(paint, 250) };
     });
     setStreams(new Map(captures.map((capture, index) => [`sample-screen-${index}`, capture.stream])));
     return () => { for (const capture of captures) { clearInterval(capture.timer); capture.stream.getTracks().forEach(track => track.stop()); } };
   }, []);
   const publications = Array.from({ length: count }, (_, index) => ({ id: `sample-screen-${index}`, roomId: "friday",
-    sessionId: `${["sample-bo", "sample-coco", "sample-ada", "sample-dora"][index]}-session`, userId: ["sample-bo", "sample-coco", "sample-ada", "sample-dora"][index],
+    sessionId: `${screenUsers[index].id}-session`, userId: screenUsers[index].id,
     kind: "screen" as const, paused: false, videoCeiling: screenVideoCeiling(sample.channel.quality) })).filter(publication => !stopped.has(publication.id));
   const state = { ...sample.channel.state!, channel: { ...sample.channel.state!.channel,
     rooms: sample.channel.state!.channel.rooms.map(room => ({ ...room,
-      name: longNames ? zh ? "周五一起看电影与交流的朋友们" : "Friday with friends: a shared evening together" : room.name,
+      name: longNames && room.id === "friday" ? zh ? "周五一起看电影与交流的朋友们" : "Friday with friends: a shared evening together" : room.name,
       participantSessionIds: [...new Set([
       ...room.participantSessionIds, ...publications.filter(publication => publication.roomId === room.id).map(publication => publication.sessionId),
     ])] })),
   }, publications: [...sample.channel.state!.publications, ...publications],
-    users: [...sample.channel.state!.users, { id: "sample-coco", name: "Coco" }, { id: "sample-dora", name: "Dora" }]
-      .map((user, index) => ({ ...user, name: names[index] })),
-    sessions: [...sample.channel.state!.sessions, ...["sample-coco", "sample-dora"].map(id => ({ id: `${id}-session`, userId: id, online: true, signingKey: Array(32).fill(0) }))],
+    users,
     subscriptions: publications.filter(publication => !unwatched.has(publication.id)).map(publication => publication.id),
   };
   const channel = { ...sample.channel, state, self: state.users[0], streams, error: null, inviteURL: "https://friends.example/#invite=sample",
@@ -63,7 +68,7 @@ export function ChannelRoomPreview() {
     screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), voicePlaybackByUser: new Map(),
     browse: () => {}, sendMessage: sample.onSend, setMessageReaction: async () => sample.received(),
     loadHistory: async () => sample.received(), loadLatestHistory: async () => sample.received(),
-    historyByRoom: { friday: { hasMore: false, atLatest: true } },
+    historyByRoom: Object.fromEntries(state.channel.rooms.map(room => [room.id, { hasMore: false, atLatest: true }])),
     roomTopology: async (roomId, publicationId) => sampleRoomTopology(state, roomId, publicationId),
     screenQuality: () => ({ requested: sample.channel.quality, applied: sample.channel.quality }), screenCodecMode: () => sample.channel.videoCodecMode,
     sourceAudio: () => undefined, sourceMicrophone: () => undefined,
@@ -96,7 +101,7 @@ export function ChannelRoomPreview() {
             onClick={() => optionsPanel.current?.hidePopover()} /></header>
           <p>{zh ? "画面为本地合成样本，没有实际网络连接。" : "Pictures are local synthetic samples, without network connections."}</p>
           <fieldset><legend>{zh ? "画面数量" : "Screens"}</legend><div className="c3-room-preview-tools">
-            {[0, 1, 3, 4].map(value => <Chip key={value} title={zh ? `${value} 个画面` : `${value} screen${value === 1 ? "" : "s"}`} selected={count === value}
+            {screenCounts.map(value => <Chip key={value} title={zh ? `${value} 个画面` : `${value} screen${value === 1 ? "" : "s"}`} selected={count === value}
               onClick={() => { setCount(value); setStopped(new Set()); setUnwatched(new Set()); }}>{value}</Chip>)}
           </div></fieldset>
           <div className="c3-room-preview-tools">

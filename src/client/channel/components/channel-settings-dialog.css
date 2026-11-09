@@ -1,0 +1,26 @@
+.c3-settings-dialog { width: min(760px, calc(100vw - 24px)); max-height: 90dvh; margin: auto; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 22px; background: var(--paper); color: var(--ink); box-shadow: var(--panel-shadow); }
+.c3-settings-dialog[data-compact] { width: min(520px, calc(100vw - 24px)); }
+.c3-settings-dialog[open] { display: flex; flex-direction: column; }
+.c3-settings-dialog::backdrop { background: rgb(var(--surface-shade-rgb) / .38); backdrop-filter: blur(5px); }
+.c3-settings-dialog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex: none; padding: 22px 24px 18px; }
+.c3-settings-dialog-heading > div { min-width: 0; }
+.c3-settings-dialog-heading h2 { margin: 0; font-size: 22px; line-height: 1.35; overflow-wrap: anywhere; }
+.c3-settings-dialog-heading p { margin: 0 0 4px; color: var(--muted); font-size: 12px; }
+.c3-settings-dialog-heading > .lr-comic-tip-wrap { flex: none; }
+.c3-settings-content, .c3-settings-body { display: flex; flex-direction: column; min-height: 0; }
+.c3-settings-navigation { flex: none; overflow-x: auto; padding: 0 24px 16px; scrollbar-width: thin; }
+.c3-settings-nav { width: max-content; min-width: 100%; box-sizing: border-box; }
+.c3-settings-nav button { white-space: nowrap; }
+.c3-settings-panels { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 24px 24px; scrollbar-width: thin; }
+.c3-settings-panels > [role="tabpanel"] { display: grid; gap: 16px; }
+.c3-settings-panels > [hidden] { display: none; }
+.c3-settings-panels h3 { margin: 0; font-size: 16px; }
+.c3-settings-dialog p { font-size: 12px; line-height: 1.65; }
+.c3-settings-panels p { margin: 0; color: var(--muted); }
+.c3-settings-panels > .c3-settings-offline { margin-bottom: 16px; }
+.c3-settings-dialog .c3-backup-error { color: var(--danger); }
+@media (max-width: 600px) {
+  .c3-settings-dialog-heading { padding: 18px 16px 14px; }
+  .c3-settings-navigation { padding-inline: 16px; }
+  .c3-settings-panels { padding: 0 16px 18px; }
+}

@@ -69,8 +69,9 @@ export interface SourceAudioControl {
   onChange(settings: { level?: number; muted?: boolean }): void;
 }
 
-export function ChannelVideo({ stream, local, label, inputs, onPresentation, input, sourceAudio, interaction = null, theaterMode, onToggleTheater }: {
+export function ChannelVideo({ stream, local, label, thumbnail = false, inputs, onPresentation, input, sourceAudio, interaction = null, theaterMode, onToggleTheater }: {
   stream: MediaStream; local: boolean; label: string; inputs?: readonly ChannelScreenInput[];
+  thumbnail?: boolean;
   input?: InputTransport;
   sourceAudio?: SourceAudioControl;
   interaction?: RoomInteractionSession | null;
@@ -120,6 +121,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
   const previewPlayback = useHostPreviewPlayback(playbackRef, local ? displayed.stream : null, previewAutoPause);
   useVideoRotation(playbackRef, pictureFit, pictureRotation);
   useAnchoredPopover(pictureTrigger, picturePanel, { side: "above", align: "center" });
+  useLayoutEffect(() => { if (thumbnail) picturePanel.current?.hidePopover(); }, [thumbnail]);
   const visibility = usePlaybackControlsVisibility(playbackRef, controls, paused || blocked || !ready);
   const register = useCallback((input: ChannelScreenInput, element: HTMLVideoElement | null) => {
     if (element) consumers.current.set(input.stream, { element, composited: false });
@@ -254,10 +256,10 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
   }, [inputs, onPresentation, consumerVersion, fullscreen.nativeActive, picture.active]);
   const nativeEntryBlocked = inputs?.some(input => !input.selected && input.switchReady)
     && !fullscreen.active && !(document.fullscreenEnabled && activeVideo?.parentElement?.requestFullscreen);
-  return <div className="c3-video c3-mini-player" data-controls-hidden={visibility.hidden}>
+  return <div className="c3-video c3-mini-player" data-controls-hidden={visibility.hidden} data-thumbnail={thumbnail || undefined} inert={thumbnail}>
     {rendered.map(input => <ChannelVideoInput key={`${input.flowId}:${input.stream.id}`} input={input} visible={input.flowId === displayed.flowId && input.stream === displayed.stream}
       label={label} fit={pictureFit} register={register} frame={frame} issue={issue} playing={playing} fullscreen={fullscreenToggle} />)}
-    <RoomChatOverlay session={interaction} visible={ready && !blocked && !paused} />
+    <RoomChatOverlay session={interaction} visible={!thumbnail && ready && !blocked && !paused} />
     {!ready && !blocked && <div className="c3-mini-message" role="status">
       <span className="c3-frame-wait"><Glyph name="loader" className="lr-spin" size={22} />
         {lang === "zh" ? "等待画面" : "Waiting for picture"}</span>

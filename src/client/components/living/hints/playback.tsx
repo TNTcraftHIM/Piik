@@ -243,7 +243,7 @@ function ScreenLayoutHint({ theme, focus }: Parameters<HintScene>[0] & { focus: 
     <PlaybackMotion />
     {[!focus, focus].map((focused, index) => {
       const x = index * 160;
-      const tiles = focused ? [[22, 27, 76, 48], [108, 19, 29, 16], [108, 43, 29, 16], [108, 67, 29, 16]]
+      const tiles = focused ? [[22, 18, 116, 47], [30, 72, 28, 15], [66, 72, 28, 15], [102, 72, 28, 15]]
         : [[22, 20, 52, 26], [86, 20, 52, 26], [22, 57, 52, 26], [86, 57, 52, 26]];
       return <g key={index}>
         <Frame x={x + 4} w={152} theme={theme} result={index === 1} />

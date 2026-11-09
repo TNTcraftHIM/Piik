@@ -226,6 +226,10 @@ and multiple watched screens through the existing session and shared components.
 The domain owner can edit its name, icon and public/private entry settings beside
 the domain title. A private domain can also accept a passphrase. Resetting its
 invitation changes the shared link while keeping existing users and room invitations.
+Each room-list item separates navigation from its settings action. Managing
+another room keeps the selected conversation and personal activities in place.
+Room creation, room settings and domain settings reuse one native dialog shell;
+task tabs keep invitation, editing, forwarding and backups separate.
 Room creation and settings share the same identity fields; the room owner or
 domain owner saves them at that room's runtime. Both surfaces share preset icons
 and custom images. The browser crops images to a small square; saving retains
@@ -303,8 +307,10 @@ with a microphone or listen-only. Microphone mute controls your outgoing room
 voice; deafen controls local listening. Their attached volume menus adjust
 microphone and total listening gain from 0% to 200%, using the existing local
 preferences. Joined rooms share one microphone capture. Multiple users can share simultaneously.
-Watch selected pictures in
-a grid or focus one picture, with chat alongside or tucked away. These presentation
+Watch selected pictures in an equal-weight grid or focus one picture with the
+others in a thumbnail strip. Short windows use a picture selector in place of
+the strip. Chat and the user list open as companion surfaces; narrow layouts
+switch surfaces instead of squeezing them beside the picture. These presentation
 choices do not implement media layering or a new quality policy. Local previews
 stay muted, and pausing a player does not stop forwarding its source.
 Start sharing from the selected room's header. Once active, source selection and

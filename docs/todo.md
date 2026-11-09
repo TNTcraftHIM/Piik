@@ -12,6 +12,12 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **3.0 workspace design acceptance.** Review the room-list management
+  entry, shared administration dialogs and grid/focus viewing with the owner
+  before the next internal package. Keep current players and independent room
+  activities while changing presentation; the
+  [workspace design](./standards/visual-language.md#30-channel-workspace)
+  owns the layout responsibilities.
 - [ ] **3.0 Windows shared-sound noise.** A beta2 Host reports noise that stops
   when excluding the Piik console's process tree, but returns when excluding a
   silent unrelated window. Verify which Browser playback belongs to that tree

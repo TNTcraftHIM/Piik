@@ -91,6 +91,21 @@ editing and active playback: a page without horizontal overflow can still hide
 its useful content. [W3C reflow guidance](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html)
 permits reorganizing panels while preserving access to their content and actions.
 
+### 3.0 Channel Workspace
+
+Keep room navigation and administration together in the room list. The name
+selects a room; its adjacent settings action manages that room without changing
+the current conversation or activities. Room, domain and creation tasks share
+the native settings-dialog shell, with their own forms and permissions.
+
+Let the media stage use the available workspace. Grid gives watched pictures
+equal weight; focus gives one picture the main area and keeps the others in a
+thumbnail strip. Both use the same players. Conversation and people are optional
+companion surfaces; narrow layouts switch surfaces instead of squeezing several
+unusable regions together. Source controls stay with their picture, and personal
+voice controls keep their own activity scope. The existing room tool continues
+to move the same conversation, presence and voice content outside the workspace.
+
 ### Control Selection
 
 Choose by the user's task, then reuse its interaction and visual primitive.
@@ -512,6 +527,8 @@ type checking rather than silently render a warning triangle.
 | Participants and room / 人与房间 | `users`, `couch`, `door` | People, shared room, room entry. Use the shared pawn for a person and `HostMark` for Host authority. |
 | Create / 创建 | `plus` | Create the named object. An empty room-code frame uses this action before the room exists; the resulting code replaces it in place. |
 | Shared screen / 共享画面 | `tv`, `MiniTv`, 📺 | Media or its sharing source. The TV beside the Host name identifies the source; the crown on a person identifies the role. |
+| Multiple-picture layout / 多画面布局 | `screenGrid`, `screenFocus` | Equal-weight tiles or one large picture with a thumbnail strip. These change the layout of existing players; fullscreen and subscriptions keep their own controls. |
+| Workspace navigation / 界面导航 | `sidebar` | Show or fold the surrounding workspace navigation. This does not start sharing or enter fullscreen. |
 | Start and choose a source / 分享与选源 | `cast`, `share`, `switchSource` | Start sharing, capture a screen, replace the current capture source respectively. A captured window keeps window chrome or a display stand. |
 | Capture source / 采集来源 | `window`, `display` | An application window or a whole display; these nouns remain distinct from the source-switch action. |
 | Invitation URL / 邀请链接 | `link`, `InviteLink`, `linkOff` | A URL and its disabled/revoked form. Keep the chain when copying or rejecting it. Copying is local; a send-to-chat scene is a separate action. |

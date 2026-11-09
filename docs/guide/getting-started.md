@@ -69,14 +69,15 @@ Local invitations use HTTPS. Before accepting the first certificate warning,
 compare it with the fingerprint in the App terminal; see the
 [certificate steps](./troubleshooting.md#local-https-certificate-warning).
 The domain owner can set **Public** or **Private** entry and an optional domain
-passphrase in **Domain settings → Edit domain settings**, beside the domain name.
+passphrase in **Domain settings → Domain**, beside the domain name.
 
 ### Invite friends
 
 - **To the domain:** open the room list and use **Copy domain address** for a
   public domain or **Copy domain invitation** for a private domain. Tell your
   friends which room to choose. The nearby QR button shares the same link.
-- **To a private room:** its owner opens **Room options**, then uses **Copy invitation**
+- **To a private room:** its owner opens the settings button beside that room in
+  the room list, selects **Invitation**, then uses **Copy invitation**
   or the room QR button. If no invitation exists, select **Generate new invitation**.
   That invitation admits its recipient to the domain and the specified private room.
 
@@ -86,8 +87,8 @@ Use **Reset room invitation** only when you want a new link: the old link stops
 working, while people who already have access keep it. If an older invitation
 cannot be recovered, the panel explains this before you generate a replacement.
 
-![Room options show the invitation, copy and QR buttons first, with reset and room settings below.](../assets/guide/channel-invitation.en.png#gh-light-mode-only)
-![Room options show the invitation, copy and QR buttons first, with reset and room settings below.](../assets/guide/channel-invitation.en.dark.png#gh-dark-mode-only)
+![The Invitation tab contains the room link, copy and QR buttons, and invitation reset.](../assets/guide/channel-invitation.en.png#gh-light-mode-only)
+![The Invitation tab contains the room link, copy and QR buttons, and invitation reset.](../assets/guide/channel-invitation.en.dark.png#gh-dark-mode-only)
 
 ### Use App with an existing site
 
@@ -128,7 +129,7 @@ the native sources supported by your device.
 - Closing your page ends its personal shares, viewing and voice. An
   **App-hosted room** continues while App runs; a **Browser-hosted room** is
   unavailable while its hosting page is closed. Switching rooms or toggling
-  **Sharing view** keeps your other room activities running.
+  **Compact interface** keeps your other room activities running.
 - Confirmed chat history belongs to the room's host. Refreshing reloads history
   when that host is available; use **Earlier messages** for older pages.
   An unsent draft does not survive a page refresh. Captures and voice do not

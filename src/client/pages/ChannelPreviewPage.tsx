@@ -20,7 +20,8 @@ import { ChannelJoinVoice } from "../channel/components/ChannelJoinVoice";
 import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
 import { ChannelPeople } from "../channel/components/ChannelPeople";
 import { ChannelNameEditor } from "../channel/components/ChannelNameEditor";
-import { ChannelRoomControls, ChannelRoomEntry } from "../channel/components/ChannelRoomControls";
+import { ChannelRoomControls, ChannelRoomEntry, ChannelRoomSettingsDialog } from "../channel/components/ChannelRoomControls";
+import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
 import { ChannelBookmarks } from "../channel/components/ChannelBookmarks";
 import { ChannelDomainControls } from "../channel/components/ChannelDomainControls";
 import { ChannelDomainEntry } from "../channel/components/ChannelDomainEntry";
@@ -60,7 +61,10 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
   const [domainControlSlot, setDomainControlSlot] = useState<HTMLSpanElement | null>(null);
   const { state, self, sessionId, connection, pending, streams } = channel;
   const [sharingView, setSharingView] = useState(() => readRoomPreferences().sharingView);
-  const [chatOpen, setChatOpen] = useState(!sharingView);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [managedRoomId, setManagedRoomId] = useState<string | null>(null);
+  const closeRoomSettings = useCallback(() => setManagedRoomId(null), []);
+  const inlineChatOpen = chatOpen && mobilePane !== "people";
   const [toolSurface, setToolSurface] = useState<RoomToolSurface>({ open: false, document: null });
   const couchSlot = useRef<HTMLDivElement>(null), conversationSlot = useRef<HTMLDivElement>(null), voiceSlot = useRef<HTMLDivElement>(null);
   const [focusedScreen, setFocusedScreen] = useState<string | null>(null);
@@ -69,6 +73,10 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
   const rooms = state?.channel.rooms ?? [];
   const room = rooms.find(value => value.id === selected) ?? rooms[0];
   const roomId = room?.id ?? "";
+  const managedRoom = rooms.find(value => value.id === managedRoomId && (value.authorized || value.canManage));
+  useEffect(() => {
+    if (state && managedRoomId && !managedRoom) setManagedRoomId(null);
+  }, [state?.channel.id, managedRoomId, managedRoom?.id]);
   useEffect(() => {
     if (sharingView && state && !rooms.length) setMobilePane("rooms");
   }, [sharingView, state?.channel.id, rooms.length]);
@@ -112,7 +120,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
     if (mobilePane === "room") return;
     const heading = document.getElementById(mobilePane === "rooms" ? "c3-room-list-heading" : "c3-people-heading");
     heading?.focus();
-    return () => { document.getElementById(mobilePane === "rooms" ? "c3-rooms-trigger" : "c3-people-trigger")?.focus(); };
+    const pane = heading?.closest("aside");
+    return () => {
+      if (pane?.contains(document.activeElement))
+        document.getElementById(mobilePane === "rooms" ? "c3-rooms-trigger" : "c3-people-trigger")?.focus();
+    };
   }, [mobilePane]);
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
   const connectionLabel = connected ? copy("已连接", "Connected") : connection === "connecting"
@@ -127,12 +139,15 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
       <Btn icon="x" title="notice.dismiss" hint="hint-close" size="compact" quiet onClick={channel.clearError} />
     </div>}
     <ChannelDomainControls channel={channel} triggerSlot={domainControlSlot} />
+    {managedRoom && <ChannelRoomSettingsDialog key={managedRoom.id} channel={channel} room={managedRoom}
+      onClose={closeRoomSettings} />}
     {!state ? <ChannelDomainEntry channel={channel} failure={failure} /> : <main className="c3-shell" data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"}>
       <ChannelBookmarks currentName={state?.channel.name ?? location.host}
         currentIcon={<ChannelIdentityMark icon={state?.channel.icon ?? "couch"} size={26} />} onCurrent={() => setMobilePane("rooms")} />
       <aside id="c3-room-list" className="c3-sidebar" aria-label={copy("域和房间", "Domain and rooms")}>
         <div className="c3-sidebar-browse">
-        <div className="c3-channel-title c3-editable"><div><h1 id="c3-room-list-heading" tabIndex={-1}>{state?.channel.name ?? copy("你的域", "Your domain")}</h1>
+        <div className="c3-channel-title c3-editable"><div><Tooltip overflow={{ text: state.channel.name, selector: "h1" }}>
+          <h1 id="c3-room-list-heading" tabIndex={-1}>{state.channel.name}</h1></Tooltip>
           <span className="c3-channel-caption">{copy("域", "Domain")}</span></div>
           {owner && <span ref={setDomainControlSlot} />}
           <span className="c3-pane-back"><BackButton onClick={() => setMobilePane("room")} /></span>
@@ -158,16 +173,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
               const sharing = mine.some(activity => activity.roomId === value.id);
               const watching = watched.some(activity => activity.roomId === value.id);
               const count = screens.filter(screen => screen.roomId === value.id).length;
-              return <button type="button" key={value.id} className="c3-room-link" aria-label={value.name}
-                aria-current={roomId === value.id ? "page" : undefined} onClick={() => selectRoom(value.id)}>
-                <ChannelIdentityMark icon={value.icon} size={21} /><strong>{value.name}</strong>
-                <span className="c3-room-activity">
-                  {value.access === "private" && <Glyph name="lock" size={13} />}
-                  {voice && <Glyph name="headphones" size={14} />}
-                  {sharing ? <Glyph name="cast" size={14} /> : watching ? <Glyph name="eye" size={14} />
-                    : count > 0 ? <span>{count}<Glyph name="tv" size={13} /></span> : null}
-                </span>
-              </button>;
+              return <ChannelRoomItem key={value.id} room={value} selected={roomId === value.id}
+                voice={voice} sharing={sharing} watching={watching} screenCount={count} settingsOpen={managedRoomId === value.id}
+                onSelect={() => selectRoom(value.id)} onManage={() => setManagedRoomId(value.id)} />;
             })}
           </nav>
           {state && !rooms.length && <p className="c3-room-list-empty">{copy("暂无可进入的房间", "No rooms available yet")}</p>}
@@ -186,7 +194,6 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
             <Tooltip className="c3-room-title" overflow={{ text: room?.name ?? copy("欢迎回来", "Welcome back"), selector: "h2" }}>
               <h2>{room?.name ?? copy("欢迎回来", "Welcome back")}</h2>
             </Tooltip>
-            {(room?.authorized || room?.canManage) && <ChannelRoomControls key={`controls:${room.id}`} channel={channel} room={room} />}
           </div>
           <div className="c3-room-actions">
             {room?.authorized && <>{!mine.some(source => source.roomId === roomId) &&
@@ -195,8 +202,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
                 onJoin={listenOnly => run(channel.joinVoice(roomId, listenOnly).then(() => setVoiceFocus(roomId)))} /></>}
           </div>
           <div className="c3-room-tools">
-            <span className="c3-view-toggle"><ChannelAction icon="tv" label={copy("分享视图", "Sharing view")}
-              pressed={sharingView} quiet hint="hint-details" onClick={toggleSharingView} /></span>
+            <span className="c3-view-toggle"><ChannelAction icon="sidebar" label={copy("简洁界面", "Compact interface")}
+              pressed={sharingView} quiet onClick={toggleSharingView} /></span>
             <ChannelRoomTool title={room?.name ?? copy("房间", "Room")} surface={toolSurface} onSurfaceChange={setToolSurface}
               home={{ couch: couchSlot, conversation: conversationSlot, voice: voiceSlot }}
               couch={room?.authorized && <ChannelCouch className="c3-room-company" people={state ? roomPeople(state, roomId) : []}
@@ -209,13 +216,14 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
                 history={channel.historyByRoom[roomId]} loadingHistory={busy("history", roomId)}
                 onHistory={channel.loadHistory} onLatest={channel.loadLatestHistory}
                 isReactionPending={seq => busy(`reaction:${roomId}:${seq}`)} onReaction={channel.setMessageReaction}
-                onSend={channel.sendMessage} floating={toolSurface.open} hidden={room?.authorized === false || (!toolSurface.open && visibleScreens.length > 0 && !chatOpen)} /></>}
+                onSend={channel.sendMessage} floating={toolSurface.open} hidden={room?.authorized === false || (!toolSurface.open && visibleScreens.length > 0 && !inlineChatOpen)} /></>}
               voice={<ChannelVoiceDock channel={channel} selected={voiceFocus} onSelect={setVoiceFocus} onBrowse={selectRoom} />} />
             {room?.authorized && <ChannelConnections key={`connections:${roomId}`} channel={channel} roomId={roomId} />}
-            {visibleScreens.length > 0 && !toolSurface.open && <ChannelAction icon="chat" label={chatOpen ? copy("收起聊天", "Hide chat") : copy("打开聊天", "Show chat")}
-              iconOnly quiet pressed={chatOpen} hint={chatOpen ? "hint-close" : "hint-chat-open"} onClick={() => setChatOpen(!chatOpen)} />}
-            <Tooltip className="c3-pane-navigation" kind="hint-details" disabled={mobilePane === "people"} text={vis ? undefined : copy("域内用户", "Domain users")}><button id="c3-people-trigger" type="button" className="c3-people-trigger"
-              onClick={() => setMobilePane("people")} aria-label={copy("域内用户", "Domain users")} aria-controls="c3-people" aria-expanded={mobilePane === "people"}>
+            {visibleScreens.length > 0 && !toolSurface.open && <ChannelAction icon="chat" label={inlineChatOpen ? copy("收起聊天", "Hide chat") : copy("打开聊天", "Show chat")}
+              iconOnly quiet pressed={inlineChatOpen} hint={inlineChatOpen ? "hint-close" : "hint-chat-open"}
+              onClick={() => { setMobilePane("room"); setChatOpen(!inlineChatOpen); }} />}
+            <Tooltip className="c3-people-navigation" kind="hint-details" disabled={mobilePane === "people"} text={vis ? undefined : copy("域内用户", "Domain users")}><button id="c3-people-trigger" type="button" className="c3-people-trigger"
+              onClick={() => setMobilePane(mobilePane === "people" ? "room" : "people")} aria-label={copy("域内用户", "Domain users")} aria-controls="c3-people" aria-expanded={mobilePane === "people"}>
               <span className="c3-avatar-stack" aria-hidden="true">{onlineUsers.slice(0, 3).map(user =>
                 <PawnSvg key={user.id} color={participantColor(user.id)} identity={user.id} />)}</span>
               <span>{onlineUsers.length}</span><Glyph name="chevron" size={14} />
@@ -228,7 +236,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
         </div>}
         {room && !room.available && <div className="c3-notice" role="status"><Glyph name="couch" size={20} />
           <span className="c3-notice-message">{copy("房间暂不可用，请等待恢复托管。", "This room is unavailable. Wait for hosting to resume.")}</span></div>}
-        <div className={`c3-workspace${visibleScreens.length ? " has-screens" : ""}${chatOpen && !toolSurface.open ? "" : " chat-collapsed"}`}>
+        <div className={`c3-workspace${visibleScreens.length ? " has-screens" : ""}${inlineChatOpen && !toolSurface.open ? "" : " chat-collapsed"}`}>
           <ChannelStage sources={[...visibleScreens, ...availableScreens].map(publication => ({
             id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id),

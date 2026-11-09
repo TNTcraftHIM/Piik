@@ -1,5 +1,4 @@
 import { Component, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { useCopy } from "../../ui/copy";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
@@ -56,7 +55,7 @@ export function ChannelInviteQrCode({ url, disabled = false, label }: {
   return <>
     <span ref={anchor}><Btn icon="qr" title={{ text: label }} hint="hint-copy-invite" size="compact"
       disabled={!url || disabled} expanded={open} controls={id} popoverTarget={id} /></span>
-    {createPortal(<div ref={panel} id={id} popover="auto" role="dialog" aria-labelledby={`${id}-title`}
+    <div ref={panel} id={id} popover="auto" role="dialog" aria-labelledby={`${id}-title`}
       className="lr-anchored-card c3-invite-qr" onToggle={event => {
         if (event.target === event.currentTarget) setOpen(event.newState === "open");
       }}>
@@ -68,6 +67,6 @@ export function ChannelInviteQrCode({ url, disabled = false, label }: {
         </InvitationCode>
         {saveFailed && <p role="alert">{zh ? "图片未能保存，请重试。" : "Could not save the image. Please try again."}</p>}
       </>}
-    </div>, document.body)}
+    </div>
   </>;
 }

@@ -1,7 +1,9 @@
 /* Layout belongs to the channel; palette, controls, cast and motion stay shared. */
-.c3-app { --c3-content-width: calc(100% - 40px); height: 100dvh; min-height: 0; }
-.c3-app > .lr-top { flex: none; padding-block: 16px; }
-.c3-shell { flex: 1; min-height: 0; width: var(--c3-content-width); margin: 0 auto 24px; display: grid; grid-template-columns: 58px 220px minmax(0, 1fr) 224px; background: var(--paper); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--panel-shadow); overflow: clip; }
+.c3-app { --c3-content-width: calc(100% - 40px); --c3-companion-width: 320px; height: 100dvh; min-height: 0; }
+.c3-app > .lr-top { flex: none; padding-block: 8px; }
+.c3-shell { flex: 1; min-height: 0; width: var(--c3-content-width); margin: 0 auto 24px; display: grid; grid-template-columns: 58px 240px minmax(0, 1fr); background: var(--paper); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--panel-shadow); overflow: clip; }
+.c3-shell[data-pane="people"] { grid-template-columns: 58px 240px minmax(0, 1fr) var(--c3-companion-width); }
+.c3-shell:not([data-pane="people"]) > .c3-people-panel { display: none; }
 .c3-shell > .c3-domain-rail { border-radius: 22px 0 0 22px; }
 :where(.c3-shell) :is(h1,h2,h3,p) { margin: 0; }
 .c3-shell button { cursor: pointer; }
@@ -10,23 +12,17 @@
 .c3-sidebar-browse { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .c3-sidebar > .c3-identity { flex: none; }
 .c3-channel-title { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px 10px; padding-inline: 10px; }
-.c3-channel-title > div:first-child { display: contents; }
-.c3-channel-title h1 { grid-column: 1 / -1; min-width: 0; font-size: 21px; font-weight: 750; line-height: 1.35; letter-spacing: -.035em; overflow-wrap: anywhere; }
+.c3-channel-title > div:first-child { min-width: 0; }
+.c3-channel-title > div:first-child > .lr-comic-tip-wrap { display: block; min-width: 0; }
+.c3-channel-title h1 { min-width: 0; font-size: 21px; font-weight: 750; line-height: 1.35; letter-spacing: -.035em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .c3-channel-title > .c3-pane-back { grid-column: 3; }
 .c3-channel-caption { display: block; font-size: 12px; color: var(--muted); }
 .c3-invite { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-inline: 6px; }
-.c3-invite-label { flex-basis: 100%; font-size: 12px; font-weight: 600; }
+.c3-invite-label { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; }
 .c3-invite-label:empty { display: none; }
 .c3-invite > :not(.c3-invite-label) { flex: none; }
 .c3-section-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 650; min-height: 32px; padding-inline: 10px; }
 .c3-rooms { display: grid; gap: 5px; margin-top: 8px; }
-.c3-room-link { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 10px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--muted); text-align: start; }
-.c3-room-link:hover { background: var(--control-hover); color: var(--ink); }
-.c3-room-link[aria-current] { background: var(--control-selected); color: var(--control-selected-ink); box-shadow: inset 3px 0 0 var(--action); }
-.c3-room-link > svg { flex: none; }
-.c3-room-link strong { min-width: 0; flex: 1; overflow-wrap: anywhere; font-size: 13px; font-weight: 650; line-height: 1.4; }
-.c3-room-activity, .c3-room-activity > span { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
-.c3-room-activity:empty { display: none; }
 .c3-room-navigation { flex: 1 0 auto; }
 .c3-room-list-empty { padding: 16px 10px; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .c3-room-navigation.is-empty > .c3-section-label { flex-wrap: wrap; gap: 12px; }
@@ -59,10 +55,11 @@
 .c3-input { min-width: 0; width: 100%; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; font: inherit; font-size: 13px; }
 .c3-input:focus { outline: 2px solid var(--action); outline-offset: 2px; }
 .c3-copy-fallback { display: grid; gap: 8px; font-size: 12px; color: var(--muted); }
-.c3-workspace { flex: 1; min-height: min-content; display: grid; grid-template-columns: minmax(0, 1fr); }
+.c3-workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
 .c3-workspace:not(.has-screens):has(> .c3-monitor) { grid-template-rows: auto minmax(0, 1fr); }
 .c3-workspace:not(.has-screens) > .c3-monitor { max-height: 180px; border-bottom: 1px solid var(--line); }
-.c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr) 300px; grid-template-rows: minmax(0, 1fr); }
+.c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr) var(--c3-companion-width); grid-template-rows: minmax(0, 1fr); }
+.c3-workspace.has-screens .c3-conversation { min-height: 0; }
 .c3-workspace.has-screens .c3-message-log { min-height: 0; }
 .c3-workspace.has-screens > .c3-monitor { contain: size; min-height: calc(var(--control-size) + 2 * var(--stage-padding)); background: var(--wall); border-inline-end: 1px solid var(--line); }
 .c3-workspace.has-screens.chat-collapsed { grid-template-columns: minmax(0, 1fr); }
@@ -109,7 +106,8 @@
 .c3-visual .c3-channel-caption { display: none; }
 @media (max-width: 1180px) {
   .c3-app { --c3-content-width: calc(100% - 28px); }
-  .c3-shell { grid-template-columns: 54px 194px minmax(0, 1fr) 204px; }
+  .c3-shell { grid-template-columns: 54px 220px minmax(0, 1fr); }
+  .c3-shell[data-pane="people"] { grid-template-columns: 54px 220px minmax(0, 1fr) var(--c3-companion-width); }
   .c3-room-heading { gap: 10px; padding: 16px 18px; }
   .c3-room-actions { gap: 6px; }
 }
@@ -137,13 +135,16 @@
   .c3-room-heading .c3-app-confirmation .lr-cap { display: inline; }
 }
 @container (width < 600px) {
-  .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(min-content, .8fr); }
-  .c3-workspace.has-screens.chat-collapsed { grid-template-rows: minmax(0, 1fr); }
+  .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .c3-workspace.has-screens > * { grid-area: 1 / 1; }
+  .c3-workspace.has-screens :is(.c3-conversation, .c3-locked-room) { grid-area: 1 / 1; }
+  .c3-workspace.has-screens:not(.chat-collapsed) > .c3-monitor { visibility: hidden; }
+  .c3-workspace.has-screens > .c3-room-slot { min-height: 0; }
   .c3-workspace.has-screens > .c3-monitor { border-inline-end: 0; border-bottom: 1px solid var(--line); overflow-y: auto; }
   .c3-workspace.has-screens .c3-conversation { padding: 12px 18px; gap: 10px; }
 }
 @media (max-width: 980px) {
-  .c3-shell { grid-template-columns: 54px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .c3-shell, .c3-shell[data-pane="people"] { grid-template-columns: 54px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
   .c3-shell > .c3-domain-rail { grid-column: 1; grid-row: 1; border-inline-end: 1px solid var(--line); }
   .c3-shell > :is(.c3-sidebar, .c3-main, .c3-people-panel) { grid-column: 2; grid-row: 1; }
   .c3-shell[data-pane="room"] > :is(.c3-sidebar, .c3-people-panel),
@@ -219,9 +220,6 @@
     .c3-room-name { flex-basis: 14rem; }
   }
 }
-@media (prefers-reduced-motion: no-preference) {
-  .c3-room-link { transition: background 150ms, color 150ms, box-shadow 150ms; }
-}
 
 /* One room and its live players; the presentation only folds navigation away. */
 .c3-view-toggle { display: inline-flex; flex: none; }
@@ -236,3 +234,8 @@
 .c3-shell[data-view="share"][data-pane="rooms"] > .c3-main { grid-column: 2; }
 .c3-shell[data-view="share"][data-pane="people"] > .c3-people-panel { display: flex; grid-column: 1; grid-row: 1; border-inline-start: 0; }
 .c3-shell[data-view="share"]:is([data-pane="rooms"], [data-pane="people"]) > .c3-main { visibility: hidden; }
+@media (max-height: 500px) {
+  .c3-sidebar { padding-block: 10px; gap: 8px; }
+  .c3-sidebar-browse { gap: 8px; }
+  .c3-identity { padding-top: 8px; }
+}

@@ -72,18 +72,21 @@ try {
     for (const [lang, locale] of [['en', 'en'], ['zh', 'zh-CN']]) {
       await run('open', preview.href);
       await run('wait', '#channel-guide-preview');
-      await evaluate(`(async () => {
-        (await import('/src/client/ui/copy.ts')).setCopy({lang:${JSON.stringify(lang)},vis:false});
-        (await import('/src/client/ui/theme.ts')).applyTheme(${JSON.stringify(theme)});
+      await run('click', `.lr-top .lr-lang button[aria-label="${lang === 'en' ? 'English' : '简体中文'}"]`);
+      if ((await evaluate('document.documentElement.dataset.theme')).result !== theme)
+        await run('click', '.lr-top .lr-theme-toggle');
+      await run('wait', '--fn', `document.querySelector('.c3-guide-title strong')?.textContent === ${JSON.stringify(lang === 'en' ? 'Friday with friends' : '周五小聚')}`);
+      await evaluate(`(() => {
         const style = document.createElement('style');
         style.textContent = '.lr-top, .lr-tooltip-preview > :not(#channel-guide-preview), #channel-guide-preview > :not(.c3-guide-room) { display:none !important }';
         document.head.append(style); scrollTo(0, 0);
       })()`);
       const suffix = `${locale}${theme === 'dark' ? '.dark' : ''}`;
       await capture('.c3-guide-room', `channel-room.${suffix}`);
-      await run('find', 'role', 'button', 'click', '--name', lang === 'en' ? 'Room options' : '房间选项', '--exact');
+      await run('click', '[data-room-settings="friday"]');
+      await run('find', 'role', 'tab', 'click', '--name', lang === 'en' ? 'Invitation' : '邀请', '--exact');
       await run('wait', '.c3-invite-copy input');
-      await capture('.c3-room-panel:popover-open', `channel-invitation.${suffix}`);
+      await capture('.c3-settings-dialog[open]', `channel-invitation.${suffix}`);
       await run('press', 'Escape');
       await run('find', 'role', 'button', 'click', '--name', lang === 'en' ? 'Start sharing' : '开始分享', '--exact');
       await run('wait', '.c3-share-picker .lr-source-picker-list img');

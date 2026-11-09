@@ -1,6 +1,12 @@
-.c3-guide-room { width: min(780px, 100%); margin: 20px auto 0; border: 1px solid var(--line); border-radius: 24px; background: var(--paper); overflow: hidden; }
+.c3-guide-room { display: grid; grid-template-columns: 210px minmax(0, 1fr); width: min(980px, 100%); margin: 20px auto 0; border: 1px solid var(--line); border-radius: 24px; background: var(--paper); overflow: hidden; }
+.c3-guide-navigation { min-width: 0; padding: 16px 8px; background: var(--wall); border-inline-end: 1px solid var(--line); }
+.c3-guide-main { min-width: 0; }
 .c3-guide-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 18px 24px; border-bottom: 1px solid var(--line); }
 .c3-guide-title { display: flex; align-items: center; gap: 8px; }
-.c3-guide-room > .c3-conversation { height: 300px; min-height: 0; }
+.c3-guide-main > .c3-conversation { height: 300px; min-height: 0; }
 .c3-guide-room .c3-room-start { display: none; }
 .c3-guide-room .c3-voice-dock { margin: 0; border-radius: 0; border-inline: 0; border-bottom: 0; }
+@media (max-width: 700px) {
+  .c3-guide-room { grid-template-columns: minmax(0, 1fr); }
+  .c3-guide-navigation { border-inline-end: 0; border-bottom: 1px solid var(--line); }
+}
