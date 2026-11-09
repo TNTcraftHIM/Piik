@@ -736,6 +736,29 @@ Product integration still needs the existing worker boundary to carry explicit
 restrictions and feedback, other codec/platform actuation, and the shared quality
 setting. The experiments do not implement the full WebRTC resource controller.
 
+Keep adaptation inside each existing encoder worker. The Windows child already
+receives its requested `Settings` through `Start`; it can consume QP/drop feedback
+and apply restrictions locally without new per-frame IPC or another controller in
+the parent. Bitrate retains its current transport-budget command. Ordinary resize
+retains the policy's restriction counters; child replacement starts a fresh policy
+and parser with the existing source clock, latest bitrate and independent-AU gate.
+
+Hardware H264 actuation also passed with two actual Windows MFT instances: changing
+one output's size/cadence retained its sibling, source timestamps and independently
+decodable transition frames. The common H264 reader supplied QP for all captured
+synthetic AUs. Android's existing Rust encoding owner passed a separate synthetic
+AHardwareBuffer/MediaCodec control: size changes replace only its `Codec`, while
+FPS-only changes reuse `Cadence` and reset that output's admission-rate sample.
+The source and sibling stay owned in place. The Android control used the existing
+default bitrate mode without the App/JVM capability query; it is not CBR or full
+App acceptance. Neither control needed a new queue-clearing rule or IDR gate.
+
+Before connecting the shared preference, complete its existing `balanced`
+meaning and carry the sharer's intent through publication metadata to derived
+encodings. Decoder format and transport counters are not preference authorities.
+Verify the integrated child-process path; the inner-worker experiments alone do
+not establish automatic adaptation through App, relay and source replacement.
+
 Decoded-source FPS is a format hint, not an admission limit. VP8 initializes it
 to 30 even for a 60 fps source; source timing preserves actual presentation
 timestamps. Any future max-FPS restriction must be explicit and per encoding,

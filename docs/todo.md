@@ -80,9 +80,10 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **Native quality preference.** Integrate per-encoding feedback and explicit
-  size/cadence restrictions through the existing worker boundary, complete the
-  other codec/platform adapters, and connect the shared preference. The
+- [ ] **Native quality preference.** Integrate feedback and restrictions inside
+  existing encoder workers; complete `balanced`, propagate the source preference
+  to derived outputs, and connect the shared control. Verify the real child-process
+  path and remaining platform adapters. The
   [implementation boundary](./research/channel-network-design.md#implementation-boundary)
   owns the isolated VP8 policy proof and its slow recovery tradeoff. Keep current
   behavior until the complete mechanism is accepted; do not substitute encoder
