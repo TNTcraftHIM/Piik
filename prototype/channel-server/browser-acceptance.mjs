@@ -61,6 +61,13 @@ async function browser(index, ...args) {
   return result.data;
 }
 const { evaluate, until, captureProbe, hook, action, view, picture, playing, progressing, publishScreen, capturedScreen, sample, audioProgressing, assertNoError } = fixture(browser);
+const voicePlayback = (index, publications, retain = false) => evaluate(index,
+  `${JSON.stringify(publications)}.map(id => window.__channelProbe.voicePlayback(id, ${retain}))`);
+const nativeVoicePlaying = values => values.length > 0 && values.every(value =>
+  value.current.some(player => !player.hidden && !player.paused && !player.muted && player.volume === 1));
+const voicePlayersRetired = values => values.length > 0 && values.every(value =>
+  value.retained.length > 0 && value.retained.every(player => player.paused && !player.bound && !player.connected)
+  && value.current.every(player => player.paused || player.muted || player.volume === 0));
 const dropSignaling = index => evaluate(index,
   "window.__channelProbe.sockets.filter(socket => socket.readyState === WebSocket.OPEN && new URL(socket.url).pathname === '/prototype/channel').forEach(socket => socket.close())");
 
@@ -114,6 +121,13 @@ async function senderAllocationFailure() {
       const report = [...(await receiver.getStats()).values()].find(report => report.type === 'inbound-rtp' && report.kind === 'video');
       return report ? { id: report.id, frames: report.framesDecoded ?? 0 } : null;
     };
+    const senderSnapshot = () => new Map(left.pc.getSenders().filter(sender => sender.track)
+      .map(sender => [sender, sender.track]));
+    const retainsOnly = expected => {
+      const actual = senderSnapshot();
+      return actual.size === expected.size && [...expected].every(([sender, track]) =>
+        actual.get(sender) === track && track.readyState === 'live');
+    };
     const voice = { kind: 'voice', stream: new MediaStream([audio]) };
     try {
       left = new ChannelTransport(options(false, signal => right.signal(signal)));
@@ -122,14 +136,35 @@ async function senderAllocationFailure() {
       left.setOutgoing(new Map([['voice', voice]]));
       await wait('voice and base channels did not establish', async () => inputs.has('voice') && left.isBaseReady() && right.isBaseReady() && (await stats()).every(value => value.packets > 0) && (await stats()).length >= 2);
       const before = await stats();
-      left.setOutgoing(new Map([['voice', voice], ['failed-screen', { kind: 'screen', stream: new MediaStream([video, audio]) }]]));
-      check(errors.length === 1 && errors[0] === 'InvalidAccessError', 'Chrome must reject the duplicate audio track itself');
+      const voiceSenders = senderSnapshot(), allocated = [];
+      check(voiceSenders.size === 1, 'the existing voice owns one live sender');
+      const allocate = left.pc.addTransceiver.bind(left.pc);
+      let rejectedAllocations = 0;
+      left.pc.addTransceiver = (track, options) => {
+        if (allocated.length === 1) {
+          left.pc.addTransceiver = allocate;
+          rejectedAllocations += 1;
+          throw new DOMException('Controlled second screen sender allocation failure', 'OperationError');
+        }
+        const transceiver = allocate(track, options);
+        allocated.push({ sender: transceiver.sender, track: transceiver.sender.track });
+        return transceiver;
+      };
+      try {
+        left.setOutgoing(new Map([['voice', voice], ['failed-screen', { kind: 'screen', stream: new MediaStream([video, audio]) }]]));
+      } finally { left.pc.addTransceiver = allocate; }
+      check(rejectedAllocations === 1 && errors.length === 1 && errors[0] === 'OperationError', 'the second screen allocation fails once at the current platform boundary');
+      check(allocated.length === 1, 'one screen sender was allocated before the failure');
       check(failures.length === 1 && failures[0] === 'failed-screen', 'only the failed flow reports allocation failure');
-      check(left.pc.getSenders().filter(sender => sender.track).length === 1 && left.pc.getSenders().some(sender => sender.track === audio), 'partial video sender was not rolled back');
-      check([audio, video, secondVideo].every(track => track.readyState === 'live'), 'allocation failure stopped a source track');
+      check(retainsOnly(voiceSenders) && allocated.every(({ sender, track }) => !sender.track
+        && track.readyState === (track.kind === 'video' ? 'ended' : 'live')),
+        'the partial sender was not rolled back or its track ownership was violated');
+      check([audio, video, secondVideo, candidateVideo].every(track => track.readyState === 'live'), 'allocation failure stopped a source track');
       const failed = { kind: 'screen', stream: new MediaStream([video]) };
+      const afterAllocation = left.pc.getSenders();
       for (let repeat = 0; repeat < 3; repeat++) left.setOutgoing(new Map([['voice', voice], ['failed-screen', failed]]));
-      check(errors.length === 1 && left.pc.getSenders().filter(sender => sender.track).length === 1, 'same failed lease was allocated again');
+      check(errors.length === 1 && retainsOnly(voiceSenders) && left.pc.getSenders().length === afterAllocation.length,
+        'same failed lease was allocated again');
       const good = { kind: 'screen', stream: new MediaStream([secondVideo]) };
       left.setOutgoing(new Map([['voice', voice], ['failed-screen', failed], ['good-screen', good]]));
       await wait('a later legal screen did not receive media', async () => (await videoSample('good-screen'))?.frames > 1);
@@ -146,7 +181,7 @@ async function senderAllocationFailure() {
 
       await wait('pair did not finish its existing negotiation', () => left.pc.signalingState === 'stable' && right.pc.signalingState === 'stable');
       const liveVideo = await videoSample('new-screen'), liveAudio = await stats();
-      const stableSenders = left.pc.getSenders().filter(sender => sender.track);
+      const stableSenders = senderSnapshot();
       const install = left.pc.setLocalDescription.bind(left.pc);
       let rejectedOffers = 0;
       left.pc.setLocalDescription = async (...args) => {
@@ -157,12 +192,17 @@ async function senderAllocationFailure() {
       const candidate = { kind: 'screen', stream: new MediaStream([candidateVideo]) };
       const offered = new Map([['voice', voice], ['good-screen', good], ['new-screen', failed], ['failed-offer', candidate]]);
       left.setOutgoing(offered);
+      const candidateSenders = [...senderSnapshot()].filter(([sender, track]) => stableSenders.get(sender) !== track);
+      check(candidateSenders.length === 1 && candidateSenders[0][1].kind === 'video', 'the candidate owns a distinct allocated video sender before its offer');
       await wait('the unnegotiated candidate did not report its own failure', () => failures.includes('failed-offer'));
       check(rejectedOffers === 1 && !failures.includes('pair'), 'a local offer failure retired the established pair');
-      check(stableSenders.every(sender => left.pc.getSenders().includes(sender) && sender.track?.readyState === 'live'), 'an established sender was retired with the candidate');
-      check(!left.pc.getSenders().some(sender => sender.track === candidateVideo) && candidateVideo.readyState === 'live', 'failed candidate resource was retained or its source stopped');
+      check(retainsOnly(stableSenders), 'an established sender was retired with the candidate');
+      check(candidateSenders.every(([sender, track]) => !sender.track && track.readyState === 'ended')
+        && candidateVideo.readyState === 'live', 'failed candidate sender or its clone was retained, or its source stopped');
+      const afterOffer = left.pc.getSenders();
       for (let repeat = 0; repeat < 3; repeat++) left.setOutgoing(offered);
-      check(!left.pc.getSenders().some(sender => sender.track === candidateVideo), 'unchanged rejected demand was allocated again');
+      check(retainsOnly(stableSenders) && left.pc.getSenders().length === afterOffer.length,
+        'unchanged rejected demand was allocated again');
       await left.sendData('control', 'after-offer-failure');
       await wait('existing picture, voice or base stopped after the rejected offer', async () => {
         const next = await videoSample('new-screen');
@@ -173,7 +213,9 @@ async function senderAllocationFailure() {
       left.setOutgoing(offered);
       await wait('a later real media request could not negotiate', async () => (await videoSample('recovered-screen'))?.frames > 1);
       check(failures.length === 2 && left.pc.connectionState === 'connected' && right.pc.connectionState === 'connected', 'retry damaged the established pair');
-      return { passed: true, error: errors[0], failures, before, after: await stats(), baseMessage: true,
+      check([audio, video, secondVideo, candidateVideo].every(track => track.readyState === 'live'), 'recovery stopped an original source track');
+      return { passed: true, error: errors[0], rejectedAllocations, rolledBackSenders: allocated.length,
+        failures, before, after: await stats(), baseMessage: true,
         retiredLeaseReallocated: true, localOffer: { rejectedOffers, oldPicture: liveVideo, resumed: await videoSample('recovered-screen') } };
     } finally {
       left?.close(); right?.close(); console.warn = warn; clearInterval(timer);
@@ -193,6 +235,7 @@ async function branchShortcut(initial) {
   // Fill the host's two base branches before admitting the downstream viewer.
   for (const index of [source, relay]) {
     await browser(index, 'click', '.c3-room-link[aria-label="Branch shortcut"]');
+    await action(index, `joinVoice(${JSON.stringify(room)}, true)`);
     await until('host installs its initial base branch', () => view(index), value =>
       value.state.pairs.some(pair => pair.peerId === initial[host].sessionId && pair.rooms.includes(room)));
     await until('base branch opens before the next admission', () => sample(index), value =>
@@ -202,9 +245,10 @@ async function branchShortcut(initial) {
     await evaluate(first, `window.__channelProbe.blockPeer(${JSON.stringify(initial[second].sessionId)})`);
   }
   await browser(viewer, 'click', '.c3-room-link[aria-label="Branch shortcut"]');
+  await action(viewer, `joinVoice(${JSON.stringify(room)}, true)`);
   await until('viewer reaches the room through its internal relay', () => view(viewer), value =>
     value.state.pairs.some(pair => pair.peerId === initial[relay].sessionId && pair.rooms.includes(room)), 35_000);
-  for (const index of [viewer, source]) await action(index, `joinVoice(${JSON.stringify(room)})`);
+  for (const index of [viewer, source]) await action(index, `setMuted(${JSON.stringify(room)}, false)`);
   const viewerVoice = (await view(viewer)).state.publications.find(publication => publication.sessionId === initial[viewer].sessionId && publication.kind === 'voice' && publication.roomId === room).id;
   const sourceVoice = (await view(source)).state.publications.find(publication => publication.sessionId === initial[source].sessionId && publication.kind === 'voice' && publication.roomId === room).id;
   await audioProgressing(viewer, sourceVoice); await audioProgressing(source, viewerVoice);
@@ -391,7 +435,7 @@ async function branchShortcut(initial) {
     }
   } finally {
     await evaluate(source, 'window.__channelProbe.captureAudio(false)');
-    for (const index of [viewer, source]) await action(index, `leaveVoice(${JSON.stringify(room)})`);
+    for (const index of [viewer, source, relay]) await action(index, `leaveVoice(${JSON.stringify(room)})`);
     for (const [first, second] of [[source, viewer], [viewer, source]]) {
       await evaluate(first, `window.__channelProbe.unblockPeer(${JSON.stringify(initial[second].sessionId)})`);
     }
@@ -406,12 +450,16 @@ async function roomBase(initial) {
   // Host this fixture at its source so its two viewers have a known base path;
   // cross-room lease reuse must not depend on an optional quality-based shortcut.
   const pictureRoom = await action(1, "createRoom({name:'Picture room',icon:'couch',access:'public',hidden:false})");
-  const source = await capturedScreen(1, pictureRoom);
+  await evaluate(1, 'window.__channelProbe.captureAudio(true)');
+  let source;
+  try { source = await capturedScreen(1, pictureRoom); }
+  finally { await evaluate(1, 'window.__channelProbe.captureAudio(false)'); }
   await action(2, `watch(${JSON.stringify(source)})`);
   await playing(2, source);
   const originalPair = (await view(2)).state.pairs.find(pair => pair.incoming.some(flow => flow.publicationId === source)).id;
   const room = await action(1, "createRoom({name:'Connected room',icon:'couch',access:'public',hidden:false})");
   for (const index of [1, 2]) await browser(index, "click", '.c3-room-link[aria-label="Connected room"]');
+  for (const index of [1, 2]) await action(index, `joinVoice(${JSON.stringify(room)}, true)`);
   await until("base reuses the existing screen connection", () => view(2), value =>
     value.state.pairs.some(pair => pair.id === originalPair && pair.rooms.includes(room)));
   await until("room DataChannel opens", () => sample(2), value => value.channels.some(channel => channel.state === "open"));
@@ -429,10 +477,11 @@ async function roomBase(initial) {
   await until("the old direct carriers retire before the unreachable-edge trial", () => Promise.all([1, 3].map(view)), values =>
     values.every(value => value.state.pairs.every(pair => !retiredPairs.includes(pair.id))));
   await browser(3, "click", '.c3-room-link[aria-label="Connected room"]');
+  await action(3, `joinVoice(${JSON.stringify(room)}, true)`);
   await until("D reaches its room through C after B-D fails", () => view(3), value =>
     value.state.pairs.some(pair => pair.peerId === initial[2].sessionId && pair.rooms.includes(room)), 35_000);
-  await action(1, `joinVoice(${JSON.stringify(room)}, true)`);
-  await action(3, `joinVoice(${JSON.stringify(room)})`);
+  await action(2, `leaveVoice(${JSON.stringify(room)})`);
+  await action(3, `setMuted(${JSON.stringify(room)}, false)`);
   await until("voice crosses the base transit", () => sample(1), value =>
     value.inbound.some(report => report.kind === "audio" && report.samples > 0 && report.energy > 0));
   const dVoice = (await view(3)).state.publications.find(value => value.sessionId === initial[3].sessionId && value.kind === "voice").id;
@@ -440,8 +489,8 @@ async function roomBase(initial) {
   assert(cTransit.state.pairs.some(pair => pair.incoming.some(flow => flow.publicationId === dVoice)));
   assert(cTransit.state.pairs.some(pair => pair.outgoing.some(flow => flow.publicationId === dVoice)));
   assert(!cTransit.state.subscriptions.includes(dVoice), "transit does not join voice or play it locally");
-  assert(await evaluate(2, "[...document.querySelectorAll('audio')].filter(audio => audio.srcObject).every(audio => audio.hidden && audio.muted)"),
-    "transit decoder consumers must remain silent and absent from local playback");
+  await until("transit voice decoder remains silent without a local listener", () => voicePlayback(2, [dVoice]), values =>
+    values[0].current.length > 0 && values[0].current.every(player => player.hidden && player.muted));
   await progressing(2, source);
 
   const basePicture = await capturedScreen(3, room);
@@ -454,21 +503,38 @@ async function roomBase(initial) {
   await action(1, `setMuted(${JSON.stringify(room)}, false)`);
   await until("reverse voice crosses the same base edges", () => sample(3), value =>
     value.inbound.some(report => report.kind === "audio" && report.samples > 0 && report.energy > 0));
-  const voicePairIds = (await view(1)).state.pairs.map(pair => pair.id).sort();
-  await action(1, `setDeafened(${JSON.stringify(room)}, true)`);
-  await until("deafen only mutes local voice", () => evaluate(1,
-    "[...document.querySelectorAll('audio')].filter(audio => audio.srcObject).map(audio => audio.muted)"), value => value.length > 0 && value.every(Boolean));
-  assert.deepEqual((await view(1)).state.pairs.map(pair => pair.id).sort(), voicePairIds);
-  await action(1, `setDeafened(${JSON.stringify(room)}, false)`);
   await browser(2, "click", '.c3-room-link[aria-label="Living room"]');
   assert((await view(2)).state.pairs.some(pair => pair.rooms.includes(room)), "leaving the view preserves necessary transit");
   await progressing(2, source);
 
   await browser(0, "click", '.c3-room-link[aria-label="Connected room"]');
+  await action(0, `joinVoice(${JSON.stringify(room)}, true)`);
   await until("A becomes an available base branch", () => view(0), value => value.state.pairs.some(pair => pair.rooms.includes(room)));
   await action(0, `watch(${JSON.stringify(source)})`);
   await playing(0, source);
   const survivingPair = (await view(0)).state.pairs.find(pair => pair.incoming.some(flow => flow.publicationId === source)).id;
+  const localVoice = (await view(1)).state.publications.find(publication => publication.roomId === room
+    && publication.kind === 'voice' && publication.sessionId === initial[1].sessionId).id;
+  const listenedVoices = [dVoice, localVoice];
+  await until("listener has actual native voice playback before deafen", () => voicePlayback(0, listenedVoices), nativeVoicePlaying);
+  await voicePlayback(0, listenedVoices, true);
+  const screenSound = async () => (await evaluate(0, `window.__channelProbe.screen(${JSON.stringify(source)})`)).inputs
+    .find(input => input.selected);
+  const soundingPicture = await until("another room's picture sound is playing", screenSound,
+    input => input?.audio.length > 0 && !input.paused && !input.muted && input.volume === 1);
+  const voicePairIds = (await view(0)).state.pairs.map(pair => pair.id).sort();
+  await action(0, `setDeafened(${JSON.stringify(room)}, true)`);
+  await until("deafen retires the retained local voice players", () => voicePlayback(0, listenedVoices), voicePlayersRetired);
+  await Promise.all([audioProgressing(0, dVoice), audioProgressing(0, localVoice), audioProgressing(1, dVoice), audioProgressing(3, localVoice)]);
+  const deafenedPicture = await screenSound();
+  assert.equal(deafenedPicture.elementId, soundingPicture.elementId, "deafen keeps the other room's actual picture player");
+  assert.deepEqual(deafenedPicture.audioObjects, soundingPicture.audioObjects, "deafen keeps the other room's sound track");
+  assert(!deafenedPicture.paused && !deafenedPicture.muted && deafenedPicture.volume === 1,
+    "deafen does not silence another room's picture sound");
+  await audioProgressing(0, source); await progressing(0, source);
+  assert.deepEqual((await view(0)).state.pairs.map(pair => pair.id).sort(), voicePairIds, "local deafen retains media routing transports");
+  await action(0, `setDeafened(${JSON.stringify(room)}, false)`);
+  await until("undeafen installs live native voice players again", () => voicePlayback(0, listenedVoices), nativeVoicePlaying);
 
   // The media edge must time out independently of its connected room/voice transport.
   const stalledPicture = await capturedScreen(1, room);
@@ -538,34 +604,41 @@ async function roomBase(initial) {
   await action(3, `stopScreen(${JSON.stringify(basePicture)})`);
 
   for (const index of [1, 3]) await action(index, `leaveVoice(${JSON.stringify(room)})`);
-  await until("last voice stops without closing base connections", () => view(3), value =>
-    !value.state.voice.some(member => member.roomId === room) && value.state.pairs.some(pair => pair.rooms.includes(room)));
-  for (const index of [0, 3]) await browser(index, "click", '.c3-room-link[aria-label="Living room"]');
-  await until("last room demand releases only base leases", () => view(0), value =>
+  await until("remaining listener retains the base after the speakers leave", () => view(0), value =>
+    value.state.voice.some(member => member.roomId === room && member.sessionId === value.sessionId)
+    && value.state.pairs.some(pair => pair.rooms.includes(room)));
+  await action(0, `leaveVoice(${JSON.stringify(room)})`);
+  await until("last media demand releases only base leases", () => view(0), value =>
     !value.state.pairs.some(pair => pair.rooms.includes(room)) && value.state.pairs.some(pair => pair.id === survivingPair && pair.incoming.some(flow => flow.publicationId === source)));
+  for (const index of [0, 3]) await browser(index, "click", '.c3-room-link[aria-label="Living room"]');
   await progressing(0, source);
   for (const index of [0, 1, 3, 4]) await action(index, 'browse("")');
   await action(1, `stopScreen(${JSON.stringify(source)})`);
   await until("last physical lease closes the pair", () => view(0), value => !value.state.pairs.some(pair => pair.id === survivingPair));
   for (const index of [0, 1, 3]) await assertNoError(index, "room base lifecycle");
   await writeFile(join(output, "base-result.json"), JSON.stringify({ passed: true, mediaPrepare, branchShortcuts,
-    scenarios: ["room entry without capture", "media/base transport reuse", "unreachable direct edge",
+    scenarios: ["listen-only demand without capture", "media/base transport reuse", "unreachable direct edge",
       "picture startup through non-viewing base transit", "picture recovery after transit departure",
       "bidirectional voice through a non-listener", "deafen keeps routes", "view change preserves transit",
       "connected video without RTP times out without retiring base or voice", "failed DataChannel repairs voice without closing healthy RTP", "retired transit leaves independently",
-      "repair preserves another room's picture", "voice stop keeps base", "last lease retirement",
+      "repair preserves another room's picture", "listener retains base after speakers leave", "last demand retirement",
       "internal relay shadow lineage on a shared pair", "all watcher proofs required within their finite validity",
       "watcher change cancels the shadow cohort", "warm branch commit preserves playback and forwarding resources"] }, null, 2));
   console.log("Room DataChannels, bidirectional voice transit and shared media leases passed real Browser acceptance");
 }
 
 async function roomOwner(initial, serverRoom) {
-  await action(0, `sendMessage(${JSON.stringify(serverRoom)}, 'Server room through its native peer')`);
+  for (const index of [0, 2]) await action(index, `browse(${JSON.stringify(serverRoom)})`);
+  await until("both Server conversation readers are installed", () => Promise.all([0, 2].map(view)), values =>
+    values.every(value => value.state.channel.rooms.some(room => room.id === serverRoom && room.reading)));
+  await action(0, `sendMessage(${JSON.stringify(serverRoom)}, 'Server room through the domain WebSocket')`);
   await action(0, `loadLatestHistory(${JSON.stringify(serverRoom)})`);
   const serverWS = (await sample(0)).conversationWS[serverRoom];
-  assert.equal(serverWS, undefined, "Server room conversation uses the same peer carrier as a Browser room");
-  await until("another reader receives the Server's peer confirmation", () => evaluate(2,
-    `${hook}.snapshot().messagesByRoom[${JSON.stringify(serverRoom)}]`), messages => messages?.some(message => message.text === "Server room through its native peer"));
+  assert(serverWS?.sent.chat > 0 && serverWS.received.chat > 0 && serverWS.sent.history > 0 && serverWS.received.history > 0,
+    "Server room chat and signed history use the domain WebSocket");
+  await until("another current reader receives the Server's signed confirmation", () => evaluate(2,
+    `${hook}.snapshot().messagesByRoom[${JSON.stringify(serverRoom)}]`), messages => messages?.some(message => message.text === "Server room through the domain WebSocket"));
+  assert.equal((await view(0)).state.pairs.length, 0, "confirmed conversation needs no peer transport");
   const room = await action(1, "createRoom({name:'Browser-owned room',icon:'couch',access:'private',hidden:true,password:'browser-room-password'})");
   const invite = await action(1, `createRoomInvite(${JSON.stringify(room)})`);
   await action(2, "close()");
@@ -575,12 +648,18 @@ async function roomOwner(initial, serverRoom) {
   await until("fresh user joins the Browser-owned private room", () => view(2), value => value.connection === "connected" &&
     value.state.channel.rooms.some(entry => entry.id === room && entry.authorized));
   await action(1, `browse(${JSON.stringify(room)})`);
+  await action(2, `browse(${JSON.stringify(room)})`);
+  await until("both Browser conversation readers are installed", () => Promise.all([1, 2].map(view)), values =>
+    values.every(value => value.state.channel.rooms.some(entry => entry.id === room && entry.reading)));
   await action(2, `sendMessage(${JSON.stringify(room)}, 'Confirmed on B')`);
   await until("owner receives confirmed room history", () => evaluate(1,
     `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}]`), value => value?.some(message => message.text === "Confirmed on B"));
   await action(2, `loadLatestHistory(${JSON.stringify(room)})`);
   const initialHostedWS = await Promise.all([1, 2].map(async index => (await sample(index)).conversationWS[room] ?? null));
-  assert.deepEqual(initialHostedWS, [null, null], "Browser room chat and history never traverse the domain WebSocket");
+  assert(initialHostedWS[0]?.received.chat > 0 && initialHostedWS[0].sent.chat > 0
+    && initialHostedWS[1]?.sent.chat > 0 && initialHostedWS[1].received.chat > 0
+    && initialHostedWS[1].sent.history > 0 && initialHostedWS[1].received.history > 0,
+    "Browser owner and participant exchange signed conversation through the domain WebSocket");
 
   await evaluate(1, `(() => {
     const conversation = ${hook}.session.conversation, receive = conversation.receive;
@@ -597,15 +676,16 @@ async function roomOwner(initial, serverRoom) {
     await evaluate(2, `(async () => {
       const session = ${hook}.session, value = ${hook}.snapshot();
       const entry = value.state.channel.rooms.find(room => room.id === ${JSON.stringify(room)});
-      const { runtime, signer } = await session.conversation.identity;
+      const { signer } = await session.conversation.identity;
       if (value.sessionId === entry.delivery.hostSessionId) throw new Error('Expected ordinary participant');
+      const requestId = crypto.randomUUID();
       const packet = JSON.parse(signer.sign(value.sessionId, JSON.stringify({
         roomId: entry.id, bindingId: entry.delivery.bindingId, sender: value.sessionId,
-        recipient: entry.delivery.hostSessionId, requestId: crypto.randomUUID(),
+        recipient: entry.delivery.hostSessionId, requestId,
         record: { type: 'live_message', message: { id: crypto.randomUUID(), seq: 2,
           userId: entry.creatorId, text: ${JSON.stringify(forgedText)}, time: Date.now(), attachments: [] } }
       })));
-      await session.conversation.deliver(packet, runtime);
+      session.write({ type: 'conversation', packet, requestId });
       return true;
     })()`);
     rejectedReply = await until("room owner rejects a participant-signed fake reply", () => evaluate(1,
@@ -690,11 +770,34 @@ async function roomOwner(initial, serverRoom) {
       return true;
     })()`);
   }
-  await action(2, `loadLatestHistory(${JSON.stringify(room)})`);
-  const page = await evaluate(2, `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}].map(message => message.text.length)`);
-  assert.deepEqual(page, Array(100).fill(2000), "a full valid history page arrives as individual signed DataChannel records and one end marker");
+  // The host pages 50 retained messages at a time, independently of the larger
+  // reading window. Keep the 100-message payload trial and read both pages.
+  const historyPages = [];
+  for (const method of ['loadLatestHistory', 'loadHistory']) {
+    await evaluate(2, 'window.__channelProbe.clearProtocol()');
+    await action(2, `${method}(${JSON.stringify(room)})`);
+    const records = (await sample(2)).protocol.filter(event => event.direction === 'received'
+      && event.type === 'conversation' && event.room === room);
+    const end = records.findLast(event => event.result === 'history_end');
+    assert(end, 'a signed history request completes with its own END record');
+    const pageRecords = records.filter(event => event.request === end.request);
+    assert.equal(pageRecords.filter(event => event.result === 'history_message').length, 50,
+      'each maximum history page delivers all 50 signed message records');
+    assert.equal(pageRecords.filter(event => event.result === 'message_reactions').length, 50,
+      'each history message retains its signed reaction snapshot');
+    assert.equal(pageRecords.filter(event => event.result === 'history_end').length, 1);
+    assert.equal(end.historyCount, 50, 'END confirms the complete page count');
+    historyPages.push({ requestId: end.request, messages: end.historyCount, reactionSnapshots: 50, endMarkers: 1 });
+  }
+  const page = await evaluate(2, `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}].map(message => ({ seq: message.seq, characters: message.text.length }))`);
+  assert.deepEqual(page.map(message => message.characters), Array(100).fill(2000),
+    'two complete signed pages retain all 100 maximum-size test messages');
+  assert(page.every((message, index) => index === 0 || message.seq === page[index - 1].seq + 1),
+    'history pagination preserves every confirmed sequence without gaps or duplicates');
   const hostedWS = await Promise.all([0, 1, 2].map(async index => (await sample(index)).conversationWS[room] ?? null));
-  assert.deepEqual(hostedWS, [null, null, null], "hosted chat and history stay off WebSocket throughout owner recovery and paging");
+  assert(hostedWS.every(counts => counts && counts.sent.chat + counts.received.chat > 0
+    && counts.sent.history + counts.received.history > 0),
+    "current readers retain domain-carried conversation through owner recovery and paging");
   await browser(1, "click", '.c3-room-link[aria-label="Browser-owned room"]');
   for (const index of [0, 1, 2]) await assertNoError(index, "normal Browser room lifecycle");
   await browser(1, "screenshot", join(output, "browser-owned-room.png"), "--full");
@@ -703,7 +806,8 @@ async function roomOwner(initial, serverRoom) {
       "cross-room shared transport", "room voice", "owner signaling resume", "scoped shutdown", "retained paused directory",
       "owner reopen without capture revival", "maximum valid history page", "participant-signed fake reply rejected", "normal chat after rejected reply"],
     conversationTransport: { serverRoomWS: serverWS, hostedRoomWS: hostedWS, rejectedReply },
-    domainMessageCopies: 0, maximumHistoryPage: { messages: 100, charactersPerMessage: 2000, transport: "signed DataChannel records" } }, null, 2));
+    domainMessageCopies: 0, maximumHistoryPage: { messagesPerPage: 50, retainedMessages: 100, charactersPerMessage: 2000,
+      pages: historyPages, transport: "signed WebSocket records" } }, null, 2));
   console.log("Browser owns policy/history and room activities; domain only retains its directory; unrelated media survives owner shutdown");
 }
 
@@ -722,15 +826,20 @@ async function lifecycle(roomId) {
   await action(1, `watch(${JSON.stringify(otherScreen)})`);
   await playing(1, otherScreen);
   await until("voice receives actual samples", () => sample(1), value => value.inbound.some(row => row.kind === "audio" && row.samples > 0));
-  const sameSession = (await view(1)).sessionId;
+  const voiceBeforeOffline = await view(1);
+  const offlineVoices = voiceBeforeOffline.state.publications.filter(publication => publication.kind === 'voice'
+    && publication.roomId === roomId && publication.sessionId !== voiceBeforeOffline.sessionId).map(publication => publication.id);
+  await until("local voice is actually playing before the offline stop", () => voicePlayback(1, offlineVoices), nativeVoicePlaying);
+  await voicePlayback(1, offlineVoices, true);
+  const sameSession = voiceBeforeOffline.sessionId;
   await browser(1, "set", "offline", "on");
   await dropSignaling(1);
   await until("signaling is offline", () => view(1), value => value.connection === "reconnecting");
   await action(1, `unwatch(${JSON.stringify(otherScreen)})`);
   await action(1, `leaveVoice(${JSON.stringify(roomId)})`);
   await until("offline stop releases microphone and playback", async () => ({ state: await view(1),
-    capture: await sample(1), audio: await evaluate(1, "[...document.querySelectorAll('audio')].filter(audio => audio.srcObject && !audio.paused && !audio.muted).length") }), value =>
-    value.capture.captures.every(track => track.state === "ended") && value.audio === 0 &&
+    capture: await sample(1), audio: await voicePlayback(1, offlineVoices) }), value =>
+    value.capture.captures.every(track => track.state === "ended") && voicePlayersRetired(value.audio) &&
     !value.state.state.subscriptions.includes(otherScreen) && !value.state.state.voice.some(member => member.sessionId === sameSession));
   await until("offline unwatch removes the local player", () => picture(1, otherScreen), value => value.frames === 0 && value.time === 0);
   await browser(1, "set", "offline", "off");
@@ -1157,12 +1266,18 @@ try {
     `joinVoice(${JSON.stringify(roomId)}, false, await navigator.mediaDevices.getUserMedia({audio:true}))`);
   await until("real voice audio energy", () => evaluate(4, "window.__channelProbe.sample()"),
     sample => sample.inbound.some(row => row.kind === "audio" && row.samples > 0 && row.energy > 0));
+  const voiceView = await view(4);
+  const playedVoices = voiceView.state.publications.filter(publication => publication.kind === 'voice'
+    && publication.roomId === roomId && publication.sessionId !== voiceView.sessionId).map(publication => publication.id);
+  await until("actual native voice players are audible before deafen", () => voicePlayback(4, playedVoices), nativeVoicePlaying);
+  await voicePlayback(4, playedVoices, true);
   const voicePairs = (await view(4)).state.pairs.map(pair => pair.id).sort();
   await action(4, `setDeafened(${JSON.stringify(roomId)}, true)`);
-  await until("deafen mutes local voice sinks", () => evaluate(4,
-    "[...document.querySelectorAll('audio')].filter(audio => audio.srcObject).map(audio => audio.muted)"), values => values.length > 0 && values.every(Boolean));
+  await until("deafen retires the actual local voice players", () => voicePlayback(4, playedVoices), voicePlayersRetired);
+  await Promise.all(playedVoices.map(publication => audioProgressing(4, publication)));
   assert.deepEqual((await view(4)).state.pairs.map(pair => pair.id).sort(), voicePairs, "local deafen must retain routing transports");
   await action(4, `setDeafened(${JSON.stringify(roomId)}, false)`);
+  await until("undeafen restores actual native voice playback", () => voicePlayback(4, playedVoices), nativeVoicePlaying);
   console.log("Real voice samples arrive alongside picture sharing");
 
   for (const index of [1, 0, 3]) await action(index, `watch(${JSON.stringify(primaryPublication)})`);

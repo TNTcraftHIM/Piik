@@ -162,7 +162,7 @@ test("authenticated users, signed conversation and selective source ownership", 
   assert.notEqual(returning.welcome.sessionId, friend.welcome.sessionId, "another page is another endpoint");
   assert.equal((await returning.request({ type: "browse", roomId, active: true })).type, "ack");
   assert.equal((await returning.request({ type: "history", roomId })).type, "error",
-    "history belongs to the room's authenticated peer path");
+    "history requires a signed conversation addressed to the actual room host");
 
   const stolen = await connect(t, { credential: other.welcome.credential, sessionId: friend.welcome.sessionId });
   if (stolen.welcome.type === "welcome") {

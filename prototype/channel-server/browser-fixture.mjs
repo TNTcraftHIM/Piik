@@ -41,11 +41,16 @@ function captureProbe(name) {
     let videoStall = null;
     let retainedSource = null;
     let blockedOffers = 0;
+    const voicePlayers = new Map();
     const record = (direction, data) => {
       const event = JSON.parse(data);
-      const command = event.input?.action?.command;
-      const type = command?.type ?? ((event.output?.reply?.result?.type ?? event.result?.type) === 'history' ? 'history' : event.type);
-      const room = command?.roomId ?? event.roomId;
+      const conversation = event.type === 'conversation' ? JSON.parse(event.packet.payload) : undefined;
+      const command = conversation?.command ?? event.input?.action?.command;
+      const recordType = conversation?.record?.type;
+      const type = command?.type ?? (['confirmed', 'live_message'].includes(recordType) ? 'chat'
+        : ['history_message', 'history_end'].includes(recordType) ? 'history'
+        : (event.output?.reply?.result?.type ?? event.result?.type) === 'history' ? 'history' : event.type);
+      const room = conversation?.roomId ?? command?.roomId ?? event.roomId;
       if (room && (type === 'chat' || type === 'history')) {
         const counts = conversationWS[room] ??= { sent: { chat: 0, history: 0 }, received: { chat: 0, history: 0 } };
         counts[direction][type]++;
@@ -60,7 +65,7 @@ function captureProbe(name) {
         if (flowStates.length > 128) flowStates.shift();
       }
       const flowId = event.flowId ?? event.input?.action?.flowId;
-      protocol.push({ time: Date.now(), direction, type:event.type, room:event.roomId, request:event.requestId,
+      protocol.push({ time: Date.now(), direction, type:event.type, room, request:conversation?.requestId ?? event.requestId,
         flowId, publicationId: event.publicationId ?? command?.publicationId ?? flowBindings.get(flowId)?.publicationId,
         helperSessionId: event.helperSessionId ?? command?.helperSessionId,
         now: event.input?.now, nextRouteDeadline: event.output?.projection?.nextRouteDeadline,
@@ -68,7 +73,8 @@ function captureProbe(name) {
           ({ id, publicationId, sender, receiver, inputFlowId, selected })),
         action:event.input?.action?.type, revision:event.input?.revision ?? event.output?.revision,
         binding:event.bindingId ?? event.input?.bindingId ?? event.output?.bindingId,
-        result:event.result?.type ?? event.output?.reply?.result?.type,
+        result:recordType ?? event.result?.type ?? event.output?.reply?.result?.type,
+        historyCount: recordType === 'history_end' ? conversation.record.count : undefined,
         code:event.code ?? event.result?.code ?? event.output?.reply?.result?.code,
         pair:event.pairId, ready:event.ready, state: typeof event.state === 'string' ? event.state : event.input?.action?.state });
       if (protocol.length > 256) protocol.shift();
@@ -188,6 +194,19 @@ function captureProbe(name) {
     window.__channelProbe = { peers, sockets, captures, contexts,
       clearProtocol() { protocol.length = 0; },
       captureAudio(enabled) { captureAudio = enabled; },
+      voicePlayback(publicationId, retain = false) {
+        const session = window.__channelGate.session, snapshot = window.__channelGate.snapshot();
+        const tracks = [...(snapshot.streams.get(publicationId)?.getAudioTracks() ?? [])];
+        for (const peer of session.media.peers.values()) for (const flow of peer.plan.incoming) {
+          if (flow.publicationId === publicationId) tracks.push(...(peer.inputs.get(flow.id)?.stream.getAudioTracks() ?? []));
+        }
+        const players = [...document.querySelectorAll('audio')].filter(element => element.srcObject?.getAudioTracks()
+          .some(track => tracks.includes(track)));
+        if (retain) voicePlayers.set(publicationId, players.filter(element => !element.hidden && !element.muted && !element.paused));
+        const sample = element => ({ connected: element.isConnected, paused: element.paused,
+          bound: !!element.srcObject, muted: element.muted, hidden: element.hidden, volume: element.volume, time: element.currentTime });
+        return { current: players.map(sample), retained: (voicePlayers.get(publicationId) ?? []).map(sample) };
+      },
       async screenAudioSeparation(publicationId) {
         const stream = window.__channelGate.snapshot().streams.get(publicationId);
         if (!stream?.getAudioTracks().length) throw new Error('No received screen sound');

@@ -109,7 +109,6 @@ function installObserver() {
       const inbound = reports && [...reports.values()].find(report => report.type === "inbound-rtp" && report.kind === "video");
       return { attached: true, connection: value.connection, roomName: room?.name,
         hostMatches: room?.delivery?.hostSessionId === config.hostSessionId, reading: room?.reading,
-        nextHopMatches: room?.delivery?.nextHops[room.delivery.hostSessionId] === config.hostSessionId,
         base: first && { observedPcIndex: seen.indexOf(first) + 1, connection: first.pc.connectionState, ice: first.pc.iceConnectionState,
           current: active?.transport.pc === first.pc, selected: await selected(first.pc) },
         observedNativePcs: seen.filter(entry => entry.peerId === config.hostSessionId).length,
@@ -206,7 +205,8 @@ async function main() {
     }
     throw new Error(`deadline_${name}`);
   };
-  const baseReady = value => value.hostMatches && value.reading && value.nextHopMatches && value.base?.current
+  const readingReady = value => value.connection === "connected" && value.hostMatches && value.reading;
+  const baseReady = value => readingReady(value) && value.base?.current
     && value.base.connection === "connected" && value.base.selected?.channels.some(channel => channel.state === "open")
     && independentEgress(value.base.selected);
   try {
@@ -216,13 +216,11 @@ async function main() {
     result.browser = await evaluate("navigator.userAgent");
     await wait("room", value => value.connection === "connected" && value.hostMatches && value.roomName);
     await click(`.c3-room-link[aria-label=${JSON.stringify(last.roomName)}]`);
-    await wait("native-base", baseReady);
-    result.checks.nativeBase = true;
-    await wait("signed-history", value => baseReady(value) && value.historyComplete);
+    await wait("signed-history", value => readingReady(value) && value.historyComplete);
     result.checks.historyComplete = true;
     await command(["fill", ".c3-composer textarea", nonce]);
     await click('.c3-composer button[type="submit"]');
-    await wait("signed-chat", value => baseReady(value) && value.chatDraftCleared && Number.isSafeInteger(value.confirmationSeq) && value.confirmationSeq > 0);
+    await wait("signed-chat", value => readingReady(value) && value.chatDraftCleared && Number.isSafeInteger(value.confirmationSeq) && value.confirmationSeq > 0);
     result.checks.confirmationSeq = last.confirmationSeq;
     stage = "signed-history-readback";
     console.log(JSON.stringify({ stage, elapsedMs: Date.now() - start }));
@@ -231,6 +229,8 @@ async function main() {
     assert(readback.completed && readback.replaced && readback.received, "signed_history_readback_failed");
     await wait("native-publication", value => value.sourceMatches);
     await click(`.c3-monitor-offer[data-source-id=${JSON.stringify(config.publicationId)}] button`);
+    await wait("native-base", baseReady);
+    result.checks.nativeBase = true;
     let before;
     await wait("h264-picture", value => {
       const picture = value.picture;
