@@ -41,6 +41,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   const preparing = useRef<AbortController | null>(null);
   const chooser = useRef<HTMLInputElement>(null);
   const log = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const reading = useRef({ position: 0, following: true });
   const readingAnchor = useRef<{ room: string; message: string; offset: number } | null>(null);
   const draft = drafts[roomId] ?? "";
@@ -92,6 +93,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
       if (reading.current.following) node.scrollTop = node.scrollHeight;
     });
     observer.observe(node);
+    if (content.current) observer.observe(content.current);
     return () => { observer.disconnect(); };
   }, [roomId, hidden, floating, surfaceDocument]);
   function addFiles(incoming: File[]) {
@@ -127,40 +129,52 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
     setFileError("");
     setFilesByRoom(previous => ({ ...previous, [roomId]: (previous[roomId] ?? []).filter(value => value.id !== entry.id) }));
   }
-  return <section id="c3-chat" className="c3-conversation" hidden={hidden} aria-label={zh ? "房间聊天" : "Room chat"}>
+  return <section id="c3-chat" className="c3-conversation" hidden={hidden} aria-label={zh ? "房间聊天" : "Room chat"}
+    onDragOver={event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
+    onDrop={event => {
+      if (!event.dataTransfer.types.includes("Files")) return;
+      event.preventDefault(); addFiles([...event.dataTransfer.files]);
+    }}>
     <div className="c3-chat-heading"><Glyph name="chat" size={18} /><strong>{zh ? "聊天" : "Chat"}</strong>
       <span>{roomName}</span></div>
     <div className="c3-message-log" ref={log} role="log" aria-label={zh ? "消息" : "Messages"}
-      onScroll={event => { const node = event.currentTarget; reading.current = { position: node.scrollTop, following: node.scrollHeight - node.scrollTop - node.clientHeight < 60 }; }}>
-      {history?.hasMore && <div className="c3-history-more"><ChannelAction icon="arrowUp" quiet label={zh ? "更早的消息" : "Earlier messages"}
-        busy={loadingHistory} disabled={!available} onClick={() => {
-          const node = log.current;
-          if (node) {
-            const top = node.getBoundingClientRect().top;
-            const message = [...node.querySelectorAll<HTMLElement>("[data-message-id]")]
-              .find(element => element.getBoundingClientRect().bottom > top);
-            readingAnchor.current = message ? { room: roomId, message: message.dataset.messageId!, offset: message.getBoundingClientRect().top - top } : null;
-          }
-          const anchor = readingAnchor.current;
-          reading.current.following = false;
-          void onHistory(roomId).catch(() => {
-            if (readingAnchor.current === anchor) readingAnchor.current = null;
-          });
-        }} /></div>}
-      {!history?.hasMore && <ChannelRoomStart roomName={roomName} icon={roomIcon} canSend={canSend}
-        entry={!roomId ? entry ?? { kind: "entry" } : undefined}
-        empty={!messages.length && (!roomId || (!!history && !loadingHistory))} />}
-      {roomId && loadingHistory && !messages.length && <div className="c3-conversation-loading" role="status">
-        <Glyph name="loader" className="lr-spin" size={18} /><span>{zh ? "正在加载消息…" : "Loading messages…"}</span>
-      </div>}
-      {messages.map((message, index) => {
-        const previous = messages[index - 1];
-        const grouped = previous?.userId === message.userId && message.time - previous.time < 120_000;
-        const name = users.find(user => user.id === message.userId)?.name ?? (zh ? "用户" : "User");
-        return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name}
-          selfUserId={selfUserId} attachments={attachments} available={available}
-          reactionPending={isReactionPending(message.seq)} onReaction={onReaction} />;
-      })}
+      onScroll={event => {
+        const node = event.currentTarget, saved = reading.current;
+        // Content growth can emit scroll without the reader moving upward.
+        reading.current = { position: node.scrollTop, following: (saved.following && node.scrollTop >= saved.position)
+          || node.scrollHeight - node.scrollTop - node.clientHeight < 60 };
+      }}>
+      <div className="c3-message-content" ref={content}>
+        {history?.hasMore && <div className="c3-history-more"><ChannelAction icon="arrowUp" quiet label={zh ? "更早的消息" : "Earlier messages"}
+          busy={loadingHistory} disabled={!available} onClick={() => {
+            const node = log.current;
+            if (node) {
+              const top = node.getBoundingClientRect().top;
+              const message = [...node.querySelectorAll<HTMLElement>("[data-message-id]")]
+                .find(element => element.getBoundingClientRect().bottom > top);
+              readingAnchor.current = message ? { room: roomId, message: message.dataset.messageId!, offset: message.getBoundingClientRect().top - top } : null;
+            }
+            const anchor = readingAnchor.current;
+            reading.current.following = false;
+            void onHistory(roomId).catch(() => {
+              if (readingAnchor.current === anchor) readingAnchor.current = null;
+            });
+          }} /></div>}
+        {!history?.hasMore && <ChannelRoomStart roomName={roomName} icon={roomIcon} canSend={canSend}
+          entry={!roomId ? entry ?? { kind: "entry" } : undefined}
+          empty={!messages.length && (!roomId || (!!history && !loadingHistory))} />}
+        {roomId && loadingHistory && !messages.length && <div className="c3-conversation-loading" role="status">
+          <Glyph name="loader" className="lr-spin" size={18} /><span>{zh ? "正在加载消息…" : "Loading messages…"}</span>
+        </div>}
+        {messages.map((message, index) => {
+          const previous = messages[index - 1];
+          const grouped = previous?.userId === message.userId && message.time - previous.time < 120_000;
+          const name = users.find(user => user.id === message.userId)?.name ?? (zh ? "用户" : "User");
+          return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name}
+            selfUserId={selfUserId} attachments={attachments} available={available}
+            reactionPending={isReactionPending(message.seq)} onReaction={onReaction} />;
+        })}
+      </div>
     </div>
     {roomId && (history?.atLatest === false || (!history && (!loadingHistory || messages.length > 0))) && <div className="c3-history-more"><ChannelAction icon={history ? "arrowDown" : "refresh"} quiet
       label={history ? (zh ? "最新消息" : "Latest messages") : (zh ? "加载消息" : "Load messages")} busy={loadingHistory} disabled={!available} onClick={() => {
@@ -179,12 +193,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
       : `Messages can contain up to ${MAX_MESSAGE_CODE_POINTS} characters (currently ${textLength}). Shorten your draft to send.`}</p>}
     {limitsFailed && <div className="c3-file-retry"><span>{zh ? "文件处理暂不可用" : "File preparation unavailable"}</span>
       <ChannelAction icon="refresh" quiet label={zh ? "重试" : "Retry"} onClick={() => setLimitsRetry(value => value + 1)} /></div>}
-    {roomId && <form className="c3-composer" onSubmit={event => { void send(event); }}
-      onDragOver={event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
-      onDrop={event => {
-        if (!event.dataTransfer.types.includes("Files")) return;
-        event.preventDefault(); addFiles([...event.dataTransfer.files]);
-      }}>
+    {roomId && <form className="c3-composer" onSubmit={event => { void send(event); }}>
       {attachmentsAvailable && <><input ref={chooser} type="file" multiple hidden onChange={event => { addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ""; }} />
         <ChannelAction icon="plus" label={zh ? "添加文件" : "Add files"} iconOnly quiet hint="hint-file-add"
           disabled={!canSend || working || !limits} onClick={() => chooser.current?.click()} /></>}
