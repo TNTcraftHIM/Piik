@@ -1,6 +1,8 @@
 //! Local approval owns site access; the App owns each admitted site's room hosts.
 #[path = "app_backup.rs"]
 mod backup;
+#[path = "app_console.rs"]
+mod console;
 #[path = "app_diagnostics.rs"]
 mod diagnostics;
 #[path = "app_domain.rs"]
@@ -68,33 +70,6 @@ const PACKAGE_TARGET: &str = match option_env!("PIIK_BUILD_TARGET") {
     Some(value) => value,
     None => "",
 };
-
-fn startup_panel(version: &str, revision: &str, port: u16) -> String {
-    let revision = if revision.len() == 40 && revision.bytes().all(|byte| byte.is_ascii_hexdigit())
-    {
-        &revision[..7]
-    } else {
-        revision
-    };
-    // The shared terminal TV's static wink needs neither ANSI nor a redraw loop.
-    format!(
-        r#"
-     \ /
- .----v----.   Piik App
- | o     - |   {version}
- '---------'   Build {revision}
-   /     \
-
- App launcher / App 启动页
- http://127.0.0.1:{port}/client
-
- Share and chat in your browser.
- 在浏览器中分享和聊天。
-
- Ctrl+C to quit / 按 Ctrl+C 正常退出
-"#
-    )
-}
 
 pub struct Config {
     pub data_root: PathBuf,
@@ -387,10 +362,8 @@ pub async fn serve(
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
         .layer(middleware::from_fn_with_state(app.clone(), access))
         .with_state(app.clone());
-    eprint!(
-        "{}",
-        startup_panel(BUILD_VERSION, BUILD_REVISION, address.port())
-    );
+    let console = console::Console::new(None);
+    console.startup(BUILD_VERSION, BUILD_REVISION, address.port());
     eprintln!("App room socket listening on {address}");
     if let Some(ready) = ready {
         let _ = ready.send(entry.clone());
@@ -417,6 +390,7 @@ pub async fn serve(
         })
         .await?;
     drop(owner);
+    console.stopped();
     Ok(())
 }
 

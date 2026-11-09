@@ -176,6 +176,12 @@ App shutdown retires its Native hosts before the domain and tunnel. A local-doma
 failure leaves unrelated approved sites' hosting alone. In a terminal, Ctrl+C
 requests normal App shutdown.
 
+The terminal shows the App build, launcher address and actual site startup
+progress. Site messages follow the launcher's selected language. The displayed
+site address contains no invitation or owner credential; copy private invitations
+from the room UI. Redirected output stays plain text, and the terminal keeps its
+own colours when colour output is available.
+
 The App uses the platform's local application-data directory under `Piik/channel-app`.
 `PIIK_CHANNEL_APP_DATA_DIR` selects isolated development data. One process owns
 that directory. `PIIK_CHANNEL_APP_PORT` may select a loopback port instead of the

@@ -2,7 +2,7 @@
 #[path = "app_stun.rs"]
 mod stun;
 
-use super::{stop_hosts, tunnel, ApiResult, App, Permission};
+use super::{console::Console, stop_hosts, tunnel, ApiResult, App, Permission};
 use crate::{domain::Domain, web};
 use axum::{extract::State, http::StatusCode, Json};
 use serde::Deserialize;
@@ -64,8 +64,7 @@ enum Mode {
 pub(super) struct Request {
     mode: Mode,
     lan_address: Option<String>,
-    #[serde(rename = "language")]
-    _language: Option<String>,
+    language: Option<String>,
 }
 
 pub(super) async fn describe(app: &App, state: &mut Value) -> anyhow::Result<()> {
@@ -104,9 +103,13 @@ pub(super) async fn launch(State(app): State<Arc<App>>, Json(request): Json<Requ
             let (stop, stopped) = watch::channel(false);
             let owner = app.clone();
             let task = tokio::spawn(async move {
-                if let Err(failure) = run(owner, request, stopped, &progress).await {
+                let console = Console::new(request.language.as_deref());
+                console.starting(matches!(request.mode, Mode::Link));
+                let port = owner.port;
+                if let Err(failure) = run(owner, request, stopped, &progress, &console).await {
                     eprintln!("App startup {}: {}", failure.reason, failure.detail);
                     log::error!(target: "piik.app", "App startup {}: {}", failure.reason, failure.detail);
+                    console.failed(port);
                     progress.send_replace(Progress::Failed(failure));
                 }
             });
@@ -136,6 +139,7 @@ async fn run(
     request: Request,
     mut stopped: watch::Receiver<bool>,
     progress: &watch::Sender<Progress>,
+    console: &Console,
 ) -> Result<(), Failure> {
     let routes =
         web::frontend(&app.config.assets).map_err(|error| Failure::new("configuration", error))?;
@@ -193,13 +197,14 @@ async fn run(
         (Some(https), _) => https.origin(),
         (_, Some(tunnel)) => tunnel.origin(),
         _ => unreachable!(),
-    };
+    }
+    .to_owned();
     let domain = Domain::open(
         &app.config.data_root.join("domain"),
         &identity.owner,
         &identity.invite,
         origin.clone(),
-        Some(invitation.to_owned()),
+        Some(invitation.clone()),
         ice_servers,
     );
     let domain = match domain {
@@ -234,6 +239,7 @@ async fn run(
             let _ = domain_stopped.changed().await;
         },
     ));
+    console.ready(&invitation);
     progress.send_replace(Progress::Ready(format!(
         "{origin}/?piik-client-port={}#owner={}&piik-client=1",
         app.port,
