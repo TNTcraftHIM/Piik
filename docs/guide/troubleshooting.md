@@ -420,6 +420,12 @@ for current setup details.
 3. Camera video and microphone inputs are selected separately. For a built-in
    camera microphone or OBS audio, see [camera and audio inputs](./sharing.md#cameras-and-virtual-audio-inputs).
 
+With a virtual mixer or several output devices, check where the app sends its
+sound. Without application exclusion, Windows App screen capture reads the
+default playback device. Select the app's window to capture its process audio,
+or route its sound to that default
+device before restarting screen sharing.
+
 ### Cannot hear someone speaking
 
 For speech added through **Include my microphone**, check the picture's

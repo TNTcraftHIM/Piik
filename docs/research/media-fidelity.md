@@ -83,6 +83,24 @@ before replacing the live graph, preserve Browser AEC, and retire the worklet
 with its existing AudioContext. No product dependency or processing mode has
 been added by this assessment.
 
+## Windows Output Routing
+
+Windows display capture without exclusion reads the default render endpoint.
+Process inclusion or exclusion uses the
+[endpoint-independent process loopback API](https://learn.microsoft.com/en-us/samples/microsoft/windows-classic-samples/applicationloopbackaudio-sample/).
+These scopes are distinct in both the maintained helper and Rust capture.
+
+For [#534](https://github.com/TNTcraftHIM/Piik/issues/534), a controlled run sent
+500 Hz left and 1500 Hz right at amplitude 0.02 only to an existing virtual
+render endpoint, leaving the default headset unchanged. Default-endpoint
+loopback returned no packets; excluding an unrelated silent test process
+returned 399 packets with both tone amplitudes near 0.01984. Only tone statistics
+were retained; no system PCM, device setting or default route was saved or changed.
+This reproduces the reported contrast between capture modes. The report's
+change after first using exclusion still needs its actual playback endpoint and
+capture result. Clearing exclusion is already verified to select a fresh default
+capture; do not retain an arbitrary exclusion as a supposed repair.
+
 ## SDR Conversion
 
 [#445](https://github.com/TNTcraftHIM/Piik/issues/445) reports washed-out Native

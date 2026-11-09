@@ -23,6 +23,11 @@ the feedback period; they do not delay that delivery.
   silent unrelated window. Verify which Browser playback belongs to that tree
   and whether the intended source sound remains after exclusion; trace the
   actual capture/playback loop before changing audio processing.
+- [ ] **Windows sound only works with exclusion (#534).** Compare the affected
+  application's playback endpoint with Piik's default-endpoint capture. The
+  [output-routing control](./research/media-fidelity.md#windows-output-routing)
+  reproduces this contrast with an alternate output device; the reported change
+  after first using exclusion remains to be located.
 - [ ] **3.0 iOS/iPadOS room voice feedback.** With noise processing disabled on
   the phone/tablet, a computer listener reports mono sound. Check that device's
   raw capture channels against its received sound; the shared microphone,
