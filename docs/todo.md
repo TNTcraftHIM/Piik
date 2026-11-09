@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-08
+Last reviewed: 2026-11-09
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -92,10 +92,11 @@ the feedback period; they do not delay that delivery.
   preserving low-rate startup and live bitrate restoration. Keep CBR; the
   [encoder assessment](./research/webrtc-encoder-pool.md#h264-burst-and-recovery)
   records why the low-delay VBR candidate was rejected.
-- [ ] **Stronger microphone noise suppression (#518).** Assess the
-  [requested speech-processing option](https://github.com/TNTcraftHIM/Piik/issues/518)
-  through the shared microphone input. Browser voice processing is already the
-  default; keep screen and system audio unprocessed.
+- [ ] **Stronger microphone noise suppression (#518).** Compare RNNoise's voice
+  clarity and mobile runtime cost before deciding on an enhanced mode. The
+  [microphone assessment](./research/media-fidelity.md#stronger-microphone-suppression)
+  records the Browser comparison and integration boundary. Retain Browser voice
+  processing as the default and keep screen/system audio unprocessed.
 
 ## Held By Owner
 
