@@ -461,22 +461,49 @@ func (c *Controller) availableViewers(includeBlocked bool) []*participant {
 	return viewers
 }
 
-// overflowChildren visits parents in participant order and returns each
-// parent's overflowing children newest first.
+// overflowChildren returns movable excess work in parent/newest order.
+// Only when no overloaded parent has a movable child does it return the
+// original newest-overflow failure work, before attempt ordering is applied.
 func (c *Controller) overflowChildren() []string {
 	result := []string{}
+	fallback := []string{}
 	for _, parent := range c.participants.Values() {
+		overflowing := c.overflowPeerChildren(parent.peerID)
+		if len(overflowing) == 0 {
+			continue
+		}
+		movable := []string{}
+		for _, id := range c.childrenOf(parent.peerID) {
+			edge, _ := c.upstreamByViewer.Get(id)
+			child, _ := c.participants.Get(id)
+			if edge.PhysicalActive && child != nil && child.sessionID != "" && !child.departureConfirmed &&
+				len(c.buildCandidates(id, false)) > 0 {
+				movable = append(movable, id)
+			}
+		}
+		if len(movable) > 0 {
+			sort.SliceStable(movable, func(i, j int) bool {
+				left, _ := c.participants.Get(movable[i])
+				right, _ := c.participants.Get(movable[j])
+				return compareParticipant(right, left) < 0
+			})
+			result = append(result, movable...)
+			continue
+		}
 		overflow := []string{}
-		for _, id := range c.overflowPeerChildren(parent.peerID) {
+		for _, id := range overflowing {
 			child, _ := c.participants.Get(id)
 			if child != nil && child.sessionID != "" && !child.departureConfirmed && !c.participantBlocked(child) {
 				overflow = append(overflow, id)
 			}
 		}
 		slices.Reverse(overflow)
-		result = append(result, overflow...)
+		fallback = append(fallback, overflow...)
 	}
-	return result
+	if len(result) > 0 {
+		return result
+	}
+	return fallback
 }
 
 // overflowPeerChildren keeps the oldest physically active direct children
