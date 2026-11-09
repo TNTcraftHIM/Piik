@@ -446,7 +446,8 @@ export class ChannelMedia {
           }
           break;
         }
-        outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null, profile: local?.profile ?? publication.videoCeiling,
+        outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null,
+          profile: local?.profile ?? (publication.videoSettings && { ...publication.videoSettings.ceiling, degradationPreference: publication.videoSettings.degradationPreference }),
           audioBitrate: local?.profile?.maxAudioBitrate, codec, paused: local?.paused ?? publication.paused,
           voiceBitrate: this.rooms.find(room => room.id === publication.roomId)?.voiceBitrate });
       }

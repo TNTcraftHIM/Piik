@@ -23,6 +23,17 @@ pub fn capture_border_control() -> bool {
     #[cfg(not(all(feature = "capture", target_os = "windows")))]
     false
 }
+pub const fn supports_video_adaptation() -> bool {
+    cfg!(all(
+        feature = "capture",
+        any(target_os = "windows", target_os = "android")
+    ))
+}
+#[cfg(any(
+    all(feature = "capture", any(target_os = "windows", target_os = "android")),
+    test
+))]
+mod adaptation;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod audio;
 #[cfg(any(feature = "capture", test))]
@@ -52,6 +63,8 @@ mod mf;
 mod output;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod process;
+#[cfg(all(feature = "capture", any(target_os = "windows", target_os = "android")))]
+mod qp;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod sdr;
 #[cfg(all(feature = "capture", target_os = "windows"))]
@@ -282,20 +295,26 @@ fn is_zero(value: &u32) -> bool {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Settings {
+    #[serde(rename = "degradationPreference")]
+    pub degradation_preference: DegradationPreference,
     pub width: u32,
     pub height: u32,
     pub fps: u32,
     pub bitrate: u32,
 }
-impl From<Settings> for piik_channel_core::wire::VideoCeiling {
+pub use piik_channel_core::wire::DegradationPreference;
+impl From<Settings> for piik_channel_core::wire::VideoSettings {
     fn from(settings: Settings) -> Self {
         Self {
-            resolution: piik_channel_core::wire::VideoResolution {
-                width: settings.width,
-                height: settings.height,
+            ceiling: piik_channel_core::wire::VideoCeiling {
+                resolution: piik_channel_core::wire::VideoResolution {
+                    width: settings.width,
+                    height: settings.height,
+                },
+                max_framerate: settings.fps as f64,
+                max_bitrate: settings.bitrate,
             },
-            max_framerate: settings.fps as f64,
-            max_bitrate: settings.bitrate,
+            degradation_preference: settings.degradation_preference,
         }
     }
 }
@@ -353,6 +372,7 @@ mod tests {
     #[test]
     fn lower_layer_uses_the_shared_profile_and_retains_its_frame_rate() {
         let profile = Settings {
+            degradation_preference: piik_channel_core::wire::DegradationPreference::Balanced,
             width: 1920,
             height: 1080,
             fps: 60,
@@ -379,6 +399,7 @@ mod tests {
     #[test]
     fn encoding_ceiling_fits_the_source_without_enlarging_it() {
         let ceiling = Settings {
+            degradation_preference: piik_channel_core::wire::DegradationPreference::Balanced,
             width: 1920,
             height: 1080,
             fps: 30,

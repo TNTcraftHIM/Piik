@@ -703,71 +703,57 @@ frames from actual encoded bytes/input cadence; dropped raw frames retain time,
 and encoded reference frames remain intact. The
 [encoder assessment](./webrtc-encoder-pool.md#h264-burst-and-recovery) owns measurements.
 
-Native detail-versus-motion preference remains an adaptation-owner decision.
-Current encoders retain their spatial ceiling; the Windows/Android FrameDropper
-reduces raw-frame admission under encoded overshoot, which favors retaining
-detail without implementing a motion preference. Unlike the older complete
-WebRTC VideoStreamEncoder path, str0m supplies transport budgets and the platform
-codecs apply bitrate; neither owns this resolution/FPS tradeoff. Encoder
-quality-versus-speed controls do not substitute for it.
+The sharer owns the picture preference and requested resolution/FPS/bitrate ceiling.
+Core publication metadata carries them together as `VideoSettings`; Browser relay
+senders and Native derived encodings consume that source intent. Decoder format
+and transport counters are not preference authorities. The shared picture control
+edits the same setting for Browser and supported Native captures. Native advertises
+adaptation on Windows and Android; macOS/Linux retain their existing encoding
+behavior and do not advertise this capability.
 
-An isolated Rust semantic port of WebRTC's
-[QualityScaler](https://github.com/webrtc-mirror/webrtc/blob/3710345e71ad3a7c1f4ed4efef152fd4fc24869a/modules/video_coding/utility/quality_scaler.cc)
-and maintain-framerate resolution adaptation matches the pinned C++ trace.
-It preserves the default sampling, QP scales, pixel restrictions and applied-size
-waiting; it does not add bitrate tiers. The upstream manager disables this QP
-scaler for maintain-resolution, so high QP must not be repurposed as an FPS rule.
+Windows and Android workers now use the shared Rust
+[WebRTC quality-adaptation port](../../native/third_party/webrtc-adaptation/README.md).
+It preserves the pinned QualityScaler sampling/smoothing, motion-mode resolution
+changes, balanced pixel/FPS restrictions and both adaptation counters. Detail
+disables this QP resource and retains spatial fitting plus FrameDropper. The
+upstream balanced defaults are reused; Piik adds no bitrate tiers or fast-recovery
+rule. str0m still owns transport budgets and the codecs apply bitrate. Encoder
+quality-versus-speed controls do not substitute for source adaptation.
 
-The actual Windows VP8 worker accepted independent size/cadence changes and
-recovery on a shared GPU source while its sibling retained every original-size
-frame. In a subsequent policy-driven control, a constrained output shrank from
-640x360 to 380x212 and recovered 30 fps after the bitrate returned. At 1.5 Mbps,
-QP remained above the upstream low threshold and size did not recover. At 8 Mbps,
-the first enlarged keyframe arrived about 18 seconds after restoring the bitrate budget.
-Keep this measured hysteresis visible when selecting the product behavior;
-matching upstream does not establish acceptable recovery speed by itself.
+Each existing encoding worker owns one policy and applies restrictions locally.
+The Windows child receives requested settings through `Start`; QP and automatic
+restrictions do not cross IPC. Bitrate retains its existing command. Ordinary
+resize retains restriction counters; child replacement starts a fresh policy and
+parser while preserving the logical feed, source clock, latest bitrate and
+independent-AU gate. MF drains before reconfiguration; Android replaces only its
+codec for size changes and applies FPS changes through its cadence owner. A cadence
+change resets that encoding's admission-rate sample, independently of its siblings.
 
-H264 feedback can use a small adapter over
-[h264-reader](https://docs.rs/h264-reader/0.9.0/h264_reader/nal/slice/struct.SliceHeader.html),
-with known upstream QP vectors and existing synthetic MF output checked. It has
-not been added to product dependencies. QP is optional encoder feedback: absence
-or a parser failure must not terminate sharing or reuse a preceding frame's QP.
-Product integration still needs the existing worker boundary to carry explicit
-restrictions and feedback, other codec/platform actuation, and the shared quality
-setting. The experiments do not implement the full WebRTC resource controller.
+H264 feedback uses the shared adapter over
+[h264-reader](https://docs.rs/h264-reader/0.9.0/h264_reader/nal/slice/struct.SliceHeader.html).
+VP8 uses libvpx's internal quantizer on Windows and the pinned
+[WebRTC QP reader](../../native/third_party/webrtc-vp8-qp/README.md) for Android output.
+QP is optional: missing values or parser failures supply no sample, never a stale
+QP or terminal sharing error. Actual frame drops remain valid feedback. This
+implements the selected upstream quality path, not its complete resource controller.
 
-Keep adaptation inside each existing encoder worker. The Windows child already
-receives its requested `Settings` through `Start`; it can consume QP/drop feedback
-and apply restrictions locally without new per-frame IPC or another controller in
-the parent. Bitrate retains its current transport-budget command. Ordinary resize
-retains the policy's restriction counters; child replacement starts a fresh policy
-and parser with the existing source clock, latest bitrate and independent-AU gate.
-
-Hardware H264 actuation also passed with two actual Windows MFT instances: changing
-one output's size/cadence retained its sibling, source timestamps and independently
-decodable transition frames. The common H264 reader supplied QP for all captured
-synthetic AUs. Android's existing Rust encoding owner passed a separate synthetic
-AHardwareBuffer/MediaCodec control: size changes replace only its `Codec`, while
-FPS-only changes reuse `Cadence` and reset that output's admission-rate sample.
-The source and sibling stay owned in place. The Android control used the existing
-default bitrate mode without the App/JVM capability query; it is not CBR or full
-App acceptance. Neither control needed a new queue-clearing rule or IDR gate.
-
-Before connecting the shared preference, complete its existing `balanced`
-meaning and carry the sharer's intent through publication metadata to derived
-encodings. Decoder format and transport counters are not preference authorities.
-Verify the integrated child-process path; the inner-worker experiments alone do
-not establish automatic adaptation through App, relay and source replacement.
+The pinned C++ comparison and isolated Windows/Android worker controls support
+the implementation. Recovery deliberately retains upstream hysteresis: a constrained
+Windows VP8 output stayed small after returning to 1.5 Mbps because QP remained
+above the low threshold; at 8 Mbps its first enlarged keyframe arrived about
+18 seconds after budget restoration. A higher allocation is not an immediate
+promise of larger pictures. Real Windows child-process runs also cover balanced
+FPS changes, codec/converter reconfiguration and independent sibling output.
+The App flow verifies preference-only replacement on the retained receiver track,
+updated publication intent and source reselection. Android normal-App acceptance
+and the remaining platform adapters stay in [TODO](../todo.md).
 
 Decoded-source FPS is a format hint, not an admission limit. VP8 initializes it
 to 30 even for a 60 fps source; source timing preserves actual presentation
-timestamps. Any future max-FPS restriction must be explicit and per encoding,
-without changing the shared capture or retimestamping selected frames.
-GStreamer's [webrtcsink mitigation](https://gstreamer.freedesktop.org/documentation/rswebrtc/webrtcsink.html#enable-mitigation-modes)
-is coupled to its pipeline and uses bitrate tiers; libvpx resampling only covers
-that codec. Neither supplies a shared adaptation owner. Keep Native's current
-behavior until the complete mechanism is integrated and verified, without
-advertising an ineffective preference.
+timestamps. Source admission uses only an explicit per-encoding max-FPS restriction;
+its nominal format hint cannot become an extra cap. Local capture intersects the
+policy cap with its requested FPS. Neither changes the shared capture rate or
+retimestamps selected source frames.
 
 Default Server adaptation remains forwarding-only under
 [ADR-0013](../adr/0013-embedded-node-local-media.md). [Simulcast](https://www.rfc-editor.org/rfc/rfc8853)

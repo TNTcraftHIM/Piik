@@ -65,7 +65,7 @@ fn publish(network: &mut RoomNetwork, connection: Uuid, room: &str, kind: &str) 
     command(
         network,
         connection,
-        json!({"type":"publish", "publication":{"id":id,"roomId":room,"kind":kind,"videoCeiling":if kind == "screen" { Some(json!({"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000})) } else { None }}}),
+        json!({"type":"publish", "publication":{"id":id,"roomId":room,"kind":kind,"videoSettings":if kind == "screen" { Some(json!({"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"})) } else { None }}}),
     );
     id
 }
@@ -2453,7 +2453,7 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
         let publication = Uuid::new_v4();
         let effects = network.authority.handle(publisher, Request::parse(&json!({
             "type":"publish","requestId":"publication-order",
-            "publication":{"id":publication,"roomId":room,"kind":if outcome == "error" { "voice" } else { "screen" },"videoCeiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000}}
+            "publication":{"id":publication,"roomId":room,"kind":if outcome == "error" { "voice" } else { "screen" },"videoSettings":{"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"}}
         }).to_string()).unwrap(), 100);
         let input = effects
             .events

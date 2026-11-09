@@ -16,7 +16,7 @@ use piik_channel_core::{
 };
 use piik_channel_core::{
     host::{RoomResult, RoomSummary},
-    wire::{Command, Event, Kind, PublicationInput, RoomAccess, Snapshot, VideoCeiling},
+    wire::{Command, Event, Kind, PublicationInput, RoomAccess, Snapshot, VideoSettings},
     RoomState, RECOVERY_MS,
 };
 use std::sync::Arc;
@@ -266,7 +266,7 @@ pub struct CommitCapture {
     pub capture_id: Uuid,
     pub replacing: bool,
     pub retaining: bool,
-    pub video_ceiling: Option<VideoCeiling>,
+    pub video_settings: Option<VideoSettings>,
     pub result: oneshot::Sender<Result<CaptureInput, String>>,
 }
 pub struct TransferSource {
@@ -281,10 +281,10 @@ pub struct PauseCapture {
     pub paused: bool,
     pub result: oneshot::Sender<Result<(), String>>,
 }
-pub struct PublishCaptureCeiling {
+pub struct PublishCaptureSettings {
     pub scope: CaptureScope,
     pub capture_id: Uuid,
-    pub ceiling: VideoCeiling,
+    pub settings: VideoSettings,
     pub result: oneshot::Sender<Result<(), String>>,
 }
 enum PendingCapture {
@@ -292,7 +292,7 @@ enum PendingCapture {
     Commit(CommitCapture),
     Transfer(TransferSource),
     Pause(PauseCapture),
-    Ceiling(PublishCaptureCeiling),
+    Settings(PublishCaptureSettings),
 }
 impl PendingCapture {
     fn scope(&self) -> Option<&CaptureScope> {
@@ -301,7 +301,7 @@ impl PendingCapture {
             Self::Commit(r) => Some(&r.scope),
             Self::Transfer(r) => Some(&r.scope),
             Self::Pause(r) => Some(&r.scope),
-            Self::Ceiling(r) => Some(&r.scope),
+            Self::Settings(r) => Some(&r.scope),
         }
     }
     fn room_id(&self) -> &str {
@@ -322,7 +322,7 @@ impl PendingCapture {
             Self::Commit(r) => r.result.is_closed(),
             Self::Transfer(r) => r.result.is_closed(),
             Self::Pause(r) => r.result.is_closed(),
-            Self::Ceiling(r) => r.result.is_closed(),
+            Self::Settings(r) => r.result.is_closed(),
         }
     }
     fn fail(self, code: String) {
@@ -339,7 +339,7 @@ impl PendingCapture {
             Self::Pause(r) => {
                 let _ = r.result.send(Err(code));
             }
-            Self::Ceiling(r) => {
+            Self::Settings(r) => {
                 let _ = r.result.send(Err(code));
             }
         }
@@ -370,7 +370,7 @@ pub enum HostCommand {
     CommitCapture(CommitCapture),
     TransferSource(TransferSource),
     PauseCapture(PauseCapture),
-    PublishCaptureCeiling(PublishCaptureCeiling),
+    PublishCaptureSettings(PublishCaptureSettings),
 }
 impl HostCommand {
     fn unavailable(self) {
@@ -402,7 +402,7 @@ impl HostCommand {
             Self::PauseCapture(request) => {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
             }
-            Self::PublishCaptureCeiling(request) => {
+            Self::PublishCaptureSettings(request) => {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
             }
         }
@@ -642,7 +642,7 @@ impl Session {
                                 HostCommand::CommitCapture(request) => self.commit_capture(request, socket).await?,
                                 HostCommand::TransferSource(request) => self.transfer_source(request, socket).await?,
                                 HostCommand::PauseCapture(request) => self.pause_capture(request, socket).await?,
-                                HostCommand::PublishCaptureCeiling(request) => self.publish_capture_ceiling(request, socket).await?,
+                                HostCommand::PublishCaptureSettings(request) => self.publish_capture_settings(request, socket).await?,
                             } }
                         },
                         command = next_command(&mut self.live), if admitted => {
@@ -1150,7 +1150,7 @@ impl Session {
                         (PendingCapture::Pause(request), RoomResult::Done) => {
                             let _ = request.result.send(Ok(()));
                         }
-                        (PendingCapture::Ceiling(request), RoomResult::Done) => {
+                        (PendingCapture::Settings(request), RoomResult::Done) => {
                             let _ = request.result.send(Ok(()));
                         }
                         (request, RoomResult::Error { code }) => request.fail(code),
@@ -1325,7 +1325,7 @@ impl Session {
                     id: request.scope.publication_id,
                     room_id: request.scope.room_id.clone(),
                     kind: Kind::Screen,
-                    video_ceiling: request.video_ceiling,
+                    video_settings: request.video_settings,
                 },
             }
         };
@@ -1409,9 +1409,9 @@ impl Session {
         write(socket, &command, Some(&id)).await
     }
 
-    async fn publish_capture_ceiling(
+    async fn publish_capture_settings(
         &mut self,
-        request: PublishCaptureCeiling,
+        request: PublishCaptureSettings,
         socket: &mut Socket,
     ) -> Result<()> {
         if request.result.is_closed() {
@@ -1454,7 +1454,7 @@ impl Session {
             let _ = request.result.send(Err("capture_unavailable".into()));
             return Ok(());
         }
-        if publication.video_ceiling == Some(request.ceiling) {
+        if publication.video_settings == Some(request.settings) {
             let _ = request.result.send(Ok(()));
             return Ok(());
         }
@@ -1463,12 +1463,12 @@ impl Session {
                 id: request.scope.publication_id,
                 room_id: request.scope.room_id.clone(),
                 kind: Kind::Screen,
-                video_ceiling: Some(request.ceiling),
+                video_settings: Some(request.settings),
             },
         };
         let id = Uuid::new_v4().to_string();
         self.pending_captures
-            .insert(id.clone(), PendingCapture::Ceiling(request));
+            .insert(id.clone(), PendingCapture::Settings(request));
         write(socket, &command, Some(&id)).await
     }
 
@@ -1494,15 +1494,16 @@ impl Session {
             let _ = request.result.send(Err("publication_unavailable".into()));
             return Ok(());
         };
-        // Transfer preserves the incumbent ceiling. Only a genuinely different
+        // Transfer preserves the incumbent source settings. Only a genuinely different
         // prepared configuration needs the existing Publish upsert before commit.
-        if request.video_ceiling.is_some() && request.video_ceiling != publication.video_ceiling {
+        if request.video_settings.is_some() && request.video_settings != publication.video_settings
+        {
             let command = Command::Publish {
                 publication: PublicationInput {
                     id: publication_id,
                     room_id: request.scope.room_id.clone(),
                     kind: Kind::Screen,
-                    video_ceiling: request.video_ceiling,
+                    video_settings: request.video_settings,
                 },
             };
             let id = Uuid::new_v4().to_string();

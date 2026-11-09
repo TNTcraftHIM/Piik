@@ -71,13 +71,17 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
                     id: publication,
                     room_id: "review".into(),
                     kind: Kind::Screen,
-                    video_ceiling: Some(VideoCeiling {
-                        resolution: VideoResolution {
-                            width: 1280,
-                            height: 720,
+                    video_settings: Some(piik_channel_core::wire::VideoSettings {
+                        degradation_preference:
+                            piik_channel_core::wire::DegradationPreference::Balanced,
+                        ceiling: VideoCeiling {
+                            resolution: VideoResolution {
+                                width: 1280,
+                                height: 720,
+                            },
+                            max_framerate: 29.97,
+                            max_bitrate: 2500000,
                         },
-                        max_framerate: 29.97,
-                        max_bitrate: 2500000,
                     }),
                 },
             },
@@ -583,13 +587,17 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
                     id: publication,
                     room_id: "concurrent-review".into(),
                     kind: Kind::Screen,
-                    video_ceiling: Some(VideoCeiling {
-                        resolution: VideoResolution {
-                            width: 1280,
-                            height: 720,
+                    video_settings: Some(piik_channel_core::wire::VideoSettings {
+                        degradation_preference:
+                            piik_channel_core::wire::DegradationPreference::Balanced,
+                        ceiling: VideoCeiling {
+                            resolution: VideoResolution {
+                                width: 1280,
+                                height: 720,
+                            },
+                            max_framerate: 29.97,
+                            max_bitrate: 2500000,
                         },
-                        max_framerate: 29.97,
-                        max_bitrate: 2500000,
                     }),
                 },
             },
@@ -750,13 +758,17 @@ fn host_projection_rejects_conflicting_flow_identity_and_input_ownership() {
                             id: publication,
                             room_id: room.into(),
                             kind: Kind::Screen,
-                            video_ceiling: Some(VideoCeiling {
-                                resolution: VideoResolution {
-                                    width: 1280,
-                                    height: 720,
+                            video_settings: Some(piik_channel_core::wire::VideoSettings {
+                                degradation_preference:
+                                    piik_channel_core::wire::DegradationPreference::Balanced,
+                                ceiling: VideoCeiling {
+                                    resolution: VideoResolution {
+                                        width: 1280,
+                                        height: 720,
+                                    },
+                                    max_framerate: 29.97,
+                                    max_bitrate: 2500000,
                                 },
-                                max_framerate: 29.97,
-                                max_bitrate: 2500000,
                             }),
                         },
                     },
@@ -977,13 +989,17 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
                     id: publication,
                     room_id: room_id.into(),
                     kind: Kind::Screen,
-                    video_ceiling: Some(VideoCeiling {
-                        resolution: VideoResolution {
-                            width: 1280,
-                            height: 720,
+                    video_settings: Some(piik_channel_core::wire::VideoSettings {
+                        degradation_preference:
+                            piik_channel_core::wire::DegradationPreference::Balanced,
+                        ceiling: VideoCeiling {
+                            resolution: VideoResolution {
+                                width: 1280,
+                                height: 720,
+                            },
+                            max_framerate: 29.97,
+                            max_bitrate: 2500000,
                         },
-                        max_framerate: 29.97,
-                        max_bitrate: 2500000,
                     }),
                 },
             },
@@ -1039,7 +1055,7 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
                 let mut other = view.publications[0].clone();
                 other.id = other_publication;
                 other.kind = Kind::Voice;
-                other.video_ceiling = None;
+                other.video_settings = None;
                 view.publications.push(other);
             }
         }
@@ -1052,9 +1068,10 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
                     .get_mut(&viewer)
                     .unwrap()
                     .publications[0]
-                    .video_ceiling
+                    .video_settings
                     .as_mut()
                     .unwrap()
+                    .ceiling
                     .max_bitrate = if case == "invalid_ceiling" {
                     0
                 } else {

@@ -277,7 +277,7 @@ impl CaptureLease {
             }
         })
     }
-    pub fn video_ceiling(&self) -> Option<piik_channel_core::wire::VideoCeiling> {
+    pub fn video_settings(&self) -> Option<piik_channel_core::wire::VideoSettings> {
         #[cfg(feature = "capture")]
         if let Some(control) = &self.control {
             return Some(control.settings().into());
@@ -3114,6 +3114,10 @@ impl Driver {
                         source.id,
                         video.clone(),
                         codec,
+                        self.publications[&publication]
+                            .video_settings
+                            .context("screen_video_settings_unavailable")?
+                            .degradation_preference,
                         self.events.clone(),
                     ),
                 );

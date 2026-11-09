@@ -10,7 +10,7 @@ import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), port: z.number().int().min(1).max(65535) });
-const healthSchema = identitySchema.extend({ protocol: z.literal(3), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
+const healthSchema = identitySchema.extend({ protocol: z.literal(4), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
   version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional() });
 type AppHealth = z.infer<typeof healthSchema>;
 const measured = z.number().finite().nonnegative();
@@ -32,6 +32,7 @@ export const nativeConnectionMetricsSchema = z.object({
 export type NativeConnectionMetrics = z.infer<typeof nativeConnectionMetricsSchema>;
 const captureSourcesSchema = z.object({ sources: z.array(nativeCaptureTargetSchema),
   codecs: z.array(nativeVideoCodecSchema),
+  videoAdaptation: z.boolean(),
   processAudio: z.boolean(), processAudioExclusion: z.boolean().default(false), systemAudio: z.boolean(), captureBorderControl: z.boolean(), activationURL: z.string().url().max(512).optional() }).strict();
 export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
 export type NativeCaptureRequest = { publicationId: string; activationURL: string };
@@ -60,7 +61,7 @@ type AppCommand = { type: string; publicationId?: string; roomId?: string; [key:
 function identity(body: unknown, port: number): void {
   const value = identitySchema.extend({ service: z.enum(["piik-channel-app", "piik-client"]) }).parse(body);
   if (value.port !== port) throw new Error("invalid_app_response");
-  if (value.service !== "piik-channel-app" || value.protocol !== 3) throw new AppCompatibilityError("App room protocol is incompatible");
+  if (value.service !== "piik-channel-app" || value.protocol !== 4) throw new AppCompatibilityError("App room protocol is incompatible");
 }
 
 export function discoverChannelAppHealth(options: AppDiscoveryOptions = {}): Promise<AppHealth | null> {
@@ -227,7 +228,7 @@ export class ChannelApp {
 
   async prepareCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio: boolean, profile: QualityProfile, codecMode: BrowserVideoCodecMode, excludeAudio?: NativeCaptureTarget, gain = 1, showCaptureBorder = false): Promise<PreparedNativeCapture> {
     const settings = { width: profile.resolution.width, height: profile.resolution.height,
-      fps: profile.maxFramerate, bitrate: profile.maxBitrate };
+      fps: profile.maxFramerate, bitrate: profile.maxBitrate, degradationPreference: profile.degradationPreference };
     if (!this.connected) throw new Error("app_disconnected");
     if (excludeAudio && (!audio || target.kind !== "display" || excludeAudio.kind !== "window" || !this.processAudioExclusion)) throw new Error("audio exclusion unavailable");
     this.prepared.add(publicationId);
@@ -290,6 +291,7 @@ export class ChannelApp {
     if (!captureId) throw new Error("capture_unavailable");
     await this.request({ type: "capture_video_settings", publicationId, captureId, settings: {
       width: profile.resolution.width, height: profile.resolution.height, fps: profile.maxFramerate, bitrate: profile.maxBitrate,
+      degradationPreference: profile.degradationPreference,
     } });
     if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture cancelled", "AbortError");
   }

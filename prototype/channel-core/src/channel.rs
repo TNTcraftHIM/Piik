@@ -1046,7 +1046,7 @@ impl Channel {
                 }
             }
             for publication in &view.publications {
-                if validate_video_ceiling(publication.kind, publication.video_ceiling).is_err()
+                if validate_video_settings(publication.kind, publication.video_settings).is_err()
                     || publication.room_id != id
                     || !endpoints
                         .get(&publication.session_id)
@@ -1074,7 +1074,7 @@ impl Channel {
                 publication.session_id,
                 publication.user_id,
                 publication.kind,
-                publication.video_ceiling,
+                publication.video_settings,
             );
             if publications
                 .insert(publication.id, source)

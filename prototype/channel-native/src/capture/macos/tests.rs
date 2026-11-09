@@ -60,6 +60,7 @@ async fn synthetic_h264_roundtrip_preserves_source_time_and_stops() -> Result<()
     let frames = Frames::new(FrameTiming::Source)?;
     let mut encoding = frames.encode(
         Settings {
+            degradation_preference: piik_channel_core::wire::DegradationPreference::Balanced,
             width: 320,
             height: 180,
             fps: 30,

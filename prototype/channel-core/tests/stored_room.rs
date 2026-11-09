@@ -644,7 +644,7 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
             host,
             owner,
             owner,
-            json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":"screen","videoCeiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000}}}),
+            json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":"screen","videoSettings":{"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"}}}),
         );
     }
     drop((a, b));

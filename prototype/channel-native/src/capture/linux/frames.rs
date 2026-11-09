@@ -214,6 +214,7 @@ mod tests {
         let mut encoding = Encoding::start_with_encoder(
             frames.clone(),
             Settings {
+                degradation_preference: piik_channel_core::wire::DegradationPreference::Balanced,
                 width: 64,
                 height: 48,
                 fps: 1,

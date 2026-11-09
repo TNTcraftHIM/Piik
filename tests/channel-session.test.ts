@@ -12,7 +12,7 @@ import * as cameraPreviews from "../src/client/media/camera-previews";
 import { ChannelMedia } from "../src/client/channel/media";
 import { MicrophoneInput } from "../src/client/media/microphone-input";
 import { ChannelTransport } from "../src/client/channel/transport";
-import { QUALITY_PROFILES, screenVideoCeiling, type VideoCeiling } from "../src/client/media/quality";
+import { QUALITY_PROFILES, screenVideoSettings, type VideoSettings } from "../src/client/media/quality";
 import { ChannelAttachments } from "../src/client/channel/attachments";
 import { FileStore } from "../src/client/channel/file-store";
 import { identityIconSchema, messageSchema, publicationSchema, snapshotSchema, signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply } from "../src/client/channel/protocol";
@@ -106,7 +106,7 @@ async function setup(window = 1000, read = true, hash = "", readyInteractions = 
   session.start();
   const socket = ChannelSocket.current;
   await socket.onopen?.();
-  socket.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state: {
+  socket.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state: {
     channel: { id: "domain", name: "Friends", icon: "future-domain_7", ownerId: "self", historyWindow: window,
       access: "private", hasPassword: false, inviteHash: inviteHash("domain-invite"),
       rooms: roomIds.map(id => ({ id, name: id, icon: "couch", creatorId: "self", access: "public",
@@ -154,7 +154,7 @@ test("a saved owner credential retires only the consumed owner URL parameter and
   let reloaded: ChannelSession | undefined;
   try {
     const state = session.getSnapshot().state!;
-    socket.receive({ type: "welcome", protocol: 1, credential: "personal-owner-credential", sessionId: "endpoint", state, inviteKey: "domain-invite" });
+    socket.receive({ type: "welcome", protocol: 2, credential: "personal-owner-credential", sessionId: "endpoint", state, inviteKey: "domain-invite" });
     expect(replaceState).toHaveBeenCalledWith(previousHistory, "", "/__channel-preview?theme=dark#room=first&invite=friend-link&other=keep");
     await vi.waitFor(() => expect(session.getSnapshot().inviteURL).toBe("https://channel.test/__channel-preview#invite=domain-invite"));
     expect(values.get("piik.channel.prototype.credential")).toBe("personal-owner-credential");
@@ -177,7 +177,7 @@ test.each(["throws", "ignores-write"] as const)("owner bootstrap stays recoverab
   const replaceState = vi.fn(); vi.stubGlobal("history", { state: null, replaceState });
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => { if (failure === "throws") throw new Error("storage unavailable"); } });
   try {
-    socket.receive({ type: "welcome", protocol: 1, credential: "personal-owner-credential", sessionId: "endpoint", state: session.getSnapshot().state! });
+    socket.receive({ type: "welcome", protocol: 2, credential: "personal-owner-credential", sessionId: "endpoint", state: session.getSnapshot().state! });
     expect(replaceState).not.toHaveBeenCalled();
     expect(location.hash).toBe("#owner=owner-secret&other=keep");
     expect(session.getSnapshot().connection).toBe("connected");
@@ -194,14 +194,14 @@ test("saving a member credential preserves the ordinary invitation URL and forwa
   try {
     const state = structuredClone(session.getSnapshot().state!); state.channel.ownerId = "another-user";
     state.channel.inviteHash = inviteHash("friend-link");
-    socket.receive({ type: "welcome", protocol: 1, credential: "member-credential", sessionId: "endpoint", state });
+    socket.receive({ type: "welcome", protocol: 2, credential: "member-credential", sessionId: "endpoint", state });
     expect(replaceState).not.toHaveBeenCalled();
     expect(location.hash).toBe("#invite=friend-link&other=keep");
     await vi.waitFor(() => expect(session.getSnapshot().inviteURL).toBe("https://channel.test/__channel-preview#invite=friend-link"));
     state.channel.inviteHash = inviteHash("new-link");
     socket.receive({ type: "state", state });
     expect(session.getSnapshot().inviteURL).toBeNull();
-    socket.receive({ type: "welcome", protocol: 1, credential: "member-credential", sessionId: "endpoint", state });
+    socket.receive({ type: "welcome", protocol: 2, credential: "member-credential", sessionId: "endpoint", state });
     await Promise.resolve();
     expect(session.getSnapshot().connection).toBe("connected");
     expect(session.getSnapshot().inviteURL).toBeNull();
@@ -227,7 +227,7 @@ test("domain passphrase retries use the same session and retire the submitted se
     session.enterDomain("right-passphrase");
     await ChannelSocket.current.onopen?.();
     expect(ChannelSocket.current.sent[0]).toMatchObject({ password: "right-passphrase" });
-    ChannelSocket.current.receive({ type: "welcome", protocol: 1, credential: "personal", sessionId: "endpoint", state });
+    ChannelSocket.current.receive({ type: "welcome", protocol: 2, credential: "personal", sessionId: "endpoint", state });
     expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null });
     expect([...saved.values()]).toEqual(["personal"]);
     session.reconnect(); await ChannelSocket.current.onopen?.();
@@ -240,7 +240,7 @@ test("domain invitation rotation follows canonical state and the owner reply, pr
   const { session, socket } = await setup(3, false);
   const state = structuredClone(session.getSnapshot().state!);
   try {
-    socket.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state, inviteKey: "domain-invite" });
+    socket.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state, inviteKey: "domain-invite" });
     await vi.waitFor(() => expect(session.getSnapshot().inviteURL).toContain("invite=domain-invite"));
     const resetting = session.resetDomainInvite();
     const request = socket.sent.findLast(command => command.type === "domain_invite")!;
@@ -277,7 +277,7 @@ test.each(["", "first"])("a new invitation replaces failed admission in the same
     await ChannelSocket.current.onopen?.();
     expect(ChannelSocket.current.sent[0]).toMatchObject({ type: "join", key: "new-invite", ...(roomId ? { roomId } : {}) });
     if (!roomId) expect(ChannelSocket.current.sent[0]).not.toHaveProperty("roomId");
-    ChannelSocket.current.receive({ type: "welcome", protocol: 1, credential: "personal", sessionId: "endpoint", state });
+    ChannelSocket.current.receive({ type: "welcome", protocol: 2, credential: "personal", sessionId: "endpoint", state });
     expect(session.getSnapshot().connection).toBe("connected");
   } finally { session.close(); }
 });
@@ -399,7 +399,7 @@ test("room interactions reuse their original acknowledgement and user identity w
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state });
     const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
     resumed.receive({ type: "ack", requestId: browse.requestId });
     peer.page(await peer.next(), [], false, null);
@@ -470,7 +470,7 @@ test("domain and room invitations use the current Welcome origin without local b
       session.reconnect();
       const socket = ChannelSocket.current;
       await socket.onopen?.();
-      socket.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state,
+      socket.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state,
         inviteKey: "domain-invite", ...(invitationOrigin ? { invitationOrigin } : {}) });
       const origin = invitationOrigin ?? "https://channel.test";
       await vi.waitFor(() => expect(session.getSnapshot().inviteURL).toBe(`${origin}/__channel-preview#invite=domain-invite`));
@@ -488,7 +488,7 @@ test("domain and room invitations use the current Welcome origin without local b
 
 test("App hosting uses its own participant while Browser rooms retain their page lifetime", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
+  const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 4, port: 8793, token: "approved" });
   const localRoom = { id: "saved-browser-room", name: "Browser room", icon: "couch", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false };
   const host = {
     roomId: localRoom.id, summary: () => localRoom,
@@ -595,7 +595,7 @@ test("App hosting uses its own participant while Browser rooms retain their page
 test("authority delivery results follow this page's watch intent and clear on current recovery", async () => {
   const { session, socket } = await setup();
   const state = { ...session.getSnapshot().state!, publications: [
-    { id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false },
+    { id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
   ], subscriptions: ["screen"], failedSubscriptions: ["screen"] };
   try {
     socket.receive({ type: "state", state });
@@ -615,12 +615,12 @@ test("authority delivery results follow this page's watch intent and clear on cu
 });
 
 test.each([false, true])("App viewing assistance withdraws without ending the watch (Domain recovery: %s)", async recovering => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 4, port: 8793, token: "approved" });
   const helperSessionId = crypto.randomUUID();
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helperSessionId, roomIds: [] });
   const { session, socket } = await setup();
   const state = { ...session.getSnapshot().state!, publications: [
-    { id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false },
+    { id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
   ], subscriptions: ["screen"] };
   socket.receive({ type: "state", state });
   try {
@@ -643,7 +643,7 @@ test.each([false, true])("App viewing assistance withdraws without ending the wa
       session.reconnect();
       current = ChannelSocket.current;
       await current.onopen?.();
-      current.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
+      current.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state });
     }
     const ordinary = current.sent.findLast(command => command.type === "subscribe")!;
     expect(ordinary).toMatchObject({ publicationId: "screen", enabled: true });
@@ -656,12 +656,12 @@ test.each([false, true])("App viewing assistance withdraws without ending the wa
 });
 
 test("temporary helper unavailability cannot retire a retained watch on Domain recovery", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 4, port: 8793, token: "approved" });
   const helperSessionId = crypto.randomUUID();
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helperSessionId, roomIds: [] });
   const { session, socket } = await setup();
   const state = { ...session.getSnapshot().state!, publications: [
-    { id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false },
+    { id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
   ], subscriptions: ["screen"] };
   socket.receive({ type: "state", state });
   try {
@@ -683,7 +683,7 @@ test("temporary helper unavailability cannot retire a retained watch on Domain r
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state });
     for (const command of resumed.sent.filter(command => command.type === "subscribe")) {
       resumed.receive(command.helperSessionId === helperSessionId
         ? { type: "error", requestId: command.requestId, code: "helper_unavailable" }
@@ -699,12 +699,12 @@ test("temporary helper unavailability cannot retire a retained watch on Domain r
 });
 
 test("an App description completing after unwatch cannot recreate a subscription", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 4, port: 8793, token: "approved" });
   let describe!: (value: { sessionId: string; roomIds: string[] }) => void;
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockImplementation(() => new Promise(resolve => { describe = resolve; }));
   const { session, socket } = await setup();
   socket.receive({ type: "state", state: { ...session.getSnapshot().state!, publications: [
-    { id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false },
+    { id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
   ] } });
   try {
     const connecting = session.activateApp();
@@ -739,7 +739,7 @@ test.each(["disconnect", "close"])("pending App health cannot create a control s
     expect(discovery).toHaveBeenCalledOnce();
     if (end === "close") session.close();
     else socket.close();
-    complete({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
+    complete({ service: "piik-channel-app", protocol: 4, port: 8793, token: "approved" });
     await resuming;
     expect(ChannelSocket.current).toBe(socket);
     expect(session.getSnapshot().appConnected).toBe(false);
@@ -913,14 +913,14 @@ test("recovery mute stops only this room's retained voice immediately", async ()
     expect(contexts[0].close).not.toHaveBeenCalled();
     session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state });
     expect(resumed.sent).toContainEqual({ type: "voice", roomId: "first", joined: true, muted: true, deafened: true });
     expect(first.enabled).toBe(false); expect(second.enabled).toBe(true);
     expect(listening()).toEqual(["heard-second"]);
     resumed.receive({ type: "state", state });
     expect(first.enabled).toBe(false);
     expect(session.getSnapshot().state?.voice.find(value => value.roomId === "first")).toMatchObject({ muted: true, deafened: true });
-    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "new-endpoint", state: { ...state, sessions: state.sessions.map(value => value.id === "endpoint" ? { ...value, id: "new-endpoint" } : value) } });
+    resumed.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "new-endpoint", state: { ...state, sessions: state.sessions.map(value => value.id === "endpoint" ? { ...value, id: "new-endpoint" } : value) } });
     expect(session.canUnmute("first")).toBe(false);
     expect(session.getSnapshot().state?.voice.some(value => value.sessionId === "new-endpoint")).toBe(false);
   } finally { session.close(); }
@@ -1076,7 +1076,7 @@ test("a new admitted session can request a microphone while retired permission i
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
     state.sessions = state.sessions.map(value => value.id === "endpoint" ? { ...value, id: "new-endpoint" } : value);
-    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "new-endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "new-endpoint", state });
     nextJoin = session.joinVoice("first").catch(error => error);
     expect(getUserMedia).toHaveBeenCalledTimes(2);
     grants.shift()!(remoteStream("late-source", [late]));
@@ -1199,7 +1199,7 @@ test("ending a Browser microphone retires its publication while room listening r
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state });
     expect(resumed.sent).toContainEqual({ type: "unpublish", publicationId: nextPublication.id });
     expect(resumed.sent).toContainEqual({ type: "voice", roomId: "first", joined: true, muted: true, deafened: true });
     expect(resumed.sent.some(command => command.type === "voice" && command.joined === false)).toBe(false);
@@ -1214,7 +1214,7 @@ test("local stop does not retire another capture acknowledged before its authori
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     const firstId = await publishingFirst;
     const state = structuredClone(session.getSnapshot().state!);
-    state.publications = [{ id: firstId, roomId: "first", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false, sessionId: "endpoint", userId: "self" }];
+    state.publications = [{ id: firstId, roomId: "first", kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false, sessionId: "endpoint", userId: "self" }];
     socket.receive({ type: "state", state });
 
     const publishingSecond = session.publish("screen", "second", remoteStream("second-capture", [second]));
@@ -1226,7 +1226,7 @@ test("local stop does not retire another capture acknowledged before its authori
     expect(first.stop).toHaveBeenCalledOnce();
     expect(second.stop).not.toHaveBeenCalled();
 
-    state.publications = [{ id: secondId, roomId: "second", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false, sessionId: "endpoint", userId: "self" }];
+    state.publications = [{ id: secondId, roomId: "second", kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false, sessionId: "endpoint", userId: "self" }];
     socket.receive({ type: "state", state });
     expect(session.getSnapshot().ownedScreens.has(secondId)).toBe(true);
     expect(session.getSnapshot().state?.publications.map(publication => publication.id)).toEqual([secondId]);
@@ -1264,7 +1264,7 @@ test("camera and display shares use independent picture publications and the sam
     await cameraStarting;
     const firstId = (first.publication as { id: string }).id, secondId = (second.publication as { id: string }).id;
     expect(second.publication).toEqual({ id: secondId, roomId: "second", kind: "screen",
-      videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]) });
+      videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]) });
     expect(secondId).not.toBe(firstId);
     session.setVideoCodecMode("vp8");
     expect(session.screenCodecMode(firstId)).toBe("auto");
@@ -1326,7 +1326,7 @@ test.each([
     ? { mimeType: "video/H264", clockRate: 90000, sdpFmtpLine: "packetization-mode=1" }
     : { mimeType: "video/VP8", clockRate: 90000 }] }) });
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 4, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
   session.setVideoCodecMode(mode);
@@ -1336,7 +1336,7 @@ test.each([
     const target = { kind: "display" as const, sourceId: "1", title: "Owned fixture" };
     const listing = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
-    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs, processAudio: false, systemAudio: false, captureBorderControl: false } });
+    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs, videoAdaptation: true, processAudio: false, systemAudio: false, captureBorderControl: false } });
     await listing;
     const selecting = session.startNativeScreen("first", target).catch(error => error);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
@@ -1363,7 +1363,7 @@ test("Browser screen pause stops the retained picture and source sound before re
   try {
     const starting = session.startScreen("first");
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
-    const request = socket.sent.at(-1)!, publication = request.publication as { id: string; roomId: string; kind: "screen"; videoCeiling: VideoCeiling };
+    const request = socket.sent.at(-1)!, publication = request.publication as { id: string; roomId: string; kind: "screen"; videoSettings: VideoSettings };
     socket.receive({ type: "ack", requestId: request.requestId }); await starting;
     const state = { ...session.getSnapshot().state!, publications: [{ ...publication, sessionId: "endpoint", userId: "self", paused: false }] };
     socket.receive({ type: "state", state });
@@ -1375,7 +1375,7 @@ test("Browser screen pause stops the retained picture and source sound before re
     expect(session.getSnapshot().state?.publications[0].paused).toBe(true);
     session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state });
     expect(resumed.sent).toContainEqual({ type: "set_paused", publicationId: publication.id, paused: true });
     resumed.receive({ type: "state", state });
     expect(video.enabled).toBe(false); expect(sound.enabled).toBe(false);
@@ -1455,7 +1455,7 @@ test("screen commentary owns a separate microphone and keeps its mixed track acr
   try {
     const starting = session.startScreen("first");
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
-    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; videoCeiling: VideoCeiling };
+    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; videoSettings: VideoSettings };
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await starting;
     socket.receive({ type: "state", state: { ...session.getSnapshot().state!, publications: [
       { ...publication, paused: false, sessionId: "endpoint", userId: "self" },
@@ -1593,7 +1593,7 @@ test("Browser source replacement keeps its publication, rejects only the candida
   try {
     const initial = session.startScreen("first");
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
-    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; videoCeiling: VideoCeiling };
+    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; videoSettings: VideoSettings };
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     await initial;
     const state = { ...session.getSnapshot().state!, publications: [{ ...publication, paused: false, sessionId: "endpoint", userId: "self" }] };
@@ -1650,7 +1650,7 @@ test("Browser source replacement keeps its publication, rejects only the candida
 
 test.each(["live", "stop-before-reply", "candidate-ended-before-reply", "app-close-before-state", "app-close-after-state", "transfer-rejected", "audio-stop-before-reply", "mute-during-native-prepare", "mute-during-native-commit", "mute-rejected-during-native-prepare"])("Browser and Native handoffs keep one publication and use the current Native capture lease (%s)", async outcome => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 4, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
   const old = remoteTrack("video"), next = remoteTrack("video");
@@ -1670,7 +1670,7 @@ test.each(["live", "stop-before-reply", "candidate-ended-before-reply", "app-clo
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
     const initial = session.startScreen("first");
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
-    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; videoCeiling: VideoCeiling };
+    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; videoSettings: VideoSettings };
     coreReply(); await initial;
     let state = { ...session.getSnapshot().state!, publications: [{ ...publication, paused: false, sessionId: "endpoint", userId: "self" }] };
     socket.receive({ type: "state", state });
@@ -1906,7 +1906,7 @@ test("Browser source output gain and bitrate survive replacement and close with 
   try {
     const starting = session.startScreen("first");
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
-    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; videoCeiling: VideoCeiling };
+    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; videoSettings: VideoSettings };
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await starting;
     socket.receive({ type: "state", state: { ...session.getSnapshot().state!, publications: [{ ...publication, paused: false, sessionId: "endpoint", userId: "self" }] } });
     expect(session.sourceAudio(publication.id)).toMatchObject({ level: 1, muted: false, bitrate: 128_000, available: true });
@@ -1933,11 +1933,11 @@ test("Browser source output gain and bitrate survive replacement and close with 
     expect(session.screenQuality(publication.id)?.requested.maxFramerate).toBe(60);
     applied();
     await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "publish",
-      publication: { id: publication.id, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]) } }));
+      publication: { id: publication.id, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } }));
     expect(session.screenQuality(publication.id)?.applied).toEqual(originalProfile);
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "publish",
-      publication: { id: publication.id, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p60"]) } }));
+      publication: { id: publication.id, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p60"]) } }));
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     await changingQuality;
     expect(constraints).toHaveBeenCalledTimes(2);
@@ -1955,7 +1955,7 @@ test("Browser source output gain and bitrate survive replacement and close with 
     const rejectedMetadata = session.setScreenQuality(publication.id, QUALITY_PROFILES["720p30"]);
     const rejectedMetadataResult = expect(rejectedMetadata).rejects.toThrow("room_unavailable");
     await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "publish",
-      publication: { id: publication.id, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]) } }));
+      publication: { id: publication.id, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } }));
     socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "room_unavailable" });
     await rejectedMetadataResult;
     expect(constraints).toHaveBeenLastCalledWith({ width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 60, max: 60 } });
@@ -2008,7 +2008,7 @@ test("a late source-ceiling rejection cannot configure a stopped capture or its 
     const changing = session.setScreenQuality(id, QUALITY_PROFILES["720p30"]);
     const rejected = expect(changing).rejects.toThrow("room_unavailable");
     await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "publish",
-      publication: { id, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]) } }));
+      publication: { id, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } }));
     const updating = socket.sent.at(-1)!;
     const stopping = session.stopScreen(id);
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await stopping;
@@ -2027,7 +2027,7 @@ test("a late source-ceiling rejection cannot configure a stopped capture or its 
 test("Native capture previews before its snapshot, keeps picture on audio failure, and stops through its App owner", async () => {
   vi.stubGlobal("navigator", { userAgent: "test", userActivation: { isActive: false } });
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 4, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
   try {
@@ -2039,7 +2039,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
     const activationURL = "intent://media#Intent;scheme=piik;package=tv.piik.android.test;end";
     const excluded = { kind: "window" as const, sourceId: "2", title: "Room voice browser", pid: 42, creationTime: "1234" };
-    const sources = { sources: [target, excluded], codecs: ["h264", "vp8"], processAudio: true, processAudioExclusion: true, systemAudio: true, captureBorderControl: true, activationURL };
+    const sources = { sources: [target, excluded], codecs: ["h264", "vp8"], videoAdaptation: true, processAudio: true, processAudioExclusion: true, systemAudio: true, captureBorderControl: true, activationURL };
     app.receive({ id: app.sent.at(-1)!.id, result: sources });
     await expect(listing).resolves.toEqual(sources);
     const abort = new AbortController();
@@ -2071,7 +2071,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     const state = session.getSnapshot().state!;
     socket.receive({ type: "state", state });
     const published = { ...state,
-      publications: [{ id: publicationId, roomId: "first", sessionId: "native", userId: "self", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false }],
+      publications: [{ id: publicationId, roomId: "first", sessionId: "native", userId: "self", kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }],
       subscriptions: [publicationId],
     };
     socket.receive({ type: "state", state: published });
@@ -2215,15 +2215,16 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
       settings: { width: 1280, height: 720, fps: 30, bitrate: QUALITY_PROFILES["720p30"].maxBitrate } });
     const firstChange = app.sent.at(-1)!;
     expect(session.setScreenQuality(publicationId, QUALITY_PROFILES["1080p30"])).toBe(changingQuality);
-    expect(session.setScreenQuality(publicationId, QUALITY_PROFILES["1080p60"])).toBe(changingQuality);
+    const requestedProfile = { ...QUALITY_PROFILES["1080p60"], degradationPreference: "maintain-framerate" as const };
+    expect(session.setScreenQuality(publicationId, requestedProfile)).toBe(changingQuality);
     expect(session.screenQuality(publicationId)?.applied).toEqual(originalProfile);
     app.receive({ id: firstChange.id, result: null });
     await vi.waitFor(() => expect(app.sent.filter(command => command.type === "capture_video_settings")).toHaveLength(2));
     expect(app.sent.at(-1)).toMatchObject({ type: "capture_video_settings", publicationId, captureId,
-      settings: { width: 1920, height: 1080, fps: 60, bitrate: QUALITY_PROFILES["1080p60"].maxBitrate } });
+      settings: { width: 1920, height: 1080, fps: 60, bitrate: requestedProfile.maxBitrate, degradationPreference: requestedProfile.degradationPreference } });
     app.receive({ id: app.sent.at(-1)!.id, result: null }); await changingQuality;
     const liveProfile = session.screenQuality(publicationId)!.applied;
-    expect(liveProfile).toMatchObject({ ...QUALITY_PROFILES["1080p60"], degradationPreference: originalProfile.degradationPreference });
+    expect(liveProfile).toMatchObject(requestedProfile);
     expect(session.getSnapshot().quality).toEqual(liveProfile);
     const rejectedQuality = session.setScreenQuality(publicationId, QUALITY_PROFILES["720p30"]);
     app.receive({ id: app.sent.at(-1)!.id, error: "encoder unavailable" });
@@ -2311,7 +2312,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
 
 test.each(["before-subscribe", "awaiting-ack", "helper-awaiting-ack"])("committed Native preview resumes its watch intent after Domain recovery (%s)", async interrupted => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 4, port: 8793, token: "approved" });
   const nativeSessionId = crypto.randomUUID();
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: nativeSessionId, roomIds: ["first"] });
   const { session, socket } = await setup();
@@ -2328,7 +2329,7 @@ test.each(["before-subscribe", "awaiting-ack", "helper-awaiting-ack"])("committe
     const committed = app.sent.at(-1)!;
     const state = structuredClone(session.getSnapshot().state!);
     state.publications = [{ id: publicationId, roomId: "first", sessionId: nativeSessionId, userId: "self", kind: "screen",
-      videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false }];
+      videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }];
     socket.receive({ type: "state", state });
     if (interrupted === "before-subscribe") socket.close();
     app.receive({ id: committed.id, result: null });
@@ -2348,7 +2349,7 @@ test.each(["before-subscribe", "awaiting-ack", "helper-awaiting-ack"])("committe
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state });
     await vi.waitFor(() => expect(resumed.sent).toContainEqual(expect.objectContaining({
       type: "subscribe", publicationId, enabled: true,
       ...(interrupted === "helper-awaiting-ack" ? { helperSessionId: nativeSessionId } : {}),
@@ -2369,7 +2370,7 @@ test.each([
   ["domain-first", false], ["domain-first", true], ["app-first", false], ["app-first", true],
 ] as const)("Native completion preserves replacement ownership and reports only current failures (%s, failed=%s)", async (order, failed) => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 4, port: 8793, token: "approved" });
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockRejectedValue(new Error("Assistance unavailable"));
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
@@ -2380,7 +2381,7 @@ test.each([
     const target = { kind: "picker" as const, sourceId: "1", title: "System picker" };
     const sources = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
-    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs: ["h264"], processAudio: false, systemAudio: false, captureBorderControl: false, activationURL: "piik://media" } });
+    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs: ["h264"], videoAdaptation: true, processAudio: false, systemAudio: false, captureBorderControl: false, activationURL: "piik://media" } });
     await sources;
     const nativeSessionId = crypto.randomUUID(), oldCaptureId = crypto.randomUUID(), captureId = crypto.randomUUID();
     const starting = session.startNativeScreen("first", target);
@@ -2394,7 +2395,7 @@ test.each([
     await starting;
     const empty = structuredClone(session.getSnapshot().state!);
     const published = { ...empty, publications: [{ id: publicationId, roomId: "first", sessionId: nativeSessionId, userId: "self",
-      kind: "screen" as const, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false }], subscriptions: [publicationId] };
+      kind: "screen" as const, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }], subscriptions: [publicationId] };
     socket.receive({ type: "state", state: published });
 
     const replacing = session.startNativeScreen("first", target).catch(error => error);
@@ -2432,7 +2433,7 @@ test.each([
 
 test("stopping committed Native capture retires its pending automatic preview error", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 4, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
   try {
@@ -2467,7 +2468,7 @@ test("stopping committed Native capture retires its pending automatic preview er
 
 test("pending Native capture stays page-owned through same-page stop and close", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 4, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
   try {
@@ -2476,7 +2477,7 @@ test("pending Native capture stays page-owned through same-page stop and close",
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
     const target = { kind: "display" as const, sourceId: "1", title: "Test display" };
     const activationURL = "intent://media#Intent;scheme=piik;package=tv.piik.android.test;end";
-    const sources = { sources: [target], codecs: ["h264", "vp8"], processAudio: false, processAudioExclusion: false, systemAudio: true, captureBorderControl: false, activationURL };
+    const sources = { sources: [target], codecs: ["h264", "vp8"], videoAdaptation: true, processAudio: false, processAudioExclusion: false, systemAudio: true, captureBorderControl: false, activationURL };
     const capabilities = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
     app.receive({ id: app.sent.at(-1)!.id, result: sources });
@@ -2555,7 +2556,7 @@ test("same-session recovery retires its own host binding when the committed room
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state: retained });
+    resumed.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state: retained });
     await vi.waitFor(() => expect(resumed.sent.some(command => command.type === "host_stop" && command.roomId === "first" && command.bindingId === "owned-binding")).toBe(true));
     expect(host.close).toHaveBeenCalledOnce();
     expect(resumed.sent.some(command => command.type === "host_register")).toBe(false);
@@ -2585,7 +2586,7 @@ test("a room hosted by another page cannot block this page's other rooms from re
     policies = [JSON.stringify(policy("first")), JSON.stringify(policy("second"))];
     session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state });
     await vi.waitFor(() => expect(resumed.sent.some(command => command.type === "host_register")).toBe(true));
     const conflict = resumed.sent.find(command => command.type === "host_register")!;
     expect(conflict.room).toMatchObject({ id: "first" });
@@ -2635,7 +2636,7 @@ test("remembered App intent does not prevent Browser hosting when no App is conn
 
 test("an App failure during creation does not turn that request into a Browser room", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 4, port: 8793, token: "approved" });
   let prepared!: (policy: string) => void;
   let policy = "";
   const browserOpen = vi.fn();
@@ -2707,14 +2708,16 @@ test("host binding precedes its first input and a failed binding retires that ho
   } finally { session.close(); }
 });
 
-test("publication metadata requires a video-only source ceiling for pictures and none for voice", () => {
+test("publication metadata keeps the video ceiling and source preference together and excludes voice", () => {
   const base = { id: "source", roomId: "room", sessionId: "endpoint", userId: "self", paused: false };
-  const videoCeiling = { ...screenVideoCeiling(QUALITY_PROFILES["1080p30"]), maxFramerate: 29.97 };
-  expect(publicationSchema.parse({ ...base, kind: "screen", videoCeiling }).videoCeiling).toEqual(videoCeiling);
+  const profile = QUALITY_PROFILES["1080p30"];
+  const videoSettings = { ...screenVideoSettings(profile), ceiling: { ...screenVideoSettings(profile).ceiling, maxFramerate: 29.97 } };
+  expect(publicationSchema.parse({ ...base, kind: "screen", videoSettings }).videoSettings).toEqual(videoSettings);
   expect(publicationSchema.safeParse({ ...base, kind: "screen" }).success).toBe(false);
-  expect(publicationSchema.safeParse({ ...base, kind: "voice", videoCeiling }).success).toBe(false);
-  expect(publicationSchema.safeParse({ ...base, kind: "screen", videoCeiling: { ...videoCeiling, maxAudioBitrate: 128_000 } }).success).toBe(false);
-  expect(publicationSchema.parse({ ...base, kind: "voice" }).videoCeiling).toBeUndefined();
+  expect(publicationSchema.safeParse({ ...base, kind: "screen", videoSettings: { ceiling: videoSettings.ceiling } }).success).toBe(false);
+  expect(publicationSchema.safeParse({ ...base, kind: "voice", videoSettings }).success).toBe(false);
+  expect(publicationSchema.safeParse({ ...base, kind: "screen", videoSettings: { ...videoSettings, maxAudioBitrate: 128_000 } }).success).toBe(false);
+  expect(publicationSchema.parse({ ...base, kind: "voice" }).videoSettings).toBeUndefined();
 });
 
 test("decorative identity keys remain extensible while missing icons and invalid wire values are rejected", async () => {
@@ -2834,7 +2837,7 @@ test("topology reads use the Domain reply owner without room activities or media
   const { session, socket, peer } = await setup();
   try {
     const state = structuredClone(session.getSnapshot().state!);
-    state.publications.push({ id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false });
+    state.publications.push({ id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false });
     socket.receive({ type: "state", state });
     const before = session.getSnapshot(), sent = socket.sent.length;
     let settled = false;
@@ -2893,7 +2896,7 @@ test("topology reads reject late data after binding access account or selection 
     const { session, socket } = await setup();
     try {
       const initial = structuredClone(session.getSnapshot().state!);
-      initial.publications.push({ id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false });
+      initial.publications.push({ id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false });
       socket.receive({ type: "state", state: initial });
       const reading = session.roomTopology("first", "screen"), rejected = expect(reading).rejects.toThrow();
       const request = socket.sent.at(-1)!;
@@ -3468,7 +3471,7 @@ test("input registration replies stay with their endpoint after its media flow r
   let flowId = crypto.randomUUID();
   const state = () => ({ ...session.getSnapshot().state!, subscriptions: [publicationId],
     publications: [{ id: publicationId, roomId: "first", sessionId: source, userId: "self", kind: "screen" as const,
-      videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false }],
+      videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }],
     pairs: [{ id: pairId, peerId: source, canReceiveVideoLayers: false, rooms: ["first"], outgoing: [],
       incoming: [{ id: flowId, publicationId, selected: true, inputFlowId: null }] }],
   });
@@ -3522,7 +3525,7 @@ test("screen input shares its existing pair and retains only the committed flow'
   const local = "00000000-0000-4000-8000-000000000001", source = "00000000-0000-4000-8000-000000000002";
   const publicationId = crypto.randomUUID(), pairId = crypto.randomUUID(), first = crypto.randomUUID(), trial = crypto.randomUUID();
   let state = { ...session.getSnapshot().state!, subscriptions: [publicationId],
-    publications: [{ id: publicationId, roomId: "first", sessionId: source, userId: "self", kind: "screen" as const, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false }],
+    publications: [{ id: publicationId, roomId: "first", sessionId: source, userId: "self", kind: "screen" as const, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }],
     pairs: [{ id: pairId, peerId: source, canReceiveVideoLayers: false, rooms: [] as string[], outgoing: [],
       incoming: [{ id: first, publicationId, selected: true, inputFlowId: null }] }],
   };
@@ -3693,7 +3696,7 @@ const decodedReport = (framesDecoded: number) => new Map([["video", {
 
 async function screenFixture() {
   const fixture = await setupRoomMedia();
-  fixture.state.publications = [{ id: "screen", roomId: "first", sessionId: "z", userId: "other", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false }];
+  fixture.state.publications = [{ id: "screen", roomId: "first", sessionId: "z", userId: "other", kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }];
   fixture.state.pairs[0].incoming = [{ id: "screen-flow", publicationId: "screen", selected: true, inputFlowId: null }];
   fixture.media.update("a", fixture.state);
   fixture.pc.connected();
@@ -3761,9 +3764,9 @@ test("room metrics read each PC once and follow current selected flows without m
   const video = remoteTrack("video"), sound = remoteTrack("audio"), voice = remoteTrack("audio"), other = remoteTrack("video");
   try {
     fixture.state.publications = [
-      { id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false },
+      { id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
       { id: "voice", roomId: "first", sessionId: "a", userId: "self", kind: "voice", paused: false },
-      { id: "other", roomId: "second", sessionId: "a", userId: "self", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false },
+      { id: "other", roomId: "second", sessionId: "a", userId: "self", kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
     ];
     fixture.state.pairs[0].rooms.push("second");
     fixture.state.pairs[0].outgoing = fixture.state.publications.map(publication => ({ id: `${publication.id}-out`, publicationId: publication.id, selected: true, inputFlowId: null }));
@@ -3803,7 +3806,7 @@ test("voice activity follows subscribed speaking endpoints and discards retired 
       { id: "relay-only", roomId: "first", sessionId: "relay-source", userId: "other", kind: "voice", paused: false },
       { id: "candidate", roomId: "first", sessionId: "candidate-source", userId: "other", kind: "voice", paused: false },
       { id: "another-room", roomId: "second", sessionId: "other-source", userId: "other", kind: "voice", paused: false },
-      { id: "screen-sound", roomId: "first", sessionId: "screen-source", userId: "other", kind: "screen", paused: false, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]) },
+      { id: "screen-sound", roomId: "first", sessionId: "screen-source", userId: "other", kind: "screen", paused: false, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) },
     ];
     fixture.state.subscriptions = ["voice-a", "voice-b", "candidate", "another-room", "screen-sound"];
     fixture.state.pairs[0].incoming = fixture.state.publications.map(publication => ({ id: `${publication.id}-flow`, publicationId: publication.id, selected: publication.id !== "candidate", inputFlowId: null }));
@@ -4341,14 +4344,15 @@ test("a relay applies the accepted source ceiling to its retained sender without
     await vi.waitFor(() => expect(downstream.senders).toHaveLength(2));
     const [picture, sound] = downstream.senders;
     await vi.waitFor(() => expect(picture.getParameters().encodings[0]).toMatchObject({ maxBitrate: 5_000_000, maxFramerate: 30 }));
-    expect(picture.getParameters().degradationPreference).toBeUndefined();
+    expect(picture.getParameters().degradationPreference).toBe("balanced");
     expect(picture.track).toBe(lastClone(video));
-    state.publications[0] = { ...state.publications[0], kind: "screen", videoCeiling: {
-      resolution: { width: 1920, height: 1080 }, maxFramerate: 60, maxBitrate: 8_000_000,
+    state.publications[0] = { ...state.publications[0], kind: "screen", videoSettings: {
+      ceiling: { resolution: { width: 1920, height: 1080 }, maxFramerate: 60, maxBitrate: 8_000_000 },
+      degradationPreference: "maintain-framerate",
     } };
     media.update("a", state);
     await vi.waitFor(() => expect(picture.getParameters().encodings[0]).toMatchObject({ maxBitrate: 8_000_000, maxFramerate: 60 }));
-    expect(picture.getParameters().degradationPreference).toBeUndefined();
+    expect(picture.getParameters().degradationPreference).toBe("maintain-framerate");
     expect(sound.getParameters().encodings[0].maxBitrate).toBe(128_000);
     expect(downstream.senders).toEqual([picture, sound]);
     expect(video.stop).not.toHaveBeenCalled(); expect(audio.stop).not.toHaveBeenCalled();
@@ -4418,7 +4422,7 @@ test("channel publications share one pool across Browser children, while Native 
   const profile = QUALITY_PROFILES["1080p30"], disposed = vi.spyOn(BrowserEncodingPool.prototype, "dispose");
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
   state.publications = ["first-screen", "second-screen"].map(id => ({ id, roomId: "first", sessionId: "a", userId: "self",
-    kind: "screen", videoCeiling: screenVideoCeiling(profile), paused: false }));
+    kind: "screen", videoSettings: screenVideoSettings(profile), paused: false }));
   state.pairs[0].outgoing = state.publications.map(publication => ({ id: `${publication.id}-out`, publicationId: publication.id,
     selected: true, inputFlowId: null }));
   state.pairs.push({ id: "browser-child", peerId: "y", canReceiveVideoLayers: false, rooms: [], incoming: [],
@@ -4622,7 +4626,7 @@ test("source tracks replace serially on the existing physical pair, senders and 
   const nextVideo = remoteTrack("video"), nextAudio = remoteTrack("audio");
   const finalVideo = remoteTrack("video"), finalAudio = remoteTrack("audio");
   try {
-    state.publications = [{ id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false }];
+    state.publications = [{ id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }];
     media.setLocal("screen", remoteStream("old", [oldVideo, oldAudio]));
     state.pairs[0].outgoing = [{ id: "screen-flow", publicationId: "screen", selected: true, inputFlowId: null }];
     media.update("a", state);
@@ -4667,7 +4671,7 @@ test("a superseded source replacement failure cannot retire the latest source on
   let finish!: () => void;
   const paused = new Promise<void>(resolve => { finish = resolve; });
   try {
-    state.publications = [{ id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false }];
+    state.publications = [{ id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }];
     media.setLocal("screen", remoteStream("old", [oldVideo, oldAudio]));
     state.pairs[0].outgoing = [{ id: "screen-flow", publicationId: "screen", selected: true, inputFlowId: null }];
     media.update("a", state);
@@ -4697,7 +4701,7 @@ test("live picture settings apply to the same capture and senders, and a refused
   });
   const audio = remoteTrack("audio"), profile = QUALITY_PROFILES["1080p30"];
   try {
-    state.publications = [{ id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false }];
+    state.publications = [{ id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }];
     state.pairs[0].outgoing = [{ id: "screen-flow", publicationId: "screen", selected: true, inputFlowId: null }];
     media.setLocal("screen", remoteStream("source", [video, audio]), profile);
     media.update("a", state);
@@ -4790,7 +4794,7 @@ test.each(["new", "source", "audio", "ended"])("sender rejection retires only it
   try {
     pc.connected(); pc.channels[0].open();
     state.publications = [
-      { id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false },
+      { id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
       ...["kept", "following"].map(id => ({ id, roomId: "first", sessionId: "a", userId: "self", kind: "voice" as const, paused: false })),
     ];
     media.setLocal("kept", remoteStream("kept", [kept]));
@@ -5159,7 +5163,7 @@ test.each(["flow", "pair", "attach"])("cross-pair retirement permits one compani
   try {
     state.publications = ["screen", "failed", "voice-0", "voice-1"].map(id => ({
       id, roomId: "first", sessionId: "a", userId: "self", paused: false,
-      ...(id.startsWith("voice") ? { kind: "voice" as const } : { kind: "screen" as const, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]) }),
+      ...(id.startsWith("voice") ? { kind: "voice" as const } : { kind: "screen" as const, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]) }),
     }));
     media.setLocal("screen", remoteStream("picture", [video]));
     media.setLocal("failed", remoteStream("unavailable-picture", [failedVideo]));
@@ -5571,7 +5575,7 @@ test.each(["connected", "disconnected", "failed", "deadline"] as const)("a resum
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
     state.pairs.pop();
-    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state });
     await vi.waitFor(() => expect(resumed.sent.filter(command => command.type === "signal")).toEqual(failed ? [] : [
       { type: "signal", pairId: "kept", payload: { resync: true } },
     ]));
@@ -5730,7 +5734,7 @@ test("a base deadline settles missing-channel sends while polite screen media st
     .then(() => { outcomes.push(`${kind}:sent`); }, (error: Error) => { outcomes.push(`${kind}:${error.message}`); });
   try {
     state.publications = [{ id: "screen", roomId: "first", sessionId: "zz", userId: "self", kind: "screen",
-      videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]), paused: false }];
+      videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]), paused: false }];
     state.pairs[0].outgoing = [{ id: "screen-flow", publicationId: "screen", selected: true, inputFlowId: null }];
     media.setLocal("screen", stream, QUALITY_PROFILES["720p30"]);
     media.update("zz", state);
@@ -5758,7 +5762,7 @@ test("browsing keeps watched-room reading and resumes the offline selection with
   const { session, socket } = await setup();
   try {
     const state = structuredClone(session.getSnapshot().state!);
-    state.publications = [{ id: "screen", roomId: "first", sessionId: "other", userId: "friend", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false }];
+    state.publications = [{ id: "screen", roomId: "first", sessionId: "other", userId: "friend", kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }];
     socket.receive({ type: "state", state });
     const watching = session.watch("screen");
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
@@ -5781,7 +5785,7 @@ test("browsing keeps watched-room reading and resumes the offline selection with
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
     state.channel.rooms.forEach(room => { room.reading = room.id === "second"; });
-    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state });
     const first = resumed.sent.findLast(command => command.type === "browse" && command.roomId === "first" && command.active)!;
     expect(first).toMatchObject({ type: "browse", roomId: "first", active: true });
     expect(resumed.sent.some(command => command.type === "browse" && command.active === false)).toBe(false);
@@ -5821,7 +5825,7 @@ test("relay overrides persist per room only after acceptance and accompany read 
     socket.close(); session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state });
     expect(resumed.sent.some(command => command.type === "relay_capacity")).toBe(false);
     const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
     expect(browse).toMatchObject({ roomId: "first", relayCapacity: 0 });
@@ -5839,7 +5843,7 @@ test("live chat overlays follow each watched room and never replay loaded histor
   try {
     const state = structuredClone(session.getSnapshot().state!);
     state.publications = [{ id: "screen", roomId: "first", sessionId: "other", userId: "friend", kind: "screen",
-      videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false }];
+      videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }];
     socket.receive({ type: "state", state });
     const watching = session.watch("screen");
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
@@ -5987,7 +5991,7 @@ test("reconnect retires unprojected old read intents only after the selected rea
     session.reconnect();
     const resumed = ChannelSocket.current;
     await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state });
     const first = resumed.sent.at(-1)!;
     expect(first).toMatchObject({ type: "browse", roomId: "first", active: true });
     expect(resumed.sent.some(command => command.type === "browse" && command.active === false)).toBe(false);
@@ -6141,7 +6145,7 @@ test("browse admission gates Domain history and reconnect cancels the old socket
     await canceled;
     delivery.nextHops = { host: "host" };
     const resumed = ChannelSocket.current; await resumed.onopen?.();
-    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state });
     expect(peer.sent).toHaveLength(3);
     const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
     resumed.receive({ type: "ack", requestId: browse.requestId });
@@ -6226,7 +6230,7 @@ test("domain restore closes the old connection, admits archived keys only after 
     expect(join).toMatchObject({ key: "restored-owner" });
     for (const field of ["credential", "sessionId", "roomId"]) expect(join).not.toHaveProperty(field);
     expect(saved).not.toHaveBeenCalled();
-    admission.receive({ type: "welcome", protocol: 1, credential: "restored-personal-credential", sessionId: "endpoint", state });
+    admission.receive({ type: "welcome", protocol: 2, credential: "restored-personal-credential", sessionId: "endpoint", state });
     await expect(restoring).resolves.toEqual({ name: state.channel.name, icon: state.channel.icon, access: state.channel.access });
     expect(session.getSnapshot().self?.id).toBe(ownerId); expect(session.getSnapshot().state?.channel.id).toBe(domainId);
     expect(saved).toHaveBeenCalledWith("piik.channel.prototype.credential", "restored-personal-credential");
@@ -6245,7 +6249,7 @@ test("a rejected domain replacement restarts the unchanged personal identity wit
     const resumed = ChannelSocket.current; expect(resumed).not.toBe(socket); await resumed.onopen?.();
     expect(resumed.sent.find(command => command.type === "join")).toMatchObject({ credential: "credential" });
     expect(resumed.sent.some(command => command.key === metadata.ownerKey)).toBe(false);
-    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
+    resumed.receive({ type: "welcome", protocol: 2, credential: "credential", sessionId: "endpoint", state });
     expect(session.getSnapshot().self?.id).toBe("self");
     expect(session.getSnapshot().pending.has("domain-backup")).toBe(false);
   } finally { session.close(); }
@@ -6263,7 +6267,7 @@ test("domain admission does not save a Welcome whose current owner differs from 
     const restoring = session.restoreDomainBackup(new Blob()), rejected = expect(restoring).rejects.toThrow("domain_restored_connection_failed");
     await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
     const admission = ChannelSocket.current; await admission.onopen?.();
-    admission.receive({ type: "welcome", protocol: 1, credential: "not-verified", sessionId: "endpoint", state });
+    admission.receive({ type: "welcome", protocol: 2, credential: "not-verified", sessionId: "endpoint", state });
     await rejected; expect(saved).not.toHaveBeenCalled();
     expect(session.getSnapshot().state).toBeNull(); expect(admission.readyState).toBe(3);
     expect(session.getSnapshot().pending.has("domain-backup")).toBe(false);
@@ -6288,7 +6292,7 @@ test("a committed domain restore with unavailable hosting keeps the restored ide
     const admission = ChannelSocket.current; await admission.onopen?.();
     expect(admission.sent.find(command => command.type === "join")).toMatchObject({ key: metadata.ownerKey });
     expect(admission.sent.find(command => command.type === "join")).not.toHaveProperty("credential");
-    admission.receive({ type: "welcome", protocol: 1, credential: "old-authority", sessionId: "endpoint", state: oldState });
+    admission.receive({ type: "welcome", protocol: 2, credential: "old-authority", sessionId: "endpoint", state: oldState });
     await failed;
     expect(saved).not.toHaveBeenCalled();
     session.reconnect();
@@ -6467,7 +6471,7 @@ test("portable import validates the full archive before switching accounts and r
     const admission = ChannelSocket.current; await admission.onopen?.();
     expect(admission.sent.find(command => command.type === "join")).toMatchObject({ credential: "archived-credential" });
     expect(admission.sent.find(command => command.type === "join")).not.toHaveProperty("sessionId");
-    admission.receive({ type: "welcome", protocol: 1, credential: "wrong-credential", sessionId: "endpoint", state: original });
+    admission.receive({ type: "welcome", protocol: 2, credential: "wrong-credential", sessionId: "endpoint", state: original });
     await failed;
     expect(persist.mock.calls.some(call => call[1] === "wrong-credential")).toBe(false);
     const restored = ChannelSocket.current; expect(restored).not.toBe(admission); await restored.onopen?.();
@@ -6478,7 +6482,7 @@ test("portable import validates the full archive before switching accounts and r
 
 test("an approved App exports only rooms positively matched to its Native session", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 4, port: 8793, token: "approved" });
   const { session, socket } = await setup(); const appSocket = ChannelSocket.current;
   const nativeId = crypto.randomUUID();
   const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ sessionId: nativeId, roomIds: ["first"] })))
@@ -6535,7 +6539,7 @@ test.each(["registered", "registration-failed"])("portable import retains its ve
     expect(join).toMatchObject({ credential: "archived-credential" });
     expect(join).not.toHaveProperty("key"); expect(join).not.toHaveProperty("roomId"); expect(join).not.toHaveProperty("sessionId");
     expect(stage.replace).not.toHaveBeenCalled(); expect(saved).not.toHaveBeenCalled();
-    admission.receive({ type: "welcome", protocol: 1, credential: "accepted-credential", sessionId: "new-endpoint", state });
+    admission.receive({ type: "welcome", protocol: 2, credential: "accepted-credential", sessionId: "new-endpoint", state });
     await vi.waitFor(() => expect(admission.sent.some(command => command.type === "host_register")).toBe(true));
     expect(read).toHaveBeenCalledOnce(); expect(stage.replace).toHaveBeenCalledOnce(); expect(saved).toHaveBeenCalledWith("piik.channel.prototype.credential", "accepted-credential");
     const registration = admission.sent.find(command => command.type === "host_register")!;
@@ -6670,12 +6674,12 @@ test("a delayed source busy error cannot fail a cancelled file's successful retr
   } finally { next.abort(); files.reset(); upstream.free(); }
 });
 
-test.each([undefined, 0, 2])("an incompatible Domain Welcome protocol (%s) is rejected before accepting its state", async protocol => {
+test.each([undefined, 0, 1, 3])("an incompatible Domain Welcome protocol (%s) is rejected before accepting its state", async protocol => {
   const { session, socket } = await setup(1000, false);
   try {
     const state = structuredClone(session.getSnapshot().state!);
     state.channel.name = "Must not be accepted";
-    expect(socket.sent.find(command => command.type === "join")).toMatchObject({ protocol: 1 });
+    expect(socket.sent.find(command => command.type === "join")).toMatchObject({ protocol: 2 });
     socket.receive({ type: "welcome", protocol, credential: "other-credential", sessionId: "other-endpoint", state });
     expect(session.getSnapshot()).toMatchObject({ connection: "closed", sessionId: null, state: null, error: "incompatible_protocol" });
     expect(socket.readyState).toBe(3);

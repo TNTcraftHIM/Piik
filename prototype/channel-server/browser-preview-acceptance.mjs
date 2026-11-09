@@ -168,10 +168,23 @@ finally { $timer.Dispose(); $font.Dispose(); $replacement.Dispose(); $form.Dispo
       const session = ${hook}.session;
       await session.setScreenQuality(${JSON.stringify(manualId)}, {
         ...session.screenQuality(${JSON.stringify(manualId)}).applied,
-        resolution: {width:320,height:180}, maxFramerate:15 });
+        resolution: {width:320,height:180}, maxFramerate:15, degradationPreference:'maintain-framerate' });
       return true;
     })()`);
     const qualityRtp = await codecProgressing(manualId, 'vp8', {width:320,height:180});
+    const sourceSettings = () => view(0).then(value => value.state.publications.find(source => source.id === manualId)?.videoSettings);
+    await until("Native quality reaches publication metadata", sourceSettings,
+      settings => settings?.degradationPreference === 'maintain-framerate' && settings.ceiling.maxFramerate === 15);
+    await evaluate(1, `(async () => {
+      const session = ${hook}.session;
+      await session.setScreenQuality(${JSON.stringify(manualId)}, {
+        ...session.screenQuality(${JSON.stringify(manualId)}).applied, degradationPreference:'maintain-resolution' });
+      return true;
+    })()`);
+    const preferenceRtp = await codecProgressing(manualId, 'vp8', {width:320,height:180});
+    assert.equal(preferenceRtp.trackId, qualityRtp.trackId, 'preference replacement retains the receiver track');
+    await until("preference-only change retains the source ceiling", sourceSettings,
+      settings => settings?.degradationPreference === 'maintain-resolution' && settings.ceiling.maxFramerate === 15);
     const replacement = (await action(1, 'nativeSources()')).sources.find(source => source.title === `${title} replacement`);
     assert(replacement, 'the replacement is another window owned by this fixture');
     await action(1, `startNativeScreen(${JSON.stringify(room)}, ${JSON.stringify(replacement)}, false)`);
@@ -195,7 +208,7 @@ finally { $timer.Dispose(); $font.Dispose(); $replacement.Dispose(); $form.Dispo
     await writeFile(join(output, "native-preview-result.json"), JSON.stringify({ passed:true,
       width:first.width,height:first.height,dataUrlBytes:first.data.length,firstFrameMs:Math.round(first.elapsed),
       cancelled:true,pickerCancelled,invalidSource:true,activePublicationRetained:true,pageCloseAndReopen:true,
-      codec: { acknowledgements, autoRtp, vp8Rtp, qualityRtp, replacementRtp } },null,2));
+      codec: { acknowledgements, autoRtp, vp8Rtp, qualityRtp, preferenceRtp, replacementRtp } },null,2));
   } finally {
     if (fixture.exitCode === null && fixture.signalCode === null) {
       const exited = once(fixture,"exit"); fixture.kill(); await exited;

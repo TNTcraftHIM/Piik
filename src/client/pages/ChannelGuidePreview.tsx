@@ -18,7 +18,7 @@ import "./channel-guide-preview.css";
 const invitation = "https://friends.example/#room=friday&invite=sample";
 const pending = new Set<string>();
 const roomBackupAvailable = async () => false;
-const sources: NativeCaptureSources = { ...SOURCES, codecs: ["h264", "vp8"],
+const sources: NativeCaptureSources = { ...SOURCES, codecs: ["h264", "vp8"], videoAdaptation: true,
   sources: SOURCES.sources.filter(source => source.kind === "display" || source.sourceId === "101" || source.sourceId === "102") };
 
 /** Local samples have identities, but no measured or simulated network paths. */

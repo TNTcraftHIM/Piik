@@ -207,7 +207,7 @@ describe("App connection approval", () => {
       const url = new URL(input), port = Number(url.port);
       if (port === NATIVE_CLIENT_PORT_START) return Response.json({ service: "piik-client", protocol: 10, port, instanceToken: "fixture-token" });
       if (current && port === NATIVE_CLIENT_PORT_START + 1) {
-        const identity = { service: "piik-channel-app", protocol: 3, port };
+        const identity = { service: "piik-channel-app", protocol: 4, port };
         if (url.pathname === "/connect-discovery") return Response.json({ ...identity, connectURL: `http://127.0.0.1:${port}/client` });
         return authorized ? Response.json({ ...identity, token: "fixture-token" }) : new Response(null, { status: 403 });
       }
@@ -235,7 +235,7 @@ describe("App connection approval", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: string) => {
       const port = Number(new URL(input).port);
       if (port !== NATIVE_CLIENT_PORT_START) throw new TypeError("No fixture App");
-      return Response.json({ service: "piik-channel-app", protocol: 3, port, token: "fixture-token" });
+      return Response.json({ service: "piik-channel-app", protocol: 4, port, token: "fixture-token" });
     }));
     await expect(discovery.health()).resolves.toMatchObject({ port: NATIVE_CLIENT_PORT_START });
   });

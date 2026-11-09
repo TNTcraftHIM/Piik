@@ -6,7 +6,7 @@ import { Chip } from "../components/living/primitives";
 import { EMPTY_METRICS } from "../types";
 import { useCopy } from "../ui/copy";
 import { PREVIEW_METRICS } from "./preview-metrics";
-import { QUALITY_PROFILES, screenVideoCeiling } from "../media/quality";
+import { QUALITY_PROFILES, screenVideoSettings } from "../media/quality";
 
 export function channelConnectionPreview(mode: "room" | "voice" | "both" | "app", longNames = false) {
   const state = snapshotSchema.parse({
@@ -21,7 +21,7 @@ export function channelConnectionPreview(mode: "room" | "voice" | "both" | "app"
     sessions: ["host", "self", "friend", "app"].map(id => ({ id, userId: id === "app" ? "self-user" : `${id}-user`, online: true, signingKey: Array(32).fill(0) })),
     publications: mode === "room" ? [] : [
       ...["host", "self", "friend"].map(id => ({ id: `voice-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "voice", paused: false })),
-      ...(mode === "voice" ? [] : ["host", "self"].map(id => ({ id: `screen-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), paused: false }))),
+      ...(mode === "voice" ? [] : ["host", "self"].map(id => ({ id: `screen-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }))),
     ], voice: [], subscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   });
   const topology: ChannelTopology = { bindingId: "binding", base: { rootSessionId: "host", edges: [

@@ -100,10 +100,13 @@ export function writeChannelWebLicenseNotices(repositoryRoot, outputFile) {
     rustNotices(repositoryRoot, "prototype/channel-browser/Cargo.toml", ["wasm32-unknown-unknown"])));
 }
 
-function frameDropperNotice(repositoryRoot) {
-  return section("WebRTC FrameDropper (BSD-3-Clause)",
-    ["LICENSE", "PATENTS"].map(file => readFileSync(join(repositoryRoot,
-      "native", "third_party", "webrtc-frame-dropper", file), "utf8")).join("\n"));
+function webrtcMediaNotices(repositoryRoot) {
+  return [["FrameDropper", "webrtc-frame-dropper", ["LICENSE", "PATENTS"]],
+    ["quality adaptation", "webrtc-adaptation", ["LICENSE", "PATENTS", "AUTHORS"]],
+    ["VP8 QP parser", "webrtc-vp8-qp", ["LICENSE", "PATENTS", "AUTHORS"]]]
+    .map(([name, directory, files]) => section(`WebRTC ${name} (BSD-3-Clause)`,
+      files.map(file => readFileSync(join(repositoryRoot,
+        "native", "third_party", directory, file), "utf8")).join("\n"))).join("");
 }
 
 export function writeAndroidLicenseNotices(repositoryRoot, outputFile) {
@@ -115,7 +118,7 @@ export function writeAndroidLicenseNotices(repositoryRoot, outputFile) {
     WEB_NOTICE_LINE + section("Rust runtime and paired Android platform verifier", runtime) +
     section("Kotlin standard library (Apache-2.0)", pinnedNotice("kotlin-stdlib@2.2.10")) +
     section("JetBrains annotations (Apache-2.0)", pinnedNotice("jetbrains-annotations@13.0")) +
-    frameDropperNotice(repositoryRoot) +
+    webrtcMediaNotices(repositoryRoot) +
     section(`cloudflared@${CLOUDFLARED_VERSION}`, pinnedNotice(`cloudflared@${CLOUDFLARED_VERSION}`)) +
     section("Piik Android cloudflared changes (MIT)",
       "Android system DNS adapter and exhausted-QUIC-dial fallback. Source and provenance: mobile/cloudflared/."));
@@ -131,7 +134,7 @@ export function writeAppLicenseNotices(repositoryRoot, packageRoot, target, tunn
   let text = "Piik App third-party software notices\n" +
     WEB_NOTICE_LINE +
     (tunnelVersion ? "Cloudflared: runtime/tunnel/THIRD-PARTY-NOTICES.txt\n" : "") +
-    notices + frameDropperNotice(repositoryRoot);
+    notices + webrtcMediaNotices(repositoryRoot);
   if (target.goos === "linux") {
     text += section("Linux system dependencies (not bundled)",
       readFileSync(join(repositoryRoot, "licenses", "linux-system-dependencies.txt"), "utf8"));

@@ -80,14 +80,11 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **Native quality preference.** Integrate feedback and restrictions inside
-  existing encoder workers; complete `balanced`, propagate the source preference
-  to derived outputs, and connect the shared control. Verify the real child-process
-  path and remaining platform adapters. The
-  [implementation boundary](./research/channel-network-design.md#implementation-boundary)
-  owns the isolated VP8 policy proof and its slow recovery tradeoff. Keep current
-  behavior until the complete mechanism is accepted; do not substitute encoder
-  speed controls or introduce a custom quality ladder.
+- [ ] **Native quality preference acceptance.** Verify integrated relay preference
+  updates and Android App/device behavior. Complete macOS/Linux adaptation before
+  advertising that capability.
+  The [implementation boundary](./research/channel-network-design.md#implementation-boundary)
+  owns the worker policy and retained upstream recovery hysteresis.
 - [ ] **Routing parity decisions.** Review the current domain-wide 20-endpoint
   limit, which counts Browser and App separately, against the intended user
   capacity. The current direct-source/helper trials cover fewer improvement

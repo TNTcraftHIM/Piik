@@ -3,7 +3,7 @@ import type { SignedConversationPacket } from "../../../src/client/channel/proto
 import { IDENTITY_IMAGE_URL_BYTES, identityIconSchema } from "../../../src/client/channel/protocol";
 import { prepareIdentityImage } from "../../../src/client/channel/identity-image";
 import type { BackupHistoryRow } from "../../../src/client/channel/hosting";
-import { QUALITY_PROFILES, screenVideoCeiling } from "../../../src/client/media/quality";
+import { QUALITY_PROFILES, screenVideoSettings } from "../../../src/client/media/quality";
 
 declare global { interface Window { runBrowserRoomCheck(): Promise<object> } }
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
@@ -271,7 +271,7 @@ window.runBrowserRoomCheck = async () => {
     const original = await send("Changed again", "first", [{ ...file, sha256: "0".repeat(64) }]);
     check(!original.inserted && JSON.stringify(original.message) === JSON.stringify(first.message), "nonce survives reopen");
     check((await dispatch({ type: "publish", publication: { id: crypto.randomUUID(), roomId: host.roomId,
-      kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]) } })).reply?.result.type === "done",
+      kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } })).reply?.result.type === "done",
     "the source is published before checking restart cleanup");
     await host.close();
     host = await BrowserRoomHost.open(database, policy);
@@ -281,7 +281,7 @@ window.runBrowserRoomCheck = async () => {
     check((await BrowserRoomHost.storedPolicies(database)).length === 2, "persisted room policies enumerated");
     const publication = crypto.randomUUID();
     check((await dispatch({ type: "publish", publication: { id: publication, roomId: host.roomId,
-      kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]) } })).reply?.result.type === "done",
+      kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } })).reply?.result.type === "done",
     "the source is published before checking same-binding continuity");
     await bindHost();
     check((await dispatch({ type: "browse", active: true, roomId: host.roomId })).projection.views[session].publications.length === 1,

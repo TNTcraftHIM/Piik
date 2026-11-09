@@ -6,7 +6,7 @@ import { Btn, Chip } from "../components/living/primitives";
 import { participantColor } from "../components/living/participant-color";
 import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
-import { screenVideoCeiling } from "../media/quality";
+import { screenVideoSettings } from "../media/quality";
 import type { ChannelController } from "../channel/types";
 import { useAnchoredPopover } from "../components/living/use-anchored-popover";
 import "./channel-room-preview.css";
@@ -51,7 +51,7 @@ export function ChannelRoomPreview() {
   }, []);
   const publications = Array.from({ length: count }, (_, index) => ({ id: `sample-screen-${index}`, roomId: "friday",
     sessionId: `${screenUsers[index].id}-session`, userId: screenUsers[index].id,
-    kind: "screen" as const, paused: false, videoCeiling: screenVideoCeiling(sample.channel.quality) })).filter(publication => !stopped.has(publication.id));
+    kind: "screen" as const, paused: false, videoSettings: screenVideoSettings(sample.channel.quality) })).filter(publication => !stopped.has(publication.id));
   const state = { ...sample.channel.state!, channel: { ...sample.channel.state!.channel,
     rooms: sample.channel.state!.channel.rooms.map(room => ({ ...room,
       name: longNames && room.id === "friday" ? zh ? "周五一起看电影与交流的朋友们" : "Friday with friends: a shared evening together" : room.name,

@@ -92,8 +92,10 @@ impl Fixture {
             user_id: Uuid::new_v4(),
             kind: Kind::Screen,
             paused: false,
-            video_ceiling: Some(
+            video_settings: Some(
                 crate::capture::Settings {
+                    degradation_preference:
+                        piik_channel_core::wire::DegradationPreference::Balanced,
                     width: 640,
                     height: 360,
                     fps: 30,
@@ -481,7 +483,9 @@ pub(in crate::peer) fn video_payloads(
             0x01,
             0,
         ],
-        vec![0x55; 7000],
+        // Keep this packet-routing fixture below the two-flow startup budget;
+        // it still spans RTP packets, but is not a decodable transcoding input.
+        vec![0x55; 1500],
         frame.to_be_bytes().to_vec(),
     ]
     .concat();

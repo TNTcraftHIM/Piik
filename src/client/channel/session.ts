@@ -15,7 +15,7 @@ import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "
 import { MicrophoneInput } from "../media/microphone-input";
 import { acquireMediaStream } from "../media/capture-stream";
 import { HostAudio, type CommentaryInput } from "../media/host-audio";
-import { readPreferredQuality, savePreferredQuality, screenVideoCeiling, supportsCaptureProfile, type QualityProfile } from "../media/quality";
+import { readPreferredQuality, savePreferredQuality, screenVideoSettings, supportsCaptureProfile, type QualityProfile } from "../media/quality";
 import { audioInputConstraints } from "../media/audio-capture";
 import { browserCaptureDevices } from "../media/capture-devices";
 import { RoomInteractionSession } from "../lib/room-interactions";
@@ -1446,7 +1446,7 @@ export class ChannelSession {
     try {
       if (microphone && !microphone.stream.active) throw new Error("microphone_unavailable");
       await this.request({ type: "publish", publication: { id, roomId, kind,
-        ...(sourceProfile ? { videoCeiling: screenVideoCeiling(sourceProfile) } : {}) } });
+        ...(sourceProfile ? { videoSettings: screenVideoSettings(sourceProfile) } : {}) } });
       const primary = kind === "screen" ? stream.getVideoTracks()[0] : stream.getAudioTracks()[0];
       if (primary?.readyState === "ended" || (microphone && !microphone.stream.active)) {
         this.send({ type: "unpublish", publicationId: id });
@@ -1683,8 +1683,7 @@ export class ChannelSession {
   setScreenQuality = (publicationId: string, requested: QualityProfile): Promise<void> => {
     const share = [...this.screenShares.values()].find(share => share.id === publicationId);
     if (!share || share.selection || share.audioChange) return Promise.reject(new Error("capture_unavailable"));
-    const profile = { ...requested, maxAudioBitrate: share.profile.maxAudioBitrate,
-      degradationPreference: this.local.has(publicationId) ? requested.degradationPreference : share.profile.degradationPreference };
+    const profile = { ...requested, maxAudioBitrate: share.profile.maxAudioBitrate };
     if (!supportsCaptureProfile(profile)) return Promise.reject(new Error("capture_quality_unsupported"));
     share.requestedProfile = profile;
     this.patch({});
@@ -1701,7 +1700,7 @@ export class ChannelSession {
             if (!current() || this.local.get(publicationId) !== local) throw new DOMException("Capture cancelled", "AbortError");
             try {
               await this.request({ type: "publish", publication: { id: publicationId, roomId: local.roomId, kind: "screen",
-                videoCeiling: screenVideoCeiling(profile) } });
+                videoSettings: screenVideoSettings(profile) } });
             } catch (error) {
               if (current() && this.local.get(publicationId) === local) await this.media.configureLocal(publicationId, previous);
               throw error;

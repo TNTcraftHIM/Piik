@@ -376,8 +376,10 @@ mod tests {
                 user_id: id(1),
                 kind: Kind::Screen,
                 paused: false,
-                video_ceiling: Some(
+                video_settings: Some(
                     crate::capture::Settings {
+                        degradation_preference:
+                            piik_channel_core::wire::DegradationPreference::Balanced,
                         width: 640,
                         height: 360,
                         fps: 30,

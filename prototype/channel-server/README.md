@@ -99,10 +99,11 @@ deployed frontend requires no Node runtime.
 The `piik-channel-app` entry uses the same App button, local approval page and
 saved-site controls as the shared Web interface.
 
-Current internal pages require App control protocol 3, which binds input policy
-to the selected capture. Upgrade the App and its bundled Web files together;
-Beta6 and earlier App controls are incompatible with these pages. Domain
-signaling and saved room data are unchanged.
+Current internal pages require App control protocol 4 and domain signaling
+protocol 2. These carry the sharer's picture preference with its requested
+resolution/FPS/bitrate ceiling. Upgrade the App, bundled Web files and domain
+server together; earlier wire versions are incompatible. Saved room data is
+unchanged.
 
 Build the frontend and start it:
 

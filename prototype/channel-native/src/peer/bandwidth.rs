@@ -299,9 +299,18 @@ impl Driver {
         }
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
         for (source, producer) in &self.derived {
+            let Some(preference) = self
+                .sources
+                .get(source)
+                .and_then(|source| self.publications.get(&source.publication_id))
+                .and_then(|publication| publication.video_settings)
+                .map(|settings| settings.degradation_preference)
+            else {
+                continue;
+            };
             let mut next = demands.remove(source).unwrap_or_default();
             next.sort_unstable_by(|a, b| (&a.output, &a.rid).cmp(&(&b.output, &b.rid)));
-            producer.set_demands(next);
+            producer.set_demands(next, preference);
         }
     }
 }

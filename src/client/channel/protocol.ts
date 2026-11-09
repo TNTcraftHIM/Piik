@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { videoCeilingSchema, type VideoCeiling } from "../../shared/protocol";
+import { videoSettingsSchema, type VideoSettings } from "../../shared/protocol";
 import { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
 export { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
 
@@ -11,7 +11,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 1;
+export const CHANNEL_PROTOCOL = 2;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("missing") }),
@@ -37,8 +37,8 @@ const publicationBaseSchema = z.object({
   paused: z.boolean(),
 });
 export const publicationSchema = z.discriminatedUnion("kind", [
-  publicationBaseSchema.extend({ kind: z.literal("screen"), videoCeiling: videoCeilingSchema }),
-  publicationBaseSchema.extend({ kind: z.literal("voice"), videoCeiling: z.never().optional() }),
+  publicationBaseSchema.extend({ kind: z.literal("screen"), videoSettings: videoSettingsSchema }),
+  publicationBaseSchema.extend({ kind: z.literal("voice"), videoSettings: z.never().optional() }),
 ]);
 export const attachmentSchema = z.object({
   id, name: z.string().min(1).max(240), size: z.number().int().nonnegative().safe(),
@@ -164,7 +164,7 @@ export type ChannelCommand =
   | { type: "get_room_invite"; roomId: string }
   | { type: "room_topology"; roomId: string; publicationId?: string }
   | { type: "revoke_room_access"; roomId: string; userId: string }
-  | { type: "publish"; publication: { id: string; roomId: string; kind: "screen" | "voice"; videoCeiling?: VideoCeiling } }
+  | { type: "publish"; publication: { id: string; roomId: string; kind: "screen" | "voice"; videoSettings?: VideoSettings } }
   | { type: "unpublish"; publicationId: string }
   | { type: "set_paused"; publicationId: string; paused: boolean }
   | { type: "transfer_source"; publicationId: string; toSessionId: string }

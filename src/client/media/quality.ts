@@ -7,6 +7,7 @@ import {
   type QualityResolution,
   type QualitySettings,
   type VideoCeiling,
+  type VideoSettings,
 } from "../../shared/protocol";
 import type { CopyKey } from "../ui/copy";
 import { displayMediaOptions } from "./audio-capture";
@@ -21,6 +22,7 @@ export type {
   QualityResolution,
   QualitySettings,
   VideoCeiling,
+  VideoSettings,
 } from "../../shared/protocol";
 
 export type QualityProfile = QualitySettings;
@@ -28,6 +30,9 @@ export type VideoSenderProfile = VideoCeiling & { degradationPreference?: Degrad
 
 export function screenVideoCeiling(profile: VideoCeiling): VideoCeiling {
   return { resolution: profile.resolution, maxFramerate: profile.maxFramerate, maxBitrate: profile.maxBitrate };
+}
+export function screenVideoSettings(profile: QualityProfile): VideoSettings {
+  return { ceiling: screenVideoCeiling(profile), degradationPreference: profile.degradationPreference };
 }
 export const DEFAULT_ROOM_VOICE_BITRATE = 64_000;
 

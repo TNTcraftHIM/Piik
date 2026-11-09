@@ -161,6 +161,7 @@ mod tests {
     async fn incoming_source_time_static_pli_and_independent_encoding_stop() -> Result<()> {
         let upstream = Frames::new(FrameTiming::Source)?;
         let settings = Settings {
+            degradation_preference: piik_channel_core::wire::DegradationPreference::Balanced,
             width: 96,
             height: 64,
             fps: 1,

@@ -1,14 +1,15 @@
 //! The stock libvpx encoder; source clocks and worker lifetime stay with capture.
 use super::{
+    adaptation::{Input, QualityPolicy},
     cadence::{AdmissionRate, Cadence},
     converter::Converter,
     frame_dropper::FrameDropper,
     frames::RawFrame,
     output::Shared,
-    CaptureClock, FrameTiming, Settings,
+    CaptureClock, FrameTiming, Settings, VideoCodec,
 };
 use anyhow::{ensure, Result};
-use std::{ffi::CStr, mem, ptr, slice, sync::Arc};
+use std::{ffi::CStr, mem, ptr, slice, sync::Arc, time::Instant};
 use vpx_sys::*;
 use windows::Win32::Graphics::Direct3D11::*;
 
@@ -16,6 +17,7 @@ pub(super) struct AccessUnit {
     pub bytes: Vec<u8>,
     pub keyframe: bool,
     pub non_reference: bool,
+    pub qp: Option<i32>,
 }
 
 pub(super) struct Encoder {
@@ -167,7 +169,19 @@ impl Encoder {
                     bytes: slice::from_raw_parts(frame.buf.cast(), frame.sz).to_vec(),
                     keyframe,
                     non_reference: frame.flags & VPX_FRAME_IS_DROPPABLE != 0,
+                    qp: None,
                 });
+            }
+            if let Some(unit) = &mut output {
+                let mut qp = 0i32;
+                if vpx_codec_control_(
+                    &mut self.context,
+                    vp8e_enc_control_id::VP8E_GET_LAST_QUANTIZER as i32,
+                    &mut qp,
+                ) == vpx_codec_err_t::VPX_CODEC_OK
+                {
+                    unit.qp = Some(qp);
+                }
             }
             Ok(output)
         }
@@ -217,6 +231,10 @@ pub(super) fn run(
     let mut staging = None;
     let mut last_capture = None;
     let mut last_pts = None;
+    let started = Instant::now();
+    let mut policy = QualityPolicy::new(VideoCodec::Vp8, settings.degradation_preference, 0);
+    let requested_max = (timing == FrameTiming::Capture).then_some(settings.fps);
+    let mut frame_limit = requested_max;
     let mut cadence = Cadence::new(settings.fps);
     let mut admission_rate = AdmissionRate::default();
     let mut dropper = FrameDropper::new();
@@ -245,6 +263,8 @@ pub(super) fn run(
                         FrameTiming::Source => {
                             last_capture != Some(raw.qpc)
                                 && last_pts.is_none_or(|last| raw.qpc > last)
+                                && (state.force_keyframe
+                                    || frame_limit.is_none_or(|_| cadence.accept(raw.qpc)))
                         }
                     };
                     if accept {
@@ -284,23 +304,43 @@ pub(super) fn run(
         if last_pts.is_some_and(|last| qpc <= last) {
             continue;
         }
+        policy.tick(
+            started.elapsed().as_millis() as u64,
+            Input {
+                pixels: current.width * current.height,
+                fps: admission_rate.fps.unwrap_or(0.0).round() as u32,
+            },
+        );
+        let next_limit = policy.restrictions().frame_rate_limit(requested_max);
+        if next_limit != frame_limit {
+            frame_limit = next_limit;
+            cadence = Cadence::new(frame_limit.unwrap_or(settings.fps));
+            if frame_limit.is_some() {
+                cadence.accept(qpc);
+            }
+            admission_rate = AdmissionRate::default();
+        }
         if !repeated {
             if let Some(fps) = admission_rate.observe(frame.qpc) {
                 dropper.set_rates(current.bitrate as f32 / 1000.0, fps);
                 dropper.leak(fps.round() as u32);
                 if dropper.drop_frame() && !force {
+                    policy.report_drop();
                     continue;
                 }
             }
         }
-        let next = fitted(
-            Settings {
-                bitrate: current.bitrate,
-                ..settings
-            },
-            &frame,
+        let next = policy.restrictions().apply(
+            fitted(
+                Settings {
+                    bitrate: current.bitrate,
+                    ..settings
+                },
+                &frame,
+            ),
+            requested_max,
         );
-        if (next.width, next.height) != (current.width, current.height) {
+        if (next.width, next.height, next.fps) != (current.width, current.height, current.fps) {
             current = next;
             encoder = Encoder::new(current)?;
             converter = Converter::new(&device, current)?;
@@ -332,7 +372,9 @@ pub(super) fn run(
                 pixels,
                 mapped.RowPitch as usize,
                 qpc,
-                10_000_000 / settings.fps,
+                (10_000_000.0 / admission_rate.fps.unwrap_or(current.fps as f32))
+                    .round()
+                    .max(1.0) as u32,
                 force,
             );
             context.Unmap(staging, 0);
@@ -340,6 +382,7 @@ pub(super) fn run(
         };
         last_pts = Some(qpc);
         if let Some(unit) = unit {
+            policy.report_encoded(unit.qp, started.elapsed().as_micros() as u64);
             dropper.fill(unit.bytes.len(), !unit.keyframe);
             if !shared.output(crate::EncodedFrame {
                 bytes: unit.bytes,
@@ -352,6 +395,8 @@ pub(super) fn run(
             }) {
                 break;
             }
+        } else {
+            policy.report_drop();
         }
     }
     Ok(())
@@ -364,6 +409,7 @@ mod tests {
     #[test]
     fn live_bitrate_updates_keep_a_decodable_vp8_encoder() -> Result<()> {
         let settings = Settings {
+            degradation_preference: piik_channel_core::wire::DegradationPreference::Balanced,
             width: 160,
             height: 110,
             fps: 10,

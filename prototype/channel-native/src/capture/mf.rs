@@ -1,15 +1,16 @@
-//! Adapter-bound asynchronous hardware MFT. No capture/RTP policy lives here.
+//! One hardware MFT worker; capture clocks and feed lifetime retain their owners.
 use super::{
+    adaptation::{Input, QualityPolicy},
     cadence::{AdmissionRate, Cadence},
     converter::Converter,
     frame_dropper::FrameDropper,
     frames::RawFrame,
     output::Shared,
-    CaptureClock, Settings,
+    qp, CaptureClock, FrameTiming, Settings, VideoCodec,
 };
 use crate::EncodedFrame;
 use anyhow::{anyhow, ensure, Context as _, Result};
-use std::{mem::ManuallyDrop, ptr, sync::Arc};
+use std::{mem::ManuallyDrop, ptr, sync::Arc, time::Instant};
 use windows::{
     core::{implement, IUnknown, Interface, Ref},
     Win32::{
@@ -74,6 +75,7 @@ pub(super) struct Encoder {
     callback: IMFAsyncCallback,
     api: ICodecAPI,
     info: MFT_OUTPUT_STREAM_INFO,
+    qp: qp::H264,
     _manager: IMFDXGIDeviceManager,
     _com: Com,
 }
@@ -220,6 +222,7 @@ impl Encoder {
                     info,
                     events,
                     callback,
+                    qp: qp::H264::default(),
                     _manager: manager,
                     _com: com,
                 }),
@@ -350,7 +353,10 @@ impl Encoder {
         let mut last_capture = None;
         let mut origin: Option<i64> = None;
         let mut last_pts = -1;
-        let duration = 10_000_000 / settings.fps as i64;
+        let started = Instant::now();
+        let mut policy = QualityPolicy::new(VideoCodec::H264, settings.degradation_preference, 0);
+        let requested_max = (timing == FrameTiming::Capture).then_some(settings.fps);
+        let mut frame_limit = requested_max;
         let mut cadence = Cadence::new(settings.fps);
         let mut dropper = FrameDropper::new();
         let mut admission_rate = AdmissionRate::default();
@@ -386,6 +392,8 @@ impl Encoder {
                                 super::FrameTiming::Source => {
                                     last_capture != Some(raw.qpc)
                                         && origin.is_none_or(|first| raw.qpc - first > last_pts)
+                                        && (state.force_keyframe
+                                            || frame_limit.is_none_or(|_| cadence.accept(raw.qpc)))
                                 }
                             } {
                                 let frame = raw.clone();
@@ -409,6 +417,19 @@ impl Encoder {
                     state = shared.changed.wait(state).unwrap();
                 }
             };
+            policy.tick(
+                started.elapsed().as_millis() as u64,
+                Input {
+                    pixels: current.width * current.height,
+                    fps: admission_rate.fps.unwrap_or(0.0).round() as u32,
+                },
+            );
+            let next_limit = policy.restrictions().frame_rate_limit(requested_max);
+            if next_limit != frame_limit {
+                frame_limit = next_limit;
+                cadence = Cadence::new(frame_limit.unwrap_or(settings.fps));
+                admission_rate = AdmissionRate::default();
+            }
             match work {
                 Work::Stop => break,
                 Work::Bitrate(bitrate) => unsafe {
@@ -433,6 +454,8 @@ impl Encoder {
                             }
                         } else if kind == METransformHaveOutput.0 as u32 {
                             let (bytes, pts, keyframe) = encoder.output()?;
+                            let qp = encoder.qp.parse(&bytes);
+                            policy.report_encoded(qp, started.elapsed().as_micros() as u64);
                             dropper.fill(bytes.len(), !keyframe);
                             let presentation_time = clock.instant(origin.unwrap() + pts);
                             if !shared.output(EncodedFrame {
@@ -447,12 +470,20 @@ impl Encoder {
                             let next = {
                                 let mut state = shared.state.lock().unwrap();
                                 let Some(frame) = &state.latest else { break };
-                                let next = fitted(settings, frame);
+                                let next = policy.restrictions().apply(
+                                    fitted(
+                                        Settings {
+                                            bitrate: current.bitrate,
+                                            ..settings
+                                        },
+                                        frame,
+                                    ),
+                                    requested_max,
+                                );
                                 state.force_keyframe = true;
                                 next
                             };
-                            current.width = next.width;
-                            current.height = next.height;
+                            current = next;
                             encoder.resize(current).context("hardware H264 resize")?;
                             converter = Converter::new(&device, current)?;
                             resizing = false;
@@ -461,8 +492,19 @@ impl Encoder {
                     }
                 }
                 Work::Frame(frame, force) => {
-                    let next = fitted(settings, &frame);
-                    if (next.width, next.height) != (current.width, current.height) {
+                    let next = policy.restrictions().apply(
+                        fitted(
+                            Settings {
+                                bitrate: current.bitrate,
+                                ..settings
+                            },
+                            &frame,
+                        ),
+                        requested_max,
+                    );
+                    if (next.width, next.height, next.fps)
+                        != (current.width, current.height, current.fps)
+                    {
                         // The raw slot retains the latest source during the drain;
                         // old access units keep their order and the same clock.
                         resizing = true;
@@ -498,11 +540,15 @@ impl Encoder {
                             dropper.leak(fps.round() as u32);
                             let dropped = dropper.drop_frame() && !force;
                             if dropped {
+                                policy.report_drop();
                                 continue;
                             }
                         }
                     }
                     let texture = converter.convert(&frame.texture, frame.color_space)?;
+                    let duration = (10_000_000.0 / admission_rate.fps.unwrap_or(current.fps as f32))
+                        .round()
+                        .max(1.0) as i64;
                     encoder.input(&texture, pts, duration, force, discontinuity)?;
                     discontinuity = false;
                     need_input -= 1;

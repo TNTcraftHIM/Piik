@@ -9,6 +9,7 @@ use crate::{
 };
 use anyhow::Result;
 use futures_util::{future::pending, StreamExt};
+use piik_channel_core::wire::DegradationPreference;
 use std::sync::Arc;
 use tokio::{
     sync::{mpsc, watch},
@@ -17,8 +18,13 @@ use tokio::{
 use uuid::Uuid;
 
 pub(crate) struct Producer {
-    demands: watch::Sender<Vec<VideoDemand>>,
+    demands: watch::Sender<Demand>,
     task: JoinHandle<()>,
+}
+#[derive(Clone, PartialEq)]
+struct Demand {
+    demands: Vec<VideoDemand>,
+    preference: DegradationPreference,
 }
 impl Producer {
     pub fn start(
@@ -26,13 +32,21 @@ impl Producer {
         source: Uuid,
         baseline: Video,
         codec: VideoCodec,
+        preference: DegradationPreference,
         events: mpsc::Sender<Event>,
     ) -> Self {
-        let (demands, rx) = watch::channel(Vec::new());
+        let (demands, rx) = watch::channel(Demand {
+            demands: Vec::new(),
+            preference,
+        });
         let task = tokio::spawn(run(publication, source, baseline, codec, rx, events));
         Self { demands, task }
     }
-    pub fn set_demands(&self, next: Vec<VideoDemand>) {
+    pub fn set_demands(&self, demands: Vec<VideoDemand>, preference: DegradationPreference) {
+        let next = Demand {
+            demands,
+            preference,
+        };
         self.demands.send_if_modified(|current| {
             if *current == next {
                 false
@@ -54,7 +68,7 @@ struct Decoding {
     frames: Frames,
     input: Arc<Input>,
     format: watch::Receiver<Option<Format>>,
-    encoding_format: Option<Format>,
+    encoding_settings: Option<(Format, DegradationPreference)>,
     task: JoinHandle<Result<()>>,
 }
 impl Decoding {
@@ -110,7 +124,7 @@ impl Decoding {
             frames,
             input,
             format: formats,
-            encoding_format: None,
+            encoding_settings: None,
             task,
         })
     }
@@ -151,28 +165,35 @@ fn needs_decoder(next: &[VideoDemand]) -> bool {
             && d.input.upgrade().is_some_and(|input| !input.is_closed())
     })
 }
-async fn apply(decoding: &mut Decoding, next: &[VideoDemand], baseline: &Video) -> Vec<Video> {
+async fn apply(
+    decoding: &mut Decoding,
+    next: &[VideoDemand],
+    baseline: &Video,
+    preference: DegradationPreference,
+) -> Vec<Video> {
     let Some(format) = *decoding.format.borrow() else {
         return vec![];
     };
     if decoding
-        .encoding_format
-        .is_some_and(|current| current != format)
+        .encoding_settings
+        .is_some_and(|current| current != (format, preference))
     {
         // Bitrate changes update an encoder in place; geometry and cadence are
-        // its creation settings. Retain the decoder, source clock and readers.
+        // its creation settings, as is source-owned adaptation intent. Retain
+        // the decoder, source clock and readers.
         let previous = std::mem::replace(
             &mut decoding.encodings,
             Encodings::new(baseline.time(), baseline.changed(), decoding.codec),
         );
         previous.stop().await;
     }
-    decoding.encoding_format = Some(format);
+    decoding.encoding_settings = Some((format, preference));
     decoding
         .encodings
         .reconcile(next, Some(&decoding.input), |bitrate| {
             decoding.frames.encode(
                 Settings {
+                    degradation_preference: preference,
                     width: format.width,
                     height: format.height,
                     fps: format.fps,
@@ -202,11 +223,12 @@ async fn run(
     source: Uuid,
     baseline: Video,
     codec: VideoCodec,
-    mut demands: watch::Receiver<Vec<VideoDemand>>,
+    mut demands: watch::Receiver<Demand>,
     events: mpsc::Sender<Event>,
 ) {
     let changed = baseline.changed();
     let mut current = Vec::new();
+    let mut preference = demands.borrow().preference;
     let mut decoding: Option<Decoding> = None;
     enum Wake {
         Demand(Result<(), watch::error::RecvError>),
@@ -242,7 +264,9 @@ async fn run(
         match wake {
             Wake::Demand(Err(_)) => break,
             Wake::Demand(Ok(())) => {
-                current = demands.borrow_and_update().clone();
+                let next = demands.borrow_and_update().clone();
+                current = next.demands;
+                preference = next.preference;
                 direct(&current);
                 if decoding.is_none() && needs_decoder(&current) {
                     let source = current
@@ -269,12 +293,12 @@ async fn run(
                             break;
                         }
                     }
-                    failed = apply(decoder, &current, &baseline).await;
+                    failed = apply(decoder, &current, &baseline, preference).await;
                 }
             }
             Wake::Format => {
                 if let Some(decoder) = &mut decoding {
-                    failed = apply(decoder, &current, &baseline).await;
+                    failed = apply(decoder, &current, &baseline, preference).await;
                 }
             }
             Wake::Encoded((video, result)) => {
@@ -359,7 +383,7 @@ mod tests {
             frames: Frames::new(FrameTiming::Source)?,
             input: input.clone(),
             format: formats,
-            encoding_format: None,
+            encoding_settings: None,
             task: tokio::spawn(async { Ok(()) }),
         };
         let completed = Arc::new(AtomicUsize::new(0));
@@ -369,7 +393,14 @@ mod tests {
             fps: 30,
         };
         format.send_replace(Some(current));
-        assert!(apply(&mut decoding, &[], &baseline).await.is_empty());
+        assert!(apply(
+            &mut decoding,
+            &[],
+            &baseline,
+            DegradationPreference::Balanced
+        )
+        .await
+        .is_empty());
         for next in [
             Format {
                 width: 640,
@@ -391,17 +422,53 @@ mod tests {
             let before = completed.load(Ordering::SeqCst);
             // A published notification is not itself a new encoder specification.
             format.send_replace(Some(current));
-            assert!(apply(&mut decoding, &[], &baseline).await.is_empty());
+            assert!(apply(
+                &mut decoding,
+                &[],
+                &baseline,
+                DegradationPreference::Balanced
+            )
+            .await
+            .is_empty());
             assert_eq!(completed.load(Ordering::SeqCst), before);
             assert_eq!(decoding.encodings.pumps.len(), 1);
 
             format.send_replace(Some(next));
-            assert!(apply(&mut decoding, &[], &baseline).await.is_empty());
+            assert!(apply(
+                &mut decoding,
+                &[],
+                &baseline,
+                DegradationPreference::Balanced
+            )
+            .await
+            .is_empty());
             assert_eq!(completed.load(Ordering::SeqCst), before + 1);
             assert!(decoding.encodings.pumps.is_empty());
             assert!(Arc::ptr_eq(&input, &decoding.input));
             current = next;
         }
+        let work = completed.clone();
+        let video = baseline.clone();
+        decoding.encodings.pumps.push(Box::pin(async move {
+            work.fetch_add(1, Ordering::SeqCst);
+            (video, Ok(()))
+        }));
+        let before = completed.load(Ordering::SeqCst);
+        assert!(apply(
+            &mut decoding,
+            &[],
+            &baseline,
+            DegradationPreference::MaintainFramerate
+        )
+        .await
+        .is_empty());
+        assert_eq!(completed.load(Ordering::SeqCst), before + 1);
+        assert!(decoding.encodings.pumps.is_empty());
+        assert!(Arc::ptr_eq(&input, &decoding.input));
+        assert_eq!(
+            decoding.encoding_settings,
+            Some((current, DegradationPreference::MaintainFramerate))
+        );
         decoding.stop().await;
         Ok(())
     }
@@ -440,7 +507,7 @@ mod tests {
             frames,
             input: baseline.subscribe(),
             format: formats,
-            encoding_format: None,
+            encoding_settings: None,
             task: tokio::spawn(async move {
                 format.send_replace(Some(Format {
                     width: 640,

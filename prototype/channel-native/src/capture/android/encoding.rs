@@ -4,7 +4,10 @@ use super::{
     graphics::Graphics,
 };
 use crate::{
-    capture::{Settings, VideoCodec},
+    capture::{
+        adaptation::{Input, QualityPolicy},
+        qp, Settings, VideoCodec,
+    },
     EncodedFrame,
 };
 use anyhow::{anyhow, ensure, Context, Result};
@@ -173,6 +176,7 @@ struct Codec {
     video_codec: VideoCodec,
     size: (u32, u32),
     config: Vec<u8>,
+    qp: qp::H264,
 }
 impl Codec {
     fn new(frames: &Frames, settings: Settings, video_codec: VideoCodec) -> Result<Self> {
@@ -223,6 +227,7 @@ impl Codec {
             video_codec,
             size: (settings.width, settings.height),
             config: Vec::new(),
+            qp: qp::H264::default(),
         })
     }
     fn bitrate(&self, value: u32) -> Result<()> {
@@ -238,7 +243,7 @@ impl Codec {
         raw: &RawFrame,
         nanos: i64,
         force: bool,
-    ) -> Result<Option<EncodedFrame>> {
+    ) -> Result<Option<(EncodedFrame, Option<i32>)>> {
         if force {
             let mut params = MediaFormat::new();
             params.set_i32("request-sync", 0);
@@ -308,12 +313,19 @@ impl Codec {
                             bytes = complete;
                         }
                     }
-                    return Ok(Some(EncodedFrame {
-                        vp8: None,
-                        bytes,
-                        keyframe,
-                        presentation_time: frames.clock.project(pts * 1000),
-                    }));
+                    let qp = match self.video_codec {
+                        VideoCodec::H264 => self.qp.parse(&bytes),
+                        VideoCodec::Vp8 => qp::vp8(&bytes),
+                    };
+                    return Ok(Some((
+                        EncodedFrame {
+                            vp8: None,
+                            bytes,
+                            keyframe,
+                            presentation_time: frames.clock.project(pts * 1000),
+                        },
+                        qp,
+                    )));
                 }
                 _ => {}
             }
@@ -342,6 +354,9 @@ fn run(
     let mut codec: Option<Codec> = None;
     let mut last = None;
     let mut bitrate = settings.bitrate;
+    let epoch = std::time::Instant::now();
+    let mut policy = QualityPolicy::new(video_codec, settings.degradation_preference, 0);
+    let mut fps = settings.fps;
     let mut pending_keyframe = true;
     let mut cadence = crate::capture::cadence::Cadence::new(settings.fps);
     let mut rate = crate::capture::cadence::AdmissionRate::default();
@@ -351,10 +366,7 @@ fn run(
         let (raw, explicit) = match work {
             Work::Bitrate(value) => {
                 bitrate = value;
-                dropper.set_rates(
-                    value as f32 / 1000.,
-                    rate.fps.unwrap_or(settings.fps as f32),
-                );
+                dropper.set_rates(value as f32 / 1000., rate.fps.unwrap_or(fps as f32));
                 if let Some(codec) = &codec {
                     codec.bitrate(value)?;
                 }
@@ -362,6 +374,29 @@ fn run(
             }
             Work::Frame(raw, force) => (raw, force),
         };
+        if let Some(codec) = &codec {
+            policy.tick(
+                epoch.elapsed().as_millis() as u64,
+                Input {
+                    pixels: codec.size.0 * codec.size.1,
+                    fps: rate.fps.map_or(0, |fps| fps.round() as u32),
+                },
+            );
+        }
+        let (w, h) = raw.image.size();
+        let fitted = policy.restrictions().apply(
+            Settings {
+                bitrate,
+                ..settings.fitted(w as f64, h as f64)
+            },
+            Some(settings.fps),
+        );
+        if fps != fitted.fps {
+            fps = fitted.fps;
+            cadence.set_fps(fps);
+            rate = crate::capture::cadence::AdmissionRate::default();
+            dropper.set_rates(bitrate as f32 / 1000., fps as f32);
+        }
         let fresh = last.is_none_or(|last| raw.nanos > last);
         // Explicit local-capture PLI may present the current static image once.
         let nanos = if explicit && !fresh {
@@ -378,16 +413,12 @@ fn run(
             if let Some(fps) = rate.observe(nanos / 100) {
                 dropper.set_rates(bitrate as f32 / 1000., fps);
             }
-            dropper.leak(rate.fps.unwrap_or(settings.fps as f32).round().max(1.) as u32);
+            dropper.leak(rate.fps.unwrap_or(fps as f32).round().max(1.) as u32);
         }
         if !force && dropper.drop_frame() {
+            policy.report_drop();
             continue;
         }
-        let (w, h) = raw.image.size();
-        let fitted = Settings {
-            bitrate,
-            ..settings.fitted(w as f64, h as f64)
-        };
         if codec
             .as_ref()
             .is_none_or(|codec| codec.size != (fitted.width, fitted.height))
@@ -396,11 +427,12 @@ fn run(
             codec = Some(Codec::new(&frames, fitted, video_codec)?);
             force = true;
         }
-        if let Some(frame) = codec
+        if let Some((frame, qp)) = codec
             .as_mut()
             .unwrap()
             .encode(shared, &frames, &raw, nanos, force)?
         {
+            policy.report_encoded(qp, epoch.elapsed().as_micros() as u64);
             pending_keyframe = force && !frame.keyframe;
             dropper.fill(frame.bytes.len(), !frame.keyframe);
             let mut state = shared.state.lock().unwrap();
@@ -411,6 +443,9 @@ fn run(
             drop(state);
             shared.available.notify_waiters();
         } else {
+            if !shared.state.lock().unwrap().stop && !frames.is_stopped() {
+                policy.report_drop();
+            }
             pending_keyframe = force;
         }
     }

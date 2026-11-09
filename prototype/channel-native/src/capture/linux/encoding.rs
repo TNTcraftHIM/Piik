@@ -700,6 +700,7 @@ mod tests {
         gst::init()?;
         let frames = Frames::new(FrameTiming::Capture)?;
         let settings = Settings {
+            degradation_preference: piik_channel_core::wire::DegradationPreference::Balanced,
             width: 1920,
             height: 1080,
             fps: 30,

@@ -10,7 +10,7 @@ default-run = "piik-channel-native"
 
 [features]
 default = ["capture"]
-capture = ["dep:ashpd", "dep:reis", "dep:gst", "dep:gst-app", "dep:gst-video", "dep:cidre", "dep:windows-capture", "dep:wasapi", "dep:rusty-opus", "dep:ndk", "dep:ndk-context", "dep:jni", "dep:khronos-egl", "dep:glow", "dep:vpx-sys"]
+capture = ["dep:ashpd", "dep:reis", "dep:gst", "dep:gst-app", "dep:gst-video", "dep:cidre", "dep:windows-capture", "dep:wasapi", "dep:rusty-opus", "dep:ndk", "dep:ndk-context", "dep:jni", "dep:khronos-egl", "dep:glow", "dep:vpx-sys", "dep:h264-reader"]
 
 [dependencies]
 bytes = "=1.12.1"
@@ -73,6 +73,9 @@ gst-video = { package = "gstreamer-video", version = "=0.24.5", optional = true,
 
 [target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "android"))'.dependencies]
 rusty-opus = { version = "=1.0.2", optional = true }
+
+[target.'cfg(any(target_os = "windows", target_os = "android"))'.dependencies]
+h264-reader = { version = "=0.9.0", optional = true }
 
 # Temporary upstream H264 parser fix: webrtc-rs/rtc#308; removal in README.md.
 [patch.crates-io]

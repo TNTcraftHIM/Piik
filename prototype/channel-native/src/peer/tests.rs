@@ -109,6 +109,7 @@ fn capture_scope_survives_host_signaling_recovery_but_not_retired_authority() {
 
     fn send(core: &mut Authority, connection: Uuid, mut command: Value, now: u64) -> Effects {
         if command["type"] == "join" {
+            command["protocol"] = json!(piik_channel_core::wire::CHANNEL_PROTOCOL);
             command["signingKey"] = json!(
                 piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key()
             );
@@ -241,7 +242,7 @@ fn capture_scope_survives_host_signaling_recovery_but_not_retired_authority() {
     };
     assert!(scope.is_current(state(&registered, native_connection)));
     let publish = json!({"type":"publish","publication":{"id":scope.publication_id,"roomId":"capture","kind":"screen",
-        "videoCeiling":{"resolution":{"width":640,"height":360},"maxFramerate":30,"maxBitrate":5_000_000}}});
+        "videoSettings":{"ceiling":{"resolution":{"width":640,"height":360},"maxFramerate":30,"maxBitrate":5_000_000},"degradationPreference":"balanced"}}});
     let published = send(&mut core, native_connection, publish.clone(), 3);
     finish(&mut core, &mut host, host_connection, published, 3);
 

@@ -61,6 +61,8 @@ export const qualitySettingsSchema = z
 export type QualitySettings = z.infer<typeof qualitySettingsSchema>;
 export const videoCeilingSchema = qualitySettingsSchema.pick({ resolution: true, maxFramerate: true, maxBitrate: true });
 export type VideoCeiling = z.infer<typeof videoCeilingSchema>;
+export const videoSettingsSchema = z.object({ ceiling: videoCeilingSchema, degradationPreference: degradationPreferenceSchema }).strict();
+export type VideoSettings = z.infer<typeof videoSettingsSchema>;
 export const DEFAULT_QUALITY_SETTINGS = {
   resolution: { width: 1920, height: 1080 },
   maxFramerate: 30,

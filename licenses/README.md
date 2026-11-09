@@ -13,8 +13,11 @@ Missing license text or changed pinned contents stops packaging.
 The [Native dependency owner](../prototype/channel-native/README.md#rtc-dependency)
 records retained Rust repairs and their removal criteria.
 
-App and Android notices also retain the WebRTC FrameDropper's
-[LICENSE and PATENTS provenance](../native/third_party/webrtc-frame-dropper/README.md).
+App and Android notices also retain the WebRTC
+[FrameDropper](../native/third_party/webrtc-frame-dropper/README.md) and
+[quality adaptation](../native/third_party/webrtc-adaptation/README.md), plus the
+[VP8 QP parser](../native/third_party/webrtc-vp8-qp/README.md),
+source/license provenance.
 Android includes its Kotlin/platform-verifier notices. Linux App notices describe
 its unbundled GStreamer, Portal, PipeWire and encoder services through
 [system dependency attribution](./linux-system-dependencies.txt).

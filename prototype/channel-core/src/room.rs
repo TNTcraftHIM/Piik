@@ -6,7 +6,7 @@ use crate::{
     routes::{BaseTree, RelayLimits},
     transport::{BaseLink, Flow},
     wire::{
-        validate_video_ceiling, FlowState, Kind, PublicationInfo, Room, RoomAccess, VideoCeiling,
+        validate_video_settings, FlowState, Kind, PublicationInfo, Room, RoomAccess, VideoSettings,
         VoiceInfo,
     },
 };
@@ -411,10 +411,10 @@ impl RoomRuntime {
         session: Uuid,
         id: Uuid,
         kind: Kind,
-        video_ceiling: Option<VideoCeiling>,
+        video_settings: Option<VideoSettings>,
     ) -> Result<(), &'static str> {
         self.authorize(member, RoomPermission::Read)?;
-        validate_video_ceiling(kind, video_ceiling)?;
+        validate_video_settings(kind, video_settings)?;
         if kind == Kind::Voice && !self.voice_joined(session) {
             return Err("voice_not_joined");
         }
@@ -422,7 +422,7 @@ impl RoomRuntime {
             if publication.info.session_id != session || publication.info.kind != kind {
                 return Err("publication_identity_conflict");
             }
-            publication.info.video_ceiling = video_ceiling;
+            publication.info.video_settings = video_settings;
         } else {
             if self.publications.values().any(|publication| {
                 publication.info.session_id == session && publication.info.kind == kind
@@ -438,7 +438,7 @@ impl RoomRuntime {
                     user_id: member.user_id,
                     kind,
                     paused: false,
-                    video_ceiling,
+                    video_settings,
                 }),
             );
         }
@@ -875,14 +875,17 @@ impl RoomRuntime {
 
 #[cfg(test)]
 mod tests {
-    fn screen_ceiling() -> Option<crate::wire::VideoCeiling> {
-        Some(crate::wire::VideoCeiling {
-            resolution: crate::wire::VideoResolution {
-                width: 1280,
-                height: 720,
+    fn screen_settings() -> Option<crate::wire::VideoSettings> {
+        Some(crate::wire::VideoSettings {
+            degradation_preference: crate::wire::DegradationPreference::Balanced,
+            ceiling: crate::wire::VideoCeiling {
+                resolution: crate::wire::VideoResolution {
+                    width: 1280,
+                    height: 720,
+                },
+                max_framerate: 29.97,
+                max_bitrate: 2_500_000,
             },
-            max_framerate: 29.97,
-            max_bitrate: 2_500_000,
         })
     }
     use super::*;
@@ -1272,7 +1275,7 @@ mod tests {
             id(3),
             publication,
             Kind::Screen,
-            screen_ceiling(),
+            screen_settings(),
         )
         .unwrap();
         room.subscribe(endpoints[&id(4)].member, id(4), publication, true, None)
@@ -1871,12 +1874,12 @@ mod tests {
         let member = endpoints[&id(3)].member;
         let flows = serde_json::to_value(room.flows().collect::<Vec<_>>()).unwrap();
         let deadline = room.next_route_deadline();
-        let mut ceiling = screen_ceiling().unwrap();
-        ceiling.max_framerate = 59.94;
+        let mut ceiling = screen_settings().unwrap();
+        ceiling.ceiling.max_framerate = 59.94;
         room.publish(member, id(3), id(10), Kind::Screen, Some(ceiling))
             .unwrap();
         assert_eq!(
-            room.publication(id(10)).unwrap().video_ceiling,
+            room.publication(id(10)).unwrap().video_settings,
             Some(ceiling)
         );
         assert_eq!(
@@ -1885,16 +1888,33 @@ mod tests {
         );
         assert_eq!(room.next_route_deadline(), deadline);
         room.set_paused(id(3), id(10), true).unwrap();
+        let deadline = room.next_route_deadline();
+        ceiling.degradation_preference = crate::wire::DegradationPreference::MaintainFramerate;
         room.publish(member, id(3), id(10), Kind::Screen, Some(ceiling))
             .unwrap();
         assert!(room.publication(id(10)).unwrap().paused);
         assert_eq!(
+            serde_json::to_value(room.flows().collect::<Vec<_>>()).unwrap(),
+            flows
+        );
+        assert_eq!(room.next_route_deadline(), deadline);
+        let mut rejected = ceiling;
+        rejected.degradation_preference = crate::wire::DegradationPreference::MaintainResolution;
+        assert_eq!(
+            room.publish(member, id(4), id(10), Kind::Screen, Some(rejected)),
+            Err("publication_identity_conflict")
+        );
+        assert_eq!(
+            room.publication(id(10)).unwrap().video_settings,
+            Some(ceiling)
+        );
+        assert_eq!(
             room.publish(member, id(3), id(10), Kind::Screen, None),
-            Err("invalid_video_ceiling")
+            Err("invalid_video_settings")
         );
         assert_eq!(
             room.publish(member, id(3), id(11), Kind::Voice, Some(ceiling)),
-            Err("invalid_video_ceiling")
+            Err("invalid_video_settings")
         );
         room.set_voice(member, id(3), false, true, false).unwrap();
         assert_eq!(
@@ -1905,7 +1925,7 @@ mod tests {
         room.transfer_source(member, id(3), id(10), id(4), &endpoints)
             .unwrap();
         let publication = room.publication(id(10)).unwrap();
-        assert_eq!(publication.video_ceiling, Some(ceiling));
+        assert_eq!(publication.video_settings, Some(ceiling));
         assert!(publication.paused);
     }
 
@@ -2099,7 +2119,7 @@ mod tests {
                 id(1),
                 id(10),
                 Kind::Screen,
-                screen_ceiling(),
+                screen_settings(),
             )
             .unwrap();
             for n in 2..=count {
@@ -2120,7 +2140,7 @@ mod tests {
                     id(3),
                     id(11),
                     Kind::Screen,
-                    screen_ceiling(),
+                    screen_settings(),
                 )
                 .unwrap();
                 room.subscribe(endpoints[&id(1)].member, id(1), id(11), true, None)
@@ -2249,7 +2269,7 @@ mod tests {
         );
         endpoints.get_mut(&id(5)).unwrap().connected = true;
         endpoints.get_mut(&id(5)).unwrap().member = source;
-        room.publish(source, id(5), id(11), Kind::Screen, screen_ceiling())
+        room.publish(source, id(5), id(11), Kind::Screen, screen_settings())
             .unwrap();
         assert_eq!(
             room.transfer_source(source, id(3), id(10), id(5), &endpoints),
@@ -2832,7 +2852,7 @@ mod tests {
             owner_session,
             picture,
             Kind::Screen,
-            screen_ceiling(),
+            screen_settings(),
         )
         .unwrap();
         room.set_voice(owner, owner_session, true, false, false)

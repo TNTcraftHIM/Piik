@@ -391,8 +391,8 @@ mod tests {
             let (_joining, joined) = oneshot::channel();
             let (audio, audio_task) = audio::start(Uuid::new_v4(), epoch, SystemInstant::now(epoch),
                 sources, events, Relay::default(), cancelled, joined);
-            let previous = Settings { width: 640, height: 360, fps: 30, bitrate: 1_000_000 };
-            let next = Settings { width: 1280, height: 720, bitrate: 3_000_000, ..previous };
+            let previous = Settings { degradation_preference: piik_channel_core::wire::DegradationPreference::Balanced,  width: 640, height: 360, fps: 30, bitrate: 1_000_000 };
+            let next = Settings { degradation_preference: piik_channel_core::wire::DegradationPreference::MaintainFramerate, ..previous };
             let (video_settings, _) = watch::channel(previous);
             let (video_requests, mut requests) = mpsc::channel(1);
             let control = Control { video: frames.control(), codec: Arc::new(OnceLock::new()),

@@ -618,6 +618,7 @@ fn projection_capture(result: oneshot::Sender<Result<CaptureLease, String>>) -> 
             creation_time: None,
         },
         settings: Settings {
+            degradation_preference: piik_channel_core::wire::DegradationPreference::Balanced,
             width: 640,
             height: 360,
             fps: 30,
@@ -793,7 +794,7 @@ async fn waiting_capture_prepare_retires_before_late_room_confirmation() {
 }
 
 #[tokio::test]
-async fn capture_ceiling_completes_only_on_the_correlated_room_reply() {
+async fn capture_settings_completes_only_on_the_correlated_room_reply() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
     let (client, remote) = tokio::join!(tokio_tungstenite::connect_async(&url), async {
@@ -828,14 +829,16 @@ async fn capture_ceiling_completes_only_on_the_correlated_room_reply() {
         let id = Uuid::new_v4().to_string();
         session.pending_captures.insert(
             id.clone(),
-            PendingCapture::Ceiling(PublishCaptureCeiling {
+            PendingCapture::Settings(PublishCaptureSettings {
                 scope: CaptureScope {
                     publication_id: Uuid::new_v4(),
                     room_id: "room".into(),
                     binding_id: Uuid::new_v4(),
                 },
                 capture_id: Uuid::new_v4(),
-                ceiling: Settings {
+                settings: Settings {
+                    degradation_preference:
+                        piik_channel_core::wire::DegradationPreference::Balanced,
                     width: 640,
                     height: 360,
                     fps: 30,
@@ -974,7 +977,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                 session.pending_captures.insert(request_id.clone(), PendingCapture::Commit(CommitCapture {
                     scope: CaptureScope { publication_id, room_id: id.into(), binding_id: binding },
                     capture_id: Uuid::new_v4(), replacing: false, retaining: false,
-                    video_ceiling: Some(Settings { width: 640, height: 360, fps: 30, bitrate: 5_000_000 }.into()), result,
+                    video_settings: Some(Settings { degradation_preference: piik_channel_core::wire::DegradationPreference::Balanced,  width: 640, height: 360, fps: 30, bitrate: 5_000_000 }.into()), result,
                 }));
                 requests.push((
                     publication_id,
@@ -1025,7 +1028,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                     user_id: user,
                     kind: Kind::Screen,
                     paused: false,
-                    video_ceiling: Some(Settings { width: 640, height: 360, fps: 30, bitrate: 5_000_000 }.into()),
+                    video_settings: Some(Settings { degradation_preference: piik_channel_core::wire::DegradationPreference::Balanced,  width: 640, height: 360, fps: 30, bitrate: 5_000_000 }.into()),
                 })
                 .collect();
             session.state(state, &mut socket).await.unwrap();

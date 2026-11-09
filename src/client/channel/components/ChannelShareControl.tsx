@@ -5,7 +5,7 @@ import { LiveAudioExclusion } from "../../components/living/AudioExclusionSelect
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useCopy } from "../../ui/copy";
 import { SharingSettings } from "../../components/living/SharingSettings";
-import { AudioBitrateControl, QualityPresets, PictureSettingsSummary, ResolutionControl, VideoRateControls, VideoCodecControl } from "../../components/living/QualityPresets";
+import { AudioBitrateControl, QualityPresets, PicturePreferenceControl, PictureSettingsSummary, ResolutionControl, VideoRateControls, VideoCodecControl } from "../../components/living/QualityPresets";
 import { ShareMicrophoneSettings } from "../../components/living/ShareMicrophoneSettings";
 import { MAX_AUDIO_SEND_BITRATE, QUALITY_PROFILES, VIDEO_CAPTURE_LIMITS, captureFramerateCeiling, matchingQualityProfileId, type QualityProfile } from "../../media/quality";
 import { activateNativePicker } from "../../native/activation";
@@ -54,6 +54,8 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   };
   const qualityPending = !!sharing && channel.pending.has(`quality:${sharing.id}`);
   const sourceAudio = sharing ? channel.sourceAudio(sharing.id) : undefined;
+  const canChoosePreference = sources.kind === "ready" && sources.videoAdaptation
+    || !selectedNative?.current && (!appConnected || !!sharing);
   const microphone = sharing ? channel.sourceMicrophone(sharing.id) : undefined;
   const microphoneSettings = microphone?.requested ?? microphone;
   const microphonePending = !!sharing && channel.pending.has(`source-microphone:${sharing.id}`);
@@ -119,7 +121,9 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         presets={<QualityPresets selected={matchingQualityProfileId(quality)} disabled={busy} busy={qualityPending}
           onSelect={preset => setQuality({ ...QUALITY_PROFILES[preset], maxAudioBitrate: quality.maxAudioBitrate })} />}
         pictureSummary={<PictureSettingsSummary value={screenQuality?.applied ?? quality} />}
-        picture={<><ResolutionControl value={quality.resolution} limits={VIDEO_CAPTURE_LIMITS} disabled={busy}
+        picture={<>{canChoosePreference && <PicturePreferenceControl value={quality.degradationPreference} disabled={busy || qualityPending}
+          onChange={degradationPreference => setQuality({ ...quality, degradationPreference })} />}
+          <ResolutionControl value={quality.resolution} limits={VIDEO_CAPTURE_LIMITS} disabled={busy}
           onChange={resolution => setQuality({ ...quality, resolution,
             maxFramerate: Math.min(quality.maxFramerate, captureFramerateCeiling(resolution, VIDEO_CAPTURE_LIMITS)) })} />
           <VideoRateControls value={quality} limits={VIDEO_CAPTURE_LIMITS} disabled={busy}

@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 1;
+pub const CHANNEL_PROTOCOL: u8 = 2;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(
@@ -281,7 +281,7 @@ pub struct PublicationInput {
     pub room_id: String,
     pub kind: Kind,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub video_ceiling: Option<VideoCeiling>,
+    pub video_settings: Option<VideoSettings>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
@@ -299,11 +299,26 @@ pub struct VideoCeiling {
     pub max_bitrate: u32,
 }
 
-pub fn validate_video_ceiling(
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DegradationPreference {
+    MaintainResolution,
+    Balanced,
+    MaintainFramerate,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VideoSettings {
+    pub ceiling: VideoCeiling,
+    pub degradation_preference: DegradationPreference,
+}
+
+pub fn validate_video_settings(
     kind: Kind,
-    ceiling: Option<VideoCeiling>,
+    settings: Option<VideoSettings>,
 ) -> Result<(), &'static str> {
-    match (kind, ceiling) {
+    match (kind, settings.map(|settings| settings.ceiling)) {
         (Kind::Voice, None) => Ok(()),
         (Kind::Screen, Some(value))
             if value.resolution.width > 0
@@ -315,13 +330,13 @@ pub fn validate_video_ceiling(
         {
             Ok(())
         }
-        _ => Err("invalid_video_ceiling"),
+        _ => Err("invalid_video_settings"),
     }
 }
 
 #[cfg(test)]
 #[test]
-fn video_ceiling_preserves_fractional_fps_and_rejects_invalid_source_facts() {
+fn video_settings_preserves_fractional_fps_and_rejects_invalid_source_facts() {
     let valid = VideoCeiling {
         resolution: VideoResolution {
             width: 1280,
@@ -330,15 +345,22 @@ fn video_ceiling_preserves_fractional_fps_and_rejects_invalid_source_facts() {
         max_framerate: 29.97,
         max_bitrate: 2_500_000,
     };
-    assert_eq!(validate_video_ceiling(Kind::Screen, Some(valid)), Ok(()));
-    assert_eq!(validate_video_ceiling(Kind::Voice, None), Ok(()));
+    let settings = |ceiling| VideoSettings {
+        ceiling,
+        degradation_preference: DegradationPreference::Balanced,
+    };
+    assert_eq!(
+        validate_video_settings(Kind::Screen, Some(settings(valid))),
+        Ok(())
+    );
+    assert_eq!(validate_video_settings(Kind::Voice, None), Ok(()));
     for fps in [0.0, -1.0, f64::NAN, f64::INFINITY, 9_007_199_254_740_992.0] {
-        assert!(validate_video_ceiling(
+        assert!(validate_video_settings(
             Kind::Screen,
-            Some(VideoCeiling {
+            Some(settings(VideoCeiling {
                 max_framerate: fps,
                 ..valid
-            })
+            }))
         )
         .is_err());
     }
@@ -362,19 +384,19 @@ fn video_ceiling_preserves_fractional_fps_and_rejects_invalid_source_facts() {
             ..valid
         },
     ] {
-        assert!(validate_video_ceiling(Kind::Screen, Some(invalid)).is_err());
+        assert!(validate_video_settings(Kind::Screen, Some(settings(invalid))).is_err());
     }
-    assert!(validate_video_ceiling(Kind::Screen, None).is_err());
-    assert!(validate_video_ceiling(Kind::Voice, Some(valid)).is_err());
+    assert!(validate_video_settings(Kind::Screen, None).is_err());
+    assert!(validate_video_settings(Kind::Voice, Some(settings(valid))).is_err());
     let input = PublicationInput {
         id: Uuid::new_v4(),
         room_id: "room".into(),
         kind: Kind::Voice,
-        video_ceiling: None,
+        video_settings: None,
     };
     assert!(serde_json::to_value(input)
         .unwrap()
-        .get("videoCeiling")
+        .get("videoSettings")
         .is_none());
     let serialized = serde_json::to_value(valid).unwrap();
     assert_eq!(serialized["maxFramerate"], 29.97);
@@ -382,6 +404,19 @@ fn video_ceiling_preserves_fractional_fps_and_rejects_invalid_source_facts() {
         serde_json::from_value::<VideoCeiling>(serialized).unwrap(),
         valid
     );
+    let mut aggregate = serde_json::to_value(settings(valid)).unwrap();
+    assert_eq!(aggregate["ceiling"]["maxFramerate"], 29.97);
+    assert_eq!(aggregate["degradationPreference"], "balanced");
+    assert_eq!(
+        serde_json::from_value::<VideoSettings>(aggregate.clone()).unwrap(),
+        settings(valid)
+    );
+    aggregate
+        .as_object_mut()
+        .unwrap()
+        .remove("degradationPreference");
+    assert!(serde_json::from_value::<VideoSettings>(aggregate).is_err());
+    assert!(serde_json::from_value::<PublicationInput>(serde_json::json!({"id":Uuid::new_v4(),"roomId":"room","kind":"screen","videoCeiling":valid})).is_err());
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -588,7 +623,7 @@ pub struct PublicationInfo {
     pub kind: Kind,
     pub paused: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub video_ceiling: Option<VideoCeiling>,
+    pub video_settings: Option<VideoSettings>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
