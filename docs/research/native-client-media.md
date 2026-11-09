@@ -8,6 +8,17 @@
 
 ## Windows Audio Exclusion
 
+Default display capture reads the current default render endpoint; process
+inclusion/exclusion uses Windows'
+[endpoint-independent loopback](https://learn.microsoft.com/en-us/samples/microsoft/windows-classic-samples/applicationloopbackaudio-sample/).
+For [#534](https://github.com/TNTcraftHIM/Piik/issues/534), an isolated API control
+sent two tones only to an existing virtual endpoint without changing the default
+headset. Default capture returned no packets; excluding a silent test process
+received both tones. The real Go session also retained video and audio-output
+ownership through repeated exclusion/clear/off/on changes. The reporter's actual
+playback endpoint and first failing transition remain the next discriminator;
+these controls do not identify an exclusion-state leak.
+
 A Windows 11 build 26200 check used two independent WinMM processes emitting
 500 Hz and 1500 Hz tones, through the production capture helper and Go PCM
 reader. Default-device loopback captured both at approximately 1799 amplitude;
