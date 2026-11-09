@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-08
+Last updated: 2026-11-09
 
 This page summarizes the current 3.0 evidence and limits that affect product
 claims. [Status](./status.md#isolated-30-prototype) owns delivery readiness;
@@ -44,6 +44,12 @@ voice: source settings remain tied to their own picture, moving the room tool
 preserves its draft, and stopping one picture retains the other activities.
 On the Android emulator, cancelling a new system source choice retains the active
 Native picture; stopping that picture retains independently joined voice.
+
+Native picture preferences now have Windows App/relay and Android normal-App
+execution evidence. Both Android codecs use their actual CBR capability path;
+preference changes and normal stop release the old workers. The
+[network model](./research/channel-network-design.md#implementation-boundary)
+owns adaptation behavior and recovery measurements.
 
 ## Device Evidence Boundary
 

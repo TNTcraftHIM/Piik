@@ -745,8 +745,12 @@ above the low threshold; at 8 Mbps its first enlarged keyframe arrived about
 promise of larger pictures. Real Windows child-process runs also cover balanced
 FPS changes, codec/converter reconfiguration and independent sibling output.
 The App flow verifies preference-only replacement on the retained receiver track,
-updated publication intent and source reselection. Android normal-App acceptance
-and the remaining platform adapters stay in [TODO](../todo.md).
+updated publication intent and source reselection. A real Native helper keeps two
+viewers' picture/audio and another concurrent source while the sharer changes
+preference. The Android App control uses both H264 and VP8 with actual MediaCodec
+CBR, applies all three preferences and releases its encoders, projection and
+listeners through normal stop. Physical-device and remaining platform work stay
+in [TODO](../todo.md).
 
 Decoded-source FPS is a format hint, not an admission limit. VP8 initializes it
 to 30 even for a 60 fps source; source timing preserves actual presentation

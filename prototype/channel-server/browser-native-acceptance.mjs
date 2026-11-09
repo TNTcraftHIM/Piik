@@ -113,21 +113,21 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     const nextRoom = await action(1, "createRoom({name:'Another App room',icon:'couch',access:'public',hidden:false})");
     await until("both rooms use the same Native operator", () => view(1), value =>
       value.state.channel.rooms.find(entry => entry.id === nextRoom)?.delivery?.hostSessionId === nativeEndpoint);
-    const beforeSwitch = await until("reader has its original Native base", () => view(2), value =>
-      value.state.pairs.some(pair => pair.peerId === nativeEndpoint && pair.rooms.includes(room)));
-    const heldPair = beforeSwitch.state.pairs.find(pair => pair.peerId === nativeEndpoint && pair.rooms.includes(room));
+    const beforeSwitch = await view(2);
+    assert.equal(beforeSwitch.state.pairs.length, 0, "reading and confirmed conversation require no peer connection");
     const peerCount = await evaluate(2, "window.__channelProbe.peers.length");
     for (const destination of [nextRoom, room]) {
       await action(2, `browse(${JSON.stringify(destination)})`);
       await until("new reading commits before the former room leaves", () => view(2), value =>
         value.state.channel.rooms.some(entry => entry.id === destination && entry.reading) &&
         !value.state.channel.rooms.some(entry => entry.id !== destination && entry.reading));
-      assert.equal((await view(2)).state.pairs.find(pair => pair.rooms.includes(destination))?.id, heldPair.id,
-        "switching rooms on the same Native host must retain the physical pair");
+      assert.equal((await view(2)).state.pairs.length, 0,
+        "switching chat-only rooms keeps conversation on domain WebSocket carriage");
       assert.equal(await evaluate(2, "window.__channelProbe.peers.length"), peerCount,
         "a chat-only room switch must not create another PeerConnection");
       if (destination === nextRoom) {
         await action(2, `sendMessage(${JSON.stringify(nextRoom)}, 'Same connection, another room')`);
+        await action(1, `browse(${JSON.stringify(nextRoom)})`);
         await until("the new room receives its own confirmed message", () => evaluate(1,
           `${hook}.snapshot().messagesByRoom[${JSON.stringify(nextRoom)}]`), messages =>
           messages?.some(message => message.text === "Same connection, another room"));
@@ -175,6 +175,9 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await action(1, `browse(${JSON.stringify(browserRoom)})`);
     for (const index of [0, 2, 3]) {
       await action(index, `browse(${JSON.stringify(browserRoom)})`);
+      // Conversation alone has no peer demand. Listening creates the ordinary
+      // base this media-routing scenario needs without another microphone.
+      await action(index, `joinVoice(${JSON.stringify(browserRoom)}, true)`);
       await until("Browser host installs its ordinary room base", () => view(index), value =>
         value.state.pairs.some(pair => (index === 3 || pair.peerId === personalEndpoint) && pair.rooms.includes(browserRoom)));
       await until("ordinary room base opens before the next admission", () => sample(index), value =>
@@ -304,6 +307,23 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       assert(rows.some(row => row.codec?.toLowerCase() === "video/h264" && row.frames > 0));
       assert(rows.some(row => row.codec?.toLowerCase() === "audio/opus" && row.samples > 0));
     }
+    const profileBefore = await evaluate(sourceIndex, `${hook}.session.screenQuality(${JSON.stringify(helperPicture)}).applied`);
+    const profileAfter = { ...profileBefore, degradationPreference: "maintain-framerate" };
+    await evaluate(sourceIndex, `(async () => {
+      await ${hook}.session.setScreenQuality(${JSON.stringify(helperPicture)}, ${JSON.stringify(profileAfter)});
+      return true;
+    })()`);
+    const preferenceViews = await until("source preference reaches both Native-assisted viewers", async () =>
+      Promise.all([sourceIndex, ...viewers].map(view)), values => values.every(value =>
+      value.state.publications.find(publication => publication.id === helperPicture)?.videoSettings?.degradationPreference === "maintain-framerate"));
+    for (const index of viewers) { await progressing(index, helperPicture); await audioProgressing(index, helperPicture); }
+    await progressing(concurrentViewer, concurrentPicture);
+    assert(preferenceViews.slice(1).every(value => value.state.pairs.some(pair => pair.peerId === nativeEndpoint && carries(pair, "incoming"))),
+      "preference-only edit retains the actual Native helper path");
+    await writeFile(join(output, "app-helper-preference-result.json"), JSON.stringify({ passed: true,
+      publicationId: helperPicture, profileBefore, profileAfter, nativeEndpoint,
+      viewers: viewers.map((index, position) => ({ index, settings: preferenceViews[position + 1].state.publications.find(publication => publication.id === helperPicture).videoSettings })),
+      siblingPublication: concurrentPicture, decodedPictureAndAudioContinued: true }, null, 2));
     await action(1, `unwatch(${JSON.stringify(helperPicture)})`);
     await progressing(downstreamIndex, helperPicture); await audioProgressing(downstreamIndex, helperPicture);
     assert((await view(downstreamIndex)).state.pairs.some(pair => pair.peerId === nativeEndpoint && carries(pair, "incoming")),
@@ -450,8 +470,8 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await browser(0, "tab", firstDomainTab);
     await writeFile(join(output, "app-result.json"), JSON.stringify({ passed: true,
       scenarios: ["real Site approval", "unapproved Origin rejected", "saved approval reused", "cross-Site hosting isolation", "reapproval retains Site data",
-        "separate hosting and personal endpoints", "Native SQLite ownership", "Browser rooms do not migrate", "peer chat confirmation",
-        "chat-only room switches retain the Native physical pair and separate histories",
+        "separate hosting and personal endpoints", "Native SQLite ownership", "Browser rooms do not migrate", "domain-carried chat confirmation",
+        "chat-only room switches retain zero peer connections and separate histories",
         "Browser screen and voice", "control loss preserves media", "page close preserves App hosting and chat",
         "returning page reuses Native hosting", "App loss isolates its rooms", "fresh binding restores saved history"] }, null, 2));
   } catch (error) { console.error(log); throw error; }
@@ -512,6 +532,7 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     }, value => value.state.channel.rooms.some(entry => entry.name === name && entry.available));
     room = (await view(0)).state.channel.rooms.find(entry => entry.name === name && entry.available).id;
     for (const index of [1, 2]) await browser(index, "click", `.c3-room-link[aria-label="${name}"]`);
+    for (const index of [1, 2]) await action(index, `joinVoice('${room}', true)`);
     await until("both Browsers join the Native base", async () => Promise.all([view(1), view(2)]), values =>
       values.every(value => value.state.pairs.some(pair => pair.rooms.includes(room))));
     const pairs = await Promise.all([1, 2].map(async index =>
@@ -531,9 +552,8 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
       assert.equal(domain.prepare("SELECT count(*) AS count FROM message WHERE room_id=?").get(room).count, 0);
     } finally { stored.close(); domain.close(); }
 
-    await action(2, `joinVoice('${room}', true)`);
     await evaluate(2, `window.__channelProbe.blockPeer(${JSON.stringify(pairs[1].peerId)})`);
-    await action(1, `joinVoice('${room}')`);
+    await action(1, `setMuted('${room}', false)`);
     await until("Native renegotiation offer is actually withheld", () => sample(2), value => value.blockedOffers > 0);
     await evaluate(2, `window.__channelProbe.unblockPeer(${JSON.stringify(pairs[1].peerId)})`);
     await action(2, "reconnect()");
