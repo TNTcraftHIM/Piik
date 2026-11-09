@@ -1390,6 +1390,300 @@ mod tests {
     }
 
     #[test]
+    fn capacity_reduction_moves_a_feasible_sibling_and_releases_abandoned_reservations() {
+        let id = Uuid::from_u128;
+        let endpoints: BTreeMap<_, _> = (1..=5)
+            .map(|value| {
+                (
+                    id(value),
+                    Endpoint {
+                        signing_key: [value as u8; 32],
+                        member: Member {
+                            user_id: id(value),
+                            domain_owner: value == 1,
+                        },
+                        connected: true,
+                    },
+                )
+            })
+            .collect();
+        let mut room = RoomRuntime::new(
+            RoomState::new(
+                "capacity".into(),
+                "Capacity".into(),
+                Default::default(),
+                id(1),
+                RoomAccess::Public,
+                false,
+                None,
+            )
+            .unwrap(),
+        );
+        room.set_host_session(id(1));
+        room.set_default_relay_capacity(3);
+        for (session, capacity) in [(2, 1), (3, 0), (4, 0), (5, 2)] {
+            room.set_relay_capacity(endpoints[&id(session)].member, id(session), Some(capacity))
+                .unwrap();
+        }
+        // Ordinary admissions establish 1->{2,3,4}, then 2->5.
+        for sessions in [&[1, 2, 3, 4][..], &[5][..]] {
+            for session in sessions {
+                room.set_voice(
+                    endpoints[&id(*session)].member,
+                    id(*session),
+                    true,
+                    false,
+                    false,
+                )
+                .unwrap();
+            }
+            room.reconcile(&endpoints, 0);
+            for link in room.base_links().collect::<Vec<_>>() {
+                room.base_state(link.parent, link.child, true).unwrap();
+                room.base_state(link.child, link.parent, true).unwrap();
+            }
+            room.reconcile(&endpoints, 1);
+        }
+        let original: BTreeSet<_> = room
+            .base_links()
+            .map(|link| (link.parent, link.child))
+            .collect();
+        assert_eq!(
+            original,
+            [
+                (id(1), id(2)),
+                (id(1), id(3)),
+                (id(1), id(4)),
+                (id(2), id(5))
+            ]
+            .into()
+        );
+        for source in [1, 5] {
+            room.publish(
+                endpoints[&id(source)].member,
+                id(source),
+                id(source + 20),
+                Kind::Voice,
+                None,
+            )
+            .unwrap();
+        }
+        room.reconcile(&endpoints, 2);
+        for flow in room.flows().collect::<Vec<_>>() {
+            room.flow_state(
+                flow.id,
+                flow.receiver,
+                flow.sender,
+                FlowState::Forwardable,
+                2,
+            )
+            .unwrap();
+        }
+        let old: BTreeSet<_> = room.flows().map(|flow| flow.id).collect();
+        let mut transports = crate::transport::TransportBook::default();
+        transports.reconcile(room.flows(), room.base_links());
+        room.set_default_relay_capacity(2);
+        room.reconcile(&endpoints, 10);
+        let candidate = room
+            .base_links()
+            .find(|link| !link.selected)
+            .expect("a feasible sibling must migrate before any healthy subtree is retired");
+        assert_eq!((candidate.parent, candidate.child), (id(5), id(3)));
+        assert!(old
+            .iter()
+            .all(|id| room.flows().any(|flow| flow.id == *id && flow.selected)));
+        transports.reconcile(room.flows(), room.base_links());
+        let first_pair = transports
+            .snapshot(id(3), |_| false, |_| false)
+            .into_iter()
+            .find(|pair| pair.peer_id == id(5))
+            .unwrap()
+            .id;
+
+        // Withdrawing the reduction releases both candidate transport and voice work.
+        room.set_default_relay_capacity(3);
+        room.reconcile(&endpoints, 11);
+        assert!(!room.base_links().any(|link| !link.selected));
+        assert!(!room.flows().any(|flow| !flow.selected));
+        assert_eq!(
+            room.base_links()
+                .map(|link| (link.parent, link.child))
+                .collect::<BTreeSet<_>>(),
+            original
+        );
+        transports.reconcile(room.flows(), room.base_links());
+        assert!(!transports
+            .snapshot(id(3), |_| false, |_| false)
+            .iter()
+            .any(|pair| pair.id == first_pair));
+
+        room.set_default_relay_capacity(2);
+        room.reconcile(&endpoints, 20);
+        transports.reconcile(room.flows(), room.base_links());
+        let second_pair = transports
+            .snapshot(id(3), |_| false, |_| false)
+            .into_iter()
+            .find(|pair| pair.peer_id == id(5))
+            .unwrap()
+            .id;
+        assert_ne!(second_pair, first_pair);
+        let deadline = room.next_route_deadline();
+        room.base_state(id(5), id(3), true).unwrap();
+        room.reconcile(&endpoints, 21);
+        assert_eq!(room.next_route_deadline(), deadline);
+        room.base_state(id(3), id(5), true).unwrap();
+        room.reconcile(&endpoints, 22);
+        assert!(
+            room.base_links().any(|link| !link.selected),
+            "both voice sources still need media proof"
+        );
+        assert!(old
+            .iter()
+            .all(|id| room.flows().any(|flow| flow.id == *id && flow.selected)));
+        for flow in room
+            .flows()
+            .filter(|flow| !flow.selected)
+            .collect::<Vec<_>>()
+        {
+            room.flow_state(
+                flow.id,
+                flow.receiver,
+                flow.sender,
+                FlowState::Forwardable,
+                23,
+            )
+            .unwrap();
+        }
+        room.reconcile(&endpoints, 24);
+        assert_eq!(
+            room.base_links()
+                .map(|link| (link.parent, link.child))
+                .collect::<BTreeSet<_>>(),
+            [
+                (id(1), id(2)),
+                (id(1), id(4)),
+                (id(2), id(5)),
+                (id(5), id(3))
+            ]
+            .into()
+        );
+        assert!(!room.flows().any(|flow| !flow.selected));
+        assert!(room.flows().filter(|flow| flow.receiver == id(3)).count() == 2);
+        transports.reconcile(room.flows(), room.base_links());
+        let peers = transports.snapshot(id(3), |_| false, |_| false);
+        assert!(!peers.iter().any(|pair| pair.peer_id == id(1)));
+        assert_eq!(
+            peers.iter().find(|pair| pair.peer_id == id(5)).unwrap().id,
+            second_pair
+        );
+    }
+
+    #[test]
+    fn reduction_selection_keeps_existing_operations_and_picture_proof() {
+        let id = Uuid::from_u128;
+        for multiple_parents in [false, true] {
+            let count = if multiple_parents { 7 } else { 5 };
+            let all: BTreeSet<_> = (1..=count).map(id).collect();
+            let mut limits = RelayLimits {
+                default: 3,
+                host: id(1),
+                overrides: if multiple_parents {
+                    [(id(3), 0), (id(4), 0), (id(5), 0), (id(6), 0), (id(7), 2)].into()
+                } else {
+                    [(id(2), 1), (id(3), 0), (id(4), 0), (id(5), 2)].into()
+                },
+            };
+            let mut base = BaseTree::new(id(1));
+            let mut picture = Publication::new(PublicationInfo {
+                id: id(10),
+                room_id: "capacity".into(),
+                session_id: id(1),
+                user_id: id(1),
+                kind: Kind::Screen,
+                paused: false,
+                video_settings: screen_settings(),
+            });
+            let helpers = BTreeMap::new();
+            let requested: BTreeSet<_> = (2..=count).map(id).collect();
+            for requested in [
+                [id(2), id(3), id(4)].into_iter().collect(),
+                requested.clone(),
+            ] {
+                base.reconcile(&requested, &all, &all, &limits, 0);
+                for (parent, child) in base.links().collect::<Vec<_>>() {
+                    base.state(parent, child, true);
+                    base.state(child, parent, true);
+                }
+                picture.reconcile(&requested, &all, &all, None, &helpers, &limits, 0);
+                for flow in picture.flows().collect::<Vec<_>>() {
+                    picture.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1);
+                }
+            }
+            if multiple_parents {
+                // Physical trials from another activity can fail without changing
+                // this ready tree. Parent 1 then has no feasible reduction, while
+                // its overloaded child 2 can still move 5 to 7.
+                for endpoint in [3, 4] {
+                    base.failed(id(endpoint), id(7));
+                    picture.failed_pair(id(endpoint), id(7));
+                }
+            }
+            let old: BTreeMap<_, _> = picture
+                .flows()
+                .map(|flow| (flow.receiver, flow.id))
+                .collect();
+            limits.default = 2;
+            let expected = if multiple_parents {
+                (id(7), id(5))
+            } else {
+                (id(5), id(3))
+            };
+            base.reconcile(&requested, &all, &all, &limits, 10);
+            assert_eq!(base.candidate_links(), vec![expected]);
+            let base_deadline = base.deadline();
+            base.reconcile(&requested, &all, &all, &limits, 1_000);
+            assert_eq!(base.candidate_links(), vec![expected]);
+            assert_eq!(base.deadline(), base_deadline);
+            picture.reconcile(&requested, &all, &all, None, &helpers, &limits, 10);
+            let candidate = picture.flows().find(|flow| !flow.selected).unwrap();
+            assert_eq!((candidate.sender, candidate.receiver), expected);
+            let deadline = picture.deadline();
+            picture.reconcile(&requested, &all, &all, None, &helpers, &limits, 1_000);
+            assert_eq!(picture.deadline(), deadline);
+            assert!(picture
+                .flows()
+                .any(|flow| flow.id == candidate.id && !flow.selected));
+            picture.flow_state(
+                candidate.id,
+                candidate.receiver,
+                candidate.sender,
+                FlowState::Decoded,
+                1_001,
+            );
+            assert!(picture
+                .flows()
+                .any(|flow| flow.id == old[&candidate.receiver] && flow.selected));
+            picture.flow_state(
+                candidate.id,
+                candidate.receiver,
+                candidate.sender,
+                FlowState::SwitchReady,
+                1_002,
+            );
+            picture.reconcile(&requested, &all, &all, None, &helpers, &limits, 1_003);
+            assert!(picture
+                .flows()
+                .any(|flow| flow.id == candidate.id && flow.selected));
+            for (&receiver, &old) in &old {
+                if receiver == candidate.receiver {
+                    continue;
+                }
+                assert!(picture.flows().any(|flow| flow.id == old && flow.selected));
+            }
+        }
+    }
+
+    #[test]
     fn relay_limit_migrates_base_and_voice_before_releasing_the_incumbent() {
         let id = Uuid::from_u128;
         let (mut room, endpoints) = screen_on_room_base();

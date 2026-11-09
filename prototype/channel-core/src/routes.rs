@@ -142,7 +142,7 @@ impl Plan {
         }
     }
 
-    fn candidate_parent(
+    pub(crate) fn candidate_parent(
         &self,
         child: Uuid,
         connected: &BTreeSet<Uuid>,
@@ -263,32 +263,23 @@ impl Plan {
         self.failed_parents.entry(child).or_default().insert(parent);
     }
 
-    pub fn capacity_candidate(
+    /// Necessary reductions in deterministic child order. Select a feasible
+    /// move before binding the next operation to its child and deadline.
+    pub fn capacity_children(
         &self,
-        connected: &BTreeSet<Uuid>,
         helpers: &BTreeMap<Uuid, Uuid>,
         limits: &RelayLimits,
         origin_paths: &BTreeSet<(Uuid, Uuid)>,
-    ) -> Option<(Uuid, Uuid)> {
-        self.capacity_child(helpers, limits, origin_paths)
-            .and_then(|child| {
-                self.candidate_parent(child, connected, helpers, limits)
-                    .map(|parent| (child, parent))
+    ) -> Vec<Uuid> {
+        self.parents
+            .iter()
+            .filter_map(|(child, parent)| {
+                (helpers.get(child) != Some(parent)
+                    && !(self.source == *parent && origin_paths.contains(&(*parent, *child)))
+                    && self.wan_outputs(*parent, None, helpers) > limits.get(*parent, self.source))
+                .then_some(*child)
             })
-    }
-
-    pub fn capacity_child(
-        &self,
-        helpers: &BTreeMap<Uuid, Uuid>,
-        limits: &RelayLimits,
-        origin_paths: &BTreeSet<(Uuid, Uuid)>,
-    ) -> Option<Uuid> {
-        self.parents.iter().find_map(|(child, parent)| {
-            (helpers.get(child) != Some(parent)
-                && !(self.source == *parent && origin_paths.contains(&(*parent, *child)))
-                && self.wan_outputs(*parent, None, helpers) > limits.get(*parent, self.source))
-            .then_some(*child)
-        })
+            .collect()
     }
 
     /// Reuse the existing physical path without applying the policy used to
@@ -658,13 +649,25 @@ impl BaseTree {
             self.abort();
         }
         if self.operation.is_none() {
-            if let Some(child) =
-                self.plan
-                    .capacity_child(&BTreeMap::new(), limits, &BTreeSet::new())
-            {
+            let excess = self
+                .plan
+                .capacity_children(&BTreeMap::new(), limits, &BTreeSet::new());
+            if let Some(first) = excess.first().copied() {
+                let (child, candidate) = excess
+                    .into_iter()
+                    .find_map(|child| {
+                        self.route_candidate(
+                            child,
+                            self.plan.parents.get(&child).copied(),
+                            connected,
+                            limits,
+                        )
+                        .map(|candidate| (child, Some(candidate)))
+                    })
+                    .unwrap_or((first, None));
                 self.operation = Some(BaseOperation {
                     child,
-                    candidate: None,
+                    candidate,
                     replaces: self.plan.parents.get(&child).copied(),
                     deadline: now.saturating_add(20_000),
                 });

@@ -181,10 +181,10 @@ impl Publication {
             self.prepare_reduction(requested, connected, helpers, limits, &origin_paths, now);
             return;
         }
-        if self
+        if !self
             .plan
-            .capacity_child(helpers, limits, &origin_paths)
-            .is_some()
+            .capacity_children(helpers, limits, &origin_paths)
+            .is_empty()
         {
             self.operation = None;
             self.prepare_reduction(requested, connected, helpers, limits, &origin_paths, now);
@@ -323,22 +323,31 @@ impl Publication {
                 OperationKind::Reduce { root, .. } => Some((*root, operation.deadline)),
                 _ => None,
             });
-        let Some(root) = self.plan.capacity_child(helpers, limits, origin_paths) else {
+        let excess = self.plan.capacity_children(helpers, limits, origin_paths);
+        let Some(first) = excess.first().copied() else {
             self.operation = None;
             return;
         };
-        if pending.is_some_and(|(pending, _)| pending != root) {
-            self.operation = None;
-        }
-        let deadline = pending
-            .filter(|(pending, _)| *pending == root)
-            .map_or(now.saturating_add(SCREEN_PREPARE_MS), |(_, deadline)| {
-                deadline
-            });
-        let Some((_, parent)) =
-            self.plan
-                .capacity_candidate(connected, helpers, limits, origin_paths)
-        else {
+        let retained = pending.filter(|(root, _)| excess.contains(root));
+        let (root, parent) = if let Some((root, _)) = retained {
+            (
+                root,
+                self.plan.candidate_parent(root, connected, helpers, limits),
+            )
+        } else {
+            excess
+                .into_iter()
+                .find_map(|root| {
+                    self.plan
+                        .candidate_parent(root, connected, helpers, limits)
+                        .map(|parent| (root, Some(parent)))
+                })
+                .unwrap_or((first, None))
+        };
+        let deadline = retained.map_or(now.saturating_add(SCREEN_PREPARE_MS), |(_, deadline)| {
+            deadline
+        });
+        let Some(parent) = parent else {
             self.operation = Some(RouteOperation {
                 deadline,
                 kind: OperationKind::Reduce {

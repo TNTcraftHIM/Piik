@@ -311,7 +311,10 @@ policy, not a total upload-copy or device-capacity promise, and does not divide 
 domain-wide resource budget among rooms.
 
 Reducing a limit stops new excess branches and moves affected children through
-one bounded transition at that tree's existing owner. Keep the old branch until
+one bounded transition at that tree's existing owner. Choose a feasible necessary
+move across overloaded parents before binding a new operation to a child; an
+unmovable first child must not block another legal migration. Once started, that
+operation retains its target and original deadline. Keep the old branch until
 the candidate base transport and affected voice flows are proved; picture changes
 retain their existing forwarding, decoded and presentation proof. File
 next hops use only the committed base, while candidate connections
