@@ -708,10 +708,10 @@ Core publication metadata carries them together as `VideoSettings`; Browser rela
 senders and Native derived encodings consume that source intent. Decoder format
 and transport counters are not preference authorities. The shared picture control
 edits the same setting for Browser and supported Native captures. Native advertises
-adaptation on Windows and Android; macOS/Linux retain their existing encoding
-behavior and do not advertise this capability.
+adaptation on Windows, Android and Linux. The macOS implementation awaits its
+SDK/runtime acceptance before advertising this capability.
 
-Windows and Android workers now use the shared Rust
+Native workers use the shared Rust
 [WebRTC quality-adaptation port](../../native/third_party/webrtc-adaptation/README.md).
 It preserves the pinned QualityScaler sampling/smoothing, motion-mode resolution
 changes, balanced pixel/FPS restrictions and both adaptation counters. Detail
@@ -728,6 +728,10 @@ parser while preserving the logical feed, source clock, latest bitrate and
 independent-AU gate. MF drains before reconfiguration; Android replaces only its
 codec for size changes and applies FPS changes through its cadence owner. A cadence
 change resets that encoding's admission-rate sample, independently of its siblings.
+Linux keeps its existing GStreamer caps negotiation and records completed-AU
+feedback before the bounded output queue. VideoToolbox completes its current
+frame before replacing the session for a geometry change; FPS selection stays
+with the encoding's cadence owner.
 
 H264 feedback uses the shared adapter over
 [h264-reader](https://docs.rs/h264-reader/0.9.0/h264_reader/nal/slice/struct.SliceHeader.html).
@@ -758,6 +762,13 @@ timestamps. Source admission uses only an explicit per-encoding max-FPS restrict
 its nominal format hint cannot become an extra cap. Local capture intersects the
 policy cap with its requested FPS. Neither changes the shared capture rate or
 retimestamps selected source frames.
+Linux also preserves the raw format's known frame rate in encoder caps, applying
+only the real cadence limit. Overwriting it with a decoder hint misconfigures
+rate control and causes avoidable FrameDropper drops. An unknown raw rate uses
+the startup hint: x264's variable-rate mode buffers a second frame, which prevents
+a static source's first picture from appearing. The controlled Linux comparison
+retained all 1,200 source frames after this correction, with unchanged input and
+budget; its static-source and decode/re-encode controls also pass.
 
 Default Server adaptation remains forwarding-only under
 [ADR-0013](../adr/0013-embedded-node-local-media.md). [Simulcast](https://www.rfc-editor.org/rfc/rfc8853)

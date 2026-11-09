@@ -189,8 +189,12 @@ mod tests {
         assert!(first.keyframe && first.presentation_time.elapsed() >= Duration::from_secs(5));
         assert_eq!(next(&mut slow).await?.presentation_time, first_time);
         assert_eq!(
-            formats.borrow().as_ref().map(|f| (f.width, f.height)),
-            Some((96, 64))
+            formats
+                .borrow()
+                .as_ref()
+                .map(|f| (f.width, f.height, f.fps)),
+            Some((96, 64, 30)),
+            "the decoded bitstream must retain the source rate, not the codec hint"
         );
 
         healthy.control().force_keyframe()?;

@@ -26,13 +26,10 @@ pub fn capture_border_control() -> bool {
 pub const fn supports_video_adaptation() -> bool {
     cfg!(all(
         feature = "capture",
-        any(target_os = "windows", target_os = "android")
+        any(target_os = "windows", target_os = "android", target_os = "linux")
     ))
 }
-#[cfg(any(
-    all(feature = "capture", any(target_os = "windows", target_os = "android")),
-    test
-))]
+#[cfg(any(feature = "capture", test))]
 mod adaptation;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod audio;
@@ -42,10 +39,7 @@ mod cadence;
 mod converter;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod decoder;
-#[cfg(any(
-    all(feature = "capture", any(target_os = "windows", target_os = "android")),
-    test
-))]
+#[cfg(any(feature = "capture", test))]
 mod frame_dropper;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod frames;
@@ -63,7 +57,7 @@ mod mf;
 mod output;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod process;
-#[cfg(all(feature = "capture", any(target_os = "windows", target_os = "android")))]
+#[cfg(feature = "capture")]
 mod qp;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod sdr;

@@ -1,6 +1,11 @@
 //! Each encoding owns its pipeline, bus and bounded complete-AU output.
 use super::{message_error, Clock, Frames, Pipeline, RawFrame};
-use crate::capture::{FrameTiming, Settings};
+use crate::capture::{
+    adaptation::{Input, QualityPolicy},
+    cadence::{AdmissionRate, Cadence},
+    frame_dropper::FrameDropper,
+    qp, FrameTiming, Settings, VideoCodec,
+};
 use crate::EncodedFrame;
 use anyhow::{anyhow, bail, ensure, Context as _, Result};
 use futures_util::{SinkExt, StreamExt};
@@ -477,31 +482,37 @@ impl Codec {
         mut raw: RawFrame,
         time: Instant,
         settings: Settings,
+        frame_limit: Option<u32>,
+        duration: gst::ClockTime,
         clock: &Clock,
         force: bool,
     ) -> Result<gst::Sample> {
-        let fitted = settings.fitted(f64::from(raw.info.width()), f64::from(raw.info.height()));
         let fitted_caps = gst::Caps::builder("video/x-raw")
-            .field("width", fitted.width as i32)
-            .field("height", fitted.height as i32)
+            .field("width", settings.width as i32)
+            .field("height", settings.height as i32)
             .field("pixel-aspect-ratio", gst::Fraction::new(1, 1))
             .build();
         if self.fitted.property::<Option<gst::Caps>>("caps").as_ref() != Some(&fitted_caps) {
             self.fitted.set_property("caps", &fitted_caps);
         }
         let mut caps = raw.info.to_caps()?;
+        // Known source cadence owns rate control. With no rate, keep the codec
+        // startup hint: x264's VFR mode buffers a second frame even in zerolatency.
+        let rate = match raw.info.fps() {
+            rate if rate.numer() > 0 => rate,
+            _ => gst::Fraction::new(settings.fps as i32, 1),
+        };
+        let rate = frame_limit.map_or(rate, |limit| rate.min(gst::Fraction::new(limit as i32, 1)));
         caps.make_mut()
             .structure_mut(0)
             .unwrap()
-            .set("framerate", gst::Fraction::new(settings.fps as i32, 1));
+            .set("framerate", rate);
         self.input.set_max_bytes(raw.info.size() as u64);
         let pts = clock.timestamp(time)?;
         let buffer = raw.buffer.make_mut();
         buffer.set_pts(pts);
         buffer.set_dts(gst::ClockTime::NONE);
-        buffer.set_duration(gst::ClockTime::from_nseconds(
-            1_000_000_000 / u64::from(settings.fps),
-        ));
+        buffer.set_duration(duration);
         if force {
             ensure!(
                 self.encoder.send_event(
@@ -520,6 +531,14 @@ impl Codec {
     }
 }
 
+// The pipeline's streaming thread reports completed AUs before the bounded sink.
+// The encoding worker owns admission; neither side holds this lock during GStreamer calls.
+struct Feedback {
+    policy: QualityPolicy,
+    dropper: FrameDropper,
+    qp: qp::H264,
+}
+
 async fn run(
     shared: &Shared,
     frames: Frames,
@@ -530,7 +549,35 @@ async fn run(
     let clock = frames.clock();
     let capture_timing = frames.timing() == FrameTiming::Capture;
     let source = frames.control();
+    let output_pad = sink
+        .static_pad("sink")
+        .context("encoded sink pad missing")?;
     let codec = Codec::new(&clock, settings, sink, encoder)?;
+    let started = Instant::now();
+    let mut dropper = FrameDropper::new();
+    dropper.set_rates(settings.bitrate as f32 / 1_000.0, 0.0);
+    let feedback = Arc::new(Mutex::new(Feedback {
+        policy: QualityPolicy::new(VideoCodec::H264, settings.degradation_preference, 0),
+        dropper,
+        qp: qp::H264::default(),
+    }));
+    let completed = feedback.clone();
+    output_pad.add_probe(gst::PadProbeType::BUFFER, move |_, info| {
+        if let Some(buffer) = info.buffer() {
+            let bytes = buffer.map_readable().ok();
+            let time = started.elapsed().as_micros() as u64;
+            let mut feedback = completed.lock().unwrap();
+            let qp = bytes
+                .as_ref()
+                .and_then(|bytes| feedback.qp.parse(bytes.as_slice()));
+            feedback.policy.report_encoded(qp, time);
+            feedback.dropper.fill(
+                buffer.size(),
+                buffer.flags().contains(gst::BufferFlags::DELTA_UNIT),
+            );
+        }
+        gst::PadProbeReturn::Ok
+    });
     shared.state.lock().unwrap().started = true;
     shared.available.notify_waiters();
     let mut input = codec.input.sink();
@@ -540,23 +587,32 @@ async fn run(
         .bus()
         .context("encoder bus missing")?
         .stream_filtered(&[gst::MessageType::Error, gst::MessageType::Eos]);
-    let mut cadence = crate::capture::cadence::Cadence::new(settings.fps);
+    let requested_max = capture_timing.then_some(settings.fps);
+    let mut frame_limit = requested_max;
+    let mut cadence = Cadence::new(settings.fps);
+    let mut admission_rate = AdmissionRate::default();
+    let mut current = settings;
     let mut previous = None;
     let mut presentation = None;
     loop {
         let changed = shared.changed.notified();
         tokio::pin!(changed);
         changed.as_mut().enable();
-        let force = {
+        let (force, next_bitrate) = {
             let mut state = shared.state.lock().unwrap();
             if state.stop {
                 return Ok(());
             }
-            if let Some(bitrate) = state.bitrate.take() {
-                codec.bitrate(bitrate)?;
-            }
-            state.force
+            (state.force, state.bitrate.take())
         };
+        if let Some(next) = next_bitrate {
+            codec.bitrate(next)?;
+            current.bitrate = next;
+            feedback.lock().unwrap().dropper.set_rates(
+                current.bitrate as f32 / 1_000.0,
+                admission_rate.fps.unwrap_or(0.0),
+            );
+        }
         let raw = tokio::select! {
             biased;
             _ = source.stopped() => {
@@ -575,6 +631,7 @@ async fn run(
         };
         let force = shared.state.lock().unwrap().force
             || raw.buffer.flags().contains(gst::BufferFlags::DISCONT);
+        let repeated = previous == Some(raw.time);
         previous = Some(raw.time);
         let time = if capture_timing && force && presentation.is_some_and(|last| raw.time <= last) {
             clock.now()?
@@ -584,25 +641,80 @@ async fn run(
         if presentation.is_some_and(|last| time <= last) {
             continue;
         }
-        let admitted = !capture_timing
-            || cadence.accept((clock.timestamp(time)?.nseconds() / 100).try_into()?);
+        let timestamp = (clock.timestamp(time)?.nseconds() / 100).try_into()?;
+        let admitted = frame_limit.is_none() || cadence.accept(timestamp);
         if !force && !admitted {
             continue;
         }
         let force = std::mem::take(&mut shared.state.lock().unwrap().force) || force;
-        let sample = codec.sample(raw, time, settings, &clock, force)?;
+        let restrictions = {
+            let mut feedback = feedback.lock().unwrap();
+            feedback.policy.tick(
+                started.elapsed().as_millis() as u64,
+                Input {
+                    pixels: current.width * current.height,
+                    fps: admission_rate.fps.unwrap_or(0.0).round() as u32,
+                },
+            );
+            feedback.policy.restrictions()
+        };
+        let next_limit = restrictions.frame_rate_limit(requested_max);
+        if next_limit != frame_limit {
+            frame_limit = next_limit;
+            cadence = Cadence::new(frame_limit.unwrap_or(settings.fps));
+            if frame_limit.is_some() {
+                cadence.accept(timestamp);
+            }
+            admission_rate = AdmissionRate::default();
+        }
+        if !repeated {
+            if let Some(fps) = admission_rate.observe(timestamp) {
+                let mut feedback = feedback.lock().unwrap();
+                feedback
+                    .dropper
+                    .set_rates(current.bitrate as f32 / 1_000.0, fps);
+                feedback.dropper.leak(fps.round() as u32);
+                if feedback.dropper.drop_frame() && !force {
+                    feedback.policy.report_drop();
+                    continue;
+                }
+            }
+        }
+        let next = restrictions.apply(
+            Settings {
+                bitrate: current.bitrate,
+                ..settings
+            }
+            .fitted(f64::from(raw.info.width()), f64::from(raw.info.height())),
+            requested_max,
+        );
+        let force = force
+            || (current.width, current.height, current.fps) != (next.width, next.height, next.fps);
+        current = next;
+        let duration = gst::ClockTime::from_nseconds(
+            (1_000_000_000.0 / admission_rate.fps.unwrap_or(current.fps as f32) as f64)
+                .round()
+                .max(1.0) as u64,
+        );
+        let sample = codec.sample(raw, time, current, frame_limit, duration, &clock, force)?;
         loop {
             let changed = shared.changed.notified();
             tokio::pin!(changed);
             changed.as_mut().enable();
-            {
+            let next_bitrate = {
                 let mut state = shared.state.lock().unwrap();
                 if state.stop {
                     return Ok(());
                 }
-                if let Some(bitrate) = state.bitrate.take() {
-                    codec.bitrate(bitrate)?;
-                }
+                state.bitrate.take()
+            };
+            if let Some(next) = next_bitrate {
+                codec.bitrate(next)?;
+                current.bitrate = next;
+                feedback.lock().unwrap().dropper.set_rates(
+                    current.bitrate as f32 / 1_000.0,
+                    admission_rate.fps.unwrap_or(0.0),
+                );
             }
             tokio::select! {
                 biased;

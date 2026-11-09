@@ -80,9 +80,8 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **Native quality preference on macOS/Linux.** Connect their existing encoder
-  workers to the shared policy and verify the platform adapters before advertising
-  that capability.
+- [ ] **macOS Native quality acceptance.** Run the updated VideoToolbox SDK build
+  and synthetic codec control before advertising the shared quality preference.
   The [implementation boundary](./research/channel-network-design.md#implementation-boundary)
   owns the worker policy and retained upstream recovery hysteresis.
 - [ ] **Routing parity decisions.** Review the current domain-wide 20-endpoint

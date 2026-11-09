@@ -1,6 +1,11 @@
 //! One codec thread per encoding; one VT frame in flight and two ordered AUs.
 use super::{checked, Clock, Frames, Image, RawFrame};
-use crate::capture::{FrameTiming, Settings};
+use crate::capture::{
+    adaptation::{Input, QualityPolicy},
+    cadence::{AdmissionRate, Cadence},
+    frame_dropper::FrameDropper,
+    qp, FrameTiming, Settings, VideoCodec,
+};
 use crate::EncodedFrame;
 use anyhow::{anyhow, ensure, Result};
 use cidre::{arc, cf, cm, cv, objc, vt};
@@ -210,6 +215,7 @@ struct Codec {
     session: arc::R<vt::CompressionSession>,
     transfer: arc::R<vt::PixelTransferSession>,
     size: (u32, u32),
+    qp: qp::H264,
 }
 impl Codec {
     fn new(settings: Settings) -> Result<Self> {
@@ -247,6 +253,7 @@ impl Codec {
             session,
             transfer,
             size: (settings.width, settings.height),
+            qp: qp::H264::default(),
         };
         checked(codec.transfer.set_scaling_normal())?;
         checked(
@@ -283,6 +290,7 @@ impl Codec {
         &mut self,
         image: &Image,
         time: Instant,
+        duration: cm::Time,
         force: bool,
         clock: Clock,
     ) -> Result<Option<EncodedFrame>> {
@@ -310,7 +318,7 @@ impl Codec {
         checked(self.session.enc_frame_with_output_handler(
             &destination,
             pts,
-            cm::Time::invalid(),
+            duration,
             props.as_deref(),
             std::ptr::null_mut(),
             move |status, flags, sample| {
@@ -393,7 +401,14 @@ fn run(
     runtime: &tokio::runtime::Handle,
 ) -> Result<()> {
     let clock = frames.clock();
-    let mut cadence = crate::capture::cadence::Cadence::new(settings.fps);
+    let started = Instant::now();
+    let mut policy = QualityPolicy::new(VideoCodec::H264, settings.degradation_preference, 0);
+    let requested_max = (frames.timing() == FrameTiming::Capture).then_some(settings.fps);
+    let mut frame_limit = requested_max;
+    let mut cadence = Cadence::new(settings.fps);
+    let mut admission_rate = AdmissionRate::default();
+    let mut dropper = FrameDropper::new();
+    dropper.set_rates(settings.bitrate as f32 / 1000.0, 0.0);
     let mut codec: Option<Codec> = None;
     let mut bitrate = settings.bitrate;
     let mut last = None;
@@ -406,6 +421,7 @@ fn run(
                     if let Some(codec) = &mut codec {
                         codec.bitrate(bitrate)?;
                     }
+                    dropper.set_rates(bitrate as f32 / 1000.0, admission_rate.fps.unwrap_or(0.0));
                     continue;
                 }
                 Work::Frame(raw, force) => (raw, force),
@@ -413,27 +429,53 @@ fn run(
             // Capture-only: an explicit request may refresh this current static
             // snapshot once at current host time. This is not Source/derived
             // timing. Natural source frames always retain their original PTS.
-            let time = if frames.timing() == FrameTiming::Capture
-                && explicit_force
-                && last.is_some_and(|last| raw.time <= last)
-            {
+            let repeated = last.is_some_and(|last| raw.time <= last);
+            let time = if frames.timing() == FrameTiming::Capture && explicit_force && repeated {
                 clock.project(cm::Clock::host_time_clock().time())?
             } else {
                 raw.time
             };
             last = Some(time);
             let mut force = explicit_force || pending_keyframe;
-            if frames.timing() == FrameTiming::Capture
-                && !force
-                && !cadence.accept(clock.timestamp(time).value / 100)
-            {
-                continue;
-            }
             let (width, height) = raw.image.size();
             let fitted = Settings {
                 bitrate,
                 ..settings.fitted(width, height)
             };
+            let pixels = codec
+                .as_ref()
+                .map_or(fitted.width * fitted.height, |codec| {
+                    codec.size.0 * codec.size.1
+                });
+            policy.tick(
+                started.elapsed().as_millis() as u64,
+                Input {
+                    pixels,
+                    fps: admission_rate.fps.unwrap_or(0.0).round() as u32,
+                },
+            );
+            let restrictions = policy.restrictions();
+            let next_limit = restrictions.frame_rate_limit(requested_max);
+            if next_limit != frame_limit {
+                frame_limit = next_limit;
+                cadence = Cadence::new(frame_limit.unwrap_or(settings.fps));
+                admission_rate = AdmissionRate::default();
+            }
+            let source_time = clock.timestamp(time).value / 100;
+            if !force && frame_limit.is_some() && !cadence.accept(source_time) {
+                continue;
+            }
+            if !repeated {
+                if let Some(fps) = admission_rate.observe(source_time) {
+                    dropper.set_rates(bitrate as f32 / 1000.0, fps);
+                    dropper.leak(fps.round() as u32);
+                    if dropper.drop_frame() && !force {
+                        policy.report_drop();
+                        continue;
+                    }
+                }
+            }
+            let fitted = restrictions.apply(fitted, requested_max);
             if codec.as_ref().is_none_or(|codec| !codec.fits(fitted)) {
                 // Each encode returns only after its one callback; no old AU is
                 // in flight when this session is invalidated on a size change.
@@ -441,14 +483,26 @@ fn run(
                 codec = Some(Codec::new(fitted)?);
                 force = true;
             }
-            let frame = codec
-                .as_mut()
-                .unwrap()
-                .encode(&raw.image, time, force, clock)?;
+            // ExpectedFrameRate is only VT's startup hint. Actual admission and
+            // sample duration follow this encoding's observed source cadence.
+            let duration = admission_rate.fps.map_or(cm::Time::invalid(), |fps| {
+                cm::Time::new(
+                    (1_000_000_000.0 / fps).round().max(1.0) as i64,
+                    1_000_000_000,
+                )
+            });
+            let codec = codec.as_mut().unwrap();
+            let frame = codec.encode(&raw.image, time, duration, force, clock)?;
             let Some(frame) = frame else {
+                policy.report_drop();
                 pending_keyframe = force;
                 continue;
             };
+            policy.report_encoded(
+                codec.qp.parse(&frame.bytes),
+                started.elapsed().as_micros() as u64,
+            );
+            dropper.fill(frame.bytes.len(), !frame.keyframe);
             pending_keyframe = force && !frame.keyframe;
             let mut state = shared.state.lock().unwrap();
             if state.stop {
