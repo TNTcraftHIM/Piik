@@ -23,7 +23,8 @@ pub(super) struct LocalIdentity {
 impl Sites {
     pub fn open(directory: &Path) -> Result<Self> {
         std::fs::create_dir_all(directory)?;
-        let db = Connection::open(directory.join("app.sqlite"))?;
+        // Resolve the directory so SQLite can create journals beside long Windows paths.
+        let db = Connection::open(std::fs::canonicalize(directory)?.join("app.sqlite"))?;
         db.execute_batch(
             "CREATE TABLE IF NOT EXISTS app_site (
                origin TEXT PRIMARY KEY, data_id TEXT NOT NULL, allowed INTEGER NOT NULL);
@@ -152,6 +153,27 @@ mod tests {
         assert_eq!(sites.approve(site, true)?, namespace);
         drop(sites);
         std::fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+
+    #[test]
+    fn long_data_directory_retains_approval_and_identity_after_reopen() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let directory = root
+            .path()
+            .join("app-data-".repeat(16))
+            .join("room-data-".repeat(16));
+        let site = "https://channel.example";
+        let (namespace, identity) = {
+            let mut sites = Sites::open(&directory)?;
+            let namespace = sites.approve(site, true)?;
+            sites.set_startup(site)?;
+            (namespace, serde_json::to_value(sites.local_identity()?)?)
+        };
+        let sites = Sites::open(&directory)?;
+        assert_eq!(sites.approved()?.get(site), Some(&namespace));
+        assert_eq!(sites.startup()?, site);
+        assert_eq!(serde_json::to_value(sites.local_identity()?)?, identity);
         Ok(())
     }
 }
