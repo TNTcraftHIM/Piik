@@ -405,6 +405,9 @@ mod tests {
 ))]
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub(crate) enum FrameTiming {
+    /// Local capture: Settings::fps limits admission from the capture clock.
     Capture,
+    /// Decoded source timestamps stay authoritative. Settings::fps is only the
+    /// decoder's nominal format hint, not a receiver's requested frame-rate cap.
     Source,
 }

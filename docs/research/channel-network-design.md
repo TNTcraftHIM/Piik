@@ -709,14 +709,42 @@ reduces raw-frame admission under encoded overshoot, which favors retaining
 detail without implementing a motion preference. Unlike the older complete
 WebRTC VideoStreamEncoder path, str0m supplies transport budgets and the platform
 codecs apply bitrate; neither owns this resolution/FPS tradeoff. Encoder
-quality-versus-speed controls do not substitute for it. A bounded semantic port
-of WebRTC's quality/source-adaptation modules would also require actual encoder
-feedback and per-encoding dynamic size/cadence application across platforms.
+quality-versus-speed controls do not substitute for it.
+
+An isolated Rust semantic port of WebRTC's
+[QualityScaler](https://github.com/webrtc-mirror/webrtc/blob/3710345e71ad3a7c1f4ed4efef152fd4fc24869a/modules/video_coding/utility/quality_scaler.cc)
+and maintain-framerate resolution adaptation matches the pinned C++ trace.
+It preserves the default sampling, QP scales, pixel restrictions and applied-size
+waiting; it does not add bitrate tiers. The upstream manager disables this QP
+scaler for maintain-resolution, so high QP must not be repurposed as an FPS rule.
+
+The actual Windows VP8 worker accepted independent size/cadence changes and
+recovery on a shared GPU source while its sibling retained every original-size
+frame. In a subsequent policy-driven control, a constrained output shrank from
+640x360 to 380x212 and recovered 30 fps after the bitrate returned. At 1.5 Mbps,
+QP remained above the upstream low threshold and size did not recover. At 8 Mbps,
+the first enlarged keyframe arrived about 18 seconds after restoring the bitrate budget.
+Keep this measured hysteresis visible when selecting the product behavior;
+matching upstream does not establish acceptable recovery speed by itself.
+
+H264 feedback can use a small adapter over
+[h264-reader](https://docs.rs/h264-reader/0.9.0/h264_reader/nal/slice/struct.SliceHeader.html),
+with known upstream QP vectors and existing synthetic MF output checked. It has
+not been added to product dependencies. QP is optional encoder feedback: absence
+or a parser failure must not terminate sharing or reuse a preceding frame's QP.
+Product integration still needs the existing worker boundary to carry explicit
+restrictions and feedback, other codec/platform actuation, and the shared quality
+setting. The experiments do not implement the full WebRTC resource controller.
+
+Decoded-source FPS is a format hint, not an admission limit. VP8 initializes it
+to 30 even for a 60 fps source; source timing preserves actual presentation
+timestamps. Any future max-FPS restriction must be explicit and per encoding,
+without changing the shared capture or retimestamping selected frames.
 GStreamer's [webrtcsink mitigation](https://gstreamer.freedesktop.org/documentation/rswebrtc/webrtcsink.html#enable-mitigation-modes)
 is coupled to its pipeline and uses bitrate tiers; libvpx resampling only covers
-that codec. Neither supplies the required shared owner here. Keep Native's
-current behavior until that larger boundary is explicitly selected, rather than
-adding a Piik quality ladder or advertising an ineffective preference.
+that codec. Neither supplies a shared adaptation owner. Keep Native's current
+behavior until the complete mechanism is integrated and verified, without
+advertising an ineffective preference.
 
 Default Server adaptation remains forwarding-only under
 [ADR-0013](../adr/0013-embedded-node-local-media.md). [Simulcast](https://www.rfc-editor.org/rfc/rfc8853)
