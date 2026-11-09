@@ -89,12 +89,12 @@ export function ResolutionControl({ value, limits, disabled, onChange }: {
   const controls = useRef<HTMLDivElement>(null);
   const [invalid, setInvalid] = useState(false);
   const errorId = useId();
-  useEffect(() => setInvalid(false), [value.width, value.height]);
   const axes = ["width", "height"] as const;
   const reset = (container: HTMLElement) => {
     setInvalid(false);
     for (const axis of axes) container.querySelector<HTMLInputElement>(`input[name="${axis}"]`)!.value = String(value[axis]);
   };
+  useEffect(() => { reset(controls.current!); }, [value.width, value.height]);
   const apply = (container: HTMLElement) => {
     const width = container.querySelector<HTMLInputElement>('input[name="width"]')!;
     const height = container.querySelector<HTMLInputElement>('input[name="height"]')!;
@@ -128,7 +128,7 @@ export function ResolutionControl({ value, limits, disabled, onChange }: {
         width: String(limits.maxVideoResolution.width), height: String(limits.maxVideoResolution.height),
         pixels: limits.maxVideoPixels.toLocaleString("en-US"),
       })}>
-        <span className="lr-input lr-video-size" key={`${value.width}x${value.height}`}
+        <span className="lr-input lr-video-size"
           role="group" aria-label={t("host.advanced.resolution")}>
           {axes.map((axis, index) => <Fragment key={axis}>
             {index === 1 ? <span aria-hidden="true">×</span> : null}
