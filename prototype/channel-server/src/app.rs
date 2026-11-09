@@ -55,7 +55,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 2;
+const PROTOCOL: u8 = 3;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -752,6 +752,7 @@ enum Operation {
     },
     InputPolicy {
         publication_id: Uuid,
+        capture_id: Uuid,
         mode: Mode,
         password: Option<String>,
         simultaneous: Option<bool>,
@@ -1372,6 +1373,7 @@ async fn connection(
                             }
                             Operation::InputPolicy {
                                 publication_id,
+                                capture_id,
                                 mode,
                                 password,
                                 simultaneous,
@@ -1379,6 +1381,7 @@ async fn connection(
                                 let policy = captures
                                     .get(&publication_id)
                                     .and_then(Capture::lease)
+                                    .filter(|lease| lease.id == capture_id)
                                     .ok_or_else(|| anyhow!("input_source_unavailable"))
                                     .and_then(|lease| {
                                         lease.set_input_policy(mode, password, simultaneous)
@@ -1726,6 +1729,18 @@ mod lifecycle_tests {
         let mut captures = BTreeMap::from([(Uuid::new_v4(), capture)]);
         captures.retain(|_, capture| capture.pending.is_some() || capture.active.is_some());
         assert!(captures.is_empty());
+    }
+
+    #[test]
+    fn input_policy_requires_the_selected_capture_identity() {
+        let capture_id = Uuid::new_v4();
+        let mut wire = json!({"id":"policy","type":"input_policy","publicationId":Uuid::new_v4(),"captureId":capture_id,"mode":"room"});
+        assert!(matches!(
+            serde_json::from_value::<Request>(wire.clone()).unwrap().operation,
+            Operation::InputPolicy { capture_id: id, .. } if id == capture_id
+        ));
+        wire.as_object_mut().unwrap().remove("captureId");
+        assert!(serde_json::from_value::<Request>(wire).is_err());
     }
 
     #[test]

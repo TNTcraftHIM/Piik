@@ -743,7 +743,7 @@ export class ChannelSession {
   inputPolicy = (publicationId: string, mode: RemoteControlMode, password?: string): Promise<void> =>
     this.action(`input:${publicationId}`, async () => {
       if (!this.app?.screens.has(publicationId)) throw new Error("capture_unavailable");
-      await this.app.inputPolicy(publicationId, mode, password);
+      await this.app.inputPolicy(publicationId, { mode, password });
     });
 
   inputDecide = (publicationId: string, requestId: string, allow: boolean): Promise<void> =>
@@ -757,7 +757,7 @@ export class ChannelSession {
     this.action(`input:${publicationId}`, async () => {
       const state = this.view.remoteControls.get(publicationId);
       if (!this.app?.screens.has(publicationId) || !state) throw new Error("input_unavailable");
-      await this.app.inputSimultaneous(publicationId, state.mode, enabled);
+      await this.app.inputPolicy(publicationId, { mode: state.mode, simultaneous: enabled });
     });
 
   inputShortcut = async (publicationId: string, key?: number): Promise<ChannelStopShortcut> => {

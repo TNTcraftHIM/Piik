@@ -92,7 +92,14 @@ deployed frontend requires no Node runtime.
 ## Local App Link
 
 The `piik-channel-app` entry uses the same App button, local approval page and
-saved-site controls as the shared Web interface. Build the frontend and start it:
+saved-site controls as the shared Web interface.
+
+Current internal pages require App control protocol 3, which binds input policy
+to the selected capture. Upgrade the App and its bundled Web files together;
+Beta6 and earlier App controls are incompatible with these pages. Domain
+signaling and saved room data are unchanged.
+
+Build the frontend and start it:
 
 ```powershell
 npm run build:web

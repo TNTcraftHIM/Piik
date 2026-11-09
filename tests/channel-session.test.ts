@@ -488,7 +488,7 @@ test("domain and room invitations use the current Welcome origin without local b
 
 test("App hosting uses its own participant while Browser rooms retain their page lifetime", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 2, port: 8793, token: "approved" });
+  const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
   const localRoom = { id: "saved-browser-room", name: "Browser room", icon: "couch", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false };
   const host = {
     roomId: localRoom.id, summary: () => localRoom,
@@ -615,7 +615,7 @@ test("authority delivery results follow this page's watch intent and clear on cu
 });
 
 test.each([false, true])("App viewing assistance withdraws without ending the watch (Domain recovery: %s)", async recovering => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 2, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
   const helperSessionId = crypto.randomUUID();
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helperSessionId, roomIds: [] });
   const { session, socket } = await setup();
@@ -656,7 +656,7 @@ test.each([false, true])("App viewing assistance withdraws without ending the wa
 });
 
 test("temporary helper unavailability cannot retire a retained watch on Domain recovery", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 2, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
   const helperSessionId = crypto.randomUUID();
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helperSessionId, roomIds: [] });
   const { session, socket } = await setup();
@@ -699,7 +699,7 @@ test("temporary helper unavailability cannot retire a retained watch on Domain r
 });
 
 test("an App description completing after unwatch cannot recreate a subscription", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 2, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
   let describe!: (value: { sessionId: string; roomIds: string[] }) => void;
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockImplementation(() => new Promise(resolve => { describe = resolve; }));
   const { session, socket } = await setup();
@@ -739,7 +739,7 @@ test.each(["disconnect", "close"])("pending App health cannot create a control s
     expect(discovery).toHaveBeenCalledOnce();
     if (end === "close") session.close();
     else socket.close();
-    complete({ service: "piik-channel-app", protocol: 2, port: 8793, token: "approved" });
+    complete({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
     await resuming;
     expect(ChannelSocket.current).toBe(socket);
     expect(session.getSnapshot().appConnected).toBe(false);
@@ -1326,7 +1326,7 @@ test.each([
     ? { mimeType: "video/H264", clockRate: 90000, sdpFmtpLine: "packetization-mode=1" }
     : { mimeType: "video/VP8", clockRate: 90000 }] }) });
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 2, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
   session.setVideoCodecMode(mode);
@@ -1650,7 +1650,7 @@ test("Browser source replacement keeps its publication, rejects only the candida
 
 test.each(["live", "stop-before-reply", "candidate-ended-before-reply", "app-close-before-state", "app-close-after-state", "transfer-rejected", "audio-stop-before-reply", "mute-during-native-prepare", "mute-during-native-commit", "mute-rejected-during-native-prepare"])("Browser and Native handoffs keep one publication and use the current Native capture lease (%s)", async outcome => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 2, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
   const old = remoteTrack("video"), next = remoteTrack("video");
@@ -1775,8 +1775,23 @@ test.each(["live", "stop-before-reply", "candidate-ended-before-reply", "app-clo
     expect(session.sourceAudio(publication.id)?.canMute).toBe(true);
     expect(app.sent.at(-1)?.codecMode).toBe("vp8");
     appReply({ captureId: secondCaptureId, sessionId: nativeSessionId, codec: "vp8" });
-    expect(await appCommand("commit_capture")).toMatchObject({ publicationId: publication.id, captureId: secondCaptureId });
-    appReply(); await nativeAgain;
+    const replacementCommit = await appCommand("commit_capture");
+    expect(replacementCommit).toMatchObject({ publicationId: publication.id, captureId: secondCaptureId });
+    if (outcome === "live") {
+      const stalePolicy = session.inputPolicy(publication.id, "room");
+      const staleResult = expect(stalePolicy).rejects.toThrow("input_source_unavailable");
+      expect(app.sent.at(-1)).toMatchObject({ type: "input_policy", publicationId: publication.id,
+        captureId: firstCaptureId, mode: "room" });
+      app.receive({ id: app.sent.at(-1)!.id, error: "input_source_unavailable" });
+      await staleResult;
+    }
+    app.receive({ id: replacementCommit.id, result: null }); await nativeAgain;
+    if (outcome === "live") {
+      const simultaneous = session.inputSimultaneous(publication.id, true);
+      expect(app.sent.at(-1)).toMatchObject({ type: "input_policy", publicationId: publication.id,
+        captureId: secondCaptureId, mode: "ask", simultaneous: true });
+      appReply(); await simultaneous;
+    }
     app.receive({ id: oldShortcutCommand.id, result: { key: 10, available: true } });
     await retiredShortcut;
     expect(socket.sent.filter(command => command.type === "transfer_source")).toHaveLength(1);
@@ -2012,7 +2027,7 @@ test("a late source-ceiling rejection cannot configure a stopped capture or its 
 test("Native capture previews before its snapshot, keeps picture on audio failure, and stops through its App owner", async () => {
   vi.stubGlobal("navigator", { userAgent: "test", userActivation: { isActive: false } });
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 2, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
   try {
@@ -2177,7 +2192,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     app.receive({ type: "input_state", publicationId, state: { ...remote, platform: "linux", canSetStopShortcut: true, stopShortcutLabel: null } });
     await expect(session.inputShortcut(publicationId)).resolves.toEqual({ key: 10, available: false, stopShortcutLabel: null });
     const enabling = session.inputPolicy(publicationId, "ask");
-    expect(app.sent.at(-1)).toMatchObject({ type: "input_policy", publicationId, mode: "ask" });
+    expect(app.sent.at(-1)).toMatchObject({ type: "input_policy", publicationId, captureId, mode: "ask" });
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await enabling;
     const approving = session.inputDecide(publicationId, intent, true);
@@ -2296,7 +2311,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
 
 test.each(["before-subscribe", "awaiting-ack", "helper-awaiting-ack"])("committed Native preview resumes its watch intent after Domain recovery (%s)", async interrupted => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 2, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
   const nativeSessionId = crypto.randomUUID();
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: nativeSessionId, roomIds: ["first"] });
   const { session, socket } = await setup();
@@ -2354,7 +2369,7 @@ test.each([
   ["domain-first", false], ["domain-first", true], ["app-first", false], ["app-first", true],
 ] as const)("Native completion preserves replacement ownership and reports only current failures (%s, failed=%s)", async (order, failed) => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 2, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockRejectedValue(new Error("Assistance unavailable"));
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
@@ -2417,7 +2432,7 @@ test.each([
 
 test("stopping committed Native capture retires its pending automatic preview error", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 2, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
   try {
@@ -2452,7 +2467,7 @@ test("stopping committed Native capture retires its pending automatic preview er
 
 test("pending Native capture stays page-owned through same-page stop and close", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 2, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
   try {
@@ -2580,7 +2595,7 @@ test("remembered App intent does not prevent Browser hosting when no App is conn
 
 test("an App failure during creation does not turn that request into a Browser room", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 2, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
   let prepared!: (policy: string) => void;
   let policy = "";
   const browserOpen = vi.fn();
@@ -6329,7 +6344,7 @@ test("portable import validates the full archive before switching accounts and r
 
 test("an approved App exports only rooms positively matched to its Native session", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 2, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 3, port: 8793, token: "approved" });
   const { session, socket } = await setup(); const appSocket = ChannelSocket.current;
   const nativeId = crypto.randomUUID();
   const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ sessionId: nativeId, roomIds: ["first"] })))

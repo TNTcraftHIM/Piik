@@ -110,6 +110,8 @@ Windows keyboard, mouse and text input share one App-owned desktop executor.
 The Browser reuses the existing remote-control and source-consent components;
 input returns over the selected screen route on the same peer connections.
 Capture leases own consent and held-key cleanup, independently of room hosting.
+Changes to remote-control policy identify the selected capture lease, so a late
+request for a replaced source cannot enable control on its replacement.
 Global stop uses a process-only Windows hotkey selected by the Browser preference.
 The [activity model](../../docs/research/channel-network-design.md#activity-and-lifecycle)
 owns authorization and retirement. Optional Windows gamepads use an already

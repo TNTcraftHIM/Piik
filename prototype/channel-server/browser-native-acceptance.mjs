@@ -76,7 +76,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     const browserRoom = await action(1, "createRoom({name:'Browser-owned room',icon:'couch',access:'public',hidden:false})");
     start(); await ready();
     const discovery = await fetch(`${local}/connect-discovery`).then(response => response.json());
-    assert.deepEqual(discovery, { service: "piik-channel-app", protocol: 2, port, connectURL: `${local}/client` });
+    assert.deepEqual(discovery, { service: "piik-channel-app", protocol: 3, port, connectURL: `${local}/client` });
     assert.equal((await health(origin)).status, 403, "discovery does not approve its caller");
     await approve(origin);
     const token = (await (await health(origin)).json()).token;

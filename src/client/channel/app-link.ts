@@ -10,7 +10,7 @@ import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), port: z.number().int().min(1).max(65535) });
-const healthSchema = identitySchema.extend({ protocol: z.literal(2), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
+const healthSchema = identitySchema.extend({ protocol: z.literal(3), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
   version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional() });
 type AppHealth = z.infer<typeof healthSchema>;
 const measured = z.number().finite().nonnegative();
@@ -60,7 +60,7 @@ type AppCommand = { type: string; publicationId?: string; roomId?: string; [key:
 function identity(body: unknown, port: number): void {
   const value = identitySchema.extend({ service: z.enum(["piik-channel-app", "piik-client"]) }).parse(body);
   if (value.port !== port) throw new Error("invalid_app_response");
-  if (value.service !== "piik-channel-app" || value.protocol !== 2) throw new AppCompatibilityError("App room protocol is incompatible");
+  if (value.service !== "piik-channel-app" || value.protocol !== 3) throw new AppCompatibilityError("App room protocol is incompatible");
 }
 
 export function discoverChannelAppHealth(options: AppDiscoveryOptions = {}): Promise<AppHealth | null> {
@@ -321,16 +321,15 @@ export class ChannelApp {
     if (this.connected) await this.request({ type: "stop_capture", publicationId });
   }
 
-  async inputPolicy(publicationId: string, mode: RemoteControlMode, password?: string): Promise<void> {
-    await this.request({ type: "input_policy", publicationId, mode, ...(password !== undefined ? { password } : {}) });
+  async inputPolicy(publicationId: string, policy: { mode: RemoteControlMode; password?: string; simultaneous?: boolean }): Promise<void> {
+    const captureId = this.captures.get(publicationId);
+    if (!captureId) throw new Error("capture_unavailable");
+    await this.request({ type: "input_policy", publicationId, captureId, ...policy });
+    if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture replaced", "AbortError");
   }
 
   async inputDecide(publicationId: string, controllerSessionId: string, intent: string, allow: boolean): Promise<void> {
     await this.request({ type: "input_decide", publicationId, controllerSessionId, intent, allow });
-  }
-
-  async inputSimultaneous(publicationId: string, mode: RemoteControlMode, simultaneous: boolean): Promise<void> {
-    await this.request({ type: "input_policy", publicationId, mode, simultaneous });
   }
 
   async inputShortcut(publicationId: string, key: number): Promise<ChannelStopShortcut> {
