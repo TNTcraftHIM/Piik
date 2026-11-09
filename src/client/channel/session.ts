@@ -811,7 +811,7 @@ export class ChannelSession {
       if (this.hostedRooms.get(id) !== hosted || this.view.sessionId !== sessionId || this.closed) return;
       try { await this.request({ type: "host_register", room, resumeBinding: hosted.bindingId }); }
       catch (error) {
-        if (!(error instanceof Error) || error.message !== "room_not_in_domain") throw error;
+        if (!(error instanceof Error) || !["room_not_in_domain", "room_already_hosted"].includes(error.message)) throw error;
         if (this.hostedRooms.get(id) === hosted) this.hostedRooms.delete(id);
         await hosted.host.close();
       }

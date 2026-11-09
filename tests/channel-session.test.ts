@@ -2562,6 +2562,46 @@ test("same-session recovery retires its own host binding when the committed room
   } finally { session.close(); }
 });
 
+test("a room hosted by another page cannot block this page's other rooms from resuming", async () => {
+  const policy = (id: string) => ({ id, creatorId: "self", name: id, icon: "couch", access: "public", hidden: false });
+  let policies = [JSON.stringify(policy("second"))];
+  const hosts = new Map(["first", "second"].map(id => [id, {
+    roomId: id, summary: () => policy(id), close: vi.fn(async () => {}), bind: vi.fn(async () => {}),
+  }]));
+  vi.stubGlobal("indexedDB", {});
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: {
+    storedPolicies: async () => policies,
+    open: async (_database: string, value: string) => hosts.get(JSON.parse(value).id),
+  } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const { session, socket } = await setup();
+  try {
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "host_register")).toBe(true));
+    const register = socket.sent.find(command => command.type === "host_register")!;
+    socket.receive({ type: "host_bound", roomId: "second", bindingId: "own-binding" });
+    socket.receive({ type: "ack", requestId: register.requestId });
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.rooms[0].delivery = { hostSessionId: "other-page", bindingId: "other-binding", nextHops: {} };
+    state.channel.rooms[1].delivery = { hostSessionId: "endpoint", bindingId: "own-binding", nextHops: {} };
+    policies = [JSON.stringify(policy("first")), JSON.stringify(policy("second"))];
+    session.reconnect();
+    const resumed = ChannelSocket.current; await resumed.onopen?.();
+    resumed.receive({ type: "welcome", protocol: 1, credential: "credential", sessionId: "endpoint", state });
+    await vi.waitFor(() => expect(resumed.sent.some(command => command.type === "host_register")).toBe(true));
+    const conflict = resumed.sent.find(command => command.type === "host_register")!;
+    expect(conflict.room).toMatchObject({ id: "first" });
+    resumed.receive({ type: "error", requestId: conflict.requestId, code: "room_already_hosted" });
+    await vi.waitFor(() => expect(resumed.sent.filter(command => command.type === "host_register")).toHaveLength(2));
+    const own = resumed.sent.findLast(command => command.type === "host_register")!;
+    expect(own).toMatchObject({ room: { id: "second" }, resumeBinding: "own-binding" });
+    resumed.receive({ type: "host_bound", roomId: "second", bindingId: "own-binding" });
+    resumed.receive({ type: "ack", requestId: own.requestId });
+    expect(hosts.get("first")!.close).toHaveBeenCalledOnce();
+    expect(hosts.get("second")!.close).not.toHaveBeenCalled();
+    expect(resumed.sent.some(command => command.type === "host_stop")).toBe(false);
+    expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
 test("remembered App intent does not prevent Browser hosting when no App is connected", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue(null);
