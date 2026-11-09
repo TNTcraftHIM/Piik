@@ -233,10 +233,9 @@ async fn missing_room_restore_waits_for_domain_admission_and_drops_denied_or_ret
 }
 
 #[tokio::test]
-async fn committed_restore_registration_failure_is_distinct_from_an_open_waiting_on_the_same_room()
-{
+async fn committed_restore_registration_completes_each_coalesced_reply_with_its_own_result() {
     use piik_channel_core::{backup::RoomMetadata, wire::Request, RoomBackup};
-    for failure in ["rejected", "missing-binding", "disconnected"] {
+    for failure in ["rejected", "missing-binding", "disconnected", "success"] {
         let (mut session, mut socket, mut remote, mut state) = capture_projection_session().await;
         let native = session.live.as_ref().unwrap().session;
         let user = state
@@ -341,6 +340,127 @@ async fn committed_restore_registration_failure_is_distinct_from_an_open_waiting
             1,
             "Open joins the existing registration"
         );
+        if failure == "success" {
+            use piik_channel_core::{
+                conversation::{ConversationAddress, ConversationCommand, ConversationRequest},
+                history::{HistoryRequest, HistoryResult},
+                host::{HostAction, HostInput},
+                Endpoint, Member,
+            };
+            let binding = Uuid::new_v4();
+            session
+                .event(
+                    Event::HostBound {
+                        room_id: "target".into(),
+                        binding_id: binding,
+                    },
+                    &mut socket,
+                )
+                .await
+                .unwrap();
+            session
+                .event(
+                    Event::Ack {
+                        request_id: registration.request_id.unwrap(),
+                    },
+                    &mut socket,
+                )
+                .await
+                .unwrap();
+            let restored = restored_reply.await.unwrap().ok().unwrap();
+            let opened = open_reply.await.unwrap().ok().unwrap();
+            assert_eq!(restored.name, "Restored");
+            assert_eq!(opened.name, "Restored");
+            assert_eq!(
+                serde_json::to_value(restored).unwrap(),
+                serde_json::to_value(opened).unwrap()
+            );
+            assert!(
+                session.opening.is_empty(),
+                "the shared registration completes once"
+            );
+            state.channel.rooms[0].delivery.as_mut().unwrap().binding_id = binding;
+            state
+                .sessions
+                .iter_mut()
+                .find(|s| s.id == native)
+                .unwrap()
+                .signing_key = session.signer.signing_key();
+            session.state(state, &mut socket).await.unwrap();
+            session
+                .event(
+                    Event::HostInput {
+                        room_id: "target".into(),
+                        input: HostInput {
+                            now: 1,
+                            binding_id: binding,
+                            host_session_id: native,
+                            revision: 1,
+                            endpoints: [(
+                                native,
+                                Endpoint {
+                                    member: Member {
+                                        user_id: user,
+                                        domain_owner: false,
+                                    },
+                                    connected: true,
+                                    signing_key: session.signer.signing_key(),
+                                },
+                            )]
+                            .into(),
+                            action: HostAction::Sync,
+                        },
+                    },
+                    &mut socket,
+                )
+                .await
+                .unwrap();
+            let sync =
+                Request::parse(remote.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+            assert!(matches!(sync.command, Command::HostOutput { .. }));
+            let packet = session
+                .signer
+                .sign(
+                    native,
+                    &ConversationRequest {
+                        address: ConversationAddress {
+                            room_id: "target".into(),
+                            binding_id: binding,
+                            sender: native,
+                            recipient: native,
+                            request_id: "post-restore-chat".into(),
+                        },
+                        command: ConversationCommand::Chat {
+                            text: "Saved after restore".into(),
+                            nonce: "post-restore-chat".into(),
+                            attachments: vec![],
+                        },
+                    },
+                )
+                .unwrap();
+            session
+                .event(Event::Conversation { packet }, &mut socket)
+                .await
+                .unwrap();
+            let confirmation =
+                Request::parse(remote.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+            assert!(matches!(confirmation.command, Command::Conversation { .. }));
+            session.release().await.unwrap();
+            let mut store = piik_channel_core::storage::Storage::open(&path).unwrap();
+            assert_eq!(store.load().unwrap().unwrap()["name"], "Restored");
+            let HistoryResult::Page { messages, .. } = store
+                .history(&HistoryRequest::Read {
+                    room_id: "target".into(),
+                    before: None,
+                })
+                .unwrap()
+            else {
+                panic!("restored history")
+            };
+            assert_eq!(messages.len(), 1);
+            assert_eq!(messages[0].message.text, "Saved after restore");
+            continue;
+        }
         match failure {
             "rejected" => session
                 .event(
