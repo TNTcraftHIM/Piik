@@ -48,7 +48,7 @@ export function ChannelDomainControls({ channel, triggerSlot }: { channel: Chann
   useAnchoredPopover(trigger, panel, { side: "below", align: "end" });
   useEffect(() => { if (!owner) setPassword(""); }, [owner]);
   return <>
-    {owner && triggerSlot && createPortal(<span className="c3-edit-action"><Tooltip kind="hint-rename" disabled={open} text={vis ? undefined : title}>
+    {owner && triggerSlot && createPortal(<span className="c3-edit-action"><Tooltip kind="hint-advanced" disabled={open} text={vis ? undefined : title}>
       <button ref={trigger} type="button" className="lr-btn is-dense is-quiet" aria-label={title}
         aria-expanded={open} aria-controls={id} aria-haspopup="dialog" disabled={disabled} popoverTarget={id}
         onClick={() => resetDraft(current)}><Glyph name="pencil" size={18} /></button>

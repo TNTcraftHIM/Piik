@@ -173,7 +173,7 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
     busy={channel.pending.has(`invite:${room.id}`)} disabled={!available || working || invitation.state === "loading"} hint="hint-rotate-invite"
     onClick={() => run(channel.createRoomInvite(room.id).then(url => setInvitation({ state: "available", url })))} />;
   return <>
-    <Tooltip kind={room ? "hint-details" : "hint-create-room"} disabled={open} text={vis ? undefined : triggerTitle}>
+    <Tooltip kind={room ? "hint-advanced" : "hint-create-room"} disabled={open} text={vis ? undefined : triggerTitle}>
       <button ref={trigger} type="button" className="lr-btn is-dense is-quiet" popoverTarget={id}
         aria-label={triggerTitle} aria-haspopup="dialog" aria-expanded={open} aria-controls={id} disabled={!connected && !room?.authorized}>
         <Glyph name={room ? "chevron" : "plus"} size={18} />
