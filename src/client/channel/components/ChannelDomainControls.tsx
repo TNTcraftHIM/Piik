@@ -7,7 +7,7 @@ import { useClipboardResult } from "../../ui/use-clipboard-result";
 import type { ChannelController } from "../types";
 import type { DomainSettings } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
-import { ChannelSettingsDialog, ChannelSettingsTabs } from "./ChannelSettingsDialog";
+import { ChannelSettingsDialog, ChannelSettingsTabs, useSettingsAction } from "./ChannelSettingsDialog";
 import { ChannelIdentityFields } from "./ChannelIdentity";
 import { BackupControls } from "./BackupControls";
 import { ChannelInviteQrCode } from "./ChannelInviteQrCode";
@@ -23,6 +23,7 @@ export function ChannelDomainControls({ channel, triggerSlot }: { channel: Chann
   const [name, setName] = useState(current?.name ?? "");
   const [icon, setIcon] = useState(current?.icon ?? "couch");
   const [open, setOpen] = useState(false);
+  const { error, run } = useSettingsAction(open);
   const [task, setTask] = useState<"domain" | "invitation" | "backup">("domain");
   const [imageBusy, setImageBusy] = useState(false);
   const [access, setAccess] = useState<"public" | "private">(current?.access ?? "private");
@@ -53,7 +54,7 @@ export function ChannelDomainControls({ channel, triggerSlot }: { channel: Chann
         aria-expanded={open} aria-haspopup="dialog" disabled={disabled}
         onClick={() => { resetDraft(current); setTask("domain"); setOpen(true); }}><Glyph name="pencil" size={18} /></button>
     </Tooltip></span>, triggerSlot)}
-    {open && <ChannelSettingsDialog title={current?.name ?? title} caption={current ? title : undefined} onClose={close}>
+    {open && <ChannelSettingsDialog title={current?.name ?? title} caption={current ? title : undefined} error={error} onClose={close}>
       <div className="c3-settings-body">
         <ChannelSettingsTabs<typeof task> id={id} label={title} tasks={tasks} selected={task} onSelect={setTask} />
         <div className="c3-settings-panels">
@@ -62,11 +63,10 @@ export function ChannelDomainControls({ channel, triggerSlot }: { channel: Chann
               if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault();
             }} onSubmit={event => {
               event.preventDefault();
-              const form = event.currentTarget;
               if (disabled || imageBusy || !name.trim()) return;
-              void channel.updateDomain({ name: name.trim(), icon, access,
+              void run(() => channel.updateDomain({ name: name.trim(), icon, access,
                 ...(access === "private" && password ? { password } : removePassword ? { password: null } : {}),
-              }).then(() => { if (form.isConnected) close(); }).catch(() => {});
+              }, false), close);
             }}>
               <ChannelIdentityFields name={name} icon={icon} label={zh ? "域名称" : "Domain name"} disabled={disabled}
                 onName={setName} onIcon={setIcon} imageBusy={imageBusy} onImageBusyChange={setImageBusy} />
@@ -114,7 +114,7 @@ export function ChannelDomainControls({ channel, triggerSlot }: { channel: Chann
               <p>{zh ? "旧邀请将失效，已加入的用户保留访问。房间邀请不受影响。" : "Old invitations stop working. Existing users keep access. Room invitations are unchanged."}</p>
               <ChannelAction icon="refresh" label={zh ? "生成新域邀请" : "Generate new domain invitation"} hint="hint-rotate-invite"
                 disabled={disabled} busy={inviteBusy} onClick={() => {
-                  void channel.resetDomainInvite().then(() => setInviteReset(true)).catch(() => {});
+                  void run(() => channel.resetDomainInvite(false), () => setInviteReset(true));
                 }} />
               {inviteReset && <p role="status">{zh ? "域邀请已更新，请复制新的邀请。" : "Domain invitation updated. Copy the new invitation."}</p>}
             </details>}

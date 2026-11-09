@@ -19,8 +19,10 @@
 .c3-settings-panels p { margin: 0; color: var(--muted); }
 .c3-settings-panels > .c3-settings-offline { margin-bottom: 16px; }
 .c3-settings-dialog .c3-backup-error { color: var(--danger); }
+.c3-settings-dialog > .c3-settings-error { flex: none; margin: 0; padding: 12px 24px 20px; border-top: 1px solid var(--line); color: var(--danger); overflow-wrap: anywhere; }
 @media (max-width: 600px) {
   .c3-settings-dialog-heading { padding: 18px 16px 14px; }
   .c3-settings-navigation { padding-inline: 16px; }
   .c3-settings-panels { padding: 0 16px 18px; }
+  .c3-settings-dialog > .c3-settings-error { padding-inline: 16px; }
 }

@@ -825,7 +825,7 @@ export class ChannelSession {
 
   private async action<T>(key: string, work: () => Promise<T>, reportError = true): Promise<T> {
     if (this.view.pending.has(key)) throw new Error("operation_pending");
-    this.patch({ pending: new Set([...this.view.pending, key]), error: null });
+    this.patch({ pending: new Set([...this.view.pending, key]), ...(reportError ? { error: null } : {}) });
     try { return await work(); }
     catch (error) {
       const code = error instanceof DOMException ? error.name : error instanceof Error ? error.message : "operation_failed";
@@ -1002,15 +1002,15 @@ export class ChannelSession {
     await this.request({ type: "set_name", name });
     stored(nameKey, name.trim());
   });
-  updateDomain = (settings: DomainSettings): Promise<void> => this.action("domain", () => this.request({ type: "update_domain", ...settings }));
-  resetDomainInvite = (): Promise<void> => this.action("domain-invite", () => this.request({ type: "domain_invite" }));
+  updateDomain = (settings: DomainSettings, reportError = true): Promise<void> => this.action("domain", () => this.request({ type: "update_domain", ...settings }), reportError);
+  resetDomainInvite = (reportError = true): Promise<void> => this.action("domain-invite", () => this.request({ type: "domain_invite" }), reportError);
   enterDomain = (password: string): void => {
     if (this.view.state) return;
     this.password = password;
     this.patch({ error: null });
     this.reconnect();
   };
-  createRoom = (settings: RoomSettings): Promise<string> => this.action("create-room", async () => {
+  createRoom = (settings: RoomSettings, reportError = true): Promise<string> => this.action("create-room", async () => {
     const app = this.app?.connected ? this.app : undefined;
     const state = this.view.state, self = this.view.self, sessionId = this.view.sessionId;
     if (!state || !self || !sessionId) throw new Error("disconnected");
@@ -1039,7 +1039,7 @@ export class ChannelSession {
     await this.request({ type: "host_register", room: summary });
     await this.request({ type: "browse", roomId, active: true });
     return roomId;
-  });
+  }, reportError);
   private sessionContext(): () => void {
     const { sessionId, self, state } = this.view, socket = this.socket;
     if (!sessionId || !self || !state || this.view.connection !== "connected") throw new Error("disconnected");
@@ -1367,8 +1367,8 @@ export class ChannelSession {
     finally { await stage?.close(); }
   }, false);
 
-  updateRoom = (roomId: string, settings: RoomSettings): Promise<void> => this.action(`room:${roomId}`, () => this.request({ type: "update_room", roomId, ...settings }));
-  setRelayOverride = (roomId: string, capacity: number | null): Promise<void> => this.action(`relay:${roomId}`, async () => {
+  updateRoom = (roomId: string, settings: RoomSettings, reportError = true): Promise<void> => this.action(`room:${roomId}`, () => this.request({ type: "update_room", roomId, ...settings }), reportError);
+  setRelayOverride = (roomId: string, capacity: number | null, reportError = true): Promise<void> => this.action(`relay:${roomId}`, async () => {
     const current = this.sessionContext();
     const key = `${this.view.state!.channel.id}/${roomId}`;
     await this.request({ type: "relay_capacity", roomId, capacity });
@@ -1377,8 +1377,8 @@ export class ChannelSession {
     if (capacity === null) delete relayCapacityByRoom[key];
     else relayCapacityByRoom[key] = capacity;
     saveRoomPreferences({ relayCapacityByRoom });
-  });
-  deleteRoom = (roomId: string, deleteData: boolean): Promise<{ dataRemoved: boolean }> => this.action(`delete:${roomId}`, async () => {
+  }, reportError);
+  deleteRoom = (roomId: string, deleteData: boolean, reportError = true): Promise<{ dataRemoved: boolean }> => this.action(`delete:${roomId}`, async () => {
     let dataRemoved: boolean | undefined;
     await this.request({ type: "delete_room", roomId, deleteData }, event => {
       if (event.type !== "room_reply" || event.result.type !== "deleted" || typeof event.result.dataRemoved !== "boolean") throw new Error("invalid_response");
@@ -1387,7 +1387,7 @@ export class ChannelSession {
     if (dataRemoved === undefined) throw new Error("invalid_response");
     if (this.roomId === roomId) this.browse(this.view.state?.channel.rooms.find(room => room.id !== roomId)?.id ?? "");
     return { dataRemoved };
-  });
+  }, reportError);
 
   setRoomVoiceBitrate = (roomId: string, voiceBitrate: number): Promise<void> => {
     const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
@@ -1410,13 +1410,13 @@ export class ChannelSession {
     if (!invitation) throw new Error("invalid_response");
     return invitation;
   };
-  createRoomInvite = (roomId: string): Promise<string> => this.action(`invite:${roomId}`, async () => {
+  createRoomInvite = (roomId: string, reportError = true): Promise<string> => this.action(`invite:${roomId}`, async () => {
     let key: string | undefined;
     await this.request({ type: "room_invite", roomId }, event => { if (event.type === "room_invite") key = event.key; });
     if (!key) throw new Error("invalid_response");
     return this.roomInvitationURL(roomId, key);
-  });
-  revokeRoomAccess = (roomId: string, userId: string): Promise<void> => this.action(`revoke:${roomId}:${userId}`, () => this.request({ type: "revoke_room_access", roomId, userId }));
+  }, reportError);
+  revokeRoomAccess = (roomId: string, userId: string, reportError = true): Promise<void> => this.action(`revoke:${roomId}:${userId}`, () => this.request({ type: "revoke_room_access", roomId, userId }), reportError);
   watch = (publicationId: string, roomId?: string, signal?: AbortSignal): Promise<void> => this.action(`watch:${publicationId}`, async () => {
     if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
     this.watching.set(publicationId, undefined);

@@ -2761,6 +2761,37 @@ test("domain settings use a domain-scoped acknowledgement and surface rejected u
   } finally { session.close(); }
 });
 
+test("local room management failures preserve capture errors while voice settings still report globally", async () => {
+  const { session, socket } = await setup();
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: vi.fn().mockRejectedValue(new Error("capture_failed")) } });
+  try {
+    await expect(session.startScreen("first", "camera")).rejects.toThrow("capture_failed");
+    expect(session.getSnapshot().error).toBe("capture_failed");
+
+    const saving = session.updateRoom("second", { name: "Saved", icon: "couch", access: "public", hidden: false }, false);
+    const rejected = expect(saving).rejects.toThrow("room_host_offline");
+    const request = socket.sent.at(-1)!;
+    expect(request).toMatchObject({ type: "update_room", roomId: "second", name: "Saved" });
+    expect(session.getSnapshot().pending.has("room:second")).toBe(true);
+    expect(session.getSnapshot().error).toBe("capture_failed");
+    socket.receive({ type: "room_reply", roomId: "second", requestId: request.requestId,
+      result: { type: "error", code: "room_host_offline" } });
+    await rejected;
+    expect(session.getSnapshot().error).toBe("capture_failed");
+    expect(session.getSnapshot().pending.has("room:second")).toBe(false);
+
+    const voiceSettings = session.setRoomVoiceBitrate("first", 96_000);
+    const voiceRejected = expect(voiceSettings).rejects.toThrow("forbidden");
+    const voiceRequest = socket.sent.at(-1)!;
+    expect(voiceRequest).toMatchObject({ type: "update_room", roomId: "first", voiceBitrate: 96_000 });
+    expect(session.getSnapshot().error).toBeNull();
+    socket.receive({ type: "error", requestId: voiceRequest.requestId, code: "forbidden" });
+    await voiceRejected;
+    expect(session.getSnapshot().error).toBe("forbidden");
+    expect(session.getSnapshot().pending.has("room:first")).toBe(false);
+  } finally { session.close(); }
+});
+
 test("room replies settle only the request belonging to that room", async () => {
   const { session, socket } = await setup();
   try {

@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Cap } from "../../components/living/primitives";
 import { Tooltip } from "../../components/living/Tooltip";
@@ -8,11 +8,12 @@ import { Glyph, type GlyphName } from "../../ui/icons";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { navigateTabs } from "../../ui/tab-navigation";
 import { ChannelAction } from "./ChannelAction";
+import { channelErrorPresentation } from "../error-presentation";
 import "./channel-settings-dialog.css";
 
 /** Task contents keep their own state; the native modal owns focus and dismissal. */
-export function ChannelSettingsDialog({ title, caption, compact = false, onClose, children }: {
-  title: string; caption?: string; compact?: boolean; onClose(): void; children: ReactNode;
+export function ChannelSettingsDialog({ title, caption, compact = false, error = null, onClose, children }: {
+  title: string; caption?: string; compact?: boolean; error?: string | null; onClose(): void; children: ReactNode;
 }) {
   const ownerDocument = useSurfaceDocument();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -32,6 +33,7 @@ export function ChannelSettingsDialog({ title, caption, compact = false, onClose
         onClick={() => dialog.current?.close()} />
     </header>
     <div className="c3-settings-content">{children}</div>
+    <ChannelSettingsError error={error} />
   </dialog>, ownerDocument.body);
 }
 
@@ -50,4 +52,37 @@ export function ChannelSettingsTabs<T extends string>({ id, label, tasks, select
       </button>
     </Tooltip>)}
   </nav></div>;
+}
+
+/** The action owner supplies its failure; error copy stays shared with the page. */
+function ChannelSettingsError({ error }: { error: string | null }) {
+  const { lang } = useCopy();
+  const { message } = channelErrorPresentation(error, (zh, en) => lang === "zh" ? zh : en);
+  return message && <p className="c3-settings-error" role="alert">{message}</p>;
+}
+
+export type SettingsAction = <T>(work: () => Promise<T>, onSuccess?: (value: T) => void) => Promise<void>;
+
+/** Pending stays in Session; only this open surface receives its action result. */
+export function useSettingsAction(open = true): { error: string | null; run: SettingsAction } {
+  const [error, setError] = useState<string | null>(null);
+  const lifetime = useRef<object | null>(null);
+  useLayoutEffect(() => {
+    lifetime.current = open ? {} : null;
+    setError(null);
+    return () => { lifetime.current = null; };
+  }, [open]);
+  const run: SettingsAction = useCallback(async (work, onSuccess) => {
+    const current = lifetime.current;
+    if (!current) return;
+    setError(null);
+    try {
+      const result = await work();
+      if (lifetime.current === current) onSuccess?.(result);
+    } catch (error) {
+      if (lifetime.current === current && !(error instanceof DOMException && error.name === "AbortError"))
+        setError(error instanceof Error ? error.message : "operation_failed");
+    }
+  }, []);
+  return { error, run };
 }

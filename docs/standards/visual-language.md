@@ -177,6 +177,11 @@ that every popup should acquire.
 | Keep a room tool available while watching or working | `FloatingPanel`, as used for interactions and Host remote permissions; retain its position without reflowing the room |
 | Use a tool outside the page | Optional `usePanelWindow` on capable browsers; reuse the same content/session, as with interactions, remote permissions and the docked remote keyboard |
 
+Show an operation's failure in the surface where it was requested. A settings
+dialog must keep that feedback visible when changing tasks, while preserving
+unrelated playback or connection errors on their own surface. Retrying clears
+only the operation's local feedback; closing retires its late UI results.
+
 Chat and voice share one settings entry beside their tabs. Returning from either
 settings page or an expanded reaction palette uses `BackButton`, not a destination
 name or content icon. Audio icons keep their direct microphone/listening toggle;
