@@ -61,7 +61,7 @@
 .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr) var(--c3-companion-width); grid-template-rows: minmax(0, 1fr); }
 .c3-workspace.has-screens .c3-conversation { min-height: 0; }
 .c3-workspace.has-screens .c3-message-log { min-height: 0; }
-.c3-workspace.has-screens > .c3-monitor { contain: size; min-height: calc(var(--control-size) + 2 * var(--stage-padding)); background: var(--wall); border-inline-end: 1px solid var(--line); }
+.c3-workspace.has-screens > .c3-monitor { container: channel-stage / size; min-height: calc(var(--control-size) + 2 * var(--stage-padding)); background: var(--wall); border-inline-end: 1px solid var(--line); }
 .c3-workspace.has-screens.chat-collapsed { grid-template-columns: minmax(0, 1fr); }
 .c3-voice-dock { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 14px 24px; border-top: 1px solid var(--line); }
 .c3-voice-dock > svg { color: var(--live); flex: none; }

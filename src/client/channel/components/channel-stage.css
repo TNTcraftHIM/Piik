@@ -66,7 +66,7 @@
   .c3-monitor-offer { flex: 1 1 240px; }
   .c3-monitor-offer > div { flex: 1; }
 }
-@container channel-room (max-height: 420px) {
+@container channel-stage (max-height: 420px) {
   .c3-monitor-heading { flex-wrap: nowrap; justify-content: flex-end; }
   .c3-monitor-heading > div:first-child, .c3-monitor-focus-name, .c3-theater-source > .lr-cap { display: none; }
   .c3-monitor-layout { flex: 1; flex-wrap: nowrap; justify-content: space-between; }
