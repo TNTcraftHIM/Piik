@@ -35,7 +35,8 @@ notification **Stop Piik** joins its runtime and releases projection and listene
 App-hosted rooms and confirmed conversations survive selecting-page closure and
 launcher reentry; personal shares and voice retire with their page. Browser
 checks cover reactions after reload, retained drafts and attachments in floating
-and Document PiP surfaces, source replacement, and signaling recovery with
+and Document PiP surfaces, source replacement, SDP track replacement during Native
+handover, and signaling recovery with
 progressing media on retained connections. Native App and Server package checks
 verify bundled Web/WASM identity, notices, startup and orderly shutdown.
 

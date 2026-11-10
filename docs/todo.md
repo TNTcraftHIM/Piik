@@ -12,12 +12,6 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **3.0 Native receive after SDP track replacement.** Initial helper proof refresh and
-  ordinary rewatch are verified. During capacity migration, Browser reception
-  treats the temporary removal of a video track inside SDP application as a
-  failed selected input, before its replacement arrives. Fix that observation
-  boundary, verify the controlled migration and finish the current full App gate
-  while preserving the decoded-quality check and finite operation deadline.
 - [ ] **3.0 Windows shared-sound noise.** A beta2 Host reports noise that stops
   when excluding the Piik console's process tree, but returns when excluding a
   silent unrelated window. Verify which Browser playback belongs to that tree
