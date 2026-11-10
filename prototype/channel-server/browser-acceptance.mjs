@@ -1117,6 +1117,64 @@ async function countedRoomReactions(roomId) {
   console.log("Message and publication reactions count confirmed clicks across readers; reload restores counts without replay");
 }
 
+async function profileControls(roomId, messageId) {
+  const member = (await view(1)).self, owner = (await view(0)).self;
+  const name = "Profile member";
+  const memberProfile = index => evaluate(index,
+    `${hook}.snapshot().state.users.find(user => user.id === ${JSON.stringify(member.id)})`);
+  const messageAvatar = () => evaluate(0, `(() => {
+    const row = document.querySelector('[data-message-id=' + CSS.escape(${JSON.stringify(messageId)}) + ']');
+    const image = row?.querySelector(':scope > .lr-person image');
+    return { name: row?.querySelector('.c3-message-meta strong')?.textContent, avatar: image?.getAttribute('href') ?? null };
+  })()`);
+  const openProfile = async () => {
+    await browser(1, "find", "role", "button", "click", "--name", "Edit profile", "--exact");
+    await browser(1, "wait", ".c3-name-popover:popover-open .c3-profile-picture");
+  };
+  const reenter = async () => {
+    await until("member reconnects with the saved private-room grant", () => view(1), value => value.connection === "connected"
+      && value.self.id === member.id && value.state.channel.rooms.some(room => room.id === roomId && room.authorized && room.available));
+    const room = (await view(1)).state.channel.rooms.find(room => room.id === roomId);
+    await showRoomList(1);
+    await browser(1, "click", `.c3-room-link[aria-label=${JSON.stringify(room.name)}]`);
+  };
+  await openProfile();
+  await browser(1, "upload", '.c3-name-popover:popover-open input[type="file"]', resolve("public/favicon.png"));
+  const avatar = await until("the selected profile image finishes normal preparation", () => evaluate(1,
+    "document.querySelector('.c3-name-popover:popover-open .c3-profile-picture image')?.getAttribute('href')"), value => value?.startsWith("data:image/"));
+  await browser(1, "fill", '.c3-name-popover:popover-open input[autocomplete="nickname"]', name);
+  await browser(1, "click", '.c3-name-popover:popover-open button[type="submit"]');
+  await until("saved profile reaches both readers and the retained message author", async () => ({
+    profiles: await Promise.all([0, 1].map(memberProfile)), message: await messageAvatar(),
+  }), value => value.profiles.every(user => user?.name === name && user.avatar === avatar)
+    && value.message.name === name && value.message.avatar === avatar);
+  await browser(0, "screenshot", join(output, "member-profile-message.png"));
+  await browser(1, "reload");
+  await reenter();
+  assert.deepEqual((({ id, name, avatar }) => ({ id, name, avatar }))((await view(1)).self), { id: member.id, name, avatar },
+    "ordinary reload restores the saved name and avatar");
+  await browser(1, "open", "about:blank");
+  await until("offline author retains the image on confirmed history", async () => ({
+    sessions: await evaluate(0, `${hook}.snapshot().state.sessions`), profile: await memberProfile(0), message: await messageAvatar(),
+  }), value => !value.sessions.some(session => session.userId === member.id && session.online)
+      && value.profile?.name === name && value.profile.avatar === avatar
+      && value.message.name === name && value.message.avatar === avatar);
+  await browser(1, "open", `${origin}/__channel-preview#room=${encodeURIComponent(roomId)}`);
+  await reenter();
+  await openProfile();
+  await browser(1, "find", "role", "button", "click", "--name", "Remove picture", "--exact");
+  await browser(1, "click", '.c3-name-popover:popover-open button[type="submit"]');
+  await until("removing a profile image updates the other reader without changing its own identity", async () => ({
+    profiles: await Promise.all([0, 1].map(memberProfile)), message: await messageAvatar(), owner: (await view(0)).self,
+  }), value => value.profiles.every(user => user?.name === name && user.avatar === null)
+    && value.message.name === name && value.message.avatar === null
+    && value.owner.id === owner.id && value.owner.name === owner.name && value.owner.avatar === owner.avatar);
+  await writeFile(join(output, "member-profile-result.json"), JSON.stringify({ passed: true, userId: member.id,
+    messageId, name, avatarSha256: createHash("sha256").update(avatar).digest("hex"),
+    realImagePreparation: true, bothReaders: true, reload: true, offlineAuthor: true, removal: true, ownerUnchanged: true }, null, 2));
+  console.log("Profile UI saves name and avatar across readers/reload, retains the offline author and removes the image live");
+}
+
 async function roomsAndFiles() {
   await browser(0, "find", "role", "button", "click", "--name", "Create room", "--exact");
   await browser(0, "fill", ".c3-room-form input:not([type])", "Movie night");
@@ -1145,6 +1203,10 @@ async function roomsAndFiles() {
   await until("PNG preview decodes", () => evaluate(0, "[...document.querySelectorAll('.c3-attachment img')].some(image => image.complete && image.naturalWidth > 0)"), Boolean);
   for (const index of [0, 1]) await assertNoError(index, "normal room entry, chat and file flow");
   await countedRoomReactions(room.id);
+  const authored = await until("the profile target is the member's confirmed image message", () => evaluate(0,
+    `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]?.find(message => message.text === 'Hello from the private room')`), Boolean);
+  assert.equal(authored.userId, (await view(1)).self.id);
+  await profileControls(room.id, authored.id);
   await browser(0, "screenshot", join(output, "peer-room-files-desktop.png"), "--full");
   for (const index of [0, 1]) await browser(index, "click", '.c3-room-link[aria-label="Living room"]');
   assert.equal(await evaluate(1, "!!document.querySelector('.c3-composer input[type=file]')"), true,
@@ -1283,7 +1345,7 @@ try {
   for (const index of active) {
     await until(`browser ${index} authenticates`, () => evaluate(index,
       `${hook} ? ${hook}.snapshot().connection : 'no hook'`), value => value === "connected");
-    if (!backupOnly) await action(index, `renameSelf(${JSON.stringify(String.fromCharCode(65 + index))})`);
+    if (!backupOnly) await action(index, `updateProfile({name:${JSON.stringify(String.fromCharCode(65 + index))},avatar:null})`);
     initial.push(await view(index));
   }
   const roomId = backupOnly ? undefined : initial[0].state.channel.rooms[0].id;

@@ -47,6 +47,12 @@ route plans and file-source availability from live sessions. Domain directory
 updates come from the room owner and contain only the summary a recipient may
 see; changing a room name does not introduce a second writer at the domain.
 
+Each user's name and optional avatar belong to that domain's retained identity.
+An authenticated user updates only their own profile; the domain saves it before
+broadcasting the current value to every endpoint. Rejoining preserves that value.
+Messages retain the author's user ID and display their current profile, including
+when the author is offline; they do not store separate copies of the avatar.
+
 Site identity is established independently of room entry. Public rooms use a
 normal room URL; a private room's host confirms and saves its invitation or
 password grant before entry succeeds. Other private or hidden rooms remain
@@ -341,9 +347,10 @@ A session-only source must not be presented as a retained copy.
 
 Conversation images use this same attachment/transfer model. Loading a visible
 image requests its preview; it does not subscribe everyone to every original file.
-Domain and room icons are small visible metadata: the Browser encodes a bounded
+User avatars and domain/room icons are small visible metadata: the Browser encodes a bounded
 square raster and its existing owner saves and projects that value alongside the
-name. They follow directory visibility and survive the uploader leaving, without
+name. User profiles follow domain identity visibility; room icons follow the
+authorized directory summary. They survive the uploader leaving, without
 an attachment offer, separate transfer or storage service.
 
 ## Persistence And Recovery

@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
 /// Limit one manifest or history JSON record, never the complete history stream.
-pub const RECORD_BYTES: usize = 2 * 1024 * 1024;
+pub const RECORD_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

@@ -15,7 +15,7 @@ describe("channel connection presentation", () => {
   it("merges room audience by user without counting publishers, retired identities or relay paths", () => {
     const { state } = channelConnectionPreview("app");
     const publication = state.publications.find(value => value.kind === "screen")!;
-    state.users.push({ id: "third-user", name: "Third" });
+    state.users.push({ id: "third-user", name: "Third", avatar: null });
     state.sessions.push({ id: "third", userId: "third-user", online: true, signingKey: Array(32).fill(0) });
     state.sessions.find(value => value.id === "app")!.online = false;
     publication.audience = [

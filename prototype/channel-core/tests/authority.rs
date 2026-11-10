@@ -52,7 +52,16 @@ fn join(core: &mut Authority, connection: Uuid, owner: bool, now: u64) -> (Uuid,
 fn domain_protocol_rejects_old_clients_before_admission() {
     let mut core = Authority::new("owner".into(), vec![]).unwrap();
     let before = serde_json::to_value(core.export_backup()).unwrap();
-    for protocol in [None, Some(0), Some(1), Some(2), Some(3), Some(4), Some(5)] {
+    for protocol in [
+        None,
+        Some(0),
+        Some(1),
+        Some(2),
+        Some(3),
+        Some(4),
+        Some(5),
+        Some(6),
+    ] {
         let connection = Uuid::new_v4();
         let mut join = json!({"type":"join","name":"Old","requestId":"join",
             "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key()});
@@ -219,7 +228,11 @@ fn replacement_fences_old_commands_and_close_without_retiring_healthy_sources() 
     );
     assert_eq!(stale.close, vec![old]);
     assert!(core.authority.disconnect(old, 170).events.is_empty());
-    core.command_at(owner, json!({"type":"set_name","name":"Owner"}), 180);
+    core.command_at(
+        owner,
+        json!({"type":"set_profile","avatar":null,"name":"Owner"}),
+        180,
+    );
     assert!(core
         .state(current)
         .publications
@@ -394,20 +407,21 @@ fn admission_expires_old_endpoint_without_requiring_a_transport_timer() {
 }
 
 #[test]
-fn domain_checkpoint_has_no_room_policy_and_preserves_the_saved_owner_name() {
+fn domain_checkpoint_and_backup_preserve_profile_across_endpoint_admission() {
     let mut core = Authority::new("owner".into(), vec![]).unwrap();
     assert_eq!(core.owner_name(), None);
     let owner = Uuid::new_v4();
     let (_, credential, initial) = join(&mut core, owner, true, 0);
     assert!(initial.channel.rooms.is_empty());
+    let avatar = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
     apply(
         &mut core,
         owner,
-        json!({"type":"set_name","name":"Saved owner"}),
+        json!({"type":"set_profile","avatar":avatar,"name":"Saved owner"}),
         1,
     );
     let checkpoint = serde_json::to_value(core.export_state()).unwrap();
-    assert_eq!(checkpoint["version"], 5);
+    assert_eq!(checkpoint["version"], 6);
     assert!(checkpoint.get("rooms").is_none());
     assert_eq!(checkpoint["hostedRooms"], json!({}));
     let mut restored = Authority::new("owner".into(), vec![]).unwrap();
@@ -415,6 +429,10 @@ fn domain_checkpoint_has_no_room_policy_and_preserves_the_saved_owner_name() {
         .import_state(serde_json::from_value(checkpoint.clone()).unwrap())
         .unwrap();
     assert_eq!(restored.owner_name(), Some("Saved owner"));
+    let backup = serde_json::to_value(restored.export_backup()).unwrap();
+    assert_eq!(backup["version"], 2);
+    let backup: piik_channel_core::backup::DomainMetadata = serde_json::from_value(backup).unwrap();
+    restored = backup.into_authority(vec![]).unwrap();
     for admission in [
         json!({"type":"join","ownerKey":"owner","name":"Old owner page"}),
         json!({"type":"join","credential":credential,"name":"Piik Native"}),
@@ -422,13 +440,104 @@ fn domain_checkpoint_has_no_room_policy_and_preserves_the_saved_owner_name() {
         let connection = Uuid::new_v4();
         let (_, _, state) = welcome(apply(&mut restored, connection, admission, 2), connection);
         assert_eq!(state.users[0].name, "Saved owner");
+        assert_eq!(state.users[0].avatar.as_deref(), Some(avatar));
         assert_eq!(restored.owner_name(), Some("Saved owner"));
     }
     let mut old = checkpoint;
-    old["version"] = json!(2);
+    old["version"] = json!(5);
     assert_eq!(
         restored.import_state(serde_json::from_value(old).unwrap()),
         Err("invalid_state")
     );
     assert_eq!(restored.owner_name(), Some("Saved owner"));
+}
+
+#[test]
+fn profile_update_and_clear_follow_the_user_across_live_endpoints() {
+    let mut core = Authority::new("owner".into(), vec![]).unwrap();
+    let first = Uuid::new_v4();
+    let (first_session, credential, _) = join(&mut core, first, false, 0);
+    let second = Uuid::new_v4();
+    let (_, _, initial) = welcome(
+        apply(
+            &mut core,
+            second,
+            json!({"type":"join", "credential":credential, "name":"Old device name"}),
+            1,
+        ),
+        second,
+    );
+    let user_id = initial
+        .sessions
+        .iter()
+        .find(|session| session.id == first_session)
+        .unwrap()
+        .user_id;
+    let stranger = Uuid::new_v4();
+    join(&mut core, stranger, true, 2);
+    let avatar = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+    let updated = apply(
+        &mut core,
+        first,
+        json!({"type":"set_profile", "name":" Same friend ", "avatar":avatar, "requestId":"profile"}),
+        3,
+    );
+    for connection in [first, second, stranger] {
+        let snapshot = state(&updated, connection);
+        let user = snapshot
+            .users
+            .iter()
+            .find(|user| user.id == user_id)
+            .unwrap();
+        assert_eq!(user.name, "Same friend");
+        assert_eq!(user.avatar.as_deref(), Some(avatar));
+        assert!(snapshot
+            .users
+            .iter()
+            .filter(|user| user.id != user_id)
+            .all(|user| user.avatar.is_none()));
+    }
+    assert!(updated.events.iter().any(|(target, event)| *target == first
+        && matches!(event, Event::Ack { request_id } if request_id == "profile")));
+    core.disconnect(first, 4);
+    let resumed = Uuid::new_v4();
+    let (_, _, snapshot) = welcome(
+        apply(
+            &mut core,
+            resumed,
+            json!({"type":"join", "credential":credential, "sessionId":first_session, "name":"Stale startup name"}),
+            5,
+        ),
+        resumed,
+    );
+    assert_eq!(
+        snapshot
+            .users
+            .iter()
+            .find(|user| user.id == user_id)
+            .unwrap()
+            .avatar
+            .as_deref(),
+        Some(avatar)
+    );
+    let cleared = apply(
+        &mut core,
+        second,
+        json!({"type":"set_profile", "name":"Same friend", "avatar":null}),
+        6,
+    );
+    assert!(state(&cleared, resumed)
+        .users
+        .iter()
+        .find(|user| user.id == user_id)
+        .unwrap()
+        .avatar
+        .is_none());
+    assert!(serde_json::to_value(core.export_state()).unwrap()["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|user| user["id"] == user_id.to_string())
+        .unwrap()["avatar"]
+        .is_null());
 }

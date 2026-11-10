@@ -40,7 +40,7 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
     sourceMicrophone: session.sourceMicrophone, setSourceMicrophone: session.setSourceMicrophone,
     sourceMicrophones: session.sourceMicrophones,
     activateApp: session.activateApp,
-    browse: session.browse, sendMessage: session.sendMessage, renameSelf: session.renameSelf, updateDomain: session.updateDomain,
+    browse: session.browse, sendMessage: session.sendMessage, updateProfile: session.updateProfile, updateDomain: session.updateDomain,
     roomTopology: session.roomTopology, connectionMetrics: session.connectionMetrics, appConnectionMetrics: session.appConnectionMetrics,
     exportDomainBackup: session.exportDomainBackup, restoreDomainBackup: session.restoreDomainBackup,
     createRoom: session.createRoom, updateRoom: session.updateRoom, deleteRoom: session.deleteRoom, enterRoom: session.enterRoom,

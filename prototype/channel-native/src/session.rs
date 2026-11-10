@@ -505,8 +505,8 @@ impl Session {
                 .headers_mut()
                 .insert("Origin", self.config.origin.parse()?);
             let limits = WebSocketConfig::default()
-                .max_message_size(Some(2 * 1024 * 1024))
-                .max_frame_size(Some(2 * 1024 * 1024));
+                .max_message_size(Some(piik_channel_core::wire::CHANNEL_MESSAGE_BYTES))
+                .max_frame_size(Some(piik_channel_core::wire::CHANNEL_MESSAGE_BYTES));
             #[cfg(target_os = "android")]
             let connector = {
                 use rustls_platform_verifier::BuilderVerifierExt;

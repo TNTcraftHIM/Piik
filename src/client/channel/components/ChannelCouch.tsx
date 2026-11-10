@@ -16,6 +16,7 @@ import "./channel-couch.css";
 export interface ChannelCouchPerson {
   userId: string;
   name: string;
+  avatar?: string;
   owner?: boolean;
   voice?: PawnState["voice"];
   collaboration?: boolean;
@@ -74,7 +75,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
     const action = t(person.userId === selfUserId ? "interaction.express" : "interaction.withPerson", { name: person.name });
     const inner = <>
       <PawnSvg color={participantColor(person.userId)} identity={person.userId} host={person.owner}
-        voice={person.voice} collaboration={person.collaboration} />
+        avatar={person.avatar} voice={person.voice} collaboration={person.collaboration} />
       <span className="lr-pawn-name">{person.name}</span>
     </>;
     const pawnClass = `lr-pawn${person.userId === selfUserId ? " is-you" : ""}${session ? "" : " is-static"}`;

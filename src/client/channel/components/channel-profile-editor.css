@@ -1,0 +1,10 @@
+.c3-profile-editor { display: inline-flex; flex: none; }
+.c3-name-popover { width: min(320px, calc(100vw - 24px)); padding: 16px; }
+.c3-name-popover form { display: grid; gap: 8px; }
+.c3-name-popover label { color: var(--muted); font-size: 12px; font-weight: 600; }
+.c3-name-entry { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.c3-name-entry .lr-input { flex: 1; min-width: 0; }
+.c3-name-entry .lr-input input { width: 100%; }
+.c3-profile-picture { display: flex; align-items: center; gap: 16px; }
+.c3-profile-picture > .lr-person { flex: none; width: 54px; height: 63px; }
+.c3-profile-picture > div { display: flex; align-items: center; gap: 6px; }

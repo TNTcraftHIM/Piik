@@ -361,7 +361,10 @@ fn room_host_cannot_complete_an_unissued_other_room_request() {
             b,
             piik_channel_core::wire::Request {
                 request_id: None,
-                command: Command::SetName { name: "B".into() },
+                command: Command::SetProfile {
+                    avatar: None,
+                    name: "B".into(),
+                },
             },
             0,
         )
@@ -427,7 +430,10 @@ fn room_entry_waits_for_commit_without_blocking_site_identity() {
             b,
             Request {
                 request_id: None,
-                command: Command::SetName { name: "B".into() },
+                command: Command::SetProfile {
+                    avatar: None,
+                    name: "B".into(),
+                },
             },
             0,
         )
@@ -486,7 +492,8 @@ fn room_entry_waits_for_commit_without_blocking_site_identity() {
         c,
         Request {
             request_id: Some("rename".into()),
-            command: Command::SetName {
+            command: Command::SetProfile {
+                avatar: None,
                 name: "Still connected".into(),
             },
         },
@@ -529,7 +536,10 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
             b,
             Request {
                 request_id: None,
-                command: Command::SetName { name: "B".into() },
+                command: Command::SetProfile {
+                    avatar: None,
+                    name: "B".into(),
+                },
             },
             0,
         )
@@ -647,7 +657,10 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
         c,
         Request {
             request_id: Some("rename".into()),
-            command: Command::SetName { name: "C".into() },
+            command: Command::SetProfile {
+                avatar: None,
+                name: "C".into(),
+            },
         },
         2,
     );
@@ -703,7 +716,8 @@ fn host_projection_rejects_conflicting_flow_identity_and_audience_scope() {
                 source,
                 Request {
                     request_id: None,
-                    command: Command::SetName {
+                    command: Command::SetProfile {
+                        avatar: None,
                         name: "Source".into(),
                     },
                 },
@@ -837,7 +851,8 @@ fn host_projection_rejects_conflicting_flow_identity_and_audience_scope() {
                             source,
                             Request {
                                 request_id: None,
-                                command: Command::SetName {
+                                command: Command::SetProfile {
+                                    avatar: None,
                                     name: "Source".into(),
                                 },
                             },
@@ -929,7 +944,8 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
             connection,
             Request {
                 request_id: None,
-                command: Command::SetName {
+                command: Command::SetProfile {
+                    avatar: None,
                     name: "Review".into(),
                 },
             },

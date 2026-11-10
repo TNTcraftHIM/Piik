@@ -16,7 +16,7 @@ export function ChannelPeople({ channel, roomId, onBack }: { channel: ChannelCon
     const sharing = state?.publications.some(publication => publication.userId === user.id && publication.kind === "screen" && publication.roomId === roomId);
     const voice = state ? voiceAppearance(state, user.id, roomId) : undefined;
     const playback = channel.voicePlaybackByUser.get(user.id) ?? { volume: 1, muted: false };
-    return <ChannelUser key={user.id} id={user.id} name={user.name} self={user.id === self?.id}
+    return <ChannelUser key={user.id} id={user.id} name={user.name} avatar={user.avatar ?? undefined} self={user.id === self?.id}
       owner={user.id === state?.channel.rooms.find(room => room.id === roomId)?.creatorId} online={online.has(user.id)}
       voice={voice}
       actions={listeningUsers.has(user.id) && user.id !== self?.id && <AudioVolumeMenu volume={playback.volume}

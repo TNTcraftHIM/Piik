@@ -490,9 +490,8 @@ owns accepted layout rules; [TODO](../todo.md) owns remaining integration work.
 The selected personal-avatar treatment places the image inside the Pawn's body,
 keeping its head, identity colour, headset and motion. Use the same Pawn across
 conversation, voice lists and the couch; the unconfigured person retains its
-plain body. The local appearance preview reuses the existing bounded identity-image
-preparation. Saving and synchronizing a personal image still needs an own-user
-update at the existing identity owner, not another account or upload service.
+plain body. Image preparation, saving and synchronization reuse the existing
+identity owners, as defined by the [room-data model](./channel-storage-and-identity.md).
 
 A screen title belongs to its publication. Use available capture metadata as
 the automatic name, with a readable Screen/Camera fallback. A user override

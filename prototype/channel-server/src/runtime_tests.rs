@@ -116,6 +116,73 @@ fn domain_keys_belong_to_its_data_and_old_checkpoints_remain_untouched() {
 }
 
 #[test]
+fn profile_storage_failure_preserves_the_shared_user_until_commit_and_reopen() {
+    let folder = tempfile::tempdir().unwrap();
+    let domain = Domain::open(
+        folder.path(),
+        "owner",
+        "http://localhost".into(),
+        None,
+        vec![],
+    )
+    .unwrap();
+    let avatar = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+    let user;
+    {
+        let mut hub = domain.hub.lock().unwrap();
+        let mut owner = Endpoint::join(&mut hub, "owner");
+        let mut observer = Endpoint::join(&mut hub, "invite");
+        user = owner.user;
+        owner.drain();
+        observer.drain();
+        let saved = hub.storage.lock().unwrap().load().unwrap().unwrap();
+        let failure = rusqlite::Connection::open(folder.path().join("channel.sqlite")).unwrap();
+        failure.execute_batch("CREATE TRIGGER reject_profile BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'held'); END;").unwrap();
+        owner.request(&mut hub, json!({"type":"set_profile", "name":"New profile", "avatar":avatar, "requestId":"profile"}));
+        let failed = owner.drain();
+        assert!(failed.iter().any(|event| event["type"] == "error"
+            && event["code"] == "storage_failed"
+            && event["requestId"] == "profile"));
+        assert!(!failed
+            .iter()
+            .any(|event| event["type"] == "ack" || event["type"] == "state"));
+        assert!(observer.drain().is_empty());
+        assert_eq!(hub.storage.lock().unwrap().load().unwrap().unwrap(), saved);
+        assert_eq!(hub.authority.owner_name(), Some("Friend"));
+        failure
+            .execute_batch("DROP TRIGGER reject_profile")
+            .unwrap();
+        owner.request(&mut hub, json!({"type":"set_profile", "name":"New profile", "avatar":avatar, "requestId":"retry"}));
+        assert!(owner
+            .drain()
+            .iter()
+            .any(|event| event["type"] == "ack" && event["requestId"] == "retry"));
+        assert!(observer.drain().iter().any(|event| event["type"] == "state"
+            && event["state"]["users"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["id"] == user.to_string()
+                    && entry["name"] == "New profile"
+                    && entry["avatar"] == avatar)));
+    }
+    drop(domain);
+    let reopened =
+        Domain::open(folder.path(), "", "http://localhost".into(), None, vec![]).unwrap();
+    let mut hub = reopened.hub.lock().unwrap();
+    let owner = Endpoint::join(&mut hub, "owner");
+    assert_eq!(owner.user, user);
+    let saved = serde_json::to_value(hub.authority.export_state()).unwrap();
+    assert!(saved["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|entry| entry["id"] == user.to_string()
+            && entry["name"] == "New profile"
+            && entry["avatar"] == avatar));
+}
+
+#[test]
 fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
     let path = std::env::temp_dir().join(format!("piik-domain-metadata-{}.sqlite", Uuid::new_v4()));
     let mut hub = Hub {
@@ -223,7 +290,10 @@ fn retired_or_closing_connections_cannot_execute_queued_requests() {
         saved
     );
     active.drain();
-    active.request(&mut hub, json!({"type":"set_name","name":"Active"}));
+    active.request(
+        &mut hub,
+        json!({"type":"set_profile","avatar":null,"name":"Active"}),
+    );
     let state = active
         .drain()
         .into_iter()
@@ -243,7 +313,7 @@ fn retired_or_closing_connections_cannot_execute_queued_requests() {
     let saved = serde_json::to_value(hub.authority.export_state()).unwrap();
     closing.request(
         &mut hub,
-        json!({"type":"set_name","name":"Closing command"}),
+        json!({"type":"set_profile","avatar":null,"name":"Closing command"}),
     );
     assert_eq!(
         serde_json::to_value(hub.authority.export_state()).unwrap(),
@@ -253,7 +323,7 @@ fn retired_or_closing_connections_cannot_execute_queued_requests() {
     active.drain();
     active.request(
         &mut hub,
-        json!({"type":"set_name","name":"Still active","requestId":"active"}),
+        json!({"type":"set_profile","avatar":null,"name":"Still active","requestId":"active"}),
     );
     assert!(active
         .drain()
@@ -1185,7 +1255,7 @@ async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
     assert_eq!((frames, messages, reactions), (101, 50, 50));
     send_request(
         &mut socket,
-        json!({"type":"set_name", "name":"Still connected"}),
+        json!({"type":"set_profile","avatar":null, "name":"Still connected"}),
     )
     .await;
     state_when(&mut socket, |state| {
@@ -1283,7 +1353,7 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
         .all(|room| room.creator_id == owner && room.capabilities.attachments));
     send_request(
         &mut admin,
-        json!({"type":"set_name", "name":"Owner renamed"}),
+        json!({"type":"set_profile","avatar":null, "name":"Owner renamed"}),
     )
     .await;
     send_request(&mut admin, json!({"type":"update_room","icon":"couch", "roomId":"living", "name":"Saved living", "access":"private", "hidden":false, "password":"room-password"})).await;

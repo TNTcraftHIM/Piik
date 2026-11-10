@@ -11,14 +11,14 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 6;
+export const CHANNEL_PROTOCOL = 7;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("missing") }),
   z.object({ state: z.literal("available"), key: id }),
   z.object({ state: z.literal("unrecoverable") }),
 ]);
-export const userSchema = z.object({ id, name: z.string().max(40) });
+export const userSchema = z.object({ id, name: z.string().max(40), avatar: identityImageSchema.nullable() });
 export const roomSchema = z.object({
   id, name: identityNameSchema, icon: identityIconSchema, creatorId: id, access: z.enum(["public", "private"]),
   hidden: z.boolean(), hasPassword: z.boolean(), authorized: z.boolean(), canManage: z.boolean(),
@@ -141,7 +141,7 @@ export interface RoomSettings extends DomainSettings {
 export type ChannelCommand =
   | { type: "join"; protocol: typeof CHANNEL_PROTOCOL; name: string; signingKey: number[]; credential?: string; ownerKey?: string; sessionId?: string }
   | { type: "conversation"; packet: SignedConversationPacket }
-  | { type: "set_name"; name: string }
+  | { type: "set_profile"; name: string; avatar: string | null }
   | ({ type: "update_domain" } & DomainSettings)
   | { type: "input_register"; publicationId: string; flowId: string; secret: number[] }
   | { type: "host_register"; room: RoomSummary; resumeBinding?: string }

@@ -81,7 +81,7 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
       await browser(index, 'open', `${origin}/__channel-preview#invite=owned-kernel-lab-invite`);
       cdp.set(index, (await browser(index, 'get', 'cdp-url')).cdpUrl);
       await f.until(`Browser${index} admitted`, () => f.view(index), (value: any) => value.connection === 'connected');
-      await f.action(index, `renameSelf(${JSON.stringify(index ? 'Owned viewer' : 'Owned source')})`);
+      await f.action(index, `updateProfile({name:${JSON.stringify(index ? 'Owned viewer' : 'Owned source')},avatar:null})`);
       await f.until('Native room available', () => f.view(index), (value: any) => value.state.channel.rooms.some((entry: any) => entry.id === room && entry.available));
       await browser(index, 'click', '.c3-room-link[aria-label="Kernel room"]');
       await f.until('Room base DataChannel opens', () => f.sample(index), (value: any) => value.channels.some((entry: any) => entry.state === 'open'));
@@ -105,7 +105,7 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
       assert(links(result.initial[browserRelay]).some((pair: any) => pair.peerId === result.nativeEndpoint));
       result.roles = { sourceBrowser, browserRelay, viewerBrowser };
       for (const [index, role] of [[sourceBrowser, 'source'], [browserRelay, 'relay'], [viewerBrowser, 'viewer']] as const) {
-        await f.action(index, `renameSelf(${JSON.stringify('Owned ' + role)})`);
+        await f.action(index, `updateProfile({name:${JSON.stringify('Owned ' + role)},avatar:null})`);
       }
       result.mediaEdges = [[sourceBrowser + 1, 0], [0, browserRelay + 1], [browserRelay + 1, viewerBrowser + 1]];
       const shortcuts = [[sourceBrowser + 1, browserRelay + 1], [sourceBrowser + 1, viewerBrowser + 1], [0, viewerBrowser + 1]];

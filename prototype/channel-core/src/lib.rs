@@ -116,7 +116,7 @@ impl Authority {
                     })
             }
             Command::Join { .. }
-            | Command::SetName { .. }
+            | Command::SetProfile { .. }
             | Command::UpdateDomain { .. }
             | Command::CreateRoom { .. }
             | Command::AdmitRoom { .. }

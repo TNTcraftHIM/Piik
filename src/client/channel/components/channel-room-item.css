@@ -3,13 +3,13 @@
 .c3-room-item[data-selected] { background: var(--control-selected); box-shadow: inset 3px 0 0 var(--action); }
 .c3-room-item[data-selected] .lr-btn { --ink: var(--control-selected-ink); --muted: var(--control-selected-ink); --control-hover: var(--control-selected); }
 .c3-room-item > .c3-room-label { flex: 1; min-width: 0; }
-.c3-room-list-heading { display: flex; align-items: center; min-width: 0; }
-.c3-room-list-heading > .c3-room-item { min-width: 0; flex: 1; }
-.c3-room-voice-toggle { flex: none; }
-.c3-room-voice-toggle .lr-btn { --button-size: 28px; --button-icon-size: 12px; --button-padding: 0; }
+.c3-room-list-item > .c3-room-item { position: relative; padding-inline-start: 18px; }
+.c3-room-voice-toggle { position: absolute; inset-inline-start: 0; top: 50%; transform: translateY(-50%); display: flex; }
+.c3-room-voice-toggle .lr-btn { --button-size: 24px; --button-icon-size: 12px; --button-padding: 0; height: 40px; }
 .c3-room-voice-toggle [aria-expanded="false"] > svg { transform: rotate(-90deg); }
 @media (any-pointer: coarse) {
-  .c3-room-voice-toggle .lr-btn { --button-size: var(--control-compact-size); }
+  .c3-room-list-item > .c3-room-item { padding-inline-start: 34px; }
+  .c3-room-voice-toggle .lr-btn { --button-size: 36px; height: var(--control-compact-size); }
 }
 .c3-room-link.lr-btn { display: grid; grid-template-columns: 21px minmax(0, 1fr); gap: 3px 9px; align-items: center; justify-content: stretch; width: 100%; height: auto; min-width: 0; min-height: 46px; padding: 8px 10px; border: 0; color: var(--muted); text-align: start; box-shadow: none; }
 .c3-room-link > .c3-identity-mark { grid-column: 1; grid-row: 1; }

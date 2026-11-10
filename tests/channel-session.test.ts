@@ -110,7 +110,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
         participantSessionIds: id === "first" ? ["endpoint"] : [],
         available: true, reading: id === "first", capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } } })) },
-    users: [{ id: "self", name: "Me" }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
+    users: [{ id: "self", name: "Me", avatar: null }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
     publications: [], voice: [], subscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   } });
   if (read) {
@@ -136,6 +136,30 @@ test("the site overview does not select a room or load its history", async () =>
     expect(peer.sent).toEqual([]);
     session.browse("second");
     expect(socket.sent.filter(command => command.type === "browse" && command.active).map(command => command.roomId)).toEqual(["second"]);
+  } finally { session.close(); }
+});
+
+test("profile changes use the authenticated identity and only project confirmed state", async () => {
+  const { session, socket } = await setup();
+  const avatar = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1XcAAAAASUVORK5CYII=";
+  try {
+    const saving = session.updateProfile({ name: "New name", avatar });
+    const request = socket.sent.at(-1)!;
+    expect(request).toMatchObject({ type: "set_profile", name: "New name", avatar });
+    expect(request).not.toHaveProperty("userId");
+    expect(session.getSnapshot().self).toMatchObject({ name: "Me", avatar: null });
+    const state = structuredClone(session.getSnapshot().state!);
+    state.users[0] = { ...state.users[0], name: "New name", avatar };
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "ack", requestId: request.requestId });
+    await saving;
+    expect(session.getSnapshot().self).toMatchObject({ name: "New name", avatar });
+    const clearing = session.updateProfile({ name: "New name", avatar: null });
+    const rejection = expect(clearing).rejects.toThrow("storage_failed");
+    socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "storage_failed" });
+    await rejection;
+    expect(session.getSnapshot().self?.avatar).toBe(avatar);
+    expect(session.getSnapshot().error).toBeNull();
   } finally { session.close(); }
 });
 
@@ -331,7 +355,7 @@ test("room interactions reuse their original acknowledgement and user identity w
   try {
     const state = structuredClone(session.getSnapshot().state!);
     state.channel.ownerId = "friend-user-1234";
-    state.users.push({ id: "friend-user-1234", name: "Friend" });
+    state.users.push({ id: "friend-user-1234", name: "Friend", avatar: null });
     socket.receive({ type: "state", state });
     await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.get("first")?.getSnapshot().ready).toBe(true));
     const interaction = session.getSnapshot().interactionsByRoom.get("first")!;
@@ -757,7 +781,7 @@ test("personal voice playback follows user identity without sending room command
   const { session, socket } = await setup();
   try {
     const initial = session.getSnapshot().state!;
-    const friend = { id: "friend", name: "Friend" };
+    const friend = { id: "friend", name: "Friend", avatar: null };
     const state = { ...initial, users: [...initial.users, friend],
       sessions: [...initial.sessions, { id: "friend-first", userId: friend.id, online: true, signingKey: testSigningKey }] };
     socket.receive({ type: "state", state });
@@ -2902,7 +2926,7 @@ test("topology reads reject late data after binding access account or selection 
       else if (change === "access") state.channel.rooms[0].authorized = false;
       else if (change === "account") {
         state.sessions[0].userId = "replacement-user";
-        state.users = [{ id: "replacement-user", name: "Other account" }];
+        state.users = [{ id: "replacement-user", name: "Other account", avatar: null }];
       }
       else if (change === "publication") state.publications = [];
       if (change === "selection") session.browse("second");
@@ -6411,7 +6435,7 @@ test("domain restore closes the old connection, admits archived keys only after 
   const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
   const state = structuredClone(session.getSnapshot().state!);
   state.channel.id = domainId; state.channel.ownerId = ownerId; state.channel.rooms = [];
-  state.users = [{ id: ownerId, name: "Restored owner" }]; state.sessions[0].userId = ownerId;
+  state.users = [{ id: ownerId, name: "Restored owner", avatar: null }]; state.sessions[0].userId = ownerId;
   try {
     const restoring = session.restoreDomainBackup(new Blob(["complete-domain-zip"]));
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
@@ -6681,7 +6705,7 @@ test("portable import validates the full archive before switching accounts and r
   Object.assign(metadata, { ownCredential: { userId: "archived-user", credential: "archived-credential" } });
   const persist = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: persist });
   const original = structuredClone(session.getSnapshot().state!);
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived" } }))));
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived", avatar: null } }))));
   try {
     read.mockRejectedValueOnce(new Error("backup_content_mismatch"));
     await expect(session.restoreRoomBackup(new Blob())).rejects.toThrow("backup_content_mismatch");
@@ -6739,11 +6763,11 @@ test.each(["registered", "registration-failed"])("portable import retains its ve
   const runtime = await hosting.loadRoomHosting(); vi.spyOn(runtime.BrowserRoomHost, "storedPolicies").mockResolvedValue([]);
   nextHost.summary = () => ({ id: "imported", name: "First", creatorId: "archived-user", icon: "couch", access: "public", hidden: false, hasPassword: false });
   const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived" } }))));
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived", avatar: null } }))));
   const cache = vi.spyOn(session.attachments, "restoreRetained").mockResolvedValue(true);
   const state = structuredClone(session.getSnapshot().state!);
   const imported = { ...state.channel.rooms[0], id: "imported", creatorId: "archived-user", name: "First", available: false, delivery: undefined };
-  state.channel.rooms = [imported]; state.channel.ownerId = null; state.users = [{ id: "archived-user", name: "Archived" }];
+  state.channel.rooms = [imported]; state.channel.ownerId = null; state.users = [{ id: "archived-user", name: "Archived", avatar: null }];
   state.sessions = [{ id: "new-endpoint", userId: "archived-user", online: true, signingKey: testSigningKey }];
   try {
     const importing = session.restoreRoomBackup(new Blob());
@@ -6897,7 +6921,7 @@ test("a delayed source busy error cannot fail a cancelled file's successful retr
   } finally { next.abort(); files.reset(); upstream.free(); }
 });
 
-test.each([undefined, 5, 7])("an incompatible Domain Welcome protocol (%s) is rejected before accepting its state", async protocol => {
+test.each([undefined, CHANNEL_PROTOCOL - 1, CHANNEL_PROTOCOL + 1])("an incompatible Domain Welcome protocol (%s) is rejected before accepting its state", async protocol => {
   const { session, socket } = await setup(1000, false);
   try {
     const state = structuredClone(session.getSnapshot().state!);

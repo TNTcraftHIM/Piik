@@ -531,7 +531,7 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
     domain
         .command(
             domain.connection,
-            json!({"type":"set_name", "name":"Owner renamed"}),
+            json!({"type":"set_profile","avatar":null, "name":"Owner renamed"}),
         )
         .await;
     domain.until(|_, event| matches!(event, Event::State { state } if state.users.iter().any(|user| user.name == "Owner renamed"))).await;

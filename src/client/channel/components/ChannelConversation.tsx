@@ -173,8 +173,10 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
           const elapsed = previous ? message.time - previous.time : 0;
           const grouped = !!previous && !newDay && previous.userId === message.userId && elapsed >= 0 && elapsed < 120_000;
           if (!grouped) authorMessageId = message.id;
-          const name = users.find(user => user.id === message.userId)?.name ?? (zh ? "用户" : "User");
+          const author = users.find(user => user.id === message.userId);
+          const name = author?.name ?? (zh ? "用户" : "User");
           return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name} authorMessageId={authorMessageId}
+            avatar={author?.avatar ?? undefined}
             dateLabel={newDay ? date.toLocaleDateString(zh ? "zh-CN" : "en", { dateStyle: "long" }) : undefined}
             attachments={attachments} available={available} interaction={interaction} effectsEnabled={!hidden && !loadingHistory} />;
         })}
@@ -215,8 +217,8 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   </section>;
 }
 
-const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, dateLabel, attachments, available, interaction, authorMessageId, effectsEnabled }: {
-  roomId: string; message: ChannelMessage; grouped: boolean; name: string; dateLabel?: string;
+const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, avatar, dateLabel, attachments, available, interaction, authorMessageId, effectsEnabled }: {
+  roomId: string; message: ChannelMessage; grouped: boolean; name: string; avatar?: string; dateLabel?: string;
   attachments: ChannelAttachments; available: boolean; interaction: RoomInteractionSession | null;
   authorMessageId: string; effectsEnabled: boolean;
 }) {
@@ -227,7 +229,7 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, da
   return <>
     {dateLabel && <div className="c3-message-date"><time dateTime={new Date(message.time).toISOString()}>{dateLabel}</time></div>}
     <article ref={row} className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}`} data-message-id={message.id}>
-    {!grouped && <PawnSvg color={participantColor(message.userId)} identity={message.userId} />}
+    {!grouped && <PawnSvg color={participantColor(message.userId)} identity={message.userId} avatar={avatar} />}
     <div className="c3-message-body">{!grouped && <div className="c3-message-meta"><strong>{name}</strong>
       <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
     </div>}{message.text && <p>{message.text}</p>}

@@ -51,7 +51,7 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
     <div className="c3-voice-participants" aria-label={zh ? "当前语音用户" : "Voice participants"}>
       {participants.slice(0, 4).map(({ user, ...voice }) => <Tooltip key={user.id}
         kind={voice.deafened ? "hint-voice-deafen" : voice.microphone ? "hint-voice-microphone-on" : "hint-voice-microphone-off"} text={user.name}>
-        <span aria-label={user.name}><PawnSvg color={participantColor(user.id)} identity={user.id} voice={voice} /></span>
+        <span aria-label={user.name}><PawnSvg color={participantColor(user.id)} identity={user.id} avatar={user.avatar ?? undefined} voice={voice} /></span>
       </Tooltip>)}
       {participants.length > 4 && <small>+{participants.length - 4}</small>}
     </div>

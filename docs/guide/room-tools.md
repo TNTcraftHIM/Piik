@@ -9,6 +9,10 @@ Once admitted to that room, you can chat, join voice, share a picture or watch
 someone else's share. Anyone can create a room and manage their own rooms.
 The site's maintainer manages its name, image and backup.
 
+Use **Edit profile** beside your name to change your nickname or picture.
+The same picture appears on your little person's body in chat, voice and the couch.
+Choose **Remove picture** to return to the plain coloured person.
+
 ## Manage a room
 
 Open the room list (**Rooms** on a narrow screen), then select the settings

@@ -179,8 +179,8 @@ async fn upgrade(
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
     socket
-        .max_message_size(2 * 1024 * 1024)
-        .max_frame_size(2 * 1024 * 1024)
+        .max_message_size(piik_channel_core::wire::CHANNEL_MESSAGE_BYTES)
+        .max_frame_size(piik_channel_core::wire::CHANNEL_MESSAGE_BYTES)
         .on_upgrade(move |socket| async move {
             let _permit = permit;
             session(socket, state).await;

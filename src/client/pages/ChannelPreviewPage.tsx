@@ -17,7 +17,7 @@ import { ChannelConversation } from "../channel/components/ChannelConversation";
 import { ChannelJoinVoice } from "../channel/components/ChannelJoinVoice";
 import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
 import { ChannelPeople } from "../channel/components/ChannelPeople";
-import { ChannelNameEditor } from "../channel/components/ChannelNameEditor";
+import { ChannelProfileEditor } from "../channel/components/ChannelProfileEditor";
 import { ChannelRoomControls, ChannelRoomEntry, ChannelRoomSettingsDialog } from "../channel/components/ChannelRoomControls";
 import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
 import { ChannelSiteSettings } from "../channel/components/ChannelSiteSettings";
@@ -175,9 +175,10 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
         </div>
       </aside>
       <div className="c3-personal"><div ref={voiceSlot} className="c3-room-slot" />
-        {self && <div className="c3-identity"><PawnSvg color={participantColor(self.id)} identity={self.id} />
+        {self && <div className="c3-identity"><PawnSvg color={participantColor(self.id)} identity={self.id} avatar={self.avatar ?? undefined} />
           <div><strong>{self.name}</strong><small>{copy("你的名字", "Your name")}</small></div>
-          <ChannelNameEditor name={self.name} disabled={!connected || busy("rename")} onSave={name => run(channel.renameSelf(name))} />
+          <ChannelProfileEditor key={self.id} name={self.name} avatar={self.avatar} color={participantColor(self.id)} disabled={!connected}
+            busy={busy("profile")} onSave={channel.updateProfile} />
         </div>}
       </div>
       <section className="c3-main" aria-label={room?.name ?? copy("房间", "Room")}>
@@ -220,6 +221,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
         <div className={`c3-workspace${visibleScreens.length ? " has-screens" : ""}${inlineChatOpen && !toolSurface.open ? "" : " chat-collapsed"}`} hidden={overview}>
           <ChannelStage sources={[...visibleScreens, ...availableScreens].map(publication => ({
             id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
+            avatar: state?.users.find(user => user.id === publication.userId)?.avatar ?? undefined,
             audience: state ? screenAudience(state, publication) : [],
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id),
             shareControls: channel.ownedScreens.has(publication.id) && <ChannelShareControl channel={channel}

@@ -1,21 +1,20 @@
 .c3-room-slot { display: contents; }
-.c3-room-tool > .lr-floating-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; container: room-tool / size; }
-.c3-room-tool .c3-room-company { flex: none; width: 100%; max-width: none; padding-block: 8px 0; border-bottom: 1px solid var(--line); }
-.c3-room-tool .c3-conversation { padding: 14px 2px 12px; gap: 12px; }
+.c3-room-tool > .lr-floating-body { min-height: 0; overflow: hidden; }
+.c3-room-tool .c3-room-company { flex: none; width: 100%; max-width: none; padding-block: 4px; border-bottom: 1px solid var(--line); }
+.c3-room-tool .c3-couch-scene { height: 64px; }
+.c3-room-tool .c3-couch-bench { display: none; }
+.c3-room-tool :is(.c3-couch-guests, .c3-couch-people > .c3-couch-seat) { padding-block: 0; }
+.c3-room-tool .c3-couch-seat .lr-pawn { min-height: 44px; }
+.c3-room-tool .c3-room-company .c3-couch-seat .lr-person { width: 42px; height: 50px; }
+.c3-room-tool .c3-room-company .c3-couch-seat .lr-pawn-name { display: block; }
+.c3-room-tool .c3-couch-browse { top: 16px; }
+.c3-room-tool .c3-conversation { min-height: 0; padding: 8px 2px; gap: 8px; }
 .c3-room-tool .c3-chat-heading { display: none; }
 .c3-room-tool .c3-message { gap: 8px; }
-.c3-room-tool .c3-room-start { margin-block: 16px 24px; }
-.c3-room-tool .c3-room-start-mark { width: 48px; height: 48px; border-radius: 16px; }
-.c3-room-tool .c3-room-start h3 { font-size: 17px; }
-.c3-room-tool .c3-voice-dock { padding: 10px 2px 0; gap: 8px; }
+.c3-room-tool .c3-room-start:not(.is-empty), .c3-room-tool .c3-room-start-mark, .c3-room-tool .c3-room-start h3 { display: none; }
+.c3-room-tool .c3-room-start.is-empty { padding: 8px; }
+.c3-room-tool .c3-room-start p { margin: 0; }
+.c3-room-tool :is(.c3-voice-entry, .c3-voice-dock) { padding: 8px 2px 0; gap: 8px; border-top: 1px solid var(--line); }
+.c3-room-tool .c3-voice-entry small { display: none; }
 .c3-room-tool .c3-voice-participants, .c3-room-tool .c3-voice-dock > svg { display: none; }
 .c3-room-tool .c3-voice-controls { gap: 2px; }
-@container room-tool (max-height: 400px) {
-  .c3-couch-scene { height: 44px; }
-  .c3-couch-bench, .c3-couch-seat .lr-pawn-name { display: none; }
-  :is(.c3-couch-guests, .c3-couch-people > .c3-couch-seat) { padding-block: 0; }
-  .c3-couch-seat .lr-pawn { min-height: 44px; }
-  .c3-couch-seat .lr-person { width: 30px; height: 36px; }
-  .c3-couch-browse { top: 8px; }
-  .c3-room-start-mark { display: none; }
-}

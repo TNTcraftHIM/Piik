@@ -98,12 +98,14 @@ impl Channel {
         let mut replies = Vec::new();
         match command {
             Command::Join { .. } => return Err("already_joined"),
-            Command::SetName { name } => {
+            Command::SetProfile { name, avatar } => {
                 let name = name.trim();
                 if name.is_empty() || name.encode_utf16().count() > 40 {
                     return Err("invalid_name");
                 }
-                self.identity.users.get_mut(&user_id).unwrap().name = name.to_owned();
+                let user = self.identity.users.get_mut(&user_id).unwrap();
+                user.name = name.to_owned();
+                user.avatar = avatar;
                 broadcast = true;
             }
             Command::UpdateDomain { name, icon } => {
@@ -332,7 +334,7 @@ impl Channel {
 
     pub fn export_state(&self) -> DurableState {
         DurableState {
-            version: 5,
+            version: 6,
             id: self.id,
             name: self.name.clone(),
             icon: self.icon.clone(),
@@ -398,7 +400,7 @@ impl Channel {
     }
 
     pub fn import_state(&mut self, state: DurableState) -> Result<(), &'static str> {
-        if state.version != 5 || state.hosted_rooms.len() > 32 {
+        if state.version != 6 || state.hosted_rooms.len() > 32 {
             return Err("invalid_state");
         }
         let mut identity = Identity::new(self.identity.owner_key.clone());
@@ -1441,6 +1443,7 @@ impl Channel {
                 .map(|user| UserInfo {
                     id: user.id,
                     name: user.name.clone(),
+                    avatar: user.avatar.clone(),
                 })
                 .collect(),
             sessions: self

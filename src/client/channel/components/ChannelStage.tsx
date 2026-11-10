@@ -27,6 +27,7 @@ export interface ChannelStageSource {
   id: string;
   userId: string;
   name: string;
+  avatar?: string;
   roomName: string;
   /** This page controls the share; its actual endpoint can be the App. */
   owned: boolean;
@@ -63,7 +64,7 @@ function SourceAudience({ people }: { people: readonly ScreenAudiencePerson[] })
         if (event.target === event.currentTarget) setOpen(event.newState === "open");
       }}>
       <h3>{zh ? "此画面的观看者" : "Viewers of this screen"}</h3>
-      {people.length ? people.map(person => <ChannelUser key={person.userId} id={person.userId} name={person.name}
+      {people.length ? people.map(person => <ChannelUser key={person.userId} id={person.userId} name={person.name} avatar={person.avatar}
         self={false} owner={false} online activity={person.state === "active" ? (zh ? "正在观看" : "Watching")
           : person.state === "preparing" ? (zh ? "正在连接" : "Connecting") : (zh ? "传输失败，正在重试" : "Delivery failed. Retrying.")} />)
         : <p>{zh ? "还没有人观看此画面。" : "No one is watching this screen yet."}</p>}
@@ -203,7 +204,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
                   ? copy("画面传输失败，正在重试。", "Picture delivery failed. Retrying.")
                   : copy("正在连接画面", "Connecting picture")}</span></div>}
             <footer>
-              <PawnSvg color={participantColor(source.userId)} identity={source.userId} />
+              <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
               <div className="c3-monitor-source">
                 <Tooltip overflow={{ text: source.name, selector: "strong" }}><strong>{source.name}</strong></Tooltip>
                 <Tooltip overflow={{ text: sourceDetail, selector: "small" }}><small aria-label={sourceStatus ? `${sourceStatus} / ${source.roomName}` : undefined}>
@@ -250,7 +251,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
       <div className="c3-monitor-offers">
         {available.map(source => <div key={source.id} className="c3-monitor-offer" data-source-id={source.id}
           role="group" aria-label={source.name}>
-          <PawnSvg color={participantColor(source.userId)} identity={source.userId} />
+          <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
           <div><strong>{source.name}</strong><small>{source.paused ? `${t("host.paused")} / ` : ""}{source.roomName}</small></div>
           <ChannelAction icon="eye" label={copy("观看", "Watch")}
             hint="hint-watch"

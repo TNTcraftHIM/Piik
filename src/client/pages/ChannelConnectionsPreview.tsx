@@ -16,8 +16,8 @@ export function channelConnectionPreview(mode: "room" | "voice" | "both" | "app"
         hasPassword: false, authorized: true, canManage: false, participantSessionIds: ["host", "self", "friend", "app"],
         available: true, reading: true, capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding", nextHops: mode === "room" ? {} : { host: "host" } } }] },
-    users: [{ id: "host-user", name: longNames ? "Host with a very long display name" : "Momo" },
-      { id: "self-user", name: "Nori" }, { id: "friend-user", name: "Kiki" }],
+    users: [{ id: "host-user", name: longNames ? "Host with a very long display name" : "Momo", avatar: null },
+      { id: "self-user", name: "Nori", avatar: null }, { id: "friend-user", name: "Kiki", avatar: null }],
     sessions: ["host", "self", "friend", "app"].map(id => ({ id, userId: id === "app" ? "self-user" : `${id}-user`, online: true, signingKey: Array(32).fill(0) })),
     publications: mode === "room" ? [] : [
       ...["host", "self", "friend"].map(id => ({ audience: [], id: `voice-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "voice", paused: false })),

@@ -15,7 +15,7 @@ export function ChannelRoomVoiceMembers({ channel, room }: { channel: ChannelCon
     const voice = voiceAppearance(state, user.id, room.id);
     if (!voice) return null;
     const playback = channel.voicePlaybackByUser.get(user.id) ?? { volume: 1, muted: false };
-    return <ChannelUser key={user.id} id={user.id} name={user.name} self={user.id === channel.self?.id}
+    return <ChannelUser key={user.id} id={user.id} name={user.name} avatar={user.avatar ?? undefined} self={user.id === channel.self?.id}
       owner={false} online voice={voice} actions={audible.has(user.id) && user.id !== channel.self?.id &&
         <AudioVolumeMenu volume={playback.volume} onVolume={volume => channel.setVoiceVolume(user.id, volume)}
           label="voice.personVolume" icon="speaker" heading={user.name}>

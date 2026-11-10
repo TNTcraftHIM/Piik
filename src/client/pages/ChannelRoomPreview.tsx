@@ -118,7 +118,7 @@ export function ChannelRoomPreview() {
     inputShortcut: async () => { throw new Error("No input device in this preview"); },
     screenPresentation: () => {}, reconnect: sample.received, clearError: sample.received,
     setVoiceMuted: () => sample.received(), setVoiceVolume: () => sample.received(),
-    renameSelf: async () => sample.received(), updateDomain: async () => sample.received(),
+    updateProfile: sample.channel.updateProfile, updateDomain: async () => sample.received(),
     createRoom: async settings => {
       const id = `sample-room-${crypto.randomUUID()}`;
       setCreatedRooms(previous => [...previous, { ...sample.channel.state!.channel.rooms[0], ...settings,

@@ -89,7 +89,7 @@ export interface ChannelActions {
   loadHistory(roomId: string): Promise<void>;
   loadLatestHistory(roomId: string): Promise<void>;
   attachments: ChannelAttachments;
-  renameSelf(name: string): Promise<void>;
+  updateProfile(profile: { name: string; avatar: string | null }): Promise<void>;
   updateDomain(settings: DomainSettings, reportError?: boolean): Promise<void>;
   exportDomainBackup(): Promise<Blob>;
   restoreDomainBackup(archive: Blob): Promise<DomainSettings>;

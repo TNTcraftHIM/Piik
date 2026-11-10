@@ -1537,7 +1537,7 @@ fn late_room_results_ignore_unrelated_profile_changes_and_departures() {
     command(
         &mut network,
         owner,
-        json!({"type":"set_name","name":"Renamed owner"}),
+        json!({"type":"set_profile","avatar":null,"name":"Renamed owner"}),
     );
     let late = command(
         &mut network,
@@ -1594,7 +1594,7 @@ fn late_room_results_ignore_unrelated_profile_changes_and_departures() {
             command(
                 &mut network,
                 owner,
-                json!({"type":"set_name","name":"Still owner"}),
+                json!({"type":"set_profile","avatar":null,"name":"Still owner"}),
             );
         }
         let accepted = command(

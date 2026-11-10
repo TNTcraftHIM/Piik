@@ -973,10 +973,10 @@ export class ChannelSession {
     if (reading && !pending) reading.history = loading;
     return loading;
   }
-  renameSelf = (name: string): Promise<void> => this.action("rename", async () => {
-    await this.request({ type: "set_name", name });
+  updateProfile = ({ name, avatar }: { name: string; avatar: string | null }): Promise<void> => this.action("profile", async () => {
+    await this.request({ type: "set_profile", name, avatar });
     stored(nameKey, name.trim());
-  });
+  }, false);
   updateDomain = (settings: DomainSettings, reportError = true): Promise<void> => this.action("domain", () => this.request({ type: "update_domain", ...settings }), reportError);
   createRoom = (settings: RoomSettings, reportError = true): Promise<string> => this.action("create-room", async () => {
     const app = this.app?.connected ? this.app : undefined;

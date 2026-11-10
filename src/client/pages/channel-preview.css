@@ -127,7 +127,7 @@
 .c3-person > svg { flex: none; width: 30px; height: 38px; }
 .c3-person-copy { min-width: 0; flex: 1 1 12ch; }
 .c3-person-actions { display: flex; align-items: center; flex: none; gap: 4px; margin-inline-start: auto; }
-.c3-person-actions .lr-btn, .c3-identity .c3-name-editor .lr-btn { width: var(--button-size, var(--control-dense-size)); padding-inline: 0; }
+.c3-person-actions .lr-btn, .c3-identity .c3-profile-editor .lr-btn { width: var(--button-size, var(--control-dense-size)); padding-inline: 0; }
 .c3-person strong { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
 .c3-person small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
 .c3-you { font-weight: 400; font-size: 11px; color: var(--muted); }
@@ -139,7 +139,7 @@
 .c3-shell[data-view="share"] :is(.c3-room-heading, .c3-main-body) { grid-column-start: 1; }
 .c3-shell[data-view="share"] .c3-pane-navigation { display: inline-flex; }
 @media (any-pointer: coarse) {
-  .c3-person-actions .lr-btn, .c3-identity .c3-name-editor .lr-btn { --button-size: var(--control-compact-size); }
+  .c3-person-actions .lr-btn, .c3-identity .c3-profile-editor .lr-btn { --button-size: var(--control-compact-size); }
 }
 @container channel-shell (max-width: 1100px) {
   .c3-room-heading { gap: 8px; padding: 12px; }

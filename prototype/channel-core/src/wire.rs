@@ -4,7 +4,8 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 6;
+pub const CHANNEL_PROTOCOL: u8 = 7;
+pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(
@@ -27,8 +28,10 @@ pub enum Command {
         #[serde(default)]
         can_receive_video_layers: bool,
     },
-    SetName {
+    SetProfile {
         name: String,
+        #[serde(deserialize_with = "avatar")]
+        avatar: Option<String>,
     },
     UpdateDomain {
         name: String,
@@ -217,6 +220,35 @@ pub(crate) fn title(value: &str) -> Option<String> {
 
 pub const IDENTITY_IMAGE_URL_BYTES: usize = 24 * 1024;
 
+fn identity_image(value: &str) -> bool {
+    if value.len() > IDENTITY_IMAGE_URL_BYTES {
+        return false;
+    }
+    let Some((media_type, encoded)) = value
+        .strip_prefix("data:")
+        .and_then(|data| data.split_once(";base64,"))
+        .filter(|(media_type, _)| matches!(*media_type, "image/png" | "image/webp"))
+    else {
+        return false;
+    };
+    Base64::decode_vec(encoded)
+        .is_ok_and(|bytes| crate::attachment::sniff_media_type(&bytes) == media_type)
+}
+
+/// Nullable, but present: omission must not silently clear an existing profile.
+pub(crate) fn avatar<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    let avatar = Option::<String>::deserialize(deserializer)?;
+    if avatar
+        .as_deref()
+        .is_some_and(|value| !identity_image(value))
+    {
+        return Err(serde::de::Error::custom("invalid_identity_image"));
+    }
+    Ok(avatar)
+}
+
 /// A decorative key or a small retained raster, carried by its identity owner.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(try_from = "String")]
@@ -240,16 +272,7 @@ impl TryFrom<String> for IdentityIcon {
         {
             return Ok(Self(value));
         }
-        if value.len() > IDENTITY_IMAGE_URL_BYTES {
-            return Err("invalid_identity_icon");
-        }
-        let (media_type, encoded) = value
-            .strip_prefix("data:")
-            .and_then(|data| data.split_once(";base64,"))
-            .filter(|(media_type, _)| matches!(*media_type, "image/png" | "image/webp"))
-            .ok_or("invalid_identity_icon")?;
-        let bytes = Base64::decode_vec(encoded).map_err(|_| "invalid_identity_icon")?;
-        if crate::attachment::sniff_media_type(&bytes) != media_type {
+        if !identity_image(&value) {
             return Err("invalid_identity_icon");
         }
         Ok(Self(value))
@@ -685,6 +708,8 @@ pub enum FlowState {
 pub struct UserInfo {
     pub id: Uuid,
     pub name: String,
+    #[serde(deserialize_with = "avatar")]
+    pub avatar: Option<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]

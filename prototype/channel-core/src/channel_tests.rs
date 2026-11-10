@@ -20,6 +20,13 @@ fn decorative_icon_keys_are_bounded_but_not_a_preset_enum() {
     );
     let icon: IdentityIcon = serde_json::from_value(serde_json::json!(image)).unwrap();
     assert_eq!(serde_json::to_value(icon).unwrap(), image);
+    assert!(Request::parse(
+        &serde_json::json!({
+            "type":"set_profile", "name":"Friend", "avatar":image
+        })
+        .to_string()
+    )
+    .is_ok());
     for invalid in [
         "data:image/png;base64,".into(),
         "data:image/png;base64,not-an-image".into(),
@@ -29,7 +36,23 @@ fn decorative_icon_keys_are_bounded_but_not_a_preset_enum() {
         format!("{image}{}", "A".repeat(IDENTITY_IMAGE_URL_BYTES)),
     ] {
         assert!(serde_json::from_value::<IdentityIcon>(serde_json::json!(invalid)).is_err());
+        assert!(Request::parse(
+            &serde_json::json!({
+                "type":"set_profile", "name":"Friend", "avatar":invalid
+            })
+            .to_string()
+        )
+        .is_err());
     }
+    for invalid in [
+        serde_json::json!({"type":"set_name", "name":"Friend"}),
+        serde_json::json!({"type":"set_profile", "name":"Friend"}),
+        serde_json::json!({"type":"set_profile", "name":"Friend", "avatar":"couch"}),
+        serde_json::json!({"type":"set_profile", "name":"Friend", "avatar":null, "userId":Uuid::new_v4()}),
+    ] {
+        assert!(Request::parse(&invalid.to_string()).is_err());
+    }
+    assert!(Request::parse(r#"{"type":"set_profile","name":"Friend","avatar":null}"#).is_ok());
 }
 
 #[test]
@@ -205,12 +228,19 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
     .unwrap()
     .len();
     let mut state = channel.snapshot(sessions[0]);
-    state.channel.icon = icon;
+    state.channel.icon = icon.clone();
     state.channel.name = "域".repeat(64);
     state.users = (0..64)
         .map(|_| UserInfo {
             id: Uuid::new_v4(),
             name: "名".repeat(40),
+            avatar: Some(
+                serde_json::to_value(&icon)
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .into(),
+            ),
         })
         .collect();
     for index in 0..32 {
@@ -288,10 +318,51 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
                 .collect(),
         })
         .collect();
+    let mut durable = channel.export_state();
+    durable.icon = icon;
+    durable.users = state
+        .users
+        .iter()
+        .map(|user| StoredUser {
+            id: user.id,
+            name: user.name.clone(),
+            avatar: user.avatar.clone(),
+            credential: [255; 32],
+        })
+        .collect();
+    durable.hosted_rooms = state
+        .channel
+        .rooms
+        .iter()
+        .map(|room| {
+            (
+                room.id.clone(),
+                crate::host::RoomSummary {
+                    id: room.id.clone(),
+                    name: room.name.clone(),
+                    icon: room.icon.clone(),
+                    creator_id: room.creator_id,
+                    access: room.access,
+                    hidden: room.hidden,
+                    has_password: room.has_password,
+                    voice_bitrate: room.voice_bitrate,
+                    relay_capacity: room.relay_capacity,
+                },
+            )
+        })
+        .collect();
+    let backup_bytes = serde_json::to_vec(&crate::backup::DomainMetadata {
+        version: 2,
+        state: durable,
+        owner_key: "owner".into(),
+    })
+    .unwrap()
+    .len();
     let snapshot_bytes = serde_json::to_vec(&Event::State { state }).unwrap().len();
-    eprintln!("identity directory: {snapshot_bytes} bytes; host output: {host_bytes} bytes");
-    assert!(snapshot_bytes < 2 * 1024 * 1024);
-    assert!(host_bytes < 2 * 1024 * 1024);
+    eprintln!("identity directory: {snapshot_bytes} bytes; host output: {host_bytes} bytes; domain backup: {backup_bytes} bytes");
+    assert!(snapshot_bytes < CHANNEL_MESSAGE_BYTES);
+    assert!(host_bytes < CHANNEL_MESSAGE_BYTES);
+    assert!(backup_bytes < crate::backup::RECORD_BYTES);
 }
 
 #[test]
@@ -325,7 +396,8 @@ fn text_limits_match_browser_utf16_and_room_history() {
     assert!(channel
         .handle(
             owner.session_id,
-            Command::SetName {
+            Command::SetProfile {
+                avatar: None,
                 name: "\u{1f600}".repeat(21)
             },
             0

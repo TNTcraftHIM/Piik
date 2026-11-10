@@ -35,6 +35,7 @@ export function sampleRoomTopology(state: ChannelSnapshot, roomId: string, publi
 export function useChannelGuideSample(multiRoom = false) {
   const { lang } = useCopy(), zh = lang === "zh";
   const [settingsByRoom, setSettingsByRoom] = useState<Record<string, Partial<RoomSettings & Pick<ChannelRoom, "relayOverride">>>>({});
+  const [profile, setProfile] = useState<{ name: string; avatar: string | null }>({ name: "Ada", avatar: null });
   const settings = settingsByRoom.friday ?? {};
   const roomName = settings.name ?? (zh ? "周五小聚" : "Friday with friends");
   const [quality, setQuality] = useState<QualityProfile>(QUALITY_PROFILES["1080p30"]);
@@ -70,7 +71,7 @@ export function useChannelGuideSample(multiRoom = false) {
     ...(messagesByRoom.friday ?? []),
   ];
   const users = (multiRoom ? ["Ada", "Bo", "Coco", "Dora", "Eli", "Finn", "Gia", "Hana"] : ["Ada", "Bo"])
-    .map(name => ({ id: `sample-${name.toLowerCase()}`, name }));
+    .map(name => ({ id: `sample-${name.toLowerCase()}`, name, avatar: null, ...(name === "Ada" ? profile : {}) }));
   const rooms = [{ id: "friday", name: roomName, icon: "couch" },
     ...(multiRoom ? [{ id: "studio", name: zh ? "创作小屋" : "Creative studio", icon: "star" }] : [])]
     .map(room => ({ creatorId: "sample-ada", access: "private", hidden: false, hasPassword: false,
@@ -88,6 +89,7 @@ export function useChannelGuideSample(multiRoom = false) {
     subscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   });
   const channel = {
+    updateProfile: async (value: { name: string; avatar: string | null }) => setProfile(value),
     state, self: state.users[0], sessionId: "sample-ada-session", connection: "connected", appConnected: true, pending,
     quality, setQuality, videoCodecMode: codec, setVideoCodecMode: setCodec, ownedScreens: new Set<string>(), streams: new Map<string, MediaStream>(),
     messagesByRoom: { ...messagesByRoom, friday: sampleMessages.map(message => ({ ...message, reactions: messageReactions[message.seq] })) },

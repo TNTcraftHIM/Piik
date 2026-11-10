@@ -2951,7 +2951,10 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
             completion(&completed).is_none(),
             "{outcome}: success cannot precede installed authority"
         );
-        let unrelated = network.command(host, json!({"type":"set_name","name":"Renamed"}));
+        let unrelated = network.command(
+            host,
+            json!({"type":"set_profile","avatar":null,"name":"Renamed"}),
+        );
         assert!(completion(&unrelated).is_none());
         assert!(!network
             .state(publisher)
@@ -2970,7 +2973,10 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
                     state < reply,
                     "installed State must precede successful completion"
                 );
-                let again = network.command(host, json!({"type":"set_name","name":"Still here"}));
+                let again = network.command(
+                    host,
+                    json!({"type":"set_profile","avatar":null,"name":"Still here"}),
+                );
                 assert!(completion(&again).is_none(), "completion is consumed once");
             }
             "disconnected" => {
@@ -3586,7 +3592,7 @@ fn coordinated_udp_preparation_uses_current_capability_and_never_restarts_a_conn
             command(
                 &mut network,
                 host,
-                json!({"type":"set_name","name":"Connected Native"}),
+                json!({"type":"set_profile","avatar":null,"name":"Connected Native"}),
             );
             assert_eq!(
                 pair(&network, host, viewer_session, &room).udp_preparation,

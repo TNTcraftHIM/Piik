@@ -3,6 +3,7 @@ import type { ChannelPublication, ChannelSnapshot } from "./protocol";
 export interface ScreenAudiencePerson {
   userId: string;
   name: string;
+  avatar?: string;
   state: "preparing" | "active" | "failed";
 }
 
@@ -16,7 +17,7 @@ export function screenAudience(state: ChannelSnapshot, publication: ChannelPubli
     if (!user || user.id === publication.userId) continue;
     // Signaling can disconnect while an established media watch continues.
     const previous = people.get(user.id);
-    if (!previous || ranks[entry.state] > ranks[previous.state]) people.set(user.id, { userId: user.id, name: user.name, state: entry.state });
+    if (!previous || ranks[entry.state] > ranks[previous.state]) people.set(user.id, { userId: user.id, name: user.name, avatar: user.avatar ?? undefined, state: entry.state });
   }
   return [...people.values()];
 }
@@ -45,7 +46,7 @@ export function roomPeople(state: ChannelSnapshot, roomId: string) {
   const sessions = new Set(room.participantSessionIds);
   const users = new Set(state.sessions.filter(value => value.online && sessions.has(value.id)).map(value => value.userId));
   return state.users.filter(user => users.has(user.id)).map(user => ({
-    userId: user.id, name: user.name, owner: user.id === (room.creatorId ?? state.channel.ownerId),
+    userId: user.id, name: user.name, avatar: user.avatar ?? undefined, owner: user.id === (room.creatorId ?? state.channel.ownerId),
     voice: voiceAppearance(state, user.id, roomId),
   }));
 }

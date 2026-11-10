@@ -531,7 +531,7 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
             "historyWindow":100,"rooms":[room("target",true,json!({
                 "hostSessionId":host,"bindingId":Uuid::new_v4(),"nextHops":{}
             })),room("offline",false,serde_json::Value::Null)]},
-        "users":[{"id":user,"name":"Source"},{"id":owner,"name":"Owner"}],
+        "users":[{"id":user,"name":"Source","avatar":null},{"id":owner,"name":"Owner","avatar":null}],
         "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]},
             {"id":host,"userId":owner,"online":true,"signingKey":vec![1;32]}],
         "files":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[]
@@ -925,7 +925,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
             "channel":{"id":Uuid::new_v4(),"name":"Capture lifecycle","icon":"couch","ownerId":user,
 
                 "historyWindow":100,"rooms":[room("affected"),room("other")]},
-            "users":[{"id":user,"name":"Source"}],
+            "users":[{"id":user,"name":"Source","avatar":null}],
             "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]}],
             "files":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[]
         }))

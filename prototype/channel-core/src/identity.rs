@@ -14,6 +14,7 @@ pub(crate) const MAX_SESSIONS: usize = 20;
 pub struct User {
     pub id: Uuid,
     pub name: String,
+    pub avatar: Option<String>,
     #[serde(skip)]
     credential: [u8; 32],
 }
@@ -162,6 +163,7 @@ impl Identity {
         let user = self.users.entry(user_id).or_insert_with(|| User {
             id: user_id,
             name: name.to_owned(),
+            avatar: None,
             credential: digest(&credential),
         });
         if owner {
@@ -206,6 +208,7 @@ impl Identity {
             .map(|u| StoredUser {
                 id: u.id,
                 name: u.name.clone(),
+                avatar: u.avatar.clone(),
                 credential: u.credential,
             })
             .collect()
@@ -228,6 +231,7 @@ impl Identity {
                     User {
                         id: u.id,
                         name: u.name,
+                        avatar: u.avatar,
                         credential: u.credential,
                     },
                 )
@@ -270,6 +274,8 @@ impl Identity {
 pub struct StoredUser {
     pub id: Uuid,
     pub name: String,
+    #[serde(deserialize_with = "crate::wire::avatar")]
+    pub avatar: Option<String>,
     pub credential: [u8; 32],
 }
 
