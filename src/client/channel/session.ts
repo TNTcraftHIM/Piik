@@ -1192,14 +1192,6 @@ export class ChannelSession {
     });
   }
 
-  private async retireRoom(roomId: string): Promise<void> {
-    const own = this.view.state?.publications.filter(value => value.roomId === roomId && value.userId === this.view.self?.id && this.view.ownedScreens.has(value.id)) ?? [];
-    for (const publication of own) await this.stopScreen(publication.id);
-    for (const publication of this.view.state?.publications.filter(value => value.roomId === roomId && this.watching.has(value.id)) ?? []) await this.unwatch(publication.id);
-    if (this.voiceParticipation.has(roomId)) await this.leaveVoice(roomId);
-    this.closeInteraction(roomId); this.readings.delete(roomId);
-  }
-
   private async admitBackupIdentity(metadata: Extract<BackupMetadata, { kind: "room" }>): Promise<(() => Promise<void>) | undefined> {
     if (metadata.policy.creatorId === this.view.self?.id) return;
     const check = this.sessionContext(), archived = metadata.ownCredential;
@@ -1317,7 +1309,7 @@ export class ChannelSession {
       const previousDelivery = this.view.state?.channel.rooms.find(room => room.id === target)?.delivery;
       const oldBinding = previousDelivery?.bindingId;
       let expectedHost = owner?.native ? previousDelivery?.hostSessionId : this.view.sessionId;
-      await this.retireRoom(target); check(); owner?.current();
+      check(); owner?.current();
       if (native) {
         if (!owner && this.app !== app) throw new Error("app_disconnected");
         const restored = await native.restore(archive); committed = true; check();

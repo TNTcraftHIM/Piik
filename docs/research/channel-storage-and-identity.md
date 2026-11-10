@@ -384,11 +384,13 @@ alone cannot include history held only by another room owner. Never give a room
 owner the domain credential database merely to export their room.
 
 Use the storage platform's consistent snapshot mechanism; native SQLite provides
-the [online backup API](https://www.sqlite.org/backup.html). Restore with the
-previous writer stopped and reopen the same stable identities. Restoring older
-history must be distinguished from ordinary restart, so cached newer records
-cannot silently overwrite the restored authority. Live captures, connections
-and input grants are not backup data.
+the [online backup API](https://www.sqlite.org/backup.html). For a room restore,
+replace its data and retire the previous durable writer in one transaction.
+A failed transaction leaves the existing host and personal activities intact.
+After commit, the new binding's ordinary state projection retires the old
+activities and reading context. Restoring older history must be distinguished
+from ordinary restart, so cached newer records cannot silently overwrite the
+restored authority. Live captures, connections and input grants are not backup data.
 
 Domain restore belongs to the existing App or Server service owner. It stops and
 joins its Native operators before replacing the domain's checkpoint and retiring

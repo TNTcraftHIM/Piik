@@ -6184,6 +6184,48 @@ async function setupRoomBackup() {
   return { ...context, host, nextHost, snapshot, stage, row, state, metadata, open, read };
 }
 
+async function startBackupActivities({ session, socket, state }: Awaited<ReturnType<typeof setupRoomBackup>>, rooms = ["first"]) {
+  const observed = new Set(socket.sent);
+  const next = async (type: string) => {
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === type && !observed.has(command))).toBe(true));
+    const command = socket.sent.find(command => command.type === type && !observed.has(command))!;
+    observed.add(command);
+    return command;
+  };
+  const publish = async (work: Promise<unknown>) => {
+    const command = await next("publish");
+    const publication = publicationSchema.parse({ ...(command.publication as object), sessionId: "endpoint", userId: "self", paused: false });
+    state.publications.push(publication);
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "ack", requestId: command.requestId });
+    await work;
+    return publication.id;
+  };
+  const activities = new Map<string, { screen: MediaStreamTrack; voice: MediaStreamTrack; screenId: string; voiceId: string; watchedId: string }>();
+  for (const roomId of rooms) {
+    const screen = remoteTrack("video"), voice = remoteTrack("audio");
+    const screenId = await publish(session.publish("screen", roomId, new RoomMediaStream([screen]) as unknown as MediaStream));
+    const joining = session.joinVoice(roomId, false, new RoomMediaStream([voice]) as unknown as MediaStream);
+    const join = await next("voice");
+    state.voice.push({ roomId, sessionId: "endpoint", muted: false, deafened: false });
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "ack", requestId: join.requestId });
+    const voiceId = await publish(joining);
+    const watchedId = `watched-${roomId}`;
+    state.publications.push({ id: watchedId, roomId, sessionId: "remote", userId: "other", kind: "screen",
+      videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false });
+    socket.receive({ type: "state", state });
+    const watching = session.watch(watchedId);
+    const subscribe = await next("subscribe");
+    state.subscriptions.push(watchedId);
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "ack", requestId: subscribe.requestId });
+    await watching;
+    activities.set(roomId, { screen, voice, screenId, voiceId, watchedId });
+  }
+  return activities;
+}
+
 test("domain backup uses its actual service owner and validates kind before retiring the current session", async () => {
   const { session, socket } = await setup();
   const archive = new Blob(["domain-checkpoint"]), fetch = vi.fn().mockResolvedValue(new Response(archive));
@@ -6329,9 +6371,18 @@ test("room backup exports its actual Browser host snapshot, full nonce/reactions
   } finally { session.close(); }
 });
 
-test("invalid archives and failed atomic replacements keep the existing Browser host and authority", async () => {
-  const { session, socket, host, stage, read } = await setupRoomBackup();
+test("invalid archives and failed atomic replacements keep the existing Browser host, capture, voice and watch", async () => {
+  const context = await setupRoomBackup();
+  const { session, socket, host, stage, read } = context;
   try {
+    const activity = (await startBackupActivities(context)).get("first")!;
+    const send = socket.send.bind(socket);
+    vi.spyOn(socket, "send").mockImplementation(data => {
+      send(data);
+      const command = JSON.parse(data) as ChannelCommand & { requestId?: string };
+      if (command.type === "unpublish" || command.type === "subscribe" && !command.enabled || command.type === "voice" && !command.joined)
+        queueMicrotask(() => socket.receive({ type: "ack", requestId: command.requestId }));
+    });
     read.mockRejectedValueOnce(new Error("backup_content_mismatch"));
     await expect(session.restoreRoomBackup(new Blob(), "first")).rejects.toThrow("backup_content_mismatch");
     expect(stage.replace).not.toHaveBeenCalled(); expect(host.close).not.toHaveBeenCalled();
@@ -6340,11 +6391,18 @@ test("invalid archives and failed atomic replacements keep the existing Browser 
     expect(stage.append).toHaveBeenCalledOnce(); expect(host.close).not.toHaveBeenCalled();
     expect(socket.sent.some(command => command.type === "host_stop")).toBe(false);
     expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null });
+    expect(activity.screen.stop).not.toHaveBeenCalled();
+    expect(activity.voice.stop).not.toHaveBeenCalled();
+    expect(session.getSnapshot().ownedScreens.has(activity.screenId)).toBe(true);
+    expect(session.getSnapshot().state!.publications.map(publication => publication.id)).toEqual(expect.arrayContaining([activity.screenId, activity.voiceId]));
+    expect(session.getSnapshot().state!.subscriptions).toContain(activity.watchedId);
+    expect(session.getSnapshot().state!.voice).toContainEqual({ roomId: "first", sessionId: "endpoint", muted: false, deafened: false });
   } finally { session.close(); }
 });
 
 test("room restore rebinds before installing file copies, and optional cache failure preserves committed success", async () => {
-  const { session, socket, host, nextHost, stage, state, metadata, read, row } = await setupRoomBackup();
+  const context = await setupRoomBackup();
+  const { session, socket, host, nextHost, stage, state, metadata, read, row } = context;
   const attachment = { id: "restored-file", name: "data", size: 2, mediaType: "application/octet-stream" as const, sha256: "b".repeat(64) };
   const file = new File([new Uint8Array([4, 5])], "data");
   metadata.retainedFiles = [{ messageSeq: 1, attachment }] as never;
@@ -6357,22 +6415,40 @@ test("room restore rebinds before installing file copies, and optional cache fai
     return false;
   });
   try {
+    const activities = await startBackupActivities(context, ["first", "second"]);
+    const replaced = activities.get("first")!, sibling = activities.get("second")!;
     const restoring = session.restoreRoomBackup(new Blob(), "first");
     await vi.waitFor(() => expect(stage.replace).toHaveBeenCalledOnce());
     await vi.waitFor(() => expect(socket.sent.filter(command => command.type === "host_register")).toHaveLength(2));
     expect(host.close).toHaveBeenCalledOnce(); expect(cache).not.toHaveBeenCalled();
+    expect(replaced.screen.stop).not.toHaveBeenCalled();
+    expect(replaced.voice.stop).not.toHaveBeenCalled();
     const register = socket.sent.findLast(command => command.type === "host_register")!;
     socket.receive({ type: "host_bound", roomId: "first", bindingId: "restored-binding" });
     socket.receive({ type: "ack", requestId: register.requestId });
     expect(cache).not.toHaveBeenCalled();
     const fresh = structuredClone(state); fresh.channel.rooms[0].delivery!.bindingId = "restored-binding";
+    fresh.publications = fresh.publications.filter(publication => publication.roomId !== "first");
+    fresh.voice = fresh.voice.filter(member => member.roomId !== "first");
+    fresh.subscriptions = fresh.subscriptions.filter(id => id !== replaced.watchedId);
     socket.receive({ type: "state", state: fresh });
-    await vi.waitFor(() => expect(socket.sent.filter(command => command.type === "browse" && command.active)).toHaveLength(2));
+    await vi.waitFor(() => expect(socket.sent.filter(command => command.type === "browse" && command.roomId === "first" && command.active)).toHaveLength(2));
     const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
     socket.receive({ type: "ack", requestId: browse.requestId });
     await expect(restoring).resolves.toEqual({ roomId: "first", cached: false });
     expect(nextHost.bind).toHaveBeenCalledWith("restored-binding");
     expect(stage.close).toHaveBeenCalledOnce(); expect(cache).toHaveBeenCalledOnce();
+    expect(replaced.screen.stop).toHaveBeenCalledOnce();
+    expect(replaced.voice.stop).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().ownedScreens.has(replaced.screenId)).toBe(false);
+    expect(session.getSnapshot().state!.subscriptions).not.toContain(replaced.watchedId);
+    expect(session.getSnapshot().state!.voice.some(member => member.roomId === "first")).toBe(false);
+    expect(sibling.screen.stop).not.toHaveBeenCalled();
+    expect(sibling.voice.stop).not.toHaveBeenCalled();
+    expect(session.getSnapshot().ownedScreens.has(sibling.screenId)).toBe(true);
+    expect(session.getSnapshot().state!.publications.map(publication => publication.id)).toEqual(expect.arrayContaining([sibling.screenId, sibling.voiceId]));
+    expect(session.getSnapshot().state!.subscriptions).toContain(sibling.watchedId);
+    expect(session.getSnapshot().state!.voice.some(member => member.roomId === "second")).toBe(true);
   } finally { session.close(); }
 });
 
