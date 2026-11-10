@@ -75,7 +75,7 @@ describe("channel connection presentation", () => {
     const report: NativeConnectionMetrics = { sessionId: "app", bindingId: "binding", connections: [{
       pairId: "pair", connectionId: "physical-1", peerId: "host", sampleTimestampMs: 1000, ageMs: 4,
       rttMs: 25, bweBps: 800_000, streams: [{ flowId: "flow", publicationId: "screen-host", selected: true,
-        direction: "receive", media: "video", mid: "video", rid: "h", codec: "video/h264",
+        direction: "receive", media: "video", outputId: null, mid: "video", rid: "h", codec: "video/h264",
         sampleTimestampMs: 1000, ageMs: 4, bytes: 10_000, packets: 10, rttMs: null, lossFraction: .03, jitterMs: 2 }] }] };
     expect(collectNativeConnectionMetrics(report, previous)[0]!.metrics.bitrateKbps).toBeNull();
     const stream = report.connections[0]!.streams[0]!;
@@ -92,5 +92,25 @@ describe("channel connection presentation", () => {
     report.connections = [];
     expect(collectNativeConnectionMetrics(report, previous)).toEqual([]);
     expect(previous.size).toBe(0);
+  });
+
+  it("starts a fresh egress baseline when the same flow reuses its MID with a new output", () => {
+    const previous: NativeMetricSamples = new Map();
+    const report: NativeConnectionMetrics = { sessionId: "app", bindingId: "binding", connections: [{
+      pairId: "pair", connectionId: "physical", peerId: "host", sampleTimestampMs: 1000, ageMs: 4,
+      rttMs: null, bweBps: null, streams: [{ flowId: "flow", publicationId: "screen-host", selected: true,
+        direction: "send", media: "audio", outputId: "first-output", mid: "sound", rid: null, codec: "audio/opus",
+        sampleTimestampMs: 1000, ageMs: 4, bytes: 1000, packets: 10, rttMs: null, lossFraction: null, jitterMs: null }] }] };
+    const stream = report.connections[0]!.streams[0]!;
+    expect(collectNativeConnectionMetrics(report, previous)[0]!.metrics.bitrateKbps).toBeNull();
+    stream.outputId = "next-output";
+    stream.sampleTimestampMs = 2000; stream.bytes = 2000;
+    // The retired interval need not coincide with a UI poll; larger new counters still reset.
+    expect(collectNativeConnectionMetrics(report, previous)[0]!.metrics).toMatchObject({
+      sampleWindowMs: null, bitrateKbps: null, packetLossPercent: null, availableOutgoingKbps: null,
+    });
+    stream.sampleTimestampMs = 3000; stream.bytes = 3000;
+    expect(collectNativeConnectionMetrics(report, previous)[0]!.metrics.bitrateKbps).toBe(8);
+    expect(previous.size).toBe(1);
   });
 });

@@ -10,7 +10,7 @@ async fn a_reused_sender_preserves_the_remote_sending_half_of_its_media() -> Res
     let (remote, _) = endpoint(&other, Uuid::new_v4(), None).await?;
     let result = async {
         let id = Uuid::new_v4();
-        let (_, _, stream) = pc
+        let (_, forward_writable, stream) = pc
             .add_output(
                 id,
                 crate::peer::codec(),
@@ -53,11 +53,13 @@ async fn a_reused_sender_preserves_the_remote_sending_half_of_its_media() -> Res
         );
         let next = Uuid::new_v4();
         let mut incoming: Option<Track> = None;
+        let mut sending = (id, forward_writable);
+        let mut measurements = Vec::new();
         for phase in 0..3 {
             if phase == 1 {
                 pc.retire_output(id).await?;
             } else if phase == 2 {
-                let (_, _, next_stream) = pc
+                let (_, writable, next_stream) = pc
                     .add_output(
                         next,
                         crate::peer::codec(),
@@ -67,6 +69,7 @@ async fn a_reused_sender_preserves_the_remote_sending_half_of_its_media() -> Res
                     )
                     .await?;
                 ensure!(next_stream == stream);
+                sending = (next, writable);
             }
             if phase > 0 {
                 ensure!(pc.offer().await?);
@@ -126,6 +129,64 @@ async fn a_reused_sender_preserves_the_remote_sending_half_of_its_media() -> Res
                 anyhow::bail!("reverse audio ended when only our sender retired")
             })
             .await??;
+            if phase != 1 {
+                let packets = if phase == 0 { 1 } else { 2 };
+                for sequence in 0..packets {
+                    send(
+                        &pc,
+                        sending.0,
+                        vec![rtp::Packet {
+                            header: rtp::header::Header {
+                                version: 2,
+                                marker: true,
+                                sequence_number: sequence as u16,
+                                timestamp: (sequence + 1) as u32 * 960,
+                                ..Default::default()
+                            },
+                            payload: vec![0xf8, 0xff, 0xfe].into(),
+                        }],
+                        Instant::now(),
+                        &sending.1,
+                    )
+                    .await?;
+                }
+                let counters =
+                    tokio::time::timeout(Duration::from_secs(5), async {
+                        loop {
+                            let counters =
+                                pc.connection_metrics().await?.streams.into_iter().find(
+                                    |sample| {
+                                        sample.outgoing && sample.counters.packets == packets
+                                    },
+                                );
+                            let received =
+                                remote.connection_metrics().await?.streams.into_iter().find(
+                                    |sample| {
+                                        !sample.outgoing
+                                            && sample.counters.packets == u64::from(phase) + 1
+                                    },
+                                );
+                            if let (Some(sent), Some(received)) = (counters, received) {
+                                ensure!(received.counters.output_id.is_none());
+                                break Ok::<_, anyhow::Error>(sent.counters);
+                            }
+                            tokio::time::sleep(Duration::from_millis(20)).await;
+                        }
+                    })
+                    .await??;
+                measurements.push((sending.0, counters));
+            }
+        }
+        ensure!(measurements[0].1.mid == measurements[1].1.mid);
+        ensure!(
+            measurements[1].1.bytes == measurements[0].1.bytes * 2,
+            "reused MID did not start a new SDK egress counter"
+        );
+        for (output, counters) in measurements {
+            ensure!(
+                counters.output_id == Some(output),
+                "Native metric lost the current Output counter owner"
+            );
         }
         Ok::<_, anyhow::Error>(())
     }

@@ -99,11 +99,10 @@ deployed frontend requires no Node runtime.
 The `piik-channel-app` entry uses the same App button, local approval page and
 saved-site controls as the shared Web interface.
 
-Current internal pages require App control protocol 5 and domain signaling
-protocol 3. These carry source quality preferences and binding-owned transport
-invalidations across room-host recovery. Upgrade the App, bundled Web files and domain
-server together; earlier wire versions are incompatible. Saved room data is
-unchanged.
+Current internal pages require App control protocol 6 and domain signaling
+protocol 3. Build the App, bundled Web files and domain server from the same
+source for internal testing. Incompatible control or signaling protocols are
+rejected at entry; saved room data is unchanged.
 
 Build the frontend and start it:
 

@@ -8,7 +8,7 @@ export type NativeMetricSamples = Map<string, { timestamp: number; bytes: number
 export function collectNativeConnectionMetrics(report: NativeConnectionMetrics, previous: NativeMetricSamples): ChannelConnectionSample[] {
   const retained = new Set<string>();
   const samples = report.connections.flatMap(connection => connection.streams.map(stream => {
-    const key = JSON.stringify([report.sessionId, connection.connectionId, stream.flowId, stream.direction, stream.media, stream.mid, stream.rid]);
+    const key = JSON.stringify([report.sessionId, connection.connectionId, stream.flowId, stream.direction, stream.media, stream.outputId, stream.mid, stream.rid]);
     retained.add(key);
     const prior = previous.get(key);
     const windowMs = prior && stream.sampleTimestampMs > prior.timestamp

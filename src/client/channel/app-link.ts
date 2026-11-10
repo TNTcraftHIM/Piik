@@ -9,7 +9,7 @@ import { NativeRoomHosting } from "./hosting-api";
 import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 
-const APP_PROTOCOL = 5;
+const APP_PROTOCOL = 6;
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
   version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional() });
@@ -18,7 +18,7 @@ const measured = z.number().finite().nonnegative();
 const nativeStreamMetricSchema = z.object({
   flowId: z.uuid(), publicationId: z.uuid(), selected: z.boolean(),
   direction: z.enum(["send", "receive"]), media: z.enum(["audio", "video"]),
-  mid: z.string(), rid: z.string().nullable(), codec: z.string().nullable(),
+  outputId: z.uuid().nullable(), mid: z.string(), rid: z.string().nullable(), codec: z.string().nullable(),
   sampleTimestampMs: measured, ageMs: measured, bytes: measured, packets: measured,
   rttMs: measured.nullable(), lossFraction: measured.max(1).nullable(), jitterMs: measured.nullable(),
 }).strict();

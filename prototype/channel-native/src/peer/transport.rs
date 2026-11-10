@@ -1705,6 +1705,7 @@ impl Engine {
                 outgoing: false,
                 media: track.kind,
                 counters: StreamCounters {
+                    output_id: None,
                     mid: stats.mid.to_string(),
                     rid: stats.rid.map(|rid| rid.to_string()),
                     codec: codec.as_ref().map(|codec| codec.mime_type.clone()),
@@ -1725,16 +1726,17 @@ impl Engine {
             .values()
             .filter(|stats| self.active_egress(stats))
         {
-            let output = self
+            let (id, output) = self
                 .outputs
-                .values()
-                .find(|output| !output.retired && output.mid == Some(stats.mid))
+                .iter()
+                .find(|(_, output)| !output.retired && output.mid == Some(stats.mid))
                 .unwrap();
             streams.push(TransportStreamMetric {
                 stream: output.stream.clone(),
                 outgoing: true,
                 media: output.kind,
                 counters: StreamCounters {
+                    output_id: Some(*id),
                     mid: stats.mid.to_string(),
                     rid: stats.rid.map(|rid| rid.to_string()),
                     codec: Some(output.codec.mime_type.clone()),

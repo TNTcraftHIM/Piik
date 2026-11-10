@@ -38,6 +38,9 @@ pub struct NativeStreamMetric {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamCounters {
+    // Egress counters belong to an Output, even when its negotiated MID is reused.
+    // SDK ingress counters accumulate across the MID's received SSRCs.
+    pub output_id: Option<Uuid>,
     pub mid: String,
     pub rid: Option<String>,
     pub codec: Option<String>,
