@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-09
+Last reviewed: 2026-11-10
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -12,12 +12,14 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **3.0 workspace design acceptance.** Review the room-list management
-  entry, shared administration dialogs and grid/focus viewing with the owner
-  before the next internal package. Keep current players and independent room
-  activities while changing presentation; the
-  [workspace design](./standards/visual-language.md#30-channel-workspace)
-  owns the layout responsibilities.
+- [ ] **3.0 workspace hierarchy redesign.** Review grouped sharing/voice actions,
+  sidebar collapse, personal activity placement, couch/conversation placement and
+  direct room pop-out before changing the current workspace. Give room/domain
+  invitations contextual entries with one link and subordinate QR presentation;
+  keep their existing admission owners. Preserve current players and independent
+  room activities. The [hierarchy proposal](./research/room-interactions.md#workspace-hierarchy-proposal)
+  records the candidate; [visual language](./standards/visual-language.md#30-channel-workspace)
+  owns accepted layout responsibilities.
 - [ ] **3.0 Windows shared-sound noise.** A beta2 Host reports noise that stops
   when excluding the Piik console's process tree, but returns when excluding a
   silent unrelated window. Verify which Browser playback belongs to that tree

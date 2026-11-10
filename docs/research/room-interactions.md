@@ -438,13 +438,46 @@ The [accepted channel and network design](./channel-network-design.md) owns the 
 direction, responsibility boundaries, activity lifecycles and multi-source routing.
 The [room-data model](./channel-storage-and-identity.md) owns persistence and
 file availability. The [3.0 vocabulary](./channel-network-design.md#terminology-and-responsibilities)
-defines channels containing rooms, users with multiple roles and concurrent
-sharing, watching and forwarding. Data-model discussion precedes its implementation;
-the isolated 3.0 design does not change the accepted 2.x contract.
+defines domains containing rooms, with hosting, sharing, watching and forwarding
+as independent responsibilities. The isolated 3.0 design does not change the
+published 2.x contract.
 
 The isolated [Rust channel prototype](../../prototype/channel-server/README.md)
-currently supplies networked chat and local microphone/picture capture. Its README
-owns the runnable boundary; the accepted design defines the next network baseline.
+uses the shared Rust core for rooms, conversation, files, voice and multi-source
+sharing. Its README and [status](../status.md) own the runnable boundary.
+
+### Workspace Hierarchy Proposal
+
+Proposed 2026-11-10, awaiting owner review. The current layout needs clearer task
+groups and better use of the space around media. This is a presentation proposal;
+the network and data owners above continue to govern activity and admission.
+
+| Scope | Proposed placement and action |
+| --- | --- |
+| Domain and navigation | Left room list and domain menu; collapse control on the sidebar edge. Domain invitation and domain administration stay here. |
+| Current room | Room title, adjacent share/join-voice actions, then related parameters and a room invitation entry. Room management stays beside the room-list item. |
+| Personal activity | Lower-left identity and current voice destination with mute, listening and leave controls. Folding navigation or narrowing the viewport keeps these controls visible. |
+| Conversation and presence | Couch and chat share one companion area; without pictures, conversation takes the main space. The member disclosure shows current-room activity and per-person listening controls. |
+
+The couch's pop-out action opens the supported external window directly; an
+in-page tool is the explicitly named alternative. Use the same content and
+window owner, preserve drafts, and return it on close. Presentation changes
+must not join voice, restart capture or change room authority.
+
+Use one contextual invitation panel for either room or domain. Copy the current
+link first; expand its QR code within the panel. Access fields reuse the existing
+settings component and writer. Keep reset/revoke separate from copying. Room
+invitations admit the domain and that room; domain invitations do not unlock
+private rooms. Public-room URLs need a Browser landing path that still observes
+domain admission. Do not add roles, a second token or hidden permission changes.
+
+The proposal follows [contextual call controls and direct pop-out](https://support.discord.com/hc/en-us/articles/360041721052-Video-Calls),
+[adaptive navigation](https://developer.android.com/design/ui/mobile/guides/layout-and-content/layout-and-nav-patterns)
+and [workspace hierarchy research](https://slack.design/articles/designing-teamwork-how-our-customers-shaped-the-future-of-slack/).
+Review the composition before integrating it into the shared page; then verify
+room/source scope, active-media continuity, keyboard/touch operation and window
+return. [TODO](../todo.md) owns the work, and accepted visual rules remain in
+[visual language](../standards/visual-language.md#30-channel-workspace).
 
 ## Attended Remote-Control Prototype
 
