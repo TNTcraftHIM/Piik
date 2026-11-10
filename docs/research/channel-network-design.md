@@ -398,6 +398,9 @@ old paths.
 A participant's transport runtime owns its PeerConnections, negotiation, ICE
 recovery and final close. Base-tree and screen plans request admitted flows;
 they cannot independently close or mutate a connection another flow still uses.
+The transport publishes remote track changes after applying the complete remote
+description. Temporary remove/add events inside that operation are not a failed
+media input. Stream ownership includes the actual object as well as its signaled ID.
 The combined physical graph may contain cycles while each forwarding plan
 remains acyclic and each publication has one committed input at a receiver.
 

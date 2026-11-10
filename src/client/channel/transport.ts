@@ -90,6 +90,7 @@ export class ChannelTransport {
   private remoteIds = new Map<string, string>();
   private frameBaselines = new Map<string, ReadonlyMap<string, number> | null>();
   private receiving = new Map<string, MediaStream>();
+  private applyingRemote = false;
   private ignoreOffer = false;
   private pendingOffer: { payload: ChannelSignal; senders: Map<RTCRtpSender, MediaStreamTrack | null> } | null = null;
   private localOfferFailed = false;
@@ -161,7 +162,7 @@ export class ChannelTransport {
         const flowId = this.remoteIds.get(stream.id);
         if (!flowId) continue;
         this.receiving.set(stream.id, stream);
-        options.receive(flowId, stream);
+        if (!this.applyingRemote) options.receive(flowId, stream);
       }
     };
   }
@@ -805,7 +806,7 @@ export class ChannelTransport {
   }
 
   hasRemoteStream(flowId: string, stream: MediaStream): boolean {
-    return this.remoteIds.get(stream.id) === flowId;
+    return !this.applyingRemote && this.remoteIds.get(stream.id) === flowId && this.receiving.get(stream.id) === stream;
   }
 
   frameBaseline(flowId: string): ReadonlyMap<string, number> | null {
@@ -839,7 +840,11 @@ export class ChannelTransport {
           for (const id of added) this.frameBaselines.set(id, baseline);
         }
         this.remoteIds = remoteIds;
-        await this.pc.setRemoteDescription(description);
+        // SRD can remove a stream's old video before adding its replacement.
+        this.applyingRemote = true;
+        try { await this.pc.setRemoteDescription(description); }
+        finally { this.applyingRemote = false; }
+        if (this.closed) return;
         if (description.type === "answer") this.confirmSenders(offered!.senders);
         if (description.type === "offer" || description.type === "answer") this.pendingOffer = null;
         for (const [streamId, stream] of this.receiving) {

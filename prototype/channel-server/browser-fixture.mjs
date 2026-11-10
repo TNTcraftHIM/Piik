@@ -22,11 +22,30 @@ function captureProbe(name) {
   return `(() => {
     localStorage.setItem('piik:ui-lang', 'en');
     localStorage.setItem('piik:ui-mode', 'text');
-    const peers = [], sockets = [], captures = [], contexts = [], protocol = [], channels = [], warnings = [], flowStates = [], audioSources = [], qualitySamples = [], restoredVideo = [], trackEvents = [];
+    const peers = [], sockets = [], captures = [], contexts = [], protocol = [], channels = [], warnings = [], flowStates = [], audioSources = [], qualitySamples = [], restoredVideo = [], trackEvents = [], flowFailures = [], playbackEvents = [];
     const trackObjects = new WeakMap();
     const trackObjectId = track => { if (!trackObjects.has(track)) trackObjects.set(track, crypto.randomUUID()); return trackObjects.get(track); };
     const trackState = track => ({ id: track.id, objectId: trackObjectId(track), kind: track.kind,
       readyState: track.readyState, enabled: track.enabled, muted: track.muted });
+    const videoState = video => ({ flowId: video.dataset.flowId, selected: video.dataset.selected,
+      readyState: video.readyState, streamId: video.srcObject?.id,
+      tracks: video.srcObject?.getTracks().map(trackState),
+      error: video.error && { code: video.error.code, message: video.error.message } });
+    const recordPlayback = (video, event, error) => {
+      playbackEvents.push({ time: Date.now(), event, ...videoState(video),
+        failure: error && { name: error.name, code: error.code, message: error.message } });
+      if (playbackEvents.length > 16) playbackEvents.shift();
+    };
+    document.addEventListener('error', event => {
+      if (event.target instanceof HTMLVideoElement) recordPlayback(event.target, 'error', event.target.error);
+    }, true);
+    const nativePlay = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function(...args) {
+      return nativePlay.apply(this, args).catch(error => {
+        if (this instanceof HTMLVideoElement) recordPlayback(this, 'play-rejected', error);
+        throw error;
+      });
+    };
     const observedStreams = new WeakSet();
     const recordTrack = (pc, event, track, streams, mid) => {
       trackEvents.push({ time: Date.now(), pcIndex: peers.indexOf(pc), event, mid, track: trackState(track), streamIds: streams.map(stream => stream.id) });
@@ -63,6 +82,19 @@ function captureProbe(name) {
       if (direction === 'sent' && event.type === 'flow_state') {
         flowStates.push({ flowId: event.flowId, state: event.state, time: Date.now() });
         if (flowStates.length > 128) flowStates.shift();
+        if (event.state === 'failed') {
+          const peer = window.__channelGate?.session.media.peers.get(event.pairId);
+          const input = peer?.inputs.get(event.flowId);
+          flowFailures.push({ time: Date.now(), flowId: event.flowId, pairId: event.pairId,
+            publicationId: flowBindings.get(event.flowId)?.publicationId,
+            connectionState: peer?.transport.pc.connectionState,
+            input: input && { streamId: input.stream.id, tracks: input.stream.getTracks().map(trackState),
+              video: input.video && trackState(input.video), receiverTrack: input.receiver && trackState(input.receiver.track),
+              receiverPresent: peer.transport.pc.getReceivers().includes(input.receiver),
+              ready: input.ready, failed: input.failed, presentationReady: input.presentationReady },
+            videos: [...document.querySelectorAll('video')].filter(video => video.dataset.flowId === event.flowId).map(videoState) });
+          if (flowFailures.length > 16) flowFailures.shift();
+        }
       }
       const flowId = event.flowId ?? event.input?.action?.flowId;
       protocol.push({ time: Date.now(), direction, type:event.type, room, request:conversation?.requestId ?? event.requestId,
@@ -490,6 +522,7 @@ function captureProbe(name) {
           if (report.type === 'outbound-rtp' && report.kind === 'video') stalledBytes += report.bytesSent ?? 0;
         }
         return { inbound, outbound, protocol, conversationWS, warnings, blockedOffers, qualitySamples, restoredVideo,
+          trackEvents, flowFailures, playbackEvents,
           videoStall: fault && { publicationId: fault.publicationId, peerId: fault.peerId, pairId: fault.pairId,
             flowId: fault.flowId, startedAt: fault.startedAt, error: fault.error, bytes: stalledBytes,
             connected: stalled?.pc.connectionState === 'connected',
@@ -497,7 +530,7 @@ function captureProbe(name) {
             active: stalled?.sender.getParameters().encodings.map(encoding => encoding.active) },
           connections: peers.map(pc => pc.connectionState),
           channels: channels.map(channel => ({ label: channel.label, state: channel.readyState })),
-          videos: [...document.querySelectorAll('video')].map(video => ({ time: video.currentTime,
+          videos: [...document.querySelectorAll('video')].map(video => ({ ...videoState(video), time: video.currentTime,
             frames: video.getVideoPlaybackQuality().totalVideoFrames, width: video.videoWidth, paused: video.paused })),
           captures: captures.flatMap(stream => stream.getTracks().map(track => ({ kind: track.kind, state: track.readyState }))),
           overflow: document.documentElement.scrollWidth > innerWidth,

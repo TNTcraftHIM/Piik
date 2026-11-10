@@ -4214,6 +4214,56 @@ test.each(["commit", "failed"])("a shadow subtree forwards exact inputs and pres
   } finally { media.reset(); session.close(); }
 });
 
+test.each([false, true])("SDP track replacement stays atomic for the same MSID (new stream object: %s)", async newObject => {
+  const fixture = await screenFixture();
+  const { media, session, pc, sent, changed } = fixture;
+  vi.useFakeTimers();
+  const oldVideo = remoteTrack("video"), nextVideo = remoteTrack("video"), audio = remoteTrack("audio");
+  const tracks = [oldVideo, audio], oldStream = remoteStream("same-native-msid", tracks);
+  const nextStream = newObject ? remoteStream(oldStream.id, [nextVideo, audio]) : oldStream;
+  let frames = 1;
+  try {
+    pc.receivers = [{ track: oldVideo, getStats: async () => decodedReport(frames) } as RTCRtpReceiver];
+    await receiveScreen(fixture, oldStream);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent).toContainEqual({ type: "flow_state", pairId: "pair", flowId: "screen-flow", state: "decoded" });
+    sent.length = 0;
+    const apply = pc.setRemoteDescription.bind(pc);
+    let finish!: () => void;
+    const inProgress = new Promise<void>(resolve => { finish = resolve; });
+    const srd = vi.spyOn(pc, "setRemoteDescription").mockImplementationOnce(async description => {
+      tracks.splice(0, 1);
+      oldStream.dispatchEvent(new Event("removetrack"));
+      await inProgress;
+      if (!newObject) tracks.unshift(nextVideo);
+      pc.receivers = [{ track: nextVideo, getStats: async () => decodedReport(frames) } as RTCRtpReceiver];
+      pc.ontrack?.({ streams: [nextStream] });
+      await apply(description);
+    });
+    media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "replacement" },
+      tracks: [{ flowId: "screen-flow", streamId: oldStream.id }] });
+    await vi.waitFor(() => expect(srd).toHaveBeenCalledOnce());
+    expect(sent.some(command => command.type === "flow_state" && command.state === "failed")).toBe(false);
+    expect(changed.mock.calls.at(-1)![0].get("screen")).toBe(oldStream);
+    finish();
+    await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("replacement"));
+    frames++;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(changed.mock.calls.at(-1)![0].get("screen")).toBe(nextStream);
+    expect(sent.filter(command => command.type === "flow_state")).toEqual([
+      { type: "flow_state", pairId: "pair", flowId: "screen-flow", state: "decoded" },
+    ]);
+    if (newObject) {
+      oldStream.dispatchEvent(new Event("removetrack"));
+      media.screenPresentation("screen-flow", oldStream, "failed");
+      expect(changed.mock.calls.at(-1)![0].get("screen")).toBe(nextStream);
+      expect(sent.some(command => command.type === "flow_state" && command.state === "failed")).toBe(false);
+    }
+    expect(pc.close).not.toHaveBeenCalled();
+    for (const track of [oldVideo, nextVideo, audio]) expect(track.stop).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
+
 test("same-publication stream replacement re-proves progress on a reused receiver", async () => {
   const fixture = await screenFixture();
   const { media, session, pc, sent } = fixture;
