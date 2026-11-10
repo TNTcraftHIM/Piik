@@ -34,7 +34,7 @@ export function DesignSparseConversation({ roomId, roomName, people, few, copy }
   });
   return <ChannelConversation roomId={roomId} roomName={roomName} messages={messages} users={users}
     interaction={session}
-    entry={{ kind: "domain" }} canSend={!!roomId} sending={false} hidden={false}
+    entry={{ kind: "site" }} canSend={!!roomId} sending={false} hidden={false}
     attachments={attachments} attachmentsAvailable={false} available={true}
     history={{ hasMore: false, atLatest: true }} loadingHistory={false}
     onHistory={unavailable} onLatest={unavailable} onSend={async (_room, text) => {

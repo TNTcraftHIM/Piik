@@ -6,7 +6,7 @@ import { selectedRoom } from "./navigation";
 import { CHANNEL_PROTOCOL, channelTopologySchema, eventSchema, roomSummarySchema, userSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary } from "./protocol";
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView, ScreenPresentation, SourceMicrophoneConfiguration, SourceMicrophoneSettings } from "./types";
-import { domainInviteHash, loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage } from "./hosting";
+import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage } from "./hosting";
 import { ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics } from "./app-link";
 import { isClientActivated } from "../lib/app-launch";
 import type { NativeCaptureTarget } from "../native/wire";
@@ -101,7 +101,7 @@ export class ChannelSession {
     appConnected: false,
     ownedScreens: new Set(),
     state: null, sessionId: null, self: null, connection: "connecting", messagesByRoom: {}, historyByRoom: {},
-    streams: new Map(), screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), error: null, inviteURL: null, pending: new Set(),
+    streams: new Map(), screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), error: null, siteURL: null, pending: new Set(),
   };
   private listeners = new Set<() => void>();
   private socket: WebSocket | null = null;
@@ -110,12 +110,8 @@ export class ChannelSession {
   private closed = true;
   private reactionNonce = 0;
   private credential = stored(credentialKey) ?? undefined;
-  private password: string | undefined;
-  private domainInvite: { key: string; hash: string | null } | null = null;
   private invitationOrigin = location.origin;
-  private key = new URLSearchParams(location.hash.slice(1)).get("owner")
-    ?? new URLSearchParams(location.hash.slice(1)).get("invite") ?? undefined;
-  private invitedRoom = new URLSearchParams(location.hash.slice(1)).get("room") ?? undefined;
+  private ownerKey = new URLSearchParams(location.hash.slice(1)).get("owner") ?? undefined;
   private roomId: string | null = selectedRoom() || null;
   private requests = new Map<string, {
     roomId?: string; bindingId?: string;
@@ -204,7 +200,7 @@ export class ChannelSession {
       try {
         const signingKey = await this.conversation.initialize();
         if (this.socket !== socket || this.closed) return;
-        this.write({ type: "join", protocol: CHANNEL_PROTOCOL, signingKey, name: stored(nameKey) ?? "Guest", credential: this.credential, key: this.key, password: this.password, roomId: this.invitedRoom, sessionId: this.view.sessionId ?? undefined });
+        this.write({ type: "join", protocol: CHANNEL_PROTOCOL, signingKey, name: stored(nameKey) ?? "Guest", credential: this.credential, ownerKey: this.ownerKey, sessionId: this.view.sessionId ?? undefined });
       } catch (error) {
         if (this.socket === socket && !this.closed) {
           this.close();
@@ -239,7 +235,6 @@ export class ChannelSession {
 
   private receive(event: ChannelEvent, skipRestoreRoom?: string): void {
     if (event.type === "welcome") {
-      this.password = undefined;
       this.endRecovery();
       const resumed = this.view.sessionId === event.sessionId;
       if (this.view.sessionId && !resumed) this.releaseMedia();
@@ -248,19 +243,16 @@ export class ChannelSession {
       const saved = stored(credentialKey, event.credential) === event.credential;
       const parameters = new URLSearchParams(location.hash.slice(1));
       const owner = event.state.sessions.find(session => session.id === event.sessionId)?.userId === event.state.channel.ownerId;
-      if (saved && owner && parameters.has("owner") && parameters.get("owner") === this.key && typeof history !== "undefined") {
+      if (saved && owner && parameters.has("owner") && parameters.get("owner") === this.ownerKey && typeof history !== "undefined") {
         parameters.delete("owner");
         const hash = parameters.toString();
         try {
           history.replaceState(history.state, "", location.pathname + location.search + (hash ? `#${hash}` : ""));
-          this.key = undefined;
+          this.ownerKey = undefined;
         } catch { /* The saved credential still owns recovery if URL editing is unavailable. */ }
       }
       this.invitationOrigin = event.invitationOrigin ?? location.origin;
-      const invite = event.inviteKey ?? (!this.invitedRoom ? new URLSearchParams(location.hash.slice(1)).get("invite") : null);
-      if (this.view.state?.channel.id !== event.state.channel.id) this.domainInvite = null;
-      if (invite) this.rememberDomainInvite(invite);
-      this.patch({ sessionId: event.sessionId, connection: "connected", error: null, inviteURL: null });
+      this.patch({ sessionId: event.sessionId, connection: "connected", error: null, siteURL: this.siteURL() });
       this.readings.clear();
       this.roomId ??= event.state.channel.rooms[0]?.id ?? null;
       for (const room of event.state.channel.rooms) if (room.reading) this.readingRooms.add(room.id);
@@ -298,6 +290,7 @@ export class ChannelSession {
         }
       }
       this.browse(this.roomId ?? event.state.channel.rooms[0]?.id ?? "");
+      if (!skipRestoreRoom) void this.acceptInvitation().catch(() => {});
       for (const command of this.signals.splice(0)) {
         if (event.state.pairs.some(pair => pair.id === command.pairId)) this.write(command);
       }
@@ -350,12 +343,6 @@ export class ChannelSession {
       clearTimeout(request.timer); this.requests.delete(event.requestId);
       try { request.result?.(event); request.resolve(); }
       catch (error) { request.reject(error instanceof Error ? error : new Error("invalid_response")); }
-    } else if (event.type === "domain_invite") {
-      this.rememberDomainInvite(event.key);
-      const request = event.requestId ? this.requests.get(event.requestId) : undefined;
-      if (request && event.requestId) {
-        clearTimeout(request.timer); this.requests.delete(event.requestId); request.resolve();
-      }
     } else if (event.type === "state") this.applyState(event.state);
     else if (event.type === "room_invite" || event.type === "room_invite_state") {
       if (event.requestId) {
@@ -374,8 +361,7 @@ export class ChannelSession {
         if (event.code === "incompatible_protocol") {
           this.close(); this.patch({ error: event.code }); return;
         }
-        this.password = undefined;
-        this.patch({ error: event.code });
+          this.patch({ error: event.code });
         if (!this.view.sessionId) {
           this.closed = true;
           this.socket?.close();
@@ -435,7 +421,7 @@ export class ChannelSession {
     }
     for (const id of this.outgoingMessages.keys()) if (!canRead(id)) this.outgoingMessages.delete(id);
     this.patch({ state: visible, self: state.users.find(user => user.id === userId) ?? null,
-      inviteURL: this.domainInvitationURL(state),
+      siteURL: this.siteURL(),
       voicePlaybackByUser: sameChannel ? new Map([...this.view.voicePlaybackByUser].filter(([id]) => state.users.some(user => user.id === id))) : new Map(),
       messagesByRoom: Object.fromEntries(Object.entries(this.view.messagesByRoom).filter(([id]) => canRead(id) && !freshBindings.has(id))),
       publicationReactions: new Map([...this.view.publicationReactions].filter(([id]) => state.publications.some(publication => publication.id === id
@@ -472,26 +458,8 @@ export class ChannelSession {
     this.releaseUnusedMicrophone();
   }
 
-  private domainInvitationURL(state = this.view.state): string | null {
-    if (!state) return null;
-    const url = new URL(location.pathname, this.invitationOrigin);
-    if (state.channel.access === "public") return url.href;
-    if (!this.domainInvite || this.domainInvite.hash !== state.channel.inviteHash) return null;
-    url.hash = new URLSearchParams({ invite: this.domainInvite.key }).toString();
-    return url.href;
-  }
-
-  private rememberDomainInvite(key: string): void {
-    const invitation = { key, hash: null as string | null };
-    this.domainInvite = invitation;
-    this.patch({ inviteURL: this.domainInvitationURL() });
-    void domainInviteHash(key).then(hash => {
-      if (this.domainInvite !== invitation || this.closed) return;
-      invitation.hash = hash;
-      this.patch({ inviteURL: this.domainInvitationURL() });
-    }).catch(error => {
-      if (this.domainInvite === invitation && !this.closed) this.patch({ error: error instanceof Error ? error.message : "invalid_response" });
-    });
+  private siteURL(): string {
+    return new URL(location.pathname, this.invitationOrigin).href;
   }
 
   private write(command: ChannelCommand & { requestId?: string }): void {
@@ -976,20 +944,8 @@ export class ChannelSession {
     const params = new URLSearchParams(location.hash.slice(1));
     const roomId = params.get("room"), key = params.get("invite");
     if (!key) return roomId || null;
-    if (!roomId) {
-      if (this.key !== key || this.invitedRoom) {
-        this.key = key; this.invitedRoom = undefined;
-        if (!this.view.state) this.reconnect();
-        else this.rememberDomainInvite(key);
-      }
-      return null;
-    }
-    this.key = key;
-    this.invitedRoom = roomId;
-    this.roomId = roomId;
-    if (this.view.connection === "connected") {
-      await this.action(`enter:${roomId}`, () => this.request({ type: "enter_room", roomId, inviteKey: key }));
-    } else if (!this.view.state) this.reconnect();
+    if (!roomId) return null;
+    if (this.view.connection === "connected") await this.action(`enter:${roomId}`, () => this.request({ type: "enter_room", roomId, inviteKey: key }));
     return roomId;
   };
   sendMessage = (roomId: string, text: string, files: DraftFile[] = [], signal?: AbortSignal): Promise<void> => this.action(`chat:${roomId}`, async () => {
@@ -1023,13 +979,6 @@ export class ChannelSession {
     stored(nameKey, name.trim());
   });
   updateDomain = (settings: DomainSettings, reportError = true): Promise<void> => this.action("domain", () => this.request({ type: "update_domain", ...settings }), reportError);
-  resetDomainInvite = (reportError = true): Promise<void> => this.action("domain-invite", () => this.request({ type: "domain_invite" }), reportError);
-  enterDomain = (password: string): void => {
-    if (this.view.state) return;
-    this.password = password;
-    this.patch({ error: null });
-    this.reconnect();
-  };
   createRoom = (settings: RoomSettings, reportError = true): Promise<string> => this.action("create-room", async () => {
     const app = this.app?.connected ? this.app : undefined;
     const state = this.view.state, self = this.view.self, sessionId = this.view.sessionId;
@@ -1220,12 +1169,12 @@ export class ChannelSession {
     if (!response.ok) throw new Error("backup_identity_required");
     const identity = z.object({ domainId: z.string(), user: userSchema }).parse(await response.json()); check();
     if (identity.domainId !== metadata.domainId || identity.user.id !== archived.userId) throw new Error("backup_identity_required");
-    const previous = { credential: this.credential, key: this.key, invitedRoom: this.invitedRoom, roomId: this.roomId,
+    const previous = { credential: this.credential, ownerKey: this.ownerKey, roomId: this.roomId,
       hash: location.hash };
     const rollback = async () => {
       this.close(); this.credential = previous.credential;
       if (previous.credential) stored(credentialKey, previous.credential);
-      this.key = previous.key; this.invitedRoom = previous.invitedRoom; this.roomId = previous.roomId;
+      this.ownerKey = previous.ownerKey; this.roomId = previous.roomId;
       if (typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search + previous.hash);
       this.start();
     };
@@ -1235,8 +1184,8 @@ export class ChannelSession {
     return rollback;
   }
 
-  private async connectBackupIdentity(domainId: string, userId: string, identity: { credential?: string; key?: string }, skipRoom?: string): Promise<void> {
-    this.close(); this.credential = identity.credential; this.key = identity.key; this.invitedRoom = undefined; this.roomId = null;
+  private async connectBackupIdentity(domainId: string, userId: string, identity: { credential?: string; ownerKey?: string }, skipRoom?: string): Promise<void> {
+    this.close(); this.credential = identity.credential; this.ownerKey = identity.ownerKey; this.roomId = null;
     this.closed = false;
     let socket: WebSocket | null = null;
     try {
@@ -1247,7 +1196,7 @@ export class ChannelSession {
           if (!waiting) throw new Error("backup_identity_required");
           const actual = event.state.sessions.find(value => value.id === event.sessionId)?.userId;
           if (event.state.channel.id !== domainId || actual !== userId
-            || (identity.key !== undefined && event.state.channel.ownerId !== userId)) {
+            || (identity.ownerKey !== undefined && event.state.channel.ownerId !== userId)) {
             clearTimeout(timer); reject(new Error("backup_identity_required")); throw new Error("backup_identity_required");
           }
           waiting = false; clearTimeout(timer); resolve(); return skipRoom;
@@ -1284,15 +1233,15 @@ export class ChannelSession {
       const domainId = await owner.native.restore(archive); committed = true;
       if (!this.closed || this.socket) throw new Error("disconnected");
       if (domainId !== metadata.state.id) throw new Error("backup_identity_required");
-      await this.connectBackupIdentity(domainId, metadata.state.ownerId, { key: metadata.ownerKey });
+      await this.connectBackupIdentity(domainId, metadata.state.ownerId, { ownerKey: metadata.ownerKey });
       if (typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search);
-      const { name, icon, access } = this.view.state!.channel;
-      return { name, icon, access };
+      const { name, icon } = this.view.state!.channel;
+      return { name, icon };
     } catch (error) {
       const restored = error instanceof Error && error.message === "domain_restored_connection_failed";
       if (committed || restored) {
         if (!committed && this.closed && !this.socket) {
-          await this.connectBackupIdentity(metadata.state.id, metadata.state.ownerId, { key: metadata.ownerKey }).catch(() => {});
+          await this.connectBackupIdentity(metadata.state.id, metadata.state.ownerId, { ownerKey: metadata.ownerKey }).catch(() => {});
         }
         throw new Error("domain_restored_connection_failed");
       }
@@ -1318,11 +1267,12 @@ export class ChannelSession {
       if (metadata.kind !== "room" || !stage) throw new Error("invalid_backup");
       if (!roomId && this.view.state!.channel.rooms.some(room => room.id === metadata.policy.id && room.available)) throw new Error("room_host_conflict");
       if (roomId && metadata.policy.creatorId !== this.view.self!.id) throw new Error("backup_identity_required");
+      rollback = await this.admitBackupIdentity(metadata);
+      const admission = this.sessionContext();
       if (!this.view.state!.channel.rooms.some(room => room.id === metadata.policy.id)) {
         await this.request({ type: "admit_room", room: roomSummarySchema.parse({ ...metadata.policy, hasPassword: metadata.policy.passwordHash != null }) });
-        initial();
+        admission();
       }
-      rollback = await this.admitBackupIdentity(metadata);
       const check = this.sessionContext(), target = metadata.policy.id;
       const app = this.app?.connected ? this.app : undefined;
       const native = owner?.native ?? (!roomId && app ? { restore: (blob: Blob) => app.restoreRoom(blob) } : undefined);
@@ -2219,8 +2169,6 @@ export class ChannelSession {
 
   close = (): void => {
     this.closed = true;
-    this.password = undefined;
-    this.domainInvite = null;
     this.endRecovery();
     if (this.retry !== null) clearTimeout(this.retry);
     this.retry = null;

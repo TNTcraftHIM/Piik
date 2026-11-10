@@ -242,7 +242,6 @@ mod tests {
         let path = folder.join("room.sqlite");
         let owner = Member {
             user_id: Uuid::new_v4(),
-            domain_owner: false,
         };
         let actor = Member {
             user_id: Uuid::new_v4(),

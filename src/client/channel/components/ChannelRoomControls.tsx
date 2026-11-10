@@ -97,7 +97,7 @@ export function RoomForm({ room, value, onChange, appHosted, disabled, busy, onS
           {value === "public" ? (zh ? "公开" : "Public") : (zh ? "私密" : "Private")}</span>
       </label>)}
     </fieldset>
-    <p>{access === "public" ? (zh ? "域内的用户都能进入。" : "Anyone in this domain can enter.")
+    <p>{access === "public" ? (zh ? "所有人都能进入。" : "Anyone can enter.")
       : (zh ? "凭房间邀请或密码进入。" : "Enter with a room invitation or password.")}</p>
     {access === "private" && <div className="c3-private-options">
       <label><span>{zh ? "密码（可选）" : "Password (optional)"}</span><input className="c3-input" type="password"
@@ -197,7 +197,7 @@ function RoomSettings({ channel, room, onClose }: {
     <div className="c3-settings-body">
       <ChannelSettingsTabs<RoomSettingsTask> id={id} label={zh ? "房间设置" : "Room settings"} tasks={tasks} selected={selected ?? "room"} onSelect={setTask} />
       <div className="c3-settings-panels">
-        {!room.available && <p className="c3-settings-offline">{room.canManage ? (zh ? "房间当前未托管，可以从域中移除。" : "This room is offline. You can remove it from the domain.")
+        {!room.available && <p className="c3-settings-offline">{room.canManage ? (zh ? "房间当前未托管，可以从列表中移除。" : "This room is offline. You can remove it from the list.")
           : (zh ? "房间当前未托管，恢复后可调整转发设置。" : "The room is offline. Forwarding settings will be available when hosting resumes.")}</p>}
         {room.canManage && <section id={`${id}-room`} role="tabpanel" aria-labelledby={`${id}-room-tab`} hidden={selected !== "room"}>
           <RoomForm room={room} value={draft ?? roomDraft(room)} onChange={fields => setDraft(previous => ({ ...(previous ?? roomDraft(room)), ...fields }))} appHosted={channel.appConnected} disabled={!available || working} busy={busy}
@@ -231,15 +231,15 @@ function RoomSettings({ channel, room, onClose }: {
             }} />}
           {room.canManage && <section className="c3-room-removal">
             <Btn icon="x" size="dense" quiet tone="danger" busy={removing} disabled={!connected || working}
-              title={{ text: room.available ? (zh ? "删除房间" : "Delete room") : (zh ? "从域移除" : "Remove from domain") }}
-              cap={{ text: room.available ? (zh ? "删除房间" : "Delete room") : (zh ? "从域移除" : "Remove from domain") }}
+              title={{ text: room.available ? (zh ? "删除房间" : "Delete room") : (zh ? "从列表移除" : "Remove from list") }}
+              cap={{ text: room.available ? (zh ? "删除房间" : "Delete room") : (zh ? "从列表移除" : "Remove from list") }}
               onClick={() => {
                 const deleteData = room.available;
                 const question = deleteData
-                  ? (zh ? `删除“${room.name}”及其聊天记录？已下载的文件保留。若托管端已离线，则仅从域中移除。`
-                    : `Delete “${room.name}” and its chat history? Downloaded files are kept. If hosting has gone offline, only its domain entry will be removed.`)
-                  : (zh ? `从域中移除“${room.name}”？离线托管端的数据保留。`
-                    : `Remove “${room.name}” from this domain? Data on its offline host is kept.`);
+                  ? (zh ? `删除“${room.name}”及其聊天记录？已下载的文件保留。若托管端已离线，则仅从列表中移除。`
+                    : `Delete “${room.name}” and its chat history? Downloaded files are kept. If hosting has gone offline, only its list entry will be removed.`)
+                  : (zh ? `从列表中移除“${room.name}”？离线托管端的数据保留。`
+                    : `Remove “${room.name}” from this list? Data on its offline host is kept.`);
                 if (window.confirm(question)) void run(() => channel.deleteRoom(room.id, deleteData, false), onClose);
               }} />
           </section>}

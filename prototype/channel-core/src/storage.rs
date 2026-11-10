@@ -393,7 +393,7 @@ mod tests {
         .unwrap();
         let previous = policy.invite().unwrap();
         let guest = Uuid::new_v4();
-        policy.enter(guest, false, None, Some(&previous)).unwrap();
+        policy.enter(guest, None, Some(&previous)).unwrap();
         let mut legacy = serde_json::to_value(&policy).unwrap();
         legacy.as_object_mut().unwrap().remove("inviteKey");
         let draft =
@@ -414,7 +414,7 @@ mod tests {
             let mut restored: crate::RoomState = serde_json::from_value(value).unwrap();
             restored.validate().unwrap();
             assert!(restored.accepts_invite(&previous));
-            assert!(restored.reads(guest, false));
+            assert!(restored.reads(guest));
             key = restored.invite().unwrap();
             store
                 .save(&serde_json::to_value(restored).unwrap())
@@ -428,7 +428,7 @@ mod tests {
             restored.validate().unwrap();
             assert!(restored.accepts_invite(&key));
             assert!(!restored.accepts_invite(&previous));
-            assert!(restored.reads(guest, false));
+            assert!(restored.reads(guest));
             assert_eq!(page(&mut store, "room", None).0[0].text, "Retained history");
             restored
                 .update(

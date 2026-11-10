@@ -28,7 +28,6 @@ pub struct Channel {
 
 pub(crate) struct HostAcceptance {
     pub projection_applied: bool,
-    pub invitation_current: bool,
     pub replies: Vec<RoomReply>,
 }
 
@@ -53,8 +52,8 @@ impl Channel {
         (self.id, self.identity.owner_id)
     }
 
-    pub fn new(owner_key: String, invite_key: String, ice_servers: Vec<Value>) -> Self {
-        let identity = Identity::new(owner_key, invite_key);
+    pub fn new(owner_key: String, ice_servers: Vec<Value>) -> Self {
+        let identity = Identity::new(owner_key);
         Self {
             identity,
             now: 0,
@@ -107,24 +106,17 @@ impl Channel {
                 self.identity.users.get_mut(&user_id).unwrap().name = name.to_owned();
                 broadcast = true;
             }
-            Command::UpdateDomain {
-                name,
-                icon,
-                access,
-                password,
-            } => {
+            Command::UpdateDomain { name, icon } => {
                 if user_id != self.identity.owner_id {
                     return Err("forbidden");
                 }
                 let name = title(&name).ok_or("invalid_domain_name")?;
-                self.identity.update_admission(access, password)?;
                 self.name = name;
                 self.icon = icon;
                 broadcast = true;
             }
             Command::HostRegister { .. }
             | Command::Conversation { .. }
-            | Command::DomainInvite {}
             | Command::CreateRoom { .. }
             | Command::AdmitRoom { .. }
             | Command::DeleteRoom { .. }
@@ -340,13 +332,11 @@ impl Channel {
 
     pub fn export_state(&self) -> DurableState {
         DurableState {
-            version: 4,
+            version: 5,
             id: self.id,
             name: self.name.clone(),
             icon: self.icon.clone(),
             owner_id: self.identity.owner_id,
-            access: self.identity.access,
-            password_hash: self.identity.password_hash.clone(),
             users: self.identity.export_users(),
             hosted_rooms: self
                 .remote
@@ -408,23 +398,10 @@ impl Channel {
     }
 
     pub fn import_state(&mut self, state: DurableState) -> Result<(), &'static str> {
-        if state.version != 4 || state.hosted_rooms.len() > 32 {
+        if state.version != 5 || state.hosted_rooms.len() > 32 {
             return Err("invalid_state");
         }
-        let mut identity = Identity::new(
-            self.identity.owner_key.clone(),
-            self.identity.invite_key.clone(),
-        );
-        if (state.access == RoomAccess::Public && state.password_hash.is_some())
-            || state
-                .password_hash
-                .as_ref()
-                .is_some_and(|hash| argon2::password_hash::PasswordHash::new(hash).is_err())
-        {
-            return Err("invalid_state");
-        }
-        identity.access = state.access;
-        identity.password_hash = state.password_hash;
+        let mut identity = Identity::new(self.identity.owner_key.clone());
         identity.restore_users(state.owner_id, state.users)?;
         let name = title(&state.name).ok_or("invalid_state")?;
         self.identity = identity;
@@ -584,7 +561,7 @@ impl Channel {
         let member = self
             .identity
             .member(self.identity.sessions[&session].user_id)?;
-        if !member.domain_owner {
+        if room.creator_id != member.user_id {
             return Err("forbidden");
         }
         self.identity.member(room.creator_id)?;
@@ -614,7 +591,7 @@ impl Channel {
             .identity
             .member(self.identity.sessions[&session].user_id)?;
         let room = self.remote.get(id).ok_or("room_not_in_domain")?;
-        if member.domain_owner || member.user_id == room.summary.creator_id {
+        if member.user_id == room.summary.creator_id {
             Ok(())
         } else {
             Err("forbidden")
@@ -883,32 +860,19 @@ impl Channel {
         if output.revision > binding.revision {
             return Err("invalid_room_revision");
         }
-        let (reply_valid, invitation_current) = match binding.replies.get(&output.revision) {
+        let reply_valid = match binding.replies.get(&output.revision) {
             Some(ReplyOwner::Request {
                 context,
                 completion,
                 ..
-            }) => (
+            }) => {
                 output
                     .reply
                     .as_ref()
                     .is_some_and(|reply| &reply.context == context)
                     && completion.is_none()
-                    && output.invitation.is_none(),
-                true,
-            ),
-            Some(ReplyOwner::Invitation { ticket, member }) => (
-                output
-                    .invitation
-                    .as_ref()
-                    .is_some_and(|invitation| invitation.ticket == *ticket)
-                    && output.reply.is_none(),
-                member
-                    .is_none_or(|member| self.identity.member(member.user_id).ok() == Some(member)),
-            ),
-            Some(ReplyOwner::RouteWake) | None => {
-                (output.reply.is_none() && output.invitation.is_none(), true)
             }
+            Some(ReplyOwner::RouteWake) | None => output.reply.is_none(),
         };
         if !reply_valid {
             return Err("invalid_room_reply");
@@ -936,14 +900,13 @@ impl Channel {
                 .remove(&output.revision);
             return Ok(HostAcceptance {
                 projection_applied: false,
-                invitation_current: false,
                 replies: vec![reply.clone()],
             });
         }
         let projection_applied = output.revision >= binding.projection_floor;
         let room = &self.remote[id];
         if !projection_applied {
-            return Ok(self.finish_host_output(id, output, false, invitation_current));
+            return Ok(self.finish_host_output(id, output, false));
         }
         let projection = &output.projection;
         if projection.summary.id != id || projection.summary.creator_id != room.summary.creator_id {
@@ -1271,7 +1234,7 @@ impl Channel {
         }
         room.projection = Some(projection);
         self.reconcile();
-        Ok(self.finish_host_output(id, output, true, invitation_current))
+        Ok(self.finish_host_output(id, output, true))
     }
 
     fn finish_host_output(
@@ -1279,7 +1242,6 @@ impl Channel {
         id: &str,
         output: &HostOutput,
         projection_applied: bool,
-        invitation_current: bool,
     ) -> HostAcceptance {
         let binding = self.remote.get_mut(id).unwrap().binding.as_mut().unwrap();
         if let Some(ReplyOwner::Request { completion, .. }) =
@@ -1336,7 +1298,6 @@ impl Channel {
             .collect();
         HostAcceptance {
             projection_applied,
-            invitation_current,
             replies,
         }
     }
@@ -1471,9 +1432,6 @@ impl Channel {
                 name: self.name.clone(),
                 icon: self.icon.clone(),
                 owner_id: Some(self.identity.owner_id),
-                access: self.identity.access,
-                has_password: self.identity.password_hash.is_some(),
-                invite_hash: crate::domain_invite_hash(&self.identity.invite_key),
                 rooms,
             },
             users: self
@@ -1546,18 +1504,8 @@ pub struct DurableState {
     name: String,
     icon: IdentityIcon,
     owner_id: Uuid,
-    #[serde(default = "crate::identity::private_access")]
-    access: RoomAccess,
-    password_hash: Option<String>,
     users: Vec<StoredUser>,
     hosted_rooms: BTreeMap<String, RoomSummary>,
-}
-
-impl DurableState {
-    pub(crate) fn omit_users(&mut self, pending: impl Iterator<Item = Uuid>) {
-        let pending: BTreeSet<_> = pending.collect();
-        self.users.retain(|user| !pending.contains(&user.id));
-    }
 }
 
 #[cfg(test)]

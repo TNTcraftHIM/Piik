@@ -34,9 +34,8 @@ const origin = process.env.CHANNEL_UI_ORIGIN ?? "http://127.0.0.1:8790";
 assert(["127.0.0.1", "localhost"].includes(new URL(origin).hostname), "Acceptance only targets loopback");
 const output = resolve(process.env.CHANNEL_ACCEPTANCE_OUTPUT ?? "build/channel-acceptance");
 const ownerKey = process.env.PIIK_CHANNEL_OWNER_KEY;
-const inviteKey = process.env.PIIK_CHANNEL_INVITE_KEY;
 const backupOnly = process.argv.includes("--backup");
-assert(inviteKey && (backupOnly || ownerKey), "Set the local server's invitation key and, for owner scenarios, owner key");
+assert(backupOnly || ownerKey, "Set the local server's owner bootstrap key for owner scenarios");
 const sessionPrefix = `channel-acceptance-${randomUUID()}`;
 const sessions = ["a", "b", "c", "d", "e"].map(name => `${sessionPrefix}-${name}`);
 const lifecycleOnly = process.argv.includes("--lifecycle");
@@ -915,10 +914,10 @@ async function identityControls(serverRoom) {
   })()`);
   await writeFile(png, Buffer.from(data.split(',')[1], "base64"));
   await writeFile(invalid, "This is not a picture.");
-  const openDomain = async () => {
+  const openSite = async () => {
     await showRoomList(0);
-    await browser(0, "find", "role", "button", "click", "--name", "Domain settings", "--exact");
-    await settingsTask(0, "domain");
+    await browser(0, "find", "role", "button", "click", "--name", "Site settings", "--exact");
+    await settingsTask(0, "site");
     await browser(0, "click", ".c3-identity-appearance > summary");
   };
   const upload = async path => {
@@ -926,13 +925,13 @@ async function identityControls(serverRoom) {
   };
   const preview = () => until("chosen identity decodes", () => evaluate(0,
     "!!document.querySelector('.c3-identity-upload img')?.naturalWidth"), Boolean);
-  await openDomain(); await upload(invalid);
+  await openSite(); await upload(invalid);
   await until("invalid picture leaves an actionable error", () => evaluate(0,
     "document.querySelector('.c3-identity-error')?.textContent"), value => value?.includes("Try another"));
   await upload(png); await preview();
   await browser(0, "find", "role", "button", "click", "--name", "Cancel", "--exact");
   assert.equal((await view(0)).state.channel.icon, "couch", "cancel never writes the draft image");
-  await openDomain();
+  await openSite();
   assert.equal(await evaluate(0, "!!document.querySelector('.c3-identity-upload img')"), false);
   await upload(png); await preview();
   await browser(0, "click", ".c3-room-form button[type=submit]");
@@ -1278,7 +1277,7 @@ try {
   for (const index of active) {
     const script = join(temporary, `${index}.js`);
     if (!backupOnly) await writeFile(script, captureProbe(String.fromCharCode(65 + index)));
-    await browser(index, "open", `${origin}/__channel-preview#${index === 0 ? "owner" : "invite"}=${encodeURIComponent(index === 0 ? ownerKey : inviteKey)}`);
+    await browser(index, "open", `${origin}/__channel-preview${index === 0 ? `#owner=${encodeURIComponent(ownerKey)}` : ""}`);
   }
   const initial = [];
   for (const index of active) {

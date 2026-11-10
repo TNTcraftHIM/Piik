@@ -95,7 +95,7 @@ export function ChannelRoomPreview() {
       attachments: [{ id: "sample-document", name: longNames ? "AnnualPlanningNotes_".repeat(3) + "final.pdf" : "Notes.pdf",
         mediaType: "application/octet-stream", size: 12 * 1024 * 1024, sha256: "0".repeat(64) }] }] };
   }
-  const channel = { ...sample.channel, state, self: state.users[0], streams, error: null, inviteURL: "https://friends.example/#invite=sample",
+  const channel = { ...sample.channel, state, self: state.users[0], streams, error: null, siteURL: "https://friends.example/",
     messagesByRoom,
     attachments: { ...fileStore, download: async () => sample.received(), cancelDownload: sample.received } as unknown as ChannelController["attachments"],
     interactionsByRoom: sample.channel.interactionsByRoom,
@@ -118,7 +118,7 @@ export function ChannelRoomPreview() {
     inputShortcut: async () => { throw new Error("No input device in this preview"); },
     screenPresentation: () => {}, reconnect: sample.received, clearError: sample.received,
     setVoiceMuted: () => sample.received(), setVoiceVolume: () => sample.received(),
-    renameSelf: async () => sample.received(), resetDomainInvite: async () => sample.received(), updateDomain: async () => sample.received(),
+    renameSelf: async () => sample.received(), updateDomain: async () => sample.received(),
     createRoom: async settings => {
       const id = `sample-room-${crypto.randomUUID()}`;
       setCreatedRooms(previous => [...previous, { ...sample.channel.state!.channel.rooms[0], ...settings,

@@ -156,13 +156,13 @@ fn capture_scope_survives_host_signaling_recovery_but_not_retired_authority() {
         )
     }
 
-    let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+    let mut core = Authority::new("owner".into(), vec![]).unwrap();
     let host_connection = Uuid::new_v4();
     let native_connection = Uuid::new_v4();
     let admitted = send(
         &mut core,
         host_connection,
-        json!({"type":"join","key":"owner","name":"Host"}),
+        json!({"type":"join","ownerKey":"owner","name":"Host"}),
         0,
     );
     let (host_session, credential, owner) = admitted
@@ -181,7 +181,7 @@ fn capture_scope_survives_host_signaling_recovery_but_not_retired_authority() {
     let admitted = send(
         &mut core,
         native_connection,
-        json!({"type":"join","key":"invite","name":"Native"}),
+        json!({"type":"join","name":"Native"}),
         1,
     );
     let native_user = admitted

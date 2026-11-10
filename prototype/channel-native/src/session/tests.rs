@@ -62,10 +62,7 @@ async fn resumed_endpoint_retires_its_missing_host_after_a_deleted_output_cannot
             native,
             Endpoint {
                 signing_key: session.signer.signing_key(),
-                member: Member {
-                    user_id: user,
-                    domain_owner: false,
-                },
+                member: Member { user_id: user },
                 connected: true,
             },
         )]
@@ -121,7 +118,6 @@ async fn resumed_endpoint_retires_its_missing_host_after_a_deleted_output_cannot
                 credential: "fixture".into(),
                 session_id: native,
                 state,
-                invite_key: None,
                 invitation_origin: None,
             },
             &mut socket,
@@ -401,10 +397,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
                             endpoints: [(
                                 native,
                                 Endpoint {
-                                    member: Member {
-                                        user_id: user,
-                                        domain_owner: false,
-                                    },
+                                    member: Member { user_id: user },
                                     connected: true,
                                     signing_key: session.signer.signing_key(),
                                 },
@@ -534,7 +527,7 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
     };
     let state: Snapshot = serde_json::from_value(json!({
         "channel":{"id":Uuid::new_v4(),"name":"Capture projection","icon":"couch","ownerId":owner,
-            "access":"private","hasPassword":false,"inviteHash":piik_channel_core::domain_invite_hash("fixture"),
+
             "historyWindow":100,"rooms":[room("target",true,json!({
                 "hostSessionId":host,"bindingId":Uuid::new_v4(),"nextHops":{}
             })),room("offline",false,serde_json::Value::Null)]},
@@ -549,7 +542,7 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
             url,
             origin: "http://localhost".into(),
             name: "Source".into(),
-            key: None,
+            owner_key: None,
             credential: None,
             server_udp: None,
         },
@@ -571,7 +564,6 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
                 credential: "fixture".into(),
                 session_id,
                 state: welcome,
-                invite_key: None,
                 invitation_origin: None,
             },
             &mut socket,
@@ -809,7 +801,7 @@ async fn capture_settings_completes_only_on_the_correlated_room_reply() {
             url,
             origin: "http://localhost".into(),
             name: "Source".into(),
-            key: None,
+            owner_key: None,
             credential: None,
             server_udp: None,
         },
@@ -931,7 +923,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
             };
             let mut state: Snapshot = serde_json::from_value(json!({
             "channel":{"id":Uuid::new_v4(),"name":"Capture lifecycle","icon":"couch","ownerId":user,
-                "access":"private","hasPassword":false,"inviteHash":piik_channel_core::domain_invite_hash("fixture"),
+
                 "historyWindow":100,"rooms":[room("affected"),room("other")]},
             "users":[{"id":user,"name":"Source"}],
             "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]}],
@@ -943,7 +935,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                     url,
                     origin: "http://localhost".into(),
                     name: "Source".into(),
-                    key: None,
+                    owner_key: None,
                     credential: None,
                     server_udp: None,
                 },
@@ -962,7 +954,6 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                         credential: "fixture".into(),
                         session_id,
                         state: state.clone(),
-                        invite_key: None,
                         invitation_origin: None,
                     },
                     &mut socket,

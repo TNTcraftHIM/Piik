@@ -1,7 +1,7 @@
 import { ChannelIdentityMark } from "./ChannelIdentity";
 import { useCopy } from "../../ui/copy";
 
-export type ChannelEntry = { kind: "entry" | "domain" };
+export type ChannelEntry = { kind: "entry" | "site" };
 
 /** A room's quiet beginning; navigation and creation remain with their existing owners. */
 export function ChannelRoomStart({ roomName, icon = "couch", entry, empty = true, canSend }: {
@@ -11,7 +11,7 @@ export function ChannelRoomStart({ roomName, icon = "couch", entry, empty = true
   const copy = (cn: string, en: string) => lang === "zh" ? cn : en;
   const title = entry?.kind === "entry" ? copy("一起待会儿。", "A place to be together.")
     : entry ? copy("还没有房间", "No rooms yet") : roomName;
-  const note = entry?.kind === "entry" ? copy("打开朋友发来的邀请链接，加入他们的域。", "Open an invitation from a friend to join their domain.")
+  const note = entry?.kind === "entry" ? copy("打开朋友分享的站点或房间链接。", "Open a site or room link from a friend.")
     : entry ? copy("从房间列表创建第一间房间。", "Create your first room from the room list.")
     : canSend ? copy("还没有消息。打个招呼吧。", "No messages yet. Say hello.")
       : copy("还没有消息。", "No messages yet.");

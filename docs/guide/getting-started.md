@@ -11,15 +11,15 @@ for those versions.
 | --- | --- |
 | A friend's 3.0 link | [Join their room](#join-a-friends-room). A browser is enough to watch. |
 | A 3.0 test App package | [Create a room with App](#share-with-piik-app). |
-| An existing 3.0 site | [Create a room in that domain](#share-from-an-existing-site), with Browser or App hosting. |
+| An existing 3.0 site | [Create a room in that site](#share-from-an-existing-site), with Browser or App hosting. |
 
-A **domain** is the space containing your group's rooms. People in a room can
+A **site** contains your group's rooms. Anyone can create their own room. People in a room can
 chat, join voice, share their own picture and choose which pictures to watch.
 
 ## Join a friend's room
 
-1. Open the complete 3.0 link in a computer or phone browser. If asked, enter
-   the **domain passphrase**, or ask your friend for a current domain invitation.
+1. Open the complete 3.0 link in a computer or phone browser. The site opens
+   directly and remembers your identity in this browser.
 2. Choose a room from the room list. On a narrow screen, **Rooms** opens that
    list. A private room may need its own invitation or **room password**.
 3. In the room's available screens, choose the person whose picture you want
@@ -32,7 +32,7 @@ volume and local pause affect only your own viewing. Move the pointer over the
 picture, tap it or focus a playback button to reveal its controls.
 
 You do not need to launch your own App or create another room to watch a friend.
-Keep their full link: opening your own App starts a different domain.
+Keep their full link: opening your own App starts a different site.
 
 ## Use a 3.0 link without installing
 
@@ -47,10 +47,10 @@ site, not the entry for this test version.
    archive and open `piik-app.exe`; on Android, install the supplied APK and
    open Piik. Keep the desktop package's files together.
 2. The launcher opens in your system browser. Choose a mode below, then
-   select **Open Piik**. The domain opens with its room list.
+   select **Open Piik**. The site opens with its room list.
 3. Open the room list (**Rooms** on a narrow screen), select **Create room**,
    enter a name and choose **Public** for a first room
-   everyone in the domain can enter. Check the hosting note, then select
+   everyone in the site can enter. Check the hosting note, then select
    **Create room**. You are now in a usable room: send a message to try it.
 4. [Invite your friends](#invite-friends), then select **Start sharing**.
    Choose **Browser**, **Camera**, or an available App window/screen source.
@@ -70,23 +70,17 @@ App launcher and expand **Local connection details** below **Open Piik** to
 read the address and certificate fingerprint. Compare it with the browser's
 certificate before accepting its first warning; see the
 [certificate steps](./troubleshooting.md#local-https-certificate-warning).
-The domain owner can set **Public** or **Private** entry and an optional domain
-passphrase in **Domain settings → Domain**, beside the domain name.
 
 ### Invite friends
 
-- **To the domain:** open the room list and use **Copy domain address** for a
-  public domain or **Copy domain invitation** for a private domain. Tell your
-  friends which room to choose. The nearby QR button shares the same link.
-- **To a room:** select the invitation button beside the room title. Owners of
-  public and private rooms use **Copy invitation**; the QR button sits below the
-  copy action. If no invitation exists, select **Generate new invitation**.
-  That invitation admits its recipient to the domain and the specified room,
-  including access to other public rooms in the domain.
+- **To the site:** send its address. Friends can open it and choose a public room.
+- **To a public room:** use the invitation button beside its title and **Copy room link**.
+- **To a private room:** its owner uses **Copy invitation** in the same place.
+  If no invitation exists, select **Generate new invitation**. The QR section
+  below the copy action shares the same link.
 
-Send invitations only to people you want to admit. Domain entry and private-room
-entry are different: a domain invitation alone does not unlock every private room.
-To replace a link, expand **Reset room invitation**, then select
+Send private-room invitations only to people you want to admit to that room.
+To replace a private link, expand **Reset room invitation**, then select
 **Generate new invitation**. The old link stops
 working, while people who already have access keep it. If an older invitation
 cannot be recovered, the panel explains this before you generate a replacement.
@@ -117,7 +111,7 @@ not the 3.0 test update.
 
 ## Share from an existing site
 
-Open your group's 3.0 address or invitation, enter the domain, then select
+Open your group's 3.0 address or room invitation, then select
 **Create room** or choose a room you can enter. Follow
 [the room and sharing steps above](#share-with-piik-app), starting at step 3.
 You can chat and join voice before anyone shares a picture.

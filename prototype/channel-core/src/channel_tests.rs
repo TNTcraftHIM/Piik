@@ -51,18 +51,17 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
         Base64::encode_string(&bytes)
     ))
     .unwrap();
-    let mut channel = Channel::new("owner".into(), "invite".into(), vec![]);
+    let mut channel = Channel::new("owner".into(), vec![]);
     let sessions: Vec<_> = (0..20)
         .map(|index| {
             channel
                 .join(
                     Admission {
-                        password: None,
                         can_prepare_udp: false,
                         can_receive_video_layers: false,
                         name: "Participant",
                         credential: None,
-                        key: Some(if index == 0 { "owner" } else { "invite" }),
+                        owner_key: (index == 0).then_some("owner"),
                         resume: None,
                         signing_key: [255; 32],
                     },
@@ -307,16 +306,15 @@ fn unknown_sender_fields_fail_with_the_request_id_intact() {
 
 #[test]
 fn text_limits_match_browser_utf16_and_room_history() {
-    let mut channel = Channel::new("owner".into(), "invite".into(), vec![]);
+    let mut channel = Channel::new("owner".into(), vec![]);
     let owner = channel
         .join(
             Admission {
-                password: None,
                 can_prepare_udp: false,
                 can_receive_video_layers: false,
                 name: "Owner",
                 credential: None,
-                key: Some("owner"),
+                owner_key: Some("owner"),
                 resume: None,
                 signing_key: crate::conversation::SessionSigner::from_seed([1; 32]).signing_key(),
             },
@@ -337,8 +335,6 @@ fn text_limits_match_browser_utf16_and_room_history() {
         .handle(
             owner.session_id,
             Command::UpdateDomain {
-                access: None,
-                password: None,
                 name: "\u{1f600}".repeat(33),
                 icon: Default::default(),
             },
@@ -349,8 +345,6 @@ fn text_limits_match_browser_utf16_and_room_history() {
         .handle(
             owner.session_id,
             Command::UpdateDomain {
-                access: None,
-                password: None,
                 name: "   ".into(),
                 icon: Default::default(),
             },
@@ -361,8 +355,6 @@ fn text_limits_match_browser_utf16_and_room_history() {
         .handle(
             owner.session_id,
             Command::UpdateDomain {
-                access: None,
-                password: None,
                 name: format!(" {} ", "\u{1f600}".repeat(32)),
                 icon: Default::default(),
             },
@@ -380,7 +372,7 @@ fn text_limits_match_browser_utf16_and_room_history() {
         Err("invalid_state")
     );
     assert!(crate::history::MessageDraft::new(
-        owner.user_id,
+        channel.identity.sessions[&owner.session_id].user_id,
         "limit".into(),
         "\u{1f600}".repeat(2000),
         vec![],
@@ -388,7 +380,7 @@ fn text_limits_match_browser_utf16_and_room_history() {
     )
     .is_ok());
     assert!(crate::history::MessageDraft::new(
-        owner.user_id,
+        channel.identity.sessions[&owner.session_id].user_id,
         "excess".into(),
         "\u{1f600}".repeat(2001),
         vec![],

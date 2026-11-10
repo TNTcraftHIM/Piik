@@ -28,10 +28,7 @@ fn input(owner: Uuid, actor: Uuid, action: impl FnOnce(RequestContext) -> HostAc
                     session,
                     Endpoint {
                         signing_key: SessionSigner::from_seed([1; 32]).signing_key(),
-                        member: Member {
-                            user_id: session,
-                            domain_owner: false,
-                        },
+                        member: Member { user_id: session },
                         connected: true,
                     },
                 )
@@ -53,6 +50,32 @@ fn command(host: &mut StoredRoomHost, owner: Uuid, actor: Uuid, value: Value) ->
         command,
     }))
     .unwrap()
+}
+
+fn invitation(host: &mut StoredRoomHost, owner: Uuid) -> String {
+    let room = host.policy().id.clone();
+    let reply = command(
+        host,
+        owner,
+        owner,
+        json!({"type":"room_invite","roomId":room}),
+    )
+    .reply
+    .unwrap();
+    let RoomResult::Invite { key } = reply.result else {
+        panic!("room invitation expected")
+    };
+    key
+}
+
+fn enter(host: &mut StoredRoomHost, owner: Uuid, actor: Uuid, key: &str) -> HostOutput {
+    let room = host.policy().id.clone();
+    command(
+        host,
+        owner,
+        actor,
+        json!({"type":"enter_room","roomId":room,"inviteKey":key}),
+    )
 }
 
 fn policy(id: &str, owner: Uuid, access: RoomAccess) -> RoomState {
@@ -369,10 +392,8 @@ fn message_reaction_counts_commit_once_and_recover_without_replaying_effects() {
     let author = Uuid::new_v4();
     let mut host =
         StoredRoomHost::create(&path, policy("reactions", owner, RoomAccess::Private)).unwrap();
-    host.dispatch(input(owner, author, |context| HostAction::GrantInvited {
-        context,
-    }))
-    .unwrap();
+    let key = invitation(&mut host, owner);
+    enter(&mut host, owner, author, &key);
     let original = sent(peer(
         &mut host,
         owner,
@@ -394,10 +415,7 @@ fn message_reaction_counts_commit_once_and_recover_without_replaying_effects() {
         peer(&mut host, owner, viewer, reaction("wave", 1)),
         Err("room_access_required")
     ));
-    host.dispatch(input(owner, viewer, |context| HostAction::GrantInvited {
-        context,
-    }))
-    .unwrap();
+    enter(&mut host, owner, viewer, &key);
     let react = |host: &mut StoredRoomHost, actor, key, nonce| match peer(
         host,
         owner,
@@ -498,6 +516,7 @@ fn failed_storage_withholds_grant_and_confirmation_then_retry_survives_reopen() 
     let viewer = Uuid::new_v4();
     let mut host =
         StoredRoomHost::create(&path, policy("private", owner, RoomAccess::Private)).unwrap();
+    let key = invitation(&mut host, owner);
     let database = rusqlite::Connection::open(&path).unwrap();
     database.execute_batch("CREATE TRIGGER reject_policy BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'disk full'); END;").unwrap();
     let metadata = command(
@@ -511,11 +530,7 @@ fn failed_storage_withholds_grant_and_confirmation_then_retry_survives_reopen() 
     );
     assert_eq!(host.summary().name, "private");
     assert_eq!(serde_json::to_value(host.summary().icon).unwrap(), "couch");
-    let failed = host
-        .dispatch(input(owner, viewer, |context| HostAction::GrantInvited {
-            context,
-        }))
-        .unwrap();
+    let failed = enter(&mut host, owner, viewer, &key);
     assert!(
         matches!(failed.reply.unwrap().result, RoomResult::Error { code } if code == "storage_failed")
     );
@@ -530,12 +545,8 @@ fn failed_storage_withholds_grant_and_confirmation_then_retry_survives_reopen() 
     database
         .execute_batch("DROP TRIGGER reject_policy;")
         .unwrap();
-    let granted = host
-        .dispatch(input(owner, viewer, |context| HostAction::GrantInvited {
-            context,
-        }))
-        .unwrap();
-    assert!(matches!(granted.reply.unwrap().result, RoomResult::Invited));
+    let granted = enter(&mut host, owner, viewer, &key);
+    assert!(matches!(granted.reply.unwrap().result, RoomResult::Done));
     assert!(granted.projection.views[&viewer].room.authorized);
     // Fail COMMIT after the message INSERT succeeded, using the production SQLite transaction.
     database.execute_batch("CREATE TABLE commit_failure (id TEXT REFERENCES message(id) DEFERRABLE INITIALLY DEFERRED);

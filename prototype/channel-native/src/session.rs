@@ -148,7 +148,7 @@ pub struct Config {
     pub url: String,
     pub origin: String,
     pub name: String,
-    pub key: Option<String>,
+    pub owner_key: Option<String>,
     pub credential: Option<String>,
     pub server_udp: Option<Arc<crate::peer::server_udp::ServerUdp>>,
 }
@@ -540,15 +540,13 @@ impl Session {
             if let Ok(Ok((mut socket, _))) = connection {
                 let join = Command::Join {
                     protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
-                    password: None,
                     can_prepare_udp: self.config.server_udp.is_none()
                         && crate::peer::can_prepare_udp().await,
                     can_receive_video_layers: true,
                     name: self.config.name.clone(),
                     credential: self.config.credential.clone(),
-                    key: self.config.key.clone(),
+                    owner_key: self.config.owner_key.clone(),
                     session_id: self.live.as_ref().map(|live| live.session.to_string()),
-                    room_id: None,
                     signing_key: self.signer.signing_key(),
                 };
                 let result = self.connected(&mut socket, join, stop).await;

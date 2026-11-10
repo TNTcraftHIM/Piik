@@ -33,7 +33,6 @@ mod app_stun;
 const ORIGIN: &str = "http://198.51.100.1:9000";
 const ROOM: &str = "kernel-lab-room";
 const OWNER: &str = "owned-kernel-lab-owner";
-const INVITE: &str = "owned-kernel-lab-invite";
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 fn emit(value: Value) {
     println!(
@@ -61,7 +60,7 @@ async fn domain(path: PathBuf) -> Result<()> {
             .parse::<u16>()?,
     ))
     .await?;
-    let domain = Domain::open(&path, OWNER, INVITE, ORIGIN.into(), None, ice)?;
+    let domain = Domain::open(&path, OWNER, ORIGIN.into(), None, ice)?;
     let mut services = Vec::new();
     for port in [3478, 3479, 3480] {
         let socket = UdpSocket::bind(("198.51.100.1", port)).await?;
@@ -82,7 +81,7 @@ async fn host(path: PathBuf) -> Result<()> {
             url: format!("{}/prototype/channel", ORIGIN.replace("http:", "ws:")),
             origin: ORIGIN.into(),
             name: "Kernel Native host".into(),
-            key: Some(OWNER.into()),
+            owner_key: Some(OWNER.into()),
             credential: None,
             server_udp: None,
         },
@@ -115,12 +114,10 @@ async fn participant() -> Result<()> {
         &mut socket,
         Command::Join {
             protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
-            password: None,
             name: "Kernel Native reader".into(),
             credential: None,
-            key: Some(INVITE.into()),
+            owner_key: None,
             session_id: None,
-            room_id: None,
             signing_key: signer.signing_key(),
             can_prepare_udp,
             can_receive_video_layers: true,

@@ -45,7 +45,7 @@ impl RoomSummary {
         Ok(())
     }
     pub fn from_policy(policy: &RoomState) -> Self {
-        let view = policy.view(policy.creator_id, false).expect("room owner");
+        let view = policy.view(policy.creator_id).expect("room owner");
         Self {
             id: view.id,
             name: view.name,
@@ -98,14 +98,6 @@ pub enum HostAction {
         peer: Uuid,
         ready: bool,
     },
-    VerifyInvite {
-        ticket: Uuid,
-        key: String,
-        member: Option<Member>,
-    },
-    GrantInvited {
-        context: RequestContext,
-    },
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -149,7 +141,6 @@ pub enum RoomResult {
     InviteState {
         invitation: crate::wire::RoomInvitation,
     },
-    Invited,
     Error {
         code: String,
     },
@@ -160,13 +151,6 @@ pub enum RoomResult {
 pub struct RoomReply {
     pub context: RequestContext,
     pub result: RoomResult,
-}
-
-#[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InviteVerification {
-    pub ticket: Uuid,
-    pub accepted: bool,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -186,7 +170,6 @@ pub struct HostOutput {
     pub revision: u64,
     pub projection: RoomProjection,
     pub reply: Option<RoomReply>,
-    pub invitation: Option<InviteVerification>,
 }
 
 #[derive(Serialize)]
@@ -275,7 +258,7 @@ impl RoomRuntime {
                 invite_key,
                 ..
             } => {
-                let authorized = self.policy().reads(member.user_id, member.domain_owner);
+                let authorized = self.policy().reads(member.user_id);
                 self.enter(member, password.as_deref(), invite_key.as_deref())?;
                 op.policy_changed = !authorized;
             }
@@ -342,7 +325,6 @@ struct Pending {
     before: RoomRuntime,
     input: HostInput,
     reply: Option<RoomReply>,
-    invitation: Option<InviteVerification>,
     history: bool,
 }
 
@@ -374,11 +356,9 @@ mod tests {
         };
         let owner = Member {
             user_id: Uuid::new_v4(),
-            domain_owner: false,
         };
         let sharer = Member {
             user_id: Uuid::new_v4(),
-            domain_owner: false,
         };
         let (local, first, second, binding) = (
             Uuid::new_v4(),
@@ -587,7 +567,6 @@ mod tests {
     fn authorized_entry_projects_a_new_endpoint_without_a_policy_write() {
         let owner = Member {
             user_id: Uuid::new_v4(),
-            domain_owner: false,
         };
         let friend = Member {
             user_id: Uuid::new_v4(),
@@ -660,7 +639,6 @@ mod tests {
     fn forwarding_a_room_update_preserves_omitted_password_and_explicit_removal() {
         let owner = Member {
             user_id: Uuid::new_v4(),
-            domain_owner: false,
         };
         let session = Uuid::new_v4();
         let mut host = RoomHost::new(
@@ -725,7 +703,6 @@ mod tests {
     fn room_voice_bitrate_requires_manage_and_rejects_invalid_without_policy_changes() {
         let owner = Member {
             user_id: Uuid::new_v4(),
-            domain_owner: false,
         };
         let other = Member {
             user_id: Uuid::new_v4(),
@@ -999,7 +976,6 @@ impl RoomHost {
         self.room.reconcile(&input.endpoints, input.now);
         let before = self.room.clone();
         let mut reply = None;
-        let mut invitation = None;
         let mut work = HostWork {
             policy: None,
             history: None,
@@ -1009,8 +985,7 @@ impl RoomHost {
             HostAction::Command { context, .. }
             | HostAction::Revoke { context, .. }
             | HostAction::FlowState { context, .. }
-            | HostAction::BaseState { context, .. }
-            | HostAction::GrantInvited { context } => Some(context.clone()),
+            | HostAction::BaseState { context, .. } => Some(context.clone()),
             _ => None,
         };
         let apply = (|| -> Result<RoomResult, &'static str> {
@@ -1035,26 +1010,6 @@ impl RoomHost {
                     ready,
                 } => {
                     self.room.base_state(context.session_id, *peer, *ready)?;
-                }
-                HostAction::VerifyInvite {
-                    ticket,
-                    key,
-                    member,
-                } => {
-                    invitation = Some(InviteVerification {
-                        ticket: *ticket,
-                        accepted: member.is_some_and(|member| {
-                            self.room
-                                .authorize(member, crate::RoomPermission::Read)
-                                .is_ok()
-                        }) || self.room.accepts_invite(key),
-                    })
-                }
-                HostAction::GrantInvited { .. } => {
-                    if self.room.grant_invited(member.unwrap().user_id) {
-                        work.policy = Some(self.policy().clone());
-                    }
-                    return Ok(RoomResult::Invited);
                 }
                 HostAction::Command { context, command } => {
                     if matches!(
@@ -1123,7 +1078,6 @@ impl RoomHost {
             before,
             input,
             reply,
-            invitation,
             history: work.history.is_some(),
         });
         Ok(work)
@@ -1208,7 +1162,6 @@ impl RoomHost {
                 base_links: self.room.base_links().collect(),
             },
             reply: pending.reply,
-            invitation: pending.invitation,
         }
     }
 }

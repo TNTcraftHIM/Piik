@@ -24,7 +24,7 @@ pub struct RoomNetwork {
 impl RoomNetwork {
     pub fn new() -> Self {
         Self {
-            authority: Authority::new("owner".into(), "invite".into(), vec![]).unwrap(),
+            authority: Authority::new("owner".into(), vec![]).unwrap(),
             hosts: BTreeMap::new(),
             sessions: BTreeMap::new(),
             states: BTreeMap::new(),

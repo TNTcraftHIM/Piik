@@ -4,10 +4,10 @@ This guide covers the 3.0 internal test. For the published version, use the [2.6
 
 English · [简体中文](./room-tools.zh-CN.md) · [Documentation](./README.md)
 
-A domain contains rooms. Select a room in the sidebar to read its conversation.
+A site contains rooms. Select a room in the sidebar to read its conversation.
 Once admitted to that room, you can chat, join voice, share a picture or watch
-someone else's share. Domain and room owners manage their respective settings;
-you do not need a separate participant role to use these activities.
+someone else's share. Anyone can create a room and manage their own rooms.
+The site's maintainer manages its name, image and backup.
 
 ## Manage a room
 
@@ -26,13 +26,12 @@ in place. The tabs show the tasks available to you:
   settings and messages.
 
 Invitations open beside the room title. Copy the link there or use the QR button
-below the copy action. Owners of public and private rooms can invite new friends.
-A room invitation admits its holder to the domain and that room, including the
-domain's other public rooms. Switching between public and private keeps the same
-invitation; ordinary public access does not grant later private access. Resetting
-an invitation invalidates its old links without revoking admitted users. To replace
+below the copy action. Public rooms share a direct link; private invitations
+grant access only to their room. Switching to public keeps an existing private
+key, but ordinary public access does not grant later private access. Resetting
+a private invitation invalidates its old links without revoking admitted users. To replace
 its link, expand **Reset room invitation**, then select **Generate new invitation**.
-Domain settings remain beside the domain name in the room list.
+Site settings remain beside the site name in the room list.
 
 ## Chat and reactions
 
@@ -45,8 +44,8 @@ Domain settings remain beside the domain name in the room list.
 
 Confirmed messages and their reaction counts are saved by the room's host. Refreshing
 or returning to the room loads its history again when that host is available.
-Chat and history use the domain connection and do not wait for a P2P link.
-The domain forwards message text; it does not keep the room's history.
+Chat and history use the site connection and do not wait for a P2P link.
+The site forwards message text; it does not keep the room's history.
 An attachment's history entry can remain after its readable file copies go
 offline; open or download it when a participant with a copy is available.
 File content, voice and shared pictures use their own P2P connections.

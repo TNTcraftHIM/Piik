@@ -29,10 +29,6 @@ pub(crate) enum ReplyOwner {
         completion: Option<RoomResult>,
         delete: bool,
     },
-    Invitation {
-        ticket: Uuid,
-        member: Option<Member>,
-    },
     RouteWake,
 }
 
@@ -134,8 +130,7 @@ impl RemoteRoom {
             HostAction::Command { context, .. }
             | HostAction::Revoke { context, .. }
             | HostAction::FlowState { context, .. }
-            | HostAction::BaseState { context, .. }
-            | HostAction::GrantInvited { context } => Some(ReplyOwner::Request {
+            | HostAction::BaseState { context, .. } => Some(ReplyOwner::Request {
                 context: context.clone(),
                 member: endpoints[&context.session_id].member,
                 completion: None,
@@ -151,10 +146,6 @@ impl RemoteRoom {
                 ),
             }),
             HostAction::RouteWake => Some(ReplyOwner::RouteWake),
-            HostAction::VerifyInvite { ticket, member, .. } => Some(ReplyOwner::Invitation {
-                ticket: *ticket,
-                member: *member,
-            }),
             _ => None,
         };
         if owner.is_some() && binding.replies.len() >= 64 {
@@ -198,7 +189,7 @@ impl RemoteRoom {
             }
             return Some(view);
         }
-        let manager = member.domain_owner || member.user_id == self.summary.creator_id;
+        let manager = member.user_id == self.summary.creator_id;
         if self.summary.hidden && !manager {
             return None;
         }

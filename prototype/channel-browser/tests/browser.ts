@@ -10,14 +10,13 @@ function check(value: unknown, message: string): asserts value { if (!value) thr
 interface Output {
   projection: { views: Record<string, { room: { icon: string; canManage: boolean; participantSessionIds: string[] }; publications: unknown[] }> };
   reply: { result: { type: string; code?: string; key?: string; invitation?: { state: string; key?: string } } } | null;
-  invitation: { accepted: boolean } | null;
 }
 window.runBrowserRoomCheck = async () => {
   const database = `piik-browser-room-check-${crypto.randomUUID()}`;
   const signer = await createSessionSigner(crypto.getRandomValues(new Uint8Array(32)));
   const peerSigner = await createSessionSigner(crypto.getRandomValues(new Uint8Array(32)));
   const signingKey = Array.from(signer.signing_key()), peerSigningKey = Array.from(peerSigner.signing_key());
-  const owner = { userId: crypto.randomUUID(), domainOwner: false };
+  const owner = { userId: crypto.randomUUID() };
   const session = crypto.randomUUID(), connection = crypto.randomUUID();
   const peerSession = crypto.randomUUID(), peerMember = { ...owner, userId: crypto.randomUUID() };
   let bindingId = crypto.randomUUID();
@@ -155,16 +154,13 @@ window.runBrowserRoomCheck = async () => {
         check(read.reply?.result.invitation?.state === "available" && read.reply.result.invitation.key === invitation.reply!.result.key,
           "repeated invitation reads preserve the committed key");
       }
-      const verified = await privateHost.dispatch({ now: Date.now(), bindingId, hostSessionId: session, revision: ++revision, endpoints,
-        action: { type: "verify_invite", ticket: crypto.randomUUID(), key: invitation.reply!.result.key, member: null },
-      }) as Output;
-      check(verified.invitation?.accepted, "shared room verifies private invitation");
       const guest = { ...owner, userId: crypto.randomUUID() };
       const guestEndpoints = { ...endpoints, [guestSession]: { member: guest, connected: true, signingKey: peerSigningKey } };
       const granted = await privateHost.dispatch({ now: Date.now(), bindingId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints,
-        action: { type: "grant_invited", context: { connection, sessionId: guestSession, requestId: null, now: Date.now() } },
+        action: { type: "command", context: { connection, sessionId: guestSession, requestId: null, now: Date.now() },
+          command: { type: "enter_room", roomId: privateHost.roomId, inviteKey: invitation.reply!.result.key } },
       }) as Output;
-      check(granted.reply?.result.type === "invited" && granted.projection.views[guestSession], "committed grant returns invited projection");
+      check(granted.reply?.result.type === "done" && granted.projection.views[guestSession], "ordinary room entry commits its private grant");
       await privateHost.close();
       const reopened = await BrowserRoomHost.open(database, privatePolicy);
       await reopened.bind(bindingId);

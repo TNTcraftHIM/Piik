@@ -454,7 +454,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       `prototype/channel-server/target/debug/piik-channel-prototype${process.platform === "win32" ? ".exe" : ""}`), [], {
       env: { ...process.env, PIIK_CHANNEL_PORT: String(otherCorePort), PIIK_CHANNEL_WEB_ORIGIN: otherOrigin,
         PIIK_CHANNEL_WEB_DIR: assets, PIIK_CHANNEL_DATA_DIR: join(directory, "other-domain"),
-        PIIK_CHANNEL_OWNER_KEY: otherOwner, PIIK_CHANNEL_INVITE_KEY: randomUUID() },
+        PIIK_CHANNEL_OWNER_KEY: otherOwner },
       windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
     });
     const collectOther = chunk => { log = (log + String(chunk).replaceAll(otherOwner, "[other owner key]")).slice(-64000); };
@@ -517,7 +517,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     for (const child of [otherWeb, otherServer]) if (child?.exitCode === null && child.signalCode === null) {
       const exited = once(child, "exit"); child.kill(); await exited;
     }
-    for (const key of [process.env.PIIK_CHANNEL_OWNER_KEY, process.env.PIIK_CHANNEL_INVITE_KEY]) {
+    for (const key of [process.env.PIIK_CHANNEL_OWNER_KEY]) {
       if (key) log = log.replaceAll(key, "[test key]");
     }
     await writeFile(join(output, "app-runtime.log"), log);
@@ -540,7 +540,7 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
   let native, log = "";
   const start = () => {
     native = spawn(executable, ["--room", database, name], {
-      env: { ...process.env, PIIK_CHANNEL_NATIVE_KEY: process.env.PIIK_CHANNEL_OWNER_KEY,
+      env: { ...process.env, PIIK_CHANNEL_NATIVE_OWNER_KEY: process.env.PIIK_CHANNEL_OWNER_KEY,
         PIIK_CHANNEL_NATIVE_NAME: "Native operator" },
       windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
     });

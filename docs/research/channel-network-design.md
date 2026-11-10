@@ -1,6 +1,6 @@
 # Piik 3.0 Channels, Rooms And Networking
 
-Accepted direction updated 2026-11-08. This document owns the isolated 3.0 responsibility
+Accepted direction updated 2026-11-10. This document owns the isolated 3.0 responsibility
 and networking design. The [prototype README](../../prototype/channel-server/README.md)
 describes running behavior; [TODO](../todo.md) owns implementation and decisions.
 The [2.x routing contract](../standards/routing-transport.md) remains unchanged.
@@ -33,9 +33,9 @@ peer connection. TODO owns remaining implementation and platform integration.
 
 | English | Chinese | Meaning |
 | --- | --- | --- |
-| User | 用户 | Every participant, including domain owners, room owners and sharers. |
-| Domain | 域 | The top-level container for users and rooms; named `Channel` in the current code. |
-| Domain owner | 域主 | The user operating the channel's directory and admission. |
+| User | 用户 | Every participant, including site operators, room owners and sharers. |
+| Domain | 站点后台 | The site's identity, room directory and coordination runtime; named `Channel` in code, without a separate entry or invitation layer. |
+| Site operator | 站点维护者 | The user operating the site's metadata and backup/restore, without room-wide authority over other users. |
 | Room | 房间 | A conversation, history and media scope within a channel. |
 | Room owner | 房主 | The user operating that room's state, management and base distribution network. |
 | Sharer | 分享者 | The user originating a particular screen, voice publication or file offer. |
@@ -60,11 +60,12 @@ transfer of its operation and saved state; automatic takeover is not selected.
 | Participant runtime | Local captures, playback, file copies and the actual peer transports/forwarding work it has admitted. |
 
 The domain directory is a projection of room details. It does not become a
-second writer of the room name, private-room policy or history. Admitted domain
-users may create and manage their own rooms. Room admission permits conversation,
+second writer of the room name, private-room policy or history. Opening the site
+establishes or restores a personal identity; users may create and manage their own rooms. Room admission permits conversation,
 voice, sharing, watching and interactions without additional role groups or
-participation switches. The domain owner manages the domain and its rooms;
-room owners manage their own rooms. Source owners separately consent to remote
+participation switches. Site maintenance permits changing site metadata and
+restoring its own data; it does not grant access to other users' private rooms.
+Room owners manage their own rooms. Source owners separately consent to remote
 input. These scopes use the shared authenticated identity and room-access rules.
 
 Directory visibility and access remain separate. Public rooms admit channel
@@ -73,12 +74,12 @@ neither directory details nor activity to unauthorized users. A nickname is not
 identity, and an invitation establishes admission rather than proving that two
 visitors are the same user.
 
-A domain starts private and admits users through a domain invitation, a configured
-passphrase, or their saved personal credential. A valid room invitation also
-admits its recipient to the domain and that room. Public domains accept their
-ordinary address and do not use a passphrase. The domain owner controls these
-entry settings. Resetting the domain invitation retires its old links while
-preserving admitted users and independently managed room invitations.
+The site has no separate access mode, password or invitation. Public rooms use
+ordinary direct links. Private rooms accept their room invitation or password
+through their actual host after the normal site connection is established.
+An invalid invitation or unavailable room does not retire that site identity.
+The local hosting owner retains its bootstrap key and saved credential for
+maintenance; visiting the same site does not confer that authority.
 
 The domain directory binds each room to its owner's current authenticated runtime
 connection, separately from the owner's persistent user identity. With no runtime,
@@ -126,10 +127,9 @@ cannot replace newer routes, but an earlier authorized action can still complete
 Successful domain-mediated policy/activity actions are acknowledged after the domain has installed a
 projection covering that turn. Until then, the existing pending request retains
 its result; explicit failures do not wait for a projection.
-Confirmation follows the requester's current session and permission facts;
-another participant leaving cannot invalidate it. Invitation
-verification follows the invited user's known permissions, not an online-session
-requirement for someone who has not joined yet.
+Confirmation follows the requester's current session and room permission facts;
+another participant leaving cannot invalidate it. Room entry uses that same
+authenticated session and confirmation boundary after the site handshake.
 The [room-data model](./channel-storage-and-identity.md) owns persistence, chat
 retry identity, history correlation/complete pages, file copies and manual address
 replacement. Live results are room-host signed without a permanent signed history

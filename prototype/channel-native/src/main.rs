@@ -33,7 +33,7 @@ async fn run_native() -> Result<()> {
         url: env::var("CHANNEL_WS_URL").context("CHANNEL_WS_URL is required")?,
         origin: env::var("CHANNEL_UI_ORIGIN").context("CHANNEL_UI_ORIGIN is required")?,
         name: env::var("PIIK_CHANNEL_NATIVE_NAME").unwrap_or_else(|_| "Native Host".into()),
-        key: env::var("PIIK_CHANNEL_NATIVE_KEY").ok(),
+        owner_key: env::var("PIIK_CHANNEL_NATIVE_OWNER_KEY").ok(),
         credential: env::var("PIIK_CHANNEL_NATIVE_CREDENTIAL").ok(),
         server_udp: None,
     };

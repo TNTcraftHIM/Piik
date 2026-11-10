@@ -534,7 +534,6 @@ mod room_tests {
         let host_key = SessionSigner::from_seed([2; 32]);
         let owner = Member {
             user_id: Uuid::new_v4(),
-            domain_owner: false,
         };
         let actor = Member {
             user_id: Uuid::new_v4(),

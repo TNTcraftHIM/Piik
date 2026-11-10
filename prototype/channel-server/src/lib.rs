@@ -42,7 +42,7 @@ impl NativeService {
             url: format!("ws://{address}/prototype/channel"),
             origin: domain.origin().into(),
             name: domain.owner_name().unwrap_or_else(|| "Piik Server".into()),
-            key: Some(domain.owner_key()),
+            owner_key: Some(domain.owner_key()),
             credential: None,
             server_udp: Some(udp),
         };

@@ -15,7 +15,7 @@ export function ChannelUser({ id, name, self, owner, online, voice, activity, ac
       <PawnSvg color={participantColor(id)} identity={id} host={owner} voice={voice} />
       <div className="c3-person-copy">
         <strong>{name}{self && <span className="c3-you">{zh ? "你" : "you"}</span>}</strong>
-        {(activity || owner || !online) && <small>{activity || (owner ? (zh ? "域主" : "Domain owner") : (zh ? "离线" : "Offline"))}</small>}
+        {(activity || owner || !online) && <small>{activity || (owner ? (zh ? "房主" : "Room owner") : (zh ? "离线" : "Offline"))}</small>}
       </div>
       {actions && <div className="c3-person-actions">{actions}</div>}
     </div>

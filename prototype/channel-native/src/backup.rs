@@ -445,7 +445,7 @@ mod tests {
 
     #[test]
     fn domain_archive_contains_only_its_own_authority() -> Result<()> {
-        let metadata = Authority::new("owner".into(), "invite".into(), vec![])
+        let metadata = Authority::new("owner".into(), vec![])
             .unwrap()
             .export_backup();
         let mut bytes = vec![];

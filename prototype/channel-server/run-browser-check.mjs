@@ -25,11 +25,11 @@ const env = { ...process.env, PIIK_CHANNEL_PORT: String(corePort), PIIK_CHANNEL_
   PIIK_CHANNEL_WEB_ORIGIN: origin, CHANNEL_UI_ORIGIN: origin, PIIK_CHANNEL_DATA_DIR: directory,
   CHANNEL_WS_URL: `ws://127.0.0.1:${corePort}/prototype/channel`,
   CHANNEL_DATA_FILE: join(directory, "channel.sqlite"),
-  PIIK_CHANNEL_OWNER_KEY: randomUUID(), PIIK_CHANNEL_INVITE_KEY: randomUUID() };
+  PIIK_CHANNEL_OWNER_KEY: randomUUID() };
 const children = [];
 const services = [];
 function redact(value) {
-  return value.replaceAll(env.PIIK_CHANNEL_OWNER_KEY, "[owner key]").replaceAll(env.PIIK_CHANNEL_INVITE_KEY, "[invite key]");
+  return value.replaceAll(env.PIIK_CHANNEL_OWNER_KEY, "[owner key]");
 }
 function start(command, args) {
   const child = spawn(command, args, { env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });

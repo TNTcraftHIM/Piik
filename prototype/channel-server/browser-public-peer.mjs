@@ -21,8 +21,8 @@ export function readContract(text) {
   assert(url.protocol === "https:" && /^[a-z0-9-]+\.trycloudflare\.com$/.test(url.hostname)
     && !url.username && !url.password && !url.port && !url.search
     && ["/", "/__channel-preview"].includes(url.pathname), "invalid_lab_origin");
-  assert(fragment.get("invite") && [...fragment.keys()].every(key => ["invite", "room"].includes(key)), "member_invitation_required");
-  assert(!fragment.has("room") || fragment.get("room") === value.roomId, "invitation_room_mismatch");
+  assert([...fragment.keys()].every(key => ["invite", "room"].includes(key)), "invalid_room_link_fields");
+  assert(fragment.get("room") === value.roomId, "invitation_room_mismatch");
   for (const field of ["roomId", "hostSessionId", "sourceSessionId", "publicationId"])
     assert(/^[A-Za-z0-9_-]{1,128}$/.test(value[field]), `invalid_lab_${field.toLowerCase()}`);
   assert(/^[a-f0-9]{64}$/i.test(value.apkSha256), "invalid_lab_apksha256");

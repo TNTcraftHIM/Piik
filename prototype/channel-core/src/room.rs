@@ -72,7 +72,7 @@ impl RoomRuntime {
         member: Member,
         permission: RoomPermission,
     ) -> Result<(), &'static str> {
-        if !self.policy.reads(member.user_id, member.domain_owner) {
+        if !self.policy.reads(member.user_id) {
             return Err(if self.policy.hidden {
                 "room_unavailable"
             } else {
@@ -81,15 +81,13 @@ impl RoomRuntime {
         }
         match permission {
             RoomPermission::Read => Ok(()),
-            RoomPermission::Manage if self.policy.manages(member.user_id, member.domain_owner) => {
-                Ok(())
-            }
+            RoomPermission::Manage if self.policy.manages(member.user_id) => Ok(()),
             _ => Err("forbidden"),
         }
     }
 
     pub fn snapshot(&self, member: Member, session: Uuid) -> Option<RoomSnapshot> {
-        let mut room = self.policy.view(member.user_id, member.domain_owner)?;
+        let mut room = self.policy.view(member.user_id)?;
         room.relay_override = self
             .activity
             .get(&session)
@@ -163,10 +161,6 @@ impl RoomRuntime {
                 .collect();
         }
         Some(snapshot)
-    }
-
-    pub fn accepts_invite(&self, key: &str) -> bool {
-        self.policy.accepts_invite(key)
     }
 
     pub(crate) fn set_default_relay_capacity(&mut self, capacity: u8) {
@@ -274,10 +268,6 @@ impl RoomRuntime {
         Ok(())
     }
 
-    pub fn grant_invited(&mut self, user: Uuid) -> bool {
-        self.policy.access == RoomAccess::Private && self.policy.grants.insert(user)
-    }
-
     pub(crate) fn reaction(
         &self,
         member: Member,
@@ -310,7 +300,7 @@ impl RoomRuntime {
                 if !endpoints.values().any(|endpoint| {
                     endpoint.connected
                         && endpoint.member.user_id == *user_id
-                        && self.policy.reads(*user_id, endpoint.member.domain_owner)
+                        && self.policy.reads(*user_id)
                 }) =>
             {
                 return Err("target_unavailable")
@@ -379,8 +369,7 @@ impl RoomRuntime {
         password: Option<&str>,
         invite: Option<&str>,
     ) -> Result<(), &'static str> {
-        self.policy
-            .enter(member.user_id, member.domain_owner, password, invite)
+        self.policy.enter(member.user_id, password, invite)
     }
 
     pub fn update(
@@ -416,9 +405,7 @@ impl RoomRuntime {
 
     pub fn revoke(&mut self, member: Member, target: Member) -> Result<(), &'static str> {
         self.authorize(member, RoomPermission::Manage)?;
-        if self.policy.access != RoomAccess::Private
-            || self.policy.manages(target.user_id, target.domain_owner)
-        {
+        if self.policy.access != RoomAccess::Private || self.policy.manages(target.user_id) {
             return Err("forbidden");
         }
         self.policy.grants.remove(&target.user_id);
@@ -1280,7 +1267,7 @@ mod tests {
         )
         .unwrap();
         for user in [id(2), id(3), id(4)] {
-            room.grant_invited(user);
+            room.policy.grants.insert(user);
         }
         room.command(viewer, id(2), watch(id(5)), &endpoints)
             .unwrap();
@@ -1306,10 +1293,7 @@ mod tests {
                     id(value),
                     Endpoint {
                         signing_key: [value as u8; 32],
-                        member: Member {
-                            user_id: id(value),
-                            domain_owner: value == 1,
-                        },
+                        member: Member { user_id: id(value) },
                         connected: true,
                     },
                 )
@@ -1365,10 +1349,7 @@ mod tests {
                     id(value),
                     Endpoint {
                         signing_key: [value as u8; 32],
-                        member: Member {
-                            user_id: id(value),
-                            domain_owner: value == 1,
-                        },
+                        member: Member { user_id: id(value) },
                         connected: true,
                     },
                 )
@@ -1470,10 +1451,7 @@ mod tests {
                     id(value),
                     Endpoint {
                         signing_key: [value as u8; 32],
-                        member: Member {
-                            user_id: id(value),
-                            domain_owner: value == 1,
-                        },
+                        member: Member { user_id: id(value) },
                         connected: true,
                     },
                 )
@@ -1855,10 +1833,7 @@ mod tests {
                         id(value),
                         Endpoint {
                             signing_key: [value as u8; 32],
-                            member: Member {
-                                user_id: id(value),
-                                domain_owner: value == 1,
-                            },
+                            member: Member { user_id: id(value) },
                             connected: true,
                         },
                     )
@@ -2340,10 +2315,7 @@ mod tests {
                     id(value),
                     Endpoint {
                         signing_key: [value as u8; 32],
-                        member: Member {
-                            user_id: id(value),
-                            domain_owner: value == 3,
-                        },
+                        member: Member { user_id: id(value) },
                         connected: true,
                     },
                 )
@@ -2448,10 +2420,7 @@ mod tests {
                     (
                         id(n),
                         Endpoint {
-                            member: crate::Member {
-                                user_id: id(n),
-                                domain_owner: n == 1,
-                            },
+                            member: crate::Member { user_id: id(n) },
                             connected: true,
                             signing_key: [0; 32],
                         },
@@ -3260,7 +3229,6 @@ mod tests {
     fn room_projection_obeys_private_access_before_exposing_activity() {
         let owner = Member {
             user_id: Uuid::new_v4(),
-            domain_owner: false,
         };
         let viewer = Member {
             user_id: Uuid::new_v4(),
@@ -3280,7 +3248,7 @@ mod tests {
             )
             .unwrap(),
         );
-        room.grant_invited(viewer.user_id);
+        room.policy.grants.insert(viewer.user_id);
         let picture = Uuid::new_v4();
         let voice = Uuid::new_v4();
         room.publish(

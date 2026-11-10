@@ -180,11 +180,6 @@ pub fn verify_reply(packet: &str, key: &[u8]) -> Result<String, JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn domain_invite_hash(key: &str) -> String {
-    piik_channel_core::domain_invite_hash(key)
-}
-
-#[wasm_bindgen]
 pub fn verify_conversation(packet: &str, local: &str, state: &str) -> Result<String, JsValue> {
     let packet = parse::<SignedPacket>(packet)?;
     let local = Uuid::parse_str(local).map_err(|_| error("invalid_request"))?;

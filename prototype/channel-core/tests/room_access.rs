@@ -19,18 +19,10 @@ fn zero_leaf_join_order_insertion_passes_the_domain_projection_and_preserves_exi
     admit(
         &mut network,
         owner,
-        json!({"type":"join","name":"Owner","key":"owner"}),
+        json!({"type":"join","name":"Owner","ownerKey":"owner"}),
     );
-    admit(
-        &mut network,
-        a,
-        json!({"type":"join","name":"A","key":"invite"}),
-    );
-    admit(
-        &mut network,
-        b,
-        json!({"type":"join","name":"B","key":"invite"}),
-    );
+    admit(&mut network, a, json!({"type":"join","name":"A"}));
+    admit(&mut network, b, json!({"type":"join","name":"B"}));
     let room = room(&mut network, owner, "public", false);
     let apply = |network: &mut RoomNetwork, connection, value| {
         let effects = command(network, connection, value);
@@ -191,19 +183,11 @@ fn capacity_transition_keeps_candidate_hops_out_of_the_directory_and_other_room_
     let owner_session = admit(
         &mut network,
         owner,
-        json!({"type":"join","name":"Owner","key":"owner"}),
+        json!({"type":"join","name":"Owner","ownerKey":"owner"}),
     )
     .0;
-    admit(
-        &mut network,
-        first,
-        json!({"type":"join","name":"First","key":"invite"}),
-    );
-    admit(
-        &mut network,
-        second,
-        json!({"type":"join","name":"Second","key":"invite"}),
-    );
+    admit(&mut network, first, json!({"type":"join","name":"First"}));
+    admit(&mut network, second, json!({"type":"join","name":"Second"}));
     let a = room(&mut network, owner, "public", false);
     let b = room(&mut network, owner, "public", false);
     for id in [&a, &b] {
@@ -376,17 +360,17 @@ fn deletion_withdraws_directory_authority_across_restart_without_recreating_the_
     admit(
         &mut network,
         owner,
-        json!({"type":"join","name":"Domain owner","key":"owner"}),
+        json!({"type":"join","name":"Domain owner","ownerKey":"owner"}),
     );
     let (_, credential, _) = admit(
         &mut network,
         creator,
-        json!({"type":"join","name":"Creator","key":"invite"}),
+        json!({"type":"join","name":"Creator"}),
     );
     admit(
         &mut network,
         stranger,
-        json!({"type":"join","name":"Stranger","key":"invite"}),
+        json!({"type":"join","name":"Stranger"}),
     );
     let deleted = room(&mut network, creator, "private", true);
     let sibling = room(&mut network, owner, "public", false);
@@ -401,8 +385,14 @@ fn deletion_withdraws_directory_authority_across_restart_without_recreating_the_
         .events
         .iter()
         .any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "forbidden")));
+    let requester = Uuid::new_v4();
+    admit(
+        &mut network,
+        requester,
+        json!({"type":"join","name":"Other creator page","credential":credential}),
+    );
     let pending = network.authority.handle(
-        owner,
+        requester,
         piik_channel_core::wire::Request::parse(
             &json!({"type":"delete_room","deleteData":true,"roomId":deleted,"requestId":"delete"})
                 .to_string(),
@@ -419,7 +409,7 @@ fn deletion_withdraws_directory_authority_across_restart_without_recreating_the_
         })
         .unwrap();
     let output = network.host_turn(&deleted, input);
-    network.authority.disconnect(owner, 100);
+    network.authority.disconnect(requester, 100);
     let removed = command(
         &mut network,
         creator,
@@ -429,7 +419,7 @@ fn deletion_withdraws_directory_authority_across_restart_without_recreating_the_
         !removed
             .events
             .iter()
-            .any(|(target, event)| *target == owner && matches!(event, Event::RoomReply { .. })),
+            .any(|(target, event)| *target == requester && matches!(event, Event::RoomReply { .. })),
         "a closed requester receives no completion"
     );
     assert!(!network
@@ -454,10 +444,7 @@ fn deletion_withdraws_directory_authority_across_restart_without_recreating_the_
         returning,
         json!({"type":"join","name":"Creator","credential":credential}),
     );
-    for value in [
-        json!({"type":"host_register","room":summary}),
-        json!({"type":"admit_room","room":summary}),
-    ] {
+    for value in [json!({"type":"host_register","room":summary})] {
         let result = command(&mut reopened, returning, value);
         assert!(result
             .events
@@ -474,11 +461,16 @@ fn deletion_withdraws_directory_authority_across_restart_without_recreating_the_
     admit(
         &mut reopened,
         administrator,
-        json!({"type":"join","name":"Domain owner","key":"owner"}),
+        json!({"type":"join","name":"Domain owner","ownerKey":"owner"}),
     );
-    let admitted = command(
+    rejected(command(
         &mut reopened,
         administrator,
+        json!({"type":"admit_room","room":summary}),
+    ));
+    let admitted = command(
+        &mut reopened,
+        returning,
         json!({"type":"admit_room","room":summary,"requestId":"restore"}),
     );
     assert!(admitted
@@ -496,7 +488,7 @@ fn offline_removal_and_correlated_online_deletion_keep_room_scopes_separate() {
     admit(
         &mut network,
         owner,
-        json!({"type":"join","name":"Owner","key":"owner"}),
+        json!({"type":"join","name":"Owner","ownerKey":"owner"}),
     );
     let first = room(&mut network, owner, "public", false);
     let second = room(&mut network, owner, "public", false);
@@ -671,7 +663,7 @@ fn room_invitation_reads_are_manager_only_and_never_rotate_the_current_link() {
         admit(
             &mut network,
             connection,
-            json!({"type":"join","name":"User","key":key}),
+            json!({"type":"join","name":"User","ownerKey":(key=="owner").then_some(key)}),
         );
     }
     let room = room(&mut network, creator, "private", false);
@@ -699,9 +691,14 @@ fn room_invitation_reads_are_manager_only_and_never_rotate_the_current_link() {
         .unwrap()
     };
     assert_eq!(read(&mut network, creator), RoomInvitation::Missing);
+    rejected(command(
+        &mut network,
+        owner,
+        json!({"type":"get_room_invite","roomId":room}),
+    ));
     let key = invite(&mut network, creator, &room);
     let saved = serde_json::to_value(network.policy(&room)).unwrap();
-    for manager in [creator, owner, creator] {
+    for manager in [creator, creator] {
         assert_eq!(
             read(&mut network, manager),
             RoomInvitation::Available { key: key.clone() }
@@ -758,99 +755,70 @@ fn room_invitation_reads_are_manager_only_and_never_rotate_the_current_link() {
 }
 
 #[test]
-fn every_room_owner_can_invite_new_domain_members_without_granting_other_private_rooms() {
+fn open_site_visitors_enter_public_rooms_without_future_private_grants() {
     let mut network = core();
     let creator = Uuid::new_v4();
     admit(
         &mut network,
         creator,
-        json!({"type":"join","name":"Room owner","key":"invite"}),
+        json!({"type":"join","name":"Creator"}),
     );
     let public = room(&mut network, creator, "public", false);
-    let other_private = room(&mut network, creator, "private", true);
-    let first = invite(&mut network, creator, &public);
+    let private = room(&mut network, creator, "private", true);
+    let key = invite(&mut network, creator, &private);
     let guest = Uuid::new_v4();
-    let (guest_session, _, admitted) = admit(
-        &mut network,
-        guest,
-        json!({"type":"join","name":"New friend","roomId":public,"key":first}),
-    );
-    assert!(admitted
-        .channel
-        .rooms
-        .iter()
-        .any(|r| r.id == public && r.authorized));
-    assert!(admitted
-        .channel
-        .rooms
-        .iter()
-        .filter(|r| r.access == piik_channel_core::wire::RoomAccess::Public)
-        .all(|r| r.authorized));
-    assert!(!admitted.channel.rooms.iter().any(|r| r.id == other_private));
-    let user = admitted
+    let (session, _, initial) = admit(&mut network, guest, json!({"type":"join","name":"Guest"}));
+    let user = initial
         .sessions
         .iter()
-        .find(|s| s.id == guest_session)
+        .find(|s| s.id == session)
         .unwrap()
         .user_id;
-    assert!(
-        !network.policy(&public).grants.contains(&user),
-        "public entry is not a future private grant"
-    );
-    rejected(command(
+    assert!(initial
+        .channel
+        .rooms
+        .iter()
+        .any(|r| r.id == public && r.authorized));
+    assert!(!initial.channel.rooms.iter().any(|r| r.id == private));
+    assert!(!network.policy(&public).grants.contains(&user));
+    command(
         &mut network,
         guest,
-        json!({"type":"room_invite","roomId":public}),
-    ));
-    let replacement = invite(&mut network, creator, &public);
-    rejected(command(
+        json!({"type":"enter_room","roomId":private,"inviteKey":key}),
+    );
+    assert!(network.policy(&private).grants.contains(&user));
+    command(
         &mut network,
-        Uuid::new_v4(),
-        json!({"type":"join","name":"Old link","roomId":public,"key":first}),
-    ));
+        creator,
+        json!({"type":"update_room","roomId":private,"name":"Public now","icon":"couch","access":"public","hidden":false}),
+    );
+    assert!(network.policy(&private).accepts_invite(&key));
+    command(
+        &mut network,
+        creator,
+        json!({"type":"update_room","roomId":private,"name":"Private again","icon":"couch","access":"private","hidden":true}),
+    );
+    let another = Uuid::new_v4();
+    admit(
+        &mut network,
+        another,
+        json!({"type":"join","name":"Another"}),
+    );
+    command(
+        &mut network,
+        another,
+        json!({"type":"enter_room","roomId":private,"inviteKey":key}),
+    );
     assert!(network
-        .state(guest)
+        .state(another)
         .channel
         .rooms
         .iter()
-        .any(|r| r.id == public && r.authorized));
-    command(
-        &mut network,
-        creator,
-        json!({"type":"update_room","roomId":public,"name":"Now private","icon":"couch","access":"private","hidden":true}),
-    );
-    assert!(!network
-        .state(guest)
-        .channel
-        .rooms
-        .iter()
-        .any(|r| r.id == public));
-    let (_, _, private_join) = admit(
-        &mut network,
-        Uuid::new_v4(),
-        json!({"type":"join","name":"Invited after switch","roomId":public,"key":replacement}),
-    );
-    assert!(private_join
-        .channel
-        .rooms
-        .iter()
-        .any(|r| r.id == public && r.authorized));
-    command(
-        &mut network,
-        guest,
-        json!({"type":"enter_room","roomId":public,"inviteKey":replacement}),
-    );
-    assert!(network.policy(&public).grants.contains(&user));
-    command(
-        &mut network,
-        creator,
-        json!({"type":"update_room","roomId":public,"name":"Public again","icon":"couch","access":"public","hidden":false}),
-    );
-    assert!(network.policy(&public).accepts_invite(&replacement));
-    let reset = invite(&mut network, creator, &public);
-    assert!(!network.policy(&public).accepts_invite(&replacement));
-    assert!(network.policy(&public).accepts_invite(&reset));
-    assert!(network.policy(&public).grants.contains(&user));
+        .any(|r| r.id == private && r.authorized));
+    let replacement = invite(&mut network, creator, &private);
+    assert!(!network.policy(&private).accepts_invite(&key));
+    assert!(network.policy(&private).accepts_invite(&replacement));
+    assert!(network.policy(&private).grants.contains(&user));
 }
 
 #[test]
@@ -861,13 +829,9 @@ fn topology_read_uses_current_room_admission_and_binding_without_host_turns() {
     admit(
         &mut core,
         owner,
-        json!({"type":"join","name":"Owner","key":"owner"}),
+        json!({"type":"join","name":"Owner","ownerKey":"owner"}),
     );
-    let (reader_session, _, _) = admit(
-        &mut core,
-        reader,
-        json!({"type":"join","name":"Reader","key":"invite"}),
-    );
+    let (reader_session, _, _) = admit(&mut core, reader, json!({"type":"join","name":"Reader"}));
     let reader_user = core
         .state(reader)
         .sessions
@@ -953,7 +917,7 @@ fn hosted_room_catalogs_keep_the_per_room_source_limit_without_a_domain_total() 
     let mut core = core();
     let peers: Vec<_> = (0..20).map(|index| {
         let connection = Uuid::new_v4();
-        admit(&mut core, connection, json!({"type":"join","name":"Participant","key":if index == 0 {"owner"} else {"invite"}}));
+        admit(&mut core, connection, json!({"type":"join","name":"Participant","ownerKey":(index==0).then_some("owner")}));
         connection
     }).collect();
     let rooms: Vec<_> = (0..3)
@@ -1001,13 +965,9 @@ fn independent_rooms_share_transport_without_sharing_activity_lifetimes() {
     admit(
         &mut core,
         a,
-        json!({"type":"join","name":"A","key":"owner"}),
+        json!({"type":"join","name":"A","ownerKey":"owner"}),
     );
-    let (b_session, _, _) = admit(
-        &mut core,
-        b,
-        json!({"type":"join","name":"B","key":"invite"}),
-    );
+    let (b_session, _, _) = admit(&mut core, b, json!({"type":"join","name":"B"}));
     let living = room(&mut core, a, "public", false);
     let studio = room(&mut core, a, "public", false);
     let quiet = room(&mut core, a, "public", false);
@@ -1147,7 +1107,7 @@ fn independent_rooms_share_transport_without_sharing_activity_lifetimes() {
 }
 
 #[test]
-fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity() {
+fn private_room_entry_and_revoke_preserve_site_identity_and_other_activity() {
     let mut core = core();
     let owner = Uuid::new_v4();
     let creator = Uuid::new_v4();
@@ -1155,13 +1115,9 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
     admit(
         &mut core,
         owner,
-        json!({"type":"join","name":"Owner","key":"owner"}),
+        json!({"type":"join","name":"Owner","ownerKey":"owner"}),
     );
-    let (_, _, creator_state) = admit(
-        &mut core,
-        creator,
-        json!({"type":"join","name":"Creator","key":"invite"}),
-    );
+    let (_, _, creator_state) = admit(&mut core, creator, json!({"type":"join","name":"Creator"}));
     assert!(creator_state
         .channel
         .rooms
@@ -1173,7 +1129,7 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
     let (_, _, initial) = admit(
         &mut core,
         outsider,
-        json!({"type":"join","name":"Outsider","key":"invite"}),
+        json!({"type":"join","name":"Outsider"}),
     );
     assert!(!initial.channel.rooms.iter().any(|r| r.id == room));
     rejected(command(
@@ -1187,11 +1143,13 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
         json!({"type":"enter_room","roomId":room,"inviteKey":"wrong"}),
     ));
     let guest = Uuid::new_v4();
-    let (guest_session, _, initial) = admit(
+    let (guest_session, _, _) = admit(&mut core, guest, json!({"type":"join","name":"Guest"}));
+    command(
         &mut core,
         guest,
-        json!({"type":"join","name":"Guest","roomId":room,"key":key}),
+        json!({"type":"enter_room","roomId":room,"inviteKey":key}),
     );
+    let initial = core.state(guest).clone();
     assert!(initial
         .channel
         .rooms
@@ -1286,16 +1244,14 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
         outsider,
         json!({"type":"room_invite","roomId":room}),
     ));
-    // The channel owner can manage the room; the creator's ordinary member role suffices too.
+    // Site maintenance does not grant access to another user's private room.
     let updated = command(
         &mut core,
         owner,
         json!({"type":"update_room","icon":"couch","roomId":room,"name":"Renamed","access":"private","hidden":true}),
     );
-    assert!(!updated
-        .events
-        .iter()
-        .any(|(_, e)| matches!(e, Event::Error { .. })));
+    rejected(updated);
+    assert!(!core.state(owner).channel.rooms.iter().any(|r| r.id == room));
 }
 
 #[test]
@@ -1303,16 +1259,8 @@ fn public_to_private_requires_explicit_grant_and_password_rotation_keeps_existin
     let mut core = core();
     let creator = Uuid::new_v4();
     let guest = Uuid::new_v4();
-    admit(
-        &mut core,
-        creator,
-        json!({"type":"join","name":"Creator","key":"invite"}),
-    );
-    let (_, credential, _) = admit(
-        &mut core,
-        guest,
-        json!({"type":"join","name":"Guest","key":"invite"}),
-    );
+    admit(&mut core, creator, json!({"type":"join","name":"Creator"}));
+    let (_, credential, _) = admit(&mut core, guest, json!({"type":"join","name":"Guest"}));
     let room = room(&mut core, creator, "public", false);
     let unicode_password = "密".repeat(128);
     command(
@@ -1365,11 +1313,13 @@ fn public_to_private_requires_explicit_grant_and_password_rotation_keeps_existin
     let first = invite(&mut core, creator, &room);
     let second = invite(&mut core, creator, &room);
     assert_ne!(first, second);
-    let (_, _, reconnected) = admit(
+    let returning = Uuid::new_v4();
+    admit(
         &mut core,
-        Uuid::new_v4(),
-        json!({"type":"join","name":"Guest","credential":credential,"roomId":room,"key":first}),
+        returning,
+        json!({"type":"join","name":"Guest","credential":credential}),
     );
+    let reconnected = core.state(returning);
     assert!(reconnected
         .channel
         .rooms
@@ -1387,11 +1337,7 @@ fn public_to_private_requires_explicit_grant_and_password_rotation_keeps_existin
         .iter()
         .any(|entry| entry.id == room && entry.authorized));
     let another = Uuid::new_v4();
-    admit(
-        &mut core,
-        another,
-        json!({"type":"join","name":"Another","key":"invite"}),
-    );
+    admit(&mut core, another, json!({"type":"join","name":"Another"}));
     rejected(command(
         &mut core,
         another,
@@ -1417,12 +1363,12 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     let (_, owner_credential, _) = admit(
         &mut original,
         owner,
-        json!({"type":"join","name":"Owner","key":"owner"}),
+        json!({"type":"join","name":"Owner","ownerKey":"owner"}),
     );
     let (_, credential, _) = admit(
         &mut original,
         creator,
-        json!({"type":"join","name":"Creator","key":"invite"}),
+        json!({"type":"join","name":"Creator"}),
     );
     let room = room(&mut original, creator, "private", true);
     let key = invite(&mut original, creator, &room);
@@ -1541,7 +1487,7 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     let (_, again, _) = admit(
         &mut restored,
         Uuid::new_v4(),
-        json!({"type":"join","name":"Owner","key":"owner"}),
+        json!({"type":"join","name":"Owner","ownerKey":"owner"}),
     );
     assert_eq!(again, owner_credential);
     assert!(restored.state(new_page).publications.is_empty());
@@ -1558,17 +1504,13 @@ fn late_room_results_ignore_unrelated_profile_changes_and_departures() {
     admit(
         &mut network,
         owner,
-        json!({"type":"join","name":"Owner","key":"owner"}),
+        json!({"type":"join","name":"Owner","ownerKey":"owner"}),
     );
-    let (_, credential, _) = admit(
-        &mut network,
-        actor,
-        json!({"type":"join","name":"Actor","key":"invite"}),
-    );
+    let (_, credential, _) = admit(&mut network, actor, json!({"type":"join","name":"Actor"}));
     admit(
         &mut network,
         unrelated,
-        json!({"type":"join","name":"Unrelated","key":"invite"}),
+        json!({"type":"join","name":"Unrelated"}),
     );
     let public = room(&mut network, owner, "public", false);
     let private = room(&mut network, owner, "private", true);
@@ -1615,97 +1557,57 @@ fn late_room_results_ignore_unrelated_profile_changes_and_departures() {
         })
         .expect("the original request receives its scoped result");
     assert!(matches!(result, RoomResult::Done));
-    let returning = Uuid::new_v4();
-    let signing_key =
-        piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key();
-    let effects = network.authority.handle(
-        returning,
-        Request::parse(
-            &json!({
-                "type": "join", "protocol": piik_channel_core::wire::CHANNEL_PROTOCOL, "name": "Returning", "credential": credential,
-                "key": invitation, "roomId": private, "signingKey": signing_key,
+    for (name, credential, departure) in [
+        ("Returning", Some(credential.as_str()), false),
+        ("Newcomer", None, true),
+    ] {
+        let connection = Uuid::new_v4();
+        admit(
+            &mut network,
+            connection,
+            json!({"type":"join","name":name,"credential":credential}),
+        );
+        let effects = network.authority.handle(
+            connection,
+            Request::parse(
+                &json!({
+                    "type":"enter_room","roomId":private,"inviteKey":invitation,"requestId":"entry"
+                })
+                .to_string(),
+            )
+            .unwrap(),
+            100,
+        );
+        let input = effects
+            .events
+            .into_iter()
+            .find_map(|(_, event)| match event {
+                Event::HostInput { input, .. } => Some(input),
+                _ => None,
             })
-            .to_string(),
-        )
-        .unwrap(),
-        100,
-    );
-    let input = effects
-        .events
-        .into_iter()
-        .find_map(|(_, event)| match event {
-            Event::HostInput { input, .. } => Some(input),
-            _ => None,
-        })
-        .unwrap();
-    assert!(matches!(
-        input.action,
-        HostAction::VerifyInvite {
-            member: Some(_),
-            ..
+            .unwrap();
+        assert!(matches!(input.action, HostAction::Command { .. }));
+        let entered = network.host_turn(&private, input);
+        if departure {
+            command(&mut network, unrelated, json!({"type":"leave"}));
+        } else {
+            command(
+                &mut network,
+                owner,
+                json!({"type":"set_name","name":"Still owner"}),
+            );
         }
-    ));
-    let verification = network.host_turn(&private, input);
-    assert!(verification.invitation.as_ref().unwrap().accepted);
-    command(
-        &mut network,
-        owner,
-        json!({"type":"set_name","name":"Still owner"}),
-    );
-    let accepted = command(
-        &mut network,
-        owner,
-        json!({"type":"host_output","roomId":private,"output":verification}),
-    );
-    assert!(!accepted.close.contains(&returning));
-    assert!(
-        accepted
+        let accepted = command(
+            &mut network,
+            owner,
+            json!({"type":"host_output","roomId":private,"output":entered}),
+        );
+        assert!(!accepted.close.contains(&connection));
+        assert!(accepted
             .events
             .iter()
-            .any(|(recipient, event)| *recipient == returning
-                && matches!(event, Event::Welcome { .. })),
-        "an existing user's verified invitation remains valid across profile changes"
-    );
-
-    let newcomer = Uuid::new_v4();
-    let effects = network.authority.handle(
-        newcomer,
-        Request::parse(
-            &json!({
-                "type": "join", "protocol": piik_channel_core::wire::CHANNEL_PROTOCOL, "name": "Newcomer", "key": invitation,
-                "roomId": private, "signingKey": signing_key,
-            })
-            .to_string(),
-        )
-        .unwrap(),
-        100,
-    );
-    let input = effects
-        .events
-        .into_iter()
-        .find_map(|(_, event)| match event {
-            Event::HostInput { input, .. } => Some(input),
-            _ => None,
-        })
-        .unwrap();
-    assert!(matches!(
-        input.action,
-        HostAction::VerifyInvite { member: None, .. }
-    ));
-    let verification = network.host_turn(&private, input);
-    assert!(verification.invitation.as_ref().unwrap().accepted);
-    command(&mut network, unrelated, json!({"type":"leave"}));
-    let admitted = command(
-        &mut network,
-        owner,
-        json!({"type":"host_output","roomId":private,"output":verification}),
-    );
-    assert!(
-        admitted
-            .events
-            .iter()
-            .any(|(recipient, event)| *recipient == newcomer
-                && matches!(event, Event::Welcome { .. })),
-        "a new invitee has no existing Member dependency on unrelated departures"
-    );
+            .any(|(recipient, event)| *recipient == connection
+                && matches!(event,
+            Event::RoomReply { request_id:Some(id),result:RoomResult::Done,.. } if id=="entry")));
+    }
 }

@@ -2,7 +2,7 @@
 
 This 3.0 Rust participant operates rooms through the same [shared `RoomHost` core](../channel-core/README.md)
 as the Browser adapter. SQLite stores each room's policy and confirmed history;
-the domain supplies admission, directory views and transport leases. Its
+the domain supplies identity, directory views and transport leases. Room admission stays with this runtime. Its
 str0m endpoint carries room DataChannels, encoded media and requested file
 ranges without retaining file contents in SQLite. Opus and compatible original
 video are forwarded without decoding. Capture-enabled desktop Apps derive
@@ -263,7 +263,7 @@ then run this participant with the project's Rust 1.91 toolchain.
 ```powershell
 $env:CHANNEL_WS_URL = "ws://127.0.0.1:8791/prototype/channel"
 $env:CHANNEL_UI_ORIGIN = "http://127.0.0.1:8790"
-$env:PIIK_CHANNEL_NATIVE_KEY = "<the configured domain owner key>"
+$env:PIIK_CHANNEL_NATIVE_OWNER_KEY = "<the configured site owner bootstrap key>"
 New-Item -ItemType Directory -Force build/channel-native-data | Out-Null
 cargo +1.91.0 run --manifest-path prototype/channel-native/Cargo.toml -- --room build/channel-native-data/lounge.sqlite "Lounge"
 ```
@@ -272,7 +272,7 @@ Use your configured key, never the placeholder. An existing user credential can
 instead be supplied through `PIIK_CHANNEL_NATIVE_CREDENTIAL`; the optional
 `PIIK_CHANNEL_NATIVE_NAME` selects the user's display name. Credentials are not
 printed or saved by this launcher. Reopening saved room data requires the same
-authenticated user. Reuse the domain owner's stable key for the example above.
+authenticated user. Reuse the site owner's stable bootstrap key for the example above.
 
 Repeat `--room <database> <name>` to operate several rooms. The domain assigns
 each new room's ID; an existing database restores its saved identity. Each room has a

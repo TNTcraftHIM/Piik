@@ -25,9 +25,9 @@
 .c3-locked-room h3 { font-size: 20px; }
 .c3-locked-room form { display: flex; gap: 8px; flex-wrap: wrap; max-width: 400px; justify-content: center; }
 .c3-locked-room form .c3-input { flex: 1 1 150px; }
-.c3-domain-entry { flex: 1; overflow: auto; }
-.c3-domain-entry h1 { margin: 0; font-size: 24px; }
-.c3-domain-entry .c3-domain-entry-site { overflow-wrap: anywhere; max-width: 100%; }
+.c3-site-entry { flex: 1; overflow: auto; }
+.c3-site-entry h1 { margin: 0; font-size: 24px; }
+.c3-site-entry .c3-site-entry-address { overflow-wrap: anywhere; max-width: 100%; }
 
 .c3-backup-controls { display: grid; gap: 12px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
 .c3-backup-actions { display: flex; flex-wrap: wrap; gap: 8px; }

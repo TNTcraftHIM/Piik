@@ -448,73 +448,42 @@ sharing. Its README and [status](../status.md) own the runnable boundary.
 
 ### Workspace Hierarchy Proposal
 
-The latest composition direction removes the user-facing domain switcher and its
-separate invitation. Piik returns to the current site's room overview; the left
-side lists rooms and their voice participants. Personal voice controls stay below
-that list. The right side combines global utilities with optional conversation
-or details; collapsing it keeps connection feedback and reopening reachable.
-The site still coordinates identity and room hosts. Opening a site admits a user;
-room privacy remains independent, and site backup/restore belongs to its operator.
-This candidate replaces the domain-navigation row below and awaits rendered review.
+Reviewed 2026-11-10. The selected direction presents one site with rooms, without
+an additional domain chooser or invitation gate. The underlying identity,
+directory and host-coordination responsibilities remain in the network/data owners.
 
-Reviewed 2026-11-10: the owner selected contextual room invitation, upper sharing
-actions, lower personal voice controls and a couch anchored below the central body.
-The composition uses clearer task groups and the space around media;
-the network and data owners above continue to govern activity and admission.
-
-| Scope | Proposed placement and action |
+| Area | Responsibility |
 | --- | --- |
-| Domain and navigation | Left room list and domain menu; collapse control on the sidebar edge. Domain invitation and domain administration stay here. |
-| Current room | Room title with its contextual invitation; the primary share action and its parameters form a separate group. Room management stays beside the room-list item. |
-| Personal activity | Lower-left identity, joining voice and the joined activity's mute, listening and leave controls. State the target room; folding navigation or narrowing the viewport moves the same controls into the bottom bar. |
-| Conversation and presence | The couch anchors the central body's bottom, aligned with the lower-left personal area. Chat is central without watched pictures and can move to the right companion while watching; both sidebars can collapse. Preserve the same people, states and interaction owner. Each source keeps its room identity and reaction entry. |
+| Left | Piik returns to this site's room overview. The room list contains navigation, room management and each room's voice participants. |
+| Lower left | Personal identity and the current voice activity's join, microphone, listening and leave controls. Keep the target room explicit. |
+| Centre | Conversation, or selected pictures in grid/focus view. The couch anchors the bottom of this body and aligns with the personal area's upper edge. |
+| Upper right | One instance of signaling, App, language, theme and help controls. These remain reachable when the companion pane is collapsed. |
+| Right companion | Optional conversation while watching, or room member details when requested. Do not reserve an empty full-height column after closing it. |
 
-Focus viewing keeps one main picture with the other views below. Browsing another
-room does not stop independent watches; each picture retains its source-room
-identity and a return action. Voice join and its microphone/listening controls
-occupy the same personal activity area. Share parameters stay with
-Share. Room settings group room properties, connection settings and records;
-inviting belongs to its separate contextual panel.
+Room invitation belongs beside the upper room title; Share and its parameters
+form their own group. Private entry remains a room responsibility. A public room
+uses its ordinary URL; a private room uses its invitation or password. The site
+maintenance panel holds name/icon and operator-owned backup/restore, without
+separate admission controls or role groups.
 
-The couch's pop-out action opens a compact external tool directly, with an initial
-size chosen for that task rather than the full workspace column. User resizing
-remains available; an in-page tool is the explicitly named alternative. Use the same content and
-window owner, preserve drafts, and return it on close. Presentation changes
-must not join voice, restart capture or change room authority.
+Browsing the overview or another room changes the view, not existing voice,
+sharing or watch activities. Keep each picture's source-room label. Focus uses
+one main picture with thumbnails below. Voice membership appears beside its room
+while personal controls keep their selected activity scope. The couch retains
+its existing interaction owner and does not become a second participant database.
 
-Use one contextual invitation panel for either room or domain. Copy the current
-link first; expand its QR code within the panel. Access fields reuse the existing
-settings component and writer. Keep reset/revoke separate from copying. Room
-invitations, whether public or private, admit the domain and that room; domain
-invitations do not unlock private rooms. Admission and reset semantics remain with
-the [room-data model](./channel-storage-and-identity.md). Do not add roles or a
-second token owner.
+The couch's pop-out opens the existing compact external room tool directly where
+supported, with the in-page tool as the named alternative. Return preserves drafts
+and activity owners. Narrow layouts reuse the same controls and temporary drawers
+without overwriting desktop sidebar preferences. Corresponding headers and the
+bottom personal/presence row share their alignment from the containing grid.
 
-The current domain rail is a local address list, not centrally synchronized
-membership. Its add entry should open an invitation/address, with saving as a
-separate choice; room creation stays beside the room list. A domain menu groups
-its existing invite and administration actions as compact rows. Whether to hide
-an otherwise empty rail and move address entry into the domain switcher remains
-a layout proposal; opening another domain must not silently stop this page.
-
-Browsing currently reads conversation over the Domain connection without peer
-media demand. Voice, screen sharing, watches and file transfers keep independent
-room scopes. Retain this separation and the current multi-room capability;
-browsing alone never moves an activity. Explicit share/watch
-actions preserve their target room. Invitations grant access and select content,
-without implicitly starting microphones or moving existing shares.
-
-The proposal follows [contextual call controls and direct pop-out](https://support.discord.com/hc/en-us/articles/360041721052-Video-Calls),
-[adaptive navigation](https://developer.android.com/design/ui/mobile/guides/layout-and-content/layout-and-nav-patterns)
-and [workspace hierarchy research](https://slack.design/articles/designing-teamwork-how-our-customers-shaped-the-future-of-slack/).
-The documented [Discord share flow](https://support.discord.com/hc/en-us/articles/360040816151-Go-Live-and-Screen-Share)
-and [KOOK share flow](https://help.kookapp.cn/7ff3/b671) place sharing in the joined
-voice controls. Piik can reuse the task grouping without making voice a prerequisite
-for its independent sharing.
-Review the composition before integrating it into the shared page; then verify
-room/source scope, active-media continuity, keyboard/touch operation and window
-return. [TODO](../todo.md) owns the work, and accepted visual rules remain in
-[visual language](../standards/visual-language.md#30-channel-workspace).
+This grouping follows Discord's [channel navigation and contextual chat](https://support.discord.com/hc/en-us/articles/4412085582359-Text-Channels-Text-Chat-In-Voice-Channels),
+[personal voice controls](https://support.discord.com/hc/en-us/articles/33030151293079-Discord-Voice-Video-Streaming-Guide)
+and [focus/pop-out views](https://support.discord.com/hc/en-us/articles/360041721052-Video-Calls).
+Piik keeps its independent sharing lifecycle and couch rather than making a voice
+call a prerequisite for watching or sharing. [Visual language](../standards/visual-language.md#30-channel-workspace)
+owns accepted layout rules; [TODO](../todo.md) owns remaining integration work.
 
 ### Identity And Interaction Additions (PROPOSED)
 

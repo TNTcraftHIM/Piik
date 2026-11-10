@@ -9,12 +9,11 @@ const endpoint = process.env.CHANNEL_WS_URL ?? "ws://127.0.0.1:8791/prototype/ch
 const origin = process.env.CHANNEL_UI_ORIGIN ?? "http://127.0.0.1:8790";
 assert(["127.0.0.1", "localhost"].includes(new URL(endpoint).hostname), "Checks only target loopback");
 const ownerKey = process.env.PIIK_CHANNEL_OWNER_KEY;
-const inviteKey = process.env.PIIK_CHANNEL_INVITE_KEY;
-assert(ownerKey && inviteKey, "Set PIIK_CHANNEL_OWNER_KEY and PIIK_CHANNEL_INVITE_KEY to the local server's test keys");
+assert(ownerKey, "Set PIIK_CHANNEL_OWNER_KEY to the local server's owner bootstrap key");
 // The protocol-only sources explicitly declare the accepted 720p30 ceiling.
 const videoSettings = { ceiling: { resolution: { width: 1280, height: 720 }, maxFramerate: 30, maxBitrate: 3_000_000 }, degradationPreference: 'balanced' };
 
-async function connect(t, join) {
+async function connect(t, join = {}) {
   const socket = new WebSocket(endpoint, { origin });
   const inbox = [], waiters = [];
   const recent = [];
@@ -72,7 +71,7 @@ test("the frontend accepts real cross-room publications and subscriptions", { ti
   const clients = [];
   try {
     // The twentieth real participant is the Server hosting these rooms.
-    for (let index = 0; index < 19; index++) clients.push(await connect(t, { key: index === 0 ? ownerKey : inviteKey }));
+    for (let index = 0; index < 19; index++) clients.push(await connect(t, index === 0 ? { ownerKey } : {}));
     for (const client of clients) assert.equal(client.welcome.type, "welcome");
     const reader = clients[0];
     const state = reader.welcome.state.channel.rooms.length === 3 ? reader.welcome.state
@@ -104,9 +103,9 @@ test("the frontend accepts real cross-room publications and subscriptions", { ti
 });
 
 test("authenticated users, signed conversation and selective source ownership", { timeout: 30_000 }, async t => {
-  const owner = await connect(t, { key: ownerKey, name: "Owner check" });
-  const friend = await connect(t, { key: inviteKey, name: "Friend check" });
-  const other = await connect(t, { key: inviteKey, name: "Other check" });
+  const owner = await connect(t, { ownerKey, name: "Owner check" });
+  const friend = await connect(t, { name: "Friend check" });
+  const other = await connect(t, { name: "Other check" });
   for (const client of [owner, friend, other]) assert.equal(client.welcome.type, "welcome");
   const state = owner.welcome.state;
   assert(Number.isSafeInteger(state.channel.historyWindow) && state.channel.historyWindow > 0);
@@ -122,7 +121,7 @@ test("authenticated users, signed conversation and selective source ownership", 
   const nonce = randomUUID();
   assert.equal((await friend.request({ type: "chat", roomId, text, nonce })).type, "error",
     "the domain cannot execute a room's conversation");
-  const attacker = await connect(t, { key: inviteKey, name: "Spoof check" });
+  const attacker = await connect(t, { name: "Spoof check" });
   const rejected = Promise.race([
     attacker.wait(event => event.type === "error", "spoof rejection"),
     once(attacker.socket, "close"),
@@ -169,14 +168,14 @@ test("authenticated users, signed conversation and selective source ownership", 
     assert.notEqual(stolen.welcome.sessionId, friend.welcome.sessionId, "another user cannot resume the victim's session");
   } else assert.equal(stolen.welcome.type, "error");
 
-  const anonymous = await connect(t, { key: "invalid-test-invitation" });
-  assert.equal(anonymous.welcome.type, "error");
+  const ordinary = await connect(t);
+  assert.equal(ordinary.welcome.type, "welcome", "opening the site needs no domain invitation");
 });
 
 
 test("Server-owned private invitations admit new users, conceal content and revoke room grants", { timeout: 30_000 }, async t => {
-  const creator = await connect(t, { key: ownerKey });
-  const outsider = await connect(t, { key: inviteKey });
+  const creator = await connect(t, { ownerKey });
+  const outsider = await connect(t);
   const roomId = "studio";
   if (!creator.welcome.state.channel.rooms.some(room => room.id === roomId && room.available)) await creator.wait(event => event.type === "state"
     && event.state.channel.rooms.some(room => room.id === roomId && room.available), "Server room host available for management");
@@ -188,9 +187,10 @@ test("Server-owned private invitations admit new users, conceal content and revo
   assert.equal((await creator.request({ type: "room_invite", roomId })).type, "ack");
   const invitation = await creator.wait(event => event.type === "room_invite" && event.roomId === roomId, "room invitation");
   assert.equal(typeof invitation.requestId, "string");
-  const guest = await connect(t, { key: invitation.key, roomId });
+  const guest = await connect(t);
   assert.equal(guest.welcome.type, "welcome");
-  assert(guest.welcome.state.channel.rooms.some(room => room.id === roomId && room.authorized));
+  assert.equal((await guest.request({ type: "enter_room", roomId, inviteKey: invitation.key })).type, "ack");
+  await guest.wait(event => event.type === "state" && event.state.channel.rooms.some(room => room.id === roomId && room.authorized), "private room grant after site Welcome");
   const guestUser = guest.welcome.state.sessions.find(session => session.id === guest.welcome.sessionId).userId;
   const privatePublication = randomUUID();
   assert.equal((await creator.request({ type: "publish", publication: { id: privatePublication, roomId, kind: "screen", videoSettings } })).type, "ack");

@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-11-09
+Last updated: 2026-11-10
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -16,7 +16,7 @@ Cloudflared helper. Work stays on `feat/channel-prototype`, separately from 2.x.
 Windows and Android normal-package candidates are ready for initial internal
 testing. Exact delivered revisions and acceptance receipts remain with the packages.
 
-The domain owns admission and directory summaries. Room plans and shared transport
+The site owns user identity and directory summaries. Room plans and shared transport
 leases keep separate Rust owners. Rooms created in the UI run in their owner's
 Browser or linked App; confirmed history and private policy stay there. Browser
 hosting uses WASM/IndexedDB; Native uses Rust/SQLite. Server embeds a Native

@@ -13,10 +13,7 @@ use uuid::Uuid;
 
 fn join(network: &mut RoomNetwork, connection: Uuid) -> Uuid {
     network
-        .command(
-            connection,
-            json!({"type":"join","name":"Reader","key":"invite"}),
-        )
+        .command(connection, json!({"type":"join","name":"Reader"}))
         .events
         .into_iter()
         .find_map(|(_, event)| match event {

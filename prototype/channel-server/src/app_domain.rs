@@ -232,7 +232,6 @@ async fn run(
     let domain = Domain::open(
         &app.config.data_root.join("domain"),
         &identity.owner,
-        &identity.invite,
         origin.clone(),
         Some(invitation.clone()),
         ice_servers,

@@ -10,10 +10,22 @@ use support::RoomNetwork;
 use uuid::Uuid;
 
 fn join(network: &mut RoomNetwork, connection: Uuid, credential: Option<&str>) -> (Uuid, String) {
-    network.command(connection, json!({"type":"join", "name":"Base participant", "key":"invite", "credential":credential}))
-        .events.into_iter().find_map(|(_, event)| match event {
-            Event::Welcome { session_id, credential, .. } => Some((session_id, credential)), _ => None,
-        }).unwrap()
+    network
+        .command(
+            connection,
+            json!({"type":"join", "name":"Base participant", "credential":credential}),
+        )
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::Welcome {
+                session_id,
+                credential,
+                ..
+            } => Some((session_id, credential)),
+            _ => None,
+        })
+        .unwrap()
 }
 fn command(network: &mut RoomNetwork, connection: Uuid, command: Value) {
     let effects = network.command(connection, command);
@@ -1101,7 +1113,7 @@ fn room_base_root_is_the_actual_host_session_and_stopping_reading_preserves_acti
     command(
         &mut network,
         manager,
-        json!({"type":"join","name":"Owner","key":"owner"}),
+        json!({"type":"join","name":"Owner","ownerKey":"owner"}),
     );
     let before = network.state(viewer).clone();
     command(
@@ -1111,7 +1123,7 @@ fn room_base_root_is_the_actual_host_session_and_stopping_reading_preserves_acti
     );
     command(
         &mut network,
-        manager,
+        host,
         json!({"type":"update_room","roomId":room,"name":"Session room","icon":"future_room-v2","access":"public","hidden":false}),
     );
     let after = network.state(viewer);
@@ -2839,7 +2851,10 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
         let mut network = RoomNetwork::new();
         let host = Uuid::new_v4();
         let publisher = Uuid::new_v4();
-        network.command(host, json!({"type":"join","name":"Host","key":"owner"}));
+        network.command(
+            host,
+            json!({"type":"join","name":"Host","ownerKey":"owner"}),
+        );
         let (_publisher_session, _) = join(&mut network, publisher, None);
         let room = network.create(host, RoomAccess::Public, false);
         join_base(&mut network, publisher, &room);
@@ -3364,8 +3379,7 @@ fn unrelated_leave_does_not_invalidate_an_earlier_browse_reply_or_revive_retired
 // Uses the real domain -> SQLite RoomHost projection fixture above.
 fn preparation_network(ice: Vec<Value>) -> RoomNetwork {
     let mut network = RoomNetwork::new();
-    network.authority =
-        piik_channel_core::Authority::new("owner".into(), "invite".into(), ice).unwrap();
+    network.authority = piik_channel_core::Authority::new("owner".into(), ice).unwrap();
     network
 }
 fn preparation_ice() -> Vec<Value> {
@@ -3375,7 +3389,7 @@ fn prepare_capable_join(network: &mut RoomNetwork, connection: Uuid) -> (Uuid, S
     network
         .command(
             connection,
-            json!({"type":"join","name":"Native participant","key":"invite","canPrepareUdp":true,"canReceiveVideoLayers":true}),
+            json!({"type":"join","name":"Native participant","canPrepareUdp":true,"canReceiveVideoLayers":true}),
         )
         .events
         .into_iter()

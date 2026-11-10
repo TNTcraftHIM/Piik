@@ -99,7 +99,7 @@ function TooltipCatalogue() {
           <a href="#metrics-preview">{en ? "Metrics" : "连接数据"}</a>
           <a href="#welcome-preview">{en ? "Opening lines" : "开场白"}</a>
           <a href="/__status-preview">{en ? "Status gallery" : "完整状态预览"}</a>
-          <a href="/__status-preview?channel-entry">{en ? "Domain entry" : "域入口"}</a>
+          <a href="/__status-preview?channel-entry">{en ? "Site connection" : "站点连接"}</a>
           <a href="#channel-guide-preview">{en ? "3.0 rooms" : "3.0 房间"}</a>
           <a href="/__tooltip-preview?channel-room">{en ? "3.0 sharing view" : "3.0 分享视图"}</a>
         </nav>

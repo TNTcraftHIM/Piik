@@ -20,9 +20,8 @@ const project = `piik-check-${randomUUID()}`;
 const workspace = resetBuildWorkspace(root, "container-check", project);
 const origin = "https://share.example.com";
 const ownerKey = randomUUID();
-const inviteKey = randomUUID();
 const environment = { ...process.env, PIIK_IMAGE: image,
-  PIIK_CHANNEL_OWNER_KEY: ownerKey, PIIK_CHANNEL_INVITE_KEY: inviteKey };
+  PIIK_CHANNEL_OWNER_KEY: ownerKey };
 function docker(...args) {
   return execFileSync("docker", args, {
     cwd: workspace, env: environment, encoding: "utf8", timeout: 90_000,
@@ -55,7 +54,7 @@ async function rooms() {
       socket.once("error", reject);
       socket.once("open", () => {
         const publicKey = generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" });
-        socket.send(JSON.stringify({ type: "join", name: "Container check", key: ownerKey,
+        socket.send(JSON.stringify({ type: "join", name: "Container check", ownerKey,
           signingKey: [...Buffer.from(publicKey.x, "base64url")] }));
       });
       socket.on("message", bytes => {
@@ -77,8 +76,7 @@ async function rooms() {
 copyFileSync(join(root, "deploy/container/compose.yaml"), join(workspace, "compose.yaml"));
 const sample = readFileSync(join(root, "deploy/container/.env.example"), "utf8");
 writeFileSync(join(workspace, ".env"), sample
-  .replace(/^PIIK_CHANNEL_OWNER_KEY=$/m, `PIIK_CHANNEL_OWNER_KEY=${ownerKey}`)
-  .replace(/^PIIK_CHANNEL_INVITE_KEY=$/m, `PIIK_CHANNEL_INVITE_KEY=${inviteKey}`));
+  .replace(/^PIIK_CHANNEL_OWNER_KEY=$/m, `PIIK_CHANNEL_OWNER_KEY=${ownerKey}`));
 try {
   const metadata = JSON.parse(docker("image", "inspect", image))[0];
   assert.equal(metadata.Config.User, "65532:65532");

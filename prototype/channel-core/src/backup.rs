@@ -34,7 +34,6 @@ pub struct DomainMetadata {
     pub version: u32,
     pub state: DurableState,
     pub owner_key: String,
-    pub invite_key: String,
 }
 
 impl DomainMetadata {
@@ -46,10 +45,10 @@ impl DomainMetadata {
         self,
         ice_servers: Vec<serde_json::Value>,
     ) -> Result<Authority, &'static str> {
-        if self.version != 1 {
+        if self.version != 2 {
             return Err("unsupported_backup_version");
         }
-        let mut authority = Authority::new(self.owner_key, self.invite_key, ice_servers)?;
+        let mut authority = Authority::new(self.owner_key, ice_servers)?;
         authority.import_state(self.state)?;
         Ok(authority)
     }

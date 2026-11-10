@@ -25,7 +25,10 @@ impl Endpoint {
 
     fn join(hub: &mut Hub, key: &str) -> Self {
         let mut endpoint = Self::connect(hub);
-        endpoint.request(hub, json!({"type":"join", "key":key, "name":"Friend"}));
+        endpoint.request(
+            hub,
+            json!({"type":"join", "ownerKey":(key!="invite").then_some(key), "name":"Friend"}),
+        );
         let welcome = endpoint
             .drain()
             .into_iter()
@@ -66,17 +69,8 @@ impl Endpoint {
 #[test]
 fn domain_keys_belong_to_its_data_and_old_checkpoints_remain_untouched() {
     let folder = std::env::temp_dir().join(format!("piik-domain-keys-{}", Uuid::new_v4()));
-    let open = |owner, invite| {
-        Domain::open(
-            &folder,
-            owner,
-            invite,
-            "http://localhost".into(),
-            None,
-            vec![],
-        )
-    };
-    let domain = open("saved-owner", "saved-invite").unwrap();
+    let open = |owner| Domain::open(&folder, owner, "http://localhost".into(), None, vec![]);
+    let domain = open("saved-owner").unwrap();
     let identity = domain.identity();
     let old_checkpoint;
     {
@@ -84,30 +78,23 @@ fn domain_keys_belong_to_its_data_and_old_checkpoints_remain_untouched() {
         let owner = Endpoint::join(&mut hub, "saved-owner");
         assert_eq!(owner.user, identity.1);
         old_checkpoint = serde_json::to_value(hub.authority.export_state()).unwrap();
-        let mut legacy = serde_json::to_value(hub.authority.export_backup()).unwrap();
-        legacy["state"].as_object_mut().unwrap().remove("access");
-        legacy["state"]
-            .as_object_mut()
-            .unwrap()
-            .remove("passwordHash");
-        hub.storage.lock().unwrap().save(&legacy).unwrap();
     }
     drop(domain);
-    for (owner_seed, invite_seed) in [("different-owner", "different-invite"), ("", "")] {
-        let reopened = open(owner_seed, invite_seed).unwrap();
+    for owner_seed in ["different-owner", ""] {
+        let reopened = open(owner_seed).unwrap();
         assert_eq!(reopened.identity(), identity);
         assert_eq!(reopened.owner_key(), "saved-owner");
         let state =
             serde_json::to_value(reopened.hub.lock().unwrap().authority.export_state()).unwrap();
-        assert_eq!(state["access"], "private");
-        assert!(state["passwordHash"].is_null());
+        assert!(state.get("access").is_none());
+        assert!(state.get("passwordHash").is_none());
         let mut hub = reopened.hub.lock().unwrap();
         let owner = Endpoint::join(&mut hub, "saved-owner");
         assert_eq!(owner.user, identity.1);
         let mut rejected = Endpoint::connect(&mut hub);
         rejected.request(
             &mut hub,
-            json!({"type":"join", "name":"Wrong seed", "key":"different-owner"}),
+            json!({"type":"join", "name":"Wrong seed", "ownerKey":"different-owner"}),
         );
         assert!(rejected
             .drain()
@@ -117,7 +104,7 @@ fn domain_keys_belong_to_its_data_and_old_checkpoints_remain_untouched() {
     let mut store = storage::Storage::open(&folder.join("channel.sqlite")).unwrap();
     store.save(&old_checkpoint).unwrap();
     drop(store);
-    assert!(open("saved-owner", "saved-invite")
+    assert!(open("saved-owner")
         .err()
         .unwrap()
         .to_string()
@@ -132,7 +119,7 @@ fn domain_keys_belong_to_its_data_and_old_checkpoints_remain_untouched() {
 fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
     let path = std::env::temp_dir().join(format!("piik-domain-metadata-{}.sqlite", Uuid::new_v4()));
     let mut hub = Hub {
-        authority: Authority::new("owner".into(), "invite".into(), vec![]).unwrap(),
+        authority: Authority::new("owner".into(), vec![]).unwrap(),
         clients: BTreeMap::new(),
         invitation_origin: None,
         room_commands: None,
@@ -142,9 +129,9 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
     let mut guest = Endpoint::join(&mut hub, "invite");
     owner.drain();
     let original = serde_json::to_value(hub.authority.export_state()).unwrap();
-    let original_backup = serde_json::to_value(hub.authority.export_backup()).unwrap();
     let icon = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
-    let update = json!({"type":"update_domain","name":"  Friends  ","icon":icon,"access":"private","password":"friends-only","requestId":"metadata"});
+    let update =
+        json!({"type":"update_domain","name":"  Friends  ","icon":icon,"requestId":"metadata"});
     guest.request(&mut hub, update.clone());
     assert!(guest
         .drain()
@@ -173,19 +160,6 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
         hub.storage.lock().unwrap().load().unwrap().unwrap()["state"],
         original
     );
-    owner.request(
-        &mut hub,
-        json!({"type":"domain_invite","requestId":"failed-reset"}),
-    );
-    assert_eq!(
-        owner.drain(),
-        vec![json!({"type":"error","code":"storage_failed","requestId":"failed-reset"})]
-    );
-    assert!(guest.drain().is_empty());
-    assert_eq!(
-        serde_json::to_value(hub.authority.export_backup()).unwrap(),
-        original_backup
-    );
     database
         .execute_batch("DROP TRIGGER reject_metadata;")
         .unwrap();
@@ -197,30 +171,9 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
         .unwrap();
     assert_eq!(state["state"]["channel"]["name"], "Friends");
     assert_eq!(state["state"]["channel"]["icon"], icon);
-    assert_eq!(state["state"]["channel"]["hasPassword"], true);
+    assert!(state["state"]["channel"].get("hasPassword").is_none());
     let _: piik_channel_core::wire::Snapshot =
         serde_json::from_value(state["state"].clone()).unwrap();
-    owner.drain();
-    owner.request(
-        &mut hub,
-        json!({"type":"domain_invite","requestId":"reset"}),
-    );
-    let owner_events = owner.drain();
-    let key = owner_events
-        .iter()
-        .find(|event| event["type"] == "domain_invite")
-        .unwrap()["key"]
-        .as_str()
-        .unwrap()
-        .to_owned();
-    assert_eq!(
-        hub.storage.lock().unwrap().load().unwrap().unwrap()["inviteKey"],
-        key
-    );
-    assert!(guest
-        .drain()
-        .iter()
-        .all(|event| event["type"] != "domain_invite"));
     drop(hub);
     let store = storage::Storage::open(&path).unwrap();
     let mut restored = serde_json::from_value::<DomainMetadata>(store.load().unwrap().unwrap())
@@ -230,24 +183,15 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
     let saved = serde_json::to_value(restored.export_state()).unwrap();
     assert_eq!(saved["name"], "Friends");
     assert_eq!(saved["icon"], icon);
-    assert_eq!(saved["access"], "private");
-    assert!(saved["passwordHash"]
-        .as_str()
-        .unwrap()
-        .starts_with("$argon2"));
-    let old = Uuid::new_v4();
-    let join = |key: Option<&str>, password: Option<&str>| {
-        Request::parse(&json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"name":"Visitor","key":key,"password":password,
-        "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1;32]).signing_key()}).to_string()).unwrap()
-    };
-    assert!(restored.handle(old, join(Some("invite"), None), 1).events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "domain_password_required")));
-    for entry in [join(Some(&key), None), join(None, Some("friends-only"))] {
-        assert!(restored
-            .handle(Uuid::new_v4(), entry, 1)
-            .events
-            .iter()
-            .any(|(_, event)| matches!(event, Event::Welcome { .. })));
-    }
+    assert!(saved.get("access").is_none());
+    assert!(saved.get("passwordHash").is_none());
+    let join=Request::parse(&json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
+        "name":"Visitor","signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1;32]).signing_key()}).to_string()).unwrap();
+    assert!(restored
+        .handle(Uuid::new_v4(), join, 1)
+        .events
+        .iter()
+        .any(|(_, event)| matches!(event, Event::Welcome { .. })));
     drop(store);
     drop(database);
     std::fs::remove_file(path).unwrap();
@@ -256,7 +200,7 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
 #[test]
 fn retired_or_closing_connections_cannot_execute_queued_requests() {
     let mut hub = Hub {
-        authority: Authority::new("owner".into(), "invite".into(), vec![]).unwrap(),
+        authority: Authority::new("owner".into(), vec![]).unwrap(),
         clients: BTreeMap::new(),
         invitation_origin: None,
         room_commands: None,
@@ -273,10 +217,7 @@ fn retired_or_closing_connections_cannot_execute_queued_requests() {
         .iter()
         .any(|event| event["type"] == "ack" && event["requestId"] == "leaving"));
     let saved = serde_json::to_value(hub.authority.export_state()).unwrap();
-    retired.request(
-        &mut hub,
-        json!({"type":"join","key":"invite","name":"Late join"}),
-    );
+    retired.request(&mut hub, json!({"type":"join","name":"Late join"}));
     assert_eq!(
         serde_json::to_value(hub.authority.export_state()).unwrap(),
         saved
@@ -364,7 +305,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
     let directory_store = storage::Storage::open(&directory_path).unwrap();
     let mut room_store = storage::Storage::open(&room_path).unwrap();
     let mut hub = Hub {
-        authority: Authority::new("owner".into(), "invite".into(), vec![]).unwrap(),
+        authority: Authority::new("owner".into(), vec![]).unwrap(),
         clients: BTreeMap::new(),
         storage: Arc::new(Mutex::new(directory_store)),
         invitation_origin: None,
@@ -387,8 +328,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
     room_store
         .save(&serde_json::to_value(host.policy()).unwrap())
         .unwrap();
-    let administrator = Endpoint::join(&mut hub, "owner");
-    administrator.request(
+    operator.request(
         &mut hub,
         json!({"type":"admit_room", "room":host.summary()}),
     );
@@ -479,8 +419,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         && event["code"] == "directory_storage_failed"
         && event.get("requestId").is_none()));
 
-    // The same failed domain store must still withhold an invited identity,
-    // even after its separate room host has committed the room grant.
+    // Site identity commits first. A later room grant has only its room storage owner.
     operator.request(
         &mut hub,
         json!({"type":"room_invite","roomId":"hosted","requestId":"invite"}),
@@ -492,34 +431,40 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         .find(|event| event["type"] == "room_invite")
         .unwrap()["key"]
         .clone();
-    let mut invited = Endpoint::connect(&mut hub);
-    database
-        .execute_batch("DROP TRIGGER reject_checkpoint;")
-        .unwrap();
-    invited.request(&mut hub, json!({"type":"join","name":"Invited","roomId":"hosted","key":invitation,"requestId":"admission"}));
-    complete_host_turn(&mut hub, &mut operator, &mut host, &mut room_store); // verify invitation
-    complete_host_turn(&mut hub, &mut operator, &mut host, &mut room_store); // current endpoints
-    database.execute_batch("CREATE TRIGGER reject_checkpoint BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'metadata unavailable'); END;").unwrap();
-    complete_host_turn(&mut hub, &mut operator, &mut host, &mut room_store); // durable grant, domain identity commit fails
-    assert_eq!(
-        invited.drain(),
-        vec![json!({"type":"error","code":"storage_failed","requestId":"admission"})]
+    let mut failed = Endpoint::connect(&mut hub);
+    failed.request(
+        &mut hub,
+        json!({"type":"join","name":"New visitor","requestId":"admission"}),
     );
-    assert!(
-        room_store.load().unwrap().unwrap()["grants"]
-            .as_array()
-            .unwrap()
-            .len()
-            > 0
-    );
+    assert!(failed
+        .drain()
+        .iter()
+        .any(|event| event["code"] == "storage_failed"));
     assert_eq!(
         serde_json::to_value(hub.authority.export_state()).unwrap()["users"]
             .as_array()
             .unwrap()
             .len(),
-        admitted_users,
-        "an unconfirmed domain identity must not be checkpointed"
+        admitted_users
     );
+    database
+        .execute_batch("DROP TRIGGER reject_checkpoint;")
+        .unwrap();
+    let mut invited = Endpoint::join(&mut hub, "invite");
+    complete_host_turn(&mut hub, &mut operator, &mut host, &mut room_store);
+    database.execute_batch("CREATE TRIGGER reject_checkpoint BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'metadata unavailable'); END;").unwrap();
+    invited.request(
+        &mut hub,
+        json!({"type":"enter_room","roomId":"hosted","inviteKey":invitation,"requestId":"entry"}),
+    );
+    complete_host_turn(&mut hub, &mut operator, &mut host, &mut room_store);
+    assert!(invited
+        .drain()
+        .iter()
+        .any(|event| event["type"] == "room_reply"
+            && event["requestId"] == "entry"
+            && event["result"]["type"] == "done"));
+    assert!(host.policy().grants.contains(&invited.user));
     drop(database);
     drop(room_store);
     drop(hub);
@@ -561,15 +506,7 @@ fn room_peer_commit_owns_confirmation_retry_without_domain_checkpoint() {
         RoomState, StoredRoomHost,
     };
     let folder = std::env::temp_dir().join(format!("piik-room-commit-{}", Uuid::new_v4()));
-    let state = Domain::open(
-        &folder,
-        "owner",
-        "invite",
-        "http://localhost".into(),
-        None,
-        vec![],
-    )
-    .unwrap();
+    let state = Domain::open(&folder, "owner", "http://localhost".into(), None, vec![]).unwrap();
     std::fs::create_dir_all(folder.join("rooms")).unwrap();
     let mut hub = state.hub.lock().unwrap();
     let mut sender = Endpoint::join(&mut hub, "owner");
@@ -780,7 +717,11 @@ async fn connect_with_credential(
         .headers_mut()
         .insert("Origin", "http://localhost".parse().unwrap());
     let (mut socket, _) = connect_async(request).await.unwrap();
-    send_request(&mut socket, json!({"type":"join", "key":key, "name":name})).await;
+    send_request(
+        &mut socket,
+        json!({"type":"join", "ownerKey":(key!="invite").then_some(key), "name":name}),
+    )
+    .await;
     let Event::Welcome {
         session_id,
         state,
@@ -835,15 +776,7 @@ async fn start_server(
     tokio::task::JoinHandle<anyhow::Result<()>>,
     Arc<Mutex<Hub>>,
 ) {
-    let state = Domain::open(
-        folder,
-        "owner",
-        "invite",
-        "http://localhost".into(),
-        None,
-        vec![],
-    )
-    .unwrap();
+    let state = Domain::open(folder, "owner", "http://localhost".into(), None, vec![]).unwrap();
     let hub = state.hub.clone();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -881,7 +814,6 @@ async fn http_and_https_share_a_domain_and_release_both_listeners_on_stop() {
     let state = Domain::open(
         &folder,
         "owner",
-        "invite",
         "http://localhost".into(),
         Some(invitation.clone()),
         vec![],
@@ -910,11 +842,7 @@ async fn http_and_https_share_a_domain_and_release_both_listeners_on_stop() {
     )
     .await
     .unwrap();
-    send_request(
-        &mut guest,
-        json!({"type":"join", "key":"invite", "name":"LAN guest"}),
-    )
-    .await;
+    send_request(&mut guest, json!({"type":"join", "name":"LAN guest"})).await;
     let Event::Welcome {
         state,
         invitation_origin,
@@ -986,19 +914,10 @@ async fn invitation_origin_is_only_a_second_exact_http_entry() {
     let primary = "http://localhost";
     let invitation = "https://invite.example";
     let owner = Uuid::new_v4().to_string();
+    assert!(Domain::open(&folder, &owner, format!("{primary}/path"), None, vec![]).is_err());
     assert!(Domain::open(
         &folder,
         &owner,
-        "invite",
-        format!("{primary}/path"),
-        None,
-        vec![]
-    )
-    .is_err());
-    assert!(Domain::open(
-        &folder,
-        &owner,
-        "invite",
         primary.into(),
         Some("https://user@invite.example".into()),
         vec![]
@@ -1011,7 +930,6 @@ async fn invitation_origin_is_only_a_second_exact_http_entry() {
     let state = Domain::open(
         &folder,
         &owner,
-        "invite",
         primary.into(),
         Some(invitation.into()),
         vec![],
@@ -1044,7 +962,7 @@ async fn invitation_origin_is_only_a_second_exact_http_entry() {
         let (mut socket, _) = connect_async(request(origin)).await.unwrap();
         send_request(
             &mut socket,
-            json!({"type":"join", "key":key, "name":"Entry user"}),
+            json!({"type":"join", "ownerKey":(key!="invite").then_some(key), "name":"Entry user"}),
         )
         .await;
         let text = tokio::time::timeout(Duration::from_secs(5), async {
@@ -1098,14 +1016,14 @@ async fn invitation_origin_is_only_a_second_exact_http_entry() {
         .unwrap();
     drop(sockets);
     drop(hub);
-    let restored = Domain::open(&folder, &owner, "invite", primary.into(), None, vec![]).unwrap();
+    let restored = Domain::open(&folder, &owner, primary.into(), None, vec![]).unwrap();
     assert_eq!(restored.identity().0, identity);
     {
         let mut hub = restored.hub.lock().unwrap();
         let mut probe = Endpoint::connect(&mut hub);
         probe.request(
             &mut hub,
-            json!({"type":"join", "key":owner, "name":"Restored owner"}),
+            json!({"type":"join", "ownerKey":owner, "name":"Restored owner"}),
         );
         let welcome = probe
             .drain()
@@ -1479,7 +1397,7 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
         let mut probe = Endpoint::connect(&mut hub);
         probe.request(
             &mut hub,
-            json!({"type":"join", "key":"owner", "name":"Owner renamed"}),
+            json!({"type":"join", "ownerKey":"owner", "name":"Owner renamed"}),
         );
         let welcome = probe
             .drain()
@@ -1512,15 +1430,7 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
     assert!(saved.policy().access == RoomAccess::Private);
     assert!(saved.policy().grants.contains(&guest_user));
     drop(saved);
-    let restored = Domain::open(
-        &folder,
-        "owner",
-        "invite",
-        "http://localhost".into(),
-        None,
-        vec![],
-    )
-    .unwrap();
+    let restored = Domain::open(&folder, "owner", "http://localhost".into(), None, vec![]).unwrap();
     assert_eq!(
         restored.hub.lock().unwrap().authority.owner_name(),
         Some("Owner renamed")
@@ -1559,15 +1469,7 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
 async fn native_hosting_failure_stops_the_http_service() {
     use piik_channel_core::{wire::RoomAccess, RoomState, StoredRoomHost};
     let folder = std::env::temp_dir().join(format!("piik-server-failure-{}", Uuid::new_v4()));
-    let domain = Domain::open(
-        &folder,
-        "owner",
-        "invite",
-        "http://localhost".into(),
-        None,
-        vec![],
-    )
-    .unwrap();
+    let domain = Domain::open(&folder, "owner", "http://localhost".into(), None, vec![]).unwrap();
     let identity = domain.identity();
     let rooms = crate::room_directory(&folder, identity);
     std::fs::create_dir_all(&rooms).unwrap();
@@ -1943,7 +1845,6 @@ async fn domain_backup_restarts_its_operator_and_preserves_other_domain_room_fil
         bytes
     };
     metadata.owner_key = "restored-owner".into();
-    metadata.invite_key = "restored-invite".into();
     // Reject only the new durable record. Ordinary old-domain admissions can
     // still commit, proving the service reopens its old operator after failure.
     let reject = rusqlite::Connection::open(folder.path().join("channel.sqlite")).unwrap();

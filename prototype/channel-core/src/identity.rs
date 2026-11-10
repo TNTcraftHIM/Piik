@@ -1,7 +1,4 @@
-use crate::{
-    access::{accepts_password, digest, hash_password},
-    wire::RoomAccess,
-};
+use crate::access::digest;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -12,21 +9,11 @@ pub const RECOVERY_MS: u64 = 20_000;
 const MAX_USERS: usize = 64;
 pub(crate) const MAX_SESSIONS: usize = 20;
 
-pub fn domain_invite_hash(key: &str) -> String {
-    crate::attachment::sha256_hex(key.as_bytes())
-}
-
-pub(crate) fn private_access() -> RoomAccess {
-    RoomAccess::Private
-}
-
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct User {
     pub id: Uuid,
     pub name: String,
-    #[serde(skip)]
-    pub owner: bool,
     #[serde(skip)]
     credential: [u8; 32],
 }
@@ -47,10 +34,7 @@ pub struct Identity {
     pub users: BTreeMap<Uuid, User>,
     pub sessions: BTreeMap<Uuid, Session>,
     pub owner_key: String,
-    pub invite_key: String,
     pub owner_id: Uuid,
-    pub access: RoomAccess,
-    pub password_hash: Option<String>,
 }
 
 pub struct Admission<'a> {
@@ -58,26 +42,23 @@ pub struct Admission<'a> {
     pub can_prepare_udp: bool,
     pub can_receive_video_layers: bool,
     pub credential: Option<&'a str>,
-    pub key: Option<&'a str>,
-    pub password: Option<&'a str>,
+    pub owner_key: Option<&'a str>,
     pub resume: Option<&'a str>,
     pub name: &'a str,
 }
 
 #[derive(Clone)]
 pub struct Admitted {
-    pub user_id: Uuid,
     pub session_id: Uuid,
     pub credential: String,
     pub replaced_connection: Option<Uuid>,
 }
 
-/// The domain's current admission, without credentials or its user database.
+/// The authenticated user of an endpoint; room rights follow room ownership.
 #[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Member {
     pub user_id: Uuid,
-    pub domain_owner: bool,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -90,11 +71,8 @@ pub struct Endpoint {
 
 impl Identity {
     pub fn member(&self, user_id: Uuid) -> Result<Member, &'static str> {
-        let user = self.users.get(&user_id).ok_or("invalid_credential")?;
-        Ok(Member {
-            user_id,
-            domain_owner: user.owner,
-        })
+        self.users.get(&user_id).ok_or("invalid_credential")?;
+        Ok(Member { user_id })
     }
 
     pub fn endpoints(&self) -> BTreeMap<Uuid, Endpoint> {
@@ -113,44 +91,13 @@ impl Identity {
             .collect()
     }
 
-    pub fn new(owner_key: String, invite_key: String) -> Self {
+    pub fn new(owner_key: String) -> Self {
         Self {
             users: BTreeMap::new(),
             sessions: BTreeMap::new(),
             owner_key,
-            invite_key,
             owner_id: Uuid::new_v4(),
-            access: RoomAccess::Private,
-            password_hash: None,
         }
-    }
-
-    pub fn update_admission(
-        &mut self,
-        access: Option<RoomAccess>,
-        password: Option<Option<String>>,
-    ) -> Result<(), &'static str> {
-        let access = access.unwrap_or(self.access);
-        if access == RoomAccess::Public {
-            self.access = access;
-            self.password_hash = None;
-            return Ok(());
-        }
-        let hash = match password {
-            Some(Some(value)) => {
-                if value.is_empty() || value.encode_utf16().count() > 128 {
-                    return Err("invalid_domain_password");
-                }
-                Some(Some(hash_password(&value)?))
-            }
-            Some(None) => Some(None),
-            None => None,
-        };
-        self.access = access;
-        if let Some(hash) = hash {
-            self.password_hash = hash;
-        }
-        Ok(())
     }
 
     pub fn admit(
@@ -166,25 +113,15 @@ impl Identity {
         let existing = input
             .credential
             .and_then(|value| self.user_for_credential(value));
-        let owner = input.key == Some(self.owner_key.as_str());
+        let owner = input.owner_key == Some(self.owner_key.as_str());
+        if input.owner_key.is_some() && !owner {
+            return Err("invalid_owner_key");
+        }
         let user_id = if owner {
             self.owner_id
         } else if let Some(user) = existing {
             user
         } else {
-            if self.access == RoomAccess::Private && input.key != Some(self.invite_key.as_str()) {
-                let hash = self
-                    .password_hash
-                    .as_ref()
-                    .ok_or("domain_invitation_required")?;
-                let password = input
-                    .password
-                    .filter(|value| !value.is_empty())
-                    .ok_or("domain_password_required")?;
-                if !accepts_password(hash, password) {
-                    return Err("domain_password_incorrect");
-                }
-            }
             Uuid::new_v4()
         };
         let resumed = input
@@ -225,7 +162,6 @@ impl Identity {
         let user = self.users.entry(user_id).or_insert_with(|| User {
             id: user_id,
             name: name.to_owned(),
-            owner,
             credential: digest(&credential),
         });
         if owner {
@@ -247,7 +183,6 @@ impl Identity {
         let replaced_connection = session.connection.replace(connection);
         session.disconnected_at = None;
         Ok(Admitted {
-            user_id,
             session_id,
             credential,
             replaced_connection,
@@ -293,7 +228,6 @@ impl Identity {
                     User {
                         id: u.id,
                         name: u.name,
-                        owner: u.id == owner_id,
                         credential: u.credential,
                     },
                 )
@@ -342,6 +276,9 @@ pub struct StoredUser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn user(identity: &Identity, admitted: &Admitted) -> Uuid {
+        identity.sessions[&admitted.session_id].user_id
+    }
     fn input<'a>(
         key: Option<&'a str>,
         credential: Option<&'a str>,
@@ -351,8 +288,7 @@ mod tests {
             signing_key: [1; 32],
             can_prepare_udp: false,
             can_receive_video_layers: false,
-            key,
-            password: None,
+            owner_key: key,
             credential,
             resume,
             name: "Friend",
@@ -360,13 +296,13 @@ mod tests {
     }
 
     #[test]
-    fn invitation_admits_distinct_users_but_credentials_and_page_sessions_are_independent() {
-        let mut identity = Identity::new("owner".into(), "invite".into());
+    fn open_site_creates_distinct_users_but_credentials_and_page_sessions_are_independent() {
+        let mut identity = Identity::new("owner".into());
         let first = identity
-            .admit(input(Some("invite"), None, None), Uuid::new_v4(), 0)
+            .admit(input(None, None, None), Uuid::new_v4(), 0)
             .unwrap();
         let second = identity
-            .admit(input(Some("invite"), None, None), Uuid::new_v4(), 0)
+            .admit(input(None, None, None), Uuid::new_v4(), 0)
             .unwrap();
         let page = identity
             .admit(
@@ -375,8 +311,8 @@ mod tests {
                 0,
             )
             .unwrap();
-        assert_ne!(first.user_id, second.user_id);
-        assert_eq!(first.user_id, page.user_id);
+        assert_ne!(user(&identity, &first), user(&identity, &second));
+        assert_eq!(user(&identity, &first), user(&identity, &page));
         assert_ne!(first.session_id, page.session_id);
         let foreign_resume = identity
             .admit(
@@ -397,20 +333,21 @@ mod tests {
                 0,
             )
             .unwrap();
-        assert_eq!(owner.user_id, identity.owner_id);
-        assert_ne!(owner.user_id, first.user_id);
-        assert!(identity
+        assert_eq!(user(&identity, &owner), identity.owner_id);
+        assert_ne!(user(&identity, &owner), user(&identity, &first));
+        let fresh = identity
             .admit(input(None, Some("invalid"), None), Uuid::new_v4(), 0)
-            .is_err());
+            .unwrap();
+        assert_ne!(user(&identity, &fresh), user(&identity, &first));
     }
 
     #[test]
     fn session_replacement_fences_stale_close_and_recovery_cannot_extend_expiry() {
-        let mut identity = Identity::new("owner".into(), "invite".into());
+        let mut identity = Identity::new("owner".into());
         let first_connection = Uuid::new_v4();
         let second_connection = Uuid::new_v4();
         let first = identity
-            .admit(input(Some("invite"), None, None), first_connection, 0)
+            .admit(input(None, None, None), first_connection, 0)
             .unwrap();
         identity.disconnect(first.session_id, first_connection, 1_000);
         let next = identity
@@ -448,22 +385,21 @@ mod tests {
     }
 
     #[test]
-    fn legacy_user_records_normalize_without_losing_identity_or_credentials() {
-        let mut identity = Identity::new("owner".into(), "invite".into());
+    fn saved_users_restore_identity_and_credentials_without_roles() {
+        let mut identity = Identity::new("owner".into());
         let owner = identity
             .admit(input(Some("owner"), None, None), Uuid::new_v4(), 0)
             .unwrap();
         let friend = identity
-            .admit(input(Some("invite"), None, None), Uuid::new_v4(), 0)
+            .admit(input(None, None, None), Uuid::new_v4(), 0)
             .unwrap();
         let before = serde_json::to_value(identity.export_users()).unwrap();
-        let mut legacy = before.clone();
-        for user in legacy.as_array_mut().unwrap() {
-            user["roles"] = serde_json::json!([]);
-        }
-        let mut restored = Identity::new("owner".into(), "invite".into());
+        let mut restored = Identity::new("owner".into());
         restored
-            .restore_users(owner.user_id, serde_json::from_value(legacy).unwrap())
+            .restore_users(
+                user(&identity, &owner),
+                serde_json::from_value(before.clone()).unwrap(),
+            )
             .unwrap();
         assert_eq!(
             serde_json::to_value(restored.export_users()).unwrap(),
@@ -471,13 +407,13 @@ mod tests {
         );
         assert_eq!(
             restored.user_for_credential(&owner.credential),
-            Some(owner.user_id)
+            Some(user(&identity, &owner))
         );
         assert_eq!(
             restored.user_for_credential(&friend.credential),
-            Some(friend.user_id)
+            Some(user(&identity, &friend))
         );
-        assert!(restored.member(owner.user_id).unwrap().domain_owner);
-        assert!(!restored.member(friend.user_id).unwrap().domain_owner);
+        assert_eq!(restored.owner_id, user(&identity, &owner));
+        assert_ne!(restored.owner_id, user(&identity, &friend));
     }
 }

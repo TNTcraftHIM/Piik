@@ -180,7 +180,7 @@ impl App {
                 name,
                 credential: Some(credential.clone()),
                 server_udp: None,
-                key: None,
+                owner_key: None,
             };
             let management = Hosting {
                 desktop: Some(self.desktop.clone()),

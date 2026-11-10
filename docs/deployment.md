@@ -202,7 +202,7 @@ Verify only the surfaces relevant to the release:
 - Piik and nginx have expected active/restart state;
 - the selected media path completes the release's network smoke;
 - the current symlink and served revision match the descriptor;
-- domain admission, room hosting and selected media complete the scoped smoke; and
+- site identity, room admission/hosting and selected media complete the scoped smoke; and
 - infrastructure, config, secrets, ports, and persistent state not named by the
   task are unchanged.
 

@@ -1,6 +1,6 @@
 # Piik 3.0 Room Data And Hosting
 
-Reviewed 2026-11-08. The [accepted network model](./channel-network-design.md)
+Reviewed 2026-11-10. The [accepted network model](./channel-network-design.md)
 owns responsibilities, routing and live lifecycles. This document records the
 accepted data ownership and develops synchronization, delivery and recovery. The
 [prototype README](../../prototype/channel-server/README.md) describes running
@@ -9,14 +9,14 @@ The first version keeps one room data owner and reuses established room paths.
 
 ## Ownership And Placement
 
-The room owner operates the room and keeps its authoritative data. The domain
-owner operates the channel directory and membership. These runtimes may share
+The room owner operates the room and keeps its authoritative data. The site
+operator maintains the domain identity and room directory. These runtimes may share
 one App when that user owns both, or run on different users' devices. Neither
 arrangement adds a storage server, a second application or a configuration task.
 
 | Information | Authoritative owner and copies |
 | --- | --- |
-| Domain identity, admission settings, users and room-to-owner binding | Domain runtime's durable data. Clients and room runtimes receive authorized identity facts. |
+| Domain identity, users and room-to-owner binding | Domain runtime's durable data. Clients and room runtimes receive authenticated identity facts. |
 | Room name, icon, access and grants | Room runtime's durable data. The domain directory holds only its authorized summary. |
 | Identity images | Small retained metadata at their domain or room owner; independent of the uploader's live session. The directory carries the authorized room summary. |
 | Messages and attachment descriptions | Confirmed history at the room runtime; participants may keep readable local copies. |
@@ -47,13 +47,14 @@ route plans and file-source availability from live sessions. Domain directory
 updates come from the room owner and contain only the summary a recipient may
 see; changing a room name does not introduce a second writer at the domain.
 
-Public and private room owners issue and retain their own room invitation.
-It admits a new ordinary domain member and, for a private room, commits that
-room's grant before admission completes. Other private or hidden rooms remain
-outside that grant. Access-mode changes preserve the invitation until its owner
-explicitly resets it; resetting retires old links without removing existing
-members or room grants. Public entry alone creates no grant for a later switch
-to private. Domain membership and room grants keep their existing checkpoint owners.
+Site identity is established independently of room entry. Public rooms use a
+normal room URL; a private room's host confirms and saves its invitation or
+password grant before entry succeeds. Other private or hidden rooms remain
+outside that grant. Access-mode changes retain an existing private invitation
+until its owner explicitly resets it; resetting retires old links without
+removing existing room grants. Public entry alone creates no grant for a later
+switch to private. A room creator may register and restore their own saved room;
+site maintenance does not confer ownership of another user's room data.
 
 Scope local copies by domain, room and authenticated user, never nickname or
 room title. Source URLs locate the runtime; they are not the room's identity.
@@ -360,20 +361,19 @@ room without its data creates a new room.
 
 The domain directory can retain the unavailable room's summary and owner binding.
 It does not automatically become a substitute room host or recover data it never
-stored. If the room owner permanently leaves, the domain owner can remove the
-directory entry; continuing that room requires an explicit transfer of hosting
-and state. Automatic election and offline concurrent writing are outside this
-first model.
+stored. Continuing a room on another device requires an explicit transfer of
+hosting and state. Automatic election and offline concurrent writing are outside
+this first model.
 
 ### Room Creation And Removal
 
 Explicit creation asks the domain for a fresh room ID and creator binding before
 the hosting runtime saves its policy. Host registration only binds an existing
 directory entry; automatic recovery cannot recreate a removed room. Explicit
-backup import may restore an absent entry only with domain-owner approval.
-An archive's identifiers do not grant that authority.
+backup import may restore an absent entry after authenticating as that room's
+creator. An archive's identifiers alone do not grant that authority.
 
-An online room's creator or domain owner can delete its authoritative policy and
+An online room's creator can delete its authoritative policy and
 history. The hosting runtime commits that local deletion before the domain
 confirms directory removal. Removing only a directory entry is a separate user
 intent: it retires room access and activity without deleting the host's data,
@@ -406,7 +406,7 @@ restored authority. Live captures, connections and input grants are not backup d
 
 Domain restore belongs to the existing App or Server service owner. It stops and
 joins its Native operators before replacing the domain's checkpoint and retiring
-old clients, then uses the restored admission keys for bootstrap. Room files stay
+old clients, then uses the restored owner key for bootstrap. Room files stay
 scoped to their domain and owner; importing another domain preserves the former
 files without registering them under the new authority. A missing room database
 remains unavailable rather than being recreated from its directory summary.

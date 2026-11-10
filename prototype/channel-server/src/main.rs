@@ -27,7 +27,6 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
     let invitation_origin = std::env::var("PIIK_CHANNEL_INVITATION_ORIGIN").ok();
     // Existing domain data owns its keys; environment values seed a new domain.
     let owner = std::env::var("PIIK_CHANNEL_OWNER_KEY").unwrap_or_default();
-    let invite = std::env::var("PIIK_CHANNEL_INVITE_KEY").unwrap_or_default();
     let ice_servers = piik_channel_prototype::ice_servers_from_environment()?;
     let executable = std::env::current_exe().context("Locate the Server executable")?;
     let resources = executable.parent().context("Locate the Server directory")?;
@@ -87,15 +86,12 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
     let state = Domain::open(
         &directory,
         &owner,
-        &invite,
         origin.clone(),
         invitation_origin,
         ice_servers,
     )?;
     println!("Piik Server: http://{bound}");
-    println!(
-        "Web interface: {origin}/__channel-preview (use this domain's owner or invitation key)"
-    );
+    println!("Web interface: {origin}/__channel-preview");
     release::startup_notice();
     serve_server(listener, state, directory, routes, udp, stop).await?;
     Ok(std::process::ExitCode::SUCCESS)

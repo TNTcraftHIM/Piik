@@ -41,17 +41,16 @@ first, and rebuild it after changing the shared Rust core. From the repository
 root, start Rust in one terminal:
 
 ```powershell
-$env:PIIK_CHANNEL_OWNER_KEY = "<private owner seed for a new domain>"
-$env:PIIK_CHANNEL_INVITE_KEY = "<different invitation seed for a new domain>"
+$env:PIIK_CHANNEL_OWNER_KEY = "<private owner bootstrap seed for a new site>"
 $env:PIIK_CHANNEL_WEB_DIR = (Resolve-Path build/channel-web).Path
 $env:PIIK_CHANNEL_WEB_ORIGIN = "http://127.0.0.1:8790"
 cargo +1.91.0 run --manifest-path prototype/channel-server/Cargo.toml
 ```
 
-The values above are placeholders. Supply independently generated seeds through
-your local environment when creating a domain. Thereafter the domain database
-owns its admission keys; changing or removing these environment variables does
-not rotate them. Keep both the keys and hosting backups private and out of
+The value above is a placeholder. Supply a generated owner seed through
+your local environment when creating a site. Thereafter its database owns the
+owner key; changing or removing the environment value does not rotate it.
+Keep the key and hosting backups private and out of
 committed files and saved logs. Server does not print key-bearing URLs.
 
 In another terminal, start the development interface:
@@ -61,8 +60,10 @@ node node_modules/vite/bin/vite.js --config prototype/channel-server/vite.config
 ```
 
 Open `http://127.0.0.1:8790/__channel-preview#owner=<owner-key>` with your own key.
-Use **Copy domain address** for a public domain or **Copy domain invitation** for
-a private domain. Room invitations are separate controls in room settings.
+This bootstrap entry selects the site-maintenance identity. Ordinary users open
+`http://127.0.0.1:8790/__channel-preview` directly and can create their own rooms.
+Beside a room title, copy its public-room link or, as its owner, a private-room
+invitation. Private-room admission is handled after joining the site.
 Separate browser profiles represent separate users; tabs in one profile share a saved user credential but
 have independent live sessions. The default loopback ports are 8791 for Rust and
 8790 for the interface. `PIIK_CHANNEL_PORT`, `PIIK_CHANNEL_UI_PORT` and
@@ -161,7 +162,7 @@ exact site origin. Earlier room-only consent requires approval again, preserving
 the site's room-data namespace. Discovery exposes only the local
 approval address; the authorized health response supplies the process token.
 The token never appears in launch or room invitation URLs. Native verifies the
-Browser account through actual domain admission before opening its room data.
+Browser account through its authenticated site identity before opening its room data.
 Each approved origin owns a separate local namespace; replacing a tunnel origin
 does not silently grant access to an earlier site's data.
 
@@ -223,15 +224,15 @@ conversation and selected screens in the middle, and a persistent domain-wide
 user list on the right. Narrow layouts navigate between room and user panes.
 It provides self-name editing, room controls, files, history, voice
 and multiple watched screens through the existing session and shared components.
-The domain owner can edit its name, icon and public/private entry settings beside
-the domain title. A private domain can also accept a passphrase. Resetting its
-invitation changes the shared link while keeping existing users and room invitations.
+The site owner can edit its name and icon and manage its backup beside the site
+title. Opening the site establishes an ordinary user identity without an entry
+password. Each room creator manages their own room's access.
 Each room-list item separates navigation from its settings action. Managing
 another room keeps the selected conversation and personal activities in place.
-Room creation, room settings and domain settings reuse one native dialog shell;
-task tabs keep invitation, editing, forwarding and backups separate.
-Room creation and settings share the same identity fields; the room owner or
-domain owner saves them at that room's runtime. Both surfaces share preset icons
+Room creation, room settings and site settings reuse one native dialog shell;
+room invitations open separately beside the room title.
+Room creation and settings share the same identity fields; the room owner saves
+them at that room's runtime. Both surfaces share preset icons
 and custom images. The browser crops images to a small square; saving retains
 them with the domain or room metadata, including after a restart.
 

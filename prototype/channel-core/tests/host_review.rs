@@ -10,12 +10,8 @@ use uuid::Uuid;
 fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints() {
     let owner = Member {
         user_id: Uuid::new_v4(),
-        domain_owner: false,
     };
-    let viewer = Member {
-        user_id: Uuid::new_v4(),
-        domain_owner: true,
-    };
+    let viewer = owner; // Another endpoint of the room creator can still commit policy.
     let publisher = Uuid::new_v4();
     let reader = Uuid::new_v4();
     let publication = Uuid::new_v4();
@@ -132,7 +128,7 @@ fn review_admit(core: &mut piik_channel_core::Authority, connection: Uuid, key: 
     core.handle(
         connection,
         piik_channel_core::wire::Request::parse(
-            &serde_json::json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key(),"name":"Review","key":key}).to_string(),
+            &serde_json::json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key(),"name":"Review","ownerKey":(key=="owner").then_some(key)}).to_string(),
         )
         .unwrap(),
         0,
@@ -168,15 +164,8 @@ fn review_register(
     host_connection: Uuid,
     host: &RoomHost,
 ) -> piik_channel_core::host::HostInput {
-    let administrator = if host.summary().creator_id == core.identity().1 {
-        host_connection
-    } else {
-        let connection = Uuid::new_v4();
-        review_admit(core, connection, "owner");
-        connection
-    };
     core.handle(
-        administrator,
+        host_connection,
         piik_channel_core::wire::Request {
             request_id: None,
             command: Command::AdmitRoom {
@@ -220,13 +209,12 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
         "resume",
         "requester-replaced",
     ] {
-        let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+        let mut core = Authority::new("owner".into(), vec![]).unwrap();
         let owner = Uuid::new_v4();
         let reader = Uuid::new_v4();
         review_admit(&mut core, owner, "owner");
         let joined = core.handle(reader, Request::parse(&serde_json::json!({
-            "type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL, "name":"Reader", "key":"invite",
-            "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([2; 32]).signing_key()
+            "type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL, "name":"Reader", "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([2; 32]).signing_key()
         }).to_string()).unwrap(), 0);
         let (reader_session, credential) = joined
             .events
@@ -363,7 +351,7 @@ fn room_host_cannot_complete_an_unissued_other_room_request() {
         wire::Event,
         Authority,
     };
-    let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+    let mut core = Authority::new("owner".into(), vec![]).unwrap();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
     let b_session = review_admit(&mut core, b, "invite");
@@ -425,12 +413,12 @@ fn room_host_cannot_complete_an_unissued_other_room_request() {
     );
 }
 #[test]
-fn invited_connection_cannot_act_before_room_grant_commits() {
+fn room_entry_waits_for_commit_without_blocking_site_identity() {
     use piik_channel_core::{
         wire::{Event, Request},
         Authority,
     };
-    let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+    let mut core = Authority::new("owner".into(), vec![]).unwrap();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
     let bs = review_admit(&mut core, b, "invite");
@@ -473,11 +461,14 @@ fn invited_connection_cannot_act_before_room_grant_commits() {
     let binding = input.binding_id;
     host.dispatch(input).unwrap();
     review_host_turn(&mut core, b, "private-review", host.finish(None).unwrap());
+    review_admit(&mut core, c, "invite");
     let effects = core.handle(
         c,
         Request::parse(
-            &serde_json::json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"signingKey":piik_channel_core::conversation::SessionSigner::from_seed([2; 32]).signing_key(),"name":"C","key":key,"roomId":"private-review"})
-                .to_string(),
+            &serde_json::json!({
+                "type":"enter_room","roomId":"private-review","inviteKey":key,"requestId":"entry"
+            })
+            .to_string(),
         )
         .unwrap(),
         1,
@@ -490,24 +481,22 @@ fn invited_connection_cannot_act_before_room_grant_commits() {
             _ => None,
         })
         .unwrap();
-    host.dispatch(input).unwrap();
-    let effects = review_host_turn(&mut core, b, "private-review", host.finish(None).unwrap());
-    assert!(effects.events.iter().any(|(_,e)|matches!(e,Event::HostInput{input,..}if matches!(input.action,HostAction::GrantInvited{..}))));
+    assert!(host.dispatch(input).unwrap().policy.is_some());
     let effects = core.handle(
         c,
         Request {
-            request_id: Some("premature".into()),
+            request_id: Some("rename".into()),
             command: Command::SetName {
-                name: "Premature".into(),
+                name: "Still connected".into(),
             },
         },
         2,
     );
-    assert!(
-        !effects.events.iter().any(|(target, e)| *target == c
-            && matches!(e,Event::Ack{request_id}if request_id=="premature")),
-        "uncompleted room invitation already admitted a usable domain session"
-    );
+    assert!(effects
+        .events
+        .iter()
+        .any(|(target, e)| *target == c
+            && matches!(e,Event::Ack{request_id} if request_id=="rename")));
     let stopped = core.handle(
         b,
         Request {
@@ -519,9 +508,9 @@ fn invited_connection_cannot_act_before_room_grant_commits() {
         },
         3,
     );
-    assert!(stopped.close.contains(&c));
-    assert!(stopped.events.iter().any(|(target, event)| *target == c
-        && matches!(event, Event::Error { request_id: None, code } if code == "room_context_changed")));
+    assert!(!stopped.close.contains(&c));
+    assert!(stopped.events.iter().any(|(target,e)| *target==c && matches!(e,
+        Event::RoomReply { request_id:Some(id), result:piik_channel_core::host::RoomResult::Error { code }, .. } if id=="entry" && code=="room_context_changed")));
 }
 
 #[test]
@@ -530,7 +519,7 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
         wire::{Event, Request},
         Authority,
     };
-    let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+    let mut core = Authority::new("owner".into(), vec![]).unwrap();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
     let bs = review_admit(&mut core, b, "invite");
@@ -704,7 +693,7 @@ fn host_projection_rejects_conflicting_flow_identity_and_audience_scope() {
         "audience_duplicate",
         "audience_conflict",
     ] {
-        let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+        let mut core = Authority::new("owner".into(), vec![]).unwrap();
         let source = Uuid::new_v4();
         let viewer = Uuid::new_v4();
         let source_session = review_admit(&mut core, source, "invite");
@@ -885,8 +874,7 @@ fn host_projection_rejects_conflicting_flow_identity_and_audience_scope() {
                             .publications
                             .iter()
                             .any(|p| p.audience.iter().any(|a| a.session_id == viewer_session)));
-                        let retired =
-                            source_view(core.expire(piik_channel_core::RECOVERY_MS + 3));
+                        let retired = source_view(core.expire(piik_channel_core::RECOVERY_MS + 3));
                         assert!(
                             retired.publications.iter().all(|p| p.audience.is_empty()),
                             "domain retirement prunes old host audience before any host Sync reply"
@@ -1005,7 +993,7 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
         "live_receiver",
         "live_input",
     ] {
-        let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+        let mut core = Authority::new("owner".into(), vec![]).unwrap();
         let connections: [Uuid; 5] = std::array::from_fn(|_| Uuid::new_v4());
         let [source, relay, branch, viewer, transit] =
             connections.map(|connection| review_admit(&mut core, connection, "invite"));

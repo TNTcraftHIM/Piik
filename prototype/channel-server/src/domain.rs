@@ -55,11 +55,10 @@ impl Hub {
         let metadata = self.authority.changes_metadata(&request);
         // A host has already committed its room policy. The domain's directory
         // is a projection of that authority, not a second writer that may undo it.
-        // Completing an invited identity still belongs to the domain transaction.
         let room_projection = matches!(&request.command,
             piik_channel_core::wire::Command::HostOutput { output, .. }
             if !output.reply.as_ref().is_some_and(|reply| matches!(reply.result,
-                piik_channel_core::host::RoomResult::Invited | piik_channel_core::host::RoomResult::Deleted { .. })));
+                piik_channel_core::host::RoomResult::Deleted { .. })));
         let deleted = match &request.command {
             piik_channel_core::wire::Command::HostOutput { room_id, output }
                 if output.reply.as_ref().is_some_and(|reply| {
@@ -389,7 +388,6 @@ impl Domain {
     pub fn open(
         directory: &Path,
         owner_seed: &str,
-        invite_seed: &str,
         origin: String,
         invitation_origin: Option<String>,
         ice_servers: Vec<serde_json::Value>,
@@ -413,9 +411,9 @@ impl Domain {
                 .context("unsupported_domain_checkpoint: preserve the existing data and use a supported backup or a fresh directory")?
                 .into_authority(ice_servers.clone())
                 .map_err(anyhow::Error::msg)?,
-            None => Authority::new(owner_seed.into(), invite_seed.into(), ice_servers.clone())
+            None => Authority::new(owner_seed.into(), ice_servers.clone())
                 .map_err(anyhow::Error::msg)
-                .context("A new domain requires distinct owner and invitation seed keys")?,
+                .context("A new site requires its local owner bootstrap key")?,
         };
         storage
             .save(&serde_json::to_value(authority.export_backup())?)
@@ -621,7 +619,7 @@ mod tests {
     fn failed_deleted_room_checkpoint_keeps_only_an_offline_retry_entry() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("domain.sqlite");
-        let authority = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+        let authority = Authority::new("owner".into(), vec![]).unwrap();
         let mut storage = storage::Storage::open(&path).unwrap();
         storage
             .save(&serde_json::to_value(authority.export_backup()).unwrap())
@@ -657,7 +655,9 @@ mod tests {
         };
         hub.request(
             connection,
-            request(json!({"type":"join","name":"Owner","key":"owner","signingKey":vec![0;32]})),
+            request(
+                json!({"type":"join","name":"Owner","ownerKey":"owner","signingKey":vec![0;32]}),
+            ),
         );
         drain(&mut receiver);
         let owner = hub.authority.identity().1;

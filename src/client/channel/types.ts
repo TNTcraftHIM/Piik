@@ -64,7 +64,7 @@ export interface ChannelView {
   inputChannels: ReadonlyMap<string, InputTransport>;
   remoteControls: ReadonlyMap<string, ChannelRemoteControlState>;
   error: string | null;
-  inviteURL: string | null;
+  siteURL: string | null;
   pending: ReadonlySet<string>;
 }
 
@@ -90,8 +90,6 @@ export interface ChannelActions {
   loadLatestHistory(roomId: string): Promise<void>;
   attachments: ChannelAttachments;
   renameSelf(name: string): Promise<void>;
-  enterDomain(password: string): void;
-  resetDomainInvite(reportError?: boolean): Promise<void>;
   updateDomain(settings: DomainSettings, reportError?: boolean): Promise<void>;
   exportDomainBackup(): Promise<Blob>;
   restoreDomainBackup(archive: Blob): Promise<DomainSettings>;

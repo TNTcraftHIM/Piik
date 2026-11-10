@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 5;
+pub const CHANNEL_PROTOCOL: u8 = 6;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(
@@ -19,10 +19,8 @@ pub enum Command {
         protocol: u8,
         name: String,
         credential: Option<String>,
-        key: Option<String>,
-        password: Option<String>,
+        owner_key: Option<String>,
         session_id: Option<String>,
-        room_id: Option<String>,
         signing_key: [u8; 32],
         #[serde(default)]
         can_prepare_udp: bool,
@@ -35,16 +33,7 @@ pub enum Command {
     UpdateDomain {
         name: String,
         icon: IdentityIcon,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        access: Option<RoomAccess>,
-        #[serde(
-            default,
-            deserialize_with = "nullable_password",
-            skip_serializing_if = "Option::is_none"
-        )]
-        password: Option<Option<String>>,
     },
-    DomainInvite {},
     Conversation {
         packet: crate::conversation::SignedPacket,
     },
@@ -706,9 +695,6 @@ pub struct ChannelInfo {
     pub name: String,
     pub icon: IdentityIcon,
     pub owner_id: Option<Uuid>,
-    pub access: RoomAccess,
-    pub has_password: bool,
-    pub invite_hash: String,
     pub rooms: Vec<Room>,
 }
 
@@ -768,17 +754,10 @@ pub enum Event {
         session_id: Uuid,
         state: Snapshot,
         #[serde(skip_serializing_if = "Option::is_none")]
-        invite_key: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
         invitation_origin: Option<String>,
     },
     State {
         state: Snapshot,
-    },
-    DomainInvite {
-        key: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        request_id: Option<String>,
     },
     Conversation {
         packet: crate::conversation::SignedPacket,
