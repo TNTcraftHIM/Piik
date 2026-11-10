@@ -44,19 +44,6 @@ export function ChannelRoomPreview() {
   const [stopped, setStopped] = useState(new Set<string>());
   const [mixed, setMixed] = useState(false);
   const canvases = useRef<HTMLCanvasElement[]>([]);
-  useEffect(() => {
-    const palette = getComputedStyle(document.documentElement);
-    const captures = screenUsers.map((user, index) => {
-      const canvas = document.createElement("canvas"); canvas.width = 960; canvas.height = 540; canvases.current[index] = canvas;
-      const context = canvas.getContext("2d")!;
-      const paint = () => { context.fillStyle = palette.getPropertyValue("--paper").trim(); context.fillRect(0, 0, canvas.width, canvas.height);
-        context.fillStyle = palette.getPropertyValue("--ink").trim(); context.font = "32px sans-serif"; context.fillText(user.name, 44, 64);
-        context.fillStyle = participantColor(user.id); context.beginPath(); context.arc(canvas.width * .7, canvas.height / 2, Math.min(canvas.width, canvas.height) / 4, 0, Math.PI * 2); context.fill(); };
-      paint(); return { stream: canvas.captureStream(4), timer: setInterval(paint, 250) };
-    });
-    setStreams(new Map(captures.map((capture, index) => [`sample-screen-${index}`, capture.stream])));
-    return () => { for (const capture of captures) { clearInterval(capture.timer); capture.stream.getTracks().forEach(track => track.stop()); } };
-  }, []);
   const rooms = [...sample.channel.state!.channel.rooms.slice(0, roomCount),
     ...createdRooms.map(room => ({ ...room, ...sample.settingsByRoom[room.id] }))];
   const roomIds = new Set(rooms.map(room => room.id));
@@ -65,6 +52,29 @@ export function ChannelRoomPreview() {
     videoSettings: screenVideoSettings(sample.channel.quality) }] : Array.from({ length: count }, (_, index) => ({ id: `sample-screen-${index}`, roomId: "friday",
     sessionId: `${screenUsers[index].id}-session`, userId: screenUsers[index].id,
     kind: "screen" as const, paused: false, videoSettings: screenVideoSettings(sample.channel.quality) }))).filter(publication => roomIds.has(publication.roomId) && !stopped.has(publication.id));
+  const ownedScreens = new Set(publications.filter(publication => publication.userId === "sample-ada").map(publication => publication.id));
+  const subscriptions = publications.filter(publication => !unwatched.has(publication.id)).map(publication => publication.id);
+  const needsSamples = ownedScreens.size > 0 || subscriptions.length > 0;
+  // Keep the same samples while any player needs them.
+  useEffect(() => {
+    if (!needsSamples) { setStreams(new Map()); return; }
+    const palette = getComputedStyle(document.documentElement);
+    const captures = screenUsers.map((user, index) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = mixed && index % 2 === 0 ? 540 : 960; canvas.height = mixed && index % 2 === 0 ? 960 : 540;
+      canvases.current[index] = canvas;
+      const context = canvas.getContext("2d")!;
+      const paint = () => { context.fillStyle = palette.getPropertyValue("--paper").trim(); context.fillRect(0, 0, canvas.width, canvas.height);
+        context.fillStyle = palette.getPropertyValue("--ink").trim(); context.font = "32px sans-serif"; context.fillText(user.name, 44, 64);
+        context.fillStyle = participantColor(user.id); context.beginPath(); context.arc(canvas.width * .7, canvas.height / 2, Math.min(canvas.width, canvas.height) / 4, 0, Math.PI * 2); context.fill(); };
+      paint(); return { stream: canvas.captureStream(4), timer: setInterval(paint, 250) };
+    });
+    setStreams(new Map(captures.map((capture, index) => [`sample-screen-${index}`, capture.stream])));
+    return () => {
+      for (const capture of captures) { clearInterval(capture.timer); capture.stream.getTracks().forEach(track => track.stop()); }
+      canvases.current = [];
+    };
+  }, [needsSamples]);
   const state = { ...sample.channel.state!, channel: { ...sample.channel.state!.channel,
     rooms: rooms.map(room => ({ ...room,
       name: longNames && room.id === "friday" ? zh ? "周五一起看电影与交流的朋友们" : "Friday with friends: a shared evening together" : room.name,
@@ -74,7 +84,7 @@ export function ChannelRoomPreview() {
   }, publications: [...sample.channel.state!.publications.filter(publication => roomIds.has(publication.roomId)), ...publications],
     voice: sample.channel.state!.voice.filter(voice => roomIds.has(voice.roomId)),
     users,
-    subscriptions: publications.filter(publication => !unwatched.has(publication.id)).map(publication => publication.id),
+    subscriptions,
   };
   let messagesByRoom = emptyChat ? { ...sample.channel.messagesByRoom,
     friday: sample.channel.messagesByRoom.friday.filter(message => message.seq > 2) } : sample.channel.messagesByRoom;
@@ -89,7 +99,7 @@ export function ChannelRoomPreview() {
     messagesByRoom,
     attachments: { ...fileStore, download: async () => sample.received(), cancelDownload: sample.received } as unknown as ChannelController["attachments"],
     interactionsByRoom: new Map(interactions ? [["friday", interactions]] : []),
-    ownedScreens: new Set(publications.filter(publication => publication.userId === "sample-ada").map(publication => publication.id)),
+    ownedScreens,
     screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), voicePlaybackByUser: new Map(),
     browse: () => {}, sendMessage: sample.onSend, setMessageReaction: async () => sample.received(),
     loadHistory: async () => sample.received(), loadLatestHistory: async () => sample.received(),
