@@ -23,7 +23,7 @@ arrangement adds a storage server, a second application or a configuration task.
 | File bytes | The sender and recipients that retain complete copies. The domain owner does not automatically receive or store them. |
 | Presence, available file holders and active activities | Current authenticated sessions. Rebuild these facts when participants reconnect; a saved record does not prove present availability. |
 | Live sessions, voice, pictures and route plans | Their active runtimes. Reconnection reconciles existing work; a runtime restart establishes new sessions and activities. Saved data does not restore a call. |
-| Drafts, display preferences and URL bookmarks | The local client, separate from domain/room authority. |
+| Drafts and display preferences | The local client, separate from domain/room authority. |
 
 A file sender owns its offered content, not the room's management or history.
 A local history copy grants no write authority. File forwarding and permanent
@@ -152,7 +152,7 @@ history keeps that selected window. Refresh from the room owner's current result
 including removals. Participants keep a bounded reading window in page memory;
 reloading or re-entering retrieves it from the room owner. Browser room authority
 and retained attachments use their existing IndexedDB stores; localStorage remains
-for small preferences and bookmarks. Original author departure does not erase
+for small preferences. Original author departure does not erase
 confirmed messages.
 
 The page retains a live conversation reader for its selected room and for rooms
@@ -425,7 +425,7 @@ service or user setup requirement.
 
 The owner declined pkarr, automatic address discovery and a mandatory fixed
 public Web client. Ship the interface with the domain runtime and keep ordinary
-URLs, editable bookmarks and manual replacement when an invitation address
+URLs, ordinary browser bookmarks and manual replacement when an invitation address
 changes. No project-operated registry is needed.
 
 A persistent domain/room ID belongs to its saved data, not its hostname.
@@ -434,9 +434,9 @@ and data remain. A returned ID is identification, not proof of access or trust.
 
 Browser storage follows the
 [origin boundary](https://html.spec.whatwg.org/multipage/webstorage.html#the-localstorage-attribute).
-A new origin cannot read the old origin's bookmarks, credentials or history.
-Current bookmarks remain local to their originating page. Manual URL replacement
-does not provide cross-origin identity recovery; a new invitation alone does not
+A new origin cannot read the old origin's credentials or history.
+Opening a new address or updating a browser bookmark does not provide
+cross-origin identity recovery; a new invitation alone does not
 restore an old user's management permission.
 
 App-held room data can survive a domain URL change without moving its files.

@@ -9,7 +9,6 @@ const previewPages: Record<string, ComponentType> = import.meta.env.DEV ? {
   "/__tooltip-preview": lazy(() => import("./pages/TooltipPreviewPage").then(module => ({ default: module.TooltipPreviewPage }))),
   "/__status-preview": lazy(() => import("./pages/StatusPreviewPage").then(module => ({ default: module.StatusPreviewPage }))),
   "/__playback-preview": lazy(() => import("./pages/PlaybackPreviewPage").then(module => ({ default: module.PlaybackPreviewPage }))),
-  "/__channel-design": lazy(() => import("./pages/ChannelDesignPage").then(module => ({ default: module.ChannelDesignPage }))),
 } : {};
 const PreviewPage = previewPages[location.pathname];
 

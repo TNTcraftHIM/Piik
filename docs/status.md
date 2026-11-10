@@ -34,7 +34,7 @@ history, reactions and participant-held files. The
 [Server reference](../prototype/channel-server/README.md) covers shared UI/App flows;
 the [Native reference](../prototype/channel-native/README.md) covers capture, encoding,
 sound and input, with the [Android runtime](../mobile/README.md) owning its shell.
-Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.
+Sites open through ordinary URLs or browser bookmarks; automatic address discovery is not planned.
 [Verification status](./verification-status.md) owns evidence and platform limits;
 [TODO](./todo.md) owns remaining implementation and acceptance work.
 

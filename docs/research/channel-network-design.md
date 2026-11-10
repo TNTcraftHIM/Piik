@@ -154,7 +154,7 @@ endpoint for its rooms in a domain; each room retains its own authority and data
 An online hosting endpoint proves availability, not that the person is reading,
 watching or participating in voice. Reconnect preserves identity rather than
 matching a nickname or treating a shared invitation as a shared user.
-Domain bookmarks connect independent domains; they do not introduce federation
+Browser bookmarks connect independent domains; they do not introduce federation
 or shared authority between those domains.
 
 Peer media forwarding terminates hop encryption at admitted relays. Room access

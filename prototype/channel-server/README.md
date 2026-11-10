@@ -206,84 +206,18 @@ service does not clear them. Only an explicit export produces a report, containi
 build metadata and these records. Approved sites cannot read this process-wide
 report. Browser reports are separate downloads from the page's **Help** menu.
 
-## Design studies
+## UI previews
 
-Open `/__channel-design` on the same Vite service for the interactive design
-boards. This route needs no channel credential or running Rust service. Direct
-links `#chat`, `#screens`, `#focus` and `#create` select the four studies; the
-toolbar compares desktop/narrow layouts, the shared light/dark themes and rooms
-with 4, 12 or 20 people. `?people=20#chat` opens the crowded-room study directly.
+Open `/__tooltip-preview` on the Vite service for the shared controls catalogue,
+including room management, invitations, App connection and error states.
+`/__tooltip-preview?channel-room` renders the production room view with local
+sample data. Add `&screens=4` for multiple pictures, `&no-rooms` for first-room
+creation, or `&empty-chat` for an empty conversation.
 
-The sharing-view study opens at `?view=share&content=empty&people=2`;
-`?view=share&content=full&people=4#screens` shows several pictures. The view switch
-retains the same sample room, chat draft, voice and sharing state. These boards
-compare layouts before applying them to the functional client.
-
-The functional frontend uses the accepted shell: room navigation on the left,
-conversation and selected screens in the middle, and a persistent domain-wide
-user list on the right. Narrow layouts navigate between room and user panes.
-It provides self-name editing, room controls, files, history, voice
-and multiple watched screens through the existing session and shared components.
-The site owner can edit its name and icon and manage its backup beside the site
-title. Opening the site establishes an ordinary user identity without an entry
-password. Each room creator manages their own room's access.
-Each room-list item separates navigation from its settings action. Managing
-another room keeps the selected conversation and personal activities in place.
-Room creation, room settings and site settings reuse one native dialog shell;
-room invitations open separately beside the room title.
-Room creation and settings share the same identity fields; the room owner saves
-them at that room's runtime. Both surfaces share preset icons
-and custom images. The browser crops images to a small square; saving retains
-them with the domain or room metadata, including after a restart.
-
-Room settings also offers **Delete room** while hosting is online, or **Remove
-from domain** while offline. Deletion clears the hosting runtime's room and chat
-history; directory-only removal leaves the offline host's data. Saved downloads
-are kept. Both operations end access through that room's old invitation.
-
-In the design studies, room creation and editing share one native dialog
-with conditional private options. Pencils beside the user, domain and room names
-open their corresponding editors. Colours, controls, icons and animated people come from Piik's
-existing components. Conversations, pictures and interactions are local samples;
-they do not create rooms or transmit media.
-
-Both surfaces share domain navigation. Its plus button opens a friend's URL or
-invitation in a new tab, keeping the full path, query and fragment. Addresses
-without a scheme use HTTPS; use explicit `http://` for a local HTTP entry.
-Opening a link preserves the current room's activities. Saving an address is a
-separate action: bookmarks contain only the origin and a local label. Saved
-addresses can be edited or removed and remain local to this Browser origin.
-Private-room access still follows the normal invitation and membership rules.
-
-The room's compact couch shares the heading with its title and actions; narrow
-layouts place it beneath them. It stays visible above conversation and screens.
-Seats keep a readable size in one horizontally scrollable row, with your own seat
-fixed on the right. Arrow controls and touch scrolling reach the other people;
-the full member list scrolls independently. Select a seated person to send
-reactions or throw props along the sender-to-recipient path.
-The design board uses the production interaction session and effect renderer;
-only its transport is a local loopback. Cooldown, repeated throws, acknowledgements
-and expiry therefore follow the same behavior as the room interface.
-Chat avatars and the member list are informational; message reactions stay
-below their message and are saved by that room's owner. The functional couch
-uses the room's personal activity projection, independently of screen sharing.
-Both surfaces' **Room mini window** in the room header opens a movable,
-resizable view with the same couch, chat and voice controls. Its detach action
-uses the existing browser picture-in-picture window where available. Personal
-drafts, attachment selections and voice participation remain page-owned;
-closing the window returns the controls without leaving voice. It follows the
-selected room and preserves its reading position when detached or returned.
-
-The composer supports the attachment button, file drop and image
-paste, with a draft preview before sending. Channel appearance and room creation
-share the functional prototype's preset icons and custom image picker. These
-design-board changes stay in memory. The functional prototype persists its
-identity images and uses the same reaction controls, couch and room mini window.
-
-References for spatial hierarchy and viewing modes:
-[Discord's server introduction](https://discord.com/blog/starting-your-first-discord-server)
-and [Go Live / screen sharing](https://support.discord.com/hc/en-us/articles/360040816151-Go-Live-and-Screen-Share).
-The studies reinterpret those familiar patterns using Piik's visual language.
+These previews use the current shared components without a Rust service,
+real capture or network permissions. Sample actions change preview state only;
+use the normal site and App to verify admission, persistence and media delivery.
+The guide-image generator uses the same component catalogue.
 
 ## Rooms, conversation and media
 
@@ -432,7 +366,7 @@ for the same user. Normal Server shutdown first ends Native
 hosting and releases its room locks, then closes the HTTP service. A Native
 hosting failure also stops that service.
 A new service URL can use the same database, but a
-new Browser origin cannot read the previous origin's saved login or bookmarks.
+new Browser origin cannot read the previous origin's saved login or room data.
 
 Messages contain complete file descriptions and their SHA256 digest. The selected
 file stays with its sender; a confirmed message does not upload bytes to the domain
