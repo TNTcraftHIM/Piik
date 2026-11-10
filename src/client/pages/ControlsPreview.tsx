@@ -60,6 +60,7 @@ export function ControlsPreview() {
   const [launchSites, setLaunchSites] = useState(["https://demo.piik.tv"]);
   const [startupSite, setStartupSite] = useState("");
   const [launchLan, setLaunchLan] = useState("192.0.2.10");
+  const [launchReady, setLaunchReady] = useState(() => new URLSearchParams(location.search).has("local-certificate"));
   const [policy, setPolicy] = useState<"open" | "private">("open");
   const [roomPassword, setRoomPassword] = useState(false);
   const [includeCredential, setIncludeCredential] = useState(true);
@@ -332,6 +333,8 @@ export function ControlsPreview() {
       </div>
       <div className="lr-client-launch">
         <LauncherForm mode={launchMode} onModeChange={setLaunchMode}
+          target={launchReady ? "http://127.0.0.1:8787/" : undefined}
+          localCertificate={launchReady ? { origin: "https://192.0.2.10:8787", sha256Fingerprint: "A7C4308D16B2F99045E82C7B3F015E62D89F22C47A192601CE883AB5D0F749B6" } : undefined}
           startupSite={startupSite} onToggleStartupSite={site => setStartupSite(value => value === site ? "" : site)}
           sites={launchSites} onSelectSite={notify} onOpen={event => { event.preventDefault(); notify(); }}
           onRemoveSite={site => { setLaunchSites(sites => sites.filter(value => value !== site)); if (startupSite === site) setStartupSite(""); }}
@@ -339,7 +342,7 @@ export function ControlsPreview() {
             { address: "192.0.2.10", name: "Wi-Fi" },
             { address: "192.0.2.20", name: "vEthernet (Example Virtual Network Adapter with a Long Name)" },
           ] }}
-          onSubmit={event => event.preventDefault()}>
+          onSubmit={event => { event.preventDefault(); if (launchMode === "local") setLaunchReady(true); }}>
           <AppReleaseNotice update={{ kind: majorUpdate ? "major-update" : "update-available",
             version: releaseVersion, revision: null,
             headline: releaseHeadline ? {

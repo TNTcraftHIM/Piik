@@ -49,7 +49,8 @@ site, not the entry for this test version.
    open Piik. Keep the desktop package's files together.
 2. The launcher opens in your system browser. Choose a mode below, then
    select **Open Piik**. The domain opens with its room list.
-3. Select **Create room**, enter a name and choose **Public** for a first room
+3. Open the room list (**Rooms** on a narrow screen), select **Create room**,
+   enter a name and choose **Public** for a first room
    everyone in the domain can enter. Check the hosting note, then select
    **Create room**. You are now in a usable room: send a message to try it.
 4. [Invite your friends](#invite-friends), then select **Start sharing**.
@@ -65,8 +66,10 @@ site, not the entry for this test version.
 - **Public invite:** for friends elsewhere. It creates a temporary Internet
   address while App is running. Send a new link if that address changes.
 
-Local invitations use HTTPS. Before accepting the first certificate warning,
-compare it with the fingerprint in the App terminal; see the
+Local invitations use HTTPS. After starting **Local network**, return to the
+App launcher and expand **Local connection details** below **Open Piik** to
+read the address and certificate fingerprint. Compare it with the browser's
+certificate before accepting its first warning; see the
 [certificate steps](./troubleshooting.md#local-https-certificate-warning).
 The domain owner can set **Public** or **Private** entry and an optional domain
 passphrase in **Domain settings → Domain**, beside the domain name.
@@ -83,7 +86,8 @@ passphrase in **Domain settings → Domain**, beside the domain name.
 
 Send invitations only to people you want to admit. Domain entry and private-room
 entry are different: a domain invitation alone does not unlock every private room.
-Use **Reset room invitation** only when you want a new link: the old link stops
+To replace a link, expand **Reset room invitation**, then select
+**Generate new invitation**. The old link stops
 working, while people who already have access keep it. If an older invitation
 cannot be recovered, the panel explains this before you generate a replacement.
 
@@ -130,6 +134,9 @@ the native sources supported by your device.
   **App-hosted room** continues while App runs; a **Browser-hosted room** is
   unavailable while its hosting page is closed. Switching rooms or toggling
   **Compact interface** keeps your other room activities running.
+- Closing the App launcher page leaves App running. Stopping App ends the
+  activities it runs and makes its hosted rooms unavailable across all its
+  connected sites. Reopen App to host those rooms again.
 - Confirmed chat history belongs to the room's host. Refreshing reloads history
   when that host is available; use **Earlier messages** for older pages.
   An unsent draft does not survive a page refresh. Captures and voice do not

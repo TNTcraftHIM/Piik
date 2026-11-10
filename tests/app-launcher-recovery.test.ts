@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { LauncherForm } from "../src/client/components/living/LauncherForm";
+import { LauncherForm, type LocalCertificate } from "../src/client/components/living/LauncherForm";
 import { Btn } from "../src/client/components/living/primitives";
 import { siteEntryOrigin, siteEntryURL } from "../src/client/lib/site-address";
 import { clientLaunchURL, readPreferredAppMode, savePreferredAppMode, type AppMode } from "../src/client/lib/app-launch";
@@ -25,7 +25,7 @@ function collect(node: ts.Node): void {
     && node.initializer && ts.isJsxExpression(node.initializer)) {
     diagnosticControl = node.initializer.expression!.getText(source);
   }
-  if (ts.isVariableDeclaration(node) && /^launcher.*Schema$/.test(node.name.getText(source))) {
+  if (ts.isVariableDeclaration(node) && /^(?:launcher.*|localCertificate)Schema$/.test(node.name.getText(source))) {
     declarations.push(`const ${node.getText(source)};`);
   }
   if (ts.isFunctionDeclaration(node) && ["beginStateChange", "changeMode", "changeSite", "approveSite", "enableDebug", "exportDebug", "launchURL", "launch"].includes(node.name?.text ?? "")) {
@@ -53,14 +53,14 @@ const saved = {
   revision: "test", version: "development", debug: false,
   lan: { addresses: [{ address: "192.0.2.1", name: "LAN" }], selected: "192.0.2.1" },
 };
-const response = (state: typeof saved & { detail?: string; target?: string } = saved) => ({ ok: true, status: 200, json: async () => state });
+const response = (state: typeof saved & { detail?: string; target?: string; localCertificate?: LocalCertificate } = saved) => ({ ok: true, status: 200, json: async () => state });
 
 function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = false, mode }: { debug?: boolean; mode?: AppMode } = {}) {
   const downloads = vi.fn();
   const initialMode = mode ?? runInNewContext(`(${modeInitializer})()`, { readPreferredAppMode }) as AppMode;
   const state: Record<string, unknown> = { Mode: initialMode };
   const setters = Object.fromEntries([
-    "Mode", "Lan", "ControlPort", "Target", "Starting", "Sites", "StartupSite",
+    "Mode", "Lan", "ControlPort", "Target", "LocalCertificate", "Starting", "Sites", "StartupSite",
     "AppDebug", "Error", "Loading", "Build", "RemoteControlPrototype",
     "SiteBusy", "SiteError", "DebugBusy", "DebugError", "Reload",
   ].map(name => [`set${name}`, vi.fn((value: unknown) => {
@@ -185,9 +185,15 @@ describe("App launcher state recovery", () => {
   });
   it("uses the installed build identity without retaining a second presentation state", async () => {
     const revision = "a".repeat(40);
-    const page = mount(vi.fn(async () => response({ ...saved, version: "development", revision })));
+    const localCertificate = { origin: "https://192.0.2.1:8787", sha256Fingerprint: "A1".repeat(32) };
+    const fetch = vi.fn(async () => response({ ...saved, version: "development", revision, localCertificate }));
+    const page = mount(fetch);
     await settle();
     expect(page.state.Build).toEqual({ version: "development", revision, packageTarget: undefined });
+    expect(page.state.LocalCertificate).toEqual(localCertificate);
+    fetch.mockResolvedValueOnce(response(saved));
+    page.focus(); await settle();
+    expect(page.state.LocalCertificate).toBeUndefined();
     page.cleanup();
   });
 
@@ -204,7 +210,8 @@ describe("App launcher state recovery", () => {
     finish({ ok: false, status: 503, json: async () => ({ detail: "Startup failed" }) });
     await first;
     expect(page.state).toMatchObject({ Starting: false, Error: { kind: "launch", detail: "Startup failed" } });
-    fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ target: "https://room.example/#piik-client=1" }) });
+    fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ target: "https://room.example/#piik-client=1",
+      localCertificate: { origin: "https://192.0.2.1:8787", sha256Fingerprint: "A1".repeat(32) } }) });
     await page.launch(event);
     expect(page.navigate).toHaveBeenCalledWith("https://room.example/#piik-client=1&piik-lang=en&piik-mode=text&piik-theme=system");
     page.cleanup();

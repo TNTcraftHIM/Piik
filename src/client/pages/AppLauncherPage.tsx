@@ -6,7 +6,7 @@ import { HintComic } from "../components/living/hints";
 import { LoadingStatus } from "../components/living/WaitingStatus";
 import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
 import { AppHeader } from "../components/living/Header";
-import { LauncherForm } from "../components/living/LauncherForm";
+import { LauncherForm, type LocalCertificate } from "../components/living/LauncherForm";
 import { Btn, Pill } from "../components/living/primitives";
 import { hasCopyPreference, isCopyKey, useCopy } from "../ui/copy";
 import { consoleLanguage } from "../locales";
@@ -17,10 +17,12 @@ import type { AppReleaseIdentity } from "../lib/release-update";
 import { useReleaseUpdate } from "../lib/use-release-update";
 import { downloadBlob } from "../lib/download";
 
+const localCertificateSchema = z.object({ origin: z.string().url(), sha256Fingerprint: z.string().regex(/^[A-Fa-f0-9]{64}$/) });
 const launcherStateSchema = z.object({
   sites: z.array(z.string()),
   startupSite: z.string(),
   target: z.string().optional(),
+  localCertificate: localCertificateSchema.optional(),
   starting: z.boolean().optional(),
   reason: z.string().optional(),
   detail: z.string().optional(),
@@ -34,7 +36,7 @@ const launcherStateSchema = z.object({
     selected: z.string(),
   }).optional(),
 });
-const launcherResultSchema = z.object({ target: z.string().url() }).strict();
+const launcherResultSchema = z.object({ target: z.string().url(), localCertificate: localCertificateSchema.optional() }).strict();
 const launcherErrorSchema = z.object({ reason: z.string().optional(), detail: z.string() });
 
 export function AppLauncherPage() {
@@ -58,6 +60,7 @@ export function AppLauncherPage() {
   const version = build?.version === "development" && /^[a-f0-9]{40}$/i.test(build.revision)
     ? `${build.version} (${build.revision.slice(0, 7)})` : build?.version;
   const [target, setTarget] = useState<string>();
+  const [localCertificate, setLocalCertificate] = useState<LocalCertificate>();
   const [controlPort, setControlPort] = useState<number>();
   const [siteBusy, setSiteBusy] = useState(false);
   const [siteError, setSiteError] = useState<string>();
@@ -112,6 +115,7 @@ export function AppLauncherPage() {
         }
         setControlPort(state.controlPort);
         setTarget(state.target);
+        setLocalCertificate(state.localCertificate);
         setStarting(state.starting === true);
         setSites(state.sites);
         setStartupSite(state.startupSite);
@@ -371,6 +375,7 @@ export function AppLauncherPage() {
             siteBusy={siteBusy}
             siteError={siteError}
             target={target}
+            localCertificate={localCertificate}
             entryURL={launchURL}
             lan={lan && { ...lan, onChange: (selected) => setLan({ ...lan, selected }) }}
             onSubmit={launch}

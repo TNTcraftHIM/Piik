@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, type FormEvent, type MouseEvent, type ReactNode } from "react";
+import { Fragment, useId, useLayoutEffect, useRef, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { BrandLockup } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
 import { WelcomeLine } from "./WelcomeLine";
@@ -8,6 +8,27 @@ import { HintComic, type HintKind } from "./hints";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import type { AppMode } from "../../lib/app-launch";
+import { useClipboardResult } from "../../ui/use-clipboard-result";
+
+export interface LocalCertificate { origin: string; sha256Fingerprint: string }
+
+function LocalConnectionDetails({ certificate }: { certificate: LocalCertificate }) {
+  const { t, vis } = useCopy();
+  const fingerprint = certificate.sha256Fingerprint.replace(/(..)(?=.)/g, "$1:");
+  const bytes = fingerprint.split(":");
+  const clipboard = useClipboardResult(`${certificate.origin}\nSHA-256 ${fingerprint}`);
+  const label = clipboard.status === "copied" ? "common.copied" : clipboard.status === "failed" ? "common.copyFailed" : "client.launch.copyCertificate";
+  return <details className="lr-client-access-options lr-client-certificate">
+    <summary className="lr-btn"><Glyph name="lock" size={17} />
+      <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.localDetails")}</span><Glyph name="chevron" size={15} /></summary>
+    <div><p>{certificate.origin}</p><p className={vis ? "visually-hidden" : undefined}>{t("client.launch.certificateHint")}</p>
+      <strong>{vis ? "SHA-256" : t("client.launch.certificate")}</strong>
+      <code>{bytes.map((byte, index) => <Fragment key={index}>{byte}{index < bytes.length - 1 && <>:<wbr /></>}</Fragment>)}</code>
+      <Btn icon={clipboard.status === "copied" ? "check" : "copy"} title={label} cap={label}
+        size="dense" quiet onClick={clipboard.copy} />
+    </div>
+  </details>;
+}
 
 const MODES: Array<{
   mode: AppMode;
@@ -45,6 +66,7 @@ export function LauncherForm({
   siteBusy,
   siteError,
   target,
+  localCertificate,
   onOpen,
   entryURL = target => target,
   lan,
@@ -63,6 +85,7 @@ export function LauncherForm({
   siteBusy?: boolean;
   siteError?: string;
   target?: string;
+  localCertificate?: LocalCertificate;
   onOpen?: (event: MouseEvent<HTMLAnchorElement>) => void;
   entryURL?: (target: string) => string;
   lan?: {
@@ -140,9 +163,9 @@ export function LauncherForm({
       </section>
 
       {roomError}
-      {target ? <a className="lr-btn is-primary" href={entryURL(target)} onClick={onOpen} aria-label={t("client.launch.go")}>
+      {target ? <><a className="lr-btn is-primary" href={entryURL(target)} onClick={onOpen} aria-label={t("client.launch.go")}>
         <Glyph name="arrowRight" size={19} />{vis ? null : <span className="lr-cap">{t("client.launch.go")}</span>}
-      </a> : <>
+      </a>{localCertificate && <LocalConnectionDetails certificate={localCertificate} />}</> : <>
       <p className={vis ? "visually-hidden" : "lr-client-launch-section"}>{t("client.launch.room")}</p>
       <div
         className="lr-client-modes"

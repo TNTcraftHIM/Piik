@@ -158,10 +158,15 @@ Piik App's Local network invitation uses a temporary self-signed HTTPS
 certificate. The browser can show a certificate warning before opening it.
 
 1. Check that the address is the one the Host intended to share.
-2. Open the warning's certificate details and compare its **SHA-256 fingerprint**
-   with **Certificate SHA-256** in the App terminal. Ask the App owner over your usual
-   trusted chat if you are on another device.
-3. If it matches, use the browser's **Advanced → Continue** option where available.
+2. Ask the App owner to start **Local network**, return to the App launcher and
+   expand **Local connection details** below **Open Piik**. It shows the actual
+   HTTPS address and certificate **SHA-256 fingerprint**; **Copy verification
+   details** copies both. The App terminal's **Certificate SHA-256** is an
+   alternative on desktop.
+3. Open the warning's certificate details and compare its **SHA-256 fingerprint**
+   with that value. If you are on another device, confirm it with the App owner
+   over your usual trusted chat.
+4. If it matches, use the browser's **Advanced → Continue** option where available.
    Then allow microphone access or request remote control normally.
 
 The temporary certificate changes after an App restart. A different

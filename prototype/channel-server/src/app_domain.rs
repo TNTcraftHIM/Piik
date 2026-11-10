@@ -5,7 +5,7 @@ mod stun;
 use super::{console::Console, stop_hosts, tunnel, ApiResult, App, Permission};
 use crate::{domain::Domain, web};
 use axum::{extract::State, http::StatusCode, Json};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{future::pending, net::Ipv4Addr, sync::Arc};
 use tokio::{
@@ -36,8 +36,38 @@ impl Failure {
 #[derive(Clone)]
 enum Progress {
     Starting,
-    Ready(String),
+    Ready(Ready),
     Failed(Failure),
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Ready {
+    target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    local_certificate: Option<LocalCertificate>,
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalCertificate {
+    origin: String,
+    sha256_fingerprint: String,
+}
+impl Ready {
+    fn new(target: String, https: Option<&web::LanHttps>) -> Self {
+        Self {
+            target,
+            local_certificate: https.map(|https| LocalCertificate {
+                origin: https.origin().to_owned(),
+                sha256_fingerprint: https.fingerprint(),
+            }),
+        }
+    }
+    fn describe(&self, state: &mut Value) {
+        state["target"] = json!(self.target);
+        if let Some(certificate) = &self.local_certificate {
+            state["localCertificate"] = json!(certificate);
+        }
+    }
 }
 pub(super) struct Launch {
     progress: watch::Receiver<Progress>,
@@ -77,7 +107,7 @@ pub(super) async fn describe(app: &App, state: &mut Value) -> anyhow::Result<()>
     if let Some(launch) = app.launch.lock().await.as_ref() {
         match &*launch.progress.borrow() {
             Progress::Starting => state["starting"] = json!(true),
-            Progress::Ready(target) => state["target"] = json!(target),
+            Progress::Ready(ready) => ready.describe(state),
             Progress::Failed(failure) => {
                 state["reason"] = json!(failure.reason);
                 state["detail"] = json!(failure.detail);
@@ -124,7 +154,7 @@ pub(super) async fn launch(State(app): State<Arc<App>>, Json(request): Json<Requ
     // The App owns startup. Closing this HTTP request only stops this wait.
     loop {
         match progress.borrow().clone() {
-            Progress::Ready(target) => return Ok(Json(json!({ "target": target }))),
+            Progress::Ready(ready) => return Ok(Json(json!(ready))),
             Progress::Failed(failure) => return Err(failure.response()),
             Progress::Starting => {}
         }
@@ -222,9 +252,17 @@ async fn run(
             ));
         }
     };
-    if let Some(https) = &https {
-        eprintln!("Local invitation entry: {}", https.origin());
-        eprintln!("Certificate SHA-256: {}", https.fingerprint());
+    let mut ready = Ready::new(
+        format!(
+            "{origin}/?piik-client-port={}#owner={}&piik-client=1",
+            app.port,
+            domain.owner_key()
+        ),
+        https.as_ref(),
+    );
+    if let Some(certificate) = &ready.local_certificate {
+        eprintln!("Local invitation entry: {}", certificate.origin);
+        eprintln!("Certificate SHA-256: {}", certificate.sha256_fingerprint);
     }
     let permission = Arc::new(Permission::new(identity.namespace));
     app.registry.lock().await.local = Some((origin.clone(), permission.clone()));
@@ -240,11 +278,7 @@ async fn run(
         },
     ));
     console.ready(&invitation);
-    progress.send_replace(Progress::Ready(format!(
-        "{origin}/?piik-client-port={}#owner={}&piik-client=1",
-        app.port,
-        domain.owner_key()
-    )));
+    progress.send_replace(Progress::Ready(ready.clone()));
     let (result, finished_service) = loop {
         tokio::select! {
             _ = stopped.changed() => break (Ok(()), None),
@@ -287,9 +321,10 @@ async fn run(
                 let result = domain.restore(request.metadata, &request.credential);
                 drop(registry);
                 if result.is_ok() {
-                    progress.send_replace(Progress::Ready(format!(
+                    ready.target = format!(
                         "{origin}/?piik-client-port={}#owner={}&piik-client=1", app.port, domain.owner_key()
-                    )));
+                    );
+                    progress.send_replace(Progress::Ready(ready.clone()));
                 } else {
                     for ((site, domain, user), credential) in restart {
                         let permission = app.registry.lock().await.permission(&site).cloned();
@@ -353,4 +388,48 @@ async fn local_https(selected: Option<&str>, port: u16) -> Result<web::LanHttps,
     )
     .await
     .map_err(|error| Failure::new("local-network", error))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn ready_reports_the_current_invitation_certificate_and_preserves_it_on_restore() {
+        let http = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let target = format!("http://{}/#owner=before", http.local_addr().unwrap());
+        let https = web::LanHttps::bind(Ipv4Addr::LOCALHOST.into(), 0)
+            .await
+            .unwrap();
+        let fingerprint: String =
+            ring::digest::digest(&ring::digest::SHA256, https.certificate.as_ref())
+                .as_ref()
+                .iter()
+                .map(|byte| format!("{byte:02X}"))
+                .collect();
+        let certificate = json!({
+            "origin": https.origin(),
+            "sha256Fingerprint": fingerprint,
+        });
+        let mut ready = Ready::new(target.clone(), Some(&https));
+        let post = json!(ready);
+        assert_eq!(
+            post,
+            json!({"target": target, "localCertificate": certificate})
+        );
+        let mut get = json!({"sites": []});
+        ready.describe(&mut get);
+        assert_eq!(get["localCertificate"], post["localCertificate"]);
+        assert_eq!(get["target"], post["target"]);
+        assert_eq!(get["sites"], json!([]));
+
+        ready.target = format!("http://{}/#owner=after", http.local_addr().unwrap());
+        assert_ne!(json!(ready)["target"], post["target"]);
+        assert_eq!(json!(ready)["localCertificate"], certificate);
+        let public = Ready::new("http://127.0.0.1:12345/#owner=public".into(), None);
+        assert_eq!(json!(public), json!({"target": public.target}));
+        let mut get = json!({});
+        public.describe(&mut get);
+        assert_eq!(get, json!(public));
+    }
 }

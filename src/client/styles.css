@@ -1612,6 +1612,10 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-client-access-options > summary > svg:last-child { transition: transform 180ms var(--spring); }
 .lr-client-access-options[open] > summary > svg:last-child { transform: rotate(180deg); }
 .lr-client-access-hint { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.lr-client-certificate { width: min(460px, 100%); }
+.lr-client-certificate > div { display: grid; justify-items: start; gap: 10px; padding: 16px 0 0; text-align: start; font-size: 12px; line-height: 1.6; }
+.lr-client-certificate p { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.lr-client-certificate code { width: 100%; font: 12px/1.8 var(--mono); user-select: text; }
 
 .lr-join {
   flex: 1;
