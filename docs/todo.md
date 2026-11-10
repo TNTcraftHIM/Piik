@@ -22,6 +22,11 @@ the feedback period; they do not delay that delivery.
   The [hierarchy proposal](./research/room-interactions.md#workspace-hierarchy-proposal)
   records the candidate; [visual language](./standards/visual-language.md#30-channel-workspace)
   owns accepted layout responsibilities.
+- [ ] **3.0 Native-helper cadence acceptance.** In the full App control,
+  a candidate decoded near 2 fps against a healthy 10 fps path and was correctly
+  rejected. A shorter control reached 10 fps but used a different source branch.
+  Reproduce the original branch before closing the next Native package gate;
+  preserve the quality check and distinguish input, forwarding and decode cadence.
 - [ ] **3.0 Windows shared-sound noise.** A beta2 Host reports noise that stops
   when excluding the Piik console's process tree, but returns when excluding a
   silent unrelated window. Verify which Browser playback belongs to that tree
