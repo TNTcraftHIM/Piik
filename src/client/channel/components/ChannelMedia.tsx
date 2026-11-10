@@ -293,7 +293,7 @@ export function ChannelVideo({ stream, local, label, thumbnail = false, inputs, 
       </>}
       <span className="c3-mini-space" />
       <RoomChatToggle session={interaction} quiet />
-      {!local && <RemoteControl channel={input ?? null} videoRef={playbackRef} available={ready && displayed.flowId === target.flowId}
+      {!local && <RemoteControl channel={input ?? null} videoRef={playbackRef} available={!thumbnail && ready && displayed.flowId === target.flowId}
         pictureFit={pictureFit} pictureRotation={pictureRotation} touchMode={remoteTouchMode} />}
       <span ref={pictureTrigger} className="lr-playback-more"><Btn icon="sliders" quiet title="playback.more" hint="hint-advanced"
         popoverTarget={pictureId} controls={pictureId} expanded={pictureOpen} /></span>
