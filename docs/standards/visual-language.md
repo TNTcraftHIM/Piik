@@ -41,11 +41,11 @@ A middle dot is reserved for short, genuinely peer metadata such as compact
 measurements or version details. It is not the default separator for headings,
 instructions, accessible descriptions or a label followed by an explanation.
 
-Present a small shared living room: the television is the media stage, the
-couch and pawns make presence spatial, and the four-digit room code stays
-prominent. Decoration must clarify product facts without creating another state
-model. Universal digits, transport symbols, URLs and measured values remain
-literal when the user needs the data.
+Use the shared living-room imagery: the television represents media, and the
+couch and pawns make presence spatial. Keep the current room identity prominent:
+the room code in 2.x, the room name in 3.0. Decoration must clarify product facts
+without creating another state model. Universal digits, transport symbols, URLs
+and measured values remain literal when the user needs the data.
 
 Functional controls use native buttons/inputs and localized accessible names.
 Pointer cursors identify actions, navigation and controls that change a setting;

@@ -224,9 +224,10 @@ on the [official `8e0067cc` baseline](https://github.com/algesten/str0m/commit/8
 The fork preserves the original commits from
 [PR #1134](https://github.com/algesten/str0m/pull/1134): repeated NACKs cannot
 enqueue the same packet within one round trip, while later loss can still be
-repaired. One additional reset correction clears that resend history with the
-transmit buffers; its regression is
-[reported upstream](https://github.com/algesten/str0m/pull/1134#issuecomment-6717243518).
+repaired. The additional reset correction clears that resend history with the
+transmit buffers. The PR author's
+[follow-up commit](https://github.com/algesten/str0m/commit/6b11796ba56b2cc332907bbdff79f44980441a88)
+includes equivalent reset behavior and the regression test.
 The [Native consumer comparison](../../docs/research/network-lab.md#duplicate-nack-feedback)
 records the effect through Piik's transport. Upstream MIT/Apache-2.0 licensing,
 public APIs and Piik's retransmission policy remain unchanged.
