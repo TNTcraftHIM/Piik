@@ -46,7 +46,7 @@ function RelayLimit({ value, min, label, note, disabled, onChange }: {
   </NumberControl>;
 }
 
-function PersonalRelay({ channel, room, disabled, run }: { channel: ChannelController; room: ChannelRoom; disabled: boolean; run: SettingsAction }) {
+export function PersonalRelay({ channel, room, disabled, run }: { channel: ChannelController; room: ChannelRoom; disabled: boolean; run: SettingsAction }) {
   const { lang } = useCopy(), zh = lang === "zh";
   const host = room.delivery?.hostSessionId === channel.sessionId;
   const following = room.relayOverride === null;
@@ -64,13 +64,13 @@ function PersonalRelay({ channel, room, disabled, run }: { channel: ChannelContr
   </section>;
 }
 
-type RoomDraft = Pick<RoomSettings, "name" | "icon" | "access" | "hidden"> & { password: string; removePassword: boolean; relayCapacity: number };
-function roomDraft(room?: ChannelRoom): RoomDraft {
+export type RoomDraft = Pick<RoomSettings, "name" | "icon" | "access" | "hidden"> & { password: string; removePassword: boolean; relayCapacity: number };
+export function roomDraft(room?: ChannelRoom): RoomDraft {
   return { name: room?.name ?? "", icon: room?.icon ?? "couch", access: room?.access ?? "public", hidden: room?.hidden ?? false,
     password: "", removePassword: false, relayCapacity: room?.relayCapacity ?? DEFAULT_RELAY_CAPACITY };
 }
 
-function RoomForm({ room, value, onChange, appHosted, disabled, busy, onSave, onCancel }: {
+export function RoomForm({ room, value, onChange, appHosted, disabled, busy, onSave, onCancel }: {
   room?: ChannelRoom; value: RoomDraft; onChange(value: Partial<RoomDraft>): void; appHosted: boolean; disabled: boolean; busy: boolean;
   onSave: (settings: RoomSettings) => Promise<unknown>; onCancel(): void;
 }) {
@@ -206,7 +206,7 @@ function RoomSettings({ channel, room, onClose }: {
   const tasks = [
     ...(room.canManage ? [{ value: "room", label: zh ? "房间" : "Room", icon: "couch", hint: "hint-advanced" } as const] : []),
     { value: "invitation", label: zh ? "邀请" : "Invitation", icon: "link", hint: "hint-copy-invite" } as const,
-    ...(room.authorized ? [{ value: "relay", label: zh ? "我的转发" : "My forwarding", icon: "branch", hint: "hint-relay-volunteer" } as const] : []),
+    ...(room.authorized ? [{ value: "relay", label: zh ? "连接设置" : "Connection settings", icon: "branch", hint: "hint-relay-volunteer" } as const] : []),
     ...(room.authorized || room.canManage ? [{ value: "data", label: zh ? "记录与备份" : "Records and backups", icon: "save", hint: "hint-chat-export" } as const] : []),
   ];
   const selected = tasks.some(value => value.value === task) ? task : "invitation";
@@ -258,7 +258,7 @@ function RoomSettings({ channel, room, onClose }: {
         </section>}
         </section>
         {room.authorized && <section id={`${id}-relay`} role="tabpanel" aria-labelledby={`${id}-relay-tab`} hidden={selected !== "relay"}>
-          <h3>{zh ? "我的转发" : "My forwarding"}</h3>
+          <h3>{zh ? "连接设置" : "Connection settings"}</h3>
           <PersonalRelay channel={channel} room={room} disabled={!available || working} run={run} />
         </section>}
         {(room.authorized || room.canManage) && <section id={`${id}-data`} role="tabpanel" aria-labelledby={`${id}-data-tab`} hidden={selected !== "data"}>
