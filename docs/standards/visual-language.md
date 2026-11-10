@@ -110,10 +110,12 @@ Keep the room invitation beside the upper room title, and group Share with its
 parameters on the opposite side. Personal voice and identity stay lower left.
 The left list contains rooms and their voice participants; the Piik mark returns
 to this site's room overview. Keep the site name visible beside it, with maintenance
-actions attached to that name rather than the personal controls. Global connection, App, language, theme and help
-controls share the upper-right utility area. Keep that area reachable when its
-optional conversation or member pane is collapsed; the main body then fills the
-released width. Site maintenance is separate from a room's access settings.
+actions attached to that name rather than the personal controls. Global connection,
+App, language, theme and help belong to the site bar above the room toolbar.
+They do not move into the sharing group when a sidebar collapses. The room toolbar
+owns the single companion-pane toggle; the main body fills the released width.
+Site maintenance is separate from a room's access settings.
+Each room can fold its voice roster without leaving voice or changing its members.
 The couch anchors the bottom of the central body, aligned with the personal area's
 top edge; it does not span either sidebar. Sidebars can collapse independently.
 Narrow layouts use temporary drawers without replacing those desktop preferences.

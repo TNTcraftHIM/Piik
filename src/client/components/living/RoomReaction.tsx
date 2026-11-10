@@ -55,9 +55,32 @@ function ReactionArtwork({ reaction, seed }: { reaction: ReactionId; seed: strin
 }
 
 /** Content targets reuse the same prop, accents and event-aged animation as people. */
-export function ReactionBurst({ reaction, id, expiresAt, now }: { reaction: ReactionId; id: string; expiresAt: number; now: () => number }) {
-  return <span className={`lr-reaction-flight lr-reaction-content ${isThrow(reaction) ? "is-throw" : "is-expression"}`}
-    style={{ "--reaction-duration": `${REACTION_DURATION_MS}ms` } as CSSProperties} aria-hidden="true">
+export function ReactionBurst({ reaction, id, expiresAt, now, anchor }: {
+  reaction: ReactionId; id: string; expiresAt: number; now: () => number; anchor?: () => Element | null;
+}) {
+  const flight = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!anchor || !isThrow(reaction)) return;
+    const element = flight.current, target = anchor();
+    const view = element?.ownerDocument.defaultView;
+    if (!element || !target || !view) return;
+    let frame = 0;
+    const place = () => {
+      if (now() >= expiresAt || !target.isConnected || !target.getClientRects().length || element.ownerDocument.hidden) {
+        element.style.visibility = "hidden";
+        return;
+      }
+      const rect = element.getBoundingClientRect(), to = (target.querySelector(".lr-person-head") ?? target).getBoundingClientRect();
+      element.style.setProperty("--to-x", `${to.x - rect.x + to.width / 2}px`);
+      element.style.setProperty("--to-y", `${to.y - rect.y + to.height / 2}px`);
+      element.style.visibility = "visible";
+      frame = view.requestAnimationFrame(place);
+    };
+    place();
+    return () => view.cancelAnimationFrame(frame);
+  }, [anchor, reaction, expiresAt, now]);
+  return <span ref={flight} className={`lr-reaction-flight lr-reaction-content ${isThrow(reaction) ? "is-throw" : "is-expression"}`}
+    style={{ visibility: anchor && isThrow(reaction) ? "hidden" : undefined, "--reaction-duration": `${REACTION_DURATION_MS}ms` } as CSSProperties} aria-hidden="true">
     <span className={`lr-reaction-projectile is-${reaction}`} onAnimationStart={event => seekReactionAnimations(event.target as Element, expiresAt, now)}>
       <ReactionArtwork reaction={reaction} seed={id} />
     </span>

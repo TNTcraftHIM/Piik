@@ -130,7 +130,7 @@ export function useChannelGuideSample(multiRoom = false) {
         userId: "sample-ada", text, time: new Date(2020, 0, 1, 20, 2 + messages.length).getTime(), attachments: [] }] };
     });
   };
-  return { channel, roomName, sampleMessages, settingsByRoom, notice, received, onSend, voiceLevel, setVoiceLevel };
+  return { channel, roomName, sampleMessages, messageReactions, settingsByRoom, notice, received, onSend, voiceLevel, setVoiceLevel };
 }
 
 /** Guide images use these production controls with local sample props. */

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type CSSProperties } from "react";
+import { useId, useLayoutEffect, useRef, type CSSProperties } from "react";
 import { HostMark } from "./HostMark";
 import { bindParticipantMotion, participantMotion } from "./participant-motion";
 import { useSurfaceDocument } from "../../ui/panel-window";
@@ -26,7 +26,7 @@ export function PersonShape({ eyes = true, gaze = 0, eyeClassName, host }: {
   </>;
 }
 
-function PawnAdornment({ voice, collaboration, host }: PawnState) {
+function PawnAdornment({ voice, collaboration, host, avatar }: PawnState & { avatar?: boolean }) {
   return <g className="lr-person-status" data-voice={voice ? "" : undefined}
     data-deafened={voice?.deafened || undefined} data-microphone={voice?.microphone || undefined}
     style={voice?.microphone && voice.level !== undefined ? { "--voice-level": `${microphoneLevelFill(voice.level) * 100}%` } as CSSProperties : undefined}
@@ -49,13 +49,19 @@ function PawnAdornment({ voice, collaboration, host }: PawnState) {
         <circle className="lr-person-mic-tip" r="1.2" fill="currentColor" stroke="none" />
       </g>
     </g>
-    <g className="lr-person-collaboration"><g transform="translate(16.5 32.5) rotate(-45 7.5 7.5)"><Glyph name="mouse" size={15} /></g></g>
+    <g className="lr-person-collaboration" color={avatar ? "var(--ink)" : undefined}>
+      {avatar && <circle cx="35" cy="45.5" r="7.5" fill="var(--paper)" stroke="none" />}
+      <g transform={avatar ? "translate(29.5 40) rotate(-45 5.5 5.5)" : "translate(16.5 32.5) rotate(-45 7.5 7.5)"}>
+        <Glyph name="mouse" size={avatar ? 11 : 15} />
+      </g>
+    </g>
   </g>;
 }
 
-export function PawnSvg({ color, host, identity, voice, collaboration }: PawnState & {
-  color: string; identity?: string;
+export function PawnSvg({ color, host, identity, voice, collaboration, avatar }: PawnState & {
+  color: string; identity?: string; avatar?: string;
 }) {
+  const avatarClip = useId();
   const root = useRef<SVGSVGElement>(null);
   const surfaceDocument = useSurfaceDocument();
   const motion = identity ? participantMotion(identity) : null;
@@ -71,7 +77,14 @@ export function PawnSvg({ color, host, identity, voice, collaboration }: PawnSta
     } as CSSProperties : undefined}>
     <g className="lr-reaction-body"><g className="lr-person-body" fill={color}>
       <PersonShape host={host} />
-      <PawnAdornment host={host} voice={voice} collaboration={collaboration} />
+      {avatar && <>
+        <defs><clipPath id={avatarClip}>
+          <path d="M12 46c0-11 4.3-16.5 12-16.5S36 35 36 46q0 2-2 2H14q-2 0-2-2Z" />
+        </clipPath></defs>
+        <image className="lr-person-avatar" href={avatar} x="12" y="29.5" width="24" height="18.5"
+          preserveAspectRatio="xMidYMid slice" clipPath={`url(#${avatarClip})`} />
+      </>}
+      <PawnAdornment host={host} voice={voice} collaboration={collaboration} avatar={!!avatar} />
     </g></g>
   </svg>;
 }

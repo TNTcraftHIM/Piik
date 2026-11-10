@@ -1,4 +1,4 @@
-import { memo, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { Glyph } from "../../ui/icons";
@@ -42,6 +42,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   const content = useRef<HTMLDivElement>(null);
   const reading = useRef({ position: 0, following: true });
   const readingAnchor = useRef<{ room: string; message: string; offset: number } | null>(null);
+  let authorMessageId = "";
   const draft = drafts[roomId] ?? "";
   const text = draft.trim();
   const textLength = Array.from(text).length;
@@ -171,10 +172,11 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
             || date.getMonth() !== previousDate.getMonth() || date.getDate() !== previousDate.getDate());
           const elapsed = previous ? message.time - previous.time : 0;
           const grouped = !!previous && !newDay && previous.userId === message.userId && elapsed >= 0 && elapsed < 120_000;
+          if (!grouped) authorMessageId = message.id;
           const name = users.find(user => user.id === message.userId)?.name ?? (zh ? "用户" : "User");
-          return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name}
+          return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name} authorMessageId={authorMessageId}
             dateLabel={newDay ? date.toLocaleDateString(zh ? "zh-CN" : "en", { dateStyle: "long" }) : undefined}
-            attachments={attachments} available={available} interaction={interaction} />;
+            attachments={attachments} available={available} interaction={interaction} effectsEnabled={!hidden && !loadingHistory} />;
         })}
       </div>
     </div>
@@ -213,20 +215,25 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   </section>;
 }
 
-const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, dateLabel, attachments, available, interaction }: {
+const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, dateLabel, attachments, available, interaction, authorMessageId, effectsEnabled }: {
   roomId: string; message: ChannelMessage; grouped: boolean; name: string; dateLabel?: string;
   attachments: ChannelAttachments; available: boolean; interaction: RoomInteractionSession | null;
+  authorMessageId: string; effectsEnabled: boolean;
 }) {
   const { lang } = useCopy();
+  const row = useRef<HTMLElement>(null);
+  const effectAnchor = useCallback(() => row.current?.closest(".c3-message-content")
+    ?.querySelector(`[data-message-id="${CSS.escape(authorMessageId)}"] > .lr-person`) ?? null, [authorMessageId]);
   return <>
     {dateLabel && <div className="c3-message-date"><time dateTime={new Date(message.time).toISOString()}>{dateLabel}</time></div>}
-    <article className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}`} data-message-id={message.id}>
+    <article ref={row} className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}`} data-message-id={message.id}>
     {!grouped && <PawnSvg color={participantColor(message.userId)} identity={message.userId} />}
     <div className="c3-message-body">{!grouped && <div className="c3-message-meta"><strong>{name}</strong>
       <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
     </div>}{message.text && <p>{message.text}</p>}
     {message.attachments.map(file => <ChannelAttachment key={file.id} roomId={roomId} messageSeq={message.seq} file={file} client={attachments} />)}
-    <ChannelContentReactions reactions={message.reactions} session={interaction} target={{ messageSeq: message.seq }} disabled={!available} /></div>
+    <ChannelContentReactions reactions={message.reactions} session={interaction} target={{ messageSeq: message.seq }} disabled={!available}
+      effectAnchor={effectAnchor} effectsEnabled={effectsEnabled} /></div>
     </article>
   </>;
 });

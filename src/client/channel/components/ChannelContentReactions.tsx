@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { REACTION_IDS } from "../../../shared/room-interactions";
 import { ReactionBurst, ReactionIcon } from "../../components/living/RoomReaction";
 import { RoomReactionGrid } from "../../components/living/RoomReactionPicker";
@@ -14,9 +14,10 @@ const noSubscription = () => () => {};
 const noSnapshot = () => null;
 
 /** Counts come from committed snapshots; live events alone play one shared effect. */
-export function ChannelContentReactions({ reactions, session, target, disabled = false, compact = false }: {
+export function ChannelContentReactions({ reactions, session, target, disabled = false, compact = false, effectAnchor, effectsEnabled = true }: {
   reactions?: MessageReactions; session: RoomInteractionSession | null; target: ContentReactionTarget;
   disabled?: boolean; compact?: boolean;
+  effectAnchor?: () => Element | null; effectsEnabled?: boolean;
 }) {
   const { lang, t } = useCopy(), zh = lang === "zh";
   const state = useSyncExternalStore(session?.subscribe ?? noSubscription, session?.getSnapshot ?? noSnapshot, noSnapshot);
@@ -24,6 +25,8 @@ export function ChannelContentReactions({ reactions, session, target, disabled =
   const trigger = useRef<HTMLButtonElement>(null), menu = useRef<HTMLDivElement>(null), id = useId();
   const [open, setOpen] = useState(false);
   const targetId = "messageSeq" in target ? target.messageSeq : target.publicationId;
+  // Mounting history or returning to a view must not replay already received events.
+  const existingEvents = useMemo(() => new Set(state?.reactions.map(event => event.id)), [session, targetId, effectsEnabled]);
   useLayoutEffect(() => {
     if (menu.current?.matches(":popover-open")) menu.current.hidePopover();
   }, [session, targetId]);
@@ -38,7 +41,7 @@ export function ChannelContentReactions({ reactions, session, target, disabled =
       <ReactionIcon reaction={reaction} /><span>{count}</span>
     </button>;
   });
-  const effects = state?.reactions.filter(event => event.contentTarget && ("messageSeq" in target
+  const effects = effectsEnabled && state?.reactions.filter(event => !existingEvents.has(event.id) && event.contentTarget && ("messageSeq" in target
     ? "messageSeq" in event.contentTarget && event.contentTarget.messageSeq === target.messageSeq
     : "publicationId" in event.contentTarget && event.contentTarget.publicationId === target.publicationId));
   return <div className={`c3-message-reactions${compact ? " is-source" : ""}`}>
@@ -55,7 +58,7 @@ export function ChannelContentReactions({ reactions, session, target, disabled =
         <RoomReactionGrid reactionIds={state?.reactionIds ?? REACTION_IDS} canSend={canSend} onSend={send} />
       </>}
     </div>
-    {session && effects?.map(event => event.payload.kind === "reaction" && <ReactionBurst key={event.id}
-      reaction={event.payload.reaction} id={event.id} expiresAt={event.expiresAt} now={session.now} />)}
+    {session && effects && effects.map(event => event.payload.kind === "reaction" && <ReactionBurst key={event.id}
+      reaction={event.payload.reaction} id={event.id} expiresAt={event.expiresAt} now={session.now} anchor={effectAnchor} />)}
   </div>;
 }

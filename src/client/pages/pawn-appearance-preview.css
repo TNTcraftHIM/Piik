@@ -1,6 +1,22 @@
 .cp-pawn-preview { margin: 24px 0; scroll-margin-top: 24px; }
 .cp-pawn-preview h3 { margin: 0; font-size: 16px; }
 .cp-pawn-preview > p { margin: 12px 0 20px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.cp-pawn-preview > .cp-input-error { color: var(--danger); }
+.cp-pawn-preview > .cp-tools { flex-wrap: wrap; }
+.cp-pawn-avatar-file { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.cp-pawn-avatar-file input { max-width: 210px; min-width: 0; font: inherit; }
+.cp-pawn-avatar-surfaces { display: grid; grid-template-columns: 1.25fr .75fr 1fr; gap: 24px; margin: 20px 0 32px; }
+.cp-pawn-avatar-surfaces section { min-width: 0; }
+.cp-pawn-avatar-surfaces h4 { margin: 0 0 12px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.cp-pawn-avatar-couch > div { display: flex; justify-content: space-around; gap: 8px; padding: 12px 8px 8px; border-radius: 18px; background: var(--couch); }
+.cp-pawn-avatar-couch .lr-person { width: 42px; height: 50px; }
+.cp-pawn-preview .cp-pawn-avatar-couch figcaption { color: var(--person-ink); }
+.cp-pawn-avatar-sidebar > div { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.cp-pawn-avatar-sidebar .lr-person { width: 24px; height: 32px; }
+.cp-pawn-avatar-chat > div { display: flex; align-items: flex-start; gap: 11px; }
+.cp-pawn-avatar-chat .lr-person { width: 29px; height: 36px; flex: none; }
+.cp-pawn-avatar-chat strong { font-size: 13px; font-weight: 650; }
+.cp-pawn-avatar-chat p { margin: 3px 0 0; font-size: 14px; line-height: 1.65; }
 .cp-pawn-samples { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 18px 6px; margin-bottom: 28px; }
 .cp-pawn-preview figure { display: grid; justify-items: center; align-content: start; gap: 6px; margin: 0; min-width: 0; }
 .cp-pawn-figure { display: grid; place-items: center; width: 56px; height: 64px; border-radius: 12px; background: var(--couch); }
@@ -22,4 +38,5 @@
 #pawn-study-couch { scroll-margin-top: 24px; }
 @media (max-width: 1000px) { .cp-pawn-samples { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .cp-pawn-headphone-comparison { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .cp-pawn-avatar-surfaces { grid-template-columns: 1fr; } }
 @media (max-width: 360px) { .cp-pawn-samples { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

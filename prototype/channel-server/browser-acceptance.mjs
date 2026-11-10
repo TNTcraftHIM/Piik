@@ -1448,7 +1448,7 @@ try {
   await browser(layoutIndex, "click", "#c3-rooms-trigger");
   assert.equal(await evaluate(layoutIndex, "document.activeElement.id"), "c3-room-list-heading");
   await browser(layoutIndex, "screenshot", join(output, "rooms-mobile.png"), "--full");
-  await browser(layoutIndex, "click", ".c3-channel-title > button");
+  await browser(layoutIndex, "click", ".c3-room-list-actions button[aria-controls=\"c3-room-list\"]");
   assert.equal(await evaluate(layoutIndex, "document.querySelector('.c3-composer textarea').value"), "A draft while checking the room");
   assert.equal(await evaluate(layoutIndex, "window.__panePlayers.every(video => video.isConnected)"), true);
   const afterPanes = await view(layoutIndex);

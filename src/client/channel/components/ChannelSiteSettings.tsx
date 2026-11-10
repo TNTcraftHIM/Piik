@@ -6,7 +6,7 @@ import type { ChannelController } from "../types";
 import type { DomainSettings } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
 import { ChannelSettingsDialog, ChannelSettingsTabs, useSettingsAction } from "./ChannelSettingsDialog";
-import { ChannelIdentityFields } from "./ChannelIdentity";
+import { ChannelIdentityFields, ChannelIdentityMark } from "./ChannelIdentity";
 import { BackupControls } from "./BackupControls";
 import "./channel-room-controls.css";
 
@@ -37,6 +37,7 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
   return <>
     <Tooltip overflow={{ text: current?.name ?? title, selector: ".lr-cap" }} disabled={open}>
       <Btn icon="chevron" size="dense" quiet title={{ text: title }} cap={{ text: current?.name ?? title }} expanded={open} disabled={disabled}
+        iconOverlay={<ChannelIdentityMark icon={current?.icon ?? "couch"} size={22} />}
         onClick={() => { resetDraft(current); setTask("site"); setOpen(true); }} />
     </Tooltip>
     {open && <ChannelSettingsDialog title={current?.name ?? title} caption={current ? title : undefined} error={error} onClose={close}>
