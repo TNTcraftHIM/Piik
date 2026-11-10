@@ -68,7 +68,8 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const sourceTitle = roomName
     ? lang === "zh" ? `切换${roomName}的分享源` : `Switch source in ${roomName}`
     : label;
-  useAnchoredPopover(trigger, panel, { maxHeight: 560, minVisibleHeight: 240 });
+  // The inner grid scrolls independently, so its clipped outer scrollHeight cannot size placement.
+  useAnchoredPopover(trigger, panel, { maxHeight: 560, preferredHeight: 560, minVisibleHeight: 360 });
   useAnchoredPopover(settingsTrigger, settingsPanel, { maxHeight: 640, minVisibleHeight: 240 });
   const close = useCallback(() => { panel.current?.hidePopover(); settingsPanel.current?.hidePopover(); }, []);
   const refresh = useCallback(() => {
