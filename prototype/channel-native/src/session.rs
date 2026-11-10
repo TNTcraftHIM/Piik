@@ -40,6 +40,8 @@ use uuid::Uuid;
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
+const SIGNALING_IDLE_TIMEOUT: Duration = Duration::from_secs(20);
+
 #[cfg(all(test, feature = "capture"))]
 mod tests;
 
@@ -606,7 +608,7 @@ impl Session {
         let mut last_seen = Instant::now();
         loop {
             let recovery = self.recovery;
-            let idle = last_seen + Duration::from_millis(RECOVERY_MS);
+            let idle = last_seen + SIGNALING_IDLE_TIMEOUT;
             // Stop and connection deadlines cover the whole operation, including
             // peer negotiation and socket writes. Welcome ends the recovery window
             // before its projection starts a peer turn.

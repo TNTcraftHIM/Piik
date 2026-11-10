@@ -11,6 +11,7 @@ import type { BrowserEncodingPool, BrowserPooledSender } from "../media/browser-
 import { cloneSenderVideoTrack, senderCaptureTrack, stopSenderVideoTrack } from "../media/sender-video-track";
 import { waitForConnectionOperation } from "../webrtc/connection-operation";
 
+const TRANSPORT_PREPARE_MS = 20_000;
 const MAX_FILE_FRAME_BYTES = 8192;
 const MAX_CONTROL_FRAME_BYTES = 32768;
 const DATA_SEND_BUFFER_BYTES = 65536;
@@ -129,7 +130,7 @@ export class ChannelTransport {
   constructor(private options: TransportOptions) {
     this.pc = new RTCPeerConnection({ iceServers: options.iceServers, bundlePolicy: "max-bundle" });
     this.releaseDebug = observeDebugConnection(this.pc, { role: "channel-peer" });
-    this.deadline = setTimeout(() => this.timeout(), 20000);
+    this.deadline = setTimeout(() => this.timeout(), TRANSPORT_PREPARE_MS);
     this.pc.onicecandidate = ({ candidate }) => {
       if (candidate) options.send({ candidate: candidate.toJSON() });
     };
@@ -307,7 +308,7 @@ export class ChannelTransport {
     if (this.pc.connectionState === "connected" && (!this.rooms.size || this.baseFailed || this.channel?.readyState === "open")) {
       this.clearDeadline();
     } else if (this.rooms.size && !this.baseFailed && this.channel?.readyState !== "open" && this.deadline === null) {
-      this.deadline = setTimeout(() => this.timeout(), 20000);
+      this.deadline = setTimeout(() => this.timeout(), TRANSPORT_PREPARE_MS);
     }
   }
 

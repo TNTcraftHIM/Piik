@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
+const BASE_PREPARE_MS: u64 = 20_000;
+
 #[derive(Clone)]
 pub(crate) struct RelayLimits {
     pub default: usize,
@@ -669,7 +671,7 @@ impl BaseTree {
                     child,
                     candidate,
                     replaces: self.plan.parents.get(&child).copied(),
-                    deadline: now.saturating_add(20_000),
+                    deadline: now.saturating_add(BASE_PREPARE_MS),
                 });
             } else if let Some((child, candidate)) = demand
                 .iter()
@@ -687,7 +689,7 @@ impl BaseTree {
                     child,
                     candidate: Some(candidate),
                     replaces: None,
-                    deadline: now.saturating_add(20_000),
+                    deadline: now.saturating_add(BASE_PREPARE_MS),
                 });
             }
         }
