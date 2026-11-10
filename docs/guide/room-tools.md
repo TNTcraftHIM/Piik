@@ -31,7 +31,7 @@ grant access only to their room. Switching to public keeps an existing private
 key, but ordinary public access does not grant later private access. Resetting
 a private invitation invalidates its old links without revoking admitted users. To replace
 its link, expand **Reset room invitation**, then select **Generate new invitation**.
-Site settings remain beside the site name in the room list.
+The site operator opens settings by selecting the site name above the room list.
 
 ## Chat and reactions
 

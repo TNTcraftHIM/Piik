@@ -109,7 +109,8 @@ the native settings-dialog shell, with their own forms and permissions.
 Keep the room invitation beside the upper room title, and group Share with its
 parameters on the opposite side. Personal voice and identity stay lower left.
 The left list contains rooms and their voice participants; the Piik mark returns
-to this site's room overview. Global connection, App, language, theme and help
+to this site's room overview. Keep the site name visible beside it, with maintenance
+actions attached to that name rather than the personal controls. Global connection, App, language, theme and help
 controls share the upper-right utility area. Keep that area reachable when its
 optional conversation or member pane is collapsed; the main body then fills the
 released width. Site maintenance is separate from a room's access settings.
