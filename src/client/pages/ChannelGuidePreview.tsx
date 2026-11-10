@@ -104,7 +104,7 @@ export function useChannelGuideSample(multiRoom = false) {
       ...previous, [roomId]: previous[roomId] ?? { muted: listenOnly, deafened: false },
     })),
     setInputVolume: (volume: number) => setVoiceInput(previous => ({ ...previous, volume })), setListeningVolume,
-    microphones: async () => [{ id: "", label: zh ? "默认麦克风" : "Default microphone" }],
+    microphones: async () => [{ id: "sample-microphone", label: zh ? "示例麦克风" : "Sample microphone" }],
     configureVoiceInput: async (next: Partial<typeof voiceInput>) => setVoiceInput(previous => ({ ...previous, ...next })),
     setRoomVoiceBitrate: async (roomId: string, voiceBitrate: number) => setSettingsByRoom(previous => ({ ...previous, [roomId]: { ...previous[roomId], voiceBitrate } })),
   } satisfies Partial<ChannelController> as unknown as ChannelController;
