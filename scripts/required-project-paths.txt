@@ -16,6 +16,9 @@ tsconfig.json
 .agents/skills/ponytail/LICENSE
 .agents/skills/ponytail/UPSTREAM.md
 .agents/skills/stop-that-shit/SKILL.md
+.agents/skills/unslop/SKILL.md
+.agents/skills/unslop/UPSTREAM.md
+.agents/skills/unslop/LICENSE
 .githooks/pre-commit
 .github/pull_request_template.md
 .github/workflows/repository-hygiene.yml

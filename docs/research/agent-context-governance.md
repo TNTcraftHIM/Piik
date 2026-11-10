@@ -93,6 +93,10 @@ remains in the skill's [provenance](../../.agents/skills/ponytail/UPSTREAM.md).
 New mechanisms still need relevant end-to-end evidence. Required design thinking
 does not imply a separate design document, review agent or approval for each edit.
 
+Piik's [Unslop adaptation](../../.agents/skills/unslop/UPSTREAM.md) credits Damir
+Sokolovsky and adds a focused method for product-specific hierarchy and rendered
+UI review. Existing visual-language and engineering owners retain the rules.
+
 OpenCode's instructions make several of these decisions concrete: validate at
 the owning boundary, extract helpers for real concepts or reuse, test production
 code, and use existing generation and delivery commands. Piik consolidates these

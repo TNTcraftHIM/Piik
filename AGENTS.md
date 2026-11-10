@@ -53,6 +53,7 @@ invocation; follow their relevant guidance without importing unrelated workflows
 | Coding, code review, or implementation design | [Ponytail](./.agents/skills/ponytail/SKILL.md): smallest coherent implementation and reuse |
 | Implementation, debugging, or review | [Stop That Shit](./.agents/skills/stop-that-shit/SKILL.md): proportionate investigation, verification and complete delivery |
 | Cross-surface consistency, recurring sibling-path defects, or standardization audits | [Context consistency](./.agents/skills/context-consistency/SKILL.md): trace shared meanings and ownership; ordinary changes check only their affected family |
+| Material UI visual design, redesign or polish | [Unslop](./.agents/skills/unslop/SKILL.md): product-specific hierarchy, semantic grouping, shared visual consistency and rendered review |
 
 ## Product Contract
 

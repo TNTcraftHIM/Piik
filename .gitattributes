@@ -7,6 +7,9 @@
 *.sh text eol=lf
 *.ps1 text eol=lf
 
+# Retain the upstream license verbatim, including its final blank line.
+.agents/skills/unslop/LICENSE whitespace=-blank-at-eof
+
 # Never apply text conversion to common binary assets.
 *.avif binary
 *.gif binary
