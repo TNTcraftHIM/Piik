@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
 import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
 import { ChannelRoomSettingsDialog } from "../channel/components/ChannelRoomControls";
@@ -8,6 +8,7 @@ import { ChannelShareControl } from "../channel/components/ChannelShareControl";
 import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
 import { snapshotSchema, type ChannelMessage, type ChannelRoom, type ChannelSnapshot, type ChannelTopology, type RoomSettings } from "../channel/protocol";
 import type { ChannelController } from "../channel/types";
+import { ChannelAttachments } from "../channel/attachments";
 import { QUALITY_PROFILES, type QualityProfile } from "../media/quality";
 import { usePreviewInteractions } from "./use-preview-interactions";
 import { useCopy } from "../ui/copy";
@@ -53,6 +54,19 @@ export function useChannelGuideSample(multiRoom = false) {
   const [notice, setNotice] = useState("");
   const received = () => setNotice(zh ? "预览已收到操作，不会采集设备或改变真实房间。" : "Preview action received. No device capture or live room was changed.");
   const [messagesByRoom, setMessagesByRoom] = useState<Record<string, ChannelMessage[]>>({});
+  // No session or FileStore is attached: these confirmed sample bytes stay in this page.
+  const [attachments] = useState(() => new ChannelAttachments(async () => {}, async () => {}));
+  const nextMessage = useRef(3);
+  useEffect(() => () => attachments.reset(), [attachments]);
+  const onSend: ChannelController["sendMessage"] = async (roomId, text, files = [], signal) => {
+    const prepared = await attachments.describe(files, signal);
+    signal?.throwIfAborted();
+    const seq = nextMessage.current++;
+    const message: ChannelMessage = { id: `sample-${roomId}-${seq}`, seq, userId: "sample-ada", text,
+      time: new Date(2020, 0, 1, 20, seq).getTime(), attachments: prepared.map(file => file.attachment) };
+    attachments.confirmed(roomId, message, prepared);
+    setMessagesByRoom(previous => ({ ...previous, [roomId]: [...(previous[roomId] ?? []), message] }));
+  };
   const [messageReactions, setMessageReactions] = useState<Record<number, import("../channel/protocol").MessageReactions>>({});
   const [publicationReactions, setPublicationReactions] = useState(new Map<string, import("../channel/protocol").PublicationReactionSnapshot>());
   const { session: interaction } = usePreviewInteractions(false, { self: { peerId: "sample-ada", displayName: "Ada" }, friend: { peerId: "sample-bo", displayName: "Bo" } }, (reaction, target) => {
@@ -77,7 +91,7 @@ export function useChannelGuideSample(multiRoom = false) {
     .map(room => ({ creatorId: "sample-ada", access: "private", hidden: false, hasPassword: false,
       authorized: true, canManage: true, available: true, reading: true,
       delivery: { hostSessionId: "sample-ada-session", bindingId: `sample-binding-${room.id}`, nextHops: {} },
-      participantSessionIds: ["sample-ada-session", "sample-bo-session"], capabilities: { attachments: false },
+      participantSessionIds: ["sample-ada-session", "sample-bo-session"], capabilities: { attachments: true },
       ...room, ...settingsByRoom[room.id] }));
   const state = snapshotSchema.parse({ channel: { id: "sample", name: "Friends", icon: "couch", ownerId: "sample-ada", historyWindow: 1000,
     rooms }, users,
@@ -90,7 +104,7 @@ export function useChannelGuideSample(multiRoom = false) {
   });
   const channel = {
     updateProfile: async (value: { name: string; avatar: string | null }) => setProfile(value),
-    state, self: state.users[0], sessionId: "sample-ada-session", connection: "connected", appConnected: true, pending,
+    state, self: state.users[0], sessionId: "sample-ada-session", connection: "connected", appConnected: true, pending, attachments, sendMessage: onSend,
     quality, setQuality, videoCodecMode: codec, setVideoCodecMode: setCodec, ownedScreens: new Set<string>(), streams: new Map<string, MediaStream>(),
     messagesByRoom: { ...messagesByRoom, friday: sampleMessages.map(message => ({ ...message, reactions: messageReactions[message.seq] })) },
     interactionsByRoom: new Map(interaction ? [["friday", interaction]] : []), publicationReactions, roomBackupAvailable,
@@ -125,13 +139,6 @@ export function useChannelGuideSample(multiRoom = false) {
     configureVoiceInput: async (next: Partial<typeof voiceInput>) => setVoiceInput(previous => ({ ...previous, ...next })),
     setRoomVoiceBitrate: async (roomId: string, voiceBitrate: number) => setSettingsByRoom(previous => ({ ...previous, [roomId]: { ...previous[roomId], voiceBitrate } })),
   } satisfies Partial<ChannelController> as unknown as ChannelController;
-  const onSend: ChannelController["sendMessage"] = async (roomId, text) => {
-    setMessagesByRoom(previous => {
-      const messages = previous[roomId] ?? [];
-      return { ...previous, [roomId]: [...messages, { id: `sample-${roomId}-${messages.length}`, seq: messages.length + 3,
-        userId: "sample-ada", text, time: new Date(2020, 0, 1, 20, 2 + messages.length).getTime(), attachments: [] }] };
-    });
-  };
   return { channel, roomName, sampleMessages, messageReactions, settingsByRoom, notice, received, onSend, voiceLevel, setVoiceLevel };
 }
 
@@ -143,7 +150,7 @@ export function ChannelGuidePreview() {
   const state = channel.state!;
   return <section id="channel-guide-preview" className="cp-card">
     <header><h2>{zh ? "3.0 房间与分享" : "3.0 rooms and sharing"}</h2></header>
-    <p>{zh ? "正式组件与示例房间，不连接服务、不采集设备。邀请链接为示例。" : "Production components with a sample room. No service or device capture; the invitation is an example."}</p>
+    <p>{zh ? "正式组件与示例房间，不连接服务、不采集设备。文件仅保留在本页，邀请链接为示例。" : "Production components with a sample room. No service or device capture. Files stay in this page; invitations are examples."}</p>
     <div className="c3-guide-room">
       <aside className="c3-guide-navigation" aria-label={zh ? "房间" : "Rooms"}>
         <ChannelRoomItem room={state.channel.rooms[0]} selected settingsOpen={settingsOpen}
@@ -156,7 +163,7 @@ export function ChannelGuidePreview() {
         </div>
         <ChannelShareControl channel={channel} roomId="friday" disabled={false} /></header>
       <ChannelConversation roomId="friday" roomName={roomName} messages={channel.messagesByRoom.friday} users={state.users}
-        canSend sending={false} hidden={false} available attachments={channel.attachments} attachmentsAvailable={false}
+        canSend sending={false} hidden={false} available attachments={channel.attachments} attachmentsAvailable
         history={{ hasMore: false, atLatest: true }} loadingHistory={false} onHistory={async () => {}} onLatest={async () => {}}
         interaction={channel.interactionsByRoom.get("friday") ?? null} onSend={onSend} />
       <ChannelVoiceDock channel={channel} selected="friday" onSelect={received} onBrowse={received} />

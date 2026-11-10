@@ -199,6 +199,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
   }
 
   const busy = state === "busy" || state === "waking" || state === "approving";
+  const ready = state === "ready" && connected !== false;
   const label = t(({
     idle: "client.connect.action",
     waking: "client.connect.returnToBrowser",
@@ -210,13 +211,13 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
     incompatible: "native.incompatible",
   } as const)[state]);
   const failed = state === "unavailable" || state === "incompatible";
-  const update = state === "ready" ? release : null;
+  const update = ready ? release : null;
   const availableUpdate = update?.kind === "update-available" || update?.kind === "major-update";
   const title = availableUpdate ? t("client.connect.update", { current: build!.version, version: update.version }) : label;
-  return <><Tooltip kind={availableUpdate ? "update-available" : state === "ready" ? "hint-app-ready" : state === "unavailable" ? "signal-failed" : state === "incompatible" ? "warning" : "hint-client-site"}
+  return <><Tooltip kind={availableUpdate ? "update-available" : ready ? "hint-app-ready" : state === "unavailable" ? "signal-failed" : state === "incompatible" ? "warning" : "hint-client-site"}
     text={vis ? undefined : state === "idle" ? t("client.connect.hint") : title} disabled={helpOpen}
     place="below" align="end">
-    <button ref={trigger} type="button" className={`lr-btn is-compact lr-app-connect${state === "ready" ? " is-ready" : ""}`}
+    <button ref={trigger} type="button" className={`lr-btn is-compact lr-app-connect${ready ? " is-ready is-quiet" : ""}`}
       aria-label={title} aria-busy={busy || undefined} data-update={availableUpdate || undefined}
       popoverTarget={failed || state === "approval" ? helpId : undefined} aria-haspopup="dialog"
       onClick={failed || state === "approval" ? undefined : event => {
@@ -226,7 +227,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         checkRelease();
         void connect();
       }} disabled={busy}>
-      <Glyph name={availableUpdate ? "arrowUp" : state === "ready" ? "check" : busy ? "loader" : state === "unavailable" || state === "incompatible" ? "alert" : "window"}
+      <Glyph name={availableUpdate ? "arrowUp" : ready ? "check" : busy ? "loader" : state === "unavailable" || state === "incompatible" ? "alert" : "window"}
         size={16} className={busy ? "lr-spin" : undefined} />
       {vis ? null : <span className="lr-cap">App</span>}
     </button>
@@ -240,7 +241,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       }}>
       <div className="lr-app-connect-head">
         {state === "busy" ? <LoadingStatus label="client.connect.discovering" /> :
-          <div className="lr-app-connect-scene" aria-hidden="true">{helpOpen && (state === "ready" ? <HintComic kind="hint-app-ready" /> : state === "approval" || state === "waking" ? <HintComic kind="hint-client-site" /> :
+          <div className="lr-app-connect-scene" aria-hidden="true">{helpOpen && (ready ? <HintComic kind="hint-app-ready" /> : state === "approval" || state === "waking" || state === "ready" ? <HintComic kind="hint-client-site" /> :
             <Comic kind={state === "incompatible" ? "warning" : "signal-failed"} theme="paper" />)}</div>}
         <button type="button" className="lr-btn is-dense is-quiet lr-app-connect-close" aria-label={t("common.close")}
           popoverTarget={helpId} popoverTargetAction="hide">

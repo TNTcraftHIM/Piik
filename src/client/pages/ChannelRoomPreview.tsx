@@ -12,8 +12,6 @@ import { useAnchoredPopover } from "../components/living/use-anchored-popover";
 import "./channel-room-preview.css";
 
 const screenCounts = [0, 1, 2, 3, 4, 8];
-const fileStatus = { busy: false, error: null };
-const fileStore = { subscribe: () => () => {}, status: () => fileStatus };
 
 /** The production room view with local samples. No Session, device access or App discovery. */
 export function ChannelRoomPreview() {
@@ -97,7 +95,6 @@ export function ChannelRoomPreview() {
   }
   const channel = { ...sample.channel, state, self: state.users[0], streams, error: null, siteURL: "https://friends.example/",
     messagesByRoom,
-    attachments: { ...fileStore, download: async () => sample.received(), cancelDownload: sample.received } as unknown as ChannelController["attachments"],
     interactionsByRoom: sample.channel.interactionsByRoom,
     ownedScreens,
     screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), voicePlaybackByUser: new Map(),

@@ -30,7 +30,7 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
     }
   });
   const { container, slot, surfaceDocument, detached } = panelWindow;
-  const defaultSize = compact ? COMPACT_SIZE : PANEL_SIZE;
+  const defaultSize = compact ? COMPACT_SIZE : directWindow ? { width: PANEL_SIZE.width, height: PANEL_SIZE.width } : PANEL_SIZE;
   const position = useRef({ x: 1, y: 1 });
   const preferredSize = useRef(defaultSize);
   const placePanel = useRef<((change?: PanelChange) => void) | null>(null);
@@ -235,7 +235,7 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
               y: rect.top + (event.key === "ArrowUp" ? -24 : event.key === "ArrowDown" ? 24 : 0) });
           }}>
         <span className="lr-floating-title">{!detached && <Glyph name="grip" size={17} />}
-          {vis ? <Glyph name={icon} size={18} /> : <b>{title}</b>}</span>
+          {vis && !directWindow ? <Glyph name={icon} size={18} /> : <b>{title}</b>}</span>
         <span id={`${id}-move-hint`} className="visually-hidden">{t("floating.moveHint")}</span>
         {detachable && !directWindow && !detached && panelWindowAPI(typeof window === "undefined" ? null : window) &&
           <Tooltip kind="hint-window-detach" place="below" text={vis ? undefined : t("floating.detach")}>

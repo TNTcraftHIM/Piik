@@ -118,8 +118,8 @@ ul { margin: 0; padding: 0; list-style: none; }
 .lr-top-right { display: inline-flex; gap: 10px; align-items: center; }
 .lr-top > .lr-top-right { margin-left: auto; min-width: 0; flex: none; justify-content: flex-end; }
 .lr-header-controls { flex: none; }
-.lr-header-controls.is-overflow .lr-btn.is-compact:not([popover] .lr-btn) { width: var(--control-compact-size); padding: 0; }
-.lr-header-controls.is-overflow .lr-cap:not([popover] .lr-cap) { display: none; }
+.lr-header-controls.is-overflow .lr-btn.is-compact:not([popover] .lr-btn, .lr-app-connect:not(.is-ready)) { width: var(--control-compact-size); padding: 0; }
+.lr-header-controls.is-overflow .lr-cap:not([popover] .lr-cap, .lr-app-connect:not(.is-ready) > .lr-cap) { display: none; }
 .lr-header-options:not([popover]), .lr-header-options:not([popover]) > .lr-header-settings { display: contents; }
 .lr-header-more { display: inline-flex; }
 .lr-header-options:is(:popover-open, .\:popover-open) { display: grid; gap: 16px; }
@@ -926,6 +926,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 /* ---------- buttons & chips ---------- */
 
 .lr-app-connect.is-ready > svg { color: var(--live); }
+.lr-app-connect[aria-busy="true"] { opacity: 1; }
 .lr-app-connect.is-ready[data-update] > svg { color: var(--primary); }
 .lr-anchored-card {
   position: fixed; inset: auto; margin: 0; padding: 16px;
@@ -1811,8 +1812,8 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   .lr-source-option-icon { width: 34px; height: 34px; }
   .lr-top-right { gap: 8px; }
   .lr-leds { gap: 4px; padding: 6px; }
-  .lr-top .lr-btn.is-compact { width: var(--control-compact-size); padding: 0; }
-  .lr-top .lr-btn.is-compact .lr-cap { display: none; }
+  .lr-top .lr-btn.is-compact:not(.lr-app-connect:not(.is-ready)) { width: var(--control-compact-size); padding: 0; }
+  .lr-top .lr-btn.is-compact:not(.lr-app-connect:not(.is-ready)) .lr-cap { display: none; }
   .lr-top .lr-header-options[popover] .lr-btn.is-compact { width: auto; padding-inline: 12px; }
   .lr-top .lr-header-options[popover] .lr-cap { display: inline; }
   .lr-top .lr-header-options[popover] .lr-help-content nav .lr-btn { width: 100%; }

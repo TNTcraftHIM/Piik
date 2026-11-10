@@ -19,8 +19,9 @@ function move(node: HTMLElement, parent: HTMLElement | null) {
 }
 
 /** Three page slots share one room tool without remounting their content. */
-export function ChannelRoomTool({ title, home, surface, onSurfaceChange, couch, conversation, voice }: {
+export function ChannelRoomTool({ title, caption, home, surface, onSurfaceChange, couch, conversation, voice }: {
   title: string; home: Slots; surface: RoomToolSurface; onSurfaceChange: (surface: RoomToolSurface) => void;
+  caption?: string;
   couch: ReactNode; conversation: ReactNode; voice: ReactNode;
 }) {
   const { lang, vis } = useCopy();
@@ -39,12 +40,14 @@ export function ChannelRoomTool({ title, home, surface, onSurfaceChange, couch, 
   });
   useEffect(() => () => { for (const part of parts) targets[part].remove(); }, [targets]);
   return <>
-    <Tooltip kind={detached ? "hint-window-detach" : "hint-chat-open"} disabled={surface.open} text={vis ? undefined : label}>
-      <button ref={trigger} type="button" className="lr-btn is-compact is-quiet" aria-label={label}
-        aria-haspopup="dialog" aria-expanded={surface.open} popoverTarget={detached ? undefined : id}>
-        <Glyph name="couch" size={19} />{!vis && <span className="lr-cap">{inline ? (lang === "zh" ? "交流" : "Room panel") : (lang === "zh" ? "小窗" : "Mini window")}</span>}
-      </button>
-    </Tooltip>
+    <div className="c3-room-tool-entry"><small>{caption ?? title}</small>
+      <Tooltip kind={detached ? "hint-window-detach" : "hint-chat-open"} disabled={surface.open} text={vis ? undefined : label}>
+        <button ref={trigger} type="button" className="lr-btn is-dense is-quiet" aria-label={label}
+          aria-haspopup="dialog" aria-expanded={surface.open} popoverTarget={detached ? undefined : id}>
+          <Glyph name="couch" size={19} />{!vis && <span className="lr-cap">{inline ? (lang === "zh" ? "交流" : "Room panel") : (lang === "zh" ? "小窗" : "Mini window")}</span>}
+        </button>
+      </Tooltip>
+    </div>
     <FloatingPanel id={id} trigger={trigger} title={title} icon="couch" directWindow className="c3-room-tool"
       onOpenChange={(open, owner) => {
         const destination = open ? { couch: couchSlot, conversation: conversationSlot, voice: voiceSlot } : home;

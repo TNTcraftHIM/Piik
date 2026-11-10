@@ -21,6 +21,22 @@ vi.mock("react", async importOriginal => {
 describe("shared App connection entry", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it("keeps an unconnected owner discoverable even after App permission is verified", () => {
+    setCopy({ lang: "en", vis: false });
+    const render = (connected?: boolean) => {
+      vi.mocked(useState).mockReturnValueOnce(["ready", vi.fn()]);
+      return renderToStaticMarkup(createElement(AppConnectionButton, { connected }));
+    };
+    const disconnected = render(false);
+    expect(disconnected).not.toContain("lr-app-connect is-ready");
+    expect(disconnected).toContain(`aria-label="${t("en", "client.connect.action")}"`);
+    for (const connected of [true, undefined]) {
+      const ready = render(connected);
+      expect(ready).toContain("lr-app-connect is-ready is-quiet");
+      expect(ready).toContain(`aria-label="${t("en", "client.connect.manage")}"`);
+    }
+  });
+
   it.each([
     ["iPhone", "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)", "iPhone", 5],
     ["iPad", "Mozilla/5.0 (iPad; CPU OS 26_0 like Mac OS X)", "iPad", 5],
