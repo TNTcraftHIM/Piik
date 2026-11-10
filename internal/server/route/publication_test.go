@@ -2,6 +2,36 @@ package route
 
 import "testing"
 
+func TestPublicationAttachmentWaitsForItsParentSessionWithoutBlockingOtherBranches(t *testing.T) {
+	routes := voiceTree(t)
+	routes.SetDefaultCapacity(2, ms(9))
+	routes.UpsertParticipant(hostInput("host_session", 2), ms(9))
+	addViewer(routes, C, 0, ms(10))
+	commitRoomPeer(t, routes, 11, "voice-c")
+	before := routes.Snapshot()
+	routes.SetVideoPublication("share", false, 20)
+	a := beginVideoAttach(t, routes, 21, A, "video-a")
+	eq(t, routes.CandidateReady(a, 22, nil, CandidateProof{VideoGeneration: "share"}).Committed, true)
+	routes.DisconnectSession(A, sessionOf(A))
+	// A's proven physical path survives signaling grace, but it cannot own a
+	// new attachment for B until its signaling session returns. C is independent.
+	c := beginVideoAttach(t, routes, 23, C, "video-c")
+	eq(t, routes.CandidateReady(c, 24, nil, CandidateProof{VideoGeneration: "share"}).Committed, true)
+	for _, at := range []int64{25, 26, 50_000} {
+		noOperation(t, routes.Reconcile(at).Operation)
+	}
+	for _, child := range []string{A, B, C} {
+		previous, _ := before.UpstreamByViewer.Get(child)
+		edge := edgeOf(t, routes, child)
+		eq(t, edge.ConnectionID, previous.ConnectionID)
+		eq(t, edge.Usable && edge.PhysicalActive, true)
+	}
+	routes.UpsertParticipant(viewerInput(A, "resumed-a", 1), ms(50_001))
+	b := beginVideoAttach(t, routes, 50_002, B, "video-b")
+	eq(t, routes.CandidateReady(b, 50_003, nil, CandidateProof{VideoGeneration: "share"}).Committed, true)
+	noOperation(t, routes.Reconcile(50_004).Operation)
+}
+
 func TestRoomVideoRecoveryPreservesLogicalConnection(t *testing.T) {
 	routes := voiceTree(t)
 	routes.SetVideoPublication("share", false, 10)

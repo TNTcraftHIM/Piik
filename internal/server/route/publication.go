@@ -115,7 +115,7 @@ func (c *Controller) startPublicationAttach(nowMs int64) bool {
 			}
 			tuple.Publication = PublicationReuse
 		}
-		c.operation = &operation{
+		op := &operation{
 			childPeerID: childID, childSessionID: child.sessionID,
 			demandPeerID: childID, demandSessionID: child.sessionID,
 			reason: DemandPublicationAttach, baseRevision: c.revision,
@@ -123,6 +123,12 @@ func (c *Controller) startPublicationAttach(nowMs int64) bool {
 			videoGeneration: c.videoGeneration, attachConnectionID: edge.ConnectionID,
 			candidates: []CandidatePlan{{Tuple: tuple, EndpointTransition: EndpointTransition{Kind: TransitionNone}}},
 		}
+		// A retained physical path may outlive its parent's signaling session.
+		// Select only attachments that can pass the same ownership check at begin.
+		if !c.publicationAttachOwned(op) {
+			continue
+		}
+		c.operation = op
 		return true
 	}
 	return false

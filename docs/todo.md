@@ -1,12 +1,17 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-07
+Last reviewed: 2026-11-09
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Windows sound only works with exclusion (#534).** Compare the affected
+  application's playback endpoint with Piik's default-endpoint capture. The
+  [audio scope control](./research/native-client-media.md#windows-audio-exclusion)
+  reproduces the contrast with another output device; locate the reporter's
+  first failing transition before changing the capture owner.
 - [ ] **Blue-tinted sharing (#529).** Identify the source and affected receive
   path from [#529](https://github.com/TNTcraftHIM/Piik/issues/529): Piik version,
   platform, capture choice and matching source/Viewer screenshots. Compare
