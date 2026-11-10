@@ -22,6 +22,7 @@ export interface ChannelCouchPerson {
 }
 
 const SEAT_WIDTH = 70;
+const MIN_SEAT_WIDTH = 48;
 const SEAT_GUTTER = 24;
 const noSubscription = () => () => {};
 const noSnapshot = () => null;
@@ -47,13 +48,15 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
   const others = people.filter(person => person.userId !== selfUserId);
   const selected = people.find(person => person.userId === target?.userId);
   const width = Math.min(availableWidth, Math.max(144, people.length * SEAT_WIDTH + 2 * SEAT_GUTTER));
-  const guestSeats = Math.max(1, Math.floor((width - 2 * SEAT_GUTTER) / SEAT_WIDTH) - Number(Boolean(self)));
-  const guestWidth = Math.min(others.length, guestSeats) * SEAT_WIDTH;
-  const overflow = others.length * SEAT_WIDTH > guestWidth;
+  const seats = Math.max(1, Math.min(people.length, Math.floor((width - 2 * SEAT_GUTTER) / MIN_SEAT_WIDTH)));
+  const seatWidth = Math.min(SEAT_WIDTH, Math.max(MIN_SEAT_WIDTH, (width - 2 * SEAT_GUTTER) / seats));
+  const guestSeats = Math.max(1, seats - Number(Boolean(self)));
+  const guestWidth = Math.min(others.length, guestSeats) * seatWidth;
+  const overflow = others.length * seatWidth > guestWidth;
   const visiblePeople = people.filter(person => {
     if (person.userId === selfUserId) return true;
     const seat = others.indexOf(person);
-    return seat * SEAT_WIDTH >= offset - 1 && (seat + 1) * SEAT_WIDTH <= offset + guestWidth + 1;
+    return seat * seatWidth >= offset - 1 && (seat + 1) * seatWidth <= offset + guestWidth + 1;
   }).map(person => ({ peerId: person.userId }));
   useEffect(() => { setTarget(null); }, [session?.key]);
   useLayoutEffect(() => { setTarget(null); }, [floating, surfaceDocument]);
@@ -85,7 +88,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
     </span>;
   }
   return <section className={`c3-couch ${className}`} aria-label={copy("房间里的朋友", "Friends in this room")}
-    style={{ "--c3-couch-seat": `${SEAT_WIDTH}px`, "--c3-couch-gutter": `${SEAT_GUTTER}px` } as CSSProperties}>
+    style={{ "--c3-couch-seat": `${seatWidth}px`, "--c3-couch-gutter": `${SEAT_GUTTER}px` } as CSSProperties}>
     <div ref={container} className="c3-couch-width">
       <div ref={area} className="c3-couch-scene" style={{ width }}>
         <div className="c3-couch-bench"><CouchBench width={width / 0.75} /></div>
@@ -107,7 +110,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
           </span>
           <span className="c3-couch-browse is-next">
             <ChannelAction icon="arrowRight" iconOnly label={copy("向右查看朋友", "See friends to the right")} hint="hint-reaction-picker"
-              disabled={offset >= others.length * SEAT_WIDTH - guestWidth - 1} onClick={() => browse(1)} />
+              disabled={offset >= others.length * seatWidth - guestWidth - 1} onClick={() => browse(1)} />
           </span>
         </>}
       </div>
