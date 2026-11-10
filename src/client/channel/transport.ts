@@ -138,7 +138,7 @@ export class ChannelTransport {
     this.pc.onconnectionstatechange = () => {
       if (this.pc.connectionState === "connected") {
         if (this.inputEnabled) options.input?.(this.input);
-        options.dataState?.(!this.dataLifetime.signal.aborted);
+        options.dataState?.(this.rooms.size > 0 && !this.dataLifetime.signal.aborted);
         options.connected();
         this.reportBaseReady();
         this.syncDeadline();
@@ -146,11 +146,14 @@ export class ChannelTransport {
       else if (["disconnected", "closed"].includes(this.pc.connectionState)) options.input?.(null);
     };
     this.pc.ondatachannel = ({ channel }) => {
+      if (this.closed || ["failed", "closed"].includes(this.pc.connectionState)) { channel.close(); return; }
       if (channel.label === "piik-input") {
         if (this.input) channel.close(); else this.installInput(channel);
         return;
       }
-      if (this.dataLifetime.signal.aborted || (channel.label !== "piik-room" && channel.label !== "piik-file") || (channel.label === "piik-room" ? this.channel : this.bulk)) { channel.close(); return; }
+      // DCEP can precede this endpoint's room projection on a media carrier.
+      // Keep at most one physical channel per lane; room leases admit its data.
+      if ((channel.label !== "piik-room" && channel.label !== "piik-file") || (channel.label === "piik-room" ? this.channel : this.bulk)) { channel.close(); return; }
       this.installChannel(channel);
     };
     this.pc.ontrack = ({ streams }) => {
@@ -203,12 +206,12 @@ export class ChannelTransport {
     const added = rooms.some(room => !this.rooms.has(room));
     const changed = added || rooms.length !== this.rooms.size;
     this.rooms = new Set(rooms);
-    if (!rooms.length) this.closeData();
+    if (changed && !rooms.length) this.closeData();
     if (added) {
       this.baseFailed = false;
       if (this.dataLifetime.signal.aborted) this.dataLifetime = new AbortController();
     }
-    if (this.dataLifetime.signal.aborted) { this.syncDeadline(); return; }
+    if (!rooms.length || this.dataLifetime.signal.aborted) { this.syncDeadline(); return; }
     if (!this.channel && !this.options.polite) {
       this.installChannel(this.pc.createDataChannel("piik-room", { ordered: true }));
     }
@@ -248,7 +251,7 @@ export class ChannelTransport {
     channel.onerror = failed;
     channel.binaryType = "arraybuffer";
     channel.onmessage = ({ data }) => {
-      if (!current() || !this.rooms.size) return;
+      if (!current() || !this.rooms.size || this.dataLifetime.signal.aborted) return;
       if (bulk && data instanceof ArrayBuffer && data.byteLength <= MAX_FILE_FRAME_BYTES) this.options.data?.("chunk", new Uint8Array(data));
       else if (!bulk && typeof data === "string" && new TextEncoder().encode(data).length <= MAX_CONTROL_FRAME_BYTES) this.options.data?.("control", data);
     };
@@ -258,7 +261,7 @@ export class ChannelTransport {
 
   async sendData(kind: "control" | "chunk", data: string | Uint8Array, allowed?: () => boolean): Promise<void> {
     const lifetime = this.dataLifetime.signal;
-    if (lifetime.aborted) throw new Error("peer_data_unavailable");
+    if (!this.rooms.size || lifetime.aborted) throw new Error("peer_data_unavailable");
     let channel = kind === "control" ? this.channel : this.bulk;
     if (!channel) {
       await new Promise<void>((resolve, reject) => {
@@ -294,7 +297,6 @@ export class ChannelTransport {
   }
 
   private closeData(): void {
-    if (this.dataLifetime.signal.aborted) return;
     this.dataLifetime.abort();
     for (const writer of this.writers.values()) writer.close();
     this.writers.clear();

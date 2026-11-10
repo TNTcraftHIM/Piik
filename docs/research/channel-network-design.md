@@ -515,6 +515,11 @@ Prepare a replacement, prove it usable, commit, then release old work. A base
 edge requires both endpoints to confirm an installed open control DataChannel
 before bidirectional voice, not merely a connected PeerConnection. DataChannel
 failure repairs base paths while preserving the pair's healthy media leases.
+Channel negotiation can arrive before the local room projection. The physical
+pair may retain its bounded incoming channel slots while inactive; a valid room
+lease still gates data delivery, sending and base proof. Repeated empty
+projections do not retire those slots. Removing the last actual lease cancels
+its work; physical closure also clears channels received after a prior failure.
 Silent voice uses transport/forwarding readiness rather than waiting for audible
 speech. Picture availability requires
 a decoded frame. Shared link failure reconciles all affected flows through the

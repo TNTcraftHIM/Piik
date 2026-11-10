@@ -3379,6 +3379,7 @@ class RoomDataChannel extends EventTarget {
   onopen: (() => void) | null = null;
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
+  onmessage: ((event: { data: string | ArrayBuffer }) => void) | null = null;
   bufferedAmount = 0;
   bufferedAmountLowThreshold = 0;
   send = vi.fn();
@@ -5631,6 +5632,77 @@ test("source replacement releases unmapped streams and ignores their late track 
     await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(5));
     expect(receive.mock.calls).toEqual([["current-flow", current], ["rebound-flow", fresh]]);
     expect(stop).not.toHaveBeenCalled();
+  } finally { transport.close(); }
+});
+
+test("physical data channels can precede room leases without admitting retired work", async () => {
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const base = vi.fn(), data = vi.fn(), failed = vi.fn(), dataState = vi.fn();
+  const options = { iceServers: [], send() {}, receive() {}, connected() {}, base, data, failed, dataState };
+  const mediaOnly = new ChannelTransport({ ...options, polite: false });
+  mediaOnly.setRooms([]);
+  expect(RoomPeerConnection.instances.at(-1)!.channels).toHaveLength(0);
+  mediaOnly.close(); dataState.mockClear();
+  const transport = new ChannelTransport({ ...options, polite: true });
+  const pc = RoomPeerConnection.instances.at(-1)!;
+  const incoming = pc.ondatachannel!;
+  const arrive = () => {
+    const channels = [new RoomDataChannel("piik-room", { ordered: true }), new RoomDataChannel("piik-file", { ordered: true })];
+    for (const channel of channels) incoming({ channel });
+    return channels;
+  };
+  try {
+    pc.connected(); transport.setRooms([]);
+    expect(dataState).toHaveBeenLastCalledWith(false);
+    const [control, bulk] = arrive();
+    transport.setRooms([]); transport.setRooms([]);
+    expect([control.readyState, bulk.readyState]).toEqual(["connecting", "connecting"]);
+    control.open(); bulk.open();
+    control.onmessage?.({ data: "before admission" });
+    await expect(transport.sendData("control", "before admission")).rejects.toThrow("peer_data_unavailable");
+    expect(data).not.toHaveBeenCalled(); expect(base).not.toHaveBeenCalled();
+    transport.setRooms(["room"]);
+    expect(transport.isBaseReady()).toBe(true);
+    control.onmessage?.({ data: "current room" });
+    await transport.sendData("control", "current room");
+    expect(data).toHaveBeenLastCalledWith("control", "current room");
+    expect(control.send).toHaveBeenLastCalledWith("current room");
+
+    bulk.bufferedAmount = 65536;
+    const pending = expect(transport.sendData("chunk", new Uint8Array([1]))).rejects.toThrow("peer_data_unavailable");
+    await Promise.resolve();
+    const oldClose = control.onclose;
+    transport.setRooms([]);
+    await pending;
+    expect([control.readyState, bulk.readyState]).toEqual(["closed", "closed"]);
+    const [nextControl, nextBulk] = arrive();
+    transport.setRooms([]); transport.setRooms(["room"]);
+    nextControl.open(); nextBulk.open(); oldClose?.();
+    expect(transport.isBaseReady()).toBe(true);
+    nextControl.close();
+    expect(base).toHaveBeenLastCalledWith(false);
+    const [afterFailure, afterFailureBulk] = arrive();
+    afterFailure.open(); afterFailureBulk.open();
+    data.mockClear(); base.mockClear();
+    afterFailure.onmessage?.({ data: "retired room" });
+    transport.setRooms(["room"]);
+    expect(transport.isBaseReady()).toBe(false);
+    await expect(transport.sendData("control", "retired room")).rejects.toThrow("peer_data_unavailable");
+    expect(data).not.toHaveBeenCalled(); expect(base).not.toHaveBeenCalled();
+    transport.setRooms(["room", "added"]);
+    expect(transport.isBaseReady()).toBe(true);
+    await transport.sendData("control", "new admission");
+    expect(afterFailure.send).toHaveBeenLastCalledWith("new admission");
+    const duplicate = new RoomDataChannel("piik-room", { ordered: true }); incoming({ channel: duplicate });
+    expect(duplicate.readyState).toBe("closed");
+    expect(pc.close).not.toHaveBeenCalled(); expect(failed).not.toHaveBeenCalled();
+    afterFailure.close();
+    const pendingAfterFailure = arrive();
+    transport.close();
+    expect([afterFailure.readyState, afterFailureBulk.readyState]).toEqual(["closed", "closed"]);
+    expect(pendingAfterFailure.map(channel => channel.readyState)).toEqual(["closed", "closed"]);
+    const lateInput = new RoomDataChannel("piik-input", { ordered: true }); incoming({ channel: lateInput });
+    expect(lateInput.readyState).toBe("closed");
   } finally { transport.close(); }
 });
 
