@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 import { Btn } from "../../components/living/primitives";
+import { Tooltip } from "../../components/living/Tooltip";
 import { useCopy } from "../../ui/copy";
 import type { ChannelController } from "../types";
 import type { DomainSettings } from "../protocol";
@@ -34,8 +35,10 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
   ] as const;
   if (!owner) return null;
   return <>
-    <Btn icon="sliders" size="dense" quiet title={{ text: title }} cap={{ text: title }} expanded={open} disabled={disabled}
-      onClick={() => { resetDraft(current); setTask("site"); setOpen(true); }} />
+    <Tooltip overflow={{ text: current?.name ?? title, selector: ".lr-cap" }} disabled={open}>
+      <Btn icon="chevron" size="dense" quiet title={{ text: title }} cap={{ text: current?.name ?? title }} expanded={open} disabled={disabled}
+        onClick={() => { resetDraft(current); setTask("site"); setOpen(true); }} />
+    </Tooltip>
     {open && <ChannelSettingsDialog title={current?.name ?? title} caption={current ? title : undefined} error={error} onClose={close}>
       <div className="c3-settings-body">
         <ChannelSettingsTabs<typeof task> id={id} label={title} tasks={tasks} selected={task} onSelect={setTask} />

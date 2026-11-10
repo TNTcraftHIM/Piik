@@ -227,8 +227,9 @@ mode; an IME composition must not dismiss these surfaces.
 The interaction window keeps its conversation and composer available while
 reacting. A current participant's message avatar or voice avatar opens a small
 attached palette with thumbs up/down and the two throwing props; one's own
-entry uses laugh and heart in place of throws. Throwing props keep the full
-palette's distinct card styling; compact buttons omit captions. More reactions expands
+entry uses laugh and heart in place of throws. Throwing props use the same button
+and illustration size as other reactions; their artwork and a quiet background
+distinguish them. More reactions expands
 the same curated choices on demand, with a labelled back arrow in the heading.
 Do not add a second roster or reflow the list. The native
 popover owns outside-click and Escape dismissal; sending keeps it open for
@@ -573,6 +574,7 @@ type checking rather than silently render a warning triangle.
 | Diagnostics / 诊断 | `cpu` | Technical diagnostics in the labelled diagnostic control; in metrics the same processor identifies encoding work. The surrounding control or measured field states the scope. |
 | Help / 帮助 | `help`, `book` | Open product help or read a guide, respectively; current build identity belongs with this low-frequency information, separate from media settings and App connection state. |
 | Settings / 设置 | `sliders`, `mountain`, `balance`, `frames` | Settings, preserve image detail, balanced preference, preserve frame rate. The frame-rate preference uses the same frames as the measured value. |
+| More / 更多 | `more` | Disclose additional actions; does not imply a separate settings surface. |
 | Progress and result / 进度与结果 | `loader`, `alert`, `check`, `x` | In progress, a problem, confirmation/positive result, cancellation/negative result. The status owner supplies severity; the shape alone cannot set it. |
 | Theme / 主题 | `sun`, `moon` | Light/dark appearance in theme controls. A moon in an idle-room scene means rest, with the idle scene providing that context. |
 | Welcome decoration / 开场装饰 | `gamepad`, `popcorn`, `clapperboard`, `trophy`, `gift`, `flag`, `heart`, `bulb`, `zap` | Games, snacks, film, achievement, gift, next stop, affection, discovery and energy. These may decorate the welcome line, never a measured speed, failure or connection verdict. |

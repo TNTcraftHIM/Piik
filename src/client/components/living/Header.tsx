@@ -185,7 +185,7 @@ export function HeaderControls({ diagnosticControl, appControl }: { diagnosticCo
     <div ref={controls} className={`lr-top-right lr-header-controls${compact ? " is-overflow" : ""}`}>
       {appControl}
       {compact && <span ref={trigger} className="lr-header-more">
-        <Btn icon="sliders" title="header.more" hint="hint-advanced" size="compact" popoverTarget={id} controls={id} expanded={open} />
+        <Btn icon="more" title="header.more" hint="hint-advanced" size="compact" quiet popoverTarget={id} controls={id} expanded={open} />
       </span>}
       <div ref={options} id={id} popover={compact ? "auto" : undefined} role={compact ? "dialog" : undefined}
         aria-label={compact ? t("header.more") : undefined}

@@ -96,6 +96,7 @@ const PATHS = {
   theaterExit: { body: (<><rect pathLength={1} x="2" y="4" width="20" height="16" rx="2"/><rect pathLength={1} x="6" y="8" width="12" height="8" rx="1"/></>) },
   speaker: { body: (<><path pathLength={1} d="M4 9v6h4l5 4V5L8 9H4Z"/><path pathLength={1} d="M16 9a4.2 4.2 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></>) },
   sliders: { body: (<><path pathLength={1} d="M3 6h9m4 0h5M3 12h3m4 0h11M3 18h12m4 0h2"/><circle pathLength={1} cx="14" cy="6" r="2"/><circle pathLength={1} cx="8" cy="12" r="2"/><circle pathLength={1} cx="17" cy="18" r="2"/></>) },
+  more: { body: (<><circle pathLength={1} cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle pathLength={1} cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle pathLength={1} cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/></>) },
   mountain: { body: (<><path pathLength={1} d="m3 18 5.5-8.5L13 15l3.5-5L21 18H3Z"/></>) },
   balance: { body: (<><path pathLength={1} d="M12 4v16m-5 0h10"/><path pathLength={1} d="m12 6-6 1.5L3.5 13a3.1 3.1 0 0 0 5 0L6 7.5M12 6l6 1.5 2.5 5.5a3.1 3.1 0 0 1-5 0L18 7.5"/></>) },
   branch: { body: (<><circle pathLength={1} cx="6" cy="6" r="2.5"/><circle pathLength={1} cx="6" cy="18" r="2.5"/><circle pathLength={1} cx="18" cy="8" r="2.5"/><path pathLength={1} d="M6 8.5v7M6 13c5 0 5.5-2 9.3-3.2"/></>) },

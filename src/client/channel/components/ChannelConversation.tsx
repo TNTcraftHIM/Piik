@@ -166,9 +166,14 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
         </div>}
         {messages.map((message, index) => {
           const previous = messages[index - 1];
-          const grouped = previous?.userId === message.userId && message.time - previous.time < 120_000;
+          const date = new Date(message.time), previousDate = previous && new Date(previous.time);
+          const newDay = !!previousDate && (date.getFullYear() !== previousDate.getFullYear()
+            || date.getMonth() !== previousDate.getMonth() || date.getDate() !== previousDate.getDate());
+          const elapsed = previous ? message.time - previous.time : 0;
+          const grouped = !!previous && !newDay && previous.userId === message.userId && elapsed >= 0 && elapsed < 120_000;
           const name = users.find(user => user.id === message.userId)?.name ?? (zh ? "用户" : "User");
           return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name}
+            dateLabel={newDay ? date.toLocaleDateString(zh ? "zh-CN" : "en", { dateStyle: "long" }) : undefined}
             attachments={attachments} available={available} interaction={interaction} />;
         })}
       </div>
@@ -208,17 +213,20 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   </section>;
 }
 
-const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, attachments, available, interaction }: {
-  roomId: string; message: ChannelMessage; grouped: boolean; name: string;
+const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, dateLabel, attachments, available, interaction }: {
+  roomId: string; message: ChannelMessage; grouped: boolean; name: string; dateLabel?: string;
   attachments: ChannelAttachments; available: boolean; interaction: RoomInteractionSession | null;
 }) {
   const { lang } = useCopy();
-  return <article className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}`} data-message-id={message.id}>
+  return <>
+    {dateLabel && <div className="c3-message-date"><time dateTime={new Date(message.time).toISOString()}>{dateLabel}</time></div>}
+    <article className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}`} data-message-id={message.id}>
     {!grouped && <PawnSvg color={participantColor(message.userId)} identity={message.userId} />}
     <div className="c3-message-body">{!grouped && <div className="c3-message-meta"><strong>{name}</strong>
       <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
     </div>}{message.text && <p>{message.text}</p>}
     {message.attachments.map(file => <ChannelAttachment key={file.id} roomId={roomId} messageSeq={message.seq} file={file} client={attachments} />)}
     <ChannelContentReactions reactions={message.reactions} session={interaction} target={{ messageSeq: message.seq }} disabled={!available} /></div>
-  </article>;
+    </article>
+  </>;
 });

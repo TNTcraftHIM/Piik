@@ -118,6 +118,8 @@ ul { margin: 0; padding: 0; list-style: none; }
 .lr-top-right { display: inline-flex; gap: 10px; align-items: center; }
 .lr-top > .lr-top-right { margin-left: auto; min-width: 0; flex: none; justify-content: flex-end; }
 .lr-header-controls { flex: none; }
+.lr-header-controls.is-overflow .lr-btn.is-compact:not([popover] .lr-btn) { width: var(--control-compact-size); padding: 0; }
+.lr-header-controls.is-overflow .lr-cap:not([popover] .lr-cap) { display: none; }
 .lr-header-options:not([popover]), .lr-header-options:not([popover]) > .lr-header-settings { display: contents; }
 .lr-header-more { display: inline-flex; }
 .lr-header-options:is(:popover-open, .\:popover-open) { display: grid; gap: 16px; }

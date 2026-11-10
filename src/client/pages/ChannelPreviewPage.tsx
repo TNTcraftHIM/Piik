@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { HeaderControls, LedStrip } from "../components/living/Header";
-import { BrandLockup, BrandMark } from "../components/living/BrandMark";
+import { BrandMark } from "../components/living/BrandMark";
 import { Btn, Cap } from "../components/living/primitives";
 import { PawnSvg } from "../components/living/Pawn";
 import { participantColor } from "../components/living/participant-color";
@@ -163,7 +163,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
       <aside id="c3-room-list" className="c3-sidebar" aria-label={copy("房间", "Rooms")}>
         <div className="c3-sidebar-browse">
         <div className="c3-channel-title">
-          <button className="c3-site-home" id="c3-room-list-heading" type="button" aria-label={copy("本站房间总览", "Rooms on this site")} onClick={() => selectRoom("")}><BrandLockup size={32} motion="once" /></button>
+          <button className="c3-site-home" id="c3-room-list-heading" type="button" aria-label={copy("本站房间总览", "Rooms on this site")} onClick={() => selectRoom("")}><BrandMark size={30} motion="once" /></button>
+          <div className="c3-site-name">{self?.id === state?.channel.ownerId ? <ChannelSiteSettings channel={channel} />
+            : <Tooltip overflow={{ text: state?.channel.name ?? "Piik", selector: "strong" }}><strong>{state?.channel.name ?? "Piik"}</strong></Tooltip>}</div>
           <Btn icon="sidebar" size="dense" quiet title={{ text: copy("收起房间列表", "Collapse room list") }}
             controls="c3-room-list" expanded={!sharingView} onClick={() => { if (sidebarsInline && !sharingView) toggleSharingView(); setMobilePane("room"); }} />
         </div>
@@ -185,7 +187,6 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
           </nav>
           {state && !rooms.length && <p className="c3-room-list-empty">{copy("暂无可进入的房间", "No rooms available yet")}</p>}
         </div>
-        <div className="c3-site-maintenance"><ChannelSiteSettings channel={channel} /></div>
         </div>
       </aside>
       <div className="c3-personal"><div ref={voiceSlot} className="c3-room-slot" />

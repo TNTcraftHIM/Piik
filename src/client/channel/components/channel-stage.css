@@ -54,11 +54,12 @@
 .c3-monitor-wait[data-failed] > svg { color: var(--danger); }
 /* Theater changes the existing stage's layout; every subscription stays mounted. */
 .c3-app:has(.c3-monitor.is-theater) .c3-shell { visibility: hidden; }
+.c3-shell:has(.c3-monitor.is-theater) { container-type: normal; }
 .c3-app:has(.c3-monitor.is-theater) .lr-floating-panel { visibility: visible; }
 .c3-main-body:has(.c3-monitor.is-theater) { container-type: normal; }
 .c3-monitor.is-theater { position: fixed; inset: 0; z-index: 20; gap: 0; padding: 0; background: var(--stage, var(--wall-2)); overflow: hidden; visibility: visible; }
 .c3-monitor.is-theater > .c3-monitor-directory { display: none; }
-.c3-monitor.is-theater > .c3-monitor-heading { padding: 8px 12px; }
+.c3-monitor.is-theater > .c3-monitor-heading { padding: 8px 12px; background: var(--paper); }
 .c3-monitor.is-theater .c3-theater-source { display: flex; }
 .c3-monitor.is-theater .c3-monitor-grid { display: block; flex: 1; min-height: 0; height: auto; }
 .c3-monitor.is-theater .c3-monitor-tile:not(.is-focused) { display: none; }
