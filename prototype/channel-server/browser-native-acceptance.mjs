@@ -175,6 +175,10 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await action(1, `browse(${JSON.stringify(browserRoom)})`);
     for (const index of [0, 2, 3]) {
       await action(index, `browse(${JSON.stringify(browserRoom)})`);
+      // This helper scenario needs two root branches before adding its filler.
+      // Admit those listeners as leaves, then restore normal forwarding.
+      if (index !== 3) await action(index, `setRelayOverride(${JSON.stringify(browserRoom)}, 0)`);
+      else for (const child of [0, 2]) await action(child, `setRelayOverride(${JSON.stringify(browserRoom)}, null)`);
       // Conversation alone has no peer demand. Listening creates the ordinary
       // base this media-routing scenario needs without another microphone.
       await action(index, `joinVoice(${JSON.stringify(browserRoom)}, true)`);
@@ -307,6 +311,25 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       assert(rows.some(row => row.codec?.toLowerCase() === "video/h264" && row.frames > 0));
       assert(rows.some(row => row.codec?.toLowerCase() === "audio/opus" && row.samples > 0));
     }
+    const viewerSessions = (await Promise.all(viewers.map(view))).map(value => value.sessionId);
+    const helperMetrics = () => evaluate(1,
+      `${hook}.session.appConnectionMetrics(${JSON.stringify(browserRoom)}, ${JSON.stringify(helperPicture)})`);
+    const measuredOutputs = report => report.connections.flatMap(connection => connection.streams
+      .filter(stream => stream.publicationId === helperPicture && stream.direction === "send" && stream.selected && stream.bytes > 0)
+      .map(stream => ({ peerId: connection.peerId, ...stream })));
+    const readyMetrics = () => until("Native metrics validate actual ingress and both viewer outputs", helperMetrics, report => {
+      assert.equal(report.sessionId, nativeEndpoint);
+      for (const connection of report.connections) for (const stream of connection.streams) {
+        if (stream.direction === "receive") assert.equal(stream.outputId, null);
+        else assert.equal(typeof stream.outputId, "string", "each Native sender identifies its current Output owner");
+      }
+      return report.connections.some(connection => connection.streams.some(stream =>
+        stream.publicationId === helperPicture && stream.direction === "receive" && stream.media === "video" && stream.bytes > 0))
+        && viewerSessions.every(peerId => ["video", "audio"].every(media => measuredOutputs(report)
+          .some(stream => stream.peerId === peerId && stream.media === media && stream.packets > 0)));
+    });
+    const metricsBefore = await readyMetrics();
+    await writeFile(join(output, "app-helper-metrics-result.json"), JSON.stringify({ metricsBefore }, null, 2));
     const profileBefore = await evaluate(sourceIndex, `${hook}.session.screenQuality(${JSON.stringify(helperPicture)}).applied`);
     const profileAfter = { ...profileBefore, degradationPreference: "maintain-framerate" };
     await evaluate(sourceIndex, `(async () => {
@@ -331,6 +354,20 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await action(1, `watch(${JSON.stringify(helperPicture)})`);
     await until("assisted watching returns through the same Native endpoint", () => view(1), value =>
       value.state.pairs.some(pair => pair.peerId === nativeEndpoint && carries(pair, "incoming")));
+    const metricsAfter = await readyMetrics();
+    await writeFile(join(output, "app-helper-metrics-result.json"), JSON.stringify({ metricsBefore, metricsAfter }, null, 2));
+    const currentViewers = await Promise.all(viewers.map(view));
+    for (const [position, peerId] of viewerSessions.entries()) {
+      const currentFlows = currentViewers[position].state.pairs.filter(pair => pair.peerId === nativeEndpoint)
+        .flatMap(pair => pair.incoming.filter(flow => flow.publicationId === helperPicture && flow.selected).map(flow => flow.id));
+      for (const before of measuredOutputs(metricsBefore).filter(stream => stream.peerId === peerId)) {
+        const after = measuredOutputs(metricsAfter).find(stream => stream.peerId === peerId && stream.media === before.media);
+        assert(after && currentFlows.includes(after.flowId), "Native metrics name the viewer's current selected flow");
+        if (position === 0) assert.notEqual(after.outputId, before.outputId, "rewatching starts a fresh Native Output counter owner");
+        else assert.equal(after.outputId, before.outputId, "unwatching another viewer preserves the transit Output counter owner");
+      }
+    }
+    await writeFile(join(output, "app-helper-metrics-result.json"), JSON.stringify({ passed: true, metricsBefore, metricsAfter }, null, 2));
     await evaluate(1, "window.__channelProbe.sockets.filter(socket => new URL(socket.url).pathname === '/rooms').forEach(socket => socket.close())");
     await until("helper control disconnect is visible", () => evaluate(1, `${hook}.snapshot().appConnected`), value => value === false);
     assert((await view(1)).state.subscriptions.includes(helperPicture), "control loss retains the existing watch intent");
