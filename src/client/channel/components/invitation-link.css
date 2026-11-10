@@ -1,0 +1,4 @@
+.c3-invitation-link { display: grid; gap: 12px; min-width: 0; }
+.c3-invitation-link > .lr-comic-tip-wrap { justify-self: start; }
+.c3-invitation-link > input { width: 100%; min-width: 0; }
+.c3-invitation-link > p { margin: 0; font-size: 12px; color: var(--muted); }

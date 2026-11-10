@@ -6,7 +6,7 @@ import { formatChatTranscript } from "../src/client/lib/room-chat-export";
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 function setup() {
   vi.useFakeTimers();
-  const send = vi.fn(() => true);
+  const send = vi.fn<ConstructorParameters<typeof RoomInteractionSession>[0]>(() => true);
   const session = new RoomInteractionSession(send);
   session.authenticated("self_peer_1234");
   expect(send).toHaveBeenLastCalledWith({ type: "subscribe-room-interactions" });
@@ -14,6 +14,56 @@ function setup() {
 }
 const message = (id: string): RoomInteraction => ({ type: "room-interaction", id, requestId: "request_1234", occurredAt: Date.now(),
   sender: { peerId: "other_peer_1234", role: "viewer", displayName: "朋友" }, payload: { kind: "chat", text: "Hello" } });
+
+test("content reactions share confirmed events, cooldown and deduplication with person reactions", () => {
+  const { session, send } = setup();
+  session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
+  const target = { messageSeq: 7 };
+  expect(session.send({ kind: "reaction", reaction: "tomato" }, target)).toBe(true);
+  const request = send.mock.calls.at(-1)![0];
+  if (request.type !== "send-room-interaction") throw new Error("Expected content send");
+  expect(request).toMatchObject({ type: "send-room-interaction", contentTarget: target });
+  expect(session.getSnapshot().reactions).toEqual([]);
+  const event = { ...message("content-confirmed"), requestId: request.requestId,
+    sender: { peerId: "self_peer_1234", role: "viewer" as const, displayName: "Me" },
+    payload: { kind: "reaction" as const, reaction: "tomato" as const }, contentTarget: target };
+  session.receive(event);
+  session.receive(event);
+  expect(session.getSnapshot().reactions).toHaveLength(1);
+  expect(session.getSnapshot().pending).toBeNull();
+  expect(session.send({ kind: "reaction", reaction: "wave" })).toBe(false);
+  vi.advanceTimersByTime(800);
+  expect(session.send({ kind: "reaction", reaction: "poop" }, { publicationId: "one-screen" })).toBe(true);
+  const next = send.mock.calls.at(-1)![0];
+  expect(next.type === "send-room-interaction" && next.requestId).not.toBe(request.requestId);
+  session.close();
+  expect(session.getSnapshot().reactions).toEqual([]);
+});
+
+test("an unconfirmed content retry keeps its nonce and a replay acknowledgement does not animate", () => {
+  vi.useFakeTimers();
+  const commands: Parameters<ConstructorParameters<typeof RoomInteractionSession>[0]>[0][] = [];
+  let nonce = 0;
+  const session = new RoomInteractionSession(command => {
+    commands.push(command);
+    return command.type === "send-room-interaction" ? { nonce: command.nonce ?? ++nonce } : true;
+  });
+  session.authenticated("self_peer_1234");
+  session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
+  expect(session.send({ kind: "reaction", reaction: "poop" }, { publicationId: "one" })).toBe(true);
+  const first = session.getSnapshot().pending!;
+  vi.advanceTimersByTime(5000);
+  expect(session.getSnapshot().error).toBe("unconfirmed");
+  expect(session.send({ kind: "reaction", reaction: "poop" }, { publicationId: "one" })).toBe(true);
+  expect(session.getSnapshot().pending).toMatchObject({ nonce: 1, requestId: first.requestId });
+  session.confirm(first.requestId, 1);
+  expect(session.getSnapshot()).toMatchObject({ pending: null, error: null, reactions: [] });
+  vi.advanceTimersByTime(800);
+  expect(session.send({ kind: "reaction", reaction: "poop" }, { publicationId: "two" })).toBe(true);
+  expect(session.getSnapshot().pending?.nonce).toBe(2);
+  expect(commands.filter(command => command.type === "send-room-interaction")).toHaveLength(3);
+  session.close();
+});
 
 test.each([
   { advertised: undefined, expected: [...REACTION_IDS] },

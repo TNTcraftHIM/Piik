@@ -31,7 +31,7 @@ impl Storage {
         let connection = Connection::open(normalized.as_deref().unwrap_or(path))?;
         let version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         let existing: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message','attachment'))", [], |row| row.get(0))?;
-        if version != 3 && (version != 0 || existing) {
+        if version != 4 && (version != 0 || existing) {
             return Err("unsupported_storage_version".into());
         }
         connection.execute_batch(
@@ -43,7 +43,7 @@ impl Storage {
                time INTEGER NOT NULL, attachments TEXT NOT NULL, reactions TEXT NOT NULL,
                PRIMARY KEY(room_id,seq), UNIQUE(room_id,user_id,nonce)
              );
-             PRAGMA user_version=3;",
+             PRAGMA user_version=4;",
         )?;
         Ok(Self { connection })
     }
@@ -173,7 +173,7 @@ impl Storage {
             HistoryRequest::Read { .. } | HistoryRequest::Attachment { .. } => {
                 TransactionBehavior::Deferred
             }
-            HistoryRequest::Send { .. } | HistoryRequest::SetReaction { .. } => {
+            HistoryRequest::Send { .. } | HistoryRequest::React { .. } => {
                 TransactionBehavior::Immediate
             }
         };
@@ -182,7 +182,7 @@ impl Storage {
             .transaction_with_behavior(behavior)
             .map_err(|_| "storage_failed")?;
         let result = match request {
-            HistoryRequest::SetReaction {
+            HistoryRequest::React {
                 room_id,
                 message_seq,
                 ..
@@ -191,7 +191,7 @@ impl Storage {
                     "SELECT seq,id,user_id,text,time,attachments,reactions FROM message WHERE room_id=?1 AND seq=?2",
                     params![room_id, message_seq], read_message).optional().map_err(|_| "storage_failed")?;
                 let confirmation = request.reaction_result(message)?;
-                if confirmation.changed {
+                if confirmation.event.is_some() {
                     let reactions = serde_json::to_string(&confirmation.snapshot.reactions)
                         .map_err(|_| "storage_failed")?;
                     transaction
@@ -439,9 +439,11 @@ mod tests {
                     None,
                 )
                 .unwrap();
+            restored.validate().unwrap();
+            assert!(restored.accepts_invite(&key));
             let public = serde_json::to_value(restored).unwrap();
-            assert!(public.get("inviteKey").is_none());
-            assert!(public["inviteHash"].is_null());
+            assert_eq!(public["inviteKey"], key);
+            assert!(!public["inviteHash"].is_null());
         }
         std::fs::remove_file(path).unwrap();
     }

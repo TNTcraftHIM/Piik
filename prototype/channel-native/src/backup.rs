@@ -259,7 +259,7 @@ mod tests {
                     },
                     reactions: MessageReactions {
                         revision: 1,
-                        choices: BTreeMap::from([(owner, BTreeSet::from(["wave".into()]))]),
+                        counts: BTreeMap::from([("wave".into(), 1)]),
                     },
                 },
             })
@@ -272,7 +272,7 @@ mod tests {
             })
             .collect();
         let metadata = RoomMetadata {
-            version: 1,
+            version: 2,
             domain_id: Uuid::new_v4(),
             policy: RoomState::new(
                 "living".into(),

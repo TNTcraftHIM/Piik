@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ChannelRoomPage } from "./ChannelPreviewPage";
 import { sampleRoomTopology, useChannelGuideSample } from "./ChannelGuidePreview";
-import { usePreviewInteractions } from "./use-preview-interactions";
 import { Btn, Chip } from "../components/living/primitives";
 import { participantColor } from "../components/living/participant-color";
 import { Glyph } from "../ui/icons";
@@ -33,9 +32,6 @@ export function ChannelRoomPreview() {
   const users = sample.channel.state!.users.map((user, index) => ({ ...user, name: longNames && index < 2
     ? ["一起看电影的阿达和她的小伙伴们", "Benjamin watching with friends tonight"][index] : user.name }));
   const screenUsers = [users[1], users[2], users[0], ...users.slice(3)];
-  const { session: interactions } = usePreviewInteractions(false, {
-    self: { peerId: users[0].id, displayName: users[0].name }, friend: { peerId: users[1].id, displayName: users[1].name },
-  });
   const [selected, setSelected] = useState(() => roomCount ? "friday" : ""), [count, setCount] = useState(() => {
     const value = Number(new URLSearchParams(location.search).get("screens"));
     return screenCounts.includes(value) ? value : 0;
@@ -102,10 +98,10 @@ export function ChannelRoomPreview() {
   const channel = { ...sample.channel, state, self: state.users[0], streams, error: null, inviteURL: "https://friends.example/#invite=sample",
     messagesByRoom,
     attachments: { ...fileStore, download: async () => sample.received(), cancelDownload: sample.received } as unknown as ChannelController["attachments"],
-    interactionsByRoom: new Map(interactions ? [["friday", interactions]] : []),
+    interactionsByRoom: sample.channel.interactionsByRoom,
     ownedScreens,
     screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), voicePlaybackByUser: new Map(),
-    browse: () => {}, sendMessage: sample.onSend, setMessageReaction: async () => sample.received(),
+    browse: () => {}, sendMessage: sample.onSend,
     loadHistory: async () => sample.received(), loadLatestHistory: async () => sample.received(),
     historyByRoom: Object.fromEntries(state.channel.rooms.map(room => [room.id, { hasMore: false, atLatest: true }])),
     roomTopology: async (roomId, publicationId) => sampleRoomTopology(state, roomId, publicationId),

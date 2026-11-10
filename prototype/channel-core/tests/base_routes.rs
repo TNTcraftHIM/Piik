@@ -615,13 +615,21 @@ fn room_participants_follow_personal_activity_and_clear_when_the_host_is_offline
     );
 
     // The room host has its own authenticated access, without needing a seat.
+    let actor = network
+        .state(connections[0])
+        .sessions
+        .iter()
+        .find(|s| s.id == sessions[0])
+        .unwrap()
+        .user_id;
     assert!(network
         .peer_request(
             connections[0],
             &room,
-            ConversationCommand::Interaction {
+            ConversationCommand::React {
+                nonce: 1,
                 reaction: "wave".into(),
-                target_user_id: None,
+                target: piik_channel_core::conversation::ReactionTarget::Person { user_id: actor },
             }
         )
         .result

@@ -84,6 +84,14 @@ async function roomSettings(index, roomId, task = "room") {
   await browser(index, "wait", "dialog.c3-settings-dialog[open]");
   await settingsTask(index, task);
 }
+async function roomInvitation(index, roomId) {
+  const room = (await view(index)).state.channel.rooms.find(room => room.id === roomId);
+  assert(room, "the invitation belongs to a visible room");
+  await showRoomList(index);
+  await browser(index, "click", `.c3-room-link[aria-label=${JSON.stringify(room.name)}]`);
+  await browser(index, "find", "role", "button", "click", "--name", `Invite to ${room.name}`, "--exact");
+  await browser(index, "wait", ".c3-room-invitation:popover-open");
+}
 
 async function senderAllocationFailure() {
   const result = await evaluate(0, `(async () => {
@@ -1063,6 +1071,53 @@ async function roomBackupControls() {
     before, changed, restored, reloaded }, null, 2));
 }
 
+async function countedRoomReactions(roomId) {
+  const room = (await view(0)).state.channel.rooms.find(room => room.id === roomId);
+  const message = await until("both readers receive the message reaction target", () => evaluate(1,
+    `${hook}.snapshot().messagesByRoom[${JSON.stringify(roomId)}]?.[0]`), Boolean);
+  const messageSelector = `[data-message-id=${JSON.stringify(message.id)}]`;
+  const messageCount = index => evaluate(index,
+    `${hook}.snapshot().messagesByRoom[${JSON.stringify(roomId)}]?.find(message => message.id === ${JSON.stringify(message.id)})?.reactions?.counts.tomato ?? 0`);
+  await browser(1, "hover", messageSelector);
+  await browser(1, "click", `${messageSelector} .c3-add-reaction`);
+  for (let count = 1; count <= 2; count++) {
+    await until("the shared room reaction cooldown permits another confirmed click", () => evaluate(1,
+      `${hook}.snapshot().interactionsByRoom.get(${JSON.stringify(roomId)})?.getSnapshot().coolingDown === false`), Boolean);
+    await browser(1, "click", '.c3-message-reaction-menu:popover-open button[aria-label="Toss tomato"]');
+    await until("both readers receive the confirmed message count", () => Promise.all([0, 1].map(messageCount)),
+      values => values.every(value => value === count));
+  }
+  assert.equal(await evaluate(1, `document.querySelector(${JSON.stringify(messageSelector)})?.querySelectorAll('.c3-message-reaction[aria-pressed]').length`), 0,
+    "counted reactions are actions, not selected toggles");
+  await browser(1, "press", "Escape");
+  const publication = await capturedScreen(0, roomId);
+  try {
+    await browser(1, "click", `.c3-monitor-offer[data-source-id=${JSON.stringify(publication)}] button`);
+    await playing(1, publication);
+    await browser(1, "click", `[data-publication-id=${JSON.stringify(publication)}] .c3-add-reaction`);
+    await until("source reaction uses the same available cooldown", () => evaluate(1,
+      `${hook}.snapshot().interactionsByRoom.get(${JSON.stringify(roomId)})?.getSnapshot().coolingDown === false`), Boolean);
+    await browser(1, "click", '.c3-message-reaction-menu:popover-open button[aria-label="Toss poop"]');
+    const sourceCount = index => evaluate(index, `${hook}.snapshot().publicationReactions.get(${JSON.stringify(publication)})?.counts.poop ?? 0`);
+    await until("owner and Viewer receive the same confirmed publication count", () => Promise.all([0, 1].map(sourceCount)),
+      values => values.every(value => value === 1));
+    await browser(1, "press", "Escape");
+    await browser(1, "reload");
+    await until("the ordinary member reconnects with the current room", () => view(1), value => value.connection === "connected"
+      && value.state.channel.rooms.some(value => value.id === roomId && value.authorized && value.available));
+    await showRoomList(1);
+    await browser(1, "click", `.c3-room-link[aria-label=${JSON.stringify(room.name)}]`);
+    await until("history and live-source snapshots restore their counts", async () => ({ message: await messageCount(1), source: await sourceCount(1),
+      ready: await evaluate(1, `${hook}.snapshot().interactionsByRoom.get(${JSON.stringify(roomId)})?.getSnapshot().ready`) }),
+      value => value.message === 2 && value.source === 1 && value.ready);
+    assert.equal(await evaluate(1, "document.querySelectorAll('.lr-reaction-content').length"), 0,
+      "history and readiness snapshots do not replay live reaction effects");
+    await writeFile(join(output, "counted-room-reactions.json"), JSON.stringify({ passed: true, messageCount: 2, sourceCount: 1,
+      confirmedAcrossReaders: true, ordinaryMemberReload: true, snapshotAnimationReplayed: false }, null, 2));
+  } finally { await action(0, `stopScreen(${JSON.stringify(publication)})`); }
+  console.log("Message and publication reactions count confirmed clicks across readers; reload restores counts without replay");
+}
+
 async function roomsAndFiles() {
   await browser(0, "find", "role", "button", "click", "--name", "Create room", "--exact");
   await browser(0, "fill", ".c3-room-form input:not([type])", "Movie night");
@@ -1090,6 +1145,7 @@ async function roomsAndFiles() {
   await browser(0, "find", "role", "button", "click", "--name", "View image", "--exact");
   await until("PNG preview decodes", () => evaluate(0, "[...document.querySelectorAll('.c3-attachment img')].some(image => image.complete && image.naturalWidth > 0)"), Boolean);
   for (const index of [0, 1]) await assertNoError(index, "normal room entry, chat and file flow");
+  await countedRoomReactions(room.id);
   await browser(0, "screenshot", join(output, "peer-room-files-desktop.png"), "--full");
   for (const index of [0, 1]) await browser(index, "click", '.c3-room-link[aria-label="Living room"]');
   assert.equal(await evaluate(1, "!!document.querySelector('.c3-composer input[type=file]')"), true,
@@ -1112,7 +1168,7 @@ async function roomsAndFiles() {
     first.onsuccess = () => {
       for (let seq = 2; seq <= ${historyWindow}; seq++) messages.add({ ...first.result,
         seq, id: crypto.randomUUID(), nonce: 'history-fixture-' + seq, text: 'history-' + seq,
-        attachments: [], reactions: { revision: 0, choices: {} } });
+        attachments: [], reactions: { revision: 0, counts: {} } });
     };
     await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); });
     return true;
@@ -1164,27 +1220,29 @@ async function roomsAndFiles() {
   await browser(0, "find", "label", "Hide from users without access", "check");
   await browser(0, "click", ".c3-room-form button[type=submit]");
   await until("unadmitted user loses hidden directory entry", () => view(2), value => !value.state.channel.rooms.some(value => value.id === room.id));
-  await roomSettings(0, room.id, "invitation");
+  await roomInvitation(0, room.id);
   const invitationState = await until("room invitation controls finish loading", () => evaluate(0, `(() => {
-    const panel = document.querySelector('dialog.c3-settings-dialog[open] .c3-room-invitation');
+    const panel = document.querySelector('.c3-room-invitation:popover-open');
     const generate = panel?.querySelector('button[aria-label="Generate new invitation"]');
-    return { url: panel?.querySelector('.c3-invite-copy input')?.value,
+    return { url: panel?.querySelector('.c3-invitation-link input')?.value,
       canGenerate: !!generate?.checkVisibility() && !generate.disabled && generate.getAttribute('aria-disabled') !== 'true' };
   })()`), value => value.url || value.canGenerate);
   if (!invitationState.url) {
     await browser(0, "find", "role", "button", "click", "--name", "Generate new invitation", "--exact");
   }
   const previousInvite = await until("current room invitation is loaded", () => evaluate(0,
-    "document.querySelector('dialog.c3-settings-dialog[open] .c3-invite-copy input')?.value"), Boolean);
-  await browser(0, "click", "dialog.c3-settings-dialog[open] .c3-room-invitation > details.c3-settings-details > summary");
+    "document.querySelector('.c3-room-invitation:popover-open .c3-invitation-link input')?.value"), Boolean);
+  await browser(0, "click", ".c3-room-invitation:popover-open > details.c3-settings-details > summary");
   await browser(0, "find", "role", "button", "click", "--name", "Generate new invitation", "--exact");
   const invite = await until("replacement room invitation is ready", () => evaluate(0,
-    "document.querySelector('dialog.c3-settings-dialog[open] .c3-invite-copy input')?.value"), value => !!value && value !== previousInvite);
-  await browser(0, "find", "role", "button", "click", "--name", "Room invitation QR code", "--exact");
+    "document.querySelector('.c3-room-invitation:popover-open .c3-invitation-link input')?.value"), value => !!value && value !== previousInvite);
+  await browser(0, "click", ".c3-room-invitation:popover-open .c3-invite-qr-details > summary");
   await until("the replacement invitation has its actual QR image", () => evaluate(0,
-    "!!document.querySelector('.c3-invite-qr:popover-open svg[data-invitation-code]')"), Boolean);
+    "!!document.querySelector('.c3-room-invitation:popover-open .c3-invite-qr-details[open] svg[data-invitation-code]')"), Boolean);
   await browser(0, "screenshot", join(output, "room-invitation-qr.png"));
   await browser(0, "press", "Escape");
+  await until("Escape closes the invitation and its inline QR together", () => evaluate(0,
+    "!document.querySelector('.c3-room-invitation:popover-open')"), Boolean);
   const invitedSession = (await view(2)).sessionId;
   await browser(2, "open", invite);
   await until("open page enters hidden room from room invitation", () => view(2), value => value.connection === "connected" && value.state.channel.rooms.some(value => value.id === room.id && value.authorized));
@@ -1192,11 +1250,9 @@ async function roomsAndFiles() {
   await evaluate(2, "localStorage.removeItem('piik.channel.prototype.credential')");
   await browser(2, "reload");
   await until("fresh user enters hidden room from room invitation", () => view(2), value => value.connection === "connected" && value.state.channel.rooms.some(value => value.id === room.id && value.authorized));
-  await browser(0, "press", "Escape");
-
   await capturedScreen(1, room.id);
   const memberName = (await view(1)).self.name;
-  await roomSettings(0, room.id, "invitation");
+  await roomSettings(0, room.id, "room");
   await browser(0, "click", "dialog.c3-settings-dialog[open] .c3-room-members > summary");
   const memberRows = await evaluate(0, "[...document.querySelectorAll('dialog.c3-settings-dialog[open] .c3-room-members > div')].map(row => row.querySelector(':scope > span')?.textContent)");
   const memberRow = memberRows.indexOf(memberName);
@@ -1384,14 +1440,16 @@ try {
   }
   await browser(layoutIndex, "fill", ".c3-composer textarea", "A draft while checking the room");
   const beforePanes = await view(layoutIndex);
-  await browser(layoutIndex, "click", "#c3-people-trigger");
+  await showRoomList(layoutIndex);
+  await browser(layoutIndex, "click", ".c3-domain-name button");
+  await browser(layoutIndex, "click", ".c3-domain-menu-actions > button");
   assert.equal(await evaluate(layoutIndex, "document.activeElement.id"), "c3-people-heading");
   await browser(layoutIndex, "screenshot", join(output, "people-mobile.png"), "--full");
   await browser(layoutIndex, "click", "#c3-people .c3-pane-back button");
   await browser(layoutIndex, "click", "#c3-rooms-trigger");
   assert.equal(await evaluate(layoutIndex, "document.activeElement.id"), "c3-room-list-heading");
   await browser(layoutIndex, "screenshot", join(output, "rooms-mobile.png"), "--full");
-  await browser(layoutIndex, "click", ".c3-sidebar .c3-pane-back button");
+  await browser(layoutIndex, "click", ".c3-channel-title > button");
   assert.equal(await evaluate(layoutIndex, "document.querySelector('.c3-composer textarea').value"), "A draft while checking the room");
   assert.equal(await evaluate(layoutIndex, "window.__panePlayers.every(video => video.isConnected)"), true);
   const afterPanes = await view(layoutIndex);

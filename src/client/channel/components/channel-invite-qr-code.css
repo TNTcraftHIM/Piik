@@ -1,8 +1,12 @@
 .c3-invite-qr header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .c3-invite-qr header > .lr-comic-tip-wrap { margin-left: auto; }
-.c3-invite-qr > svg { display: block; width: 100%; height: auto; margin-top: 12px; border-radius: 4px; }
-.c3-invite-qr > p { margin: 12px 0 0; text-align: center; font-size: 13px; line-height: 1.5; }
-.c3-invite-qr > footer { display: flex; justify-content: center; margin-top: 12px; }
+:is(.c3-invite-qr, .c3-invite-qr-content) > svg { display: block; width: 100%; height: auto; margin-top: 12px; border-radius: 4px; }
+:is(.c3-invite-qr, .c3-invite-qr-content) > p { margin: 12px 0 0; text-align: center; font-size: 13px; line-height: 1.5; }
+:is(.c3-invite-qr, .c3-invite-qr-content) > footer { display: flex; justify-content: center; margin-top: 12px; }
+.c3-invite-qr-details { min-width: 0; }
+.c3-invite-qr-details > summary { min-height: var(--control-size); padding-block: 12px; cursor: pointer; font-size: 12px; }
+.c3-invite-qr-details > summary > svg { vertical-align: middle; margin-inline-end: 8px; }
+.c3-invite-qr-content > svg { max-width: 256px; margin-inline: auto; }
 /* Keep a complete code visible when the room panel opens near a short viewport. */
 @media (max-height: 700px) {
   .c3-invite-qr { left: 50% !important; top: 50% !important; translate: -50% -50%; max-height: calc(100dvh - 16px) !important; }

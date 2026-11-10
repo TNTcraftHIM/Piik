@@ -16,6 +16,7 @@ const QUALITY_EVIDENCE_MS: u64 = 5_000;
 #[derive(Clone)]
 pub(crate) struct Publication {
     pub info: PublicationInfo,
+    pub reactions: crate::history::MessageReactions,
     plan: Plan,
     leases: BTreeMap<Uuid, Flow>,
     operation: Option<RouteOperation>,
@@ -63,6 +64,7 @@ impl Publication {
         Self {
             plan: Plan::new(info.session_id),
             info,
+            reactions: Default::default(),
             leases: BTreeMap::new(),
             operation: None,
             direct_attempted: BTreeSet::new(),

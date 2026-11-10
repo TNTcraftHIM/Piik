@@ -100,9 +100,9 @@ The `piik-channel-app` entry uses the same App button, local approval page and
 saved-site controls as the shared Web interface.
 
 Current internal pages require App control protocol 6 and domain signaling
-protocol 4. Build the App, bundled Web files and domain server from the same
+protocol 5. Build the App, bundled Web files and domain server from the same
 source for internal testing. Incompatible control or signaling protocols are
-rejected at entry; saved room data is unchanged.
+rejected at entry. The storage format and reset boundary are documented below.
 
 Build the frontend and start it:
 
@@ -303,7 +303,7 @@ Read pages and drafts stay in memory; refreshing retrieves history from the host
 There is no separate offline history database or peer history replication.
 
 Browse rooms without moving an existing call, share or subscription. Join voice
-with a microphone or listen-only. Microphone mute controls your outgoing room
+from the personal activity area. Microphone mute controls your outgoing room
 voice; deafen controls local listening. Their attached volume menus adjust
 microphone and total listening gain from 0% to 200%, using the existing local
 preferences. Joined rooms share one microphone capture. Multiple users can share simultaneously.
@@ -394,8 +394,9 @@ User credentials and room invitations are stored as digests, and room passwords
 as password hashes. The domain's bootstrap keys are private hosting data.
 Sessions, captures and routes are not restored after a process restart.
 
-This unpublished prototype uses hosting metadata version 1 around domain
-authority version 4, and room SQLite schema version 3. Older experimental
+This unpublished prototype uses domain hosting metadata version 1 around domain
+authority version 4, room backup metadata version 2, and SQLite schema version 4.
+Browser room storage uses IndexedDB version 5. Older experimental
 checkpoints and the old unscoped `rooms/*.sqlite` layout are rejected rather than
 silently discarding or attaching their history to another domain. Keep any
 old experiment's database and choose a fresh `PIIK_CHANNEL_DATA_DIR` for this version.

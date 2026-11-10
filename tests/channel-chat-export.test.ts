@@ -29,7 +29,7 @@ function render(messages: ChannelMessage[]) {
 test("exports the loaded window as readable UTF-8 text without fetching history, files or identifiers", async () => {
   const action = render([message(7, "中文 👋\nSecond line"), { ...message(8, ""), attachments: [{
     id: "private-file", name: "secret.txt", size: 1, mediaType: "application/octet-stream", sha256: "a".repeat(64),
-  }] }, { ...message(9, "Last"), userId: "departed-user", reactions: { revision: 1, choices: { someone: ["heart"] } } }]);
+  }] }, { ...message(9, "Last"), userId: "departed-user", reactions: { revision: 1, counts: { heart: 1 } } }]);
   expect(action.label).toBe("Export chat text (TXT)");
   expect(action.disabled).toBe(false);
   action.onClick!();

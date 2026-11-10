@@ -11,7 +11,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 4;
+export const CHANNEL_PROTOCOL = 5;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("missing") }),
@@ -105,8 +105,12 @@ export const eventSchema = z.discriminatedUnion("type", [
 
 export type ChannelSnapshot = z.infer<typeof snapshotSchema>;
 export type ChannelPublication = z.infer<typeof publicationSchema>;
-export interface MessageReactions { revision: number; choices: Record<string, string[]> }
+export interface MessageReactions { revision: number; counts: Record<string, number> }
 export interface MessageReactionSnapshot extends MessageReactions { messageId: string; messageSeq: number }
+export interface PublicationReactionSnapshot extends MessageReactions { publicationId: string }
+export type ReactionTarget = { type: "message"; messageSeq: number } | { type: "publication"; publicationId: string } | { type: "person"; userId: string };
+export interface ReactionEvent { id: string; occurredAt: number; senderUserId: string; target: ReactionTarget; reaction: string }
+export type ReactionSnapshot = ({ type: "message" } & MessageReactionSnapshot) | ({ type: "publication" } & PublicationReactionSnapshot);
 export type ChannelMessage = z.infer<typeof messageSchema> & { reactions?: MessageReactions };
 export type ChannelAttachment = z.infer<typeof attachmentSchema>;
 export type ChannelFileKey = z.infer<typeof fileKeySchema>;
@@ -122,10 +126,9 @@ export type SignedConversationPacket = z.infer<typeof signedConversationPacketSc
 export type RoomInvitationState = { state: "available"; url: string } | { state: "missing" | "unrecoverable" };
 export interface ConversationAddress { roomId: string; bindingId: string; sender: string; recipient: string; requestId: string }
 export type ConversationReply = ConversationAddress & { record:
-  | { type: "reaction_confirmed"; snapshot: MessageReactionSnapshot; changed: boolean }
+  | { type: "reaction"; nonce: number; event: ReactionEvent | null; snapshot: ReactionSnapshot | null }
   | { type: "message_reactions"; snapshot: MessageReactionSnapshot }
-  | { type: "interaction_ready"; serverTime: number; reactionIds: string[] }
-  | { type: "interaction"; id: string; occurredAt: number; senderUserId: string; reaction: string; targetUserId?: string }
+  | { type: "interaction_ready"; serverTime: number; reactionIds: string[]; publicationReactions: PublicationReactionSnapshot[] }
   | { type: "confirmed"; message: ChannelMessage; inserted: boolean }
   | { type: "history_message" | "live_message"; message: ChannelMessage }
   | { type: "history_end"; count: number; hasMore: boolean; oldestSeq: number | null; before: number | null }
@@ -153,8 +156,7 @@ export type ChannelCommand =
   | { type: "browse"; roomId: string; active: boolean; relayCapacity?: number }
   | { type: "relay_capacity"; roomId: string; capacity: number | null }
   | { type: "interaction_ready"; roomId: string }
-  | { type: "interaction"; roomId: string; reaction: string; targetUserId?: string }
-  | { type: "set_reaction"; roomId: string; messageSeq: number; reaction: string; active: boolean }
+  | { type: "react"; roomId: string; reaction: string; target: ReactionTarget; nonce: number }
   | { type: "history"; roomId: string; before?: number }
   | { type: "chat"; roomId: string; text: string; nonce: string; attachments: ChannelAttachment[] }
   | ({ type: "file_offer"; sha256: string; available: boolean } & ChannelFileKey)

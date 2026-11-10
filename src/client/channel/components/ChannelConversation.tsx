@@ -8,26 +8,24 @@ import { ChannelAction } from "./ChannelAction";
 import { ChannelAttachment } from "./ChannelAttachment";
 import { type AttachmentLimits, type DraftFile, type ChannelAttachments, fileSize } from "../attachments";
 import { ChannelRoomStart, type ChannelEntry } from "./ChannelRoomStart";
-import { ChannelMessageReactions } from "./ChannelMessageReactions";
-import type { ReactionId } from "../../../shared/room-interactions";
+import { ChannelContentReactions } from "./ChannelContentReactions";
+import { BackButton } from "../../components/living/primitives";
+import type { RoomInteractionSession } from "../../lib/room-interactions";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import "./channel-conversation.css";
 
-type MessageReactionHandler = (roomId: string, messageSeq: number, reaction: ReactionId, active: boolean) => Promise<void>;
-
 /** Browsing owns the conversation; drafts and reading position belong to this pane. */
-export function ChannelConversation({ roomId, roomName, roomIcon, entry, messages, users, selfUserId, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, isReactionPending, onReaction }: {
+export function ChannelConversation({ roomId, roomName, roomIcon, entry, messages, users, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, interaction, onBack }: {
   roomId: string; roomName: string; roomIcon?: string; messages: ChannelMessage[]; users: ChannelUser[];
   entry?: ChannelEntry;
-  selfUserId: string | null;
   canSend: boolean; sending: boolean; hidden: boolean; available: boolean;
   floating?: boolean;
   attachments: ChannelAttachments; attachmentsAvailable?: boolean; history?: { hasMore: boolean; atLatest: boolean }; loadingHistory: boolean;
   onHistory: (roomId: string) => Promise<void>;
   onLatest: (roomId: string) => Promise<void>;
   onSend: (roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal) => Promise<void>;
-  isReactionPending: (messageSeq: number) => boolean;
-  onReaction: MessageReactionHandler;
+  interaction: RoomInteractionSession | null;
+  onBack?: () => void;
 }) {
   const { lang } = useCopy();
   const surfaceDocument = useSurfaceDocument();
@@ -135,7 +133,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
       if (!event.dataTransfer.types.includes("Files")) return;
       event.preventDefault(); addFiles([...event.dataTransfer.files]);
     }}>
-    <div className="c3-chat-heading"><Glyph name="chat" size={18} /><strong>{zh ? "聊天" : "Chat"}</strong>
+    <div className="c3-chat-heading">{onBack ? <BackButton onClick={onBack} /> : <><Glyph name="chat" size={18} /><strong>{zh ? "聊天" : "Chat"}</strong></>}
       <span>{roomName}</span></div>
     <div className="c3-message-log" ref={log} role="log" aria-label={zh ? "消息" : "Messages"}
       onScroll={event => {
@@ -171,8 +169,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
           const grouped = previous?.userId === message.userId && message.time - previous.time < 120_000;
           const name = users.find(user => user.id === message.userId)?.name ?? (zh ? "用户" : "User");
           return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name}
-            selfUserId={selfUserId} attachments={attachments} available={available}
-            reactionPending={isReactionPending(message.seq)} onReaction={onReaction} />;
+            attachments={attachments} available={available} interaction={interaction} />;
         })}
       </div>
     </div>
@@ -211,10 +208,9 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   </section>;
 }
 
-const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, selfUserId, attachments, available, reactionPending, onReaction }: {
-  roomId: string; message: ChannelMessage; grouped: boolean; name: string; selfUserId: string | null;
-  attachments: ChannelAttachments; available: boolean; reactionPending: boolean;
-  onReaction: MessageReactionHandler;
+const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, attachments, available, interaction }: {
+  roomId: string; message: ChannelMessage; grouped: boolean; name: string;
+  attachments: ChannelAttachments; available: boolean; interaction: RoomInteractionSession | null;
 }) {
   const { lang } = useCopy();
   return <article className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}`} data-message-id={message.id}>
@@ -223,7 +219,6 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, se
       <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
     </div>}{message.text && <p>{message.text}</p>}
     {message.attachments.map(file => <ChannelAttachment key={file.id} roomId={roomId} messageSeq={message.seq} file={file} client={attachments} />)}
-    <ChannelMessageReactions reactions={message.reactions} selfUserId={selfUserId} pending={reactionPending}
-      disabled={!available} onSet={(reaction, active) => { void onReaction(roomId, message.seq, reaction, active).catch(() => {}); }} /></div>
+    <ChannelContentReactions reactions={message.reactions} session={interaction} target={{ messageSeq: message.seq }} disabled={!available} /></div>
   </article>;
 });

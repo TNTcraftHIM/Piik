@@ -90,7 +90,7 @@ pub struct RoomMetadata {
 
 impl RoomMetadata {
     pub fn validate(&self) -> Result<(), &'static str> {
-        if self.version != 1 {
+        if self.version != 2 {
             return Err("unsupported_backup_version");
         }
         self.policy.validate()?;
@@ -195,11 +195,9 @@ impl HistoryRow {
             || self
                 .message
                 .reactions
-                .choices
+                .counts
                 .iter()
-                .any(|(user, choices)| {
-                    user.is_nil() || choices.iter().any(|choice| !valid_message_reaction(choice))
-                })
+                .any(|(reaction, count)| *count == 0 || !valid_message_reaction(reaction))
         {
             return Err("invalid_backup_history");
         }

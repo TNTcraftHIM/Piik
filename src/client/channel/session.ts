@@ -94,6 +94,7 @@ export class ChannelSession {
     quality: readPreferredQuality(),
     videoCodecMode: "auto",
     interactionsByRoom: new Map(),
+    publicationReactions: new Map(),
     voiceInput: readRoomPreferences().voiceInput,
     voicePlaybackByUser: new Map(),
     listeningVolume: readRoomPreferences().voiceListeningVolume,
@@ -107,6 +108,7 @@ export class ChannelSession {
   private retry: ReturnType<typeof setTimeout> | null = null;
   private recoveryDeadline: ReturnType<typeof setTimeout> | null = null;
   private closed = true;
+  private reactionNonce = 0;
   private credential = stored(credentialKey) ?? undefined;
   private password: string | undefined;
   private domainInvite: { key: string; hash: string | null } | null = null;
@@ -436,6 +438,8 @@ export class ChannelSession {
       inviteURL: this.domainInvitationURL(state),
       voicePlaybackByUser: sameChannel ? new Map([...this.view.voicePlaybackByUser].filter(([id]) => state.users.some(user => user.id === id))) : new Map(),
       messagesByRoom: Object.fromEntries(Object.entries(this.view.messagesByRoom).filter(([id]) => canRead(id) && !freshBindings.has(id))),
+      publicationReactions: new Map([...this.view.publicationReactions].filter(([id]) => state.publications.some(publication => publication.id === id
+        && canRead(publication.roomId) && !freshBindings.has(publication.roomId)))),
       historyByRoom: Object.fromEntries(Object.entries(this.view.historyByRoom).filter(([id]) => canRead(id) && !freshBindings.has(id))),
     });
     for (const [id, hosted] of this.hostedRooms) if (!state.channel.rooms.some(room => room.id === id)) {
@@ -501,7 +505,7 @@ export class ChannelSession {
 
   private async request(command: ChannelCommand, result?: (event: ChannelReply) => void, roomId = this.commandRoom(command), signal?: AbortSignal): Promise<void> {
     const reading = roomId ? this.readings.get(roomId) : undefined;
-    const conversation = command.type === "chat" || command.type === "history" || command.type === "set_reaction";
+    const conversation = command.type === "chat" || command.type === "history" || command.type === "react";
     if (conversation && reading && reading.roomId === roomId) await reading.ready;
     signal?.throwIfAborted();
     if (this.view.connection !== "connected") return Promise.reject(new Error("disconnected"));
@@ -535,22 +539,30 @@ export class ChannelSession {
 
   private receiveConversation(reply: ConversationReply): void {
     const record = reply.record;
-    if (record.type === "message_reactions" || record.type === "reaction_confirmed") {
+    if (record.type === "message_reactions") {
       this.applyReactionSnapshot(reply.roomId, reply.bindingId, record.snapshot);
-      if (record.type === "message_reactions") return;
+      return;
     }
     const interaction = this.view.interactionsByRoom.get(reply.roomId);
     if (interaction && this.readings.get(reply.roomId)?.bindingId === reply.bindingId) {
       if (record.type === "interaction_ready") {
         interaction.setSupportedReactions(record.reactionIds);
         interaction.receive({ type: "room-interactions-ready", serverTime: record.serverTime });
+        for (const snapshot of record.publicationReactions) this.applyPublicationReactionSnapshot(reply.roomId, snapshot);
         return;
       }
-      if (record.type === "interaction") {
-        const user = this.view.state?.users.find(user => user.id === record.senderUserId);
-        if (user) interaction.receive({ type: "room-interaction", id: record.id, requestId: reply.requestId, occurredAt: record.occurredAt,
+      if (record.type === "reaction") {
+        if (record.snapshot?.type === "message") this.applyReactionSnapshot(reply.roomId, reply.bindingId, record.snapshot);
+        else if (record.snapshot?.type === "publication") this.applyPublicationReactionSnapshot(reply.roomId, record.snapshot);
+        const event = record.event;
+        const user = event && this.view.state?.users.find(user => user.id === event.senderUserId);
+        if (event && user) interaction.receive({ type: "room-interaction", id: event.id, requestId: reply.requestId, occurredAt: event.occurredAt,
           sender: { peerId: user.id, displayName: user.name, role: "viewer" },
-          payload: { kind: "reaction", reaction: record.reaction, ...(record.targetUserId ? { targetPeerId: record.targetUserId } : {}) } });
+          payload: { kind: "reaction", reaction: event.reaction as import("../../shared/room-interactions").ReactionId,
+            ...(event.target.type === "person" ? { targetPeerId: event.target.userId } : {}) },
+          ...(event.target.type === "message" ? { contentTarget: { messageSeq: event.target.messageSeq } }
+            : event.target.type === "publication" ? { contentTarget: { publicationId: event.target.publicationId } } : {}) });
+        if (!event) interaction.confirm(reply.requestId, record.nonce);
         return;
       }
       if (record.type === "error" && !this.requests.has(reply.requestId)) {
@@ -582,7 +594,7 @@ export class ChannelSession {
         this.receive({ type: "error", requestId: reply.requestId, code: "incomplete_history" });
         return;
       }
-      const page = entries.map(({ message, snapshot }) => ({ ...message!, reactions: { revision: snapshot!.revision, choices: snapshot!.choices } }));
+      const page = entries.map(({ message, snapshot }) => ({ ...message!, reactions: { revision: snapshot!.revision, counts: snapshot!.counts } }));
       this.applyHistory(reply.roomId, page.sort((a, b) => a.seq - b.seq), record);
     } else if (record.type === "confirmed") {
       request.result?.(record);
@@ -610,7 +622,14 @@ export class ChannelSession {
       && (!message.reactions || message.reactions.revision < snapshot.revision))) return;
     this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [roomId]: messages.map(message =>
       message.id === snapshot.messageId && message.seq === snapshot.messageSeq
-        ? { ...message, reactions: { revision: snapshot.revision, choices: snapshot.choices } } : message) } });
+        ? { ...message, reactions: { revision: snapshot.revision, counts: snapshot.counts } } : message) } });
+  }
+
+  private applyPublicationReactionSnapshot(roomId: string, snapshot: import("./protocol").PublicationReactionSnapshot): void {
+    if (!this.view.state?.publications.some(publication => publication.id === snapshot.publicationId && publication.roomId === roomId)) return;
+    const previous = this.view.publicationReactions.get(snapshot.publicationId);
+    if (previous && previous.revision >= snapshot.revision) return;
+    this.patch({ publicationReactions: new Map(this.view.publicationReactions).set(snapshot.publicationId, snapshot) });
   }
 
   private applyHistory(roomId: string, page: ChannelMessage[], result: Extract<ConversationReply["record"], { type: "history_end" }>): void {
@@ -644,11 +663,11 @@ export class ChannelSession {
     // A bounded historical window stays put until its reader requests latest.
     if (this.view.historyByRoom[roomId]?.atLatest === false) return;
     const messages = this.view.messagesByRoom[roomId] ?? [];
-    let projected: ChannelMessage = { ...message, reactions: { revision: 0, choices: {} } };
+    let projected: ChannelMessage = { ...message, reactions: { revision: 0, counts: {} } };
     for (const request of this.requests.values()) {
       const snapshot = request.roomId === roomId ? request.history?.entries.get(message.seq)?.snapshot : undefined;
       if (snapshot?.messageId === message.id) projected = mergeMessage(projected,
-        { ...message, reactions: { revision: snapshot.revision, choices: snapshot.choices } });
+        { ...message, reactions: { revision: snapshot.revision, counts: snapshot.counts } });
     }
     this.patch({ messagesByRoom: { ...this.view.messagesByRoom,
       [roomId]: mergeMessages([...messages, projected]).slice(-state.channel.historyWindow) } });
@@ -932,10 +951,13 @@ export class ChannelSession {
       const interaction = this.view.interactionsByRoom.get(reading.roomId) ?? new RoomInteractionSession(message => {
         const current = this.readings.get(reading.roomId);
         if (current?.interaction !== interaction || this.view.connection !== "connected") return false;
+        const nonce = message.type === "send-room-interaction" ? message.nonce ?? ++this.reactionNonce : undefined;
         const command = message.type === "subscribe-room-interactions" ? { type: "interaction_ready" as const, roomId: current.roomId }
-          : message.type === "send-room-interaction" && message.payload.kind === "reaction"
-            ? { type: "interaction" as const, roomId: current.roomId, reaction: message.payload.reaction,
-              ...(message.payload.targetPeerId ? { targetUserId: message.payload.targetPeerId } : {}) } : null;
+          : message.payload.kind === "reaction" ? { type: "react" as const, roomId: current.roomId, reaction: message.payload.reaction, nonce: nonce!,
+            target: message.contentTarget ? ("messageSeq" in message.contentTarget
+              ? { type: "message" as const, messageSeq: message.contentTarget.messageSeq }
+              : { type: "publication" as const, publicationId: message.contentTarget.publicationId })
+              : { type: "person" as const, userId: message.payload.targetPeerId ?? this.view.self!.id } } : null;
         if (!command) return false;
         const requestId = message.type === "send-room-interaction" ? message.requestId : createOpaqueId();
         void this.conversation.send(command, requestId).catch(() => {
@@ -943,7 +965,7 @@ export class ChannelSession {
           if (command.type === "interaction_ready") this.closeInteraction(reading.roomId);
           else interaction.receive({ type: "room-interaction-rejected", requestId, reason: "busy" });
         });
-        return true;
+        return nonce === undefined ? true : { nonce };
       });
       reading.interaction = interaction;
       this.patch({ interactionsByRoom: new Map([...this.view.interactionsByRoom, [reading.roomId, interaction]]) });
@@ -987,8 +1009,6 @@ export class ChannelSession {
     this.outgoingMessages.delete(roomId);
     if (this.view.historyByRoom[roomId]?.atLatest === false) void this.loadLatestHistory(roomId).catch(() => {});
   });
-  setMessageReaction = (roomId: string, messageSeq: number, reaction: string, active: boolean): Promise<void> =>
-    this.action(`reaction:${roomId}:${messageSeq}`, () => this.request({ type: "set_reaction", roomId, messageSeq, reaction, active }));
   loadHistory = (roomId: string): Promise<void> => this.requestHistory(roomId, this.view.historyByRoom[roomId]?.before);
   loadLatestHistory = (roomId: string): Promise<void> => this.requestHistory(roomId);
   private requestHistory(roomId: string, before?: number): Promise<void> {
@@ -1173,7 +1193,7 @@ export class ChannelSession {
         } catch (error) { await stage?.close(); throw error; }
       } else {
         snapshot = await owner.snapshot!(); owner.current();
-        metadata = { kind: "room", version: 1, domainId: this.view.state!.channel.id,
+        metadata = { kind: "room", version: 2, domainId: this.view.state!.channel.id,
           policy: JSON.parse(snapshot.policy), retainedFiles: [] };
       }
       if (metadata.policy.creatorId === this.view.self!.id && this.credential) metadata.ownCredential = { userId: this.view.self!.id, credential: this.credential };

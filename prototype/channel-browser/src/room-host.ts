@@ -1,15 +1,15 @@
-import init, { attachment_result, conversation_replies, create_room_policy, history_page, history_page_size, prepare_confirmation, reaction_result, RoomHost, SessionSigner } from "../pkg/piik_channel_browser.js";
+import init, { attachment_result, create_room_policy, history_page, history_page_size, prepare_confirmation, reaction_result, RoomHost, SessionSigner } from "../pkg/piik_channel_browser.js";
 export { AttachmentHash, BackupHistoryImport, FileDelivery, attachment_limits, attachment_media_type, backup_metadata, backup_record_bytes, conversation_broadcast, decode_control, encode_control, domain_invite_hash, verify_conversation, route_input, input_binding_current, verify_reply } from "../pkg/piik_channel_browser.js";
 export async function initializeRuntime(): Promise<void> { await init(); }
 export async function createSessionSigner(seed: Uint8Array): Promise<SessionSigner> { await init(); return new SessionSigner(seed); }
-import type { ChannelMessage, ConversationAddress, ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket } from "../../../src/client/channel/protocol";
+import type { ChannelMessage, ConversationAddress, ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket, ReactionEvent } from "../../../src/client/channel/protocol";
 import type { BackupHistoryRow, BrowserRoomSnapshot, BrowserRoomStage } from "../../../src/client/channel/hosting";
 
 export interface NewRoomPolicy extends RoomSettings {
   id: string; creatorId: string;
 }
 interface RoomRecord { id: string; policy: string; bindingId?: string }
-interface MessageReactions { revision: number; choices: Record<string, string[]> }
+interface MessageReactions { revision: number; counts: Record<string, number> }
 interface RetainedMessage extends ChannelMessage { reactions: MessageReactions }
 interface StoredMessage extends RetainedMessage { roomId: string; nonce: string }
 export interface SentResult { type: "sent"; message: RetainedMessage; inserted: boolean }
@@ -17,12 +17,12 @@ export interface PageResult {
   type: "page"; messages: RetainedMessage[]; hasMore: boolean; oldestSeq: number | null; before: number | null;
 }
 interface AttachmentResult { type: "attachment"; messageSeq: number; attachment: ChannelMessage["attachments"][number] }
-interface ReactionResult { type: "reacted"; snapshot: MessageReactions & { messageId: string; messageSeq: number }; changed: boolean }
+interface ReactionResult { type: "reacted"; nonce: number; snapshot: MessageReactions & { messageId: string; messageSeq: number }; event: ReactionEvent | null }
 type HistoryResult = SentResult | PageResult | AttachmentResult | ReactionResult;
 interface SendRequest { type: "send"; roomId: string; draft: { userId: string; nonce: string; text: string; time: number; attachments: ChannelMessage["attachments"] } }
 interface ReadRequest { type: "read"; roomId: string; before: number | null }
 interface AttachmentRequest { type: "attachment"; roomId: string; messageSeq: number; attachmentId: string }
-interface ReactionRequest { type: "set_reaction"; roomId: string; messageSeq: number; userId: string; reaction: string; active: boolean }
+interface ReactionRequest { type: "react"; roomId: string; messageSeq: number; nonce: number; event: ReactionEvent | null }
 type HistoryRequest = SendRequest | ReadRequest | AttachmentRequest | ReactionRequest;
 interface HostWork { policy: object | null; history: HistoryRequest | null; delete: boolean }
 type ConversationWork = { type: "history"; value: HistoryRequest } | { type: "immediate"; value: ConversationReply["record"] };
@@ -34,10 +34,10 @@ function read<T>(request: IDBRequest<T>, receive: (value: T) => void, abort: (er
 }
 function openDatabase(name: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(name, 4);
+    const request = indexedDB.open(name, 5);
     let unsupported = false;
     request.onupgradeneeded = event => {
-      if (event.oldVersion !== 0 && event.oldVersion !== 3) { unsupported = true; request.transaction!.abort(); return; }
+      if (event.oldVersion !== 0) { unsupported = true; request.transaction!.abort(); return; }
       const db = request.result;
       if (event.oldVersion === 0) {
         db.createObjectStore("rooms", { keyPath: "id" });
@@ -340,7 +340,7 @@ export class BrowserRoomHost {
         const cause = failure(error);
         result = { Err: cause.name === "AbortError" ? cause.name : cause.message };
       }
-      return JSON.parse(conversation_replies(JSON.stringify(prepared.address), JSON.stringify(result)));
+      return JSON.parse(this.room.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)));
     });
   }
 
@@ -351,7 +351,7 @@ export class BrowserRoomHost {
   private executeHistory(request: HistoryRequest, policy: object | null, signal?: AbortSignal): Promise<HistoryResult> {
     const rows: StoredMessage[] = [];
     let oldest: number | undefined, result: HistoryResult;
-    return this.roomTransaction(["rooms", "messages"], request.type === "send" || request.type === "set_reaction" || policy ? "readwrite" : "readonly", (tx, abort) => {
+    return this.roomTransaction(["rooms", "messages"], request.type === "send" || request.type === "react" && request.event !== null || policy ? "readwrite" : "readonly", (tx, abort) => {
       this.savePolicy(tx, policy);
       const messages = tx.objectStore("messages");
       if (request.type === "send") {
@@ -366,11 +366,11 @@ export class BrowserRoomHost {
             prepare({ type: "new", lastSeq: cursor?.value.seq ?? 0 });
           }, abort);
         }, abort);
-      } else if (request.type === "set_reaction") {
+      } else if (request.type === "react") {
         read<StoredMessage | undefined>(messages.get([request.roomId, request.messageSeq]), previous => {
           const confirmation: ReactionResult = JSON.parse(reaction_result(JSON.stringify(request), JSON.stringify(previous ?? null)));
-          if (confirmation.changed) messages.put({ ...previous!, reactions: {
-            revision: confirmation.snapshot.revision, choices: confirmation.snapshot.choices,
+          if (confirmation.event) messages.put({ ...previous!, reactions: {
+            revision: confirmation.snapshot.revision, counts: confirmation.snapshot.counts,
           } });
           result = confirmation;
         }, abort);

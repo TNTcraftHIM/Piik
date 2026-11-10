@@ -3,7 +3,7 @@ import { ChannelConversation } from "../components/ChannelConversation";
 import { ChannelAttachments } from "../attachments";
 import type { ChannelMessage, MessageReactions } from "../protocol";
 import { designPeople, type DesignCopy } from "./fixtures";
-import { setDesignMessageReaction } from "./DesignConversation";
+import { usePreviewInteractions } from "../../pages/use-preview-interactions";
 
 const unavailable = async () => { throw new Error("visual_preview_only"); };
 
@@ -24,13 +24,16 @@ export function DesignSparseConversation({ roomId, roomName, people, few, copy }
       text: copy("待会儿见。", "See you in a bit."), attachments: [] },
   ] : [];
   const messages = [...samples, ...sent].map(message => ({ ...message, reactions: reactions[`${roomId}:${message.id}`] }));
+  const { session } = usePreviewInteractions(false, undefined, (reaction, target) => {
+    if (!("messageSeq" in target)) return;
+    const message = messages.find(value => value.seq === target.messageSeq);
+    if (!message) return;
+    const key = roomId + ":" + message.id;
+    setReactions(previous => ({ ...previous, [key]: { revision: (previous[key]?.revision ?? 0) + 1,
+      counts: { ...previous[key]?.counts, [reaction]: (previous[key]?.counts[reaction] ?? 0) + 1 } } }));
+  });
   return <ChannelConversation roomId={roomId} roomName={roomName} messages={messages} users={users}
-    selfUserId={designPeople[3].id} isReactionPending={() => false} onReaction={async (_room, seq, reaction, active) => {
-      const message = messages.find(value => value.seq === seq);
-      if (!message) return;
-      const key = `${roomId}:${message.id}`;
-      setReactions(previous => ({ ...previous, [key]: setDesignMessageReaction(previous[key], designPeople[3].id, reaction, active) }));
-    }}
+    interaction={session}
     entry={{ kind: "domain" }} canSend={!!roomId} sending={false} hidden={false}
     attachments={attachments} attachmentsAvailable={false} available={true}
     history={{ hasMore: false, atLatest: true }} loadingHistory={false}

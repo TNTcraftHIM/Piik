@@ -13,10 +13,9 @@
 .c3-room-access { margin: 0; min-width: 0; width: 100%; }
 .c3-check { display: flex; align-items: center; gap: 8px; cursor: pointer; line-height: 1.5; }
 .c3-check input { flex: none; accent-color: var(--action); cursor: pointer; }
-.c3-room-invitation { display: grid; gap: 12px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
 .c3-room-removal { display: flex; justify-content: flex-end; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
-.c3-invite-copy, .c3-room-members > div { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.c3-invite-copy .c3-input, .c3-room-members > div > span { flex: 1; min-width: 0; }
+.c3-room-members > div { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.c3-room-members > div > span { flex: 1; min-width: 0; }
 .c3-room-members { font-size: 12px; }
 .c3-room-members > summary { cursor: pointer; padding: 4px 0; }
 .c3-room-members > div { padding-block: 6px; }
@@ -36,5 +35,5 @@
 .c3-backup-confirm > p { overflow-wrap: anywhere; }
 
 
-.c3-settings-panels :is(.c3-room-relay, .c3-room-transcript, .c3-room-invitation) { margin-top: 0; padding-top: 0; border-top: 0; }
+.c3-settings-panels :is(.c3-room-relay, .c3-room-transcript) { margin-top: 0; padding-top: 0; border-top: 0; }
 .c3-settings-panels .c3-backup-controls { margin-top: 0; }

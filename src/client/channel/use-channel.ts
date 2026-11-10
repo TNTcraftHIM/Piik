@@ -43,7 +43,6 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
     browse: session.browse, sendMessage: session.sendMessage, renameSelf: session.renameSelf, updateDomain: session.updateDomain,
     enterDomain: session.enterDomain, resetDomainInvite: session.resetDomainInvite,
     roomTopology: session.roomTopology, connectionMetrics: session.connectionMetrics, appConnectionMetrics: session.appConnectionMetrics,
-    setMessageReaction: session.setMessageReaction,
     exportDomainBackup: session.exportDomainBackup, restoreDomainBackup: session.restoreDomainBackup,
     createRoom: session.createRoom, updateRoom: session.updateRoom, deleteRoom: session.deleteRoom, enterRoom: session.enterRoom,
     setRoomVoiceBitrate: session.setRoomVoiceBitrate,

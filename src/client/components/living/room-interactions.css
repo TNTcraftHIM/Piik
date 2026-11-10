@@ -97,6 +97,7 @@
 .lr-room.is-theater .lr-interaction-couch :is(.lr-couch-seating, .lr-couch-count, .lr-reaction-flight) { display: none; }
 .lr-pawn[aria-expanded="true"] { background: color-mix(in srgb, var(--paper) 72%, transparent); border-radius: 18px; }
 .lr-reaction-flight { position: absolute; inset: 0; pointer-events: none; z-index: 5; overflow: visible; }
+.lr-reaction-content { --from-x: 18px; --from-y: -38px; --to-x: 18px; --to-y: 12px; --throw-direction: 1; }
 /* The path positions the center; percentage translation centers any glyph size. */
 .lr-reaction-projectile { position: absolute; left: 0; top: 0; display: flex; width: max-content; translate: -50% -50%; font-size: 30px; line-height: 1; animation: lr-reaction-flight var(--reaction-duration) ease-out both; }
 .lr-reaction-glyph { display: flex; animation: lr-reaction-wiggle var(--reaction-duration) ease-out both; }

@@ -180,7 +180,7 @@ mod tests {
         let backup = RoomBackup::stage(
             &folder.join("staged.sqlite"),
             RoomMetadata {
-                version: 1,
+                version: 2,
                 domain_id: domain,
                 policy: room.clone(),
                 own_credential: None,
@@ -333,13 +333,16 @@ mod tests {
             .replies()
             .unwrap();
         assert!(
-            matches!(&ready[0].record, ConversationRecord::InteractionReady { server_time: 500, reaction_ids } if reaction_ids.iter().any(|id| id == "wave"))
+            matches!(&ready[0].record, ConversationRecord::InteractionReady { server_time: 500, reaction_ids, .. } if reaction_ids.iter().any(|id| id == "wave"))
         );
         let action = packet(
             sender,
-            ConversationCommand::Interaction {
+            ConversationCommand::React {
+                nonce: 1,
                 reaction: "tomato".into(),
-                target_user_id: Some(owner.user_id),
+                target: piik_channel_core::conversation::ReactionTarget::Person {
+                    user_id: owner.user_id,
+                },
             },
         );
         let replies = host
@@ -351,8 +354,9 @@ mod tests {
         assert_eq!(replies[0].address.sender, local);
         assert_eq!(replies[0].address.recipient, sender);
         assert!(
-            matches!(&replies[0].record, ConversationRecord::Interaction { occurred_at: 1000, sender_user_id, reaction, target_user_id: Some(target), .. }
-                if *sender_user_id == actor.user_id && reaction == "tomato" && *target == owner.user_id)
+            matches!(&replies[0].record, ConversationRecord::Reaction { event: Some(event), .. }
+                if event.occurred_at == 1000 && event.sender_user_id == actor.user_id && event.reaction == "tomato"
+                && event.target == (piik_channel_core::conversation::ReactionTarget::Person { user_id: owner.user_id }))
         );
         let signed = host_key.sign(local, &replies[0]).unwrap();
         assert_eq!(
@@ -361,15 +365,22 @@ mod tests {
                 .address,
             replies[0].address
         );
-        assert!(
-            matches!(host.dispatch_peer(&action, 1001).unwrap().replies().unwrap()[0].record,
-                ConversationRecord::Error { ref code } if code == "rate_limited")
-        );
+        assert!(matches!(
+            host.dispatch_peer(&action, 1001)
+                .unwrap()
+                .replies()
+                .unwrap()[0]
+                .record,
+            ConversationRecord::Reaction { event: None, .. }
+        ));
         let private_target = packet(
             sender,
-            ConversationCommand::Interaction {
+            ConversationCommand::React {
+                nonce: 2,
                 reaction: "wave".into(),
-                target_user_id: Some(outsider.user_id),
+                target: piik_channel_core::conversation::ReactionTarget::Person {
+                    user_id: outsider.user_id,
+                },
             },
         );
         assert!(
@@ -379,7 +390,9 @@ mod tests {
         endpoints.get_mut(&local).unwrap().connected = false;
         host.dispatch(input(&endpoints, binding)).unwrap();
         assert!(
-            matches!(host.dispatch_peer(&action, 2600).unwrap().replies().unwrap()[0].record,
+            matches!(host.dispatch_peer(&packet(sender, ConversationCommand::React {
+                nonce: 2, reaction: "tomato".into(), target: piik_channel_core::conversation::ReactionTarget::Person { user_id: owner.user_id },
+            }), 2600).unwrap().replies().unwrap()[0].record,
                 ConversationRecord::Error { ref code } if code == "target_unavailable")
         );
         assert!(

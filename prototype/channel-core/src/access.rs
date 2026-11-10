@@ -76,8 +76,7 @@ impl RoomState {
             || self.creator_id.is_nil()
             || crate::wire::title(&self.name).as_deref() != Some(self.name.as_str())
             || self.grants.iter().any(Uuid::is_nil)
-            || (self.access == RoomAccess::Public
-                && (self.hidden || self.password_hash.is_some() || self.invite_hash.is_some()))
+            || (self.access == RoomAccess::Public && (self.hidden || self.password_hash.is_some()))
             || self
                 .password_hash
                 .as_ref()
@@ -158,14 +157,12 @@ impl RoomState {
         }
         if access == RoomAccess::Public {
             self.password_hash = None;
-            self.invite_hash = None;
-            self.invite_key = None;
         }
         Ok(())
     }
 
     pub fn accepts_invite(&self, key: &str) -> bool {
-        self.access == RoomAccess::Private && self.invite_hash == Some(digest(key))
+        self.invite_hash == Some(digest(key))
     }
 
     pub fn enter(
@@ -192,9 +189,6 @@ impl RoomState {
     }
 
     pub fn invite(&mut self) -> Result<String, &'static str> {
-        if self.access != RoomAccess::Private {
-            return Err("room_not_private");
-        }
         let key = Uuid::new_v4().to_string();
         self.invite_hash = Some(digest(&key));
         self.invite_key = Some(key.clone());
@@ -203,9 +197,6 @@ impl RoomState {
 
     pub fn invitation(&self) -> Result<crate::wire::RoomInvitation, &'static str> {
         use crate::wire::RoomInvitation;
-        if self.access != RoomAccess::Private {
-            return Err("room_not_private");
-        }
         Ok(match &self.invite_key {
             Some(key) => RoomInvitation::Available { key: key.clone() },
             None if self.invite_hash.is_some() => RoomInvitation::Unrecoverable,

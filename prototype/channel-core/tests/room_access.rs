@@ -661,7 +661,7 @@ fn core() -> RoomNetwork {
 }
 
 #[test]
-fn room_invitation_reads_are_private_and_never_rotate_the_current_link() {
+fn room_invitation_reads_are_manager_only_and_never_rotate_the_current_link() {
     use piik_channel_core::wire::RoomInvitation;
     let mut network = core();
     let owner = Uuid::new_v4();
@@ -748,16 +748,109 @@ fn room_invitation_reads_are_private_and_never_rotate_the_current_link() {
         creator,
         json!({"type":"update_room","roomId":room,"name":"Public","icon":"couch","access":"public","hidden":false}),
     );
-    rejected(command(
+    assert_eq!(read(&mut network, creator), RoomInvitation::Unrecoverable);
+    let public_key = invite(&mut network, creator, &room);
+    assert_eq!(
+        read(&mut network, creator),
+        RoomInvitation::Available { key: public_key }
+    );
+    network.policy(&room).validate().unwrap();
+}
+
+#[test]
+fn every_room_owner_can_invite_new_domain_members_without_granting_other_private_rooms() {
+    let mut network = core();
+    let creator = Uuid::new_v4();
+    admit(
         &mut network,
         creator,
-        json!({"type":"get_room_invite","roomId":room}),
-    ));
+        json!({"type":"join","name":"Room owner","key":"invite"}),
+    );
+    let public = room(&mut network, creator, "public", false);
+    let other_private = room(&mut network, creator, "private", true);
+    let first = invite(&mut network, creator, &public);
+    let guest = Uuid::new_v4();
+    let (guest_session, _, admitted) = admit(
+        &mut network,
+        guest,
+        json!({"type":"join","name":"New friend","roomId":public,"key":first}),
+    );
+    assert!(admitted
+        .channel
+        .rooms
+        .iter()
+        .any(|r| r.id == public && r.authorized));
+    assert!(admitted
+        .channel
+        .rooms
+        .iter()
+        .filter(|r| r.access == piik_channel_core::wire::RoomAccess::Public)
+        .all(|r| r.authorized));
+    assert!(!admitted.channel.rooms.iter().any(|r| r.id == other_private));
+    let user = admitted
+        .sessions
+        .iter()
+        .find(|s| s.id == guest_session)
+        .unwrap()
+        .user_id;
+    assert!(
+        !network.policy(&public).grants.contains(&user),
+        "public entry is not a future private grant"
+    );
     rejected(command(
         &mut network,
-        creator,
-        json!({"type":"room_invite","roomId":room}),
+        guest,
+        json!({"type":"room_invite","roomId":public}),
     ));
+    let replacement = invite(&mut network, creator, &public);
+    rejected(command(
+        &mut network,
+        Uuid::new_v4(),
+        json!({"type":"join","name":"Old link","roomId":public,"key":first}),
+    ));
+    assert!(network
+        .state(guest)
+        .channel
+        .rooms
+        .iter()
+        .any(|r| r.id == public && r.authorized));
+    command(
+        &mut network,
+        creator,
+        json!({"type":"update_room","roomId":public,"name":"Now private","icon":"couch","access":"private","hidden":true}),
+    );
+    assert!(!network
+        .state(guest)
+        .channel
+        .rooms
+        .iter()
+        .any(|r| r.id == public));
+    let (_, _, private_join) = admit(
+        &mut network,
+        Uuid::new_v4(),
+        json!({"type":"join","name":"Invited after switch","roomId":public,"key":replacement}),
+    );
+    assert!(private_join
+        .channel
+        .rooms
+        .iter()
+        .any(|r| r.id == public && r.authorized));
+    command(
+        &mut network,
+        guest,
+        json!({"type":"enter_room","roomId":public,"inviteKey":replacement}),
+    );
+    assert!(network.policy(&public).grants.contains(&user));
+    command(
+        &mut network,
+        creator,
+        json!({"type":"update_room","roomId":public,"name":"Public again","icon":"couch","access":"public","hidden":false}),
+    );
+    assert!(network.policy(&public).accepts_invite(&replacement));
+    let reset = invite(&mut network, creator, &public);
+    assert!(!network.policy(&public).accepts_invite(&replacement));
+    assert!(network.policy(&public).accepts_invite(&reset));
+    assert!(network.policy(&public).grants.contains(&user));
 }
 
 #[test]

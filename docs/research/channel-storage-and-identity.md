@@ -47,6 +47,14 @@ route plans and file-source availability from live sessions. Domain directory
 updates come from the room owner and contain only the summary a recipient may
 see; changing a room name does not introduce a second writer at the domain.
 
+Public and private room owners issue and retain their own room invitation.
+It admits a new ordinary domain member and, for a private room, commits that
+room's grant before admission completes. Other private or hidden rooms remain
+outside that grant. Access-mode changes preserve the invitation until its owner
+explicitly resets it; resetting retires old links without removing existing
+members or room grants. Public entry alone creates no grant for a later switch
+to private. Domain membership and room grants keep their existing checkpoint owners.
+
 Scope local copies by domain, room and authenticated user, never nickname or
 room title. Source URLs locate the runtime; they are not the room's identity.
 Cached content remains a local copy when the room is offline. It cannot reopen
@@ -73,9 +81,13 @@ saves the message transactionally and restores it on ordinary restart.
 Serving availability is derived from current
 readable copies, not a permanent `available` flag on the saved message.
 
-Message reactions are confirmed and saved by the room owner with that message.
-History synchronization restores them when a participant returns. Character
-expressions and throwing props are live interactions and do not enter history.
+All sixteen reactions count accepted actions, including repeated actions by the
+same person. The room owner confirms each action once and emits its live effect
+after the owning turn commits. Message totals are saved with the message;
+history restores totals without replaying effects. Picture totals belong to the
+publication and disappear when it retires. Reactions to people on the couch stay
+ephemeral and have no totals. These targets share room authorization and the
+existing conversation carrier; they do not introduce another permission owner.
 
 The sender prepares readable local content and its digest before sending one
 chat command. A retry returns the original message, including its original

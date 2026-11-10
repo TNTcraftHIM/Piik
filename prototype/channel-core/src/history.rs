@@ -12,7 +12,22 @@ pub const HISTORY_PAGE: usize = 50;
 #[serde(rename_all = "camelCase")]
 pub struct MessageReactions {
     pub revision: u64,
-    pub choices: BTreeMap<Uuid, BTreeSet<String>>,
+    pub counts: BTreeMap<String, u64>,
+}
+
+impl MessageReactions {
+    pub(crate) fn add(&mut self, reaction: &str) -> Result<(), &'static str> {
+        let count = self
+            .counts
+            .get(reaction)
+            .copied()
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or("reaction_count_full")?;
+        self.revision = self.revision.checked_add(1).ok_or("reaction_count_full")?;
+        self.counts.insert(reaction.into(), count);
+        Ok(())
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -45,13 +60,13 @@ pub struct MessageReactionSnapshot {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReactionConfirmation {
+    pub nonce: u64,
     pub snapshot: MessageReactionSnapshot,
-    pub changed: bool,
+    pub event: Option<crate::conversation::ReactionEvent>,
 }
 
 pub fn valid_message_reaction(reaction: &str) -> bool {
     crate::conversation::INTERACTION_REACTIONS.contains(&reaction)
-        && !matches!(reaction, "tomato" | "poop")
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -154,12 +169,11 @@ pub struct MessageConfirmation {
     rename_all_fields = "camelCase"
 )]
 pub enum HistoryRequest {
-    SetReaction {
+    React {
         room_id: String,
         message_seq: u64,
-        user_id: Uuid,
-        reaction: String,
-        active: bool,
+        nonce: u64,
+        event: Option<crate::conversation::ReactionEvent>,
     },
     Attachment {
         room_id: String,
@@ -177,48 +191,38 @@ pub enum HistoryRequest {
 }
 
 impl HistoryRequest {
-    /// Read the row, apply this explicit choice, and commit it in one transaction.
+    /// Read the aggregate and commit a newly accepted action in one transaction.
     pub fn reaction_result(
         &self,
         message: Option<StoredMessage>,
     ) -> Result<ReactionConfirmation, &'static str> {
-        let Self::SetReaction {
+        let Self::React {
             message_seq,
-            user_id,
-            reaction,
-            active,
+            nonce,
+            event,
             ..
         } = self
         else {
             return Err("not_a_reaction_update");
         };
-        if !valid_message_reaction(reaction) {
-            return Err("invalid_reaction");
-        }
         let mut message = message
             .filter(|message| message.message.seq == *message_seq)
             .ok_or("message_unavailable")?;
-        let choices = &mut message.reactions.choices;
-        let changed = if *active {
-            choices
-                .entry(*user_id)
-                .or_default()
-                .insert(reaction.clone())
-        } else if let Some(selected) = choices.get_mut(user_id) {
-            let removed = selected.remove(reaction);
-            if selected.is_empty() {
-                choices.remove(user_id);
+        if let Some(event) = event {
+            if event.target
+                != (crate::conversation::ReactionTarget::Message {
+                    message_seq: *message_seq,
+                })
+                || !valid_message_reaction(&event.reaction)
+            {
+                return Err("invalid_reaction");
             }
-            removed
-        } else {
-            false
-        };
-        if changed {
-            message.reactions.revision += 1;
+            message.reactions.add(&event.reaction)?;
         }
         Ok(ReactionConfirmation {
+            nonce: *nonce,
             snapshot: message.reaction_snapshot(),
-            changed,
+            event: event.clone(),
         })
     }
 

@@ -11,17 +11,25 @@ type PanelGesture = "move" | "nw" | "se";
 type PanelChange = { x: number; y: number } | { rect: DOMRect; corner: "nw" | "se"; dx: number; dy: number };
 
 /** Native visibility owns the shell; content owns its session, draft and reading position. */
-export function FloatingPanel({ id, trigger, title, icon, compact = false, anchorOnOpen = false, detachable = false, className = "", children, onOpenChange }: {
+export function FloatingPanel({ id, trigger, title, icon, compact = false, anchorOnOpen = false, detachable = false, directWindow = false, className = "", children, onOpenChange }: {
   id: string; trigger: string | RefObject<HTMLElement | null>; title: string; icon: GlyphName; compact?: boolean; className?: string;
   anchorOnOpen?: boolean;
   detachable?: boolean;
+  directWindow?: boolean;
   children: ReactNode; onOpenChange?: (open: boolean, ownerDocument: Document) => void;
 }) {
-  const { t, vis } = useCopy();
+  const { t, vis, lang } = useCopy();
   const [open, setOpen] = useState(false);
-  const panelWindow = usePanelWindow(detachable);
-  const { container, slot, surfaceDocument, detached } = panelWindow;
   const panelRef = useRef<HTMLElement>(null);
+  const panelWindow = usePanelWindow(detachable || directWindow, owner => {
+    if (directWindow && owner === document) {
+      panelRef.current?.hidePopover();
+      setOpen(false);
+      onOpenChange?.(false, owner);
+      focusTrigger();
+    }
+  });
+  const { container, slot, surfaceDocument, detached } = panelWindow;
   const defaultSize = compact ? COMPACT_SIZE : PANEL_SIZE;
   const position = useRef({ x: 1, y: 1 });
   const preferredSize = useRef(defaultSize);
@@ -33,6 +41,23 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
     const element = getTrigger();
     if (element?.isConnected) element.focus({ preventScroll: true });
   };
+
+  useLayoutEffect(() => {
+    const invoker = getTrigger();
+    if (!directWindow || !invoker) return;
+    const openWindow = (event: MouseEvent) => {
+      if (!panelWindowAPI(window)) return;
+      event.preventDefault();
+      if (detached) { surfaceDocument?.defaultView?.focus(); return; }
+      if (panelWindow.opening) return;
+      void panelWindow.open({ width: PANEL_SIZE.width, height: PANEL_SIZE.width }).then(() => {
+        // A refused request retains this same panel as the usable in-page fallback.
+        if (panelRef.current?.ownerDocument === document) panelRef.current.showPopover();
+      });
+    };
+    invoker.addEventListener("click", openWindow);
+    return () => invoker.removeEventListener("click", openWindow);
+  }, [directWindow, trigger, detached, surfaceDocument, panelWindow.opening, panelWindow.open]);
 
   useLayoutEffect(() => {
     const panel = panelRef.current;
@@ -49,7 +74,7 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
       return true;
     };
     // Adoption removes native popovers from the old document's top layer.
-    if (surfaceDocument && !hideOutsideFullscreen()) panel.showPopover();
+    if (surfaceDocument && (!directWindow || surfaceDocument !== document) && !hideOutsideFullscreen()) panel.showPopover();
     owner.addEventListener("fullscreenchange", hideOutsideFullscreen);
     return () => owner.removeEventListener("fullscreenchange", hideOutsideFullscreen);
   }, [surfaceDocument]);
@@ -212,7 +237,7 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
         <span className="lr-floating-title">{!detached && <Glyph name="grip" size={17} />}
           {vis ? <Glyph name={icon} size={18} /> : <b>{title}</b>}</span>
         <span id={`${id}-move-hint`} className="visually-hidden">{t("floating.moveHint")}</span>
-        {detachable && !detached && panelWindowAPI(typeof window === "undefined" ? null : window) &&
+        {detachable && !directWindow && !detached && panelWindowAPI(typeof window === "undefined" ? null : window) &&
           <Tooltip kind="hint-window-detach" place="below" text={vis ? undefined : t("floating.detach")}>
             <button type="button" className="lr-btn is-dense is-quiet lr-popover-close" disabled={panelWindow.opening}
               aria-label={t("floating.detach")} onClick={() => { void panelWindow.open(); }}>
@@ -224,7 +249,9 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
         }}><Glyph name="x" size={16} /></button>}
       </header>
       <div className="lr-floating-body lr-floating-scroll">
-        {panelWindow.failed && <p className="lr-floating-error" role="status">{t("floating.detachFailed")}</p>}
+        {panelWindow.failed && <p className="lr-floating-error" role="status">{directWindow
+          ? (lang === "zh" ? "未能打开独立窗口，已在页面内打开。" : "Could not open a separate window. Opened in this page instead.")
+          : t("floating.detachFailed")}</p>}
         {children}
       </div>
       {!detached && (["nw", "se"] as const).map(corner => <span key={corner} className={`lr-floating-resize is-${corner}`}

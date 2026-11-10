@@ -6,71 +6,52 @@ import { readFile } from "node:fs/promises";
 
 afterEach(() => vi.restoreAllMocks());
 
-test("the Browser room host fans out Core-selected records, preserving signed request scope and excluding the requester", async () => {
+test("the Browser room host fans out Core-selected reactions and suppresses an acknowledged nonce retry", async () => {
   const state = { channel: { rooms: [{ id: "room", delivery: { bindingId: "binding", hostSessionId: "host" } }] } } as ChannelSnapshot;
   const sent: SignedConversationPacket[] = [];
-  let changed = true;
+  const event = { id: "event", occurredAt: 1000, senderUserId: "user", reaction: "heart", target: { type: "message" as const, messageSeq: 1 } };
+  const snapshot = { type: "message" as const, messageId: "message", messageSeq: 1, revision: 1, counts: { heart: 1 } };
+  let record: ConversationReply["record"] = { type: "interaction_ready", serverTime: 1000, reactionIds: ["heart"], publicationReactions: [] };
   let broadcast: ConversationReply["record"] | null = null;
-  const host = {
-    currentReaders: vi.fn(() => ["source", "second", "third"]),
+  const host = { currentReaders: vi.fn(() => ["source", "second", "third"]),
     dispatchPeer: vi.fn(async (packet: SignedConversationPacket) => {
-      const { command, ...request } = JSON.parse(packet.payload);
-      const record: ConversationReply["record"] = command.type === "set_reaction"
-        ? { type: "reaction_confirmed", changed, snapshot: { messageId: "message", messageSeq: 1, revision: 1, choices: { user: ["heart"] } } }
-        : command.type === "interaction_ready"
-        ? { type: "interaction_ready", serverTime: 1000, reactionIds: ["wave"] }
-        : { type: "interaction", id: "event", occurredAt: 1000, senderUserId: "user", reaction: "wave", targetUserId: "friend" };
+      const { command: _command, ...request } = JSON.parse(packet.payload);
       return [{ ...request, sender: "host", recipient: "source", record }];
     }),
   } as unknown as hosting.HostedRoom;
   const sign = vi.fn((sender: string, payload: string) => JSON.stringify({ sender, payload, signature: [1] }));
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
     createSessionSigner: async () => ({ signing_key: () => new Uint8Array(32), sign, free: vi.fn() }),
-    verify_conversation: (json: string) => {
-      const packet = JSON.parse(json), address = JSON.parse(packet.payload);
-      return JSON.stringify(address);
-    },
+    verify_conversation: (json: string) => JSON.stringify(JSON.parse(JSON.parse(json).payload)),
     encode_control: (json: string) => new TextEncoder().encode(json), decode_control: (bytes: Uint8Array) => new TextDecoder().decode(bytes),
     conversation_broadcast: () => JSON.stringify(broadcast),
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const conversation = new ChannelConversation({ context: () => ({ sessionId: "host", state, connected: true }), host: () => host,
     send: packet => { sent.push(packet); }, file: vi.fn(), reply: vi.fn() });
   await conversation.initialize();
-  const receive = async (type: "interaction_ready" | "interaction" | "set_reaction") => conversation.receive({
-    sender: "source", signature: [1], payload: JSON.stringify({
-      roomId: "room", bindingId: "binding", sender: "source", recipient: "host", requestId: "original-id", command: { type },
-    }),
-  });
+  const receive = async (command: object) => conversation.receive({ sender: "source", signature: [1], payload: JSON.stringify({
+    roomId: "room", bindingId: "binding", sender: "source", recipient: "host", requestId: "original-id", command,
+  }) });
   try {
-    await receive("interaction_ready");
+    await receive({ type: "interaction_ready" });
     expect(sent.map(packet => JSON.parse(packet.payload).recipient)).toEqual(["source"]);
     expect(host.currentReaders).not.toHaveBeenCalled();
     sent.length = 0;
-    broadcast = { type: "interaction", id: "event", occurredAt: 1000, senderUserId: "user", reaction: "wave", targetUserId: "friend" };
-    await receive("interaction");
+    record = broadcast = { type: "reaction", nonce: 1, event, snapshot };
+    const click = { type: "react", nonce: 1, target: event.target, reaction: "heart" };
+    await receive(click);
     const replies = sent.map(packet => JSON.parse(packet.payload) as ConversationReply);
     expect(replies.map(reply => reply.recipient).sort()).toEqual(["second", "source", "third"]);
-    for (const reply of replies) expect(reply).toMatchObject({ requestId: "original-id", sender: "host", record: {
-      type: "interaction", id: "event", senderUserId: "user", reaction: "wave", targetUserId: "friend",
-    } });
+    for (const reply of replies) expect(reply).toMatchObject({ requestId: "original-id", sender: "host", record });
     expect(sent.every(packet => packet.sender === "host")).toBe(true);
     expect(sign).toHaveBeenCalledTimes(4);
     sent.length = 0;
-    changed = false;
+    // Core owns replay suppression; the carrier forwards only its current reply.
+    record = { type: "reaction", nonce: 1, event: null, snapshot: null };
     broadcast = null;
-    await receive("set_reaction");
-    expect(sent.map(packet => JSON.parse(packet.payload).record.type)).toEqual(["reaction_confirmed"]);
+    await receive(click);
+    expect(sent.map(packet => JSON.parse(packet.payload).record)).toEqual([record]);
     expect(host.currentReaders).toHaveBeenCalledTimes(1);
-    sent.length = 0;
-    changed = true;
-    broadcast = { type: "message_reactions", snapshot: { messageId: "message", messageSeq: 1, revision: 1, choices: { user: ["heart"] } } };
-    await receive("set_reaction");
-    const reactions = sent.map(packet => JSON.parse(packet.payload) as ConversationReply);
-    expect(reactions.find(reply => reply.recipient === "source")?.record.type).toBe("reaction_confirmed");
-    expect(reactions.filter(reply => reply.record.type === "message_reactions").map(reply => reply.recipient).sort()).toEqual(["second", "third"]);
-    for (const reply of reactions) expect(reply).toMatchObject({ requestId: "original-id", record: {
-      snapshot: { messageId: "message", messageSeq: 1, revision: 1, choices: { user: ["heart"] } },
-    } });
   } finally { conversation.close(); }
 });
 

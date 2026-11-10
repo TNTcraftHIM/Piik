@@ -2,7 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactionId } from "../../../shared/room-interactions";
 import { useCopy } from "../../ui/copy";
 import { BackButton, Btn } from "./primitives";
-import { RoomReactionGrid, RoomReactionTarget, type InteractionParticipant } from "./RoomReactionPicker";
+import { RoomReactionGrid, RoomReactionTarget, personReactionIds, type InteractionParticipant } from "./RoomReactionPicker";
 import { useAnchoredPopover } from "./use-anchored-popover";
 
 const QUICK_REACTIONS: readonly ReactionId[] = ["thumbsup", "thumbsdown", "tomato", "poop"];
@@ -39,7 +39,7 @@ export function RoomQuickReactions({ id, trigger, person, selfPeerId, hostPeerId
           onClick={() => setExpanded(true)} />}
       <RoomReactionTarget person={person} selfPeerId={selfPeerId} hostPeerId={hostPeerId} />
     </div>
-    <RoomReactionGrid person={person} selfPeerId={selfPeerId} reactionIds={choices} canSend={canSend}
-      onSend={onSend} compact={!expanded} />
+    <RoomReactionGrid reactionIds={personReactionIds(choices, person, selfPeerId)} canSend={canSend}
+      onSend={reaction => onSend(reaction, person.peerId === selfPeerId ? undefined : person.peerId)} compact={!expanded} />
   </div>;
 }

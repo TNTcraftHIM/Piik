@@ -1,69 +1,85 @@
-/* Layout belongs to the channel; palette, controls, cast and motion stay shared. */
-.c3-app { --c3-content-width: calc(100% - 40px); --c3-companion-width: 320px; height: 100dvh; min-height: 0; }
+/* The workspace owns placement; shared controls, palette, cast and motion keep their owners. */
+.c3-app { --c3-content-width: calc(100% - 40px); --c3-companion-width: 320px; --c3-heading-height: 74px; height: 100dvh; min-height: 0; }
 .c3-app > .lr-top { flex: none; padding-block: 8px; }
-.c3-shell { flex: 1; min-height: 0; width: var(--c3-content-width); margin: 0 auto 24px; display: grid; grid-template-columns: 58px 240px minmax(0, 1fr); background: var(--paper); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--panel-shadow); overflow: clip; }
-.c3-shell[data-pane="people"] { grid-template-columns: 58px 240px minmax(0, 1fr) var(--c3-companion-width); }
-.c3-shell:not([data-pane="people"]) > .c3-people-panel { display: none; }
-.c3-shell > .c3-domain-rail { border-radius: 22px 0 0 22px; }
+.c3-shell { flex: 1; min-height: 0; width: var(--c3-content-width); margin: 0 auto 24px; display: grid; grid-template-columns: 58px 240px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; background: var(--paper); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--panel-shadow); overflow: clip; container: channel-shell / size; }
+.c3-shell:not([data-companion="none"]) { grid-template-columns: 58px 240px minmax(0, 1fr) var(--c3-companion-width); }
+.c3-shell:not([data-companion="people"]) > .c3-people-panel { display: none; }
+.c3-shell > .c3-domain-rail { grid-column: 1; grid-row: 1 / 3; border-radius: 22px 0 0 22px; }
 :where(.c3-shell) :is(h1,h2,h3,p) { margin: 0; }
 .c3-shell button { cursor: pointer; }
 .c3-shell button:disabled { cursor: default; }
-.c3-sidebar { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px 12px 14px; background: var(--wall); border-inline-end: 1px solid var(--line); }
-.c3-sidebar-browse { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
-.c3-sidebar > .c3-identity { flex: none; }
-.c3-channel-title { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px 10px; padding-inline: 10px; }
-.c3-channel-title > div:first-child { min-width: 0; }
-.c3-channel-title > div:first-child > .lr-comic-tip-wrap { display: block; min-width: 0; }
-.c3-channel-title h1 { min-width: 0; font-size: 21px; font-weight: 750; line-height: 1.35; letter-spacing: -.035em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.c3-channel-title > .c3-pane-back { grid-column: 3; }
-.c3-channel-caption { display: block; font-size: 12px; color: var(--muted); }
-.c3-invite { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-inline: 6px; }
-.c3-invite-label { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; }
-.c3-invite-label:empty { display: none; }
-.c3-invite > :not(.c3-invite-label) { flex: none; }
+.c3-sidebar { grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; padding: 16px 12px; background: var(--wall); border-inline-end: 1px solid var(--line); }
+.c3-sidebar-browse { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.c3-channel-title { display: flex; align-items: center; gap: 8px; padding-inline: 6px; }
+.c3-domain-name { flex: 1; min-width: 0; font-size: 19px; line-height: 1.35; }
+.c3-domain-name > .lr-comic-tip-wrap { display: block; min-width: 0; }
+.c3-domain-name button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0; border: 0; padding: 6px 4px; background: none; color: var(--ink); font: inherit; }
+.c3-domain-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c3-domain-name button > svg { flex: none; }
+.c3-domain-name button[aria-expanded="true"] > svg { transform: rotate(180deg); }
+.c3-domain-menu { width: 264px; padding: 12px; overflow-y: auto; }
+.c3-domain-menu > header { display: flex; align-items: center; gap: 10px; padding: 4px 8px 12px; }
+.c3-domain-menu header strong { min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
+.c3-domain-invitation > summary { display: flex; align-items: center; gap: 10px; min-height: var(--control-compact-size); padding: 8px; cursor: pointer; list-style: none; }
+.c3-domain-invitation > summary::-webkit-details-marker { display: none; }
+.c3-domain-invitation > summary > svg:last-child { margin-inline-start: auto; }
+.c3-domain-invitation[open] > summary > svg:last-child { transform: rotate(180deg); }
+.c3-domain-invitation > p { font-size: 12px; color: var(--muted); padding: 8px; }
+.c3-domain-menu-actions { display: grid; gap: 4px; border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; }
+.c3-domain-menu-actions .c3-edit-action, .c3-domain-menu-actions .lr-comic-tip-wrap { display: block; }
+.c3-domain-menu-actions .lr-btn { width: 100%; justify-content: flex-start; --button-size: var(--control-compact-size); }
 .c3-section-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 650; min-height: 32px; padding-inline: 10px; }
 .c3-rooms { display: grid; gap: 5px; margin-top: 8px; }
-.c3-room-navigation { flex: 1 0 auto; }
 .c3-room-list-empty { padding: 16px 10px; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .c3-room-navigation.is-empty > .c3-section-label { flex-wrap: wrap; gap: 12px; }
-.c3-pane-back, .c3-pane-navigation, .c3-room-tools > .c3-pane-navigation { display: none; }
-.c3-identity { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: auto; padding: 16px 4px 2px; border-top: 1px solid var(--line); }
+.c3-pane-back, .c3-pane-navigation { display: none; }
+.c3-personal { grid-column: 2; grid-row: 2; min-width: 0; border-top: 1px solid var(--line); border-inline-end: 1px solid var(--line); }
+.c3-identity { display: flex; align-items: center; gap: 8px; padding: 12px; }
 .c3-identity > svg { flex: none; width: 32px; height: 40px; }
-.c3-identity > div { flex: 1 1 12ch; min-width: 0; }
-.c3-identity > .c3-name-editor { margin-inline-start: auto; }
+.c3-identity > div { flex: 1; min-width: 0; }
 .c3-identity strong { display: block; font-size: 13px; overflow-wrap: anywhere; }
 .c3-identity small { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; }
-.c3-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; container: channel-room / size; overflow-y: auto; overscroll-behavior: contain; }
-.c3-room-heading { display: grid; grid-template-areas: "title actions tools" "company company company"; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px 16px; flex: none; padding: 16px 24px 8px; border-bottom: 1px solid var(--line); }
-.c3-room-name { grid-area: title; min-width: 0; display: flex; align-items: center; gap: 10px; }
-.c3-room-company { grid-area: company; justify-self: center; }
-.c3-room-name > svg { color: var(--muted); flex: none; }
-.c3-room-name .c3-room-title { flex: 1; min-width: 0; }
-.c3-room-name h2 { min-width: 0; font-size: 21px; letter-spacing: -.03em; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.c3-room-actions, .c3-room-tools { display: flex; align-items: center; gap: 10px; }
-.c3-room-actions { grid-area: actions; }
-.c3-room-tools { grid-area: tools; gap: 6px; }
-.c3-people-trigger { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 2px 5px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; }
-.c3-people-trigger:hover { background: var(--control-hover); color: var(--ink); }
-.c3-avatar-stack { display: inline-flex; align-items: center; }
-.c3-avatar-stack > svg { width: 22px; height: 30px; }
-.c3-avatar-stack > svg + svg { margin-inline-start: -6px; }
-.c3-join-voice { display: inline-flex; align-items: center; gap: 2px; }
-.c3-join-voice > .lr-comic-tip-wrap:last-of-type > button { width: 28px; }
+.c3-voice-entry { display: flex; align-items: center; gap: 8px; padding: 12px; }
+.c3-voice-entry:empty { display: none; }
+.c3-voice-entry > div { flex: 1; min-width: 0; }
+.c3-voice-entry small { display: block; font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+.c3-voice-entry strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.c3-voice-entry > .lr-comic-tip-wrap { flex: none; }
+.c3-main { grid-column: 3; grid-row: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; container: channel-room / size; }
+.c3-room-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; flex: none; min-height: var(--c3-heading-height); padding: 12px 20px; border-bottom: 1px solid var(--line); }
+.c3-room-name { min-width: 0; display: flex; align-items: center; gap: 10px; flex: 1 1 16ch; }
+.c3-room-name .c3-room-title { min-width: 0; }
+.c3-room-name h2 { min-width: 0; font-size: 19px; letter-spacing: -.02em; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c3-room-name > .c3-room-invitation-entry { border-inline-start: 1px solid var(--line); padding-inline-start: 8px; }
+.c3-room-actions, .c3-room-tools { display: flex; align-items: center; gap: 6px; flex: none; }
+.c3-room-tools .lr-cap:where(:not([popover] .lr-cap)) { display: none; }
+.c3-room-tools { margin-inline-start: auto; }
+#c3-companion-trigger > .lr-glyph { transform: scaleX(-1); }
+.c3-room-heading .c3-share-actions > .c3-share-control:nth-child(2) .lr-cap { display: none; }
 .c3-voice-joined { display: inline-flex; align-items: center; gap: 7px; padding: 8px 4px; color: var(--live); font-size: 13px; font-weight: 650; white-space: nowrap; }
-.c3-join-options { padding: 8px; }
 .c3-input { min-width: 0; width: 100%; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; font: inherit; font-size: 13px; }
 .c3-input:focus { outline: 2px solid var(--action); outline-offset: 2px; }
 .c3-copy-fallback { display: grid; gap: 8px; font-size: 12px; color: var(--muted); }
-.c3-workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
-.c3-workspace:not(.has-screens):has(> .c3-monitor) { grid-template-rows: auto minmax(0, 1fr); }
+/* Stable content slots also move into the room tool without recreating players. */
+.c3-main-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.c3-workspace { display: contents; }
+.c3-workspace > .c3-monitor, .c3-workspace :is(.c3-conversation, .c3-locked-room) { grid-column: 1; grid-row: 1; min-height: 0; }
+.c3-chat-panel { grid-column: 4; grid-row: 1 / 3; display: flex; min-width: 0; min-height: 0; border-inline-start: 1px solid var(--line); }
+.c3-chat-panel .c3-conversation { flex: 1; min-width: 0; min-height: 0; padding: 0 0 16px; }
+.c3-chat-panel .c3-chat-heading { flex: none; min-height: var(--c3-heading-height); padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.c3-chat-panel .c3-conversation > :not(.c3-chat-heading) { margin-inline: 16px; }
+.c3-shell:not([data-companion="chat"]) > .c3-chat-panel { display: none; }
+.c3-workspace.has-screens > .c3-monitor { container: channel-stage / size; background: var(--wall); }
+.c3-main-body:has(> .c3-workspace:not(.has-screens) > .c3-monitor) { grid-template-rows: auto minmax(0, 1fr); }
 .c3-workspace:not(.has-screens) > .c3-monitor { max-height: 180px; border-bottom: 1px solid var(--line); }
-.c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr) var(--c3-companion-width); grid-template-rows: minmax(0, 1fr); }
-.c3-workspace.has-screens .c3-conversation { min-height: 0; }
-.c3-workspace.has-screens .c3-message-log { min-height: 0; }
-.c3-workspace.has-screens > .c3-monitor { container: channel-stage / size; min-height: calc(var(--control-size) + 2 * var(--stage-padding)); background: var(--wall); border-inline-end: 1px solid var(--line); }
-.c3-workspace.has-screens.chat-collapsed { grid-template-columns: minmax(0, 1fr); }
-.c3-voice-dock { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 14px 24px; border-top: 1px solid var(--line); }
+.c3-workspace:not(.has-screens):has(> .c3-monitor) :is(.c3-conversation, .c3-locked-room) { grid-row: 2; }
+.c3-room-presence { grid-column: 3; grid-row: 2; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 560px) minmax(0, 1fr); align-items: center; gap: 12px; padding: 8px 20px; border-top: 1px solid var(--line); }
+.c3-room-presence[data-empty] { display: none; }
+.c3-room-presence > span { min-width: 0; font-size: 11px; color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.c3-room-presence .c3-room-company { grid-column: 2; width: 100%; }
+.c3-room-presence > .lr-comic-tip-wrap { grid-column: 3; justify-self: end; }
+.c3-room-presence > .lr-comic-tip-wrap .lr-cap { display: none; }
+.c3-voice-dock { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px; border-top: 1px solid var(--line); }
 .c3-voice-dock > svg { color: var(--live); flex: none; }
 .c3-voice-destination { min-width: 0; flex: 1 1 8ch; }
 .c3-voice-destination small { display: block; color: var(--live); font-size: 11px; margin-bottom: 2px; white-space: nowrap; }
@@ -71,18 +87,25 @@
 .c3-voice-room > :is(button, select) { max-width: 100%; border: 0; padding: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px; font-weight: 650; text-align: start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .c3-voice-room > button:hover { text-decoration: underline; text-underline-offset: 3px; }
 .c3-voice-room > select { padding-inline-end: 5px; }
-.c3-voice-controls { display: inline-flex; flex-wrap: wrap; align-items: center; flex: none; max-width: 100%; gap: 6px; margin-inline-start: auto; }
+.c3-voice-controls { display: inline-flex; flex-wrap: wrap; align-items: center; flex: none; max-width: 100%; gap: 4px; margin-inline-start: auto; }
 .c3-voice-participants { display: flex; align-items: center; gap: 4px; margin-inline-end: 14px; }
 .c3-voice-participants svg { display: block; width: 26px; height: 34px; }
 .c3-voice-participants small { color: var(--muted); font-size: 11px; }
+.c3-personal :is(.c3-voice-participants, .c3-voice-dock > svg) { display: none; }
+.c3-personal .c3-voice-destination { flex-basis: 100%; display: flex; align-items: center; gap: 8px; }
+.c3-personal .c3-voice-destination small { margin: 0; }
+.c3-personal .c3-voice-dock { padding-block: 8px; }
+.c3-personal .c3-identity { padding-block: 8px; }
+.c3-personal .c3-identity > svg { width: 26px; height: 34px; }
+.c3-personal .c3-voice-controls { width: 100%; justify-content: space-between; }
 .c3-control-divider { align-self: stretch; width: 1px; background: var(--line); margin: 7px 3px; }
-.c3-notice { flex: none; margin: 12px 24px 0; padding: 10px 12px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 12px; font-size: 12px; line-height: 1.6; }
+.c3-notice { flex: none; margin: 12px 20px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 12px; font-size: 12px; line-height: 1.6; }
 .c3-notice-message { flex: 1; min-width: 0; }
 .c3-notice > svg { flex: none; }
 .c3-notice.is-error > svg { color: var(--danger); }
 .c3-app > .c3-notice { width: var(--c3-content-width); margin: 0 auto 12px; background: var(--paper); }
-.c3-people-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-inline: 12px; background: color-mix(in srgb, var(--wall) 60%, var(--paper)); border-inline-start: 1px solid var(--line); }
-.c3-people-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: none; min-height: 76px; }
+.c3-people-panel { grid-column: 4; grid-row: 1 / 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-inline: 12px; background: var(--wall); border-inline-start: 1px solid var(--line); }
+.c3-people-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: none; min-height: var(--c3-heading-height); border-bottom: 1px solid var(--line); }
 .c3-people-panel h2 { display: flex; align-items: baseline; gap: 8px; font-size: 14px; font-weight: 650; }
 .c3-people-panel h2 > span { color: var(--muted); font-size: 11px; font-weight: 400; }
 .c3-people-body { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 14px; overscroll-behavior: contain; scrollbar-width: thin; }
@@ -94,148 +117,56 @@
 .c3-person-copy { min-width: 0; flex: 1 1 12ch; }
 .c3-person-actions { display: flex; align-items: center; flex: none; gap: 4px; margin-inline-start: auto; }
 .c3-person-actions .lr-btn, .c3-identity .c3-name-editor .lr-btn { width: var(--button-size, var(--control-dense-size)); padding-inline: 0; }
-@media (any-pointer: coarse) {
-  .c3-person-actions .lr-btn, .c3-identity .c3-name-editor .lr-btn { --button-size: var(--control-compact-size); }
-}
 .c3-person strong { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
 .c3-person small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
 .c3-you { font-weight: 400; font-size: 11px; color: var(--muted); }
 .c3-user.is-offline .c3-person > svg { opacity: .5; }
 .c3-offline-users { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; }
 .c3-offline-users summary { color: var(--muted); cursor: pointer; font-size: 12px; padding: 6px 10px; }
-.c3-visual .c3-channel-caption { display: none; }
-@media (max-width: 1180px) {
-  .c3-app { --c3-content-width: calc(100% - 28px); }
-  .c3-shell { grid-template-columns: 54px 220px minmax(0, 1fr); }
-  .c3-shell[data-pane="people"] { grid-template-columns: 54px 220px minmax(0, 1fr) var(--c3-companion-width); }
-  .c3-room-heading { gap: 10px; padding: 16px 18px; }
-  .c3-room-actions { gap: 6px; }
+/* Collapsing navigation is a layout preference, not a change of activity. */
+.c3-shell[data-view="share"] > .c3-sidebar { display: none; }
+.c3-shell[data-view="share"] > .c3-main { grid-column: 2 / 4; }
+.c3-shell[data-view="share"] .c3-pane-navigation { display: inline-flex; }
+@media (any-pointer: coarse) {
+  .c3-person-actions .lr-btn, .c3-identity .c3-name-editor .lr-btn { --button-size: var(--control-compact-size); }
 }
-@container (min-width: 1000px) {
-  .c3-room-heading { display: flex; flex-wrap: wrap; padding-block: 8px; }
-  .c3-room-name { flex: 1 1 18ch; }
-  .c3-room-company { flex: 0 1 240px; }
-  .c3-room-actions { flex-wrap: wrap; }
-  .c3-room-tools { margin-inline-start: auto; flex-wrap: wrap; }
+@container channel-room (max-width: 900px) {
+  .c3-room-heading { gap: 8px; padding: 12px; }
 }
-@container (max-width: 900px) {
-  .c3-room-heading { grid-template-areas: "title title" "actions tools" "company company"; grid-template-columns: minmax(0, 1fr) auto; }
-  .c3-room-actions { flex-wrap: wrap; }
-  .c3-room-tools .lr-cap:where(:not([popover] .lr-cap)) { display: none; }
+@container channel-room (max-width: 599px) {
+  .c3-room-heading .c3-share-control:nth-child(1) .lr-cap { display: inline; }
 }
-@container (max-width: 600px) {
-  .c3-room-heading { display: flex; flex-wrap: wrap; }
-  .c3-room-name { flex: 1 0 100%; }
-  .c3-room-actions, .c3-room-tools { flex: none; max-width: 100%; }
-  .c3-room-tools { flex-wrap: wrap; margin-inline-start: auto; }
-  .c3-room-company { margin-inline: auto; }
-  /* The live voice dock already names the joined room and keeps its controls. */
-  .c3-main:has(.c3-voice-dock) .c3-room-actions .c3-voice-joined { display: none; }
-  .c3-room-heading .lr-cap:where(:not([popover] .lr-cap)) { display: none; }
-  .c3-room-heading .c3-app-confirmation .lr-cap { display: inline; }
+@container channel-room (max-height: 680px) {
+  .c3-workspace.has-screens .c3-monitor { --stage-padding: 10px; gap: 8px; }
+  .c3-workspace .c3-conversation { padding: 8px 12px; gap: 8px; }
 }
-@container (width < 600px) {
-  .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-  .c3-workspace.has-screens > * { grid-area: 1 / 1; }
-  .c3-workspace.has-screens :is(.c3-conversation, .c3-locked-room) { grid-area: 1 / 1; }
-  .c3-workspace.has-screens:not(.chat-collapsed) > .c3-monitor { visibility: hidden; }
-  .c3-workspace.has-screens > .c3-room-slot { min-height: 0; }
-  .c3-workspace.has-screens > .c3-monitor { border-inline-end: 0; border-bottom: 1px solid var(--line); overflow-y: auto; }
-  .c3-workspace.has-screens .c3-conversation { padding: 12px 18px; gap: 10px; }
+@media (max-width: 1100px) {
+  .c3-app { --c3-content-width: calc(100% - 24px); }
 }
-@media (max-width: 980px) {
-  .c3-shell, .c3-shell[data-pane="people"] { grid-template-columns: 54px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-  .c3-shell > .c3-domain-rail { grid-column: 1; grid-row: 1; border-inline-end: 1px solid var(--line); }
-  .c3-shell > :is(.c3-sidebar, .c3-main, .c3-people-panel) { grid-column: 2; grid-row: 1; }
-  .c3-shell[data-pane="room"] > :is(.c3-sidebar, .c3-people-panel),
-  .c3-shell[data-pane="rooms"] > .c3-people-panel,
-  .c3-shell[data-pane="people"] > .c3-sidebar { display: none; }
-  /* Keep the room's scroll geometry and media bindings while another pane is visible. */
-  .c3-shell:is([data-pane="rooms"], [data-pane="people"]) > .c3-main { visibility: hidden; }
-  .c3-pane-back, .c3-pane-navigation, .c3-room-tools > .c3-pane-navigation { display: inline-flex; flex: none; }
-  .c3-sidebar { border-inline-end: 0; padding: 24px 18px 18px; }
-  .c3-people-panel { border-inline-start: 0; padding-inline: 18px; }
-  .c3-people-panel > header { min-height: 72px; }
+.c3-shell[data-sidebars="overlay"] {
+  grid-template-columns: 50px 230px minmax(0, 1fr);
+  & > :is(.c3-sidebar, .c3-main, .c3-people-panel, .c3-chat-panel) { grid-column: 2 / 4; grid-row: 1; }
+  &[data-pane="room"] > :is(.c3-sidebar, .c3-people-panel), &[data-pane="rooms"] > .c3-people-panel, &[data-pane="people"] > .c3-sidebar { display: none; }
+  &[data-pane="rooms"] > .c3-sidebar, &[data-pane="people"] > .c3-people-panel, &[data-pane="chat"] > .c3-chat-panel { display: flex; }
+  &:is([data-pane="rooms"], [data-pane="people"], [data-pane="chat"]) > .c3-main { visibility: hidden; }
+  .c3-pane-back, .c3-pane-navigation { display: inline-flex; flex: none; }
+  .c3-sidebar, .c3-people-panel, .c3-chat-panel { border-inline: 0; }
 }
 @media (max-width: 700px) {
   .c3-app { --c3-content-width: calc(100% - 16px); }
-  .c3-app > .lr-top { padding-block: 10px; }
-  .c3-shell { grid-template-columns: 52px minmax(0, 1fr); margin-bottom: 8px; border-radius: 18px; }
-  .c3-shell > .c3-domain-rail { border-radius: 18px 0 0 18px; padding-block: 16px; }
-  .c3-shell > .c3-domain-rail .c3-domain-icon.lr-btn { --button-size: 40px; width: 40px; border-radius: 14px; }
-  .c3-sidebar { gap: 18px; padding: 20px 12px 14px; }
-  .c3-channel-title { padding-inline: 6px; }
-  .c3-channel-title h1 { font-size: 19px; }
-  .c3-people-panel { padding-inline: 12px; }
-  .c3-room-heading { padding: 12px 12px 4px; gap: 8px 6px; }
-  .c3-room-name { min-width: 0; }
-  .c3-room-name h2 { font-size: 16px; }
-  .c3-room-name > svg { display: none; }
-  .c3-room-actions { gap: 6px; }
-  .c3-avatar-stack > svg + svg { display: none; }
-  .c3-people-trigger > svg { display: none; }
-  .c3-workspace:not(.has-screens) > .c3-monitor { max-height: 140px; overflow-y: auto; }
-  .c3-voice-dock { padding: 10px 14px; gap: 8px; }
-  .c3-voice-controls { gap: 2px; }
-  .c3-voice-participants { display: none; }
-  .c3-voice-dock > svg { display: none; }
-  .c3-notice { margin: 10px 12px 0; }
-}
-@media (max-width: 480px) {
-  .c3-shell[data-pane="room"] { grid-template-columns: minmax(0, 1fr); }
-  .c3-shell[data-pane="room"] > .c3-domain-rail { display: none; }
-  .c3-shell[data-pane="room"] > .c3-main { grid-column: 1; }
-}
-@container channel-room (max-width: 360px) {
-  .c3-room-heading { padding-inline: 8px; column-gap: 4px; }
-  .c3-room-actions, .c3-room-tools { gap: 4px; }
-}
-@container channel-room (max-height: 680px) {
-  .c3-main:has(.c3-voice-dock) .c3-room-actions .c3-voice-joined { display: none; }
-  .c3-workspace.has-screens .c3-monitor { --stage-padding: 10px; gap: 8px; }
-  .c3-workspace.has-screens .c3-conversation { padding: 8px 12px; gap: 8px; }
-}
-@container channel-room (min-width: 600px) and (max-height: 680px) {
-  .c3-room-heading { display: flex; flex-wrap: wrap; padding: 8px 12px; }
-  .c3-room-name { flex: 1 1 14rem; }
-  .c3-room-actions, .c3-room-tools { flex-wrap: wrap; }
-  .c3-room-tools { margin-inline-start: auto; }
-  .c3-room-company { flex: 1 0 100%; max-width: none; }
-}
-@container channel-room (max-height: 420px) {
-  .c3-workspace.has-screens .c3-monitor { padding-block: 0; }
-  .c3-room-heading { display: flex; flex-wrap: wrap; padding-block: 6px; gap: 6px 10px; }
-  .c3-room-name { flex-basis: 100%; }
-  .c3-room-tools { flex-wrap: wrap; margin-inline-start: auto; }
-  .c3-room-heading > :is(.c3-room-actions, .c3-room-tools) { max-width: 100%; }
-  /* The existing room tool carries these same people and reaction controls. */
-  .c3-room-heading > .c3-room-slot { display: none; }
-  .c3-room-heading .lr-cap:where(:not([popover] .lr-cap)) { display: none; }
-  .c3-room-heading .c3-app-confirmation .lr-cap { display: inline; }
-  .c3-main > .c3-workspace .c3-conversation { padding: 6px 12px; gap: 6px; }
-  .c3-main > .c3-workspace .c3-composer textarea { max-height: var(--control-compact-size); }
-  .c3-voice-dock { padding-block: 4px; }
-  .c3-voice-participants { display: none; }
-  @container (min-width: 600px) {
-    .c3-room-name { flex-basis: 14rem; }
-  }
-}
-
-/* One room and its live players; the presentation only folds navigation away. */
-.c3-view-toggle { display: inline-flex; flex: none; }
-.c3-shell[data-view="share"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-.c3-shell[data-view="share"] > :is(.c3-domain-rail, .c3-sidebar, .c3-people-panel) { display: none; }
-.c3-shell[data-view="share"] > .c3-main { grid-column: 1; grid-row: 1; }
-.c3-shell[data-view="share"] :is(.c3-pane-navigation, .c3-pane-back),
-.c3-shell[data-view="share"] .c3-room-tools > .c3-pane-navigation { display: inline-flex; }
-.c3-shell[data-view="share"][data-pane="rooms"] { grid-template-columns: 54px minmax(0, 1fr); }
-.c3-shell[data-view="share"][data-pane="rooms"] > .c3-domain-rail { display: flex; grid-column: 1; grid-row: 1; }
-.c3-shell[data-view="share"][data-pane="rooms"] > .c3-sidebar { display: flex; grid-column: 2; grid-row: 1; border-inline-end: 0; }
-.c3-shell[data-view="share"][data-pane="rooms"] > .c3-main { grid-column: 2; }
-.c3-shell[data-view="share"][data-pane="people"] > .c3-people-panel { display: flex; grid-column: 1; grid-row: 1; border-inline-start: 0; }
-.c3-shell[data-view="share"]:is([data-pane="rooms"], [data-pane="people"]) > .c3-main { visibility: hidden; }
-@media (max-height: 500px) {
-  .c3-sidebar { padding-block: 10px; gap: 8px; }
-  .c3-sidebar-browse { gap: 8px; }
-  .c3-identity { padding-top: 8px; }
+  .c3-shell[data-sidebars="overlay"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto; margin-bottom: 8px; border-radius: 18px; }
+  .c3-shell > .c3-domain-rail { display: none; }
+  .c3-shell[data-sidebars="overlay"] > :is(.c3-sidebar, .c3-main, .c3-people-panel, .c3-personal, .c3-chat-panel, .c3-room-presence) { grid-column: 1; }
+  .c3-shell > .c3-personal { grid-row: 3; }
+  .c3-room-presence { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 4px 12px 8px; }
+  .c3-room-presence > span { display: none; }
+  .c3-room-presence .c3-room-company { grid-column: 1; }
+  .c3-room-presence > .lr-comic-tip-wrap { grid-column: 2; }
+  .c3-personal .c3-identity { display: none; }
+  .c3-shell[data-pane="rooms"] .c3-personal .c3-identity { display: flex; }
+  .c3-room-name h2 { font-size: 17px; }
+  .c3-room-heading .c3-share-control:nth-child(1) .lr-cap { display: inline; }
+  .c3-voice-dock { padding: 10px 12px; }
+  .c3-voice-participants, .c3-voice-dock > svg { display: none; }
+  .c3-notice { margin: 8px 12px; }
 }

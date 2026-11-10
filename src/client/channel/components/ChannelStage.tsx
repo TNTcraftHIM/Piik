@@ -20,6 +20,8 @@ import { Tooltip } from "../../components/living/Tooltip";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { ChannelUser } from "./ChannelUser";
 import type { ScreenAudiencePerson } from "../presentation";
+import type { MessageReactions } from "../protocol";
+import { ChannelContentReactions } from "./ChannelContentReactions";
 
 export interface ChannelStageSource {
   id: string;
@@ -31,6 +33,7 @@ export interface ChannelStageSource {
   subscribed: boolean;
   paused: boolean;
   audience: readonly ScreenAudiencePerson[];
+  reactions?: MessageReactions;
   deliveryFailed?: boolean;
   stream?: MediaStream;
   sourceAudio?: SourceAudioControl;
@@ -208,6 +211,8 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
                 </small></Tooltip>
               </div>
               <div className="c3-monitor-tile-actions">
+                <ChannelContentReactions reactions={source.reactions} session={source.interaction ?? null}
+                  target={{ publicationId: source.id }} disabled={source.available === false} compact />
                 <SourceAudience people={source.audience} />
                 {source.owned && source.shareControls}
                 {source.owned && source.remoteControl && <SourceControl source={{ ...source, remoteControl: source.remoteControl }}

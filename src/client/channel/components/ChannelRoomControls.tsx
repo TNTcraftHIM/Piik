@@ -4,10 +4,9 @@ import { Btn, Cap, SwitchItem } from "../../components/living/primitives";
 import { NumberControl } from "../../components/living/NumberControl";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
-import { useClipboardResult } from "../../ui/use-clipboard-result";
 import { downloadBlob } from "../../lib/download";
 import { formatChatTranscript } from "../../lib/room-chat-export";
-import type { ChannelMessage, ChannelUser, ChannelRoom, RoomInvitationState, RoomSettings } from "../protocol";
+import type { ChannelMessage, ChannelUser, ChannelRoom, RoomSettings } from "../protocol";
 import { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../protocol";
 import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelAction";
@@ -15,7 +14,6 @@ import { ChannelSettingsDialog, ChannelSettingsTabs, useSettingsAction, type Set
 import { ChannelIdentityFields } from "./ChannelIdentity";
 import "./channel-room-controls.css";
 import { BackupControls } from "./BackupControls";
-import { ChannelInviteQrCode } from "./ChannelInviteQrCode";
 
 export function RoomChatExport({ messages, users }: { messages: readonly ChannelMessage[]; users: readonly ChannelUser[] }) {
   const { lang, vis } = useCopy(), zh = lang === "zh";
@@ -166,7 +164,7 @@ export function ChannelRoomSettingsDialog({ channel, room, onClose }: {
 }) {
   return <RoomSettings key={room.id} channel={channel} room={room} onClose={onClose} />;
 }
-type RoomSettingsTask = "room" | "invitation" | "relay" | "data";
+type RoomSettingsTask = "room" | "relay" | "data";
 
 function RoomSettings({ channel, room, onClose }: {
   channel: ChannelController; room: ChannelRoom; onClose(): void;
@@ -175,22 +173,8 @@ function RoomSettings({ channel, room, onClose }: {
   const id = useId();
   const { error, run } = useSettingsAction();
   const [draft, setDraft] = useState<RoomDraft | null>(null);
-  const [task, setTask] = useState<RoomSettingsTask>(room.canManage ? "room" : "invitation");
-  const [invitation, setInvitation] = useState<RoomInvitationState | { state: "loading" | "failed" }>({ state: "loading" });
-  const [inviteRetry, setInviteRetry] = useState(0);
-  const invite = invitation.state === "available" ? invitation.url : "";
-  const invitationCopy = useClipboardResult(invite);
+  const [task, setTask] = useState<RoomSettingsTask>(room.canManage ? "room" : "relay");
   const [backupAvailable, setBackupAvailable] = useState(false);
-  const { getRoomInvite } = channel;
-  useEffect(() => {
-    let current = true;
-    setInvitation({ state: "loading" });
-    if (room.canManage && room.access === "private" && room.available && channel.connection === "connected") {
-      void getRoomInvite(room.id).then(value => { if (current) setInvitation(value); },
-        () => { if (current) setInvitation({ state: "failed" }); });
-    }
-    return () => { current = false; };
-  }, [room.id, room.access, room.canManage, room.available, room.delivery?.bindingId, channel.connection, getRoomInvite, inviteRetry]);
   useEffect(() => {
     let current = true; setBackupAvailable(false);
     if (room.canManage) void channel.roomBackupAvailable(room.id).then(value => { if (current) setBackupAvailable(value); });
@@ -205,48 +189,19 @@ function RoomSettings({ channel, room, onClose }: {
   const members = room.members?.filter(userId => userId !== room.creatorId && userId !== channel.state?.channel.ownerId) ?? [];
   const tasks = [
     ...(room.canManage ? [{ value: "room", label: zh ? "房间" : "Room", icon: "couch", hint: "hint-advanced" } as const] : []),
-    { value: "invitation", label: zh ? "邀请" : "Invitation", icon: "link", hint: "hint-copy-invite" } as const,
     ...(room.authorized ? [{ value: "relay", label: zh ? "连接设置" : "Connection settings", icon: "branch", hint: "hint-relay-volunteer" } as const] : []),
     ...(room.authorized || room.canManage ? [{ value: "data", label: zh ? "记录与备份" : "Records and backups", icon: "save", hint: "hint-chat-export" } as const] : []),
   ];
-  const selected = tasks.some(value => value.value === task) ? task : "invitation";
-  const generateInvitation = <ChannelAction icon="link" label={zh ? "生成新邀请" : "Generate new invitation"}
-    busy={channel.pending.has(`invite:${room.id}`)} disabled={!available || working || invitation.state === "loading"} hint="hint-rotate-invite"
-    onClick={() => { void run(() => channel.createRoomInvite(room.id, false), url => setInvitation({ state: "available", url })); }} />;
+  const selected = tasks.some(value => value.value === task) ? task : tasks[0]?.value;
   return <ChannelSettingsDialog title={room.name} caption={zh ? "房间设置" : "Room settings"} error={error} onClose={onClose}>
     <div className="c3-settings-body">
-      <ChannelSettingsTabs<RoomSettingsTask> id={id} label={zh ? "房间设置" : "Room settings"} tasks={tasks} selected={selected} onSelect={setTask} />
+      <ChannelSettingsTabs<RoomSettingsTask> id={id} label={zh ? "房间设置" : "Room settings"} tasks={tasks} selected={selected ?? "room"} onSelect={setTask} />
       <div className="c3-settings-panels">
         {!room.available && <p className="c3-settings-offline">{room.canManage ? (zh ? "房间当前未托管，可以从域中移除。" : "This room is offline. You can remove it from the domain.")
           : (zh ? "房间当前未托管，恢复后可调整转发设置。" : "The room is offline. Forwarding settings will be available when hosting resumes.")}</p>}
         {room.canManage && <section id={`${id}-room`} role="tabpanel" aria-labelledby={`${id}-room-tab`} hidden={selected !== "room"}>
           <RoomForm room={room} value={draft ?? roomDraft(room)} onChange={fields => setDraft(previous => ({ ...(previous ?? roomDraft(room)), ...fields }))} appHosted={channel.appConnected} disabled={!available || working} busy={busy}
             onCancel={onClose} onSave={settings => run(() => channel.updateRoom(room.id, settings, false), onClose)} />
-        </section>}
-        <section id={`${id}-invitation`} role="tabpanel" aria-labelledby={`${id}-invitation-tab`} hidden={selected !== "invitation"}>
-          <h3>{zh ? "邀请与访问" : "Invitation and access"}</h3>
-          <p>{room.access === "public" ? (zh ? "公开房间，域内用户都可进入。" : "Public room. Anyone in this domain can enter.")
-            : room.hasPassword ? (zh ? "私密房间，凭邀请或密码进入。" : "Private room. Enter with an invitation or password.")
-              : (zh ? "私密房间，凭邀请进入。" : "Private room. Enter with an invitation.")}
-            {room.hidden && (zh ? " 对未获准的用户隐藏。" : " Hidden from users without access.")}</p>
-          {room.access === "public" && <p>{zh ? "在房间列表复制域地址或域邀请，并告诉朋友房间名称。" : "Copy the domain address or invitation from the room list and tell friends this room's name."}</p>}
-        {room.canManage && room.access === "private" && <section className="c3-room-invitation">
-          {available && invitation.state === "loading" && <p role="status">{zh ? "正在读取邀请…" : "Loading invitation…"}</p>}
-          {invitation.state === "failed" && <><p role="status">{zh ? "未能读取邀请，请重试。" : "Could not load the invitation. Try again."}</p>
-            <ChannelAction icon="refresh" quiet label={zh ? "重试" : "Retry"} onClick={() => setInviteRetry(value => value + 1)} /></>}
-          {invitation.state === "missing" && generateInvitation}
-          {invitation.state === "unrecoverable" && <p>{zh ? "旧邀请仍有效，但无法取回链接。需要新链接时，请主动生成新邀请。" : "The old invitation still works, but its link cannot be recovered. Generate a new invitation when you need a new link."}</p>}
-          {invite && <div className="c3-invite-copy"><input className="c3-input" value={invite} readOnly
-            aria-label={zh ? "房间邀请链接" : "Room invitation link"} onFocus={event => event.currentTarget.select()} />
-            <ChannelAction icon={invitationCopy.status === "copied" ? "check" : "copy"} iconOnly label={invitationCopy.status === "copied" ? (zh ? "已复制" : "Copied") : (zh ? "复制邀请" : "Copy invitation")}
-              hint="hint-copy-invite" onClick={invitationCopy.copy} />
-            <ChannelInviteQrCode url={invite} disabled={!available || working}
-              label={zh ? "房间邀请二维码" : "Room invitation QR code"} /></div>}
-          {(invitation.state === "available" || invitation.state === "unrecoverable") && <details className="c3-settings-details">
-            <summary>{zh ? "重置房间邀请" : "Reset room invitation"}</summary>
-            <p>{zh ? "生成新邀请会使旧链接失效，已获准的用户保留访问。" : "A new invitation invalidates old links. Existing users keep access."}</p>
-            {generateInvitation}
-          </details>}
           {members.length > 0 && <details className="c3-room-members">
             <summary>{zh ? "已获准的用户" : "Users with access"}</summary>
             {members.map(userId =>
@@ -256,7 +211,6 @@ function RoomSettings({ channel, room, onClose }: {
                   onClick={() => { void run(() => channel.revokeRoomAccess(room.id, userId, false)); }} /></div>)}
           </details>}
         </section>}
-        </section>
         {room.authorized && <section id={`${id}-relay`} role="tabpanel" aria-labelledby={`${id}-relay-tab`} hidden={selected !== "relay"}>
           <h3>{zh ? "连接设置" : "Connection settings"}</h3>
           <PersonalRelay channel={channel} room={room} disabled={!available || working} run={run} />

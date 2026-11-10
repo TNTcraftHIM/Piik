@@ -14,7 +14,7 @@ import { ChannelInviteQrCode } from "./ChannelInviteQrCode";
 import "./channel-name-editor.css";
 import "./channel-room-controls.css";
 
-export function ChannelDomainControls({ channel, triggerSlot }: { channel: ChannelController; triggerSlot: HTMLElement | null }) {
+export function ChannelDomainControls({ channel, triggerSlot, onOpen }: { channel: ChannelController; triggerSlot: HTMLElement | null; onOpen?(): void }) {
   const { lang, vis } = useCopy();
   const zh = lang === "zh";
   const current = channel.state?.channel ?? null;
@@ -52,7 +52,7 @@ export function ChannelDomainControls({ channel, triggerSlot }: { channel: Chann
     {owner && triggerSlot && createPortal(<span className="c3-edit-action"><Tooltip kind="hint-advanced" disabled={open} text={vis ? undefined : title}>
       <button type="button" className="lr-btn is-dense is-quiet" aria-label={title}
         aria-expanded={open} aria-haspopup="dialog" disabled={disabled}
-        onClick={() => { resetDraft(current); setTask("domain"); setOpen(true); }}><Glyph name="pencil" size={18} /></button>
+        onClick={() => { onOpen?.(); resetDraft(current); setTask("domain"); setOpen(true); }}><Glyph name="sliders" size={18} />{!vis && <span className="lr-cap">{title}</span>}</button>
     </Tooltip></span>, triggerSlot)}
     {open && <ChannelSettingsDialog title={current?.name ?? title} caption={current ? title : undefined} error={error} onClose={close}>
       <div className="c3-settings-body">

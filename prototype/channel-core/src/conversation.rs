@@ -2,7 +2,7 @@
 use crate::{
     attachment::AttachmentDescriptor,
     file_delivery::FileControl,
-    history::{HistoryRequest, HistoryResult, MessageReactionSnapshot},
+    history::{HistoryRequest, HistoryResult, MessageReactionSnapshot, MessageReactions},
     wire::ChatMessage,
 };
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
@@ -171,15 +171,11 @@ impl ConversationAddress {
     deny_unknown_fields
 )]
 pub enum ConversationCommand {
-    SetReaction {
-        message_seq: u64,
-        reaction: String,
-        active: bool,
-    },
     InteractionReady,
-    Interaction {
+    React {
+        nonce: u64,
+        target: ReactionTarget,
         reaction: String,
-        target_user_id: Option<Uuid>,
     },
     Chat {
         text: String,
@@ -189,6 +185,44 @@ pub enum ConversationCommand {
     History {
         before: Option<u64>,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum ReactionTarget {
+    Message { message_seq: u64 },
+    Publication { publication_id: Uuid },
+    Person { user_id: Uuid },
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReactionEvent {
+    pub id: Uuid,
+    pub occurred_at: u64,
+    pub sender_user_id: Uuid,
+    pub target: ReactionTarget,
+    pub reaction: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicationReactions {
+    pub publication_id: Uuid,
+    #[serde(flatten)]
+    pub reactions: MessageReactions,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ReactionSnapshot {
+    Message(MessageReactionSnapshot),
+    Publication(PublicationReactions),
 }
 #[derive(Clone, Deserialize, Serialize)]
 pub struct ConversationRequest {
@@ -204,9 +238,10 @@ pub struct ConversationRequest {
     deny_unknown_fields
 )]
 pub enum ConversationRecord {
-    ReactionConfirmed {
-        snapshot: MessageReactionSnapshot,
-        changed: bool,
+    Reaction {
+        nonce: u64,
+        event: Option<ReactionEvent>,
+        snapshot: Option<ReactionSnapshot>,
     },
     MessageReactions {
         snapshot: MessageReactionSnapshot,
@@ -214,14 +249,7 @@ pub enum ConversationRecord {
     InteractionReady {
         server_time: u64,
         reaction_ids: Vec<String>,
-    },
-    Interaction {
-        id: Uuid,
-        occurred_at: u64,
-        sender_user_id: Uuid,
-        reaction: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        target_user_id: Option<Uuid>,
+        publication_reactions: Vec<PublicationReactions>,
     },
     Confirmed {
         message: ChatMessage,
@@ -255,13 +283,7 @@ impl ConversationRecord {
             } => Some(Self::LiveMessage {
                 message: message.clone(),
             }),
-            Self::ReactionConfirmed {
-                snapshot,
-                changed: true,
-            } => Some(Self::MessageReactions {
-                snapshot: snapshot.clone(),
-            }),
-            Self::Interaction { .. } => Some(self.clone()),
+            Self::Reaction { event: Some(_), .. } => Some(self.clone()),
             _ => None,
         }
     }
@@ -336,9 +358,10 @@ impl ConversationAddress {
                 ]
             }
             Ok(ConversationResult::History(HistoryResult::Reacted(confirmation))) => {
-                vec![ConversationRecord::ReactionConfirmed {
-                    snapshot: confirmation.snapshot,
-                    changed: confirmation.changed,
+                vec![ConversationRecord::Reaction {
+                    nonce: confirmation.nonce,
+                    snapshot: Some(ReactionSnapshot::Message(confirmation.snapshot)),
+                    event: confirmation.event,
                 }]
             }
             Ok(ConversationResult::History(HistoryResult::Page {
@@ -457,19 +480,11 @@ mod tests {
             .prepare_confirmation(crate::history::ConfirmationInput::New { last_seq: 0 })
             .unwrap()
             .message;
-        message.reactions.choices = (0..64)
-            .map(|_| {
-                (
-                    Uuid::new_v4(),
-                    INTERACTION_REACTIONS
-                        .iter()
-                        .filter(|reaction| crate::history::valid_message_reaction(reaction))
-                        .map(|reaction| (*reaction).to_owned())
-                        .collect(),
-                )
-            })
+        message.reactions.counts = INTERACTION_REACTIONS
+            .iter()
+            .map(|reaction| ((*reaction).to_owned(), u64::MAX))
             .collect();
-        message.reactions.revision = 64 * 14;
+        message.reactions.revision = u64::MAX;
         let messages = (0..crate::history::HISTORY_PAGE)
             .map(|index| {
                 let mut message = message.clone();
@@ -646,35 +661,42 @@ mod room_tests {
             .unwrap()
             .iter()
             .all(|reply| reply.record.broadcast().is_none()));
-        for (active, changed) in [(true, true), (true, false), (false, true), (false, false)] {
+        for (nonce, now, changed) in [
+            (1, 1000, true),
+            (1, 1001, false),
+            (2, 1800, true),
+            (1, 1801, false),
+        ] {
             let request = ConversationRequest {
                 address: address.clone(),
-                command: ConversationCommand::SetReaction {
-                    message_seq: 1,
+                command: ConversationCommand::React {
+                    nonce,
+                    target: ReactionTarget::Message { message_seq: 1 },
                     reaction: "heart".into(),
-                    active,
                 },
             };
             let packet = sender_key.sign(sender, &request).unwrap();
-            let replies = host.dispatch_peer(&packet, 21).unwrap().replies().unwrap();
+            let replies = host.dispatch_peer(&packet, now).unwrap().replies().unwrap();
             assert!(matches!(&replies[0].record,
-                ConversationRecord::ReactionConfirmed { changed: actual, .. } if *actual == changed));
+                ConversationRecord::Reaction { event, .. } if event.is_some() == changed));
             assert_eq!(replies[0].record.broadcast().is_some(), changed);
-            if let Some(ConversationRecord::MessageReactions { snapshot }) =
-                replies[0].record.broadcast()
+            if let Some(ConversationRecord::Reaction {
+                snapshot: Some(ReactionSnapshot::Message(snapshot)),
+                ..
+            }) = replies[0].record.broadcast()
             {
                 assert_eq!(snapshot.message_seq, 1);
-                assert_eq!(
-                    snapshot.reactions.choices.contains_key(&actor.user_id),
-                    active
-                );
+                assert_eq!(snapshot.reactions.counts["heart"], nonce);
             }
         }
         for command in [
             ConversationCommand::InteractionReady,
-            ConversationCommand::Interaction {
+            ConversationCommand::React {
+                nonce: 3,
                 reaction: "wave".into(),
-                target_user_id: None,
+                target: ReactionTarget::Person {
+                    user_id: actor.user_id,
+                },
             },
             ConversationCommand::History { before: None },
         ] {
@@ -683,10 +705,14 @@ mod room_tests {
                 command,
             };
             let packet = sender_key.sign(sender, &request).unwrap();
-            let replies = host.dispatch_peer(&packet, 22).unwrap().replies().unwrap();
+            let replies = host
+                .dispatch_peer(&packet, 2600)
+                .unwrap()
+                .replies()
+                .unwrap();
             for reply in replies {
                 let broadcast = reply.record.broadcast();
-                if matches!(reply.record, ConversationRecord::Interaction { .. }) {
+                if matches!(reply.record, ConversationRecord::Reaction { .. }) {
                     assert_eq!(
                         serde_json::to_value(broadcast.unwrap()).unwrap(),
                         serde_json::to_value(reply.record).unwrap()

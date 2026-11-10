@@ -3,7 +3,7 @@
 use piik_channel_core::{
     conversation::{
         ConversationAddress, ConversationCommand, ConversationRequest, ConversationResult,
-        SessionSigner,
+        ReactionTarget, SessionSigner,
     },
     history::HistoryResult,
     host::{HostAction, HostInput, HostOutput, RequestContext, RoomResult},
@@ -76,6 +76,10 @@ fn peer(
 ) -> Result<HistoryResult, &'static str> {
     host.dispatch(input(owner, actor, |_| HostAction::Sync))
         .unwrap();
+    let now = match &command {
+        ConversationCommand::React { nonce, .. } => nonce * 800,
+        _ => 1,
+    };
     let request = ConversationRequest {
         address: ConversationAddress {
             room_id: host.policy().id.clone(),
@@ -90,7 +94,7 @@ fn peer(
         &SessionSigner::from_seed([1; 32])
             .sign(actor, &request)
             .unwrap(),
-        1,
+        now,
     )
     .unwrap()
     .result
@@ -235,10 +239,10 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         &mut host,
         owner,
         owner,
-        ConversationCommand::SetReaction {
-            message_seq: 1,
+        ConversationCommand::React {
+            nonce: 1,
+            target: ReactionTarget::Message { message_seq: 1 },
             reaction: "wave".into(),
-            active: true,
         },
     )
     .unwrap();
@@ -357,106 +361,103 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
 }
 
 #[test]
-fn message_reactions_commit_explicit_user_choices_and_recover_with_the_original_message() {
+fn message_reaction_counts_commit_once_and_recover_without_replaying_effects() {
     let path =
         std::env::temp_dir().join(format!("piik-message-reactions-{}.sqlite", Uuid::new_v4()));
     let owner = Uuid::new_v4();
     let viewer = Uuid::new_v4();
+    let author = Uuid::new_v4();
     let mut host =
         StoredRoomHost::create(&path, policy("reactions", owner, RoomAccess::Private)).unwrap();
+    host.dispatch(input(owner, author, |context| HostAction::GrantInvited {
+        context,
+    }))
+    .unwrap();
     let original = sent(peer(
         &mut host,
         owner,
-        owner,
+        author,
         ConversationCommand::Chat {
             text: "Retained".into(),
             nonce: "original".into(),
             attachments: vec![],
         },
     ));
-    let reaction = |reaction: &str, active| ConversationCommand::SetReaction {
-        message_seq: original.message.message.seq,
+    let reaction = |reaction: &str, nonce| ConversationCommand::React {
+        target: ReactionTarget::Message {
+            message_seq: original.message.message.seq,
+        },
         reaction: reaction.into(),
-        active,
+        nonce,
     };
     assert!(matches!(
-        peer(&mut host, owner, viewer, reaction("wave", true)),
+        peer(&mut host, owner, viewer, reaction("wave", 1)),
         Err("room_access_required")
     ));
     host.dispatch(input(owner, viewer, |context| HostAction::GrantInvited {
         context,
     }))
     .unwrap();
-    let set = |host: &mut StoredRoomHost, actor, key, active| match peer(
+    let react = |host: &mut StoredRoomHost, actor, key, nonce| match peer(
         host,
         owner,
         actor,
-        reaction(key, active),
+        reaction(key, nonce),
     )
     .unwrap()
     {
         HistoryResult::Reacted(confirmation) => confirmation,
         _ => panic!("reaction confirmation expected"),
     };
-    let first = set(&mut host, owner, "wave", true);
-    assert!(first.changed);
-    assert_eq!(first.snapshot.reactions.revision, 1);
-    let repeated = set(&mut host, owner, "wave", true);
-    assert!(!repeated.changed);
-    assert_eq!(repeated.snapshot, first.snapshot);
-    assert_eq!(
-        set(&mut host, viewer, "wave", true)
-            .snapshot
-            .reactions
-            .revision,
-        2
-    );
-    assert_eq!(
-        set(&mut host, owner, "laugh", true)
-            .snapshot
-            .reactions
-            .revision,
-        3
-    );
-    let removed = set(&mut host, viewer, "wave", false);
-    assert_eq!(removed.snapshot.reactions.revision, 4);
-    assert!(!removed.snapshot.reactions.choices.contains_key(&viewer));
-    assert!(!set(&mut host, viewer, "wave", false).changed);
-    assert!(matches!(
-        peer(&mut host, owner, viewer, reaction("tomato", true)),
-        Err("invalid_reaction")
-    ));
+    let first = react(&mut host, owner, "poop", 1);
+    assert!(first.event.is_some());
+    assert_eq!(first.snapshot.reactions.counts["poop"], 1);
+    let retry = react(&mut host, owner, "poop", 1);
+    assert!(retry.event.is_none());
+    assert_eq!(retry.snapshot, first.snapshot);
+    let second = react(&mut host, owner, "poop", 2);
+    assert_eq!(second.snapshot.reactions.counts["poop"], 2);
+    assert_ne!(first.event.unwrap().id, second.event.unwrap().id);
+    let third = react(&mut host, viewer, "tomato", 1);
+    assert_eq!(third.snapshot.reactions.revision, 3);
+    let late = react(&mut host, owner, "poop", 1);
+    assert!(late.event.is_none());
+    assert_eq!(late.snapshot, third.snapshot);
     assert!(matches!(
         peer(
             &mut host,
             owner,
             viewer,
-            ConversationCommand::SetReaction {
-                message_seq: 99,
+            ConversationCommand::React {
+                target: ReactionTarget::Message { message_seq: 99 },
                 reaction: "wave".into(),
-                active: true,
+                nonce: 2,
             }
         ),
         Err("message_unavailable")
     ));
     assert!(serde_json::from_value::<ConversationCommand>(json!({
-        "type":"set_reaction", "messageSeq":1, "reaction":"wave", "active":true, "userId":owner,
-    }))
-    .is_err());
-
+        "type":"react", "target":{"type":"message","messageSeq":1}, "reaction":"wave", "nonce":2, "userId":owner,
+    })).is_err());
     let database = rusqlite::Connection::open(&path).unwrap();
-    database.execute_batch(
-        "CREATE TABLE reaction_commit_failure (id TEXT REFERENCES message(id) DEFERRABLE INITIALLY DEFERRED);
-         CREATE TRIGGER reject_reaction AFTER UPDATE OF reactions ON message
-         BEGIN INSERT INTO reaction_commit_failure VALUES('missing-message'); END;",
-    ).unwrap();
+    database.execute_batch("CREATE TABLE reaction_commit_failure (id TEXT REFERENCES message(id) DEFERRABLE INITIALLY DEFERRED);
+        CREATE TRIGGER reject_reaction AFTER UPDATE OF reactions ON message
+        BEGIN INSERT INTO reaction_commit_failure VALUES('missing-message'); END;").unwrap();
     assert!(matches!(
-        peer(&mut host, owner, owner, reaction("heart", true)),
+        peer(&mut host, owner, owner, reaction("heart", 3)),
         Err("storage_failed")
     ));
     database
         .execute_batch("DROP TRIGGER reject_reaction")
         .unwrap();
+    let recovered = react(&mut host, owner, "heart", 3);
+    assert!(
+        recovered.event.is_some(),
+        "failed commit consumed neither the nonce nor cooldown"
+    );
+    assert_eq!(recovered.snapshot.reactions.revision, 4);
+    assert_eq!(recovered.snapshot.reactions.counts["heart"], 1);
+    assert!(react(&mut host, owner, "heart", 3).event.is_none());
     drop(host);
     let mut host = StoredRoomHost::open(&path).unwrap();
     let HistoryResult::Page { messages, .. } = peer(
@@ -473,11 +474,11 @@ fn message_reactions_commit_explicit_user_choices_and_recover_with_the_original_
         serde_json::to_value(&messages[0].message).unwrap(),
         serde_json::to_value(&original.message.message).unwrap()
     );
-    assert_eq!(messages[0].reaction_snapshot(), removed.snapshot);
+    assert_eq!(messages[0].reaction_snapshot(), recovered.snapshot);
     let retry = sent(peer(
         &mut host,
         owner,
-        owner,
+        author,
         ConversationCommand::Chat {
             text: "Changed retry".into(),
             nonce: "original".into(),
@@ -485,9 +486,8 @@ fn message_reactions_commit_explicit_user_choices_and_recover_with_the_original_
         },
     ));
     assert!(!retry.inserted);
-    assert_eq!(retry.message.reaction_snapshot(), removed.snapshot);
-    drop(host);
-    drop(database);
+    assert_eq!(retry.message.reaction_snapshot(), recovered.snapshot);
+    drop((host, database));
     std::fs::remove_file(path).unwrap();
 }
 
@@ -595,10 +595,21 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
     let mut a = StoredRoomHost::create(&first, policy("first", owner, RoomAccess::Public)).unwrap();
     let mut b =
         StoredRoomHost::create(&second, policy("second", owner, RoomAccess::Public)).unwrap();
+    let mut invitations = BTreeMap::new();
     assert!(
         StoredRoomHost::create(&first, policy("replacement", owner, RoomAccess::Public)).is_err()
     );
     for (host, room) in [(&mut a, "first"), (&mut b, "second")] {
+        let output = command(
+            host,
+            owner,
+            owner,
+            json!({"type":"room_invite","roomId":room}),
+        );
+        let RoomResult::Invite { key } = output.reply.unwrap().result else {
+            panic!("room invitation")
+        };
+        invitations.insert(room, key);
         command(
             host,
             owner,
@@ -654,6 +665,18 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
         assert_eq!(restored.policy().id, room);
         assert_eq!(restored.summary().name, format!("Saved {room}"));
         assert_eq!(restored.policy().relay_capacity, 7);
+        assert!(restored.policy().accepts_invite(&invitations[room]));
+        let output = command(
+            &mut restored,
+            owner,
+            owner,
+            json!({"type":"get_room_invite","roomId":room}),
+        );
+        assert!(
+            matches!(output.reply.unwrap().result, RoomResult::InviteState {
+            invitation: piik_channel_core::wire::RoomInvitation::Available { key }
+        } if key == invitations[room])
+        );
         assert_eq!(
             serde_json::to_value(restored.policy().icon.clone()).unwrap(),
             image

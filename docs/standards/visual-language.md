@@ -106,6 +106,12 @@ selects a room; its adjacent settings action manages that room without changing
 the current conversation or activities. Room, domain and creation tasks share
 the native settings-dialog shell, with their own forms and permissions.
 
+Keep the room invitation beside the upper room title, and group Share with its
+parameters on the opposite side. Personal voice and identity stay lower left.
+The couch anchors the bottom of the central body, aligned with the personal area's
+top edge; it does not span either sidebar. Sidebars can collapse independently.
+Narrow layouts use temporary drawers without replacing those desktop preferences.
+
 Let the media stage use the available workspace. Grid gives watched pictures
 equal weight; focus gives one picture the main area and keeps the others in a
 thumbnail strip. Both use the same players. Conversation and people are optional
@@ -113,6 +119,8 @@ companion surfaces; narrow layouts switch surfaces instead of squeezing several
 unusable regions together. Source controls stay with their picture, and personal
 voice controls keep their own activity scope. The existing room tool continues
 to move the same conversation, presence and voice content outside the workspace.
+Its action opens the compact external window directly when supported, with the
+existing in-page panel as the named alternative. Closing returns the same content.
 
 ### Control Selection
 

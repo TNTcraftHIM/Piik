@@ -48,7 +48,9 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
   const others = people.filter(person => person.userId !== selfUserId);
   const selected = people.find(person => person.userId === target?.userId);
   const width = Math.min(availableWidth, Math.max(144, people.length * SEAT_WIDTH + 2 * SEAT_GUTTER));
-  const seats = Math.max(1, Math.min(people.length, Math.floor((width - 2 * SEAT_GUTTER) / MIN_SEAT_WIDTH)));
+  const seatingWidth = width - 2 * SEAT_GUTTER;
+  const seats = Math.max(1, people.length * MIN_SEAT_WIDTH <= seatingWidth
+    ? people.length : Math.floor(seatingWidth / SEAT_WIDTH));
   const seatWidth = Math.min(SEAT_WIDTH, Math.max(MIN_SEAT_WIDTH, (width - 2 * SEAT_GUTTER) / seats));
   const guestSeats = Math.max(1, seats - Number(Boolean(self)));
   const guestWidth = Math.min(others.length, guestSeats) * seatWidth;

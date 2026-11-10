@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 4;
+pub const CHANNEL_PROTOCOL: u8 = 5;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(

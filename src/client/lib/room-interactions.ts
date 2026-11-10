@@ -3,6 +3,14 @@ import { INTERACTION_INTERVAL_MS, REACTION_DURATION_MS, REACTION_IDS, type React
 import { createOpaqueId } from "./opaque-id";
 import { identityHash } from "./identity-hash";
 import { CHAT_OVERLAY_DEFAULTS, CHAT_OVERLAY_LIMITS, readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "./room-preferences";
+import { z } from "zod";
+
+const contentTargetSchema = z.union([
+  z.object({ messageSeq: z.number().int().positive() }).strict(),
+  z.object({ publicationId: z.string().min(1).max(128) }).strict(),
+]);
+const contentReactionSchema = z.object({ kind: z.literal("reaction"), reaction: z.enum(REACTION_IDS) }).strict();
+export type ContentReactionTarget = z.infer<typeof contentTargetSchema>;
 
 export interface RoomInteraction {
   type: "room-interaction";
@@ -11,11 +19,12 @@ export interface RoomInteraction {
   occurredAt: number;
   sender: { peerId: string; role: "host" | "viewer"; displayName: string };
   payload: InteractionPayload;
+  contentTarget?: ContentReactionTarget;
 }
 type Rejection = "rate-limited" | "target-unavailable" | "not-subscribed" | "busy";
 type InteractionCommand =
   | { type: "subscribe-room-interactions" }
-  | { type: "send-room-interaction"; requestId: string; payload: InteractionPayload };
+  | { type: "send-room-interaction"; requestId: string; payload: InteractionPayload; contentTarget?: ContentReactionTarget; nonce?: number };
 type InteractionEvent =
   | { type: "room-interactions-ready"; serverTime: number }
   | { type: "room-interaction-rejected"; requestId: string; reason: Rejection }
@@ -34,7 +43,7 @@ interface InteractionState {
   overlayEnabled: boolean;
   overlayAppearance: OverlayAppearance;
   overlayMessages: (RoomInteraction & { expiresAt: number; durationMs: number; lane: number })[];
-  pending: { requestId: string; payload: InteractionPayload } | null;
+  pending: { requestId: string; payload: InteractionPayload; contentTarget?: ContentReactionTarget; nonce?: number } | null;
   confirmed: RoomInteraction | null;
   coolingDown: boolean;
   error: InteractionError | null;
@@ -53,12 +62,12 @@ export class RoomInteractionSession {
   private cooldownTimer: ReturnType<typeof setTimeout> | undefined;
   private effectsTimer: ReturnType<typeof setTimeout> | undefined;
   private visibleOverlays = new Set<object>();
-  private requestId: string | null = null;
+  private request: NonNullable<InteractionState["pending"]> | null = null;
   private closed = false;
   private subscriptionStartedAt: number | null = null;
   private serverOffset = 0;
 
-  constructor(private readonly sendMessage: (message: InteractionCommand) => boolean, readonly now = Date.now, reactionIds?: readonly string[]) {
+  constructor(private readonly sendMessage: (message: InteractionCommand) => boolean | { nonce: number }, readonly now = Date.now, reactionIds?: readonly string[]) {
     const { overlayEnabled, overlayAppearance } = readRoomPreferences();
     this.state = { ...this.state, overlayEnabled, overlayAppearance };
     this.setSupportedReactions(reactionIds);
@@ -102,8 +111,8 @@ export class RoomInteractionSession {
       return true;
     }
     if (event.type === "room-interaction-rejected") {
-      if (event.requestId === this.requestId) {
-        this.requestId = null;
+      if (event.requestId === this.request?.requestId) {
+        this.request = null;
         clearTimeout(this.pendingTimer);
         this.update({ pending: null, error: event.reason });
       }
@@ -111,18 +120,18 @@ export class RoomInteractionSession {
     }
     if (event.type !== "room-interaction") return false;
     if (!this.state.ready) return true;
-    const payload = interactionPayloadSchema.safeParse(event.payload);
+    const payload = (event.contentTarget ? contentReactionSchema : interactionPayloadSchema).safeParse(event.payload);
     // Unsupported decoration is not a signaling failure or a send confirmation.
-    if (!payload.success) return true;
+    if (!payload.success || event.contentTarget && !contentTargetSchema.safeParse(event.contentTarget).success) return true;
     const message: RoomInteraction = { ...event, payload: payload.data };
     const now = this.now();
     // Clock uncertainty may put a fresh event slightly ahead. Never extend its
     // lifetime beyond one full effect, and never replay an expired effect.
     const beganAt = Math.min(now, message.occurredAt - this.serverOffset);
     const own = message.sender.peerId === this.state.peerId;
-    const confirmsPending = own && message.requestId === this.requestId;
+    const confirmsPending = own && message.requestId === this.request?.requestId;
     if (confirmsPending) {
-      this.requestId = null;
+      this.request = null;
       // The Host's interval starts at acceptance, after outbound queueing.
       this.startCooldown();
     }
@@ -153,27 +162,41 @@ export class RoomInteractionSession {
     return true;
   }
 
-  send(payload: InteractionPayload): boolean {
+  send(payload: InteractionPayload, contentTarget?: ContentReactionTarget): boolean {
     if (this.closed || !this.state.ready || this.state.pending || this.state.coolingDown ||
-      !interactionPayloadSchema.safeParse(payload).success ||
+      !(contentTarget ? contentReactionSchema : interactionPayloadSchema).safeParse(payload).success ||
+      contentTarget && !contentTargetSchema.safeParse(contentTarget).success ||
       payload.kind === "reaction" && !this.state.reactionIds.includes(payload.reaction)) return false;
-    const requestId = createOpaqueId();
+    const previous = this.request;
+    const retry = previous?.nonce !== undefined && this.state.error === "unconfirmed" && JSON.stringify([previous.payload, previous.contentTarget]) === JSON.stringify([payload, contentTarget]);
+    const request = { requestId: retry ? previous.requestId : createOpaqueId(), payload, ...(contentTarget ? { contentTarget } : {}), ...(retry && previous.nonce !== undefined ? { nonce: previous.nonce } : {}) };
     try {
-      if (!this.sendMessage({ type: "send-room-interaction", requestId, payload })) {
+      const sent = this.sendMessage({ type: "send-room-interaction", ...request });
+      if (!sent) {
         this.update({ error: "offline" });
         return false;
       }
+      if (typeof sent === "object") request.nonce = sent.nonce;
     } catch {
       this.update({ error: "offline" });
       return false;
     }
     // The timeout releases the send control, not this request's identity.
     // A late result may settle it until another submission or connection replaces it.
-    this.requestId = requestId;
-    this.update({ pending: { requestId, payload }, error: null });
+    this.request = request;
+    this.update({ pending: request, error: null });
     this.pendingTimer = setTimeout(() => this.update({ pending: null, error: "unconfirmed" }), 5000);
     this.startCooldown();
     return true;
+  }
+
+  /** A committed nonce retry settles the send without replaying its live effect. */
+  confirm(requestId: string, nonce: number): void {
+    if (this.request?.requestId !== requestId || this.request.nonce !== nonce) return;
+    this.request = null;
+    clearTimeout(this.pendingTimer);
+    this.startCooldown();
+    this.update({ pending: null, error: null });
   }
 
   setOverlayEnabled(enabled: boolean) {
@@ -219,7 +242,7 @@ export class RoomInteractionSession {
   }
 
   disconnected() {
-    this.requestId = null;
+    this.request = null;
     this.subscriptionStartedAt = null;
     this.serverOffset = 0;
     clearTimeout(this.pendingTimer);

@@ -12,16 +12,25 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **3.0 workspace hierarchy redesign.** Review grouped sharing/voice actions,
-  sidebar collapse, personal activity placement, couch/conversation placement and
-  direct room pop-out before changing the current workspace. Give room/domain
-  invitations contextual entries with one link and subordinate QR presentation;
-  keep their existing admission owners. The contextual invitation, upper share
-  actions and lower voice area are selected; compare couch placement and finish
-  integration while preserving players and independent room activities.
+- [ ] **3.0 workspace hierarchy integration.** Finish the selected contextual
+  invitations, upper share actions, lower-left personal voice controls and couch
+  at the bottom of the central body. Align the shared bottom row, preserve desktop
+  sidebar choices across narrow layouts, and verify direct room pop-out/return
+  without recreating players, conversation or personal activities.
   The [hierarchy proposal](./research/room-interactions.md#workspace-hierarchy-proposal)
   records the candidate; [visual language](./standards/visual-language.md#30-channel-workspace)
   owns accepted layout responsibilities.
+- [ ] **3.0 single site entry.** Remove the separate domain chooser, invitation
+  and admission settings. Opening the site admits a user who can create/manage
+  their own rooms; private admission belongs to each room. Retain site identity,
+  directory/host coordination and operator-owned backup/restore. Preview the Piik
+  overview entry, room-list voice participants and right-side global utilities
+  before integrating the latest composition.
+- [ ] **3.0 reactions and room invitations.** Integrate the accepted click-count
+  reactions for messages and live screens through room confirmation; couch effects
+  remain temporary. Verify that every room owner can issue an invitation admitting
+  a new domain user to that room, without access to other private rooms. Keep the
+  [room-data model](./research/channel-storage-and-identity.md) as their owner.
 - [ ] **3.0 Native-helper cadence acceptance.** In the full App control,
   a candidate decoded near 2 fps against a healthy 10 fps path and was correctly
   rejected. A shorter control reached 10 fps but used a different source branch.

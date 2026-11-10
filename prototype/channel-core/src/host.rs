@@ -351,6 +351,7 @@ struct RoomAuthority {
     host_session_id: Uuid,
     revision: u64,
     endpoints: BTreeMap<Uuid, Endpoint>,
+    reaction_nonces: BTreeMap<Uuid, u64>,
 }
 
 pub struct RoomHost {
@@ -363,6 +364,224 @@ pub struct RoomHost {
 mod tests {
     use super::*;
     use crate::wire::Request;
+
+    #[test]
+    fn counted_reactions_commit_after_storage_and_follow_each_publication_lifetime() {
+        use crate::conversation::{
+            ConversationAddress, ConversationCommand, ConversationRecord, ConversationRequest,
+            ConversationResult, ConversationWork, ReactionSnapshot, ReactionTarget, SessionSigner,
+            INTERACTION_REACTIONS,
+        };
+        let owner = Member {
+            user_id: Uuid::new_v4(),
+            domain_owner: false,
+        };
+        let sharer = Member {
+            user_id: Uuid::new_v4(),
+            domain_owner: false,
+        };
+        let (local, first, second, binding) = (
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+        );
+        let key = SessionSigner::from_seed([5; 32]);
+        let endpoints = [(local, owner), (first, sharer), (second, sharer)]
+            .into_iter()
+            .map(|(session, member)| {
+                (
+                    session,
+                    Endpoint {
+                        member,
+                        connected: true,
+                        signing_key: key.signing_key(),
+                    },
+                )
+            })
+            .collect();
+        let mut host = RoomHost::new(
+            RoomState::new(
+                "room".into(),
+                "Room".into(),
+                Default::default(),
+                owner.user_id,
+                RoomAccess::Public,
+                false,
+                None,
+            )
+            .unwrap(),
+        );
+        host.dispatch(HostInput {
+            now: 0,
+            binding_id: binding,
+            host_session_id: local,
+            revision: 1,
+            endpoints,
+            failed_pairs: vec![],
+            action: HostAction::Sync,
+        })
+        .unwrap();
+        host.finish(None).unwrap();
+        let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
+        let settings = serde_json::from_value(serde_json::json!({"ceiling":{"resolution":{"width":640,"height":360},"maxFramerate":30,"maxBitrate":1000000},"degradationPreference":"balanced"})).unwrap();
+        host.room
+            .publish(sharer, first, a, crate::wire::Kind::Screen, Some(settings))
+            .unwrap();
+        host.room
+            .publish(sharer, second, b, crate::wire::Kind::Screen, Some(settings))
+            .unwrap();
+        let send = |host: &mut RoomHost, nonce, target, reaction: &str, now, fail| {
+            let request = ConversationRequest {
+                address: ConversationAddress {
+                    room_id: "room".into(),
+                    binding_id: binding,
+                    sender: local,
+                    recipient: local,
+                    request_id: format!("action-{nonce}"),
+                },
+                command: ConversationCommand::React {
+                    nonce,
+                    target,
+                    reaction: reaction.into(),
+                },
+            };
+            let prepared = host
+                .prepare_peer(&key.sign(local, &request).unwrap(), now)
+                .unwrap();
+            let result = if fail {
+                Err("storage_failed")
+            } else {
+                prepared.work.map(|work| match work {
+                    ConversationWork::Immediate(record) => ConversationResult::Immediate(record),
+                    _ => panic!("live reaction needs no history write"),
+                })
+            };
+            host.finish_peer(prepared.address, result)
+                .unwrap()
+                .replies()
+                .unwrap()
+                .remove(0)
+                .record
+        };
+        let target = ReactionTarget::Publication { publication_id: a };
+        assert!(matches!(
+            send(&mut host, 1, target.clone(), "poop", 1000, true),
+            ConversationRecord::Error { .. }
+        ));
+        assert!(host
+            .room
+            .publication_reaction(a)
+            .unwrap()
+            .reactions
+            .counts
+            .is_empty());
+        let first_event = send(&mut host, 1, target.clone(), "poop", 1000, false);
+        assert!(first_event.broadcast().is_some());
+        assert!(send(&mut host, 1, target.clone(), "poop", 1001, false)
+            .broadcast()
+            .is_none());
+        assert!(
+            matches!(send(&mut host, 2, target.clone(), "poop", 1001, false), ConversationRecord::Error { ref code } if code=="rate_limited")
+        );
+        let other = send(
+            &mut host,
+            2,
+            ReactionTarget::Publication { publication_id: b },
+            "poop",
+            1800,
+            false,
+        );
+        assert!(
+            matches!(other, ConversationRecord::Reaction { snapshot: Some(ReactionSnapshot::Publication(ref value)), .. } if value.publication_id==b&&value.reactions.counts["poop"]==1)
+        );
+        for (index, reaction) in INTERACTION_REACTIONS.iter().enumerate() {
+            let nonce = index as u64 + 3;
+            assert!(send(
+                &mut host,
+                nonce,
+                target.clone(),
+                reaction,
+                nonce * 800 + 200,
+                false
+            )
+            .broadcast()
+            .is_some());
+        }
+        assert_eq!(
+            host.room
+                .publication_reaction(a)
+                .unwrap()
+                .reactions
+                .counts
+                .len(),
+            16
+        );
+        assert_eq!(
+            host.room.publication_reaction(a).unwrap().reactions.counts["poop"],
+            2
+        );
+        host.room.set_paused(first, a, true).unwrap();
+        host.room
+            .publish(sharer, first, a, crate::wire::Kind::Screen, Some(settings))
+            .unwrap();
+        assert_eq!(
+            host.room
+                .publication_reaction(a)
+                .unwrap()
+                .reactions
+                .revision,
+            17
+        );
+        let person = send(
+            &mut host,
+            19,
+            ReactionTarget::Person {
+                user_id: sharer.user_id,
+            },
+            "poop",
+            16000,
+            false,
+        );
+        assert!(matches!(
+            person,
+            ConversationRecord::Reaction {
+                event: Some(_),
+                snapshot: None,
+                ..
+            }
+        ));
+        assert_eq!(
+            host.room
+                .publication_reaction(b)
+                .unwrap()
+                .reactions
+                .revision,
+            1
+        );
+        host.room.unpublish(first, a).unwrap();
+        assert!(
+            matches!(send(&mut host, 20, target, "poop", 16800, false), ConversationRecord::Error { ref code } if code=="publication_unavailable")
+        );
+        assert_eq!(host.room.publication_reactions().len(), 1);
+        let fresh = Uuid::new_v4();
+        host.room
+            .publish(
+                sharer,
+                first,
+                fresh,
+                crate::wire::Kind::Screen,
+                Some(settings),
+            )
+            .unwrap();
+        assert!(host
+            .room
+            .publication_reaction(fresh)
+            .unwrap()
+            .reactions
+            .counts
+            .is_empty());
+    }
 
     #[test]
     fn authorized_entry_projects_a_new_endpoint_without_a_policy_write() {
@@ -585,7 +804,7 @@ impl RoomHost {
     ) -> Result<crate::conversation::PreparedConversation, &'static str> {
         use crate::conversation::{
             verify, ConversationCommand, ConversationRecord, ConversationRequest, ConversationWork,
-            PreparedConversation, INTERACTION_REACTIONS,
+            PreparedConversation, ReactionSnapshot, ReactionTarget, INTERACTION_REACTIONS,
         };
         if self.pending.is_some() {
             return Err("room_operation_pending");
@@ -615,30 +834,58 @@ impl RoomHost {
                             .iter()
                             .map(|id| (*id).into())
                             .collect(),
+                        publication_reactions: self.room.publication_reactions(),
                     })
                 }),
-            ConversationCommand::Interaction {
+            ConversationCommand::React {
+                nonce,
+                target,
                 reaction,
-                target_user_id,
-            } => self
-                .room
-                .interaction(
-                    endpoint.member,
-                    packet.sender,
-                    reaction,
-                    target_user_id,
-                    &authority.endpoints,
-                    now,
-                )
-                .map(ConversationWork::Immediate),
-            ConversationCommand::SetReaction {
-                message_seq,
-                reaction,
-                active,
-            } => self
-                .room
-                .set_reaction(endpoint.member, message_seq, reaction, active)
-                .map(ConversationWork::History),
+            } => (|| {
+                self.room
+                    .authorize(endpoint.member, crate::RoomPermission::Read)?;
+                if nonce == 0 {
+                    return Err("invalid_reaction_nonce");
+                }
+                let repeated = nonce
+                    <= authority
+                        .reaction_nonces
+                        .get(&packet.sender)
+                        .copied()
+                        .unwrap_or(0);
+                let event = if repeated {
+                    None
+                } else {
+                    Some(self.room.reaction(
+                        endpoint.member,
+                        packet.sender,
+                        reaction,
+                        target.clone(),
+                        &authority.endpoints,
+                        now,
+                    )?)
+                };
+                if let ReactionTarget::Message { message_seq } = target {
+                    return Ok(ConversationWork::History(HistoryRequest::React {
+                        room_id: self.room.policy().id.clone(),
+                        message_seq,
+                        nonce,
+                        event,
+                    }));
+                }
+                let snapshot = if let ReactionTarget::Publication { publication_id } = target {
+                    Some(ReactionSnapshot::Publication(
+                        self.room.publication_reaction(publication_id)?,
+                    ))
+                } else {
+                    None
+                };
+                Ok(ConversationWork::Immediate(ConversationRecord::Reaction {
+                    nonce,
+                    event,
+                    snapshot,
+                }))
+            })(),
             ConversationCommand::Chat {
                 text,
                 nonce,
@@ -656,6 +903,46 @@ impl RoomHost {
             address: request.address,
             work,
         })
+    }
+
+    /// The adapter's serialized room turn calls this only after its storage
+    /// transaction completes. Failed work consumes neither a nonce nor a live effect.
+    pub fn finish_peer(
+        &mut self,
+        address: crate::conversation::ConversationAddress,
+        mut result: Result<crate::conversation::ConversationResult, &'static str>,
+    ) -> Result<crate::conversation::ConversationOutcome, &'static str> {
+        use crate::conversation::{ConversationRecord, ConversationResult};
+        let authority = self.authority.as_mut().ok_or("room_host_offline")?;
+        if address.binding_id != authority.binding_id
+            || address.recipient != authority.host_session_id
+        {
+            return Err("invalid_conversation_scope");
+        }
+        let committed = match &mut result {
+            Ok(ConversationResult::History(HistoryResult::Reacted(confirmation))) => confirmation
+                .event
+                .as_ref()
+                .map(|event| (confirmation.nonce, event, None)),
+            Ok(ConversationResult::Immediate(ConversationRecord::Reaction {
+                nonce,
+                event,
+                snapshot,
+            })) => event.as_ref().map(|event| (*nonce, event, Some(snapshot))),
+            _ => None,
+        };
+        if let Some((nonce, event, snapshot)) = committed {
+            match self.room.commit_reaction(address.sender, event) {
+                Ok(current) => {
+                    if let Some(snapshot) = snapshot {
+                        *snapshot = current;
+                    }
+                    authority.reaction_nonces.insert(address.sender, nonce);
+                }
+                Err(code) => result = Err(code),
+            }
+        }
+        Ok(crate::conversation::ConversationOutcome { address, result })
     }
 
     pub fn current_readers(&self) -> Vec<Uuid> {
@@ -694,11 +981,19 @@ impl RoomHost {
         {
             self.room.failed_pair(pair.first, pair.second);
         }
+        let mut reaction_nonces = self
+            .authority
+            .as_mut()
+            .filter(|authority| authority.binding_id == input.binding_id)
+            .map(|authority| std::mem::take(&mut authority.reaction_nonces))
+            .unwrap_or_default();
+        reaction_nonces.retain(|session, _| input.endpoints.contains_key(session));
         self.authority = Some(RoomAuthority {
             binding_id: input.binding_id,
             host_session_id: input.host_session_id,
             revision: input.revision,
             endpoints: input.endpoints.clone(),
+            reaction_nonces,
         });
         self.room.set_host_session(input.host_session_id);
         self.room.reconcile(&input.endpoints, input.now);
@@ -756,8 +1051,9 @@ impl RoomHost {
                     })
                 }
                 HostAction::GrantInvited { .. } => {
-                    self.room.grant_invited(member.unwrap().user_id);
-                    work.policy = Some(self.policy().clone());
+                    if self.room.grant_invited(member.unwrap().user_id) {
+                        work.policy = Some(self.policy().clone());
+                    }
                     return Ok(RoomResult::Invited);
                 }
                 HostAction::Command { context, command } => {

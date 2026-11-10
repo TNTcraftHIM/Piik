@@ -39,7 +39,7 @@ export class ChannelConversation {
     return new TextDecoder().decode(runtime.encode_control(JSON.stringify({ kind: "file", body: JSON.parse(control) })));
   }
 
-  async send(command: Extract<ChannelCommand, { type: "chat" | "history" | "set_reaction" | "interaction_ready" | "interaction" }>, requestId: string): Promise<void> {
+  async send(command: Extract<ChannelCommand, { type: "chat" | "history" | "react" | "interaction_ready" }>, requestId: string): Promise<void> {
     const { signer } = await this.ready();
     const { state, sessionId, connected } = this.options.context();
     if (!connected || !sessionId) throw new Error("disconnected");

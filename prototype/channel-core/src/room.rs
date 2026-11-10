@@ -274,49 +274,103 @@ impl RoomRuntime {
         Ok(())
     }
 
-    pub fn grant_invited(&mut self, user: Uuid) {
-        self.policy.grants.insert(user);
+    pub fn grant_invited(&mut self, user: Uuid) -> bool {
+        self.policy.access == RoomAccess::Private && self.policy.grants.insert(user)
     }
 
-    pub(crate) fn interaction(
-        &mut self,
+    pub(crate) fn reaction(
+        &self,
         member: Member,
         session: Uuid,
         reaction: String,
-        target_user_id: Option<Uuid>,
+        target: crate::conversation::ReactionTarget,
         endpoints: &BTreeMap<Uuid, Endpoint>,
         now: u64,
-    ) -> Result<crate::conversation::ConversationRecord, &'static str> {
-        use crate::conversation::{
-            ConversationRecord, INTERACTION_INTERVAL_MS, INTERACTION_REACTIONS,
-        };
+    ) -> Result<crate::conversation::ReactionEvent, &'static str> {
+        use crate::conversation::{ReactionEvent, ReactionTarget, INTERACTION_REACTIONS};
         self.authorize(member, RoomPermission::Read)?;
-        if !INTERACTION_REACTIONS.contains(&reaction.as_str())
-            || (matches!(reaction.as_str(), "tomato" | "poop") && target_user_id.is_none())
-        {
+        if !INTERACTION_REACTIONS.contains(&reaction.as_str()) {
             return Err("invalid_interaction");
         }
-        let activity = self.activity.entry(session).or_default();
-        if now < activity.next_interaction_at {
+        if self
+            .activity
+            .get(&session)
+            .is_some_and(|activity| now < activity.next_interaction_at)
+        {
             return Err("rate_limited");
         }
-        activity.next_interaction_at = now.saturating_add(INTERACTION_INTERVAL_MS);
-        if target_user_id.is_some_and(|user| {
-            !endpoints.values().any(|endpoint| {
-                endpoint.connected
-                    && endpoint.member.user_id == user
-                    && self.policy.reads(user, endpoint.member.domain_owner)
-            })
-        }) {
-            return Err("target_unavailable");
+        match &target {
+            ReactionTarget::Message { message_seq } if *message_seq == 0 => {
+                return Err("message_unavailable")
+            }
+            ReactionTarget::Publication { publication_id } => {
+                self.publication_reaction(*publication_id)?;
+            }
+            ReactionTarget::Person { user_id }
+                if !endpoints.values().any(|endpoint| {
+                    endpoint.connected
+                        && endpoint.member.user_id == *user_id
+                        && self.policy.reads(*user_id, endpoint.member.domain_owner)
+                }) =>
+            {
+                return Err("target_unavailable")
+            }
+            _ => {}
         }
-        Ok(ConversationRecord::Interaction {
+        Ok(ReactionEvent {
             id: Uuid::new_v4(),
             occurred_at: now,
             sender_user_id: member.user_id,
             reaction,
-            target_user_id,
+            target,
         })
+    }
+
+    pub(crate) fn publication_reaction(
+        &self,
+        id: Uuid,
+    ) -> Result<crate::conversation::PublicationReactions, &'static str> {
+        let publication = self
+            .publications
+            .get(&id)
+            .filter(|publication| publication.info.kind == Kind::Screen)
+            .ok_or("publication_unavailable")?;
+        Ok(crate::conversation::PublicationReactions {
+            publication_id: id,
+            reactions: publication.reactions.clone(),
+        })
+    }
+
+    pub(crate) fn publication_reactions(&self) -> Vec<crate::conversation::PublicationReactions> {
+        self.publications
+            .keys()
+            .filter_map(|id| self.publication_reaction(*id).ok())
+            .collect()
+    }
+
+    pub(crate) fn commit_reaction(
+        &mut self,
+        session: Uuid,
+        event: &crate::conversation::ReactionEvent,
+    ) -> Result<Option<crate::conversation::ReactionSnapshot>, &'static str> {
+        use crate::conversation::{ReactionSnapshot, ReactionTarget, INTERACTION_INTERVAL_MS};
+        let snapshot = if let ReactionTarget::Publication { publication_id } = event.target {
+            let publication = self
+                .publications
+                .get_mut(&publication_id)
+                .ok_or("publication_unavailable")?;
+            publication.reactions.add(&event.reaction)?;
+            Some(ReactionSnapshot::Publication(
+                self.publication_reaction(publication_id)?,
+            ))
+        } else {
+            None
+        };
+        self.activity
+            .entry(session)
+            .or_default()
+            .next_interaction_at = event.occurred_at.saturating_add(INTERACTION_INTERVAL_MS);
+        Ok(snapshot)
     }
 
     pub fn enter(
@@ -380,26 +434,6 @@ impl RoomRuntime {
         Ok(HistoryRequest::Read {
             room_id: self.policy.id.clone(),
             before,
-        })
-    }
-
-    pub fn set_reaction(
-        &self,
-        member: Member,
-        message_seq: u64,
-        reaction: String,
-        active: bool,
-    ) -> Result<HistoryRequest, &'static str> {
-        self.authorize(member, RoomPermission::Read)?;
-        if message_seq == 0 || !crate::history::valid_message_reaction(&reaction) {
-            return Err("invalid_reaction");
-        }
-        Ok(HistoryRequest::SetReaction {
-            room_id: self.policy.id.clone(),
-            message_seq,
-            user_id: member.user_id,
-            reaction,
-            active,
         })
     }
 
@@ -1235,9 +1269,6 @@ mod tests {
             },
         );
         let owner = endpoints[&id(1)].member;
-        for user in [id(2), id(3), id(4)] {
-            room.grant_invited(user);
-        }
         room.update(
             owner,
             "Private".into(),
@@ -1248,6 +1279,9 @@ mod tests {
             None,
         )
         .unwrap();
+        for user in [id(2), id(3), id(4)] {
+            room.grant_invited(user);
+        }
         room.command(viewer, id(2), watch(id(5)), &endpoints)
             .unwrap();
         room.reconcile(&endpoints, 5);

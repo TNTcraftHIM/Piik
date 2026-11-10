@@ -2,11 +2,15 @@ import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 
 // 3.0 guide images have one source: production components in the dev catalogue.
 // The maintenance branch owns its 2.x screenshots and README film stills.
-const preview = new URL('/__tooltip-preview', process.argv[2] || 'http://127.0.0.1:8787');
-if (process.argv.length > 3) throw new Error('Usage: node scripts/update-guide-images.mjs [dev-origin]');
+const { values, positionals } = parseArgs({ allowPositionals: true, options: { only: { type: 'string' } } });
+const scenes = new Set((values.only ?? 'room,invitation,source,quality').split(','));
+if (positionals.length > 1 || [...scenes].some(scene => !['room', 'invitation', 'source', 'quality'].includes(scene)))
+  throw new Error('Usage: node scripts/update-guide-images.mjs [dev-origin] [--only room,invitation,source,quality]');
+const preview = new URL('/__tooltip-preview', positionals[0] || 'http://127.0.0.1:8787');
 const output = fileURLToPath(new URL('../docs/assets/guide/', import.meta.url));
 const browser = process.env.AGENT_BROWSER_PATH || (process.platform === 'win32'
   ? join(process.env.APPDATA, 'npm/node_modules/agent-browser/bin/agent-browser-win32-x64.exe')
@@ -61,7 +65,7 @@ async function capture(selector, name) {
   console.log(`${name}.png`);
 }
 
-await execute(process.execPath, [fileURLToPath(import.meta.resolve('tsx/cli')), '--tsconfig',
+if (!values.only) await execute(process.execPath, [fileURLToPath(import.meta.resolve('tsx/cli')), '--tsconfig',
   fileURLToPath(new URL('./tsconfig.json', import.meta.url)),
   fileURLToPath(new URL('./update-guide-diagrams.tsx', import.meta.url))]);
 await mkdir(output, { recursive: true });
@@ -82,18 +86,23 @@ try {
         document.head.append(style); scrollTo(0, 0);
       })()`);
       const suffix = `${locale}${theme === 'dark' ? '.dark' : ''}`;
-      await capture('.c3-guide-room', `channel-room.${suffix}`);
-      await run('click', '[data-room-settings="friday"]');
-      await run('find', 'role', 'tab', 'click', '--name', lang === 'en' ? 'Invitation' : '邀请', '--exact');
-      await run('wait', '.c3-invite-copy input');
-      await capture('.c3-settings-dialog[open]', `channel-invitation.${suffix}`);
-      await run('press', 'Escape');
-      await run('find', 'role', 'button', 'click', '--name', lang === 'en' ? 'Start sharing' : '开始分享', '--exact');
-      await run('wait', '.c3-share-picker .lr-source-picker-list img');
-      await capture('.c3-share-picker:popover-open', `channel-source.${suffix}`);
-      await run('press', 'Escape');
-      await run('find', 'role', 'button', 'click', '--name', lang === 'en' ? 'Picture and sound' : '画质与声音', '--exact');
-      await capture('.c3-quality-picker:popover-open', `channel-quality.${suffix}`);
+      if (scenes.has('room')) await capture('.c3-guide-room', `channel-room.${suffix}`);
+      if (scenes.has('invitation')) {
+        await run('click', '.c3-guide-title .c3-room-invitation-entry button');
+        await run('wait', '.c3-room-invitation:popover-open .c3-invitation-link input');
+        await capture('.c3-room-invitation:popover-open', `channel-invitation.${suffix}`);
+        await run('press', 'Escape');
+      }
+      if (scenes.has('source')) {
+        await run('find', 'role', 'button', 'click', '--name', lang === 'en' ? 'Start sharing' : '开始分享', '--exact');
+        await run('wait', '.c3-share-picker .lr-source-picker-list img');
+        await capture('.c3-share-picker:popover-open', `channel-source.${suffix}`);
+        await run('press', 'Escape');
+      }
+      if (scenes.has('quality')) {
+        await run('find', 'role', 'button', 'click', '--name', lang === 'en' ? 'Picture and sound' : '画质与声音', '--exact');
+        await capture('.c3-quality-picker:popover-open', `channel-quality.${suffix}`);
+      }
     }
   }
 } finally {

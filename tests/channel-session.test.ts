@@ -59,16 +59,16 @@ async function setup(window = 1000, read = true, hash = "", readyInteractions = 
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   vi.stubGlobal("WebSocket", ChannelSocket);
   const session = new ChannelSession();
-  type PeerRequest = Extract<ChannelCommand, { type: "chat" | "history" | "set_reaction" }> & { requestId: string };
-  type InteractionRequest = Extract<ChannelCommand, { type: "interaction_ready" | "interaction" }> & { requestId: string };
+  type PeerRequest = Extract<ChannelCommand, { type: "chat" | "history" }> & { requestId: string };
+  type InteractionRequest = Extract<ChannelCommand, { type: "interaction_ready" | "react" }> & { requestId: string };
   const sent: PeerRequest[] = [], pending: PeerRequest[] = [];
   const interactions: InteractionRequest[] = [];
   vi.spyOn(ChannelConversation.prototype, "send").mockImplementation(async (command, requestId) => {
-    if (command.type === "interaction_ready" || command.type === "interaction") {
+    if (command.type === "interaction_ready" || command.type === "react") {
       const request = { ...command, requestId };
       interactions.push(request);
       if (readyInteractions && command.type === "interaction_ready") queueMicrotask(() => peer.reply(request,
-        { type: "interaction_ready", serverTime: Date.now(), reactionIds: ["wave", "heart", "future-decoration"] }));
+        { type: "interaction_ready", serverTime: Date.now(), reactionIds: ["wave", "heart", "future-decoration"], publicationReactions: [] }));
       return;
     }
     const request = { ...command, requestId };
@@ -82,14 +82,14 @@ async function setup(window = 1000, read = true, hash = "", readyInteractions = 
       const reply = { roomId: request.roomId, bindingId, sender: "host", recipient: "endpoint", requestId: request.requestId };
       deliver({ ...reply, record: "message" in record ? { ...record, message: messageSchema.parse(record.message) } : record });
       if (record.type === "confirmed") deliver({ ...reply, record: { type: "message_reactions", snapshot: {
-        messageId: record.message.id, messageSeq: record.message.seq, ...(record.message.reactions ?? { revision: 0, choices: {} }),
+        messageId: record.message.id, messageSeq: record.message.seq, ...(record.message.reactions ?? { revision: 0, counts: {} }),
       } } });
     },
     page(request: PeerRequest, messages: ChannelMessage[], hasMore = false, oldestSeq: number | null = 1, bindingId = "binding") {
       for (const message of messages) {
         peer.reply(request, { type: "history_message", message }, bindingId);
         peer.reply(request, { type: "message_reactions", snapshot: {
-          messageId: message.id, messageSeq: message.seq, ...(message.reactions ?? { revision: 0, choices: {} }),
+          messageId: message.id, messageSeq: message.seq, ...(message.reactions ?? { revision: 0, counts: {} }),
         } }, bindingId);
       }
       peer.reply(request, { type: "history_end", count: messages.length, hasMore, oldestSeq, before: "before" in request ? request.before ?? null : null }, bindingId);
@@ -128,9 +128,9 @@ async function setup(window = 1000, read = true, hash = "", readyInteractions = 
 }
 
 const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", text: `Hello ${seq}`, time: seq, attachments: [],
-  reactions: { revision: 0, choices: {} } });
-const reactionSnapshot = (seq: number, revision: number, choices: Record<string, string[]> = {}) =>
-  ({ messageId: `message-${seq}`, messageSeq: seq, revision, choices });
+  reactions: { revision: 0, counts: {} } });
+const reactionSnapshot = (seq: number, revision: number, counts: Record<string, number> = {}) =>
+  ({ messageId: `message-${seq}`, messageSeq: seq, revision, counts });
 
 test("a keyless room fragment supplies navigation without performing admission", async () => {
   const { session, socket } = await setup();
@@ -311,31 +311,49 @@ test("a browser without WebAssembly reports its capability failure before joinin
   } finally { session.close(); }
 });
 
-test("message reaction confirmation applies canonical snapshots and survives later body confirmation", async () => {
+test("message reaction clicks count independently while nonce retries settle without another live effect", async () => {
+  vi.useFakeTimers();
   const { session, peer } = await setup();
   try {
     await peer.history([message(1)]);
-    const setting = session.setMessageReaction("first", 1, "heart", true), request = await peer.next();
-    expect(request).toMatchObject({ type: "set_reaction", roomId: "first", messageSeq: 1, reaction: "heart", active: true });
-    expect(request).not.toHaveProperty("userId");
-    expect(session.getSnapshot().pending.has("reaction:first:1")).toBe(true);
-    expect(session.getSnapshot().messagesByRoom.first[0].reactions).toEqual({ revision: 0, choices: {} });
-    const snapshot = reactionSnapshot(1, 2, { self: ["heart"], friend: ["clap"] });
-    peer.reply(request, { type: "reaction_confirmed", changed: false, snapshot });
-    await setting;
-    expect(session.getSnapshot().messagesByRoom.first[0].reactions).toEqual({ revision: 2, choices: snapshot.choices });
-    expect(session.getSnapshot().pending.has("reaction:first:1")).toBe(false);
+    const interaction = session.getSnapshot().interactionsByRoom.get("first")!;
+    expect(interaction.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1 })).toBe(true);
+    const first = peer.interactions.at(-1)!;
+    expect(first).toMatchObject({ type: "react", roomId: "first", reaction: "heart", target: { type: "message", messageSeq: 1 }, nonce: 1 });
+    expect(first).not.toHaveProperty("userId");
+    expect(session.getSnapshot().messagesByRoom.first[0].reactions).toEqual({ revision: 0, counts: {} });
+    const event = { id: "click-1", occurredAt: Date.now(), senderUserId: "self", reaction: "heart", target: { type: "message" as const, messageSeq: 1 } };
+    const snapshot = { type: "message" as const, ...reactionSnapshot(1, 1, { heart: 1 }) };
+    peer.reply(first, { type: "reaction", nonce: 1, event, snapshot });
+    peer.reply(first, { type: "reaction", nonce: 1, event, snapshot });
+    expect(interaction.getSnapshot().reactions).toHaveLength(1);
+    expect(session.getSnapshot().messagesByRoom.first[0].reactions).toEqual({ revision: 1, counts: { heart: 1 } });
+    vi.advanceTimersByTime(800);
+    expect(interaction.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1 })).toBe(true);
+    const second = peer.interactions.at(-1)!;
+    expect(second).toMatchObject({ nonce: 2, target: { type: "message", messageSeq: 1 } });
+    peer.reply(second, { type: "reaction", nonce: 2, event: { ...event, id: "click-2" },
+      snapshot: { ...snapshot, revision: 2, counts: { heart: 2 } } });
+    expect(interaction.getSnapshot().reactions).toHaveLength(2);
+    expect(session.getSnapshot().messagesByRoom.first[0].reactions).toEqual({ revision: 2, counts: { heart: 2 } });
+    vi.advanceTimersByTime(800);
+    expect(interaction.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1 })).toBe(true);
+    const unconfirmed = peer.interactions.at(-1)!;
+    vi.advanceTimersByTime(5000);
+    expect(interaction.getSnapshot().error).toBe("unconfirmed");
+    expect(interaction.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1 })).toBe(true);
+    const retry = peer.interactions.at(-1)!;
+    expect(retry).toEqual(unconfirmed);
+    expect(retry).toMatchObject({ nonce: 3 });
+    peer.reply(retry, { type: "reaction", nonce: 3, event: null, snapshot: null });
+    expect(interaction.getSnapshot()).toMatchObject({ pending: null, error: null, reactions: [] });
+    // The host's current count is a projection, never inferred from a retry ACK.
+    peer.reply(retry, { type: "message_reactions", snapshot: reactionSnapshot(1, 2, { heart: 2 }) });
+    expect(session.getSnapshot().messagesByRoom.first[0].reactions).toEqual({ revision: 2, counts: { heart: 2 } });
     const sending = session.sendMessage("first", message(1).text), chat = await peer.next();
     peer.reply(chat, { type: "confirmed", message: message(1), inserted: false });
     await sending;
     expect(session.getSnapshot().messagesByRoom.first[0].reactions?.revision).toBe(2);
-    // The chat request is settled before its separately carried snapshot arrives.
-    peer.reply(chat, { type: "message_reactions", snapshot: reactionSnapshot(1, 3, { friend: ["clap"] }) });
-    expect(session.getSnapshot().messagesByRoom.first).toEqual([{ ...message(1), reactions: { revision: 3, choices: { friend: ["clap"] } } }]);
-    const removing = session.setMessageReaction("first", 1, "heart", false), removal = await peer.next();
-    peer.reply(removal, { type: "reaction_confirmed", changed: false, snapshot: reactionSnapshot(1, 3, { friend: ["clap"] }) });
-    await removing;
-    expect(session.getSnapshot().messagesByRoom.first[0].reactions?.revision).toBe(3);
   } finally { session.close(); }
 });
 
@@ -344,32 +362,33 @@ test("history assembles early live reaction snapshots and preserves the newer pr
   try {
     await peer.history([message(3), message(4)], true);
     const older = session.loadHistory("first"), request = await peer.next();
-    peer.reply({ ...request, requestId: "live-reaction" }, { type: "message_reactions", snapshot: reactionSnapshot(1, 3, { self: ["heart"] }) });
+    peer.reply({ ...request, requestId: "live-reaction" }, { type: "message_reactions", snapshot: reactionSnapshot(1, 3, { heart: 1 }) });
     expect(session.getSnapshot().messagesByRoom.first).toEqual([message(3), message(4)]);
     peer.reply(request, { type: "history_message", message: message(1) });
-    peer.reply(request, { type: "message_reactions", snapshot: reactionSnapshot(1, 1, { self: ["wave"] }) });
+    peer.reply(request, { type: "message_reactions", snapshot: reactionSnapshot(1, 1, { wave: 1 }) });
     peer.reply(request, { type: "history_message", message: message(2) });
     peer.reply(request, { type: "message_reactions", snapshot: reactionSnapshot(2, 0) });
     peer.reply(request, { type: "history_end", count: 2, hasMore: false, oldestSeq: 1, before: 3 });
     await older;
-    expect(session.getSnapshot().messagesByRoom.first).toEqual([{ ...message(1), reactions: { revision: 3, choices: { self: ["heart"] } } }, message(2)]);
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([{ ...message(1), reactions: { revision: 3, counts: { heart: 1 } } }, message(2)]);
     expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(false);
-    peer.reply(request, { type: "message_reactions", snapshot: reactionSnapshot(2, 4, { friend: ["clap"] }) });
-    peer.reply(request, { type: "message_reactions", snapshot: reactionSnapshot(5, 2, { self: ["wave"] }) });
+    peer.reply(request, { type: "message_reactions", snapshot: reactionSnapshot(2, 4, { clap: 1 }) });
+    peer.reply(request, { type: "message_reactions", snapshot: reactionSnapshot(5, 2, { wave: 1 }) });
     peer.live(message(5));
     expect(session.getSnapshot().messagesByRoom.first.map(message => message.seq)).toEqual([1, 2]);
-    expect(session.getSnapshot().messagesByRoom.first[1].reactions).toEqual({ revision: 4, choices: { friend: ["clap"] } });
+    expect(session.getSnapshot().messagesByRoom.first[1].reactions).toEqual({ revision: 4, counts: { clap: 1 } });
     const latest = session.loadLatestHistory("first");
     peer.page(await peer.next(), [message(1), message(2)], false, 1);
     await latest;
     expect(session.getSnapshot().messagesByRoom.first.map(message => message.reactions?.revision)).toEqual([3, 4]);
     const refreshing = session.loadLatestHistory("first"), refresh = await peer.next();
-    peer.reply({ ...refresh, requestId: "new-live-reaction" }, { type: "message_reactions", snapshot: reactionSnapshot(3, 5, { self: ["wave"] }) });
+    peer.reply({ ...refresh, requestId: "new-live-reaction" }, { type: "message_reactions", snapshot: reactionSnapshot(3, 5, { wave: 1 }) });
     peer.live(message(3));
     peer.page(refresh, [message(1), message(2)], false, 1);
     await refreshing;
     expect(session.getSnapshot().messagesByRoom.first.map(message => message.seq)).toEqual([2, 3]);
     expect(session.getSnapshot().messagesByRoom.first.map(message => message.reactions?.revision)).toEqual([4, 5]);
+    expect(session.getSnapshot().interactionsByRoom.get("first")!.getSnapshot().reactions).toEqual([]);
   } finally { session.close(); }
 });
 
@@ -386,13 +405,13 @@ test("room interactions reuse their original acknowledgement and user identity w
     expect(interaction.getSnapshot()).toMatchObject({ peerId: "self", reactionIds: ["wave", "heart"] });
     expect(interaction.send({ kind: "reaction", reaction: "heart", targetPeerId: "friend-user-1234" })).toBe(true);
     const request = peer.interactions.at(-1)!;
-    expect(request).toEqual({ type: "interaction", roomId: "first", reaction: "heart", targetUserId: "friend-user-1234", requestId: interaction.getSnapshot().pending!.requestId });
+    expect(request).toEqual({ type: "react", roomId: "first", reaction: "heart", target: { type: "person", userId: "friend-user-1234" }, nonce: 1, requestId: interaction.getSnapshot().pending!.requestId });
     expect(session.getSnapshot().pending.size).toBe(0);
-    expect(socket.sent.some(command => command.type === "interaction")).toBe(false);
-    peer.reply(request, { type: "interaction", id: "future", occurredAt: Date.now(), senderUserId: "self", reaction: "future-decoration" });
+    expect(socket.sent.some(command => command.type === "react")).toBe(false);
+    peer.reply({ ...request, requestId: "unsupported-decoration" }, { type: "reaction", nonce: 999, snapshot: null, event: { id: "future", occurredAt: Date.now(), senderUserId: "self", reaction: "future-decoration", target: { type: "person", userId: "self" } } });
     expect(interaction.getSnapshot().pending?.requestId).toBe(request.requestId);
     expect(interaction.getSnapshot().reactions).toEqual([]);
-    peer.reply(request, { type: "interaction", id: "confirmed", occurredAt: Date.now(), senderUserId: "self", reaction: "heart", targetUserId: "friend-user-1234" });
+    peer.reply(request, { type: "reaction", nonce: 1, snapshot: null, event: { id: "confirmed", occurredAt: Date.now(), senderUserId: "self", reaction: "heart", target: { type: "person", userId: "friend-user-1234" } } });
     expect(interaction.getSnapshot()).toMatchObject({ pending: null, confirmed: {
       sender: { peerId: "self", displayName: "Me" }, payload: { kind: "reaction", reaction: "heart", targetPeerId: "friend-user-1234" },
     } });
@@ -408,6 +427,7 @@ test("room interactions reuse their original acknowledgement and user identity w
     expect(interaction.send({ kind: "reaction", reaction: "wave" })).toBe(true);
     socket.close();
     expect(session.getSnapshot().interactionsByRoom.get("first")).toBe(interaction);
+    expect(interaction.getSnapshot().reactions).toEqual([]);
     expect(interaction.getSnapshot()).toMatchObject({ ready: false, pending: null, error: "unconfirmed", reactions: [] });
     session.reconnect();
     const resumed = ChannelSocket.current;
@@ -445,13 +465,40 @@ test("interaction readiness follows Domain read admission without waiting for a 
     await Promise.resolve();
     expect(peer.interactions).toHaveLength(1);
     const request = peer.interactions[0];
-    peer.reply(request, { type: "interaction_ready", serverTime: Date.now(), reactionIds: ["wave", "future-decoration"] });
+    peer.reply(request, { type: "interaction_ready", serverTime: Date.now(), reactionIds: ["wave", "future-decoration"], publicationReactions: [] });
     expect(pending.getSnapshot()).toMatchObject({ ready: true, reactionIds: ["wave"] });
     state.channel.rooms[0].available = false;
     socket.receive({ type: "state", state });
     expect(session.getSnapshot().interactionsByRoom.size).toBe(0);
-    peer.reply(request, { type: "interaction", id: "late", occurredAt: Date.now(), senderUserId: "self", reaction: "wave" });
+    peer.reply(request, { type: "reaction", nonce: 1, snapshot: null, event: { id: "late", occurredAt: Date.now(), senderUserId: "self", reaction: "wave", target: { type: "person", userId: "self" } } });
     expect(pending.getSnapshot()).toMatchObject({ ready: false, reactions: [] });
+  } finally { session.close(); }
+});
+
+test("content reaction targets and delayed events stay with the current room binding", async () => {
+  const { session, socket, peer } = await setup();
+  try {
+    const first = session.getSnapshot().interactionsByRoom.get("first")!;
+    expect(first.send({ kind: "reaction", reaction: "heart" }, { messageSeq: 1 })).toBe(true);
+    const old = peer.interactions.at(-1)!;
+    const record = { type: "reaction" as const, nonce: 1, snapshot: null, event: {
+      id: "old-room-click", occurredAt: Date.now(), senderUserId: "self", reaction: "heart",
+      target: { type: "message" as const, messageSeq: 1 },
+    } };
+    session.browse("second");
+    const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    socket.receive({ type: "ack", requestId: browse.requestId });
+    peer.page(await peer.next(), [], false, null);
+    await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.get("second")?.getSnapshot().ready).toBe(true));
+    const second = session.getSnapshot().interactionsByRoom.get("second")!;
+    peer.reply(old, record);
+    expect(first.getSnapshot()).toMatchObject({ ready: false, reactions: [] });
+    expect(second.getSnapshot().reactions).toEqual([]);
+    expect(second.send({ kind: "reaction", reaction: "wave" }, { publicationId: "second-screen" })).toBe(true);
+    expect(peer.interactions.at(-1)).toMatchObject({ type: "react", roomId: "second", nonce: 2,
+      target: { type: "publication", publicationId: "second-screen" } });
+    peer.reply({ ...old, roomId: "second" }, record, "retired-binding");
+    expect(second.getSnapshot().reactions).toEqual([]);
   } finally { session.close(); }
 });
 
@@ -3168,7 +3215,7 @@ test.each([
 ] as const)("a fresh host binding replaces cached history with its %s head", async (_head, messages, live) => {
   const { session, socket, peer } = await setup();
   try {
-    await peer.history([{ ...message(1), reactions: { revision: 7, choices: { heart: ["self"] } } }, message(8), message(9)], true);
+    await peer.history([{ ...message(1), reactions: { revision: 7, counts: { heart: 7 } } }, message(8), message(9)], true);
     peer.live(message(7), "second");
     const loading = session.loadHistory("first");
     const cancelled = expect(loading).rejects.toThrow("room_unavailable");
@@ -6266,7 +6313,7 @@ async function setupRoomBackup() {
   context.socket.receive({ type: "state", state });
   context.socket.receive({ type: "host_bound", roomId: "first", bindingId: "binding" });
   context.socket.receive({ type: "ack", requestId: register.requestId });
-  const metadata = { kind: "room" as const, version: 1 as const, domainId: "domain", policy: JSON.parse(policy), retainedFiles: [] };
+  const metadata = { kind: "room" as const, version: 2 as const, domainId: "domain", policy: JSON.parse(policy), retainedFiles: [] };
   const read = vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => {
     await visitor.metadata(metadata); await visitor.row(row); return metadata;
   });
@@ -6320,7 +6367,7 @@ test("domain backup uses its actual service owner and validates kind before reti
   const archive = new Blob(["domain-checkpoint"]), fetch = vi.fn().mockResolvedValue(new Response(archive));
   vi.stubGlobal("fetch", fetch);
   const read = vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => {
-    const metadata = { kind: "room" as const, version: 1 as const, domainId: "domain", policy: { id: "first", creatorId: "self" }, retainedFiles: [] };
+    const metadata = { kind: "room" as const, version: 2 as const, domainId: "domain", policy: { id: "first", creatorId: "self" }, retainedFiles: [] };
     await visitor.metadata(metadata); return metadata;
   });
   try {
@@ -6438,7 +6485,7 @@ test("room backup exports its actual Browser host snapshot, full nonce/reactions
   const { session, host, snapshot, row } = await setupRoomBackup();
   const attachment = { id: "file", name: "pixel.png", size: 3, mediaType: "image/png" as const, sha256: "a".repeat(64) };
   row.attachments.push(attachment as never);
-  row.reactions = { revision: 2, choices: { wave: ["self"] } };
+  row.reactions = { revision: 2, counts: { wave: 2 } };
   const file = new File([new Uint8Array([1, 2, 3])], attachment.name);
   vi.spyOn(session.attachments, "retained").mockResolvedValue([
     { key: { roomId: "first", messageSeq: 1, attachmentId: attachment.id }, attachment, file },
@@ -6447,7 +6494,7 @@ test("room backup exports its actual Browser host snapshot, full nonce/reactions
   let exported: unknown[] = [];
   const write = vi.spyOn(backupArchive, "writeBackup").mockImplementation(async (metadata, history, open) => {
     for await (const value of history!) exported.push(value);
-    expect(metadata).toMatchObject({ ownCredential: { userId: "self", credential: "credential" }, retainedFiles: [{ messageSeq: 1, attachment }] });
+    expect(metadata).toMatchObject({ kind: "room", version: 2, ownCredential: { userId: "self", credential: "credential" }, retainedFiles: [{ messageSeq: 1, attachment }] });
     expect(await open!({ messageSeq: 1, attachment })).toBe(file);
     return new Blob(["archive"]);
   });
@@ -6865,7 +6912,7 @@ test.each([{ state: "missing" }, { state: "unrecoverable" }, { state: "available
   } finally { session.close(); }
 });
 
-test("reopening room settings can read its invitation while the dismissed panel's read is pending", async () => {
+test("reopening the room invitation can read while the dismissed panel's read is pending", async () => {
   const { session, socket } = await setup();
   try {
     const dismissed = session.getRoomInvite("first").catch(error => error);

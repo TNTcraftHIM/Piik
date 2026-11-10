@@ -448,8 +448,17 @@ sharing. Its README and [status](../status.md) own the runnable boundary.
 
 ### Workspace Hierarchy Proposal
 
+The latest composition direction removes the user-facing domain switcher and its
+separate invitation. Piik returns to the current site's room overview; the left
+side lists rooms and their voice participants. Personal voice controls stay below
+that list. The right side combines global utilities with optional conversation
+or details; collapsing it keeps connection feedback and reopening reachable.
+The site still coordinates identity and room hosts. Opening a site admits a user;
+room privacy remains independent, and site backup/restore belongs to its operator.
+This candidate replaces the domain-navigation row below and awaits rendered review.
+
 Reviewed 2026-11-10: the owner selected contextual room invitation, upper sharing
-actions and lower personal voice controls. Presence placement remains under review.
+actions, lower personal voice controls and a couch anchored below the central body.
 The composition uses clearer task groups and the space around media;
 the network and data owners above continue to govern activity and admission.
 
@@ -458,7 +467,7 @@ the network and data owners above continue to govern activity and admission.
 | Domain and navigation | Left room list and domain menu; collapse control on the sidebar edge. Domain invitation and domain administration stay here. |
 | Current room | Room title with its contextual invitation; the primary share action and its parameters form a separate group. Room management stays beside the room-list item. |
 | Personal activity | Lower-left identity, joining voice and the joined activity's mute, listening and leave controls. State the target room; folding navigation or narrowing the viewport moves the same controls into the bottom bar. |
-| Conversation and presence | Chat, pictures and the room's couch retain separate tasks. Compare a stable lower couch anchor against moving it between the central conversation and side area; preserve the same people, states and interaction owner. Each source keeps its room label and sharer interaction entry. |
+| Conversation and presence | The couch anchors the central body's bottom, aligned with the lower-left personal area. Chat is central without watched pictures and can move to the right companion while watching; both sidebars can collapse. Preserve the same people, states and interaction owner. Each source keeps its room identity and reaction entry. |
 
 Focus viewing keeps one main picture with the other views below. Browsing another
 room does not stop independent watches; each picture retains its source-room
@@ -476,9 +485,10 @@ must not join voice, restart capture or change room authority.
 Use one contextual invitation panel for either room or domain. Copy the current
 link first; expand its QR code within the panel. Access fields reuse the existing
 settings component and writer. Keep reset/revoke separate from copying. Room
-invitations admit the domain and that room; domain invitations do not unlock
-private rooms. Public-room URLs select their target while still observing domain
-admission. Do not add roles, a second token or hidden permission changes.
+invitations, whether public or private, admit the domain and that room; domain
+invitations do not unlock private rooms. Admission and reset semantics remain with
+the [room-data model](./channel-storage-and-identity.md). Do not add roles or a
+second token owner.
 
 The current domain rail is a local address list, not centrally synchronized
 membership. Its add entry should open an invitation/address, with saving as a

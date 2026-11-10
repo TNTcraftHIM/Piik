@@ -243,16 +243,6 @@ pub fn conversation_broadcast(record: &str) -> Result<String, JsValue> {
     encode(&parse::<conversation::ConversationRecord>(record)?.broadcast())
 }
 
-#[wasm_bindgen]
-pub fn conversation_replies(address: &str, result: &str) -> Result<String, JsValue> {
-    let address = parse::<ConversationAddress>(address)?;
-    let result = match parse::<Result<conversation::ConversationResult, String>>(result)? {
-        Ok(result) => address.replies(Ok(result)),
-        Err(code) => address.replies(Err(&code)),
-    };
-    encode(&result.map_err(error)?)
-}
-
 /// Browser bindings for the shared room dispatch; the core owns its pending turn.
 #[wasm_bindgen]
 pub struct RoomHost {
@@ -283,6 +273,21 @@ impl RoomHost {
                 .prepare_peer(&parse::<SignedPacket>(packet)?, now)
                 .map_err(error)?,
         )
+    }
+    pub fn finish_peer(&mut self, address: &str, result: &str) -> Result<String, JsValue> {
+        let address: ConversationAddress = parse(address)?;
+        let result: Result<piik_channel_core::conversation::ConversationResult, String> =
+            parse(result)?;
+        let replies = match result {
+            Ok(result) => self
+                .room
+                .finish_peer(address, Ok(result))
+                .map_err(error)?
+                .replies(),
+            Err(code) => address.replies(Err(&code)),
+        }
+        .map_err(error)?;
+        encode(&replies)
     }
     pub fn current_readers(&self) -> Result<String, JsValue> {
         encode(&self.room.current_readers())

@@ -57,7 +57,7 @@ impl StoredRoomHost {
     ) -> StoreResult<RoomBackup> {
         let store = self.store.snapshot(path)?;
         let metadata = RoomMetadata {
-            version: 1,
+            version: 2,
             domain_id,
             policy: serde_json::from_value(store.load()?.ok_or("room_not_found")?)?,
             own_credential,
@@ -125,10 +125,7 @@ impl StoredRoomHost {
                 .map(ConversationResult::History),
             ConversationWork::Immediate(record) => Ok(ConversationResult::Immediate(record)),
         });
-        Ok(crate::conversation::ConversationOutcome {
-            address: prepared.address,
-            result,
-        })
+        self.host.finish_peer(prepared.address, result)
     }
 
     pub fn current_readers(&self) -> Vec<uuid::Uuid> {

@@ -437,7 +437,7 @@ For speech added through **Include my microphone**, check the picture's
 [source sound](#picture-but-no-source-sound) and the sharer's **Picture and sound → Sound**.
 For room voice, follow these steps:
 
-1. Both people use **Join voice** in the same room. Its arrow offers **Listen without a microphone**; the main action requests microphone access. Check that the voice-room selector is controlling the intended room.
+1. Both people use **Join voice** in the same room and allow microphone access. Check that the voice-room selector is controlling the intended room and the microphone is not muted.
 2. The speaker checks browser microphone permission, input device and input volume
    in **Voice settings**. Microphone access needs HTTPS or `localhost`.
 3. Check whether you paused listening or muted that person locally. These controls

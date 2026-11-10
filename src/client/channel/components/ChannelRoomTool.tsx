@@ -1,10 +1,10 @@
-import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { FloatingPanel } from "../../components/living/FloatingPanel";
 import { Tooltip } from "../../components/living/Tooltip";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
-import { SurfaceDocument } from "../../ui/panel-window";
+import { panelWindowAPI, SurfaceDocument } from "../../ui/panel-window";
 import "./channel-room-tool.css";
 
 export interface RoomToolSurface { open: boolean; document: Document | null }
@@ -28,21 +28,24 @@ export function ChannelRoomTool({ title, home, surface, onSurfaceChange, couch, 
   const couchSlot = useRef<HTMLDivElement>(null), conversationSlot = useRef<HTMLDivElement>(null), voiceSlot = useRef<HTMLDivElement>(null);
   const [targets] = useState(() => ({ couch: target(), conversation: target(), voice: target() }));
   const detached = Boolean(surface.document && surface.document !== document);
-  const label = lang === "zh" ? "房间小窗" : "Room mini window";
-  // The page's later slots must finish attaching before the first placement.
-  useEffect(() => {
-    for (const part of parts) move(targets[part], home[part].current);
-    return () => { for (const part of parts) targets[part].remove(); };
-  }, [targets, home.couch, home.conversation, home.voice]);
+  const windowAvailable = panelWindowAPI(typeof window === "undefined" ? null : window);
+  const inline = (surface.open && !detached) || !windowAvailable;
+  const label = detached ? (lang === "zh" ? "聚焦房间小窗" : "Focus room window")
+    : inline ? (lang === "zh" ? "房间交流面板" : "Room panel")
+    : (lang === "zh" ? "弹出房间小窗" : "Pop out room");
+  // A stable home ref can point to a new layout slot; an open tool keeps its content.
+  useLayoutEffect(() => {
+    if (!surface.open) for (const part of parts) move(targets[part], home[part].current);
+  });
+  useEffect(() => () => { for (const part of parts) targets[part].remove(); }, [targets]);
   return <>
     <Tooltip kind={detached ? "hint-window-detach" : "hint-chat-open"} disabled={surface.open} text={vis ? undefined : label}>
       <button ref={trigger} type="button" className="lr-btn is-compact is-quiet" aria-label={label}
-        aria-haspopup="dialog" aria-expanded={surface.open} popoverTarget={detached ? undefined : id}
-        onClick={detached ? () => surface.document?.defaultView?.focus() : undefined}>
-        <Glyph name="couch" size={19} />{!vis && <span className="lr-cap">{lang === "zh" ? "小窗" : "Mini window"}</span>}
+        aria-haspopup="dialog" aria-expanded={surface.open} popoverTarget={detached ? undefined : id}>
+        <Glyph name="couch" size={19} />{!vis && <span className="lr-cap">{inline ? (lang === "zh" ? "交流" : "Room panel") : (lang === "zh" ? "小窗" : "Mini window")}</span>}
       </button>
     </Tooltip>
-    <FloatingPanel id={id} trigger={trigger} title={title} icon="couch" detachable className="c3-room-tool"
+    <FloatingPanel id={id} trigger={trigger} title={title} icon="couch" directWindow className="c3-room-tool"
       onOpenChange={(open, owner) => {
         const destination = open ? { couch: couchSlot, conversation: conversationSlot, voice: voiceSlot } : home;
         // Placement-dependent children must render against their new ancestry.

@@ -1,4 +1,4 @@
-import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomInvitationState, RoomSettings } from "./protocol";
+import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomInvitationState, RoomSettings, PublicationReactionSnapshot } from "./protocol";
 import type { ChannelAttachments, DraftFile } from "./attachments";
 import type { NativeCaptureTarget } from "../native/wire";
 import type { NativeCaptureRequest, NativeCaptureSources, ChannelRemoteControlState, NativeConnectionMetrics } from "./app-link";
@@ -47,6 +47,7 @@ export interface ChannelView {
   quality: QualityProfile;
   videoCodecMode: BrowserVideoCodecMode;
   interactionsByRoom: ReadonlyMap<string, RoomInteractionSession>;
+  publicationReactions: ReadonlyMap<string, PublicationReactionSnapshot>;
   voiceInput: RoomPreferences["voiceInput"];
   voicePlaybackByUser: ReadonlyMap<string, { volume: number; muted: boolean }>;
   listeningVolume: number;
@@ -85,7 +86,6 @@ export interface ChannelActions {
   connectionMetrics(roomId: string, publicationId?: string): Promise<ChannelMediaMetric[]>;
   appConnectionMetrics(roomId: string, publicationId?: string, signal?: AbortSignal): Promise<NativeConnectionMetrics>;
   sendMessage(roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal): Promise<void>;
-  setMessageReaction(roomId: string, messageSeq: number, reaction: string, active: boolean): Promise<void>;
   loadHistory(roomId: string): Promise<void>;
   loadLatestHistory(roomId: string): Promise<void>;
   attachments: ChannelAttachments;

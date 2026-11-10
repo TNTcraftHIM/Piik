@@ -203,25 +203,21 @@ window.runBrowserRoomCheck = async () => {
     await bindHost();
     check((await send("After reopen", "third")).message.seq === 3, "persisted sequence after reopen");
 
-    const react = async (reaction: string, active: boolean, asOwner = false, signal?: AbortSignal) => {
-      const command = { type: "set_reaction", messageSeq: 1, reaction, active };
-      const packet = asOwner ? JSON.parse(signer.sign(session, JSON.stringify({
-        roomId: host.roomId, bindingId, sender: session, recipient: session, requestId: crypto.randomUUID(), command,
-      }))) : peerPacket(command);
-      return JSON.parse(JSON.stringify(await host.dispatchPeer(packet, Date.now(), signal)))[0].record;
+    let reactionNonce = 0, reactionTime = Date.now();
+    const react = async (reaction: string, nonce = ++reactionNonce, signal?: AbortSignal) => {
+      reactionTime += 801;
+      return JSON.parse(JSON.stringify(await host.dispatchPeer(peerPacket({ type: "react", nonce, reaction,
+        target: { type: "message", messageSeq: 1 } }), reactionTime, signal)))[0].record;
     };
-    const firstReaction = await react("wave", true);
-    check(firstReaction.type === "reaction_confirmed" && firstReaction.changed && firstReaction.snapshot.revision === 1
-      && firstReaction.snapshot.choices[peerMember.userId][0] === "wave", "reaction belongs to the authenticated user");
-    const repeatedReaction = await react("wave", true);
-    check(!repeatedReaction.changed && JSON.stringify(repeatedReaction.snapshot) === JSON.stringify(firstReaction.snapshot), "explicit reaction set is idempotent");
-    const [ownerReaction, secondChoice] = await Promise.all([react("wave", true, true), react("laugh", true)]);
-    check(ownerReaction.snapshot.revision === 2 && secondChoice.snapshot.revision === 3
-      && secondChoice.snapshot.choices[peerMember.userId].length === 2, "serialized users preserve independent choices");
-    const removedReaction = await react("wave", false);
-    check(removedReaction.snapshot.revision === 4 && removedReaction.snapshot.choices[peerMember.userId].join() === "laugh"
-      && removedReaction.snapshot.choices[owner.userId].join() === "wave", "removing a choice keeps the other user and reaction");
-    check(!(await react("wave", false)).changed, "repeated removal is idempotent");
+    const firstReaction = await react("wave");
+    check(firstReaction.type === "reaction" && firstReaction.event && firstReaction.snapshot.revision === 1
+      && firstReaction.snapshot.counts.wave === 1, "confirmed reaction increments its aggregate");
+    const repeatedReaction = await react("wave", 1);
+    check(repeatedReaction.event === null && JSON.stringify(repeatedReaction.snapshot) === JSON.stringify(firstReaction.snapshot), "same nonce is idempotent and does not replay the event");
+    const secondReaction = await react("wave");
+    check(secondReaction.snapshot.revision === 2 && secondReaction.snapshot.counts.wave === 2, "another click adds one instead of toggling");
+    const finalReaction = await react("poop");
+    check(finalReaction.snapshot.revision === 3 && finalReaction.snapshot.counts.poop === 1 && finalReaction.snapshot.counts.wave === 2, "all shared props have independent counts");
     const reactionAbort = new AbortController(), originalPut = IDBObjectStore.prototype.put;
     let reactionWriteSucceeded = false;
     IDBObjectStore.prototype.put = function (...args) {
@@ -230,7 +226,7 @@ window.runBrowserRoomCheck = async () => {
       return request;
     };
     try {
-      const failure = await react("heart", true, false, reactionAbort.signal);
+      const failure = await react("heart", ++reactionNonce, reactionAbort.signal);
       check(failure.type === "error" && failure.code === "AbortError", "aborted reaction write cannot confirm");
     }
     finally { IDBObjectStore.prototype.put = originalPut; }
@@ -239,7 +235,8 @@ window.runBrowserRoomCheck = async () => {
     const recovered = JSON.parse(JSON.stringify(await host.dispatchPeer(peerPacket({ type: "history", before: null }), Date.now())));
     const recoveredReaction = recovered.find((reply: { record: { type: string; snapshot?: { messageSeq: number } } }) =>
       reply.record.type === "message_reactions" && reply.record.snapshot?.messageSeq === 1).record.snapshot;
-    check(JSON.stringify(recoveredReaction) === JSON.stringify(removedReaction.snapshot), "reopen restores committed reactions and excludes the aborted choice");
+    const { type: _type, ...savedReaction } = finalReaction.snapshot;
+    check(JSON.stringify(recoveredReaction) === JSON.stringify(savedReaction), "reopen restores committed counts and excludes the aborted reaction");
 
     const controller = new AbortController();
     const originalAdd = IDBObjectStore.prototype.add;
@@ -306,7 +303,7 @@ window.runBrowserRoomCheck = async () => {
       }) as Output;
       check(stale.reply?.result.type === "error" && stale.reply.result.code === "stale_room_host", "old owner cannot update policy");
       for (const command of [{ type: "chat", text: "Stale message", nonce: "stale", attachments: [] }, { type: "history", before: null },
-        { type: "interaction_ready" }, { type: "interaction", reaction: "wave" }]) {
+        { type: "interaction_ready" }, { type: "react", nonce: 1, reaction: "wave", target: { type: "person", userId: owner.userId } }]) {
         const replies = await previousHost.dispatchPeer(peerPacket(command, previousBinding), Date.now());
         check(replies[0]?.record.type === "error" && replies[0].record.code === "stale_room_host", "old owner cannot confirm history or an immediate result");
       }
@@ -337,13 +334,15 @@ window.runBrowserRoomCheck = async () => {
       && page[100].record.type === "history_end" && page[100].record.hasMore, "history returns shared typed records and one end marker");
     const ready = JSON.parse(JSON.stringify(await host.dispatchPeer(peerPacket({ type: "interaction_ready" }), 1000)));
     check(ready[0].record.type === "interaction_ready" && ready[0].record.serverTime === 1000 && ready[0].record.reactionIds.includes("wave"), "admitted participant initializes interaction time and reactions");
-    const interactionPacket = peerPacket({ type: "interaction", reaction: "wave", targetUserId: owner.userId });
+    const interactionPacket = peerPacket({ type: "react", nonce: ++reactionNonce, reaction: "wave", target: { type: "person", userId: owner.userId } });
     const interaction = JSON.parse(JSON.stringify(await host.dispatchPeer(interactionPacket, 2000)));
-    check(interaction[0].record.type === "interaction" && interaction[0].record.senderUserId === peerMember.userId
-      && interaction[0].record.targetUserId === owner.userId && interaction[0].record.occurredAt === 2000
+    check(interaction[0].record.type === "reaction" && interaction[0].record.event.senderUserId === peerMember.userId
+      && interaction[0].record.event.target.userId === owner.userId && interaction[0].record.event.occurredAt === 2000
       && interaction[0].requestId === JSON.parse(interactionPacket.payload).requestId, "immediate signed result retains authenticated actor, target, time and request identity");
-    check(JSON.parse(verify_reply(signer.sign(session, JSON.stringify(interaction[0])), signer.signing_key())).record.id === interaction[0].record.id, "Host signature covers the immediate result");
-    const limited = await host.dispatchPeer(interactionPacket, 2001);
+    check(JSON.parse(verify_reply(signer.sign(session, JSON.stringify(interaction[0])), signer.signing_key())).record.event.id === interaction[0].record.event.id, "Host signature covers the immediate result");
+    const replayed = await host.dispatchPeer(interactionPacket, 2001);
+    check(replayed[0].record.type === "reaction" && replayed[0].record.event === null, "replayed person nonce cannot animate twice");
+    const limited = await host.dispatchPeer(peerPacket({ type: "react", nonce: ++reactionNonce, reaction: "wave", target: { type: "person", userId: owner.userId } }), 2001);
     check(limited[0].record.type === "error" && limited[0].record.code === "rate_limited", "Host applies existing 800ms interaction limit");
     const afterInteraction = await host.dispatchPeer(peerPacket({ type: "history", before: null }), 3000);
     check(JSON.stringify(afterInteraction.map(reply => reply.record)) === JSON.stringify(page.map(reply => reply.record)), "immediate interaction does not add retained history");
@@ -357,7 +356,7 @@ window.runBrowserRoomCheck = async () => {
       for await (const row of snapshot.rows) rows.push(row);
       check(rows.length === 112 && rows[0].nonce === "first" && rows.at(-1)?.seq === 112,
         "snapshot streams all history beyond pagination, including retry nonces, after the runtime closes");
-      check(JSON.stringify(rows[0].reactions) === JSON.stringify({ revision: removedReaction.snapshot.revision, choices: removedReaction.snapshot.choices })
+      check(JSON.stringify(rows[0].reactions) === JSON.stringify({ revision: finalReaction.snapshot.revision, counts: finalReaction.snapshot.counts })
         && rows[0].attachments[0].sha256 === file.sha256,
         "snapshot retains reactions and complete attachment descriptors");
       check(JSON.parse(savedPolicy).name === "New binding policy", "policy and history share the same snapshot before later writes");
@@ -460,12 +459,8 @@ window.runBrowserRoomCheck = async () => {
     });
     schema3.close();
     try {
-      const migrated = await BrowserRoomHost.open(previousSchema, savedPolicy);
-      try {
-        const copy = await migrated.snapshot();
-        try { const firstRow = await copy.rows[Symbol.asyncIterator]().next(); check(firstRow.value?.nonce === "first", "additive schema3 upgrade preserves history and retry identity"); }
-        finally { await copy.close(); }
-      } finally { await migrated.close(); }
+      try { await BrowserRoomHost.open(previousSchema, savedPolicy); throw new Error("old counts schema accepted"); }
+      catch (error) { check(String(error).includes("unsupported_storage_version"), "old private choices schema is rejected without migration"); }
     } finally { await new Promise<void>((resolve, reject) => { const request = indexedDB.deleteDatabase(previousSchema); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); }); }
     // Old private checkpoints must fail explicitly, without replacing the saved policy.
     const legacyPolicy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Old checkpoint", icon: "future-room_7",
@@ -474,7 +469,7 @@ window.runBrowserRoomCheck = async () => {
     const legacyId = legacyHost.roomId;
     await legacyHost.close();
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(database, 4);
+      const request = indexedDB.open(database, 5);
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
     let oldPolicy = "";
@@ -496,7 +491,7 @@ window.runBrowserRoomCheck = async () => {
       check((await BrowserRoomHost.storedPolicies(database)).includes(oldPolicy), "invalid old policy remains unchanged");
     } finally { db.close(); }
     await new Promise<void>((resolve, reject) => {
-      const upgrade = indexedDB.open(database, 5);
+      const upgrade = indexedDB.open(database, 6);
       upgrade.onsuccess = () => { upgrade.result.close(); resolve(); }; upgrade.onerror = () => reject(upgrade.error);
     });
     for (const nonce of ["closed", "closed-again"]) {
@@ -509,11 +504,11 @@ window.runBrowserRoomCheck = async () => {
       bindingWriteOwner: true, lateBindingClaim: true, sameBindingActivity: true, privateRoomProjection: true, privateInvitationGrant: true, restoredWithoutCapture: true,
       invitationReadOnly: true, invitationReopen: true, invitationExplicitResetKeepsGrantAndHistory: true,
       signedPeerHistory: true, signedPeerIdentity: true, immediateAdmission: true, immediateBindingFence: true, immediateNotHistory: true,
-      retainedReactions: true, independentUserChoices: true, reactionAbortAfterPutSuccess: reactionWriteSucceeded,
+      retainedReactions: true, countedClicksAndNonceIdempotency: true, reactionAbortAfterPutSuccess: reactionWriteSucceeded,
       identityImage: true, identityPngFallback: true, identityAbortAfterPutSuccess: true, identityPresetReplacement: true,
       previousSchemaPreserved: true,
       consistentPortableSnapshot: true, stagedAtomicRestore: true, backupUniqueIndexes: true, restoreRollbackAfterCopy: restoreWriteSucceeded,
-      restoredWriterFence: true, boundedBackupSlot: true, additiveSchemaUpgrade: true,
+      restoredWriterFence: true, boundedBackupSlot: true, previousChoicesSchemaRejected: true,
       missingIconRejectedWithoutOverwrite: true, domainCredentialDatabaseProvided: false };
   } finally {
     await host.close();

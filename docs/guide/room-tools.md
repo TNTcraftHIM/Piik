@@ -17,8 +17,7 @@ in place. The tabs show the tasks available to you:
 
 - **Room:** Change the name, image or access, then **Save**. **Hide from users
   without access** hides a private room from people who have not been admitted.
-- **Invitation:** Copy the private-room invitation or open its QR code. Under
-  **Users with access**, **Remove room access** ends that user's access and
+  Under **Users with access**, **Remove room access** ends that user's access and
   activities in this room; they need a new grant to return.
 - **Connection settings:** Choose how many people this device helps forward to in this room.
 - **Records and backups:** Export chat, or export a room backup when you manage
@@ -26,20 +25,25 @@ in place. The tabs show the tasks available to you:
   replacement notice before **Confirm**. Restoration replaces this room's
   settings and messages.
 
-Changing an invitation does not revoke people already admitted. To replace its
-link, expand **Reset room invitation**, then select **Generate new invitation**.
+Invitations open beside the room title. Copy the link there or use the QR button
+below the copy action. Owners of public and private rooms can invite new friends.
+A room invitation admits its holder to the domain and that room, including the
+domain's other public rooms. Switching between public and private keeps the same
+invitation; ordinary public access does not grant later private access. Resetting
+an invitation invalidates its old links without revoking admitted users. To replace
+its link, expand **Reset room invitation**, then select **Generate new invitation**.
 Domain settings remain beside the domain name in the room list.
 
 ## Chat and reactions
 
 1. Select a room and send a message in its conversation. Use the attachment
    button to add an image or file; you can include text with it.
-2. Use **React to this message** to add a reaction. Select your reaction again
-   to remove it.
+2. Use **React to this message** to choose a reaction. Each confirmed click adds
+   one to its count; selecting it again adds another after the brief cooldown.
 3. To read back, select **Earlier messages**. **Latest messages** returns to
    the current conversation.
 
-Confirmed messages and their reactions are saved by the room's host. Refreshing
+Confirmed messages and their reaction counts are saved by the room's host. Refreshing
 or returning to the room loads its history again when that host is available.
 Chat and history use the domain connection and do not wait for a P2P link.
 The domain forwards message text; it does not keep the room's history.
@@ -49,6 +53,9 @@ File content, voice and shared pictures use their own P2P connections.
 
 Selecting a person in the room opens their interaction menu. Expressions and
 thrown props are live effects; they are not saved as message reactions.
+The reaction button beside a shared picture counts reactions to that particular
+share while it is live. A second share has its own counts. Loading saved counts
+does not replay animations.
 
 While watching a picture, **On screen** in its playback bar shows that room's
 new messages over the picture. **Playback settings → On-screen chat** adjusts
@@ -57,11 +64,9 @@ System video fullscreen and video picture in picture do not show chat overlays.
 
 ## Room voice
 
-1. In the selected room's header, select **Join voice** and allow microphone
+1. In the lower-left personal area, select **Join voice** and allow microphone
    access when asked. No one needs to open a room-wide call first.
-2. To join without capturing a microphone, open the arrow beside **Join voice**
-   and select **Listen without a microphone**.
-3. Use the persistent voice controls to mute your microphone, pause listening
+2. Use the persistent voice controls to mute your microphone, pause listening
    or **Leave voice**. **Voice settings** selects the input and noise/echo processing.
 
 ![Example room conversation with joined voice controls below it: microphone, listening, settings and leave.](../assets/guide/channel-room.en.png#gh-light-mode-only)
@@ -98,10 +103,10 @@ voices playing in your browser. See [sharing sound controls](./sharing.md#exclud
 
 ## Keep the room beside a picture or game
 
-Select **Mini window** in the room header to move its conversation, people and
-voice controls into a movable room window. On supported desktop browsers,
-**Open in always-on-top window** detaches it. Keep the original page open;
-closing the small window returns its controls to the page.
+Select **Pop out room** beside the couch to move its conversation, people and
+voice controls directly into an always-on-top window. Other browsers use the
+movable **Room panel** inside the page. Keep the original page open; closing
+the small window returns its controls and drafts to the page.
 
 Opening or closing this window does not join or leave voice. A windowed or
 borderless game lets you keep it visible; exclusive fullscreen may cover it.

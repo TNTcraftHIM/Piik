@@ -5,6 +5,7 @@ import { useAnchoredPopover } from "../../components/living/use-anchored-popover
 import { ChannelAction } from "./ChannelAction";
 import { Btn } from "../../components/living/primitives";
 import { downloadBlob } from "../../lib/download";
+import { Glyph } from "../../ui/icons";
 import "./channel-invite-qr-code.css";
 
 class InvitationCode extends Component<{ value: string; label: string; failure: string; children: ReactNode }, { failed: boolean }> {
@@ -17,8 +18,8 @@ class InvitationCode extends Component<{ value: string; label: string; failure: 
 }
 
 /** Each invitation owner supplies its exact URL, including the complete fragment. */
-export function ChannelInviteQrCode({ url, disabled = false, label }: {
-  url: string | null | undefined; disabled?: boolean; label: string;
+export function ChannelInviteQrCode({ url, disabled = false, label, presentation = "popover" }: {
+  url: string | null | undefined; disabled?: boolean; label: string; presentation?: "popover" | "inline";
 }) {
   const { vis, lang } = useCopy(), zh = lang === "zh";
   const id = useId();
@@ -27,8 +28,11 @@ export function ChannelInviteQrCode({ url, disabled = false, label }: {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
-  useAnchoredPopover(anchor, panel);
-  useEffect(() => { setSaveFailed(false); if (!url) panel.current?.hidePopover(); }, [url]);
+  useAnchoredPopover(anchor, panel, { enabled: presentation === "popover" });
+  useEffect(() => {
+    setSaveFailed(false);
+    if (!url || disabled) { if (panel.current?.matches(":popover-open")) panel.current.hidePopover(); setOpen(false); }
+  }, [url, disabled]);
   const save = async () => {
     const svg = panel.current?.querySelector("svg[data-invitation-code]");
     if (!(svg instanceof SVGSVGElement)) return;
@@ -52,6 +56,18 @@ export function ChannelInviteQrCode({ url, disabled = false, label }: {
       if (panel.current?.querySelector("svg[data-invitation-code]") === svg) setSaveFailed(true);
     } finally { URL.revokeObjectURL(imageURL); setSaving(false); }
   };
+  const content = open && url && <>
+    <InvitationCode key={url} value={url} label={label} failure={zh ? "无法生成二维码，请复制邀请链接。" : "Could not create a QR code. Copy the invitation link instead."}>
+      <footer><ChannelAction icon="save" label={zh ? "保存图片" : "Save image"} busy={saving} onClick={() => { void save(); }} /></footer>
+    </InvitationCode>
+    {saveFailed && <p role="alert">{zh ? "图片未能保存，请重试。" : "Could not save the image. Please try again."}</p>}
+  </>;
+  if (presentation === "inline") return <details className="c3-invite-qr-details" open={open}
+    onToggle={event => setOpen(event.currentTarget.open)}>
+    <summary aria-label={label} aria-disabled={!url || disabled || undefined}
+      onClick={event => { if (!url || disabled) event.preventDefault(); }}><Glyph name="qr" size={18} />{!vis && <span>{label}</span>}</summary>
+    <div ref={panel} className="c3-invite-qr-content">{content}</div>
+  </details>;
   return <>
     <span ref={anchor}><Btn icon="qr" title={{ text: label }} hint="hint-copy-invite" size="compact"
       disabled={!url || disabled} expanded={open} controls={id} popoverTarget={id} /></span>
@@ -61,12 +77,7 @@ export function ChannelInviteQrCode({ url, disabled = false, label }: {
       }}>
       <header><strong id={`${id}-title`} className={vis ? "visually-hidden" : undefined}>{label}</strong>
         <ChannelAction icon="x" iconOnly quiet label={zh ? "关闭" : "Close"} onClick={() => panel.current?.hidePopover()} /></header>
-      {open && url && <>
-        <InvitationCode key={url} value={url} label={label} failure={zh ? "无法生成二维码，请复制邀请链接。" : "Could not create a QR code. Copy the invitation link instead."}>
-          <footer><ChannelAction icon="save" label={zh ? "保存图片" : "Save image"} busy={saving} onClick={() => { void save(); }} /></footer>
-        </InvitationCode>
-        {saveFailed && <p role="alert">{zh ? "图片未能保存，请重试。" : "Could not save the image. Please try again."}</p>}
-      </>}
+      {content}
     </div>
   </>;
 }

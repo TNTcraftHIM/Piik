@@ -14,10 +14,10 @@ export function RoomReactionEffects({ reactions, participants, area, now }: {
 }) {
   return reactions.map((reaction, index) => {
     const payload = reaction.payload;
-    if (payload.kind !== "reaction") return null;
+    if (payload.kind !== "reaction" || reaction.contentTarget) return null;
     // A gift never speaks for its recipient or replaces their own expression.
     const covered = !payload.targetPeerId && !isThrow(payload.reaction) && reactions.slice(index + 1).some(next =>
-      next.payload.kind === "reaction" && !next.payload.targetPeerId && !isThrow(next.payload.reaction) &&
+      next.payload.kind === "reaction" && !next.contentTarget && !next.payload.targetPeerId && !isThrow(next.payload.reaction) &&
       next.sender.peerId === reaction.sender.peerId);
     if (covered) return null;
     return participants.some(person => person.peerId === reaction.sender.peerId) &&
@@ -40,6 +40,28 @@ export function ReactionIcon({ reaction }: { reaction: ReactionId }) {
       <circle cx="18" cy="23" r="1.5" fill="#fff4dd" /><circle cx="25" cy="23" r="1.5" fill="#fff4dd" />
     </>}
   </svg>;
+}
+
+function seekReactionAnimations(target: Element, expiresAt: number, now: () => number) {
+  for (const animation of target.getAnimations()) {
+    if ("animationName" in animation && (animation as CSSAnimation).animationName.startsWith("lr-reaction-"))
+      animation.currentTime = Math.min(REACTION_DURATION_MS, Math.max(0, REACTION_DURATION_MS - (expiresAt - now())));
+  }
+}
+
+function ReactionArtwork({ reaction, seed }: { reaction: ReactionId; seed: string }) {
+  return <><ReactionAccents reaction={reaction} seed={identityHash(seed)} />
+    <span className="lr-reaction-glyph"><ReactionIcon reaction={reaction} /></span></>;
+}
+
+/** Content targets reuse the same prop, accents and event-aged animation as people. */
+export function ReactionBurst({ reaction, id, expiresAt, now }: { reaction: ReactionId; id: string; expiresAt: number; now: () => number }) {
+  return <span className={`lr-reaction-flight lr-reaction-content ${isThrow(reaction) ? "is-throw" : "is-expression"}`}
+    style={{ "--reaction-duration": `${REACTION_DURATION_MS}ms` } as CSSProperties} aria-hidden="true">
+    <span className={`lr-reaction-projectile is-${reaction}`} onAnimationStart={event => seekReactionAnimations(event.target as Element, expiresAt, now)}>
+      <ReactionArtwork reaction={reaction} seed={id} />
+    </span>
+  </span>;
 }
 
 /** Fixed, event-seeded accents: no independent timer or mutable random stream. */
@@ -131,16 +153,8 @@ export function RoomReaction({ reaction, area, now }: {
   const gift = Boolean(payload.targetPeerId && !isThrow(payload.reaction));
   return <div ref={flight} className={`lr-reaction-flight ${payload.targetPeerId ? gift ? "is-gift" : "is-throw" : "is-expression"}`}
     style={{ visibility: "hidden", "--reaction-duration": `${REACTION_DURATION_MS}ms` } as CSSProperties} aria-hidden="true">
-    <span className={`lr-reaction-projectile is-${payload.reaction}`} onAnimationStart={event => {
-      // CSS restarts after display:none or reduced motion. Event expiry still
-      // owns time, including a late mount when effects are shown again.
-      for (const animation of (event.target as Element).getAnimations()) {
-        if ("animationName" in animation && (animation as CSSAnimation).animationName.startsWith("lr-reaction-")) {
-          animation.currentTime = Math.min(REACTION_DURATION_MS, Math.max(0, REACTION_DURATION_MS - (reaction.expiresAt - now())));
-        }
-      }
-    }}>{gift && <span className="lr-reaction-from"><span>{reaction.sender.displayName}</span><Glyph name="arrowDown" size={12} /></span>}
-      <ReactionAccents reaction={payload.reaction} seed={identityHash(`${reaction.sender.peerId}:${reaction.id}`)} />
-      <span className="lr-reaction-glyph"><ReactionIcon reaction={payload.reaction} /></span></span>
+    <span className={`lr-reaction-projectile is-${payload.reaction}`} onAnimationStart={event => seekReactionAnimations(event.target as Element, reaction.expiresAt, now)}>
+      {gift && <span className="lr-reaction-from"><span>{reaction.sender.displayName}</span><Glyph name="arrowDown" size={12} /></span>}
+      <ReactionArtwork reaction={payload.reaction} seed={`${reaction.sender.peerId}:${reaction.id}`} /></span>
   </div>;
 }

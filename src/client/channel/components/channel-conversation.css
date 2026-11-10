@@ -20,11 +20,11 @@
   .c3-main:not(:has(.has-screens)) .c3-room-start.is-empty { gap: 6px; padding: 6px; }
   .c3-main:not(:has(.has-screens)) .c3-room-start.is-empty .c3-room-start-mark { width: 48px; height: 48px; border-radius: 16px; }
 }
-.c3-workspace.has-screens .c3-room-start { margin-block: 12px 24px; }
-.c3-workspace.has-screens .c3-room-start-mark { width: 48px; height: 48px; border-radius: 16px; }
-.c3-workspace.has-screens .c3-room-start h3 { font-size: 16px; }
+.c3-chat-panel .c3-room-start { margin-block: 12px 24px; }
+.c3-chat-panel .c3-room-start-mark { width: 48px; height: 48px; border-radius: 16px; }
+.c3-chat-panel .c3-room-start h3 { font-size: 16px; }
 @container (max-width: 800px) {
-  .c3-workspace.has-screens .c3-room-start-mark { display: none; }
+  .c3-chat-panel .c3-room-start-mark { display: none; }
 }
 @media (max-width: 700px) {
   .c3-conversation { padding: 16px 14px; gap: 12px; }

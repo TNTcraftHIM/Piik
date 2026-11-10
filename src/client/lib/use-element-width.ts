@@ -1,11 +1,9 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 
 /** Measure the actual panel, including when its parent changes without a viewport resize. */
 export function useElementWidth(initialWidth = 640) {
-  const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(initialWidth);
-  useLayoutEffect(() => {
-    const element = ref.current;
+  const ref = useCallback((element: HTMLElement | null) => {
     if (!element) return;
     const measure = () => {
       const next = Math.round(element.getBoundingClientRect().width);

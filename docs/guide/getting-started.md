@@ -24,9 +24,8 @@ chat, join voice, share their own picture and choose which pictures to watch.
    list. A private room may need its own invitation or **room password**.
 3. In the room's available screens, choose the person whose picture you want
    and select **Watch**. If playback is blocked, press **Play**.
-4. Write in the message box to chat. Select **Join voice** to talk; the arrow
-   beside it also offers a listen-only option. Allow microphone access if you
-   choose to speak.
+4. Write in the message box to chat. Select **Join voice** in the personal area
+   and allow microphone access. Mute your microphone whenever you only want to listen.
 
 Several people can share at once. You choose which pictures to watch; playback
 volume and local pause affect only your own viewing. Move the pointer over the
@@ -79,10 +78,11 @@ passphrase in **Domain settings → Domain**, beside the domain name.
 - **To the domain:** open the room list and use **Copy domain address** for a
   public domain or **Copy domain invitation** for a private domain. Tell your
   friends which room to choose. The nearby QR button shares the same link.
-- **To a private room:** its owner opens the settings button beside that room in
-  the room list, selects **Invitation**, then uses **Copy invitation**
-  or the room QR button. If no invitation exists, select **Generate new invitation**.
-  That invitation admits its recipient to the domain and the specified private room.
+- **To a room:** select the invitation button beside the room title. Owners of
+  public and private rooms use **Copy invitation**; the QR button sits below the
+  copy action. If no invitation exists, select **Generate new invitation**.
+  That invitation admits its recipient to the domain and the specified room,
+  including access to other public rooms in the domain.
 
 Send invitations only to people you want to admit. Domain entry and private-room
 entry are different: a domain invitation alone does not unlock every private room.
@@ -91,8 +91,9 @@ To replace a link, expand **Reset room invitation**, then select
 working, while people who already have access keep it. If an older invitation
 cannot be recovered, the panel explains this before you generate a replacement.
 
-![The Invitation tab contains the room link, copy and QR buttons, and invitation reset.](../assets/guide/channel-invitation.en.png#gh-light-mode-only)
-![The Invitation tab contains the room link, copy and QR buttons, and invitation reset.](../assets/guide/channel-invitation.en.dark.png#gh-dark-mode-only)
+![The room-title invitation opens copy, a subordinate QR section and invitation reset.](../assets/guide/channel-invitation.en.png#gh-light-mode-only)
+![The room-title invitation opens copy, a subordinate QR section and invitation reset.](../assets/guide/channel-invitation.en.dark.png#gh-dark-mode-only)
+
 
 ### Use App with an existing site
 
