@@ -411,6 +411,142 @@ async fn physical_failure_retires_only_that_source_and_keeps_other_flow_leases()
     result
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn early_base_channels_follow_physical_slots_until_room_projection_arrives() -> Result<()> {
+    use crate::peer::transport::{Channel, ChannelEvent};
+
+    async fn open(f: &mut Fixture, label: &str) -> Result<Arc<Channel>> {
+        let remote = f.remote[&f.sink].clone();
+        let channel = remote.create_channel(label).await?;
+        if remote.offer().await? {
+            let (kind, sdp) = remote.local_description().await?;
+            f.driver
+                .signal(
+                    f.sink,
+                    Signal {
+                        udp: None,
+                        description: Some(Description {
+                            kind,
+                            sdp: Some(sdp),
+                        }),
+                        exchange_id: Some(Uuid::new_v4()),
+                        tracks: Some(vec![]),
+                        candidate: None,
+                        resync: None,
+                    },
+                )
+                .await?;
+        }
+        Ok(channel)
+    }
+    async fn installed(f: &mut Fixture, channel: &Channel, lane: Lane) -> Result<()> {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let pair = &f.driver.pairs[&f.sink];
+                let slot = if lane == Lane::Control { &pair.dc } else { &pair.bulk };
+                if slot.as_ref().is_some_and(|(token, _, _)| pair.data.senders().current(lane, *token, true)) {
+                    return Ok::<_, anyhow::Error>(());
+                }
+                tokio::select! {
+                    event = channel.poll() => ensure!(!matches!(event, Some(ChannelEvent::Close) | None),
+                        "Native closed the actual early channel before its room projection"),
+                    step = f.step() => step?,
+                }
+            }
+        }).await?
+    }
+
+    let mut f = Fixture::new(vp8()).await?;
+    let result = async {
+        let sink = f.sink;
+        let flow = f.plans.last().unwrap().outgoing[0].id;
+        f.until(|f| {
+            f.driver
+                .pairs
+                .values()
+                .all(|pair| pair.connected() && pair.dc_open)
+                && f.driver.pairs[&sink]
+                    .outputs
+                    .get(&(flow, MediaKind::Video))
+                    .is_some_and(|output| f.observed(&output.stream, MediaKind::Video).is_some())
+        })
+        .await?;
+        let output = f.output(flow, MediaKind::Video);
+        let before = f.observed(&output.1, MediaKind::Video).unwrap();
+        let instance = f.driver.pairs[&sink]
+            .pc
+            .connection_metrics()
+            .await?
+            .connection_id;
+        f.plans.last_mut().unwrap().rooms.clear();
+        f.driver
+            .update(f.plans.clone(), vec![f.publication.clone()], vec![])
+            .await?;
+        // The remote endpoint owns creation; the Native receiver sees actual DCEP first.
+        f.driver.pairs.get_mut(&sink).unwrap().polite = true;
+        let control = open(&mut f, "piik-room").await?;
+        let bulk = open(&mut f, "piik-file").await?;
+        installed(&mut f, &control, Lane::Control).await?;
+        installed(&mut f, &bulk, Lane::Bulk).await?;
+        let retired = f.driver.pairs[&sink].dc.as_ref().unwrap().0;
+        for _ in 0..2 {
+            f.driver
+                .update(f.plans.clone(), vec![f.publication.clone()], vec![])
+                .await?;
+            ensure!(f.driver.pairs[&sink]
+                .dc
+                .as_ref()
+                .is_some_and(|(token, _, _)| *token == retired));
+            ensure!(
+                f.driver.pairs[&sink].reported.is_empty(),
+                "physical Open became room proof"
+            );
+        }
+        control.close().await?;
+        f.until(|f| f.driver.pairs[&sink].dc.is_none()).await?;
+        let successor = open(&mut f, "piik-room").await?;
+        installed(&mut f, &successor, Lane::Control).await?;
+        let current = f.driver.pairs[&sink].dc.as_ref().unwrap().0;
+        ensure!(current != retired);
+        f.driver.event(Event::Dc(sink, retired, false)).await?;
+        ensure!(f.driver.pairs[&sink].dc.as_ref().unwrap().0 == current);
+        f.plans.last_mut().unwrap().rooms.push("room".into());
+        f.driver
+            .update(f.plans.clone(), vec![f.publication.clone()], vec![])
+            .await?;
+        f.until(|f| f.driver.pairs[&sink].reported.contains("room"))
+            .await?;
+        ensure!(!f.driver.pairs[&sink].base_failed);
+        f.plans.last_mut().unwrap().rooms.clear();
+        f.driver
+            .update(f.plans.clone(), vec![f.publication.clone()], vec![])
+            .await?;
+        ensure!(f.driver.pairs[&sink].dc.is_none() && f.driver.pairs[&sink].bulk.is_none());
+        ensure!(!f.driver.pairs[&sink]
+            .data
+            .senders()
+            .current(Lane::Control, current, true));
+        f.until(|f| {
+            f.observed(&output.1, MediaKind::Video)
+                .is_some_and(|packet| packet.2.wrapping_sub(before.2) > 9000)
+        })
+        .await?;
+        ensure!(f.output(flow, MediaKind::Video) == output);
+        ensure!(
+            f.driver.pairs[&sink]
+                .pc
+                .connection_metrics()
+                .await?
+                .connection_id
+                == instance
+        );
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+    f.close().await;
+    result
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn base_channel_failure_preserves_media_on_the_same_physical_pair() -> Result<()> {
     fn take_reports(f: &mut Fixture) -> Vec<Command> {
         let mut reports = std::mem::take(&mut f.reported);

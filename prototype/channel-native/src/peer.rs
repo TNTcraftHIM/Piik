@@ -1798,6 +1798,7 @@ impl Driver {
         if plan.rooms.iter().any(|r| !p.plan.rooms.contains(r)) {
             p.base_failed = false;
         }
+        let retired_base = !p.plan.rooms.is_empty() && plan.rooms.is_empty();
         p.reported.retain(|r| plan.rooms.contains(r));
         p.plan = plan;
         p.latest.retain(|(flow_id, _), _| {
@@ -1825,7 +1826,7 @@ impl Driver {
             task.task.abort();
             let _ = task.task.await;
         }
-        if p.plan.rooms.is_empty() {
+        if retired_base {
             for (_, dc, task) in [p.dc.take(), p.bulk.take()].into_iter().flatten() {
                 task.abort();
                 let _ = task.await;
@@ -1834,7 +1835,7 @@ impl Driver {
             p.data.unbind(Lane::Control);
             p.data.unbind(Lane::Bulk);
             p.dc_open = false;
-        } else if !p.polite && !p.base_failed && p.dc.is_none() {
+        } else if !p.plan.rooms.is_empty() && !p.polite && !p.base_failed && p.dc.is_none() {
             let dc = p.pc.create_channel("piik-room").await?;
             self.install_dc(id, dc).await?;
         }
@@ -2178,7 +2179,9 @@ impl Driver {
             dc.close().await?;
             return Ok(());
         };
-        if (lane != Lane::Input && p.plan.rooms.is_empty())
+        // DCEP can precede this endpoint's room projection on an existing media
+        // pair. Physical slots do not grant file access; Files owns those leases.
+        if data::terminal(&p.state)
             || (lane == Lane::Control && p.dc.is_some())
             || (lane == Lane::Bulk && p.bulk.is_some())
             || (lane == Lane::Input && p.input.is_some())
@@ -2622,10 +2625,18 @@ impl Driver {
                         p.dc_open = open;
                         if open {
                             self.base_ready(id).await;
-                        } else if data::terminal(&p.state) {
-                            self.fail(id).await;
                         } else {
-                            self.fail_base(id).await;
+                            let terminal = data::terminal(&p.state);
+                            p.data.unbind(Lane::Control);
+                            let (_, dc, task) = p.dc.take().unwrap();
+                            task.abort();
+                            let _ = task.await;
+                            let _ = dc.close().await;
+                            if terminal {
+                                self.fail(id).await;
+                            } else {
+                                self.fail_base(id).await;
+                            }
                         }
                     }
                 }
