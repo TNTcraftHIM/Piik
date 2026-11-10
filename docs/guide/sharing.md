@@ -106,6 +106,9 @@ Select **Watch** beside a person's share. You can watch several pictures,
 including pictures from different rooms. Select a tile or **Focus** to enlarge
 one; **Grid view** or **Return to grid** shows the others again.
 
+The eye beside each share shows how many people are watching it. Both the sharer
+and viewers can select it to see the names.
+
 Move the pointer over a picture or tap it to reveal its playback bar.
 
 | Control | What it changes |

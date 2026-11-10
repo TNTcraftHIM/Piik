@@ -41,10 +41,10 @@ export function ChannelRoomTool({ title, caption, home, surface, onSurfaceChange
   useEffect(() => () => { for (const part of parts) targets[part].remove(); }, [targets]);
   return <>
     <div className="c3-room-tool-entry"><small>{caption ?? title}</small>
-      <Tooltip kind={detached ? "hint-window-detach" : "hint-chat-open"} disabled={surface.open} text={vis ? undefined : label}>
+      <Tooltip kind={inline ? "hint-chat-open" : "hint-window-detach"} disabled={surface.open} text={vis ? undefined : label}>
         <button ref={trigger} type="button" className="lr-btn is-dense is-quiet" aria-label={label}
           aria-haspopup="dialog" aria-expanded={surface.open} popoverTarget={detached ? undefined : id}>
-          <Glyph name="couch" size={19} />{!vis && <span className="lr-cap">{inline ? (lang === "zh" ? "交流" : "Room panel") : (lang === "zh" ? "小窗" : "Mini window")}</span>}
+          <Glyph name="pip" size={19} />
         </button>
       </Tooltip>
     </div>

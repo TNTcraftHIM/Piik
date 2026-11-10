@@ -24,17 +24,18 @@
 .c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) { flex: 1; min-height: 100px; aspect-ratio: auto; }
 .c3-monitor-tile.is-focused { grid-column: 1 / -1; grid-row: 1; order: -1; position: sticky; left: 0; width: 100cqi; justify-self: start; border-color: var(--action); box-shadow: 0 0 0 1px var(--action); }
 .c3-monitor-tile.is-focused > .c3-video { border-radius: 14px; }
-.c3-monitor-tile.is-thumbnail { grid-column: auto; grid-row: 2; width: 100%; max-width: 240px; height: 132px; justify-self: center; }
-.c3-monitor-tile.is-thumbnail > :is(.c3-video, .c3-monitor-wait) { min-height: 0; }
-.c3-monitor-tile.is-thumbnail > footer { flex-wrap: nowrap; gap: 6px; padding: 6px 8px; }
-.c3-monitor-tile.is-thumbnail > footer > svg, .c3-monitor-tile.is-thumbnail .c3-monitor-source > .lr-comic-tip-wrap:last-child { display: none; }
-.c3-monitor-tile.is-thumbnail .c3-monitor-source { flex: 1 1 0; }
-.c3-monitor-tile.is-thumbnail .c3-monitor-tile-actions { flex-wrap: nowrap; }
+.c3-monitor-tile.is-thumbnail { grid-column: auto; grid-row: 2; width: 100%; max-width: 240px; height: max-content; min-height: 132px; justify-self: center; }
+.c3-monitor-tile.is-thumbnail > :is(.c3-video, .c3-monitor-wait) { min-height: 64px; }
+.c3-monitor-tile.is-thumbnail > footer { padding: 6px 8px; }
+.c3-monitor-tile.is-thumbnail .c3-monitor-source-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px; }
+.c3-monitor-tile.is-thumbnail .c3-monitor-source > .lr-comic-tip-wrap:last-child { display: none; }
+.c3-monitor-tile.is-thumbnail .c3-monitor-tile-actions { grid-column: 1 / -1; }
 /* Keep source drafts and detached panels mounted; only their tile invokers hide. */
 .c3-monitor-tile.is-thumbnail .c3-monitor-tile-actions > :is(.c3-share-actions, .lr-remote-trigger) { display: none; }
 .c3-monitor-tile[data-focusable] .c3-video { cursor: pointer; }
-.c3-monitor-tile > footer { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 8px; }
-.c3-monitor-tile > footer > svg { width: 20px; height: 26px; flex: none; }
+.c3-monitor-tile > footer { display: flex; flex: none; flex-direction: column; gap: 2px; padding: 4px 8px; }
+.c3-monitor-source-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.c3-monitor-source-row > svg { width: 20px; height: 26px; flex: none; }
 .c3-monitor-source { min-width: 0; flex: 1 1 100px; display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
 .c3-monitor-source > .lr-comic-tip-wrap { display: block; min-width: 0; }
 .c3-monitor-source > .lr-comic-tip-wrap:first-child { flex: none; }
@@ -47,9 +48,14 @@
 .c3-screen-audience-panel { width: 280px; padding: 12px; overflow-y: auto; }
 .c3-screen-audience-panel h3 { margin: 0 0 8px; font-size: 13px; }
 .c3-screen-audience-panel > p { margin: 8px 0; font-size: 12px; color: var(--muted); }
-/* Focus uses the existing player's reveal state; source actions stay on this tile. */
-.c3-monitor-tile.is-focused > footer { position: absolute; inset: 8px 8px auto; z-index: 5; padding: 4px 6px; gap: 6px; color: var(--ink); background: var(--paper-translucent); border: 1px solid var(--control-edge); border-radius: 12px; box-shadow: var(--control-shadow); backdrop-filter: blur(14px); transition: opacity 160ms ease, transform 160ms ease; }
-.c3-monitor-tile.is-focused:has(> .c3-video[data-controls-hidden="true"]) > footer:not(:hover):not(:focus-within):not(:has([aria-expanded="true"])) { opacity: 0; pointer-events: none; transform: translateY(-4px); }
+/* Wide focus shares the player's reveal state; narrow focus gives source controls their own space. */
+@container (min-width: 481px) {
+  .c3-monitor-tile.is-focused .c3-monitor-source-row { position: absolute; inset: 8px 8px auto; z-index: 5; padding: 4px 6px; gap: 6px; color: var(--ink); background: var(--paper-translucent); border: 1px solid var(--control-edge); border-radius: 12px; box-shadow: var(--control-shadow); backdrop-filter: blur(14px); transition: opacity 160ms ease, transform 160ms ease; }
+  .c3-monitor-tile.is-focused:has(> .c3-video[data-controls-hidden="true"]) > footer:not(:hover):not(:focus-within):not(:has([aria-expanded="true"])) .c3-monitor-source-row { opacity: 0; pointer-events: none; transform: translateY(-4px); }
+}
+@container (max-width: 480px) {
+  .c3-monitor-tile.is-focused > :is(.c3-video, .c3-monitor-wait) { min-height: 160px; }
+}
 .c3-monitor-wait { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; aspect-ratio: 16 / 9; padding: 18px; border-radius: 14px 14px 0 0; background: var(--stage, var(--wall-2)); color: var(--muted); font-size: 12px; }
 .c3-monitor-wait[data-failed] > svg { color: var(--danger); }
 /* Theater changes the existing stage's layout; every subscription stays mounted. */
@@ -85,7 +91,7 @@
   .c3-monitor-tile > footer { padding-block: 4px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .c3-monitor-tile.is-focused > footer { transition: none; }
+  .c3-monitor-tile.is-focused .c3-monitor-source-row { transition: none; }
 }
 
 .c3-source-room { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }

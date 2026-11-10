@@ -1,16 +1,12 @@
-.c3-reaction-message { position: relative; }
-.c3-message-reactions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.c3-message-reactions { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .c3-reaction-message .c3-message-reactions { margin-top: 4px; }
 .c3-message-reaction.lr-chip { min-height: 28px; padding: 3px 9px; border-width: 1px; border-radius: 9px; font-size: 12px; }
 .c3-message-reaction > :first-child { display: inline-grid; place-items: center; width: 20px; height: 20px; font-size: 17px; line-height: 1; }
 .c3-message-action.lr-comic-tip-wrap { display: inline-flex; }
-.c3-message-reactions:not(.is-source) > .lr-reaction-content { inset-inline-start: 40px; }
 .c3-add-reaction.lr-btn { --button-size: 29px; --button-padding: 4px; min-width: 32px; gap: 0; }
 .c3-add-reaction > .lr-glyph:last-child { width: 10px; height: 10px; }
 .c3-message-reaction-menu { position: fixed; inset: auto; margin: 0; width: 286px; max-width: calc(100vw - 16px); padding: 12px; border: 1px solid var(--control-edge); border-radius: 17px; background: var(--paper); color: var(--ink); box-shadow: var(--panel-shadow); }
 .c3-message-reaction-menu > strong { display: block; font-size: 12px; margin: 0 3px 9px; }
-.c3-message-reactions.is-source { position: relative; }
-.c3-message-reactions.is-source .c3-add-reaction { min-width: var(--control-dense-size); }
 @media (hover: none) {
   .c3-add-reaction.lr-btn { --button-size: var(--control-compact-size); min-width: 44px; }
 }

@@ -14,9 +14,9 @@ const noSubscription = () => () => {};
 const noSnapshot = () => null;
 
 /** Counts come from committed snapshots; live events alone play one shared effect. */
-export function ChannelContentReactions({ reactions, session, target, disabled = false, compact = false, effectAnchor, effectsEnabled = true }: {
+export function ChannelContentReactions({ reactions, session, target, disabled = false, effectAnchor, effectsEnabled = true }: {
   reactions?: MessageReactions; session: RoomInteractionSession | null; target: ContentReactionTarget;
-  disabled?: boolean; compact?: boolean;
+  disabled?: boolean;
   effectAnchor?: () => Element | null; effectsEnabled?: boolean;
 }) {
   const { lang, t } = useCopy(), zh = lang === "zh";
@@ -33,7 +33,6 @@ export function ChannelContentReactions({ reactions, session, target, disabled =
   useAnchoredPopover(trigger, menu, { side: "above", align: "center", enabled: open });
   const canSend = !!state?.ready && !disabled && !state.pending && !state.coolingDown;
   const send = (reaction: typeof REACTION_IDS[number]) => { if (canSend) session?.send({ kind: "reaction", reaction }, target); };
-  const total = Object.values(reactions?.counts ?? {}).reduce((sum, count) => sum + count, 0);
   const counts = REACTION_IDS.map(reaction => {
     const count = reactions?.counts[reaction] ?? 0;
     return count > 0 && <button key={reaction} className="lr-chip c3-message-reaction" type="button"
@@ -44,17 +43,17 @@ export function ChannelContentReactions({ reactions, session, target, disabled =
   const effects = effectsEnabled && state?.reactions.filter(event => !existingEvents.has(event.id) && event.contentTarget && ("messageSeq" in target
     ? "messageSeq" in event.contentTarget && event.contentTarget.messageSeq === target.messageSeq
     : "publicationId" in event.contentTarget && event.contentTarget.publicationId === target.publicationId));
-  return <div className={`c3-message-reactions${compact ? " is-source" : ""}`}>
-    {!compact && counts}
+  return <div className="c3-message-reactions">
+    {counts}
     <Tooltip kind="hint-reaction-picker" className="c3-message-action" disabled={open} text={label}>
       <button ref={trigger} popoverTarget={id} className="lr-btn is-dense is-quiet c3-add-reaction" type="button" aria-label={label}
         aria-haspopup="dialog" aria-expanded={open} aria-controls={id} disabled={disabled || !session}>
-        <Glyph name="smile" size={16} />{compact ? <span aria-hidden="true">{total}</span> : <Glyph name="plus" size={10} />}
+        <Glyph name="smile" size={16} /><Glyph name="plus" size={10} />
       </button>
     </Tooltip>
     <div ref={menu} id={id} popover="auto" role="dialog" className="lr-floating-surface c3-message-reaction-menu"
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }} aria-label={label}>
-      {open && <><strong>{label}</strong>{compact && <div className="c3-message-reactions">{counts}</div>}
+      {open && <><strong>{label}</strong>
         <RoomReactionGrid reactionIds={state?.reactionIds ?? REACTION_IDS} canSend={canSend} onSend={send} />
       </>}
     </div>

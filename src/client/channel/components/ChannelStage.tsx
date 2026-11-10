@@ -53,7 +53,7 @@ export interface ChannelStageSource {
   available?: boolean;
 }
 
-function SourceAudience({ people }: { people: readonly ScreenAudiencePerson[] }) {
+export function SourceAudience({ people }: { people: readonly ScreenAudiencePerson[] }) {
   const { lang } = useCopy(), zh = lang === "zh";
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -208,43 +208,46 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
                   ? copy("画面传输失败，正在重试。", "Picture delivery failed. Retrying.")
                   : copy("正在连接画面", "Connecting picture")}</span></div>}
             <footer>
-              <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
-              <div className="c3-monitor-source">
-                <Tooltip overflow={{ text: title, selector: "strong" }}><strong>{title}</strong></Tooltip>
-                <Tooltip overflow={{ text: sourceDetail, selector: "small" }}><small>
-                  <span>{source.name}</span><span aria-hidden="true"> / </span>
-                  {source.onRoom ? <button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button> : source.roomName}
-                </small></Tooltip>
+              <div className="c3-monitor-source-row">
+                <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
+                <div className="c3-monitor-source">
+                  <Tooltip overflow={{ text: title, selector: "strong" }}><strong>{title}</strong></Tooltip>
+                  <Tooltip overflow={{ text: sourceDetail, selector: "small" }}><small>
+                    <span>{source.name}</span><span aria-hidden="true"> / </span>
+                    {source.onRoom ? <button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button> : source.roomName}
+                  </small></Tooltip>
+                </div>
+                <div className="c3-monitor-tile-actions">
+                  {sourceStatus && <small className="c3-source-status" aria-label={sourceStatus}>{vis ? <Glyph name={source.paused ? "pause" : "tv"} size={12} /> : sourceStatus}</small>}
+                  <SourceAudience people={source.audience} />
+                  {source.owned && source.shareControls}
+                  {source.owned && source.remoteControl && <SourceControl source={{ ...source, remoteControl: source.remoteControl }}
+                    onInputPolicy={onInputPolicy} onInputDecide={onInputDecide} onInputSimultaneous={onInputSimultaneous} onInputShortcut={onInputShortcut} />}
+                  {active.length > 1 && <Btn icon={isFocused ? "screenGrid" : "screenFocus"} quiet size="dense"
+                    title={{ text: isFocused ? copy("返回平铺", "Return to grid") : copy(`聚焦 ${title}`, `Focus ${title}`) }}
+                    hint={isFocused ? "hint-screen-grid" : "hint-screen-focus"}
+                    pressed={isFocused} onClick={() => onFocus(isFocused ? null : source.id)} />}
+                  {!thumbnail && source.owned && microphone && <VoiceMicrophoneButton active={microphone.enabled}
+                    quiet busy={microphone.busy && !(microphone.enabled && microphone.canDisable)}
+                    disabled={(microphone.disabled || microphone.busy) && !(microphone.enabled && microphone.canDisable)}
+                    hint={microphone.enabled ? "hint-microphone-off" : "hint-microphone-on"}
+                    onClick={() => microphone.onEnabled(!microphone.enabled)} />}
+                  {!thumbnail && source.owned && <Btn icon={source.paused ? "play" : "pause"} quiet size="dense"
+                    title={{ text: t(source.paused ? "host.resume" : "host.pause") + (source.pauseAvailable === false
+                      ? copy("（重新连接后可用）", " (available after reconnecting)") : "") }} pressed={source.paused}
+                    disabled={source.pauseAvailable === false || source.pausePending}
+                    hint={source.paused ? "hint-resume" : "hint-pause"} busy={source.pausePending}
+                    onClick={() => onPause(source.id, !source.paused)} />}
+                  <Btn icon={source.owned ? "stop" : "x"} tone={source.owned ? "danger" : undefined} quiet={!source.owned} size="dense"
+                    title={{ text: source.owned ? copy(`停止分享 ${title}`, `Stop sharing ${title}`)
+                      : copy(`停止观看 ${title}`, `Stop watching ${title}`) }}
+                    hint={source.owned ? "hint-share-stop" : "hint-close"} busy={source.pending} disabled={source.pending}
+                    onClick={() => source.owned ? onStop(source.id) : onUnwatch(source.id)} />
+                </div>
               </div>
-              <div className="c3-monitor-tile-actions">
-                {sourceStatus && <small className="c3-source-status" aria-label={sourceStatus}>{vis ? <Glyph name={source.paused ? "pause" : "tv"} size={12} /> : sourceStatus}</small>}
-                <ChannelContentReactions reactions={source.reactions} session={source.interaction ?? null}
-                  target={{ publicationId: source.id }} disabled={source.available === false} compact />
-                <SourceAudience people={source.audience} />
-                {source.owned && source.shareControls}
-                {source.owned && source.remoteControl && <SourceControl source={{ ...source, remoteControl: source.remoteControl }}
-                  onInputPolicy={onInputPolicy} onInputDecide={onInputDecide} onInputSimultaneous={onInputSimultaneous} onInputShortcut={onInputShortcut} />}
-                {active.length > 1 && <Btn icon={isFocused ? "screenGrid" : "screenFocus"} quiet size="dense"
-                  title={{ text: isFocused ? copy("返回平铺", "Return to grid") : copy(`聚焦 ${title}`, `Focus ${title}`) }}
-                  hint={isFocused ? "hint-screen-grid" : "hint-screen-focus"}
-                  pressed={isFocused} onClick={() => onFocus(isFocused ? null : source.id)} />}
-                {!thumbnail && source.owned && microphone && <VoiceMicrophoneButton active={microphone.enabled}
-                  quiet busy={microphone.busy && !(microphone.enabled && microphone.canDisable)}
-                  disabled={(microphone.disabled || microphone.busy) && !(microphone.enabled && microphone.canDisable)}
-                  hint={microphone.enabled ? "hint-microphone-off" : "hint-microphone-on"}
-                  onClick={() => microphone.onEnabled(!microphone.enabled)} />}
-                {!thumbnail && source.owned && <Btn icon={source.paused ? "play" : "pause"} quiet size="dense"
-                  title={{ text: t(source.paused ? "host.resume" : "host.pause") + (source.pauseAvailable === false
-                    ? copy("（重新连接后可用）", " (available after reconnecting)") : "") }} pressed={source.paused}
-                  disabled={source.pauseAvailable === false || source.pausePending}
-                  hint={source.paused ? "hint-resume" : "hint-pause"} busy={source.pausePending}
-                  onClick={() => onPause(source.id, !source.paused)} />}
-                <Btn icon={source.owned ? "stop" : "x"} tone={source.owned ? "danger" : undefined} quiet={!source.owned} size="dense"
-                  title={{ text: source.owned ? copy(`停止分享 ${title}`, `Stop sharing ${title}`)
-                    : copy(`停止观看 ${title}`, `Stop watching ${title}`) }}
-                  hint={source.owned ? "hint-share-stop" : "hint-close"} busy={source.pending} disabled={source.pending}
-                  onClick={() => source.owned ? onStop(source.id) : onUnwatch(source.id)} />
-              </div>
+              <ChannelContentReactions reactions={source.reactions} session={source.interaction ?? null}
+                target={{ publicationId: source.id }} disabled={source.available === false}
+                effectAnchor={() => grid.current?.querySelector(`[data-publication-id="${CSS.escape(source.id)}"] .c3-monitor-source-row > .lr-person`) ?? null} />
             </footer>
           </article>;
         })}
@@ -259,6 +262,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
           role="group" aria-label={`${screenTitle(source, lang)} / ${source.name} / ${source.roomName}`}>
           <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
           <div><strong>{screenTitle(source, lang)}</strong><small>{source.name}<span aria-hidden="true"> / </span>{source.onRoom ? <button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button> : source.roomName}{source.paused ? ` / ${t("host.paused")}` : ""}</small></div>
+          <SourceAudience people={source.audience} />
           <ChannelAction icon="eye" label={copy("观看", "Watch")}
             hint="hint-watch"
             iconOnly={vis} disabled={!canSubscribe || source.available === false} busy={source.pending}

@@ -59,9 +59,9 @@ File content, voice and shared pictures use their own P2P connections.
 
 Selecting a person in the room opens their interaction menu. Expressions and
 thrown props are live effects; they are not saved as message reactions.
-The reaction button beside a shared picture counts reactions to that particular
-share while it is live. A second share has its own counts. Loading saved counts
-does not replay animations.
+Each shared picture shows its reaction counts underneath, using the same controls
+as messages. Click an existing reaction to add another, or use **React to this screen**
+to choose a different one. Counts last for that share; loading counts does not replay animations.
 
 While watching a picture, **On screen** in its playback bar shows that room's
 new messages over the picture. **Playback settings → On-screen chat** adjusts
