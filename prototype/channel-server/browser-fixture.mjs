@@ -244,7 +244,11 @@ function captureProbe(name) {
         ].map(key => [key, value[key]]));
         P2pQualityProbe.prototype.observe = function(current, candidate) {
           const result = observe.call(this, current, candidate);
-          qualitySamples.push({ time: Date.now(), current: metrics(current), candidate: metrics(candidate), result });
+          const input = [...(window.__channelGate?.snapshot().screenInputs ?? [])].flatMap(([publicationId, inputs]) =>
+            inputs.filter(input => input.stream.getVideoTracks().some(track => track.id === candidate.trackIdentifier))
+              .map(input => ({ publicationId, flowId: input.flowId })))[0];
+          qualitySamples.push({ time: Date.now(), ...input, visibility: document.visibilityState,
+            current: metrics(current), candidate: metrics(candidate), result });
           if (qualitySamples.length > 128) qualitySamples.shift();
           return result;
         };
@@ -298,7 +302,7 @@ function captureProbe(name) {
                     track: trackState(output.sender.track), source: binding && trackState(binding.source),
                     pcIndex: peers.indexOf(output.pc), connectionState: output.pc.connectionState,
                     mid: transceiver?.mid, direction: transceiver?.direction, currentDirection: transceiver?.currentDirection }; }) };
-          })), flowStates, qualitySamples, restoredVideo,
+          })), flowStates, qualitySamples: qualitySamples.filter(sample => sample.publicationId === publicationId), restoredVideo,
           trackEvents: trackEvents.filter(event => event.streamIds.some(id => streamIds.includes(id))),
           audioOwners: audioSources.filter(owner => owner.connected && owner.context.state === 'running').map(owner => owner.trackObjectId) };
       },

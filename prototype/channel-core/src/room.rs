@@ -2998,7 +2998,7 @@ mod tests {
                     3_000
                 )
                 .unwrap());
-            assert_eq!(room.next_route_deadline(), Some(8_000));
+            assert_eq!(room.next_route_deadline(), Some(22_000));
             assert!(old
                 .iter()
                 .all(|old| room.flows().any(|f| f.id == old.id && f.selected)));
@@ -3119,44 +3119,86 @@ mod tests {
     }
 
     #[test]
-    fn branch_proof_expires_synchronously_before_the_last_viewer_can_commit() {
+    fn branch_proofs_refresh_independently_and_decoded_withdraws_only_its_permission() {
         let id = Uuid::from_u128;
-        let (mut room, endpoints, old, shadow) = branch_candidate(true);
-        let relay = shadow.iter().find(|f| f.receiver == id(2)).unwrap();
-        let viewer = shadow.iter().find(|f| f.receiver == id(4)).unwrap();
-        room.flow_state(
-            relay.id,
-            relay.receiver,
-            relay.sender,
-            FlowState::SwitchReady,
-            3_000,
-        )
-        .unwrap();
-        // A repeated report cannot renew the first viewer's quality evidence.
-        room.flow_state(
-            relay.id,
-            relay.receiver,
-            relay.sender,
-            FlowState::SwitchReady,
-            7_999,
-        )
-        .unwrap();
-        assert_eq!(room.next_route_deadline(), Some(8_000));
-        room.flow_state(
-            viewer.id,
-            viewer.receiver,
-            viewer.sender,
-            FlowState::SwitchReady,
-            8_000,
-        )
-        .unwrap();
-        room.reconcile(&endpoints, 8_000);
-        assert!(old
-            .iter()
-            .all(|old| room.flows().any(|f| f.id == old.id && f.selected)));
-        assert!(shadow
-            .iter()
-            .all(|old| !room.flows().any(|f| f.id == old.id)));
+        for withdrawal in [false, true] {
+            let (mut room, endpoints, old, shadow) = branch_candidate(true);
+            let relay = shadow.iter().find(|f| f.receiver == id(2)).unwrap();
+            let viewer = shadow.iter().find(|f| f.receiver == id(4)).unwrap();
+            room.flow_state(
+                relay.id,
+                relay.receiver,
+                relay.sender,
+                FlowState::SwitchReady,
+                3_000,
+            )
+            .unwrap();
+            assert_eq!(
+                room.next_route_deadline(),
+                Some(22_000),
+                "first approval cannot consume another viewer's preparation time"
+            );
+            let pending_at = if withdrawal {
+                room.flow_state(
+                    relay.id,
+                    relay.receiver,
+                    relay.sender,
+                    FlowState::Decoded,
+                    4_000,
+                )
+                .unwrap();
+                assert_eq!(
+                    room.flows()
+                        .find(|flow| flow.id == relay.id)
+                        .unwrap()
+                        .presented,
+                    Some(false)
+                );
+                4_100
+            } else {
+                // This is a fresh observation, not a replay of the first approval.
+                room.flow_state(
+                    relay.id,
+                    relay.receiver,
+                    relay.sender,
+                    FlowState::SwitchReady,
+                    7_999,
+                )
+                .unwrap();
+                assert_eq!(room.next_route_deadline(), Some(22_000));
+                12_999 // Exactly five seconds: the refreshed proof is stale.
+            };
+            room.flow_state(
+                viewer.id,
+                viewer.receiver,
+                viewer.sender,
+                FlowState::SwitchReady,
+                pending_at,
+            )
+            .unwrap();
+            room.reconcile(&endpoints, pending_at);
+            assert!(old
+                .iter()
+                .all(|old| room.flows().any(|f| f.id == old.id && f.selected)));
+            assert!(
+                shadow
+                    .iter()
+                    .all(|old| room.flows().any(|f| f.id == old.id && !f.selected)),
+                "a stale or withdrawn permission does not expire the operation"
+            );
+            room.flow_state(
+                relay.id,
+                relay.receiver,
+                relay.sender,
+                FlowState::SwitchReady,
+                pending_at + 100,
+            )
+            .unwrap();
+            assert!(shadow
+                .iter()
+                .all(|warm| room.flows().any(|f| f.id == warm.id && f.selected)));
+            assert_eq!(room.next_route_deadline(), None);
+        }
     }
 
     #[test]

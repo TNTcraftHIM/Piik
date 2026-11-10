@@ -312,7 +312,8 @@ export class ChannelMedia {
     else {
       if (!input.ready || peer.transport.pc.connectionState !== "connected") return;
       state = kind === "screen" ? "decoded" : "forwardable";
-      if (input.switchReady && !flow.selected && input.incumbent === this.selectedInput(flow.publicationId)?.input) state = "switch_ready";
+      input.switchReady = false;
+      input.qualityApproved = false;
     }
     this.send({ type: "flow_state", flowId, pairId: peer.plan.id, state });
   }
@@ -355,25 +356,27 @@ export class ChannelMedia {
 
   private switchReady(peer: Peer, flowId: string, input: MediaInput): void {
     const flow = peer.plan.incoming.find(flow => flow.id === flowId && !flow.selected);
-    if (input.failed || input.switchReady || !input.ready || !input.qualityApproved || !input.presentationReady
+    if (input.failed || !input.ready || !input.qualityApproved || !input.presentationReady
       || !flow || !this.subscriptions.includes(flow.publicationId) || !this.ownsInput(peer, flowId, input) || this.selectedInput(flow.publicationId)?.input !== input.incumbent
       || peer.transport.pc.connectionState !== "connected") return;
+    const alreadyReady = input.switchReady;
     input.switchReady = true;
-    input.stopQuality?.();
-    this.reportInput(peer, flowId, input);
-    this.refresh();
+    this.send({ type: "flow_state", flowId, pairId: peer.plan.id, state: "switch_ready" });
+    if (!alreadyReady) this.refresh();
   }
 
   private compareCandidate(peer: Peer, flowId: string, publicationId: string, input: MediaInput): void {
-    if (input.failed || input.switchReady || !input.ready || !input.video || !input.receiver) return;
+    if (input.failed || !input.ready || !input.video || !input.receiver) return;
     const current = this.selectedInput(publicationId);
     if (!current?.input.video || !current.input.receiver) return;
     if (input.stopQuality && input.incumbent === current.input) return;
     input.stopQuality?.();
+    if (input.switchReady) this.reportInput(peer, flowId, input);
     input.incumbent = current.input;
     input.qualityApproved = false;
     const probe = new P2pQualityProbe(), candidateStats = createStatsAccumulator(), currentStats = createStatsAccumulator();
     const video = input.video, incumbentVideo = current.input.video;
+    let lastCurrentTimestamp: number | null = null, lastCandidateTimestamp: number | null = null;
     let active = true, timer: ReturnType<typeof setTimeout> | null = null;
     const owns = () => active && this.ownsInput(peer, flowId, input) && this.ownsInput(current.peer, current.flowId, current.input)
       && peer.plan.incoming.some(flow => flow.id === flowId && !flow.selected)
@@ -392,17 +395,27 @@ export class ChannelMedia {
           collectConnectionMetrics(peer.transport.pc, "receive", candidateStats, { trackIdentifier: video.id }),
       ]).catch(() => null);
       if (!owns()) { stop(); return; }
+      let fresh = true;
       if (samples) {
         const [incumbent, candidate] = samples;
-        const result = probe.observe(current.peer.transport.pc.connectionState === "connected" && peer.transport.pc.connectionState === "connected"
-          ? incumbent : null, candidate);
-        input.qualityApproved = result === "approved";
-        // The room deadline owns retirement while the candidate is still adapting.
-        this.switchReady(peer, flowId, input);
+        fresh = incumbent.sampleTimestampMs === null || candidate.sampleTimestampMs === null
+          || !Number.isFinite(incumbent.sampleTimestampMs) || !Number.isFinite(candidate.sampleTimestampMs)
+          || incumbent.sampleTimestampMs !== lastCurrentTimestamp || candidate.sampleTimestampMs !== lastCandidateTimestamp;
+        if (fresh) {
+          lastCurrentTimestamp = incumbent.sampleTimestampMs; lastCandidateTimestamp = candidate.sampleTimestampMs;
+          const result = probe.observe(current.peer.transport.pc.connectionState === "connected" && peer.transport.pc.connectionState === "connected"
+            ? incumbent : null, candidate);
+          input.qualityApproved = result === "approved";
+        }
       } else {
         // Missing observation remains pending under the room's operation deadline.
         input.qualityApproved = false;
         probe.reset();
+      }
+      // Only new quality evidence renews readiness; unchanged stats expire at the room owner.
+      if (fresh) {
+        if (input.qualityApproved) this.switchReady(peer, flowId, input);
+        else if (input.switchReady) { this.reportInput(peer, flowId, input); this.refresh(); }
       }
       if (owns()) timer = setTimeout(() => { timer = null; void poll(); }, VIEWER_QUALITY_EVIDENCE_INTERVAL_MS);
     };

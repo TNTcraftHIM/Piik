@@ -56,7 +56,19 @@ struct Shadow {
     replaces: Option<Uuid>,
     viewing: bool,
     proof: Option<Readiness>,
-    presented: bool,
+    presented_at: Option<u64>,
+}
+
+impl Shadow {
+    fn ready(&self, incumbent: Option<Readiness>, now: u64) -> bool {
+        self.proof.is_some()
+            && (!self.viewing
+                || (self.proof == Some(Readiness::Decoded)
+                    && (incumbent != Some(Readiness::Decoded)
+                        || self
+                            .presented_at
+                            .is_some_and(|at| now.saturating_sub(at) < QUALITY_EVIDENCE_MS))))
+    }
 }
 
 impl Publication {
@@ -302,7 +314,7 @@ impl Publication {
                         replaces,
                         viewing: requested.contains(&receiver),
                         proof: None,
-                        presented: false,
+                        presented_at: None,
                     },
                 ))
             })
@@ -598,7 +610,7 @@ impl Publication {
                         Readiness::Forwardable => FlowState::Forwardable,
                         Readiness::Decoded => FlowState::Decoded,
                     });
-                    flow.presented = Some(leg.presented);
+                    flow.presented = Some(leg.presented_at.is_some());
                     flow
                 })
             }))
@@ -680,8 +692,8 @@ impl Publication {
             }
         }
         if let Some(RouteOperation {
-            deadline,
             kind: OperationKind::Reduce { root, legs },
+            ..
         }) = &mut self.operation
         {
             if let Some(leg) = legs
@@ -699,21 +711,20 @@ impl Publication {
                     FlowState::Forwardable => {
                         leg.proof = leg.proof.max(Some(Readiness::Forwardable))
                     }
-                    FlowState::Decoded => leg.proof = Some(Readiness::Decoded),
+                    FlowState::Decoded => {
+                        leg.proof = Some(Readiness::Decoded);
+                        leg.presented_at = None;
+                    }
                     FlowState::SwitchReady if leg.viewing => {
                         leg.proof = Some(Readiness::Decoded);
-                        leg.presented = true;
-                        *deadline = (*deadline).min(now.saturating_add(QUALITY_EVIDENCE_MS));
+                        leg.presented_at = Some(now);
                     }
                     FlowState::SwitchReady => return false,
                 }
-                if legs.iter().all(|(receiver, leg)| {
-                    leg.proof.is_some()
-                        && (!leg.viewing
-                            || (leg.proof == Some(Readiness::Decoded)
-                                && (self.plan.readiness(*receiver) != Some(Readiness::Decoded)
-                                    || leg.presented)))
-                }) {
+                if legs
+                    .iter()
+                    .all(|(receiver, leg)| leg.ready(self.plan.readiness(*receiver), now))
+                {
                     let OperationKind::Reduce { legs, .. } = self.operation.take().unwrap().kind
                     else {
                         unreachable!()
@@ -733,8 +744,8 @@ impl Publication {
             }
         }
         if let Some(RouteOperation {
-            deadline,
             kind: OperationKind::Switch { root, helper, legs },
+            ..
         }) = &mut self.operation
         {
             if let Some(leg) = legs.get_mut(&receiver).filter(|leg| leg.flow.id == id) {
@@ -749,21 +760,20 @@ impl Publication {
                     FlowState::Forwardable => {
                         leg.proof = leg.proof.max(Some(Readiness::Forwardable))
                     }
-                    FlowState::Decoded => leg.proof = Some(Readiness::Decoded),
+                    FlowState::Decoded => {
+                        leg.proof = Some(Readiness::Decoded);
+                        leg.presented_at = None;
+                    }
                     FlowState::SwitchReady if leg.viewing => {
                         leg.proof = Some(Readiness::Decoded);
-                        leg.presented = true;
-                        *deadline = (*deadline).min(now.saturating_add(QUALITY_EVIDENCE_MS));
+                        leg.presented_at = Some(now);
                     }
                     FlowState::SwitchReady => return false,
                 }
-                if legs.iter().all(|(receiver, leg)| {
-                    leg.proof.is_some()
-                        && (!leg.viewing
-                            || (leg.proof == Some(Readiness::Decoded)
-                                && (self.plan.readiness(*receiver) != Some(Readiness::Decoded)
-                                    || leg.presented)))
-                }) {
+                if legs
+                    .iter()
+                    .all(|(receiver, leg)| leg.ready(self.plan.readiness(*receiver), now))
+                {
                     let OperationKind::Switch { legs, .. } = self.operation.take().unwrap().kind
                     else {
                         unreachable!()

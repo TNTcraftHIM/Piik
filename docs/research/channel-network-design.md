@@ -386,9 +386,12 @@ decoding. Existing viewers keep their decoded input while the candidate passes
 shared quality comparison and supplies a prewarmed player frame. Selection retains
 prepared inputs/outputs before retiring old leases. Source sound, volume, pause
 and container fullscreen follow player handover; native element fullscreen defers it.
-Preparation/switching share one finite operation: first-viewer approval bounds the
-remaining wait to the quality-evidence lifetime. Failure or changed viewing demand
-cancels the candidate while preserving required old paths.
+Preparation/switching share one fixed finite operation. Each viewing leg keeps
+its own current quality evidence; fresh samples can renew that evidence without
+extending the operation. Commit requires all affected viewers' evidence to be
+fresh. A new decoded-only report withdraws that leg's switching permission.
+Failure or changed viewing demand cancels the candidate while preserving required
+old paths.
 
 ### One Owner For Actual Connections
 

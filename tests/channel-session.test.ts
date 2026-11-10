@@ -4035,7 +4035,7 @@ test("a selected screen reports only its current playback failure and keeps the 
   } finally { media.reset(); session.close(); }
 });
 
-test.each(["approved", "warming", "retired"])("a leaf candidate stays separate until quality and presentation are %s", async outcome => {
+test.each(["approved", "warming", "retired", "live"])("a leaf candidate stays separate until quality and presentation are %s", async outcome => {
   const fixture = await screenFixture();
   const { media, session, state, pc, sent, changed } = fixture;
   state.subscriptions = ["screen"];
@@ -4044,12 +4044,16 @@ test.each(["approved", "warming", "retired"])("a leaf candidate stays separate u
   const oldAudio = remoteTrack("audio"), nextAudio = remoteTrack("audio");
   const oldStream = remoteStream("incumbent", [oldVideo, oldAudio]), candidate = remoteStream("candidate", [nextVideo, nextAudio]);
   let candidateWidth = outcome === "warming" ? 320 : 640;
-  const quality = (track: MediaStreamTrack, width = 640): RTCStatsReport => new Map([[track.id, {
-    id: track.id, type: "inbound-rtp", kind: "video", trackIdentifier: track.id, ssrc: 7,
-    timestamp: Date.now(), bytesReceived: Date.now() * 10, framesDecoded: Math.floor(Date.now() / 100),
-    framesPerSecond: 10, frameWidth: width, frameHeight: width * 9 / 16, packetsReceived: Date.now(), packetsLost: 0,
-    freezeCount: 0, totalFreezesDuration: 0, pauseCount: 0, totalPausesDuration: 0,
-  }]]) as unknown as RTCStatsReport;
+  let sampleTimestamp: number | undefined, lastQualityTime = 0;
+  const quality = (track: MediaStreamTrack, width = 640): RTCStatsReport => {
+    const now = lastQualityTime = sampleTimestamp ?? Date.now();
+    return new Map([[track.id, {
+      id: track.id, type: "inbound-rtp", kind: "video", trackIdentifier: track.id, ssrc: 7,
+      timestamp: now, bytesReceived: now * 10, framesDecoded: Math.floor(now / 100),
+      framesPerSecond: 10, frameWidth: width, frameHeight: width * 9 / 16, packetsReceived: now, packetsLost: 0,
+      freezeCount: 0, totalFreezesDuration: 0, pauseCount: 0, totalPausesDuration: 0,
+    }]]) as unknown as RTCStatsReport;
+  };
   try {
     pc.receivers = [{ track: oldVideo, getStats: async () => decodedReport(1) } as RTCRtpReceiver];
     await receiveScreen(fixture, oldStream);
@@ -4085,16 +4089,46 @@ test.each(["approved", "warming", "retired"])("a leaf candidate stays separate u
         candidateWidth = 640;
         await vi.advanceTimersByTimeAsync(8100);
       }
-      expect(sent.filter(command => command.type === "flow_state" && command.state === "switch_ready")).toEqual([
-        { type: "flow_state", pairId: "candidate-pair", flowId: "candidate-flow", state: "switch_ready" },
-      ]);
+      expect(sent.filter(command => command.type === "flow_state" && command.state === "switch_ready").length).toBeGreaterThan(0);
       sent.length = 0;
       media.resync();
-      expect(sent.filter(command => command.type === "flow_state" && command.state === "switch_ready")).toEqual([
-        { type: "flow_state", pairId: "candidate-pair", flowId: "candidate-flow", state: "switch_ready" },
-      ]);
+      expect(sent.filter(command => command.type === "flow_state" && command.state === "switch_ready")).toEqual([]);
+      expect(sent).toContainEqual({ type: "flow_state", pairId: "candidate-pair", flowId: "candidate-flow", state: "decoded" });
+      media.screenPresentation("candidate-flow", candidate, "prepared");
+      expect(sent.filter(command => command.type === "flow_state" && command.state === "switch_ready")).toEqual([]);
+      await vi.advanceTimersByTimeAsync(2000);
       expect(changed.mock.calls.at(-1)![0].get("screen")).toBe(oldStream);
       expect(changed.mock.calls.at(-1)![1].get("screen")?.find(value => value.flowId === "candidate-flow")?.switchReady).toBe(true);
+      if (outcome === "live") {
+        // An early leg keeps proving itself while the room waits for another leg.
+        sent.length = 0;
+        await vi.advanceTimersByTimeAsync(6000);
+        expect(sent.filter(command => command.type === "flow_state" && command.state === "switch_ready")).toHaveLength(3);
+        sampleTimestamp = lastQualityTime;
+        sent.length = 0;
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(sent.filter(command => command.type === "flow_state")).toEqual([]);
+        expect(changed.mock.calls.at(-1)![1].get("screen")?.find(value => value.flowId === "candidate-flow")?.switchReady).toBe(true);
+        sampleTimestamp = undefined; candidateWidth = 320;
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(sent.filter(command => command.type === "flow_state")).toEqual([
+          { type: "flow_state", pairId: "candidate-pair", flowId: "candidate-flow", state: "decoded" },
+        ]);
+        expect(changed.mock.calls.at(-1)![1].get("screen")?.find(value => value.flowId === "candidate-flow")?.switchReady).toBe(false);
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(sent.filter(command => command.type === "flow_state")).toHaveLength(1);
+        candidateWidth = 640;
+        await vi.advanceTimersByTimeAsync(6000);
+        expect(sent.at(-1)).toEqual({ type: "flow_state", pairId: "candidate-pair", flowId: "candidate-flow", state: "switch_ready" });
+        state.pairs.pop(); media.update("a", state);
+        const polls = next.getStats.mock.calls.length;
+        sent.length = 0;
+        await vi.advanceTimersByTimeAsync(4000);
+        expect(next.getStats).toHaveBeenCalledTimes(polls);
+        expect(sent.filter(command => command.type === "flow_state")).toEqual([]);
+        expect(changed.mock.calls.at(-1)![0].get("screen")).toBe(oldStream);
+        return;
+      }
       media.screenPresentation("candidate-flow", candidate, "waiting");
       state.pairs[0].incoming = [];
       state.pairs[1].incoming[0].selected = true;
