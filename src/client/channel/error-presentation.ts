@@ -44,7 +44,7 @@ export function channelErrorPresentation(error: string | null, copy: (zh: string
   if (/room_access|room_forbidden/i.test(error))
     return display("你还没有这间房间的访问权限。", "You don't have access to this room.");
   if (/invit(?:e|ation)|credential|unauthorized|join_required/i.test(error))
-    return display("需要有效邀请。请打开域主提供的完整邀请链接。", "A valid invitation is required. Open the full link from the domain owner.");
+    return display("需要有效邀请。请向邀请方索取新的完整链接。", "A valid invitation is required. Ask the sender for a new, complete link.");
   if (error === "session_expired")
     return display("连接超时，采集已停止。重新连接后可再次分享或加入语音。", "Connection timed out. Capture stopped. Reconnect to share or join voice again.", true);
   if (error === "forbidden")
