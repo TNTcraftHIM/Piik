@@ -28,7 +28,9 @@ export function ChannelSettingsDialog({ title, caption, compact = false, error =
   return ownerDocument && createPortal(<dialog ref={dialog} className="c3-settings-dialog" data-compact={compact || undefined}
     aria-labelledby={titleId} onClose={event => { if (!event.currentTarget.open) onClose(); }}>
     <header className="c3-settings-dialog-heading">
-      <div>{caption && <p>{caption}</p>}<h2 id={titleId}>{title}</h2></div>
+      {/* Start at the heading so automatic focus does not open an action's tooltip. */}
+      <div>{caption && <p>{caption}</p>}<h2 id={titleId} tabIndex={-1}
+        ref={element => { element?.setAttribute("autofocus", ""); }}>{title}</h2></div>
       <ChannelAction icon="x" iconOnly quiet hint="hint-close" label={lang === "zh" ? "关闭" : "Close"}
         onClick={() => dialog.current?.close()} />
     </header>
