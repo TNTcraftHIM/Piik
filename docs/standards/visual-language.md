@@ -41,6 +41,14 @@ A middle dot is reserved for short, genuinely peer metadata such as compact
 measurements or version details. It is not the default separator for headings,
 instructions, accessible descriptions or a label followed by an explanation.
 
+Group actions by the object or activity they affect before choosing a corner.
+Keep contextual actions near their named target and persistent personal controls
+in a stable activity area. Preserve those groups when the viewport changes.
+Use spacing first and light separators between different tasks; menus contain
+useful actions, not extra features added for visual balance. These choices follow
+[proximity](https://www.nngroup.com/articles/gestalt-proximity/) and
+[visual hierarchy](https://www.nngroup.com/articles/principles-visual-design/).
+
 Use the shared living-room imagery: the television represents media, and the
 couch and pawns make presence spatial. Keep the current room identity prominent:
 the room code in 2.x, the room name in 3.0. Decoration must clarify product facts

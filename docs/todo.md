@@ -17,7 +17,8 @@ the feedback period; they do not delay that delivery.
   direct room pop-out before changing the current workspace. Give room/domain
   invitations contextual entries with one link and subordinate QR presentation;
   keep their existing admission owners. Preserve current players and independent
-  room activities. The [hierarchy proposal](./research/room-interactions.md#workspace-hierarchy-proposal)
+  room activities; decide the proposed single voice destination before replacing
+  existing multi-room voice. The [hierarchy proposal](./research/room-interactions.md#workspace-hierarchy-proposal)
   records the candidate; [visual language](./standards/visual-language.md#30-channel-workspace)
   owns accepted layout responsibilities.
 - [ ] **3.0 Windows shared-sound noise.** A beta2 Host reports noise that stops

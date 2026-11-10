@@ -455,7 +455,7 @@ the network and data owners above continue to govern activity and admission.
 | Scope | Proposed placement and action |
 | --- | --- |
 | Domain and navigation | Left room list and domain menu; collapse control on the sidebar edge. Domain invitation and domain administration stay here. |
-| Current room | Room title, a share action with its adjacent parameters, then a lightly divided invitation entry. Room management stays beside the room-list item. |
+| Current room | Room title with its contextual invitation; the primary share action and its parameters form a separate group. Room management stays beside the room-list item. |
 | Personal activity | Lower-left identity, joining voice and the joined activity's mute, listening and leave controls. State the target room; folding navigation or narrowing the viewport moves the same controls into the bottom bar. |
 | Conversation and presence | While watching, couch and chat share the right companion area. Without pictures, chat takes the main space and the right rail retains couch, people and listening controls. Narrow layouts retain these through a compact presence disclosure. |
 
@@ -466,8 +466,9 @@ occupy the same personal activity area. Share parameters stay with
 Share. Room settings group room properties, connection settings and records;
 inviting belongs to its separate contextual panel.
 
-The couch's pop-out action opens the supported external window directly; an
-in-page tool is the explicitly named alternative. Use the same content and
+The couch's pop-out action opens a compact external tool directly, with an initial
+size chosen for that task rather than the full workspace column. User resizing
+remains available; an in-page tool is the explicitly named alternative. Use the same content and
 window owner, preserve drafts, and return it on close. Presentation changes
 must not join voice, restart capture or change room authority.
 
@@ -478,9 +479,28 @@ invitations admit the domain and that room; domain invitations do not unlock
 private rooms. Public-room URLs need a Browser landing path that still observes
 domain admission. Do not add roles, a second token or hidden permission changes.
 
+The current domain rail is a local address list, not centrally synchronized
+membership. Its add entry should open an invitation/address, with saving as a
+separate choice; room creation stays beside the room list. A domain menu groups
+its existing invite and administration actions as compact rows. Whether to hide
+an otherwise empty rail and move address entry into the domain switcher remains
+a layout proposal; opening another domain must not silently stop this page.
+
+Browsing currently reads conversation over the Domain connection without peer
+media demand. Voice, screen sharing, watches and file transfers keep independent
+room scopes. Retain this separation. A proposed single voice destination would
+replace the current per-page multi-room voice capability and therefore awaits the
+owner's decision; browsing alone would still never move it. Explicit share/watch
+actions preserve their target room. Invitations grant access and select content,
+without implicitly starting microphones or moving existing shares.
+
 The proposal follows [contextual call controls and direct pop-out](https://support.discord.com/hc/en-us/articles/360041721052-Video-Calls),
 [adaptive navigation](https://developer.android.com/design/ui/mobile/guides/layout-and-content/layout-and-nav-patterns)
 and [workspace hierarchy research](https://slack.design/articles/designing-teamwork-how-our-customers-shaped-the-future-of-slack/).
+The documented [Discord share flow](https://support.discord.com/hc/en-us/articles/360040816151-Go-Live-and-Screen-Share)
+and [KOOK share flow](https://help.kookapp.cn/7ff3/b671) place sharing in the joined
+voice controls. Piik can reuse the task grouping without making voice a prerequisite
+for its independent sharing.
 Review the composition before integrating it into the shared page; then verify
 room/source scope, active-media continuity, keyboard/touch operation and window
 return. [TODO](../todo.md) owns the work, and accepted visual rules remain in

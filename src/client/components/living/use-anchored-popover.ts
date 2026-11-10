@@ -6,7 +6,7 @@ import { useSurfaceDocument } from "../../ui/panel-window";
 export function useAnchoredPopover(
   trigger: RefObject<HTMLElement | null>, panel: RefObject<HTMLElement | null>,
   { side = "below", align = "end", maxHeight = Infinity, preferredHeight, minVisibleHeight = Infinity, enabled = true }: {
-    side?: "above" | "below"; align?: "end" | "center";
+    side?: "above" | "below"; align?: "start" | "end" | "center";
     maxHeight?: number; preferredHeight?: number; minVisibleHeight?: number; enabled?: boolean;
   } = {},
 ) {
@@ -49,7 +49,7 @@ export function useAnchoredPopover(
       const beside = openAbove ? above : below;
       menu.style.maxHeight = `${Math.min(maxHeight, bottom - top, beside >= visibleHeight ? beside : bottom - top)}px`;
       menu.classList.toggle("is-above", openAbove);
-      const x = align === "center" ? rect.left + (rect.width - menu.offsetWidth) / 2 : rect.right - menu.offsetWidth;
+      const x = align === "start" ? rect.left : align === "center" ? rect.left + (rect.width - menu.offsetWidth) / 2 : rect.right - menu.offsetWidth;
       menu.style.left = `${Math.max(left, Math.min(x, right - menu.offsetWidth))}px`;
       const y = openAbove ? rect.top - menu.offsetHeight - 8 : rect.bottom + 8;
       menu.style.top = `${Math.max(top, Math.min(y, bottom - menu.offsetHeight))}px`;

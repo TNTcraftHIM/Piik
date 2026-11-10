@@ -22,7 +22,7 @@ export function ChannelBookmarks({ currentName, currentIcon, onCurrent, classNam
   const [name, setName] = useState("");
   const [error, setError] = useState<"address" | "duplicate" | "storage" | null>(null);
   const currentOrigin = location.origin;
-  const title = copy("打开朋友的链接", "Open a friend's link");
+  const title = copy("打开邀请或网址", "Open an invitation or address");
   const savedTitle = copy("已保存地址", "Saved addresses");
   const errorText = error === "address" ? copy("请输入有效的网址。", "Enter a valid web address.")
     : error === "duplicate" ? copy("这个地址已在收藏中。", "This address is already saved.")
