@@ -455,9 +455,16 @@ the network and data owners above continue to govern activity and admission.
 | Scope | Proposed placement and action |
 | --- | --- |
 | Domain and navigation | Left room list and domain menu; collapse control on the sidebar edge. Domain invitation and domain administration stay here. |
-| Current room | Room title, adjacent share/join-voice actions, then related parameters and a room invitation entry. Room management stays beside the room-list item. |
+| Current room | Room title, a share action with its adjacent parameters, a parallel join-voice action and a separate room invitation entry. Room management stays beside the room-list item. |
 | Personal activity | Lower-left identity and current voice destination with mute, listening and leave controls. Folding navigation or narrowing the viewport keeps these controls visible. |
-| Conversation and presence | Couch and chat share one companion area; without pictures, conversation takes the main space. The member disclosure shows current-room activity and per-person listening controls. |
+| Conversation and presence | While watching, couch and chat share the right companion area. Without pictures, chat takes the main space and the right rail retains couch, people and listening controls. Narrow layouts retain these through a compact presence disclosure. |
+
+Focus viewing keeps one main picture with the other views below. Browsing another
+room does not stop independent watches; each picture retains its source-room
+identity and a return action. Joining voice has one primary action; microphone
+and listening controls belong to the joined activity. Share parameters stay with
+Share. Room settings group room properties, connection settings and records;
+inviting belongs to its separate contextual panel.
 
 The couch's pop-out action opens the supported external window directly; an
 in-page tool is the explicitly named alternative. Use the same content and
@@ -478,6 +485,42 @@ Review the composition before integrating it into the shared page; then verify
 room/source scope, active-media continuity, keyboard/touch operation and window
 return. [TODO](../todo.md) owns the work, and accepted visual rules remain in
 [visual language](../standards/visual-language.md#30-channel-workspace).
+
+### Extension Boundaries (PROPOSED)
+
+Proposed 2026-11-10, awaiting product decisions. Ordinary friends should not need
+to configure permissions to share or collaborate. The accepted Domain, Room and
+Source owners remain the starting point; no bot permissions or API are accepted here.
+
+| Decision | Recommended starting point | Additional cost to accept |
+| --- | --- | --- |
+| Permissions | Keep current ownership and room participation. Consider a few room capability switches only for a concrete moderated-room need. | Each switch needs Core enforcement and an active-session withdrawal rule. Full roles add assignment, inheritance and conflict semantics; defer them. |
+| Bots and APIs | Prove one small bot/client in a separate process, using the same Core commands, room confirmations and lifecycle. An HTTP entry can adapt those operations when needed. | A bot needs its own identity and credential with real revocation. Its issuer, allowed rooms and ability to create rooms must be decided explicitly. |
+| External media | First assess one OBS-to-Native-App input through WHIP and the shared Source adapter, then the ordinary publication and P2P paths. | Ingest authorization, supported codecs, source timing and stop ownership are real work; this does not accept every streaming protocol or unattended publishing. |
+
+Giving a script a person's credential does not create a separately revocable bot.
+Revocation must reject that bot's future authentication and retire its live sessions,
+while preserving authored history. Access to all public rooms or room creation is
+not an accepted bot default; a configured target room is not an authorization scope.
+[Discord's bot identity](https://docs.discord.com/developers/topics/oauth2#bot-users)
+and [Matrix's token lifecycle](https://spec.matrix.org/latest/client-server-api/#client-authentication)
+illustrate these separate responsibilities without requiring Piik to adopt their
+role or OAuth systems.
+
+APIs should call existing owners, not write room databases or fabricate confirmations.
+A bot cannot replace an offline room host's authority or storage. Hosting follows the
+actual Browser/App/Server runtime; personal device and remote-input grants never pass
+to a bot through room administration. Defer in-process plugins: the
+[TeamSpeak native SDK](https://github.com/teamspeak/ts3client-pluginsdk) illustrates
+the exported API and callback boundary that Piik would then have to maintain.
+
+[OBS already supplies WHIP output](https://obsproject.com/kb/whip-streaming-guide).
+The candidate Piik input would authorize one source lease on an authenticated App,
+reuse its media clock, output demand and routing, and stop with that share. It is
+neither a bot identity nor a second Core pair or media network. These source adapters
+are internal interfaces, not an existing public plugin ABI.
+After choosing the first use case and authorization scope, verify one complete
+integration and its revoke/stop behavior before extracting a general SDK.
 
 ## Attended Remote-Control Prototype
 

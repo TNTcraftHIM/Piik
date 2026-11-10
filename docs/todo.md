@@ -89,6 +89,11 @@ the feedback period; they do not delay that delivery.
   invitation landing and any short room-code locator before implementation.
   View preferences must not start activities. Keep access, saved data and activity
   lifetimes with their existing owners, separately from App network-entry choices.
+- [ ] **3.0 permissions and extension decisions.** Review the
+  [proposed boundaries](./research/room-interactions.md#extension-boundaries-proposed)
+  before API or plugin work: keep ordinary sharing simple, choose the first
+  bot/media use case, and decide bot identity, authority scope and revocation.
+  External media should reuse the shared Source and routing owners.
 - [ ] **Routing parity decisions.** Review the current domain-wide 20-endpoint
   limit, which counts Browser and App separately, against the intended user
   capacity. The current direct-source/helper trials cover fewer improvement
