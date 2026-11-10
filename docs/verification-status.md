@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-09
+Last updated: 2026-11-10
 
 This page summarizes the current 3.0 evidence and limits that affect product
 claims. [Status](./status.md#isolated-30-prototype) owns delivery readiness;
@@ -38,6 +38,11 @@ checks cover reactions after reload, retained drafts and attachments in floating
 and Document PiP surfaces, source replacement, and signaling recovery with
 progressing media on retained connections. Native App and Server package checks
 verify bundled Web/WASM identity, notices, startup and orderly shutdown.
+
+A three-Browser run verified picture and voice progress while receiving files
+through the same relay under controlled storage backpressure. Cancelling an
+active receive released its file lease and temporary storage, preserved media
+and conversation, and allowed a retry with the expected file hash.
 
 Packaged Windows checks also combine multiple rooms, pictures, conversation and
 voice: source settings remain tied to their own picture, moving the room tool
