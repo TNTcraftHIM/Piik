@@ -56,25 +56,20 @@ invocation; follow their relevant guidance without importing unrelated workflows
 
 ## Product Contract
 
-The product contract below describes published 2.x. For isolated 3.0 work,
-[status](./docs/status.md#isolated-30-prototype) indexes the accepted architecture
-and its network/data owners.
+This worktree develops isolated 3.0. The accepted
+[network model](./docs/research/channel-network-design.md) and
+[room-data model](./docs/research/channel-storage-and-identity.md) own its behavior;
+[status](./docs/status.md#isolated-30-prototype) indexes current implementation.
+Published 2.x promises remain with the maintenance line's
+[standards](https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/README.md)
+and [status](https://github.com/TNTcraftHIM/Piik/blob/main/docs/status.md).
 
-- Piik is private screen sharing for one Host and up to 20 authenticated
-  Viewers, with Web Host/Viewer/relay as the current product surface.
-- Current product truth is split by owner:
-  [rooms/access](./docs/standards/rooms-access.md),
-  [routing/transport](./docs/standards/routing-transport.md),
-  [media quality](./docs/standards/media-quality.md), and
-  [presentation/lifecycle](./docs/standards/presentation-lifecycle.md).
-- Media stays automatic and defaults to P2P-first; central services provide room authority,
-  signaling, STUN, observability, and bounded embedded SFU/UDP fallback using
-  mature LiveKit media components under [ADR-0013](./docs/adr/0013-embedded-node-local-media.md). Route
-  changes must preserve the single-graph, single-operation model in
-  [ADR-0005](./docs/adr/0005-automatic-hybrid-media-routing.md).
-- WebRTC and LiveKit own network and media adaptation. Do not add custom quality
-  scores, ladders, all-pairs probes, periodic rebalancing, or hand-built SFU
-  representations without a new accepted decision backed by primary evidence.
+- Media remains automatic and P2P-first. Preserve the routing and resource
+  owners defined by the network model.
+- Use Browser WebRTC, the Native RTC SDK and accepted mature encoder policies
+  for adaptation. Do not add custom quality scores, ladders, all-pairs probes,
+  periodic rebalancing or hand-built SFU representations without a new accepted
+  decision backed by primary evidence.
 
 ## Durable Truth
 
