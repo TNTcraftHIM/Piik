@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { openPanelWindow, panelWindowAPI } from "../src/client/ui/panel-window";
+import { openPanelWindow, panelWindowAPI, PANEL_SIZE } from "../src/client/ui/panel-window";
 
 function setup() {
   let finish!: (view: Window) => void;
@@ -29,6 +29,17 @@ test("an already retired surface does not ask the browser for another window", a
   const { container, requestWindow } = setup();
   await openPanelWindow(container, AbortSignal.abort(), vi.fn());
   expect(requestWindow).not.toHaveBeenCalled();
+});
+
+test("an explicit tool size replaces workspace geometry and retirement closes the late window", async () => {
+  const { container, requestWindow, finish } = setup();
+  const controller = new AbortController();
+  const close = vi.fn();
+  const opening = openPanelWindow(container, controller.signal, vi.fn(), PANEL_SIZE);
+  expect(requestWindow).toHaveBeenCalledWith({ ...PANEL_SIZE, preferInitialWindowPlacement: true });
+  controller.abort(); finish({ close } as unknown as Window);
+  await opening;
+  expect(close).toHaveBeenCalledOnce();
 });
 
 test("browser refusal leaves the current surface untouched and reports failure to its caller", async () => {

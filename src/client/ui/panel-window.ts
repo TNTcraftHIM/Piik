@@ -6,6 +6,8 @@ export const SurfaceDocument = createContext<Document | null>(null);
 export const useSurfaceDocument = () => useContext(SurfaceDocument) ?? (typeof document === "undefined" ? null : document);
 
 type PictureInPicture = { requestWindow(options: { width: number; height: number; preferInitialWindowPlacement: boolean }): Promise<Window> };
+export const PANEL_SIZE = { width: 420, height: 560 };
+type PanelSize = { width: number; height: number };
 export function panelWindowAPI(view: Window | null) {
   return view && view === view.top && view.isSecureContext
     ? (view as Window & { documentPictureInPicture?: PictureInPicture }).documentPictureInPicture
@@ -30,7 +32,7 @@ export function usePanelWindow(enabled: boolean, onDocument?: (owner: Document) 
     slot.current.append(container);
     return () => { lifetime.current?.abort(); container.remove(); };
   }, [container]);
-  async function open() {
+  async function open(size?: PanelSize) {
     if (!container || opening) return;
     const controller = new AbortController();
     lifetime.current = controller;
@@ -38,7 +40,7 @@ export function usePanelWindow(enabled: boolean, onDocument?: (owner: Document) 
     try {
       await openPanelWindow(container, controller.signal, owner => {
         setSurfaceDocument(owner); onDocument?.(owner);
-      });
+      }, size);
     } catch { if (!controller.signal.aborted) setFailed(true); }
     finally { if (!controller.signal.aborted) setOpening(false); }
   }
@@ -53,14 +55,18 @@ export function usePanelWindow(enabled: boolean, onDocument?: (owner: Document) 
 }
 
 /** Adopt one stable portal, then return it on close. No second React root/session. */
-export async function openPanelWindow(container: HTMLElement, signal: AbortSignal, onDocument: (document: Document) => void) {
+export async function openPanelWindow(container: HTMLElement, signal: AbortSignal, onDocument: (document: Document) => void, size?: PanelSize) {
   const home = container.ownerDocument;
   const parent = container.parentElement;
   const api = panelWindowAPI(home.defaultView);
   if (!api || !parent || signal.aborted) return;
   // The portal wrapper uses display: contents; its child owns visible geometry.
-  const { width, height } = container.firstElementChild!.getBoundingClientRect();
-  const pip = await api.requestWindow({ width: Math.round(width), height: Math.round(height), preferInitialWindowPlacement: true });
+  const { width, height } = size ?? container.firstElementChild!.getBoundingClientRect();
+  const pip = await api.requestWindow({
+    width: Math.round(width),
+    height: Math.round(height),
+    preferInitialWindowPlacement: true,
+  });
   // Room retirement can beat the browser's permission/window creation work.
   if (signal.aborted || !container.isConnected) { pip.close(); return; }
   let returned = false;

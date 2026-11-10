@@ -2,11 +2,10 @@ import { useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode, t
 import { createPortal } from "react-dom";
 import { useCopy } from "../../ui/copy";
 import { Glyph, type GlyphName } from "../../ui/icons";
-import { usePanelWindow, panelWindowAPI, SurfaceDocument } from "../../ui/panel-window";
+import { usePanelWindow, panelWindowAPI, SurfaceDocument, PANEL_SIZE } from "../../ui/panel-window";
 import { Tooltip } from "./Tooltip";
 import "./floating-panel.css";
 
-const PANEL_SIZE = { width: 420, height: 560 };
 const COMPACT_SIZE = { width: 304, height: undefined };
 type PanelGesture = "move" | "nw" | "se";
 type PanelChange = { x: number; y: number } | { rect: DOMRect; corner: "nw" | "se"; dx: number; dy: number };
