@@ -505,7 +505,7 @@ their exclusive sockets, gateway mapping and coordinated preparation; a shared
 Server listener does not advertise preparation capability.
 
 Each Native pair may map its actual default-gateway IPv4 socket using the
-released [portmapper](https://docs.rs/portmapper/0.20.0/portmapper/) client. Its
+[portmapper client](../../prototype/channel-native/README.md#rtc-dependency). Its
 background probe, protocol selection and renewal stay with that library;
 mapping does not delay ICE or replace IPv6 and STUN candidates. Mapped addresses
 use the existing candidate signaling. Pair retirement joins the address watcher
@@ -579,9 +579,9 @@ Browser preference; the App holds only the current process registration.
 | A relay leaves | Repair affected paths through the same route owners; keep unrelated flows. |
 | File's original sender leaves | Another online admitted holder may supply its copy. With no holder, the file is unavailable until a source returns. |
 | Room access is removed | Stop that user's affected activities and new delivery; local downloaded bytes cannot be recalled. |
-| Domain authority connection is lost | First phase retains the existing bounded authority-recovery rule; do not silently operate indefinitely with an old global permission snapshot. |
+| Domain authority connection is lost | Retain the bounded authority-recovery rule; do not silently operate indefinitely with an old global permission snapshot. |
 
-Start with the current 20-second signaling recovery policy. Failure to replace
+Signaling recovery uses one 20-second deadline. Failure to replace
 a socket does not extend its deadline; successful authenticated reconciliation
 ends it. Local stop takes effect immediately. One scope's retirement cannot
 release another room's healthy source or transport lease.
@@ -618,302 +618,210 @@ defines an answer's independent SDP origin/version.
 
 Browser/WASM and Native/SQLite adapters execute the shared room core. The domain
 projects their authorized summaries; a failed directory save cannot undo a room
-policy commit. The [Server/App compositions](../../prototype/channel-server/README.md)
-and [Native participant](../../prototype/channel-native/README.md) own runtime setup;
-an OS file lock excludes simultaneous writers of a saved room.
+policy commit. An OS file lock excludes simultaneous writers of a saved room.
+The [Server/App composition](../../prototype/channel-server/README.md) and
+[Native participant](../../prototype/channel-native/README.md) own runtime setup;
+the [engineering map](../standards/engineering.md#module-map) owns module boundaries.
+Platform FFI stays narrow: a Rust wrapper does not make foreign code memory-safe
+([safe abstractions](https://doc.rust-lang.org/book/ch20-01-unsafe-rust.html)).
+[Versioning](../standards/versioning.md) owns public major-version upgrades and
+matched-protocol guidance, separately from replacing private test contracts.
 
-App control authenticates the Browser account against domain admission and opens
-rooms through the Native participant. Browser activities and existing hosted
-rooms keep their own endpoint and storage. Approval grants one exact Web origin
-its own data namespace; supplied domain/user IDs select data only after Native
-verifies admission. Revocation stops that site's hosting without deleting data
-or affecting other sites. For an approved external site, a replacement origin
-needs approval and does not inherit the previous origin's data. The App's own
-domain retains its saved identity and room-data namespace across port or
-invitation-address changes. URLs provide discovery, never App permission.
-
-Keep platform FFI narrow: a Rust wrapper does not make foreign code memory-safe
-([safe abstractions](https://doc.rust-lang.org/book/ch20-01-unsafe-rust.html)). The
-[engineering map](../standards/engineering.md#module-map) owns module boundaries;
-[versioning](../standards/versioning.md) separates builds, wire, storage and live
-generations. Published cutover still requires a handshake/data-upgrade decision.
+App control authenticates the Browser account against domain admission before
+opening its Native room data. Approval grants one exact Web origin its own
+namespace; revocation stops that site's hosting without deleting data or affecting
+other sites. A replacement external origin needs approval and does not inherit
+the previous origin's data. The App's own domain keeps its identity and namespace
+across port or invitation-address changes. URLs provide discovery, never App
+permission. Browser activities and existing hosted rooms retain their own endpoints
+and storage, as defined by [activity and lifecycle](#activity-and-lifecycle).
 
 ### Transport And Encoded Supply
 
-The Native pump drives [str0m](https://github.com/algesten/str0m) socket input and
-deadlines through public APIs. The SDK owns ICE, DTLS/SRTP, SCTP, congestion
-control, probing, pacing and retransmission; Driver/Core retain room/flow
-authority. STUN/TURN clients use that same socket owner. Exact pins and removal
-boundaries belong to the [Native dependency owner](../../prototype/channel-native/README.md#rtc-dependency).
-Piik owns encoder demand, complete-AU assembly/admission and source-time mapping;
-public depacketizers do not own those assembly semantics or require a feature fork.
+The Native [transport pump](../../prototype/channel-native/src/peer/transport.rs)
+drives str0m socket input and deadlines through public APIs. The SDK owns ICE,
+DTLS/SRTP, SCTP, congestion control, probing, pacing and retransmission; Driver/Core
+retain room/flow authority. STUN/TURN use that same socket owner. Exact pins and
+upstream-removal boundaries belong to the [Native dependency owner](../../prototype/channel-native/README.md#rtc-dependency).
+Piik owns complete-access-unit assembly/admission, encoder demand and source-time
+mapping; public depacketizers do not supply those application semantics.
 
-One SDK GCC target budgets a physical connection, not each outbound track.
-[Allocate before encoders](https://webrtc.googlesource.com/src/+/refs/heads/main/call/bitrate_allocator.cc),
-using the SDK's [built-in BWE](https://github.com/algesten/str0m/blob/5f2183ce7c67117cd1960dfeb11bed11fc188b66/docs/BWE.md)
-without a second congestion controller. Independent constraints require actual
-rate-controlled outputs, not copies of one encoding. Each connection aggregates
-known source configuration ceilings separately from usage/allocation; unknown
-received ceilings remain unbounded, with measured source cost informing allocation.
-Selected original supply sets minimum transmit demand within the SDK estimate;
-overuse suppresses padding. Desired capacity stays separate, idle/withdrawn supply
-contributes no minimum, and unknown cost never becomes a guessed rate.
+One SDK GCC target budgets the physical connection. Allocate before encoders using
+its [built-in BWE](https://github.com/algesten/str0m/blob/5f2183ce7c67117cd1960dfeb11bed11fc188b66/docs/BWE.md),
+without a second congestion controller. Source configuration ceilings, measured
+supply cost and current allocation are separate facts; unknown received ceilings
+remain unbounded rather than becoming guessed rates. Selected demand precedes
+optional flows after other RTP, and a trial's picture and sound are admitted
+together; unknown cost waits on the existing Driver tick. Pending selected video
+reserves capacity; an initial estimate does not prove measured capacity.
+Selected original supply sets minimum transmit demand
+within the SDK estimate, overuse suppresses padding, and idle/withdrawn supply
+contributes none. Desired capacity remains separate. An unfittable trial retires
+its outputs without retiring selected media or the connection. Stable local-offer
+failure withdraws only unconfirmed additions; sender retirement permits one
+companion-audio retry, not retries on rollback or unchanged projections.
 
-Selected demand precedes optional flows after accounting for other RTP. A trial's
-picture and sound are admitted together; unknown cost waits on the existing Driver
-tick. Pending selected video reserves capacity before its sender is ready. An empty
-connection can start ordinary forwarding: the initial estimate is not measured
-capacity. A trial that no longer fits retires its outputs, preserving selected
-media and the connection. Before signaling, a stable local offer failure withdraws
-only unconfirmed additions. Normal sender retirement lets rejected companion audio
-retry once; rollback is not a new opportunity, unchanged projections do not retry,
-and retired failed flows do not revive.
+A producer reconciles only its own actual output demand. It reuses a warm baseline
+at full demand and independently encodes constrained outputs; zero allocation
+pauses the output. Restoration adopts a newer baseline keyframe before retiring
+the constrained encoder. An unused baseline rests on its bounded AU queue.
+`Original`/`Limited` identify feed reuse, not delivered quality or a permanent
+outgoing RID geometry cap. Each publication carries its sharer's requested
+resolution/FPS/bitrate ceiling and picture preference together as `VideoSettings`.
+Browser relay senders and Native derived encodings consume that intent; decoded
+format and transport counters are not preference authorities. Quality changes
+preserve publication/routes and acknowledge producer plus room acceptance;
+rejection restores the still-live producer.
 
-A participant accounts only for its own work, not unrelated tabs/apps. One producer
-reconciles actual output demand, reusing a warm baseline at full demand and an
-independent encoding per constrained output. Zero allocation pauses that output;
-restoration adopts a newer baseline keyframe before retiring its encoder. An
-unused baseline rests on its bounded AU queue. `Original`/`Limited` describe feed
-reuse/independent encoding, not delivered quality; observations own delivered
-size, cadence and quality. A lower supplied encoding does not permanently cap an
-outgoing RID's geometry. Each publication carries accepted source size/FPS/bitrate
-ceilings to relays; local encoder policy and source audio keep their controls.
-Quality edits preserve publication/routes and are acknowledged after producer and
-room acceptance; rejected publication updates restore the still-live producer.
+Real-time packet writers remain separate from control turns. Each output owns its
+codec mapping, bounded complete-AU queue and sending half of the media section.
+Overflow discards unsent AUs and resumes at a keyframe without blocking siblings;
+expired fragments never reach a decoder. Retirement ends that flow's unsent and
+retransmission state while preserving independent reception. Carrier reuse waits
+for acknowledged sender withdrawal, starts fresh RTP state and still needs new
+picture proof. Ingress measures opaque RTP once before fanout and deduplicates
+primary sequence numbers after RTX repair, retaining first late repairs and
+out-of-order packets. Downstream retransmissions belong to each sender.
 
-Control turns and real-time packet writers remain separate. Each output uses its
-negotiated codec mapping and complete-AU queue; overflow drops unsent AUs and resumes
-at a keyframe without blocking siblings. Completeness spans reception, expiry and
-delivery: expired fragments never enter a decoder. Metadata that produces no RTP
-keeps the sender and its last clock correlation alive. Retiring a flow ends its
-unsent payload/retransmission state independently of a later SDP exchange.
-An output owns only its media section's sending half; an independent receiving
-flow survives its retirement. Carrier reuse waits for acknowledged sender withdrawal
-and starts fresh RTP state; a new picture flow still needs its own decoded-frame proof.
-Opaque RTP cost is measured once before fanout, even without outputs. Ingress
-deduplicates primary sequence numbers after RTX repair while retaining first late
-repairs/out-of-order packets; each downstream owns its retransmissions.
-Audio/video have separate source identities. Capture presentation time owns RTP and
-Sender Report correlation; encoding/delivery delay must not shift them independently.
-Replacing an incoming source creates a new sender/SSRC; changing a local encoding
-keeps capture identity, output sender/SSRC and packetizer, committing on a newer
-keyframe. Refresh demand remains until that keyframe, not merely an RTCP request.
-
-Required lower-rate replacement releases the incumbent and queued frames immediately,
-retaining last emitted source time; its delayed IDR crosses a fixed boundary.
-Optional restoration keeps the incumbent until the new IDR. Small encoding skew
-uses [source-switch RTP mapping](https://github.com/livekit/livekit/blob/master/pkg/sfu/forwarder.go)
-without changing capture timestamps/NTP correlation. Each encoding has a feed
-identity: failure applies atomically to current/required pending feeds, while an
+Capture presentation time owns RTP and Sender Report correlation, independently
+of encoding/delivery delay. Metadata without RTP retains the last correlation.
+Audio/video have separate source identities. A new incoming source gets a new
+sender/SSRC; an encoding change retains capture identity, sender and packetizer,
+committing on a newer keyframe. Required lower-rate replacement releases the
+incumbent/queued frames immediately but retains last emitted source time;
+optional restoration keeps it until the new IDR. Refresh demand lasts until that
+keyframe. Small encoding skew uses [source-switch RTP mapping](https://github.com/livekit/livekit/blob/master/pkg/sfu/forwarder.go)
+without changing capture/NTP time. Current or required-feed failure is atomic;
 optional-upgrade failure preserves the incumbent. Driver consumes latest targets
-without queuing intermediate values. The existing WebRTC
-[FrameDropper](../../native/third_party/webrtc-frame-dropper/README.md) admits raw
-frames from actual encoded bytes/input cadence; dropped raw frames retain time,
-and encoded reference frames remain intact. The
-[encoder assessment](./webrtc-encoder-pool.md#h264-burst-and-recovery) owns measurements.
+without queuing intermediate values.
 
-The sharer owns the picture preference and requested resolution/FPS/bitrate ceiling.
-Core publication metadata carries them together as `VideoSettings`; Browser relay
-senders and Native derived encodings consume that source intent. Decoder format
-and transport counters are not preference authorities. The shared picture control
-edits the same setting for Browser and supported Native captures. Native advertises
-adaptation on Windows, Android, macOS and Linux.
+Native encoder workers own the pinned [WebRTC quality policy](../../native/third_party/webrtc-adaptation/README.md)
+and apply restrictions locally. Motion changes resolution, balanced uses the
+upstream pixel/FPS policy and counters, and detail disables this QP resource while
+retaining spatial fitting and [FrameDropper](../../native/third_party/webrtc-frame-dropper/README.md).
+Actual encoded bytes/input cadence drive raw-frame dropping; encoded reference
+frames remain intact. Missing QP or parser failure supplies no sample, never a
+stale value or terminal sharing error. The upstream sampling, smoothing and
+recovery hysteresis remain; Piik adds no bitrate tiers or fast-recovery rule.
+Returning bitrate alone does not promise immediate upscaling; recovery still
+requires qualifying feedback.
+Codec quality-versus-speed is not source adaptation, and this port is not the
+complete WebRTC resource controller. The [encoder assessment](./webrtc-encoder-pool.md#h264-burst-and-recovery),
+policy provenance and [verification status](../verification-status.md) own evidence
+and limits.
 
-Native workers use the shared Rust
-[WebRTC quality-adaptation port](../../native/third_party/webrtc-adaptation/README.md).
-It preserves the pinned QualityScaler sampling/smoothing, motion-mode resolution
-changes, balanced pixel/FPS restrictions and both adaptation counters. Detail
-disables this QP resource and retains spatial fitting plus FrameDropper. The
-upstream balanced defaults are reused; Piik adds no bitrate tiers or fast-recovery
-rule. str0m still owns transport budgets and the codecs apply bitrate. Encoder
-quality-versus-speed controls do not substitute for source adaptation.
+Decoded FPS and codec rate metadata are startup hints, not source admission
+limits. Decoded input uses only an explicit per-encoding max-FPS restriction;
+the nominal format hint cannot add another cap. Local capture also applies the
+requested FPS ceiling. Both retain original timestamps and the shared capture
+rate. Workers observe the admitted cadence before FrameDropper. Linux refreshes
+encoder caps from that observation, using raw/requested startup hints until
+available: x264's variable-rate
+buffering would otherwise delay a static source's first picture. Windows MF keeps
+configured media-type FPS and applies [Chromium's bitrate compensation](https://chromium.googlesource.com/chromium/src/+/6ffa76bb4156526eb14d582183f2bd725e3cd262/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc#119)
+to the driver property; transport/FrameDropper retain the logical budget. FPS-only
+changes use cadence admission rather than restarting the MFT. Neither a nonzero
+H264 VUI rate nor its fixed-rate flag proves actual source cadence.
 
-Each existing encoding worker owns one policy and applies restrictions locally.
-The Windows child receives requested settings through `Start`; QP and automatic
-restrictions do not cross IPC. Bitrate retains its existing command. Ordinary
-resize retains restriction counters; child replacement starts a fresh policy and
-parser while preserving the logical feed, source clock, latest bitrate and
-independent-AU gate. MF drains before reconfiguration; Android replaces only its
-codec for size changes and applies FPS changes through its cadence owner. A cadence
-change resets that encoding's admission-rate sample, independently of its siblings.
-Linux keeps its existing GStreamer caps negotiation and records completed-AU
-feedback before the bounded output queue. VideoToolbox completes its current
-frame before replacing the session for a geometry change; FPS selection stays
-with the encoding's cadence owner.
-
-H264 feedback uses the shared adapter over
-[h264-reader](https://docs.rs/h264-reader/0.9.0/h264_reader/nal/slice/struct.SliceHeader.html).
-VP8 uses libvpx's internal quantizer on Windows and the pinned
-[WebRTC QP reader](../../native/third_party/webrtc-vp8-qp/README.md) for Android output.
-QP is optional: missing values or parser failures supply no sample, never a stale
-QP or terminal sharing error. Actual frame drops remain valid feedback. This
-implements the selected upstream quality path, not its complete resource controller.
-
-The pinned C++ comparison and isolated Windows/Android worker controls support
-the implementation. Recovery deliberately retains upstream hysteresis: a constrained
-Windows VP8 output stayed small after returning to 1.5 Mbps because QP remained
-above the low threshold; at 8 Mbps its first enlarged keyframe arrived about
-18 seconds after budget restoration. A higher allocation is not an immediate
-promise of larger pictures. Real Windows child-process runs also cover balanced
-FPS changes, codec/converter reconfiguration and independent sibling output.
-The App flow verifies preference-only replacement on the retained receiver track,
-updated publication intent and source reselection. A real Native helper keeps two
-viewers' picture/audio and another concurrent source while the sharer changes
-preference. The Android App control uses both H264 and VP8 with actual MediaCodec
-CBR, applies all three preferences and releases its encoders, projection and
-listeners through normal stop. Physical-device and remaining platform work stay
-in [TODO](../todo.md).
-
-Decoded-source FPS is a format hint, not an admission limit. VP8 initializes it
-to 30 even for a 60 fps source; source timing preserves actual presentation
-timestamps. Source admission uses only an explicit per-encoding max-FPS restriction;
-its nominal format hint cannot become an extra cap. Local capture intersects the
-policy cap with its requested FPS. Neither changes the shared capture rate or
-retimestamps selected source frames.
-Codec frame-rate metadata is also a startup hint. GStreamer can project a nonzero
-rate from H264 VUI even when `fixed_frame_rate_flag` is false. Native workers
-observe original frame times after cadence selection and before FrameDropper;
-Linux updates its encoder caps from that existing rate once per second, bounded
-by the explicit cadence limit. Startup uses the raw-format rate when present,
-otherwise the requested hint: x264's variable-rate mode buffers a second frame
-and would prevent a static source's first picture from appearing.
-
-Windows MF keeps its configured media-type FPS and uses
-[Chromium's hardware bitrate compensation](https://chromium.googlesource.com/chromium/src/+/6ffa76bb4156526eb14d582183f2bd725e3cd262/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc#119):
-logical bitrate × configured FPS ÷ observed FPS. Only the driver property changes;
-transport and FrameDropper retain the logical budget. Observed-rate refresh uses
-the same one-second parameter cadence; budget updates apply immediately. FPS-only
-changes no longer drain/restart the MFT, while geometry changes retain the existing
-drain and independent-keyframe owner. Controlled runs verify both compensation
-directions, bitrate/size updates, immediate static startup and sibling continuity.
-
-Default Server adaptation remains forwarding-only under
-[ADR-0013](../adr/0013-embedded-node-local-media.md). [Simulcast](https://www.rfc-editor.org/rfc/rfc8853)
-encodings represent one source/flow, not extra publications or operations. Session
-receive capabilities go only to assigned peers. Producers order encodings low to
-high; measured bitrate decides fit, not quality order. Each RID maps RTP/SR to one
-source timeline. Forwarding preserves downstream supply and needs no Server codec
-runtime. Received tracks keep physical readers/clocks across codec changes; feed
-replacement changes encoded format without replacing their route or reader.
-H264 shares complete AUs between forwarding and one demand-driven decoder; platform
-adapters feed the shared derived producer. Windows VP8 uses stock libvpx/owned NV12
-frames. Derived outputs keep source presentation/RTP/SR time, adopt a replacement
-keyframe before retiring old encoding, and release only their own derivation.
-Removing the last incoming demand releases its reader even while metadata remains.
-
-Registered capabilities, SDP and actual SPS remain distinct. The SDK matches H264
-profiles/packetization; the encoded-input boundary checks SPS. Chromium's
-[fixed decoder advertisement](https://chromium.googlesource.com/chromium/src/+/c423d38b941d7e282dcfdf1238d942845553b644/third_party/blink/renderer/platform/peerconnection/rtc_video_decoder_factory.cc)
-is not a forwarding ceiling or decoding proof. Retain actual decoded-frame proof;
-metadata alone cannot retire a working connection or permanently reject its flow.
+Default Server adaptation is forwarding-only under [ADR-0013](../adr/0013-embedded-node-local-media.md).
+[Simulcast](https://www.rfc-editor.org/rfc/rfc8853) encodings are one source/flow,
+not extra publications. Each RID maps RTP/SR to one source timeline. Producers
+order encodings low to high; measured bitrate decides fit. Session receive
+capabilities reach only assigned peers. Received tracks retain readers/clocks
+across codec or feed changes. H264 shares complete
+AUs between forwarding and a demand-driven platform decoder; derived outputs keep
+source presentation/RTP/SR time and retire only their own derivation. Last incoming
+demand releases its reader even while metadata remains. Registered capability,
+SDP profile/packetization and actual SPS remain distinct. The SDK matches H264
+profiles/packetization and the encoded-input boundary checks SPS; [decoder advertisement](https://chromium.googlesource.com/chromium/src/+/c423d38b941d7e282dcfdf1238d942845553b644/third_party/blink/renderer/platform/peerconnection/rtc_video_decoder_factory.cc)
+is neither a forwarding ceiling nor decoded-frame proof. Metadata alone cannot
+retire a working connection or permanently reject its flow.
 
 ### Capture And Platform Lifetimes
 
 Local capture has no incoming route lease; publication authority supplies its
-outputs. Each encoding fits natural source pixels within the requested ceiling,
-without upscaling. Encoders own conversion, bitrate, keyframe requests and bounded
-AU queues; only unencoded work may be replaced. One blocked/failed encoding affects
-only its outputs; stopping capture ends all encodings and source sound.
+outputs. Each encoding fits natural source pixels within the request without
+upscaling, and owns conversion, bitrate, keyframe requests and a bounded AU queue.
+Only unencoded work may be replaced. Failure affects that encoding's outputs;
+stopping capture ends its encodings and source sound. Ordinary resize retains
+policy counters; replacing the worker starts fresh policy/parser state while
+preserving logical feed, source clock, latest bitrate and the independent-AU gate.
+A cadence change resets that encoding's rate sample, independently of siblings.
 
-Windows shares owned GPU textures and source time across its independent worker
-processes. The child copies to private resources before releasing the shared lock
-and encoding. Cancelling a read preserves its pending result. Size changes drain
-old AUs and reconfigure the same MFT, preserving bitrate/clock/output identity and
-resuming at a keyframe ([MFT drain](https://learn.microsoft.com/en-us/windows/win32/medfound/mft-message-command-drain),
-[Chromium reconfiguration](https://chromium.googlesource.com/chromium/src/media/+/cf1aa0045e1e041b5da6d932ae89e2374db4c4e8/gpu/windows/media_foundation_video_encode_accelerator_win.cc#1307)).
-Display changes replace WGC resources without resetting encoders/routes/time.
+Windows shares owned GPU textures and source time across independent worker
+processes. A child copies into private resources before releasing the shared lock
+and encoding. Requested settings arrive through `Start`; bitrate retains its existing
+command, while QP and automatic restrictions stay local. Cancelled reads retain
+pending results. Geometry changes [drain the MFT](https://learn.microsoft.com/en-us/windows/win32/medfound/mft-message-command-drain)
+before reconfiguration and resume at a keyframe. WGC/display replacement and
 [D3D11 device removal](https://learn.microsoft.com/en-us/windows/win32/api/d3d11_4/nf-d3d11_4-id3d11device4-registerdeviceremovedevent)
-joins/replaces affected capture/child resources while retaining source clock,
-audio, bitrate and logical feed; replacement needs a newer independent AU. Failure
-before usable output preserves the original device error; unrelated errors stay
-terminal. The process boundary contains observed NVIDIA callbacks using a destroyed
-transform after ShutdownObject returned, without idle retention/shutdown delays.
-Native Auto prefers VP8 when the selecting Browser does not advertise H264 reception
-and the App offers VP8; otherwise it keeps the Native codec choice. Sender support
-does not establish preview support ([WebRTC capabilities](https://w3c.github.io/webrtc-pc/#dom-rtcrtpreceiver-getcapabilities)).
-Otherwise Auto selects hardware H264
-then software VP8 after failed/timed-out first independent AU, stopping the failed
-encoder before replacement on the same capture/clock. The admitted codec stays fixed
-for source changes/derived outputs; manual selection rejects unsupported codecs
-before capture permission. [Fidelity](./media-fidelity.md) owns colour/tone mapping.
+retain source time and unrelated audio/routes; affected child resources are joined
+before replacement. Failure before usable output preserves the original device
+error. The process boundary contains observed driver callbacks after MFT shutdown;
+unrelated failures stay terminal without idle retention or shutdown delays.
 
-macOS dimensions follow backing pixels/frame metadata. The
-[SCStream synchronization clock](https://developer.apple.com/documentation/screencapturekit/scstream/synchronizationclock)
-maps original sample time to host time. One completed image copy leaves the finite
-ScreenCaptureKit pool; encoders share only that immutable copy. Stop the stream,
-drain callbacks, then release conversion resources. Each VideoToolbox encoder owns
-its size/bitrate/AU queue and native input pool; output callbacks do not authorize
-overwriting retained input. Source-sound/video streams have independent stop
-lifetimes and use the same
-[selected-window/application filter](https://developer.apple.com/videos/play/wwdc2022/10155/),
-without another display choice or video dimensions.
+Native Auto prefers available VP8 when the selecting Browser cannot receive H264.
+Otherwise it tries hardware H264, then available software VP8 after failed or
+timed-out first independent output. Stop the failed encoder before replacement
+on the same capture/clock. Sender capability is not preview support. The admitted
+codec stays fixed for source changes/derived outputs; manual unsupported selection fails
+before permission. [Fidelity](./media-fidelity.md) owns colour/tone mapping.
 
-Linux's [ScreenCast Portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html)
-owns selection, PipeWire authorization and revocation. Copy each image out of the
-pool once for independent GStreamer encodings. Pipeline segment running time
-removes codec offsets in the shared system/source clock. Portal closure stops the
-source/all encodings; system sound keeps its separate PulseAudio monitor pipeline.
-Server forwarding has no desktop capture dependency.
-
-Android's [MediaProjection](https://developer.android.com/media/grow/media-projection)
-owns one VirtualDisplay/image source; independent MediaCodec outputs consume owned
-immutable snapshots without retaining reusable projection images or blocking siblings.
-Optional [playback sound](https://developer.android.com/media/platform/av-capture)
-uses that same capture authorization. Java owns consent/foreground service/platform
-callbacks; Rust owns capture/encoding. Pending permission/first-frame waits leave
-App commands available, and the same stop retires pending and active capture.
+macOS maps original ScreenCaptureKit sample time to host time and copies each
+image out of its finite pool once. Stop drains callbacks before releasing conversion
+resources. VideoToolbox completes current work before geometry/session replacement;
+its native input pool and output callbacks cannot authorize overwriting retained
+images. Sound/video stops are independent and share the selected-window/application
+filter. Linux Portal owns selection, PipeWire permission and revocation; one image
+copy supplies independent GStreamer encodings. Segment running time removes codec
+offsets, caps negotiate changes and completed-AU feedback precedes the output queue.
+Portal closure stops capture and encodings; PulseAudio system sound stays separate.
+Android MediaProjection similarly supplies owned immutable snapshots to independent
+MediaCodecs; size changes replace only the codec, FPS uses cadence admission.
+Playback sound shares projection authorization. Java owns consent/foreground
+service/callbacks; Rust owns capture/encoding. Pending permission and first-frame
+waits leave App control available, and the same page lease stops pending or active
+work. Platform setup and license/dependency details belong to the
+[Native reference](../../prototype/channel-native/README.md) and [Android shell](../../mobile/README.md).
 
 ### Input And Sound Boundaries
 
 Linux input adds a [RemoteDesktop Portal session](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html)
-beside the current capture. Commit only with selected monitor, EIS devices and
-first image ready; cancellation closes the candidate and preserves the share.
-Close a pending [Portal Request](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Request.html#methods)
-before session cleanup, including superseded pre-commit consent. One local
-presentation requests a keyframe at handoff without replacing producer/encoders/time.
-EIS region mapping binds input to the selected monitor; paused/removed devices use
-[neutral-state releases](https://libinput.pages.freedesktop.org/libei/interfaces/ei_device/index.html#ei_devicepaused)
+beside capture. Commit requires the selected monitor, EIS devices and first image;
+cancellation closes the candidate and preserves the share. Close a pending
+[Portal Request](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Request.html#methods)
+before its session, including superseded consent. Presentation requests a handoff
+keyframe without replacing the producer/clock. EIS regions map to the selected
+monitor; paused/removed devices issue [neutral-state releases](https://libinput.pages.freedesktop.org/libei/interfaces/ei_device/index.html#ei_devicepaused)
 without blocking another source. Text follows actual device capability.
 
 The optional [GlobalShortcuts Portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.GlobalShortcuts.html)
-uses an installed desktop identity via the
-[host Registry](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.host.portal.Registry.html).
-Desktop owns one process binding; source consent closes pending registration's
-Request/candidate session on cancellation. Actual system description/changes/closure,
-not the preferred Browser chord, report binding. Activation revokes input through
-the same executor without stopping capture. Linux prefers Super + Alt + Fn;
-GNOME uses Ctrl + Alt + Fn for virtual terminals.
+uses the installed desktop identity. Desktop owns one process binding and closes
+pending Request/session on cancellation. Actual system description/changes/closure
+report that binding, rather than the Browser's preferred chord. Activation revokes
+input through the same executor without stopping capture. Linux prefers Super +
+Alt + Fn because GNOME reserves Ctrl + Alt + Fn for virtual terminals.
 
-GNOME Portal 50.0/control-center 50.3 leave cancelled shortcut consent visible after
-Piik releases its Request/session: the
-[backend](https://github.com/GNOME/xdg-desktop-portal-gnome/blob/50.0/src/globalshortcuts.c)
-marks cancellation, but the [provider](https://github.com/GNOME/gnome-control-center/blob/50.3/global-shortcuts-provider/cc-global-shortcuts-provider.c)
-has no external-dialog cancellation. Piik adds no provider workaround. This UX
-limitation is separate from Mutter's unstarted-session leak: its
-[`!started` Stop branch](https://gitlab.gnome.org/GNOME/mutter/-/blob/50.2/src/backends/meta-remote-desktop-session.c#L691)
-returns without closing an object, even after system-UI cancellation. Piik releases
-its own Portal/PipeWire resources and must not start unapproved sessions. The same
-branch remained in [50.5](https://github.com/GNOME/mutter/blob/c28623c8d29c7b61ec744cdfdbec36f5e7faef1c/src/backends/meta-remote-desktop-session.c#L634)
-and [upstream main](https://github.com/GNOME/mutter/blob/432c167ef2de37a708140b02e29881646fc9c13c/src/backends/meta-remote-desktop-session.c#L442)
-on 2026-10-31. The isolated repair is local; [TODO](../todo.md#now) owns publication
-and [verification status](../verification-status.md#device-evidence-boundary) owns runtime acceptance.
+GNOME's [shortcut backend](https://github.com/GNOME/xdg-desktop-portal-gnome/blob/50.0/src/globalshortcuts.c)
+marks cancellation, but its [provider lacks external-dialog cancellation](https://github.com/GNOME/gnome-control-center/blob/50.3/global-shortcuts-provider/cc-global-shortcuts-provider.c),
+so cancelled consent can remain visible.
+Separately, Mutter's [unstarted-session Stop branch](https://github.com/GNOME/mutter/blob/c28623c8d29c7b61ec744cdfdbec36f5e7faef1c/src/backends/meta-remote-desktop-session.c#L634)
+can leave its object open. Piik closes its own Request/session/PipeWire resources
+and never starts an unapproved session to evade these upstream limitations.
+[Verification status](../verification-status.md#device-evidence-boundary) owns the
+runtime boundary; [TODO](../todo.md) owns remaining upstream work.
 
-Room voice plays in the Browser. Native system-output capture can recapture remote
-voices even with headphones; Browser
-[`restrictOwnAudio`](https://w3c.github.io/mediacapture-screen-share/#dfn-restrictownaudio)
-does not control Native capture. Windows
-[process loopback](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params)
-excludes an entire Browser tree, including its other sound. App-sink playback would
-remove voice from ordinary Chromium's
-[echo reference](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/platform/mediastream/media_stream_audio_processor_options.cc).
-Explicit [`all` echo cancellation](https://developer.chrome.com/release-notes/141#echocancellationmode_for_getusermedia)
-needs actual device support and can add mic latency. The owner retains Browser
-playback for first internal testing; automatic exclusion stays separate later
-work. Processing the whole Native mix would change unprocessed source sound.
-
-The [Native participant](../../prototype/channel-native/README.md) owns platform
-setup; [verification status](../verification-status.md) and the linked media
-assessments own measured results and remaining physical acceptance.
+Room voice plays in the Browser. Native system capture can recapture it even with
+headphones; Browser [restrictOwnAudio](https://w3c.github.io/mediacapture-screen-share/#dfn-restrictownaudio)
+cannot control Native capture. Windows [process exclusion](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ns-audioclientactivationparams-audioclient_process_loopback_params)
+excludes the whole Browser tree, including its other sound. App-sink playback
+would remove voice from Chromium's [echo reference](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/platform/mediastream/media_stream_audio_processor_options.cc),
+while explicit [`all` echo cancellation](https://developer.chrome.com/release-notes/141#echocancellationmode_for_getusermedia)
+needs actual device support and can add mic latency. Browser playback remains
+the accepted owner; processing the whole Native
+mix would change unprocessed source sound. [TODO](../todo.md) owns automatic-exclusion
+work; the [Native reference](../../prototype/channel-native/README.md) and
+[verification status](../verification-status.md) own platform setup and acceptance.
 
 ## Design References
 
