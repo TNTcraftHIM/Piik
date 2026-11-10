@@ -953,7 +953,7 @@ export class ChannelSession {
   acceptInvitation = async (): Promise<string | null> => {
     const params = new URLSearchParams(location.hash.slice(1));
     const roomId = params.get("room"), key = params.get("invite");
-    if (!key) return null;
+    if (!key) return roomId || null;
     if (!roomId) {
       if (this.key !== key || this.invitedRoom) {
         this.key = key; this.invitedRoom = undefined;

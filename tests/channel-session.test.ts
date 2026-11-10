@@ -132,6 +132,19 @@ const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", t
 const reactionSnapshot = (seq: number, revision: number, choices: Record<string, string[]> = {}) =>
   ({ messageId: `message-${seq}`, messageSeq: seq, revision, choices });
 
+test("a keyless room fragment supplies navigation without performing admission", async () => {
+  const { session, socket } = await setup();
+  try {
+    const before = socket.sent.length;
+    location.hash = "room=second";
+    await expect(session.acceptInvitation()).resolves.toBe("second");
+    expect(socket.sent).toHaveLength(before);
+    expect(session.getSnapshot().pending.size).toBe(0);
+    location.hash = "";
+    await expect(session.acceptInvitation()).resolves.toBeNull();
+  } finally { session.close(); }
+});
+
 test("restoring the viewed room does not turn its navigation state into an invitation", async () => {
   vi.stubGlobal("history", { state: { piikChannelRoom: "second" }, replaceState: vi.fn() });
   const { session, socket } = await setup(1000, false, "room=first&invite=room-link");
