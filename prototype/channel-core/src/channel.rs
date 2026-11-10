@@ -200,30 +200,11 @@ impl Channel {
                         .remote
                         .iter_mut()
                         .filter_map(|(id, room)| {
-                            let projection = room.projection.as_mut()?;
-                            let old = projection.flows.len();
-                            let old_base = projection.base_links.len();
-                            projection.flows.retain(|flow| {
-                                !((flow.sender == session_id && flow.receiver == peer)
-                                    || (flow.sender == peer && flow.receiver == session_id))
-                            });
-                            projection.base_links.retain(|link| {
-                                !((link.parent == session_id && link.child == peer)
-                                    || (link.parent == peer && link.child == session_id))
-                            });
-                            (old != projection.flows.len()
-                                || old_base != projection.base_links.len())
-                            .then(|| id.clone())
+                            room.failed_pair(session_id, peer).then(|| id.clone())
                         })
                         .collect();
                     for id in affected {
-                        if let Ok(event) = self.host_input(
-                            &id,
-                            HostAction::PairFailed {
-                                first: session_id,
-                                second: peer,
-                            },
-                        ) {
+                        if let Ok(event) = self.host_input(&id, HostAction::Sync) {
                             events.push(event);
                         }
                     }
@@ -550,6 +531,7 @@ impl Channel {
                 projection_floor: 0,
                 applied_revision: 0,
                 replies: BTreeMap::new(),
+                failed_pairs: BTreeMap::new(),
             });
             remote.projection = None;
         }
@@ -1252,6 +1234,11 @@ impl Channel {
         let room = self.remote.get_mut(id).unwrap();
         room.binding.as_mut().unwrap().projection_floor = output.revision;
         room.binding.as_mut().unwrap().applied_revision = output.revision;
+        room.binding
+            .as_mut()
+            .unwrap()
+            .failed_pairs
+            .retain(|_, revision| *revision > output.revision);
         room.summary = projection.summary.clone();
         let mut projection = projection.clone();
         for view in projection.views.values_mut() {

@@ -18,6 +18,7 @@ pub(crate) struct Binding {
     pub projection_floor: u64,
     pub applied_revision: u64,
     pub replies: BTreeMap<u64, ReplyOwner>,
+    pub failed_pairs: BTreeMap<(Uuid, Uuid), u64>,
 }
 
 #[derive(Clone)]
@@ -45,6 +46,31 @@ pub(crate) struct RemoteRoom {
 }
 
 impl RemoteRoom {
+    pub fn failed_pair(&mut self, first: Uuid, second: Uuid) -> bool {
+        let (Some(binding), Some(projection)) = (&mut self.binding, &mut self.projection) else {
+            return false;
+        };
+        let old = (projection.flows.len(), projection.base_links.len());
+        let affected = |a, b| (a == first && b == second) || (a == second && b == first);
+        projection
+            .flows
+            .retain(|flow| !affected(flow.sender, flow.receiver));
+        projection
+            .base_links
+            .retain(|link| !affected(link.parent, link.child));
+        if old == (projection.flows.len(), projection.base_links.len()) {
+            return false;
+        }
+        // Keep the invalidation until this binding acknowledges a covering input,
+        // including when its signaling socket cannot currently receive that input.
+        binding.revision += 1;
+        binding.projection_floor = binding.revision;
+        binding
+            .failed_pairs
+            .insert((first.min(second), first.max(second)), binding.revision);
+        true
+    }
+
     pub fn drain_replies(&mut self) -> Vec<RetiredRoomReply> {
         let Some(binding) = &mut self.binding else {
             return Vec::new();
@@ -101,6 +127,9 @@ impl RemoteRoom {
         now: u64,
     ) -> Result<(Uuid, HostInput), &'static str> {
         let binding = self.binding.as_mut().ok_or("room_host_offline")?;
+        binding.failed_pairs.retain(|(first, second), _| {
+            endpoints.contains_key(first) && endpoints.contains_key(second)
+        });
         let owner = match &action {
             HostAction::Command { context, .. }
             | HostAction::Revoke { context, .. }
@@ -132,10 +161,7 @@ impl RemoteRoom {
             return Err("room_busy");
         }
         binding.revision += 1;
-        if matches!(
-            action,
-            HostAction::RouteWake | HostAction::PairFailed { .. }
-        ) {
+        if matches!(action, HostAction::RouteWake) {
             binding.projection_floor = binding.revision;
         }
         if let Some(owner) = owner {
@@ -148,6 +174,15 @@ impl RemoteRoom {
                 binding_id: binding.id,
                 host_session_id: binding.session,
                 revision: binding.revision,
+                failed_pairs: binding
+                    .failed_pairs
+                    .iter()
+                    .map(|((first, second), revision)| PairFailure {
+                        first: *first,
+                        second: *second,
+                        revision: *revision,
+                    })
+                    .collect(),
                 endpoints,
                 action,
             },

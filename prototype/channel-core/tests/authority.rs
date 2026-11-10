@@ -52,7 +52,7 @@ fn join(core: &mut Authority, connection: Uuid, owner: bool, now: u64) -> (Uuid,
 fn domain_protocol_rejects_old_clients_before_admission() {
     let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
     let before = serde_json::to_value(core.export_backup()).unwrap();
-    for protocol in [None, Some(0), Some(1), Some(3)] {
+    for protocol in [None, Some(0), Some(1), Some(2), Some(4)] {
         let connection = Uuid::new_v4();
         let mut join = json!({"type":"join","name":"Old","key":"invite","requestId":"join",
             "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key()});

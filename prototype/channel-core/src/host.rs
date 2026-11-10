@@ -98,10 +98,6 @@ pub enum HostAction {
         peer: Uuid,
         ready: bool,
     },
-    PairFailed {
-        first: Uuid,
-        second: Uuid,
-    },
     VerifyInvite {
         ticket: Uuid,
         key: String,
@@ -114,11 +110,21 @@ pub enum HostAction {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PairFailure {
+    pub first: Uuid,
+    pub second: Uuid,
+    pub revision: u64,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HostInput {
     pub now: u64,
     pub binding_id: Uuid,
     pub host_session_id: Uuid,
     pub revision: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failed_pairs: Vec<PairFailure>,
     pub endpoints: BTreeMap<Uuid, Endpoint>,
     pub action: HostAction,
 }
@@ -343,6 +349,7 @@ struct Pending {
 struct RoomAuthority {
     binding_id: Uuid,
     host_session_id: Uuid,
+    revision: u64,
     endpoints: BTreeMap<Uuid, Endpoint>,
 }
 
@@ -400,6 +407,7 @@ mod tests {
                 binding_id: binding,
                 host_session_id: host_session,
                 revision,
+                failed_pairs: Vec::new(),
                 endpoints,
                 action: HostAction::Command {
                     context: RequestContext {
@@ -463,6 +471,7 @@ mod tests {
                 binding_id: Uuid::new_v4(),
                 host_session_id: session,
                 revision: 1,
+                failed_pairs: Vec::new(),
                 endpoints: BTreeMap::from([(
                     session,
                     Endpoint {
@@ -673,9 +682,22 @@ impl RoomHost {
         if self.pending.is_some() {
             return Err("room_operation_pending");
         }
+        let applied = self
+            .authority
+            .as_ref()
+            .filter(|authority| authority.binding_id == input.binding_id)
+            .map_or(0, |authority| authority.revision);
+        for pair in input
+            .failed_pairs
+            .iter()
+            .filter(|pair| pair.revision > applied)
+        {
+            self.room.failed_pair(pair.first, pair.second);
+        }
         self.authority = Some(RoomAuthority {
             binding_id: input.binding_id,
             host_session_id: input.host_session_id,
+            revision: input.revision,
             endpoints: input.endpoints.clone(),
         });
         self.room.set_host_session(input.host_session_id);
@@ -719,7 +741,6 @@ impl RoomHost {
                 } => {
                     self.room.base_state(context.session_id, *peer, *ready)?;
                 }
-                HostAction::PairFailed { first, second } => self.room.failed_pair(*first, *second),
                 HostAction::VerifyInvite {
                     ticket,
                     key,

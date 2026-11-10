@@ -82,8 +82,9 @@ preserving admitted users and independently managed room invitations.
 
 The domain directory binds each room to its owner's current authenticated runtime
 connection, separately from the owner's persistent user identity. With no runtime,
-the room is unavailable. One room has one current runtime binding; reconnecting
-replaces that binding without granting a stale session authority over its successor.
+the room is unavailable. One room has one current runtime binding. Reconnecting
+the same retained runtime replaces its socket; a fresh hosting runtime obtains
+a new binding, without granting a stale session authority over its successor.
 Room admission, initial offer/answer and broken-tree repair instructions travel
 through this existing domain rendezvous to the room
 runtime; establishing or repairing the tree cannot depend on that tree already
@@ -586,6 +587,11 @@ ends it. Local stop takes effect immediately. One scope's retirement cannot
 release another room's healthy source or transport lease.
 Within that window the retained room binding still owns existing captures;
 temporary unavailability rejects new room operations without retiring that binding.
+Physical-connection invalidations belong to this binding until the room host
+confirms a covering state. Resume applies them before route reconciliation, so
+a replacement connection cannot inherit the retired connection's readiness or
+presentation proof. Repeated synchronization consumes each invalidation once;
+healthy leases remain, and retiring the binding retires its invalidations.
 
 App sharing uses a page-owned, non-cloneable capture lease from the initial
 request; dropping it stops the producer even while signaling reconnects. Native

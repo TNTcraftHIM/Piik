@@ -20,6 +20,7 @@ fn input(owner: Uuid, actor: Uuid, action: impl FnOnce(RequestContext) -> HostAc
         binding_id: owner,
         host_session_id: owner,
         revision: 1,
+        failed_pairs: Vec::new(),
         endpoints: [owner, actor]
             .into_iter()
             .map(|session| {

@@ -1975,6 +1975,398 @@ fn retired_picture_report_cannot_fail_recreated_flow_on_retained_base_pair() {
 }
 
 #[test]
+fn offline_room_host_consumes_pair_failure_before_resuming_a_prepared_branch() {
+    use piik_channel_core::wire::Request;
+    let mut network = RoomNetwork::new();
+    let connections: Vec<_> = (0..4).map(|_| Uuid::new_v4()).collect();
+    let admitted: Vec<_> = connections
+        .iter()
+        .map(|c| join(&mut network, *c, None))
+        .collect();
+    let sessions: Vec<_> = admitted.iter().map(|(s, _)| *s).collect();
+    let room = network.create(connections[0], RoomAccess::Public, false);
+    for connection in &connections {
+        join_base(&mut network, *connection, &room);
+        let links: Vec<_> = connections
+            .iter()
+            .flat_map(|c| {
+                network
+                    .state(*c)
+                    .pairs
+                    .iter()
+                    .filter(|p| p.rooms.contains(&room))
+                    .map(|p| (*c, p.id))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        for (endpoint, pair) in links {
+            command(
+                &mut network,
+                endpoint,
+                json!({"type":"base_state","roomId":room,"pairId":pair,"ready":true}),
+            );
+        }
+    }
+    // The first two children are ready before the fourth participant joins.
+    let relay = if sessions[1] < sessions[2] { 1 } else { 2 };
+    let source = 3 - relay;
+    let picture = publish(&mut network, connections[source], &room, "screen");
+    for index in [0, relay, 3] {
+        command(
+            &mut network,
+            connections[index],
+            json!({"type":"subscribe","publicationId":picture,"enabled":true}),
+        );
+    }
+    let selected: Vec<_> = connections
+        .iter()
+        .flat_map(|c| {
+            network
+                .state(*c)
+                .pairs
+                .iter()
+                .flat_map(|p| {
+                    p.incoming
+                        .iter()
+                        .filter(|f| f.publication_id == picture && f.selected)
+                        .map(|f| (*c, p.id, f.id))
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    for (endpoint, pair, flow) in &selected {
+        command(
+            &mut network,
+            *endpoint,
+            json!({"type":"flow_state","pairId":pair,"flowId":flow,"state":"decoded"}),
+        );
+    }
+    let candidate = |network: &RoomNetwork, index| {
+        network
+            .state(connections[index])
+            .pairs
+            .iter()
+            .find_map(|p| {
+                p.incoming
+                    .iter()
+                    .find(|f| f.publication_id == picture && !f.selected)
+                    .map(|f| (p.id, f.id))
+            })
+            .unwrap()
+    };
+    let relay_shadow = candidate(&network, relay);
+    let leaf_shadow = candidate(&network, 3);
+    command(
+        &mut network,
+        connections[relay],
+        json!({"type":"flow_state","pairId":relay_shadow.0,"flowId":relay_shadow.1,"state":"switch_ready"}),
+    );
+    let before = topology(&mut network, connections[0], &room, Some(picture));
+    let room_summary = serde_json::to_value(
+        network
+            .state(connections[0])
+            .channel
+            .rooms
+            .iter()
+            .find(|r| r.id == room)
+            .unwrap(),
+    )
+    .unwrap();
+
+    // Another online room uses this same physical pair for its base, while its
+    // own picture to the first host uses an independent healthy lease.
+    let other_room = network.create(connections[source], RoomAccess::Public, false);
+    for index in [relay, 0] {
+        join_base(&mut network, connections[index], &other_room);
+        let p = pair(&network, connections[index], sessions[source], &other_room);
+        for endpoint in [connections[index], connections[source]] {
+            command(
+                &mut network,
+                endpoint,
+                json!({"type":"base_state","roomId":other_room,"pairId":p.id,"ready":true}),
+            );
+        }
+    }
+    command(
+        &mut network,
+        connections[0],
+        json!({"type":"relay_capacity","roomId":other_room,"capacity":0}),
+    );
+    assert_eq!(
+        pair(&network, connections[relay], sessions[source], &other_room).id,
+        relay_shadow.0
+    );
+    let other_picture = publish(&mut network, connections[source], &other_room, "screen");
+    command(
+        &mut network,
+        connections[0],
+        json!({"type":"subscribe","publicationId":other_picture,"enabled":true}),
+    );
+    let sibling_pair = pair(&network, connections[0], sessions[source], &other_room);
+    let sibling_flow = sibling_pair
+        .incoming
+        .iter()
+        .find(|f| f.publication_id == other_picture)
+        .unwrap()
+        .id;
+    command(
+        &mut network,
+        connections[0],
+        json!({"type":"flow_state","pairId":sibling_pair.id,"flowId":sibling_flow,"state":"decoded"}),
+    );
+    let offline = network.authority.disconnect(connections[0], 100);
+    network.deliver(offline);
+    command(
+        &mut network,
+        connections[relay],
+        json!({"type":"link_state","pairId":relay_shadow.0,"state":"failed"}),
+    );
+    assert!(!network
+        .state(connections[relay])
+        .pairs
+        .iter()
+        .any(|p| p.id == relay_shadow.0));
+
+    let resumed = Uuid::new_v4();
+    network.command_at(resumed, json!({"type":"join","name":"Returning host","credential":admitted[0].1,"sessionId":sessions[0]}), 100);
+    network.host_connection(&room, resumed);
+    let effects = network.authority.handle(
+        resumed,
+        Request::parse(
+            &json!({"type":"host_register","room":room_summary,"resumeBinding":before.binding_id})
+                .to_string(),
+        )
+        .unwrap(),
+        100,
+    );
+    let input = effects
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::HostInput { input, .. } => Some(input),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(input.failed_pairs.len(), 1);
+    assert_eq!(
+        (input.failed_pairs[0].first, input.failed_pairs[0].second),
+        (
+            sessions[relay].min(sessions[source]),
+            sessions[relay].max(sessions[source])
+        )
+    );
+    let output = network.host_turn(&room, input);
+    assert!(output
+        .projection
+        .flows
+        .iter()
+        .all(|f| f.id != relay_shadow.1 && f.id != leaf_shadow.1));
+    // Until that output is acknowledged, another ordinary input covers the
+    // same failure fact; it must not depend on HostRegister being the caller.
+    let repeated = network.authority.handle(
+        connections[relay],
+        Request::parse(&json!({"type":"browse","roomId":room,"active":true}).to_string()).unwrap(),
+        100,
+    );
+    let repeated_input = repeated
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::HostInput { input, .. } => Some(input),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(repeated_input.failed_pairs.len(), 1);
+    let repeated_output = network.host_turn(&room, repeated_input);
+    command(
+        &mut network,
+        resumed,
+        json!({"type":"host_output","roomId":room,"output":repeated_output}),
+    );
+    command(
+        &mut network,
+        resumed,
+        json!({"type":"host_output","roomId":room,"output":output}),
+    );
+    let after = topology(&mut network, resumed, &room, Some(picture));
+    assert_eq!(after.binding_id, before.binding_id);
+    assert_eq!(
+        serde_json::to_value(after.base).unwrap(),
+        serde_json::to_value(before.base).unwrap()
+    );
+    for (endpoint, pair, flow) in &selected {
+        let endpoint = if *endpoint == connections[0] {
+            resumed
+        } else {
+            *endpoint
+        };
+        assert!(network
+            .state(endpoint)
+            .pairs
+            .iter()
+            .any(|p| p.id == *pair && p.incoming.iter().any(|f| f.id == *flow && f.selected)));
+    }
+    let late = network.command(connections[3], json!({"type":"flow_state","pairId":leaf_shadow.0,"flowId":leaf_shadow.1,"state":"switch_ready"}));
+    assert!(
+        late.events.is_empty(),
+        "retired downstream proof cannot commit a broken candidate"
+    );
+    assert!(network
+        .state(resumed)
+        .pairs
+        .iter()
+        .any(|p| p.id == sibling_pair.id && p.incoming.iter().any(|f| f.id == sibling_flow)));
+
+    // The online sibling room retries its required base through the existing
+    // cooldown. The new physical attempt has no borrowed proof from the old one.
+    let wake = network.authority.expire(5_200);
+    network.deliver(wake);
+    let retry = pair(&network, connections[relay], sessions[source], &other_room);
+    assert_ne!(retry.id, relay_shadow.0);
+    assert!(
+        !topology(&mut network, connections[source], &other_room, None)
+            .base
+            .edges
+            .iter()
+            .find(|edge| edge.receiver == sessions[relay])
+            .unwrap()
+            .ready
+    );
+    for endpoint in [connections[relay], connections[source]] {
+        network.command_at(
+            endpoint,
+            json!({"type":"base_state","roomId":other_room,"pairId":retry.id,"ready":true}),
+            5_201,
+        );
+    }
+    assert!(
+        topology(&mut network, connections[source], &other_room, None)
+            .base
+            .edges
+            .iter()
+            .find(|edge| edge.receiver == sessions[relay])
+            .unwrap()
+            .ready
+    );
+    let late = network.command(connections[relay], json!({"type":"flow_state","pairId":retry.id,"flowId":relay_shadow.1,"state":"switch_ready"}));
+    assert!(late.events.is_empty());
+    let current = topology(&mut network, resumed, &room, Some(picture));
+    assert!(current
+        .screen
+        .unwrap()
+        .edges
+        .iter()
+        .filter(|e| e.selected)
+        .all(|edge| before
+            .screen
+            .as_ref()
+            .unwrap()
+            .edges
+            .iter()
+            .any(|old| old.selected
+                && old.sender == edge.sender
+                && old.receiver == edge.receiver)));
+}
+
+#[test]
+fn unacknowledged_pair_failure_does_not_revoke_its_later_required_retry() {
+    use piik_channel_core::wire::Request;
+    let mut network = RoomNetwork::new();
+    let host = Uuid::new_v4();
+    let viewer = Uuid::new_v4();
+    let (host_session, _) = join(&mut network, host, None);
+    join(&mut network, viewer, None);
+    let room = network.create(host, RoomAccess::Public, false);
+    join_base(&mut network, viewer, &room);
+    let original = pair(&network, viewer, host_session, &room);
+    for endpoint in [host, viewer] {
+        command(
+            &mut network,
+            endpoint,
+            json!({"type":"base_state","roomId":room,"pairId":original.id,"ready":true}),
+        );
+    }
+    let before = topology(&mut network, host, &room, None);
+    let input = |network: &mut RoomNetwork, command: Value, now| {
+        network
+            .authority
+            .handle(viewer, Request::parse(&command.to_string()).unwrap(), now)
+            .events
+            .into_iter()
+            .find_map(|(_, event)| match event {
+                Event::HostInput { input, .. } => Some(input),
+                _ => None,
+            })
+            .unwrap()
+    };
+    let failed = input(
+        &mut network,
+        json!({"type":"link_state","pairId":original.id,"state":"failed"}),
+        100,
+    );
+    assert_eq!(failed.failed_pairs.len(), 1);
+    let failed_output = network.host_turn(&room, failed);
+    assert!(failed_output.projection.base_links.is_empty());
+    // These inputs were issued while the domain had not received a covering
+    // host output. The host has nevertheless already consumed the failure.
+    let mut repaired = None;
+    for now in [5_100, 5_101] {
+        let repeated = input(
+            &mut network,
+            json!({"type":"browse","roomId":room,"active":true}),
+            now,
+        );
+        assert_eq!(repeated.failed_pairs.len(), 1);
+        let output = network.host_turn(&room, repeated);
+        assert_eq!(
+            output.projection.base_links.len(),
+            1,
+            "replayed failure removed a new required attempt"
+        );
+        assert!(!output.projection.base_links[0].ready);
+        repaired = Some(output);
+    }
+    network.command_at(
+        host,
+        json!({"type":"host_output","roomId":room,"output":repaired.unwrap()}),
+        5_102,
+    );
+    let retry = pair(&network, viewer, host_session, &room);
+    assert_ne!(retry.id, original.id);
+    let after_ack = input(
+        &mut network,
+        json!({"type":"browse","roomId":room,"active":true}),
+        5_103,
+    );
+    assert!(
+        after_ack.failed_pairs.is_empty(),
+        "a covering output retires the failure fact"
+    );
+    let output = network.host_turn(&room, after_ack);
+    network.command_at(
+        host,
+        json!({"type":"host_output","roomId":room,"output":output}),
+        5_103,
+    );
+    network.command_at(
+        host,
+        json!({"type":"host_output","roomId":room,"output":failed_output}),
+        5_104,
+    );
+    for endpoint in [host, viewer] {
+        network.command_at(
+            endpoint,
+            json!({"type":"base_state","roomId":room,"pairId":retry.id,"ready":true}),
+            5_105,
+        );
+    }
+    let recovered = topology(&mut network, host, &room, None);
+    assert_eq!(recovered.binding_id, before.binding_id);
+    assert_eq!(recovered.base.edges.len(), 1);
+    assert!(recovered.base.edges[0].ready);
+}
+
+#[test]
 fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
     let mut network = RoomNetwork::new();
     let source = Uuid::new_v4();
@@ -2781,10 +3173,7 @@ fn hosted_media_deadline_wakes_room_without_fencing_an_earlier_request() {
 
 #[test]
 fn failed_pair_does_not_invalidate_an_earlier_browse_reply_or_revive_old_projection() {
-    use piik_channel_core::{
-        host::{HostAction, RoomResult},
-        wire::Request,
-    };
+    use piik_channel_core::{host::RoomResult, wire::Request};
     let mut network = RoomNetwork::new();
     let host = Uuid::new_v4();
     let viewer = Uuid::new_v4();
@@ -2829,7 +3218,7 @@ fn failed_pair_does_not_invalidate_an_earlier_browse_reply_or_revive_old_project
     assert!(effects.events.iter().any(|(recipient, event)| {
         *recipient == host
             && matches!(event, Event::HostInput { input, .. }
-                if matches!(input.action, HostAction::PairFailed { .. }))
+                if !input.failed_pairs.is_empty())
     }));
     network.deliver(effects);
     assert!(!network
@@ -3134,7 +3523,12 @@ fn coordinated_udp_preparation_replaces_only_the_physical_attempt_and_preserves_
         .unwrap(),
         deadline + 1,
     );
-    assert!(effects.events.iter().any(|(_,event)|matches!(event,Event::HostInput{input,..}if matches!(input.action,HostAction::PairFailed{..}))),"a Prepared attempt has no second preparation");
+    assert!(
+        effects.events.iter().any(
+            |(_, event)| matches!(event,Event::HostInput{input,..}if !input.failed_pairs.is_empty())
+        ),
+        "a Prepared attempt has no second preparation"
+    );
     network.deliver(effects);
     assert!(!network
         .state(viewer)
@@ -3149,7 +3543,7 @@ fn coordinated_udp_preparation_replaces_only_the_physical_attempt_and_preserves_
 }
 #[test]
 fn coordinated_udp_preparation_uses_current_capability_and_never_restarts_a_connected_pair() {
-    use piik_channel_core::{host::HostAction, wire::Request};
+    use piik_channel_core::wire::Request;
     for connected in [false, true] {
         let mut network = preparation_network(preparation_ice());
         let host = Uuid::new_v4();
@@ -3191,7 +3585,7 @@ fn coordinated_udp_preparation_uses_current_capability_and_never_restarts_a_conn
             .unwrap(),
             101,
         );
-        assert!(effects.events.iter().any(|(_,event)|matches!(event,Event::HostInput{input,..}if matches!(input.action,HostAction::PairFailed{..}))),"incapable/ever-connected attempts retain the existing failure owner");
+        assert!(effects.events.iter().any(|(_,event)|matches!(event,Event::HostInput{input,..}if !input.failed_pairs.is_empty())),"incapable/ever-connected attempts retain the existing failure owner");
         network.deliver(effects);
         assert!(!network
             .state(host)

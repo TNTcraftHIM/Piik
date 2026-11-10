@@ -57,6 +57,7 @@ async fn resumed_endpoint_retires_its_missing_host_after_a_deleted_output_cannot
         binding_id: binding,
         host_session_id: native,
         revision: 1,
+        failed_pairs: Vec::new(),
         endpoints: [(
             native,
             Endpoint {
@@ -396,6 +397,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
                             binding_id: binding,
                             host_session_id: native,
                             revision: 1,
+                            failed_pairs: Vec::new(),
                             endpoints: [(
                                 native,
                                 Endpoint {

@@ -63,6 +63,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
         binding_id: binding,
         host_session_id: publisher,
         revision: 1,
+        failed_pairs: Vec::new(),
         endpoints: endpoints.clone(),
         action: HostAction::Command {
             context: context(publisher),
@@ -101,6 +102,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
             binding_id: binding,
             host_session_id: publisher,
             revision: 2,
+            failed_pairs: Vec::new(),
             endpoints,
             action: HostAction::Command {
                 context: context(reader),

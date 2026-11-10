@@ -202,6 +202,7 @@ mod tests {
             binding_id: old_binding,
             host_session_id: owner,
             revision: 1,
+            failed_pairs: Vec::new(),
             endpoints: Default::default(),
             action: HostAction::Sync,
         };
@@ -304,6 +305,7 @@ mod tests {
             binding_id,
             host_session_id: local,
             revision: 1,
+            failed_pairs: Vec::new(),
             endpoints: endpoints.clone(),
             action: HostAction::Sync,
         };

@@ -105,6 +105,11 @@ impl RoomNetwork {
             .unwrap()
     }
 
+    #[allow(dead_code)]
+    pub fn host_connection(&mut self, room: &str, connection: Uuid) {
+        self.hosts.get_mut(room).unwrap().connection = connection;
+    }
+
     pub fn create(&mut self, connection: Uuid, access: RoomAccess, hidden: bool) -> String {
         let session = self.sessions[&connection];
         let user = self.states[&connection]

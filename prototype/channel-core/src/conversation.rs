@@ -563,6 +563,7 @@ mod room_tests {
             binding_id,
             host_session_id: host_session,
             revision: 1,
+            failed_pairs: Vec::new(),
             endpoints: endpoints.clone(),
             action,
         };

@@ -92,6 +92,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
         binding_id: Uuid::new_v4(),
         host_session_id: sessions[0],
         revision: 1,
+        failed_pairs: Vec::new(),
         endpoints: channel.identity.endpoints(),
         action: HostAction::Sync,
     })
