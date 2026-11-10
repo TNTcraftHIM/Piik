@@ -24,6 +24,7 @@ export function ChannelRoomPreview() {
   const [roomCount, setRoomCount] = useState(() => new URLSearchParams(location.search).has("no-rooms") ? 0 : 2);
   const [emptyChat, setEmptyChat] = useState(() => new URLSearchParams(location.search).has("empty-chat"));
   const [fileSample, setFileSample] = useState(() => new URLSearchParams(location.search).has("file"));
+  const [audienceSample, setAudienceSample] = useState(() => new URLSearchParams(location.search).has("audience"));
   const [createdRooms, setCreatedRooms] = useState<ChannelRoom[]>([]);
   const [sharingRoom, setSharingRoom] = useState<string | null>(null);
   const optionsId = useId(), optionsTrigger = useRef<HTMLSpanElement>(null), optionsPanel = useRef<HTMLDivElement>(null);
@@ -47,11 +48,14 @@ export function ChannelRoomPreview() {
   const rooms = [...sample.channel.state!.channel.rooms.slice(0, roomCount),
     ...createdRooms.map(room => ({ ...room, ...sample.settingsByRoom[room.id] }))];
   const roomIds = new Set(rooms.map(room => room.id));
-  const publications = (sharingRoom ? [{ id: "sample-screen-2", roomId: sharingRoom,
+  const publications = (sharingRoom ? [{ audience: [], id: "sample-screen-2", roomId: sharingRoom,
     sessionId: sample.channel.sessionId!, userId: users[0].id, kind: "screen" as const, paused: false,
-    videoSettings: screenVideoSettings(sample.channel.quality) }] : Array.from({ length: count }, (_, index) => ({ id: `sample-screen-${index}`, roomId: "friday",
+    videoSettings: screenVideoSettings(sample.channel.quality) }] : Array.from({ length: count }, (_, index) => ({ audience: [], id: `sample-screen-${index}`, roomId: "friday",
     sessionId: `${screenUsers[index].id}-session`, userId: screenUsers[index].id,
-    kind: "screen" as const, paused: false, videoSettings: screenVideoSettings(sample.channel.quality) }))).filter(publication => roomIds.has(publication.roomId) && !stopped.has(publication.id));
+    kind: "screen" as const, paused: false, videoSettings: screenVideoSettings(sample.channel.quality) })))
+    .filter(publication => roomIds.has(publication.roomId) && !stopped.has(publication.id))
+    .map(publication => ({ ...publication, audience: audienceSample ? users.filter(user => user.id !== publication.userId).slice(0, 5)
+      .map((user, index) => ({ sessionId: `${user.id}-session`, state: index < 3 ? "active" as const : index === 3 ? "preparing" as const : "failed" as const })) : [] }));
   const ownedScreens = new Set(publications.filter(publication => publication.userId === "sample-ada").map(publication => publication.id));
   const subscriptions = publications.filter(publication => !unwatched.has(publication.id)).map(publication => publication.id);
   const needsSamples = ownedScreens.size > 0 || subscriptions.length > 0;
@@ -155,6 +159,7 @@ export function ChannelRoomPreview() {
             <Chip title={zh ? "没有房间" : "No rooms"} selected={!rooms.length} onClick={() => { setRoomCount(rooms.length ? 0 : 2); setSelected(rooms.length ? "" : "friday"); setCreatedRooms([]); setCount(0); setSharingRoom(null); }}>{zh ? "没有房间" : "No rooms"}</Chip>
             <Chip title={zh ? "空聊天" : "Empty chat"} selected={emptyChat} onClick={() => setEmptyChat(!emptyChat)}>{zh ? "空聊天" : "Empty chat"}</Chip>
             <Chip title={zh ? "附件样本" : "File sample"} selected={fileSample} onClick={() => setFileSample(!fileSample)}>{zh ? "附件样本" : "File sample"}</Chip>
+            <Chip title={zh ? "观看者样本" : "Viewer sample"} selected={audienceSample} onClick={() => setAudienceSample(!audienceSample)}>{zh ? "观看者样本" : "Viewer sample"}</Chip>
           </div>
           <fieldset><legend>{zh ? "合成语音电平（不采集设备）" : "Synthetic voice level (no device capture)"}</legend><div className="c3-room-preview-tools">
             {([undefined, .05, .2] as const).map((level, index) => <Chip key={index}

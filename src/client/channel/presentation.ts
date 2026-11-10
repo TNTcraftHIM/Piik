@@ -1,4 +1,25 @@
-import type { ChannelSnapshot } from "./protocol";
+import type { ChannelPublication, ChannelSnapshot } from "./protocol";
+
+export interface ScreenAudiencePerson {
+  userId: string;
+  name: string;
+  state: "preparing" | "active" | "failed";
+}
+
+/** The room owns watch/delivery facts; Browser and App endpoints draw one person. */
+export function screenAudience(state: ChannelSnapshot, publication: ChannelPublication): ScreenAudiencePerson[] {
+  const ranks = { failed: 0, preparing: 1, active: 2 };
+  const people = new Map<string, ScreenAudiencePerson>();
+  for (const entry of publication.audience) {
+    const endpoint = state.sessions.find(session => session.id === entry.sessionId);
+    const user = state.users.find(user => user.id === endpoint?.userId);
+    if (!user || user.id === publication.userId) continue;
+    // Signaling can disconnect while an established media watch continues.
+    const previous = people.get(user.id);
+    if (!previous || ranks[entry.state] > ranks[previous.state]) people.set(user.id, { userId: user.id, name: user.name, state: entry.state });
+  }
+  return [...people.values()];
+}
 
 /** Remote voice streams played by this endpoint, independently of the browsed room. */
 export function listeningVoicePublications(state: ChannelSnapshot | null, sessionId: string | null, streams: ReadonlyMap<string, MediaStream>) {

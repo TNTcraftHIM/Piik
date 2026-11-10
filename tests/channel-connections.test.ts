@@ -7,10 +7,37 @@ import { channelConnectionPreview } from "../src/client/pages/ChannelConnections
 import { collectNativeConnectionMetrics, type NativeMetricSamples } from "../src/client/channel/native-connection-metrics";
 import type { NativeConnectionMetrics } from "../src/client/channel/app-link";
 import { say, type CopyKey } from "../src/client/ui/copy";
+import { screenAudience } from "../src/client/channel/presentation";
 
 const t = (key: CopyKey) => key;
 
 describe("channel connection presentation", () => {
+  it("merges room audience by user without counting publishers, retired identities or relay paths", () => {
+    const { state } = channelConnectionPreview("app");
+    const publication = state.publications.find(value => value.kind === "screen")!;
+    state.users.push({ id: "third-user", name: "Third" });
+    state.sessions.push({ id: "third", userId: "third-user", online: true, signingKey: Array(32).fill(0) });
+    state.sessions.find(value => value.id === "app")!.online = false;
+    publication.audience = [
+      { sessionId: "self", state: "failed" }, { sessionId: "app", state: "active" },
+      { sessionId: "friend", state: "failed" }, { sessionId: "third", state: "preparing" },
+      { sessionId: "host", state: "active" }, { sessionId: "retired", state: "active" },
+    ];
+    expect(screenAudience(state, publication)).toEqual([
+      { userId: "self-user", name: "Nori", state: "active" },
+      { userId: "friend-user", name: "Kiki", state: "failed" },
+      { userId: "third-user", name: "Third", state: "preparing" },
+    ]);
+    // Signaling grace leaves an established watch valid; true retirement removes that endpoint.
+    state.sessions = state.sessions.filter(value => value.id !== "app");
+    publication.audience.push({ sessionId: "self", state: "preparing" });
+    expect(screenAudience(state, publication)[0].state).toBe("preparing");
+    state.users = state.users.filter(value => value.id !== "friend-user");
+    expect(screenAudience(state, publication).map(value => value.userId)).toEqual(["self-user", "third-user"]);
+    publication.audience = [];
+    expect(screenAudience(state, publication)).toEqual([]); // Topology alone never creates viewers.
+  });
+
   it("keeps reading-only rooms free of peer paths and media statistics", () => {
     const fixture = channelConnectionPreview("room");
     const graph = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);

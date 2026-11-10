@@ -118,7 +118,7 @@ describe("Playback audio controls", () => {
 describe("Screen delivery result", () => {
   it("shows the watch failure without replacing an existing picture or changing its controls", () => {
     setCopy({ lang: "en", vis: false });
-    const source = { id: "screen", userId: "friend", name: "Friend", roomName: "Room", owned: false,
+    const source = { audience: [], id: "screen", userId: "friend", name: "Friend", roomName: "Room", owned: false,
       subscribed: true, paused: false, deliveryFailed: true };
     const props: ChannelStageProps = { sources: [source], focusedId: null, canSubscribe: true,
       onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),

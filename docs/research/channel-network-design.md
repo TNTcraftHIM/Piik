@@ -548,6 +548,12 @@ A participant retains the room connection while an admitted activity, transfer
 or forwarding duty needs it; changing the highlighted sidebar item is not a
 global media shutdown.
 Joining voice can be listen-only; opening a room never grants microphone capture.
+Each authorized screen view includes its room-owned audience: actual watch
+intent with current delivery readiness. Pure relays are not viewers. Browser
+and App endpoints resolve to the same user for presentation; the sharer's own
+preview is omitted. A signaling interruption alone does not end a valid watch.
+The same room projection supplies the sharer and other authorized viewers;
+users without room access receive no audience information.
 The source owner and controlled device authorize remote input for a publication,
 source generation and controller session. Domain/room administration alone grants
 no desktop control. Changing the focused picture never retargets an input grant.

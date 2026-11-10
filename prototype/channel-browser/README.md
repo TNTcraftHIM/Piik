@@ -5,9 +5,9 @@ transactional storage; shared Rust prepares confirmations and history pages.
 The caller supplies authenticated domain member facts, without a credential database,
 and delivers its returned projection/reply after commit. Vite resolves this adapter
 into the 3.0 frontend bundle; regular 2.x builds do not require generated WASM.
-Chat and history arrive through the room's authenticated peer carrier and use
-that same serialized storage turn. The shared Rust core verifies their origin
-and current room authority before execution.
+Chat and history reach the room host over the authenticated domain connection
+and use that same serialized storage turn. The shared Rust core verifies their
+origin and current room authority before execution; reading does not wait for P2P.
 The same module exposes incremental attachment hashing and the shared file-range
 engine. Browser adapters supply readable Files, temporary OPFS sinks and existing
 peer DataChannels; they do not implement another route or transfer controller.

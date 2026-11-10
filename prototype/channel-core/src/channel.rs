@@ -295,6 +295,11 @@ impl Channel {
                     }
                     view.publications
                         .retain(|p| readable_sessions.contains(&p.session_id));
+                    for publication in &mut view.publications {
+                        publication
+                            .audience
+                            .retain(|viewer| readable_sessions.contains(&viewer.session_id));
+                    }
                     view.voice
                         .retain(|v| readable_sessions.contains(&v.session_id));
                     view.subscriptions
@@ -1030,6 +1035,25 @@ impl Channel {
             for publication in &view.publications {
                 if validate_video_settings(publication.kind, publication.video_settings).is_err()
                     || publication.room_id != id
+                    || publication.audience.len() > crate::identity::MAX_SESSIONS
+                    || (publication.kind != Kind::Screen && !publication.audience.is_empty())
+                    || publication
+                        .audience
+                        .iter()
+                        .map(|viewer| viewer.session_id)
+                        .collect::<BTreeSet<_>>()
+                        .len()
+                        != publication.audience.len()
+                    || publication.audience.iter().any(|viewer| {
+                        viewer.session_id == publication.session_id
+                            || !projection
+                                .views
+                                .get(&viewer.session_id)
+                                .is_some_and(|view| {
+                                    view.room.authorized
+                                        && view.subscriptions.contains(&publication.id)
+                                })
+                    })
                     || !endpoints
                         .get(&publication.session_id)
                         .is_some_and(|e| e.member.user_id == publication.user_id)
@@ -1057,6 +1081,7 @@ impl Channel {
                 publication.user_id,
                 publication.kind,
                 publication.video_settings,
+                &publication.audience,
             );
             if publications
                 .insert(publication.id, source)

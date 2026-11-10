@@ -29,7 +29,7 @@ import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
 import { ChannelCouch } from "../channel/components/ChannelCouch";
 import { ChannelRoomTool, type RoomToolSurface } from "../channel/components/ChannelRoomTool";
 import { ChannelConnections } from "../channel/components/ChannelConnections";
-import { listeningVoicePublications, roomPeople } from "../channel/presentation";
+import { listeningVoicePublications, roomPeople, screenAudience } from "../channel/presentation";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { channelAppDiscovery } from "../channel/app-link";
 import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preferences";
@@ -239,6 +239,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
         <div className={`c3-workspace${visibleScreens.length ? " has-screens" : ""}${inlineChatOpen && !toolSurface.open ? "" : " chat-collapsed"}`}>
           <ChannelStage sources={[...visibleScreens, ...availableScreens].map(publication => ({
             id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
+            audience: state ? screenAudience(state, publication) : [],
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id),
             shareControls: channel.ownedScreens.has(publication.id) && <ChannelShareControl channel={channel}
               roomId={publication.roomId} publicationId={publication.id} compact

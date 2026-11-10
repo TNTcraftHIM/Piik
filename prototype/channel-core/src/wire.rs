@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 3;
+pub const CHANNEL_PROTOCOL: u8 = 4;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(
@@ -622,8 +622,24 @@ pub struct PublicationInfo {
     pub user_id: Uuid,
     pub kind: Kind,
     pub paused: bool,
+    pub audience: Vec<PublicationAudience>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub video_settings: Option<VideoSettings>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicationAudience {
+    pub session_id: Uuid,
+    pub state: AudienceState,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AudienceState {
+    Preparing,
+    Active,
+    Failed,
 }
 
 #[derive(Clone, Deserialize, Serialize)]

@@ -376,6 +376,7 @@ mod tests {
                 user_id: id(1),
                 kind: Kind::Screen,
                 paused: false,
+                audience: Vec::new(),
                 video_settings: Some(
                     crate::capture::Settings {
                         degradation_preference:

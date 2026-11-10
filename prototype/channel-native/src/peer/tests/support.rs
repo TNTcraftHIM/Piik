@@ -92,6 +92,7 @@ impl Fixture {
             user_id: Uuid::new_v4(),
             kind: Kind::Screen,
             paused: false,
+            audience: Vec::new(),
             video_settings: Some(
                 crate::capture::Settings {
                     degradation_preference:

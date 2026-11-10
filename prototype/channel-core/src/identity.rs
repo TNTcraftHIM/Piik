@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 pub const RECOVERY_MS: u64 = 20_000;
 const MAX_USERS: usize = 64;
-const MAX_SESSIONS: usize = 20;
+pub(crate) const MAX_SESSIONS: usize = 20;
 
 pub fn domain_invite_hash(key: &str) -> String {
     crate::attachment::sha256_hex(key.as_bytes())

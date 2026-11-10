@@ -112,6 +112,18 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
                     user_id: channel.identity.sessions[session].user_id,
                     kind,
                     paused: false,
+                    audience: if kind == Kind::Screen {
+                        sessions
+                            .iter()
+                            .filter(|viewer| *viewer != session)
+                            .map(|viewer| PublicationAudience {
+                                session_id: *viewer,
+                                state: AudienceState::Active,
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    },
                     video_settings: (kind == Kind::Screen).then_some(VideoSettings {
                         degradation_preference: DegradationPreference::Balanced,
                         ceiling: VideoCeiling {

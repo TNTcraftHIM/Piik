@@ -689,7 +689,7 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
 }
 
 #[test]
-fn host_projection_rejects_conflicting_flow_identity_and_input_ownership() {
+fn host_projection_rejects_conflicting_flow_identity_and_audience_scope() {
     use piik_channel_core::{
         wire::{Event, Request},
         Authority,
@@ -700,12 +700,15 @@ fn host_projection_rejects_conflicting_flow_identity_and_input_ownership() {
         "two_selected",
         "two_candidates",
         "candidate_without_selected",
+        "audience_unknown",
+        "audience_duplicate",
+        "audience_conflict",
     ] {
         let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
         let source = Uuid::new_v4();
         let viewer = Uuid::new_v4();
         let source_session = review_admit(&mut core, source, "invite");
-        review_admit(&mut core, viewer, "invite");
+        let viewer_session = review_admit(&mut core, viewer, "invite");
         let state = core
             .handle(
                 source,
@@ -824,6 +827,18 @@ fn host_projection_rejects_conflicting_flow_identity_and_input_ownership() {
                             }
                         }
                         "candidate_without_selected" => flows[0].selected = false,
+                        "audience_unknown" | "audience_duplicate" | "audience_conflict" => {
+                            let unknown = Uuid::new_v4();
+                            for (index, view) in output.projection.views.values_mut().enumerate() {
+                                let audience = &mut view.publications[0].audience;
+                                match conflict {
+                                    "audience_unknown" => audience[0].session_id = unknown,
+                                    "audience_duplicate" => audience.push(audience[0].clone()),
+                                    "audience_conflict" if index == 0 => audience.clear(),
+                                    _ => {}
+                                }
+                            }
+                        }
                         _ => unreachable!(),
                     }
                     let effects = review_host_turn(&mut core, source, room, output);
@@ -854,10 +869,52 @@ fn host_projection_rejects_conflicting_flow_identity_and_input_ownership() {
                         original_pairs.as_ref().unwrap().clone(),
                         "rejected projection must preserve the original shared pair and flow"
                     );
+                    if conflict == "audience_unknown" {
+                        let source_view = |effects: piik_channel_core::Effects| {
+                            effects
+                                .events
+                                .into_iter()
+                                .find_map(|(target, event)| match event {
+                                    Event::State { state } if target == source => Some(state),
+                                    _ => None,
+                                })
+                                .unwrap()
+                        };
+                        let grace = source_view(core.disconnect(viewer, 3));
+                        assert!(grace
+                            .publications
+                            .iter()
+                            .any(|p| p.audience.iter().any(|a| a.session_id == viewer_session)));
+                        let retired =
+                            source_view(core.expire(piik_channel_core::RECOVERY_MS + 3));
+                        assert!(
+                            retired.publications.iter().all(|p| p.audience.is_empty()),
+                            "domain retirement prunes old host audience before any host Sync reply"
+                        );
+                    }
                     break;
                 }
                 let effects = review_host_turn(&mut core, source, room, output.clone());
                 if room == "first-review" && !output.projection.flows.is_empty() {
+                    for (target, event) in &effects.events {
+                        if let Event::State { state } = event {
+                            if [source, viewer].contains(target) {
+                                let audience = &state
+                                    .publications
+                                    .iter()
+                                    .find(|p| p.id == publication)
+                                    .unwrap()
+                                    .audience;
+                                assert_eq!(
+                                    audience,
+                                    &vec![piik_channel_core::wire::PublicationAudience {
+                                        session_id: viewer_session,
+                                        state: piik_channel_core::wire::AudienceState::Preparing,
+                                    }]
+                                );
+                            }
+                        }
+                    }
                     original_flow = Some(output.projection.flows[0].id);
                     original_pairs = effects.events.into_iter().find_map(|(target, event)| {
                         if let Event::State { state } = event {

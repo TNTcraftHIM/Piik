@@ -43,6 +43,10 @@
 .c3-monitor-source small > svg { vertical-align: -2px; margin-inline-end: 4px; }
 .c3-monitor-source :is(strong, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .c3-monitor-tile-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 2px; min-width: 0; margin-inline-start: auto; }
+.c3-screen-audience { display: inline-flex; flex: none; }
+.c3-screen-audience-panel { width: 280px; padding: 12px; overflow-y: auto; }
+.c3-screen-audience-panel h3 { margin: 0 0 8px; font-size: 13px; }
+.c3-screen-audience-panel > p { margin: 8px 0; font-size: 12px; color: var(--muted); }
 /* Focus uses the existing player's reveal state; source actions stay on this tile. */
 .c3-monitor-tile.is-focused > footer { position: absolute; inset: 8px 8px auto; z-index: 5; padding: 4px 6px; gap: 6px; color: var(--ink); background: var(--paper-translucent); border: 1px solid var(--control-edge); border-radius: 12px; box-shadow: var(--control-shadow); backdrop-filter: blur(14px); transition: opacity 160ms ease, transform 160ms ease; }
 .c3-monitor-tile.is-focused:has(> .c3-video[data-controls-hidden="true"]) > footer:not(:hover):not(:focus-within):not(:has([aria-expanded="true"])) { opacity: 0; pointer-events: none; transform: translateY(-4px); }

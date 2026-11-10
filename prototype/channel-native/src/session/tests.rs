@@ -1030,6 +1030,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                     user_id: user,
                     kind: Kind::Screen,
                     paused: false,
+                    audience: Vec::new(),
                     video_settings: Some(Settings { degradation_preference: piik_channel_core::wire::DegradationPreference::Balanced,  width: 640, height: 360, fps: 30, bitrate: 5_000_000 }.into()),
                 })
                 .collect();

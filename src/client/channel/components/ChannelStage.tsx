@@ -11,12 +11,15 @@ import type { RoomInteractionSession } from "../../lib/room-interactions";
 import type { RemoteControlMode } from "../../remote-control/protocol";
 import type { ChannelRemoteControlState, ChannelStopShortcut } from "../app-link";
 import { HostRemoteControl } from "../../components/living/HostRemoteControl";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { stageColumns } from "../stage-layout";
 import { useTheaterMode } from "../../components/living/use-theater-mode";
 import { VoiceMicrophoneButton } from "../../room-voice/VoiceAudioButtons";
 import { Btn, Cap } from "../../components/living/primitives";
 import { Tooltip } from "../../components/living/Tooltip";
+import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
+import { ChannelUser } from "./ChannelUser";
+import type { ScreenAudiencePerson } from "../presentation";
 
 export interface ChannelStageSource {
   id: string;
@@ -27,6 +30,7 @@ export interface ChannelStageSource {
   owned: boolean;
   subscribed: boolean;
   paused: boolean;
+  audience: readonly ScreenAudiencePerson[];
   deliveryFailed?: boolean;
   stream?: MediaStream;
   sourceAudio?: SourceAudioControl;
@@ -40,6 +44,28 @@ export interface ChannelStageSource {
   pausePending?: boolean;
   pauseAvailable?: boolean;
   available?: boolean;
+}
+
+function SourceAudience({ people }: { people: readonly ScreenAudiencePerson[] }) {
+  const { lang } = useCopy(), zh = lang === "zh";
+  const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  useAnchoredPopover(trigger, panel, { side: "above", align: "end", maxHeight: 360 });
+  const count = people.filter(person => person.state === "active").length;
+  return <span ref={trigger} className="c3-screen-audience">
+    <Btn icon="eye" iconOverlay={<span aria-hidden="true">{count}</span>} quiet size="dense" expanded={open} controls={id} popoverTarget={id}
+      title={{ text: zh ? `观看者：${count} 人正在观看` : `Viewers: ${count} watching` }} />
+    <div id={id} ref={panel} popover="auto" role="dialog" aria-label={zh ? "此画面的观看者" : "Viewers of this screen"}
+      className="lr-anchored-card c3-screen-audience-panel" onToggle={event => {
+        if (event.target === event.currentTarget) setOpen(event.newState === "open");
+      }}>
+      <h3>{zh ? "此画面的观看者" : "Viewers of this screen"}</h3>
+      {people.length ? people.map(person => <ChannelUser key={person.userId} id={person.userId} name={person.name}
+        self={false} owner={false} online activity={person.state === "active" ? (zh ? "正在观看" : "Watching")
+          : person.state === "preparing" ? (zh ? "正在连接" : "Connecting") : (zh ? "传输失败，正在重试" : "Delivery failed. Retrying.")} />)
+        : <p>{zh ? "还没有人观看此画面。" : "No one is watching this screen yet."}</p>}
+    </div>
+  </span>;
 }
 
 export interface ChannelStageProps {
@@ -182,6 +208,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
                 </small></Tooltip>
               </div>
               <div className="c3-monitor-tile-actions">
+                <SourceAudience people={source.audience} />
                 {source.owned && source.shareControls}
                 {source.owned && source.remoteControl && <SourceControl source={{ ...source, remoteControl: source.remoteControl }}
                   onInputPolicy={onInputPolicy} onInputDecide={onInputDecide} onInputSimultaneous={onInputSimultaneous} onInputShortcut={onInputShortcut} />}

@@ -67,7 +67,7 @@ export function useChannelGuideSample(multiRoom = false) {
   const state = snapshotSchema.parse({ channel: { id: "sample", name: "Friends", icon: "couch", ownerId: "sample-ada", historyWindow: 1000,
     access: "private", hasPassword: false, inviteHash: "0".repeat(64), rooms }, users,
     sessions: users.map(user => ({ id: `${user.id}-session`, userId: user.id, online: true, signingKey: Array(32).fill(0) })),
-    publications: Object.keys(voiceByRoom).map(roomId => ({ id: `voice-${roomId}`, kind: "voice", roomId,
+    publications: Object.keys(voiceByRoom).map(roomId => ({ audience: [], id: `voice-${roomId}`, kind: "voice", roomId,
       sessionId: "sample-ada-session", userId: "sample-ada", paused: false })),
     voice: [...Object.entries(voiceByRoom).map(([roomId, voice]) => ({ sessionId: "sample-ada-session", roomId, ...voice })),
       { sessionId: "sample-bo-session", roomId: "friday", muted: false, deafened: false }],

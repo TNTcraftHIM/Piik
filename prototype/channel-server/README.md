@@ -100,7 +100,7 @@ The `piik-channel-app` entry uses the same App button, local approval page and
 saved-site controls as the shared Web interface.
 
 Current internal pages require App control protocol 6 and domain signaling
-protocol 3. Build the App, bundled Web files and domain server from the same
+protocol 4. Build the App, bundled Web files and domain server from the same
 source for internal testing. Incompatible control or signaling protocols are
 rejected at entry; saved room data is unchanged.
 

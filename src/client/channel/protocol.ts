@@ -11,7 +11,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 3;
+export const CHANNEL_PROTOCOL = 4;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("missing") }),
@@ -35,10 +35,11 @@ export const roomSummarySchema = roomSchema.pick({ id: true, name: true, icon: t
 const publicationBaseSchema = z.object({
   id, roomId: id, sessionId: id, userId: id,
   paused: z.boolean(),
+  audience: z.array(z.object({ sessionId: id, state: z.enum(["preparing", "active", "failed"]) })).max(20),
 });
 export const publicationSchema = z.discriminatedUnion("kind", [
   publicationBaseSchema.extend({ kind: z.literal("screen"), videoSettings: videoSettingsSchema }),
-  publicationBaseSchema.extend({ kind: z.literal("voice"), videoSettings: z.never().optional() }),
+  publicationBaseSchema.extend({ kind: z.literal("voice"), videoSettings: z.never().optional(), audience: z.array(z.never()).max(0) }),
 ]);
 export const attachmentSchema = z.object({
   id, name: z.string().min(1).max(240), size: z.number().int().nonnegative().safe(),

@@ -6,8 +6,8 @@ use crate::{
     routes::{BaseTree, RelayLimits},
     transport::{BaseLink, Flow},
     wire::{
-        validate_video_settings, FlowState, Kind, PublicationInfo, Room, RoomAccess, VideoSettings,
-        VoiceInfo,
+        validate_video_settings, AudienceState, FlowState, Kind, PublicationAudience,
+        PublicationInfo, Room, RoomAccess, VideoSettings, VoiceInfo,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -121,7 +121,35 @@ impl RoomRuntime {
                 .as_ref()
                 .map(|base| self.files.plans(&self.policy.id, session, base))
                 .unwrap_or_default();
-            snapshot.publications = self.publications().cloned().collect();
+            snapshot.publications = self
+                .publications
+                .values()
+                .map(|publication| {
+                    let mut info = publication.info.clone();
+                    if info.kind == Kind::Screen {
+                        info.audience = self
+                            .activity
+                            .iter()
+                            .filter(|(_, activity)| activity.watching.contains_key(&info.id))
+                            .map(|(session, _)| PublicationAudience {
+                                session_id: *session,
+                                state: if publication.delivery_failed(*session) {
+                                    AudienceState::Failed
+                                } else if publication.flows().any(|flow| {
+                                    flow.receiver == *session
+                                        && flow.selected
+                                        && flow.proof == Some(FlowState::Decoded)
+                                }) {
+                                    AudienceState::Active
+                                } else {
+                                    AudienceState::Preparing
+                                },
+                            })
+                            .collect();
+                    }
+                    info
+                })
+                .collect();
             snapshot.voice = self.voice().cloned().collect();
             snapshot.subscriptions = self.subscriptions(session).into_iter().collect();
             snapshot.failed_subscriptions = self
@@ -438,6 +466,7 @@ impl RoomRuntime {
                     user_id: member.user_id,
                     kind,
                     paused: false,
+                    audience: Vec::new(),
                     video_settings,
                 }),
             );
@@ -966,6 +995,15 @@ mod tests {
             .unwrap()
             .subscriptions
             .is_empty());
+        assert_eq!(
+            room.snapshot(viewer, id(2)).unwrap().publications[0]
+                .audience
+                .iter()
+                .map(|viewer| viewer.session_id)
+                .collect::<Vec<_>>(),
+            vec![id(2), id(4)],
+            "a helper without its own watch intent is not an audience member"
+        );
         room.subscribe(viewer, id(2), id(10), false, None).unwrap();
         room.reconcile(&endpoints, 5);
         assert!(!room.flows().any(|flow| flow.receiver == id(2)));
@@ -1601,6 +1639,7 @@ mod tests {
                 user_id: id(1),
                 kind: Kind::Screen,
                 paused: false,
+                audience: Vec::new(),
                 video_settings: screen_settings(),
             });
             let helpers = BTreeMap::new();
@@ -2866,6 +2905,75 @@ mod tests {
     }
 
     #[test]
+    fn screen_audience_follows_watch_intent_and_current_decoded_proof() {
+        let id = Uuid::from_u128;
+        let (mut room, endpoints) = screen_on_room_base();
+        let audience = |room: &RoomRuntime, recipient| {
+            room.snapshot(endpoints[&recipient].member, recipient)
+                .unwrap()
+                .publications
+                .into_iter()
+                .find(|publication| publication.id == id(10))
+                .unwrap()
+                .audience
+        };
+        let preparing = vec![PublicationAudience {
+            session_id: id(4),
+            state: AudienceState::Preparing,
+        }];
+        assert_eq!(audience(&room, id(3)), preparing);
+        assert_eq!(audience(&room, id(4)), preparing);
+        for flow in room.flows().collect::<Vec<_>>() {
+            room.flow_state(
+                flow.id,
+                flow.receiver,
+                flow.sender,
+                FlowState::Forwardable,
+                1,
+            )
+            .unwrap();
+        }
+        assert_eq!(audience(&room, id(3)), preparing);
+        let flow = room.flows().find(|flow| flow.receiver == id(4)).unwrap();
+        room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 2)
+            .unwrap();
+        let active = vec![PublicationAudience {
+            session_id: id(4),
+            state: AudienceState::Active,
+        }];
+        assert_eq!(audience(&room, id(3)), active);
+        assert_eq!(audience(&room, id(4)), active);
+        // Reading/voice/forwarding never turn an endpoint into a screen watcher.
+        assert!(room.reading(id(2)) && room.voice_joined(id(2)));
+        room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Failed, 3)
+            .unwrap();
+        assert_eq!(audience(&room, id(3))[0].state, AudienceState::Failed);
+
+        let (mut room, mut endpoints, _, _) = branch_candidate(false);
+        let viewer = endpoints[&id(4)].member;
+        let expected = vec![
+            PublicationAudience {
+                session_id: id(1),
+                state: AudienceState::Active,
+            },
+            PublicationAudience {
+                session_id: id(4),
+                state: AudienceState::Active,
+            },
+        ];
+        let snapshot = |room: &RoomRuntime| room.snapshot(viewer, id(4)).unwrap();
+        assert_eq!(snapshot(&room).publications[0].audience, expected);
+        assert!(snapshot(&room).publications[1].audience.is_empty());
+        // The relay's prepared shadow does not replace a decoded incumbent or add a person.
+        endpoints.get_mut(&id(4)).unwrap().connected = false;
+        room.reconcile(&endpoints, 2_001);
+        assert_eq!(snapshot(&room).publications[0].audience, expected);
+        endpoints.remove(&id(4));
+        room.reconcile(&endpoints, 2_002);
+        assert_eq!(snapshot(&room).publications[0].audience, expected[..1]);
+    }
+
+    #[test]
     fn internal_branch_waits_for_all_viewers_then_adopts_the_entire_warmed_lineage() {
         let id = Uuid::from_u128;
         for relay_watching in [false, true] {
@@ -3169,6 +3277,23 @@ mod tests {
             BTreeSet::from([owner_session, viewer_session])
         );
         assert_eq!(admitted.publications.len(), 2);
+        assert_eq!(
+            admitted
+                .publications
+                .iter()
+                .find(|p| p.id == picture)
+                .unwrap()
+                .audience,
+            vec![PublicationAudience {
+                session_id: viewer_session,
+                state: AudienceState::Preparing
+            }]
+        );
+        assert_eq!(
+            serde_json::to_value(&admitted.publications).unwrap(),
+            serde_json::to_value(&room.snapshot(owner, owner_session).unwrap().publications)
+                .unwrap()
+        );
         assert_eq!(admitted.voice.len(), 2);
         assert_eq!(
             admitted.subscriptions.into_iter().collect::<BTreeSet<_>>(),
@@ -3176,6 +3301,22 @@ mod tests {
         );
 
         room.revoke(owner, viewer).unwrap();
+        room.reconcile(
+            &[(owner_session, owner), (viewer_session, viewer)]
+                .into_iter()
+                .map(|(session, member)| {
+                    (
+                        session,
+                        Endpoint {
+                            member,
+                            connected: true,
+                            signing_key: [0; 32],
+                        },
+                    )
+                })
+                .collect(),
+            0,
+        );
         let locked = room.snapshot(viewer, viewer_session).unwrap();
         assert!(!locked.room.authorized);
         assert!(!locked.room.can_manage);
@@ -3198,5 +3339,9 @@ mod tests {
         let own = room.snapshot(owner, owner_session).unwrap();
         assert!(own.room.authorized && own.room.can_manage);
         assert_eq!(own.publications.len(), 2);
+        assert!(own
+            .publications
+            .iter()
+            .all(|publication| publication.audience.is_empty()));
     }
 }
