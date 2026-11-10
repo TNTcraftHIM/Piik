@@ -18,10 +18,10 @@ it("keeps independent room-tool choices across reads without storing private run
   expect(readRoomPreferences().previewAutoPause).toBe(true);
   expect(readRoomPreferences().sharingView).toBe(false);
   expect(readRoomPreferences().remoteTouchMode).toBe("direct");
-  saveRoomPreferences({ sharingView: true, pictureFit: "cover", pictureRotation: 270, previewAutoPause: false, routePreference: "p2p", keyboardPage: "text", combineKeys: true });
+  saveRoomPreferences({ sharingView: true, pictureFit: "cover", pictureRotation: 270, previewAutoPause: false, keyboardPage: "text", combineKeys: true });
   saveRoomPreferences({ remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8, remoteTouchMode: "trackpad",
     voiceListeningVolume: 1.5, voiceInput: { deviceId: "", volume: 2, voiceProcessing: true } });
-  expect(readRoomPreferences()).toMatchObject({ sharingView: true, pictureFit: "cover", pictureRotation: 270, previewAutoPause: false, routePreference: "p2p", keyboardPage: "text",
+  expect(readRoomPreferences()).toMatchObject({ sharingView: true, pictureFit: "cover", pictureRotation: 270, previewAutoPause: false, keyboardPage: "text",
     combineKeys: true, remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8, remoteTouchMode: "trackpad",
     voiceListeningVolume: 1.5, voiceInput: { deviceId: "", volume: 2, voiceProcessing: true } });
 
@@ -71,7 +71,7 @@ it("restores overlay choices in a new room without restoring messages or room au
 
 it("keeps room tools working when Browser storage is unavailable", () => {
   vi.stubGlobal("window", { get localStorage() { throw new Error("storage denied"); } });
-  expect(readRoomPreferences()).toMatchObject({ pictureFit: "contain", routePreference: "auto", remoteControlMode: "ask", remoteTouchMode: "direct" });
+  expect(readRoomPreferences()).toMatchObject({ pictureFit: "contain", remoteControlMode: "ask", remoteTouchMode: "direct" });
   expect(() => saveRoomPreferences({ keyboardPage: "symbols" })).not.toThrow();
   const session = new RoomInteractionSession(() => true);
   session.setOverlayEnabled(true);

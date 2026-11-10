@@ -34,7 +34,7 @@ export type NativeConnectionMetrics = z.infer<typeof nativeConnectionMetricsSche
 const captureSourcesSchema = z.object({ sources: z.array(nativeCaptureTargetSchema),
   codecs: z.array(nativeVideoCodecSchema),
   videoAdaptation: z.boolean(),
-  processAudio: z.boolean(), processAudioExclusion: z.boolean().default(false), systemAudio: z.boolean(), captureBorderControl: z.boolean(), activationURL: z.string().url().max(512).optional() }).strict();
+  processAudio: z.boolean(), processAudioExclusion: z.boolean(), systemAudio: z.boolean(), captureBorderControl: z.boolean(), activationURL: z.string().url().max(512).optional() }).strict();
 export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
 export type NativeCaptureRequest = { publicationId: string; activationURL: string };
 const preparedCaptureSchema = z.object({ captureId: z.uuid(), sessionId: z.uuid(), codec: nativeVideoCodecSchema }).strict();

@@ -1336,7 +1336,7 @@ test.each([
     const target = { kind: "display" as const, sourceId: "1", title: "Owned fixture" };
     const listing = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
-    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs, videoAdaptation: true, processAudio: false, systemAudio: false, captureBorderControl: false } });
+    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs, videoAdaptation: true, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false } });
     await listing;
     const selecting = session.startNativeScreen("first", target).catch(error => error);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
@@ -2381,7 +2381,7 @@ test.each([
     const target = { kind: "picker" as const, sourceId: "1", title: "System picker" };
     const sources = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
-    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs: ["h264"], videoAdaptation: true, processAudio: false, systemAudio: false, captureBorderControl: false, activationURL: "piik://media" } });
+    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs: ["h264"], videoAdaptation: true, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false, activationURL: "piik://media" } });
     await sources;
     const nativeSessionId = crypto.randomUUID(), oldCaptureId = crypto.randomUUID(), captureId = crypto.randomUUID();
     const starting = session.startNativeScreen("first", target);

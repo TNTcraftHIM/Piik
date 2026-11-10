@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { viewerRoutePreferenceSchema } from "../../shared/protocol";
 import { MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
 import { remoteControlModeSchema, remoteShortcutKeySchema } from "../remote-control/protocol";
 
@@ -13,7 +12,6 @@ const roomPreferencesSchema = z.object({
   pictureFit: z.enum(["contain", "cover", "fill"]).default("contain"),
   pictureRotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).catch(0).default(0),
   previewAutoPause: z.boolean().default(true),
-  routePreference: viewerRoutePreferenceSchema.default("auto"),
   relayCapacityByRoom: z.record(z.string(), z.number().int().min(0).max(MAX_RELAY_CAPACITY)).default({}),
   overlayEnabled: z.boolean().default(false),
   overlayAppearance: z.object({
