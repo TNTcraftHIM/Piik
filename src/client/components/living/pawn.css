@@ -3,6 +3,7 @@
 .lr-person-eyes { transform-origin: 24px 14.1px; }
 /* Keep the same SVG parts mounted so a second toggle reverses the gesture. */
 .lr-person-headset, .lr-person-collaboration { opacity: 0; }
+.lr-person-headset { color: var(--ink); }
 .lr-person-status[data-voice] .lr-person-headset,
 .lr-person-status[data-collaboration] .lr-person-collaboration { opacity: 1; }
 .lr-person-collaboration { transform: translateY(2px) scale(.94); transform-origin: 24px 40px; }
