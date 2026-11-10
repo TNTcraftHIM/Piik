@@ -283,6 +283,12 @@ pub struct PauseCapture {
     pub paused: bool,
     pub result: oneshot::Sender<Result<(), String>>,
 }
+pub struct TitleCapture {
+    pub scope: CaptureScope,
+    pub capture_id: Uuid,
+    pub title: Option<String>,
+    pub result: oneshot::Sender<Result<(), String>>,
+}
 pub struct PublishCaptureSettings {
     pub scope: CaptureScope,
     pub capture_id: Uuid,
@@ -294,6 +300,7 @@ enum PendingCapture {
     Commit(CommitCapture),
     Transfer(TransferSource),
     Pause(PauseCapture),
+    Title(TitleCapture),
     Settings(PublishCaptureSettings),
 }
 impl PendingCapture {
@@ -302,6 +309,7 @@ impl PendingCapture {
             Self::Prepare(_) => None,
             Self::Commit(r) => Some(&r.scope),
             Self::Transfer(r) => Some(&r.scope),
+            Self::Title(r) => Some(&r.scope),
             Self::Pause(r) => Some(&r.scope),
             Self::Settings(r) => Some(&r.scope),
         }
@@ -323,6 +331,7 @@ impl PendingCapture {
             Self::Prepare(request) => request.result.is_closed(),
             Self::Commit(r) => r.result.is_closed(),
             Self::Transfer(r) => r.result.is_closed(),
+            Self::Title(r) => r.result.is_closed(),
             Self::Pause(r) => r.result.is_closed(),
             Self::Settings(r) => r.result.is_closed(),
         }
@@ -336,6 +345,9 @@ impl PendingCapture {
                 let _ = r.result.send(Err(code));
             }
             Self::Transfer(r) => {
+                let _ = r.result.send(Err(code));
+            }
+            Self::Title(r) => {
                 let _ = r.result.send(Err(code));
             }
             Self::Pause(r) => {
@@ -372,6 +384,7 @@ pub enum HostCommand {
     CommitCapture(CommitCapture),
     TransferSource(TransferSource),
     PauseCapture(PauseCapture),
+    TitleCapture(TitleCapture),
     PublishCaptureSettings(PublishCaptureSettings),
 }
 impl HostCommand {
@@ -399,6 +412,9 @@ impl HostCommand {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
             }
             Self::TransferSource(request) => {
+                let _ = request.result.send(Err("hosting_unavailable".into()));
+            }
+            Self::TitleCapture(request) => {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
             }
             Self::PauseCapture(request) => {
@@ -641,6 +657,7 @@ impl Session {
                                 HostCommand::PrepareCapture(request) => self.prepare_capture(request, socket).await?,
                                 HostCommand::CommitCapture(request) => self.commit_capture(request, socket).await?,
                                 HostCommand::TransferSource(request) => self.transfer_source(request, socket).await?,
+                                HostCommand::TitleCapture(request) => self.title_capture(request, socket).await?,
                                 HostCommand::PauseCapture(request) => self.pause_capture(request, socket).await?,
                                 HostCommand::PublishCaptureSettings(request) => self.publish_capture_settings(request, socket).await?,
                             } }
@@ -1147,6 +1164,9 @@ impl Session {
                         (PendingCapture::Transfer(request), RoomResult::Done) => {
                             let _ = request.result.send(Ok(()));
                         }
+                        (PendingCapture::Title(request), RoomResult::Done) => {
+                            let _ = request.result.send(Ok(()));
+                        }
                         (PendingCapture::Pause(request), RoomResult::Done) => {
                             let _ = request.result.send(Ok(()));
                         }
@@ -1322,6 +1342,7 @@ impl Session {
         } else {
             Command::Publish {
                 publication: PublicationInput {
+                    source: Some(Default::default()),
                     id: request.scope.publication_id,
                     room_id: request.scope.room_id.clone(),
                     kind: Kind::Screen,
@@ -1409,6 +1430,45 @@ impl Session {
         write(socket, &command, Some(&id)).await
     }
 
+    async fn title_capture(&mut self, request: TitleCapture, socket: &mut Socket) -> Result<()> {
+        if request.result.is_closed() {
+            return Ok(());
+        }
+        let Some(live) = self.live.as_mut() else {
+            let _ = request.result.send(Err("hosting_unavailable".into()));
+            return Ok(());
+        };
+        let current = await_peer(
+            live.peers.capture_current(request.capture_id, true),
+            &mut live.commands,
+            &live.pairs,
+            &mut live.room,
+            &live.peers,
+            socket,
+        )
+        .await?;
+        if !current
+            || live
+                .room
+                .snapshot
+                .borrow()
+                .as_ref()
+                .and_then(|state| capture_binding(state, &request.scope.room_id))
+                != Some(request.scope.binding_id)
+        {
+            let _ = request.result.send(Err("capture_unavailable".into()));
+            return Ok(());
+        }
+        let command = Command::SetTitle {
+            publication_id: request.scope.publication_id,
+            title: request.title.clone(),
+        };
+        let id = Uuid::new_v4().to_string();
+        self.pending_captures
+            .insert(id.clone(), PendingCapture::Title(request));
+        write(socket, &command, Some(&id)).await
+    }
+
     async fn publish_capture_settings(
         &mut self,
         request: PublishCaptureSettings,
@@ -1460,6 +1520,7 @@ impl Session {
         }
         let command = Command::Publish {
             publication: PublicationInput {
+                source: None,
                 id: request.scope.publication_id,
                 room_id: request.scope.room_id.clone(),
                 kind: Kind::Screen,
@@ -1500,6 +1561,7 @@ impl Session {
         {
             let command = Command::Publish {
                 publication: PublicationInput {
+                    source: None,
                     id: publication_id,
                     room_id: request.scope.room_id.clone(),
                     kind: Kind::Screen,
@@ -1520,7 +1582,26 @@ impl Session {
             socket,
         )
         .await;
+        let source = result.as_ref().ok().and_then(|input| input.source.clone());
         let _ = request.result.send(result.map_err(|e| e.to_string()));
+        // The producer is committed. Metadata follows the normal room projection;
+        // reporting failure must never roll back or cancel that producer.
+        if let Some(source) = source {
+            write(
+                socket,
+                &Command::Publish {
+                    publication: PublicationInput {
+                        id: publication_id,
+                        room_id: request.scope.room_id,
+                        kind: Kind::Screen,
+                        video_settings: publication.video_settings,
+                        source: Some(source),
+                    },
+                },
+                None,
+            )
+            .await?;
+        }
         Ok(())
     }
 

@@ -74,9 +74,8 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **3.0 screen titles and feedback.** Design editable screen titles with
-  capture-derived defaults, and quiet notification/
-  reaction sounds through the [existing identity and interaction owners](./research/room-interactions.md#identity-and-interaction-additions-proposed).
+- [ ] **3.0 feedback sounds.** Choose quiet notification and reaction sounds
+  and their personal controls through the [existing interaction owners](./research/room-interactions.md#sound-feedback-proposed).
 - [ ] **Unified 3.0 quick-sharing entry.** Bring the short create/share/invite/watch
   flow into the same room runtime and UI as the full workspace, then end long-term
   maintenance of a separate 2.x line; fix confirmed defects during the transition.

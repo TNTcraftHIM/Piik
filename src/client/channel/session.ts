@@ -3,7 +3,7 @@ import { ChannelMedia } from "./media";
 import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
 import { selectedRoom } from "./navigation";
-import { CHANNEL_PROTOCOL, channelTopologySchema, eventSchema, roomSummarySchema, userSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary } from "./protocol";
+import { CHANNEL_PROTOCOL, channelTopologySchema, eventSchema, roomSummarySchema, userSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView, ScreenPresentation, SourceMicrophoneConfiguration, SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage } from "./hosting";
@@ -68,6 +68,20 @@ interface ScreenShare {
   qualityChange?: Promise<void>;
   selection?: AbortController;
   native?: { target: NativeCaptureTarget; audio: boolean; excludeAudio?: NativeCaptureTarget; showCaptureBorder: boolean };
+}
+
+function captureSource(track: MediaStreamTrack | undefined, camera = false): ScreenSource {
+  const label = track?.label?.trim() ?? "";
+  // Chromium DeviceName exposes DesktopMediaID or a generated tab token, not a content title.
+  // chrome/browser/media/webrtc/desktop_capture_devices_util.cc (DeviceName).
+  if (!camera && (/^(?:screen|window):-?\d+:-?\d+(?::s)?$/.test(label)
+    || /^(?:current-)?web-contents-media-stream:\/\/[A-F0-9]{32}$/.test(label))) return { kind: "screen", name: null };
+  let name = "";
+  for (const character of label) {
+    if (name.length + character.length > 64) break;
+    name += character;
+  }
+  return { kind: camera ? "camera" : "screen", name: name || null };
 }
 
 function stored(key: string, value?: string): string | null {
@@ -1399,7 +1413,7 @@ export class ChannelSession {
   });
   clearError = (): void => this.patch({ error: null });
 
-  async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone, audio, profile, codec, camera, publicationId }: { microphone?: MicrophoneInput; audio?: HostAudio; profile?: QualityProfile; codec?: BrowserVideoCodecPreference; camera?: boolean; publicationId?: string } = {}): Promise<string> {
+  async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone, audio, profile, codec, camera, source, publicationId }: { microphone?: MicrophoneInput; audio?: HostAudio; profile?: QualityProfile; codec?: BrowserVideoCodecPreference; camera?: boolean; source?: ScreenSource; publicationId?: string } = {}): Promise<string> {
     const id = publicationId ?? crypto.randomUUID();
     const sourceProfile = kind === "screen" ? profile ?? this.view.quality : undefined;
     this.local.set(id, { roomId, kind, stream, microphone, audio, profile: sourceProfile, camera });
@@ -1407,7 +1421,7 @@ export class ChannelSession {
     try {
       if (microphone && !microphone.stream.active) throw new Error("microphone_unavailable");
       await this.request({ type: "publish", publication: { id, roomId, kind,
-        ...(sourceProfile ? { videoSettings: screenVideoSettings(sourceProfile) } : {}) } });
+        ...(sourceProfile ? { videoSettings: screenVideoSettings(sourceProfile), source: source ?? captureSource(stream.getVideoTracks()[0], camera) } : {}) } });
       const primary = kind === "screen" ? stream.getVideoTracks()[0] : stream.getAudioTracks()[0];
       if (primary?.readyState === "ended" || (microphone && !microphone.stream.active)) {
         this.send({ type: "unpublish", publicationId: id });
@@ -1471,6 +1485,7 @@ export class ChannelSession {
       candidate = await captureBrowserSource(share.profile, source, deviceId, share.selection!.signal);
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       const video = candidate.getVideoTracks()[0];
+      const metadata = captureSource(video, source === "camera");
       if (!video || video.readyState !== "live") throw new Error("capture_unavailable");
       const codec = share.codec ?? (share.codecMode === "auto"
         ? automaticVideoCodecPreference(await preferredVideoCodecForTrack(video, share.selection!.signal))
@@ -1528,20 +1543,24 @@ export class ChannelSession {
         candidate = undefined;
         audio = undefined;
         previous?.stream.getVideoTracks().forEach(track => track.stop());
+        const reporting = this.request({ type: "publish", publication: {
+          id: share.id, roomId, kind: "screen", videoSettings: screenVideoSettings(share.profile), source: metadata,
+        } }, undefined, roomId);
+        const stopping = !previous ? app!.stopCapture(share.id) : undefined;
         if (!previous) {
-          const stopping = app!.stopCapture(share.id);
           const remoteControls = new Map(this.view.remoteControls);
           remoteControls.delete(share.id);
           this.patch({ remoteControls });
-          await stopping;
           this.watching.delete(share.id);
           this.refreshActivity();
         }
+        const effects = await Promise.allSettled([reporting, stopping]);
+        for (const effect of effects) if (effect.status === "rejected") throw effect.reason;
       } else {
         const stream = candidate;
         candidate = undefined; // publish owns failure cleanup from this point.
         const mixer = audio; audio = undefined;
-        await this.publish("screen", roomId, stream, { audio: mixer, profile: share.profile, codec, camera: source === "camera", publicationId: share.id });
+        await this.publish("screen", roomId, stream, { audio: mixer, profile: share.profile, codec, camera: source === "camera", source: metadata, publicationId: share.id });
       }
     } finally {
       audio?.dispose();
@@ -1761,6 +1780,7 @@ export class ChannelSession {
     const signal = share.selection!.signal;
     const native = { target, audio, excludeAudio: target.kind === "display" ? excludeAudio : undefined, showCaptureBorder };
     let app: ChannelApp | undefined;
+    let committed = false;
     try {
       app = await this.connectApp();
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
@@ -1775,6 +1795,7 @@ export class ChannelSession {
       if (this.local.has(share.id)) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: prepared.sessionId }, undefined, roomId);
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       await app.commitCapture(share.id, prepared.captureId);
+      committed = true;
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       share.native = native;
       share.paused = undefined;
@@ -1784,10 +1805,22 @@ export class ChannelSession {
       // Native owns the source; this page previews it through the ordinary route.
       if (!this.watching.has(share.id)) await this.watch(share.id, roomId, signal);
     } catch (error) {
-      await app?.cancelCapture(share.id).catch(() => {});
+      if (!committed) await app?.cancelCapture(share.id).catch(() => {});
       throw error;
     } finally { this.finishScreenSelection(roomId, share); }
   });
+  setScreenTitle = async (publicationId: string, title: string | null): Promise<void> => {
+    const publication = this.view.state?.publications.find(value => value.id === publicationId && value.kind === "screen");
+    if (!publication) throw new Error("publication_unavailable");
+    if (this.view.connection !== "connected") throw new Error("disconnected");
+    const normalized = title?.trim() || null;
+    if (normalized && normalized.length > 64) throw new Error("invalid_title");
+    if (this.local.get(publicationId)?.kind === "screen" && publication.sessionId === this.view.sessionId) {
+      await this.action(`title:${publicationId}`, () => this.request({ type: "set_title", publicationId, title: normalized }, undefined, publication.roomId), false);
+    } else if (this.app?.screens.has(publicationId)) {
+      await this.action(`title:${publicationId}`, () => this.app!.setCaptureTitle(publicationId, normalized), false);
+    } else throw new Error("not_publication_owner");
+  };
   setScreenPaused = async (publicationId: string, paused: boolean): Promise<void> => {
     const publication = this.view.state?.publications.find(value => value.id === publicationId && value.kind === "screen");
     if (!publication) throw new Error("publication_unavailable");

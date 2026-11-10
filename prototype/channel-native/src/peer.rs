@@ -198,6 +198,7 @@ impl CaptureScope {
     }
 }
 pub struct CaptureInput {
+    pub source: Option<piik_channel_core::wire::ScreenSource>,
     pub remote: Option<crate::input::Source>,
     pub state: Option<watch::Receiver<crate::input::SourceView>>,
 }
@@ -1417,6 +1418,7 @@ impl Driver {
                     self.source_ready(source).await?;
                 }
                 return Ok(CaptureInput {
+                    source: None,
                     remote: None,
                     state: None,
                 });
@@ -1430,6 +1432,7 @@ impl Driver {
                 "publication_not_owned"
             );
             let target = capture.target.clone();
+            let source = target.screen_source();
             self.capture_audio[&publication]
                 .1
                 .control
@@ -1462,10 +1465,12 @@ impl Driver {
             }
             Ok(match input {
                 Some((remote, state)) => CaptureInput {
+                    source: Some(source),
                     remote: Some(remote),
                     state: Some(state),
                 },
                 None => CaptureInput {
+                    source: Some(source),
                     remote: None,
                     state: None,
                 },

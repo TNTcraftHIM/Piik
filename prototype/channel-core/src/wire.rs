@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 7;
+pub const CHANNEL_PROTOCOL: u8 = 8;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -126,6 +126,10 @@ pub enum Command {
     },
     Unpublish {
         publication_id: Uuid,
+    },
+    SetTitle {
+        publication_id: Uuid,
+        title: Option<String>,
     },
     SetPaused {
         publication_id: Uuid,
@@ -289,6 +293,8 @@ pub enum Kind {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PublicationInput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<ScreenSource>,
     pub id: Uuid,
     pub room_id: String,
     pub kind: Kind,
@@ -401,6 +407,7 @@ fn video_settings_preserves_fractional_fps_and_rejects_invalid_source_facts() {
     assert!(validate_video_settings(Kind::Screen, None).is_err());
     assert!(validate_video_settings(Kind::Voice, Some(settings(valid))).is_err());
     let input = PublicationInput {
+        source: None,
         id: Uuid::new_v4(),
         room_id: "room".into(),
         kind: Kind::Voice,
@@ -628,6 +635,8 @@ pub enum RoomInvitation {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublicationInfo {
+    #[serde(flatten)]
+    pub screen: Option<ScreenInfo>,
     pub id: Uuid,
     pub room_id: String,
     pub session_id: Uuid,
@@ -817,4 +826,24 @@ pub enum Event {
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreenInfo {
+    pub source: ScreenSource,
+    pub title: Option<String>,
+}
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScreenSource {
+    pub kind: ScreenSourceKind,
+    pub name: Option<String>,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScreenSourceKind {
+    #[default]
+    Screen,
+    Camera,
 }

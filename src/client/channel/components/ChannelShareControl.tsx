@@ -11,13 +11,52 @@ import { MAX_AUDIO_SEND_BITRATE, QUALITY_PROFILES, VIDEO_CAPTURE_LIMITS, capture
 import { activateNativePicker } from "../../native/activation";
 import type { NativeCaptureSources } from "../app-link";
 import type { ChannelController } from "../types";
+import { screenTitle } from "../presentation";
+import { channelErrorPresentation } from "../error-presentation";
+import { useSettingsAction } from "./ChannelSettingsDialog";
+import type { ChannelPublication } from "../protocol";
 import "./channel-share-control.css";
+
+function ShareTitleEditor({ sharing, channel, disabled }: {
+  sharing: Extract<ChannelPublication, { kind: "screen" }>; channel: ChannelController; disabled: boolean;
+}) {
+  const { lang } = useCopy(), zh = lang === "zh";
+  const id = useId(), details = useRef<HTMLDetailsElement>(null);
+  const [open, setOpen] = useState(false), [draft, setDraft] = useState("");
+  const { error, run } = useSettingsAction(open);
+  const pending = channel.pending.has(`title:${sharing.id}`);
+  const automatic = screenTitle({ ...sharing, title: null }, lang);
+  const { message } = channelErrorPresentation(error, (cn, en) => zh ? cn : en);
+  const close = () => { if (details.current) details.current.open = false; };
+  return <details ref={details} className="c3-share-title" onToggle={event => {
+    if (event.target !== event.currentTarget) return;
+    setOpen(event.currentTarget.open);
+    if (event.currentTarget.open) setDraft(sharing.title ?? "");
+  }}>
+    <summary>{zh ? "分享标题" : "Share title"}</summary>
+    {open && <form onSubmit={event => {
+      event.preventDefault();
+      if (!disabled && !pending) void run(() => channel.setScreenTitle(sharing.id, draft.trim() || null), close);
+    }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}>
+      <label htmlFor={id}>{zh ? "分享标题" : "Share title"}</label>
+      <span className="lr-input"><input id={id} value={draft} maxLength={64} placeholder={automatic}
+        autoComplete="off" disabled={disabled || pending} onChange={event => setDraft(event.target.value)} aria-describedby={`${id}-help`} /></span>
+      <p id={`${id}-help`}>{zh ? "留空并保存，使用来源名称。更换来源会保留自定义标题。" : "Save an empty title to use the source name. Custom titles stay when you switch sources."}</p>
+      <div className="c3-share-title-actions">
+        <Btn icon="check" type="submit" cap={{ text: zh ? "保存" : "Save" }} title={{ text: zh ? "保存标题" : "Save title" }}
+          tone="primary" size="compact" busy={pending} disabled={disabled || pending} />
+        <Btn icon="x" cap="common.cancel" title="common.cancel" quiet size="compact" disabled={pending} onClick={close} />
+      </div>
+      {message && <p className="c3-settings-error" role="alert">{message}</p>}
+    </form>}
+  </details>;
+}
 
 export function ChannelShareControl({ channel, roomId, publicationId, compact = false, disabled }: {
   channel: ChannelController; roomId: string; publicationId?: string; compact?: boolean; disabled: boolean;
 }) {
   const { t, vis, lang } = useCopy();
-  const settingsLabel = lang === "zh" ? "画质与声音" : "Picture and sound";
+  const settingsLabel = lang === "zh" ? "分享设置" : "Share settings";
   const id = useId();
   const trigger = useRef<HTMLSpanElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -38,7 +77,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     publication.id === publicationId && publication.roomId === roomId && channel.ownedScreens.has(publication.id)) : undefined;
   const roomName = sharing ? channel.state?.channel.rooms.find(room => room.id === roomId)?.name : undefined;
   const settingsTitle = roomName
-    ? lang === "zh" ? `${roomName}的画质与声音` : `Picture and sound in ${roomName}`
+    ? lang === "zh" ? `${roomName}的分享设置` : `Share settings in ${roomName}`
     : settingsLabel;
   const currentCamera = sharing ? channel.streams.get(sharing.id)?.getVideoTracks()
     .find(track => track.readyState === "live")?.getSettings().deviceId : undefined;
@@ -116,8 +155,9 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     <div ref={settingsPanel} id={`${id}-settings`} popover="auto" role="dialog" aria-label={settingsTitle} className="lr-anchored-card c3-quality-picker"
       onToggle={event => { if (event.target === event.currentTarget) setSettingsOpen(event.newState === "open"); }}>
       {(!vis || roomName) && <div className="c3-quality-heading"><h3>{vis ? roomName : settingsLabel}</h3>
-        {!vis && <p>{sharing ? (lang === "zh" ? `调整${roomName ?? "当前房间"}中的分享，修改即时生效。` : `Changes apply to your share in ${roomName ?? "this room"}.`)
+        {!vis && <p>{sharing ? (lang === "zh" ? `调整你在${roomName ?? "当前房间"}中的分享。` : `Changes apply to your share in ${roomName ?? "this room"}.`)
           : (lang === "zh" ? "用于你接下来开始的分享。" : "Used when you start your next share.")}</p>}</div>}
+      {settingsOpen && sharing?.kind === "screen" && <ShareTitleEditor key={sharing.id} sharing={sharing} channel={channel} disabled={disabled || busy} />}
       <SharingSettings id={`${id}-quality`} open={settingsOpen} busy={qualityPending || microphonePending}
         presets={<QualityPresets selected={matchingQualityProfileId(quality)} disabled={busy} busy={qualityPending}
           onSelect={preset => setQuality({ ...QUALITY_PROFILES[preset], maxAudioBitrate: quality.maxAudioBitrate })} />}

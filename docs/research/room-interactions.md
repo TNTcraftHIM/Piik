@@ -485,7 +485,7 @@ Piik keeps its independent sharing lifecycle and couch rather than making a voic
 call a prerequisite for watching or sharing. [Visual language](../standards/visual-language.md#30-channel-workspace)
 owns accepted layout rules; [TODO](../todo.md) owns remaining integration work.
 
-### Identity And Interaction Additions (PROPOSED)
+### Identity And Share Titles
 
 The selected personal-avatar treatment places the image inside the Pawn's body,
 keeping its head, identity colour, headset and motion. Use the same Pawn across
@@ -498,14 +498,18 @@ the automatic name, with a readable Screen/Camera fallback. A user override
 survives successful source replacement; clearing it restores automatic naming.
 Cancelled source selection does not change the title. Keep the sharer and room
 visible separately, and do not expose raw capture IDs or paths as a title.
+The current source endpoint owns changes; Native edits use the selecting page's
+active capture lease. Titles live with the publication, not saved room history.
+Renaming changes presentation without replacing media paths or input grants.
+
+### Sound Feedback (PROPOSED)
 
 Basic notification and throw sounds are personal feedback. Reuse confirmed room
 events once, independently of visual surfaces, so moving a panel or replaying
 history does not replay sound. Keep them outside outgoing audio mixers, with
 separate personal sound controls and original or explicitly licensed assets.
-Defaults and sample sounds remain design decisions. The source-avatar reaction
-entry reuses the source room's existing quick-reaction and cooldown owner.
-These additions are proposed; the audience feature uses the accepted network owner.
+Defaults and sample sounds remain design decisions. Reuse the source room's
+existing reaction and cooldown owner.
 
 ### Extension Boundaries (PROPOSED)
 

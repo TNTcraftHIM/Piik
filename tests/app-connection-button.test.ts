@@ -77,7 +77,7 @@ describe("shared App connection entry", () => {
     expect(button.includes("disabled")).toBe(!entry.available);
     expect(button.toLowerCase().includes("popovertarget=")).toBe(entry.picker);
     expect(html.match(/<button\b/g)).toHaveLength(2);
-    expect(html).toMatch(/aria-label="(?:Picture and sound|画质与声音)"/);
+    expect(html).toMatch(/aria-label="(?:Share settings|分享设置)"/);
   });
   it("binds live controls to their owned publication without retargeting a retired source", () => {
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn() } });
@@ -90,7 +90,7 @@ describe("shared App connection entry", () => {
     const html = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", publicationId: "mine", compact: true, disabled: false }));
     expect(html).toMatch(/aria-label="(?:Switch source in Friday|切换Friday的分享源)"/);
     expect(html.match(/<button\b/g)).toHaveLength(2);
-    expect(html).toMatch(/aria-label="(?:Picture and sound in Friday|Friday的画质与声音)"/);
+    expect(html).toMatch(/aria-label="(?:Share settings in Friday|Friday的分享设置)"/);
     const elsewhere = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "other", disabled: false }));
     expect(elsewhere).not.toMatch(/aria-label="(?:Switch source|切换来源)"/);
     expect(renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "other", publicationId: "mine", disabled: false }))).toBe("");
@@ -223,7 +223,7 @@ describe("App connection approval", () => {
       const url = new URL(input), port = Number(url.port);
       if (port === NATIVE_CLIENT_PORT_START) return Response.json({ service: "piik-client", protocol: 10, port, instanceToken: "fixture-token" });
       if (current && port === NATIVE_CLIENT_PORT_START + 1) {
-        const identity = { service: "piik-channel-app", protocol: 6, port };
+        const identity = { service: "piik-channel-app", protocol: 7, port };
         if (url.pathname === "/connect-discovery") return Response.json({ ...identity, connectURL: `http://127.0.0.1:${port}/client` });
         return authorized ? Response.json({ ...identity, token: "fixture-token" }) : new Response(null, { status: 403 });
       }
@@ -251,7 +251,7 @@ describe("App connection approval", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: string) => {
       const port = Number(new URL(input).port);
       if (port !== NATIVE_CLIENT_PORT_START) throw new TypeError("No fixture App");
-      return Response.json({ service: "piik-channel-app", protocol: 6, port, token: "fixture-token" });
+      return Response.json({ service: "piik-channel-app", protocol: 7, port, token: "fixture-token" });
     }));
     await expect(discovery.health()).resolves.toMatchObject({ port: NATIVE_CLIENT_PORT_START });
   });

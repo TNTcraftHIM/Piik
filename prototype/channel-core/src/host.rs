@@ -279,10 +279,15 @@ impl RoomRuntime {
                 publication.id,
                 publication.kind,
                 publication.video_settings,
+                publication.source,
             )?,
             Command::Unpublish { publication_id } => {
                 self.unpublish(session, publication_id)?;
             }
+            Command::SetTitle {
+                publication_id,
+                title,
+            } => self.set_title(session, publication_id, title)?,
             Command::SetPaused {
                 publication_id,
                 paused,
@@ -406,10 +411,24 @@ mod tests {
         let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
         let settings = serde_json::from_value(serde_json::json!({"ceiling":{"resolution":{"width":640,"height":360},"maxFramerate":30,"maxBitrate":1000000},"degradationPreference":"balanced"})).unwrap();
         host.room
-            .publish(sharer, first, a, crate::wire::Kind::Screen, Some(settings))
+            .publish(
+                sharer,
+                first,
+                a,
+                crate::wire::Kind::Screen,
+                Some(settings),
+                Some(crate::wire::ScreenSource::default()),
+            )
             .unwrap();
         host.room
-            .publish(sharer, second, b, crate::wire::Kind::Screen, Some(settings))
+            .publish(
+                sharer,
+                second,
+                b,
+                crate::wire::Kind::Screen,
+                Some(settings),
+                Some(crate::wire::ScreenSource::default()),
+            )
             .unwrap();
         let send = |host: &mut RoomHost, nonce, target, reaction: &str, now, fail| {
             let request = ConversationRequest {
@@ -503,7 +522,14 @@ mod tests {
         );
         host.room.set_paused(first, a, true).unwrap();
         host.room
-            .publish(sharer, first, a, crate::wire::Kind::Screen, Some(settings))
+            .publish(
+                sharer,
+                first,
+                a,
+                crate::wire::Kind::Screen,
+                Some(settings),
+                Some(crate::wire::ScreenSource::default()),
+            )
             .unwrap();
         assert_eq!(
             host.room
@@ -552,6 +578,7 @@ mod tests {
                 fresh,
                 crate::wire::Kind::Screen,
                 Some(settings),
+                Some(crate::wire::ScreenSource::default()),
             )
             .unwrap();
         assert!(host

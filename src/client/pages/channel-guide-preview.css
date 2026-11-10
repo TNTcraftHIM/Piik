@@ -3,7 +3,7 @@
 .c3-guide-main { min-width: 0; }
 .c3-guide-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 18px 24px; border-bottom: 1px solid var(--line); }
 .c3-guide-title { display: flex; align-items: center; gap: 8px; }
-.c3-guide-main > .c3-conversation { height: 300px; min-height: 0; }
+.c3-guide-main > .c3-conversation { height: 360px; min-height: 0; }
 .c3-guide-room .c3-room-start { display: none; }
 .c3-guide-room .c3-voice-dock { margin: 0; border-radius: 0; border-inline: 0; border-bottom: 0; }
 @media (max-width: 700px) {

@@ -367,6 +367,10 @@ mod tests {
                 signing_key: [0; 32],
             }],
             publications: vec![PublicationInfo {
+                screen: Some(piik_channel_core::wire::ScreenInfo {
+                    source: Default::default(),
+                    title: None,
+                }),
                 id: id(4),
                 room_id: "room".into(),
                 session_id: id(1),
@@ -514,6 +518,20 @@ mod tests {
                 "pause retired the input source"
             );
         }
+        snapshot.send_modify(|state| {
+            let screen = state.as_mut().unwrap().publications[0]
+                .screen
+                .as_mut()
+                .unwrap();
+            screen.title = Some("Custom title".into());
+            screen.source.name = Some("New window".into());
+        });
+        input.reconcile();
+        assert!(input.registrations(vec![registration.clone()]).is_empty());
+        assert!(
+            source.set_mode(crate::input::Mode::Room).is_ok(),
+            "metadata retired input consent"
+        );
         input.end_source(id(4));
         assert!(input.sources.contains_key(&id(4)));
         assert!(input.bindings.contains_key(&(id(4), id(3))));

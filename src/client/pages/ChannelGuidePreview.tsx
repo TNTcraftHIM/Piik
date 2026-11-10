@@ -84,18 +84,18 @@ export function useChannelGuideSample(multiRoom = false) {
     { id: "ready", seq: 2, userId: "sample-bo", text: zh ? "我也加入语音了，随时可以开始。" : "I've joined voice too. Ready when you are.", time: new Date(2020, 0, 1, 20, 1).getTime(), attachments: [] },
     ...(messagesByRoom.friday ?? []),
   ];
-  const users = (multiRoom ? ["Ada", "Bo", "Coco", "Dora", "Eli", "Finn", "Gia", "Hana"] : ["Ada", "Bo"])
+  const users = (multiRoom ? ["Ada", "Bo", "Coco", "Dora", "Eli", "Finn", "Gia", "Hana", "Iris"] : ["Ada", "Bo"])
     .map(name => ({ id: `sample-${name.toLowerCase()}`, name, avatar: null, ...(name === "Ada" ? profile : {}) }));
   const rooms = [{ id: "friday", name: roomName, icon: "couch" },
     ...(multiRoom ? [{ id: "studio", name: zh ? "创作小屋" : "Creative studio", icon: "star" }] : [])]
     .map(room => ({ creatorId: "sample-ada", access: "private", hidden: false, hasPassword: false,
       authorized: true, canManage: true, available: true, reading: true,
       delivery: { hostSessionId: "sample-ada-session", bindingId: `sample-binding-${room.id}`, nextHops: {} },
-      participantSessionIds: ["sample-ada-session", "sample-bo-session"], capabilities: { attachments: true },
+      participantSessionIds: room.id === "studio" ? ["sample-coco-session", ...(voiceByRoom.studio ? ["sample-ada-session"] : [])] : ["sample-ada-session", "sample-bo-session"], capabilities: { attachments: true },
       ...room, ...settingsByRoom[room.id] }));
   const state = snapshotSchema.parse({ channel: { id: "sample", name: "Friends", icon: "couch", ownerId: "sample-ada", historyWindow: 1000,
     rooms }, users,
-    sessions: users.map(user => ({ id: `${user.id}-session`, userId: user.id, online: true, signingKey: Array(32).fill(0) })),
+    sessions: users.map(user => ({ id: `${user.id}-session`, userId: user.id, online: user.id !== "sample-iris", signingKey: Array(32).fill(0) })),
     publications: Object.keys(voiceByRoom).map(roomId => ({ audience: [], id: `voice-${roomId}`, kind: "voice", roomId,
       sessionId: "sample-ada-session", userId: "sample-ada", paused: false })),
     voice: [...Object.entries(voiceByRoom).map(([roomId, voice]) => ({ sessionId: "sample-ada-session", roomId, ...voice })),
@@ -120,6 +120,7 @@ export function useChannelGuideSample(multiRoom = false) {
     },
     nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined,
     nativeSources: async () => sources, nativePreview: previewSource, cameraPreviews: previewCameras,
+    setScreenTitle: async () => received(),
     sourceMicrophones: async () => [], startScreen: async () => received(), startNativeScreen: async () => received(),
     voiceInput, listeningVolume, voiceActivity,
     roomTopology: async (roomId: string, publicationId?: string) => sampleRoomTopology(state, roomId, publicationId),

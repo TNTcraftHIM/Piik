@@ -273,7 +273,7 @@ If it still fails, [collect reports](#reporting-a-problem) from the same attempt
 
 ### H264 sharing fails on Windows
 
-1. **Compare codecs on the same source.** In **Picture and sound → Picture → Fine-tune picture**, change the
+1. **Compare codecs on the same source.** In **Share settings → Picture → Fine-tune picture**, change the
    video codec from **H264** to **Auto** or **VP8**, then start sharing again.
    If VP8 works, you can keep using it while checking the H264 path.
 2. **Update and restart.** Update Piik App and Chrome, and install the appropriate
@@ -317,7 +317,7 @@ If it recurs or never recovers, compare the following:
 1. **Identify who is affected.** Is it the sharer's preview, every viewer or just
    one viewer? Note the time and whether it recovers on its own.
 2. **Change one thing at a time.** The sharer can try a lower resolution or frame
-   rate under **Picture and sound → Picture**, and check CPU/GPU load while the game runs.
+   rate under **Share settings → Picture**, and check CPU/GPU load while the game runs.
    An affected viewer can compare another browser or a phone hotspot. Increasing
    bitrate does not necessarily help.
 3. **Compare capture paths.** Stop this share, then try Auto or VP8 before starting again. Compare App window/screen capture with Browser capture on the same source. Software encoding can compete with a game for CPU; App hardware encoding and Browser settings are separate.
@@ -435,7 +435,7 @@ device before restarting screen sharing.
 ### Cannot hear someone speaking
 
 For speech added through **Include my microphone**, check the picture's
-[source sound](#picture-but-no-source-sound) and the sharer's **Picture and sound → Sound**.
+[source sound](#picture-but-no-source-sound) and the sharer's **Share settings → Sound**.
 For room voice, follow these steps:
 
 1. Both people use **Join voice** in the same room and allow microphone access. Check that the voice-room selector is controlling the intended room and the microphone is not muted.

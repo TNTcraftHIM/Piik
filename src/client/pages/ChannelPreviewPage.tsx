@@ -221,6 +221,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
         <div className={`c3-workspace${visibleScreens.length ? " has-screens" : ""}${inlineChatOpen && !toolSurface.open ? "" : " chat-collapsed"}`} hidden={overview}>
           <ChannelStage sources={[...visibleScreens, ...availableScreens].map(publication => ({
             id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
+            source: publication.source, title: publication.title, onRoom: () => selectRoom(publication.roomId),
             avatar: state?.users.find(user => user.id === publication.userId)?.avatar ?? undefined,
             audience: state ? screenAudience(state, publication) : [],
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id),

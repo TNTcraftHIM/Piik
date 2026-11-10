@@ -11,7 +11,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 7;
+export const CHANNEL_PROTOCOL = 8;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("missing") }),
@@ -32,14 +32,16 @@ export const roomSchema = z.object({
   delivery: z.object({ hostSessionId: id, bindingId: id, nextHops: z.record(id, id) }).optional(),
 });
 export const roomSummarySchema = roomSchema.pick({ id: true, name: true, icon: true, creatorId: true, access: true, hidden: true, hasPassword: true, voiceBitrate: true, relayCapacity: true });
+export const screenSourceSchema = z.object({ kind: z.enum(["screen", "camera"]), name: identityNameSchema.nullable() });
+export type ScreenSource = z.infer<typeof screenSourceSchema>;
 const publicationBaseSchema = z.object({
   id, roomId: id, sessionId: id, userId: id,
   paused: z.boolean(),
   audience: z.array(z.object({ sessionId: id, state: z.enum(["preparing", "active", "failed"]) })).max(20),
 });
 export const publicationSchema = z.discriminatedUnion("kind", [
-  publicationBaseSchema.extend({ kind: z.literal("screen"), videoSettings: videoSettingsSchema }),
-  publicationBaseSchema.extend({ kind: z.literal("voice"), videoSettings: z.never().optional(), audience: z.array(z.never()).max(0) }),
+  publicationBaseSchema.extend({ kind: z.literal("screen"), videoSettings: videoSettingsSchema, source: screenSourceSchema, title: identityNameSchema.nullable() }),
+  publicationBaseSchema.extend({ kind: z.literal("voice"), videoSettings: z.never().optional(), source: z.never().optional(), title: z.never().optional(), audience: z.array(z.never()).max(0) }),
 ]);
 export const attachmentSchema = z.object({
   id, name: z.string().min(1).max(240), size: z.number().int().nonnegative().safe(),
@@ -164,7 +166,8 @@ export type ChannelCommand =
   | { type: "get_room_invite"; roomId: string }
   | { type: "room_topology"; roomId: string; publicationId?: string }
   | { type: "revoke_room_access"; roomId: string; userId: string }
-  | { type: "publish"; publication: { id: string; roomId: string; kind: "screen" | "voice"; videoSettings?: VideoSettings } }
+  | { type: "publish"; publication: { id: string; roomId: string; kind: "screen" | "voice"; videoSettings?: VideoSettings; source?: ScreenSource } }
+  | { type: "set_title"; publicationId: string; title: string | null }
   | { type: "unpublish"; publicationId: string }
   | { type: "set_paused"; publicationId: string; paused: boolean }
   | { type: "transfer_source"; publicationId: string; toSessionId: string }

@@ -35,10 +35,10 @@
 .c3-monitor-tile[data-focusable] .c3-video { cursor: pointer; }
 .c3-monitor-tile > footer { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 8px; }
 .c3-monitor-tile > footer > svg { width: 20px; height: 26px; flex: none; }
-.c3-monitor-source { min-width: 0; flex: 1 1 100px; display: flex; align-items: baseline; gap: 6px; }
+.c3-monitor-source { min-width: 0; flex: 1 1 100px; display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
 .c3-monitor-source > .lr-comic-tip-wrap { display: block; min-width: 0; }
-.c3-monitor-source > .lr-comic-tip-wrap:first-child { flex: 0 1 auto; }
-.c3-monitor-source > .lr-comic-tip-wrap:last-child { flex: 1 1 0; }
+.c3-monitor-source > .lr-comic-tip-wrap:first-child { flex: none; }
+.c3-monitor-source > .lr-comic-tip-wrap:last-child { flex: none; }
 .c3-monitor-source small { margin-top: 0; }
 .c3-monitor-source small > svg { vertical-align: -2px; margin-inline-end: 4px; }
 .c3-monitor-source :is(strong, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -87,3 +87,7 @@
 @media (prefers-reduced-motion: reduce) {
   .c3-monitor-tile.is-focused > footer { transition: none; }
 }
+
+.c3-source-room { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
+.c3-source-room:hover { color: var(--ink); }
+.c3-source-status { color: var(--muted); font-size: 10px; }

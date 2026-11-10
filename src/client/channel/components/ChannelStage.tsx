@@ -19,7 +19,7 @@ import { Btn, Cap } from "../../components/living/primitives";
 import { Tooltip } from "../../components/living/Tooltip";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { ChannelUser } from "./ChannelUser";
-import type { ScreenAudiencePerson } from "../presentation";
+import { screenTitle, type ScreenAudiencePerson } from "../presentation";
 import type { MessageReactions } from "../protocol";
 import { ChannelContentReactions } from "./ChannelContentReactions";
 
@@ -27,6 +27,9 @@ export interface ChannelStageSource {
   id: string;
   userId: string;
   name: string;
+  source: { kind: "screen" | "camera"; name: string | null };
+  title: string | null;
+  onRoom?: () => void;
   avatar?: string;
   roomName: string;
   /** This page controls the share; its actual endpoint can be the App. */
@@ -166,10 +169,10 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
               </button>
             </Tooltip>
           </div>
-          {focused && <span className="c3-monitor-focus-name"><Glyph name="eye" size={15} />{focused.name}</span>}
+          {focused && <span className="c3-monitor-focus-name"><Glyph name="eye" size={15} />{screenTitle(focused, lang)}</span>}
           {focused && <label className="c3-theater-source"><Cap k={{ text: copy("切换画面", "Switch screen") }} />
             <select className="lr-select" aria-label={copy("切换画面", "Switch screen")} value={focused?.id ?? ""} onChange={event => onFocus(event.target.value)}>
-              {active.map(source => <option key={source.id} value={source.id}>{source.name} — {source.roomName}</option>)}
+              {active.map(source => <option key={source.id} value={source.id}>{screenTitle(source, lang)} / {source.name} / {source.roomName}</option>)}
             </select></label>}
         </div>}
       </header>
@@ -183,11 +186,12 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
           const centeredStart = !focused && remainder && index === active.length - remainder ? (columns ?? 1) - remainder + 1 : undefined;
           const microphone = source.sourceMicrophone;
           const sourceStatus = source.paused ? t("host.paused") : source.owned ? copy("本机预览", "Local preview") : "";
-          const sourceDetail = (!vis && sourceStatus ? `${sourceStatus} / ` : "") + source.roomName;
+          const sourceDetail = `${source.name} / ${source.roomName}`;
+          const title = screenTitle(source, lang);
           return <article key={source.id} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
             style={centeredStart ? { gridColumn: `${centeredStart} / span 2` } : undefined}
             data-publication-id={source.id} data-focusable={focusable || undefined}
-            aria-label={`${source.name} — ${source.roomName}`}
+            aria-label={`${title} / ${source.name} / ${source.roomName}`}
             onClick={event => {
               if (!focusable || (event.target instanceof Element && event.target.closest("button, input, select, a, [popover]"))) return;
               onFocus(source.id);
@@ -197,7 +201,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
               theaterMode={theater && isFocused} onToggleTheater={() => {
                 onFocus(source.id); setTheater(!theater);
               }}
-              label={`${source.name} — ${source.roomName}`} />
+              label={`${title} / ${source.name} / ${source.roomName}`} />
               : <div className="c3-monitor-wait" data-failed={!source.paused && source.deliveryFailed || undefined} role="status">
                 <Glyph name={source.paused ? "pause" : source.deliveryFailed ? "x" : "loader"} size={24} className={source.paused || source.deliveryFailed ? undefined : "lr-spin"} />
                 <span>{source.paused ? t("host.pauseNotice") : source.deliveryFailed
@@ -206,12 +210,14 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
             <footer>
               <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
               <div className="c3-monitor-source">
-                <Tooltip overflow={{ text: source.name, selector: "strong" }}><strong>{source.name}</strong></Tooltip>
-                <Tooltip overflow={{ text: sourceDetail, selector: "small" }}><small aria-label={sourceStatus ? `${sourceStatus} / ${source.roomName}` : undefined}>
-                  {vis && sourceStatus && <Glyph name={source.paused ? "pause" : "tv"} size={10} />}{sourceDetail}
+                <Tooltip overflow={{ text: title, selector: "strong" }}><strong>{title}</strong></Tooltip>
+                <Tooltip overflow={{ text: sourceDetail, selector: "small" }}><small>
+                  <span>{source.name}</span><span aria-hidden="true"> / </span>
+                  {source.onRoom ? <button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button> : source.roomName}
                 </small></Tooltip>
               </div>
               <div className="c3-monitor-tile-actions">
+                {sourceStatus && <small className="c3-source-status" aria-label={sourceStatus}>{vis ? <Glyph name={source.paused ? "pause" : "tv"} size={12} /> : sourceStatus}</small>}
                 <ChannelContentReactions reactions={source.reactions} session={source.interaction ?? null}
                   target={{ publicationId: source.id }} disabled={source.available === false} compact />
                 <SourceAudience people={source.audience} />
@@ -219,7 +225,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
                 {source.owned && source.remoteControl && <SourceControl source={{ ...source, remoteControl: source.remoteControl }}
                   onInputPolicy={onInputPolicy} onInputDecide={onInputDecide} onInputSimultaneous={onInputSimultaneous} onInputShortcut={onInputShortcut} />}
                 {active.length > 1 && <Btn icon={isFocused ? "screenGrid" : "screenFocus"} quiet size="dense"
-                  title={{ text: isFocused ? copy("返回平铺", "Return to grid") : copy(`聚焦 ${source.name}`, `Focus ${source.name}`) }}
+                  title={{ text: isFocused ? copy("返回平铺", "Return to grid") : copy(`聚焦 ${title}`, `Focus ${title}`) }}
                   hint={isFocused ? "hint-screen-grid" : "hint-screen-focus"}
                   pressed={isFocused} onClick={() => onFocus(isFocused ? null : source.id)} />}
                 {!thumbnail && source.owned && microphone && <VoiceMicrophoneButton active={microphone.enabled}
@@ -234,8 +240,8 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
                   hint={source.paused ? "hint-resume" : "hint-pause"} busy={source.pausePending}
                   onClick={() => onPause(source.id, !source.paused)} />}
                 <Btn icon={source.owned ? "stop" : "x"} tone={source.owned ? "danger" : undefined} quiet={!source.owned} size="dense"
-                  title={{ text: source.owned ? copy(`停止分享 ${source.name}`, `Stop sharing ${source.name}`)
-                    : copy(`停止观看 ${source.name}`, `Stop watching ${source.name}`) }}
+                  title={{ text: source.owned ? copy(`停止分享 ${title}`, `Stop sharing ${title}`)
+                    : copy(`停止观看 ${title}`, `Stop watching ${title}`) }}
                   hint={source.owned ? "hint-share-stop" : "hint-close"} busy={source.pending} disabled={source.pending}
                   onClick={() => source.owned ? onStop(source.id) : onUnwatch(source.id)} />
               </div>
@@ -250,9 +256,9 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
       </div>
       <div className="c3-monitor-offers">
         {available.map(source => <div key={source.id} className="c3-monitor-offer" data-source-id={source.id}
-          role="group" aria-label={source.name}>
+          role="group" aria-label={`${screenTitle(source, lang)} / ${source.name} / ${source.roomName}`}>
           <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
-          <div><strong>{source.name}</strong><small>{source.paused ? `${t("host.paused")} / ` : ""}{source.roomName}</small></div>
+          <div><strong>{screenTitle(source, lang)}</strong><small>{source.name}<span aria-hidden="true"> / </span>{source.onRoom ? <button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button> : source.roomName}{source.paused ? ` / ${t("host.paused")}` : ""}</small></div>
           <ChannelAction icon="eye" label={copy("观看", "Watch")}
             hint="hint-watch"
             iconOnly={vis} disabled={!canSubscribe || source.available === false} busy={source.pending}

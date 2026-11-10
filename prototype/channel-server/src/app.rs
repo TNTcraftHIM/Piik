@@ -39,7 +39,7 @@ use piik_channel_native::{
     },
     session::{
         self, CommitCapture, HostCommand, Hosting, OpenRoom, PauseCapture, PrepareCapture,
-        PublishCaptureSettings, TransferSource,
+        PublishCaptureSettings, TitleCapture, TransferSource,
     },
 };
 use serde::Deserialize;
@@ -57,7 +57,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 6;
+const PROTOCOL: u8 = 7;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -708,6 +708,11 @@ enum Operation {
         capture_id: Uuid,
         settings: Settings,
     },
+    CaptureTitle {
+        publication_id: Uuid,
+        capture_id: Uuid,
+        title: Option<String>,
+    },
     CapturePaused {
         publication_id: Uuid,
         capture_id: Uuid,
@@ -1345,6 +1350,31 @@ async fn connection(
                                     Err(anyhow!("capture_unavailable"))
                                 }
                             }
+                            Operation::CaptureTitle {
+                                publication_id,
+                                capture_id,
+                                title,
+                            } => {
+                                let lease = captures
+                                    .get(&publication_id)
+                                    .and_then(Capture::lease)
+                                    .filter(|lease| lease.id == capture_id);
+                                if let (Some(commands), Some(lease)) = (&host, lease) {
+                                    let commands = commands.clone();
+                                    let scope = lease.scope.clone();
+                                    let capture_id = lease.producer_id();
+                                    operations.push(async move {
+                                        let result = title_capture(&commands, scope, capture_id, title).await;
+                                        match result {
+                                            Ok(()) => json!({"id":request.id,"result":null}),
+                                            Err(error) => json!({"id":request.id,"error":error.to_string()}),
+                                        }
+                                    }.boxed());
+                                    continue;
+                                } else {
+                                    Err(anyhow!("capture_unavailable"))
+                                }
+                            }
                             Operation::InputPolicy {
                                 publication_id,
                                 capture_id,
@@ -1626,6 +1656,28 @@ async fn pause_capture(
             scope,
             capture_id,
             paused,
+            result,
+        }))
+        .await
+        .map_err(|_| anyhow!("hosting_unavailable"))?;
+    response
+        .await
+        .map_err(|_| anyhow!("hosting_unavailable"))?
+        .map_err(anyhow::Error::msg)
+}
+
+async fn title_capture(
+    commands: &mpsc::Sender<HostCommand>,
+    scope: piik_channel_native::peer::CaptureScope,
+    capture_id: Uuid,
+    title: Option<String>,
+) -> Result<()> {
+    let (result, response) = oneshot::channel();
+    commands
+        .send(HostCommand::TitleCapture(TitleCapture {
+            scope,
+            capture_id,
+            title,
             result,
         }))
         .await

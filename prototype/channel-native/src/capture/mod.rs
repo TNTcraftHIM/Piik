@@ -273,6 +273,25 @@ pub struct Target {
     pub creation_time: Option<String>,
 }
 impl Target {
+    pub(crate) fn screen_source(&self) -> piik_channel_core::wire::ScreenSource {
+        let named = self.kind == TargetKind::Window
+            || (cfg!(target_os = "windows") && self.kind == TargetKind::Display);
+        let mut units = 0;
+        let name: String = self
+            .title
+            .trim()
+            .chars()
+            .take_while(|ch| {
+                units += ch.len_utf16();
+                units <= 64
+            })
+            .collect();
+        piik_channel_core::wire::ScreenSource {
+            kind: piik_channel_core::wire::ScreenSourceKind::Screen,
+            name: (named && !name.is_empty()).then_some(name),
+        }
+    }
+
     pub(crate) fn same_source(&self, other: &Self) -> bool {
         self.kind == other.kind
             && self.source_id == other.source_id
@@ -358,6 +377,32 @@ impl Settings {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn source_metadata_uses_selected_names_without_exporting_picker_or_display_ids() {
+        let mut target = super::Target {
+            kind: super::TargetKind::Window,
+            source_id: "opaque-handle".into(),
+            title: "  Editor  ".into(),
+            pid: 0,
+            creation_time: None,
+        };
+        assert_eq!(target.screen_source().name.as_deref(), Some("Editor"));
+        target.kind = super::TargetKind::Picker;
+        target.title = "Screen or app".into();
+        assert_eq!(target.screen_source().name, None);
+        target.kind = super::TargetKind::Display;
+        assert_eq!(
+            target.screen_source().name.is_some(),
+            cfg!(target_os = "windows")
+        );
+        target.kind = super::TargetKind::Window;
+        target.title = "\u{1f600}".repeat(33);
+        assert_eq!(
+            target.screen_source().name.unwrap().encode_utf16().count(),
+            64
+        );
+    }
+
     use super::Settings;
 
     #[test]

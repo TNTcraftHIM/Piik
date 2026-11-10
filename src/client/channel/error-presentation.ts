@@ -21,6 +21,8 @@ export function channelErrorPresentation(error: string | null, copy: (zh: string
     return display("房间操作已成功，但房间目录保存失败。", "The room operation succeeded, but the room directory could not be saved.");
   if (error === "app_disconnected")
     return display("与 App 的连接已断开。请确认 App 正在运行，然后重试。", "Connection to the App was lost. Check that it is running, then retry.");
+  if (error === "invalid_title")
+    return display("标题不能超过 64 个字符。", "The title cannot exceed 64 characters.");
   if (error === "capture_failed")
     return display("分享遇到问题，请重新选择窗口或屏幕。", "Sharing encountered a problem. Choose a window or screen again.");
   if (error === "capture_audio_failed")

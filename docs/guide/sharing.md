@@ -33,17 +33,17 @@ use their own invitation or password; send those invitations only to intended
 guests. Each room owner manages that room's access and invitation resets;
 see [getting started](./getting-started.md).
 
-## Picture and sound settings
+## Share settings
 
-Before starting, open **Picture and sound → Picture** beside **Start sharing**.
+Before starting, open **Share settings → Picture** beside **Start sharing**.
 During a share, use the same control on that picture's card, even when browsing
 another room. Choose a
 preset, or expand **Fine-tune picture** to set resolution, frame rate and bitrate.
 Choose the video codec before starting the share. Available codecs depend on
 the browser or connected App.
 
-![Picture and sound settings with presets and a separate section for detailed picture controls.](../assets/guide/channel-quality.en.png#gh-light-mode-only)
-![Picture and sound settings with presets and a separate section for detailed picture controls.](../assets/guide/channel-quality.en.dark.png#gh-dark-mode-only)
+![Share settings with presets and a separate section for detailed picture controls.](../assets/guide/channel-quality.en.png#gh-light-mode-only)
+![Share settings with presets and a separate section for detailed picture controls.](../assets/guide/channel-quality.en.dark.png#gh-dark-mode-only)
 
 - **Resolution** is a ceiling; portrait and ultrawide sources keep their proportions.
 - **Sliders** offer common values. Type another allowed value in the field;
@@ -53,9 +53,15 @@ the browser or connected App.
 Piik adapts the picture within these limits according to the source, device and
 connection. Platform support is listed in the [Native reference](../../prototype/channel-native/README.md).
 
+### Name your share
+
+Your share uses the selected source's name when available. In its **Share settings**,
+expand **Share title**, enter a name and **Save**. Your title stays when you switch
+sources. Clear the field and save to use the current source name again.
+
 ### Include your microphone
 
-During a share, enable **Picture and sound → Sound → Include my microphone** to
+During a share, enable **Share settings → Sound → Include my microphone** to
 add commentary to the picture. Select its input, volume and voice processing
 there. The microphone starts off for each new share and ends when it stops.
 
@@ -71,7 +77,7 @@ separately as commentary or room-voice input.
 
 OBS Virtual Camera supplies video. To include OBS audio, follow the
 [OBS audio-routing guide](https://obsproject.com/kb/video-call-streaming-tutorial/),
-then select that input under **Picture and sound → Sound → Include my microphone**.
+then select that input under **Share settings → Sound → Include my microphone**.
 Its sound travels with the picture. Turn off voice processing for music or
 virtual audio that has already been processed.
 
@@ -85,7 +91,7 @@ captures the selected application's sound where supported.
 2. Under **Exclude application audio**, choose the voice application's window.
    Open its window and refresh the list if it is missing.
 3. Select the screen. While sharing, the supported live controls remain in
-   **Picture and sound → Sound**.
+   **Share settings → Sound**.
 
 Other applications or mixers can still carry that sound. If your voice remains
 audible after muting the Piik microphone, turn off source sound to check whether

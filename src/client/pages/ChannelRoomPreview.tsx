@@ -38,17 +38,19 @@ export function ChannelRoomPreview() {
   const [unwatched, setUnwatched] = useState(new Set<string>());
   const [stopped, setStopped] = useState(new Set<string>());
   const [mixed, setMixed] = useState(false);
+  const [titles, setTitles] = useState<Record<string, string | null>>({});
   const canvases = useRef<HTMLCanvasElement[]>([]);
   const rooms = [...sample.channel.state!.channel.rooms.slice(0, roomCount),
     ...createdRooms.map(room => ({ ...room, ...sample.settingsByRoom[room.id] }))];
   const roomIds = new Set(rooms.map(room => room.id));
   const publications = (sharingRoom ? [{ audience: [], id: "sample-screen-2", roomId: sharingRoom,
     sessionId: sample.channel.sessionId!, userId: users[0].id, kind: "screen" as const, paused: false,
+    source: { kind: "screen" as const, name: "A little place to stay" }, title: null,
     videoSettings: screenVideoSettings(sample.channel.quality) }] : Array.from({ length: count }, (_, index) => ({ audience: [], id: `sample-screen-${index}`, roomId: "friday",
     sessionId: `${screenUsers[index].id}-session`, userId: screenUsers[index].id,
-    kind: "screen" as const, paused: false, videoSettings: screenVideoSettings(sample.channel.quality) })))
+    kind: "screen" as const, source: { kind: index === 1 ? "camera" as const : "screen" as const, name: longNames ? "A shared evening with friends and a very long source name" : ["A little place to stay", "Studio camera", "Drawing together"][index % 3] }, title: null, paused: false, videoSettings: screenVideoSettings(sample.channel.quality) })))
     .filter(publication => roomIds.has(publication.roomId) && !stopped.has(publication.id))
-    .map(publication => ({ ...publication, audience: audienceSample ? users.filter(user => user.id !== publication.userId).slice(0, 5)
+    .map(publication => ({ ...publication, title: titles[publication.id] ?? null, audience: audienceSample ? users.filter(user => user.id !== publication.userId).slice(0, 5)
       .map((user, index) => ({ sessionId: `${user.id}-session`, state: index < 3 ? "active" as const : index === 3 ? "preparing" as const : "failed" as const })) : [] }));
   const ownedScreens = new Set(publications.filter(publication => publication.userId === "sample-ada").map(publication => publication.id));
   const subscriptions = publications.filter(publication => !unwatched.has(publication.id)).map(publication => publication.id);
@@ -107,10 +109,11 @@ export function ChannelRoomPreview() {
     setSourceAudio: async () => sample.received(),
     setScreenQuality: async (_id, profile) => sample.channel.setQuality(profile),
     watch: async id => setUnwatched(previous => { const next = new Set(previous); next.delete(id); return next; }),
-    unwatch: async id => setUnwatched(previous => new Set(previous).add(id)), stopScreen: async id => { setStopped(previous => new Set(previous).add(id)); sample.received(); },
-    startScreen: async roomId => { setStopped(new Set()); setSharingRoom(roomId); },
-    startNativeScreen: async roomId => { setStopped(new Set()); setSharingRoom(roomId); },
+    unwatch: async id => setUnwatched(previous => new Set(previous).add(id)), stopScreen: async id => { setStopped(previous => new Set(previous).add(id)); setTitles(previous => { const next = { ...previous }; delete next[id]; return next; }); sample.received(); },
+    startScreen: async roomId => { setStopped(new Set()); setTitles({}); setSharingRoom(roomId); },
+    startNativeScreen: async roomId => { setStopped(new Set()); setTitles({}); setSharingRoom(roomId); },
     setScreenPaused: async () => sample.received(),
+    setScreenTitle: async (id, title) => { if (ownedScreens.has(id)) setTitles(previous => ({ ...previous, [id]: title })); },
     inputPolicy: async () => sample.received(), inputDecide: async () => sample.received(), inputSimultaneous: async () => sample.received(),
     inputShortcut: async () => { throw new Error("No input device in this preview"); },
     screenPresentation: () => {}, reconnect: sample.received, clearError: sample.received,

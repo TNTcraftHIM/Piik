@@ -100,7 +100,7 @@ try {
         await run('press', 'Escape');
       }
       if (scenes.has('quality')) {
-        await run('find', 'role', 'button', 'click', '--name', lang === 'en' ? 'Picture and sound' : '画质与声音', '--exact');
+        await run('find', 'role', 'button', 'click', '--name', lang === 'en' ? 'Share settings' : '分享设置', '--exact');
         await capture('.c3-quality-picker:popover-open', `channel-quality.${suffix}`);
       }
     }

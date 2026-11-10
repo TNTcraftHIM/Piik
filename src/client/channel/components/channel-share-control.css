@@ -23,3 +23,11 @@
   border-radius: inherit;
 }
 .c3-share-picker .lr-source-picker-panel { height: auto; }
+
+.c3-share-title { margin: 14px 18px 0; padding-bottom: 12px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.c3-share-title summary { cursor: pointer; font-weight: 650; padding-block: 6px; }
+.c3-share-title form { display: grid; gap: 8px; padding-top: 10px; }
+.c3-share-title form > label { font-size: 11px; color: var(--muted); }
+.c3-share-title .lr-input, .c3-share-title input { width: 100%; min-width: 0; }
+.c3-share-title p { margin: 0; color: var(--muted); line-height: 1.6; }
+.c3-share-title-actions { display: flex; gap: 6px; }

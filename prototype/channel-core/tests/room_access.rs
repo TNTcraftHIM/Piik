@@ -875,7 +875,7 @@ fn topology_read_uses_current_room_admission_and_binding_without_host_turns() {
         command(
             &mut core,
             owner,
-            json!({"type":"publish","publication":{"id":id,"roomId":room,"kind":kind,"videoSettings":if kind == "screen" { Some(json!({"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"})) } else { None }}}),
+            json!({"type":"publish","publication":{"id":id,"roomId":room,"kind":kind,"source":if kind == "screen" { Some(json!({"kind":"screen","name":null})) } else { None },"videoSettings":if kind == "screen" { Some(json!({"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"})) } else { None }}}),
         );
     }
     rejected(command(&mut core, reader, query(&private, Some(outside))));
@@ -934,14 +934,14 @@ fn hosted_room_catalogs_keep_the_per_room_source_limit_without_a_domain_total() 
                 command(
                     &mut core,
                     *connection,
-                    json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":kind,"videoSettings":if kind == "screen" { Some(json!({"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"})) } else { None }}}),
+                    json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":kind,"source":if kind == "screen" { Some(json!({"kind":"screen","name":null})) } else { None },"videoSettings":if kind == "screen" { Some(json!({"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"})) } else { None }}}),
                 );
             }
         }
         let duplicate = command(
             &mut core,
             peers[0],
-            json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":"screen","videoSettings":{"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"}}}),
+            json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":"screen","source":{"kind":"screen","name":null},"videoSettings":{"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"}}}),
         );
         assert!(duplicate.events.iter().any(|(_, event)| matches!(event,
             Event::RoomReply { result: RoomResult::Error { code }, .. } if code == "source_already_published")));
@@ -1008,7 +1008,7 @@ fn independent_rooms_share_transport_without_sharing_activity_lifetimes() {
     command(
         &mut core,
         a,
-        json!({"type":"publish","publication":{"id":picture,"roomId":studio,"kind":"screen","videoSettings":{"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"}}}),
+        json!({"type":"publish","publication":{"id":picture,"roomId":studio,"kind":"screen","source":{"kind":"screen","name":null},"videoSettings":{"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"}}}),
     );
     let before = state(
         command(
@@ -1166,12 +1166,12 @@ fn private_room_entry_and_revoke_preserve_site_identity_and_other_activity() {
     command(
         &mut core,
         creator,
-        json!({"type":"publish","publication":{"id":private_pub,"roomId":room,"kind":"screen","videoSettings":{"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"}}}),
+        json!({"type":"publish","publication":{"id":private_pub,"roomId":room,"kind":"screen","source":{"kind":"screen","name":null},"videoSettings":{"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"}}}),
     );
     command(
         &mut core,
         creator,
-        json!({"type":"publish","publication":{"id":public_pub,"roomId":public_room,"kind":"screen","videoSettings":{"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"}}}),
+        json!({"type":"publish","publication":{"id":public_pub,"roomId":public_room,"kind":"screen","source":{"kind":"screen","name":null},"videoSettings":{"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"}}}),
     );
     command(
         &mut core,
@@ -1375,7 +1375,7 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     command(
         &mut original,
         creator,
-        json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":"screen","videoSettings":{"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"}}}),
+        json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":"screen","source":{"kind":"screen","name":null},"videoSettings":{"ceiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"degradationPreference":"balanced"}}}),
     );
     let active = state(
         command(

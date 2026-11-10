@@ -461,9 +461,23 @@ impl RoomRuntime {
         id: Uuid,
         kind: Kind,
         video_settings: Option<VideoSettings>,
+        source: Option<crate::wire::ScreenSource>,
     ) -> Result<(), &'static str> {
         self.authorize(member, RoomPermission::Read)?;
         validate_video_settings(kind, video_settings)?;
+        if kind == Kind::Voice && source.is_some() {
+            return Err("invalid_screen_publication");
+        }
+        let source = source
+            .map(|mut source| {
+                source.name = source
+                    .name
+                    .as_deref()
+                    .map(|name| crate::wire::title(name).ok_or("invalid_title"))
+                    .transpose()?;
+                Ok::<_, &'static str>(source)
+            })
+            .transpose()?;
         if kind == Kind::Voice && !self.voice_joined(session) {
             return Err("voice_not_joined");
         }
@@ -472,6 +486,14 @@ impl RoomRuntime {
                 return Err("publication_identity_conflict");
             }
             publication.info.video_settings = video_settings;
+            if let Some(source) = source {
+                publication
+                    .info
+                    .screen
+                    .as_mut()
+                    .ok_or("invalid_screen_publication")?
+                    .source = source;
+            }
         } else {
             if self.publications.values().any(|publication| {
                 publication.info.session_id == session && publication.info.kind == kind
@@ -481,6 +503,14 @@ impl RoomRuntime {
             self.publications.insert(
                 id,
                 Publication::new(PublicationInfo {
+                    screen: if kind == Kind::Screen {
+                        Some(crate::wire::ScreenInfo {
+                            source: source.ok_or("invalid_screen_source")?,
+                            title: None,
+                        })
+                    } else {
+                        None
+                    },
                     id,
                     room_id: self.policy.id.clone(),
                     session_id: session,
@@ -504,6 +534,32 @@ impl RoomRuntime {
         }
         self.publications.remove(&id);
         Ok(true)
+    }
+
+    pub fn set_title(
+        &mut self,
+        session: Uuid,
+        id: Uuid,
+        title: Option<String>,
+    ) -> Result<(), &'static str> {
+        let publication = self
+            .publications
+            .get_mut(&id)
+            .ok_or("publication_unavailable")?;
+        if publication.info.session_id != session {
+            return Err("not_publication_owner");
+        }
+        let screen = publication
+            .info
+            .screen
+            .as_mut()
+            .ok_or("invalid_screen_publication")?;
+        screen.title = title
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .map(|value| crate::wire::title(value).ok_or("invalid_title"))
+            .transpose()?;
+        Ok(())
     }
 
     pub fn set_paused(
@@ -1332,6 +1388,7 @@ mod tests {
             publication,
             Kind::Screen,
             screen_settings(),
+            Some(crate::wire::ScreenSource::default()),
         )
         .unwrap();
         room.subscribe(endpoints[&id(4)].member, id(4), publication, true, None)
@@ -1378,8 +1435,15 @@ mod tests {
         room.reconcile(&endpoints, 0);
         room.base_state(id(1), id(2), true).unwrap();
         room.base_state(id(2), id(1), true).unwrap();
-        room.publish(endpoints[&id(1)].member, id(1), id(20), Kind::Voice, None)
-            .unwrap();
+        room.publish(
+            endpoints[&id(1)].member,
+            id(1),
+            id(20),
+            Kind::Voice,
+            None,
+            None,
+        )
+        .unwrap();
         room.reconcile(&endpoints, 1);
         let voice = room
             .flows()
@@ -1515,6 +1579,7 @@ mod tests {
                 id(source + 20),
                 Kind::Voice,
                 None,
+                None,
             )
             .unwrap();
         }
@@ -1645,6 +1710,10 @@ mod tests {
             };
             let mut base = BaseTree::new(id(1));
             let mut picture = Publication::new(PublicationInfo {
+                screen: Some(crate::wire::ScreenInfo {
+                    source: Default::default(),
+                    title: None,
+                }),
                 id: id(10),
                 room_id: "capacity".into(),
                 session_id: id(1),
@@ -1746,8 +1815,15 @@ mod tests {
             room.set_voice(endpoint.member, *session, true, false, false)
                 .unwrap();
         }
-        room.publish(endpoints[&id(4)].member, id(4), id(20), Kind::Voice, None)
-            .unwrap();
+        room.publish(
+            endpoints[&id(4)].member,
+            id(4),
+            id(20),
+            Kind::Voice,
+            None,
+            None,
+        )
+        .unwrap();
         room.reconcile(&endpoints, 2);
         for flow in room
             .flows()
@@ -1873,8 +1949,15 @@ mod tests {
                 room.set_voice(endpoints[&endpoint].member, endpoint, true, false, false)
                     .unwrap();
             }
-            room.publish(endpoints[&id(2)].member, id(2), id(20), Kind::Voice, None)
-                .unwrap();
+            room.publish(
+                endpoints[&id(2)].member,
+                id(2),
+                id(20),
+                Kind::Voice,
+                None,
+                None,
+            )
+            .unwrap();
             room.reconcile(&endpoints, 2);
             for flow in room.flows().collect::<Vec<_>>() {
                 room.flow_state(
@@ -1914,8 +1997,15 @@ mod tests {
             }
             room.set_voice(endpoints[&id(3)].member, id(3), true, false, false)
                 .unwrap();
-            room.publish(endpoints[&id(3)].member, id(3), id(21), Kind::Voice, None)
-                .unwrap();
+            room.publish(
+                endpoints[&id(3)].member,
+                id(3),
+                id(21),
+                Kind::Voice,
+                None,
+                None,
+            )
+            .unwrap();
             room.reconcile(&endpoints, 5);
             let candidates: Vec<_> = room.base_links().filter(|link| !link.selected).collect();
             assert_eq!(candidates.len(), 2);
@@ -2021,8 +2111,15 @@ mod tests {
             .unwrap();
         room.set_voice(endpoints[&id(1)].member, id(1), true, false, false)
             .unwrap();
-        room.publish(endpoints[&id(2)].member, id(2), id(20), Kind::Voice, None)
-            .unwrap();
+        room.publish(
+            endpoints[&id(2)].member,
+            id(2),
+            id(20),
+            Kind::Voice,
+            None,
+            None,
+        )
+        .unwrap();
         room.reconcile(&endpoints, 10);
         assert!(
             room.base_links()
@@ -2210,6 +2307,89 @@ mod tests {
     }
 
     #[test]
+    fn source_title_follows_authority_and_committed_source_without_changing_routes() {
+        use crate::wire::ScreenSource;
+        let id = Uuid::from_u128;
+        let (mut room, mut endpoints) = screen_on_room_base();
+        let member = endpoints[&id(3)].member;
+        let metadata = |name: &str| {
+            Some(ScreenSource {
+                name: Some(name.into()),
+                ..Default::default()
+            })
+        };
+        let flows = serde_json::to_value(room.flows().collect::<Vec<_>>()).unwrap();
+        let deadline = room.next_route_deadline();
+        room.publish(
+            member,
+            id(3),
+            id(10),
+            Kind::Screen,
+            screen_settings(),
+            metadata("Editor"),
+        )
+        .unwrap();
+        room.set_title(id(3), id(10), Some("  Demo  ".into()))
+            .unwrap();
+        room.publish(
+            member,
+            id(3),
+            id(10),
+            Kind::Screen,
+            screen_settings(),
+            metadata("Browser"),
+        )
+        .unwrap();
+        room.publish(member, id(3), id(10), Kind::Screen, screen_settings(), None)
+            .unwrap();
+        let screen = room.publication(id(10)).unwrap().screen.as_ref().unwrap();
+        assert_eq!(screen.title.as_deref(), Some("Demo"));
+        assert_eq!(screen.source.name.as_deref(), Some("Browser"));
+        assert_eq!(
+            serde_json::to_value(room.flows().collect::<Vec<_>>()).unwrap(),
+            flows
+        );
+        assert_eq!(room.next_route_deadline(), deadline);
+        endpoints.get_mut(&id(4)).unwrap().member = member;
+        for session in [id(1), id(4)] {
+            assert_eq!(
+                room.set_title(session, id(10), Some("No".into())),
+                Err("not_publication_owner")
+            );
+        }
+        assert_eq!(
+            room.set_title(id(3), id(10), Some("\u{1f600}".repeat(33))),
+            Err("invalid_title")
+        );
+        room.transfer_source(member, id(3), id(10), id(4), &endpoints)
+            .unwrap();
+        assert_eq!(
+            room.publication(id(10))
+                .unwrap()
+                .screen
+                .as_ref()
+                .unwrap()
+                .title
+                .as_deref(),
+            Some("Demo")
+        );
+        assert_eq!(
+            room.set_title(id(3), id(10), None),
+            Err("not_publication_owner")
+        );
+        room.set_title(id(4), id(10), Some("   ".into())).unwrap();
+        let projected = serde_json::to_value(room.publication(id(10)).unwrap()).unwrap();
+        assert!(projected["title"].is_null());
+        assert_eq!(projected["source"]["name"], "Browser");
+        room.unpublish(id(4), id(10)).unwrap();
+        assert!(room.publication(id(10)).is_none());
+        assert_eq!(
+            room.publish(member, id(4), id(10), Kind::Screen, screen_settings(), None),
+            Err("invalid_screen_source")
+        );
+    }
+
+    #[test]
     fn source_ceiling_upsert_preserves_routes_pause_and_transfer() {
         let id = Uuid::from_u128;
         let (mut room, mut endpoints) = screen_on_room_base();
@@ -2218,8 +2398,15 @@ mod tests {
         let deadline = room.next_route_deadline();
         let mut ceiling = screen_settings().unwrap();
         ceiling.ceiling.max_framerate = 59.94;
-        room.publish(member, id(3), id(10), Kind::Screen, Some(ceiling))
-            .unwrap();
+        room.publish(
+            member,
+            id(3),
+            id(10),
+            Kind::Screen,
+            Some(ceiling),
+            Some(crate::wire::ScreenSource::default()),
+        )
+        .unwrap();
         assert_eq!(
             room.publication(id(10)).unwrap().video_settings,
             Some(ceiling)
@@ -2232,8 +2419,15 @@ mod tests {
         room.set_paused(id(3), id(10), true).unwrap();
         let deadline = room.next_route_deadline();
         ceiling.degradation_preference = crate::wire::DegradationPreference::MaintainFramerate;
-        room.publish(member, id(3), id(10), Kind::Screen, Some(ceiling))
-            .unwrap();
+        room.publish(
+            member,
+            id(3),
+            id(10),
+            Kind::Screen,
+            Some(ceiling),
+            Some(crate::wire::ScreenSource::default()),
+        )
+        .unwrap();
         assert!(room.publication(id(10)).unwrap().paused);
         assert_eq!(
             serde_json::to_value(room.flows().collect::<Vec<_>>()).unwrap(),
@@ -2243,7 +2437,14 @@ mod tests {
         let mut rejected = ceiling;
         rejected.degradation_preference = crate::wire::DegradationPreference::MaintainResolution;
         assert_eq!(
-            room.publish(member, id(4), id(10), Kind::Screen, Some(rejected)),
+            room.publish(
+                member,
+                id(4),
+                id(10),
+                Kind::Screen,
+                Some(rejected),
+                Some(crate::wire::ScreenSource::default())
+            ),
             Err("publication_identity_conflict")
         );
         assert_eq!(
@@ -2251,16 +2452,23 @@ mod tests {
             Some(ceiling)
         );
         assert_eq!(
-            room.publish(member, id(3), id(10), Kind::Screen, None),
+            room.publish(
+                member,
+                id(3),
+                id(10),
+                Kind::Screen,
+                None,
+                Some(crate::wire::ScreenSource::default())
+            ),
             Err("invalid_video_settings")
         );
         assert_eq!(
-            room.publish(member, id(3), id(11), Kind::Voice, Some(ceiling)),
+            room.publish(member, id(3), id(11), Kind::Voice, Some(ceiling), None),
             Err("invalid_video_settings")
         );
         room.set_voice(member, id(3), false, true, false).unwrap();
         assert_eq!(
-            room.publish(member, id(3), id(11), Kind::Voice, None),
+            room.publish(member, id(3), id(11), Kind::Voice, None, None),
             Err("voice_not_joined")
         );
         endpoints.get_mut(&id(4)).unwrap().member = member;
@@ -2456,6 +2664,7 @@ mod tests {
                 id(10),
                 Kind::Screen,
                 screen_settings(),
+                Some(crate::wire::ScreenSource::default()),
             )
             .unwrap();
             for n in 2..=count {
@@ -2477,6 +2686,7 @@ mod tests {
                     id(11),
                     Kind::Screen,
                     screen_settings(),
+                    Some(crate::wire::ScreenSource::default()),
                 )
                 .unwrap();
                 room.subscribe(endpoints[&id(1)].member, id(1), id(11), true, None)
@@ -2605,8 +2815,15 @@ mod tests {
         );
         endpoints.get_mut(&id(5)).unwrap().connected = true;
         endpoints.get_mut(&id(5)).unwrap().member = source;
-        room.publish(source, id(5), id(11), Kind::Screen, screen_settings())
-            .unwrap();
+        room.publish(
+            source,
+            id(5),
+            id(11),
+            Kind::Screen,
+            screen_settings(),
+            Some(crate::wire::ScreenSource::default()),
+        )
+        .unwrap();
         assert_eq!(
             room.transfer_source(source, id(3), id(10), id(5), &endpoints),
             Err("source_already_published")
@@ -2631,7 +2848,7 @@ mod tests {
             room.set_voice(endpoints[&session].member, session, true, false, false)
                 .unwrap();
         }
-        room.publish(source, id(3), id(11), Kind::Voice, None)
+        room.publish(source, id(3), id(11), Kind::Voice, None, None)
             .unwrap();
         for now in 1..=3 {
             room.reconcile(&endpoints, now);
@@ -2855,8 +3072,15 @@ mod tests {
             room.set_voice(endpoints[&session].member, session, true, false, false)
                 .unwrap();
         }
-        room.publish(endpoints[&id(3)].member, id(3), id(11), Kind::Voice, None)
-            .unwrap();
+        room.publish(
+            endpoints[&id(3)].member,
+            id(3),
+            id(11),
+            Kind::Voice,
+            None,
+            None,
+        )
+        .unwrap();
         room.reconcile(&endpoints, 0);
         let picture: Vec<_> = room
             .flows()
@@ -3299,11 +3523,12 @@ mod tests {
             picture,
             Kind::Screen,
             screen_settings(),
+            Some(crate::wire::ScreenSource::default()),
         )
         .unwrap();
         room.set_voice(owner, owner_session, true, false, false)
             .unwrap();
-        room.publish(owner, owner_session, voice, Kind::Voice, None)
+        room.publish(owner, owner_session, voice, Kind::Voice, None, None)
             .unwrap();
         room.set_voice(viewer, viewer_session, true, false, false)
             .unwrap();

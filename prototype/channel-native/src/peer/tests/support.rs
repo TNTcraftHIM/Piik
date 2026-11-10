@@ -86,6 +86,10 @@ impl Fixture {
             inputs: input::Inputs::new(Uuid::nil(), watch::channel(None).1, None),
         };
         let publication = PublicationInfo {
+            screen: Some(piik_channel_core::wire::ScreenInfo {
+                source: Default::default(),
+                title: None,
+            }),
             id: Uuid::new_v4(),
             room_id: "room".into(),
             session_id: Uuid::new_v4(),

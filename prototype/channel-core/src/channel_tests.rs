@@ -128,6 +128,10 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
             .iter()
             .flat_map(|session| {
                 [Kind::Screen, Kind::Voice].map(|kind| PublicationInfo {
+                    screen: (kind == Kind::Screen).then(|| crate::wire::ScreenInfo {
+                        source: Default::default(),
+                        title: None,
+                    }),
                     id: Uuid::new_v4(),
                     room_id: room_id.clone(),
                     session_id: *session,

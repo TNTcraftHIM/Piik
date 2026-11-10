@@ -118,7 +118,7 @@ describe("Playback audio controls", () => {
 describe("Screen delivery result", () => {
   it("shows the watch failure without replacing an existing picture or changing its controls", () => {
     setCopy({ lang: "en", vis: false });
-    const source = { audience: [], id: "screen", userId: "friend", name: "Friend", roomName: "Room", owned: false,
+    const source = { audience: [], id: "screen", userId: "friend", name: "Friend", roomName: "Room", source: { kind: "screen" as const, name: null }, title: null, owned: false,
       subscribed: true, paused: false, deliveryFailed: true };
     const props: ChannelStageProps = { sources: [source], focusedId: null, canSubscribe: true,
       onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),
@@ -126,13 +126,13 @@ describe("Screen delivery result", () => {
     const failed = renderToStaticMarkup(createElement(ChannelStage, props));
     expect(failed).toContain("Picture delivery failed. Retrying.");
     expect(failed).not.toContain("Connecting picture");
-    expect(failed).toContain('aria-label="Stop watching Friend"');
+    expect(failed).toContain('aria-label="Stop watching Shared screen"');
 
     const stream = { id: "retained", getAudioTracks: () => [] } as unknown as MediaStream;
     const retained = renderToStaticMarkup(createElement(ChannelStage, { ...props, sources: [{ ...source, stream }] }));
     expect(retained).toContain("<video");
     expect(retained).not.toContain("Picture delivery failed");
-    expect(retained).toContain('aria-label="Stop watching Friend"');
+    expect(retained).toContain('aria-label="Stop watching Shared screen"');
     const paused = renderToStaticMarkup(createElement(ChannelStage, { ...props, sources: [{ ...source, paused: true }] }));
     expect(paused).not.toContain("Picture delivery failed");
   });

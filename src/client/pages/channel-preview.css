@@ -20,12 +20,6 @@
 .c3-site-name .lr-btn > .c3-identity-mark { grid-column: 1; grid-row: 1; }
 .c3-site-name-readonly { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .c3-room-navigation { padding-inline: 12px; }
-.c3-room-voice-members { margin: 4px 0 10px 20px; }
-.c3-room-voice-members:empty { display: none; }
-.c3-room-voice-members .c3-user { padding: 4px 2px; }
-.c3-room-voice-members .c3-person { gap: 8px; }
-.c3-room-voice-members .c3-person > svg { width: 24px; height: 32px; }
-.c3-room-voice-members .c3-person-copy { flex-basis: 7ch; }
 .c3-site-overview { min-height: 0; overflow-y: auto; padding: 24px; }
 .c3-site-overview h2 { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; font-size: 24px; }
 .c3-site-overview > p { color: var(--muted); line-height: 1.7; margin-bottom: 16px; }
@@ -120,10 +114,15 @@
 .c3-people-panel h2 > span { color: var(--muted); font-size: 11px; font-weight: 400; }
 .c3-people-body { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 14px; overscroll-behavior: contain; scrollbar-width: thin; }
 .c3-people-body .c3-section-label { padding-inline: 8px; font-size: 11px; }
+.c3-people-group + .c3-people-group { margin-top: 18px; }
+.c3-people-group h3 { display: flex; align-items: baseline; gap: 8px; margin-block: 4px 8px; }
+.c3-people-group h3 > span { font-weight: 400; }
 .c3-users { display: grid; gap: 4px; }
 .c3-user { min-width: 0; padding: 9px 6px; }
+.c3-people-panel .c3-user { padding-block: 4px; }
 .c3-person { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
 .c3-person > svg { flex: none; width: 30px; height: 38px; }
+.c3-people-panel .c3-person > svg { width: 26px; height: 34px; }
 .c3-person-copy { min-width: 0; flex: 1 1 12ch; }
 .c3-person-actions { display: flex; align-items: center; flex: none; gap: 4px; margin-inline-start: auto; }
 .c3-person-actions .lr-btn, .c3-identity .c3-profile-editor .lr-btn { width: var(--button-size, var(--control-dense-size)); padding-inline: 0; }

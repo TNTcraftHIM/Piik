@@ -65,6 +65,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
             context: context(publisher),
             command: Command::Publish {
                 publication: PublicationInput {
+                    source: Some(Default::default()),
                     id: publication,
                     room_id: "review".into(),
                     kind: Kind::Screen,
@@ -585,6 +586,7 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
             request_id: Some("publish".into()),
             command: Command::Publish {
                 publication: PublicationInput {
+                    source: Some(Default::default()),
                     id: publication,
                     room_id: "concurrent-review".into(),
                     kind: Kind::Screen,
@@ -763,6 +765,7 @@ fn host_projection_rejects_conflicting_flow_identity_and_audience_scope() {
                     source,
                     Command::Publish {
                         publication: PublicationInput {
+                            source: Some(Default::default()),
                             id: publication,
                             room_id: room.into(),
                             kind: Kind::Screen,
@@ -1049,6 +1052,7 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
             &mut host,
             Command::Publish {
                 publication: PublicationInput {
+                    source: Some(Default::default()),
                     id: publication,
                     room_id: room_id.into(),
                     kind: Kind::Screen,

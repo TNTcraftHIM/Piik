@@ -207,6 +207,7 @@ impl Channel {
             }
             Command::Unpublish { .. } => {}
             Command::Subscribe { .. }
+            | Command::SetTitle { .. }
             | Command::SetPaused { .. }
             | Command::TransferSource { .. }
             | Command::FlowState { .. } => return Err("publication_unavailable"),
@@ -439,6 +440,7 @@ impl Channel {
             Command::RelayCapacity { room_id, .. } => Some(room_id.clone()),
             Command::Publish { publication } => Some(publication.room_id.clone()),
             Command::Unpublish { publication_id }
+            | Command::SetTitle { publication_id, .. }
             | Command::SetPaused { publication_id, .. }
             | Command::TransferSource { publication_id, .. }
             | Command::Subscribe { publication_id, .. } => {
