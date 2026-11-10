@@ -13,6 +13,8 @@ import { useAnchoredPopover } from "../components/living/use-anchored-popover";
 import "./channel-room-preview.css";
 
 const screenCounts = [0, 1, 2, 3, 4, 8];
+const fileStatus = { busy: false, error: null };
+const fileStore = { subscribe: () => () => {}, status: () => fileStatus };
 
 /** The production room view with local samples. No Session, device access or App discovery. */
 export function ChannelRoomPreview() {
@@ -21,6 +23,7 @@ export function ChannelRoomPreview() {
   const [longNames, setLongNames] = useState(() => new URLSearchParams(location.search).has("long-names"));
   const [roomCount, setRoomCount] = useState(() => new URLSearchParams(location.search).has("no-rooms") ? 0 : 2);
   const [emptyChat, setEmptyChat] = useState(() => new URLSearchParams(location.search).has("empty-chat"));
+  const [fileSample, setFileSample] = useState(() => new URLSearchParams(location.search).has("file"));
   const [createdRooms, setCreatedRooms] = useState<ChannelRoom[]>([]);
   const [sharingRoom, setSharingRoom] = useState<string | null>(null);
   const optionsId = useId(), optionsTrigger = useRef<HTMLSpanElement>(null), optionsPanel = useRef<HTMLDivElement>(null);
@@ -73,8 +76,18 @@ export function ChannelRoomPreview() {
     users,
     subscriptions: publications.filter(publication => !unwatched.has(publication.id)).map(publication => publication.id),
   };
+  let messagesByRoom = emptyChat ? { ...sample.channel.messagesByRoom,
+    friday: sample.channel.messagesByRoom.friday.filter(message => message.seq > 2) } : sample.channel.messagesByRoom;
+  if (fileSample && roomIds.has("friday")) {
+    const messages = messagesByRoom.friday;
+    messagesByRoom = { ...messagesByRoom, friday: [...messages, { id: "sample-file", seq: (messages.at(-1)?.seq ?? 0) + 1,
+      userId: users[0].id, text: "", time: new Date(2020, 0, 1, 20, 3).getTime(),
+      attachments: [{ id: "sample-document", name: longNames ? "AnnualPlanningNotes_".repeat(3) + "final.pdf" : "Notes.pdf",
+        mediaType: "application/octet-stream", size: 12 * 1024 * 1024, sha256: "0".repeat(64) }] }] };
+  }
   const channel = { ...sample.channel, state, self: state.users[0], streams, error: null, inviteURL: "https://friends.example/#invite=sample",
-    messagesByRoom: emptyChat ? { ...sample.channel.messagesByRoom, friday: sample.channel.messagesByRoom.friday.filter(message => message.seq > 2) } : sample.channel.messagesByRoom,
+    messagesByRoom,
+    attachments: { ...fileStore, download: async () => sample.received(), cancelDownload: sample.received } as unknown as ChannelController["attachments"],
     interactionsByRoom: new Map(interactions ? [["friday", interactions]] : []),
     ownedScreens: new Set(publications.filter(publication => publication.userId === "sample-ada").map(publication => publication.id)),
     screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), voicePlaybackByUser: new Map(),
@@ -131,6 +144,7 @@ export function ChannelRoomPreview() {
             <Chip title={zh ? "长名字" : "Long names"} selected={longNames} onClick={() => setLongNames(!longNames)}>{zh ? "长名字" : "Long names"}</Chip>
             <Chip title={zh ? "没有房间" : "No rooms"} selected={!rooms.length} onClick={() => { setRoomCount(rooms.length ? 0 : 2); setSelected(rooms.length ? "" : "friday"); setCreatedRooms([]); setCount(0); setSharingRoom(null); }}>{zh ? "没有房间" : "No rooms"}</Chip>
             <Chip title={zh ? "空聊天" : "Empty chat"} selected={emptyChat} onClick={() => setEmptyChat(!emptyChat)}>{zh ? "空聊天" : "Empty chat"}</Chip>
+            <Chip title={zh ? "附件样本" : "File sample"} selected={fileSample} onClick={() => setFileSample(!fileSample)}>{zh ? "附件样本" : "File sample"}</Chip>
           </div>
           <fieldset><legend>{zh ? "合成语音电平（不采集设备）" : "Synthetic voice level (no device capture)"}</legend><div className="c3-room-preview-tools">
             {([undefined, .05, .2] as const).map((level, index) => <Chip key={index}

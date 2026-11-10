@@ -134,7 +134,7 @@ export function Tooltip({
     let disposed = false, frame = 0;
     const measure = () => {
       // SVG topology labels are shortened before rendering; HTML names use CSS.
-      if (!disposed) setOverflowing(element.textContent !== overflow.text || element.scrollWidth > element.clientWidth);
+      if (!disposed) setOverflowing(element.textContent !== overflow.text || element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight);
     };
     measure();
     // A clipped label can change its focus wrapper; measure outside resize delivery.
@@ -143,7 +143,7 @@ export function Tooltip({
       frame = view.requestAnimationFrame(measure);
     });
     observer.observe(element);
-    // Font loading can change scrollWidth without changing the clipped box.
+    // Font loading can change text overflow without changing the clipped box.
     void element.ownerDocument.fonts?.ready.then(measure);
     return () => { disposed = true; observer.disconnect(); view.cancelAnimationFrame(frame); };
   }, [overflow?.selector, overflow?.text, trigger?.type, trigger?.key, ownerDocument]);

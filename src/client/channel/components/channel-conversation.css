@@ -54,7 +54,8 @@
 .c3-attachment-file { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .c3-attachment-file > svg { flex: none; color: var(--muted); }
 .c3-attachment-file > div { flex: 1; min-width: 0; }
-.c3-attachment-file strong { display: block; font-size: 12px; font-weight: 650; overflow-wrap: anywhere; }
+.c3-attachment-file .lr-comic-tip-wrap { display: block; }
+.c3-attachment-file strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 12px; font-weight: 650; overflow-wrap: anywhere; }
 .c3-attachment small { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
 .c3-attachment > .lr-btn { justify-self: start; }
 .c3-attachment img { display: block; max-width: 100%; max-height: 260px; border-radius: 6px; object-fit: contain; }

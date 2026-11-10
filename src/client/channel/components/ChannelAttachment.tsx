@@ -4,6 +4,7 @@ import { useCopy } from "../../ui/copy";
 import type { ChannelAttachment as Attachment } from "../protocol";
 import { type ChannelAttachments, fileSize } from "../attachments";
 import { ChannelAction } from "./ChannelAction";
+import { Tooltip } from "../../components/living/Tooltip";
 
 export function ChannelAttachment({ roomId, messageSeq, file, client }: { roomId: string; messageSeq: number; file: Attachment; client: ChannelAttachments }) {
   const { lang } = useCopy(), zh = lang === "zh";
@@ -32,7 +33,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client }: { roomId
   }
   return <div className="c3-attachment">
     <div className="c3-attachment-file"><Glyph name="save" size={21} />
-      <div><strong>{file.name}</strong><small>{fileSize(file.size)}</small></div>
+      <div><Tooltip overflow={{ text: file.name, selector: "strong" }}><strong>{file.name}</strong></Tooltip><small>{fileSize(file.size)}</small></div>
       <ChannelAction icon={download.busy ? "x" : "arrowDown"} label={download.busy ? (zh ? "取消下载" : "Cancel download") : (zh ? "下载" : "Download")}
         quiet hint={download.busy ? "hint-close" : "hint-file-download"}
         onClick={() => { if (download.busy) client.cancelDownload(key); else void client.download(key, file).catch(() => {}); }} />
