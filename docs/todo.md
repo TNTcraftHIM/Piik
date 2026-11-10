@@ -16,9 +16,10 @@ the feedback period; they do not delay that delivery.
   sidebar collapse, personal activity placement, couch/conversation placement and
   direct room pop-out before changing the current workspace. Give room/domain
   invitations contextual entries with one link and subordinate QR presentation;
-  keep their existing admission owners. Preserve current players and independent
-  room activities; decide the proposed single voice destination before replacing
-  existing multi-room voice. The [hierarchy proposal](./research/room-interactions.md#workspace-hierarchy-proposal)
+  keep their existing admission owners. The contextual invitation, upper share
+  actions and lower voice area are selected; compare couch placement and finish
+  integration while preserving players and independent room activities.
+  The [hierarchy proposal](./research/room-interactions.md#workspace-hierarchy-proposal)
   records the candidate; [visual language](./standards/visual-language.md#30-channel-workspace)
   owns accepted layout responsibilities.
 - [ ] **3.0 Windows shared-sound noise.** A beta2 Host reports noise that stops
@@ -83,6 +84,9 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **3.0 personal identity and feedback.** Design shared user avatars,
+  editable screen titles with capture-derived defaults, and quiet notification/
+  reaction sounds through the [existing identity and interaction owners](./research/room-interactions.md#identity-and-interaction-additions-proposed).
 - [ ] **Unified 3.0 quick-sharing entry.** Bring the short create/share/invite/watch
   flow into the same room runtime and UI as the full workspace, then end long-term
   maintenance of a separate 2.x line; fix confirmed defects during the transition.

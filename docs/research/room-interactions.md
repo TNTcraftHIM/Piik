@@ -448,8 +448,9 @@ sharing. Its README and [status](../status.md) own the runnable boundary.
 
 ### Workspace Hierarchy Proposal
 
-Proposed 2026-11-10, awaiting owner review. The current layout needs clearer task
-groups and better use of the space around media. This is a presentation proposal;
+Reviewed 2026-11-10: the owner selected contextual room invitation, upper sharing
+actions and lower personal voice controls. Presence placement remains under review.
+The composition uses clearer task groups and the space around media;
 the network and data owners above continue to govern activity and admission.
 
 | Scope | Proposed placement and action |
@@ -457,7 +458,7 @@ the network and data owners above continue to govern activity and admission.
 | Domain and navigation | Left room list and domain menu; collapse control on the sidebar edge. Domain invitation and domain administration stay here. |
 | Current room | Room title with its contextual invitation; the primary share action and its parameters form a separate group. Room management stays beside the room-list item. |
 | Personal activity | Lower-left identity, joining voice and the joined activity's mute, listening and leave controls. State the target room; folding navigation or narrowing the viewport moves the same controls into the bottom bar. |
-| Conversation and presence | While watching, couch and chat share the right companion area. Without pictures, chat takes the main space and the right rail retains couch, people and listening controls. Narrow layouts retain these through a compact presence disclosure. |
+| Conversation and presence | Chat, pictures and the room's couch retain separate tasks. Compare a stable lower couch anchor against moving it between the central conversation and side area; preserve the same people, states and interaction owner. Each source keeps its room label and sharer interaction entry. |
 
 Focus viewing keeps one main picture with the other views below. Browsing another
 room does not stop independent watches; each picture retains its source-room
@@ -476,8 +477,8 @@ Use one contextual invitation panel for either room or domain. Copy the current
 link first; expand its QR code within the panel. Access fields reuse the existing
 settings component and writer. Keep reset/revoke separate from copying. Room
 invitations admit the domain and that room; domain invitations do not unlock
-private rooms. Public-room URLs need a Browser landing path that still observes
-domain admission. Do not add roles, a second token or hidden permission changes.
+private rooms. Public-room URLs select their target while still observing domain
+admission. Do not add roles, a second token or hidden permission changes.
 
 The current domain rail is a local address list, not centrally synchronized
 membership. Its add entry should open an invitation/address, with saving as a
@@ -488,9 +489,8 @@ a layout proposal; opening another domain must not silently stop this page.
 
 Browsing currently reads conversation over the Domain connection without peer
 media demand. Voice, screen sharing, watches and file transfers keep independent
-room scopes. Retain this separation. A proposed single voice destination would
-replace the current per-page multi-room voice capability and therefore awaits the
-owner's decision; browsing alone would still never move it. Explicit share/watch
+room scopes. Retain this separation and the current multi-room capability;
+browsing alone never moves an activity. Explicit share/watch
 actions preserve their target room. Invitations grant access and select content,
 without implicitly starting microphones or moving existing shares.
 
@@ -505,6 +505,27 @@ Review the composition before integrating it into the shared page; then verify
 room/source scope, active-media continuity, keyboard/touch operation and window
 return. [TODO](../todo.md) owns the work, and accepted visual rules remain in
 [visual language](../standards/visual-language.md#30-channel-workspace).
+
+### Identity And Interaction Additions (PROPOSED)
+
+Keep personal images with the existing domain user identity, reusing bounded
+image preparation from room/domain icons. Use one image across conversation
+and source identity, with the Pawn fallback and its voice/control state intact.
+This needs an own-user update and stored identity field, not another account system.
+
+A screen title belongs to its publication. Use available capture metadata as
+the automatic name, with a readable Screen/Camera fallback. A user override
+survives successful source replacement; clearing it restores automatic naming.
+Cancelled source selection does not change the title. Keep the sharer and room
+visible separately, and do not expose raw capture IDs or paths as a title.
+
+Basic notification and throw sounds are personal feedback. Reuse confirmed room
+events once, independently of visual surfaces, so moving a panel or replaying
+history does not replay sound. Keep them outside outgoing audio mixers, with
+separate personal sound controls and original or explicitly licensed assets.
+Defaults and sample sounds remain design decisions. The source-avatar reaction
+entry reuses the source room's existing quick-reaction and cooldown owner.
+These additions are proposed; the audience feature uses the accepted network owner.
 
 ### Extension Boundaries (PROPOSED)
 
