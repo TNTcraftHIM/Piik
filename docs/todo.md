@@ -80,6 +80,13 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **Unified 3.0 quick-sharing entry.** Bring the short create/share/invite/watch
+  flow into the same room runtime and UI as the full workspace, then end long-term
+  maintenance of a separate 2.x line; fix confirmed defects during the transition.
+  Accept first-use defaults, explicit new-room versus named continue-room actions,
+  invitation landing and any short room-code locator before implementation.
+  View preferences must not start activities. Keep access, saved data and activity
+  lifetimes with their existing owners, separately from App network-entry choices.
 - [ ] **Routing parity decisions.** Review the current domain-wide 20-endpoint
   limit, which counts Browser and App separately, against the intended user
   capacity. The current direct-source/helper trials cover fewer improvement

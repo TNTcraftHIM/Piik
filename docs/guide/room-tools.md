@@ -15,12 +15,16 @@ Open the room list (**Rooms** on a narrow screen), then select the settings
 button beside that room. This leaves your current conversation and activities
 in place. The tabs show the tasks available to you:
 
-| Tab | Task |
-| --- | --- |
-| **Room** | Change the name, image or access, then **Save**. **Hide from users without access** hides a private room from people who have not been admitted. |
-| **Invitation** | Copy the private-room invitation or open its QR code. Under **Users with access**, **Remove room access** ends that user's access and activities in this room; they need a new grant to return. |
-| **My forwarding** | Choose how many people this device helps forward to in this room. |
-| **Records and backups** | Export chat, or export a room backup when you manage its host. To restore, select **Restore backup**, choose the ZIP and read the replacement notice before **Confirm**. Restoration replaces this room's settings and messages. |
+- **Room:** Change the name, image or access, then **Save**. **Hide from users
+  without access** hides a private room from people who have not been admitted.
+- **Invitation:** Copy the private-room invitation or open its QR code. Under
+  **Users with access**, **Remove room access** ends that user's access and
+  activities in this room; they need a new grant to return.
+- **My forwarding:** Choose how many people this device helps forward to in this room.
+- **Records and backups:** Export chat, or export a room backup when you manage
+  its host. To restore, select **Restore backup**, choose the ZIP and read the
+  replacement notice before **Confirm**. Restoration replaces this room's
+  settings and messages.
 
 Changing an invitation does not revoke people already admitted. To replace its
 link, expand **Reset room invitation**, then select **Generate new invitation**.
