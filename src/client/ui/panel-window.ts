@@ -44,6 +44,8 @@ export function usePanelWindow(enabled: boolean, onDocument?: (owner: Document) 
   }
   function close() {
     lifetime.current?.abort();
+    setSurfaceDocument(null);
+    if (surfaceDocument) onDocument?.(container?.ownerDocument ?? document);
     setOpening(false); setFailed(false);
   }
   return { container, slot, surfaceDocument, opening, failed, open, close,
