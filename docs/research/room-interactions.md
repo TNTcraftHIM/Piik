@@ -487,10 +487,12 @@ owns accepted layout rules; [TODO](../todo.md) owns remaining integration work.
 
 ### Identity And Interaction Additions (PROPOSED)
 
-Keep personal images with the existing domain user identity, reusing bounded
-image preparation from room/domain icons. Use one image across conversation
-and source identity, with the Pawn fallback and its voice/control state intact.
-This needs an own-user update and stored identity field, not another account system.
+The selected personal-avatar treatment places the image inside the Pawn's body,
+keeping its head, identity colour, headset and motion. Use the same Pawn across
+conversation, voice lists and the couch; the unconfigured person retains its
+plain body. The local appearance preview reuses the existing bounded identity-image
+preparation. Saving and synchronizing a personal image still needs an own-user
+update at the existing identity owner, not another account or upload service.
 
 A screen title belongs to its publication. Use available capture metadata as
 the automatic name, with a readable Screen/Camera fallback. A user override
