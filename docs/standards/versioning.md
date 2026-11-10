@@ -1,6 +1,6 @@
 # Versions And Compatibility
 
-Reviewed 2026-09-13. `v1.0.0` is the declared public compatibility baseline.
+Reviewed 2026-11-09. `v1.0.0` is the declared published compatibility baseline.
 App, Server and the embedded Web build share one product version, plus the full
 Git SHA for source provenance. [Status](../status.md) owns the current publication
 state; automatic publication follows the product-change boundary below.
@@ -41,6 +41,22 @@ display GitHub's latest stable tag and `published_at` as optional metadata, neve
 a manually maintained version or the installed App's identity. Publication time
 is distinct from build time; an unavailable check must not block downloads.
 
+## Unreleased 3.0
+
+Internal 3.0 builds have no compatibility promise to earlier test builds. Replace
+an unsuitable design directly and remove its superseded implementation. Do not
+retain aliases, parallel readers/writers, fallback protocols or data migrations
+solely to support an obsolete private build. Previous test artifacts are evidence,
+not interfaces the current implementation must continue to serve.
+
+Design the current contracts for clear ownership, coherent semantics and useful
+extension points. Protocol identifiers reject mismatched builds; they do not
+require compatibility bridges. Update the matched App, Web, Server, previews and
+guides together. Change storage identity only when its representation changes,
+and explain a required data reset instead of maintaining a private legacy format.
+The public promises below apply to published releases, including the separate 2.x
+maintenance line.
+
 ## Public Compatibility Promise
 
 The protected surface is documented App/Server startup and configuration, room
@@ -71,8 +87,8 @@ baseline contract; introduce a small optional capability only for a concrete
 new feature. Do not add a version-range solver, general adapter framework,
 parallel authority writers or blanket old-client fallback paths.
 
-Keep the 2.x baseline long-lived. Substantial new functionality can remain a
-minor release when older peers retain established behavior and new behavior is
+Within a published major, substantial new functionality can remain a minor
+release when older peers retain established behavior and new behavior is
 explicitly opted into. A small feature can still be breaking if it unconditionally
 changes a strict message, existing semantics or durable authority. Review those
 boundaries before choosing the version; neither feature count nor a desire to
