@@ -11,10 +11,11 @@ import { say, type CopyKey } from "../src/client/ui/copy";
 const t = (key: CopyKey) => key;
 
 describe("channel connection presentation", () => {
-  it("keeps connected room paths without starting media or drawing pending media", () => {
+  it("keeps reading-only rooms free of peer paths and media statistics", () => {
     const fixture = channelConnectionPreview("room");
     const graph = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);
-    expect(graph.edges).toMatchObject([{ selected: true, ready: true }, { selected: true, ready: true }]);
+    expect(graph.edges).toEqual([]);
+    expect(fixture.state.pairs).toEqual([]);
     const html = renderToStaticMarkup(createElement(ChannelConnectionReport, fixture));
     expect(html).not.toContain("is-pending");
     expect(html).not.toContain("lr-connection-summary");

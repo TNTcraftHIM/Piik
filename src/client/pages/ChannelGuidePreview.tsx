@@ -37,8 +37,9 @@ export function useChannelGuideSample(multiRoom = false) {
   const roomName = settings.name ?? (zh ? "周五小聚" : "Friday with friends");
   const [quality, setQuality] = useState<QualityProfile>(QUALITY_PROFILES["1080p30"]);
   const [codec, setCodec] = useState<BrowserVideoCodecMode>("auto");
-  const [muted, setMuted] = useState(false), [deafened, setDeafened] = useState(false);
-  const [joined, setJoined] = useState(true);
+  const [voiceByRoom, setVoiceByRoom] = useState<Record<string, { muted: boolean; deafened: boolean }>>({
+    friday: { muted: false, deafened: false },
+  });
   const [voiceLevel, setVoiceLevel] = useState<number>();
   const voiceActivity = useCallback(async () => new Map(voiceLevel === undefined ? [] : [
     ["sample-ada-session", voiceLevel], ["sample-bo-session", voiceLevel / 2],
@@ -66,8 +67,9 @@ export function useChannelGuideSample(multiRoom = false) {
   const state = snapshotSchema.parse({ channel: { id: "sample", name: "Friends", icon: "couch", ownerId: "sample-ada", historyWindow: 1000,
     access: "private", hasPassword: false, inviteHash: "0".repeat(64), rooms }, users,
     sessions: users.map(user => ({ id: `${user.id}-session`, userId: user.id, online: true, signingKey: Array(32).fill(0) })),
-    publications: joined ? [{ id: "voice", kind: "voice", roomId: "friday", sessionId: "sample-ada-session", userId: "sample-ada", paused: false }] : [],
-    voice: [...(joined ? [{ sessionId: "sample-ada-session", roomId: "friday", muted, deafened }] : []),
+    publications: Object.keys(voiceByRoom).map(roomId => ({ id: `voice-${roomId}`, kind: "voice", roomId,
+      sessionId: "sample-ada-session", userId: "sample-ada", paused: false })),
+    voice: [...Object.entries(voiceByRoom).map(([roomId, voice]) => ({ sessionId: "sample-ada-session", roomId, ...voice })),
       { sessionId: "sample-bo-session", roomId: "friday", muted: false, deafened: false }],
     subscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   });
@@ -92,9 +94,15 @@ export function useChannelGuideSample(multiRoom = false) {
     roomTopology: async (roomId: string, publicationId?: string) => sampleRoomTopology(state, roomId, publicationId),
     connectionMetrics: async () => [],
     appConnectionMetrics: async () => { throw new Error("No native room in this preview"); },
-    canUnmute: () => true, setMuted: async (_room: string, next: boolean) => setMuted(next),
-    setDeafened: async (_room: string, next: boolean) => setDeafened(next), leaveVoice: async () => setJoined(false),
-    joinVoice: async () => setJoined(true),
+    canUnmute: () => true,
+    setMuted: async (roomId: string, muted: boolean) => setVoiceByRoom(previous => previous[roomId]
+      ? { ...previous, [roomId]: { ...previous[roomId], muted } } : previous),
+    setDeafened: async (roomId: string, deafened: boolean) => setVoiceByRoom(previous => previous[roomId]
+      ? { ...previous, [roomId]: { ...previous[roomId], deafened } } : previous),
+    leaveVoice: async (roomId: string) => setVoiceByRoom(previous => { const next = { ...previous }; delete next[roomId]; return next; }),
+    joinVoice: async (roomId: string, listenOnly = false) => setVoiceByRoom(previous => ({
+      ...previous, [roomId]: previous[roomId] ?? { muted: listenOnly, deafened: false },
+    })),
     setInputVolume: (volume: number) => setVoiceInput(previous => ({ ...previous, volume })), setListeningVolume,
     microphones: async () => [{ id: "", label: zh ? "默认麦克风" : "Default microphone" }],
     configureVoiceInput: async (next: Partial<typeof voiceInput>) => setVoiceInput(previous => ({ ...previous, ...next })),
@@ -121,7 +129,8 @@ export function ChannelGuidePreview() {
     <p>{zh ? "正式组件与示例房间，不连接服务、不采集设备。邀请链接为示例。" : "Production components with a sample room. No service or device capture; the invitation is an example."}</p>
     <div className="c3-guide-room">
       <aside className="c3-guide-navigation" aria-label={zh ? "房间" : "Rooms"}>
-        <ChannelRoomItem room={state.channel.rooms[0]} selected settingsOpen={settingsOpen} voice
+        <ChannelRoomItem room={state.channel.rooms[0]} selected settingsOpen={settingsOpen}
+          voice={state.voice.some(voice => voice.roomId === state.channel.rooms[0].id && voice.sessionId === channel.sessionId)}
           onSelect={() => {}} onManage={() => setSettingsOpen(true)} />
       </aside>
       <div className="c3-guide-main">

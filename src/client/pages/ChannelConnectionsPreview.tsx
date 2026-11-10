@@ -15,16 +15,18 @@ export function channelConnectionPreview(mode: "room" | "voice" | "both" | "app"
       rooms: [{ id: "room", name: "Living room", icon: "couch", creatorId: "host-user", access: "public", hidden: false,
         hasPassword: false, authorized: true, canManage: false, participantSessionIds: ["host", "self", "friend", "app"],
         available: true, reading: true, capabilities: { attachments: true },
-        delivery: { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } } }] },
+        delivery: { hostSessionId: "host", bindingId: "binding", nextHops: mode === "room" ? {} : { host: "host" } } }] },
     users: [{ id: "host-user", name: longNames ? "Host with a very long display name" : "Momo" },
       { id: "self-user", name: "Nori" }, { id: "friend-user", name: "Kiki" }],
     sessions: ["host", "self", "friend", "app"].map(id => ({ id, userId: id === "app" ? "self-user" : `${id}-user`, online: true, signingKey: Array(32).fill(0) })),
     publications: mode === "room" ? [] : [
       ...["host", "self", "friend"].map(id => ({ id: `voice-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "voice", paused: false })),
       ...(mode === "voice" ? [] : ["host", "self"].map(id => ({ id: `screen-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }))),
-    ], voice: [], subscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
+    ], voice: mode === "room" ? [] : ["host", "self", "friend"].map(sessionId => ({
+      sessionId, roomId: "room", muted: false, deafened: false,
+    })), subscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   });
-  const topology: ChannelTopology = { bindingId: "binding", base: { rootSessionId: "host", edges: [
+  const topology: ChannelTopology = { bindingId: "binding", base: { rootSessionId: "host", edges: mode === "room" ? [] : [
     { sender: "host", receiver: "self", ready: true }, { sender: "host", receiver: "friend", ready: true },
   ] }, screen: mode === "app" ? { publicationId: "screen-host", sourceSessionId: "host", edges: [
     { sender: "host", receiver: "app", selected: true, proof: "forwardable", presented: null, presentation: false },
