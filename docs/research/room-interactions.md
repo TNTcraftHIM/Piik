@@ -455,14 +455,14 @@ the network and data owners above continue to govern activity and admission.
 | Scope | Proposed placement and action |
 | --- | --- |
 | Domain and navigation | Left room list and domain menu; collapse control on the sidebar edge. Domain invitation and domain administration stay here. |
-| Current room | Room title, a share action with its adjacent parameters, a parallel join-voice action and a separate room invitation entry. Room management stays beside the room-list item. |
-| Personal activity | Lower-left identity and current voice destination with mute, listening and leave controls. Folding navigation or narrowing the viewport keeps these controls visible. |
+| Current room | Room title, a share action with its adjacent parameters, then a lightly divided invitation entry. Room management stays beside the room-list item. |
+| Personal activity | Lower-left identity, joining voice and the joined activity's mute, listening and leave controls. State the target room; folding navigation or narrowing the viewport moves the same controls into the bottom bar. |
 | Conversation and presence | While watching, couch and chat share the right companion area. Without pictures, chat takes the main space and the right rail retains couch, people and listening controls. Narrow layouts retain these through a compact presence disclosure. |
 
 Focus viewing keeps one main picture with the other views below. Browsing another
 room does not stop independent watches; each picture retains its source-room
-identity and a return action. Joining voice has one primary action; microphone
-and listening controls belong to the joined activity. Share parameters stay with
+identity and a return action. Voice join and its microphone/listening controls
+occupy the same personal activity area. Share parameters stay with
 Share. Room settings group room properties, connection settings and records;
 inviting belongs to its separate contextual panel.
 
