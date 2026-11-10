@@ -75,6 +75,10 @@ fell substantially, while voice-waveform comparison did not establish improved
 speech fidelity. Simultaneous dry and processed branches measured about 31 ms
 of added delay. This selects a candidate for matched-level listening and mobile
 runtime checks; it does not select a new default or measure acoustic echo control.
+The listening comparison time-aligns these captures, matches normal-speech RMS
+with one gain per mode and preserves relative quiet speech and pause levels.
+It reuses recorded test audio without requesting a microphone or running the
+candidate in the product. Mobile runtime cost remains a separate decision input.
 
 Any accepted enhancement belongs before gain in the shared `MicrophoneInput`,
 once per captured microphone; rooms continue to clone its stable output. Keep
