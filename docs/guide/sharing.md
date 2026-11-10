@@ -4,7 +4,7 @@ This guide covers the 3.0 internal test. For the published version, use the [2.6
 
 English · [简体中文](./sharing.zh-CN.md) · [Documentation](./README.md)
 
-To enter a domain or create a room, start with [getting started](./getting-started.md).
+To open a site or create a room, start with [getting started](./getting-started.md).
 Each admitted participant can share in a room; several people can share at once.
 You choose which pictures to watch.
 
@@ -28,11 +28,10 @@ Use **Switch source** on your picture card to replace that share. You can also s
 in another room without ending the first share. Switching the sidebar selection
 keeps existing shares, watched pictures and voice running.
 
-Domain and room invitations are different: the domain invitation opens the
-domain, while a room invitation leads to that room and can grant its access.
-Use the corresponding copy or QR control and send private invitations only to
-intended guests. Domain and room owners manage their own access, passwords and
-invitation resets; see [getting started](./getting-started.md).
+Send the site address or a public-room link for ordinary access. Private rooms
+use their own invitation or password; send those invitations only to intended
+guests. Each room owner manages that room's access and invitation resets;
+see [getting started](./getting-started.md).
 
 ## Picture and sound settings
 

@@ -7,7 +7,7 @@ This guide covers the 3.0 test version. For published 2.x, use the
 
 Let a friend operate your shared computer, or play a local multiplayer game
 together. Each sharer controls access to their own picture, independently of
-domain or room ownership. Friends watch and request control in their browsers.
+site maintenance or room ownership. Friends watch and request control in their browsers.
 
 ## Start remote control
 

@@ -112,7 +112,7 @@ export class ChannelSession {
   private credential = stored(credentialKey) ?? undefined;
   private invitationOrigin = location.origin;
   private ownerKey = new URLSearchParams(location.hash.slice(1)).get("owner") ?? undefined;
-  private roomId: string | null = selectedRoom() || null;
+  private roomId = selectedRoom();
   private requests = new Map<string, {
     roomId?: string; bindingId?: string;
     history?: { before?: number; entries: Map<number, { message?: ChannelMessage; snapshot?: MessageReactionSnapshot }> };
@@ -129,7 +129,7 @@ export class ChannelSession {
   private admittedPublications = new Set<string>();
   private historyChannel: string | null = null;
   private readings = new Map<string, RoomReading>();
-  private get reading(): RoomReading | undefined { return this.readings.get(this.roomId ?? ""); }
+  private get reading(): RoomReading | undefined { return this.readings.get(this.roomId); }
   private readingRooms = new Set<string>();
   private outgoingMessages = new Map<string, { content: string; nonce: string }>();
   private captureLifetime = new AbortController();
@@ -254,7 +254,6 @@ export class ChannelSession {
       this.invitationOrigin = event.invitationOrigin ?? location.origin;
       this.patch({ sessionId: event.sessionId, connection: "connected", error: null, siteURL: this.siteURL() });
       this.readings.clear();
-      this.roomId ??= event.state.channel.rooms[0]?.id ?? null;
       for (const room of event.state.channel.rooms) if (room.reading) this.readingRooms.add(room.id);
       this.applyState(event.state);
       void this.syncAppWatching(resumed);
@@ -289,7 +288,7 @@ export class ChannelSession {
           if (!event.state.subscriptions.includes(id) && !this.view.pending.has(`watch:${id}`)) void this.watch(id).catch(() => {});
         }
       }
-      this.browse(this.roomId ?? event.state.channel.rooms[0]?.id ?? "");
+      this.browse(this.roomId);
       if (!skipRestoreRoom) void this.acceptInvitation().catch(() => {});
       for (const command of this.signals.splice(0)) {
         if (event.state.pairs.some(pair => pair.id === command.pairId)) this.write(command);
@@ -1185,7 +1184,7 @@ export class ChannelSession {
   }
 
   private async connectBackupIdentity(domainId: string, userId: string, identity: { credential?: string; ownerKey?: string }, skipRoom?: string): Promise<void> {
-    this.close(); this.credential = identity.credential; this.ownerKey = identity.ownerKey; this.roomId = null;
+    this.close(); this.credential = identity.credential; this.ownerKey = identity.ownerKey; this.roomId = "";
     this.closed = false;
     let socket: WebSocket | null = null;
     try {
@@ -1347,7 +1346,7 @@ export class ChannelSession {
       dataRemoved = event.result.dataRemoved;
     });
     if (dataRemoved === undefined) throw new Error("invalid_response");
-    if (this.roomId === roomId) this.browse(this.view.state?.channel.rooms.find(room => room.id !== roomId)?.id ?? "");
+    if (this.roomId === roomId) this.browse("");
     return { dataRemoved };
   }, reportError);
 

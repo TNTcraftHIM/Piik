@@ -47,7 +47,8 @@ site, not the entry for this test version.
    archive and open `piik-app.exe`; on Android, install the supplied APK and
    open Piik. Keep the desktop package's files together.
 2. The launcher opens in your system browser. Choose a mode below, then
-   select **Open Piik**. The site opens with its room list.
+   select **Open Piik**. A fresh visit opens the room overview; the Piik mark
+   returns there without stopping your shares, watches or voice.
 3. Open the room list (**Rooms** on a narrow screen), select **Create room**,
    enter a name and choose **Public** for a first room
    everyone in the site can enter. Check the hosting note, then select

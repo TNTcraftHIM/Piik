@@ -287,11 +287,12 @@ The studies reinterpret those familiar patterns using Piik's visual language.
 
 ## Rooms, conversation and media
 
-A channel contains rooms. Users can create and manage their own rooms as room owners (房主);
-the domain owner (域主) manages the channel and all rooms. Both remain
-users (用户), independently of sharing activity. Room admission permits chatting,
-voice, sharing and watching without separate role groups. Public rooms admit channel
-users. Private rooms require a room invitation or password, and hidden rooms do
+A site contains rooms. Anyone opening the site can create and manage their own
+rooms as a room owner (房主). The site operator maintains site metadata and backups;
+that does not grant access to or management of another user's room. These users
+can share independently of maintenance or room ownership. Room admission permits
+chatting, voice, sharing and watching without separate role groups. Public rooms
+are open to site users. Private rooms require a room invitation or password, and hidden rooms do
 not appear in an unauthorized user's directory. Changing a password or invitation
 controls new admission; existing grants require explicit revocation.
 
@@ -391,22 +392,23 @@ commit individually: their room order, send identity and attachment descriptions
 are saved in one transaction before confirmation or distribution. A retry returns
 the original confirmed message without rebroadcasting it, including after restart.
 Storage failure leaves the send unconfirmed and preserves existing records.
-User credentials and room invitations are stored as digests, and room passwords
-as password hashes. The domain's bootstrap keys are private hosting data.
+User credentials are stored as digests, and room passwords as password hashes.
+The room owner retains a private invitation's digest and recoverable key so it
+can read the current link. The site's bootstrap key is private hosting data.
 Sessions, captures and routes are not restored after a process restart.
 
-This unpublished prototype uses domain hosting metadata version 1 around domain
-authority version 4, room backup metadata version 2, and SQLite schema version 4.
+This unpublished prototype uses domain hosting metadata version 2 around domain
+authority version 5, room backup metadata version 2, and SQLite schema version 4.
 Browser room storage uses IndexedDB version 5. Older experimental
 checkpoints and the old unscoped `rooms/*.sqlite` layout are rejected rather than
 silently discarding or attaching their history to another domain. Keep any
 old experiment's database and choose a fresh `PIIK_CHANNEL_DATA_DIR` for this version.
 
-The current domain owner's personal credential authorizes `GET` and `PUT` on
+The current site operator's personal credential authorizes `GET` and `PUT` on
 `/prototype/channel/backup`. The App or Server service validates the complete
 archive, stops its Native operators and waits for them to exit, replaces the domain checkpoint
 and retires old connections. Server bootstrap and the App owner entry then use
-the restored keys. HTTP entries, tunnels and STUN retain their service lifetime;
+the restored owner key. HTTP entries, tunnels and STUN retain their service lifetime;
 neither room histories nor participant retained files belong in a domain archive.
 
 UI preferences belong to the client; the Browser also keeps its user credential

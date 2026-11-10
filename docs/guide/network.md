@@ -105,11 +105,11 @@ is insufficient. Choose a tool everyone in your group can use:
 - **[ZeroTier](https://docs.zerotier.com/quickstart/):** join the same network ID, then authorize the devices in its management console. Use the App owner's assigned virtual IPv4 address.
 - **[UU (Chinese guide)](https://uu.163.com/blog/lan-multiplayer-guide-net.html):** use the general-purpose LAN option and join the same room. Use the App owner's UU virtual IPv4 address.
 
-![Join the same virtual network, select its address in the App's Local network mode, then send the full domain or room invitation and confirm the local certificate.](../assets/guide/virtual-lan.en.svg)
+![Join the same virtual network, select its address in the App's Local network mode, then send the site address or room link and confirm the local certificate.](../assets/guide/virtual-lan.en.svg)
 
 1. Everyone runs the networking tool and joins the same virtual network.
 2. In the App launcher, choose **Local network** and select the tool's virtual IP from the available invitation addresses, then **Open Piik**. If another mode is already running, finish its shares and reopen App before selecting the mode.
-3. Create or open the intended room. Send the full domain or room invitation using that virtual address. Friends [confirm the local certificate](./troubleshooting.md#local-https-certificate-warning) with the App owner before entering.
+3. Create or open the intended room. Send the site address or room link using that virtual address. Friends [confirm the local certificate](./troubleshooting.md#local-https-certificate-warning) with the App owner before entering.
 4. Try chat, then **Watch**, voice or the file download. Everyone keeps the networking tool running; the App owner also keeps Piik App running.
 
 If the virtual address changes, select the new address and send a fresh link.

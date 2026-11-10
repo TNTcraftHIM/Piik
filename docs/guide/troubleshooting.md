@@ -35,7 +35,7 @@ symptom's simple checks have failed. Change one thing at a time.
 
 [Startup](#app-startup-fails-or-no-page-opens) · [Android installation](#android-apk-will-not-install) · [macOS](#macos-blocks-first-launch) ·
 [Public invite / 1033](#public-invitation-fails-or-shows-1033) · [Local invitation](#local-invitation-will-not-open) ·
-[Local certificate](#local-https-certificate-warning) · [Invitation or password](#an-invitation-or-password-is-rejected) · [Domain connection](#the-page-opens-but-the-domain-will-not-connect)
+[Local certificate](#local-https-certificate-warning) · [Invitation or password](#an-invitation-or-password-is-rejected) · [Site connection](#the-page-opens-but-the-site-will-not-connect)
 
 ### App startup fails, or no page opens
 
@@ -180,25 +180,26 @@ unexpected warning on a public HTTPS site needs investigation by its operator.
 
 ### An invitation or password is rejected
 
-Open the full current 3.0 link, including its invitation part. Domain and room
-invitations are different. A private domain can require its invitation or
-passphrase; a private room can require a separate invitation or room password.
-Ask the respective owner for the current link after a reset. Use the same
+Open the full current 3.0 room link, including its invitation part when present.
+Sites open without a separate invitation or passphrase. A private room can
+require its own invitation or room password. Ask its owner for the current link
+after a reset. A rejected room invitation does not stop you using the site or
+its public rooms. Use the same
 browser profile to retain your existing identity; private/incognito profiles
 have separate saved credentials.
 
 If Piik asks you to update, use matching 3.0 App, Web and Server versions, then
-reload. A 2.x App or domain is not a replacement for the test endpoint.
+reload. A 2.x App or site is not a replacement for the test endpoint.
 
-### The page opens but the domain will not connect
+### The page opens but the site will not connect
 
 Read the status at the top of the page. If it remains disconnected, compare the
 same link in another browser or network and read the visible error.
 
 #### Room creation returns 403
 
-If domain access or room creation is rejected with HTTP 403, operators should
-check that the frontend and WebSocket reach the same domain service and
+If site connection or room creation is rejected with HTTP 403, operators should
+check that the frontend and WebSocket reach the same site service and
 that the browser's exact origin is allowed; see the [runtime setup](../../prototype/channel-server/README.md#run).
 A proxy/WAF HTTP error needs that operator's logs. Do not disable origin checks.
 
@@ -206,7 +207,7 @@ A proxy/WAF HTTP error needs that operator's logs. Do not disable origin checks.
 
 ### Chat or history will not load
 
-1. Check the domain connection at the top. Use **Reconnect** when it is disconnected.
+1. Check the site connection at the top. Use **Reconnect** when it is disconnected.
 2. Read the room notice. **This room is unavailable** means its host needs to return: keep the hosting Browser page open, or restart the App that hosts it. Opening your own App does not take over someone else's room.
 3. If the room is online, use **Load messages** after a failed read and keep the complete error. A storage error belongs to the room host; collect its report too.
 

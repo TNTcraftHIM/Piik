@@ -90,11 +90,11 @@ STUN 服务会收到参与者的公网 IP，请选择信任的服务。
 - **[Tailscale](https://tailscale.com/docs/how-to/quickstart)（英文教程）：** 各设备安装后，邀请朋友加入同一个私有网络（tailnet）；选择 App 所在设备的 Tailscale IPv4 地址（`100.x.y.z`）。
 - **[ZeroTier](https://docs.zerotier.com/quickstart/)（英文教程）：** 各设备加入同一个网络 ID，再到管理页面授权设备；选择 App 所在设备分配到的虚拟 IPv4 地址。
 
-![加入同一虚拟网络，在 App 局域网使用模式中选择虚拟地址，再发送完整域或房间邀请并确认证书。](../assets/guide/virtual-lan.zh-CN.svg)
+![加入同一虚拟网络，在 App 局域网使用模式中选择虚拟地址，再发送站点地址或房间链接并确认证书。](../assets/guide/virtual-lan.zh-CN.svg)
 
 1. 所有人运行组网工具，加入同一虚拟网络。
 2. 在 App 启动页选择 **局域网使用**，从可用邀请地址中选择组网工具的虚拟 IP，再点击 **进入 Piik**。如果已经启动了另一模式，先结束分享并重新打开 App，再选择模式。
-3. 创建或打开目标房间，用该虚拟地址发送完整域或房间邀请。朋友先与 App 使用者[核对本地证书](./troubleshooting.zh-CN.md#本地-https-证书提示)，再进入。
+3. 创建或打开目标房间，用该虚拟地址发送站点地址或房间链接。朋友先与 App 使用者[核对本地证书](./troubleshooting.zh-CN.md#本地-https-证书提示)，再进入。
 4. 先试聊天，再试 **观看**、语音或下载。所有人保持组网工具运行，App 使用者也保持 Piik App 运行。
 
 虚拟地址变化后，重新选择地址并发送新链接。不要发送 `localhost`，它指向每位收件人自己的设备。

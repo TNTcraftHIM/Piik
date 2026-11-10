@@ -51,7 +51,7 @@ beforeEach(() => {
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
-async function setup(window = 1000, read = true, hash = "", readyInteractions = true, roomIds = ["first", "second"]) {
+async function setup(window = 1000, read = true, hash = "room=first", readyInteractions = true, roomIds = ["first", "second"]) {
   vi.stubGlobal("location", new URL(`https://channel.test/__channel-preview${hash ? `#${hash}` : ""}`));
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   vi.stubGlobal("WebSocket", ChannelSocket);
@@ -127,6 +127,17 @@ const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", t
   reactions: { revision: 0, counts: {} } });
 const reactionSnapshot = (seq: number, revision: number, counts: Record<string, number> = {}) =>
   ({ messageId: `message-${seq}`, messageSeq: seq, revision, counts });
+
+test("the site overview does not select a room or load its history", async () => {
+  const { session, socket, peer } = await setup(1000, false, "");
+  try {
+    expect(session.getSnapshot().connection).toBe("connected");
+    expect(socket.sent.filter(command => command.type === "browse" && command.active)).toEqual([]);
+    expect(peer.sent).toEqual([]);
+    session.browse("second");
+    expect(socket.sent.filter(command => command.type === "browse" && command.active).map(command => command.roomId)).toEqual(["second"]);
+  } finally { session.close(); }
+});
 
 test("a keyless room fragment supplies navigation without performing admission", async () => {
   const { session, socket } = await setup();
@@ -371,7 +382,7 @@ test("room interactions reuse their original acknowledgement and user identity w
 test("interaction readiness follows Domain read admission without waiting for a peer path", async () => {
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
-  const { session, socket, peer } = await setup(1000, false, "", false);
+  const { session, socket, peer } = await setup(1000, false, "room=first", false);
   try {
     const state = structuredClone(session.getSnapshot().state!);
     state.channel.rooms[0].delivery!.nextHops = {};
@@ -485,7 +496,7 @@ test("App hosting uses its own participant while Browser rooms retain their page
     createRoomPolicy: async (input: unknown) => JSON.stringify(input),
     BrowserRoomHost: { open, storedPolicies },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
-  const { session, socket } = await setup(1000, true, "", true, ["first", "second", localRoom.id]);
+  const { session, socket } = await setup(1000, true, "room=first", true, ["first", "second", localRoom.id]);
   const app = ChannelSocket.current;
   try {
     expect(app).not.toBe(socket);

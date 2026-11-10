@@ -5,7 +5,7 @@ downloads and the online Demo still use 2.x; use the [2.6.0 App reference](https
 
 English · [简体中文](./README.zh-CN.md) · [Getting started](../../docs/guide/getting-started.md)
 
-Piik App opens its controls in your browser. It can run your group's domain,
+Piik App opens its controls in your browser. It can run your group's site,
 host rooms while their pages are closed, and provide the picture and sound
 capture available on your device.
 
@@ -29,11 +29,11 @@ For a blocked Mac build, follow the [Mac opening steps](../../docs/guide/trouble
 ## Modes
 
 Choose **Local network** or **Public invite**, then **Open Piik**. This starts
-one domain containing your rooms. A domain invitation opens that space; a
-private room may also need its own invitation or password.
+one site containing your rooms. Anyone opening its address can create a room;
+a private room needs its own invitation or password.
 
 The mode preference stays in this browser. Returning to an already running
-domain does not replace that preference or create another domain. To change
+site does not replace that preference or create another site. To change
 the running mode, finish its shares, quit App normally and reopen it before
 selecting the other mode. An approved starred site can open instead on startup.
 
@@ -45,15 +45,16 @@ If several addresses appear, choose one on the network your friends use.
 
 Friends open the full HTTPS invitation on that address. On their first visit,
 compare the [local certificate fingerprint](../../docs/guide/troubleshooting.md#local-https-certificate-warning)
-with **Certificate SHA-256** in the App terminal. Use **Open Piik** in your own
-App launcher; send friends the generated invitation instead of a `localhost` address.
+with **Local connection details** below **Open Piik** in the launcher (or
+**Certificate SHA-256** in a desktop terminal). Send friends the selected site
+address or room link instead of a `localhost` address.
 
 ### Public Invite
 
 The packaged Cloudflare helper provides a temporary HTTPS address. Send the
-domain or room invitation from the opened Piik page. Keep App running: stopping
+site address or room link from the opened Piik page. Keep App running: stopping
 it ends access through that address. A later run may get a different address,
-while the saved domain and rooms remain the same.
+while the saved site and rooms remain the same.
 
 Text, history and attachment descriptions use the domain connection. Pictures,
 room voice and file content use peer connections separately. If chat works but a
@@ -62,10 +63,10 @@ transfer fails, use the [matching connection checks](../../docs/guide/troublesho
 ## Join Or Create A Room
 
 To visit someone else's group, open their complete **3.0** invitation in a
-browser. Starting your own App domain creates a separate place; it does not
+browser. Starting your own App site creates a separate place; it does not
 join or take over theirs.
 
-To make a room, enter your domain or an admitted 3.0 domain and select
+To make a room, open your own or another **3.0** site and select
 **Create room**. Read the form's hosting note:
 
 - **Hosted by App:** the linked App saves the room and keeps it available after
@@ -78,7 +79,7 @@ People admitted to a room can chat, join voice, share and watch. See
 
 ### Approved Site
 
-To use App with an existing **3.0** domain:
+To use App with an existing **3.0** site:
 
 1. Keep App running. On that site's page, select **App → Open App page**.
 2. On the local approval page, check the complete site address, then **Allow access**.
@@ -121,10 +122,11 @@ application-data directory. A changed local port or temporary public address
 does not create new copies of those local rooms. Browser-hosted rooms instead
 use that browser's site storage; clearing it can delete their data.
 
-Use **Room options → Chat text and backups** for a room backup when you manage
+Use the room's **Settings → Records and backups** for a room backup when you manage
 the room. A text export keeps the loaded messages for reading; it is not a
-restorable room backup. **Domain settings → Domain backup** saves domain identity and
-directory; room histories need their room backups separately. Attachment file
+restorable room backup. The site operator uses **Site settings → Backup** to save
+site identity and directory metadata at the hosting service; this does not export
+other users' room histories. Room histories need their room backups separately. Attachment file
 copies are separate from their history descriptions.
 
 Keep backups private. Back up needed data before changing installation channels,
