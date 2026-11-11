@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { z } from "zod";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
 import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
 import { ChannelRoomSettingsDialog } from "../channel/components/ChannelRoomControls";
@@ -9,6 +10,7 @@ import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
 import { snapshotSchema, type ChannelMessage, type ChannelRoom, type ChannelSnapshot, type ChannelTopology, type RoomSettings } from "../channel/protocol";
 import type { ChannelController } from "../channel/types";
 import { ChannelAttachments } from "../channel/attachments";
+import { readBackup } from "../channel/backup-archive";
 import { FeedbackAudio } from "../channel/feedback-audio";
 import { QUALITY_PROFILES, type QualityProfile } from "../media/quality";
 import { usePreviewInteractions } from "./use-preview-interactions";
@@ -92,7 +94,7 @@ export function useChannelGuideSample(multiRoom = false) {
     .map(name => ({ id: `sample-${name.toLowerCase()}`, name, avatar: null, ...(name === "Ada" ? profile : {}) }));
   const rooms = [{ id: "friday", name: roomName, icon: "couch" },
     ...(multiRoom ? [{ id: "studio", name: zh ? "创作小屋" : "Creative studio", icon: "star" }] : [])]
-    .map(room => ({ creatorId: "sample-ada", access: "private", hidden: false, hasPassword: false,
+    .map(room => ({ creatorId: "sample-ada", access: "private" as const, hidden: false, hasPassword: false,
       authorized: true, canManage: true, available: true, reading: true,
       delivery: { hostSessionId: "sample-ada-session", bindingId: `sample-binding-${room.id}`, nextHops: {} },
       realtimeSessionIds: room.id === "studio" ? (voiceByRoom.studio ? ["sample-ada-session"] : []) : ["sample-bo-session", ...(voiceByRoom.friday ? ["sample-ada-session"] : [])],
@@ -106,8 +108,15 @@ export function useChannelGuideSample(multiRoom = false) {
     voice: [...Object.entries(voiceByRoom).map(([roomId, voice]) => ({ sessionId: "sample-ada-session", roomId, ...voice })),
       { sessionId: "sample-bo-session", roomId: "friday", muted: false, deafened: false }],
     subscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
-  });
+  } satisfies z.input<typeof snapshotSchema>);
   const channel = {
+    inspectRoomCopy: async (file: Blob) => {
+      const metadata = await readBackup(file);
+      if (metadata.kind !== "room_copy") throw new Error("expected_room_copy");
+      return metadata.roomInfo ?? {};
+    },
+    exportRoomCopy: async () => { received(); throw new Error("preview_only"); },
+    importRoomCopy: async () => { received(); throw new Error("preview_only"); },
     feedbackSound, setFeedbackSound: (patch: Partial<typeof feedbackSound>) => {
       const next = { ...feedbackSound, ...patch };
       setFeedbackSound(next); feedbackAudio.configure(next);

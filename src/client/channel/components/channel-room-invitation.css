@@ -1,6 +1,7 @@
 .c3-room-invitation-entry { display: inline-flex; flex: none; }
 .c3-room-invitation { width: 360px; display: none; gap: 12px; padding: 16px; overflow-y: auto; }
 .c3-room-invitation:popover-open { display: grid; }
+.c3-room-invitation-mode { width: 100%; }
 .c3-room-invitation > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .c3-room-invitation > header strong { min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
 .c3-room-invitation > p, .c3-room-invitation details p { margin: 0; font-size: 12px; line-height: 1.6; color: var(--muted); }

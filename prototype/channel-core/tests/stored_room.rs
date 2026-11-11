@@ -305,6 +305,126 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         .validate()
         .unwrap();
 
+    // Copying the exported history keeps attribution/content, not its authority.
+    {
+        use piik_channel_core::backup::{
+            CopyHistoryImport, RetainedFile, RoomCopyInfo, RoomCopyMetadata, RoomMetadata,
+        };
+        let metadata = RoomCopyMetadata {
+            version: 1,
+            room_info: Some(RoomCopyInfo {
+                name: host.policy().name.clone(),
+                icon: host.policy().icon.clone(),
+                voice_bitrate: host.policy().voice_bitrate,
+                relay_capacity: host.policy().relay_capacity,
+            }),
+            authors: BTreeMap::from([(owner, "Original owner".into())]),
+            retained_files: vec![RetainedFile {
+                message_seq: 1,
+                attachment: rows[0].message.message.attachments[0].clone(),
+            }],
+        };
+        let encoded = serde_json::to_value(Metadata::RoomCopy(metadata.clone())).unwrap();
+        assert_eq!(encoded["kind"], "room_copy");
+        for field in [
+            "policy",
+            "ownCredential",
+            "passwordHash",
+            "grants",
+            "inviteKey",
+        ] {
+            assert!(encoded.get(field).is_none());
+            let mut injected = encoded.clone();
+            injected[field] = json!("source authority");
+            assert!(serde_json::from_value::<Metadata>(injected).is_err());
+        }
+        let mut importer = CopyHistoryImport::new(metadata.clone()).unwrap();
+        let copied: Vec<_> = rows
+            .iter()
+            .cloned()
+            .map(|row| importer.accept(row).unwrap())
+            .collect();
+        importer.finish().unwrap();
+        let archived = copied[0].message.message.user_id;
+        assert_ne!(archived, owner);
+        for (original, copy) in rows.iter().zip(&copied) {
+            assert_eq!(copy.message.message.user_id, archived);
+            assert_eq!(
+                copy.message.message.archived_author_name.as_deref(),
+                Some("Original owner")
+            );
+            assert_ne!(copy.message.message.id, original.message.message.id);
+            assert_ne!(copy.nonce, original.nonce);
+            assert_eq!(copy.message.message.seq, original.message.message.seq);
+            assert_eq!(copy.message.message.text, original.message.message.text);
+            assert_eq!(
+                copy.message.message.attachments,
+                original.message.message.attachments
+            );
+            assert_eq!(copy.message.reactions, original.message.reactions);
+        }
+        let mut copying_again = CopyHistoryImport::new(RoomCopyMetadata {
+            authors: BTreeMap::new(),
+            ..metadata.clone()
+        })
+        .unwrap();
+        let copied_again = copying_again.accept(copied[0].clone()).unwrap();
+        assert_eq!(
+            copied_again.message.message.archived_author_name.as_deref(),
+            Some("Original owner")
+        );
+        assert_ne!(copied_again.message.message.user_id, archived);
+        let mut malformed = copied[0].clone();
+        malformed.message.message.archived_author_name = Some("x".repeat(41));
+        assert!(malformed.validate().is_err());
+
+        let new_owner = Uuid::new_v4();
+        let copy_policy = policy("copied", new_owner, RoomAccess::Private);
+        assert!(!copy_policy.view(owner).unwrap().authorized);
+        assert!(!copy_policy.accepts_invite(&invitation));
+        let staged_copy = RoomBackup::stage(
+            &folder.join("copy-staging.sqlite"),
+            RoomMetadata {
+                version: 2,
+                domain_id: Uuid::new_v4(),
+                policy: copy_policy,
+                own_credential: None,
+                retained_files: metadata.retained_files,
+            },
+            copied.iter().cloned().map(Ok),
+        )
+        .unwrap();
+        let copied_path = folder.join("copied.sqlite");
+        drop(StoredRoomHost::from_backup(&copied_path, &staged_copy).unwrap());
+        let mut copied_host = StoredRoomHost::open(&copied_path).unwrap();
+        let HistoryResult::Page { messages, .. } = peer(
+            &mut copied_host,
+            new_owner,
+            new_owner,
+            ConversationCommand::History { before: Some(2) },
+        )
+        .unwrap() else {
+            panic!("history expected")
+        };
+        assert_eq!(
+            serde_json::to_value(&messages[0]).unwrap(),
+            serde_json::to_value(&copied[0].message).unwrap()
+        );
+        let fresh = sent(peer(
+            &mut copied_host,
+            new_owner,
+            new_owner,
+            ConversationCommand::Chat {
+                nonce: rows[0].nonce.clone(),
+                text: "A new conversation".into(),
+                attachments: vec![],
+            },
+        ));
+        assert!(fresh.inserted);
+        assert_eq!(fresh.message.message.seq, 56);
+        assert!(fresh.message.message.archived_author_name.is_none());
+    }
+
     // The live owner can advance while the frozen rows keep their original head.
     sent(peer(
         &mut host,

@@ -77,14 +77,16 @@ certificate before accepting its first warning; see the
 
 - **To the site:** send its address. Friends can open it and choose a public room.
 - **To a public room:** use the invitation button beside its title and **Copy room link**.
-- **To a private room:** its owner uses **Copy invitation** in the same place.
-  If no invitation exists, select **Generate new invitation**. The QR section
+- **To a private room:** its owner uses **Copy password-free invitation** in the same place.
+  If no invitation exists, select **Generate password-free invitation**. For a
+  password-protected room, choose **Password-required link** to send a room link and share
+  the password separately. The QR section
   below the copy action shares the same link.
 
 Send private-room invitations only to people you want to admit to that room.
 To replace a private link, expand **Reset room invitation**, then select
-**Generate new invitation**. The old link stops
-working, while people who already have access keep it. If an older invitation
+**Confirm invitation reset**. Old password-free links stop
+working, while existing access and the room password remain. If an older invitation
 cannot be recovered, the panel explains this before you generate a replacement.
 
 ![The room-title invitation opens copy, a subordinate QR section and invitation reset.](../assets/guide/channel-invitation.en.png#gh-light-mode-only)

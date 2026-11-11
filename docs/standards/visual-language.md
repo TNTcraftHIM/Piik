@@ -115,7 +115,9 @@ App, language, theme and help belong to the site bar above the room toolbar.
 They do not move into the sharing group when a sidebar collapses. The room toolbar
 owns the single companion-pane toggle; the main body fills the released width.
 Site maintenance is separate from a room's access settings.
-Each room can fold its voice roster without leaving voice or changing its members.
+Each room can fold its realtime participant roster without changing voice,
+watching, sharing or transfer activity. The site-wide people pane separately
+groups the current room's presence, other online users and offline users.
 The couch anchors the bottom of the central body, aligned with the personal area's
 top edge; it does not span either sidebar. Sidebars can collapse independently.
 Narrow layouts use temporary drawers without replacing those desktop preferences.
@@ -130,9 +132,11 @@ Let the media stage use the available workspace. Grid gives watched pictures
 equal weight; focus gives one picture the main area and keeps the others in a
 thumbnail strip. Thumbnails show the picture and a single identity line; selecting
 one promotes it to the full controls without remounting its player. Full-size grid
-and focused pictures use the same source-information bar and action order. When
-the card has room, the bar overlays the top and follows playback-control visibility;
-narrow cards place it outside the picture. Conversation and people are optional
+and focused pictures use the same source-information bar and action order. The
+bar overlays the picture and follows playback-control visibility. Frequent
+playback, volume and viewing controls stay directly available; source settings
+use the shared secondary menu. Counts yield space before primary actions, and
+cards retain enough height for their upper and lower controls. Conversation and people are optional
 companion surfaces; narrow layouts switch surfaces instead of squeezing several
 unusable regions together. Source controls stay with their picture, and personal
 voice controls keep their own activity scope. The existing room tool continues
@@ -140,6 +144,16 @@ to move the same conversation, presence and voice content outside the workspace.
 Its action opens the compact external window directly when supported, with the
 existing in-page panel as the named alternative. Its selected trigger returns the
 same content to the page on a second activation, as does closing the window.
+
+Keep the focus filmstrip compact and left aligned, with bounded thumbnail widths.
+Grid cards keep equal visual weight and column widths, centering an incomplete
+last row. This follows the [same alignment used by Jitsi's tile view](https://github.com/jitsi/jitsi-meet/blob/70143c68c21019d9a17a1ce04c39675fff41aa0f/react/features/filmstrip/components/web/ThumbnailWrapper.tsx#L189).
+
+Within the same viewport and task, keep the grid/focus toggle anchored; titles,
+counts and status must not push it sideways. Responsive reflow may reorganize groups.
+This Piik convention extends [WCAG 3.2.3's relative-order and spatial-memory rationale](https://www.w3.org/WAI/WCAG21/Understanding/consistent-navigation)
+and [web.dev's guidance on unexpected movement and misclicks](https://web.dev/articles/cls).
+User-initiated mode changes are not thereby WCAG failures or necessarily CLS events.
 
 ### Control Selection
 

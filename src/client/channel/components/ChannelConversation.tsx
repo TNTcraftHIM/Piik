@@ -5,6 +5,7 @@ import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { MAX_MESSAGE_CODE_POINTS, type ChannelMessage, type ChannelUser } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
+import { messageAuthorName } from "../presentation";
 import { ChannelAttachment } from "./ChannelAttachment";
 import { type AttachmentLimits, type DraftFile, type ChannelAttachments, fileSize } from "../attachments";
 import { ChannelRoomStart, type ChannelEntry } from "./ChannelRoomStart";
@@ -175,7 +176,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
           const grouped = !!previous && !newDay && previous.userId === message.userId && elapsed >= 0 && elapsed < 120_000;
           if (!grouped) authorMessageId = message.id;
           const author = users.find(user => user.id === message.userId);
-          const name = author?.name ?? (zh ? "用户" : "User");
+          const name = messageAuthorName(message, users, zh ? "用户" : "User");
           return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name} authorMessageId={authorMessageId}
             avatar={author?.avatar ?? undefined}
             dateLabel={newDay ? date.toLocaleDateString(zh ? "zh-CN" : "en", { dateStyle: "long" }) : undefined}

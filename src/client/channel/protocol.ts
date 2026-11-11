@@ -57,6 +57,7 @@ export const filePlanSchema = z.object({
 export const MAX_MESSAGE_CODE_POINTS = 2000;
 export const messageSchema = z.object({
   id, userId: id, text: z.string().max(MAX_MESSAGE_CODE_POINTS * 2), time: z.number(), seq: z.number().int().positive(), attachments: z.array(attachmentSchema),
+  archivedAuthorName: z.string().min(1).max(40).optional(),
 });
 export const snapshotSchema = z.object({
   channel: z.object({

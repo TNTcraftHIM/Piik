@@ -1717,6 +1717,7 @@ async fn room_backup_http_restores_native_history_and_reopens_named_imports() {
                     id: Uuid::new_v4(),
                     seq,
                     user_id: metadata.policy.creator_id,
+                    archived_author_name: None,
                     text: format!("Saved {seq}"),
                     time: seq,
                     attachments: vec![],

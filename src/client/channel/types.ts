@@ -1,5 +1,6 @@
 import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomInvitationState, RoomSettings, PublicationReactionSnapshot } from "./protocol";
 import type { ChannelAttachments, DraftFile } from "./attachments";
+import type { RoomCopyInfo } from "./backup-archive";
 import type { NativeCaptureTarget } from "../native/wire";
 import type { NativeCaptureRequest, NativeCaptureSources, ChannelRemoteControlState, NativeConnectionMetrics } from "./app-link";
 import type { RemoteStopShortcut } from "../native/wire";
@@ -106,6 +107,9 @@ export interface ChannelActions {
   setRelayOverride(roomId: string, capacity: number | null, reportError?: boolean): Promise<void>;
   roomBackupAvailable(roomId: string): Promise<boolean>;
   exportRoomBackup(roomId: string): Promise<Blob>;
+  exportRoomCopy(roomId: string, includeRoomInfo: boolean): Promise<Blob>;
+  inspectRoomCopy(archive: Blob): Promise<Partial<RoomCopyInfo>>;
+  importRoomCopy(archive: Blob, settings: RoomSettings): Promise<{ roomId: string; cached: boolean }>;
   restoreRoomBackup(archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }>;
   enterRoom(roomId: string, password: string): Promise<void>;
   createRoomInvite(roomId: string, reportError?: boolean): Promise<string>;

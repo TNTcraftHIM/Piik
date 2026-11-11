@@ -1,6 +1,6 @@
 # Chat, voice and remote control
 
-This guide covers the 3.0 internal test. For the published version, use the [2.6.1 guide](https://github.com/TNTcraftHIM/Piik/blob/v2.6.1/docs/guide/room-tools.md).
+This guide covers the 3.0 internal test. For the published version, use the [maintenance guide](https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/room-tools.md).
 
 English · [简体中文](./room-tools.zh-CN.md) · [Documentation](./README.md)
 
@@ -9,8 +9,10 @@ Once admitted to that room, you can chat, join voice, share a picture or watch
 someone else's share. Anyone can create a room and manage their own rooms.
 The site's maintainer manages its name, image and backup.
 
-The people panel lists users on this site, grouped into this room, other online
-users and offline users. The room list separately shows each room's voice participants.
+The people panel groups site users into **This room**, **Online** and **Offline**.
+Under each room, the left list shows people participating in voice, sharing,
+watching or file transfers, including those actively forwarding. Headset, sharing
+and watching icons show their activities. Folding the list keeps those activities running.
 
 Use **Edit profile** beside your name to change your nickname or picture.
 The same picture appears on your little person's body in chat, voice and the couch.
@@ -26,19 +28,33 @@ in place. The tabs show the tasks available to you:
   without access** hides a private room from people who have not been admitted.
   Under **Users with access**, **Remove room access** ends that user's access and
   activities in this room; they need a new grant to return.
-- **Connection settings:** Choose how many people this device helps forward to in this room.
-- **Records and backups:** Export chat, or export a room backup when you manage
-  its host. To restore, select **Restore backup**, choose the ZIP and read the
-  replacement notice before **Confirm**. Restoration replaces this room's
-  settings and messages.
+- **Connection:** Choose how many people this device helps forward to in this room.
+- **Records:** Export loaded chat text. Room owners can also export a full backup
+  or a copy that someone else can use to create a new room.
 
 Invitations open beside the room title. Copy the link there or use the QR button
 below the copy action. Public rooms share a direct link; private invitations
 grant access only to their room. Switching to public keeps an existing private
 key, but ordinary public access does not grant later private access. Resetting
 a private invitation invalidates its old links without revoking admitted users. To replace
-its link, expand **Reset room invitation**, then select **Generate new invitation**.
+its link, expand **Reset room invitation**, then select **Confirm invitation reset**.
+Rooms with a password also offer **Password-required link**. New visitors use that password;
+people who already have access can enter directly.
 The site operator opens settings by selecting the site name above the room list.
+
+### Back up or copy a room
+
+To preserve the original room, use **Records → Export full backup**. To restore
+it, choose **Restore full backup**, select the ZIP and confirm the replacement.
+The backup contains room settings, complete message history and locally retained files.
+
+To give someone a copy, choose **Export room copy**, optionally including room
+information. They select **Create room → Load a room copy**, choose the new name
+and access settings, then create it. Messages, reaction counts and available
+files remain; their own account manages the new room.
+
+A **site backup** contains site data and the room directory. Each room owner
+backs up their own rooms, without centralizing everyone's records at the site operator.
 
 ## Chat and reactions
 

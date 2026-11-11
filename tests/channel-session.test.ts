@@ -6584,7 +6584,7 @@ async function setupRoomBackup() {
   context.socket.receive({ type: "ack", requestId: register.requestId });
   const metadata = { kind: "room" as const, version: 2 as const, domainId: "domain", policy: JSON.parse(policy), retainedFiles: [] };
   const read = vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => {
-    await visitor.metadata(metadata); await visitor.row(row); return metadata;
+    await visitor?.metadata(metadata); await visitor?.row(row); return metadata;
   });
   return { ...context, host, nextHost, snapshot, stage, row, state, metadata, open, read };
 }
@@ -6636,8 +6636,8 @@ test("domain backup uses its actual service owner and validates kind before reti
   const archive = new Blob(["domain-checkpoint"]), fetch = vi.fn().mockResolvedValue(new Response(archive));
   vi.stubGlobal("fetch", fetch);
   const read = vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => {
-    const metadata = { kind: "room" as const, version: 2 as const, domainId: "domain", policy: { id: "first", creatorId: "self" }, retainedFiles: [] };
-    await visitor.metadata(metadata); return metadata;
+    const metadata = { kind: "room" as const, version: 2 as const, domainId: "domain", policy: { id: "first", creatorId: "self", name: "First", icon: "couch", voiceBitrate: 64000, relayCapacity: 2 }, retainedFiles: [] };
+    await visitor?.metadata(metadata); return metadata;
   });
   try {
     expect(await (await session.exportDomainBackup()).text()).toBe("domain-checkpoint");
@@ -6657,7 +6657,7 @@ test("domain restore closes the old connection, admits archived keys only after 
   const { session, socket } = await setup(3, false, "owner=old-key&room=old-room");
   const domainId = crypto.randomUUID(), ownerId = crypto.randomUUID();
   const metadata = { kind: "domain" as const, version: 2 as const, state: { id: domainId, ownerId }, ownerKey: "restored-owner" };
-  vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => { await visitor.metadata(metadata); return metadata; });
+  vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => { await visitor?.metadata(metadata); return metadata; });
   let answer!: (response: Response) => void;
   const fetch = vi.fn((_url: string, _options: RequestInit) => new Promise<Response>(resolve => { answer = resolve; })); vi.stubGlobal("fetch", fetch);
   const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
@@ -6689,7 +6689,7 @@ test("a rejected domain replacement restarts the unchanged personal identity wit
   const { session, socket } = await setup();
   const state = structuredClone(session.getSnapshot().state!);
   const metadata = { kind: "domain" as const, version: 2 as const, state: { id: crypto.randomUUID(), ownerId: crypto.randomUUID() }, ownerKey: "not-committed" };
-  vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => { await visitor.metadata(metadata); return metadata; });
+  vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => { await visitor?.metadata(metadata); return metadata; });
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "restore_rejected" }), { status: 409 })));
   try {
     await expect(session.restoreDomainBackup(new Blob())).rejects.toThrow("restore_rejected");
@@ -6706,7 +6706,7 @@ test("domain admission does not save a Welcome whose current owner differs from 
   const { session, socket } = await setup();
   const domainId = crypto.randomUUID(), metadata = { kind: "domain" as const, version: 2 as const,
     state: { id: domainId, ownerId: "self" }, ownerKey: "restored-owner" };
-  vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => { await visitor.metadata(metadata); return metadata; });
+  vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => { await visitor?.metadata(metadata); return metadata; });
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId }))));
   const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
   const state = structuredClone(session.getSnapshot().state!); state.channel.id = domainId; state.channel.ownerId = "another-owner";
@@ -6728,7 +6728,7 @@ test("a committed domain restore with unavailable hosting keeps the restored ide
   const domainId = crypto.randomUUID(), ownerId = crypto.randomUUID();
   const metadata = { kind: "domain" as const, version: 2 as const,
     state: { id: domainId, ownerId }, ownerKey: "restored-owner" };
-  vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => { await visitor.metadata(metadata); return metadata; });
+  vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => { await visitor?.metadata(metadata); return metadata; });
   const fetch = vi.fn(async () => new Response(JSON.stringify({ error: "domain_restored_connection_failed" }), { status: 409 }));
   vi.stubGlobal("fetch", fetch);
   const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
@@ -6812,7 +6812,7 @@ test("room restore rebinds before installing file copies, and optional cache fai
   const file = new File([new Uint8Array([4, 5])], "data");
   metadata.retainedFiles = [{ messageSeq: 1, attachment }] as never;
   read.mockImplementationOnce(async (_blob, visitor) => {
-    await visitor.metadata(metadata); await visitor.row({ ...row, attachments: [attachment] }); await visitor.content(attachment.sha256, file); return metadata;
+    await visitor?.metadata(metadata); await visitor?.row({ ...row, attachments: [attachment] }); await visitor?.content(attachment.sha256, file); return metadata;
   });
   const cache = vi.spyOn(session.attachments, "restoreRetained").mockImplementation(async (roomId, files) => {
     expect(session.getSnapshot().state!.channel.rooms[0].delivery?.bindingId).toBe("restored-binding");

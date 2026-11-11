@@ -1,12 +1,14 @@
 import { loadRoomHosting, type AttachmentHash, type BackupHistoryRow } from "./hosting";
-import type { ChannelAttachment } from "./protocol";
+import type { ChannelAttachment, RoomSettings } from "./protocol";
 import type { FileEntry } from "@zip.js/zip.js";
 
 export interface RetainedBackupFile { messageSeq: number; attachment: ChannelAttachment }
+export type RoomCopyInfo = Pick<RoomSettings, "name" | "icon"> & { voiceBitrate: number; relayCapacity: number };
 export type BackupMetadata =
   | { kind: "domain"; version: 2; state: Record<string, unknown> & { id: string; ownerId: string }; ownerKey: string }
-  | { kind: "room"; version: 2; domainId: string; policy: Record<string, unknown> & { id: string; creatorId: string };
-      ownCredential?: { userId: string; credential: string }; retainedFiles: RetainedBackupFile[] };
+  | { kind: "room"; version: 2; domainId: string; policy: RoomCopyInfo & Record<string, unknown> & { id: string; creatorId: string };
+      ownCredential?: { userId: string; credential: string }; retainedFiles: RetainedBackupFile[] }
+  | { kind: "room_copy"; version: 1; roomInfo?: RoomCopyInfo; authors: Record<string, string>; retainedFiles: RetainedBackupFile[] };
 export interface BackupVisitor {
   metadata(value: BackupMetadata): void | Promise<void>;
   row(value: BackupHistoryRow): void | Promise<void>;
@@ -26,12 +28,12 @@ async function runtime(): Promise<Runtime> {
 }
 
 function inventory(metadata: BackupMetadata): Map<string, RetainedBackupFile> {
-  return new Map(metadata.kind === "room"
+  return new Map(metadata.kind !== "domain"
     ? metadata.retainedFiles.map(file => [file.attachment.sha256.toLowerCase(), file]) : []);
 }
 
-/** Only the Core-validated manifest and complete rows/files reach the caller's staging owner. */
-export async function readBackup(blob: Blob, visitor: BackupVisitor): Promise<BackupMetadata> {
+/** Without a visitor, inspect the manifest. Import visitors receive Core-validated rows and verified files. */
+export async function readBackup(blob: Blob, visitor?: BackupVisitor): Promise<BackupMetadata> {
   const [module, zip] = await Promise.all([runtime(), import("@zip.js/zip.js/lib/zip-core-native.js")]);
   const reader = new zip.ZipReader(new zip.BlobReader(blob), { useWebWorkers: false });
   try {
@@ -47,10 +49,11 @@ export async function readBackup(blob: Blob, visitor: BackupVisitor): Promise<Ba
     if (!entry) throw new Error("invalid_backup_entries");
     const metadata = JSON.parse(module.backup_metadata(await readRecord(entry, limit))) as BackupMetadata;
     const files = inventory(metadata);
-    const expected = new Set([manifest, ...(metadata.kind === "room" ? [history] : []), ...Array.from(files.keys(), hash => `content/${hash}`)]);
+    const expected = new Set([manifest, ...(metadata.kind !== "domain" ? [history] : []), ...Array.from(files.keys(), hash => `content/${hash}`)]);
     if (entries.size !== expected.size || Array.from(entries.keys()).some(name => !expected.has(name))) throw new Error("invalid_backup_entries");
+    if (!visitor) return metadata;
     await visitor.metadata(metadata);
-    if (metadata.kind === "room") {
+    if (metadata.kind !== "domain") {
       const importer = new module.BackupHistoryImport(JSON.stringify(metadata));
       try {
         await readHistory(entries.get(history)!, limit, line => visitor.row(JSON.parse(importer.accept(line)) as BackupHistoryRow));
@@ -135,7 +138,7 @@ export async function writeBackup(metadata: BackupMetadata, rows?: AsyncIterable
   const writer = new zip.ZipWriter(new zip.BlobWriter("application/zip"), zipOptions);
   try {
     await writer.add(manifest, new zip.Uint8ArrayReader(manifestBytes));
-    if (metadata.kind === "room") {
+    if (metadata.kind !== "domain") {
       if (!rows) throw new Error("invalid_backup_history");
       const importer = new module.BackupHistoryImport(canonical);
       const iterator = rows[Symbol.asyncIterator]();

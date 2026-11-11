@@ -92,6 +92,9 @@ pub fn stage(input: impl Read + Seek, directory: &Path) -> Result<StagedBackup> 
     let metadata: Metadata = serde_json::from_slice(&read_record(zip.by_name(MANIFEST)?)?)?;
     metadata.validate().map_err(anyhow::Error::msg)?;
     let mut expected = BTreeSet::from([MANIFEST.to_owned()]);
+    if matches!(metadata, Metadata::RoomCopy(_)) {
+        bail!("expected_room_backup");
+    }
     if let Metadata::Room(room) = &metadata {
         expected.insert(HISTORY.into());
         for file in &room.retained_files {
@@ -115,6 +118,7 @@ pub fn stage(input: impl Read + Seek, directory: &Path) -> Result<StagedBackup> 
         }
     }
     match metadata {
+        Metadata::RoomCopy(_) => bail!("expected_room_backup"),
         Metadata::Domain(domain) => Ok(StagedBackup::Domain(domain)),
         Metadata::Room(room) => {
             let history = BufReader::new(zip.by_name(HISTORY)?);
@@ -249,6 +253,7 @@ mod tests {
                         seq,
                         id: Uuid::new_v4(),
                         user_id: owner,
+                        archived_author_name: (seq == 1).then(|| "Archived author".into()),
                         text: format!("Message {seq}"),
                         time: seq,
                         attachments: if seq == 1 || seq == 55 {

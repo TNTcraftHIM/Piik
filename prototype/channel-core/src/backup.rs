@@ -17,6 +17,7 @@ pub const RECORD_BYTES: usize = 4 * 1024 * 1024;
 pub enum Metadata {
     Domain(DomainMetadata),
     Room(RoomMetadata),
+    RoomCopy(RoomCopyMetadata),
 }
 
 impl Metadata {
@@ -24,8 +25,53 @@ impl Metadata {
         match self {
             Self::Domain(metadata) => metadata.validate(),
             Self::Room(metadata) => metadata.validate(),
+            Self::RoomCopy(metadata) => metadata.validate(),
         }
     }
+}
+
+/// Optional presentation/settings suggestions, never the source room's authority.
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RoomCopyInfo {
+    pub name: String,
+    pub icon: crate::wire::IdentityIcon,
+    pub voice_bitrate: u32,
+    pub relay_capacity: u8,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RoomCopyMetadata {
+    pub version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub room_info: Option<RoomCopyInfo>,
+    pub authors: BTreeMap<Uuid, String>,
+    pub retained_files: Vec<RetainedFile>,
+}
+
+impl RoomCopyMetadata {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.version != 1 {
+            return Err("unsupported_backup_version");
+        }
+        if self.room_info.as_ref().is_some_and(|info| {
+            crate::wire::title(&info.name).as_deref() != Some(info.name.as_str())
+                || !crate::access::valid_audio_bitrate(info.voice_bitrate)
+                || !(1..=20).contains(&info.relay_capacity)
+        }) || self
+            .authors
+            .iter()
+            .any(|(id, name)| id.is_nil() || !valid_author_name(name))
+        {
+            return Err("invalid_room_copy");
+        }
+        validate_files(&self.retained_files)
+    }
+}
+
+fn valid_author_name(name: &str) -> bool {
+    !name.trim().is_empty() && name == name.trim() && name.encode_utf16().count() <= 40
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -100,33 +146,37 @@ impl RoomMetadata {
         {
             return Err("invalid_backup_identity");
         }
-        if self.retained_files.len() > ATTACHMENT_LIMITS.max_retained_files {
-            return Err("invalid_backup_content");
-        }
-        let mut identities = BTreeSet::new();
-        let mut sizes = BTreeMap::new();
-        let mut bytes = 0;
-        for file in &self.retained_files {
-            file.attachment.validate()?;
-            if file.message_seq == 0
-                || file.message_seq > i64::MAX as u64
-                || !identities.insert((file.message_seq, file.attachment.id))
-                || sizes
-                    .insert(
-                        file.attachment.sha256.to_ascii_lowercase(),
-                        file.attachment.size,
-                    )
-                    .is_some_and(|size| size != file.attachment.size)
-            {
-                return Err("invalid_backup_content");
-            }
-            bytes += file.attachment.size;
-        }
-        if bytes > ATTACHMENT_LIMITS.max_retained_bytes {
-            return Err("invalid_backup_content");
-        }
-        Ok(())
+        validate_files(&self.retained_files)
     }
+}
+
+fn validate_files(files: &[RetainedFile]) -> Result<(), &'static str> {
+    if files.len() > ATTACHMENT_LIMITS.max_retained_files {
+        return Err("invalid_backup_content");
+    }
+    let mut identities = BTreeSet::new();
+    let mut sizes = BTreeMap::new();
+    let mut bytes = 0;
+    for file in files {
+        file.attachment.validate()?;
+        if file.message_seq == 0
+            || file.message_seq > i64::MAX as u64
+            || !identities.insert((file.message_seq, file.attachment.id))
+            || sizes
+                .insert(
+                    file.attachment.sha256.to_ascii_lowercase(),
+                    file.attachment.size,
+                )
+                .is_some_and(|size| size != file.attachment.size)
+        {
+            return Err("invalid_backup_content");
+        }
+        bytes += file.attachment.size;
+    }
+    if bytes > ATTACHMENT_LIMITS.max_retained_bytes {
+        return Err("invalid_backup_content");
+    }
+    Ok(())
 }
 
 /// One streaming import. Database unique indexes retain nonce/message identity;
@@ -139,15 +189,23 @@ pub struct HistoryImport {
 impl HistoryImport {
     pub fn new(metadata: &RoomMetadata) -> Result<Self, &'static str> {
         metadata.validate()?;
-        Ok(Self {
+        Ok(Self::from_files(&metadata.retained_files))
+    }
+
+    pub fn copy(metadata: &RoomCopyMetadata) -> Result<Self, &'static str> {
+        metadata.validate()?;
+        Ok(Self::from_files(&metadata.retained_files))
+    }
+
+    fn from_files(files: &[RetainedFile]) -> Self {
+        Self {
             previous: 0,
-            pending: metadata
-                .retained_files
+            pending: files
                 .iter()
                 .cloned()
                 .map(|file| ((file.message_seq, file.attachment.id), file))
                 .collect(),
-        })
+        }
     }
 
     pub fn accept(&mut self, row: &HistoryRow) -> Result<(), &'static str> {
@@ -175,6 +233,44 @@ impl HistoryImport {
     }
 }
 
+/// A copy preserves historical content, but cannot impersonate a source account
+/// or collide with an existing message/retry identity in the destination store.
+pub struct CopyHistoryImport {
+    history: HistoryImport,
+    names: BTreeMap<Uuid, String>,
+    authors: BTreeMap<Uuid, Uuid>,
+}
+
+impl CopyHistoryImport {
+    pub fn new(metadata: RoomCopyMetadata) -> Result<Self, &'static str> {
+        Ok(Self {
+            history: HistoryImport::copy(&metadata)?,
+            names: metadata.authors,
+            authors: BTreeMap::new(),
+        })
+    }
+
+    pub fn accept(&mut self, mut row: HistoryRow) -> Result<HistoryRow, &'static str> {
+        self.history.accept(&row)?;
+        let message = &mut row.message.message;
+        message.archived_author_name = message
+            .archived_author_name
+            .take()
+            .or_else(|| self.names.get(&message.user_id).cloned());
+        message.user_id = *self
+            .authors
+            .entry(message.user_id)
+            .or_insert_with(Uuid::new_v4);
+        message.id = Uuid::new_v4();
+        row.nonce = Uuid::new_v4().to_string();
+        Ok(row)
+    }
+
+    pub fn finish(&self) -> Result<(), &'static str> {
+        self.history.finish()
+    }
+}
+
 /// A complete storage row, including the retry identity omitted from reading pages.
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -191,6 +287,10 @@ impl HistoryRow {
             || message.seq > i64::MAX as u64
             || message.id.is_nil()
             || message.user_id.is_nil()
+            || message
+                .archived_author_name
+                .as_deref()
+                .is_some_and(|name| !valid_author_name(name))
             || self
                 .message
                 .reactions

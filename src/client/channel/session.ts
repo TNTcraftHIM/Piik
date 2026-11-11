@@ -6,7 +6,7 @@ import { selectedRoom } from "./navigation";
 import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, ChannelEventDecoder, channelTopologySchema, roomSummarySchema, userSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView, ScreenPresentation, SourceMicrophoneConfiguration, SourceMicrophoneSettings } from "./types";
-import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage } from "./hosting";
+import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryImport, type BackupHistoryRow } from "./hosting";
 import { ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics } from "./app-link";
 import { isClientActivated } from "../lib/app-launch";
 import type { NativeCaptureTarget } from "../native/wire";
@@ -1175,11 +1175,15 @@ export class ChannelSession {
     try { await this.backupOwner(roomId); return true; } catch { return false; }
   };
 
-  private async writeRoomSnapshot(snapshot: BrowserRoomSnapshot, metadata: Extract<BackupMetadata, { kind: "room" }>, retained: RetainedFile[], check: () => void): Promise<Blob> {
+  private async writeRoomSnapshot(snapshot: BrowserRoomSnapshot, metadata: Exclude<BackupMetadata, { kind: "domain" }>, retained: RetainedFile[], check: () => void): Promise<Blob> {
     const files = new Map<string, File>(), inventory: RetainedBackupFile[] = [];
     const byKey = new Map(retained.map(file => [JSON.stringify([file.key.messageSeq, file.key.attachmentId]), file]));
     for await (const row of snapshot.rows) {
       check();
+      if (metadata.kind === "room_copy" && !row.archivedAuthorName) {
+        const name = this.view.state!.users.find(user => user.id === row.userId)?.name;
+        if (name) metadata.authors[row.userId] = name;
+      }
       for (const attachment of row.attachments) {
         const entry = byKey.get(JSON.stringify([row.seq, attachment.id]));
         if (entry && entry.attachment.sha256.toLowerCase() === attachment.sha256.toLowerCase()
@@ -1193,22 +1197,32 @@ export class ChannelSession {
     check(); return archive;
   }
 
-  exportRoomBackup = (roomId: string): Promise<Blob> => this.action("room-backup", async () => {
+  exportRoomBackup = (roomId: string): Promise<Blob> => this.action("room-backup", () => this.exportRoomArchive(roomId), false);
+
+  exportRoomCopy = (roomId: string, includeRoomInfo: boolean): Promise<Blob> =>
+    this.action("room-backup", () => this.exportRoomArchive(roomId, { includeRoomInfo }), false);
+
+  private async exportRoomArchive(roomId: string, copy?: { includeRoomInfo: boolean }): Promise<Blob> {
     const owner = await this.backupOwner(roomId), retained = await this.attachments.retained(roomId); owner.current();
     let snapshot: BrowserRoomSnapshot | undefined;
     try {
       let metadata: Extract<BackupMetadata, { kind: "room" }>;
       if (owner.native) {
         const archive = await owner.native.snapshot(); owner.current();
-        if (!retained.length) return archive;
+        if (!retained.length && !copy) return archive;
         let stage: BrowserRoomStage | undefined;
         try {
           const value = await readBackup(archive, {
             metadata: async value => {
               owner.current();
               if (value.kind !== "room" || value.policy.id !== roomId || value.domainId !== this.view.state!.channel.id) throw new Error("invalid_backup");
+              metadata = value;
               stage = await (await loadRoomHosting()).BrowserRoomHost.stage(roomDatabaseName(value.domainId, this.view.self!.id), JSON.stringify(value.policy));
-            }, row: row => stage!.append(row), content() {},
+            }, row: row => stage!.append(row), content(digest, file) {
+              for (const entry of metadata.retainedFiles.filter(entry => entry.attachment.sha256.toLowerCase() === digest)) {
+                retained.push({ key: { roomId, messageSeq: entry.messageSeq, attachmentId: entry.attachment.id }, attachment: entry.attachment, file });
+              }
+            },
           });
           if (value.kind !== "room") throw new Error("invalid_backup");
           snapshot = stage; metadata = value;
@@ -1218,10 +1232,16 @@ export class ChannelSession {
         metadata = { kind: "room", version: 2, domainId: this.view.state!.channel.id,
           policy: JSON.parse(snapshot.policy), retainedFiles: [] };
       }
+      if (copy) {
+        const { name, icon, voiceBitrate, relayCapacity } = metadata.policy;
+        return await this.writeRoomSnapshot(snapshot!, { kind: "room_copy", version: 1,
+          roomInfo: copy.includeRoomInfo ? { name, icon, voiceBitrate, relayCapacity } : undefined,
+          authors: {}, retainedFiles: [] }, retained, owner.current);
+      }
       if (metadata.policy.creatorId === this.view.self!.id && this.credential) metadata.ownCredential = { userId: this.view.self!.id, credential: this.credential };
       return await this.writeRoomSnapshot(snapshot!, metadata, retained, owner.current);
     } finally { await snapshot?.close(); }
-  }, false);
+  }
 
   private waitForState(ready: () => boolean): Promise<void> {
     if (ready()) return Promise.resolve();
@@ -1323,7 +1343,44 @@ export class ChannelSession {
     }
   }, false);
 
-  restoreRoomBackup = (archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }> => this.action("room-backup", async () => {
+  inspectRoomCopy = async (archive: Blob) => {
+    const metadata = await readBackup(archive);
+    if (metadata.kind !== "room_copy") throw new Error("expected_room_copy");
+    return metadata.roomInfo ?? {};
+  };
+
+  importRoomCopy = (archive: Blob, settings: RoomSettings): Promise<{ roomId: string; cached: boolean }> => this.action("room-backup", async () => {
+    const current = this.sessionContext(), state = this.view.state!, self = this.view.self!;
+    const runtime = await loadRoomHosting();
+    const policy = await runtime.createRoomPolicy({ ...settings, id: crypto.randomUUID(), creatorId: self.id });
+    current();
+    let stage: BrowserRoomStage | undefined, importer: BackupHistoryImport | undefined, converted: Blob;
+    const contents = new Map<string, File>();
+    try {
+      const metadata = await readBackup(archive, {
+        metadata: async value => {
+          current();
+          if (value.kind !== "room_copy") throw new Error("expected_room_copy");
+          importer = new runtime.CopyHistoryImport(JSON.stringify(value));
+          stage = await runtime.BrowserRoomHost.stage(roomDatabaseName(state.channel.id, self.id), policy);
+        },
+        row: row => { current(); return stage!.append(JSON.parse(importer!.accept(JSON.stringify(row))) as BackupHistoryRow); },
+        content: (digest, file) => { contents.set(digest, file); },
+      });
+      current(); importer!.finish();
+      if (metadata.kind !== "room_copy") throw new Error("expected_room_copy");
+      converted = await writeBackup({ kind: "room", version: 2, domainId: state.channel.id,
+        policy: JSON.parse(policy), retainedFiles: metadata.retainedFiles }, stage!.rows,
+        async entry => contents.get(entry.attachment.sha256.toLowerCase())!);
+      current();
+    } finally { importer?.free(); await stage?.close(); }
+    return this.restoreRoomArchive(converted);
+  }, false);
+
+  restoreRoomBackup = (archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }> =>
+    this.action("room-backup", () => this.restoreRoomArchive(archive, roomId), false);
+
+  private async restoreRoomArchive(archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }> {
     const initial = this.sessionContext(), owner = roomId ? await this.backupOwner(roomId) : undefined;
     let stage: BrowserRoomStage | undefined, rollback: (() => Promise<void>) | undefined, committed = false;
     const contents = new Map<string, File>();
@@ -1400,7 +1457,7 @@ export class ChannelSession {
       throw error;
     }
     finally { await stage?.close(); }
-  }, false);
+  }
 
   updateRoom = (roomId: string, settings: RoomSettings, reportError = true): Promise<void> => this.action(`room:${roomId}`, () => this.request({ type: "update_room", roomId, ...settings }), reportError);
   setRelayOverride = (roomId: string, capacity: number | null, reportError = true): Promise<void> => this.action(`relay:${roomId}`, async () => {

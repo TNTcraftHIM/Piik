@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Tooltip } from "../../components/living/Tooltip";
 import { Btn, SwitchItem } from "../../components/living/primitives";
 import { NumberControl } from "../../components/living/NumberControl";
@@ -14,6 +14,7 @@ import { ChannelSettingsDialog, ChannelSettingsTabs, useSettingsAction, type Set
 import { ChannelIdentityFields } from "./ChannelIdentity";
 import "./channel-room-controls.css";
 import { BackupControls } from "./BackupControls";
+import { messageAuthorName } from "../presentation";
 
 export function RoomChatExport({ messages, users }: { messages: readonly ChannelMessage[]; users: readonly ChannelUser[] }) {
   const { lang, vis } = useCopy(), zh = lang === "zh";
@@ -23,7 +24,7 @@ export function RoomChatExport({ messages, users }: { messages: readonly Channel
       disabled={!messages.some(message => message.text)} onClick={() => {
         const text = formatChatTranscript(messages.filter(message => message.text).map(message => ({
           occurredAt: message.time,
-          sender: { displayName: users.find(user => user.id === message.userId)?.name ?? (zh ? "用户" : "User") },
+          sender: { displayName: messageAuthorName(message, users, zh ? "用户" : "User") },
           payload: { kind: "chat" as const, text: message.text },
         })));
         downloadBlob(new Blob([text], { type: "text/plain;charset=utf-8" }),
@@ -62,15 +63,15 @@ export function PersonalRelay({ channel, room, disabled, run }: { channel: Chann
   </section>;
 }
 
-export type RoomDraft = Pick<RoomSettings, "name" | "icon" | "access" | "hidden"> & { password: string; removePassword: boolean; relayCapacity: number };
+export type RoomDraft = Pick<RoomSettings, "name" | "icon" | "access" | "hidden" | "voiceBitrate"> & { password: string; removePassword: boolean; relayCapacity: number };
 export function roomDraft(room?: ChannelRoom): RoomDraft {
   return { name: room?.name ?? "", icon: room?.icon ?? "couch", access: room?.access ?? "public", hidden: room?.hidden ?? false,
     password: "", removePassword: false, relayCapacity: room?.relayCapacity ?? DEFAULT_RELAY_CAPACITY };
 }
 
-export function RoomForm({ room, value, onChange, appHosted, disabled, busy, onSave, onCancel }: {
+export function RoomForm({ room, value, onChange, appHosted, disabled, busy, onSave, onCancel, createLabel }: {
   room?: ChannelRoom; value: RoomDraft; onChange(value: Partial<RoomDraft>): void; appHosted: boolean; disabled: boolean; busy: boolean;
-  onSave: (settings: RoomSettings) => Promise<unknown>; onCancel(): void;
+  onSave: (settings: RoomSettings) => Promise<unknown>; onCancel(): void; createLabel?: string;
 }) {
   const { lang } = useCopy();
   const zh = lang === "zh";
@@ -80,7 +81,7 @@ export function RoomForm({ room, value, onChange, appHosted, disabled, busy, onS
   return <form className="c3-room-form" onSubmit={event => {
     event.preventDefault();
     if (!name.trim() || disabled || imageBusy) return;
-    void onSave({ name: name.trim(), icon, access, relayCapacity, hidden: access === "private" && hidden,
+    void onSave({ name: name.trim(), icon, access, relayCapacity, ...(value.voiceBitrate === undefined ? {} : { voiceBitrate: value.voiceBitrate }), hidden: access === "private" && hidden,
       ...(access === "private" && password ? { password } : removePassword ? { password: null } : {}) });
   }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}>
     {!room && <p>{appHosted
@@ -114,7 +115,7 @@ export function RoomForm({ room, value, onChange, appHosted, disabled, busy, onS
       note={zh ? "房间内默认的转发上限，其他人可以单独调整。" : "The default forwarding limit in this room. Others can adjust their own."}
       disabled={disabled} onChange={relayCapacity => change({ relayCapacity })} /></details>
     <div className="c3-form-actions"><ChannelAction icon="x" quiet label={zh ? "取消" : "Cancel"} onClick={onCancel} />
-      <ChannelAction icon={room ? "check" : "plus"} label={room ? (zh ? "保存" : "Save") : (zh ? "创建房间" : "Create room")}
+      <ChannelAction icon={room ? "check" : "plus"} label={room ? (zh ? "保存" : "Save") : createLabel ?? (zh ? "创建房间" : "Create room")}
         primary type="submit" disabled={disabled || imageBusy || !name.trim()} busy={busy} /></div>
   </form>;
 }
@@ -126,17 +127,47 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", onCreated, 
   const { lang } = useCopy(), zh = lang === "zh";
   const { error, run } = useSettingsAction();
   const [draft, setDraft] = useState<RoomDraft>(() => ({ ...roomDraft(), name: initialName }));
+  const input = useRef<HTMLInputElement>(null);
+  const [copy, setCopy] = useState<File | null>(null), [inspecting, setInspecting] = useState(false);
+  const [completed, setCompleted] = useState<"uncached" | "reconnect" | null>(null);
   const connected = channel.connection === "connected";
   const busy = channel.pending.has("create-room");
   const backupBusy = channel.pending.has("room-backup");
   const title = zh ? "创建房间" : "Create room";
   return <ChannelSettingsDialog title={title} compact error={error} onClose={onClose}>
       <div className="c3-settings-panels">
-        <RoomForm value={draft} onChange={fields => setDraft(previous => ({ ...previous, ...fields }))} appHosted={channel.appConnected} disabled={!connected || busy || backupBusy} busy={busy}
-          onCancel={onClose} onSave={settings => run(() => channel.createRoom(settings, false), roomId => {
-            onCreated(roomId); onClose();
-          })} />
-        <details className="c3-settings-details"><summary>{zh ? "从备份导入房间" : "Import a room backup"}</summary>
+        {completed ? <div className="c3-backup-confirm"><p role="status">{completed === "reconnect"
+          ? (zh ? "房间已创建，请重新连接，无需再次导入。" : "The room was created. Reconnect without importing it again.")
+          : (zh ? "新房间已创建，文件未能缓存。无需再次导入。" : "The new room was created. Files could not be cached. Do not import it again.")}</p>
+          <ChannelAction icon="check" primary label={zh ? "完成" : "Done"} onClick={onClose} /></div> : <>
+        <section className="c3-room-copy-load">
+          <input ref={input} type="file" accept=".zip,application/zip" hidden onChange={event => {
+            const file = event.currentTarget.files?.[0]; event.currentTarget.value = "";
+            if (!file) return;
+            setInspecting(true);
+            void run(() => channel.inspectRoomCopy(file), info => {
+              setCopy(file); setDraft({ ...roomDraft(), ...info, name: info.name ?? initialName, icon: info.icon ?? "couch", access: "private", password: "", hidden: false });
+            }).finally(() => setInspecting(false));
+          }} />
+          <ChannelAction icon="arrowUp" quiet label={zh ? "载入房间副本" : "Load a room copy"}
+            disabled={!connected || busy || backupBusy || inspecting} busy={inspecting} onClick={() => input.current?.click()} />
+          {copy && <><p>{copy.name}</p><p>{zh ? "消息、表情次数和可用附件将复制到新房间。请设置新的访问方式；不会使用副本中的身份或入场凭证。"
+            : "Messages, reaction counts and available files will be copied into a new room. Choose new access settings; accounts and entry credentials are not imported."}</p>
+            <ChannelAction icon="x" quiet label={zh ? "移除副本" : "Remove copy"} disabled={busy || backupBusy} onClick={() => setCopy(null)} /></>}
+        </section>
+        <RoomForm value={draft} onChange={fields => setDraft(previous => ({ ...previous, ...fields }))} appHosted={channel.appConnected} disabled={!connected || busy || backupBusy || inspecting} busy={busy || backupBusy}
+          createLabel={copy ? (zh ? "创建副本房间" : "Create copied room") : undefined}
+          onCancel={onClose} onSave={settings => run(async () => {
+            if (copy) {
+              try { return await channel.importRoomCopy(copy, settings); }
+              catch (error) {
+                if (error instanceof Error && error.message === "room_restored_connection_failed") { setCompleted("reconnect"); return null; }
+                throw error;
+              }
+            }
+            return { roomId: await channel.createRoom(settings, false), cached: true };
+          }, result => { if (result) { onCreated(result.roomId); if (result.cached) onClose(); else setCompleted("uncached"); } })} />
+        <details className="c3-settings-details"><summary>{zh ? "从完整备份恢复房间" : "Restore a full room backup"}</summary>
           <BackupControls disabled={!connected || busy} busy={backupBusy} replacing={false}
             onRestore={async file => {
               const result = await channel.restoreRoomBackup(file);
@@ -144,6 +175,7 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", onCreated, 
               return result;
             }} />
         </details>
+        </>}
       </div>
     </ChannelSettingsDialog>;
 }
@@ -155,6 +187,23 @@ export function ChannelRoomSettingsDialog({ channel, room, onClose }: {
   return <RoomSettings key={room.id} channel={channel} room={room} onClose={onClose} />;
 }
 type RoomSettingsTask = "room" | "relay" | "data";
+
+function RoomCopyExport({ channel, roomId, disabled, busy, run }: {
+  channel: ChannelController; roomId: string; disabled: boolean; busy: boolean; run: SettingsAction;
+}) {
+  const { lang } = useCopy(), zh = lang === "zh";
+  const [includeRoomInfo, setIncludeRoomInfo] = useState(true);
+  return <section className="c3-backup-controls">
+    <h3>{zh ? "复制为新房间" : "Copy into a new room"}</h3>
+    <p>{zh ? "导出消息、表情次数和可用附件，不包含账号、原邀请、密码或授权。"
+      : "Export messages, reaction counts and available files. Accounts, original invitations, passwords and access grants are excluded."}</p>
+    <label className="c3-check"><input type="checkbox" checked={includeRoomInfo} disabled={disabled || busy}
+      onChange={event => setIncludeRoomInfo(event.target.checked)} />
+      {zh ? "附带房间名称、图标、连接与语音设置" : "Include the room name, icon, connection and voice settings"}</label>
+    <ChannelAction icon="save" quiet label={zh ? "导出房间副本" : "Export room copy"} disabled={disabled} busy={busy}
+      onClick={() => { void run(async () => downloadBlob(await channel.exportRoomCopy(roomId, includeRoomInfo), "piik-room-copy.zip")); }} />
+  </section>;
+}
 
 function RoomSettings({ channel, room, onClose }: {
   channel: ChannelController; room: ChannelRoom; onClose(): void;
@@ -179,8 +228,8 @@ function RoomSettings({ channel, room, onClose }: {
   const members = room.members?.filter(userId => userId !== room.creatorId && userId !== channel.state?.channel.ownerId) ?? [];
   const tasks = [
     ...(room.canManage ? [{ value: "room", label: zh ? "房间" : "Room", icon: "couch", hint: "hint-advanced" } as const] : []),
-    ...(room.authorized ? [{ value: "relay", label: zh ? "连接设置" : "Connection settings", icon: "branch", hint: "hint-relay-volunteer" } as const] : []),
-    ...(room.authorized || room.canManage ? [{ value: "data", label: zh ? "记录与备份" : "Records and backups", icon: "save", hint: "hint-chat-export" } as const] : []),
+    ...(room.authorized ? [{ value: "relay", label: zh ? "连接" : "Connection", icon: "branch", hint: "hint-relay-volunteer" } as const] : []),
+    ...(room.authorized || room.canManage ? [{ value: "data", label: zh ? "记录" : "Records", icon: "save", hint: "hint-chat-export" } as const] : []),
   ];
   const selected = tasks.some(value => value.value === task) ? task : tasks[0]?.value;
   return <ChannelSettingsDialog title={room.name} caption={zh ? "房间设置" : "Room settings"} error={error} onClose={onClose}>
@@ -208,6 +257,9 @@ function RoomSettings({ channel, room, onClose }: {
         {(room.authorized || room.canManage) && <section id={`${id}-data`} role="tabpanel" aria-labelledby={`${id}-data-tab`} hidden={selected !== "data"}>
           <h3>{zh ? "记录与备份" : "Records and backups"}</h3>
           {room.authorized && <RoomChatExport messages={channel.messagesByRoom[room.id] ?? []} users={channel.state?.users ?? []} />}
+          {room.canManage && backupAvailable && <RoomCopyExport channel={channel} roomId={room.id} run={run}
+            disabled={!available || busy || removing} busy={backupBusy} />}
+          {room.canManage && backupAvailable && <h3>{zh ? "房间完整备份" : "Full room backup"}</h3>}
           {room.canManage && <BackupControls available={backupAvailable} disabled={!available || busy || removing || !backupAvailable}
             busy={backupBusy} onExport={() => channel.exportRoomBackup(room.id)} onRestore={async file => {
               try {
@@ -237,24 +289,4 @@ function RoomSettings({ channel, room, onClose }: {
       </div>
     </div>
   </ChannelSettingsDialog>;
-}
-
-export function ChannelRoomEntry({ channel, room }: { channel: ChannelController; room: ChannelRoom }) {
-  const { lang } = useCopy();
-  const zh = lang === "zh";
-  const [password, setPassword] = useState("");
-  const available = channel.connection === "connected" && room.available;
-  return <section className="c3-locked-room"><Glyph name="lock" size={46} />
-    <h3>{zh ? "这是一间私密房间" : "This room is private"}</h3>
-    <p>{room.hasPassword ? (zh ? "输入房间密码，或使用房间邀请链接。" : "Enter its password or open a room invitation.")
-      : (zh ? "请向房主索取邀请链接。" : "Ask the room owner for an invitation.")}</p>
-    {room.hasPassword && <form onSubmit={event => {
-      event.preventDefault();
-      if (!available) return;
-      void channel.enterRoom(room.id, password).then(() => setPassword("")).catch(() => {});
-    }}><input className="c3-input" type="password" maxLength={128} value={password} autoComplete="current-password"
-      aria-label={zh ? "房间密码" : "Room password"} onChange={event => setPassword(event.target.value)} />
-      <ChannelAction icon="door" type="submit" primary label={zh ? "进入房间" : "Enter room"}
-        busy={channel.pending.has(`enter:${room.id}`)} disabled={!password || !available} /></form>}
-  </section>;
 }

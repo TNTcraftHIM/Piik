@@ -755,6 +755,8 @@ pub struct ChatMessage {
     pub attachments: Vec<crate::attachment::AttachmentDescriptor>,
     pub id: Uuid,
     pub user_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archived_author_name: Option<String>,
     pub text: String,
     pub time: u64,
 }

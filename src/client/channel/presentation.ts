@@ -1,4 +1,8 @@
-import type { ChannelPublication, ChannelSnapshot } from "./protocol";
+import type { ChannelMessage, ChannelPublication, ChannelSnapshot, ChannelUser } from "./protocol";
+
+export function messageAuthorName(message: ChannelMessage, users: readonly ChannelUser[], fallback: string): string {
+  return message.archivedAuthorName ?? users.find(user => user.id === message.userId)?.name ?? fallback;
+}
 
 /** Live metadata owns names; generic source labels belong to the viewer's locale. */
 export function screenTitle(screen: { source: { kind: "screen" | "camera"; name: string | null }; title: string | null }, lang: "zh" | "en"): string {

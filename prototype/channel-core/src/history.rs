@@ -132,6 +132,7 @@ impl MessageDraft {
                         seq: last_seq + 1,
                         id: Uuid::new_v4(),
                         user_id: self.user_id,
+                        archived_author_name: None,
                         text: self.text.clone(),
                         time: self.time,
                         attachments: self.attachments.clone(),

@@ -33,6 +33,9 @@
 .c3-backup-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .c3-backup-confirm { display: grid; gap: 10px; min-width: 0; }
 .c3-backup-confirm > p { overflow-wrap: anywhere; }
+.c3-room-copy-load { display: grid; gap: 8px; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+.c3-room-copy-load > p { overflow-wrap: anywhere; }
+.c3-room-copy-load .lr-btn, .c3-backup-controls > .lr-btn { justify-self: start; }
 
 
 .c3-settings-panels :is(.c3-room-relay, .c3-room-transcript) { margin-top: 0; padding-top: 0; border-top: 0; }

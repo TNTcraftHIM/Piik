@@ -1,6 +1,6 @@
 # Piik 3.0 Room Data And Hosting
 
-Reviewed 2026-11-10. The [accepted network model](./channel-network-design.md)
+Reviewed 2026-11-11. The [accepted network model](./channel-network-design.md)
 owns responsibilities, routing and live lifecycles. This document records the
 accepted data ownership and develops synchronization, delivery and recovery. The
 [prototype README](../../prototype/channel-server/README.md) describes running
@@ -55,6 +55,8 @@ An authenticated user updates only their own profile; the domain saves it before
 broadcasting the current value to every endpoint. Rejoining preserves that value.
 Messages retain the author's user ID and display their current profile, including
 when the author is offline; they do not store separate copies of the avatar.
+Imported room copies retain a historical author name with a new, archive-only
+identity. That identity does not create a site account or receive room access.
 
 Each physical domain WebSocket starts with complete identity images. Later state
 frames may omit unchanged image fields for the same site, room or user. The wire
@@ -409,10 +411,28 @@ without a second deletion ledger.
 
 ### Backups
 
-Backup follows ownership: a domain export contains the domain's data; a room
-export contains that room's state and retained local content. A domain export
-alone cannot include history held only by another room owner. Never give a room
-owner the domain credential database merely to export their room.
+Backup follows the runtime that owns the data:
+
+| Export | Who provides it | Contents |
+| --- | --- | --- |
+| Site backup | Site operator | Site identity and settings, users and room directory. Room records remain with their room owners. |
+| Full room backup | Room owner through its hosting runtime | Room identity, settings, grants, complete confirmed history and retained local files. Restore preserves the original room and owner. |
+| Room copy | Room owner through its hosting runtime | Confirmed history, reaction counts and retained local files; room name, icon and connection/voice settings are optional. Import creates a new room owned by the importer. |
+| Personal record export | Any participant | Records obtained by that client. The current text export includes the messages loaded on the page. |
+
+Going offline does not delete an owner's saved room. The site retains its
+directory entry, and the owner can resume hosting with the same data. Participants'
+reading windows and files are local copies, not additional authoritative histories.
+Site backup does not collect other owners' rooms, and exporting a room does not
+give its owner the site's credential database.
+
+A room copy carries no credentials, access grants, password or invitation from
+the original room. Import uses the ordinary room form, with private access
+selected initially, and creates fresh room, message and historical-author
+identities. The importer chooses access settings for the new room. Available
+file bytes are hash-verified; attachment descriptions remain when their bytes
+are no longer retained. This reuses the existing archive and room storage paths,
+without automatic replication, ownership transfer or a second storage role.
 
 Use the storage platform's consistent snapshot mechanism; native SQLite provides
 the [online backup API](https://www.sqlite.org/backup.html). For a room restore,

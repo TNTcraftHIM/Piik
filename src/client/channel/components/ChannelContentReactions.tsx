@@ -44,7 +44,7 @@ export function ChannelContentReactions({ reactions, session, target, disabled =
     ? "messageSeq" in event.contentTarget && event.contentTarget.messageSeq === target.messageSeq
     : "publicationId" in event.contentTarget && event.contentTarget.publicationId === target.publicationId));
   return <div className="c3-message-reactions" data-has-counts={counts.length > 0 || undefined}>
-    {counts}
+    <span className="c3-message-reaction-counts">{counts}</span>
     <Tooltip kind="hint-reaction-picker" className="c3-message-action" disabled={open} text={label}>
       <button ref={trigger} popoverTarget={id} className="lr-btn is-dense is-quiet c3-add-reaction" type="button" aria-label={label}
         aria-haspopup="dialog" aria-expanded={open} aria-controls={id} disabled={disabled || !session}>

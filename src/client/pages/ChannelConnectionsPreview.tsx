@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { z } from "zod";
 import { ChannelConnectionReport } from "../channel/components/ChannelConnections";
 import { snapshotSchema, type ChannelTopology } from "../channel/protocol";
 import type { ChannelConnectionSample } from "../channel/types";
@@ -11,21 +12,21 @@ import { QUALITY_PROFILES, screenVideoSettings } from "../media/quality";
 export function channelConnectionPreview(mode: "room" | "voice" | "both" | "app", longNames = false) {
   const state = snapshotSchema.parse({
     channel: { id: "domain", name: "Friends", icon: "couch", ownerId: "host-user", historyWindow: 100,
-      access: "public", hasPassword: false, inviteHash: "a".repeat(64),
       rooms: [{ id: "room", name: "Living room", icon: "couch", creatorId: "host-user", access: "public", hidden: false,
         hasPassword: false, authorized: true, canManage: false, participantSessionIds: ["host", "self", "friend", "app"],
+        realtimeSessionIds: mode === "room" ? [] : ["host", "self", "friend", ...(mode === "app" ? ["app"] : [])],
         available: true, reading: true, capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding", nextHops: mode === "room" ? {} : { host: "host" } } }] },
     users: [{ id: "host-user", name: longNames ? "Host with a very long display name" : "Momo", avatar: null },
       { id: "self-user", name: "Nori", avatar: null }, { id: "friend-user", name: "Kiki", avatar: null }],
     sessions: ["host", "self", "friend", "app"].map(id => ({ id, userId: id === "app" ? "self-user" : `${id}-user`, online: true, signingKey: Array(32).fill(0) })),
     publications: mode === "room" ? [] : [
-      ...["host", "self", "friend"].map(id => ({ audience: [], id: `voice-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "voice", paused: false })),
-      ...(mode === "voice" ? [] : ["host", "self"].map(id => ({ audience: [], id: `screen-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "screen", source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }))),
+      ...["host", "self", "friend"].map(id => ({ audience: [], id: `voice-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "voice" as const, paused: false })),
+      ...(mode === "voice" ? [] : ["host", "self"].map(id => ({ audience: [], id: `screen-${id}`, roomId: "room", sessionId: id, userId: `${id}-user`, kind: "screen" as const, source: { kind: "screen" as const, name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }))),
     ], voice: mode === "room" ? [] : ["host", "self", "friend"].map(sessionId => ({
       sessionId, roomId: "room", muted: false, deafened: false,
     })), subscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
-  });
+  } satisfies z.input<typeof snapshotSchema>);
   const topology: ChannelTopology = { bindingId: "binding", base: { rootSessionId: "host", edges: mode === "room" ? [] : [
     { sender: "host", receiver: "self", ready: true }, { sender: "host", receiver: "friend", ready: true },
   ] }, screen: mode === "app" ? { publicationId: "screen-host", sourceSessionId: "host", edges: [

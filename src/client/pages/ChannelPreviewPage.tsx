@@ -19,7 +19,8 @@ import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
 import { ChannelPeople } from "../channel/components/ChannelPeople";
 import { ChannelProfileEditor } from "../channel/components/ChannelProfileEditor";
 import { ChannelFeedbackSounds } from "../channel/components/ChannelFeedbackSounds";
-import { ChannelRoomCreateDialog, ChannelRoomEntry, ChannelRoomSettingsDialog } from "../channel/components/ChannelRoomControls";
+import { ChannelRoomCreateDialog, ChannelRoomSettingsDialog } from "../channel/components/ChannelRoomControls";
+import { ChannelRoomEntry, ChannelUnlistedRoomEntry } from "../channel/components/ChannelRoomEntry";
 import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
 import { ChannelSiteSettings } from "../channel/components/ChannelSiteSettings";
 import { ChannelRoomListItem } from "../channel/components/ChannelRoomListItem";
@@ -78,6 +79,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const room = rooms.find(value => value.id === selected);
   const roomId = room?.id ?? "";
   const overview = !room;
+  const unlistedRoom = Boolean(state && selected && !room);
   const managedRoom = rooms.find(value => value.id === managedRoomId && (value.authorized || value.canManage));
   useEffect(() => {
     if (state && managedRoomId && !managedRoom) setManagedRoomId(null);
@@ -201,8 +203,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           <div className="c3-room-name"><span className="c3-pane-navigation"><Btn id="c3-rooms-trigger" icon="sidebar" quiet size="compact"
             title={{ text: copy("房间列表", "Rooms") }} hint="hint-room-list" controls="c3-room-list" expanded={mobilePane === "rooms"}
             onClick={showRooms} /></span><ChannelIdentityMark icon={room?.icon ?? "couch"} size={25} />
-            <Tooltip className="c3-room-title" overflow={{ text: room?.name ?? copy("房间总览", "Rooms"), selector: "h2" }}>
-              <h2>{room?.name ?? copy("房间总览", "Rooms")}</h2>
+            <Tooltip className="c3-room-title" overflow={{ text: room?.name ?? (unlistedRoom ? copy("打开房间", "Open room") : copy("房间总览", "Rooms")), selector: "h2" }}>
+              <h2>{room?.name ?? (unlistedRoom ? copy("打开房间", "Open room") : copy("房间总览", "Rooms"))}</h2>
             </Tooltip>
             {room && <ChannelRoomInvitation channel={channel} room={room} />}
           </div>
@@ -242,7 +244,9 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             </div>;
           })}
         </div>}
-          {!state ? <ChannelSiteEntry channel={channel} failure={failure} /> : overview && <section className="c3-site-overview">
+          {!state ? <ChannelSiteEntry channel={channel} failure={failure} /> : unlistedRoom
+            ? <ChannelUnlistedRoomEntry key={selected} channel={channel} roomId={selected} onBack={() => selectRoom("")} />
+            : overview && <section className="c3-site-overview">
             {rooms.length ? <><h2><ChannelIdentityMark icon={state.channel.icon} size={30} />{state.channel.name}</h2><div className="c3-overview-rooms">{rooms.map(value => <ChannelRoomItem key={value.id}
               room={value} selected={false} screenCount={screens.filter(source => source.roomId === value.id).length}
               onSelect={() => selectRoom(value.id)} onManage={() => setManagedRoomId(value.id)} />)}</div></>
@@ -263,7 +267,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             audience: state ? screenAudience(state, publication) : [],
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id), localSource: channel.localScreens.has(publication.id),
             shareControls: channel.ownedScreens.has(publication.id) && <ChannelShareControl channel={channel}
-              roomId={publication.roomId} publicationId={publication.id} compact
+              roomId={publication.roomId} publicationId={publication.id}
               disabled={!connected || !rooms.find(room => room.id === publication.roomId)?.available} />,
             paused: publication.paused, pausePending: publication.sessionId !== sessionId && busy("pause", publication.id),
             pauseAvailable: publication.sessionId === sessionId || connected,

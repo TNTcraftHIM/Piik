@@ -339,7 +339,8 @@ can read the current link. The site's bootstrap key is private hosting data.
 Sessions, captures and routes are not restored after a process restart.
 
 This unpublished prototype uses domain hosting metadata version 2 around domain
-authority version 6, room backup metadata version 2, and SQLite schema version 4.
+authority version 6, room backup metadata version 2, room-copy metadata version 1,
+and SQLite schema version 5.
 Browser room storage uses IndexedDB version 5. Older experimental
 checkpoints and the old unscoped `rooms/*.sqlite` layout are rejected rather than
 silently discarding or attaching their history to another domain. Keep any
@@ -352,6 +353,14 @@ archive, stops its Native operators and waits for them to exit, replaces the dom
 and retires old connections. Server bootstrap and the App owner entry then use
 the restored owner key. HTTP entries, tunnels and STUN retain their service lifetime;
 neither room histories nor participant retained files belong in a domain archive.
+
+Room settings → Records separates personal text export, a full room backup and
+a room copy. Only the room's actual hosting owner provides the latter two.
+Load a room copy from Create room to reuse its history and available files under
+your own identity; choose new access settings before creating it. A full backup
+instead restores the original room and owner. The
+[data model](../../docs/research/channel-storage-and-identity.md#backups) owns
+these scopes.
 
 UI preferences belong to the client; the Browser also keeps its user credential
 locally. Participant reading windows and drafts stay in memory, as do the design

@@ -33,6 +33,7 @@ struct NewRoom {
     access: RoomAccess,
     hidden: bool,
     password: Option<String>,
+    voice_bitrate: Option<u32>,
     relay_capacity: Option<u8>,
 }
 
@@ -52,6 +53,9 @@ pub fn create_room_policy(input: &str) -> Result<String, JsValue> {
     if let Some(capacity) = input.relay_capacity {
         policy.relay_capacity = capacity;
     }
+    if let Some(bitrate) = input.voice_bitrate {
+        policy.voice_bitrate = bitrate;
+    }
     policy.validate().map_err(error)?;
     encode(&policy)
 }
@@ -70,17 +74,44 @@ pub struct BackupHistoryImport(piik_channel_core::backup::HistoryImport);
 impl BackupHistoryImport {
     #[wasm_bindgen(constructor)]
     pub fn new(metadata: &str) -> Result<Self, JsValue> {
-        let piik_channel_core::backup::Metadata::Room(metadata) = parse_backup(metadata)? else {
-            return Err(error("invalid_backup_kind"));
+        use piik_channel_core::backup::{HistoryImport, Metadata};
+        let history = match parse_backup(metadata)? {
+            Metadata::Room(metadata) => HistoryImport::new(&metadata),
+            Metadata::RoomCopy(metadata) => HistoryImport::copy(&metadata),
+            Metadata::Domain(_) => return Err(error("invalid_backup_kind")),
         };
-        Ok(Self(
-            piik_channel_core::backup::HistoryImport::new(&metadata).map_err(error)?,
-        ))
+        Ok(Self(history.map_err(error)?))
     }
 
     pub fn accept(&mut self, input: &str) -> Result<String, JsValue> {
         let row = parse_backup::<piik_channel_core::backup::HistoryRow>(input)?;
         self.0.accept(&row).map_err(error)?;
+        encode(&row)
+    }
+
+    pub fn finish(&self) -> Result<(), JsValue> {
+        self.0.finish().map_err(error)
+    }
+}
+
+#[wasm_bindgen]
+pub struct CopyHistoryImport(piik_channel_core::backup::CopyHistoryImport);
+
+#[wasm_bindgen]
+impl CopyHistoryImport {
+    #[wasm_bindgen(constructor)]
+    pub fn new(metadata: &str) -> Result<Self, JsValue> {
+        let piik_channel_core::backup::Metadata::RoomCopy(metadata) = parse_backup(metadata)?
+        else {
+            return Err(error("invalid_backup_kind"));
+        };
+        Ok(Self(
+            piik_channel_core::backup::CopyHistoryImport::new(metadata).map_err(error)?,
+        ))
+    }
+
+    pub fn accept(&mut self, input: &str) -> Result<String, JsValue> {
+        let row = self.0.accept(parse_backup(input)?).map_err(error)?;
         encode(&row)
     }
 
