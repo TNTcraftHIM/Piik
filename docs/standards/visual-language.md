@@ -106,6 +106,14 @@ selects a room; its adjacent settings action manages that room without changing
 the current conversation or activities. Room, site maintenance and creation tasks share
 the native settings-dialog shell, with their own forms and permissions.
 
+Workspace corners have three roles: the shell owns the large outer radius,
+attached navigation and companion regions meet it with straight shared edges,
+and inset cards use the smaller surface radius with a further inset radius for
+compact notices and fields. Keep these roles aligned through the channel
+workspace tokens; do not round every adjacent region independently or use a
+pill for a panel. A media tile may keep its small media radius where its footer
+continues the tile surface, while an attached pane keeps the shell edge.
+
 Keep the room invitation beside the upper room title, and group Share with its
 parameters on the opposite side. Personal voice and identity stay lower left.
 The left list contains rooms and their voice participants; the Piik mark returns
