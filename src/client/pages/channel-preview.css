@@ -11,7 +11,7 @@
 .c3-site-bar { grid-column: 1 / -1; grid-row: 1; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; padding-inline: 16px; background: var(--wall); }
 .c3-site-identity { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: min(400px, 50%); }
 .c3-site-home { display: flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 44px; border: 0; background: none; color: var(--ink); padding: 0; }
-.c3-site-name { min-width: 0; flex: 1; }
+.c3-site-name { min-width: 0; flex: 0 1 auto; }
 .c3-site-name > .lr-comic-tip-wrap { display: block; min-width: 0; }
 .c3-site-name strong { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 16px; }
 .c3-site-name .lr-btn { width: 100%; min-width: 0; display: grid; grid-template-columns: 22px minmax(0, 1fr) 12px; justify-content: start; padding-inline: 3px; gap: 6px; color: var(--ink); }
@@ -28,10 +28,10 @@
 .c3-first-room p { color: var(--muted); font-size: 14px; line-height: 1.8; text-wrap: pretty; }
 .c3-overview-rooms { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 16px; }
 .c3-overview-rooms .c3-room-item { border: 1px solid var(--line); border-radius: var(--c3-surface-radius); padding: 12px; }
-.c3-global-tools.lr-top { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 0 0 160px; width: 160px; min-width: min-content; padding: 0; }
-.c3-global-tools .lr-header-controls { flex: 1; min-width: 0; margin-inline-start: 0; gap: 6px; justify-content: flex-end; }
-.c3-global-tools .lr-leds-label { display: none; }
-.c3-global-tools > [role="status"] { flex: none; }
+.c3-global-tools.lr-top { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: none; min-width: min-content; padding: 0; }
+.c3-global-tools .lr-header-controls { flex: 1; min-width: 0; margin-inline-start: 0; gap: 4px; justify-content: flex-end; }
+.c3-site-identity .lr-leds-label { display: none; }
+.c3-site-identity > [role="status"] { flex: none; }
 .c3-section-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 650; min-height: 32px; padding-inline: 10px; }
 .c3-room-navigation > .c3-section-label { min-height: var(--c3-heading-height); padding-inline: 4px; }
 .c3-room-list-actions { display: flex; align-items: center; gap: 2px; }
@@ -39,7 +39,7 @@
 .c3-room-list-empty { padding: 16px 10px; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .c3-room-navigation.is-empty > .c3-section-label { flex-wrap: wrap; gap: 12px; }
 .c3-pane-back, .c3-pane-navigation { display: none; }
-.c3-personal { grid-column: 1; grid-row: 4; min-width: 0; background: var(--wall); padding-top: 8px; }
+.c3-personal { grid-column: 1; grid-row: 4; min-width: 0; background: var(--paper); padding-top: 8px; }
 .c3-identity { display: flex; align-items: center; gap: 8px; padding: 12px; }
 .c3-identity > svg { flex: none; width: 32px; height: 40px; }
 .c3-identity > div { flex: 1; min-width: 0; }
@@ -62,7 +62,6 @@
 .c3-room-tools .lr-cap:where(:not([popover] .lr-cap)) { display: none; }
 .c3-room-tools { gap: 4px; }
 .c3-room-actions:not(:empty) + .c3-room-tools { border-inline-start: 1px solid var(--line); padding-inline-start: 12px; }
-#c3-companion-trigger > .lr-glyph { transform: scaleX(-1); }
 .c3-room-heading .c3-share-actions > .c3-share-control:nth-child(2) .lr-cap { display: none; }
 .c3-voice-joined { display: inline-flex; align-items: center; gap: 7px; padding: 8px 4px; color: var(--live); font-size: 13px; font-weight: 650; white-space: nowrap; }
 .c3-input { min-width: 0; width: 100%; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: var(--c3-inset-radius); padding: 10px 11px; font: inherit; font-size: 13px; }
@@ -116,14 +115,14 @@
 .c3-personal .c3-voice-dock { padding-block: 8px; }
 .c3-personal .c3-identity { padding-block: 8px; }
 .c3-personal .c3-identity > svg { width: 26px; height: 34px; }
-.c3-personal .c3-voice-controls { width: 100%; justify-content: space-between; }
+.c3-personal .c3-voice-controls { width: auto; justify-content: flex-start; margin-inline-start: 0; }
 .c3-control-divider { align-self: stretch; width: 1px; background: var(--line); margin: 7px 3px; }
 .c3-notice { flex: none; margin: 12px 20px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: var(--c3-inset-radius); font-size: 12px; line-height: 1.6; }
 .c3-notice-message { flex: 1; min-width: 0; }
 .c3-notice > svg { flex: none; }
 .c3-notice.is-error > svg { color: var(--danger); }
 .c3-app > .c3-notice { width: var(--c3-content-width); margin: 0 auto 12px; background: var(--paper); }
-.c3-people-panel { grid-column: 3; grid-row: 3 / 5; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-inline: 12px; background: var(--wall); }
+.c3-people-panel { grid-column: 3; grid-row: 3 / 5; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-inline: 12px; background: var(--paper); }
 .c3-people-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: none; min-height: 52px; }
 .c3-people-panel h2 { display: flex; align-items: baseline; gap: 8px; font-size: 14px; font-weight: 650; }
 .c3-people-panel h2 > span { color: var(--muted); font-size: 11px; font-weight: 400; }
@@ -138,7 +137,7 @@
 .c3-person { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
 .c3-person > .lr-comic-tip-wrap:has(.c3-avatar-preview) { flex: none; }
 .c3-person > svg, .c3-person .c3-avatar-preview > svg { flex: none; width: 30px; height: 38px; }
-.c3-people-panel .c3-person > svg, .c3-people-panel .c3-avatar-preview > svg { width: 26px; height: 34px; }
+.c3-people-panel .c3-person > svg, .c3-people-panel .c3-avatar-preview > svg { width: 28px; height: 36px; }
 .c3-person-copy { min-width: 0; flex: 1 1 12ch; }
 .c3-person-actions { display: flex; align-items: center; flex: none; gap: 4px; margin-inline-start: auto; }
 .c3-person-actions .lr-btn, .c3-identity .c3-profile-editor .lr-btn { width: var(--button-size, var(--control-dense-size)); padding-inline: 0; }
@@ -157,9 +156,15 @@
   .c3-room-heading { gap: 8px; padding: 12px; }
 }
 @container channel-shell (max-width: 600px) {
+  .c3-site-identity { gap: 4px; }
+  .c3-site-name .c3-identity-mark { display: none; }
+  .c3-site-name .lr-btn { grid-template-columns: minmax(0, 1fr) 12px; }
+  .c3-site-name .lr-btn .lr-cap { grid-column: 1; }
+  .c3-site-name .lr-btn > svg { grid-column: 2; }
   .c3-room-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; }
   .c3-room-name { grid-column: 1; grid-row: 1; }
-  .c3-room-toolbar { grid-column: 1 / -1; grid-row: 2; justify-self: end; }
+  .c3-room-toolbar { grid-column: 1 / -1; grid-row: 2; justify-self: stretch; }
+  .c3-room-toolbar .c3-room-tools { margin-inline-start: auto; }
   .c3-room-actions:empty { display: none; }
 }
 @container channel-room (max-height: 680px) {
@@ -217,13 +222,14 @@
   .c3-shell[data-sidebars="overlay"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: 58px auto minmax(0, 1fr) auto auto; margin-bottom: 8px; border-radius: var(--c3-shell-radius); }
   .c3-shell[data-sidebars="overlay"] > :is(.c3-sidebar, .c3-site-bar, .c3-people-panel, .c3-personal, .c3-chat-panel, .c3-room-presence),
   .c3-shell[data-sidebars="overlay"] :is(.c3-room-heading, .c3-main-body) { grid-column: 1; }
-  .c3-site-bar { padding-inline: 12px; gap: 8px; }
+  .c3-site-bar { padding-inline: 12px; gap: 4px; }
   .c3-site-identity { flex: 1; max-width: none; }
   .c3-shell .c3-room-heading { grid-row: 2; padding-block: 6px; }
   .c3-shell[data-sidebars="overlay"] .c3-main-body { grid-row: 3; }
   .c3-shell[data-sidebars="overlay"][data-overview] .c3-main-body { grid-row: 3 / 5; }
-  .c3-shell[data-sidebars="overlay"] > :is(.c3-sidebar, .c3-people-panel, .c3-chat-panel) { grid-row: 2 / 4; }
-  .c3-shell:is([data-pane="rooms"], [data-pane="people"], [data-pane="chat"]) .c3-room-heading { visibility: hidden; }
+  .c3-shell[data-sidebars="overlay"] > .c3-sidebar { grid-row: 3; }
+  .c3-shell[data-sidebars="overlay"] > :is(.c3-people-panel, .c3-chat-panel) { grid-row: 2 / 4; }
+  .c3-shell:is([data-pane="people"], [data-pane="chat"]) .c3-room-heading { visibility: hidden; }
   .c3-shell > .c3-room-presence { grid-row: 4; }
   .c3-shell > .c3-personal { grid-row: 5; }
   .c3-room-presence { padding: 4px 12px 8px; }

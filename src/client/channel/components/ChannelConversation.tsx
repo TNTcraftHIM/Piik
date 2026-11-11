@@ -293,7 +293,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
       {draft.reply && <div className="c3-compose-reply"><span><strong>{zh ? "回复 " : "Replying to "}{draft.reply.name}</strong><small>{draft.reply.text}</small></span>
         <Tooltip text={draft.reply.notify ? (zh ? "会提醒对方；关闭后只引用原消息" : "Notifies the author; turn off to quote without notifying")
           : (zh ? "不会提醒对方；开启后发送提醒" : "Doesn't notify the author; turn on to notify")}>
-          <button type="button" className="lr-btn is-compact is-quiet c3-reply-notify" aria-pressed={draft.reply.notify}
+          <button type="button" className={`lr-btn is-compact is-quiet c3-reply-notify${draft.reply.notify ? " is-on" : ""}`} aria-pressed={draft.reply.notify}
             aria-label={zh ? "提醒回复对象" : "Notify reply recipient"} onClick={() => updateDraft(value => ({ ...value, reply: value.reply && { ...value.reply, notify: !value.reply.notify } }))}>@</button>
         </Tooltip>
         <ChannelAction icon="x" quiet iconOnly textTooltip label={zh ? "取消回复，保留草稿" : "Cancel reply and keep draft"} onClick={() => {

@@ -53,9 +53,7 @@ export function ChannelContentReactions({ reactions, session, target, disabled =
     </Tooltip>
     <div ref={menu} id={id} popover="auto" role="dialog" className="lr-floating-surface c3-message-reaction-menu"
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }} aria-label={label}>
-      {open && <><strong>{label}</strong>
-        <RoomReactionGrid reactionIds={state?.reactionIds ?? REACTION_IDS} canSend={canSend} onSend={send} />
-      </>}
+      {open && <RoomReactionGrid reactionIds={state?.reactionIds ?? REACTION_IDS} canSend={canSend} onSend={send} />}
     </div>
     {session && effects && effects.map(event => event.payload.kind === "reaction" && <ReactionBurst key={event.id}
       reaction={event.payload.reaction} id={event.id} expiresAt={event.expiresAt} now={session.now} anchor={effectAnchor} />)}

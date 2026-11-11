@@ -121,8 +121,9 @@ The left list contains rooms and their voice participants; the Piik mark returns
 to this site's room overview. Keep the site name visible beside it, with maintenance
 actions attached to that name rather than the personal controls. Global connection,
 App, language, theme and help belong to the site bar above the room toolbar.
-They do not move into the sharing group when a sidebar collapses. The room toolbar
-owns the single companion-pane toggle; the main body fills the released width.
+They do not move into the sharing group when a sidebar collapses. Place connection
+dots beside the site identity; App leads the right-hand utility group. The room
+toolbar owns the single companion-pane toggle; the main body fills the released width.
 Site maintenance is separate from a room's access settings.
 Each room can fold its realtime participant roster without changing voice,
 watching, sharing or transfer activity. The site-wide people pane separately
