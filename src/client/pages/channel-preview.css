@@ -151,6 +151,35 @@
   .c3-workspace.has-screens .c3-monitor { --stage-padding: 10px; gap: 8px; }
   .c3-workspace .c3-conversation { padding: 8px 12px; gap: 8px; }
 }
+@container channel-shell (max-height: 680px) {
+  .c3-personal { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; padding: 2px 8px 4px; gap: 2px 4px; }
+  .c3-personal .c3-voice-entry { grid-column: 1 / -1; grid-row: 1; padding: 0 4px; gap: 4px; }
+  .c3-personal .c3-voice-entry small, .c3-personal .c3-identity small { display: none; }
+  .c3-personal .c3-voice-dock { display: contents; }
+  .c3-personal .c3-voice-destination { grid-column: 1; grid-row: 2; padding-inline: 4px; }
+  .c3-personal .c3-voice-destination small { display: none; }
+  .c3-personal .c3-voice-controls { grid-column: 1 / -1; grid-row: 3; }
+  .c3-shell .c3-personal .c3-identity { display: flex; grid-column: 2; grid-row: 2; padding: 0; gap: 4px; }
+  .c3-personal .c3-identity > svg { width: 20px; height: 26px; }
+  .c3-personal .c3-identity strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .c3-room-presence { flex-direction: row; justify-content: center; gap: 8px; padding-block: 4px; }
+  .c3-room-presence .c3-room-company { width: min(100%, 320px); }
+  @media (max-width: 700px) {
+    .c3-personal .c3-voice-entry { grid-column: 1; }
+    .c3-personal .c3-voice-destination { grid-column: 1 / -1; }
+    .c3-shell .c3-personal .c3-identity { grid-row: 1; }
+  }
+}
+@media (min-width: 701px) and (max-height: 700px) {
+  .c3-shell { grid-template-rows: 58px var(--c3-heading-height) minmax(0, 1fr) auto auto; }
+  .c3-sidebar { grid-row: 2 / 5; }
+  .c3-shell .c3-personal { grid-column: 1 / -1; grid-row: 5; display: flex; gap: 16px; padding: 6px 12px; border-top: 1px solid var(--line); }
+  .c3-personal .c3-voice-entry { flex: 0 1 240px; }
+  .c3-personal .c3-voice-dock { display: flex; flex: 1; min-width: 0; gap: 8px; padding: 0; }
+  .c3-personal .c3-voice-destination { flex-basis: auto; }
+  .c3-personal .c3-voice-controls { width: auto; gap: 4px; }
+  .c3-shell .c3-personal .c3-identity { flex: 0 1 180px; order: -1; }
+}
 @media (max-width: 1100px) {
   .c3-app { --c3-content-width: calc(100% - 24px); }
 }
