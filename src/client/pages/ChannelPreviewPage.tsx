@@ -47,8 +47,10 @@ export function ChannelPreviewPage() {
 }
 
 /** Session and App connection owners supply data; this view keeps one set of room slots. */
-export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
+export function ChannelRoomPage({ channel, selected, onSelect, appControl, layout = "workspace" }: {
   channel: ChannelController; selected: string; onSelect(id: string): void; appControl: ReactNode;
+  /** Development layout comparison; activity and navigation keep their existing owners. */
+  layout?: "workspace" | "quick";
 }) {
   const { lang, vis } = useCopy();
   const zh = lang === "zh";
@@ -88,6 +90,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
     setMobilePane(next && state && !rooms.length ? "rooms" : "room");
   };
   const showRooms = () => {
+    if (layout === "quick") { setMobilePane("rooms"); return; }
     if (sidebarsInline) {
       if (sharingView) toggleSharingView();
       setMobilePane("room");
@@ -145,7 +148,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
     </div>}
     {managedRoom && <ChannelRoomSettingsDialog key={managedRoom.id} channel={channel} room={managedRoom}
       onClose={closeRoomSettings} />}
-    <main ref={workspaceElement} className="c3-shell" data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"} data-sidebars={sidebarsInline ? "inline" : "overlay"} data-overview={overview || undefined}
+    <main ref={workspaceElement} className="c3-shell" data-layout={layout} data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"} data-sidebars={sidebarsInline ? "inline" : "overlay"} data-overview={overview || undefined}
       data-companion={companionVisible ? mobilePane === "people" || !visibleScreens.length ? "people" : toolSurface.open ? "none" : "chat" : "none"}>
       <header className="c3-site-bar"><div className="c3-site-identity">
         <button className="c3-site-home" type="button" aria-label={copy("本站房间总览", "Rooms on this site")} onClick={() => selectRoom("")}><BrandMark size={30} motion="once" /></button>
@@ -156,13 +159,17 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
           label={connectionLabel} comic={connected ? "signal-connected" : "signal-connecting"} />
         <HeaderControls appControl={appControl} />
       </div></header>
-      <aside id="c3-room-list" className="c3-sidebar" aria-label={copy("房间", "Rooms")}>
+      <aside id="c3-room-list" className="c3-sidebar" onKeyDown={event => {
+        if (layout === "quick" && mobilePane === "rooms" && event.key === "Escape" && !event.defaultPrevented) {
+          event.preventDefault(); setMobilePane("room");
+        }
+      }} aria-label={copy("房间", "Rooms")}>
         <div className="c3-sidebar-browse">
         <div className={`c3-room-navigation${!rooms.length ? " is-empty" : ""}`}>
           <div className="c3-section-label"><span id="c3-room-list-heading" tabIndex={-1} className="c3-section-caption"><Cap k={{ text: copy("房间", "Rooms") }} /></span>
             <div className="c3-room-list-actions">{self && <ChannelRoomControls channel={channel} onCreated={selectRoom} />}
               <Btn icon="sidebar" size="dense" quiet title={{ text: copy("收起房间列表", "Collapse room list") }}
-                controls="c3-room-list" expanded={!sharingView} onClick={() => { if (sidebarsInline && !sharingView) toggleSharingView(); setMobilePane("room"); }} />
+                controls="c3-room-list" expanded={layout === "quick" ? mobilePane === "rooms" : !sharingView} onClick={() => { if (layout !== "quick" && sidebarsInline && !sharingView) toggleSharingView(); setMobilePane("room"); }} />
             </div>
           </div>
           <nav className="c3-rooms" aria-label={copy("房间", "Rooms")}>

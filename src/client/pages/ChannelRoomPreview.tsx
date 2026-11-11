@@ -17,6 +17,7 @@ const screenCounts = [0, 1, 2, 3, 4, 8];
 export function ChannelRoomPreview() {
   const { lang } = useCopy(), zh = lang === "zh";
   const sample = useChannelGuideSample(true);
+  const [layout, setLayout] = useState<"workspace" | "quick">("workspace");
   const [longNames, setLongNames] = useState(() => new URLSearchParams(location.search).has("long-names"));
   const [roomCount, setRoomCount] = useState(() => new URLSearchParams(location.search).has("no-rooms") ? 0 : 2);
   const [emptyChat, setEmptyChat] = useState(() => new URLSearchParams(location.search).has("empty-chat"));
@@ -131,7 +132,7 @@ export function ChannelRoomPreview() {
     restoreRoomBackup: async () => { sample.received(); throw new Error("preview_storage_unavailable"); },
   } satisfies Partial<ChannelController> as unknown as ChannelController;
   return <div className="c3-room-preview">
-    <ChannelRoomPage channel={channel} selected={selected} onSelect={setSelected}
+    <ChannelRoomPage channel={channel} layout={layout} selected={selected} onSelect={setSelected}
       appControl={<span ref={optionsTrigger} className="c3-room-preview-trigger"><Btn icon="sliders" title={{ text: zh ? "预览选项" : "Preview options" }}
           cap={{ text: zh ? "预览选项" : "Preview options" }} quiet size="compact" hint="hint-advanced"
           expanded={optionsOpen} controls={optionsId} popoverTarget={optionsId} /></span>} />
@@ -142,6 +143,10 @@ export function ChannelRoomPreview() {
           <header><h2>{zh ? "预览选项" : "Preview options"}</h2><Btn icon="x" title="common.close" hint="hint-close" quiet size="compact"
             onClick={() => optionsPanel.current?.hidePopover()} /></header>
           <p>{zh ? "画面为本地合成样本，没有实际网络连接。" : "Pictures are local synthetic samples, without network connections."}</p>
+          <fieldset><legend>{zh ? "布局对照" : "Layout comparison"}</legend><div className="c3-room-preview-tools">
+            {(["workspace", "quick"] as const).map(value => <Chip key={value} title={value === "quick" ? (zh ? "简洁布局" : "Simple layout") : (zh ? "完整工作区" : "Full workspace")} selected={layout === value}
+              onClick={() => setLayout(value)}>{value === "quick" ? (zh ? "简洁布局" : "Simple layout") : (zh ? "完整工作区" : "Full workspace")}</Chip>)}
+          </div></fieldset>
           <fieldset><legend>{zh ? "画面数量" : "Screens"}</legend><div className="c3-room-preview-tools">
             {screenCounts.map(value => <Chip key={value} title={zh ? `${value} 个画面` : `${value} screen${value === 1 ? "" : "s"}`} selected={count === value}
               onClick={() => { setCount(value); setSharingRoom(null); setStopped(new Set()); setUnwatched(new Set()); }}>{value}</Chip>)}
