@@ -1,7 +1,7 @@
 use crate::{
     history::HISTORY_WINDOW,
     host::{HostAction, HostOutput, RequestContext, RoomReply, RoomResult, RoomSummary},
-    identity::{Admission, Admitted, Identity, StoredUser},
+    identity::{Admission, Admitted, Identity, StoredUser, MAX_SESSIONS},
     remote::{Binding, RemoteRoom, ReplyOwner, RetiredRoomReply},
     transport::{Flow, TransportBook},
     wire::*,
@@ -924,15 +924,18 @@ impl Channel {
         }
         // One room has at most two publications per authenticated endpoint.
         // Check its transport leases at the domain boundary, never trust a host to name another room's flows.
+        const MAX_PUBLICATIONS: usize = 2 * MAX_SESSIONS;
+        const MAX_TREE_EDGES: usize = MAX_SESSIONS - 1;
         let endpoints = self.identity.endpoints();
-        if projection.views.len() > 20
-            || projection.flows.len() > 40 * (19 + 19)
+        if projection.views.len() > MAX_SESSIONS
+            // Each publication can retain committed and prepared tree flows.
+            || projection.flows.len() > MAX_PUBLICATIONS * (MAX_TREE_EDGES + MAX_TREE_EDGES)
             || projection
                 .base_links
                 .iter()
                 .filter(|link| link.selected)
                 .count()
-                > 19
+                > MAX_TREE_EDGES
             || projection
                 .base_links
                 .iter()
@@ -942,9 +945,9 @@ impl Channel {
         {
             return Err("invalid_room_projection");
         }
-        if projection.publications.len() > 40
-            || projection.voice.len() > 20
-            || projection.participant_session_ids.len() > 20
+        if projection.publications.len() > MAX_PUBLICATIONS
+            || projection.voice.len() > MAX_SESSIONS
+            || projection.participant_session_ids.len() > MAX_SESSIONS
             || projection
                 .participant_session_ids
                 .iter()
@@ -966,8 +969,8 @@ impl Channel {
                         || endpoints[recipient].member.user_id != projection.summary.creator_id)
                 || view.members.is_some() && !view.can_manage
                 || view.relay_override.is_some_and(|capacity| capacity > 20)
-                || view.subscriptions.len() > 40
-                || view.failed_subscriptions.len() > 40
+                || view.subscriptions.len() > MAX_PUBLICATIONS
+                || view.failed_subscriptions.len() > MAX_PUBLICATIONS
                 || view.failed_subscriptions.iter().any(|id| {
                     !view.subscriptions.contains(id)
                         || !projection.publications.iter().any(|publication| {
@@ -998,7 +1001,7 @@ impl Channel {
                 if file.room_id != id
                     || file.message_seq == 0
                     || file.attachment.validate().is_err()
-                    || file.downstream.len() > 19
+                    || file.downstream.len() > MAX_TREE_EDGES
                     || file.downstream.iter().collect::<BTreeSet<_>>().len()
                         != file.downstream.len()
                     || file.source_id.is_some_and(|source| {
@@ -1027,7 +1030,7 @@ impl Channel {
                     _ => true,
                 }
                 || publication.room_id != id
-                || publication.audience.len() > crate::identity::MAX_SESSIONS
+                || publication.audience.len() > MAX_SESSIONS
                 || (publication.kind != Kind::Screen && !publication.audience.is_empty())
                 || publication
                     .audience
