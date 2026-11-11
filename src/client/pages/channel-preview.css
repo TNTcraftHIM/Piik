@@ -274,6 +274,11 @@
 .c3-quick-entry-tv { margin-bottom: 8px; }
 .c3-quick-entry-tv .lr-tv { width: 100%; }
 .c3-quick-start { display: grid; place-items: center; padding: 24px; }
+.c3-shell[data-layout="quick"] .c3-workspace:has(.c3-monitor-directory) > .c3-quick-entry-tv {
+  .lr-tv, .lr-tv-screen.has-entry { display: contents; }
+  .lr-tv-chin { display: none; }
+  .c3-quick-start { justify-items: start; padding: 0; }
+}
 @media (orientation: landscape) and (max-height: 500px) {
   .c3-shell[data-layout="quick"] .c3-main-body { max-width: min(990px, calc(max(160px, 100svh - 200px) * 16 / 9 + 30px)); }
 }

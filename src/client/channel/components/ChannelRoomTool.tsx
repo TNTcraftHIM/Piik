@@ -20,10 +20,11 @@ function move(node: HTMLElement, parent: HTMLElement | null) {
 }
 
 /** Three page slots share one room tool without remounting their content. */
-export function ChannelRoomTool({ title, caption, home, surface, onSurfaceChange, couch, conversation, voice, preferPanel = false }: {
+export function ChannelRoomTool({ title, caption, home, surface, onSurfaceChange, couch, conversation, voice, actions, preferPanel = false }: {
   title: string; home: Slots; surface: RoomToolSurface; onSurfaceChange: (surface: RoomToolSurface) => void;
   caption?: string;
   couch: ReactNode; conversation: ReactNode; voice: ReactNode;
+  actions?: ReactNode;
   preferPanel?: boolean;
 }) {
   const { lang, vis } = useCopy();
@@ -37,8 +38,12 @@ export function ChannelRoomTool({ title, caption, home, surface, onSurfaceChange
     : inline ? (lang === "zh" ? "房间交流面板" : "Room panel")
     : (lang === "zh" ? "弹出房间小窗" : "Pop out room");
   // A stable home ref can point to a new layout slot; an open tool keeps its content.
+  const place = (open: boolean, owner: Document | null) => {
+    const destination = open ? { couch: couchSlot, conversation: conversationSlot, voice: voiceSlot } : home;
+    for (const part of parts) move(targets[part], part === "couch" && preferPanel && owner === document ? home.couch.current : destination[part].current);
+  };
   useLayoutEffect(() => {
-    if (!surface.open) for (const part of parts) move(targets[part], home[part].current);
+    place(surface.open, surface.document);
   });
   useEffect(() => () => { for (const part of parts) targets[part].remove(); }, [targets]);
   return <>
@@ -50,20 +55,22 @@ export function ChannelRoomTool({ title, caption, home, surface, onSurfaceChange
           {preferPanel && <Cap k={{ text: lang === "zh" ? "互动" : "Interact" }} />}
         </button>
       </Tooltip>
+      {actions}
     </div>
     <FloatingPanel id={id} trigger={trigger} title={title} icon="couch" directWindow={!preferPanel} detachable={preferPanel} className="c3-room-tool"
       onOpenChange={(open, owner) => {
-        const destination = open ? { couch: couchSlot, conversation: conversationSlot, voice: voiceSlot } : home;
         // Placement-dependent children must render against their new ancestry.
-        for (const part of parts) move(targets[part], destination[part].current);
+        place(open, owner);
         onSurfaceChange({ open, document: owner });
       }}>
       <div ref={couchSlot} className="c3-room-slot" />
       <div ref={conversationSlot} className="c3-room-slot" />
       <div ref={voiceSlot} className="c3-room-slot" />
     </FloatingPanel>
-    <SurfaceDocument.Provider value={surface.open ? surface.document : null}>
+    <SurfaceDocument.Provider value={surface.open && (!preferPanel || detached) ? surface.document : null}>
       {createPortal(couch, targets.couch)}
+    </SurfaceDocument.Provider>
+    <SurfaceDocument.Provider value={surface.open ? surface.document : null}>
       {createPortal(conversation, targets.conversation)}
       {createPortal(voice, targets.voice)}
     </SurfaceDocument.Provider>

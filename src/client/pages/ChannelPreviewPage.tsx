@@ -155,6 +155,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const displayedSources = new Set([...visibleScreens, ...availableScreens].map(source => source.id));
   const myVoice = state?.voice.filter(value => value.sessionId === sessionId) ?? [];
   const joined = myVoice.some(value => value.roomId === roomId);
+  const joinVoice = room?.authorized && !joined ? <ChannelJoinVoice joined={false} disabled={!connected || !room.available} busy={busy("voice", roomId)}
+    onJoin={listenOnly => run(channel.joinVoice(roomId, listenOnly).then(() => setVoiceFocus(roomId)))} /> : null;
   const nameOfRoom = (id: string) => rooms.find(value => value.id === id)?.name ?? id;
   const nameOfUser = (id: string) => state?.users.find(value => value.id === id)?.name ?? copy("用户", "User");
   const voiceStreams = listeningVoicePublications(state, sessionId, streams);
@@ -247,7 +249,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             <Tooltip className="c3-room-title" overflow={{ text: room?.name ?? (unlistedRoom ? copy("打开房间", "Open room") : copy("房间总览", "Rooms")), selector: "h2" }}>
               <h2>{room?.name ?? (unlistedRoom ? copy("打开房间", "Open room") : copy("房间总览", "Rooms"))}</h2>
             </Tooltip>
-            {room && <ChannelRoomInvitation channel={channel} room={room} />}
+            {room && <ChannelRoomInvitation channel={channel} room={room} onManageAccess={() => setManagedRoomId(room.id)} />}
           </div>
           <div className="c3-room-toolbar"><div className="c3-room-actions">
             {(layout !== "quick" || visibleScreens.length > 0) && room?.authorized && !mine.some(source => source.roomId === roomId) &&
@@ -364,10 +366,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         <div ref={couchSlot} className="c3-room-slot" />
         <ChannelRoomTool title={room?.name ?? copy("房间", "Room")} surface={toolSurface} onSurfaceChange={setToolSurface}
           preferPanel={layout === "quick"}
+          actions={layout === "quick" && !toolSurface.open ? joinVoice : undefined}
           caption={room ? copy(`${room.name}的朋友`, `Friends in ${room.name}`) : copy("房间里的朋友", "Friends in this room")}
           home={{ couch: couchSlot, conversation: conversationSlot, voice: voiceSlot }}
           couch={room?.authorized && <ChannelCouch className="c3-room-company" people={state ? roomPeople(state, roomId) : []}
-            floating={toolSurface.open} selfUserId={self?.id ?? null} session={channel.interactionsByRoom.get(roomId) ?? null} />}
+            floating={toolSurface.open && (layout !== "quick" || toolSurface.document !== document)} selfUserId={self?.id ?? null} session={channel.interactionsByRoom.get(roomId) ?? null} />}
           conversation={<>{room && !room.authorized && <ChannelRoomEntry key={room.id} channel={channel} room={room} />}
             <ChannelConversation roomId={roomId} roomName={room?.name ?? ""} roomIcon={room?.icon} messages={channel.messagesByRoom[roomId] ?? []}
             users={state?.users ?? []} entry={self ? { kind: "site" } : { kind: "entry" }}
@@ -380,9 +383,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             interaction={channel.interactionsByRoom.get(roomId) ?? null}
             onSend={channel.sendMessage} floating={toolSurface.open} hidden={room?.authorized === false || (!toolSurface.open && visibleScreens.length > 0 && !inlineChatOpen)} /></>}
           voice={<><section className="c3-voice-entry" aria-label={copy("当前房间语音", "Voice in this room")}>
-            {layout !== "quick" && room?.authorized && !joined && <><div><small>{copy("当前房间", "Current room")}</small><strong>{room.name}</strong></div>
-              <ChannelJoinVoice joined={false} disabled={!connected || !room.available} busy={busy("voice", roomId)}
-                onJoin={listenOnly => run(channel.joinVoice(roomId, listenOnly).then(() => setVoiceFocus(roomId)))} /></>}
+            {(layout !== "quick" || toolSurface.open) && joinVoice && <><div><small>{copy("当前房间", "Current room")}</small><strong>{room?.name}</strong></div>{joinVoice}</>}
           </section><ChannelVoiceDock channel={channel} selected={voiceFocus} onSelect={setVoiceFocus} onBrowse={selectRoom} /></>} />
       </div>
     </main>

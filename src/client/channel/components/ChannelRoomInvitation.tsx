@@ -12,7 +12,9 @@ import { useSettingsAction } from "./ChannelSettingsDialog";
 import "./channel-room-invitation.css";
 
 /** The title's invitation entry owns one open read, independently of room settings. */
-export function ChannelRoomInvitation({ channel, room }: { channel: ChannelController; room: ChannelRoom }) {
+export function ChannelRoomInvitation({ channel, room, onManageAccess }: {
+  channel: ChannelController; room: ChannelRoom; onManageAccess?(): void;
+}) {
   const { lang, vis } = useCopy(), zh = lang === "zh";
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -26,12 +28,15 @@ export function ChannelRoomInvitation({ channel, room }: { channel: ChannelContr
       className="lr-anchored-card c3-room-invitation" onToggle={event => {
         if (event.target === event.currentTarget) setOpen(event.newState === "open");
       }}>
-      {open && <RoomInvitation key={room.id} channel={channel} room={room} onClose={() => panel.current?.hidePopover()} />}
+      {open && <RoomInvitation key={room.id} channel={channel} room={room} onClose={() => panel.current?.hidePopover()}
+        onManageAccess={onManageAccess} />}
     </div>
   </span>;
 }
 
-function RoomInvitation({ channel, room, onClose }: { channel: ChannelController; room: ChannelRoom; onClose(): void }) {
+function RoomInvitation({ channel, room, onClose, onManageAccess }: {
+  channel: ChannelController; room: ChannelRoom; onClose(): void; onManageAccess?(): void;
+}) {
   const { lang } = useCopy(), zh = lang === "zh";
   const { error, run } = useSettingsAction();
   const [invitation, setInvitation] = useState<RoomInvitationState | { state: "loading" | "failed" }>({ state: "loading" });
@@ -88,6 +93,9 @@ function RoomInvitation({ channel, room, onClose }: { channel: ChannelController
       <details className="c3-settings-details"><summary>{zh ? "重置房间邀请" : "Reset room invitation"}</summary>
         <p>{zh ? "重置后，所有旧免密邀请链接将失效。已获准的用户保留访问，房间密码不变。" : "Resetting invalidates all old password-free invitation links. Users who already have access keep it, and the room password stays unchanged."}</p>{generate(true)}
       </details>}
+    {room.canManage && onManageAccess && <ChannelAction icon="lock" quiet
+      label={zh ? "访问设置" : "Access settings"} disabled={!available || busy}
+      onClick={() => { onClose(); onManageAccess(); }} />}
     {message && <p className="c3-settings-error" role="alert">{message}</p>}
   </>;
 }

@@ -24,10 +24,15 @@ Choose **Remove picture** to return to the plain coloured person.
 need Piik for screen sharing, choose **More options → Interface → Simple sharing**.
 Select **Start sharing**, choose a source, then copy the invitation below the picture.
 The picture, playback controls and couch stay central; **Interact** opens the room tool.
+**Join voice** stays beside the couch; after joining, its voice controls include
+mute, listening and leave. Opening the inline interaction panel leaves the couch in place.
+Several people can share at once: select **Watch** on each picture you want,
+then choose grid or focus. Stopping one picture keeps the others playing.
 
 Changing interfaces keeps current shares, watches, drafts and joined voice.
 Joined voice retains its controls and leave action. Switch back to **Full workspace**
-for the room directory, administration and backups. The browser remembers your choice.
+for the room directory and wider administration. **Invitation → Access settings**
+opens the existing room settings in either view. The browser remembers your choice.
 
 ## Manage a room
 
@@ -118,14 +123,14 @@ to choose a different one. Counts last for that share; loading counts does not r
 **More options → Feedback sounds** turns on quiet message and throw sounds for
 this browser. Sounds start off. New messages alert you while the page is in the
 background; sending or receiving a tomato or poop plays a short cue in the foreground.
-Use the separate volume control or **Try sound** to adjust it.
+Use the volume control and each sound's preview button to adjust it.
 
 While watching a picture, **On screen** in its playback bar shows that room's
 new messages over the picture. **Playback settings → On-screen chat** adjusts
 their appearance. Loading earlier history does not replay these effects.
 System video fullscreen and video picture in picture do not show chat overlays.
 
-For each sound, **Choose** selects a local audio file up to 256 KiB and three
+For each sound, **Choose file** selects a local audio file up to 256 KiB and three
 seconds. Preview it or restore the built-in sound. Custom sounds stay in this
 browser's site storage and are not sent to the room.
 
@@ -171,11 +176,13 @@ voices playing in your browser. See [sharing sound controls](./sharing.md#exclud
 
 ## Keep the room beside a picture or game
 
-Select **Pop out room** beside the couch to move its conversation, people and
+In the full workspace, select **Pop out room** beside the couch to move its conversation, people and
 voice controls directly into an always-on-top window. Other browsers use the
 movable **Room panel** inside the page. Keep the original page open; closing
 the small window, or pressing the same room-window button again, returns its
 controls and drafts to the page.
+In simple sharing, **Interact** first opens the inline panel while the couch
+stays visible. Its picture-in-picture action can then move the room tool to a small window.
 
 Opening or closing this window does not join or leave voice. A windowed or
 borderless game lets you keep it visible; exclusive fullscreen may cover it.
