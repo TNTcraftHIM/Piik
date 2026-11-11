@@ -44,7 +44,7 @@ export function ChannelRoomTool({ title, caption, home, surface, onSurfaceChange
       <Tooltip kind={inline ? "hint-chat-open" : "hint-window-detach"} disabled={surface.open} text={vis ? undefined : label}>
         <button ref={trigger} type="button" className="lr-btn is-dense is-quiet" aria-label={label}
           aria-haspopup="dialog" aria-expanded={surface.open} popoverTarget={detached ? undefined : id}>
-          <Glyph name="pip" size={19} />
+          <Glyph name="pip" size={18} />
         </button>
       </Tooltip>
     </div>
