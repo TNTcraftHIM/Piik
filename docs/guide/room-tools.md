@@ -65,6 +65,11 @@ Beside the viewer count on each picture, reactions use the same controls as
 messages. Click an existing reaction to add another, or use **React to this screen**
 to choose a different one. Counts last for that share; loading counts does not replay animations.
 
+**More options → Feedback sounds** turns on quiet message and throw sounds for
+this browser. Sounds start off. New messages alert you while the page is in the
+background; sending or receiving a tomato or poop plays a short cue in the foreground.
+Use the separate volume control or **Try sound** to adjust it.
+
 While watching a picture, **On screen** in its playback bar shows that room's
 new messages over the picture. **Playback settings → On-screen chat** adjusts
 their appearance. Loading earlier history does not replay these effects.

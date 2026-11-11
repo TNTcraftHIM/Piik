@@ -8,6 +8,7 @@ export const CHAT_OVERLAY_DEFAULTS = { scale: 1, opacity: 1, speed: 1, colorBySe
 export const REMOTE_KEYBOARD_PAGES = ["letters", "symbols", "functions", "text"] as const;
 
 const roomPreferencesSchema = z.object({
+  feedbackSound: z.object({ enabled: z.boolean(), volume: z.number().min(0).max(1) }).default({ enabled: false, volume: 1 }),
   sharingView: z.boolean().default(false),
   pictureFit: z.enum(["contain", "cover", "fill"]).default("contain"),
   pictureRotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).catch(0).default(0),

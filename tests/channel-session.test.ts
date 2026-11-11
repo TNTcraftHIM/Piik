@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ChannelConversation } from "../src/client/channel/conversation";
 import { ChannelSession } from "../src/client/channel/session";
+import { FeedbackAudio } from "../src/client/channel/feedback-audio";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 import * as hosting from "../src/client/channel/hosting";
 import { listeningVoicePublications } from "../src/client/channel/presentation";
@@ -133,6 +134,77 @@ const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", t
   reactions: { revision: 0, counts: {} } });
 const reactionSnapshot = (seq: number, revision: number, counts: Record<string, number> = {}) =>
   ({ messageId: `message-${seq}`, messageSeq: seq, revision, counts });
+
+test("confirmed room events own personal feedback across text, attachments and throw targets", async () => {
+  const document = Object.assign(new EventTarget(), { hidden: true });
+  vi.stubGlobal("document", document);
+  const play = vi.spyOn(FeedbackAudio.prototype, "play").mockImplementation(() => {});
+  const configure = vi.spyOn(FeedbackAudio.prototype, "configure").mockImplementation(() => {});
+  const close = vi.spyOn(FeedbackAudio.prototype, "close");
+  const { session, socket, peer } = await setup();
+  const fresh = (seq: number, userId = "friend-user-1234") => ({ ...message(seq), userId, time: Date.now() });
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.users[0].id = "self-user-1234";
+    state.sessions[0].userId = "self-user-1234";
+    state.channel.ownerId = "self-user-1234";
+    state.channel.rooms.forEach(room => { room.creatorId = "self-user-1234"; });
+    state.users.push({ id: "friend-user-1234", name: "Friend", avatar: null }, { id: "bystander", name: "Other", avatar: null });
+    state.sessions.push({ id: "native-endpoint", userId: "self-user-1234", online: true, signingKey: testSigningKey });
+    state.publications.push({ id: "own-screen", roomId: "first", sessionId: "native-endpoint", userId: "self-user-1234", kind: "screen",
+      paused: false, audience: [], source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]) });
+    socket.receive({ type: "state", state });
+    await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.get("first")?.getSnapshot().ready).toBe(true));
+    expect(session.getSnapshot().feedbackSound.enabled).toBe(false);
+    peer.live(fresh(1));
+    expect(play).not.toHaveBeenCalled();
+    session.setFeedbackSound({ enabled: true, volume: .4 });
+    expect(configure).toHaveBeenLastCalledWith({ enabled: true, volume: .4 });
+    peer.live(fresh(1)); // Enabling does not replay already received events.
+    peer.live(fresh(2));
+    peer.live({ ...fresh(3), text: "", attachments: [{ id: "attachment", name: "notes.txt", mediaType: "application/octet-stream",
+      size: 14, sha256: "0".repeat(64) }] });
+    peer.live(fresh(2));
+    peer.live(fresh(4, "self-user-1234"));
+    peer.live({ ...fresh(5), time: Date.now() - 7000 });
+    await peer.history([fresh(90, "self-user-1234"), fresh(91)]);
+    expect(session.getSnapshot().messagesByRoom.first.find(message => message.seq === 90)?.userId).toBe("self-user-1234");
+    expect(play.mock.calls.map(([cue]) => cue)).toEqual(["message", "message"]);
+    document.hidden = false;
+    peer.live(fresh(92));
+    const reaction = (id: string, senderUserId: string, target: import("../src/client/channel/protocol").ReactionTarget, reaction = "tomato") => {
+      peer.reply(peer.interactions[0], { type: "reaction", nonce: 1, snapshot: null,
+        event: { id, senderUserId, target, reaction, occurredAt: Date.now() } });
+    };
+    reaction("self-person", "self-user-1234", { type: "person", userId: "friend-user-1234" });
+    expect(play.mock.calls.length, "self-person").toBe(3);
+    reaction("self-person", "self-user-1234", { type: "person", userId: "friend-user-1234" });
+    reaction("to-person", "friend-user-1234", { type: "person", userId: "self-user-1234" });
+    expect(play.mock.calls.length, "to-person").toBe(4);
+    reaction("to-message", "friend-user-1234", { type: "message", messageSeq: 90 }, "poop");
+    expect(play.mock.calls.length, "to-message").toBe(5);
+    reaction("to-screen", "friend-user-1234", { type: "publication", publicationId: "own-screen" });
+    expect(play.mock.calls.length, "to-screen").toBe(6);
+    reaction("self-message", "self-user-1234", { type: "message", messageSeq: 91 });
+    expect(play.mock.calls.length, "self-message").toBe(7);
+    reaction("self-screen", "self-user-1234", { type: "publication", publicationId: "own-screen" }, "poop");
+    expect(play.mock.calls.length, "self-screen").toBe(8);
+    expect(play.mock.calls.map(([cue]) => cue)).toEqual(["message", "message", ...Array(6).fill("throw")]);
+    reaction("emoji", "friend-user-1234", { type: "person", userId: "self-user-1234" }, "heart");
+    reaction("bystander", "friend-user-1234", { type: "person", userId: "bystander" });
+    reaction("other-message", "friend-user-1234", { type: "message", messageSeq: 91 });
+    reaction("unknown-screen", "friend-user-1234", { type: "publication", publicationId: "other-screen" });
+    document.hidden = true;
+    reaction("hidden-throw", "friend-user-1234", { type: "person", userId: "self-user-1234" });
+    expect(play).toHaveBeenCalledTimes(8);
+    session.setFeedbackSound({ enabled: false });
+    peer.live(fresh(93));
+    expect(play).toHaveBeenCalledTimes(8);
+  } finally { session.close(); }
+  expect(close).toHaveBeenCalledOnce();
+  peer.live(fresh(94));
+  expect(play).toHaveBeenCalledTimes(8);
+});
 
 test("the site overview does not select a room or load its history", async () => {
   const { session, socket, peer } = await setup(1000, false, "");

@@ -502,14 +502,22 @@ The current source endpoint owns changes; Native edits use the selecting page's
 active capture lease. Titles live with the publication, not saved room history.
 Renaming changes presentation without replacing media paths or input grants.
 
-### Sound Feedback (PROPOSED)
+### Sound Feedback
 
-Basic notification and throw sounds are personal feedback. Reuse confirmed room
-events once, independently of visual surfaces, so moving a panel or replaying
-history does not replay sound. Keep them outside outgoing audio mixers, with
-separate personal sound controls and original or explicitly licensed assets.
-Defaults and sample sounds remain design decisions. Reuse the source room's
-existing reaction and cooldown owner.
+Personal feedback sounds are off by default. **More options → Feedback sounds**
+enables them for this browser origin, with an independent volume and a local
+preview. A fresh message from another user, including an attachment-only message,
+plays a short cue while the page is hidden. Foreground tomato and poop throws
+play for their sender and addressed user, whether directed at a person, message
+or shared picture. Other reactions and routine connection changes stay silent.
+
+The existing room interaction owner validates freshness and deduplicates events
+before notifying the page's audio owner. History, retry confirmations and moving
+a panel do not replay sounds. One page owns one AudioContext and at most one cue;
+browser suspension drops pending sound and a later user gesture resumes output.
+Disabling feedback or setting zero volume releases its audio resources. Original
+Web Audio cues play to the local output, separately from voice and share mixers;
+OS or tab audio capture can still include that playback.
 
 ### Extension Boundaries (PROPOSED)
 

@@ -18,6 +18,7 @@ import { ChannelJoinVoice } from "../channel/components/ChannelJoinVoice";
 import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
 import { ChannelPeople } from "../channel/components/ChannelPeople";
 import { ChannelProfileEditor } from "../channel/components/ChannelProfileEditor";
+import { ChannelFeedbackSounds } from "../channel/components/ChannelFeedbackSounds";
 import { ChannelRoomControls, ChannelRoomEntry, ChannelRoomSettingsDialog } from "../channel/components/ChannelRoomControls";
 import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
 import { ChannelSiteSettings } from "../channel/components/ChannelSiteSettings";
@@ -157,7 +158,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       </div><div className="lr-top c3-global-tools">
         <LedStrip state={connected ? "live" : connection === "closed" ? "bad" : "busy"}
           label={connectionLabel} comic={connected ? "signal-connected" : "signal-connecting"} />
-        <HeaderControls appControl={appControl} />
+        <HeaderControls appControl={appControl} personalControls={<ChannelFeedbackSounds channel={channel} />} />
       </div></header>
       <aside id="c3-room-list" className="c3-sidebar" onKeyDown={event => {
         if (layout === "quick" && mobilePane === "rooms" && event.key === "Escape" && !event.defaultPrevented) {

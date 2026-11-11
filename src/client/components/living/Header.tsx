@@ -130,18 +130,19 @@ function BrowserHelpMenu({ diagnosticControl }: { diagnosticControl?: React.Reac
   </>;
 }
 
-export function HeaderControls({ diagnosticControl, appControl }: { diagnosticControl?: React.ReactNode; appControl?: React.ReactNode } = {}) {
+export function HeaderControls({ diagnosticControl, appControl, personalControls }: { diagnosticControl?: React.ReactNode; appControl?: React.ReactNode; personalControls?: React.ReactNode } = {}) {
   const { vis, t } = useCopy();
   const controls = useRef<HTMLDivElement>(null), trigger = useRef<HTMLSpanElement>(null), options = useRef<HTMLDivElement>(null);
   const focusInline = useRef(false);
+  const hasPersonalControls = Boolean(personalControls);
   const id = useId();
-  const [compact, setCompact] = useState(false), [open, setOpen] = useState(false);
+  const [compact, setCompact] = useState(hasPersonalControls), [open, setOpen] = useState(false);
   useAnchoredPopover(trigger, options, { enabled: compact });
   useLayoutEffect(() => {
     const header = controls.current?.closest(".lr-top") ?? controls.current;
     if (!header) return;
     const resize = () => {
-      const narrow = header.clientWidth <= 600;
+      const narrow = hasPersonalControls || header.clientWidth <= 600;
       if (!narrow && options.current?.hasAttribute("popover")) {
         const focused = header.ownerDocument.activeElement;
         focusInline.current = options.current.contains(focused) || Boolean(trigger.current?.contains(focused));
@@ -153,7 +154,7 @@ export function HeaderControls({ diagnosticControl, appControl }: { diagnosticCo
     const observer = new ResizeObserver(resize);
     observer.observe(header); resize();
     return () => observer.disconnect();
-  }, []);
+  }, [hasPersonalControls]);
   useLayoutEffect(() => {
     if (!compact && focusInline.current) {
       focusInline.current = false;
@@ -198,6 +199,7 @@ export function HeaderControls({ diagnosticControl, appControl }: { diagnosticCo
             {themeButton}
           </Tooltip>
         </div>
+        {personalControls}
         {compact ? <BrowserHelpContent active={open} diagnosticControl={diagnosticControl} /> : <BrowserHelpMenu diagnosticControl={diagnosticControl} />}
       </div>
     </div>

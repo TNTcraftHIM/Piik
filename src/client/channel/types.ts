@@ -44,6 +44,7 @@ export interface ChannelScreenInput {
 export type ScreenPresentation = "prepared" | "waiting" | "failed";
 
 export interface ChannelView {
+  feedbackSound: RoomPreferences["feedbackSound"];
   quality: QualityProfile;
   videoCodecMode: BrowserVideoCodecMode;
   interactionsByRoom: ReadonlyMap<string, RoomInteractionSession>;
@@ -71,6 +72,8 @@ export interface ChannelView {
 }
 
 export interface ChannelActions {
+  setFeedbackSound(patch: Partial<RoomPreferences["feedbackSound"]>): void;
+  previewFeedbackSound(): void;
   setQuality(profile: QualityProfile): void;
   setVideoCodecMode(mode: BrowserVideoCodecMode): void;
   screenQuality(publicationId: string): { applied: QualityProfile; requested: QualityProfile } | undefined;

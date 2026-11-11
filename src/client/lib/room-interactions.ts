@@ -67,7 +67,8 @@ export class RoomInteractionSession {
   private subscriptionStartedAt: number | null = null;
   private serverOffset = 0;
 
-  constructor(private readonly sendMessage: (message: InteractionCommand) => boolean | { nonce: number }, readonly now = Date.now, reactionIds?: readonly string[]) {
+  constructor(private readonly sendMessage: (message: InteractionCommand) => boolean | { nonce: number }, readonly now = Date.now, reactionIds?: readonly string[],
+    private readonly onFeedback?: (event: RoomInteraction) => void) {
     const { overlayEnabled, overlayAppearance } = readRoomPreferences();
     this.state = { ...this.state, overlayEnabled, overlayAppearance };
     this.setSupportedReactions(reactionIds);
@@ -123,7 +124,17 @@ export class RoomInteractionSession {
     const payload = (event.contentTarget ? contentReactionSchema : interactionPayloadSchema).safeParse(event.payload);
     // Unsupported decoration is not a signaling failure or a send confirmation.
     if (!payload.success || event.contentTarget && !contentTargetSchema.safeParse(event.contentTarget).success) return true;
-    const message: RoomInteraction = { ...event, payload: payload.data };
+    return this.accept({ ...event, payload: payload.data });
+  }
+
+  /** The channel has already validated this message; empty text represents an attachment-only message. */
+  receiveConfirmedChat(event: RoomInteraction & { payload: Extract<InteractionPayload, { kind: "chat" }> }): boolean {
+    return this.accept(event);
+  }
+
+  private accept(message: RoomInteraction): boolean {
+    if (this.closed) return false;
+    if (!this.state.ready) return true;
     const now = this.now();
     // Clock uncertainty may put a fresh event slightly ahead. Never extend its
     // lifetime beyond one full effect, and never replay an expired effect.
@@ -144,7 +155,7 @@ export class RoomInteractionSession {
       const lane = identityHash(`${message.sender.peerId}:${message.id}`) % CHAT_OVERLAY_LANES;
       const durationMs = CHAT_OVERLAY_DURATION_MS / this.state.overlayAppearance.speed;
       const expiresAt = beganAt + durationMs;
-      if (this.state.overlayEnabled && this.visibleOverlays.size > 0 && expiresAt > now) {
+      if (message.payload.text && this.state.overlayEnabled && this.visibleOverlays.size > 0 && expiresAt > now) {
         // Newest on this fixed lane wins; missing messages cannot shift a later
         // event to another lane, and bursts cannot accumulate a playback queue.
         overlayMessages = [...overlayMessages.filter(item => item.lane !== lane), { ...message, lane, expiresAt, durationMs }];
@@ -159,6 +170,8 @@ export class RoomInteractionSession {
         pending, confirmed, error: confirmsPending ? null : this.state.error });
     }
     this.expireEffects();
+    const feedbackDuration = message.payload.kind === "chat" ? CHAT_OVERLAY_DURATION_MS : REACTION_DURATION_MS;
+    if (beganAt + feedbackDuration > now) this.onFeedback?.(message);
     return true;
   }
 

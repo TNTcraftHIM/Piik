@@ -9,6 +9,7 @@ import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
 import { snapshotSchema, type ChannelMessage, type ChannelRoom, type ChannelSnapshot, type ChannelTopology, type RoomSettings } from "../channel/protocol";
 import type { ChannelController } from "../channel/types";
 import { ChannelAttachments } from "../channel/attachments";
+import { FeedbackAudio } from "../channel/feedback-audio";
 import { QUALITY_PROFILES, type QualityProfile } from "../media/quality";
 import { usePreviewInteractions } from "./use-preview-interactions";
 import { useCopy } from "../ui/copy";
@@ -41,6 +42,9 @@ export function useChannelGuideSample(multiRoom = false) {
   const roomName = settings.name ?? (zh ? "周五小聚" : "Friday with friends");
   const [quality, setQuality] = useState<QualityProfile>(QUALITY_PROFILES["1080p30"]);
   const [codec, setCodec] = useState<BrowserVideoCodecMode>("auto");
+  const [feedbackSound, setFeedbackSound] = useState({ enabled: false, volume: 1 });
+  const [feedbackAudio] = useState(() => new FeedbackAudio());
+  useEffect(() => () => feedbackAudio.close(), [feedbackAudio]);
   const [voiceByRoom, setVoiceByRoom] = useState<Record<string, { muted: boolean; deafened: boolean }>>({
     friday: { muted: false, deafened: false },
   });
@@ -103,6 +107,12 @@ export function useChannelGuideSample(multiRoom = false) {
     subscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   });
   const channel = {
+    feedbackSound, setFeedbackSound: (patch: Partial<typeof feedbackSound>) => {
+      const next = { ...feedbackSound, ...patch };
+      setFeedbackSound(next); feedbackAudio.configure(next);
+      if (next.enabled) feedbackAudio.activate();
+    },
+    previewFeedbackSound: feedbackAudio.preview,
     updateProfile: async (value: { name: string; avatar: string | null }) => setProfile(value),
     state, self: state.users[0], sessionId: "sample-ada-session", connection: "connected", appConnected: true, pending, attachments, sendMessage: onSend,
     quality, setQuality, videoCodecMode: codec, setVideoCodecMode: setCodec, ownedScreens: new Set<string>(), localScreens: new Set<string>(), streams: new Map<string, MediaStream>(),

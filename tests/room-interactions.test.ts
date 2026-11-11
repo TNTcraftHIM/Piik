@@ -7,16 +7,17 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 function setup() {
   vi.useFakeTimers();
   const send = vi.fn<ConstructorParameters<typeof RoomInteractionSession>[0]>(() => true);
-  const session = new RoomInteractionSession(send);
+  const feedback = vi.fn<(event: RoomInteraction) => void>();
+  const session = new RoomInteractionSession(send, Date.now, undefined, feedback);
   session.authenticated("self_peer_1234");
   expect(send).toHaveBeenLastCalledWith({ type: "subscribe-room-interactions" });
-  return { session, send };
+  return { session, send, feedback };
 }
 const message = (id: string): RoomInteraction => ({ type: "room-interaction", id, requestId: "request_1234", occurredAt: Date.now(),
   sender: { peerId: "other_peer_1234", role: "viewer", displayName: "朋友" }, payload: { kind: "chat", text: "Hello" } });
 
 test("content reactions share confirmed events, cooldown and deduplication with person reactions", () => {
-  const { session, send } = setup();
+  const { session, send, feedback } = setup();
   session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
   const target = { messageSeq: 7 };
   expect(session.send({ kind: "reaction", reaction: "tomato" }, target)).toBe(true);
@@ -29,6 +30,7 @@ test("content reactions share confirmed events, cooldown and deduplication with 
     payload: { kind: "reaction" as const, reaction: "tomato" as const }, contentTarget: target };
   session.receive(event);
   session.receive(event);
+  expect(feedback).toHaveBeenCalledExactlyOnceWith(event);
   expect(session.getSnapshot().reactions).toHaveLength(1);
   expect(session.getSnapshot().pending).toBeNull();
   expect(session.send({ kind: "reaction", reaction: "wave" })).toBe(false);
@@ -38,16 +40,19 @@ test("content reactions share confirmed events, cooldown and deduplication with 
   expect(next.type === "send-room-interaction" && next.requestId).not.toBe(request.requestId);
   session.close();
   expect(session.getSnapshot().reactions).toEqual([]);
+  session.receive({ ...event, id: "after-close" });
+  expect(feedback).toHaveBeenCalledTimes(1);
 });
 
 test("an unconfirmed content retry keeps its nonce and a replay acknowledgement does not animate", () => {
   vi.useFakeTimers();
   const commands: Parameters<ConstructorParameters<typeof RoomInteractionSession>[0]>[0][] = [];
   let nonce = 0;
+  const feedback = vi.fn();
   const session = new RoomInteractionSession(command => {
     commands.push(command);
     return command.type === "send-room-interaction" ? { nonce: command.nonce ?? ++nonce } : true;
-  });
+  }, Date.now, undefined, feedback);
   session.authenticated("self_peer_1234");
   session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
   expect(session.send({ kind: "reaction", reaction: "poop" }, { publicationId: "one" })).toBe(true);
@@ -58,6 +63,7 @@ test("an unconfirmed content retry keeps its nonce and a replay acknowledgement 
   expect(session.getSnapshot().pending).toMatchObject({ nonce: 1, requestId: first.requestId });
   session.confirm(first.requestId, 1);
   expect(session.getSnapshot()).toMatchObject({ pending: null, error: null, reactions: [] });
+  expect(feedback).not.toHaveBeenCalled();
   vi.advanceTimersByTime(800);
   expect(session.send({ kind: "reaction", reaction: "poop" }, { publicationId: "two" })).toBe(true);
   expect(session.getSnapshot().pending?.nonce).toBe(2);
@@ -378,7 +384,7 @@ test("clock offsets, delivery delay and missing events do not shift a common eff
 });
 
 test("expired events still confirm chat, but never replay effects; reconnect replaces the time anchor", () => {
-  const { session } = setup();
+  const { session, feedback } = setup();
   session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
   session.setOverlayEnabled(true);
   session.showOverlay();
@@ -390,14 +396,48 @@ test("expired events still confirm chat, but never replay effects; reconnect rep
   session.receive({ ...message("expired_reaction"), occurredAt, payload: { kind: "reaction", reaction: "clap" } });
   expect(session.getSnapshot()).toMatchObject({ pending: null, confirmed: { id: "expired_chat" }, overlayMessages: [], reactions: [] });
   expect(session.getSnapshot().messages).toHaveLength(1);
+  expect(feedback).not.toHaveBeenCalled();
   session.authenticated("new_self_peer_1234");
   session.receive({ type: "room-interactions-ready", serverTime: 2_000_000 });
   // Duplicate ready messages must not move active effects to a new clock.
   session.receive({ type: "room-interactions-ready", serverTime: 8_000_000 });
   session.receive({ ...message("after_new_anchor"), occurredAt: 2_000_000 });
   expect(session.getSnapshot().overlayMessages[0].expiresAt - session.now()).toBe(CHAT_OVERLAY_DURATION_MS);
+  expect(feedback).toHaveBeenCalledTimes(1);
   session.close();
   expect(vi.getTimerCount()).toBe(0);
+});
+
+test("confirmed attachment messages share feedback deduplication without empty overlays or relaxed wire validation", () => {
+  const { session, feedback } = setup();
+  const attachment = { ...message("attachment"), payload: { kind: "chat" as const, text: "" } };
+  session.receiveConfirmedChat(attachment);
+  expect(feedback).not.toHaveBeenCalled();
+  session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
+  session.setOverlayEnabled(true);
+  session.showOverlay();
+  session.receive(attachment); // The external wire schema still rejects empty chat.
+  expect(session.getSnapshot().messages).toHaveLength(0);
+  session.receiveConfirmedChat(attachment);
+  session.receiveConfirmedChat(attachment);
+  expect(feedback).toHaveBeenCalledExactlyOnceWith(attachment);
+  expect(session.getSnapshot().messages).toHaveLength(1);
+  expect(session.getSnapshot().overlayMessages).toEqual([]);
+  session.authenticated("self_peer_1234");
+  session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
+  session.receiveConfirmedChat(attachment);
+  expect(feedback).toHaveBeenCalledTimes(1);
+  session.setOverlayAppearance({ speed: 1.5 });
+  session.receive({ ...message("fresh-fast-overlay"), occurredAt: Date.now() - 5000 });
+  expect(session.getSnapshot().overlayMessages).toEqual([]);
+  expect(feedback).toHaveBeenCalledTimes(2); // Sound freshness is independent of overlay speed.
+  session.setOverlayAppearance({ speed: .5 });
+  session.receive({ ...message("stale-slow-overlay"), occurredAt: Date.now() - 6500 });
+  expect(session.getSnapshot().overlayMessages).toHaveLength(1);
+  expect(feedback).toHaveBeenCalledTimes(2);
+  session.close();
+  session.receiveConfirmedChat({ ...attachment, id: "closed-attachment" });
+  expect(feedback).toHaveBeenCalledTimes(2);
 });
 
 test("asymmetric subscription delay stays approximate and cannot extend a fresh effect", () => {

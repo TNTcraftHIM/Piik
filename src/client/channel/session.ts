@@ -18,8 +18,9 @@ import { HostAudio, type CommentaryInput } from "../media/host-audio";
 import { readPreferredQuality, savePreferredQuality, screenVideoSettings, supportsCaptureProfile, type QualityProfile } from "../media/quality";
 import { audioInputConstraints } from "../media/audio-capture";
 import { browserCaptureDevices } from "../media/capture-devices";
-import { RoomInteractionSession } from "../lib/room-interactions";
-import { MAX_CHAT_CODE_POINTS } from "../../shared/room-interactions";
+import { RoomInteractionSession, type RoomInteraction } from "../lib/room-interactions";
+import { MAX_CHAT_CODE_POINTS, isThrow } from "../../shared/room-interactions";
+import { FeedbackAudio } from "./feedback-audio";
 import { createOpaqueId } from "../lib/opaque-id";
 import { captureBrowserSource, setMediaPaused, type BrowserCaptureSource } from "../media/quality";
 import { loadCameraPreviews, type CameraPreview } from "../media/camera-previews";
@@ -118,6 +119,7 @@ export class ChannelSession {
     voiceInput: readRoomPreferences().voiceInput,
     voicePlaybackByUser: new Map(),
     listeningVolume: readRoomPreferences().voiceListeningVolume,
+    feedbackSound: readRoomPreferences().feedbackSound,
     appConnected: false,
     ownedScreens: new Set(),
     localScreens: new Set(),
@@ -129,6 +131,7 @@ export class ChannelSession {
   private retry: ReturnType<typeof setTimeout> | null = null;
   private recoveryDeadline: ReturnType<typeof setTimeout> | null = null;
   private closed = true;
+  private feedbackAudio = new FeedbackAudio();
   private reactionNonce = 0;
   private credential = stored(credentialKey) ?? undefined;
   private invitationOrigin = location.origin;
@@ -212,8 +215,36 @@ export class ChannelSession {
   start = (): void => {
     if (!this.closed) return;
     this.closed = false;
+    this.feedbackAudio.configure(this.view.feedbackSound);
     this.connect();
   };
+
+  setFeedbackSound = (patch: Partial<RoomPreferences["feedbackSound"]>): void => {
+    const feedbackSound = { ...this.view.feedbackSound, ...patch };
+    if (!Number.isFinite(feedbackSound.volume)) return;
+    feedbackSound.volume = Math.min(1, Math.max(0, feedbackSound.volume));
+    saveRoomPreferences({ feedbackSound });
+    this.patch({ feedbackSound });
+    this.feedbackAudio.configure(feedbackSound);
+    if (feedbackSound.enabled) this.feedbackAudio.activate();
+  };
+  previewFeedbackSound = (): void => { this.feedbackAudio.preview(); };
+
+  private playFeedback(roomId: string, event: RoomInteraction): void {
+    const self = this.view.self?.id;
+    if (this.closed || !self || !this.view.feedbackSound.enabled) return;
+    if (event.payload.kind === "chat") {
+      if (document.hidden && event.sender.peerId !== self) this.feedbackAudio.play("message");
+      return;
+    }
+    if (document.hidden || !isThrow(event.payload.reaction)) return;
+    const target = event.contentTarget;
+    const recipient = target ? "messageSeq" in target
+      ? this.view.messagesByRoom[roomId]?.find(message => message.seq === target.messageSeq)?.userId
+      : this.view.state?.publications.find(source => source.id === target.publicationId)?.userId
+      : event.payload.targetPeerId ?? event.sender.peerId;
+    if (event.sender.peerId === self || recipient === self) this.feedbackAudio.play("throw");
+  }
 
   private connect(acceptWelcome?: (event: Extract<ChannelEvent, { type: "welcome" }>) => string | undefined): void {
     if (this.closed) return;
@@ -652,10 +683,10 @@ export class ChannelSession {
     const state = this.view.state;
     if (!state?.channel.rooms.some(room => room.id === roomId && room.authorized)) return;
     const sender = state.users.find(user => user.id === message.userId);
-    if (sender && message.text) {
+    if (sender) {
       const points = Array.from(message.text.replace(/\s+/gu, " ").normalize("NFC").trim());
       const text = points.length > MAX_CHAT_CODE_POINTS ? `${points.slice(0, MAX_CHAT_CODE_POINTS - 1).join("")}…` : points.join("");
-      this.view.interactionsByRoom.get(roomId)?.receive({
+      this.view.interactionsByRoom.get(roomId)?.receiveConfirmedChat({
         type: "room-interaction", id: message.id, requestId: message.id, occurredAt: message.time,
         sender: { peerId: sender.id, displayName: sender.name, role: "viewer" }, payload: { kind: "chat", text },
       });
@@ -976,7 +1007,7 @@ export class ChannelSession {
           else interaction.receive({ type: "room-interaction-rejected", requestId, reason: "busy" });
         });
         return nonce === undefined ? true : { nonce };
-      });
+      }, Date.now, undefined, event => this.playFeedback(reading.roomId, event));
       reading.interaction = interaction;
       this.patch({ interactionsByRoom: new Map([...this.view.interactionsByRoom, [reading.roomId, interaction]]) });
       interaction.authenticated(this.view.self.id);
@@ -2264,6 +2295,7 @@ export class ChannelSession {
 
   close = (): void => {
     this.closed = true;
+    this.feedbackAudio.close();
     this.endRecovery();
     if (this.retry !== null) clearTimeout(this.retry);
     this.retry = null;
