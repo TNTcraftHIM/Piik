@@ -41,6 +41,8 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
   useAnchoredPopover(trigger, help);
   const pending = useRef<ConnectionAttempt | null>(null);
   const healthCheck = useRef<AbortController | null>(null);
+  const automaticFailed = useRef(false);
+  const [automaticHint, setAutomaticHint] = useState(false);
   const [build, setBuild] = useState<AppReleaseIdentity>();
   const { update: release, refresh: checkRelease } = useReleaseUpdate(build);
   function rememberBuild(health: Partial<AppReleaseIdentity> | null) {
@@ -48,9 +50,13 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       ? { version: health.version, revision: health.revision, packageTarget: health.packageTarget } : undefined);
   }
   useEffect(() => {
+    if (!connected) void connect(false, true);
+    return () => { pending.current?.controller.abort(); pending.current?.popup?.close(); pending.current = null; };
+  }, []);
+  useEffect(() => {
     if (connected === false) rememberBuild(null);
     const refresh = async () => {
-      if (pending.current) return;
+      if (pending.current || (automaticFailed.current && !connected)) return;
       if (connected) {
         setState("ready");
       }
@@ -80,13 +86,13 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
     const unwatch = watchClientActivation(onFocus);
     return () => { healthCheck.current?.abort(); window.removeEventListener("focus", onFocus); unwatch(); };
   }, [discovery, connected]);
-  useEffect(() => () => { pending.current?.controller.abort(); pending.current?.popup?.close(); }, []);
 
   function showHelp(): void {
     if (trigger.current) help.current?.showPopover({ source: trigger.current });
   }
 
-  async function connect(wake = false): Promise<void> {
+  async function connect(wake = false, automatic = false): Promise<void> {
+    if (!automatic) setAutomaticHint(false);
     if (pending.current) { pending.current.open?.(); return; }
     let manage = state === "ready" && connected !== false;
     healthCheck.current?.abort();
@@ -94,7 +100,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
     // A fresh click opens the real approval page without reserving a blank tab.
     const attempt: ConnectionAttempt = { controller: new AbortController(), popup: null };
     pending.current = attempt;
-    showHelp();
+    if (!automatic) showHelp();
     const signal = attempt.controller.signal;
     let native: AppDiscovery | undefined;
     let approving = false;
@@ -128,8 +134,10 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       if (!keepPage) attempt.popup?.close();
       if (pending.current === attempt) {
         pending.current = null;
+        automaticFailed.current = result !== "ready";
+        setAutomaticHint(automatic && (result === "unavailable" || result === "incompatible"));
         setState(result);
-        if (result === "unavailable" || result === "incompatible") showHelp();
+        if (!automatic && (result === "unavailable" || result === "incompatible")) showHelp();
         else help.current?.hidePopover();
       }
     };
@@ -180,6 +188,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
           if (manage) finish("ready", true);
           else { setState("approving"); help.current?.hidePopover(); }
         };
+        setAutomaticHint(automatic && !manage);
         setState(manage ? "ready" : "approval");
       } catch (error) {
         if (!signal.aborted) finish(native?.isIncompatible(error) ? "incompatible" : "unavailable");
@@ -216,7 +225,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
   const title = availableUpdate ? t("client.connect.update", { current: build!.version, version: update.version }) : label;
   return <><Tooltip kind={availableUpdate ? "update-available" : ready ? "hint-app-ready" : state === "unavailable" ? "signal-failed" : state === "incompatible" ? "warning" : "hint-client-site"}
     text={vis ? undefined : state === "idle" ? t("client.connect.hint") : title} disabled={helpOpen}
-    place="below" align="end">
+    autoOpen={automaticHint} place="below" align="end">
     <button ref={trigger} type="button" className={`lr-btn is-compact lr-app-connect${ready ? " is-ready is-quiet" : ""}`}
       aria-label={title} aria-busy={busy || undefined} data-update={availableUpdate || undefined}
       popoverTarget={failed || state === "approval" ? helpId : undefined} aria-haspopup="dialog"
