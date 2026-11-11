@@ -225,6 +225,9 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
                       <small className="c3-source-status" aria-label={sourceStatus}>{vis ? <Glyph name="tv" size={12} /> : sourceStatus}</small>
                     </Tooltip>
                     : <small className="c3-source-status" aria-label={sourceStatus}>{vis ? <Glyph name={source.paused ? "pause" : "tv"} size={12} /> : sourceStatus}</small>)}
+                  <ChannelContentReactions reactions={source.reactions} session={source.interaction ?? null}
+                    target={{ publicationId: source.id }} disabled={source.available === false}
+                    effectAnchor={() => grid.current?.querySelector(`[data-publication-id="${CSS.escape(source.id)}"] .c3-monitor-source-row > .lr-person`) ?? null} />
                   <SourceAudience people={source.audience} />
                   {source.owned && source.shareControls}
                   {source.owned && source.remoteControl && <SourceControl source={{ ...source, remoteControl: source.remoteControl }}
@@ -251,9 +254,6 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
                     onClick={() => source.owned ? onStop(source.id) : onUnwatch(source.id)} />
                 </div>
               </div>
-              <ChannelContentReactions reactions={source.reactions} session={source.interaction ?? null}
-                target={{ publicationId: source.id }} disabled={source.available === false}
-                effectAnchor={() => grid.current?.querySelector(`[data-publication-id="${CSS.escape(source.id)}"] .c3-monitor-source-row > .lr-person`) ?? null} />
             </footer>
           </article>;
         })}

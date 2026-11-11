@@ -33,7 +33,21 @@
 .c3-message { display: flex; align-items: flex-start; gap: 11px; margin: 16px 0 0; }
 .c3-message:first-child { margin-top: 8px; }
 .c3-message > svg { width: 29px; height: 36px; flex: none; }
-.c3-message-body { flex: 1; min-width: 0; }
+.c3-message-body { flex: 0 1 auto; width: fit-content; max-width: 100%; min-width: 0; }
+.c3-message-body:has(> .c3-message-reactions:not([data-has-counts="true"])) {
+  --message-action-size: 32px;
+  position: relative; min-height: var(--message-action-size); padding-inline-end: calc(var(--message-action-size) + 8px);
+}
+.c3-message-body > .c3-message-reactions:not([data-has-counts="true"]) {
+  position: absolute; inset-block-start: 0; inset-inline-end: 0; margin-top: 0;
+}
+@media (hover: hover) and (pointer: fine) {
+  .c3-message-body > .c3-message-reactions:not([data-has-counts="true"]) { opacity: 0; pointer-events: none; }
+  .c3-message:is(:hover, :focus-within, :has([aria-expanded="true"])) .c3-message-reactions { opacity: 1; pointer-events: auto; }
+}
+@media (hover: none) {
+  .c3-message-body:has(> .c3-message-reactions:not([data-has-counts="true"])) { --message-action-size: 44px; }
+}
 .c3-message-meta { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
 .c3-message-meta strong { font-size: 13px; font-weight: 650; }
 .c3-message-meta time { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }

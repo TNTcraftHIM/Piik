@@ -33,9 +33,9 @@ export function ChannelContentReactions({ reactions, session, target, disabled =
   useAnchoredPopover(trigger, menu, { side: "above", align: "center", enabled: open });
   const canSend = !!state?.ready && !disabled && !state.pending && !state.coolingDown;
   const send = (reaction: typeof REACTION_IDS[number]) => { if (canSend) session?.send({ kind: "reaction", reaction }, target); };
-  const counts = REACTION_IDS.map(reaction => {
-    const count = reactions?.counts[reaction] ?? 0;
-    return count > 0 && <button key={reaction} className="lr-chip c3-message-reaction" type="button"
+  const counts = REACTION_IDS.filter(reaction => (reactions?.counts[reaction] ?? 0) > 0).map(reaction => {
+    const count = reactions!.counts[reaction]!;
+    return <button key={reaction} className="lr-chip c3-message-reaction" type="button"
       aria-label={`${t(`interaction.reaction.${reaction}`)} ${count}`} disabled={!canSend} onClick={() => send(reaction)}>
       <ReactionIcon reaction={reaction} /><span>{count}</span>
     </button>;
@@ -43,7 +43,7 @@ export function ChannelContentReactions({ reactions, session, target, disabled =
   const effects = effectsEnabled && state?.reactions.filter(event => !existingEvents.has(event.id) && event.contentTarget && ("messageSeq" in target
     ? "messageSeq" in event.contentTarget && event.contentTarget.messageSeq === target.messageSeq
     : "publicationId" in event.contentTarget && event.contentTarget.publicationId === target.publicationId));
-  return <div className="c3-message-reactions">
+  return <div className="c3-message-reactions" data-has-counts={counts.length > 0 || undefined}>
     {counts}
     <Tooltip kind="hint-reaction-picker" className="c3-message-action" disabled={open} text={label}>
       <button ref={trigger} popoverTarget={id} className="lr-btn is-dense is-quiet c3-add-reaction" type="button" aria-label={label}
