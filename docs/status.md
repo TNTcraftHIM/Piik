@@ -14,10 +14,10 @@ sharing, selective watching, room voice and App control. Normal development and
 distribution use these Rust/Web paths; Go tooling only builds the pinned
 Cloudflared helper. Work stays on `feat/channel-prototype`, separately from 2.x.
 Windows App and Linux x64 Server candidates have been delivered for internal
-testing. Subsequent conversation and UI work continues on this branch; it is
-separate from those immutable packages. An Android candidate matching the current
-conversation protocol has passed package checks; device acceptance remains pending. Exact revisions and
-receipts stay with the packages.
+testing. An Android candidate has passed package checks; device acceptance remains
+pending. The newer capacity and profile-reading protocol remains on this branch
+and needs matching Web/App/Server packages. Exact revisions and receipts stay
+with the immutable packages.
 
 The site owns user identity and directory summaries. Room plans and shared transport
 leases keep separate Rust owners. Rooms created in the UI run in their owner's

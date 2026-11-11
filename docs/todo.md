@@ -12,6 +12,11 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **Large site metadata backups.** The current single site manifest is bounded
+  to 4 MiB. When extending beyond that archive size, stream retained profiles
+  through the existing backup owner so the full identity set remains portable;
+  do not restore a permanent user-count admission limit.
+
 - [ ] **3.0 Windows shared-sound noise.** A beta2 Host reports noise that stops
   when excluding the Piik console's process tree, but returns when excluding a
   silent unrelated window. Verify which Browser playback belongs to that tree
@@ -89,9 +94,7 @@ the feedback period; they do not delay that delivery.
   before API or plugin work: keep ordinary sharing simple, choose the first
   bot/media use case, and decide bot identity, authority scope and revocation.
   External media should reuse the shared Source and routing owners.
-- [ ] **Routing parity decisions.** Review the current domain-wide 20-endpoint
-  limit, which counts Browser and App separately, against the intended user
-  capacity. The current direct-source/helper trials cover fewer improvement
+- [ ] **Routing parity decisions.** The current direct-source/helper trials cover fewer improvement
   opportunities than 2.x, and its central-fallback and route-preference controls
   are not equivalent. Choose required behavior with the accepted multi-source
   model before extending existing admission and switch owners.

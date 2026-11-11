@@ -16,6 +16,7 @@ struct HostedRoom {
 /// Room commands and persistence use the real Rust owners, not test equivalents.
 pub struct RoomNetwork {
     pub authority: Authority,
+    pub max_host_output_bytes: usize,
     hosts: BTreeMap<String, HostedRoom>,
     sessions: BTreeMap<Uuid, Uuid>,
     states: BTreeMap<Uuid, Snapshot>,
@@ -25,6 +26,7 @@ impl RoomNetwork {
     pub fn new() -> Self {
         Self {
             authority: Authority::new("owner".into(), vec![]).unwrap(),
+            max_host_output_bytes: 0,
             hosts: BTreeMap::new(),
             sessions: BTreeMap::new(),
             states: BTreeMap::new(),
@@ -66,9 +68,15 @@ impl RoomNetwork {
                             .expect("registered room runtime");
                         assert_eq!(hosted.connection, connection);
                         let output = hosted.host.dispatch(input).unwrap();
-                        pending.push_back(self.authority.handle(connection, Request::parse(
-                            &json!({"type":"host_output", "roomId":room_id, "output":output}).to_string(),
-                        ).unwrap(), now));
+                        let command =
+                            json!({"type":"host_output", "roomId":room_id, "output":output})
+                                .to_string();
+                        self.max_host_output_bytes = self.max_host_output_bytes.max(command.len());
+                        pending.push_back(self.authority.handle(
+                            connection,
+                            Request::parse(&command).unwrap(),
+                            now,
+                        ));
                     }
                     event => {
                         match &event {

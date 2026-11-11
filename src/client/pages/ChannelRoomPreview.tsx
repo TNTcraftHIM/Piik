@@ -115,7 +115,14 @@ export function ChannelRoomPreview() {
       attachments: [{ id: "sample-document", name: longNames ? "AnnualPlanningNotes_".repeat(3) + "final.pdf" : "Notes.pdf",
         mediaType: "application/octet-stream", size: 12 * 1024 * 1024, sha256: "0".repeat(64) }] }] };
   }
-  const channel = { ...sample.channel, state, self: state.users[0], streams, error: null, siteURL: "https://friends.example/",
+  const profiles = new Map(users.map(user => [user.id, { ...sample.channel.profiles.get(user.id)!, ...user }]));
+  const channel = { ...sample.channel, state, self: profiles.get(users[0].id)!, profiles, streams, error: null, siteURL: "https://friends.example/",
+    loadProfiles: async (ids: readonly string[]) => [...profiles.values()].filter(user => ids.includes(user.id)),
+    queryProfiles: async ({ after, query }: { after?: string; query?: string }) => {
+      const matches = [...profiles.values()].filter(user => !query || user.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).sort((a, b) => a.id.localeCompare(b.id));
+      const rows = matches.filter(user => !after || user.id > after), page = rows.slice(0, 32);
+      return { profiles: page, total: matches.length, nextCursor: rows.length > page.length ? page.at(-1)!.id : null };
+    },
     messagesByRoom,
     interactionsByRoom: sample.channel.interactionsByRoom,
     ownedScreens, localScreens: ownedScreens,

@@ -3769,3 +3769,217 @@ fn coordinated_udp_signals_use_only_the_required_pair_and_fixed_endpoint_roles()
         );
     }
 }
+
+#[test]
+#[ignore = "capacity acceptance: run explicitly in release mode with 81 endpoints"]
+fn two_twenty_person_rooms_share_site_capacity_with_browser_app_and_bounded_profiles() {
+    use base64ct::{Base64, Encoding};
+    use piik_channel_core::wire::{CHANNEL_MESSAGE_BYTES, IDENTITY_IMAGE_URL_BYTES};
+    let mut network = RoomNetwork::new();
+    let operator = Uuid::new_v4();
+    command(
+        &mut network,
+        operator,
+        json!({"type":"join","ownerKey":"owner","name":"Server"}),
+    );
+    let mut bytes = Base64::decode_vec("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==").unwrap();
+    bytes.resize(
+        (IDENTITY_IMAGE_URL_BYTES - "data:image/png;base64,".len()) / 4 * 3,
+        0,
+    );
+    let image = format!("data:image/png;base64,{}", Base64::encode_string(&bytes));
+    let mut people = Vec::new();
+    for _ in 0..40 {
+        let browser = Uuid::new_v4();
+        let app = Uuid::new_v4();
+        let (browser_session, credential) = join(&mut network, browser, None);
+        let (app_session, _) = join(&mut network, app, Some(&credential));
+        command(
+            &mut network,
+            browser,
+            json!({"type":"set_profile","name":"Participant","avatar":image}),
+        );
+        people.push((browser, app, browser_session, app_session));
+    }
+    assert_eq!(network.state(operator).sessions.len(), 81);
+    assert_eq!(network.state(operator).channel.user_count, 41);
+    let mut rooms = Vec::new();
+    for group in people.chunks(20) {
+        let room = network.create(group[0].1, RoomAccess::Public, false);
+        let mut screens = Vec::new();
+        for &(browser, app, _, _) in group {
+            browse(&mut network, browser, &room, true);
+            voice(&mut network, browser, &room, true);
+            publish(&mut network, browser, &room, "voice");
+            screens.push(publish(&mut network, app, &room, "screen"));
+        }
+        for &(browser, _, _, helper) in group {
+            for screen in &screens {
+                command(
+                    &mut network,
+                    browser,
+                    json!({"type":"subscribe","publicationId":screen,"enabled":true,"helperSessionId":helper}),
+                );
+            }
+        }
+        let attachment = json!({"id":Uuid::new_v4(),"name":"file.bin","mediaType":"application/octet-stream","size":3,"sha256":piik_channel_core::attachment::sha256_hex(b"abc")});
+        assert!(network
+            .peer_request(
+                group[1].1,
+                &room,
+                ConversationCommand::Chat {
+                    mentions: vec![],
+                    reply: None,
+                    inline_images: Default::default(),
+                    text: String::new(),
+                    nonce: "capacity-file".into(),
+                    attachments: vec![serde_json::from_value(attachment.clone()).unwrap()]
+                }
+            )
+            .result
+            .is_ok());
+        command(
+            &mut network,
+            group[1].1,
+            json!({"type":"file_offer","roomId":room,"messageSeq":1,"attachmentId":attachment["id"],"sha256":attachment["sha256"],"available":true}),
+        );
+        command(
+            &mut network,
+            group[19].0,
+            json!({"type":"file_receive","roomId":room,"messageSeq":1,"attachmentId":attachment["id"],"enabled":true}),
+        );
+        rooms.push(room);
+    }
+    // Report assigned transport/flow facts through the same public authority path.
+    // These are deterministic Core proofs, not a claim about real media bandwidth.
+    for _ in 0..2 {
+        for &(browser, app, _, _) in &people {
+            for connection in [browser, app] {
+                let pairs = network.state(connection).pairs.clone();
+                for pair in pairs {
+                    command(
+                        &mut network,
+                        connection,
+                        json!({"type":"link_state","pairId":pair.id,"state":"connected"}),
+                    );
+                    for room in pair.rooms {
+                        command(
+                            &mut network,
+                            connection,
+                            json!({"type":"base_state","roomId":room,"pairId":pair.id,"ready":true}),
+                        );
+                    }
+                    for flow in pair.incoming {
+                        command(
+                            &mut network,
+                            connection,
+                            json!({"type":"flow_state","pairId":pair.id,"flowId":flow.id,"state":"decoded"}),
+                        );
+                    }
+                }
+            }
+        }
+    }
+    for (index, room) in rooms.iter().enumerate() {
+        let group = &people[index * 20..index * 20 + 20];
+        let state = network.state(group[0].0);
+        let visible = state
+            .channel
+            .rooms
+            .iter()
+            .find(|value| &value.id == room)
+            .unwrap();
+        let users: std::collections::BTreeSet<_> = visible
+            .realtime_session_ids
+            .iter()
+            .map(|id| {
+                state
+                    .sessions
+                    .iter()
+                    .find(|session| session.id == *id)
+                    .unwrap()
+                    .user_id
+            })
+            .collect();
+        assert_eq!(users.len(), 20);
+        assert_eq!(
+            state
+                .publications
+                .iter()
+                .filter(|source| &source.room_id == room)
+                .count(),
+            40
+        );
+        assert_eq!(
+            state
+                .voice
+                .iter()
+                .filter(|voice| &voice.room_id == room)
+                .count(),
+            20
+        );
+        assert!(network
+            .state(group[19].0)
+            .files
+            .iter()
+            .any(|plan| &plan.room_id == room && plan.receiving));
+        command(
+            &mut network,
+            group[0].1,
+            json!({"type":"update_room","roomId":room,"name":"Full room","icon":image,"access":"public","hidden":false}),
+        );
+    }
+    // The full directory can retain 32 maximum-size room icons without repeating avatars.
+    for _ in 2..32 {
+        let room = network.create(people[0].1, RoomAccess::Public, false);
+        command(
+            &mut network,
+            people[0].1,
+            json!({"type":"update_room","roomId":room,"name":"Idle room","icon":image,"access":"public","hidden":false}),
+        );
+    }
+    command(
+        &mut network,
+        operator,
+        json!({"type":"update_domain","name":"Large friends site","icon":image}),
+    );
+    let mut max_state_bytes = 0;
+    for &(browser, app, _, _) in &people {
+        for connection in [browser, app] {
+            let event = Event::State {
+                state: network.state(connection).clone(),
+            };
+            let bytes = serde_json::to_vec(&event).unwrap().len();
+            max_state_bytes = max_state_bytes.max(bytes);
+            assert!(bytes < CHANNEL_MESSAGE_BYTES);
+            let mut encoder = piik_channel_core::wire_images::StateImageEncoder::default();
+            let mut decoder = piik_channel_core::wire_images::StateImageDecoder::default();
+            decoder.decode(&encoder.encode(&event).unwrap()).unwrap();
+            decoder.decode(&encoder.encode(&event).unwrap()).unwrap();
+        }
+    }
+    let profile_reply = network.command(
+        operator,
+        json!({"type":"profiles","requestId":"page","query":"Participant"}),
+    );
+    let profile_event = profile_reply
+        .events
+        .iter()
+        .find(|(_, event)| matches!(event, Event::Profiles { .. }))
+        .unwrap();
+    let profile_bytes = serde_json::to_vec(&profile_event.1).unwrap().len();
+    assert!(profile_bytes < 1024 * 1024);
+    assert!(network.max_host_output_bytes < CHANNEL_MESSAGE_BYTES);
+    eprintln!("capacity target: endpoints=81 users=41 rooms=32 activeRooms=2 screens=40 voices=40 maxStateBytes={max_state_bytes} maxHostOutputBytes={} profilePageBytes={profile_bytes}",network.max_host_output_bytes);
+    // Leaving retires this user's Browser activities without retiring the other room.
+    command(&mut network, people[19].0, json!({"type":"leave"}));
+    assert_eq!(
+        network
+            .state(people[20].0)
+            .voice
+            .iter()
+            .filter(|voice| voice.room_id == rooms[1])
+            .count(),
+        20
+    );
+}

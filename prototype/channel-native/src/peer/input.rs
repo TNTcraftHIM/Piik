@@ -352,6 +352,7 @@ mod tests {
         Snapshot {
             files: vec![],
             channel: ChannelInfo {
+                user_count: 0,
                 history_window: 100,
                 id: id(10),
                 name: "input".into(),

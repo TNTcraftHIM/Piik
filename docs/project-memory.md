@@ -22,6 +22,9 @@ The 3.0 owners below define this tree's domain, room and participant model.
 - The domain owns persistent user identity, membership, room-host
   bindings and directory summaries. A room's detailed policy and history belong
   to its room runtime; the directory is a projection of those facts.
+- Live identity summaries and bounded profile reads keep historical users
+  separate from endpoint capacity. The same Browser display cache supplies
+  names and pictures to conversation, offline people and mention search.
 - Opening a site establishes or restores a user's identity without a separate
   site invitation or passphrase. Users create and manage their own rooms;
   private access belongs to each room. The site operator maintains site metadata

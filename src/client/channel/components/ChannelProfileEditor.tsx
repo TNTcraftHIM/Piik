@@ -4,6 +4,7 @@ import { PawnSvg } from "../../components/living/Pawn";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useCopy } from "../../ui/copy";
 import { prepareIdentityImage } from "../identity-image";
+import { MAX_USER_NAME_UNITS } from "../protocol";
 import { channelErrorPresentation } from "../error-presentation";
 import { useSettingsAction } from "./ChannelSettingsDialog";
 import "./channel-profile-editor.css";
@@ -60,7 +61,7 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, busy, onSa
           }} />
         </div>
         <label htmlFor={`${id}-name`}>{zh ? "昵称" : "Nickname"}</label>
-        <div className="c3-name-entry"><span className="lr-input"><input ref={input} id={`${id}-name`} maxLength={40} autoComplete="nickname"
+        <div className="c3-name-entry"><span className="lr-input"><input ref={input} id={`${id}-name`} maxLength={MAX_USER_NAME_UNITS} autoComplete="nickname"
           value={draft} onChange={event => setDraft(event.target.value)} disabled={disabled || busy} /></span>
           <Btn icon="check" type="submit" size="dense" tone="primary" title={{ text: zh ? "保存资料" : "Save profile" }} busy={busy} disabled={locked || !draft.trim()} />
           <Btn icon="x" size="dense" quiet title="common.cancel" onClick={close} />

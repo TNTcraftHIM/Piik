@@ -10,6 +10,16 @@ Research owns measurements, and [TODO](./todo.md) owns remaining work.
 
 ## Current Evidence
 
+The capacity scenario exercises the real Core with two rooms of 20 users, each
+using Browser and App endpoints, plus the Server endpoint. It includes screen,
+voice, watching and file plans. The largest observed full State was 970,935 bytes
+and HostOutput 409,583 bytes within the existing 4 MiB frame bound. This is route
+and serialization acceptance; the network/media checks below own transport evidence.
+Real Browser/Server checks admitted 65 new retained identities, read paged offline
+profiles without peer connections, applied rename and avatar removal, found an
+unloaded offline mention target, and exported an old author outside the reading
+window. Native archive checks retained 76 identities and their credentials.
+
 The current conversation path verifies unread summaries in an unopened room
 without browsing or peer connections, local read-position retention after
 reload, identity-bound mentions, confirmed replies and navigation to a reference

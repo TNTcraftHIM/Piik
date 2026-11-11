@@ -62,7 +62,7 @@ test("signed conversation uses Domain delivery without peers and still fences si
     createSessionSigner: async (seed: Uint8Array) => new rust.SessionSigner(seed),
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const [host, sender, binding, domain] = [1, 2, 3, 4].map(value => `00000000-0000-0000-0000-${String(value).padStart(12, "0")}`);
-  let state = { channel: { id: domain, name: "Friends", icon: "couch", ownerId: host, historyWindow: 100,
+  let state = { channel: { id: domain, name: "Friends", icon: "couch", ownerId: host, historyWindow: 100, userCount: 2,
     rooms: [{
       id: "room", name: "Room", icon: "couch", creatorId: host, access: "public", hidden: false, hasPassword: false,
       voiceBitrate: 64000, relayCapacity: 2, relayOverride: null, authorized: true, canManage: true, available: true,

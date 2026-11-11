@@ -35,12 +35,29 @@ class ChannelSocket {
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
   sent: Array<Record<string, unknown>> = [];
+  profiles = new Map<string, import("../src/client/channel/protocol").ChannelUser>();
+  autoProfiles = true;
   constructor(_url: URL) { ChannelSocket.current = this; }
-  send(data: string): void { this.sent.push(JSON.parse(data)); }
+  send(data: string): void {
+    const command = JSON.parse(data); this.sent.push(command);
+    if (command.type === "profiles" && this.autoProfiles) queueMicrotask(() => this.receive({ type: "profiles", requestId: command.requestId,
+      profiles: (command.ids as string[] ?? []).flatMap(id => this.profiles.get(id) ?? []), total: (command.ids as string[] ?? []).filter(id => this.profiles.has(id)).length, nextCursor: null }));
+  }
   close(): void { this.readyState = 3; this.onclose?.(); }
-  receive(event: object): void { this.onmessage?.({ data: JSON.stringify(event) }); }
+  receive(event: object): void {
+    const frame = event as { type: string; state?: import("../src/client/channel/protocol").ChannelSnapshot; selfProfile?: import("../src/client/channel/protocol").ChannelUser; sessionId?: string };
+    if ((frame.type === "welcome" || frame.type === "state") && frame.state) {
+      for (const user of frame.state.users) this.profiles.set(user.id, { avatar: null, ...this.profiles.get(user.id), ...user });
+      if (frame.type === "welcome" && !frame.selfProfile) {
+        const id = frame.state.sessions.find(session => session.id === frame.sessionId)?.userId;
+        frame.selfProfile = this.profiles.get(id ?? "");
+      }
+    }
+    this.onmessage?.({ data: JSON.stringify(event) });
+  }
 }
 
+const profileVersion = "0".repeat(64);
 const testSigningKey = Array.from(Buffer.from("8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c", "hex"));
 beforeEach(() => {
   vi.stubGlobal("history", { state: null, replaceState: vi.fn() });
@@ -106,14 +123,14 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
   const socket = ChannelSocket.current;
   await socket.onopen?.();
   socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state: {
-    channel: { id: "domain", name: "Friends", icon: "future-domain_7", ownerId: "self", historyWindow: window,
+    channel: { id: "domain", name: "Friends", icon: "future-domain_7", ownerId: "self", historyWindow: window, userCount: 1,
       rooms: roomIds.map(id => ({ id, name: id, icon: "couch", creatorId: "self", access: "public",
         hidden: false, hasPassword: false, authorized: true, canManage: true,
         participantSessionIds: id === "first" ? ["endpoint"] : [],
         lastMessageSeq: 0, realtimeSessionIds: [],
         available: true, reading: id === "first", capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } } })) },
-    users: [{ id: "self", name: "Me", avatar: null }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
+    users: [{ id: "self", name: "Me", version: profileVersion }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
     publications: [], voice: [], subscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   } });
   if (read) {
@@ -136,6 +153,99 @@ const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", t
 const reactionSnapshot = (seq: number, revision: number, counts: Record<string, number> = {}) =>
   ({ messageId: `message-${seq}`, messageSeq: seq, revision, counts });
 
+test("profile reads batch and deduplicate missing IDs without deleting retained identities", async () => {
+  const { session, socket } = await setup(1000, false); socket.autoProfiles = false;
+  const ids = Array.from({ length: 65 }, (_, index) => `offline-${index}`);
+  try {
+    const pending = session.loadProfiles([...ids, ...ids]);
+    expect(socket.sent.filter(command => command.type === "profiles")).toHaveLength(1);
+    const shared = session.loadProfiles(ids);
+    expect(socket.sent.filter(command => command.type === "profiles")).toHaveLength(1);
+    for (let index = 0; index < 3; index++) {
+      await vi.waitFor(() => expect(socket.sent.filter(command => command.type === "profiles")).toHaveLength(index + 1));
+      const request = socket.sent.filter(command => command.type === "profiles")[index];
+      const profiles = (request.ids as string[]).filter(id => id !== "offline-64").map(id => ({ id, name: id, avatar: null, version: profileVersion }));
+      socket.receive({ type: "profiles", requestId: request.requestId, profiles, total: profiles.length, nextCursor: null });
+    }
+    expect(await pending).toHaveLength(64); expect(await shared).toHaveLength(64);
+    expect(socket.sent.filter(command => command.type === "profiles").map(request => (request.ids as string[]).length)).toEqual([32, 32, 1]);
+    expect(await session.loadProfiles(ids)).toHaveLength(64);
+    expect(socket.sent.filter(command => command.type === "profiles")).toHaveLength(3);
+    expect(session.getSnapshot().profiles.get("offline-0")?.name).toBe("offline-0");
+    expect(session.getSnapshot().state!.users).toHaveLength(1);
+  } finally { session.close(); }
+});
+
+test("large offline profile demands keep only one bounded batch in flight", async () => {
+  const { session, socket } = await setup(1000, false); socket.autoProfiles = false;
+  let current = 0, maximum = 0;
+  const send = socket.send.bind(socket);
+  vi.spyOn(socket, "send").mockImplementation(data => {
+    const request = JSON.parse(data); send(data);
+    if (request.type !== "profiles") return;
+    current++; maximum = Math.max(maximum, current);
+    queueMicrotask(() => {
+      current--;
+      const profiles = request.ids.map((id: string) => ({ id, name: id, avatar: null, version: profileVersion }));
+      socket.receive({ type: "profiles", requestId: request.requestId, profiles, total: profiles.length, nextCursor: null });
+    });
+  });
+  try {
+    const ids = Array.from({ length: 2112 }, (_, index) => `history-user-${index}`);
+    expect(await session.loadProfiles(ids)).toHaveLength(ids.length);
+    expect(socket.sent.filter(command => command.type === "profiles")).toHaveLength(66);
+    expect(maximum).toBe(1);
+  } finally { session.close(); }
+});
+
+test("profile versions refresh names and clear avatars while a new Welcome resets display facts", async () => {
+  const { session, socket } = await setup(1000, false); socket.autoProfiles = false;
+  const picture = "data:image/png;base64,YWJj";
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.users.push({ id: "friend", name: "Before", version: profileVersion }); state.channel.userCount++;
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "profiles", requestId: socket.sent.at(-1)!.requestId, profiles: [{ ...state.users[1], avatar: picture }], total: 1, nextCursor: null });
+    expect(session.getSnapshot().profiles.get("friend")?.avatar).toBe(picture);
+    const next = structuredClone(state); next.users[1] = { id: "friend", name: "After", version: "1".repeat(64) };
+    socket.receive({ type: "state", state: next });
+    socket.receive({ type: "profiles", requestId: socket.sent.at(-1)!.requestId, profiles: [{ ...next.users[1], avatar: null }], total: 1, nextCursor: null });
+    expect(session.getSnapshot().profiles.get("friend")).toEqual({ ...next.users[1], avatar: null });
+    const resumed = structuredClone(next); resumed.users = [resumed.users[0]];
+    socket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state: resumed });
+    expect(session.getSnapshot().self).toEqual({ ...resumed.users[0], avatar: null });
+    expect(session.getSnapshot().profiles.has("friend")).toBe(false);
+    const reload = session.loadProfiles(["friend"]);
+    socket.receive({ type: "profiles", requestId: socket.sent.at(-1)!.requestId, profiles: [{ ...next.users[1], avatar: null }], total: 1, nextCursor: null });
+    expect(await reload).toEqual([{ ...next.users[1], avatar: null }]);
+  } finally { session.close(); }
+});
+
+test("profile directory abort ignores its late full-avatar reply and uses the content read deadline", async () => {
+  const { session, socket } = await setup(1000, false); socket.autoProfiles = false; vi.useFakeTimers();
+  try {
+    const abort = new AbortController(), reading = session.queryProfiles({ query: "offline" }, abort.signal);
+    const rejected = expect(reading).rejects.toMatchObject({ name: "AbortError" }), request = socket.sent.at(-1)!;
+    abort.abort(); await rejected;
+    socket.receive({ type: "profiles", requestId: request.requestId, profiles: [{ id: "late", name: "Late", avatar: null, version: profileVersion }], total: 1, nextCursor: null });
+    expect(session.getSnapshot().profiles.has("late")).toBe(false);
+    const slower = session.queryProfiles({}), failed = expect(slower).rejects.toThrow("request_timeout");
+    await vi.advanceTimersByTimeAsync(10000); expect(session.getSnapshot().connection).toBe("connected");
+    expect((session as unknown as { requests: Map<string, unknown> }).requests.has(socket.sent.at(-1)!.requestId as string)).toBe(true);
+    await vi.advanceTimersByTimeAsync(20000); await failed;
+  } finally { session.close(); }
+});
+
+test("accepted history resolves offline author, reply and mention IDs through the profile reader", async () => {
+  const { session, socket, peer } = await setup(); socket.autoProfiles = false;
+  try {
+    await peer.history([{ ...message(2), userId: "offline-author", text: "@Mention", mentions: [{ userId: "offline-mention", start: 0, end: 8 }],
+      reply: { seq: 1, userId: "offline-reply", text: "Earlier", notify: true } }]);
+    expect(socket.sent.filter(command => command.type === "profiles").flatMap(command => command.ids as string[]).sort())
+      .toEqual(["offline-author", "offline-mention", "offline-reply"]);
+  } finally { session.close(); }
+});
+
 test("confirmed room events own personal feedback across text, attachments and throw targets", async () => {
   const document = Object.assign(new EventTarget(), { hidden: true });
   vi.stubGlobal("document", document);
@@ -150,11 +260,12 @@ test("confirmed room events own personal feedback across text, attachments and t
     state.sessions[0].userId = "self-user-1234";
     state.channel.ownerId = "self-user-1234";
     state.channel.rooms.forEach(room => { room.creatorId = "self-user-1234"; });
-    state.users.push({ id: "friend-user-1234", name: "Friend", avatar: null }, { id: "bystander", name: "Other", avatar: null });
+    state.users.push({ id: "friend-user-1234", name: "Friend", version: profileVersion }, { id: "bystander", name: "Other", version: profileVersion });
     state.sessions.push({ id: "native-endpoint", userId: "self-user-1234", online: true, signingKey: testSigningKey });
     state.publications.push({ id: "own-screen", roomId: "first", sessionId: "native-endpoint", userId: "self-user-1234", kind: "screen",
       paused: false, audience: [], source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]) });
     socket.receive({ type: "state", state });
+    await vi.waitFor(() => expect(session.getSnapshot().self?.id).toBe("self-user-1234"));
     await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.get("first")?.getSnapshot().ready).toBe(true));
     expect(session.getSnapshot().feedbackSound.enabled).toBe(false);
     peer.live(fresh(1));
@@ -228,10 +339,12 @@ test("profile changes use the authenticated identity and only project confirmed 
     expect(request).not.toHaveProperty("userId");
     expect(session.getSnapshot().self).toMatchObject({ name: "Me", avatar: null });
     const state = structuredClone(session.getSnapshot().state!);
-    state.users[0] = { ...state.users[0], name: "New name", avatar };
+    state.users[0] = { ...state.users[0], name: "New name", version: "1".repeat(64) };
+    socket.profiles.set("self", { ...state.users[0], avatar });
     socket.receive({ type: "state", state });
     socket.receive({ type: "ack", requestId: request.requestId });
     await saving;
+    await vi.waitFor(() => expect(session.getSnapshot().self?.avatar).toBe(avatar));
     expect(session.getSnapshot().self).toMatchObject({ name: "New name", avatar });
     const clearing = session.updateProfile({ name: "New name", avatar: null });
     const rejection = expect(clearing).rejects.toThrow("storage_failed");
@@ -438,7 +551,7 @@ test("room interactions reuse their original acknowledgement and user identity w
   try {
     const state = structuredClone(session.getSnapshot().state!);
     state.channel.ownerId = "friend-user-1234";
-    state.users.push({ id: "friend-user-1234", name: "Friend", avatar: null });
+    state.users.push({ id: "friend-user-1234", name: "Friend", version: profileVersion });
     socket.receive({ type: "state", state });
     await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.get("first")?.getSnapshot().ready).toBe(true));
     const interaction = session.getSnapshot().interactionsByRoom.get("first")!;
@@ -588,7 +701,7 @@ test("site addresses and room invitations use the current Welcome origin without
 
 test("App hosting uses its own participant while Browser rooms retain their page lifetime", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const localRoom = { id: "saved-browser-room", name: "Browser room", icon: "couch", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false };
   const host = {
     roomId: localRoom.id, summary: () => localRoom,
@@ -715,7 +828,7 @@ test("authority delivery results follow this page's watch intent and clear on cu
 });
 
 test.each([false, true])("App viewing assistance withdraws without ending the watch (Domain recovery: %s)", async recovering => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const helperSessionId = crypto.randomUUID();
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helperSessionId, roomIds: [] });
   const { session, socket } = await setup();
@@ -756,7 +869,7 @@ test.each([false, true])("App viewing assistance withdraws without ending the wa
 });
 
 test("App rewatch admits its current helper in the first subscription without a second lookup", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const helperSessionId = crypto.randomUUID();
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helperSessionId, roomIds: [] });
   const { session, socket } = await setup();
@@ -785,7 +898,7 @@ test("App rewatch admits its current helper in the first subscription without a 
 });
 
 test.each([false, true])("local Native playback provenance follows endpoint lifetime, without ownership or user inference (description rejected: %s)", async rejected => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const native = crypto.randomUUID(), remote = crypto.randomUUID();
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: native, roomIds: [] });
   if (rejected) description.mockRejectedValue(new Error("hosting_unavailable"));
@@ -824,7 +937,7 @@ test.each([false, true])("local Native playback provenance follows endpoint life
 });
 
 test.each(["session", "capture", "app", "unwatch", "retirement"])("pending local-source HTTP follows %s cancellation without trapping the watch", async ending => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const fetcher = vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
     const signal = init.signal!;
     signal.addEventListener("abort", () => reject(signal.reason), { once: true });
@@ -874,7 +987,7 @@ test.each(["session", "capture", "app", "unwatch", "retirement"])("pending local
 });
 
 test("temporary helper unavailability cannot retire a retained watch on Domain recovery", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const helperSessionId = crypto.randomUUID();
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helperSessionId, roomIds: [] });
   const { session, socket } = await setup();
@@ -917,7 +1030,7 @@ test("temporary helper unavailability cannot retire a retained watch on Domain r
 });
 
 test("an App description completing after unwatch cannot recreate a subscription", async () => {
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   let describe!: (value: { sessionId: string; roomIds: string[] }) => void;
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting")
     .mockImplementation(() => new Promise(resolve => { describe = resolve; }));
@@ -959,7 +1072,7 @@ test.each(["disconnect", "close"])("pending App health cannot create a control s
     expect(discovery).toHaveBeenCalledOnce();
     if (end === "close") session.close();
     else socket.close();
-    complete({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+    complete({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
     await resuming;
     expect(ChannelSocket.current).toBe(socket);
     expect(session.getSnapshot().appConnected).toBe(false);
@@ -984,7 +1097,7 @@ test("personal voice playback follows user identity without sending room command
   const { session, socket } = await setup();
   try {
     const initial = session.getSnapshot().state!;
-    const friend = { id: "friend", name: "Friend", avatar: null };
+    const friend = { id: "friend", name: "Friend", version: profileVersion };
     const state = { ...initial, users: [...initial.users, friend],
       sessions: [...initial.sessions, { id: "friend-first", userId: friend.id, online: true, signingKey: testSigningKey }] };
     socket.receive({ type: "state", state });
@@ -1546,7 +1659,7 @@ test.each([
     ? { mimeType: "video/H264", clockRate: 90000, sdpFmtpLine: "packetization-mode=1" }
     : { mimeType: "video/VP8", clockRate: 90000 }] }) });
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
   session.setVideoCodecMode(mode);
@@ -1871,7 +1984,7 @@ test("Browser source replacement keeps its publication, rejects only the candida
 
 test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-reply", "candidate-ended-before-reply", "app-close-before-state", "app-close-after-state", "transfer-rejected", "audio-stop-before-reply", "mute-during-native-prepare", "mute-during-native-commit", "mute-rejected-during-native-prepare"])("Browser and Native handoffs keep one publication and use the current Native capture lease (%s)", async outcome => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
   const old = remoteTrack("video"), next = remoteTrack("video");
@@ -2272,7 +2385,7 @@ test("a late source-ceiling rejection cannot configure a stopped capture or its 
 test("Native capture previews before its snapshot, keeps picture on audio failure, and stops through its App owner", async () => {
   vi.stubGlobal("navigator", { userAgent: "test", userActivation: { isActive: false } });
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
   try {
@@ -2557,7 +2670,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
 
 test.each(["before-subscribe", "awaiting-ack", "helper-awaiting-ack"])("committed Native preview resumes its watch intent after Domain recovery (%s)", async interrupted => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const nativeSessionId = crypto.randomUUID();
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: nativeSessionId, roomIds: ["first"] });
   const { session, socket } = await setup();
@@ -2615,7 +2728,7 @@ test.each([
   ["domain-first", false], ["domain-first", true], ["app-first", false], ["app-first", true],
 ] as const)("Native completion preserves replacement ownership and reports only current failures (%s, failed=%s)", async (order, failed) => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockRejectedValue(new Error("Assistance unavailable"));
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
@@ -2678,7 +2791,7 @@ test.each([
 
 test("stopping committed Native capture retires its pending automatic preview error", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
   try {
@@ -2713,7 +2826,7 @@ test("stopping committed Native capture retires its pending automatic preview er
 
 test("pending Native capture stays page-owned through same-page stop and close", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
   try {
@@ -2881,7 +2994,7 @@ test("remembered App intent does not prevent Browser hosting when no App is conn
 
 test("an App failure during creation does not turn that request into a Browser room", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   let prepared!: (policy: string) => void;
   let policy = "";
   const browserOpen = vi.fn();
@@ -3154,7 +3267,7 @@ test("topology reads reject late data after binding access account or selection 
       else if (change === "access") state.channel.rooms[0].authorized = false;
       else if (change === "account") {
         state.sessions[0].userId = "replacement-user";
-        state.users = [{ id: "replacement-user", name: "Other account", avatar: null }];
+        state.users = [{ id: "replacement-user", name: "Other account", version: profileVersion }];
       }
       else if (change === "publication") state.publications = [];
       if (change === "selection") session.browse("second");
@@ -6663,7 +6776,7 @@ test("domain restore closes the old connection, admits archived keys only after 
   const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
   const state = structuredClone(session.getSnapshot().state!);
   state.channel.id = domainId; state.channel.ownerId = ownerId; state.channel.rooms = [];
-  state.users = [{ id: ownerId, name: "Restored owner", avatar: null }]; state.sessions[0].userId = ownerId;
+  state.users = [{ id: ownerId, name: "Restored owner", version: profileVersion }]; state.sessions[0].userId = ownerId;
   try {
     const restoring = session.restoreDomainBackup(new Blob(["complete-domain-zip"]));
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
@@ -6933,7 +7046,7 @@ test("portable import validates the full archive before switching accounts and r
   Object.assign(metadata, { ownCredential: { userId: "archived-user", credential: "archived-credential" } });
   const persist = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: persist });
   const original = structuredClone(session.getSnapshot().state!);
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived", avatar: null } }))));
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived", avatar: null, version: profileVersion } }))));
   try {
     read.mockRejectedValueOnce(new Error("backup_content_mismatch"));
     await expect(session.restoreRoomBackup(new Blob())).rejects.toThrow("backup_content_mismatch");
@@ -6957,7 +7070,7 @@ test("portable import validates the full archive before switching accounts and r
 
 test("an approved App exports only rooms positively matched to its Native session", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const { session, socket } = await setup(); const appSocket = ChannelSocket.current;
   const nativeId = crypto.randomUUID();
   const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ sessionId: nativeId, roomIds: ["first"] })))
@@ -6991,11 +7104,11 @@ test.each(["registered", "registration-failed"])("portable import retains its ve
   const runtime = await hosting.loadRoomHosting(); vi.spyOn(runtime.BrowserRoomHost, "storedPolicies").mockResolvedValue([]);
   nextHost.summary = () => ({ id: "imported", name: "First", creatorId: "archived-user", icon: "couch", access: "public", hidden: false, hasPassword: false });
   const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived", avatar: null } }))));
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived", avatar: null, version: profileVersion } }))));
   const cache = vi.spyOn(session.attachments, "restoreRetained").mockResolvedValue(true);
   const state = structuredClone(session.getSnapshot().state!);
   const imported = { ...state.channel.rooms[0], id: "imported", creatorId: "archived-user", name: "First", available: false, delivery: undefined };
-  state.channel.rooms = [imported]; state.channel.ownerId = null; state.users = [{ id: "archived-user", name: "Archived", avatar: null }];
+  state.channel.rooms = [imported]; state.channel.ownerId = null; state.users = [{ id: "archived-user", name: "Archived", version: profileVersion }];
   state.sessions = [{ id: "new-endpoint", userId: "archived-user", online: true, signingKey: testSigningKey }];
   try {
     const importing = session.restoreRoomBackup(new Blob());
@@ -7150,40 +7263,33 @@ test("a delayed source busy error cannot fail a cancelled file's successful retr
   } finally { next.abort(); files.reset(); upstream.free(); }
 });
 
-test("socket ingress hydrates identity pictures and rejected frames recover with a full Welcome", async () => {
+test("socket ingress hydrates room pictures and rejected frames recover with a full Welcome", async () => {
   const { session, socket } = await setup(1000, false);
   try {
     const state = structuredClone(session.getSnapshot().state!);
     state.channel.icon = "data:image/png;base64,YWJj";
-    state.users[0].avatar = "data:image/png;base64,YWJj";
     socket.receive({ type: "state", state });
     const { icon, rooms, ...channel } = state.channel;
     const compact = { ...state, channel: { ...channel, rooms: rooms.map(({ icon, ...room }) => room) },
-      users: state.users.map(({ avatar, ...user }) => ({ ...user, name: "Updated" })),
+      users: state.users.map(user => ({ ...user, name: "Updated" })),
     };
     socket.receive({ type: "state", state: compact });
-    expect(session.getSnapshot().state?.users[0]).toMatchObject({ name: "Updated", avatar: state.users[0].avatar });
+    expect(session.getSnapshot().state?.users[0]).toMatchObject({ name: "Updated", version: profileVersion });
     expect(session.getSnapshot().state?.channel.icon).toBe(state.channel.icon);
     vi.useFakeTimers();
-    const close = vi.spyOn(socket, "close");
-    const invalid = structuredClone(state);
-    invalid.users[0].avatar = "data:image/png;base64,ZGVm";
+    const close = vi.spyOn(socket, "close"), invalid = structuredClone(state);
     invalid.users[0].name = "x".repeat(41);
     socket.receive({ type: "state", state: invalid });
     expect(close).toHaveBeenCalledWith();
     expect(session.getSnapshot()).toMatchObject({ connection: "reconnecting", error: "invalid_response" });
-    expect(session.getSnapshot().state?.users[0].avatar).toBe(state.users[0].avatar);
-    socket.receive({ type: "state", state: compact });
     await vi.advanceTimersByTimeAsync(1000);
     const replacement = ChannelSocket.current;
-    expect(replacement).not.toBe(socket);
-    await replacement.onopen?.();
-    const restored = structuredClone(state); restored.users[0].avatar = invalid.users[0].avatar;
-    replacement.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state: restored });
+    expect(replacement).not.toBe(socket); await replacement.onopen?.();
+    replacement.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
     expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null });
     replacement.receive({ type: "state", state: compact });
+    expect(session.getSnapshot().state?.channel.icon).toBe(state.channel.icon);
     expect(session.getSnapshot().state?.users[0].name).toBe("Updated");
-    expect(session.getSnapshot().state?.users[0].avatar).toBe(restored.users[0].avatar);
   } finally { session.close(); }
 });
 

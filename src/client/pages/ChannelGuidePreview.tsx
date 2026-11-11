@@ -101,7 +101,7 @@ export function useChannelGuideSample(multiRoom = false) {
     ...(messagesByRoom.friday ?? []),
   ];
   const users = (multiRoom ? ["Ada", "Bo", "Coco", "Dora", "Eli", "Finn", "Gia", "Hana", "Iris"] : ["Ada", "Bo"])
-    .map(name => ({ id: `sample-${name.toLowerCase()}`, name, avatar: null, ...(name === "Ada" ? profile : {}) }));
+    .map(name => ({ id: `sample-${name.toLowerCase()}`, name, avatar: null, ...(name === "Ada" ? profile : {}), version: "0".repeat(64) }));
   const rooms = [{ id: "friday", name: roomName, icon: "couch" },
     ...(multiRoom ? [{ id: "studio", name: zh ? "创作小屋" : "Creative studio", icon: "star" }] : [])]
     .map(room => ({ creatorId: "sample-ada", access: "private" as const, hidden: false, hasPassword: false,
@@ -110,8 +110,8 @@ export function useChannelGuideSample(multiRoom = false) {
       realtimeSessionIds: room.id === "studio" ? (voiceByRoom.studio ? ["sample-ada-session"] : []) : ["sample-bo-session", ...(voiceByRoom.friday ? ["sample-ada-session"] : [])],
       participantSessionIds: room.id === "studio" ? ["sample-coco-session", ...(voiceByRoom.studio ? ["sample-ada-session"] : [])] : ["sample-ada-session", "sample-bo-session"], capabilities: { attachments: true },
       ...room, ...settingsByRoom[room.id] }));
-  const state = snapshotSchema.parse({ channel: { id: "sample", name: "Friends", icon: "couch", ownerId: "sample-ada", historyWindow: 1000,
-    rooms }, users,
+  const state = snapshotSchema.parse({ channel: { id: "sample", name: "Friends", icon: "couch", ownerId: "sample-ada", historyWindow: 1000, userCount: users.length,
+    rooms }, users: users.map(({ avatar: _avatar, ...user }) => user),
     sessions: users.map(user => ({ id: `${user.id}-session`, userId: user.id, online: user.id !== "sample-iris", signingKey: Array(32).fill(0) })),
     publications: Object.keys(voiceByRoom).map(roomId => ({ audience: [], id: `voice-${roomId}`, kind: "voice", roomId,
       sessionId: "sample-ada-session", userId: "sample-ada", paused: false })),
@@ -138,7 +138,14 @@ export function useChannelGuideSample(multiRoom = false) {
     },
     previewFeedbackSound: feedbackAudio.preview,
     updateProfile: async (value: { name: string; avatar: string | null }) => setProfile(value),
-    state, self: state.users[0], sessionId: "sample-ada-session", connection: "connected", appConnected: true, pending, attachments, sendMessage: onSend,
+    state, self: users[0], profiles: new Map(users.map(user => [user.id, user])),
+    loadProfiles: async (ids: readonly string[]) => users.filter(user => ids.includes(user.id)),
+    queryProfiles: async ({ after, query }: { after?: string; query?: string }) => {
+      const matches = users.filter(user => !query || user.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).sort((a, b) => a.id.localeCompare(b.id));
+      const rows = matches.filter(user => !after || user.id > after), page = rows.slice(0, 32);
+      return { profiles: page, total: matches.length, nextCursor: rows.length > page.length ? page.at(-1)!.id : null };
+    },
+    sessionId: "sample-ada-session", connection: "connected", appConnected: true, pending, attachments, sendMessage: onSend,
     readByRoom: {}, markRead: () => {}, loadMessage: async () => {},
     quality, setQuality, videoCodecMode: codec, setVideoCodecMode: setCodec, ownedScreens: new Set<string>(), localScreens: new Set<string>(), streams: new Map<string, MediaStream>(),
     messagesByRoom: { ...messagesByRoom, friday: sampleMessages.map(message => ({ ...message, reactions: messageReactions[message.seq] })) },
@@ -198,7 +205,7 @@ export function ChannelGuidePreview() {
         <ChannelRoomInvitation channel={channel} room={state.channel.rooms[0]} />
         </div>
         <ChannelShareControl channel={channel} roomId="friday" disabled={false} /></header>
-      <ChannelConversation roomId="friday" roomName={roomName} messages={channel.messagesByRoom.friday} users={state.users}
+      <ChannelConversation roomId="friday" roomName={roomName} messages={channel.messagesByRoom.friday} users={state.users} profiles={channel.profiles} queryProfiles={channel.queryProfiles}
         canSend sending={false} hidden={false} available attachments={channel.attachments} attachmentsAvailable
         history={{ hasMore: false, atLatest: true }} loadingHistory={false} onHistory={async () => {}} onLatest={async () => {}}
         interaction={channel.interactionsByRoom.get("friday") ?? null} onSend={onSend} />

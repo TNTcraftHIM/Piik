@@ -240,16 +240,10 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
     state.channel.icon = icon.clone();
     state.channel.name = "域".repeat(64);
     state.users = (0..64)
-        .map(|_| UserInfo {
+        .map(|_| UserSummary {
             id: Uuid::new_v4(),
             name: "名".repeat(40),
-            avatar: Some(
-                serde_json::to_value(&icon)
-                    .unwrap()
-                    .as_str()
-                    .unwrap()
-                    .into(),
-            ),
+            version: "a".repeat(64),
         })
         .collect();
     for index in 0..32 {
@@ -329,14 +323,20 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
         })
         .collect();
     let mut durable = channel.export_state();
-    durable.icon = icon;
+    durable.icon = icon.clone();
     durable.users = state
         .users
         .iter()
         .map(|user| StoredUser {
             id: user.id,
             name: user.name.clone(),
-            avatar: user.avatar.clone(),
+            avatar: Some(
+                serde_json::to_value(&icon)
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .into(),
+            ),
             credential: [255; 32],
         })
         .collect();

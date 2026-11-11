@@ -32,7 +32,7 @@ import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
 import { ChannelCouch } from "../channel/components/ChannelCouch";
 import { ChannelRoomTool, type RoomToolSurface } from "../channel/components/ChannelRoomTool";
 import { ChannelConnections } from "../channel/components/ChannelConnections";
-import { listeningVoicePublications, roomPeople, screenAudience, screenTitle } from "../channel/presentation";
+import { listeningVoicePublications, roomPeople, screenAudience, screenTitle, userProfile } from "../channel/presentation";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { channelAppDiscovery } from "../channel/app-link";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
@@ -237,7 +237,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       <div className="c3-personal"><div ref={voiceSlot} className="c3-room-slot" />
         {self && <div className="c3-identity"><PawnSvg color={participantColor(self.id)} identity={self.id} avatar={self.avatar ?? undefined} />
           <div><strong>{self.name}</strong><small>{copy("你的名字", "Your name")}</small></div>
-          <ChannelProfileEditor key={self.id} name={self.name} avatar={self.avatar} color={participantColor(self.id)} disabled={!connected}
+          <ChannelProfileEditor key={self.id} name={self.name} avatar={self.avatar} color={participantColor(self.id)} disabled={!connected || self.version !== state?.users.find(user => user.id === self.id)?.version}
             busy={busy("profile")} onSave={channel.updateProfile} />
         </div>}
       </div>
@@ -316,8 +316,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
             hidden: !displayedSources.has(publication.id),
             source: publication.source, title: publication.title, onRoom: () => selectRoom(publication.roomId),
-            avatar: state?.users.find(user => user.id === publication.userId)?.avatar ?? undefined,
-            audience: state ? screenAudience(state, publication) : [],
+            avatar: userProfile(state, channel.profiles, publication.userId)?.avatar ?? undefined,
+            audience: state ? screenAudience(state, publication, channel.profiles) : [],
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id), localSource: channel.localScreens.has(publication.id),
             shareControls: channel.ownedScreens.has(publication.id) && <ChannelShareControl channel={channel}
               roomId={publication.roomId} publicationId={publication.id} compact
@@ -361,7 +361,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           label={`${nameOfUser(publication.userId)} — ${nameOfRoom(publication.roomId)}`} />)}
       </section>
       <div className="c3-chat-panel"><div ref={sideConversationHome} className="c3-room-slot" /></div>
-      {layout !== "quick" && <ChannelPeople channel={channel} roomId={roomId} onBack={() => setMobilePane("room")} />}
+      {layout !== "quick" && <ChannelPeople channel={channel} roomId={roomId} active={companionVisible && mobilePane === "people"} onBack={() => setMobilePane("room")} />}
       <div className="c3-room-presence" data-empty={!room?.authorized || undefined}>
         <div ref={couchSlot} className="c3-room-slot" />
         <ChannelRoomTool title={room?.name ?? copy("房间", "Room")} surface={toolSurface} onSurfaceChange={setToolSurface}
@@ -369,11 +369,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           actions={layout === "quick" && !toolSurface.open ? joinVoice : undefined}
           caption={room ? copy(`${room.name}的朋友`, `Friends in ${room.name}`) : copy("房间里的朋友", "Friends in this room")}
           home={{ couch: couchSlot, conversation: conversationSlot, voice: voiceSlot }}
-          couch={room?.authorized && <ChannelCouch className="c3-room-company" people={state ? roomPeople(state, roomId) : []}
+          couch={room?.authorized && <ChannelCouch className="c3-room-company" people={state ? roomPeople(state, roomId, channel.profiles) : []}
             floating={toolSurface.open && (layout !== "quick" || toolSurface.document !== document)} selfUserId={self?.id ?? null} session={channel.interactionsByRoom.get(roomId) ?? null} />}
           conversation={<>{room && !room.authorized && <ChannelRoomEntry key={room.id} channel={channel} room={room} />}
             <ChannelConversation roomId={roomId} roomName={room?.name ?? ""} roomIcon={room?.icon} messages={channel.messagesByRoom[roomId] ?? []}
-            users={state?.users ?? []} entry={self ? { kind: "site" } : { kind: "entry" }}
+            users={state?.users ?? []} profiles={channel.profiles} queryProfiles={channel.queryProfiles} entry={self ? { kind: "site" } : { kind: "entry" }}
             canSend={connected && !!room?.authorized && room.available} sending={busy("chat", roomId)}
             attachments={channel.attachments} attachmentsAvailable={room?.capabilities.attachments ?? false} available={connected && !!room?.authorized && room.available}
             history={channel.historyByRoom[roomId]} loadingHistory={busy("history", roomId)}

@@ -17,8 +17,6 @@ export function channelErrorPresentation(error: string | null, copy: (zh: string
     return display("版本不兼容。请刷新页面，并更新所用的 Piik App 或站点。", "Incompatible Piik versions. Refresh the page and update the App or site you are using.");
   if (error === "channel_full")
     return display("站点的同时连接数已满。请关闭不再使用的页面或 App 后重试。", "This site has reached its connection limit. Close unused pages or Apps, then retry.");
-  if (error === "user_limit")
-    return display("此站点已达到用户数量上限，请联系维护者。", "This site has reached its user limit. Contact its operator.");
   if (error === "directory_storage_failed")
     return display("房间操作已成功，但房间目录保存失败。", "The room operation succeeded, but the room directory could not be saved.");
   if (error === "expected_room_copy")

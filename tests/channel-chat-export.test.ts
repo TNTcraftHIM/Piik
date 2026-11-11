@@ -21,7 +21,7 @@ const message = (seq: number, text: string): ChannelMessage => ({
 });
 function render(messages: ChannelMessage[]) {
   renderToStaticMarkup(createElement(RoomChatExport, {
-    messages, users: [{ id: "private-user", name: "朋友\nFriend", avatar: null }],
+    messages, users: [{ id: "private-user", name: "朋友\nFriend" }],
   }));
   return actions.find(action => action.icon === "save")!;
 }

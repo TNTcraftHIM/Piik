@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import { afterEach, expect, it, vi } from "vitest";
 import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "../src/client/native/discovery-ports";
+import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
 
 const servers: Server[] = [];
 afterEach(async () => {
@@ -19,7 +20,7 @@ async function runtime(delay: number) {
       requests.push(request.url!);
       setTimeout(() => {
         response.setHeader("Content-Type", "application/json");
-        response.end(JSON.stringify({ protocol: 7, service: "piik-channel-app",
+        response.end(JSON.stringify({ protocol: 7, domainProtocol: CHANNEL_PROTOCOL, service: "piik-channel-app",
           port, token: "fixture-token",
           ...(request.url === "/connect-discovery" ? { connectURL: `http://127.0.0.1:${port}/client` } : {}),
         }));

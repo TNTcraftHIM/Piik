@@ -475,9 +475,34 @@ mod tests {
 
     #[test]
     fn domain_archive_contains_only_its_own_authority() -> Result<()> {
-        let metadata = Authority::new("owner".into(), vec![])
-            .unwrap()
-            .export_backup();
+        use piik_channel_core::wire::{Event, Request, CHANNEL_PROTOCOL};
+        let mut authority = Authority::new("owner".into(), vec![]).unwrap();
+        let mut identities = Vec::new();
+        for index in 0..76 {
+            let connection = Uuid::new_v4();
+            let request = serde_json::json!({"type":"join","protocol":CHANNEL_PROTOCOL,"name":format!("Friend {index}"),"ownerKey":(index==0).then_some("owner"),"signingKey":vec![1;32]});
+            let effects =
+                authority.handle(connection, Request::parse(&request.to_string()).unwrap(), 0);
+            let (credential, profile) = effects
+                .events
+                .into_iter()
+                .find_map(|(_, event)| match event {
+                    Event::Welcome {
+                        credential,
+                        self_profile,
+                        ..
+                    } => Some((credential, self_profile)),
+                    _ => None,
+                })
+                .unwrap();
+            identities.push((credential, profile));
+            authority.handle(
+                connection,
+                Request::parse(r#"{"type":"leave"}"#).unwrap(),
+                0,
+            );
+        }
+        let metadata = authority.export_backup();
         let mut bytes = vec![];
         write_domain(&metadata, &mut bytes)?;
         let StagedBackup::Domain(restored) = stage(Cursor::new(bytes), Path::new("unused"))? else {
@@ -487,6 +512,14 @@ mod tests {
             serde_json::to_value(&restored)?,
             serde_json::to_value(&metadata)?
         );
+        let reopened = restored.into_authority(vec![]).unwrap();
+        for (credential, expected) in identities {
+            let actual = reopened.user_for_credential(&credential).unwrap().profile();
+            assert_eq!(
+                serde_json::to_value(actual)?,
+                serde_json::to_value(expected)?
+            );
+        }
         let bytes = pack(vec![
             (MANIFEST, record(&Metadata::Domain(metadata))?),
             (HISTORY, vec![]),

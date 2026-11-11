@@ -1,6 +1,6 @@
 # Piik 3.0 Sites, Rooms And Networking
 
-Accepted direction updated 2026-11-10. This document owns the isolated 3.0 responsibility
+Accepted direction updated 2026-11-11. This document owns the isolated 3.0 responsibility
 and networking design. The [prototype README](../../prototype/channel-server/README.md)
 describes running behavior; [TODO](../todo.md) owns implementation and decisions.
 The [2.x routing contract](../standards/routing-transport.md) remains unchanged.
@@ -173,6 +173,24 @@ or shared authority between those domains.
 Peer media forwarding terminates hop encryption at admitted relays. Room access
 must cover every relay; this model does not add end-to-end encryption against
 those forwarding endpoints.
+
+### Capacity And Identity
+
+The current support and acceptance scale is **20 distinct users participating
+in realtime activity per room**, with multiple rooms on one site. Browser and
+App endpoints belonging to the same user do not represent two people. This is
+not a new hard person-count admission rule: routing candidates, automatic relay
+selection and file-source recovery keep their existing owners. Pure conversation
+does not require a peer route. Future scale increases extend the same model and
+its resource acceptance rather than adding another room or participant type.
+
+Physical endpoints retain a separate finite resource budget. It must accommodate
+the accepted multi-room scale, including App endpoints and explicit Server
+hosting. Relay fanout remains an independent forwarding preference, not a site
+or room headcount. The [room-data model](./channel-storage-and-identity.md#identity-and-profile-reading)
+owns retained identity and bounded profile reads; historical users do not consume
+live connection capacity. The [runtime reference](../../prototype/channel-server/README.md)
+owns current resource values and explicit capacity checks.
 
 ## Routing Foundation
 

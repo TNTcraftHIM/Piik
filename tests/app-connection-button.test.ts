@@ -11,6 +11,7 @@ import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 import type { ChannelController } from "../src/client/channel/types";
 import { setCopy, t } from "../src/client/ui/copy";
 import { channelAppDiscovery } from "../src/client/channel/app-link";
+import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
 import { NATIVE_CLIENT_PORT_START } from "../src/client/native/discovery-ports";
 
 vi.mock("react", async importOriginal => {
@@ -223,7 +224,7 @@ describe("App connection approval", () => {
       const url = new URL(input), port = Number(url.port);
       if (port === NATIVE_CLIENT_PORT_START) return Response.json({ service: "piik-client", protocol: 10, port, instanceToken: "fixture-token" });
       if (current && port === NATIVE_CLIENT_PORT_START + 1) {
-        const identity = { service: "piik-channel-app", protocol: 7, port };
+        const identity = { service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port };
         if (url.pathname === "/connect-discovery") return Response.json({ ...identity, connectURL: `http://127.0.0.1:${port}/client` });
         return authorized ? Response.json({ ...identity, token: "fixture-token" }) : new Response(null, { status: 403 });
       }
@@ -251,7 +252,7 @@ describe("App connection approval", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: string) => {
       const port = Number(new URL(input).port);
       if (port !== NATIVE_CLIENT_PORT_START) throw new TypeError("No fixture App");
-      return Response.json({ service: "piik-channel-app", protocol: 7, port, token: "fixture-token" });
+      return Response.json({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port, token: "fixture-token" });
     }));
     await expect(discovery.health()).resolves.toMatchObject({ port: NATIVE_CLIENT_PORT_START });
   });

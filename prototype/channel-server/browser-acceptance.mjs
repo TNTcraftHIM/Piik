@@ -1121,7 +1121,7 @@ async function profileControls(roomId, messageId) {
   const member = (await view(1)).self, owner = (await view(0)).self;
   const name = "Profile member";
   const memberProfile = index => evaluate(index,
-    `${hook}.snapshot().state.users.find(user => user.id === ${JSON.stringify(member.id)})`);
+    `${hook}.snapshot().profiles.get(${JSON.stringify(member.id)})`);
   const messageAvatar = () => evaluate(0, `(() => {
     const row = document.querySelector('[data-message-id=' + CSS.escape(${JSON.stringify(messageId)}) + ']');
     const image = row?.querySelector(':scope > .lr-person image');

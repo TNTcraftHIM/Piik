@@ -48,6 +48,189 @@ fn join(core: &mut Authority, connection: Uuid, owner: bool, now: u64) -> (Uuid,
     )
 }
 
+fn profiles(
+    core: &mut Authority,
+    connection: Uuid,
+    ids: Vec<Uuid>,
+    now: u64,
+) -> Vec<piik_channel_core::wire::UserInfo> {
+    apply(
+        core,
+        connection,
+        json!({"type":"profiles","requestId":"profiles","ids":ids}),
+        now,
+    )
+    .events
+    .into_iter()
+    .find_map(|(_, event)| match event {
+        Event::Profiles { profiles, .. } => Some(profiles),
+        _ => None,
+    })
+    .unwrap()
+}
+
+#[test]
+fn retained_profiles_are_read_in_bounded_pages_without_consuming_live_identity_capacity() {
+    let mut core = Authority::new("owner".into(), vec![]).unwrap();
+    let owner = Uuid::new_v4();
+    let (_, _, initial) = join(&mut core, owner, true, 0);
+    let owner_id = initial.users[0].id;
+    let image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+    let mut retained = Vec::new();
+    for index in 0..75 {
+        let connection = Uuid::new_v4();
+        let (session, credential, state) = join(&mut core, connection, false, 0);
+        let id = state
+            .sessions
+            .iter()
+            .find(|endpoint| endpoint.id == session)
+            .unwrap()
+            .user_id;
+        apply(
+            &mut core,
+            connection,
+            json!({"type":"set_profile","name":format!("Friend {index}"),"avatar":image}),
+            0,
+        );
+        retained.push((id, credential));
+        apply(&mut core, connection, json!({"type":"leave"}), 0);
+    }
+    let current = profiles(&mut core, owner, vec![retained[0].0, Uuid::new_v4()], 0);
+    assert_eq!(current.len(), 1);
+    assert_eq!(current[0].avatar.as_deref(), Some(image));
+    let original_version = current[0].version.clone();
+    let mut cursor = None;
+    let mut listed = Vec::new();
+    loop {
+        let page = apply(
+            &mut core,
+            owner,
+            json!({"type":"profiles","requestId":"page","after":cursor,"query":"  FRIEND "}),
+            0,
+        );
+        let (profiles, total, next) = page
+            .events
+            .into_iter()
+            .find_map(|(_, event)| match event {
+                Event::Profiles {
+                    profiles,
+                    total,
+                    next_cursor,
+                    ..
+                } => Some((profiles, total, next_cursor)),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(total, 76);
+        assert!(profiles.len() <= piik_channel_core::PROFILE_PAGE_SIZE);
+        listed.extend(profiles.into_iter().map(|profile| profile.id));
+        cursor = next;
+        if cursor.is_none() {
+            break;
+        }
+    }
+    assert_eq!(listed.len(), 76);
+    assert!(listed.windows(2).all(|pair| pair[0] < pair[1]));
+    for query in [
+        json!({"type":"profiles","requestId":"bad","ids":vec![owner_id;33]}),
+        json!({"type":"profiles","requestId":"bad","ids":[owner_id],"query":"Friend"}),
+        json!({"type":"profiles","requestId":"bad","query":"x".repeat(41)}),
+    ] {
+        assert!(apply(&mut core, owner, query, 0).events.iter().any(
+            |(_, e)| matches!(e, Event::Error { code, .. } if code == "invalid_profile_query")
+        ));
+    }
+    let checkpoint = serde_json::to_value(core.export_backup()).unwrap();
+    assert!(checkpoint["state"]["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|user| user.get("version").is_none()));
+    let metadata: piik_channel_core::backup::DomainMetadata =
+        serde_json::from_value(checkpoint).unwrap();
+    let mut restored = metadata.into_authority(vec![]).unwrap();
+    let connection = Uuid::new_v4();
+    let joined = apply(
+        &mut restored,
+        connection,
+        json!({"type":"join","credential":retained[0].1,"name":"Old display"}),
+        1,
+    );
+    let (self_profile, state) = joined
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::Welcome {
+                self_profile,
+                state,
+                ..
+            } => Some((self_profile, state)),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(self_profile.version, original_version);
+    assert_eq!(self_profile.avatar.as_deref(), Some(image));
+    assert_eq!(state.channel.user_count, 76);
+    assert_eq!(state.users.len(), 2); // current endpoint and the offline site owner
+    assert!(serde_json::to_value(&state.users)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|user| user.get("avatar").is_none()));
+    apply(
+        &mut restored,
+        connection,
+        json!({"type":"set_profile","name":"New name","avatar":null}),
+        2,
+    );
+    let changed = profiles(&mut restored, connection, vec![self_profile.id], 2).remove(0);
+    assert_ne!(changed.version, original_version);
+    assert!(changed.avatar.is_none());
+    let (_, _, state) = join(&mut restored, Uuid::new_v4(), false, 3);
+    assert_eq!(state.channel.user_count, 77);
+    for name in ["Caf\u{e9}", "Cafe\u{301}"] {
+        apply(
+            &mut restored,
+            connection,
+            json!({"type":"set_profile","name":name,"avatar":null}),
+            4,
+        );
+        for query in ["CAF\u{c9}", "CAFE\u{301}"] {
+            let found = apply(
+                &mut restored,
+                connection,
+                json!({"type":"profiles","requestId":"normalized","query":query}),
+                4,
+            );
+            assert!(
+                found.events.iter().any(
+                    |(_, event)| matches!(event, Event::Profiles { profiles, total:1, .. }
+                if profiles.len()==1 && profiles[0].id==self_profile.id && profiles[0].name==name)
+                ),
+                "name {name:?} must match query {query:?}"
+            );
+        }
+    }
+    let name = "\u{e9}".repeat(40);
+    apply(
+        &mut restored,
+        connection,
+        json!({"type":"set_profile","name":name,"avatar":null}),
+        5,
+    );
+    let found = apply(
+        &mut restored,
+        connection,
+        json!({"type":"profiles","requestId":"normalized-limit","query":"e\u{301}".repeat(40)}),
+        5,
+    );
+    assert!(found.events.iter().any(
+        |(_, event)| matches!(event, Event::Profiles { profiles, total:1, .. }
+        if profiles.len()==1 && profiles[0].id==self_profile.id && profiles[0].name==name)
+    ));
+}
+
 #[test]
 fn domain_protocol_rejects_old_clients_before_admission() {
     let mut core = Authority::new("owner".into(), vec![]).unwrap();
@@ -377,7 +560,7 @@ fn admission_expires_old_endpoint_without_requiring_a_transport_timer() {
     join(&mut core, owner, true, 0);
     let old = Uuid::new_v4();
     let (old_session, credential, _) = join(&mut core, old, false, 0);
-    for _ in 0..18 {
+    for _ in 0..piik_channel_core::MAX_SESSIONS - 2 {
         join(&mut core, Uuid::new_v4(), false, 0);
     }
     core.disconnect(old, 100);
@@ -402,7 +585,7 @@ fn admission_expires_old_endpoint_without_requiring_a_transport_timer() {
     );
     let (new_session, _, state) = welcome(renewed, current);
     assert_ne!(old_session, new_session);
-    assert_eq!(state.sessions.len(), 20);
+    assert_eq!(state.sessions.len(), piik_channel_core::MAX_SESSIONS);
     assert!(!state
         .sessions
         .iter()
@@ -443,7 +626,12 @@ fn domain_checkpoint_and_backup_preserve_profile_across_endpoint_admission() {
         let connection = Uuid::new_v4();
         let (_, _, state) = welcome(apply(&mut restored, connection, admission, 2), connection);
         assert_eq!(state.users[0].name, "Saved owner");
-        assert_eq!(state.users[0].avatar.as_deref(), Some(avatar));
+        assert_eq!(
+            profiles(&mut restored, connection, vec![state.users[0].id], 2)[0]
+                .avatar
+                .as_deref(),
+            Some(avatar)
+        );
         assert_eq!(restored.owner_name(), Some("Saved owner"));
     }
     let mut old = checkpoint;
@@ -493,12 +681,9 @@ fn profile_update_and_clear_follow_the_user_across_live_endpoints() {
             .find(|user| user.id == user_id)
             .unwrap();
         assert_eq!(user.name, "Same friend");
-        assert_eq!(user.avatar.as_deref(), Some(avatar));
-        assert!(snapshot
-            .users
-            .iter()
-            .filter(|user| user.id != user_id)
-            .all(|user| user.avatar.is_none()));
+        let profile = profiles(&mut core, connection, vec![user_id], 3).remove(0);
+        assert_eq!(profile.avatar.as_deref(), Some(avatar));
+        assert_eq!(user.version, profile.version);
     }
     assert!(updated.events.iter().any(|(target, event)| *target == first
         && matches!(event, Event::Ack { request_id } if request_id == "profile")));
@@ -514,28 +699,36 @@ fn profile_update_and_clear_follow_the_user_across_live_endpoints() {
         resumed,
     );
     assert_eq!(
-        snapshot
-            .users
-            .iter()
-            .find(|user| user.id == user_id)
-            .unwrap()
+        profiles(&mut core, resumed, vec![user_id], 5)[0]
             .avatar
             .as_deref(),
         Some(avatar)
     );
+    let previous_version = snapshot
+        .users
+        .iter()
+        .find(|user| user.id == user_id)
+        .unwrap()
+        .version
+        .clone();
     let cleared = apply(
         &mut core,
         second,
         json!({"type":"set_profile", "name":"Same friend", "avatar":null}),
         6,
     );
-    assert!(state(&cleared, resumed)
-        .users
-        .iter()
-        .find(|user| user.id == user_id)
-        .unwrap()
+    assert!(profiles(&mut core, resumed, vec![user_id], 6)[0]
         .avatar
         .is_none());
+    assert_ne!(
+        state(&cleared, resumed)
+            .users
+            .iter()
+            .find(|user| user.id == user_id)
+            .unwrap()
+            .version,
+        previous_version
+    );
     assert!(serde_json::to_value(core.export_state()).unwrap()["users"]
         .as_array()
         .unwrap()

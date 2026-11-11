@@ -128,6 +128,19 @@ fn profile_storage_failure_preserves_the_shared_user_until_commit_and_reopen() {
     .unwrap();
     let avatar = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
     let user;
+    let committed_profile;
+    let read_profile = |hub: &mut Hub, endpoint: &mut Endpoint, user: Uuid| {
+        endpoint.request(
+            hub,
+            json!({"type":"profiles","requestId":"read-profile","ids":[user]}),
+        );
+        endpoint
+            .drain()
+            .into_iter()
+            .find(|event| event["type"] == "profiles")
+            .unwrap()["profiles"][0]
+            .clone()
+    };
     {
         let mut hub = domain.hub.lock().unwrap();
         let mut owner = Endpoint::join(&mut hub, "owner");
@@ -135,6 +148,7 @@ fn profile_storage_failure_preserves_the_shared_user_until_commit_and_reopen() {
         user = owner.user;
         owner.drain();
         observer.drain();
+        let initial_profile = read_profile(&mut hub, &mut owner, user);
         let saved = hub.storage.lock().unwrap().load().unwrap().unwrap();
         let failure = rusqlite::Connection::open(folder.path().join("channel.sqlite")).unwrap();
         failure.execute_batch("CREATE TRIGGER reject_profile BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'held'); END;").unwrap();
@@ -149,6 +163,7 @@ fn profile_storage_failure_preserves_the_shared_user_until_commit_and_reopen() {
         assert!(observer.drain().is_empty());
         assert_eq!(hub.storage.lock().unwrap().load().unwrap().unwrap(), saved);
         assert_eq!(hub.authority.owner_name(), Some("Friend"));
+        assert_eq!(read_profile(&mut hub, &mut observer, user), initial_profile);
         failure
             .execute_batch("DROP TRIGGER reject_profile")
             .unwrap();
@@ -157,21 +172,36 @@ fn profile_storage_failure_preserves_the_shared_user_until_commit_and_reopen() {
             .drain()
             .iter()
             .any(|event| event["type"] == "ack" && event["requestId"] == "retry"));
-        assert!(observer.drain().iter().any(|event| event["type"] == "state"
-            && event["state"]["users"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|entry| entry["id"] == user.to_string()
-                    && entry["name"] == "New profile"
-                    && entry["avatar"] == avatar)));
+        let summary = observer
+            .drain()
+            .into_iter()
+            .find_map(|event| {
+                (event["type"] == "state").then(|| {
+                    event["state"]["users"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|entry| entry["id"] == user.to_string())
+                        .unwrap()
+                        .clone()
+                })
+            })
+            .unwrap();
+        assert_eq!(summary["name"], "New profile");
+        assert!(summary.get("avatar").is_none());
+        assert_ne!(summary["version"], initial_profile["version"]);
+        committed_profile = read_profile(&mut hub, &mut observer, user);
+        assert_eq!(committed_profile["name"], "New profile");
+        assert_eq!(committed_profile["avatar"], avatar);
+        assert_eq!(committed_profile["version"], summary["version"]);
     }
     drop(domain);
     let reopened =
         Domain::open(folder.path(), "", "http://localhost".into(), None, vec![]).unwrap();
     let mut hub = reopened.hub.lock().unwrap();
-    let owner = Endpoint::join(&mut hub, "owner");
+    let mut owner = Endpoint::join(&mut hub, "owner");
     assert_eq!(owner.user, user);
+    assert_eq!(read_profile(&mut hub, &mut owner, user), committed_profile);
     let saved = serde_json::to_value(hub.authority.export_state()).unwrap();
     assert!(saved["users"]
         .as_array()
@@ -1715,17 +1745,28 @@ async fn room_backup_http_restores_native_history_and_reopens_named_imports() {
     assert_eq!(status, 200);
     let identified: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(identified["domainId"], state.channel.id.to_string());
-    assert_eq!(
-        identified["user"],
-        serde_json::to_value(
-            state
-                .users
-                .iter()
-                .find(|user| Some(user.id) == state.channel.owner_id)
-                .unwrap()
-        )
-        .unwrap()
-    );
+    send_request(
+        &mut owner,
+        json!({"type":"profiles","ids":[state.channel.owner_id.unwrap()]}),
+    )
+    .await;
+    let profile = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            match event(&mut owner).await {
+                Event::Profiles {
+                    mut profiles,
+                    total: 1,
+                    next_cursor: None,
+                    ..
+                } => break profiles.pop().unwrap(),
+                Event::Error { code, .. } => panic!("profile read failed: {code}"),
+                _ => {}
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(identified["user"], serde_json::to_value(profile).unwrap());
     assert_eq!(
         serde_json::to_value(hub.lock().unwrap().authority.export_backup()).unwrap(),
         saved

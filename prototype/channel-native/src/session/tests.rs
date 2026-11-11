@@ -1,6 +1,22 @@
 use super::*;
 use serde_json::json;
 
+fn self_profile(state: &Snapshot, session: Uuid) -> piik_channel_core::wire::UserInfo {
+    let user_id = state
+        .sessions
+        .iter()
+        .find(|endpoint| endpoint.id == session)
+        .unwrap()
+        .user_id;
+    let user = state.users.iter().find(|user| user.id == user_id).unwrap();
+    piik_channel_core::wire::UserInfo {
+        id: user.id,
+        name: user.name.clone(),
+        avatar: None,
+        version: user.version.clone(),
+    }
+}
+
 #[tokio::test]
 async fn resumed_endpoint_retires_its_missing_host_after_a_deleted_output_cannot_be_sent() {
     use piik_channel_core::{
@@ -115,6 +131,7 @@ async fn resumed_endpoint_retires_its_missing_host_after_a_deleted_output_cannot
         .event(
             Event::Welcome {
                 protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+                self_profile: self_profile(&state, native),
                 credential: "fixture".into(),
                 session_id: native,
                 state,
@@ -525,16 +542,15 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
         json!({
             "id":id,"name":id,"icon":"couch","creatorId":owner,"access":"private","hidden":true,
             "hasPassword":false,"voiceBitrate":64_000,"authorized":true,"canManage":false,"available":available,
-            "reading":false,"participantSessionIds":[],"capabilities":{"attachments":false},"delivery":delivery
+            "reading":false,"lastMessageSeq":0,"participantSessionIds":[],"realtimeSessionIds":[],"capabilities":{"attachments":false},"delivery":delivery
         })
     };
     let state: Snapshot = serde_json::from_value(json!({
         "channel":{"id":Uuid::new_v4(),"name":"Capture projection","icon":"couch","ownerId":owner,
-
-            "historyWindow":100,"rooms":[room("target",true,json!({
+            "userCount":2,"historyWindow":100,"rooms":[room("target",true,json!({
                 "hostSessionId":host,"bindingId":Uuid::new_v4(),"nextHops":{}
             })),room("offline",false,serde_json::Value::Null)]},
-        "users":[{"id":user,"name":"Source","avatar":null},{"id":owner,"name":"Owner","avatar":null}],
+        "users":[{"id":user,"name":"Source","version":"a".repeat(64)},{"id":owner,"name":"Owner","version":"b".repeat(64)}],
         "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]},
             {"id":host,"userId":owner,"online":true,"signingKey":vec![1;32]}],
         "files":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[]
@@ -564,6 +580,7 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
         .event(
             Event::Welcome {
                 protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+                self_profile: self_profile(&welcome, session_id),
                 credential: "fixture".into(),
                 session_id,
                 state: welcome,
@@ -935,15 +952,14 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                 json!({
                     "id":id,"name":id,"icon":"couch","creatorId":user,"access":"public","hidden":false,
                     "hasPassword":false,"voiceBitrate":64_000,"authorized":true,"canManage":true,"available":true,
-                    "reading":false,"participantSessionIds":[],"capabilities":{"attachments":false},
+                    "reading":false,"lastMessageSeq":0,"participantSessionIds":[],"realtimeSessionIds":[],"capabilities":{"attachments":false},
                     "delivery":{"hostSessionId":Uuid::new_v4(),"bindingId":binding,"nextHops":{}}
                 })
             };
             let mut state: Snapshot = serde_json::from_value(json!({
             "channel":{"id":Uuid::new_v4(),"name":"Capture lifecycle","icon":"couch","ownerId":user,
-
-                "historyWindow":100,"rooms":[room("affected"),room("other")]},
-            "users":[{"id":user,"name":"Source","avatar":null}],
+                "userCount":1,"historyWindow":100,"rooms":[room("affected"),room("other")]},
+            "users":[{"id":user,"name":"Source","version":"a".repeat(64)}],
             "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]}],
             "files":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[]
         }))
@@ -969,6 +985,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                 .event(
                     Event::Welcome {
                         protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
+                        self_profile: self_profile(&state, session_id),
                         credential: "fixture".into(),
                         session_id,
                         state: state.clone(),

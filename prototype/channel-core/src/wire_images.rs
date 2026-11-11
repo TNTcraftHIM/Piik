@@ -8,7 +8,6 @@ use uuid::Uuid;
 struct Images {
     domain: Option<Uuid>,
     site: Option<Value>,
-    users: BTreeMap<String, Value>,
     rooms: BTreeMap<String, Value>,
 }
 
@@ -17,16 +16,6 @@ impl Images {
         Self {
             domain: Some(state.channel.id),
             site: Some(serde_json::to_value(&state.channel.icon).unwrap()),
-            users: state
-                .users
-                .iter()
-                .map(|user| {
-                    (
-                        user.id.to_string(),
-                        serde_json::to_value(&user.avatar).unwrap(),
-                    )
-                })
-                .collect(),
             rooms: state
                 .channel
                 .rooms
@@ -64,19 +53,6 @@ impl Images {
                 .and_then(|id| self.rooms.get(id))
                 .filter(|_| same_domain);
             field(room, "icon", previous, decode)?;
-        }
-        for user in state
-            .get_mut("users")
-            .and_then(Value::as_array_mut)
-            .ok_or("invalid_channel_event")?
-        {
-            let user = user.as_object_mut().ok_or("invalid_channel_event")?;
-            let previous = user
-                .get("id")
-                .and_then(Value::as_str)
-                .and_then(|id| self.users.get(id))
-                .filter(|_| same_domain);
-            field(user, "avatar", previous, decode)?;
         }
         Ok(())
     }
@@ -184,7 +160,6 @@ mod tests {
         };
         let image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==".to_owned();
         let user = state.users[0].id;
-        state.users[0].avatar = Some(image.clone());
         state.channel.icon = image.clone().try_into().unwrap();
         state.channel.rooms.push(
             crate::RoomState::new(
@@ -229,7 +204,7 @@ mod tests {
             Some("missing_identity_image")
         );
         let mut new_subject = value.clone();
-        new_subject["state"]["users"][0]["id"] = json!(Uuid::new_v4());
+        new_subject["state"]["channel"]["rooms"][0]["id"] = json!(Uuid::new_v4());
         assert_eq!(
             decoder.decode(&new_subject.to_string()).err(),
             Some("missing_identity_image")
@@ -237,7 +212,7 @@ mod tests {
         // A malformed frame never advances the last valid image facts.
         assert!(decoder.decode(&compact).is_ok());
         let replacement = image.replace("HwAFgAI", "HwAFgAJ");
-        state.users[0].avatar = Some(replacement);
+        state.channel.rooms[0].icon = replacement.try_into().unwrap();
         state.channel.icon = "star".to_owned().try_into().unwrap();
         let changed = encoder
             .encode(&Event::State {
@@ -245,18 +220,21 @@ mod tests {
             })
             .unwrap();
         let changed_value: Value = serde_json::from_str(&changed).unwrap();
-        assert!(changed_value["state"]["users"][0].get("avatar").is_some());
+        assert!(changed_value["state"]["channel"]["rooms"][0]
+            .get("icon")
+            .is_some());
         assert_eq!(changed_value["state"]["channel"]["icon"], "star");
         decoder.decode(&changed).unwrap();
-        state.users[0].avatar = None;
+        state.channel.rooms[0].icon = "couch".to_owned().try_into().unwrap();
         let cleared = encoder
             .encode(&Event::State {
                 state: state.clone(),
             })
             .unwrap();
-        assert!(
-            serde_json::from_str::<Value>(&cleared).unwrap()["state"]["users"][0]["avatar"]
-                .is_null()
+        assert_eq!(
+            serde_json::from_str::<Value>(&cleared).unwrap()["state"]["channel"]["rooms"][0]
+                ["icon"],
+            "couch"
         );
         decoder.decode(&cleared).unwrap();
         state.users.clear();
@@ -264,7 +242,7 @@ mod tests {
         decoder
             .decode(&encoder.encode(&Event::State { state }).unwrap())
             .unwrap();
-        assert!(decoder.0.users.is_empty() && decoder.0.rooms.is_empty());
+        assert!(decoder.0.rooms.is_empty());
         assert_eq!(
             decoder.decode(&compact).err(),
             Some("missing_identity_image")

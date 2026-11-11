@@ -14,9 +14,9 @@ import { ChannelSettingsDialog, ChannelSettingsTabs, useSettingsAction, type Set
 import { ChannelIdentityFields } from "./ChannelIdentity";
 import "./channel-room-controls.css";
 import { BackupControls } from "./BackupControls";
-import { messageAuthorName } from "../presentation";
+import { messageAuthorName, userProfile } from "../presentation";
 
-export function RoomChatExport({ messages, users }: { messages: readonly ChannelMessage[]; users: readonly ChannelUser[] }) {
+export function RoomChatExport({ messages, users }: { messages: readonly ChannelMessage[]; users: readonly Pick<ChannelUser, "id" | "name">[] }) {
   const { lang, vis } = useCopy(), zh = lang === "zh";
   return <section className="c3-room-transcript" aria-label={zh ? "文字记录" : "Chat text"}>
     {!vis && <p>{zh ? "导出此页面已加载的文字。" : "Exports the text loaded on this page."}</p>}
@@ -231,6 +231,12 @@ function RoomSettings({ channel, room, onClose }: {
   const removing = channel.pending.has(`delete:${room.id}`);
   const working = busy || backupBusy || removing;
   const members = room.members?.filter(userId => userId !== room.creatorId && userId !== channel.state?.channel.ownerId) ?? [];
+  const [membersError, setMembersError] = useState(false);
+  useEffect(() => {
+    let current = true; setMembersError(false);
+    if (room.canManage && room.members?.length) void channel.loadProfiles(room.members).catch(() => { if (current) setMembersError(true); });
+    return () => { current = false; };
+  }, [room.id, room.members, room.canManage, channel.loadProfiles, channel.connection]);
   const tasks = [
     ...(room.canManage ? [{ value: "room", label: zh ? "房间" : "Room", icon: "couch", hint: "hint-advanced" } as const] : []),
     ...(room.authorized ? [{ value: "relay", label: zh ? "连接" : "Connection", icon: "branch", hint: "hint-relay-volunteer" } as const] : []),
@@ -249,10 +255,11 @@ function RoomSettings({ channel, room, onClose }: {
           {members.length > 0 && <details className="c3-room-members">
             <summary>{zh ? "已获准的用户" : "Users with access"}</summary>
             {members.map(userId =>
-              <div key={userId}><span>{channel.state?.users.find(user => user.id === userId)?.name ?? (zh ? "用户" : "User")}</span>
+              <div key={userId}><span>{userProfile(channel.state, channel.profiles, userId)?.name ?? (zh ? "用户" : "User")}</span>
                 <ChannelAction icon="x" quiet iconOnly label={zh ? "移除房间资格" : "Remove room access"} hint="hint-close"
                   busy={channel.pending.has(`revoke:${room.id}:${userId}`)} disabled={!available || working}
                   onClick={() => { void run(() => channel.revokeRoomAccess(room.id, userId, false)); }} /></div>)}
+            {membersError && <p role="status">{zh ? "未能读取用户资料，请重新打开重试。" : "Could not load user profiles. Reopen to retry."}</p>}
           </details>}
         </section>}
         {room.authorized && <section id={`${id}-relay`} role="tabpanel" aria-labelledby={`${id}-relay-tab`} hidden={selected !== "relay"}>
@@ -261,7 +268,7 @@ function RoomSettings({ channel, room, onClose }: {
         </section>}
         {(room.authorized || room.canManage) && <section id={`${id}-data`} role="tabpanel" aria-labelledby={`${id}-data-tab`} hidden={selected !== "data"}>
           <h3>{zh ? "记录与备份" : "Records and backups"}</h3>
-          {room.authorized && <RoomChatExport messages={channel.messagesByRoom[room.id] ?? []} users={channel.state?.users ?? []} />}
+          {room.authorized && <RoomChatExport messages={channel.messagesByRoom[room.id] ?? []} users={[...(channel.state?.users ?? []), ...channel.profiles.values()]} />}
           {room.canManage && backupAvailable && <RoomCopyExport channel={channel} roomId={room.id} run={run}
             disabled={!available || busy || removing} busy={backupBusy} />}
           {room.canManage && backupAvailable && <h3>{zh ? "房间完整备份" : "Full room backup"}</h3>}

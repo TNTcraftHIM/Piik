@@ -6,3 +6,5 @@
 .c3-mention-suggestions [role="option"][aria-selected="true"] { background: var(--control-hover); }
 .c3-mention-suggestions [role="option"] > svg { flex: none; width: 25px; height: 30px; }
 .c3-mention-suggestions [role="option"] > span { overflow-wrap: anywhere; min-width: 0; }
+.c3-mention-more { flex: none; padding: 4px; }
+.c3-mention-more p { margin: 0; font-size: 12px; color: var(--muted); }

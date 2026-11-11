@@ -16,17 +16,16 @@ const source = { kind: "screen", name: null };
 
 async function connect(t, join = {}) {
   const socket = new WebSocket(endpoint, { origin });
-  const decoder = new ChannelEventDecoder(), transferredImages = new WeakMap();
+  const decoder = new ChannelEventDecoder();
   const inbox = [], waiters = [];
   const recent = [];
   let closeCode;
   socket.on("close", code => { closeCode = code; });
   socket.on("message", bytes => {
     const raw = JSON.parse(bytes.toString());
-    const avatars = ["welcome", "state"].includes(raw.type)
-      ? new Set(raw.state.users.filter(user => Object.hasOwn(user, "avatar")).map(user => user.id)) : undefined;
+    if (["welcome", "state"].includes(raw.type))
+      assert(raw.state.users.every(user => !Object.hasOwn(user, "avatar")), "live summaries keep avatars in the profile path");
     const event = decoder.decode(raw, bytes.byteLength);
-    if (avatars) transferredImages.set(event, avatars);
     recent.push({ type: event.type,
       ...(event.type === "error" ? { code: event.code } : {}),
       ...(event.type === "room_reply" ? { result: event.result.type, code: event.result.code } : {}),
@@ -55,10 +54,10 @@ async function connect(t, join = {}) {
   };
   t.after(() => { socket.terminate(); for (const waiter of waiters) clearTimeout(waiter.timer); });
   await once(socket, "open");
-  const client = { socket, wait, transferredImages,
+  const client = { socket, wait,
     async request(command) {
       const requestId = randomUUID();
-      const response = wait(event => event.requestId === requestId && ["ack", "error", "room_reply"].includes(event.type), command.type);
+      const response = wait(event => event.requestId === requestId && ["ack", "error", "room_reply", "profiles"].includes(event.type), command.type);
       socket.send(JSON.stringify({ ...command, requestId }));
       const result = await response;
       if (result.type === "error" || result.result?.type === "error") {
@@ -121,8 +120,11 @@ test("authenticated users, signed conversation and selective source ownership", 
   const friendUser = friend.welcome.state.sessions.find(session => session.id === friend.welcome.sessionId).userId;
   const avatar = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
   assert.equal((await friend.request({ type: "set_profile", name: "Friend check", avatar })).type, "ack");
-  const updated = await other.wait(event => event.type === "state" && event.state.users.some(user => user.id === friendUser && user.avatar === avatar), "profile image broadcast");
-  assert(other.transferredImages.get(updated).has(friendUser));
+  const updated = await other.wait(event => event.type === "state" && event.state.users.some(user => user.id === friendUser
+    && user.version !== friend.welcome.selfProfile.version), "profile version broadcast");
+  const profile = (await other.request({ type: "profiles", ids: [friendUser] })).profiles[0];
+  assert.equal(profile.avatar, avatar);
+  assert.equal(profile.version, updated.state.users.find(user => user.id === friendUser).version);
   const roomId = state.channel.rooms[0].id;
   if (!state.channel.rooms[0].available) await owner.wait(event => event.type === "state"
     && event.state.channel.rooms.some(room => room.id === roomId && room.available), "Server room host available after cleanup");
@@ -145,8 +147,7 @@ test("authenticated users, signed conversation and selective source ownership", 
   assert.equal((await other.request({ type: "unpublish", publicationId })).type, "error");
   assert.equal((await other.request({ type: "subscribe", publicationId, enabled: true })).type, "ack");
   const routed = await other.wait(event => event.type === "state" && event.state.pairs.some(pair => pair.incoming.some(flow => flow.publicationId === publicationId)), "admitted subscription");
-  assert.equal(routed.state.users.find(user => user.id === friendUser).avatar, avatar);
-  assert(!other.transferredImages.get(routed).has(friendUser), "route updates reuse the confirmed image on this socket");
+  assert.equal(routed.state.users.find(user => user.id === friendUser).version, profile.version);
   assert(routed.state.pairs.every(pair => pair.peerId !== other.welcome.sessionId));
   assert.equal((await owner.request({ type: "signal", pairId: randomUUID(), payload: { resync: true } })).type, "ack",
     "an unknown or retired pair cannot restore its transport lease");

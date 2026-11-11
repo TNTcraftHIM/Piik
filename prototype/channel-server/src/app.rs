@@ -504,13 +504,13 @@ async fn access(
 }
 async fn discovery(State(app): State<Arc<App>>) -> Json<Value> {
     Json(
-        json!({"service":SERVICE,"protocol":PROTOCOL,"port":app.port,
+        json!({"service":SERVICE,"protocol":PROTOCOL,"domainProtocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"port":app.port,
         "connectURL":format!("http://127.0.0.1:{}/client",app.port)}),
     )
 }
 async fn health(State(app): State<Arc<App>>) -> Json<Value> {
     Json(
-        json!({"service":SERVICE,"protocol":PROTOCOL,"port":app.port,"token":app.token,
+        json!({"service":SERVICE,"protocol":PROTOCOL,"domainProtocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"port":app.port,"token":app.token,
         "version":BUILD_VERSION,"revision":BUILD_REVISION,"packageTarget":PACKAGE_TARGET}),
     )
 }

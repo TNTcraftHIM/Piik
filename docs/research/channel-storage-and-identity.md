@@ -22,7 +22,7 @@ arrangement adds a storage server, a second application or a configuration task.
 | Domain identity, users and room-to-owner binding | Domain runtime's durable data. Clients and room runtimes receive authenticated identity facts. |
 | Room name, icon, access and grants | Room runtime's durable data. The domain directory holds only its authorized summary. |
 | Identity images | Small retained metadata at their domain or room owner; independent of the uploader's live session. The directory carries the authorized room summary. |
-| Messages, attachment descriptions and small inline images | Confirmed history at the room runtime; participants may keep readable local copies. |
+| Messages, attachment descriptions and bounded image renditions | Confirmed history at the room runtime; participants may keep readable local copies. |
 | File bytes | The sender and recipients that retain complete copies. The site operator does not automatically receive or store them. |
 | Presence, available file holders and active activities | Current authenticated sessions. Rebuild these facts when participants reconnect; a saved record does not prove present availability. |
 | Live sessions, voice, pictures and route plans | Their active runtimes. Reconnection reconciles existing work; a runtime restart establishes new sessions and activities. Saved data does not restore a call. |
@@ -32,6 +32,24 @@ A file sender owns its offered content, not the room's management or history.
 A local history copy grants no write authority. File forwarding and permanent
 storage are different work: an intermediate peer can relay bounded chunks
 without retaining the whole file.
+
+### Identity And Profile Reading
+
+The site retains user identities independently of live endpoints. A past visitor
+does not permanently consume an online slot, and admitting new friends does not
+delete historical authors, room ownership or room grants. The retained identity
+owner stays in the existing domain storage.
+
+Live projections carry the lightweight identities they currently reference.
+Full profiles and the offline directory are read in bounded batches through the
+existing authenticated domain connection. The Browser session owns one display
+cache, shared by the people list, mention search, conversation references and
+history export. A profile update refreshes the corresponding displayed record;
+cached names and pictures never grant room access or prove live participation.
+The offline list and mention search continue to cover the site's retained users,
+including records outside the current conversation page.
+Search compares NFC-normalized, case-insensitive names; it does not rewrite the
+name saved or displayed for that person.
 
 The owner accepted durable room history and attachment metadata, participant-held
 file copies and whole-file hash verification. Images and ordinary files share

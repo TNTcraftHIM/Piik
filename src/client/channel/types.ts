@@ -1,4 +1,4 @@
-import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomInvitationState, RoomSettings, PublicationReactionSnapshot, ChatOptions } from "./protocol";
+import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomInvitationState, RoomSettings, PublicationReactionSnapshot, ChatOptions, ProfilePage } from "./protocol";
 export type { ChatOptions } from "./protocol";
 import type { ChannelAttachments, DraftFile } from "./attachments";
 import type { FeedbackCue } from "./feedback-audio";
@@ -62,6 +62,7 @@ export interface ChannelView {
   state: ChannelSnapshot | null;
   sessionId: string | null;
   self: ChannelUser | null;
+  profiles: ReadonlyMap<string, ChannelUser>;
   connection: "connecting" | "connected" | "reconnecting" | "closed";
   messagesByRoom: Record<string, ChannelMessage[]>;
   historyByRoom: Record<string, { hasMore: boolean; before?: number; atLatest: boolean }>;
@@ -76,6 +77,8 @@ export interface ChannelView {
 }
 
 export interface ChannelActions {
+  queryProfiles(query: { after?: string; query?: string }, signal?: AbortSignal): Promise<ProfilePage>;
+  loadProfiles(ids: readonly string[], signal?: AbortSignal): Promise<ChannelUser[]>;
   setFeedbackSound(patch: Partial<RoomPreferences["feedbackSound"]>): void;
   previewFeedbackSound(cue?: FeedbackCue): void;
   setFeedbackClip(cue: FeedbackCue, file: File | null): Promise<void>;

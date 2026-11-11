@@ -24,11 +24,11 @@ describe("screen titles", () => {
 
 it("merges a user's real-time endpoints without treating chat-only presence as participation", () => {
   const state = snapshotSchema.parse({
-    channel: { id: "site", name: "Site", icon: "couch", ownerId: "self", historyWindow: 1000, rooms: [{
+    channel: { id: "site", name: "Site", icon: "couch", ownerId: "self", historyWindow: 1000, userCount: 3, rooms: [{
       id: "room", name: "Room", icon: "couch", creatorId: "self", access: "public", hidden: false,
       hasPassword: false, authorized: true, canManage: true, available: true, reading: true,
       participantSessionIds: ["self-page", "chat-page"], lastMessageSeq: 0, realtimeSessionIds: ["self-page", "self-helper", "route-peer"], capabilities: { attachments: true },
-    }] }, users: ["self", "chat", "route"].map(id => ({ id, name: id, avatar: null })),
+    }] }, users: ["self", "chat", "route"].map(id => ({ id, name: id, version: "a".repeat(64) })),
     sessions: [["self-page", "self"], ["self-helper", "self"], ["chat-page", "chat"], ["route-peer", "route"]]
       .map(([id, userId]) => ({ id, userId, online: true, signingKey: Array(32).fill(0) })),
     publications: [{ id: "screen", roomId: "room", sessionId: "self-helper", userId: "self", kind: "screen", paused: false,

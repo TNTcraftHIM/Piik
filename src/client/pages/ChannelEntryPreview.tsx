@@ -8,7 +8,6 @@ const cases = [
   { value: "connecting", zh: "连接中", en: "Connecting", error: null },
   { value: "offline", zh: "连接断开", en: "Disconnected", error: "disconnected" },
   { value: "capacity", zh: "连接已满", en: "Connection limit", error: "channel_full" },
-  { value: "users", zh: "用户数已满", en: "User limit", error: "user_limit" },
   { value: "runtime", zh: "组件加载失败", en: "Components unavailable", error: "room_runtime_unavailable" },
   { value: "version", zh: "版本不兼容", en: "Incompatible version", error: "incompatible_protocol" },
   { value: "browser", zh: "浏览器不支持", en: "Browser unsupported", error: "webassembly_unavailable" },

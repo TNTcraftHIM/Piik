@@ -3,7 +3,7 @@ import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
-import { MAX_MESSAGE_CODE_POINTS, type ChannelMessage, type ChannelUser } from "../protocol";
+import { MAX_MESSAGE_CODE_POINTS, type ChannelMessage, type ChannelUser, type ChannelUserSummary } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
 import { messageAuthorName } from "../presentation";
 import { ChannelAttachment } from "./ChannelAttachment";
@@ -14,7 +14,7 @@ import { BackButton } from "../../components/living/primitives";
 import type { RoomInteractionSession } from "../../lib/room-interactions";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { Tooltip } from "../../components/living/Tooltip";
-import type { ChatOptions } from "../types";
+import type { ChatOptions, ChannelController } from "../types";
 import { loadRoomHosting } from "../hosting";
 import { ChannelMentionSuggestions, editMentions, matchingMentionUsers, mentionQuery } from "./ChannelMentionSuggestions";
 import "./channel-conversation.css";
@@ -23,8 +23,9 @@ type Draft = { text: string; mentions: NonNullable<ChatOptions["mentions"]>; rep
 const emptyDraft: Draft = { text: "", mentions: [] };
 
 /** Browsing owns the conversation; drafts and reading position belong to this pane. */
-export function ChannelConversation({ roomId, roomName, roomIcon, entry, messages, users, selfUserId, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, onMessage, unreadAfter, onRead, interaction, onBack }: {
-  roomId: string; roomName: string; roomIcon?: string; messages: ChannelMessage[]; users: ChannelUser[];
+export function ChannelConversation({ roomId, roomName, roomIcon, entry, messages, users, profiles, queryProfiles, selfUserId, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, onMessage, unreadAfter, onRead, interaction, onBack }: {
+  roomId: string; roomName: string; roomIcon?: string; messages: ChannelMessage[]; users: ChannelUserSummary[];
+  profiles: ReadonlyMap<string, ChannelUser>; queryProfiles: ChannelController["queryProfiles"];
   entry?: ChannelEntry;
   selfUserId?: string | null;
   canSend: boolean; sending: boolean; hidden: boolean; available: boolean;
@@ -41,6 +42,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   const { lang } = useCopy();
   const surfaceDocument = useSurfaceDocument();
   const zh = lang === "zh";
+  const displayUsers = [...new Map([...profiles.values(), ...users].map(user => [user.id, user])).values()];
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const input = useRef<HTMLTextAreaElement>(null);
   const [selection, setSelection] = useState<{ start: number; end: number } | null>(null);
@@ -75,7 +77,36 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   const query = selection && !composing.current && mentionLimit !== null && draft.mentions.length < mentionLimit
     && !draft.mentions.some(mention => selection.start > mention.start && selection.start <= mention.end)
     ? mentionQuery(draft.text, selection.start, selection.end) : null;
-  const candidates = query ? matchingMentionUsers(users, query.query) : [];
+  const queryText = query && !hidden ? query.query : null;
+  const [mentionPage, setMentionPage] = useState<{ query: string; ids: string[]; next: string | null }>({ query: "", ids: [], next: null });
+  const [mentionLoading, setMentionLoading] = useState(false), [mentionFailed, setMentionFailed] = useState(false);
+  const mentionRequest = useRef<AbortController | null>(null);
+  const [mentionRetry, setMentionRetry] = useState(0);
+  const localCandidates = query ? matchingMentionUsers(users, query.query) : [];
+  const matchingIds = [...new Set([...localCandidates.map(user => user.id), ...(mentionPage.query === queryText ? mentionPage.ids : [])])];
+  const candidates = matchingIds.flatMap(id => {
+    const summary = users.find(user => user.id === id), profile = profiles.get(id);
+    return summary ? [{ ...summary, avatar: summary.version === profile?.version ? profile.avatar : null }]
+      : profile ? [profile] : [];
+  });
+  const moreMentions = mentionPage.query === queryText && mentionPage.next !== null;
+  async function loadMentions(after?: string) {
+    if (queryText === null) return;
+    mentionRequest.current?.abort();
+    const current = mentionRequest.current = new AbortController(), search = queryText;
+    setMentionLoading(true); setMentionFailed(false);
+    try {
+      const page = await queryProfiles({ query: search, ...(after ? { after } : {}) }, current.signal);
+      if (!current.signal.aborted) setMentionPage(previous => ({ query: search,
+        ids: [...new Set([...(after && previous.query === search ? previous.ids : []), ...page.profiles.map(user => user.id)])], next: page.nextCursor }));
+    } catch { if (!current.signal.aborted) setMentionFailed(true); }
+    finally { if (!current.signal.aborted) setMentionLoading(false); }
+  }
+  useEffect(() => {
+    setMentionPage({ query: queryText ?? "", ids: [], next: null }); setMentionIndex(0); setMentionFailed(false); setMentionLoading(false);
+    if (queryText !== null && available) void loadMentions();
+    return () => { mentionRequest.current?.abort(); };
+  }, [queryText, queryProfiles, available, roomId, mentionRetry]);
   const activeMention = Math.min(mentionIndex, candidates.length - 1);
   const textLength = Array.from(text).length;
   const textTooLong = textLength > MAX_MESSAGE_CODE_POINTS;
@@ -266,11 +297,11 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
           const newMessages = after !== undefined && message.seq > after && (!previous || previous.seq <= after);
           const grouped = !!previous && !newDay && !newMessages && !message.reply && previous.userId === message.userId && elapsed >= 0 && elapsed < 120_000;
           if (!grouped) authorMessageId = message.id;
-          const author = users.find(user => user.id === message.userId);
-          const name = messageAuthorName(message, users, zh ? "用户" : "User");
+          const author = profiles.get(message.userId), summary = users.find(user => user.id === message.userId);
+          const name = messageAuthorName(message, displayUsers, zh ? "用户" : "User");
           return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name} authorMessageId={authorMessageId}
-            avatar={author?.avatar ?? undefined}
-            users={users} selfUserId={selfUserId} unread={newMessages} onMessage={seq => { void showMessage(seq); }}
+            avatar={(!summary || summary.version === author?.version ? author?.avatar : null) ?? undefined}
+            users={displayUsers} selfUserId={selfUserId} unread={newMessages} onMessage={seq => { void showMessage(seq); }}
             onReply={() => { updateDraft(value => ({ ...value, reply: { seq: message.seq, notify: true, name, text: message.text || (zh ? "附件" : "Attachment") } })); input.current?.focus(); }}
             dateLabel={newDay ? date.toLocaleDateString(zh ? "zh-CN" : "en", { dateStyle: "long" }) : undefined}
             attachments={attachments} available={available} interaction={interaction} effectsEnabled={!hidden && !loadingHistory} />;
@@ -306,7 +337,11 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
           updateDraft(value => ({ ...value, reply: undefined })); input.current?.focus({ preventScroll: true });
         }} />
       </div>}
-      {query && <ChannelMentionSuggestions id={mentionId} anchor={input} users={candidates} activeIndex={activeMention} onActiveIndex={setMentionIndex} onSelect={selectMention} />}
+      {query && <ChannelMentionSuggestions id={mentionId} anchor={input} users={candidates} activeIndex={activeMention} onActiveIndex={setMentionIndex} onSelect={selectMention}
+        loading={mentionLoading} error={mentionFailed} hasMore={moreMentions} onMore={() => {
+          if (mentionFailed && !mentionPage.ids.length) setMentionRetry(value => value + 1);
+          else void loadMentions(mentionPage.next ?? undefined);
+        }} />}
       <div className="c3-compose-input">
       {attachmentsAvailable && <><input ref={chooser} type="file" multiple hidden onChange={event => { addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ""; }} />
         <ChannelAction icon="plus" label={zh ? "添加文件" : "Add files"} iconOnly quiet hint="hint-file-add"
@@ -325,7 +360,13 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
         onKeyDown={event => {
           if (composing.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
           if (query && event.key === "Escape") { event.preventDefault(); setSelection(null); return; }
-          if (query && candidates.length && (event.key === "ArrowDown" || event.key === "ArrowUp")) { event.preventDefault(); setMentionIndex((activeMention + (event.key === "ArrowDown" ? 1 : -1) + candidates.length) % candidates.length); return; }
+          if (query && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+            event.preventDefault();
+            if (event.key === "ArrowDown" && activeMention === candidates.length - 1 && (moreMentions || mentionFailed) && !mentionLoading) {
+              void loadMentions(mentionPage.next ?? undefined); setMentionIndex(candidates.length);
+            } else if (candidates.length) setMentionIndex((activeMention + (event.key === "ArrowDown" ? 1 : -1) + candidates.length) % candidates.length);
+            return;
+          }
           if (query && candidates[activeMention] && event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey) { event.preventDefault(); selectMention(candidates[activeMention]); return; }
           if (event.key !== "Enter") return;
           const touchKeyboard = event.currentTarget.ownerDocument.defaultView?.matchMedia("(hover: none) and (pointer: coarse)").matches;
@@ -344,7 +385,7 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
   roomId: string; message: ChannelMessage; grouped: boolean; name: string; avatar?: string; dateLabel?: string;
   attachments: ChannelAttachments; available: boolean; interaction: RoomInteractionSession | null;
   authorMessageId: string; effectsEnabled: boolean;
-  users: ChannelUser[]; unread: boolean; onReply(): void; onMessage(seq: number): void;
+  users: ChannelUserSummary[]; unread: boolean; onReply(): void; onMessage(seq: number): void;
   selfUserId?: string | null;
 }) {
   const { lang } = useCopy();
@@ -377,7 +418,7 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
   </>;
 });
 
-function MessageText({ message, users, selfUserId }: { message: ChannelMessage; users: ChannelUser[]; selfUserId?: string | null }) {
+function MessageText({ message, users, selfUserId }: { message: ChannelMessage; users: ChannelUserSummary[]; selfUserId?: string | null }) {
   let cursor = 0;
   const parts = (message.mentions ?? []).map((mention, index) => {
     const plain = message.text.slice(cursor, mention.start);

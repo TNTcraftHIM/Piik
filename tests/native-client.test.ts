@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "../src/client/native/discovery-ports";
 import { channelAppDiscovery, discoverChannelAppHealth, nativeConnectionMetricsSchema } from "../src/client/channel/app-link";
+import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
 
 import { nativeCaptureTargetSchema, nativeVideoCodecSchema, remoteControlStateSchema } from "../src/client/native/wire";
 
@@ -35,7 +36,7 @@ it("discovers the room App independently of v10 media control and checks health 
     const url = new URL(raw), port = Number(url.port);
     if (port === NATIVE_CLIENT_PORT_START) return Response.json({ service: "piik-client", protocol: 10, port });
     if (port !== NATIVE_CLIENT_PORT_START + 1) throw new TypeError("No listener");
-    const identity = { service: "piik-channel-app", protocol: 7, port };
+    const identity = { service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port };
     if (url.pathname === "/connect-discovery") return Response.json({ ...identity, connectURL: `http://127.0.0.1:${port}/client` });
     return approved ? Response.json({ ...identity, token: "instance-token" }) : new Response(null, { status: 403 });
   }));
@@ -52,7 +53,7 @@ it("uses an explicit non-secret App port outside the default scan range", async 
   const bootstrap = await import("../src/client/lib/app-launch");
   bootstrap.takeClientLaunchBootstrap();
   try {
-    const fetcher = vi.fn(async () => Response.json({ service: "piik-channel-app", protocol: 7, port: 48995, token: "instance-token" }));
+    const fetcher = vi.fn(async () => Response.json({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: 48995, token: "instance-token" }));
     vi.stubGlobal("fetch", fetcher);
     await expect(discoverChannelAppHealth()).resolves.toMatchObject({ port: 48995 });
     expect(fetcher).toHaveBeenCalledOnce();
@@ -65,7 +66,7 @@ it("uses an explicit non-secret App port outside the default scan range", async 
 });
 
 describe("current App discovery", () => {
-  const health = { service: "piik-channel-app", protocol: 7, port: NATIVE_CLIENT_PORT_START, token: "fixture-token" };
+  const health = { service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port: NATIVE_CLIENT_PORT_START, token: "fixture-token" };
 
   it("discovers with caller cancellation when AbortSignal.any is unavailable", async () => {
     vi.spyOn(AbortSignal, "any").mockImplementation(() => { throw new TypeError("AbortSignal.any is not a function"); });
@@ -331,6 +332,16 @@ describe("current App discovery", () => {
       service: "piik-client", protocol: 10, port: Number(new URL(input).port), instanceToken: "fixture-token",
     })));
     await expect(channelAppDiscovery[method]().catch(error => channelAppDiscovery.isIncompatible(error))).resolves.toBe(true);
+  });
+
+  it.each([undefined, CHANNEL_PROTOCOL - 1])("rejects App control with mismatched domain protocol %s before approval", async domainProtocol => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("http://127.0.0.1/") });
+    vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+      const port = Number(new URL(input).port);
+      return Response.json({ ...health, port, domainProtocol, connectURL: `http://127.0.0.1:${port}/client` });
+    }));
+    for (const method of ["health", "connect"] as const)
+      await expect(channelAppDiscovery[method]().catch(error => channelAppDiscovery.isIncompatible(error))).resolves.toBe(true);
   });
 
   it("treats denied, absent and malformed endpoints as ordinary Browser-only operation", async () => {

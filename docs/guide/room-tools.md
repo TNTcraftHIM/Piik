@@ -10,6 +10,8 @@ someone else's share. Anyone can create a room and manage their own rooms.
 The site's maintainer manages its name, image and backup.
 
 The people panel groups site users into **This room**, **Online** and **Offline**.
+Select **More people** to continue through the offline directory. Mention search
+also finds people whose profiles have not yet been loaded in that list.
 Under each room, the left list shows people participating in voice, sharing,
 watching or file transfers, including those actively forwarding. Headset, sharing
 and watching icons show their activities. Folding the list keeps those activities running.

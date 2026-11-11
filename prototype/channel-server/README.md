@@ -106,9 +106,11 @@ The `piik-channel-app` entry uses the same App button, local approval page and
 saved-site controls as the shared Web interface.
 
 Current internal pages require App control protocol 7 and domain signaling
-protocol 14. Build the App, bundled Web files and domain server from the same
+protocol 15. Build the App, bundled Web files and domain server from the same
 source for internal testing. Incompatible control or signaling protocols are
-rejected at entry. The storage format and reset boundary are documented below.
+rejected at entry. App discovery advertises both protocol identifiers so the Web
+page checks native control and domain participation before approval. The storage
+format and reset boundary are documented below.
 
 Build the frontend and start it:
 
@@ -416,8 +418,15 @@ owns retention and reclamation.
 Current access controls offers and downloads; already downloaded bytes cannot be revoked.
 
 Replicated history, federation and authority handoff remain outside this slice.
-Other current resource bounds are 20 live endpoints, 64 stored users and 32
-rooms. Each endpoint may publish one screen and one voice source per room.
+Current resource bounds are 128 live endpoints and 32 rooms per site. Browser,
+App and Server endpoints count as resources; a person's endpoints share one user
+identity. The current multi-room acceptance scale is 20 users per room, without
+a separate hard person-count quota. Each endpoint may publish one screen and
+one voice source per room. Retained identities do not consume live slots.
+Live user summaries are lightweight; full profiles and the offline directory
+use bounded pages of up to 32 records over the existing site connection.
+Portable backups bound each JSON record, including the site metadata manifest,
+to 4 MiB. This archive bound is independent of online admission.
 
 ## Checks
 
@@ -427,7 +436,15 @@ Run the shared Rust and Browser-adapter checks from the repository root:
 npm run check:rust
 ```
 
-This entry point uses Rust 1.91.0 and the Browser adapter's pinned `wasm-bindgen`
+When changing room scale or state projection, run the larger capacity acceptance
+explicitly with optimizations. It retains the real 81-endpoint, two-room graph
+and per-recipient state checks without adding that cost to each unit-test run:
+
+```sh
+cargo +1.91.0 test --release --locked --manifest-path prototype/channel-core/Cargo.toml --features sqlite --test base_routes two_twenty_person_rooms -- --ignored
+```
+
+The `check:rust` entry point uses Rust 1.91.0 and the Browser adapter's pinned `wasm-bindgen`
 and `cargo-about` tools. It collects core tests with and without SQLite, Native
 forwarding tests, Server tests including `native_session`, the shared Web/WASM
 build, Browser-adapter TypeScript and the finite WebSocket protocol check. The

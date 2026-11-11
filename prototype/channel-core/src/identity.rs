@@ -1,13 +1,14 @@
 use crate::access::digest;
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
 pub const RECOVERY_MS: u64 = 20_000;
-const MAX_USERS: usize = 64;
-pub(crate) const MAX_SESSIONS: usize = 20;
+pub const MAX_SESSIONS: usize = 128;
+pub const PROFILE_PAGE_SIZE: usize = 32;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -15,8 +16,39 @@ pub struct User {
     pub id: Uuid,
     pub name: String,
     pub avatar: Option<String>,
+    pub version: String,
     #[serde(skip)]
     credential: [u8; 32],
+}
+
+impl User {
+    pub fn summary(&self) -> crate::wire::UserSummary {
+        crate::wire::UserSummary {
+            id: self.id,
+            name: self.name.clone(),
+            version: self.version.clone(),
+        }
+    }
+    pub fn profile(&self) -> crate::wire::UserInfo {
+        crate::wire::UserInfo {
+            id: self.id,
+            name: self.name.clone(),
+            avatar: self.avatar.clone(),
+            version: self.version.clone(),
+        }
+    }
+    pub fn set_profile(&mut self, name: String, avatar: Option<String>) {
+        self.version = profile_version(&name, &avatar);
+        self.name = name;
+        self.avatar = avatar;
+    }
+}
+
+fn profile_version(name: &str, avatar: &Option<String>) -> String {
+    Sha256::digest(serde_json::to_vec(&(name, avatar)).expect("profile JSON"))
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 #[derive(Clone)]
@@ -71,6 +103,53 @@ pub struct Endpoint {
 }
 
 impl Identity {
+    pub fn profiles(
+        &self,
+        ids: Option<&[Uuid]>,
+        after: Option<Uuid>,
+        query: Option<&str>,
+    ) -> Result<(Vec<crate::wire::UserInfo>, usize, Option<Uuid>), &'static str> {
+        if let Some(ids) = ids {
+            if ids.len() > PROFILE_PAGE_SIZE || after.is_some() || query.is_some() {
+                return Err("invalid_profile_query");
+            }
+            let profiles: Vec<_> = ids
+                .iter()
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .filter_map(|id| self.users.get(id))
+                .map(User::profile)
+                .collect();
+            let total = profiles.len();
+            return Ok((profiles, total, None));
+        }
+        let query: String = query.unwrap_or("").trim().nfc().collect();
+        if query.encode_utf16().count() > 40 {
+            return Err("invalid_profile_query");
+        }
+        let query = query.to_lowercase();
+        let matching = || {
+            self.users.values().filter(|user| {
+                user.name
+                    .nfc()
+                    .collect::<String>()
+                    .to_lowercase()
+                    .contains(&query)
+            })
+        };
+        let total = matching().count();
+        let mut page = matching().filter(|user| after.is_none_or(|cursor| user.id > cursor));
+        let profiles: Vec<_> = page
+            .by_ref()
+            .take(PROFILE_PAGE_SIZE)
+            .map(User::profile)
+            .collect();
+        let next = page
+            .next()
+            .and_then(|_| profiles.last().map(|user| user.id));
+        Ok((profiles, total, next))
+    }
+
     pub fn member(&self, user_id: Uuid) -> Result<Member, &'static str> {
         self.users.get(&user_id).ok_or("invalid_credential")?;
         Ok(Member { user_id })
@@ -143,9 +222,6 @@ impl Identity {
         if resumed.is_none() && self.sessions.len() >= MAX_SESSIONS {
             return Err("channel_full");
         }
-        if !self.users.contains_key(&user_id) && self.users.len() >= MAX_USERS {
-            return Err("user_limit");
-        }
         let credential = if owner {
             let mut mac = Hmac::<Sha256>::new_from_slice(self.owner_key.as_bytes())
                 .expect("HMAC accepts any key length");
@@ -164,6 +240,7 @@ impl Identity {
             id: user_id,
             name: name.to_owned(),
             avatar: None,
+            version: profile_version(name, &None),
             credential: digest(&credential),
         });
         if owner {
@@ -219,9 +296,6 @@ impl Identity {
         owner_id: Uuid,
         users: Vec<StoredUser>,
     ) -> Result<(), &'static str> {
-        if users.len() > MAX_USERS {
-            return Err("invalid_state");
-        }
         self.owner_id = owner_id;
         self.users = users
             .into_iter()
@@ -229,6 +303,7 @@ impl Identity {
                 (
                     u.id,
                     User {
+                        version: profile_version(&u.name, &u.avatar),
                         id: u.id,
                         name: u.name,
                         avatar: u.avatar,

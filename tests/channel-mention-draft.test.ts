@@ -8,6 +8,11 @@ describe("textarea mention references", () => {
     expect(mentionQuery("a@b.com", 7)).toBeNull();
     expect(mentionQuery("@Bo", 0, 3)).toBeNull();
   });
+  it("normalizes the lookup while retaining the original text range and name-length boundary", () => {
+    const decomposed = "e\u0301".repeat(40);
+    expect(mentionQuery(`@${decomposed}`, 81)).toEqual({ start: 0, end: 81, query: "é".repeat(40) });
+    expect(mentionQuery("@" + "x".repeat(41), 42)).toBeNull();
+  });
   it("shifts a selected identity when text is inserted before it", () => {
     expect(editMentions("hi @Bo!", "😀 hi @Bo!", [mention])).toEqual([{ ...mention, start: 6, end: 9 }]);
   });

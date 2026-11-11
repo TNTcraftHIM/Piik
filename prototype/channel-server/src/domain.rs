@@ -429,7 +429,7 @@ impl Domain {
                 invitation_origin,
                 room_commands: None,
             })),
-            sockets: Arc::new(Semaphore::new(40)),
+            sockets: Arc::new(Semaphore::new(2 * piik_channel_core::MAX_SESSIONS)),
             origin,
             restores: None,
             ice_servers,

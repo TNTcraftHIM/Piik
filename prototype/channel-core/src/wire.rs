@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 14;
+pub const CHANNEL_PROTOCOL: u8 = 15;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -32,6 +32,11 @@ pub enum Command {
         name: String,
         #[serde(deserialize_with = "avatar")]
         avatar: Option<String>,
+    },
+    Profiles {
+        ids: Option<Vec<Uuid>>,
+        after: Option<Uuid>,
+        query: Option<String>,
     },
     UpdateDomain {
         name: String,
@@ -721,11 +726,20 @@ pub struct UserInfo {
     pub name: String,
     #[serde(deserialize_with = "avatar")]
     pub avatar: Option<String>,
+    pub version: String,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub struct UserSummary {
+    pub id: Uuid,
+    pub name: String,
+    pub version: String,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelInfo {
+    pub user_count: usize,
     pub history_window: usize,
     pub id: Uuid,
     pub name: String,
@@ -739,7 +753,7 @@ pub struct ChannelInfo {
 pub struct Snapshot {
     pub files: Vec<crate::file_room::FilePlan>,
     pub channel: ChannelInfo,
-    pub users: Vec<UserInfo>,
+    pub users: Vec<UserSummary>,
     pub sessions: Vec<SessionInfo>,
     pub publications: Vec<PublicationInfo>,
     pub voice: Vec<VoiceInfo>,
@@ -795,6 +809,7 @@ pub enum Event {
     Welcome {
         protocol: u8,
         credential: String,
+        self_profile: UserInfo,
         session_id: Uuid,
         state: Snapshot,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -802,6 +817,12 @@ pub enum Event {
     },
     State {
         state: Snapshot,
+    },
+    Profiles {
+        request_id: String,
+        profiles: Vec<UserInfo>,
+        total: usize,
+        next_cursor: Option<Uuid>,
     },
     Conversation {
         packet: crate::conversation::SignedPacket,

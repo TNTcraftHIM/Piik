@@ -15,7 +15,7 @@ export function ChannelRoomParticipants({ channel, room }: { channel: ChannelCon
   if (!state || !room.authorized) return null;
   const audible = new Set(listeningVoicePublications(state, channel.sessionId, channel.streams)
     .filter(source => source.roomId === room.id).map(source => source.userId));
-  return <div className="c3-room-participants">{roomRealtimePeople(state, room.id).map(user => {
+  return <div className="c3-room-participants">{roomRealtimePeople(state, room.id, channel.profiles).map(user => {
     const playback = channel.voicePlaybackByUser.get(user.id) ?? { volume: 1, muted: false };
     return <ChannelUser key={user.id} id={user.id} name={user.name} avatar={user.avatar ?? undefined} self={user.id === channel.self?.id}
       owner={false} online voice={user.voice} actions={<>

@@ -11,14 +11,20 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 14;
+export const CHANNEL_PROTOCOL = 15;
+export const CHANNEL_SESSION_LIMIT = 128;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("missing") }),
   z.object({ state: z.literal("available"), key: id }),
   z.object({ state: z.literal("unrecoverable") }),
 ]);
-export const userSchema = z.object({ id, name: z.string().max(40), avatar: identityImageSchema.nullable() });
+export const MAX_USER_NAME_UNITS = 40;
+export const userSummarySchema = z.object({ id, name: z.string().max(MAX_USER_NAME_UNITS), version: z.string().regex(/^[a-f0-9]{64}$/) });
+export const userSchema = userSummarySchema.extend({ avatar: identityImageSchema.nullable() });
+export const PROFILE_PAGE_SIZE = 32;
+export const profilePageSchema = z.object({ profiles: z.array(userSchema).max(PROFILE_PAGE_SIZE), total: z.number().int().nonnegative(), nextCursor: id.nullable() });
+export type ProfilePage = z.infer<typeof profilePageSchema>;
 export const roomSchema = z.object({
   id, name: identityNameSchema, icon: identityIconSchema, creatorId: id, access: z.enum(["public", "private"]),
   hidden: z.boolean(), hasPassword: z.boolean(), authorized: z.boolean(), canManage: z.boolean(),
@@ -39,7 +45,7 @@ export type ScreenSource = z.infer<typeof screenSourceSchema>;
 const publicationBaseSchema = z.object({
   id, roomId: id, sessionId: id, userId: id,
   paused: z.boolean(),
-  audience: z.array(z.object({ sessionId: id, state: z.enum(["preparing", "active", "failed"]) })).max(20),
+  audience: z.array(z.object({ sessionId: id, state: z.enum(["preparing", "active", "failed"]) })).max(CHANNEL_SESSION_LIMIT),
 });
 export const publicationSchema = z.discriminatedUnion("kind", [
   publicationBaseSchema.extend({ kind: z.literal("screen"), videoSettings: videoSettingsSchema, source: screenSourceSchema, title: identityNameSchema.nullable() }),
@@ -62,23 +68,23 @@ export const inlineImageSchema = z.object({ data: z.string(), mediaType: z.enum(
 export type ImageRendition = z.infer<typeof inlineImageSchema>;
 export const messageSchema = z.object({
   id, userId: id, text: z.string().max(MAX_MESSAGE_CODE_POINTS * 2), time: z.number(), seq: z.number().int().positive(), attachments: z.array(attachmentSchema),
-  archivedAuthorName: z.string().min(1).max(40).optional(),
+  archivedAuthorName: z.string().min(1).max(MAX_USER_NAME_UNITS).optional(),
   mentions: z.array(mentionSchema).optional(),
-  reply: z.object({ seq: z.number().int().positive(), userId: id, archivedAuthorName: z.string().max(40).optional(), text: z.string().max(160), notify: z.boolean() }).optional(),
+  reply: z.object({ seq: z.number().int().positive(), userId: id, archivedAuthorName: z.string().max(MAX_USER_NAME_UNITS).optional(), text: z.string().max(160), notify: z.boolean() }).optional(),
   inlineImages: z.record(id, inlineImageSchema).optional(),
 });
 export const snapshotSchema = z.object({
   channel: z.object({
-    id, name: identityNameSchema, icon: identityIconSchema, ownerId: id.nullable(), rooms: z.array(roomSchema).max(32), historyWindow: z.number().int().positive(),
+    id, name: identityNameSchema, icon: identityIconSchema, ownerId: id.nullable(), rooms: z.array(roomSchema).max(32), historyWindow: z.number().int().positive(), userCount: z.number().int().nonnegative(),
   }),
-  users: z.array(userSchema).max(64),
-  sessions: z.array(z.object({ id, userId: id, online: z.boolean(), signingKey })).max(20),
+  users: z.array(userSummarySchema),
+  sessions: z.array(z.object({ id, userId: id, online: z.boolean(), signingKey })).max(CHANNEL_SESSION_LIMIT),
   publications: z.array(publicationSchema),
   voice: z.array(z.object({ sessionId: id, roomId: id, muted: z.boolean(), deafened: z.boolean() })),
   subscriptions: z.array(id),
   failedSubscriptions: z.array(id),
   files: z.array(filePlanSchema),
-  pairs: z.array(z.object({ id, peerId: id, canReceiveVideoLayers: z.boolean().default(false), rooms: z.array(id), outgoing: z.array(z.object({ id, publicationId: id, selected: z.boolean(), inputFlowId: id.nullable() })), incoming: z.array(z.object({ id, publicationId: id, selected: z.boolean(), inputFlowId: id.nullable() })) })).max(19),
+  pairs: z.array(z.object({ id, peerId: id, canReceiveVideoLayers: z.boolean().default(false), rooms: z.array(id), outgoing: z.array(z.object({ id, publicationId: id, selected: z.boolean(), inputFlowId: id.nullable() })), incoming: z.array(z.object({ id, publicationId: id, selected: z.boolean(), inputFlowId: id.nullable() })) })).max(CHANNEL_SESSION_LIMIT - 1),
   iceServers: z.array(z.object({ urls: z.union([z.string(), z.array(z.string())]), username: z.string().optional(), credential: z.string().optional() })),
 });
 export const signalSchema = z.object({
@@ -98,7 +104,8 @@ export const channelTopologySchema = z.object({
 }).strict();
 export type ChannelTopology = z.infer<typeof channelTopologySchema>;
 export const eventSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("welcome"), protocol: z.literal(CHANNEL_PROTOCOL), credential: id, sessionId: id, state: snapshotSchema, invitationOrigin: z.string().url().optional() }),
+  z.object({ type: z.literal("welcome"), protocol: z.literal(CHANNEL_PROTOCOL), credential: id, selfProfile: userSchema, sessionId: id, state: snapshotSchema, invitationOrigin: z.string().url().optional() }),
+  profilePageSchema.extend({ type: z.literal("profiles"), requestId: id }),
   z.object({ type: z.literal("conversation"), packet: signedConversationPacketSchema }),
   z.object({ type: z.literal("state"), state: snapshotSchema }),
   z.object({ type: z.literal("input_state"), registrations: z.array(z.object({ publicationId: id, controllerSessionId: id, flowId: id, secret: signingKey })) }),
@@ -127,6 +134,7 @@ export type ChannelAttachment = z.infer<typeof attachmentSchema>;
 export type ChannelFileKey = z.infer<typeof fileKeySchema>;
 export type ChannelFilePlan = z.infer<typeof filePlanSchema>;
 export type ChannelUser = z.infer<typeof userSchema>;
+export type ChannelUserSummary = z.infer<typeof userSummarySchema>;
 export type ChannelRoom = z.infer<typeof roomSchema>;
 export type RoomSummary = z.infer<typeof roomSummarySchema>;
 export type ChannelPair = ChannelSnapshot["pairs"][number];
@@ -140,11 +148,11 @@ const record = (value: unknown): value is Record<string, unknown> => value !== n
 export class ChannelEventDecoder {
   private channelId: string | null = null;
   private channelIcon: string | undefined;
-  private avatars = new Map<string, string | null>();
   private roomIcons = new Map<string, string>();
 
   decode(raw: unknown, wireBytes: number): ChannelEvent {
     if (wireBytes > CHANNEL_EVENT_BYTES) throw new Error("Channel event exceeds frame limit");
+    if (record(raw) && raw.type === "profiles" && wireBytes > 1024 * 1024) throw new Error("Profile page exceeds frame limit");
     let fullBytes = wireBytes;
     if (record(raw) && raw.type === "state" && record(raw.state)) {
       const state = raw.state, channel = state.channel;
@@ -159,23 +167,19 @@ export class ChannelEventDecoder {
         if (Array.isArray(channel.rooms)) for (const room of channel.rooms) {
           if (record(room) && typeof room.id === "string") inherit(room, "icon", this.roomIcons.get(room.id));
         }
-        if (Array.isArray(state.users)) for (const user of state.users) {
-          if (record(user) && typeof user.id === "string") inherit(user, "avatar", this.avatars.get(user.id));
-        }
       }
     }
     if (fullBytes > CHANNEL_EVENT_BYTES) throw new Error("Expanded channel event exceeds frame limit");
     const event = eventSchema.parse(raw);
     if (event.type === "welcome" || event.type === "state") {
-      const { channel, users } = event.state;
+      const { channel } = event.state;
       this.channelId = channel.id; this.channelIcon = channel.icon;
-      this.avatars = new Map(users.map(user => [user.id, user.avatar]));
       this.roomIcons = new Map(channel.rooms.map(room => [room.id, room.icon]));
     }
     return event;
   }
 }
-export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" | "room_invite_state" | "room_reply" | "room_created" }> | Extract<ConversationReply["record"], { type: "confirmed" }>;
+export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" | "room_invite_state" | "room_reply" | "room_created" | "profiles" }> | Extract<ConversationReply["record"], { type: "confirmed" }>;
 export type SignedConversationPacket = z.infer<typeof signedConversationPacketSchema>;
 export type RoomInvitationState = { state: "available"; url: string } | { state: "missing" | "unrecoverable" };
 export interface ConversationAddress { roomId: string; bindingId: string; sender: string; recipient: string; requestId: string }
@@ -199,6 +203,7 @@ export type ChannelCommand =
   | { type: "conversation"; packet: SignedConversationPacket }
   | { type: "set_profile"; name: string; avatar: string | null }
   | ({ type: "update_domain" } & DomainSettings)
+  | { type: "profiles"; ids?: string[]; after?: string; query?: string }
   | { type: "input_register"; publicationId: string; flowId: string; secret: number[] }
   | { type: "host_register"; room: RoomSummary; resumeBinding?: string }
   | { type: "create_room"; room: RoomSummary }

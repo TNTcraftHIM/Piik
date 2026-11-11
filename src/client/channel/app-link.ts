@@ -1,4 +1,4 @@
-import type { RoomSummary } from "./protocol";
+import { CHANNEL_PROTOCOL, type RoomSummary } from "./protocol";
 import { z } from "zod";
 import { appApprovalURL, discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
 import { nativeCaptureTargetSchema, nativeVideoCodecSchema, remoteControlStateSchema, remoteStopShortcutSchema, type NativeCaptureTarget } from "../native/wire";
@@ -10,8 +10,8 @@ import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 
 const APP_PROTOCOL = 7;
-const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), port: z.number().int().min(1).max(65535) });
-const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
+const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), domainProtocol: z.number().int().positive().optional(), port: z.number().int().min(1).max(65535) });
+const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), domainProtocol: z.literal(CHANNEL_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
   version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional() });
 type AppHealth = z.infer<typeof healthSchema>;
 const measured = z.number().finite().nonnegative();
@@ -62,7 +62,8 @@ type AppCommand = { type: string; publicationId?: string; roomId?: string; [key:
 function identity(body: unknown, port: number): void {
   const value = identitySchema.extend({ service: z.enum(["piik-channel-app", "piik-client"]) }).parse(body);
   if (value.port !== port) throw new Error("invalid_app_response");
-  if (value.service !== "piik-channel-app" || value.protocol !== APP_PROTOCOL) throw new AppCompatibilityError("App room protocol is incompatible");
+  if (value.service !== "piik-channel-app" || value.protocol !== APP_PROTOCOL || value.domainProtocol !== CHANNEL_PROTOCOL)
+    throw new AppCompatibilityError("App room protocol is incompatible");
 }
 
 export function discoverChannelAppHealth(options: AppDiscoveryOptions = {}): Promise<AppHealth | null> {

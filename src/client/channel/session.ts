@@ -3,7 +3,7 @@ import { ChannelMedia } from "./media";
 import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
 import { selectedRoom } from "./navigation";
-import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, ChannelEventDecoder, channelTopologySchema, roomSummarySchema, userSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
+import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView, ChatOptions, ScreenPresentation, SourceMicrophoneConfiguration, SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryImport, type BackupHistoryRow } from "./hosting";
@@ -136,10 +136,12 @@ export class ChannelSession {
     appConnected: false,
     ownedScreens: new Set(),
     localScreens: new Set(),
-    state: null, sessionId: null, self: null, connection: "connecting", messagesByRoom: {}, historyByRoom: {}, readByRoom: {},
+    state: null, sessionId: null, self: null, profiles: new Map(), connection: "connecting", messagesByRoom: {}, historyByRoom: {}, readByRoom: {},
     streams: new Map(), screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), error: null, siteURL: null, pending: new Set(),
   };
   private listeners = new Set<() => void>();
+  private profileLoads = new Map<string, Promise<void>>();
+  private missingProfiles = new Set<string>();
   private readMarkerKey: string | null = null;
   private historyJump: { roomId: string; seq: number } | null = null;
   private socket: WebSocket | null = null;
@@ -205,6 +207,59 @@ export class ChannelSession {
   getSnapshot = (): ChannelView => this.view;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   stats = () => this.media.stats();
+  private mergeProfiles(users: readonly ChannelUser[]): void {
+    const profiles = new Map(this.view.profiles);
+    for (const user of users) {
+      const summary = this.view.state?.users.find(value => value.id === user.id);
+      if (!summary || summary.version === user.version) profiles.set(user.id, user);
+    }
+    const selfId = this.view.state?.sessions.find(session => session.id === this.view.sessionId)?.userId ?? this.view.self?.id;
+    this.patch({ profiles, self: profiles.get(selfId ?? "") ?? this.view.self });
+  }
+  private profileKey(id: string): string {
+    return `${id}:${this.view.state?.users.find(user => user.id === id)?.version ?? "offline"}`;
+  }
+  private profileFresh(id: string): boolean {
+    const user = this.view.profiles.get(id), summary = this.view.state?.users.find(user => user.id === id);
+    return !!user && (!summary || user.version === summary.version);
+  }
+  private async readProfiles(query: { ids?: string[]; after?: string; query?: string }, signal?: AbortSignal): Promise<ProfilePage> {
+    let page: ProfilePage | undefined;
+    await this.request({ type: "profiles", ...query }, event => {
+      if (event.type === "profiles") page = { profiles: event.profiles, total: event.total, nextCursor: event.nextCursor };
+    }, undefined, signal);
+    if (!page) throw new Error("invalid_response");
+    return page;
+  }
+  queryProfiles = (query: { after?: string; query?: string }, signal?: AbortSignal): Promise<ProfilePage> => this.readProfiles(query, signal);
+  loadProfiles = async (requested: readonly string[], signal?: AbortSignal): Promise<ChannelUser[]> => {
+    signal?.throwIfAborted();
+    const ids = [...new Set(requested)];
+    for (let offset = 0; offset < ids.length; offset += PROFILE_PAGE_SIZE) {
+      signal?.throwIfAborted();
+      const page = ids.slice(offset, offset + PROFILE_PAGE_SIZE);
+      const waiting = new Set(page.flatMap(id => this.profileLoads.get(this.profileKey(id)) ?? []));
+      const batch = page.filter(id => !this.profileFresh(id) && !this.missingProfiles.has(this.profileKey(id)) && !this.profileLoads.has(this.profileKey(id)));
+      if (!batch.length) { await Promise.all(waiting); continue; }
+      const keys = batch.map(id => this.profileKey(id));
+      const socket = this.socket;
+      const pending = this.readProfiles({ ids: batch }).then(page => {
+        if (this.socket !== socket) return;
+        for (let index = 0; index < batch.length; index++) if (!page.profiles.some(profile => profile.id === batch[index])) this.missingProfiles.add(keys[index]);
+      }).finally(() => { for (const key of keys) if (this.profileLoads.get(key) === pending) this.profileLoads.delete(key); });
+      for (const key of keys) this.profileLoads.set(key, pending);
+      await Promise.all([...waiting, pending]);
+    }
+    signal?.throwIfAborted();
+    return ids.flatMap(id => this.profileFresh(id) ? [this.view.profiles.get(id)!] : []);
+  };
+  private historyProfileIds(messages = Object.values(this.view.messagesByRoom).flat()): string[] {
+    return messages.flatMap(message => [
+      ...(!message.archivedAuthorName ? [message.userId] : []),
+      ...(message.reply && !message.reply.archivedAuthorName ? [message.reply.userId] : []),
+      ...(message.mentions ?? []).map(mention => mention.userId),
+    ]);
+  }
   screenPresentation = (flowId: string, stream: MediaStream, state: ScreenPresentation): void => this.media.screenPresentation(flowId, stream, state);
   setQuality = (profile: QualityProfile): void => {
     if (!supportsCaptureProfile(profile)) throw new Error("capture_quality_unsupported");
@@ -347,7 +402,8 @@ export class ChannelSession {
         } catch { /* The saved credential still owns recovery if URL editing is unavailable. */ }
       }
       this.invitationOrigin = event.invitationOrigin ?? location.origin;
-      this.patch({ sessionId: event.sessionId, connection: "connected", error: null, siteURL: this.siteURL() });
+      this.profileLoads.clear(); this.missingProfiles.clear();
+      this.patch({ sessionId: event.sessionId, self: event.selfProfile, profiles: new Map([[event.selfProfile.id, event.selfProfile]]), connection: "connected", error: null, siteURL: this.siteURL() });
       this.readings.clear();
       for (const room of event.state.channel.rooms) if (room.reading) this.readingRooms.add(room.id);
       this.applyState(event.state);
@@ -438,6 +494,13 @@ export class ChannelSession {
       try { request.result?.(event); request.resolve(); }
       catch (error) { request.reject(error instanceof Error ? error : new Error("invalid_response")); }
     } else if (event.type === "state") this.applyState(event.state);
+    else if (event.type === "profiles") {
+      const request = this.requests.get(event.requestId);
+      if (!request) return;
+      clearTimeout(request.timer); this.requests.delete(event.requestId);
+      this.mergeProfiles(event.profiles);
+      request.result?.(event); request.resolve();
+    }
     else if (event.type === "room_invite" || event.type === "room_invite_state") {
       if (event.requestId) {
         const request = this.requests.get(event.requestId);
@@ -516,7 +579,7 @@ export class ChannelSession {
       request.reject(new Error("room_unavailable"));
     }
     for (const id of this.outgoingMessages.keys()) if (!canRead(id)) this.outgoingMessages.delete(id);
-    this.patch({ state: visible, self: state.users.find(user => user.id === userId) ?? null, readByRoom,
+    this.patch({ state: visible, self: this.view.profiles.get(userId ?? "") ?? (this.view.self?.id === userId ? this.view.self : null), readByRoom,
       siteURL: this.siteURL(),
       voicePlaybackByUser: sameChannel ? new Map([...this.view.voicePlaybackByUser].filter(([id]) => state.users.some(user => user.id === id))) : new Map(),
       messagesByRoom: Object.fromEntries(Object.entries(this.view.messagesByRoom).filter(([id]) => canRead(id) && !freshBindings.has(id))),
@@ -524,6 +587,7 @@ export class ChannelSession {
         && canRead(publication.roomId) && !freshBindings.has(publication.roomId)))),
       historyByRoom: Object.fromEntries(Object.entries(this.view.historyByRoom).filter(([id]) => canRead(id) && !freshBindings.has(id))),
     });
+    void this.loadProfiles([...state.users.map(user => user.id), ...this.historyProfileIds()]).catch(() => {});
     for (const [id, hosted] of this.hostedRooms) if (!state.channel.rooms.some(room => room.id === id)) {
       this.hostedRooms.delete(id);
       this.hostCleanup = Promise.all([this.hostCleanup, hosted.host.close()]).then(() => {});
@@ -585,7 +649,7 @@ export class ChannelSession {
     };
     return new Promise<void>((resolve, reject) => {
       // Conversation includes image upload and its host-confirmed response.
-      const timer = setTimeout(() => { this.requests.delete(requestId); reject(new Error("request_timeout")); }, conversation ? 30000 : 10000);
+      const timer = setTimeout(() => { this.requests.delete(requestId); reject(new Error("request_timeout")); }, conversation || command.type === "profiles" ? 30000 : 10000);
       this.requests.set(requestId, { resolve, reject, timer, result, roomId,
         ...(delivery && (conversation || command.type === "browse" || command.type === "room_topology") ? { bindingId: delivery.bindingId } : {}),
         ...(command.type === "history" ? { history: { before: command.before, entries: new Map() } } : {}) });
@@ -620,7 +684,7 @@ export class ChannelSession {
         if (record.snapshot?.type === "message") this.applyReactionSnapshot(reply.roomId, reply.bindingId, record.snapshot);
         else if (record.snapshot?.type === "publication") this.applyPublicationReactionSnapshot(reply.roomId, record.snapshot);
         const event = record.event;
-        const user = event && this.view.state?.users.find(user => user.id === event.senderUserId);
+        const user = event && (this.view.state?.users.find(user => user.id === event.senderUserId) ?? this.view.profiles.get(event.senderUserId) ?? { id: event.senderUserId, name: "User" });
         if (event && user) interaction.receive({ type: "room-interaction", id: event.id, requestId: reply.requestId, occurredAt: event.occurredAt,
           sender: { peerId: user.id, displayName: user.name, role: "viewer" },
           payload: { kind: "reaction", reaction: event.reaction as import("../../shared/room-interactions").ReactionId,
@@ -713,20 +777,20 @@ export class ChannelSession {
     const hasMore = result.hasMore || result.oldestSeq !== null && messages.length > 0 && messages[0].seq > result.oldestSeq;
     this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [roomId]: messages },
       historyByRoom: { ...this.view.historyByRoom, [roomId]: { hasMore, before: messages[0]?.seq, atLatest } } });
+    void this.loadProfiles(this.historyProfileIds(messages)).catch(() => {});
   }
 
   private applyMessage(roomId: string, message: ChannelMessage): void {
     const state = this.view.state;
     if (!state?.channel.rooms.some(room => room.id === roomId && room.authorized)) return;
-    const sender = state.users.find(user => user.id === message.userId);
-    if (sender) {
-      const points = Array.from(message.text.replace(/\s+/gu, " ").normalize("NFC").trim());
-      const text = points.length > MAX_CHAT_CODE_POINTS ? `${points.slice(0, MAX_CHAT_CODE_POINTS - 1).join("")}…` : points.join("");
-      this.view.interactionsByRoom.get(roomId)?.receiveConfirmedChat({
-        type: "room-interaction", id: message.id, requestId: message.id, occurredAt: message.time,
-        sender: { peerId: sender.id, displayName: sender.name, role: "viewer" }, payload: { kind: "chat", text },
-      });
-    }
+    void this.loadProfiles(this.historyProfileIds([message])).catch(() => {});
+    const sender = state.users.find(user => user.id === message.userId) ?? this.view.profiles.get(message.userId) ?? { id: message.userId, name: message.archivedAuthorName ?? "User" };
+    const points = Array.from(message.text.replace(/\s+/gu, " ").normalize("NFC").trim());
+    const text = points.length > MAX_CHAT_CODE_POINTS ? `${points.slice(0, MAX_CHAT_CODE_POINTS - 1).join("")}…` : points.join("");
+    this.view.interactionsByRoom.get(roomId)?.receiveConfirmedChat({
+      type: "room-interaction", id: message.id, requestId: message.id, occurredAt: message.time,
+      sender: { peerId: sender.id, displayName: sender.name, role: "viewer" }, payload: { kind: "chat", text },
+    });
     // A bounded historical window stays put until its reader requests latest.
     if (this.view.historyByRoom[roomId]?.atLatest === false) return;
     const messages = this.view.messagesByRoom[roomId] ?? [];
@@ -1257,12 +1321,19 @@ export class ChannelSession {
 
   private async writeRoomSnapshot(snapshot: BrowserRoomSnapshot, metadata: Exclude<BackupMetadata, { kind: "domain" }>, retained: RetainedFile[], check: () => void): Promise<Blob> {
     const files = new Map<string, File>(), inventory: RetainedBackupFile[] = [];
+    const authors = new Set<string>();
+    const readAuthors = async () => {
+      if (metadata.kind !== "room_copy" || !authors.size) return;
+      const profiles = await this.loadProfiles([...authors]); check();
+      for (const profile of profiles) metadata.authors[profile.id] = profile.name;
+      authors.clear();
+    };
     const byKey = new Map(retained.map(file => [JSON.stringify([file.key.messageSeq, file.key.attachmentId]), file]));
     for await (const row of snapshot.rows) {
       check();
       if (metadata.kind === "room_copy" && !row.archivedAuthorName) {
-        const name = this.view.state!.users.find(user => user.id === row.userId)?.name;
-        if (name) metadata.authors[row.userId] = name;
+        authors.add(row.userId);
+        if (authors.size >= PROFILE_PAGE_SIZE) await readAuthors();
       }
       for (const attachment of row.attachments) {
         const entry = byKey.get(JSON.stringify([row.seq, attachment.id]));
@@ -1272,6 +1343,7 @@ export class ChannelSession {
         }
       }
     }
+    await readAuthors();
     const archive = await writeBackup({ ...metadata, retainedFiles: inventory }, snapshot.rows,
       async entry => { check(); return files.get(entry.attachment.sha256.toLowerCase())!; });
     check(); return archive;
@@ -2446,6 +2518,7 @@ export class ChannelSession {
     this.rejectRequests("closed");
     this.releaseMedia();
     this.conversation.close();
-    this.patch({ connection: "closed", state: null, sessionId: null, self: null });
+    this.profileLoads.clear(); this.missingProfiles.clear();
+    this.patch({ connection: "closed", state: null, sessionId: null, self: null, profiles: new Map() });
   };
 }

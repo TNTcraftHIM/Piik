@@ -104,8 +104,7 @@ impl Channel {
                     return Err("invalid_name");
                 }
                 let user = self.identity.users.get_mut(&user_id).unwrap();
-                user.name = name.to_owned();
-                user.avatar = avatar;
+                user.set_profile(name.to_owned(), avatar);
                 broadcast = true;
             }
             Command::UpdateDomain { name, icon } => {
@@ -1454,9 +1453,18 @@ impl Channel {
                 }
             }
         }
+        let user_ids: BTreeSet<_> = self
+            .identity
+            .sessions
+            .values()
+            .map(|session| session.user_id)
+            .chain(rooms.iter().map(|room| room.creator_id))
+            .chain(std::iter::once(self.identity.owner_id))
+            .collect();
         Snapshot {
             files,
             channel: ChannelInfo {
+                user_count: self.identity.users.len(),
                 history_window: HISTORY_WINDOW,
                 id: self.id,
                 name: self.name.clone(),
@@ -1464,15 +1472,10 @@ impl Channel {
                 owner_id: Some(self.identity.owner_id),
                 rooms,
             },
-            users: self
-                .identity
-                .users
-                .values()
-                .map(|user| UserInfo {
-                    id: user.id,
-                    name: user.name.clone(),
-                    avatar: user.avatar.clone(),
-                })
+            users: user_ids
+                .iter()
+                .filter_map(|id| self.identity.users.get(id))
+                .map(crate::identity::User::summary)
                 .collect(),
             sessions: self
                 .identity

@@ -7,7 +7,7 @@ import { useCopy } from "../../ui/copy";
 import { VoiceListeningButton, VoiceMicrophoneButton } from "../../room-voice/VoiceAudioButtons";
 import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
 import type { ChannelController } from "../types";
-import { voiceAppearance } from "../presentation";
+import { userProfile, voiceAppearance } from "../presentation";
 import { ChannelVoiceSettings } from "./ChannelVoiceSettings";
 import { useCallback } from "react";
 import { useVoiceLevels } from "../../room-voice/use-voice-levels";
@@ -33,7 +33,7 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
     const endpoints = state.sessions.filter(session => session.userId === user.id).map(session => session.id);
     const values = state.voice.filter(voice => voice.roomId === roomId && !voice.muted && endpoints.includes(voice.sessionId))
       .flatMap(voice => levels.has(voice.sessionId) ? [levels.get(voice.sessionId)!] : []);
-    return appearance ? [{ user, ...appearance, level: values.length ? Math.max(...values) : undefined }] : [];
+    return appearance ? [{ user: userProfile(state, channel.profiles, user.id)!, ...appearance, level: values.length ? Math.max(...values) : undefined }] : [];
   });
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
   return <section className="c3-voice-dock" aria-label={zh ? "语音控制" : "Voice controls"}>

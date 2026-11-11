@@ -33,7 +33,7 @@ pub mod wire_images;
 pub use access::{RoomPermission, RoomState};
 pub use attachment::{AttachmentDescriptor, AttachmentLimits, ATTACHMENT_LIMITS};
 pub use channel::DurableState;
-pub use identity::{Endpoint, Member, User, RECOVERY_MS};
+pub use identity::{Endpoint, Member, User, MAX_SESSIONS, PROFILE_PAGE_SIZE, RECOVERY_MS};
 pub use room::{RoomRecipient, RoomRuntime, RoomSnapshot};
 #[cfg(feature = "sqlite")]
 pub use stored_room::{RoomBackup, StoredRoomHost};
@@ -163,6 +163,27 @@ impl Authority {
             now,
         };
         match &request.command {
+            Command::Profiles { ids, after, query } => {
+                match request
+                    .request_id
+                    .clone()
+                    .ok_or("invalid_request_id")
+                    .and_then(|request_id| {
+                        self.channel
+                            .identity
+                            .profiles(ids.as_deref(), *after, query.as_deref())
+                            .map(|(profiles, total, next_cursor)| Event::Profiles {
+                                request_id,
+                                profiles,
+                                total,
+                                next_cursor,
+                            })
+                    }) {
+                    Ok(event) => effects.events.push((connection, event)),
+                    Err(code) => Self::error(connection, request.request_id, code, &mut effects),
+                }
+                return effects;
+            }
             Command::Conversation { packet } => {
                 match self.channel.relay_conversation(session_id, packet) {
                     Ok((recipient, changed)) => {
@@ -478,6 +499,9 @@ impl Authority {
                     connection,
                     Event::Welcome {
                         protocol: CHANNEL_PROTOCOL,
+                        self_profile: self.channel.identity.users
+                            [&self.channel.identity.sessions[&admitted.session_id].user_id]
+                            .profile(),
                         credential: admitted.credential,
                         session_id: admitted.session_id,
                         state: self.channel.snapshot(admitted.session_id),
