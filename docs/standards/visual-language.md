@@ -120,15 +120,26 @@ The couch anchors the bottom of the central body, aligned with the personal area
 top edge; it does not span either sidebar. Sidebars can collapse independently.
 Narrow layouts use temporary drawers without replacing those desktop preferences.
 
+The workspace shell owns its outer corners. Attached site bars, sidebars, main
+content and presence regions meet along straight shared edges; do not round
+each colour region into a separate island. An inset card or floating tool keeps
+its own corners when spacing separates its whole perimeter from neighbouring
+regions. Source cards retain their media boundary inside the stage.
+
 Let the media stage use the available workspace. Grid gives watched pictures
 equal weight; focus gives one picture the main area and keeps the others in a
-thumbnail strip. Both use the same players. Conversation and people are optional
+thumbnail strip. Thumbnails show the picture and a single identity line; selecting
+one promotes it to the full controls without remounting its player. Full-size grid
+and focused pictures use the same source-information bar and action order. When
+the card has room, the bar overlays the top and follows playback-control visibility;
+narrow cards place it outside the picture. Conversation and people are optional
 companion surfaces; narrow layouts switch surfaces instead of squeezing several
 unusable regions together. Source controls stay with their picture, and personal
 voice controls keep their own activity scope. The existing room tool continues
 to move the same conversation, presence and voice content outside the workspace.
 Its action opens the compact external window directly when supported, with the
-existing in-page panel as the named alternative. Closing returns the same content.
+existing in-page panel as the named alternative. Its selected trigger returns the
+same content to the page on a second activation, as does closing the window.
 
 ### Control Selection
 

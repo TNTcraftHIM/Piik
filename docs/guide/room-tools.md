@@ -123,7 +123,8 @@ voices playing in your browser. See [sharing sound controls](./sharing.md#exclud
 Select **Pop out room** beside the couch to move its conversation, people and
 voice controls directly into an always-on-top window. Other browsers use the
 movable **Room panel** inside the page. Keep the original page open; closing
-the small window returns its controls and drafts to the page.
+the small window, or pressing the same room-window button again, returns its
+controls and drafts to the page.
 
 Opening or closing this window does not join or leave voice. A windowed or
 borderless game lets you keep it visible; exclusive fullscreen may cover it.

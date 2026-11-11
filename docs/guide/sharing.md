@@ -26,7 +26,11 @@ does not include system sound; see the [browser compatibility record](https://gi
 
 Use **Switch source** on your picture card to replace that share. You can also share
 in another room without ending the first share. Switching the sidebar selection
-keeps existing shares, watched pictures and voice running.
+keeps existing shares, watched pictures and voice running, including playback sound.
+The main area shows only the selected room's pictures. The activity strip lists
+pictures in other rooms: **Return** opens their room, while **Stop watching** or
+**Stop sharing** ends only the selected activity.
+Hiding a picture releases its remote control; return to that room and request control again when needed.
 
 Send the site address or a public-room link for ordinary access. Private rooms
 use their own invitation or password; send those invitations only to intended
@@ -36,8 +40,8 @@ see [getting started](./getting-started.md).
 ## Share settings
 
 Before starting, open **Share settings → Picture** beside **Start sharing**.
-During a share, use the same control on that picture's card, even when browsing
-another room. Choose a
+During a share, use the same control on that picture's card. If you are browsing
+another room, use **Return** in the activity strip first. Choose a
 preset, or expand **Fine-tune picture** to set resolution, frame rate and bitrate.
 Choose the video codec before starting the share. Available codecs depend on
 the browser or connected App.
@@ -102,9 +106,9 @@ audio or use a different playback device when exclusion is unavailable.
 
 ### Watch and arrange pictures
 
-Select **Watch** beside a person's share. You can watch several pictures,
-including pictures from different rooms. Select a tile or **Focus** to enlarge
-one; **Grid view** or **Return to grid** shows the others again.
+Select **Watch** beside a person's share. You can keep watches in several rooms;
+the main area arranges the current room's pictures. Select a tile or **Focus** to
+enlarge one; **Grid view** or **Return to grid** shows that room's other pictures.
 
 The eye beside each share shows how many people are watching it. Both the sharer
 and viewers can select it to see the names.

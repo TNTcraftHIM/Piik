@@ -562,6 +562,10 @@ request does not prove a WebRTC media path.
 ## Activity And Lifecycle
 
 Room browsing, voice, screen sharing and watching remain independent activities.
+The main picture area follows the browsed room. Existing watches and shares in
+other rooms continue, including listening playback, and appear in an activity
+strip with return-to-room and explicit stop actions. Navigation changes
+presentation without retiring those activities or their media resources.
 Opening another view does not retarget a microphone or stop another room's media.
 A participant retains the room connection while an admitted activity, transfer
 or forwarding duty needs it; changing the highlighted sidebar item is not a

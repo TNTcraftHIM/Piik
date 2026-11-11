@@ -82,10 +82,18 @@
 .c3-chat-panel .c3-chat-heading { flex: none; min-height: 52px; padding: 8px 16px; }
 .c3-chat-panel .c3-conversation > :not(.c3-chat-heading) { margin-inline: 16px; }
 .c3-shell:not([data-companion="chat"]) > .c3-chat-panel { display: none; }
-.c3-workspace.has-screens > .c3-monitor:not(.is-theater) { container: channel-stage / size; background: var(--wall); border-radius: 20px; margin: 0 8px 0 12px; }
-.c3-workspace:not(.has-screens):has(> .c3-monitor) { grid-template-rows: auto minmax(0, 1fr); }
+.c3-workspace.has-screens > .c3-monitor:not(.is-theater) { container: channel-stage / size; }
+.c3-workspace:not(.has-screens):has(> .c3-monitor:not([hidden])) { grid-template-rows: auto minmax(0, 1fr); }
 .c3-workspace:not(.has-screens) > .c3-monitor { max-height: 180px; border-bottom: 1px solid var(--line); }
-.c3-workspace:not(.has-screens):has(> .c3-monitor) :is(.c3-conversation, .c3-locked-room) { grid-row: 2; }
+.c3-workspace:not(.has-screens):has(> .c3-monitor:not([hidden])) :is(.c3-conversation, .c3-locked-room) { grid-row: 2; }
+.c3-other-activities { flex: none; display: grid; gap: 4px; max-height: 180px; overflow-y: auto; margin: 12px 16px; padding: 4px 10px; border-radius: 12px; background: var(--wall); }
+.c3-other-activity { display: flex; align-items: center; gap: 8px; min-width: 0; padding-block: 4px; }
+.c3-other-activity > svg, .c3-other-activity > .lr-btn { flex: none; }
+.c3-other-activity > span { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 6px; align-items: baseline; flex: 1; min-width: 0; }
+.c3-other-activity small, .c3-activity-room { font-size: 11px; color: var(--muted); }
+.c3-other-activity strong { font-size: 12px; }
+.c3-other-activity strong, .c3-activity-room { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c3-activity-room { grid-column: 1 / -1; }
 .c3-room-presence { grid-column: 2; grid-row: 4; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 20px; }
 .c3-room-presence[data-empty] { display: none; }
 .c3-room-presence .c3-room-company { width: min(100%, 560px); }

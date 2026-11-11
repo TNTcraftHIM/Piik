@@ -69,15 +69,16 @@ export interface SourceAudioControl {
   onChange(settings: { level?: number; muted?: boolean }): void;
 }
 
-export function ChannelVideo({ stream, owned, localSource, label, thumbnail = false, inputs, onPresentation, input, sourceAudio, interaction = null, theaterMode, onToggleTheater }: {
+export function ChannelVideo({ stream, owned, localSource, label, presentation = "full", inputs, onPresentation, input, sourceAudio, interaction = null, theaterMode, onToggleTheater }: {
   stream: MediaStream; owned: boolean; localSource: boolean; label: string; inputs?: readonly ChannelScreenInput[];
-  thumbnail?: boolean;
+  presentation?: "full" | "thumbnail" | "background";
   input?: InputTransport;
   sourceAudio?: SourceAudioControl;
   interaction?: RoomInteractionSession | null;
   theaterMode: boolean; onToggleTheater(): void;
   onPresentation?: (flowId: string, stream: MediaStream, state: ScreenPresentation) => void;
 }) {
+  const thumbnail = presentation === "thumbnail", interactive = presentation === "full";
   const target = inputs?.find(input => input.selected) ?? { flowId: stream.id, stream, selected: true, switchReady: false };
   const [displayed, setDisplayed] = useState(target);
   const next = target.flowId !== displayed.flowId || target.stream !== displayed.stream ? target : inputs?.find(input => !input.selected);
@@ -121,7 +122,7 @@ export function ChannelVideo({ stream, owned, localSource, label, thumbnail = fa
   const previewPlayback = useHostPreviewPlayback(playbackRef, owned ? displayed.stream : null, previewAutoPause);
   useVideoRotation(playbackRef, pictureFit, pictureRotation);
   useAnchoredPopover(pictureTrigger, picturePanel, { side: "above", align: "center" });
-  useLayoutEffect(() => { if (thumbnail) picturePanel.current?.hidePopover(); }, [thumbnail]);
+  useLayoutEffect(() => { if (!interactive) picturePanel.current?.hidePopover(); }, [interactive]);
   const visibility = usePlaybackControlsVisibility(playbackRef, controls, paused || blocked || !ready);
   const register = useCallback((input: ChannelScreenInput, element: HTMLVideoElement | null) => {
     if (element) consumers.current.set(input.stream, { element, composited: false });
@@ -256,10 +257,10 @@ export function ChannelVideo({ stream, owned, localSource, label, thumbnail = fa
   }, [inputs, onPresentation, consumerVersion, fullscreen.nativeActive, picture.active]);
   const nativeEntryBlocked = inputs?.some(input => !input.selected && input.switchReady)
     && !fullscreen.active && !(document.fullscreenEnabled && activeVideo?.parentElement?.requestFullscreen);
-  return <div className="c3-video c3-mini-player" data-controls-hidden={visibility.hidden} data-thumbnail={thumbnail || undefined} inert={thumbnail}>
+  return <div className="c3-video c3-mini-player" data-controls-hidden={visibility.hidden} data-thumbnail={thumbnail || undefined} inert={!interactive}>
     {rendered.map(input => <ChannelVideoInput key={`${input.flowId}:${input.stream.id}`} input={input} visible={input.flowId === displayed.flowId && input.stream === displayed.stream}
       label={label} fit={pictureFit} register={register} frame={frame} issue={issue} playing={playing} fullscreen={fullscreenToggle} />)}
-    <RoomChatOverlay session={interaction} visible={!thumbnail && ready && !blocked && !paused} />
+    <RoomChatOverlay session={interaction} visible={interactive && ready && !blocked && !paused} />
     {!ready && !blocked && <div className="c3-mini-message" role="status">
       <span className="c3-frame-wait"><Glyph name="loader" className="lr-spin" size={22} />
         {lang === "zh" ? "等待画面" : "Waiting for picture"}</span>
@@ -293,7 +294,7 @@ export function ChannelVideo({ stream, owned, localSource, label, thumbnail = fa
       </>}
       <span className="c3-mini-space" />
       <RoomChatToggle session={interaction} quiet />
-      {!owned && <RemoteControl channel={input ?? null} videoRef={playbackRef} available={!thumbnail && ready && displayed.flowId === target.flowId}
+      {!owned && <RemoteControl channel={input ?? null} videoRef={playbackRef} available={interactive && ready && displayed.flowId === target.flowId}
         pictureFit={pictureFit} pictureRotation={pictureRotation} touchMode={remoteTouchMode} />}
       <span ref={pictureTrigger} className="lr-playback-more"><Btn icon="sliders" quiet title="playback.more" hint="hint-advanced"
         popoverTarget={pictureId} controls={pictureId} expanded={pictureOpen} /></span>

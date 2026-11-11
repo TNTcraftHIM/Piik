@@ -37,6 +37,8 @@ export interface ChannelStageSource {
   /** This source runs on this machine; preview audio must not feed back. */
   localSource: boolean;
   subscribed: boolean;
+  /** A different room is being browsed; the same player retains its watch. */
+  hidden?: boolean;
   paused: boolean;
   audience: readonly ScreenAudiencePerson[];
   reactions?: MessageReactions;
@@ -110,8 +112,9 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
   const { lang, vis, t } = useCopy();
   const zh = lang === "zh";
   const copy = (cn: string, en: string) => zh ? cn : en;
-  const active = sources.filter(source => source.owned || source.subscribed);
-  const available = sources.filter(source => !source.owned && !source.subscribed);
+  const retained = sources.filter(source => source.owned || source.subscribed);
+  const active = retained.filter(source => !source.hidden);
+  const available = sources.filter(source => !source.hidden && !source.owned && !source.subscribed);
   const focused = active.find(source => source.id === focusedId);
   const layoutSources = JSON.stringify([active.map(source => source.id), available.map(source => source.id)]);
   const [theater, setTheater] = useTheaterMode();
@@ -126,9 +129,9 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
       const gap = parseFloat(style.rowGap) || 0;
       const height = parent.clientHeight - padding - children.filter(child => child !== tiles).reduce((sum, child) => sum + child.offsetHeight, 0)
         - gap * (children.length - 1);
-      const footer = Math.max(...[...tiles.querySelectorAll("article > footer")].map(node => node.getBoundingClientRect().height)) + 2;
+      const footer = Math.max(...[...tiles.querySelectorAll("article:not([hidden]) > footer")].map(node => node.getBoundingClientRect().height)) + 2;
       const layout = getComputedStyle(tiles);
-      const ratios = [...tiles.children].map(tile => {
+      const ratios = [...tiles.children].filter(tile => !(tile as HTMLElement).hidden).map(tile => {
         const video = tile.querySelector<HTMLVideoElement>('video[data-selected="true"]');
         return video?.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9;
       });
@@ -148,13 +151,18 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
       tiles.removeEventListener("resize", measure, true);
     };
   }, [layoutSources, focused?.id, theater, lang]);
+  useLayoutEffect(() => {
+    for (const tile of grid.current?.querySelectorAll<HTMLElement>('article[hidden], article.is-thumbnail') ?? []) {
+      for (const panel of tile.querySelectorAll<HTMLElement>('[popover]:popover-open')) panel.hidePopover();
+    }
+  }, [layoutSources, focused?.id]);
   useEffect(() => { if (!focused?.stream) setTheater(false); }, [focused?.id, focused?.stream, setTheater]);
   if (!sources.length) return null;
 
-  return <section ref={stage} className={`c3-monitor${theater && focused ? " is-theater" : ""}`} aria-label={copy("共享画面", "Shared screens")}>
+  return <section ref={stage} hidden={!active.length && !available.length} className={`c3-monitor${theater && focused ? " is-theater" : ""}`} aria-label={copy("共享画面", "Shared screens")}>
 
-    {active.length > 0 && <>
-      <header className="c3-monitor-heading">
+    {retained.length > 0 && <>
+      <header className="c3-monitor-heading" hidden={!active.length}>
         <div><Glyph name="tv" size={18} /><Cap k={{ text: copy("画面", "Screens") }} /><small>{active.length}</small></div>
         {active.length > 1 && <div className="c3-monitor-layout">
           <div className="lr-toggle" role="group" aria-label={copy("画面布局", "Screen layout")}>
@@ -178,19 +186,20 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
             </select></label>}
         </div>}
       </header>
-      <div ref={grid} className={`c3-monitor-grid${focused ? " is-focused" : ""}`}
+      <div ref={grid} hidden={!active.length} className={`c3-monitor-grid${focused ? " is-focused" : ""}`}
         style={{ "--stage-columns": columns ?? 1, "--stage-thumbnails": Math.max(1, active.length - 1) } as CSSProperties}>
-        {active.map((source, index) => {
+        {retained.map(source => {
+          const index = active.indexOf(source);
           const isFocused = source.id === focused?.id;
-          const thumbnail = !!focused && !isFocused;
+          const thumbnail = !source.hidden && !!focused && !isFocused;
           const focusable = active.length > 1 && !isFocused;
           const remainder = active.length % (columns ?? 1);
-          const centeredStart = !focused && remainder && index === active.length - remainder ? (columns ?? 1) - remainder + 1 : undefined;
+          const centeredStart = !source.hidden && !focused && remainder && index === active.length - remainder ? (columns ?? 1) - remainder + 1 : undefined;
           const microphone = source.sourceMicrophone;
           const sourceStatus = source.paused ? t("host.paused") : source.localSource ? copy("本机预览", "Local preview") : "";
           const sourceDetail = `${source.name} / ${source.roomName}`;
           const title = screenTitle(source, lang);
-          return <article key={source.id} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
+          return <article key={source.id} hidden={source.hidden} inert={source.hidden} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
             style={centeredStart ? { gridColumn: `${centeredStart} / span 2` } : undefined}
             data-publication-id={source.id} data-focusable={focusable || undefined}
             aria-label={`${title} / ${source.name} / ${source.roomName}`}
@@ -198,7 +207,8 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
               if (!focusable || (event.target instanceof Element && event.target.closest("button, input, select, a, [popover]"))) return;
               onFocus(source.id);
             }}>
-            {source.stream ? <ChannelVideo stream={source.stream} owned={source.owned} localSource={source.localSource} thumbnail={thumbnail} inputs={source.inputs} onPresentation={onPresentation} input={source.input}
+            {source.stream ? <ChannelVideo stream={source.stream} owned={source.owned} localSource={source.localSource}
+              presentation={source.hidden ? "background" : thumbnail ? "thumbnail" : "full"} inputs={source.inputs} onPresentation={onPresentation} input={source.input}
               sourceAudio={source.sourceAudio} interaction={source.interaction}
               theaterMode={theater && isFocused} onToggleTheater={() => {
                 onFocus(source.id); setTheater(!theater);
@@ -209,6 +219,8 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
                 <span>{source.paused ? t("host.pauseNotice") : source.deliveryFailed
                   ? copy("画面传输失败，正在重试。", "Picture delivery failed. Retrying.")
                   : copy("正在连接画面", "Connecting picture")}</span></div>}
+            {thumbnail && <button className="c3-thumbnail-focus" type="button" aria-label={copy(`聚焦 ${title}`, `Focus ${title}`)}
+              onClick={() => onFocus(source.id)} />}
             <footer>
               <div className="c3-monitor-source-row">
                 <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
@@ -226,7 +238,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
                     </Tooltip>
                     : <small className="c3-source-status" aria-label={sourceStatus}>{vis ? <Glyph name={source.paused ? "pause" : "tv"} size={12} /> : sourceStatus}</small>)}
                   <ChannelContentReactions reactions={source.reactions} session={source.interaction ?? null}
-                    target={{ publicationId: source.id }} disabled={source.available === false}
+                    target={{ publicationId: source.id }} disabled={source.available === false} effectsEnabled={!source.hidden && !thumbnail}
                     effectAnchor={() => grid.current?.querySelector(`[data-publication-id="${CSS.escape(source.id)}"] .c3-monitor-source-row > .lr-person`) ?? null} />
                   <SourceAudience people={source.audience} />
                   {source.owned && source.shareControls}
