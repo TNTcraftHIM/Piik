@@ -5,18 +5,18 @@ This guide covers the 3.0 internal test. For the published version, use the [2.6
 English · [简体中文](./network.zh-CN.md) · [Troubleshooting](./troubleshooting.md)
 
 Start with the [basic symptom checks](./troubleshooting.md#common-problems).
-Use this page when **the domain opens, but picture, voice or file downloads still cannot connect**.
+Use this page when **the site opens, but picture, voice or file downloads still cannot connect**.
 
 - **The same invitation works in another browser:** [check WebRTC restrictions](#browser-webrtc-restrictions).
 - **It works on a hotspot but not your usual network:** [compare connection options](#campus-networks-and-strict-nat).
 - **Friends on different networks cannot exchange media or files:** [try a shared virtual LAN](#optional-a-virtual-lan).
 - **You have discovery errors or manage the router:** [check STUN, IPv6 and mappings](#stun-ipv6-and-router-checks).
 
-The domain connection carries text, history, message reactions and attachment
+The site connection carries text, history, message reactions and attachment
 descriptions to the room host. Pictures, voice and file content use separate
-peer connections. If chat also fails, first check the [domain connection and room hosting](./troubleshooting.md#chat-or-history-will-not-load).
+peer connections. If chat also fails, first check the [site connection and room hosting](./troubleshooting.md#chat-or-history-will-not-load).
 
-![Participants exchange text, history and attachment descriptions through the domain with the room host; pictures, voice and file content use peer connections.](../assets/guide/network-paths.en.svg)
+![Participants exchange text, history and attachment descriptions through the site with the room host; pictures, voice and file content use peer connections.](../assets/guide/network-paths.en.svg)
 
 ## Campus networks and strict NAT
 
@@ -34,7 +34,7 @@ current network blocks peer traffic.
 ## Browser WebRTC restrictions
 
 Browser settings, VPNs and privacy extensions can block peer traffic even while
-the domain connection and chat work.
+the site connection and chat work.
 
 1. Open the same invitation in a browser profile with default settings and no relevant privacy extensions.
 2. If it works, check **WebRTC** or **IP-leak protection** in the original browser. Allow the UDP traffic needed for peer connections.
@@ -57,7 +57,7 @@ and [Vivaldi's privacy settings](https://help.vivaldi.com/desktop/privacy/privac
 
 ## STUN, IPv6 and router checks
 
-These checks are for people reading App logs or managing the domain or router.
+These checks are for people reading App logs or managing the site or router.
 Only change equipment and settings you manage.
 
 <details>

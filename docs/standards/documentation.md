@@ -20,7 +20,7 @@ verification procedures stay in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 | Status projection | [Media status](./media-status.md) | Which facts each display surface may express |
 | Release identity and compatibility | [Versioning](./versioning.md) | Version roles, protected interfaces and public-readiness boundary |
 | Published 2.x behavior | [Rooms](./rooms-access.md), [routing](./routing-transport.md), [media](./media-quality.md), [lifecycle](./presentation-lifecycle.md) | One owner per domain; promises, boundaries and non-obvious invariants |
-| Isolated 3.0 architecture | [Channel/network model](../research/channel-network-design.md), [room-data model](../research/channel-storage-and-identity.md) | Accepted authority, runtime, routing and persistence boundaries |
+| Isolated 3.0 architecture | [Site/network model](../research/channel-network-design.md), [room-data model](../research/channel-storage-and-identity.md) | Accepted authority, runtime, routing and persistence boundaries |
 | Architecture decisions | `docs/adr/` | Decision status, rationale and consequences; explicitly supersede changed clauses |
 | Measurements and external evidence | `docs/research/` | Date, sources, observations, inference, limits and license scope |
 | Deployment and configuration | `docs/deployment.md`, `docs/operations/`, `docs/standards/configuration.md` | Runnable operator reference; no per-release diary |

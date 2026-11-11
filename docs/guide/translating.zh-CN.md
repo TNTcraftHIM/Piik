@@ -34,7 +34,7 @@ Piik 提供简体中文和英文，可通过 GitHub Issue 与 Pull Request（PR�
 | 欢迎语、等待短句、浏览器标签页的轮换标题 | 同一语言文件中的 `zhPlayful` / `enPlayful` 及标题词库；官网欢迎语共用这些词库 |
 | 官网 | [页面正文](../../site/index.html)和[交互文案](../../site/main.js)，按 `en`、`zh-CN` 成对组织 |
 | 宣传短片 | [短片源码说明](../../site/film/README.md)，字幕、插画和播放控件有各自的中英文内容 |
-| 3.0 域与房间专用文案 | [频道组件](../../src/client/channel/components)和[房间页面](../../src/client/pages/ChannelPreviewPage.tsx)中的中英文配对文本；共用控件仍使用上方词库 |
+| 3.0 站点与房间专用文案 | [站点与房间组件](../../src/client/channel/components)和[房间页面](../../src/client/pages/ChannelPreviewPage.tsx)中的中英文配对文本；共用控件仍使用上方词库 |
 | README 与读者文档 | [README](../../README.md)、[文档首页](./README.md)、[使用指南](./getting-started.md)、[问题排查](./troubleshooting.md)、[部署指南](../operations/self-hosting.md)，均有对应的 `.zh-CN.md` 文件 |
 
 修改源码后，重新构建提供该内容的页面或程序：

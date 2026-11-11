@@ -44,8 +44,8 @@ with `PIIK_CHANNEL_WEB_ORIGIN=http://127.0.0.1:8787` for this development UI.
 It describes the private startup keys and listener configuration;
 [saved data and files](../prototype/channel-server/README.md#saved-data-and-files)
 covers storage.
-Open [127.0.0.1:8787](http://127.0.0.1:8787), using its owner-entry and domain-invitation
-instructions. Vite serves the UI and proxies signaling to the Rust domain.
+Open [127.0.0.1:8787](http://127.0.0.1:8787), using the operator entry described
+there to manage the site. Vite serves the UI and proxies signaling to the Rust runtime.
 Browser capture requires loopback or HTTPS.
 
 On Windows, keep network executables at stable source-build paths, such as
@@ -84,7 +84,7 @@ and [website preview and publishing](./operations/website.md).
 | Measurements and platform limits | [Research](./research/) and [verification status](./verification-status.md) |
 | Published 2.x camera and Host microphone research | [Capture scope and limits](./research/camera-and-microphone.md) |
 | Text, reactions and floating room tools | [Room-interaction design](./research/room-interactions.md) |
-| Accepted 3.0 channel/room foundation, Rust direction and multi-source routing | [Channel and network design](./research/channel-network-design.md) |
+| Accepted 3.0 site/room foundation, Rust direction and multi-source routing | [Site and network design](./research/channel-network-design.md) |
 | 3.0 room-data ownership, cached attachments and file-delivery design | [Room data and hosting](./research/channel-storage-and-identity.md) |
 | Stereo verification and HDR-to-SDR assessment | [Media fidelity](./research/media-fidelity.md) |
 

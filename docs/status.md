@@ -8,7 +8,7 @@ and Git/PRs own completed history.
 
 ## Isolated 3.0 Prototype
 
-The [channel prototype](../prototype/channel-server/README.md) uses one Rust core
+The [3.0 site-and-room prototype](../prototype/channel-server/README.md) uses one Rust core
 across Server, Native and Browser/WASM, with the shared Web UI for chat, screen
 sharing, selective watching, room voice and App control. Normal development and
 distribution use these Rust/Web paths; Go tooling only builds the pinned

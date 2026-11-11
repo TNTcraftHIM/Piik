@@ -1,4 +1,4 @@
-# Piik 3.0 Channels, Rooms And Networking
+# Piik 3.0 Sites, Rooms And Networking
 
 Accepted direction updated 2026-11-10. This document owns the isolated 3.0 responsibility
 and networking design. The [prototype README](../../prototype/channel-server/README.md)
@@ -31,12 +31,19 @@ peer connection. TODO owns remaining implementation and platform integration.
 
 ## Terminology And Responsibilities
 
+The product hierarchy is **Site → Room / 站点 → 房间**. A site is the entry
+people open and the container for their rooms. Technical domain authority and
+the existing `Channel` identifiers implement that site, not another product level.
+The [copy convention](../standards/naming.md#voice-and-terminology) applies this
+vocabulary across the UI and guides.
+
 | English | Chinese | Meaning |
 | --- | --- | --- |
 | User | 用户 | Every participant, including site operators, room owners and sharers. |
+| Site | 站点 | The shared entry containing a room directory and the users' site identities. |
 | Domain | 站点后台 | The site's identity, room directory and coordination runtime; named `Channel` in code, without a separate entry or invitation layer. |
 | Site operator | 站点维护者 | The user operating the site's metadata and backup/restore, without room-wide authority over other users. |
-| Room | 房间 | A conversation, history and media scope within a channel. |
+| Room | 房间 | A conversation, history and media scope within a site. |
 | Room owner | 房主 | The user operating that room's state, management and base distribution network. |
 | Sharer | 分享者 | The user originating a particular screen, voice publication or file offer. |
 
@@ -68,7 +75,7 @@ restoring its own data; it does not grant access to other users' private rooms.
 Room owners manage their own rooms. Source owners separately consent to remote
 input. These scopes use the shared authenticated identity and room-access rules.
 
-Directory visibility and access remain separate. Public rooms admit channel
+Directory visibility and access remain separate. Public rooms admit site
 users; private rooms require their room admission. Hidden private rooms expose
 neither directory details nor activity to unauthorized users. A nickname is not
 identity, and an invitation establishes admission rather than proving that two
@@ -431,7 +438,7 @@ when selected, so its senders and players can adopt the already-proven media.
 Transport aggregation, proof and cleanup retain the same ownership; a retired
 callback cannot act on its successor.
 
-A channel has no fixed media allowance divided among rooms. The participant
+A site has no fixed media allowance divided among rooms. The participant
 runtime counts its actual connections, forwarded copies, encoders/decoders and
 transition overlap. Watching more pictures creates real additional work; being
 present alone does not allocate a fraction of an invented room-wide bitrate pool.
@@ -594,7 +601,7 @@ Browser preference; the App holds only the current process registration.
 | A Browser's local App control connection ends | End native activities owned by that control connection. Browser media and App hosting keep their own lifetimes. |
 | App hosting stops or its process ends | Pause its hosted rooms and release that runtime's activities and connections; saved room data remains. |
 | An administration page closes while Server owns the runtime | The deliberately running service continues; its lifetime is independent of that page. |
-| Browser-owned room runtime closes or expires | The room pauses; Browser hosting must not silently move to the domain owner's device. |
+| Browser-owned room runtime closes or expires | The room pauses; Browser hosting must not silently move to the site operator's device. |
 | Room owner stops the hosting runtime | The room becomes unavailable; saved data remains. No automatic replacement is selected. |
 | A manager deletes or removes a room | Retire its activities and bindings; data disposition follows the [room removal scope](./channel-storage-and-identity.md#room-creation-and-removal). Other rooms keep their leases. |
 | Same owner restarts using saved room data | Restore room identity/history and establish new live sessions. Captures require explicit activation; reopening data does not resume a saved call. |

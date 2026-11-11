@@ -44,12 +44,12 @@ function AudioPaths({ english }: { english: boolean }) {
 function NetworkPaths({ english }: { english: boolean }) {
   return <svg xmlns="http://www.w3.org/2000/svg" width="600" height="340" viewBox="0 0 600 340" role="img" aria-labelledby="title desc">
     <title id="title">{english ? "Chat and media use separate connections" : "聊天与媒体使用不同的连接"}</title>
-    <desc id="desc">{english ? "Messages and history reach the room host through the domain. Voice, pictures and file content use peer connections, directly or through other participants." : "消息与历史通过域到达房间托管端。语音、画面和文件内容使用设备间连接，可直连或由其他参与者转发。"}</desc>
+    <desc id="desc">{english ? "Messages and history reach the room host through the site. Voice, pictures and file content use peer connections, directly or through other participants." : "消息与历史通过站点到达房间托管端。语音、画面和文件内容使用设备间连接，可直连或由其他参与者转发。"}</desc>
     <style>{style}</style>
     <path className="path" d="M164 174h28V64h32m152 0h28v110h28" />
     <rect className="node" x="224" y="8" width="152" height="112" rx="20" />
     <g className="glyph" transform="translate(274 18)"><Glyph name="server" size={52} /></g>
-    <text x="300" y="101">{english ? "Domain" : "域"}</text>
+    <text x="300" y="101">{english ? "Site" : "站点"}</text>
     {[{ x: 12, label: english ? "Room host" : "房主" }, { x: 436, label: english ? "Friend" : "朋友" }].map(node => <g key={node.x}>
       <rect className="node" x={node.x} y="136" width="152" height="160" rx="20" />
       <g className="glyph" transform={`translate(${node.x + 46} 164)`}><Glyph name="window" size={60} /></g>

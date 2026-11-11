@@ -9,6 +9,9 @@ The first version keeps one room data owner and reuses established room paths.
 
 ## Ownership And Placement
 
+The product hierarchy is Site → Room (站点 → 房间); domain refers to the site's
+technical authority and storage scope, as defined by the
+[network model](./channel-network-design.md#terminology-and-responsibilities).
 The room owner operates the room and keeps its authoritative data. The site
 operator maintains the domain identity and room directory. These runtimes may share
 one App when that user owns both, or run on different users' devices. Neither
@@ -20,7 +23,7 @@ arrangement adds a storage server, a second application or a configuration task.
 | Room name, icon, access and grants | Room runtime's durable data. The domain directory holds only its authorized summary. |
 | Identity images | Small retained metadata at their domain or room owner; independent of the uploader's live session. The directory carries the authorized room summary. |
 | Messages and attachment descriptions | Confirmed history at the room runtime; participants may keep readable local copies. |
-| File bytes | The sender and recipients that retain complete copies. The domain owner does not automatically receive or store them. |
+| File bytes | The sender and recipients that retain complete copies. The site operator does not automatically receive or store them. |
 | Presence, available file holders and active activities | Current authenticated sessions. Rebuild these facts when participants reconnect; a saved record does not prove present availability. |
 | Live sessions, voice, pictures and route plans | Their active runtimes. Reconnection reconciles existing work; a runtime restart establishes new sessions and activities. Saved data does not restore a call. |
 | Drafts and display preferences | The local client, separate from domain/room authority. |
@@ -79,7 +82,7 @@ the room, confer management permission or become authoritative by being newer.
 Recommend room admission also permits reading its retained conversation. Do not
 add a separate history permission or per-user storage configuration in this
 first model. Joining a room fetches its recent history, not every room in the
-channel or every attachment's bytes.
+site or every attachment's bytes.
 
 ### Messages And Attachments
 

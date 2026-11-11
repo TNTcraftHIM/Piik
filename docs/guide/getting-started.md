@@ -49,10 +49,11 @@ site, not the entry for this test version.
 2. The launcher opens in your system browser. Choose a mode below, then
    select **Open Piik**. A fresh visit opens the room overview; the Piik mark
    returns there without stopping your shares, watches or voice.
-3. Open the room list (**Rooms** on a narrow screen), select **Create room**,
-   enter a name and choose **Public** for a first room
-   everyone in the site can enter. Check the hosting note, then select
-   **Create room**. You are now in a usable room: send a message to try it.
+3. On an empty site, select **Create your first room**. The name starts as
+   **Living room**; change it if you like. Choose **Public** for everyone in the
+   site or **Private** for invitation/password access. Check the hosting note,
+   then select **Create room** to enter it. Later, use **Create room** in the
+   room list (**Rooms** on a narrow screen) to open the same form.
 4. [Invite your friends](#invite-friends), then select **Start sharing**.
    Choose **Browser**, **Camera**, or an available App window/screen source.
    Select the actual source and enable source sound if offered.

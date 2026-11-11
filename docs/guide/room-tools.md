@@ -51,6 +51,9 @@ The site operator opens settings by selecting the site name above the room list.
 3. To read back, select **Earlier messages**. **Latest messages** returns to
    the current conversation.
 
+On a desktop, Enter sends and Shift+Enter adds a line. On a touchscreen, Return
+adds a line and **Send** sends the message. Ctrl+Enter or Command+Enter also sends.
+
 Confirmed messages and their reaction counts are saved by the room's host. Refreshing
 or returning to the room loads its history again when that host is available.
 Chat and history use the site connection and do not wait for a P2P link.

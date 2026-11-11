@@ -1,10 +1,13 @@
-# Channel prototype
+# Piik 3.0 Site And Room Runtime
 
 This reference describes the internal Piik 3.0 runtime: a shared Rust authority,
 the shared React interface and Browser WebRTC. Published 2.x App and Server
 instructions remain with the [maintenance reference](https://github.com/TNTcraftHIM/Piik/blob/main/docs/deployment.md).
 The [network design](../../docs/research/channel-network-design.md)
 owns the accepted routing foundation; this file describes what currently runs.
+The product hierarchy is **Site → Room / 站点 → 房间**. `Domain` names the site's
+technical authority; existing `Channel` identifiers and package names retain
+their implementation meaning.
 
 The Server executable consumes [channel-core](../channel-core/README.md), the same
 Rust library used by Native and Browser/WASM. Its package and default binary remain
@@ -318,8 +321,9 @@ different real directory; point it at an existing source-run directory to reuse
 that data. The domain checkpoint stores catalog summaries, identities and its
 owner admission key. Room files under `rooms/<domainId>/<ownerId>/`
 store each room's policy, grants and confirmed history. Only a newly created
-domain bootstraps Living room, Studio and Quiet corner; subsequent starts reopen
-actual files. A domain-only import leaves directory entries without room data
+standalone Server site bootstraps Living room, Studio and Quiet corner;
+subsequent starts reopen actual files. A new App site starts with an empty room
+list; users create rooms through the shared interface. A domain-only import leaves directory entries without room data
 unavailable. Existing room names and policy are not overwritten. The Native
 endpoint authenticates with that domain's saved owner key and restored owner identity;
 it does not create a new user on every service start.

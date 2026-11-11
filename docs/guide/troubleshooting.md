@@ -18,7 +18,7 @@ Start at the first thing that fails:
 | What you see | Check first |
 | --- | --- |
 | App does not open, or invitation will not load | [App and room entry](#opening-app-and-joining-a-room). |
-| Chat or history does not load | [Domain connection and room hosting](#chat-or-history-will-not-load). |
+| Chat or history does not load | [Site connection and room hosting](#chat-or-history-will-not-load). |
 | An attachment is visible but cannot be opened or downloaded | [File availability and delivery](#an-attachment-will-not-open-or-download). |
 | Source picker is missing or sharing will not start | [Source and capture checks](#starting-a-share). |
 | Page opens, but the picture will not connect | [Media connection](#when-video-will-not-connect). |
@@ -120,11 +120,11 @@ for the requirements. You do not need to open an inbound port on your router.
 
 </details>
 
-If the temporary address is unavailable, you can use an existing **3.0** domain.
+If the temporary address is unavailable, you can use an existing **3.0** site.
 To switch this App to [Local network](./network.md#optional-a-virtual-lan), finish
 its current shares, quit normally and reopen App, then select that mode.
 The public Demo and published 2.x
-sites are separate versions. If a permanent domain is unavailable, ask its
+sites are separate versions. If a site at its permanent address is unavailable, ask its
 operator to check the service. Once the page opens, distinguish
 [chat/hosting problems](#chat-or-history-will-not-load) from [peer connection problems](#when-video-will-not-connect).
 
@@ -212,7 +212,7 @@ A proxy/WAF HTTP error needs that operator's logs. Do not disable origin checks.
 3. If the room is online, use **Load messages** after a failed read and keep the complete error. A storage error belongs to the room host; collect its report too.
 
 Chat, history, message reactions and attachment descriptions travel through
-the domain connection. They do not need media UDP. If chat works but picture,
+the site connection. They do not need media UDP. If chat works but picture,
 voice or file transfer fails, check that activity below.
 
 ### An attachment will not open or download
@@ -497,7 +497,7 @@ Watchers only need their browser. Driver checks and installation belong on the s
 For pictures, voice or file content that cannot connect after the basic checks,
 use the [network guide](./network.md). It groups browser restrictions, network
 comparisons, virtual-LAN solutions and router checks. Chat/history problems
-start with [domain connection and hosting](#chat-or-history-will-not-load).
+start with [site connection and hosting](#chat-or-history-will-not-load).
 
 ## Reporting a problem
 

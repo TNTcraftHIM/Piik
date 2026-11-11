@@ -1,12 +1,15 @@
 # Project Memory
 
-Last updated: 2026-11-10
+Last updated: 2026-11-11
 
 This working tree develops the isolated 3.0 model: a shared Rust core across
 Server, Native and Browser/WASM, with one shared Web UI for rooms, conversation,
 screen sharing, selective watching, voice and App control. Go tooling builds the
 separately pinned Cloudflared helper. [Status](./status.md#isolated-30-prototype)
 owns the current implementation and delivery snapshot.
+The product hierarchy is **Site → Room / 站点 → 房间**. Technical `Domain` and
+existing `Channel` identifiers refer to the site's authority/runtime; the
+[naming owner](./standards/naming.md) governs user-facing terminology.
 
 Published 2.x has its own [compatibility index](./status.md#accepted-release-contract).
 Its maintained behavior and deployment belong to the canonical

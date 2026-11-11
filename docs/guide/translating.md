@@ -40,7 +40,7 @@ personal content. You can send a suggestion without setting up development tools
 | Welcome lines, waiting captions and changing browser-tab titles | The `enPlayful` / `zhPlayful` pools and title-frame catalogs in those same files; website welcome lines reuse these pools |
 | Website | [Page markup](../../site/index.html) and [interactive labels](../../site/main.js); text is paired by `en` and `zh-CN` |
 | Introduction film | [Film sources](../../site/film/README.md); captions, artwork and playback labels have their own bilingual text |
-| 3.0 domain/room-specific wording | Paired Chinese/English text in [channel components](../../src/client/channel/components) and the [room page](../../src/client/pages/ChannelPreviewPage.tsx); shared controls still use the catalogs above |
+| 3.0 site/room-specific wording | Paired Chinese/English text in [site and room components](../../src/client/channel/components) and the [room page](../../src/client/pages/ChannelPreviewPage.tsx); shared controls still use the catalogs above |
 | README and entry guides | [README pair](../../README.md), [documentation home](./README.md), [getting started](./getting-started.md), [troubleshooting](./troubleshooting.md) and [self-hosting](../operations/self-hosting.md), each with a `.zh-CN.md` counterpart |
 
 Edit the source, then rebuild the surface that serves it:
