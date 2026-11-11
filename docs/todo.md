@@ -12,6 +12,12 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **Ordinary chat images without peer setup.** Replace the small-original
+  threshold with a quality-aware image flow after the
+  [image comparison](./research/channel-storage-and-identity.md#image-quality-assessment).
+  Preserve screenshot text, transparency, animated originals and original-file
+  access. Keep image bytes out of route projections and history pages bounded.
+
 - [ ] **3.0 Windows shared-sound noise.** A beta2 Host reports noise that stops
   when excluding the Piik console's process tree, but returns when excluding a
   silent unrelated window. Verify which Browser playback belongs to that tree

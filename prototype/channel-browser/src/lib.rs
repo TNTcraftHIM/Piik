@@ -162,16 +162,22 @@ pub fn history_page_size() -> usize {
 }
 
 #[wasm_bindgen]
-pub fn history_page(
-    rows: &str,
-    oldest_seq: Option<u64>,
-    before: Option<u64>,
-) -> Result<String, JsValue> {
-    encode(&HistoryResult::page(
-        parse::<Vec<StoredMessage>>(rows)?,
-        oldest_seq,
-        before,
-    ))
+pub struct HistoryPage(piik_channel_core::history::HistoryPage);
+
+#[wasm_bindgen]
+impl HistoryPage {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self(Default::default())
+    }
+
+    pub fn push(&mut self, row: &str) -> Result<bool, JsValue> {
+        self.0.push(parse::<StoredMessage>(row)?).map_err(error)
+    }
+
+    pub fn finish(self, oldest_seq: Option<u64>, before: Option<u64>) -> Result<String, JsValue> {
+        encode(&self.0.finish(oldest_seq, before))
+    }
 }
 
 #[wasm_bindgen]

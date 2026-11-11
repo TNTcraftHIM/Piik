@@ -178,6 +178,11 @@ No peer connection is needed to read or send conversation. The domain forwards
 the authenticated response; it does not confirm it.
 Load a bounded recent window at a fixed history boundary, then continue with
 confirmed changes after that boundary. Older pages are requested when needed.
+Each page is limited to 50 records and 256 KiB of serialized message data,
+accepting at least one record so pagination can always advance. SQLite and
+IndexedDB read incrementally through the same Core accumulator. The Browser
+keeps a contiguous reading window bounded by 4 MiB and the existing record
+limit; dropped records remain available through ordinary history requests.
 Snapshot and live delivery share the same room order so a message arriving during
 loading is neither missed nor rendered twice. The
 [Matrix sync model](https://spec.matrix.org/latest/client-server-api/#syncing)
@@ -397,6 +402,30 @@ square raster and its existing owner saves and projects that value alongside the
 name. User profiles follow domain identity visibility; room icons follow the
 authorized directory summary. They survive the uploader leaving, without
 an attachment offer, separate transfer or storage service.
+
+### Image Quality Assessment
+
+Reviewed 2026-11-11. The current 64 KiB budget admits small originals but excludes
+ordinary screenshots. Increasing it is being evaluated together with image
+quality and history delivery; it is not Cloudflare's HTTP upload limit.
+
+[Signal Desktop's reviewed scaling implementation](https://github.com/signalapp/Signal-Desktop/blob/5d1bbb7ee231b35cb9cc8cc449ffb819c528efc8/ts/util/scaleImageToLevel.preload.ts)
+combines dimension and byte targets: its standard level uses 1600 px, JPEG
+quality 0.7 and a 1 MiB target. Its high-quality candidates start at 3072 px with
+quality 0.75 and a 3 MiB target. GIFs bypass this transcoding path. Element
+[keeps the original and makes a separate preview](https://github.com/element-hq/element-web/blob/6e55b434cb8b2bc7c70802245727e42c3cf8ce9e/apps/web/src/ContentMessages.ts),
+with [previews fitting 800 by 600](https://github.com/element-hq/element-web/blob/6e55b434cb8b2bc7c70802245727e42c3cf8ce9e/apps/web/src/utils/image-media.ts).
+These are useful quality/transport boundaries, not Piik presets.
+
+A controlled native-Canvas comparison of two 2048 px UI screenshots found their
+original PNGs were 105 and 178 KiB. WebP at quality 0.9 produced 84 and 148 KiB
+with slight text softening; JPEG at 0.85 produced larger files and visible text
+edge noise. PNG/WebP preserved alpha; JPEG did not. The photo control was a
+512 by 480 sample, so this does not establish a high-resolution photo target.
+Next comparison should retain already-small originals, measure larger photo
+previews and preserve original access; animated originals must not silently
+become static Canvas output. An encoded preview and an unchanged original need
+distinct identities in the attachment model before that behavior is implemented.
 
 ## Persistence And Recovery
 

@@ -2,7 +2,9 @@
 //! Media sessions and routes never enter this database.
 use crate::{
     backup::{HistoryImport, HistoryRow},
-    history::{ConfirmationInput, HistoryRequest, HistoryResult, StoredMessage, HISTORY_PAGE},
+    history::{
+        ConfirmationInput, HistoryPage, HistoryRequest, HistoryResult, StoredMessage, HISTORY_PAGE,
+    },
     wire::ChatMessage,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row, TransactionBehavior};
@@ -229,7 +231,8 @@ impl Storage {
                     .map(|seq| seq.saturating_sub(1))
                     .unwrap_or(u64::MAX)
                     .min(i64::MAX as u64);
-                let messages = {
+                let mut page = HistoryPage::default();
+                {
                     let mut query = transaction
                         .prepare(
                             "SELECT seq,id,user_id,text,time,attachments,reactions,archived_author_name,inline_images,mentions,reply FROM message
@@ -238,12 +241,14 @@ impl Storage {
                         )
                         .map_err(|_| "storage_failed")?;
                     let rows = query
-                        .query_map(params![room_id, newest, HISTORY_PAGE + 1], read_message)
-                        .map_err(|_| "storage_failed")?
-                        .collect::<Result<Vec<_>, _>>()
+                        .query_map(params![room_id, newest, HISTORY_PAGE], read_message)
                         .map_err(|_| "storage_failed")?;
-                    rows
-                };
+                    for row in rows {
+                        if !page.push(row.map_err(|_| "storage_failed")?)? {
+                            break;
+                        }
+                    }
+                }
                 let oldest_seq = transaction
                     .query_row(
                         "SELECT min(seq) FROM message WHERE room_id=?1",
@@ -251,7 +256,7 @@ impl Storage {
                         |row| row.get(0),
                     )
                     .map_err(|_| "storage_failed")?;
-                HistoryResult::page(messages, oldest_seq, *before)
+                page.finish(oldest_seq, *before)
             }
             HistoryRequest::Send { room_id, draft } => {
                 let previous = transaction
@@ -536,6 +541,81 @@ mod tests {
             }
             _ => panic!("read returned a message confirmation"),
         }
+    }
+
+    #[test]
+    fn image_history_pages_obey_byte_budget_without_losing_boundary_rows() {
+        use crate::history::HISTORY_PAGE_BYTES;
+        use crate::AttachmentDescriptor;
+        use base64ct::{Base64, Encoding};
+        use std::collections::BTreeMap;
+        let mut store = Storage::open(Path::new(":memory:")).unwrap();
+        let mut bytes = vec![0; crate::ATTACHMENT_LIMITS.max_inline_image_bytes];
+        bytes[..6].copy_from_slice(b"GIF89a");
+        let image = AttachmentDescriptor {
+            id: Uuid::new_v4(),
+            name: "image.gif".into(),
+            size: bytes.len() as u64,
+            media_type: "image/gif".into(),
+            sha256: crate::attachment::sha256_hex(&bytes),
+        };
+        let mut draft = MessageDraft::new(
+            Uuid::new_v4(),
+            "first".into(),
+            "".into(),
+            vec![image.clone()],
+            BTreeMap::from([(image.id, Base64::encode_string(&bytes))]),
+            vec![],
+            None,
+            1,
+        )
+        .unwrap();
+        for seq in 1..=7 {
+            draft.nonce = format!("image-{seq}");
+            assert_eq!(confirmed(&mut store, "images", &draft).0.seq, seq);
+        }
+        let mut before = None;
+        let mut received = Vec::new();
+        let mut sizes = Vec::new();
+        loop {
+            let HistoryResult::Page {
+                messages,
+                has_more,
+                oldest_seq,
+                before: cursor,
+            } = store
+                .history(&HistoryRequest::Read {
+                    room_id: "images".into(),
+                    before,
+                })
+                .unwrap()
+            else {
+                panic!("page expected")
+            };
+            assert_eq!(cursor, before);
+            assert_eq!(oldest_seq, Some(1));
+            assert!(!messages.is_empty());
+            assert!(
+                messages
+                    .iter()
+                    .map(|row| serde_json::to_vec(row).unwrap().len())
+                    .sum::<usize>()
+                    <= HISTORY_PAGE_BYTES
+            );
+            for row in &messages {
+                assert_eq!(row.message.inline_images, draft.inline_images);
+            }
+            before = Some(messages[0].message.seq);
+            sizes.push(messages.len());
+            received.extend(messages.into_iter().map(|row| row.message.seq));
+            if !has_more {
+                break;
+            }
+        }
+        assert_eq!(sizes, [2, 2, 2, 1]);
+        received.sort_unstable();
+        assert_eq!(received, (1..=7).collect::<Vec<_>>());
+        assert!(page(&mut store, "images", Some(1)).0.is_empty());
     }
 
     #[test]

@@ -110,6 +110,18 @@ function mergeMessage(previous: ChannelMessage | undefined, message: ChannelMess
     ? { ...message, reactions: previous.reactions } : message;
 }
 
+/** A reading window retains a contiguous end of history, bounded by text and image bytes. */
+function readingWindow(messages: ChannelMessage[], count: number, latest: boolean): ChannelMessage[] {
+  const encoder = new TextEncoder(), maximum = 4 * 1024 * 1024;
+  let bytes = 0, kept = 0;
+  for (let index = latest ? messages.length - 1 : 0; index >= 0 && index < messages.length && kept < count; index += latest ? -1 : 1) {
+    const size = encoder.encode(JSON.stringify(messages[index])).length;
+    if (kept > 0 && bytes + size > maximum) break;
+    bytes += size; kept++;
+  }
+  return latest ? messages.slice(messages.length - kept) : messages.slice(0, kept);
+}
+
 /** The live browser endpoint owns captures and reconnects; browsing owns neither. */
 export class ChannelSession {
   private view: ChannelView = {
@@ -695,10 +707,11 @@ export class ChannelSession {
     const projected = page.map(message => mergeMessage(current.find(previous => previous.id === message.id), message));
     const merged = mergeMessages([...existing, ...projected]
       .filter(message => result.oldestSeq === null || message.seq >= result.oldestSeq));
-    const messages = latest ? merged.slice(-state.channel.historyWindow) : merged.slice(0, state.channel.historyWindow);
-    const atLatest = latest || (!jumping && (this.view.historyByRoom[roomId]?.atLatest ?? true) && merged.length <= state.channel.historyWindow);
+    const messages = readingWindow(merged, state.channel.historyWindow, latest);
+    const atLatest = latest || (!jumping && (this.view.historyByRoom[roomId]?.atLatest ?? true) && messages.length === merged.length);
+    const hasMore = result.hasMore || result.oldestSeq !== null && messages.length > 0 && messages[0].seq > result.oldestSeq;
     this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [roomId]: messages },
-      historyByRoom: { ...this.view.historyByRoom, [roomId]: { hasMore: result.hasMore, before: messages[0]?.seq, atLatest } } });
+      historyByRoom: { ...this.view.historyByRoom, [roomId]: { hasMore, before: messages[0]?.seq, atLatest } } });
   }
 
   private applyMessage(roomId: string, message: ChannelMessage): void {
@@ -722,8 +735,12 @@ export class ChannelSession {
       if (snapshot?.messageId === message.id) projected = mergeMessage(projected,
         { ...message, reactions: { revision: snapshot.revision, counts: snapshot.counts } });
     }
-    this.patch({ messagesByRoom: { ...this.view.messagesByRoom,
-      [roomId]: mergeMessages([...messages, projected]).slice(-state.channel.historyWindow) } });
+    const merged = mergeMessages([...messages, projected]);
+    const retained = readingWindow(merged, state.channel.historyWindow, true);
+    const history = this.view.historyByRoom[roomId];
+    this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [roomId]: retained },
+      ...(history && retained.length < merged.length ? { historyByRoom: { ...this.view.historyByRoom,
+        [roomId]: { ...history, before: retained[0]?.seq, hasMore: true } } } : {}) });
   }
 
   private commandRoom(command: ChannelCommand): string | undefined {

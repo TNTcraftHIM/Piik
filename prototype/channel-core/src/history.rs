@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub const HISTORY_WINDOW: usize = 1000;
 // Each retained message has a body and a reaction snapshot on the peer wire.
 pub const HISTORY_PAGE: usize = 50;
+pub const HISTORY_PAGE_BYTES: usize = 256 * 1024;
 pub const MESSAGE_MENTION_LIMIT: usize = 64;
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -401,17 +402,37 @@ pub enum HistoryResult {
     Sent(MessageConfirmation),
 }
 
-impl HistoryResult {
-    pub fn page(
-        mut newest_first: Vec<StoredMessage>,
-        oldest_seq: Option<u64>,
-        before: Option<u64>,
-    ) -> Self {
-        let has_more = newest_first.len() > HISTORY_PAGE;
-        newest_first.truncate(HISTORY_PAGE);
-        newest_first.reverse();
-        Self::Page {
-            messages: newest_first,
+/// The storage cursor visits newest first and stops when `push` returns false.
+/// The first message always fits a page; pagination never strands a large row.
+#[derive(Default)]
+pub struct HistoryPage {
+    messages: Vec<StoredMessage>,
+    bytes: usize,
+}
+
+impl HistoryPage {
+    pub fn push(&mut self, message: StoredMessage) -> Result<bool, &'static str> {
+        let bytes = serde_json::to_vec(&message)
+            .map_err(|_| "invalid_history_message")?
+            .len();
+        if !self.messages.is_empty()
+            && (self.messages.len() >= HISTORY_PAGE || self.bytes + bytes > HISTORY_PAGE_BYTES)
+        {
+            return Ok(false);
+        }
+        self.bytes += bytes;
+        self.messages.push(message);
+        Ok(self.messages.len() < HISTORY_PAGE && self.bytes < HISTORY_PAGE_BYTES)
+    }
+
+    pub fn finish(mut self, oldest_seq: Option<u64>, before: Option<u64>) -> HistoryResult {
+        let has_more = self
+            .messages
+            .last()
+            .is_some_and(|message| oldest_seq.is_some_and(|oldest| oldest < message.message.seq));
+        self.messages.reverse();
+        HistoryResult::Page {
+            messages: self.messages,
             has_more,
             oldest_seq,
             before,

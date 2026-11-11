@@ -13,10 +13,11 @@ across Server, Native and Browser/WASM, with the shared Web UI for chat, screen
 sharing, selective watching, room voice and App control. Normal development and
 distribution use these Rust/Web paths; Go tooling only builds the pinned
 Cloudflared helper. Work stays on `feat/channel-prototype`, separately from 2.x.
-Matched Windows and Android candidates have been delivered for internal testing.
-Windows package acceptance passed; installation and runtime acceptance of the
-latest Android candidate remain pending. Exact revisions and receipts stay with
-the packages.
+Windows App and Linux x64 Server candidates have been delivered for internal
+testing. Subsequent conversation and UI work continues on this branch; it is
+separate from those immutable packages. Android runtime acceptance and a package
+matching the current conversation protocol remain pending. Exact revisions and
+receipts stay with the packages.
 
 The site owns user identity and directory summaries. Room plans and shared transport
 leases keep separate Rust owners. Rooms created in the UI run in their owner's
@@ -50,8 +51,9 @@ tree's [versioning rules](./standards/versioning.md).
 
 ## Accepted Interaction Phase
 
-The 3.0 shared UI implements conversation and retained reactions, images/files,
-room voice, multiple screen sources with selective watching, and attended input.
+The 3.0 shared UI implements conversation and retained reactions, unread markers,
+mentions and replies, inline small images and file delivery, room voice, multiple
+screen sources with selective watching, personal sound choices and attended input.
 Their ownership follows the network and data models above; current platform
 coverage is in [verification status](./verification-status.md).
 Published 2.x interaction behavior remains with the

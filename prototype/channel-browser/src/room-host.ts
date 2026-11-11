@@ -1,4 +1,4 @@
-import init, { attachment_result, create_room_policy, history_page, history_page_size, prepare_confirmation, reaction_result, RoomHost, SessionSigner } from "../pkg/piik_channel_browser.js";
+import init, { attachment_result, create_room_policy, HistoryPage, history_page_size, prepare_confirmation, reaction_result, RoomHost, SessionSigner } from "../pkg/piik_channel_browser.js";
 export { AttachmentHash, BackupHistoryImport, CopyHistoryImport, FileDelivery, attachment_limits, attachment_media_type, backup_metadata, backup_record_bytes, message_mention_limit, conversation_broadcast, decode_control, encode_control, verify_conversation, route_input, input_binding_current, verify_reply } from "../pkg/piik_channel_browser.js";
 let initialization: Promise<void> | undefined;
 export function initializeRuntime(): Promise<void> { return initialization ??= init().then(() => {}); }
@@ -360,7 +360,7 @@ export class BrowserRoomHost {
   }
 
   private executeHistory(request: HistoryRequest, policy: object | null, signal?: AbortSignal): Promise<HistoryResult> {
-    const rows: StoredMessage[] = [];
+    let page = request.type === "read" ? new HistoryPage() : undefined;
     let oldest: number | undefined, result: HistoryResult;
     return this.roomTransaction(["rooms", "messages"], request.type === "send" || request.type === "react" && request.event !== null || policy ? "readwrite" : "readonly", (tx, abort) => {
       this.savePolicy(tx, policy);
@@ -399,16 +399,17 @@ export class BrowserRoomHost {
         const cursor = messages.openCursor(range, "prev");
         read(cursor, value => {
           if (!value) return;
-          rows.push(value.value);
-          if (rows.length < history_page_size() + 1) value.continue();
+          if (page!.push(JSON.stringify(value.value))) value.continue();
         }, abort);
         read(messages.openCursor(IDBKeyRange.bound([request.roomId], [request.roomId, Infinity])), value => {
           oldest = value?.value.seq;
         }, abort);
       }
-    }, () => request.type === "read"
-      ? JSON.parse(history_page(JSON.stringify(rows), oldest === undefined ? undefined : BigInt(oldest), request.before === null ? undefined : BigInt(request.before)))
-      : result, signal);
+    }, () => {
+      if (request.type !== "read") return result;
+      const current = page!; page = undefined;
+      return JSON.parse(current.finish(oldest === undefined ? undefined : BigInt(oldest), request.before === null ? undefined : BigInt(request.before)));
+    }, signal).finally(() => page?.free());
   }
 
   async close(): Promise<void> {

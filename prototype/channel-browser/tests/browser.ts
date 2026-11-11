@@ -113,6 +113,46 @@ window.runBrowserRoomCheck = async () => {
     } finally { await current.close(); await other.close(); await new Promise<void>((resolve, reject) => {
       const request = indexedDB.deleteDatabase(name); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); }); }
   }
+  async function checkImageHistoryBudget() {
+    const name = `${database}-image-pages`;
+    const policy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Image pages", icon: "couch", creatorId: owner.userId, access: "public", hidden: false });
+    const imageHost = await BrowserRoomHost.open(name, policy), binding = crypto.randomUUID();
+    const packet = (command: object) => JSON.parse(peerSigner.sign(peerSession, JSON.stringify({ roomId: imageHost.roomId,
+      bindingId: binding, sender: peerSession, recipient: session, requestId: crypto.randomUUID(), command })));
+    try {
+      await imageHost.bind(binding);
+      await imageHost.dispatch({ now: Date.now(), bindingId: binding, hostSessionId: session, revision: 1, endpoints, action: { type: "sync" } });
+      const bytes = new Uint8Array(65536); bytes.set(new TextEncoder().encode("GIF89a"));
+      const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+      const image = { id: crypto.randomUUID(), name: "image.gif", size: bytes.length, mediaType: "image/gif",
+        sha256: Array.from(hash, byte => byte.toString(16).padStart(2, "0")).join("") };
+      const inline = btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join(""));
+      for (let seq = 1; seq <= 7; seq++) {
+        const replies = await imageHost.dispatchPeer(packet({ type: "chat", text: "", nonce: `image-${seq}`, attachments: [image], inlineImages: { [image.id]: inline } }), Date.now());
+        check(replies[0].record.type === "confirmed" && replies[0].record.message.seq === seq, "full-budget image is confirmed by the real shared Core and IndexedDB producer");
+      }
+      let before: number | null = null;
+      const sizes: number[] = [], received: number[] = [];
+      for (;;) {
+        const replies = await imageHost.dispatchPeer(packet({ type: "history", before }), Date.now());
+        const end = replies.at(-1)!.record;
+        check(end.type === "history_end", "image page has its ordinary history end marker");
+        const bodies = replies.flatMap(({ record }) => record.type === "history_message" ? [record.message] : []);
+        const snapshots = replies.filter(({ record }) => record.type === "message_reactions");
+        check(bodies.length === end.count && snapshots.length === end.count && bodies.length <= 50 && end.before === before && end.oldestSeq === 1,
+          "byte-bounded pages preserve count, reaction and cursor contracts");
+        check(bodies.every(body => body.inlineImages?.[image.id] === inline), "pagination retains every original inline image");
+        check(bodies.reduce((total, body) => total + new TextEncoder().encode(JSON.stringify(body)).byteLength, 0) <= 256 * 1024,
+          "message bodies remain within the 256 KiB history page budget");
+        sizes.push(bodies.length); received.push(...bodies.map(body => body.seq));
+        if (!end.hasMore) break;
+        check(bodies.length > 0, "another image page advances its cursor"); before = bodies[0].seq;
+      }
+      check(sizes.join() === "2,2,2,1" && received.sort((a, b) => a - b).join() === "1,2,3,4,5,6,7",
+        "real IndexedDB cursor pages match SQLite 2/2/2/1 without dropping a boundary row");
+    } finally { await imageHost.close(); await new Promise<void>((resolve, reject) => { const request = indexedDB.deleteDatabase(name);
+      request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); }); }
+  }
   try {
     const previousDatabase = `${database}-schema-2`;
     const old = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -550,6 +590,7 @@ window.runBrowserRoomCheck = async () => {
       check((await BrowserRoomHost.storedPolicies(database)).includes(oldPolicy), "invalid old policy remains unchanged");
     } finally { db.close(); }
     await checkReplyStorage();
+    await checkImageHistoryBudget();
     await new Promise<void>((resolve, reject) => {
       const upgrade = indexedDB.open(database, 6);
       upgrade.onsuccess = () => { upgrade.result.close(); resolve(); }; upgrade.onerror = () => reject(upgrade.error);
@@ -569,6 +610,7 @@ window.runBrowserRoomCheck = async () => {
       previousSchemaPreserved: true,
       consistentPortableSnapshot: true, stagedAtomicRestore: true, backupUniqueIndexes: true, restoreRollbackAfterCopy: restoreWriteSucceeded,
       mentionReplyStorage: true, seededLatestSequence: true, concurrentFirstUse: true,
+      imageHistoryByteBudget: true, imageHistoryPageSizes: [2, 2, 2, 1],
       restoredWriterFence: true, boundedBackupSlot: true, previousChoicesSchemaRejected: true,
       missingIconRejectedWithoutOverwrite: true, domainCredentialDatabaseProvided: false };
   } finally {

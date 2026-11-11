@@ -7304,6 +7304,30 @@ test("reply navigation loads its own bounded history window and can return to la
   } finally { session.close(); }
 });
 
+test("image-heavy reading windows stay bounded while older records remain reachable", async () => {
+  const { session, peer } = await setup(1000);
+  const bytes = Buffer.alloc(64 * 1024).toString("base64");
+  const picture = (seq: number) => ({ ...message(seq), inlineImages: { image: bytes } });
+  try {
+    for (let seq = 1; seq <= 60; seq++) peer.live(picture(seq));
+    const current = session.getSnapshot().messagesByRoom.first;
+    expect(current.at(-1)?.seq).toBe(60);
+    expect(current[0].seq).toBeGreaterThan(1);
+    expect(current.reduce((size, row) => size + new TextEncoder().encode(JSON.stringify(row)).length, 0)).toBeLessThanOrEqual(4 * 1024 * 1024);
+    expect(session.getSnapshot().historyByRoom.first.hasMore).toBe(true);
+    const loading = session.loadHistory("first");
+    const request = await peer.next();
+    expect(request).toMatchObject({ before: current[0].seq });
+    peer.page(request, [picture(current[0].seq - 2), picture(current[0].seq - 1)], true, 1);
+    await loading;
+    const earlier = session.getSnapshot().messagesByRoom.first;
+    expect(earlier[0].seq).toBe(current[0].seq - 2);
+    expect(earlier.at(-1)!.seq).toBeLessThan(60);
+    expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(false);
+    expect(earlier.reduce((size, row) => size + new TextEncoder().encode(JSON.stringify(row)).length, 0)).toBeLessThanOrEqual(4 * 1024 * 1024);
+  } finally { session.close(); }
+});
+
 test("read markers stay personal and do not turn background room activity into reading", async () => {
   const { session, socket } = await setup(1000, false, "");
   const storage = new Map<string, string>();
