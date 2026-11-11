@@ -59,7 +59,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const copy = (cn: string, en: string) => zh ? cn : en;
   const [mobilePane, setMobilePane] = useState<"room" | "rooms" | "people" | "chat">("room");
   const selectRoom = useCallback((id: string) => {
-    onSelect(id); setMobilePane("room");
+    onSelect(id); setSourceView(null); setMobilePane("room");
   }, [onSelect]);
   useEffect(() => { setMobilePane("room"); }, [selected]);
   const { state, self, sessionId, connection, pending, streams } = channel;
@@ -73,7 +73,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   useEffect(() => { if (sidebarsInline) setMobilePane("room"); }, [sidebarsInline]);
   const [toolSurface, setToolSurface] = useState<RoomToolSurface>({ open: false, document: null });
   const couchSlot = useRef<HTMLDivElement>(null), conversationSlot = useRef<HTMLDivElement>(null), voiceSlot = useRef<HTMLDivElement>(null);
-  const [focusedScreen, setFocusedScreen] = useState<string | null>(null);
+  const [sourceView, setSourceView] = useState<{ roomId: string; focusedId: string | null } | null>(() => ({ roomId: selected, focusedId: null }));
+  const previousOwnedScreens = useRef<ReadonlySet<string>>(new Set(channel.ownedScreens));
   const [voiceFocus, setVoiceFocus] = useState("");
   const rooms = state?.channel.rooms ?? [];
   const room = rooms.find(value => value.id === selected);
@@ -107,8 +108,17 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const mine = screens.filter(value => channel.ownedScreens.has(value.id));
   const watched = screens.filter(value => !channel.ownedScreens.has(value.id) && state?.subscriptions.includes(value.id));
   const activeScreens = [...mine, ...watched];
-  const visibleScreens = activeScreens.filter(source => source.roomId === roomId);
-  const otherScreens = activeScreens.filter(source => source.roomId !== roomId);
+  const visibleScreens = activeScreens.filter(source => source.roomId === roomId && sourceView?.roomId === roomId);
+  const otherScreens = activeScreens.filter(source => !visibleScreens.includes(source));
+  const focusedScreen = sourceView?.roomId === roomId ? sourceView.focusedId : null;
+  const showSource = (sourceRoom: string, focusedId: string | null) => {
+    onSelect(sourceRoom); setSourceView({ roomId: sourceRoom, focusedId }); setMobilePane("room");
+  };
+  useEffect(() => {
+    const added = mine.find(source => !previousOwnedScreens.current.has(source.id));
+    previousOwnedScreens.current = new Set(mine.map(source => source.id));
+    if (added) setSourceView({ roomId: added.roomId, focusedId: added.id });
+  }, [mine.map(source => source.id).join(",")]);
   const companionVisible = !overview && !toolSurface.open && (sidebarsInline
     ? mobilePane === "people" || visibleScreens.length > 0 && companionOpen
     : mobilePane === "people" || mobilePane === "chat");
@@ -116,6 +126,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const mainConversationHome = useCallback((node: HTMLDivElement | null) => { if (!visibleScreens.length) conversationSlot.current = node; }, [!!visibleScreens.length]);
   const sideConversationHome = useCallback((node: HTMLDivElement | null) => { if (visibleScreens.length) conversationSlot.current = node; }, [!!visibleScreens.length]);
   const availableScreens = screens.filter(value => value.roomId === roomId && !activeScreens.includes(value));
+  const displayedSources = new Set([...visibleScreens, ...availableScreens].map(source => source.id));
   const myVoice = state?.voice.filter(value => value.sessionId === sessionId) ?? [];
   const joined = myVoice.some(value => value.roomId === roomId);
   const nameOfRoom = (id: string) => rooms.find(value => value.id === id)?.name ?? id;
@@ -236,7 +247,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
               <span><small>{owned ? copy("仍在分享", "Still sharing") : copy("仍在观看", "Still watching")}</small>
                 <strong>{title}</strong><span className="c3-activity-room">{nameOfRoom(source.roomId)}</span></span>
               <Btn icon="arrowLeft" quiet size="dense" title={{ text: copy(`返回 ${nameOfRoom(source.roomId)}`, `Return to ${nameOfRoom(source.roomId)}`) }}
-                cap={{ text: copy("返回", "Return") }} onClick={() => { selectRoom(source.roomId); setFocusedScreen(source.id); }} />
+                cap={{ text: copy("返回", "Return") }} onClick={() => showSource(source.roomId, source.id)} />
               <Btn icon={owned ? "stop" : "x"} quiet size="dense" tone={owned ? "danger" : undefined}
                 title={{ text: owned ? copy(`停止分享 ${title}`, `Stop sharing ${title}`) : copy(`停止观看 ${title}`, `Stop watching ${title}`) }}
                 disabled={busy(owned ? "screen" : "watch", owned ? source.roomId : source.id)}
@@ -261,7 +272,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         <div className={`c3-workspace${visibleScreens.length ? " has-screens" : ""}${inlineChatOpen && !toolSurface.open ? "" : " chat-collapsed"}`} hidden={overview}>
           <ChannelStage sources={[...activeScreens, ...availableScreens].map(publication => ({
             id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
-            hidden: publication.roomId !== roomId,
+            hidden: !displayedSources.has(publication.id),
             source: publication.source, title: publication.title, onRoom: () => selectRoom(publication.roomId),
             avatar: state?.users.find(user => user.id === publication.userId)?.avatar ?? undefined,
             audience: state ? screenAudience(state, publication) : [],
@@ -294,8 +305,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
                 name: nameOfUser(state?.sessions.find(session => session.id === request.peerId)?.userId ?? request.peerId) })) };
             })(),
             pending: busy(channel.ownedScreens.has(publication.id) ? "stop" : "watch", publication.id),
-          }))} focusedId={focusedScreen} onFocus={setFocusedScreen} canSubscribe={connected}
-            onWatch={id => run(channel.watch(id))} onUnwatch={id => run(channel.unwatch(id))}
+          }))} focusedId={focusedScreen} onFocus={id => setSourceView({ roomId, focusedId: id })} canSubscribe={connected}
+            onWatch={id => { showSource(roomId, id); run(channel.watch(id)); }} onUnwatch={id => run(channel.unwatch(id))}
             onPause={(id, paused) => run(channel.setScreenPaused(id, paused))}
             onStop={id => run(channel.stopScreen(id))} onPresentation={channel.screenPresentation}
             onInputPolicy={channel.inputPolicy} onInputDecide={channel.inputDecide} onInputSimultaneous={channel.inputSimultaneous} onInputShortcut={channel.inputShortcut} />
