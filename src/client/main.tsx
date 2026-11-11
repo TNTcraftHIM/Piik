@@ -1,10 +1,9 @@
-import { lazy, Suspense, type ComponentType } from "react";
+import { lazy, type ComponentType } from "react";
 import { mountApp } from "./mount";
-import { ChannelPreviewPage } from "./pages/ChannelPreviewPage";
-import { AppLauncherPage } from "./pages/AppLauncherPage";
-import { LoadingStatus } from "./components/living/WaitingStatus";
 import "./channel/bootstrap";
 
+const AppLauncherPage = lazy(() => import("./pages/AppLauncherPage").then(module => ({ default: module.AppLauncherPage })));
+const ChannelPreviewPage = lazy(() => import("./pages/ChannelPreviewPage").then(module => ({ default: module.ChannelPreviewPage })));
 const previewPages: Record<string, ComponentType> = import.meta.env.DEV ? {
   "/__tooltip-preview": lazy(() => import("./pages/TooltipPreviewPage").then(module => ({ default: module.TooltipPreviewPage }))),
   "/__status-preview": lazy(() => import("./pages/StatusPreviewPage").then(module => ({ default: module.StatusPreviewPage }))),
@@ -13,6 +12,6 @@ const previewPages: Record<string, ComponentType> = import.meta.env.DEV ? {
 const PreviewPage = previewPages[location.pathname];
 
 void mountApp(PreviewPage
-  ? <Suspense fallback={<LoadingStatus label="common.loading" />}><PreviewPage /></Suspense>
+  ? <PreviewPage />
   : location.pathname === "/client" || location.pathname === "/client/"
     ? <AppLauncherPage /> : <ChannelPreviewPage />);
