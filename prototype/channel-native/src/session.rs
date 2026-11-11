@@ -8,7 +8,7 @@ use crate::{
         CaptureInput, CaptureLease, CaptureScope, NativeConnectionMetrics, NativeEvent, NativePeers,
     },
 };
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, Result};
 use futures_util::{SinkExt, StreamExt};
 use piik_channel_core::{
     backup::OwnCredential,
@@ -619,6 +619,7 @@ impl Session {
         let mut join = Some(join);
         let mut pending = None;
         let mut admitted = false;
+        let mut images = piik_channel_core::wire_images::StateImageDecoder::default();
         let mut last_seen = Instant::now();
         loop {
             let recovery = self.recovery;
@@ -672,7 +673,7 @@ impl Session {
                             last_seen = Instant::now();
                             match message {
                                 Some(Ok(Message::Text(text))) => {
-                                    let event: Event = serde_json::from_str(&text).context("invalid channel event")?;
+                                    let event = images.decode(&text).map_err(anyhow::Error::msg)?;
                                     if matches!(event, Event::Welcome { .. }) {
                                         admitted = true;
                                         self.recovery = None;

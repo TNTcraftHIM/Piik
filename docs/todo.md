@@ -80,7 +80,7 @@ the feedback period; they do not delay that delivery.
   flow into the same room runtime and UI as the full workspace, then end long-term
   maintenance of a separate 2.x line; fix confirmed defects during the transition.
   Accept first-use defaults, explicit new-room versus named continue-room actions,
-  invitation landing and any short room-code locator before implementation.
+  invitation landing and any short room-code locator before enabling the product entry.
   View preferences must not start activities. Keep access, saved data and activity
   lifetimes with their existing owners, separately from App network-entry choices.
 - [ ] **3.0 permissions and extension decisions.** Review the

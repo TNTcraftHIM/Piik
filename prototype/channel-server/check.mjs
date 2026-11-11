@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { test } from "node:test";
 import WebSocket from "ws";
-import { CHANNEL_PROTOCOL, eventSchema } from "../../src/client/channel/protocol.ts";
+import { CHANNEL_PROTOCOL, ChannelEventDecoder, eventSchema } from "../../src/client/channel/protocol.ts";
 
 const endpoint = process.env.CHANNEL_WS_URL ?? "ws://127.0.0.1:8791/prototype/channel";
 const origin = process.env.CHANNEL_UI_ORIGIN ?? "http://127.0.0.1:8790";
@@ -16,12 +16,17 @@ const source = { kind: "screen", name: null };
 
 async function connect(t, join = {}) {
   const socket = new WebSocket(endpoint, { origin });
+  const decoder = new ChannelEventDecoder(), transferredImages = new WeakMap();
   const inbox = [], waiters = [];
   const recent = [];
   let closeCode;
   socket.on("close", code => { closeCode = code; });
   socket.on("message", bytes => {
-    const event = JSON.parse(bytes.toString());
+    const raw = JSON.parse(bytes.toString());
+    const avatars = ["welcome", "state"].includes(raw.type)
+      ? new Set(raw.state.users.filter(user => Object.hasOwn(user, "avatar")).map(user => user.id)) : undefined;
+    const event = decoder.decode(raw, bytes.byteLength);
+    if (avatars) transferredImages.set(event, avatars);
     recent.push({ type: event.type,
       ...(event.type === "error" ? { code: event.code } : {}),
       ...(event.type === "room_reply" ? { result: event.result.type, code: event.result.code } : {}),
@@ -50,7 +55,7 @@ async function connect(t, join = {}) {
   };
   t.after(() => { socket.terminate(); for (const waiter of waiters) clearTimeout(waiter.timer); });
   await once(socket, "open");
-  const client = { socket, wait,
+  const client = { socket, wait, transferredImages,
     async request(command) {
       const requestId = randomUUID();
       const response = wait(event => event.requestId === requestId && ["ack", "error", "room_reply"].includes(event.type), command.type);
@@ -114,6 +119,10 @@ test("authenticated users, signed conversation and selective source ownership", 
   assert.equal(ownerSession.userId, state.channel.ownerId);
   assert.notEqual(friend.welcome.sessionId, other.welcome.sessionId);
   const friendUser = friend.welcome.state.sessions.find(session => session.id === friend.welcome.sessionId).userId;
+  const avatar = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+  assert.equal((await friend.request({ type: "set_profile", name: "Friend check", avatar })).type, "ack");
+  const updated = await other.wait(event => event.type === "state" && event.state.users.some(user => user.id === friendUser && user.avatar === avatar), "profile image broadcast");
+  assert(other.transferredImages.get(updated).has(friendUser));
   const roomId = state.channel.rooms[0].id;
   if (!state.channel.rooms[0].available) await owner.wait(event => event.type === "state"
     && event.state.channel.rooms.some(room => room.id === roomId && room.available), "Server room host available after cleanup");
@@ -136,6 +145,8 @@ test("authenticated users, signed conversation and selective source ownership", 
   assert.equal((await other.request({ type: "unpublish", publicationId })).type, "error");
   assert.equal((await other.request({ type: "subscribe", publicationId, enabled: true })).type, "ack");
   const routed = await other.wait(event => event.type === "state" && event.state.pairs.some(pair => pair.incoming.some(flow => flow.publicationId === publicationId)), "admitted subscription");
+  assert.equal(routed.state.users.find(user => user.id === friendUser).avatar, avatar);
+  assert(!other.transferredImages.get(routed).has(friendUser), "route updates reuse the confirmed image on this socket");
   assert(routed.state.pairs.every(pair => pair.peerId !== other.welcome.sessionId));
   assert.equal((await owner.request({ type: "signal", pairId: randomUUID(), payload: { resync: true } })).type, "ack",
     "an unknown or retired pair cannot restore its transport lease");

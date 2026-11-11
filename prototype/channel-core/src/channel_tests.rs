@@ -362,7 +362,25 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
     })
     .unwrap()
     .len();
-    let snapshot_bytes = serde_json::to_vec(&Event::State { state }).unwrap().len();
+    let event = Event::State { state };
+    let snapshot_bytes = serde_json::to_vec(&event).unwrap().len();
+    let mut encoder = crate::wire_images::StateImageEncoder::default();
+    let mut decoder = crate::wire_images::StateImageDecoder::default();
+    let full = encoder.encode(&event).unwrap();
+    decoder.decode(&full).unwrap();
+    let compact = encoder.encode(&event).unwrap();
+    let restored = decoder.decode(&compact).unwrap();
+    assert_eq!(
+        serde_json::to_value(&restored).unwrap(),
+        serde_json::to_value(&event).unwrap()
+    );
+    assert!(compact.len() < full.len());
+    let mut oversized: serde_json::Value = serde_json::from_str(&compact).unwrap();
+    oversized["padding"] =
+        serde_json::Value::String("x".repeat(CHANNEL_MESSAGE_BYTES - snapshot_bytes));
+    let oversized = oversized.to_string();
+    assert!(oversized.len() < CHANNEL_MESSAGE_BYTES);
+    assert_eq!(decoder.decode(&oversized).err(), Some("message_too_large"));
     eprintln!("identity directory: {snapshot_bytes} bytes; host output: {host_bytes} bytes; domain backup: {backup_bytes} bytes");
     assert!(snapshot_bytes < CHANNEL_MESSAGE_BYTES);
     assert!(host_bytes < CHANNEL_MESSAGE_BYTES);

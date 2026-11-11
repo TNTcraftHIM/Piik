@@ -11,7 +11,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 8;
+export const CHANNEL_PROTOCOL = 9;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("missing") }),
@@ -121,6 +121,49 @@ export type RoomSummary = z.infer<typeof roomSummarySchema>;
 export type ChannelPair = ChannelSnapshot["pairs"][number];
 export type ChannelSignal = z.infer<typeof signalSchema>;
 export type ChannelEvent = z.infer<typeof eventSchema>;
+
+export const CHANNEL_EVENT_BYTES = 4 * 1024 * 1024;
+const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
+
+/** One physical socket's last validated snapshot supplies omitted identity pictures. */
+export class ChannelEventDecoder {
+  private channelId: string | null = null;
+  private channelIcon: string | undefined;
+  private avatars = new Map<string, string | null>();
+  private roomIcons = new Map<string, string>();
+
+  decode(raw: unknown, wireBytes: number): ChannelEvent {
+    if (wireBytes > CHANNEL_EVENT_BYTES) throw new Error("Channel event exceeds frame limit");
+    let fullBytes = wireBytes;
+    if (record(raw) && raw.type === "state" && record(raw.state)) {
+      const state = raw.state, channel = state.channel;
+      const inherit = (subject: Record<string, unknown>, field: "avatar" | "icon", previous: string | null | undefined) => {
+        if (Object.hasOwn(subject, field) || previous === undefined) return;
+        subject[field] = previous;
+        // Pictures and preset identifiers are ASCII. Each object already has its id.
+        fullBytes += field.length + 4 + (previous === null ? 4 : previous.length + 2);
+      };
+      if (record(channel) && channel.id === this.channelId) {
+        inherit(channel, "icon", this.channelIcon);
+        if (Array.isArray(channel.rooms)) for (const room of channel.rooms) {
+          if (record(room) && typeof room.id === "string") inherit(room, "icon", this.roomIcons.get(room.id));
+        }
+        if (Array.isArray(state.users)) for (const user of state.users) {
+          if (record(user) && typeof user.id === "string") inherit(user, "avatar", this.avatars.get(user.id));
+        }
+      }
+    }
+    if (fullBytes > CHANNEL_EVENT_BYTES) throw new Error("Expanded channel event exceeds frame limit");
+    const event = eventSchema.parse(raw);
+    if (event.type === "welcome" || event.type === "state") {
+      const { channel, users } = event.state;
+      this.channelId = channel.id; this.channelIcon = channel.icon;
+      this.avatars = new Map(users.map(user => [user.id, user.avatar]));
+      this.roomIcons = new Map(channel.rooms.map(room => [room.id, room.icon]));
+    }
+    return event;
+  }
+}
 export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" | "room_invite_state" | "room_reply" | "room_created" }> | Extract<ConversationReply["record"], { type: "confirmed" }>;
 export type SignedConversationPacket = z.infer<typeof signedConversationPacketSchema>;
 export type RoomInvitationState = { state: "available"; url: string } | { state: "missing" | "unrecoverable" };

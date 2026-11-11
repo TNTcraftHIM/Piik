@@ -213,8 +213,9 @@ async fn identify(State(domain): State<Domain>, headers: HeaderMap) -> crate::ba
 async fn send(
     socket: &mut (impl Sink<Message, Error = axum::Error> + Unpin),
     event: &Event,
+    images: &mut piik_channel_core::wire_images::StateImageEncoder,
 ) -> bool {
-    let text = serde_json::to_string(event).expect("typed channel event");
+    let text = images.encode(event).expect("typed channel event");
     send_frame(socket, Message::Text(text.into())).await
 }
 
@@ -280,6 +281,7 @@ async fn dispatch_request(state: &Domain, connection: Uuid, request: Request) {
 }
 
 async fn session(mut socket: WebSocket, state: Domain) {
+    let mut images = piik_channel_core::wire_images::StateImageEncoder::default();
     let first = tokio::time::timeout(Duration::from_secs(10), socket.recv()).await;
     let text = match first {
         Ok(Some(Ok(Message::Text(text)))) => text,
@@ -294,6 +296,7 @@ async fn session(mut socket: WebSocket, state: Domain) {
                     code: code.into(),
                     request_id,
                 },
+                &mut images,
             )
             .await;
             return;
@@ -319,14 +322,14 @@ async fn session(mut socket: WebSocket, state: Domain) {
                     _ = closing.changed() => {
                         let _ = tokio::time::timeout(Duration::from_secs(5), async {
                             while let Ok(item) = queue.try_recv() {
-                                if !send(&mut writer, &item).await { break; }
+                                if !send(&mut writer, &item, &mut images).await { break; }
                             }
                         }).await;
                         break;
                     }
                     item = queue.recv() => {
                         let Some(item) = item else { break; };
-                        if !send(&mut writer, &item).await { break; }
+                        if !send(&mut writer, &item, &mut images).await { break; }
                     }
                     _ = heartbeat.tick() => {
                         if !send_frame(&mut writer, Message::Ping(Vec::new().into())).await { break; }

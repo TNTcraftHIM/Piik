@@ -74,7 +74,7 @@ authorization and media lifecycles.
 
 | Boundary | Schema/validation owners |
 | --- | --- |
-| Domain admission and signaling | `prototype/channel-core/src/wire.rs`, `src/client/channel/protocol.ts`; I/O dispatch in `prototype/channel-server/src/domain.rs` |
+| Domain admission and signaling | Core `wire.rs` and `wire_images.rs`, Browser `src/client/channel/protocol.ts`; I/O dispatch in `prototype/channel-server/src/domain.rs` |
 | Room commands, confirmations and history | Core `host.rs`, `conversation.rs`, `history.rs` and storage adapters; Browser/Native deliver replies after the owned transaction commits |
 | Browser/App discovery and approval | `src/client/channel/app-link.ts`, shared discovery/picker schemas, Server `app.rs` and `app_sites.rs` |
 | Encoded capture/media | Native `capture`, `media` and `peer.rs`; platform producers retain their source clock and resource ownership |

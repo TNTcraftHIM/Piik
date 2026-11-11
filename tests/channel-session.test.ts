@@ -7044,6 +7044,43 @@ test("a delayed source busy error cannot fail a cancelled file's successful retr
   } finally { next.abort(); files.reset(); upstream.free(); }
 });
 
+test("socket ingress hydrates identity pictures and rejected frames recover with a full Welcome", async () => {
+  const { session, socket } = await setup(1000, false);
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.icon = "data:image/png;base64,YWJj";
+    state.users[0].avatar = "data:image/png;base64,YWJj";
+    socket.receive({ type: "state", state });
+    const { icon, rooms, ...channel } = state.channel;
+    const compact = { ...state, channel: { ...channel, rooms: rooms.map(({ icon, ...room }) => room) },
+      users: state.users.map(({ avatar, ...user }) => ({ ...user, name: "Updated" })),
+    };
+    socket.receive({ type: "state", state: compact });
+    expect(session.getSnapshot().state?.users[0]).toMatchObject({ name: "Updated", avatar: state.users[0].avatar });
+    expect(session.getSnapshot().state?.channel.icon).toBe(state.channel.icon);
+    vi.useFakeTimers();
+    const close = vi.spyOn(socket, "close");
+    const invalid = structuredClone(state);
+    invalid.users[0].avatar = "data:image/png;base64,ZGVm";
+    invalid.users[0].name = "x".repeat(41);
+    socket.receive({ type: "state", state: invalid });
+    expect(close).toHaveBeenCalledWith();
+    expect(session.getSnapshot()).toMatchObject({ connection: "reconnecting", error: "invalid_response" });
+    expect(session.getSnapshot().state?.users[0].avatar).toBe(state.users[0].avatar);
+    socket.receive({ type: "state", state: compact });
+    await vi.advanceTimersByTimeAsync(1000);
+    const replacement = ChannelSocket.current;
+    expect(replacement).not.toBe(socket);
+    await replacement.onopen?.();
+    const restored = structuredClone(state); restored.users[0].avatar = invalid.users[0].avatar;
+    replacement.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state: restored });
+    expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null });
+    replacement.receive({ type: "state", state: compact });
+    expect(session.getSnapshot().state?.users[0].name).toBe("Updated");
+    expect(session.getSnapshot().state?.users[0].avatar).toBe(restored.users[0].avatar);
+  } finally { session.close(); }
+});
+
 test.each([undefined, CHANNEL_PROTOCOL - 1, CHANNEL_PROTOCOL + 1])("an incompatible Domain Welcome protocol (%s) is rejected before accepting its state", async protocol => {
   const { session, socket } = await setup(1000, false);
   try {

@@ -937,8 +937,8 @@ async function identityControls(serverRoom) {
   await browser(0, "click", ".c3-room-form button[type=submit]");
   const domainIcon = await until("domain image reaches the other user", () => evaluate(1,
     `${hook}.snapshot().state.channel.icon`), value => value.startsWith("data:image/"));
-  await until("domain rail renders the saved image", () => evaluate(1,
-    "[...document.querySelectorAll('.c3-domain-icon img')].some(image => image.naturalWidth > 0)"), Boolean);
+  await until("site header renders the saved image", () => evaluate(1,
+    "[...document.querySelectorAll('.c3-site-name img')].some(image => image.naturalWidth > 0)"), Boolean);
 
   await roomSettings(0, serverRoom);
   await browser(0, "click", ".c3-identity-appearance > summary");
@@ -1091,7 +1091,7 @@ async function countedRoomReactions(roomId) {
   await browser(1, "press", "Escape");
   const publication = await capturedScreen(0, roomId);
   try {
-    await browser(1, "click", `.c3-monitor-offer[data-source-id=${JSON.stringify(publication)}] button`);
+    await browser(1, "click", `.c3-monitor-offer[data-source-id=${JSON.stringify(publication)}] button[aria-label="Watch"]`);
     await playing(1, publication);
     await browser(1, "click", `[data-publication-id=${JSON.stringify(publication)}] .c3-add-reaction`);
     await until("source reaction uses the same available cooldown", () => evaluate(1,

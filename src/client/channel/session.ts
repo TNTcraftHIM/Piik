@@ -3,7 +3,7 @@ import { ChannelMedia } from "./media";
 import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
 import { selectedRoom } from "./navigation";
-import { CHANNEL_PROTOCOL, channelTopologySchema, eventSchema, roomSummarySchema, userSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
+import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, ChannelEventDecoder, channelTopologySchema, roomSummarySchema, userSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView, ScreenPresentation, SourceMicrophoneConfiguration, SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage } from "./hosting";
@@ -220,6 +220,7 @@ export class ChannelSession {
     const url = new URL("/prototype/channel", location.href);
     url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(url);
+    const decoder = new ChannelEventDecoder();
     this.socket = socket;
     this.patch({ connection: this.view.sessionId ? "reconnecting" : "connecting" });
     socket.onopen = async () => {
@@ -237,16 +238,21 @@ export class ChannelSession {
     socket.onmessage = ({ data }) => {
       if (this.socket !== socket) return;
       try {
-        const raw = JSON.parse(String(data));
+        const text = String(data), wireBytes = new TextEncoder().encode(text).byteLength;
+        if (wireBytes > CHANNEL_EVENT_BYTES) throw new Error("Channel event exceeds frame limit");
+        const raw = JSON.parse(text);
         if (raw.type === "welcome" && raw.protocol !== CHANNEL_PROTOCOL) {
           this.close(); this.patch({ error: "incompatible_protocol" }); return;
         }
-        const result = eventSchema.safeParse(raw);
-        if (!result.success) { console.warn("Invalid channel event", result.error); this.patch({ error: "invalid_response" }); return; }
-        const skipRoom = result.data.type === "welcome" ? acceptWelcome?.(result.data) : undefined;
-        if (result.data.type === "welcome") acceptWelcome = undefined;
-        this.receive(result.data, skipRoom);
-      } catch { this.patch({ error: "invalid_response" }); }
+        const event = decoder.decode(raw, wireBytes);
+        const skipRoom = event.type === "welcome" ? acceptWelcome?.(event) : undefined;
+        if (event.type === "welcome") acceptWelcome = undefined;
+        this.receive(event, skipRoom);
+      } catch {
+        this.patch({ error: "invalid_response" });
+        // Later frames may omit pictures; recovery must start with a complete Welcome.
+        socket.close();
+      }
     };
     socket.onclose = () => {
       if (this.socket !== socket || this.closed) return;

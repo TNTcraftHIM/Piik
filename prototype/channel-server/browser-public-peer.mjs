@@ -228,7 +228,7 @@ async function main() {
     result.checks.historyReadback = readback;
     assert(readback.completed && readback.replaced && readback.received, "signed_history_readback_failed");
     await wait("native-publication", value => value.sourceMatches);
-    await click(`.c3-monitor-offer[data-source-id=${JSON.stringify(config.publicationId)}] button`);
+    await click(`.c3-monitor-offer[data-source-id=${JSON.stringify(config.publicationId)}] button:is([aria-label="Watch"], [aria-label="观看"])`);
     await wait("native-base", baseReady);
     result.checks.nativeBase = true;
     let before;

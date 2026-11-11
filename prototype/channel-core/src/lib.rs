@@ -28,6 +28,7 @@ pub mod topology;
 mod transport;
 pub mod udp;
 pub mod wire;
+pub mod wire_images;
 
 pub use access::{RoomPermission, RoomState};
 pub use attachment::{AttachmentDescriptor, AttachmentLimits, ATTACHMENT_LIMITS};

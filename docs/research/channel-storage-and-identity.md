@@ -53,6 +53,15 @@ broadcasting the current value to every endpoint. Rejoining preserves that value
 Messages retain the author's user ID and display their current profile, including
 when the author is offline; they do not store separate copies of the avatar.
 
+Each physical domain WebSocket starts with complete identity images. Later state
+frames may omit unchanged image fields for the same site, room or user. The wire
+adapter restores those fields before the ordinary full-snapshot validation and
+consumers. It retains only the previous valid frame's image facts; a new connection
+starts fresh, and an explicit null still removes an avatar. Room access and identity
+membership remain authoritative in every frame. This saves repeated image transfers
+without an asset service or another persistent image store. A rejected frame closes
+that connection; ordinary recovery obtains a complete Welcome before using images again.
+
 Site identity is established independently of room entry. Public rooms use a
 normal room URL; a private room's host confirms and saves its invitation or
 password grant before entry succeeds. Other private or hidden rooms remain
