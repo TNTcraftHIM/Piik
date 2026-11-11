@@ -52,8 +52,9 @@ function ShareTitleEditor({ sharing, channel, disabled }: {
   </details>;
 }
 
-export function ChannelShareControl({ channel, roomId, publicationId, compact = false, disabled }: {
+export function ChannelShareControl({ channel, roomId, publicationId, compact = false, disabled, openRequested, onPickerOpened }: {
   channel: ChannelController; roomId: string; publicationId?: string; compact?: boolean; disabled: boolean;
+  openRequested?: boolean; onPickerOpened?(): void;
 }) {
   const { t, vis, lang } = useCopy();
   const settingsLabel = lang === "zh" ? "分享设置" : "Share settings";
@@ -127,6 +128,11 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     return () => { request.current = null; };
   }, [open, settingsOpen, refresh]);
   useLayoutEffect(() => { close(); }, [roomId, publicationId, disabled, close]);
+  useEffect(() => {
+    if (!openRequested || disabled || !available || !panel.current) return;
+    panel.current.showPopover();
+    onPickerOpened?.();
+  }, [openRequested, disabled, available, onPickerOpened]);
   const start = (operation: () => Promise<void>) => {
     close();
     void operation().catch(() => {}); // The session owns the operation's error.

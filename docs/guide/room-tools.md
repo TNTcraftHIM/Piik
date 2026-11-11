@@ -18,6 +18,17 @@ Use **Edit profile** beside your name to change your nickname or picture.
 The same picture appears on your little person's body in chat, voice and the couch.
 Choose **Remove picture** to return to the plain coloured person.
 
+## Choose your interface
+
+**Full workspace** is the default. If you already use another voice app and only
+need Piik for screen sharing, choose **More options → Interface → Simple sharing**.
+Select **Start sharing**, choose a source, then copy the invitation below the picture.
+The picture, playback controls and couch stay central; **Interact** opens the room tool.
+
+Changing interfaces keeps current shares, watches, drafts and joined voice.
+Joined voice retains its controls and leave action. Switch back to **Full workspace**
+for the room directory, administration and backups. The browser remembers your choice.
+
 ## Manage a room
 
 Open the room list (**Rooms** on a narrow screen), then select the settings

@@ -13,6 +13,7 @@ const roomPreferencesSchema = z.object({
     clips: z.object({ message: feedbackClipSchema.optional(), throw: feedbackClipSchema.optional() }).optional(),
   }).default({ enabled: false, volume: 1 }),
   sharingView: z.boolean().default(false),
+  interfaceLayout: z.enum(["workspace", "quick"]).default("workspace"),
   pictureFit: z.enum(["contain", "cover", "fill"]).default("contain"),
   pictureRotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).catch(0).default(0),
   previewAutoPause: z.boolean().default(true),

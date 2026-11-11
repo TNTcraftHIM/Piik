@@ -64,6 +64,14 @@ and Document PiP surfaces, source replacement, SDP track replacement during Nati
 handover, and signaling recovery with
 progressing media on retained connections. Native App and Server package checks
 verify bundled Web/WASM identity, notices, startup and orderly shutdown.
+Windows Server checks also cover IPv4/IPv6 wildcard listeners with working
+internal room hosting, and same-origin WebSockets on IPv6 loopback.
+
+Switching between the full workspace and simple sharing retains actual Browser
+picture and Opus tracks, publication and transport identities, microphone
+acquisition and drafts. The simple view keeps joined voice visible and permits
+leaving it. Browser and Native first-share checks verify explicit room creation,
+picker cancellation and retry in the same room, then normal capture and stop.
 
 A three-Browser run verified picture and voice progress while receiving files
 through the same relay under controlled storage backpressure. Cancelling an

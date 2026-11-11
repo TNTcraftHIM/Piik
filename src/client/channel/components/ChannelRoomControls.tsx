@@ -69,6 +69,12 @@ export function roomDraft(room?: ChannelRoom): RoomDraft {
     password: "", removePassword: false, relayCapacity: room?.relayCapacity ?? DEFAULT_RELAY_CAPACITY };
 }
 
+export function roomSettings(value: RoomDraft): RoomSettings {
+  const { name, icon, access, hidden, password, removePassword, relayCapacity, voiceBitrate } = value;
+  return { name: name.trim(), icon, access, relayCapacity, ...(voiceBitrate === undefined ? {} : { voiceBitrate }), hidden: access === "private" && hidden,
+    ...(access === "private" && password ? { password } : removePassword ? { password: null } : {}) };
+}
+
 export function RoomForm({ room, value, onChange, appHosted, disabled, busy, onSave, onCancel, createLabel }: {
   room?: ChannelRoom; value: RoomDraft; onChange(value: Partial<RoomDraft>): void; appHosted: boolean; disabled: boolean; busy: boolean;
   onSave: (settings: RoomSettings) => Promise<unknown>; onCancel(): void; createLabel?: string;
@@ -81,8 +87,7 @@ export function RoomForm({ room, value, onChange, appHosted, disabled, busy, onS
   return <form className="c3-room-form" onSubmit={event => {
     event.preventDefault();
     if (!name.trim() || disabled || imageBusy) return;
-    void onSave({ name: name.trim(), icon, access, relayCapacity, ...(value.voiceBitrate === undefined ? {} : { voiceBitrate: value.voiceBitrate }), hidden: access === "private" && hidden,
-      ...(access === "private" && password ? { password } : removePassword ? { password: null } : {}) });
+    void onSave(roomSettings(value));
   }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}>
     {!room && <p>{appHosted
       ? (zh ? "由 App 托管，关闭网页后房间继续运行。" : "Hosted by App. The room keeps running when this page closes.")

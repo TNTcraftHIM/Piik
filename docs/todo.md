@@ -78,14 +78,12 @@ the feedback period; they do not delay that delivery.
   recovery on a persistent hosting target. The
   [deployment assessment](./deployment.md#managed-one-click-hosting) distinguishes
   a full Server from a Vercel-hosted frontend that still needs an external Server.
-- [ ] **Unified 3.0 quick-sharing entry.** Bring the short create/share/invite/watch
-  flow into the same room runtime and UI as the full workspace, then end long-term
-  maintenance of a separate 2.x line; fix confirmed defects during the transition.
-  Accept first-use defaults, explicit new-room versus named continue-room actions,
-  invitation landing and any short room-code locator before enabling the product entry;
-  review the existing UI catalogue's `channel-room&entry=quick` candidate for these flows.
-  View preferences must not start activities. Keep access, saved data and activity
-  lifetimes with their existing owners, separately from App network-entry choices.
+- [ ] **Accept the unified 3.0 sharing experience.** Owner review and matched-package
+  acceptance remain for the optional screen-centred view and its explicit first-share
+  flow. The existing room runtime, full-workspace default and activity lifetimes
+  remain shared. End the separate 2.x maintenance line only at the accepted 3.0
+  cutover; fix confirmed defects during the transition. A short room-code locator
+  remains a separate product decision.
 - [ ] **3.0 permissions and extension decisions.** Review the
   [proposed boundaries](./research/room-interactions.md#extension-boundaries-proposed)
   before API or plugin work: keep ordinary sharing simple, choose the first

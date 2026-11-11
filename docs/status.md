@@ -15,8 +15,8 @@ distribution use these Rust/Web paths; Go tooling only builds the pinned
 Cloudflared helper. Work stays on `feat/channel-prototype`, separately from 2.x.
 Windows App and Linux x64 Server candidates have been delivered for internal
 testing. Subsequent conversation and UI work continues on this branch; it is
-separate from those immutable packages. Android runtime acceptance and a package
-matching the current conversation protocol remain pending. Exact revisions and
+separate from those immutable packages. An Android candidate matching the current
+conversation protocol has passed package checks; device acceptance remains pending. Exact revisions and
 receipts stay with the packages.
 
 The site owns user identity and directory summaries. Room plans and shared transport
@@ -54,6 +54,8 @@ tree's [versioning rules](./standards/versioning.md).
 The 3.0 shared UI implements conversation and retained reactions, unread markers,
 mentions and replies, inline image previews and file delivery, room voice, multiple
 screen sources with selective watching, personal sound choices and attended input.
+The full workspace remains the default; an optional screen-centred interface
+keeps the same rooms and activities, with a direct first-share entry.
 Their ownership follows the network and data models above; current platform
 coverage is in [verification status](./verification-status.md).
 Published 2.x interaction behavior remains with the

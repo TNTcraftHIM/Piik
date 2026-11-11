@@ -84,7 +84,7 @@
   color: var(--muted);
   font-size: 12px;
 }
-.c3-mini-player:fullscreen { width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; }
+.c3-mini-player:fullscreen, .c3-monitor-tile > .c3-video.c3-mini-player:fullscreen { width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; }
 @media (prefers-reduced-motion: reduce) {
   .c3-mini-controls { transition: none; }
 }

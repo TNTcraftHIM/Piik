@@ -34,6 +34,13 @@
   --stage: #17191c;
   --frame: #283445;
   --frame-highlight: #3e4b5b;
+  --tv-frame-inset: 12px;
+  --tv-frame-border: 3px;
+  --tv-frame-chin: 26px;
+  --tv-frame-radius: 26px 26px 20px 20px;
+  --tv-screen-radius: 14px 14px 8px 8px;
+  --tv-frame-background: linear-gradient(155deg, var(--frame-highlight), var(--frame) 75%);
+  --tv-frame-shadow: inset 0 1px 0 rgb(255 255 255 / .16), 0 2px 0 var(--surface-shade), 0 18px 35px color-mix(in srgb, var(--surface-shade) 58%, transparent);
   --radius: 16px;
   --control-radius: 18px;
   --c3-shell-radius: 22px;
@@ -267,11 +274,11 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   position: relative;
   width: min(960px, 100%);
   margin: 0 auto;
-  padding: 12px 12px 0;
-  border: 3px solid var(--frame);
-  border-radius: 26px 26px 20px 20px;
-  background: linear-gradient(155deg, var(--frame-highlight), var(--frame) 75%);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / .16), 0 2px 0 var(--surface-shade), 0 18px 35px color-mix(in srgb, var(--surface-shade) 58%, transparent);
+  padding: var(--tv-frame-inset) var(--tv-frame-inset) 0;
+  border: var(--tv-frame-border) solid var(--frame);
+  border-radius: var(--tv-frame-radius);
+  background: var(--tv-frame-background);
+  box-shadow: var(--tv-frame-shadow);
   transition: width 240ms ease-out;
 }
 .lr-tv-screen {
@@ -279,7 +286,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   container: media-stage / inline-size;
   overflow: hidden;
   aspect-ratio: 16 / 9;
-  border-radius: 14px 14px 8px 8px;
+  border-radius: var(--tv-screen-radius);
   background: var(--stage);
 }
 .lr-tv-screen video { display: block; width: 100%; height: 100%; object-fit: contain; background: var(--stage); }
@@ -289,7 +296,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 26px;
+  height: var(--tv-frame-chin);
 }
 
 /* Keep playback controls reachable on a short landscape viewport. Entry and

@@ -166,6 +166,19 @@ This Piik convention extends [WCAG 3.2.3's relative-order and spatial-memory rat
 and [web.dev's guidance on unexpected movement and misclicks](https://web.dev/articles/cls).
 User-initiated mode changes are not thereby WCAG failures or necessarily CLS events.
 
+### 3.0 Quick Sharing
+
+The complete 3.0 workspace remains the default. Its optional quick-sharing view
+serves people using Piik alongside their existing voice software. It centres on
+screen sharing and retains the 2.x composition: a single central television area, sharing and
+playback actions beside the picture, the couch below, and a compact room,
+identity and invitation area. Conversation and voice are supporting tools.
+Site and room administration, directory navigation and backups belong to the
+full workspace; the quick view need not expose every workspace feature.
+Use the current visual language and the same 3.0 room, media and tool components.
+Changing the view never creates a room or starts, stops or reassigns an activity.
+Activities already in progress retain a visible status and an explicit exit.
+
 ### Control Selection
 
 Choose by the user's task, then reuse its interaction and visual primitive.

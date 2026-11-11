@@ -35,7 +35,7 @@ export function ChannelRoomPreview() {
     });
     return () => cancelAnimationFrame(frame);
   }, [entryOpen]);
-  const [layout, setLayout] = useState<"workspace" | "quick">(entryCandidate ? "quick" : "workspace");
+  const [layout, setLayout] = useState<"workspace" | "quick">(entryCandidate || new URLSearchParams(location.search).get("layout") === "quick" ? "quick" : "workspace");
   const [longNames, setLongNames] = useState(() => new URLSearchParams(location.search).has("long-names"));
   const [roomCount, setRoomCount] = useState(() => new URLSearchParams(location.search).has("no-rooms") ? 0 : 2);
   const [emptyChat, setEmptyChat] = useState(() => new URLSearchParams(location.search).has("empty-chat"));
@@ -155,7 +155,7 @@ export function ChannelRoomPreview() {
       appControl={entryOpen && <AppConnectionButton discovery={previewAppDiscovery} connected={false} />}
       onContinue={id => { setSelected(id); setEntryOpen(false); }} />
     <div className="c3-entry-room" hidden={entryOpen}>
-    <ChannelRoomPage channel={channel} layout={layout} selected={selected} onSelect={setSelected}
+    <ChannelRoomPage channel={channel} layout={layout} onLayoutChange={setLayout} selected={selected} onSelect={setSelected}
       appControl={<>{!entryOpen && <AppConnectionButton discovery={previewAppDiscovery} connected={false} />}
         <span ref={optionsTrigger} className="c3-room-preview-trigger"><Btn icon="sliders" title={{ text: zh ? "预览选项" : "Preview options" }}
           quiet size="compact" hint="hint-advanced" expanded={optionsOpen} controls={optionsId} popoverTarget={optionsId} /></span></>} />
@@ -172,10 +172,6 @@ export function ChannelRoomPreview() {
               title={{ text: zh ? "打开极简入口" : "Open simple entry" }} onClick={() => { entryFocus.current = true; optionsPanel.current?.hidePopover(); setLayout("quick"); setEntryOpen(true); }} />
             {rooms.some(room => room.id === "studio") && <Btn icon="link" quiet size="compact" cap={{ text: zh ? "模拟邀请到创作小屋" : "Preview studio invitation" }}
               title={{ text: zh ? "模拟邀请到创作小屋" : "Preview studio invitation" }} onClick={() => { optionsPanel.current?.hidePopover(); setLayout("quick"); setSelected("studio"); setEntryOpen(false); }} />}
-          </div></fieldset>
-          <fieldset><legend>{zh ? "布局对照" : "Layout comparison"}</legend><div className="c3-room-preview-tools">
-            {(["workspace", "quick"] as const).map(value => <Chip key={value} title={value === "quick" ? (zh ? "简洁布局" : "Simple layout") : (zh ? "完整工作区" : "Full workspace")} selected={layout === value}
-              onClick={() => setLayout(value)}>{value === "quick" ? (zh ? "简洁布局" : "Simple layout") : (zh ? "完整工作区" : "Full workspace")}</Chip>)}
           </div></fieldset>
           <fieldset><legend>{zh ? "画面数量" : "Screens"}</legend><div className="c3-room-preview-tools">
             {screenCounts.map(value => <Chip key={value} title={zh ? `${value} 个画面` : `${value} screen${value === 1 ? "" : "s"}`} selected={count === value}
