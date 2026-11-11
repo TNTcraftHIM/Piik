@@ -28,6 +28,18 @@ struct NativeService {
     task: tokio::task::JoinHandle<anyhow::Result<()>>,
 }
 
+/// A wildcard listener accepts a family; local clients still need a destination.
+pub fn listener_client_address(mut address: std::net::SocketAddr) -> std::net::SocketAddr {
+    if address.ip().is_unspecified() {
+        address.set_ip(if address.is_ipv4() {
+            std::net::Ipv4Addr::LOCALHOST.into()
+        } else {
+            std::net::Ipv6Addr::LOCALHOST.into()
+        });
+    }
+    address
+}
+
 impl NativeService {
     fn start(
         domain: &Domain,
@@ -36,6 +48,7 @@ impl NativeService {
         udp: Arc<ServerUdp>,
         bootstrap: bool,
     ) -> anyhow::Result<Self> {
+        let address = listener_client_address(address);
         let directory = room_directory(directory, domain.identity());
         std::fs::create_dir_all(&directory)?;
         let config = Config {

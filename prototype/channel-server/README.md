@@ -81,6 +81,8 @@ save it in domain or room data. Keep owner-entry credentials on the local entry.
 
 Server binds loopback by default. `PIIK_CHANNEL_BIND_ADDRESS` selects another
 IP address; set `PIIK_CHANNEL_WEB_ORIGIN` to the exact public frontend origin.
+Without an explicit Web origin, the local URL uses that listener address;
+wildcard listeners use the loopback address of the same IP family.
 Packaged Server resources default to `web/` beside the executable, independently
 of its working directory.
 

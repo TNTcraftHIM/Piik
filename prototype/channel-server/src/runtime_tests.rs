@@ -863,6 +863,78 @@ async fn start_server(
 }
 
 #[tokio::test]
+async fn wildcard_listeners_host_native_rooms_and_retire_on_stop() {
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+    for (bind, dial) in [
+        (
+            IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+        ),
+        (
+            IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+            IpAddr::V6(Ipv6Addr::LOCALHOST),
+        ),
+    ] {
+        let folder = tempfile::tempdir().unwrap();
+        let domain = Domain::open(
+            folder.path(),
+            "owner",
+            "http://localhost".into(),
+            None,
+            vec![],
+        )
+        .unwrap();
+        let listener = TcpListener::bind(SocketAddr::new(bind, 0)).await.unwrap();
+        let bound = listener.local_addr().unwrap();
+        assert!(bound.ip().is_unspecified());
+        let address = SocketAddr::new(dial, bound.port());
+        let udp =
+            piik_channel_native::peer::server_udp::ServerUdp::bind(&[(address, None)]).unwrap();
+        let (stop, stopped) = oneshot::channel();
+        let task = tokio::spawn(serve(
+            listener,
+            domain,
+            folder.path().to_owned(),
+            Router::new(),
+            udp,
+            async {
+                let _ = stopped.await;
+            },
+        ));
+        let (mut socket, own_session, initial) = connect(address, "owner", "Owner").await;
+        let ready = |state: &Snapshot| {
+            state.channel.rooms.len() == 3 && state.channel.rooms.iter().all(|room| room.available)
+        };
+        let state = if ready(&initial) {
+            initial
+        } else {
+            state_when(&mut socket, ready).await
+        };
+        let host = state.channel.rooms[0]
+            .delivery
+            .as_ref()
+            .unwrap()
+            .host_session_id;
+        assert_ne!(host, own_session);
+        stop.send(()).unwrap();
+        state_when(&mut socket, |state| {
+            !state.sessions.iter().any(|session| session.id == host)
+                && state.channel.rooms.iter().all(|room| !room.available)
+        })
+        .await;
+        tokio::time::timeout(Duration::from_secs(10), task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert!(
+            TcpListener::bind(bound).await.is_ok(),
+            "public listener must be released"
+        );
+    }
+}
+
+#[tokio::test]
 async fn http_and_https_share_a_domain_and_release_both_listeners_on_stop() {
     use crate::web::LanHttps;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};

@@ -1,6 +1,6 @@
 use anyhow::{ensure, Context};
 use piik_channel_native::peer::server_udp::ServerUdp;
-use piik_channel_prototype::{domain::Domain, serve_server, web};
+use piik_channel_prototype::{domain::Domain, listener_client_address, serve_server, web};
 use std::{
     net::{IpAddr, SocketAddr},
     path::PathBuf,
@@ -41,7 +41,7 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
     let listener = tokio::net::TcpListener::bind((address, port)).await?;
     let bound = listener.local_addr()?;
     let origin = std::env::var("PIIK_CHANNEL_WEB_ORIGIN")
-        .unwrap_or_else(|_| format!("http://127.0.0.1:{}", bound.port()));
+        .unwrap_or_else(|_| format!("http://{}", listener_client_address(bound)));
     let udp_port = std::env::var("PIIK_CHANNEL_UDP_PORT")
         .ok()
         .map(|value| value.parse::<u16>())
