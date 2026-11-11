@@ -11,7 +11,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 13;
+export const CHANNEL_PROTOCOL = 14;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("missing") }),
@@ -57,12 +57,15 @@ export const filePlanSchema = z.object({
 });
 export const MAX_MESSAGE_CODE_POINTS = 2000;
 const mentionSchema = z.object({ userId: id, start: z.number().int().nonnegative(), end: z.number().int().positive() });
+export const inlineImageSchema = z.object({ data: z.string(), mediaType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]),
+  original: z.boolean(), width: z.number().int().positive(), height: z.number().int().positive() });
+export type ImageRendition = z.infer<typeof inlineImageSchema>;
 export const messageSchema = z.object({
   id, userId: id, text: z.string().max(MAX_MESSAGE_CODE_POINTS * 2), time: z.number(), seq: z.number().int().positive(), attachments: z.array(attachmentSchema),
   archivedAuthorName: z.string().min(1).max(40).optional(),
   mentions: z.array(mentionSchema).optional(),
   reply: z.object({ seq: z.number().int().positive(), userId: id, archivedAuthorName: z.string().max(40).optional(), text: z.string().max(160), notify: z.boolean() }).optional(),
-  inlineImages: z.record(id, z.string()).optional(),
+  inlineImages: z.record(id, inlineImageSchema).optional(),
 });
 export const snapshotSchema = z.object({
   channel: z.object({
@@ -208,7 +211,7 @@ export type ChannelCommand =
   | { type: "interaction_ready"; roomId: string }
   | { type: "react"; roomId: string; reaction: string; target: ReactionTarget; nonce: number }
   | { type: "history"; roomId: string; before?: number }
-  | ({ type: "chat"; roomId: string; text: string; nonce: string; attachments: ChannelAttachment[]; inlineImages?: Record<string, string> } & ChatOptions)
+  | ({ type: "chat"; roomId: string; text: string; nonce: string; attachments: ChannelAttachment[]; inlineImages?: Record<string, ImageRendition> } & ChatOptions)
   | ({ type: "file_offer"; sha256: string; available: boolean } & ChannelFileKey)
   | ({ type: "file_receive"; enabled: boolean } & ChannelFileKey)
   | ({ type: "update_room"; roomId: string } & RoomSettings)

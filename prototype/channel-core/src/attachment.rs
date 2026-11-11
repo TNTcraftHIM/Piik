@@ -11,6 +11,17 @@ pub struct AttachmentDescriptor {
     pub media_type: String,
     pub sha256: String,
 }
+
+/// Message-owned display bytes; only an original rendition is file content.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImageRendition {
+    pub data: String,
+    pub media_type: String,
+    pub original: bool,
+    pub width: u32,
+    pub height: u32,
+}
 #[derive(Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AttachmentLimits {
@@ -21,7 +32,7 @@ pub struct AttachmentLimits {
     pub max_retained_files: usize,
 }
 pub const ATTACHMENT_LIMITS: AttachmentLimits = AttachmentLimits {
-    max_inline_image_bytes: 64 * 1024,
+    max_inline_image_bytes: 512 * 1024,
     max_file_bytes: 16 * 1024 * 1024,
     max_attachments_per_message: 8,
     max_retained_bytes: 256 * 1024 * 1024,

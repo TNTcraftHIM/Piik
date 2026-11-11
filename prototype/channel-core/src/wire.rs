@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 13;
+pub const CHANNEL_PROTOCOL: u8 = 14;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -757,7 +757,7 @@ pub struct ChatMessage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reply: Option<crate::history::MessageReply>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub inline_images: BTreeMap<Uuid, String>,
+    pub inline_images: BTreeMap<Uuid, crate::attachment::ImageRendition>,
     pub seq: u64,
     pub attachments: Vec<crate::attachment::AttachmentDescriptor>,
     pub id: Uuid,

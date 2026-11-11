@@ -40,7 +40,7 @@ impl Storage {
         let connection = Connection::open(normalized.as_deref().unwrap_or(path))?;
         let version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         let existing: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message','attachment'))", [], |row| row.get(0))?;
-        if version != 7 && (version != 0 || existing) {
+        if version != 8 && (version != 0 || existing) {
             return Err("unsupported_storage_version".into());
         }
         connection.execute_batch(
@@ -53,7 +53,7 @@ impl Storage {
                archived_author_name TEXT, inline_images TEXT NOT NULL, mentions TEXT NOT NULL, reply TEXT,
                PRIMARY KEY(room_id,seq), UNIQUE(room_id,user_id,nonce)
              );
-             PRAGMA user_version=7;",
+             PRAGMA user_version=8;",
         )?;
         Ok(Self { connection })
     }
@@ -550,7 +550,7 @@ mod tests {
         use base64ct::{Base64, Encoding};
         use std::collections::BTreeMap;
         let mut store = Storage::open(Path::new(":memory:")).unwrap();
-        let mut bytes = vec![0; crate::ATTACHMENT_LIMITS.max_inline_image_bytes];
+        let mut bytes = vec![0; 64 * 1024];
         bytes[..6].copy_from_slice(b"GIF89a");
         let image = AttachmentDescriptor {
             id: Uuid::new_v4(),
@@ -564,7 +564,16 @@ mod tests {
             "first".into(),
             "".into(),
             vec![image.clone()],
-            BTreeMap::from([(image.id, Base64::encode_string(&bytes))]),
+            BTreeMap::from([(
+                image.id,
+                crate::attachment::ImageRendition {
+                    data: Base64::encode_string(&bytes),
+                    media_type: image.media_type.clone(),
+                    original: true,
+                    width: 256,
+                    height: 256,
+                },
+            )]),
             vec![],
             None,
             1,
@@ -616,6 +625,22 @@ mod tests {
         received.sort_unstable();
         assert_eq!(received, (1..=7).collect::<Vec<_>>());
         assert!(page(&mut store, "images", Some(1)).0.is_empty());
+        bytes.resize(crate::ATTACHMENT_LIMITS.max_inline_image_bytes, 0);
+        draft.attachments[0].size = bytes.len() as u64;
+        draft.attachments[0].sha256 = crate::attachment::sha256_hex(&bytes);
+        draft.inline_images.get_mut(&image.id).unwrap().data = Base64::encode_string(&bytes);
+        draft.nonce = "full-budget-image".into();
+        confirmed(&mut store, "images", &draft);
+        let (messages, more, _) = page(&mut store, "images", None);
+        assert_eq!(
+            messages.len(),
+            1,
+            "one large legal message must remain pageable"
+        );
+        assert_eq!(messages[0].seq, 8);
+        assert_eq!(messages[0].inline_images, draft.inline_images);
+        assert!(more);
+        assert_eq!(page(&mut store, "images", Some(8)).0.last().unwrap().seq, 7);
     }
 
     #[test]

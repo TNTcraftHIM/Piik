@@ -85,12 +85,18 @@ Confirmed messages and their reaction counts are saved by the room's host. Refre
 or returning to the room loads its history again when that host is available.
 Chat and history use the site connection and do not wait for a P2P link.
 The site forwards message text; it does not keep the room's history.
-Small images totaling up to 64 KiB per message arrive with the conversation and
-remain in its history, including GIF animation. Select an image or a user's
-profile picture to enlarge it; Escape or the close button returns to the room.
-Larger images and other files load on demand over the room's P2P paths, reusing
-existing connections where those paths meet. Their history entries remain when
-the file holders are offline; downloading needs a participant with a readable copy.
+Images use a shared 512 KiB budget per message for immediate display. Small
+originals stay unchanged; larger still images get a clear preview up to 2048px.
+Select a picture to enlarge it, then **View original** for its full resolution.
+**Download original** always retrieves the original file. Preview images remain
+in history even when the sender leaves; obtaining a larger original needs a
+participant who still holds it.
+
+GIF, animated PNG and animated WebP retain their animation. If an animated
+original exceeds its share of the message budget, **View image** loads it over
+the existing P2P path. Other files use that same on-demand path, reusing active
+connections. Selecting a user's profile picture also opens the image viewer;
+Escape or its close button returns to the room.
 
 Selecting a person in the room opens their interaction menu. Expressions and
 thrown props are live effects; they are not saved as message reactions.

@@ -1,4 +1,4 @@
-use crate::attachment::{AttachmentDescriptor, ATTACHMENT_LIMITS};
+use crate::attachment::{AttachmentDescriptor, ImageRendition, ATTACHMENT_LIMITS};
 use crate::wire::{valid_id, ChatMessage};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -131,7 +131,7 @@ pub struct MessageDraft {
     pub text: String,
     pub attachments: Vec<AttachmentDescriptor>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub inline_images: BTreeMap<Uuid, String>,
+    pub inline_images: BTreeMap<Uuid, ImageRendition>,
     pub time: u64,
 }
 
@@ -141,7 +141,7 @@ impl MessageDraft {
         nonce: String,
         text: String,
         attachments: Vec<AttachmentDescriptor>,
-        inline_images: BTreeMap<Uuid, String>,
+        inline_images: BTreeMap<Uuid, ImageRendition>,
         mentions: Vec<Mention>,
         reply: Option<ReplyTarget>,
         time: u64,
@@ -168,21 +168,29 @@ impl MessageDraft {
         }
         use base64ct::{Base64, Encoding};
         let mut total = 0;
-        for (id, encoded) in &inline_images {
+        for (id, image) in &inline_images {
             let attachment = attachments
                 .iter()
                 .find(|file| file.id == *id)
                 .ok_or("invalid_inline_images")?;
-            if encoded.len() > (ATTACHMENT_LIMITS.max_inline_image_bytes + 2) / 3 * 4 {
+            if image.width == 0
+                || image.height == 0
+                || image.data.len() > (ATTACHMENT_LIMITS.max_inline_image_bytes + 2) / 3 * 4
+            {
                 return Err("invalid_inline_images");
             }
-            let bytes = Base64::decode_vec(encoded).map_err(|_| "invalid_inline_images")?;
+            let bytes = Base64::decode_vec(&image.data).map_err(|_| "invalid_inline_images")?;
             total += bytes.len();
             if total > ATTACHMENT_LIMITS.max_inline_image_bytes
-                || bytes.len() as u64 != attachment.size
                 || attachment.media_type == "application/octet-stream"
-                || crate::attachment::sniff_media_type(&bytes) != attachment.media_type
-                || !crate::attachment::sha256_hex(&bytes).eq_ignore_ascii_case(&attachment.sha256)
+                || image.media_type == "application/octet-stream"
+                || crate::attachment::sniff_media_type(&bytes) != image.media_type
+                || (!image.original && attachment.media_type == "image/gif")
+                || (image.original
+                    && (bytes.len() as u64 != attachment.size
+                        || image.media_type != attachment.media_type
+                        || !crate::attachment::sha256_hex(&bytes)
+                            .eq_ignore_ascii_case(&attachment.sha256)))
             {
                 return Err("invalid_inline_images");
             }
@@ -466,7 +474,14 @@ mod inline_tests {
                 1,
             )
         };
-        let images = BTreeMap::from([(file.id, Base64::encode_string(bytes))]);
+        let image = ImageRendition {
+            data: Base64::encode_string(bytes),
+            media_type: "image/gif".into(),
+            original: true,
+            width: 32,
+            height: 32,
+        };
+        let images = BTreeMap::from([(file.id, image.clone())]);
         let draft = check(vec![file.clone()], images.clone()).unwrap();
         assert_eq!(
             draft
@@ -502,12 +517,18 @@ mod inline_tests {
         }
         assert!(check(
             vec![file.clone()],
-            BTreeMap::from([(Uuid::new_v4(), Base64::encode_string(bytes))])
+            BTreeMap::from([(Uuid::new_v4(), image.clone())])
         )
         .is_err());
         assert!(check(
             vec![file.clone()],
-            BTreeMap::from([(file.id, "%%%".into())])
+            BTreeMap::from([(
+                file.id,
+                ImageRendition {
+                    data: "%%%".into(),
+                    ..image.clone()
+                }
+            )])
         )
         .is_err());
         let mut large = vec![0; ATTACHMENT_LIMITS.max_inline_image_bytes / 2 + 1];
@@ -522,9 +543,73 @@ mod inline_tests {
             .collect();
         let images = files
             .iter()
-            .map(|a| (a.id, Base64::encode_string(&large)))
+            .map(|a| {
+                (
+                    a.id,
+                    ImageRendition {
+                        data: Base64::encode_string(&large),
+                        ..image.clone()
+                    },
+                )
+            })
             .collect();
         assert!(check(files, images).is_err());
+        let preview = ImageRendition {
+            data: Base64::encode_string(b"RIFFabcdWEBPpreview"),
+            media_type: "image/webp".into(),
+            original: false,
+            width: 2048,
+            height: 1024,
+        };
+        assert!(
+            check(
+                vec![file.clone()],
+                BTreeMap::from([(file.id, preview.clone())])
+            )
+            .is_err(),
+            "GIF must retain animation rather than silently use a static preview"
+        );
+        let original = AttachmentDescriptor {
+            media_type: "image/png".into(),
+            size: 4_000_000,
+            sha256: "a".repeat(64),
+            ..file.clone()
+        };
+        assert!(
+            check(
+                vec![original.clone()],
+                BTreeMap::from([(file.id, preview.clone())])
+            )
+            .is_ok(),
+            "a display rendition does not pretend to have the original's digest or size"
+        );
+        for invalid in [
+            ImageRendition {
+                original: true,
+                ..preview.clone()
+            },
+            ImageRendition {
+                width: 0,
+                ..preview.clone()
+            },
+            ImageRendition {
+                height: 0,
+                ..preview.clone()
+            },
+            ImageRendition {
+                media_type: "image/png".into(),
+                ..preview.clone()
+            },
+        ] {
+            assert!(check(vec![original.clone()], BTreeMap::from([(file.id, invalid)])).is_err());
+        }
+        let mut encoded = serde_json::to_value(&preview).unwrap();
+        encoded["width"] = serde_json::json!(u32::MAX as u64 + 1);
+        assert!(serde_json::from_value::<ImageRendition>(encoded).is_err());
+        assert!(
+            serde_json::from_value::<ImageRendition>(serde_json::json!("old-base64-value"))
+                .is_err()
+        );
     }
 }
 

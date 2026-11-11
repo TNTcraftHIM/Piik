@@ -6,8 +6,12 @@
 .c3-image-dialog .c3-settings-dialog-heading .lr-btn { color: inherit; }
 .c3-image-dialog .c3-settings-content { min-height: 0; padding: 12px; display: grid; place-items: center; }
 .c3-image-dialog img { display: block; min-width: min(256px, 100%); max-width: 100%; max-height: calc(100dvh - 132px); width: auto; height: auto; object-fit: contain; }
+.c3-image-dialog:has(.c3-image-detail) img { max-height: calc(100dvh - 196px); }
+.c3-image-detail { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 8px 16px; max-width: 100%; }
+.c3-image-detail p { margin: 0; color: inherit; }
 .c3-avatar-preview { flex: none; display: grid; place-items: center; border: 0; padding: 0; background: transparent; color: inherit; border-radius: var(--c3-inset-radius); cursor: zoom-in; }
 .c3-avatar-preview > svg { display: block; width: 26px; height: 34px; }
 .c3-avatar-preview:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
 .c3-attachment-preview { display: block; max-width: 100%; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+.c3-attachment-preview > img { height: auto; }
 .c3-attachment-preview:focus-visible { outline: 2px solid var(--action); outline-offset: 3px; }

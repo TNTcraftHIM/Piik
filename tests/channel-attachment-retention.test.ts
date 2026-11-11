@@ -8,6 +8,7 @@ afterEach(() => vi.restoreAllMocks());
 
 const attachment: ChannelAttachment = { id: "image", name: "image.gif", size: 6, mediaType: "image/gif", sha256: "a".repeat(64) };
 const key = { roomId: "room", messageSeq: 1, attachmentId: attachment.id };
+const inlineImage = { data: btoa("GIF89a"), mediaType: "image/gif" as const, original: true, width: 1, height: 1 };
 const message: ChannelMessage = { id: "message", seq: 1, userId: "self", time: 1, text: "", attachments: [attachment] };
 
 function setup() {
@@ -38,7 +39,7 @@ test("a confirmed attachment uses its committed readable copy after the selected
 test("a confirmed inline GIF remains readable without a live session, cache or transfer", async () => {
   const command = vi.fn(), send = vi.fn(), load = vi.spyOn(hosting, "loadRoomHosting");
   const files = new ChannelAttachments(command, send);
-  const content = await files.content(key, attachment, new AbortController().signal, btoa("GIF89a"));
+  const content = await files.content(key, attachment, new AbortController().signal, inlineImage);
   expect(content.name).toBe(attachment.name);
   expect(content.type).toBe("image/gif");
   expect(await content.text()).toBe("GIF89a");
@@ -48,8 +49,18 @@ test("a confirmed inline GIF remains readable without a live session, cache or t
 test("an already cancelled inline read preserves cancellation without opening a transfer", async () => {
   const command = vi.fn(), send = vi.fn(), files = new ChannelAttachments(command, send);
   const request = new AbortController(); request.abort();
-  await expect(files.content(key, attachment, request.signal, btoa("GIF89a"))).rejects.toMatchObject({ name: "AbortError" });
+  await expect(files.content(key, attachment, request.signal, inlineImage)).rejects.toMatchObject({ name: "AbortError" });
   expect(command).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled();
+});
+
+test("a generated preview cannot replace the original in the download content path", async () => {
+  const files = setup(), original = new File(["GIF89a"], attachment.name, { type: attachment.mediaType });
+  vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new Error("optional_cache_unavailable"));
+  try {
+    files.confirmed(key.roomId, message, [{ id: attachment.id, attachment, file: original }]);
+    const preview = { data: btoa("preview"), mediaType: "image/webp" as const, original: false, width: 2048, height: 1024 };
+    expect(await files.content(key, attachment, new AbortController().signal, preview)).toBe(original);
+  } finally { files.reset(); }
 });
 
 test("a late retained copy cannot replace a successor source for the same attachment", async () => {

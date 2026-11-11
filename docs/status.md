@@ -52,7 +52,7 @@ tree's [versioning rules](./standards/versioning.md).
 ## Accepted Interaction Phase
 
 The 3.0 shared UI implements conversation and retained reactions, unread markers,
-mentions and replies, inline small images and file delivery, room voice, multiple
+mentions and replies, inline image previews and file delivery, room voice, multiple
 screen sources with selective watching, personal sound choices and attended input.
 Their ownership follows the network and data models above; current platform
 coverage is in [verification status](./verification-status.md).

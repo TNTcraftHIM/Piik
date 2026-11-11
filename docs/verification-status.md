@@ -28,13 +28,19 @@ These package checks ran on a controlled local network.
 The newer conversation path passes normal Browser-hosted and App-hosted room
 checks with peer signaling blocked: history, bidirectional messages and saved
 reactions work without RTC connections. Attachment descriptions also arrive
-without RTC. Bounded small images now arrive and persist in that same history;
-other file content downloads over P2P once that path is available. A real
-two-Browser check displayed a small animated GIF with no peer connection,
-loaded a larger GIF over P2P on request, and reloaded the small original from
-history after its sender left. Inline originals, size/type/digest validation
-and backup/copy retention share the room's confirmed-message boundary.
-The delivered Windows and Android candidates include this path. Earlier Windows
+without RTC. Current image rendition checks verified a 4096px, 8 MB original
+arriving as a 2048px preview without a peer connection, then loading its unchanged
+original through P2P with the expected digest. Small PNG and GIF originals
+remained unchanged, and the preview was readable from Native history after its
+sender left. Preparation checks retain transparent alpha and skip Canvas for
+over-budget animations. Rendition and original validation, history pagination
+and backup/copy retention share the confirmed-message boundary.
+An actual sender TCP connection paced at 1 Mbps each way verified a full-budget
+inline image through both Native and Browser room hosts. Both committed once,
+received their confirmation and continued ordinary chat; the adjusted conversation
+deadline no longer reports failure before that confirmation arrives.
+Delivered candidates include peer-independent conversation; the newer image
+work remains on the development branch. Earlier Windows
 upgrade checks used a copy of the previous candidate's data; an Android
 same-signature update retained compatible room/history and its invitation after
 reload. Older private storage formats follow the

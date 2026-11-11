@@ -10,7 +10,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use uuid::Uuid;
 
 pub const CONTROL_FRAME_BYTES: usize = 32768;
-pub const CONVERSATION_FRAME_BYTES: usize = 128 * 1024;
+pub const CONVERSATION_FRAME_BYTES: usize = 1024 * 1024;
 pub const INTERACTION_INTERVAL_MS: u64 = 800;
 pub const INTERACTION_REACTIONS: &[&str] = &[
     "thumbsup",
@@ -184,7 +184,7 @@ pub enum ConversationCommand {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reply: Option<crate::history::ReplyTarget>,
         #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
-        inline_images: std::collections::BTreeMap<Uuid, String>,
+        inline_images: std::collections::BTreeMap<Uuid, crate::attachment::ImageRendition>,
         text: String,
         nonce: String,
         attachments: Vec<AttachmentDescriptor>,
@@ -472,7 +472,18 @@ mod tests {
             .collect();
         let inline_images = attachments
             .iter()
-            .map(|a| (a.id, Base64::encode_string(&image)))
+            .map(|a| {
+                (
+                    a.id,
+                    crate::attachment::ImageRendition {
+                        data: Base64::encode_string(&image),
+                        media_type: a.media_type.clone(),
+                        original: true,
+                        width: u32::MAX,
+                        height: u32::MAX,
+                    },
+                )
+            })
             .collect();
         let draft = crate::history::MessageDraft::new(
             Uuid::new_v4(),

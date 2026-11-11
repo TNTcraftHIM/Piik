@@ -245,6 +245,13 @@ mod tests {
             media_type: "application/octet-stream".into(),
             sha256: sha256_hex(b"abc"),
         };
+        let original_image = AttachmentDescriptor {
+            id: Uuid::new_v4(),
+            name: "original.png".into(),
+            size: 1_000_000,
+            media_type: "image/png".into(),
+            sha256: "a".repeat(64),
+        };
         let rows = (1..=55)
             .map(|seq| HistoryRow {
                 nonce: format!("retry-{seq}"),
@@ -252,7 +259,20 @@ mod tests {
                     message: ChatMessage {
                         mentions: vec![],
                         reply: None,
-                        inline_images: Default::default(),
+                        inline_images: if seq == 2 {
+                            BTreeMap::from([(
+                                original_image.id,
+                                piik_channel_core::attachment::ImageRendition {
+                                    data: "UklGRmFiY2RXRUJQcHJldmlldw==".into(),
+                                    media_type: "image/webp".into(),
+                                    original: false,
+                                    width: 1024,
+                                    height: 768,
+                                },
+                            )])
+                        } else {
+                            Default::default()
+                        },
                         seq,
                         id: Uuid::new_v4(),
                         user_id: owner,
@@ -261,6 +281,8 @@ mod tests {
                         time: seq,
                         attachments: if seq == 1 || seq == 55 {
                             vec![attachment.clone()]
+                        } else if seq == 2 {
+                            vec![original_image.clone()]
                         } else {
                             vec![]
                         },

@@ -50,7 +50,7 @@ The 3.0 owners below define this tree's domain, room and participant model.
   so retiring one flow does not retire unrelated work. Browser WebRTC and the
   Native RTC SDK own congestion control and transport adaptation; Piik owns
   source clocks, output demand and resource lifetimes.
-- Attachment descriptions and bounded small images belong to confirmed history;
+- Attachment descriptions and bounded image originals or previews belong to confirmed history;
   other complete file copies belong to participants. Ordinary URLs and manual bookmarks locate
   domains. App approval belongs to an exact site origin, independently of saved
   domain identity and room data.

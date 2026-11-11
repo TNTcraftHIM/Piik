@@ -35,7 +35,7 @@ function read<T>(request: IDBRequest<T>, receive: (value: T) => void, abort: (er
 }
 function openDatabase(name: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(name, 5);
+    const request = indexedDB.open(name, 6);
     let unsupported = false;
     request.onupgradeneeded = event => {
       if (event.oldVersion !== 0) { unsupported = true; request.transaction!.abort(); return; }

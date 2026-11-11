@@ -264,7 +264,16 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
                     seq: 1,
                     notify: true,
                 }),
-                inline_images: BTreeMap::from([(attachment.id, "R0lGODlhYWJj".into())]),
+                inline_images: BTreeMap::from([(
+                    attachment.id,
+                    piik_channel_core::attachment::ImageRendition {
+                        data: "R0lGODlhYWJj".into(),
+                        media_type: "image/gif".into(),
+                        original: true,
+                        width: 32,
+                        height: 32,
+                    },
+                )]),
                 nonce: format!("send-{seq}"),
                 text: format!("@Owner Message {seq}"),
                 attachments: vec![attachment.clone()],
@@ -330,7 +339,8 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
             .inline_images
             .values()
             .next()
-            .unwrap(),
+            .unwrap()
+            .data,
         "R0lGODlhYWJj"
     );
     let manifest = serde_json::to_value(Metadata::Room(backup.metadata().clone())).unwrap();

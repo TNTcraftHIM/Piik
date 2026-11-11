@@ -381,17 +381,34 @@ currently readable selection, retained copy or granted handle. Browser-managed
 storage follows [origin, quota and persistence rules](https://storage.spec.whatwg.org/).
 A session-only source must not be presented as a retained copy.
 
-Conversation images retain the same attachment identity and whole-file digest.
-Recognized PNG, JPEG, GIF and WebP originals share a 64 KiB decoded-byte budget
-per message; those that fit travel with the confirmed message and display without
-a peer connection. Original GIF bytes retain their animation. The room host saves
-these bytes as history, and the site carries them with the conversation. They are
-not copied into route plans or participant-holder announcements. Images outside
-the message budget and other files use the existing on-demand P2P transfer.
-There is no thumbnail generation or separate image-hosting service.
+Conversation images retain the original attachment identity and whole-file
+digest. Their display renditions share a 512 KiB decoded-byte budget per message,
+divided among its images. An original that fits keeps its bytes and animation.
+For larger static images, the sender generates a preview at up to 2048px:
+PNG is tried for PNG input, then WebP at 0.9 and 0.85, with one final 1600px
+attempt at 0.85. No attempt enlarges an image. An image that cannot fit at these
+settings retains ordinary on-demand P2P viewing; it is not repeatedly reduced
+until unreadable. Larger GIF, animated PNG and animated WebP skip Canvas rather
+than silently becoming still images.
 
-The message owner checks the inline total, attachment identity, size, image
-signature and digest before confirming the message. The signed conversation
+Each rendition declares its own media type and dimensions, and whether it is
+the unchanged original. The room owner saves it with history, while the site
+carries it with the conversation. It does not enter route plans or file-holder
+announcements. The original file and its offer/cache lifecycle remain unchanged.
+Preview display needs no peer route; viewing or downloading a non-inline
+original uses the existing verified file path. There is no separate image server.
+Conversation operations use a 30-second confirmation deadline, covering upload
+and the room host's response within the bounded image format. Control operations
+keep their shorter deadline. At a measured 1 Mbps in both directions, a full
+512 KiB inline original committed in about 5.8 seconds and was confirmed in about
+11.6 seconds through both Native and Browser hosts; the former 10-second wait
+reported failure after a successful commit. The same nonce and confirmation
+owners handle retries; there is no separate image retry protocol.
+
+The message owner checks the aggregate rendition size, positive dimensions,
+supported raster signature and attachment binding. Unchanged originals must
+also match their original size, MIME and digest; a preview is not claimed to
+match that digest. The signed conversation
 frame budget covers the complete largest legal message, including encoding
 overhead; the file-control frame budget is independent. Reading or downloading
 an inline image does not allocate a file route. Original-image and avatar
@@ -405,9 +422,9 @@ an attachment offer, separate transfer or storage service.
 
 ### Image Quality Assessment
 
-Reviewed 2026-11-11. The current 64 KiB budget admits small originals but excludes
-ordinary screenshots. Increasing it is being evaluated together with image
-quality and history delivery; it is not Cloudflare's HTTP upload limit.
+Reviewed 2026-11-11. The previous 64 KiB budget excluded ordinary screenshots.
+The 512 KiB rendition budget combines useful dimensions and measured encoded
+size; it is independent of Cloudflare's HTTP upload limit.
 
 [Signal Desktop's reviewed scaling implementation](https://github.com/signalapp/Signal-Desktop/blob/5d1bbb7ee231b35cb9cc8cc449ffb819c528efc8/ts/util/scaleImageToLevel.preload.ts)
 combines dimension and byte targets: its standard level uses 1600 px, JPEG
@@ -422,10 +439,11 @@ original PNGs were 105 and 178 KiB. WebP at quality 0.9 produced 84 and 148 KiB
 with slight text softening; JPEG at 0.85 produced larger files and visible text
 edge noise. PNG/WebP preserved alpha; JPEG did not. The photo control was a
 512 by 480 sample, so this does not establish a high-resolution photo target.
-Next comparison should retain already-small originals, measure larger photo
-previews and preserve original access; animated originals must not silently
-become static Canvas output. An encoded preview and an unchanged original need
-distinct identities in the attachment model before that behavior is implemented.
+A later controlled 4096 by 3072 synthetic photo produced a 2048 by 1536 WebP
+preview of 454 kB from an 8 MB JPEG. A 15 MB transparent PNG produced a 449 kB
+preview with clear and partial alpha retained. These are local preparation
+checks, not population estimates. The attachment model distinguishes the
+rendition from its unchanged original before either is delivered.
 
 ## Persistence And Recovery
 

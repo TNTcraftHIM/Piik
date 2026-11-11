@@ -584,7 +584,8 @@ export class ChannelSession {
       request.reject(signal?.reason instanceof Error ? signal.reason : new DOMException("Read cancelled", "AbortError"));
     };
     return new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => { this.requests.delete(requestId); reject(new Error("request_timeout")); }, 10000);
+      // Conversation includes image upload and its host-confirmed response.
+      const timer = setTimeout(() => { this.requests.delete(requestId); reject(new Error("request_timeout")); }, conversation ? 30000 : 10000);
       this.requests.set(requestId, { resolve, reject, timer, result, roomId,
         ...(delivery && (conversation || command.type === "browse" || command.type === "room_topology") ? { bindingId: delivery.bindingId } : {}),
         ...(command.type === "history" ? { history: { before: command.before, entries: new Map() } } : {}) });

@@ -126,7 +126,7 @@ window.runBrowserRoomCheck = async () => {
       const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
       const image = { id: crypto.randomUUID(), name: "image.gif", size: bytes.length, mediaType: "image/gif",
         sha256: Array.from(hash, byte => byte.toString(16).padStart(2, "0")).join("") };
-      const inline = btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join(""));
+      const inline = { data: btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join("")), mediaType: "image/gif", original: true, width: 1, height: 1 };
       for (let seq = 1; seq <= 7; seq++) {
         const replies = await imageHost.dispatchPeer(packet({ type: "chat", text: "", nonce: `image-${seq}`, attachments: [image], inlineImages: { [image.id]: inline } }), Date.now());
         check(replies[0].record.type === "confirmed" && replies[0].record.message.seq === seq, "full-budget image is confirmed by the real shared Core and IndexedDB producer");
@@ -141,7 +141,7 @@ window.runBrowserRoomCheck = async () => {
         const snapshots = replies.filter(({ record }) => record.type === "message_reactions");
         check(bodies.length === end.count && snapshots.length === end.count && bodies.length <= 50 && end.before === before && end.oldestSeq === 1,
           "byte-bounded pages preserve count, reaction and cursor contracts");
-        check(bodies.every(body => body.inlineImages?.[image.id] === inline), "pagination retains every original inline image");
+        check(bodies.every(body => JSON.stringify(body.inlineImages?.[image.id]) === JSON.stringify(inline)), "pagination retains every original inline image");
         check(bodies.reduce((total, body) => total + new TextEncoder().encode(JSON.stringify(body)).byteLength, 0) <= 256 * 1024,
           "message bodies remain within the 256 KiB history page budget");
         sizes.push(bodies.length); received.push(...bodies.map(body => body.seq));
@@ -568,7 +568,7 @@ window.runBrowserRoomCheck = async () => {
     const legacyId = legacyHost.roomId;
     await legacyHost.close();
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(database, 5);
+      const request = indexedDB.open(database, 6);
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
     let oldPolicy = "";
@@ -592,7 +592,7 @@ window.runBrowserRoomCheck = async () => {
     await checkReplyStorage();
     await checkImageHistoryBudget();
     await new Promise<void>((resolve, reject) => {
-      const upgrade = indexedDB.open(database, 6);
+      const upgrade = indexedDB.open(database, 7);
       upgrade.onsuccess = () => { upgrade.result.close(); resolve(); }; upgrade.onerror = () => reject(upgrade.error);
     });
     for (const nonce of ["closed", "closed-again"]) {

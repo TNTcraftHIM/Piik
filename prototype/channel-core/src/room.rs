@@ -483,7 +483,7 @@ impl RoomRuntime {
         text: String,
         nonce: String,
         attachments: Vec<crate::attachment::AttachmentDescriptor>,
-        inline_images: BTreeMap<Uuid, String>,
+        inline_images: BTreeMap<Uuid, crate::attachment::ImageRendition>,
         mentions: Vec<crate::history::Mention>,
         reply: Option<crate::history::ReplyTarget>,
         now: u64,

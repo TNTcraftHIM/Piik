@@ -6496,7 +6496,7 @@ test("history timeout remains explicit until a Domain retry, independently of pe
     socket.receive({ type: "ack", requestId: browse.requestId });
     await vi.advanceTimersByTimeAsync(0);
     expect(peer.sent).toHaveLength(1);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(session.getSnapshot().error).toBe("request_timeout");
     state.channel.rooms[0].delivery!.nextHops = { host: "unused-peer" };
     socket.receive({ type: "state", state });
@@ -7307,7 +7307,9 @@ test("reply navigation loads its own bounded history window and can return to la
 test("image-heavy reading windows stay bounded while older records remain reachable", async () => {
   const { session, peer } = await setup(1000);
   const bytes = Buffer.alloc(64 * 1024).toString("base64");
-  const picture = (seq: number) => ({ ...message(seq), inlineImages: { image: bytes } });
+  const picture = (seq: number) => ({ ...message(seq), inlineImages: { image: {
+    data: bytes, mediaType: "image/png" as const, original: true, width: 640, height: 480,
+  } } });
   try {
     for (let seq = 1; seq <= 60; seq++) peer.live(picture(seq));
     const current = session.getSnapshot().messagesByRoom.first;
