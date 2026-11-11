@@ -110,7 +110,10 @@ fn set_format(transform: &IMFTransform, settings: Settings) -> Result<MFT_OUTPUT
     unsafe {
         let output = media_type(&MFVideoFormat_H264, settings)?;
         output.SetUINT32(&MF_MT_AVG_BITRATE, settings.bitrate)?;
-        output.SetUINT32(&MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base.0 as u32)?;
+        output.SetUINT32(
+            &MF_MT_MPEG2_PROFILE,
+            eAVEncH264VProfile_ConstrainedBase.0 as u32,
+        )?;
         transform.SetOutputType(0, &output, 0)?;
         transform.SetInputType(0, &media_type(&MFVideoFormat_NV12, settings)?, 0)?;
         Ok(transform.GetOutputStreamInfo(0)?)
