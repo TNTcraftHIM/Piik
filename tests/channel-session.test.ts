@@ -678,6 +678,95 @@ test.each([false, true])("App viewing assistance withdraws without ending the wa
   } finally { session.close(); }
 });
 
+test.each([false, true])("local Native playback provenance follows endpoint lifetime, without ownership or user inference (description rejected: %s)", async rejected => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  const native = crypto.randomUUID(), remote = crypto.randomUUID();
+  const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: native, roomIds: [] });
+  if (rejected) description.mockRejectedValue(new Error("hosting_unavailable"));
+  const { session, socket } = await setup();
+  const original = session.getSnapshot().state!, userId = session.getSnapshot().self!.id;
+  const publications = [native, remote].map((sessionId, index) => ({ audience: [], id: `screen-${index}`, roomId: "first", sessionId, userId,
+    kind: "screen" as const, source: { kind: "screen" as const, name: null }, title: null,
+    videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }));
+  const state = { ...original, publications, sessions: [...original.sessions,
+    ...[native, remote].map(id => ({ id, userId, online: true, signingKey: testSigningKey }))] };
+  socket.receive({ type: "state", state });
+  try {
+    const connecting = session.activateApp();
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
+    const app = ChannelSocket.current;
+    await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
+    const watching = session.watch("screen-0");
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen-0" }));
+    // The listening decision is known before subscription can deliver sound.
+    expect(description).toHaveBeenCalled();
+    expect([...session.getSnapshot().localScreens]).toEqual(rejected ? [] : ["screen-0"]);
+    expect(session.getSnapshot().ownedScreens.size).toBe(0);
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await watching;
+    if (rejected) { expect(session.getSnapshot().error).toBeNull(); return; }
+    app.close();
+    expect(session.getSnapshot().appConnected).toBe(false);
+    expect([...session.getSnapshot().localScreens]).toEqual(["screen-0"]);
+    socket.receive({ type: "state", state: { ...state, sessions: state.sessions.map(endpoint => endpoint.id === native ? { ...endpoint, online: false } : endpoint) } });
+    expect([...session.getSnapshot().localScreens]).toEqual(["screen-0"]);
+    // Exact endpoint retirement clears provenance. A same-user successor is remote.
+    socket.receive({ type: "state", state: { ...state, sessions: state.sessions.filter(endpoint => endpoint.id !== native),
+      publications: publications.map(publication => ({ ...publication, sessionId: remote })) } });
+    expect(session.getSnapshot().localScreens.size).toBe(0);
+    expect(session.getSnapshot().ownedScreens.size).toBe(0);
+  } finally { session.close(); }
+});
+
+test.each(["session", "capture", "app", "unwatch", "retirement"])("pending local-source HTTP follows %s cancellation without trapping the watch", async ending => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  const fetcher = vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+    const signal = init.signal!;
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+  }));
+  vi.stubGlobal("fetch", fetcher);
+  const { session, socket } = await setup();
+  const state = { ...session.getSnapshot().state!, publications: [
+    { audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", source: { kind: "screen", name: null }, title: null,
+      videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
+  ] };
+  socket.receive({ type: "state", state });
+  const cancel = new AbortController();
+  try {
+    const connecting = session.activateApp();
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
+    const app = ChannelSocket.current;
+    await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
+    const watching = session.watch("screen", undefined, cancel.signal);
+    // Attach rejection handling before aborting the underlying request.
+    const settled = watching.then(() => null, error => error);
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+    const signal = fetcher.mock.calls[0][1].signal!;
+    expect(signal.aborted).toBe(false);
+    expect(socket.sent.some(command => command.type === "subscribe")).toBe(false);
+    let stopping: Promise<unknown> | undefined;
+    if (ending === "session") session.close();
+    else if (ending === "capture") cancel.abort();
+    else if (ending === "unwatch") stopping = session.unwatch("screen").catch(error => error);
+    else if (ending === "retirement") socket.receive({ type: "state", state: { ...state, publications: [] } });
+    else app.close();
+    expect(signal.aborted).toBe(true);
+    if (ending === "app") {
+      await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true }));
+      socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+      expect(await settled).toBeNull();
+    } else {
+      expect(await settled).toMatchObject({ name: "AbortError" });
+      expect(socket.sent.some(command => command.type === "subscribe" && command.enabled)).toBe(false);
+    }
+    if (stopping) {
+      await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", enabled: false }));
+      socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+      expect(await stopping).toBeUndefined();
+    }
+    expect(session.getSnapshot().pending.has("watch:screen")).toBe(false);
+  } finally { session.close(); }
+});
+
 test("temporary helper unavailability cannot retire a retained watch on Domain recovery", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
   const helperSessionId = crypto.randomUUID();
@@ -724,7 +813,9 @@ test("temporary helper unavailability cannot retire a retained watch on Domain r
 test("an App description completing after unwatch cannot recreate a subscription", async () => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
   let describe!: (value: { sessionId: string; roomIds: string[] }) => void;
-  const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockImplementation(() => new Promise(resolve => { describe = resolve; }));
+  const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting")
+    .mockImplementation(() => new Promise(resolve => { describe = resolve; }))
+    .mockResolvedValueOnce({ sessionId: crypto.randomUUID(), roomIds: [] });
   const { session, socket } = await setup();
   socket.receive({ type: "state", state: { ...session.getSnapshot().state!, publications: [
     { audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
@@ -737,9 +828,10 @@ test("an App description completing after unwatch cannot recreate a subscription
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await connecting;
     const watching = session.watch("screen");
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true }));
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     await watching;
-    await vi.waitFor(() => expect(description).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(description).toHaveBeenCalledTimes(2));
     const stopping = session.unwatch("screen");
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     await stopping;

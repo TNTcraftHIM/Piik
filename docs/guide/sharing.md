@@ -120,6 +120,9 @@ Move the pointer over a picture or tap it to reveal its playback bar.
 | Picture in picture / Fullscreen | Opens the browser's supported video window or fullscreen view. |
 | Mini window | Keeps the room's people, conversation and voice controls beside the picture; see [room tools](./room-tools.md#keep-the-room-beside-a-picture-or-game). |
 
+Pictures labelled **Local preview** stay silent to avoid playing the source sound
+twice. Adjust shared volume on the page that started the share.
+
 ## Finish one activity
 
 - **Stop watching** closes that picture for you; it does not stop its source or other pictures.

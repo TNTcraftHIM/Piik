@@ -224,7 +224,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl }: {
             source: publication.source, title: publication.title, onRoom: () => selectRoom(publication.roomId),
             avatar: state?.users.find(user => user.id === publication.userId)?.avatar ?? undefined,
             audience: state ? screenAudience(state, publication) : [],
-            roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id),
+            roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id), localSource: channel.localScreens.has(publication.id),
             shareControls: channel.ownedScreens.has(publication.id) && <ChannelShareControl channel={channel}
               roomId={publication.roomId} publicationId={publication.id} compact
               disabled={!connected || !rooms.find(room => room.id === publication.roomId)?.available} />,

@@ -82,7 +82,7 @@ describe("Playback audio controls", () => {
     const stream = { id: "mixed", getAudioTracks: () => [{ kind: "audio", readyState: "live" }] } as unknown as MediaStream;
     const sourceAudio = { hasAudio: false, available: false, level: 1, muted: false, busy: false, onChange: vi.fn() };
     const windowModes = { theaterMode: false, onToggleTheater: vi.fn() };
-    const html = renderToStaticMarkup(createElement(ChannelVideo, { stream, local: true, label: "Own screen", sourceAudio, ...windowModes }));
+    const html = renderToStaticMarkup(createElement(ChannelVideo, { stream, owned: true, localSource: true, label: "Own screen", sourceAudio, ...windowModes }));
     const range = html.match(/<input\b[^>]*type="range"[^>]*>/)![0];
     expect(range).toContain('aria-label="分享源没有音频"');
     expect(range).toContain('aria-valuetext="分享源没有音频"');
@@ -90,7 +90,7 @@ describe("Playback audio controls", () => {
     expect(range).toContain("disabled");
     expect(html.match(/<button\b[^>]*aria-label="分享源没有音频"[^>]*>/)?.[0]).toContain("disabled");
 
-    const silent = renderToStaticMarkup(createElement(ChannelVideo, { stream, local: true, label: "Own screen", ...windowModes,
+    const silent = renderToStaticMarkup(createElement(ChannelVideo, { stream, owned: true, localSource: true, label: "Own screen", ...windowModes,
       sourceAudio: { ...sourceAudio, hasAudio: true, available: true, muted: true, level: 0 } }));
     const silentRange = silent.match(/<input\b[^>]*type="range"[^>]*>/)![0];
     expect(silentRange).not.toContain("disabled");
@@ -115,10 +115,36 @@ describe("Playback audio controls", () => {
   });
 });
 
+describe("Local source playback", () => {
+  it("keeps owned=false/localSource=true silent and a remote same-user source unowned", () => {
+    setCopy({ lang: "en", vis: false });
+    const stream = { id: "same-machine", getAudioTracks: () => [{ readyState: "live" }] } as unknown as MediaStream;
+    const html = renderToStaticMarkup(createElement(ChannelVideo, {
+      stream, owned: false, localSource: true, label: "Local source", theaterMode: false, onToggleTheater: vi.fn(),
+    }));
+    expect(html).toContain("<video");
+    expect(html).not.toContain('class="c3-mini-volume"');
+    expect(html).not.toContain("No audio in this share");
+    const source = { id: "screen", userId: "self", name: "Me", roomName: "Room", source: { kind: "screen" as const, name: null },
+      title: null, owned: false, localSource: true, audience: [], subscribed: true, paused: false, stream };
+    const props: ChannelStageProps = { sources: [source], focusedId: null, canSubscribe: true,
+      onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),
+      onInputPolicy: vi.fn(), onInputDecide: vi.fn(), onInputSimultaneous: vi.fn(), onInputShortcut: vi.fn() };
+    const local = renderToStaticMarkup(createElement(ChannelStage, props));
+    expect(local).toContain("Local preview");
+    expect(local).toContain('aria-label="Stop watching Shared screen"');
+    expect(local).not.toContain('aria-label="Stop sharing');
+    const remote = renderToStaticMarkup(createElement(ChannelStage, { ...props, sources: [{ ...source, localSource: false }] }));
+    expect(remote).not.toContain("Local preview");
+    expect(remote).toContain('class="c3-mini-volume"');
+    expect(remote).toContain('aria-label="Stop watching Shared screen"');
+  });
+});
+
 describe("Screen delivery result", () => {
   it("shows the watch failure without replacing an existing picture or changing its controls", () => {
     setCopy({ lang: "en", vis: false });
-    const source = { audience: [], id: "screen", userId: "friend", name: "Friend", roomName: "Room", source: { kind: "screen" as const, name: null }, title: null, owned: false,
+    const source = { audience: [], id: "screen", userId: "friend", name: "Friend", roomName: "Room", source: { kind: "screen" as const, name: null }, title: null, owned: false, localSource: false,
       subscribed: true, paused: false, deliveryFailed: true };
     const props: ChannelStageProps = { sources: [source], focusedId: null, canSubscribe: true,
       onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),

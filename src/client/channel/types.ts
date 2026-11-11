@@ -53,6 +53,8 @@ export interface ChannelView {
   listeningVolume: number;
   appConnected: boolean;
   ownedScreens: ReadonlySet<string>;
+  /** Local playback provenance, independent of this page's capture controls. */
+  localScreens: ReadonlySet<string>;
   state: ChannelSnapshot | null;
   sessionId: string | null;
   self: ChannelUser | null;

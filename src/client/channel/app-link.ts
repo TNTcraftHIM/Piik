@@ -89,6 +89,7 @@ export class ChannelApp {
   private rejectReady!: (error: Error) => void;
   private timer: ReturnType<typeof setTimeout>;
   private authenticated = false;
+  private readonly lifetime = new AbortController();
   private captures = new Map<string, string>();
   private audioStates = new Map<string, z.infer<typeof audioStateSchema>>();
   private prepared = new Set<string>();
@@ -196,7 +197,10 @@ export class ChannelApp {
     return this.request({ type: "open", policy });
   }
 
-  async describeHosting() { await this.ready; return this.roomHosting.describe(); }
+  async describeHosting(signal?: AbortSignal) {
+    await this.ready;
+    return this.roomHosting.describe(signal ? AbortSignal.any([signal, this.lifetime.signal]) : this.lifetime.signal);
+  }
   async snapshotRoom(roomId: string): Promise<Blob> { await this.ready; return this.roomHosting.snapshot(roomId); }
   async restoreRoom(archive: Blob): Promise<RoomSummary> { await this.ready; return this.roomHosting.restore(archive); }
 
@@ -355,6 +359,7 @@ export class ChannelApp {
   }
 
   close(): void {
+    this.lifetime.abort();
     this.authenticated = false;
     this.captures.clear();
     this.audioStates.clear();

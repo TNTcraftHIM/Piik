@@ -98,7 +98,7 @@ export function ChannelRoomPreview() {
   const channel = { ...sample.channel, state, self: state.users[0], streams, error: null, siteURL: "https://friends.example/",
     messagesByRoom,
     interactionsByRoom: sample.channel.interactionsByRoom,
-    ownedScreens,
+    ownedScreens, localScreens: ownedScreens,
     screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), voicePlaybackByUser: new Map(),
     browse: () => {}, sendMessage: sample.onSend,
     loadHistory: async () => sample.received(), loadLatestHistory: async () => sample.received(),

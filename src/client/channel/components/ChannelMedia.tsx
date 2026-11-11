@@ -69,8 +69,8 @@ export interface SourceAudioControl {
   onChange(settings: { level?: number; muted?: boolean }): void;
 }
 
-export function ChannelVideo({ stream, local, label, thumbnail = false, inputs, onPresentation, input, sourceAudio, interaction = null, theaterMode, onToggleTheater }: {
-  stream: MediaStream; local: boolean; label: string; inputs?: readonly ChannelScreenInput[];
+export function ChannelVideo({ stream, owned, localSource, label, thumbnail = false, inputs, onPresentation, input, sourceAudio, interaction = null, theaterMode, onToggleTheater }: {
+  stream: MediaStream; owned: boolean; localSource: boolean; label: string; inputs?: readonly ChannelScreenInput[];
   thumbnail?: boolean;
   input?: InputTransport;
   sourceAudio?: SourceAudioControl;
@@ -107,18 +107,18 @@ export function ChannelVideo({ stream, local, label, thumbnail = false, inputs, 
   const current = useRef({ displayed, inputs, onPresentation });
   current.current = { displayed, inputs, onPresentation };
   const { lang, t } = useCopy();
-  const sound = local && sourceAudio ? sourceAudio : audio;
-  const hasAudio = local ? !!sourceAudio?.hasAudio : streamHasAudio;
+  const sound = owned && sourceAudio ? sourceAudio : audio;
+  const hasAudio = owned ? !!sourceAudio?.hasAudio : !localSource && streamHasAudio;
   const silent = sound.muted || sound.level === 0;
-  const soundAvailable = hasAudio && (!local || !!sourceAudio?.available);
-  const soundDisabled = !soundAvailable || local && !!sourceAudio?.busy;
-  const muteDisabled = !soundAvailable || local && !!sourceAudio?.busy && !(sourceAudio.canMute && !silent);
-  const volumeTitle = !hasAudio ? "playback.noAudio" : local
+  const soundAvailable = hasAudio && (!owned || !!sourceAudio?.available);
+  const soundDisabled = !soundAvailable || owned && !!sourceAudio?.busy;
+  const muteDisabled = !soundAvailable || owned && !!sourceAudio?.busy && !(sourceAudio.canMute && !silent);
+  const volumeTitle = !hasAudio ? "playback.noAudio" : owned
     ? !sourceAudio?.available ? "host.shareVolume.unavailable" : "host.shareVolume"
     : audio.boostAvailable ? "playback.volume" : "playback.volumeBasic";
   const playbackRef = useMemo(() => ({ current: activeVideo }), [activeVideo]);
   const picture = usePictureInPicture(playbackRef);
-  const previewPlayback = useHostPreviewPlayback(playbackRef, local ? displayed.stream : null, previewAutoPause);
+  const previewPlayback = useHostPreviewPlayback(playbackRef, owned ? displayed.stream : null, previewAutoPause);
   useVideoRotation(playbackRef, pictureFit, pictureRotation);
   useAnchoredPopover(pictureTrigger, picturePanel, { side: "above", align: "center" });
   useLayoutEffect(() => { if (thumbnail) picturePanel.current?.hidePopover(); }, [thumbnail]);
@@ -189,7 +189,7 @@ export function ChannelVideo({ stream, local, label, thumbnail = false, inputs, 
     const swapping = target.flowId !== displayed.flowId || target.stream !== displayed.stream;
     if (swapping && !binding.composited) return;
     // Only remote playback owns a listening output, even when the video stays.
-    if (ref.current !== binding.element || Boolean(output.current) !== !local) {
+    if (ref.current !== binding.element || Boolean(output.current) !== !localSource) {
       const previous = ref.current, listening = output.current;
       const saved = listening?.snapshot ?? audio;
       const keepPaused = previous?.paused ?? false;
@@ -197,19 +197,19 @@ export function ChannelVideo({ stream, local, label, thumbnail = false, inputs, 
       listening?.dispose();
       if (previous) previous.muted = true;
       const element = binding.element;
-      if (local && keepPaused) previewPlayback.onPause();
-      if (keepPaused && !local) element.pause();
+      if (owned && keepPaused) previewPlayback.onPause();
+      if (keepPaused && !owned) element.pause();
       element.volume = Math.min(saved.level, 1); element.muted = true;
-      const nextAudio = local ? null : new ViewerAudio(element, setAudio);
+      const nextAudio = localSource ? null : new ViewerAudio(element, setAudio);
       nextAudio?.bind(target.stream); nextAudio?.setLevel(saved.level); nextAudio?.setMuted(saved.muted);
-      if (local) setAudio(saved);
+      if (localSource) setAudio(saved);
       output.current = nextAudio; ref.current = element;
-      setActiveVideo(element); setPaused(local ? element.paused : keepPaused); setBlocked(false);
+      setActiveVideo(element); setPaused(owned ? element.paused : keepPaused); setBlocked(false);
       if (previous !== element) previous?.pause();
     }
     setReady(binding.composited);
     if (swapping) setDisplayed(target);
-  }, [target.flowId, target.stream, displayed.flowId, displayed.stream, consumerVersion, local]);
+  }, [target.flowId, target.stream, displayed.flowId, displayed.stream, consumerVersion, owned, localSource]);
   useEffect(() => {
     if (!activeVideo) return;
     const selectedStream = displayed.stream;
@@ -269,31 +269,31 @@ export function ChannelVideo({ stream, local, label, thumbnail = false, inputs, 
     <div id={controlsId} ref={controls} className="c3-mini-controls lr-media-toolbar lr-media-controls" role="group" aria-label={t("playback.controls")}>
       <Btn icon={paused ? "play" : "pause"} title={paused ? "playback.play" : "playback.pause"} quiet
         hint={paused ? "hint-local-play" : "hint-local-pause"} onClick={() => { if (ref.current?.paused) play(); else ref.current?.pause(); }} />
-      {(!local || sourceAudio) && <>
+      {(owned ? !!sourceAudio : !localSource) && <>
         <Btn icon={!hasAudio || silent ? "speakerOff" : "speaker"} quiet
-          title={!hasAudio ? "playback.noAudio" : local
+          title={!hasAudio ? "playback.noAudio" : owned
             ? !sourceAudio?.available ? "host.shareVolume.unavailable" : silent ? "host.shareVolume.unmute" : "host.shareVolume.mute"
             : silent ? "playback.unmute" : "playback.mute"}
           hint={!hasAudio ? "hint-no-audio" : silent ? "hint-unmute" : "hint-mute"}
           disabled={muteDisabled} pressed={silent}
           onClick={() => {
-            if (local) sourceAudio?.onChange({ level: sound.level || 1, muted: !silent });
+            if (owned) sourceAudio?.onChange({ level: sound.level || 1, muted: !silent });
             else {
               if (sound.level === 0) output.current?.setLevel(1);
               output.current?.setMuted(!silent);
             }
           }} />
-        <input className="c3-mini-volume" type="range" min="0" max={local || audio.boostAvailable ? 2 : 1} step="0.05" value={hasAudio ? sound.level : 0}
+        <input className="c3-mini-volume" type="range" min="0" max={owned || audio.boostAvailable ? 2 : 1} step="0.05" value={hasAudio ? sound.level : 0}
           disabled={soundDisabled} aria-label={t(volumeTitle)} aria-valuetext={hasAudio ? `${Math.round(sound.level * 100)}%` : t("playback.noAudio")}
           onChange={event => {
             const level = Number(event.currentTarget.value);
-            if (local) sourceAudio?.onChange({ level, muted: false });
+            if (owned) sourceAudio?.onChange({ level, muted: false });
             else { output.current?.setLevel(level); output.current?.setMuted(false); }
           }} />
       </>}
       <span className="c3-mini-space" />
       <RoomChatToggle session={interaction} quiet />
-      {!local && <RemoteControl channel={input ?? null} videoRef={playbackRef} available={!thumbnail && ready && displayed.flowId === target.flowId}
+      {!owned && <RemoteControl channel={input ?? null} videoRef={playbackRef} available={!thumbnail && ready && displayed.flowId === target.flowId}
         pictureFit={pictureFit} pictureRotation={pictureRotation} touchMode={remoteTouchMode} />}
       <span ref={pictureTrigger} className="lr-playback-more"><Btn icon="sliders" quiet title="playback.more" hint="hint-advanced"
         popoverTarget={pictureId} controls={pictureId} expanded={pictureOpen} /></span>
@@ -304,9 +304,9 @@ export function ChannelVideo({ stream, local, label, thumbnail = false, inputs, 
         <PlaybackSettings picture={{ pictureFit, pictureRotation,
           setPictureFit: (fit: VideoFit) => { setPictureFit(fit); saveRoomPreferences({ pictureFit: fit }); },
           setPictureRotation: (rotation: VideoRotation) => { setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation }); },
-        }} preview={local ? { autoPause: previewAutoPause, onChange: autoPause => {
+        }} preview={owned ? { autoPause: previewAutoPause, onChange: autoPause => {
           setPreviewAutoPause(autoPause); saveRoomPreferences({ previewAutoPause: autoPause });
-        } } : undefined} remoteTouch={!local && input ? { mode: remoteTouchMode, onChange: mode => {
+        } } : undefined} remoteTouch={!owned && input ? { mode: remoteTouchMode, onChange: mode => {
           setRemoteTouchMode(mode); saveRoomPreferences({ remoteTouchMode: mode });
         } } : undefined} overlaySettings={interaction && <RoomChatOverlaySettings session={interaction} />} reconnect={null} />
       </div>

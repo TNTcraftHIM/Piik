@@ -53,6 +53,12 @@ interface VoiceParticipation {
   deafened: boolean;
 }
 
+interface ScreenWatch {
+  helperSessionId?: string;
+  query?: AbortController;
+  operation?: Promise<void>;
+}
+
 interface ScreenShare {
   id: string;
   paused?: boolean;
@@ -114,6 +120,7 @@ export class ChannelSession {
     listeningVolume: readRoomPreferences().voiceListeningVolume,
     appConnected: false,
     ownedScreens: new Set(),
+    localScreens: new Set(),
     state: null, sessionId: null, self: null, connection: "connecting", messagesByRoom: {}, historyByRoom: {},
     streams: new Map(), screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), error: null, siteURL: null, pending: new Set(),
   };
@@ -134,12 +141,13 @@ export class ChannelSession {
   }>();
   private hostedRooms = new Map<string, { host: HostedRoom; bindingId?: string }>();
   private app: ChannelApp | undefined;
+  private localNativeEndpoints = new Set<string>();
   private hostCleanup: Promise<void> = Promise.resolve();
   private signals: Extract<ChannelCommand, { type: "signal" }>[] = [];
   private microphone: MicrophoneInput | null = null;
   private microphoneRequest: MicrophoneRequest | null = null;
   private voiceParticipation = new Map<string, VoiceParticipation>();
-  private watching = new Map<string, string | undefined>();
+  private watching = new Map<string, ScreenWatch>();
   private admittedPublications = new Set<string>();
   private historyChannel: string | null = null;
   private readings = new Map<string, RoomReading>();
@@ -192,8 +200,12 @@ export class ChannelSession {
     const ownedScreens = new Set(this.app?.screens);
     for (const share of this.screenShares.values()) ownedScreens.add(share.id);
     for (const [id, capture] of this.local) if (capture.kind === "screen") ownedScreens.add(id);
+    const localScreens = new Set(ownedScreens);
+    for (const publication of (patch.state ?? this.view.state)?.publications ?? []) {
+      if (publication.kind === "screen" && this.localNativeEndpoints.has(publication.sessionId)) localScreens.add(publication.id);
+    }
     const remoteControls = new Map([...(patch.remoteControls ?? this.view.remoteControls)].filter(([id]) => ownedScreens.has(id)));
-    this.view = { ...this.view, ...patch, appConnected: this.app?.connected ?? false, ownedScreens, remoteControls };
+    this.view = { ...this.view, ...patch, appConnected: this.app?.connected ?? false, ownedScreens, localScreens, remoteControls };
     for (const listener of this.listeners) listener();
   }
 
@@ -387,6 +399,7 @@ export class ChannelSession {
   private applyState(state: ChannelSnapshot): void {
     const sessionId = this.view.sessionId;
     if (!sessionId) return;
+    for (const id of this.localNativeEndpoints) if (!state.sessions.some(endpoint => endpoint.id === id)) this.localNativeEndpoints.delete(id);
     const previousRooms = this.view.state?.channel.rooms;
     const userId = state.sessions.find(session => session.id === sessionId)?.userId;
     for (const id of this.admittedPublications) {
@@ -414,8 +427,8 @@ export class ChannelSession {
         if (local.audio) setMediaPaused(local.audio.sourceStream, paused);
       }
     }
-    for (const id of this.watching.keys()) {
-      if (!state.publications.some(publication => publication.id === id) && !this.view.pending.has(`watch:${id}`)) this.watching.delete(id);
+    for (const [id, watch] of this.watching) {
+      if (!state.publications.some(publication => publication.id === id) && (watch.query || !this.view.pending.has(`watch:${id}`))) this.retireWatch(id);
     }
     const visible = this.projectActivity(state);
     const sameChannel = this.historyChannel === state.channel.id;
@@ -717,6 +730,15 @@ export class ChannelSession {
 
   activateApp = (): Promise<void> => this.action("app", async () => { await this.connectApp(); });
 
+  private rememberLocalEndpoint(app: ChannelApp, sessionId: string): void {
+    if (this.app !== app || !app.connected || this.closed || this.localNativeEndpoints.has(sessionId)
+      || !this.view.state?.sessions.some(endpoint => endpoint.id === sessionId)) return;
+    // This is a source-location fact, not a capture grant. Another page's
+    // capture can outlive our App control socket; only endpoint retirement clears it.
+    this.localNativeEndpoints.add(sessionId);
+    this.patch({});
+  }
+
   private async syncAppWatching(resync = false): Promise<void> {
     if (this.closed || this.view.connection !== "connected") return;
     const watches = [...this.watching].filter(([id]) => !this.local.has(id) && !this.view.pending.has(`watch:${id}`));
@@ -730,11 +752,12 @@ export class ChannelSession {
     }
     if (this.closed || this.view.connection !== "connected" || this.socket !== socket
       || this.view.sessionId !== sessionId || (this.app?.connected ? this.app : undefined) !== app) return;
+    if (app && helperSessionId) this.rememberLocalEndpoint(app, helperSessionId);
     // Cached placement hints are not authority acknowledgements after recovery.
-    for (const [publicationId, previousHelper] of watches) {
-      if (!this.watching.has(publicationId) || this.watching.get(publicationId) !== previousHelper
-        || this.view.pending.has(`watch:${publicationId}`) || !resync && previousHelper === helperSessionId) continue;
-      this.watching.set(publicationId, helperSessionId);
+    for (const [publicationId, watch] of watches) {
+      if (this.watching.get(publicationId) !== watch
+        || this.view.pending.has(`watch:${publicationId}`) || !resync && watch.helperSessionId === helperSessionId) continue;
+      watch.helperSessionId = helperSessionId;
       // Assistance changes route placement; failure must not withdraw the watch.
       void this.request({ type: "subscribe", publicationId, enabled: true, helperSessionId }).catch(() => {});
     }
@@ -1392,25 +1415,51 @@ export class ChannelSession {
     return this.roomInvitationURL(roomId, key);
   }, reportError);
   revokeRoomAccess = (roomId: string, userId: string, reportError = true): Promise<void> => this.action(`revoke:${roomId}:${userId}`, () => this.request({ type: "revoke_room_access", roomId, userId }), reportError);
-  watch = (publicationId: string, roomId?: string, signal?: AbortSignal): Promise<void> => this.action(`watch:${publicationId}`, async () => {
-    if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
-    this.watching.set(publicationId, undefined);
-    try {
-      await this.request({ type: "subscribe", publicationId, enabled: true }, undefined, roomId);
+  watch = (publicationId: string, roomId?: string, signal?: AbortSignal): Promise<void> => {
+    const watch: ScreenWatch = {};
+    const operation = this.action(`watch:${publicationId}`, async () => {
       if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
-    } catch (error) {
-      if (!signal?.aborted && error instanceof Error && error.message === "disconnected") return;
-      this.watching.delete(publicationId);
-      this.refreshActivity();
-      if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
-      throw error;
-    }
-  }).then(() => { void this.syncAppWatching(); });
-  unwatch = (publicationId: string): Promise<void> => this.action(`watch:${publicationId}`, async () => {
+      this.watching.set(publicationId, watch);
+      try {
+        const app = this.app;
+        if (app?.connected && !this.view.localScreens.has(publicationId)) {
+          watch.query = new AbortController();
+          const lifetime = AbortSignal.any([watch.query.signal, this.captureLifetime.signal, ...(signal ? [signal] : [])]);
+          const description = await app.describeHosting(lifetime).catch(() => undefined);
+          watch.query = undefined;
+          lifetime.throwIfAborted();
+          if (description) this.rememberLocalEndpoint(app, description.sessionId);
+          if (!this.watching.has(publicationId)) return;
+        }
+        await this.request({ type: "subscribe", publicationId, enabled: true }, undefined, roomId);
+        if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
+      } catch (error) {
+        if (!signal?.aborted && error instanceof Error && error.message === "disconnected") return;
+        this.retireWatch(publicationId);
+        this.refreshActivity();
+        if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
+        throw error;
+      }
+    });
+    watch.operation = operation;
+    return operation.finally(() => { watch.operation = undefined; }).then(() => { void this.syncAppWatching(); });
+  };
+  private retireWatch(publicationId: string): void {
+    this.watching.get(publicationId)?.query?.abort();
     this.watching.delete(publicationId);
-    this.refreshActivity();
-    if (this.view.connection === "connected") await this.request({ type: "subscribe", publicationId, enabled: false });
-  });
+  }
+  unwatch = async (publicationId: string): Promise<void> => {
+    const watch = this.watching.get(publicationId);
+    if (watch?.query) {
+      this.retireWatch(publicationId);
+      await watch.operation?.catch(() => {});
+    }
+    return this.action(`watch:${publicationId}`, async () => {
+      this.retireWatch(publicationId);
+      this.refreshActivity();
+      if (this.view.connection === "connected") await this.request({ type: "subscribe", publicationId, enabled: false });
+    });
+  };
   clearError = (): void => this.patch({ error: null });
 
   async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone, audio, profile, codec, camera, source, publicationId }: { microphone?: MicrophoneInput; audio?: HostAudio; profile?: QualityProfile; codec?: BrowserVideoCodecPreference; camera?: boolean; source?: ScreenSource; publicationId?: string } = {}): Promise<string> {
@@ -1551,7 +1600,7 @@ export class ChannelSession {
           const remoteControls = new Map(this.view.remoteControls);
           remoteControls.delete(share.id);
           this.patch({ remoteControls });
-          this.watching.delete(share.id);
+          this.retireWatch(share.id);
           this.refreshActivity();
         }
         const effects = await Promise.allSettled([reporting, stopping]);
@@ -1852,7 +1901,7 @@ export class ChannelSession {
     // stop_capture also retires a pending Native candidate for a Browser incumbent.
     const nativeStop = this.app?.stopCapture(publicationId);
     if (browser) this.retireCapture(publicationId);
-    this.watching.delete(publicationId);
+    this.retireWatch(publicationId);
     this.refreshActivity();
     await Promise.all([nativeStop, browser && this.view.connection === "connected"
       ? this.request({ type: "unpublish", publicationId }, undefined, browser.roomId) : undefined]);
@@ -2133,8 +2182,9 @@ export class ChannelSession {
     this.media.reset();
     this.local.clear();
     this.admittedPublications.clear();
+    this.localNativeEndpoints.clear();
     this.voiceParticipation.clear();
-    this.watching.clear();
+    for (const id of this.watching.keys()) this.retireWatch(id);
     this.microphone?.close();
     this.microphone = null;
     request?.input?.close();

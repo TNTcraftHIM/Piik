@@ -105,7 +105,7 @@ export function useChannelGuideSample(multiRoom = false) {
   const channel = {
     updateProfile: async (value: { name: string; avatar: string | null }) => setProfile(value),
     state, self: state.users[0], sessionId: "sample-ada-session", connection: "connected", appConnected: true, pending, attachments, sendMessage: onSend,
-    quality, setQuality, videoCodecMode: codec, setVideoCodecMode: setCodec, ownedScreens: new Set<string>(), streams: new Map<string, MediaStream>(),
+    quality, setQuality, videoCodecMode: codec, setVideoCodecMode: setCodec, ownedScreens: new Set<string>(), localScreens: new Set<string>(), streams: new Map<string, MediaStream>(),
     messagesByRoom: { ...messagesByRoom, friday: sampleMessages.map(message => ({ ...message, reactions: messageReactions[message.seq] })) },
     interactionsByRoom: new Map(interaction ? [["friday", interaction]] : []), publicationReactions, roomBackupAvailable,
     getRoomInvite: async (roomId: string) => ({ state: "available" as const, url: invites[roomId] ?? `https://friends.example/#room=${roomId}&invite=sample` }),

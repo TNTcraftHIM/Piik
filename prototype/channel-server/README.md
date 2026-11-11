@@ -248,7 +248,10 @@ others in a thumbnail strip. Short windows use a picture selector in place of
 the strip. Chat and the user list open as companion surfaces; narrow layouts
 switch surfaces instead of squeezing them beside the picture. These presentation
 choices do not implement media layering or a new quality policy. Local previews
-stay muted, and pausing a player does not stop forwarding its source.
+stay muted, including another page watching a source from the same verified local
+App endpoint. Only the selecting page retains capture controls. Closing a page's
+App control connection does not make that still-local source audible.
+Pausing a player does not stop forwarding its source.
 Start sharing from the selected room's header. Once active, source selection and
 picture/sound settings belong to that share's card; changing the room selection
 or focused picture never retargets those settings to another publication.

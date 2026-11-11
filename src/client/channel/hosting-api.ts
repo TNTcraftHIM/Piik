@@ -9,8 +9,8 @@ export class NativeRoomHosting {
   constructor(private readonly roomsURL: string, private readonly authorization: HeadersInit,
     private readonly descriptionURL = `${roomsURL}/hosting`) {}
 
-  async describe(): Promise<NativeHostingDescription> {
-    return descriptionSchema.parse(await (await this.request(this.descriptionURL)).json());
+  async describe(signal?: AbortSignal): Promise<NativeHostingDescription> {
+    return descriptionSchema.parse(await (await hostingRequest(this.descriptionURL, this.authorization, undefined, signal)).json());
   }
 
   async snapshot(roomId: string): Promise<Blob> {
@@ -41,10 +41,10 @@ export class NativeDomainHosting {
   }
 }
 
-async function hostingRequest(url: string, authorization: HeadersInit, archive?: Blob): Promise<Response> {
+async function hostingRequest(url: string, authorization: HeadersInit, archive?: Blob, signal?: AbortSignal): Promise<Response> {
   const headers = new Headers(authorization);
   if (archive) headers.set("Content-Type", "application/zip");
-  const response = await fetch(url, { method: archive ? "PUT" : "GET", headers, body: archive });
+  const response = await fetch(url, { method: archive ? "PUT" : "GET", headers, body: archive, signal });
   if (!response.ok) {
     const value: unknown = await response.json().catch(() => null);
     const failure = z.object({ error: z.string() }).safeParse(value);

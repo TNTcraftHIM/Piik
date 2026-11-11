@@ -34,6 +34,8 @@ export interface ChannelStageSource {
   roomName: string;
   /** This page controls the share; its actual endpoint can be the App. */
   owned: boolean;
+  /** This source runs on this machine; preview audio must not feed back. */
+  localSource: boolean;
   subscribed: boolean;
   paused: boolean;
   audience: readonly ScreenAudiencePerson[];
@@ -185,7 +187,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
           const remainder = active.length % (columns ?? 1);
           const centeredStart = !focused && remainder && index === active.length - remainder ? (columns ?? 1) - remainder + 1 : undefined;
           const microphone = source.sourceMicrophone;
-          const sourceStatus = source.paused ? t("host.paused") : source.owned ? copy("本机预览", "Local preview") : "";
+          const sourceStatus = source.paused ? t("host.paused") : source.localSource ? copy("本机预览", "Local preview") : "";
           const sourceDetail = `${source.name} / ${source.roomName}`;
           const title = screenTitle(source, lang);
           return <article key={source.id} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
@@ -196,7 +198,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
               if (!focusable || (event.target instanceof Element && event.target.closest("button, input, select, a, [popover]"))) return;
               onFocus(source.id);
             }}>
-            {source.stream ? <ChannelVideo stream={source.stream} local={source.owned} thumbnail={thumbnail} inputs={source.inputs} onPresentation={onPresentation} input={source.input}
+            {source.stream ? <ChannelVideo stream={source.stream} owned={source.owned} localSource={source.localSource} thumbnail={thumbnail} inputs={source.inputs} onPresentation={onPresentation} input={source.input}
               sourceAudio={source.sourceAudio} interaction={source.interaction}
               theaterMode={theater && isFocused} onToggleTheater={() => {
                 onFocus(source.id); setTheater(!theater);
@@ -218,7 +220,11 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
                   </small></Tooltip>
                 </div>
                 <div className="c3-monitor-tile-actions">
-                  {sourceStatus && <small className="c3-source-status" aria-label={sourceStatus}>{vis ? <Glyph name={source.paused ? "pause" : "tv"} size={12} /> : sourceStatus}</small>}
+                  {sourceStatus && (source.localSource && !source.paused
+                    ? <Tooltip kind="hint-mute" text={copy("本机源预览保持静音，避免回声。", "Local source preview stays muted to prevent echo.")}>
+                      <small className="c3-source-status" aria-label={sourceStatus}>{vis ? <Glyph name="tv" size={12} /> : sourceStatus}</small>
+                    </Tooltip>
+                    : <small className="c3-source-status" aria-label={sourceStatus}>{vis ? <Glyph name={source.paused ? "pause" : "tv"} size={12} /> : sourceStatus}</small>)}
                   <SourceAudience people={source.audience} />
                   {source.owned && source.shareControls}
                   {source.owned && source.remoteControl && <SourceControl source={{ ...source, remoteControl: source.remoteControl }}
