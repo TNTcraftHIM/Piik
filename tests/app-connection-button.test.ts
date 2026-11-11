@@ -53,15 +53,15 @@ function collect(node: ts.Node): void {
 }
 collect(source);
 if (!connect || !effects.length) throw new Error("Missing App connection operation or cleanup");
-const executable = ts.transpileModule(`${rememberBuild}\n${connect}\nconst cleanups = [${effects.map(effect => `(${effect})()`).join(",")}];
-  ({ connect, cleanup: () => cleanups.reverse().forEach(fn => fn?.()) });`, {
+const executable = ts.transpileModule(`${rememberBuild}\n${connect}\nconst cleanups = [${effects.map(effect => effect.includes("connect(false, true)") ? `(automatic ? (${effect})() : undefined)` : `(${effect})()`).join(",")}];
+  ({ connect, cleanup: () => { cleanups.reverse().forEach(fn => fn?.()); pending.current?.controller.abort(); pending.current?.popup?.close(); } });`, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText;
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const site = "https://site.example";
 const approval = `http://127.0.0.1:39721/client?site=${encodeURIComponent(site)}`;
 
-function mount(activated = false, state: "idle" | "ready" = "idle", android = false) {
+function mount(activated = false, state: "idle" | "ready" = "idle", android = false, automatic = false) {
   const popup = { closed: false, close: vi.fn(() => { popup.closed = true; }) };
   const window = Object.assign(new EventTarget(), { open: vi.fn((): typeof popup | null => popup), location: { origin: site, assign: vi.fn() } });
   const document = Object.assign(new EventTarget(), { visibilityState: "visible" });
@@ -80,7 +80,7 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   const activateClient = vi.fn();
   const onConnected = vi.fn();
   const operation = runInNewContext(executable, {
-    window, document, pending, healthCheck, help, showHelp, setState, setBuild, activateClient, onConnected, AbortController, URL,
+    automatic, automaticFailed: { current: false }, window, document, pending, healthCheck, help, showHelp, setState, setAutomaticHint: vi.fn(), setBuild, activateClient, onConnected, AbortController, URL,
     wakeURL: android ? "intent://app#Intent;scheme=piik;package=tv.piik.android;end" : null,
     state, isClientActivated: () => activated,
     watchClientActivation: (changed: () => void) => {
@@ -418,4 +418,17 @@ describe("App connection approval", () => {
     expect(page.setState).toHaveBeenLastCalledWith("ready");
     page.cleanup();
   });
+});
+
+
+describe("initial App discovery",()=>{
+ it("automatically verifies an approved App without opening another page",async()=>{
+  const page=mount(true,"idle",false,true);await settle();expect(page.native.discoverNativeConnect).toHaveBeenCalledOnce();expect(page.onConnected).toHaveBeenCalledOnce();expect(page.window.open).not.toHaveBeenCalled();expect(page.showHelp).not.toHaveBeenCalled();page.cleanup();
+ });
+ it("keeps unapproved discovery pending for the real approval click",async()=>{
+  const page=mount(false,"idle",false,true);await settle();expect(page.setState).toHaveBeenLastCalledWith("approval");expect(page.onConnected).not.toHaveBeenCalled();expect(page.window.open).not.toHaveBeenCalled();await page.connect();expect(page.window.open).toHaveBeenCalledOnce();page.cleanup();
+ });
+ it("does not repeat failed discovery on focus and aborts a manual retry on unmount",async()=>{
+  const page=mount(true,"idle",false,true);page.native.discoverNativeConnect.mockResolvedValue(null);await settle();expect(page.setState).toHaveBeenLastCalledWith("unavailable");page.window.dispatchEvent(new Event("focus"));page.activateElsewhere();await settle();expect(page.native.discoverNativeConnect).toHaveBeenCalledOnce();expect(page.native.discoverNativeHealth).not.toHaveBeenCalled();let signal:AbortSignal|undefined;page.native.discoverNativeConnect.mockImplementationOnce(s=>{signal=s;return new Promise(()=>{});});void page.connect();await settle();expect(page.native.discoverNativeConnect).toHaveBeenCalledTimes(2);page.cleanup();expect(signal?.aborted).toBe(true);
+ });
 });
