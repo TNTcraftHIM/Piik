@@ -316,7 +316,7 @@ Saved data belongs to its domain or room runtime. Server defaults to
 `data/channel.sqlite` beside its executable. `PIIK_CHANNEL_DATA_DIR` chooses a
 different real directory; point it at an existing source-run directory to reuse
 that data. The domain checkpoint stores catalog summaries, identities and its
-owner/invitation admission keys. Room files under `rooms/<domainId>/<ownerId>/`
+owner admission key. Room files under `rooms/<domainId>/<ownerId>/`
 store each room's policy, grants and confirmed history. Only a newly created
 domain bootstraps Living room, Studio and Quiet corner; subsequent starts reopen
 actual files. A domain-only import leaves directory entries without room data
@@ -339,7 +339,8 @@ authority version 6, room backup metadata version 2, and SQLite schema version 4
 Browser room storage uses IndexedDB version 5. Older experimental
 checkpoints and the old unscoped `rooms/*.sqlite` layout are rejected rather than
 silently discarding or attaching their history to another domain. Keep any
-old experiment's database and choose a fresh `PIIK_CHANNEL_DATA_DIR` for this version.
+old experiment's database and choose a fresh data directory for this version:
+`PIIK_CHANNEL_DATA_DIR` for Server or `PIIK_CHANNEL_APP_DATA_DIR` for App.
 
 The current site operator's personal credential authorizes `GET` and `PUT` on
 `/prototype/channel/backup`. The App or Server service validates the complete
