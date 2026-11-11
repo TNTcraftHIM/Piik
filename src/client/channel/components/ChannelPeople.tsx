@@ -13,8 +13,8 @@ export function ChannelPeople({ channel, roomId, onBack }: { channel: ChannelCon
   const online = new Set(state?.sessions.filter(session => session.online).map(session => session.userId));
   const inRoom = new Set(state ? roomPeople(state, roomId).map(person => person.userId) : []);
   const groups: { label: string; users: User[] }[] = [
-    { label: zh ? "此房间内" : "In this room", users: [] },
-    { label: zh ? "其他在线用户" : "Other online", users: [] },
+    { label: zh ? "当前房间" : "This room", users: [] },
+    { label: zh ? "在线" : "Online", users: [] },
     { label: zh ? "离线" : "Offline", users: [] },
   ];
   for (const user of state?.users ?? []) groups[inRoom.has(user.id) ? 0 : online.has(user.id) ? 1 : 2].users.push(user);
@@ -35,7 +35,7 @@ export function ChannelPeople({ channel, roomId, onBack }: { channel: ChannelCon
       activity={sharing ? (zh ? "正在分享画面" : "Sharing a screen") : undefined} />;
   };
   return <aside id="c3-people" className="c3-people-panel" aria-labelledby="c3-people-heading">
-    <header><h2 id="c3-people-heading" tabIndex={-1}>{zh ? "站点用户" : "People on this site"}<span>{state?.users.length ?? 0}</span></h2>
+    <header><h2 id="c3-people-heading" tabIndex={-1}>{zh ? "用户列表" : "Users"}<span>{state?.users.length ?? 0}</span></h2>
       <span className="c3-pane-back"><BackButton onClick={onBack} /></span>
     </header>
     <div className="c3-people-body">

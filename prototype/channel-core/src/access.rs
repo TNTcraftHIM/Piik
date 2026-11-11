@@ -224,6 +224,7 @@ impl RoomState {
             available: true,
             reading: false,
             participant_session_ids: Vec::new(),
+            realtime_session_ids: Vec::new(),
             capabilities: crate::wire::RoomCapabilities { attachments: false },
             members: can_manage.then(|| self.grants.iter().copied().collect()),
         })

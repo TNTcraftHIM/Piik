@@ -9,7 +9,7 @@ use crate::{
     RoomState,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
 #[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -168,6 +168,32 @@ pub struct RoomProjection {
 }
 
 impl RoomProjection {
+    fn realtime_sessions(&self) -> Vec<Uuid> {
+        let mut sessions = BTreeSet::new();
+        for publication in &self.publications {
+            sessions.insert(publication.session_id);
+            sessions.extend(publication.audience.iter().map(|viewer| viewer.session_id));
+        }
+        sessions.extend(self.voice.iter().map(|voice| voice.session_id));
+        for flow in &self.flows {
+            sessions.extend([flow.sender, flow.receiver]);
+        }
+        for link in &self.base_links {
+            sessions.extend([link.parent, link.child]);
+        }
+        for (session, view) in &self.views {
+            for file in &view.files {
+                if file.receiving || file.upstream.is_some() || !file.downstream.is_empty() {
+                    sessions.insert(*session);
+                    sessions.extend(file.source_id);
+                    sessions.extend(file.upstream);
+                    sessions.extend(&file.downstream);
+                }
+            }
+        }
+        sessions.into_iter().collect()
+    }
+
     /// Assemble only the recipient's authorized view; the host owns these rights.
     pub fn snapshot(&self, session: Uuid, available: bool) -> Option<RoomSnapshot> {
         let view = self.views.get(&session)?;
@@ -192,6 +218,11 @@ impl RoomProjection {
                 capabilities: self.capabilities.clone(),
                 participant_session_ids: if view.authorized && available {
                     self.participant_session_ids.clone()
+                } else {
+                    vec![]
+                },
+                realtime_session_ids: if view.authorized && available {
+                    self.realtime_sessions()
                 } else {
                     vec![]
                 },

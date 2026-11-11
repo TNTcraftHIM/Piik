@@ -1071,6 +1071,12 @@ mod tests {
         .unwrap();
         room.command(viewer, id(2), command, &endpoints).unwrap();
         room.reconcile(&endpoints, 2);
+        assert!(room
+            .snapshot(viewer, id(2))
+            .unwrap()
+            .room
+            .realtime_session_ids
+            .contains(&id(5)));
         let trial: BTreeMap<_, _> = room
             .flows()
             .filter(|flow| !flow.selected)
@@ -1113,6 +1119,12 @@ mod tests {
             }
         }
         room.reconcile(&endpoints, 4);
+        assert!(room
+            .snapshot(viewer, id(2))
+            .unwrap()
+            .room
+            .realtime_session_ids
+            .contains(&id(5)));
         assert!(trial
             .values()
             .all(|new| room.flows().any(|flow| flow.id == new.id && flow.selected)));
@@ -1517,9 +1529,29 @@ mod tests {
         };
         room.finish_file(id(3), 1, attachment.clone(), true, true)
             .unwrap();
+        room.reconcile(&endpoints, 2);
+        assert!(
+            !room
+                .projection(&endpoints)
+                .snapshot(id(2), true)
+                .unwrap()
+                .room
+                .realtime_session_ids
+                .contains(&id(3)),
+            "an idle cached copy has no realtime activity"
+        );
         room.finish_file(id(2), 1, attachment.clone(), false, true)
             .unwrap();
         room.reconcile(&endpoints, 2);
+        assert!(
+            room.projection(&endpoints)
+                .snapshot(id(2), true)
+                .unwrap()
+                .room
+                .realtime_session_ids
+                .contains(&id(3)),
+            "the selected file source participates while its path prepares"
+        );
         assert!(room
             .base_links()
             .any(|link| !link.selected && (link.parent == id(3) || link.child == id(3))));
@@ -1531,6 +1563,16 @@ mod tests {
 
         room.finish_file(id(1), 1, attachment, true, true).unwrap();
         room.reconcile(&endpoints, 3);
+        assert!(
+            !room
+                .projection(&endpoints)
+                .snapshot(id(2), true)
+                .unwrap()
+                .room
+                .realtime_session_ids
+                .contains(&id(3)),
+            "a replaced file source returns to being only a cached copy"
+        );
         assert_eq!(
             room.snapshot(endpoints[&id(2)].member, id(2))
                 .unwrap()
@@ -3552,6 +3594,7 @@ mod tests {
         };
         let owner_session = Uuid::new_v4();
         let viewer_session = Uuid::new_v4();
+        let reader_session = Uuid::new_v4();
         let mut room = RoomRuntime::new(
             RoomState::new(
                 "private".into(),
@@ -3565,6 +3608,7 @@ mod tests {
             .unwrap(),
         );
         room.policy.grants.insert(viewer.user_id);
+        room.browse(viewer, reader_session, true).unwrap();
         let picture = Uuid::new_v4();
         let voice = Uuid::new_v4();
         room.publish(
@@ -3593,7 +3637,16 @@ mod tests {
                 .participant_session_ids
                 .into_iter()
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from([owner_session, viewer_session])
+            BTreeSet::from([owner_session, viewer_session, reader_session])
+        );
+        assert_eq!(
+            admitted
+                .room
+                .realtime_session_ids
+                .into_iter()
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([owner_session, viewer_session]),
+            "chat reading alone is not realtime participation"
         );
         assert_eq!(admitted.publications.len(), 2);
         assert_eq!(
@@ -3640,6 +3693,7 @@ mod tests {
         assert!(!locked.room.authorized);
         assert!(!locked.room.can_manage);
         assert!(locked.room.participant_session_ids.is_empty());
+        assert!(locked.room.realtime_session_ids.is_empty());
         assert!(locked.publications.is_empty());
         assert!(locked.voice.is_empty());
         assert!(locked.subscriptions.is_empty());

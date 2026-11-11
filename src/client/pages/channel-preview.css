@@ -94,7 +94,7 @@
 .c3-other-activity strong { font-size: 12px; }
 .c3-other-activity strong, .c3-activity-room { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .c3-activity-room { grid-column: 1 / -1; }
-.c3-room-presence { grid-column: 2; grid-row: 4; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 20px; }
+.c3-room-presence { grid-column: 2; grid-row: 4; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px; padding: 8px 20px; }
 .c3-room-presence[data-empty] { display: none; }
 .c3-room-presence .c3-room-company { width: min(100%, 560px); }
 .c3-room-presence > .c3-room-tool-entry { order: -1; }
@@ -164,6 +164,9 @@
 @container channel-room (max-height: 680px) {
   .c3-workspace.has-screens .c3-monitor { --stage-padding: 10px; gap: 8px; }
   .c3-workspace .c3-conversation { padding: 8px 12px; gap: 8px; }
+}
+@container channel-room (max-height: 420px) {
+  .c3-other-activities { max-height: min(96px, 30cqb); margin: 6px 12px; gap: 0; }
 }
 @container channel-shell (max-height: 680px) {
   .c3-personal { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; padding: 2px 8px 4px; gap: 2px 4px; }

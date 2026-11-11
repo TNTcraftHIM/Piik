@@ -110,6 +110,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
       rooms: roomIds.map(id => ({ id, name: id, icon: "couch", creatorId: "self", access: "public",
         hidden: false, hasPassword: false, authorized: true, canManage: true,
         participantSessionIds: id === "first" ? ["endpoint"] : [],
+        realtimeSessionIds: [],
         available: true, reading: id === "first", capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } } })) },
     users: [{ id: "self", name: "Me", avatar: null }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
@@ -307,6 +308,10 @@ test.each(["throws", "ignores-write"] as const)("owner bootstrap stays recoverab
     vi.useFakeTimers(); socket.close(); await vi.advanceTimersByTimeAsync(1000); await ChannelSocket.current.onopen?.();
     expect(ChannelSocket.current.sent.find(command => command.type === "join")).toMatchObject({ ownerKey: "owner-secret", credential: "personal-owner-credential" });
   } finally { session.close(); }
+});
+
+test.each(["invalid_room_id", "room_not_found", "room_unavailable"])("%s presents an unavailable room instead of a password failure", error => {
+  expect(channelErrorPresentation(error, (_zh, en) => en).message).toBe("The room does not exist or is no longer available.");
 });
 
 test("opening the site creates identity before independently applying a room invitation", async () => {
@@ -7026,7 +7031,7 @@ test.each(["registered", "registration-failed"])("portable import retains its ve
     admission.receive({ type: "ack", requestId: registration.requestId });
     const restored = structuredClone(state);
     restored.channel.rooms = [{ id: "imported", name: "First", creatorId: "archived-user", icon: "couch", access: "public", hidden: false, hasPassword: false,
-      authorized: true, canManage: true, voiceBitrate: 64_000, relayCapacity: 2, relayOverride: null, participantSessionIds: [], available: true, reading: false, capabilities: { attachments: true },
+      authorized: true, canManage: true, voiceBitrate: 64_000, relayCapacity: 2, relayOverride: null, participantSessionIds: [], realtimeSessionIds: [], available: true, reading: false, capabilities: { attachments: true },
       delivery: { hostSessionId: "new-endpoint", bindingId: "imported-binding", nextHops: {} } }];
     admission.receive({ type: "state", state: restored });
     await vi.waitFor(() => expect(admission.sent.some(command => command.type === "browse" && command.roomId === "imported")).toBe(true));

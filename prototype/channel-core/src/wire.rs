@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 10;
+pub const CHANNEL_PROTOCOL: u8 = 11;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -602,6 +602,7 @@ pub struct Room {
     pub available: bool,
     pub reading: bool,
     pub participant_session_ids: Vec<Uuid>,
+    pub realtime_session_ids: Vec<Uuid>,
     pub capabilities: RoomCapabilities,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delivery: Option<RoomDelivery>,

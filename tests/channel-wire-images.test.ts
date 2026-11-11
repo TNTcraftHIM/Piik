@@ -5,7 +5,7 @@ const picture = "data:image/png;base64,YWJj";
 const snapshot = () => ({
   channel: { id: "domain", name: "Friends", icon: picture, ownerId: null, historyWindow: 1000, rooms: [{
     id: "room", name: "Room", icon: picture, creatorId: "user", access: "public", hidden: false,
-    hasPassword: false, authorized: true, canManage: false, participantSessionIds: [],
+    hasPassword: false, authorized: true, canManage: false, participantSessionIds: [], realtimeSessionIds: [],
     available: true, reading: false, capabilities: { attachments: true },
   }] },
   users: [{ id: "user", name: "Friend", avatar: picture as string | null }], sessions: [], publications: [], voice: [],

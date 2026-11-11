@@ -285,6 +285,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
             state.files.extend(view.files);
         } else {
             view.room.participant_session_ids.clear();
+            view.room.realtime_session_ids.clear();
             view.room.delivery = None;
         }
         state.channel.rooms.push(view.room);

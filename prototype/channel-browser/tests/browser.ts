@@ -12,6 +12,7 @@ interface Output {
     summary: { icon: string };
     capabilities: { attachments: boolean };
     participantSessionIds: string[];
+    realtimeSessionIds: string[];
     publications: unknown[];
     voice: unknown[];
     views: Record<string, { authorized: boolean; canManage: boolean }>;
@@ -139,6 +140,7 @@ window.runBrowserRoomCheck = async () => {
     check((await history()).messages.length === 0, "history is an explicit independent read");
     check(initial.projection.views[session].canManage, "room owner view comes from shared Rust");
     check(initial.projection.participantSessionIds.join() === session
+      && initial.projection.realtimeSessionIds.length === 0
       && initial.projection.views[session].authorized && initial.projection.views[peerSession].authorized,
     "shared Rust projects reading activity to every authorized view without inventing a seat for an idle endpoint");
     check(Object.values(initial.projection.views).every(view => !('room' in view) && !('publications' in view) && !('voice' in view)),

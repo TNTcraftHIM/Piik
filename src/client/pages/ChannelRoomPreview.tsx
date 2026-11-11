@@ -79,6 +79,7 @@ export function ChannelRoomPreview() {
   const state = { ...sample.channel.state!, channel: { ...sample.channel.state!.channel,
     rooms: rooms.map(room => ({ ...room,
       name: longNames && room.id === "friday" ? zh ? "周五一起看电影与交流的朋友们" : "Friday with friends: a shared evening together" : room.name,
+      realtimeSessionIds: [...new Set([...room.realtimeSessionIds, ...publications.filter(publication => publication.roomId === room.id).flatMap(publication => [publication.sessionId, ...publication.audience.map(viewer => viewer.sessionId)])])],
       participantSessionIds: [...new Set([
       ...room.participantSessionIds, ...publications.filter(publication => publication.roomId === room.id).map(publication => publication.sessionId),
     ])] })),

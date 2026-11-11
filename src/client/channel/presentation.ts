@@ -57,3 +57,15 @@ export function roomPeople(state: ChannelSnapshot, roomId: string) {
     voice: voiceAppearance(state, user.id, roomId),
   }));
 }
+
+/** Room authority supplies real-time involvement, independently of chat presence. */
+export function roomRealtimePeople(state: ChannelSnapshot, roomId: string) {
+  const endpoints = new Set(state.channel.rooms.find(room => room.id === roomId)?.realtimeSessionIds ?? []);
+  const users = new Set(state.sessions.filter(session => endpoints.has(session.id)).map(session => session.userId));
+  const screens = state.publications.filter(publication => publication.kind === "screen" && publication.roomId === roomId);
+  return state.users.filter(user => users.has(user.id)).map(user => ({ ...user,
+    voice: voiceAppearance(state, user.id, roomId),
+    sharing: screens.some(publication => publication.userId === user.id),
+    watching: screens.some(publication => publication.audience.some(viewer => state.sessions.some(session => session.id === viewer.sessionId && session.userId === user.id))),
+  }));
+}
