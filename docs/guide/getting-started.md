@@ -113,7 +113,9 @@ the Web page after updating App. If App reports `unsupported_domain_checkpoint`,
 it has preserved data from an older test format. Keep that data and follow the
 package's fresh-data instructions; [saved-data settings](../../prototype/channel-server/README.md#saved-data-and-files)
 explain the separate App and Server directories. Public 2.x downloads are not
-the 3.0 test update.
+the 3.0 test update. If the beta reports `unsupported_storage_version`, stop
+App and run the supplied `reset-beta-app-data.ps1`; it keeps the old App
+directory as a timestamped backup.
 
 ## Share from an existing site
 

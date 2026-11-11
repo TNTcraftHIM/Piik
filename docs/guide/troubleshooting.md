@@ -225,6 +225,15 @@ voice or file transfer fails, check that activity below.
 A failed or canceled file transfer does not end room chat. Do not clear site
 storage to retry; that can remove retained files, identity or a Browser-hosted room.
 
+### The beta App reports `unsupported_storage_version`
+
+This is the expected boundary when a private beta changes its local storage
+format. Stop Piik App, keep any room backups, and run the supplied
+`reset-beta-app-data.ps1` helper. It renames the old App data directory with a
+timestamp and keeps it as a backup; the next start creates a fresh beta directory.
+The helper does not migrate or delete the old database. This reset helper is for
+the 3.0 internal beta only.
+
 ## Starting a share
 
 [No picker](#no-screen-picker) · [Missing windows](#app-windows-or-screens-are-missing) ·

@@ -97,6 +97,8 @@
 `unsupported_domain_checkpoint`，表示已有数据来自更早的测试格式，原数据仍保留。
 先留存旧资料，再按包内说明使用新的测试数据；App 与 Server 的独立数据目录见
 [数据设置](../../prototype/channel-server/README.md#saved-data-and-files)。公开的 2.x 下载不是本次 3.0 内测更新。
+如果内测 App 提示 `unsupported_storage_version`，请退出 App 后运行随包提供的
+`reset-beta-app-data.ps1`；旧 App 目录会保留为带时间戳的备份。
 
 ## 使用已有站点分享
 

@@ -146,6 +146,12 @@ incompatible, update the domain's Server and connected Apps together, then refre
 3. Start with the same application-data directory. Send the current invitation
    if its address changed.
 
+If a private beta reports `unsupported_storage_version`, stop App and run the
+supplied `reset-beta-app-data.ps1` helper. It renames the old Windows data
+directory to a timestamped backup and leaves it in place; the next start uses a
+fresh directory. This intentionally resets the private beta format instead of
+silently migrating an old experiment.
+
 The launcher checks published releases and links to their notes. During this
 unpublished test, follow the supplied test-update instructions rather than
 switching to a different public channel.
