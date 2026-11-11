@@ -195,7 +195,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
           const remainder = active.length % (columns ?? 1);
           const centeredStart = !source.hidden && !focused && remainder && index === active.length - remainder ? (columns ?? 1) - remainder + 1 : undefined;
           const microphone = source.sourceMicrophone;
-          const sourceDetail = `${source.name} / ${source.roomName}`;
+          const sourceDetail = `${source.name} / ${source.roomName}${source.localSource ? ` / ${copy("本机预览", "Local preview")}` : ""}`;
           const title = screenTitle(source, lang);
           return <article key={source.id} hidden={source.hidden} inert={source.hidden} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
             style={centeredStart ? { gridColumn: `${centeredStart} / span 2` } : undefined}
@@ -225,7 +225,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
                 <div className="c3-monitor-source">
                   <Tooltip overflow={{ text: title, selector: "strong" }}><strong>{title}</strong></Tooltip>
                   <Tooltip overflow={{ text: sourceDetail, selector: "small" }}><small>
-                    <span>{source.name}</span><span aria-hidden="true"> / </span>
+                    <span>{source.localSource ? copy("本机预览", "Local preview") : source.name}</span><span aria-hidden="true"> / </span>
                     {source.onRoom ? <button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button> : source.roomName}
                   </small></Tooltip>
                 </div>
