@@ -190,6 +190,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   async function send(event: FormEvent) {
     event.preventDefault();
     if ((!text && !files.length) || textTooLong || !canSend || working || composing.current) return;
+    input.current?.focus({ preventScroll: true });
     reading.current.following = true;
     const request = new AbortController();
     preparing.current = request;
@@ -295,7 +296,9 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
           <button type="button" className="lr-btn is-compact is-quiet c3-reply-notify" aria-pressed={draft.reply.notify}
             aria-label={zh ? "提醒回复对象" : "Notify reply recipient"} onClick={() => updateDraft(value => ({ ...value, reply: value.reply && { ...value.reply, notify: !value.reply.notify } }))}>@</button>
         </Tooltip>
-        <ChannelAction icon="x" quiet iconOnly textTooltip label={zh ? "取消回复，保留草稿" : "Cancel reply and keep draft"} onClick={() => updateDraft(value => ({ ...value, reply: undefined }))} />
+        <ChannelAction icon="x" quiet iconOnly textTooltip label={zh ? "取消回复，保留草稿" : "Cancel reply and keep draft"} onClick={() => {
+          updateDraft(value => ({ ...value, reply: undefined })); input.current?.focus({ preventScroll: true });
+        }} />
       </div>}
       {query && <ChannelMentionSuggestions id={mentionId} anchor={input} users={candidates} activeIndex={activeMention} onActiveIndex={setMentionIndex} onSelect={selectMention} />}
       <div className="c3-compose-input">

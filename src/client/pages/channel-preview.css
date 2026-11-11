@@ -136,15 +136,16 @@
 .c3-user { min-width: 0; padding: 9px 6px; }
 .c3-people-panel .c3-user { padding-block: 4px; }
 .c3-person { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
-.c3-person > svg { flex: none; width: 30px; height: 38px; }
-.c3-people-panel .c3-person > svg { width: 26px; height: 34px; }
+.c3-person > .lr-comic-tip-wrap:has(.c3-avatar-preview) { flex: none; }
+.c3-person > svg, .c3-person .c3-avatar-preview > svg { flex: none; width: 30px; height: 38px; }
+.c3-people-panel .c3-person > svg, .c3-people-panel .c3-avatar-preview > svg { width: 26px; height: 34px; }
 .c3-person-copy { min-width: 0; flex: 1 1 12ch; }
 .c3-person-actions { display: flex; align-items: center; flex: none; gap: 4px; margin-inline-start: auto; }
 .c3-person-actions .lr-btn, .c3-identity .c3-profile-editor .lr-btn { width: var(--button-size, var(--control-dense-size)); padding-inline: 0; }
 .c3-person strong { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
 .c3-person small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
 .c3-you { font-weight: 400; font-size: 11px; color: var(--muted); }
-.c3-user.is-offline .c3-person > svg { opacity: .5; }
+.c3-user.is-offline .c3-person > svg, .c3-user.is-offline .c3-avatar-preview > svg { opacity: .5; }
 /* Collapsing navigation is a layout preference, not a change of activity. */
 .c3-shell[data-view="share"] > .c3-sidebar { display: none; }
 .c3-shell[data-view="share"] :is(.c3-room-heading, .c3-main-body) { grid-column-start: 1; }

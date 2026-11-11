@@ -29,7 +29,7 @@
 .c3-room-participants:empty { display: none; }
 .c3-room-participants .c3-user { padding: 4px 0; }
 .c3-room-participants .c3-person { gap: var(--room-content-gap); }
-.c3-room-participants .c3-person > svg { width: var(--room-icon-size); height: 28px; }
+.c3-room-participants .c3-person > svg, .c3-room-participants .c3-avatar-preview > svg { width: var(--room-icon-size); height: 28px; }
 .c3-room-participants .c3-person-copy { flex-basis: 7ch; }
 @media (hover: hover) and (pointer: fine) {
   .c3-room-manage { visibility: hidden; }
