@@ -37,6 +37,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   const [limitsRetry, setLimitsRetry] = useState(0);
   const [fileErrorsByRoom, setFileErrorsByRoom] = useState<Record<string, string>>({});
   const preparing = useRef<AbortController | null>(null);
+  const composing = useRef(false);
   const chooser = useRef<HTMLInputElement>(null);
   const log = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -110,7 +111,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   }
   async function send(event: FormEvent) {
     event.preventDefault();
-    if ((!text && !files.length) || textTooLong || !canSend || working) return;
+    if ((!text && !files.length) || textTooLong || !canSend || working || composing.current) return;
     reading.current.following = true;
     const request = new AbortController();
     preparing.current = request;
@@ -203,14 +204,20 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
       {attachmentsAvailable && <><input ref={chooser} type="file" multiple hidden onChange={event => { addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ""; }} />
         <ChannelAction icon="plus" label={zh ? "添加文件" : "Add files"} iconOnly quiet hint="hint-file-add"
           disabled={!canSend || working || !limits} onClick={() => chooser.current?.click()} /></>}
-      <textarea rows={1} aria-label={zh ? "消息内容" : "Message"} value={draft}
+      <textarea rows={1} enterKeyHint="enter" aria-label={zh ? "消息内容" : "Message"} value={draft}
         aria-invalid={textTooLong || undefined} aria-describedby={textTooLong ? textErrorId : undefined}
         placeholder={zh ? "说点什么…" : "Say something…"} disabled={!roomId}
         onPaste={event => { if (attachmentsAvailable && event.clipboardData.files.length) { event.preventDefault(); addFiles([...event.clipboardData.files]); } }}
         onChange={event => setDrafts(previous => ({ ...previous, [roomId]: event.target.value }))}
-        onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-          event.preventDefault(); event.currentTarget.form?.requestSubmit();
-        } }} />
+        onCompositionStart={() => { composing.current = true; }}
+        onCompositionEnd={() => { composing.current = false; }}
+        onKeyDown={event => {
+          if (event.key !== "Enter" || composing.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+          const touchKeyboard = event.currentTarget.ownerDocument.defaultView?.matchMedia("(hover: none) and (pointer: coarse)").matches;
+          if (event.ctrlKey || event.metaKey || (!event.shiftKey && !touchKeyboard)) {
+            event.preventDefault(); event.currentTarget.form?.requestSubmit();
+          }
+        }} />
       <ChannelAction icon="send" label={zh ? "发送" : "Send"} type="submit" primary iconOnly
         disabled={!canSend || textTooLong || (!text && !files.length)} busy={working} hint="hint-chat-send" />
     </form>}
@@ -232,10 +239,10 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
     {!grouped && <PawnSvg color={participantColor(message.userId)} identity={message.userId} avatar={avatar} />}
     <div className="c3-message-body">{!grouped && <div className="c3-message-meta"><strong>{name}</strong>
       <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
-    </div>}{message.text && <p>{message.text}</p>}
+    </div>}<div className="c3-message-content-body">{message.text && <p>{message.text}</p>}
     {message.attachments.map(file => <ChannelAttachment key={file.id} roomId={roomId} messageSeq={message.seq} file={file} client={attachments} />)}
     <ChannelContentReactions reactions={message.reactions} session={interaction} target={{ messageSeq: message.seq }} disabled={!available}
-      effectAnchor={effectAnchor} effectsEnabled={effectsEnabled} /></div>
+      effectAnchor={effectAnchor} effectsEnabled={effectsEnabled} /></div></div>
     </article>
   </>;
 });

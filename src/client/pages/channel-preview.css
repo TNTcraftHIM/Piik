@@ -22,7 +22,10 @@
 .c3-room-navigation { padding-inline: 12px; }
 .c3-site-overview { min-height: 0; overflow-y: auto; padding: 24px; }
 .c3-site-overview h2 { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; font-size: 24px; }
-.c3-site-overview > p { color: var(--muted); line-height: 1.7; margin-bottom: 16px; }
+.c3-site-overview:has(.c3-first-room) { display: flex; flex-direction: column; }
+.c3-first-room { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; width: min(100%, 440px); margin: auto; padding-block: 24px; }
+.c3-first-room h2 { margin: 0; font-size: 25px; line-height: 1.3; letter-spacing: -.025em; }
+.c3-first-room p { color: var(--muted); font-size: 14px; line-height: 1.8; text-wrap: pretty; }
 .c3-overview-rooms { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 16px; }
 .c3-overview-rooms .c3-room-item { border: 1px solid var(--line); border-radius: 16px; padding: 12px; }
 .c3-global-tools.lr-top { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 0 0 160px; width: 160px; min-width: min-content; padding: 0; }
@@ -55,8 +58,10 @@
 .c3-room-name h2 { min-width: 0; font-size: 19px; letter-spacing: -.02em; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .c3-room-name > .c3-room-invitation-entry { border-inline-start: 1px solid var(--line); padding-inline-start: 8px; }
 .c3-room-actions, .c3-room-tools { display: flex; align-items: center; gap: 6px; flex: none; }
+.c3-room-toolbar { display: flex; align-items: center; gap: 12px; flex: none; }
 .c3-room-tools .lr-cap:where(:not([popover] .lr-cap)) { display: none; }
-.c3-room-tools { margin-inline-start: auto; }
+.c3-room-tools { gap: 4px; }
+.c3-room-actions:not(:empty) + .c3-room-tools { border-inline-start: 1px solid var(--line); padding-inline-start: 12px; }
 #c3-companion-trigger > .lr-glyph { transform: scaleX(-1); }
 .c3-room-heading .c3-share-actions > .c3-share-control:nth-child(2) .lr-cap { display: none; }
 .c3-voice-joined { display: inline-flex; align-items: center; gap: 7px; padding: 8px 4px; color: var(--live); font-size: 13px; font-weight: 650; white-space: nowrap; }
@@ -70,8 +75,10 @@
 .c3-workspace { flex: 1; min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .c3-workspace[hidden] { display: none; }
 .c3-workspace > .c3-monitor, .c3-workspace :is(.c3-conversation, .c3-locked-room) { grid-column: 1; grid-row: 1; min-height: 0; }
-.c3-chat-panel { grid-column: 3; grid-row: 3 / 5; display: flex; min-width: 0; min-height: 0; }
+.c3-chat-panel { grid-column: 3; grid-row: 3 / 5; display: flex; min-width: 0; min-height: 0; background: var(--wall); }
+.c3-chat-panel .c3-composer { background: var(--paper); }
 .c3-chat-panel .c3-conversation { flex: 1; min-width: 0; min-height: 0; padding: 0 0 16px; }
+.c3-chat-panel .c3-room-start.is-empty { margin-block: 12px auto; align-items: flex-start; text-align: start; padding-inline: 0; }
 .c3-chat-panel .c3-chat-heading { flex: none; min-height: 52px; padding: 8px 16px; }
 .c3-chat-panel .c3-conversation > :not(.c3-chat-heading) { margin-inline: 16px; }
 .c3-shell:not([data-companion="chat"]) > .c3-chat-panel { display: none; }
@@ -108,7 +115,7 @@
 .c3-notice > svg { flex: none; }
 .c3-notice.is-error > svg { color: var(--danger); }
 .c3-app > .c3-notice { width: var(--c3-content-width); margin: 0 auto 12px; background: var(--paper); }
-.c3-people-panel { grid-column: 3; grid-row: 3 / 5; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-inline: 12px; }
+.c3-people-panel { grid-column: 3; grid-row: 3 / 5; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-inline: 12px; background: var(--wall); }
 .c3-people-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: none; min-height: 52px; }
 .c3-people-panel h2 { display: flex; align-items: baseline; gap: 8px; font-size: 14px; font-weight: 650; }
 .c3-people-panel h2 > span { color: var(--muted); font-size: 11px; font-weight: 400; }
@@ -143,8 +150,7 @@
 @container channel-shell (max-width: 600px) {
   .c3-room-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; }
   .c3-room-name { grid-column: 1; grid-row: 1; }
-  .c3-room-tools { grid-column: 2; grid-row: 1; }
-  .c3-room-actions { grid-column: 1 / -1; grid-row: 2; justify-self: end; }
+  .c3-room-toolbar { grid-column: 1 / -1; grid-row: 2; justify-self: end; }
   .c3-room-actions:empty { display: none; }
 }
 @container channel-room (max-height: 680px) {

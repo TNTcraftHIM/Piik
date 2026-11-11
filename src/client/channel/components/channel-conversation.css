@@ -33,27 +33,30 @@
 .c3-message { display: flex; align-items: flex-start; gap: 11px; margin: 16px 0 0; }
 .c3-message:first-child { margin-top: 8px; }
 .c3-message > svg { width: 29px; height: 36px; flex: none; }
+.c3-message-content-body { display: flow-root; font-size: 14px; line-height: 1.65; margin-top: 3px; }
+.c3-message.is-continuation .c3-message-content-body { margin-top: 0; }
 .c3-message-body { flex: 0 1 auto; width: fit-content; max-width: 100%; min-width: 0; }
-.c3-message-body:has(> .c3-message-reactions:not([data-has-counts="true"])) {
+.c3-message-content-body:has(> .c3-message-reactions:not([data-has-counts="true"])) {
   --message-action-size: 32px;
-  position: relative; min-height: var(--message-action-size); padding-inline-end: calc(var(--message-action-size) + 8px);
+  position: relative; padding-inline-end: calc(var(--message-action-size) + 8px);
 }
-.c3-message-body > .c3-message-reactions:not([data-has-counts="true"]) {
-  position: absolute; inset-block-start: 0; inset-inline-end: 0; margin-top: 0;
+.c3-message-content-body > .c3-message-reactions:not([data-has-counts="true"]) {
+  position: absolute; inset-block-start: 0; inset-inline-end: 0; margin-top: 0; transform: translateY(calc((1lh - var(--message-action-size)) / 2));
 }
 @media (hover: hover) and (pointer: fine) {
-  .c3-message-body > .c3-message-reactions:not([data-has-counts="true"]) { opacity: 0; pointer-events: none; }
+  .c3-message-content-body > .c3-message-reactions:not([data-has-counts="true"]) { opacity: 0; pointer-events: none; }
   .c3-message:is(:hover, :focus-within, :has([aria-expanded="true"])) .c3-message-reactions { opacity: 1; pointer-events: auto; }
 }
 @media (hover: none) {
-  .c3-message-body:has(> .c3-message-reactions:not([data-has-counts="true"])) { --message-action-size: 44px; }
+  .c3-message-content-body:has(> .c3-message-reactions:not([data-has-counts="true"])) { --message-action-size: 44px; min-height: var(--message-action-size); }
+  .c3-message-content-body > .c3-message-reactions:not([data-has-counts="true"]) { transform: none; }
+  .c3-message-content-body:has(> .c3-message-reactions:not([data-has-counts="true"])) > p { min-height: var(--message-action-size); display: flex; align-items: center; }
 }
 .c3-message-meta { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
 .c3-message-meta strong { font-size: 13px; font-weight: 650; }
 .c3-message-meta time { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.c3-message p { white-space: pre-wrap; font-size: 14px; line-height: 1.65; margin-top: 3px; }
+.c3-message p { white-space: pre-wrap; font-size: inherit; line-height: inherit; margin: 0; }
 .c3-message.is-continuation { margin-top: 4px; padding-inline-start: 40px; }
-.c3-message.is-continuation p { margin-top: 0; }
 .c3-message-date { display: flex; align-items: center; gap: 12px; margin-top: 24px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .c3-message-date::before, .c3-message-date::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
 .c3-message-date > time { flex: none; }
@@ -70,6 +73,7 @@
 .c3-file-error { font-size: 12px; line-height: 1.6; color: var(--danger); }
 .c3-file-retry { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
 .c3-attachment { display: grid; gap: 8px; max-width: 440px; border: 1px solid var(--line); border-radius: 12px; background: var(--wall); padding: 10px; margin-top: 8px; }
+.c3-message-content-body > .c3-attachment:first-child { margin-top: 0; }
 .c3-attachment-file { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .c3-attachment-file > svg { flex: none; color: var(--muted); }
 .c3-attachment-file > div { flex: 1; min-width: 0; }
@@ -78,5 +82,5 @@
 .c3-attachment small { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
 .c3-attachment > .lr-btn { justify-self: start; }
 .c3-attachment img { display: block; max-width: 100%; max-height: 260px; border-radius: 6px; object-fit: contain; }
-.c3-composer textarea { flex: 1; min-width: 0; width: 100%; border: 0; border-radius: 0; background: transparent; color: var(--ink); font: inherit; font-size: 14px; line-height: 1.6; padding: 7px 4px; min-height: 36px; max-height: min(140px, 35cqb); resize: none; field-sizing: content; }
+.c3-composer textarea { flex: 1; min-width: 0; width: 100%; border: 0; border-radius: 0; background: transparent; color: var(--ink); font: inherit; font-size: 16px; line-height: 1.5; padding: calc((var(--control-compact-size, 44px) - 1lh) / 2) 4px; min-height: var(--control-compact-size, 44px); max-height: min(160px, 30dvh); overflow-y: auto; resize: none; field-sizing: content; }
 .c3-composer textarea:focus { outline: 0; }

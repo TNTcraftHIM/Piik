@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { Tooltip } from "../../components/living/Tooltip";
-import { Btn, Cap, SwitchItem } from "../../components/living/primitives";
+import { Btn, SwitchItem } from "../../components/living/primitives";
 import { NumberControl } from "../../components/living/NumberControl";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
@@ -120,42 +120,32 @@ export function RoomForm({ room, value, onChange, appHosted, disabled, busy, onS
 }
 
 /** Creation and management share the same form and modal surface. */
-export function ChannelRoomControls({ channel, onCreated }: {
-  channel: ChannelController; onCreated?: (id: string) => void;
+export function ChannelRoomCreateDialog({ channel, initialName = "", onCreated, onClose }: {
+  channel: ChannelController; initialName?: string; onCreated(id: string): void; onClose(): void;
 }) {
-  const { lang, vis } = useCopy(), zh = lang === "zh";
-  const [open, setOpen] = useState(false);
-  const { error, run } = useSettingsAction(open);
-  const [draft, setDraft] = useState<RoomDraft | null>(null);
+  const { lang } = useCopy(), zh = lang === "zh";
+  const { error, run } = useSettingsAction();
+  const [draft, setDraft] = useState<RoomDraft>(() => ({ ...roomDraft(), name: initialName }));
   const connected = channel.connection === "connected";
   const busy = channel.pending.has("create-room");
   const backupBusy = channel.pending.has("room-backup");
   const title = zh ? "创建房间" : "Create room";
-  return <>
-    <Tooltip kind="hint-create-room" disabled={open} text={vis ? undefined : title}>
-      <button type="button" className="lr-btn is-dense is-quiet" aria-label={title}
-        aria-haspopup="dialog" aria-expanded={open} disabled={!connected} onClick={() => { setDraft(null); setOpen(true); }}>
-        <Glyph name="plus" size={18} />
-        {!channel.state?.channel.rooms.length && <Cap k={{ text: title }} />}
-      </button>
-    </Tooltip>
-    {open && <ChannelSettingsDialog title={title} compact error={error} onClose={() => setOpen(false)}>
+  return <ChannelSettingsDialog title={title} compact error={error} onClose={onClose}>
       <div className="c3-settings-panels">
-        <RoomForm value={draft ?? roomDraft()} onChange={fields => setDraft(previous => ({ ...(previous ?? roomDraft()), ...fields }))} appHosted={channel.appConnected} disabled={!connected || busy || backupBusy} busy={busy}
-          onCancel={() => setOpen(false)} onSave={settings => run(() => channel.createRoom(settings, false), roomId => {
-            onCreated?.(roomId); setOpen(false);
+        <RoomForm value={draft} onChange={fields => setDraft(previous => ({ ...previous, ...fields }))} appHosted={channel.appConnected} disabled={!connected || busy || backupBusy} busy={busy}
+          onCancel={onClose} onSave={settings => run(() => channel.createRoom(settings, false), roomId => {
+            onCreated(roomId); onClose();
           })} />
         <details className="c3-settings-details"><summary>{zh ? "从备份导入房间" : "Import a room backup"}</summary>
           <BackupControls disabled={!connected || busy} busy={backupBusy} replacing={false}
             onRestore={async file => {
               const result = await channel.restoreRoomBackup(file);
-              onCreated?.(result.roomId);
+              onCreated(result.roomId); onClose();
               return result;
             }} />
         </details>
       </div>
-    </ChannelSettingsDialog>}
-  </>;
+    </ChannelSettingsDialog>;
 }
 
 /** One dialog instance manages the requested room independently of room navigation. */
