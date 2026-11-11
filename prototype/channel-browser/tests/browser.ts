@@ -8,7 +8,14 @@ import { QUALITY_PROFILES, screenVideoSettings } from "../../../src/client/media
 declare global { interface Window { runBrowserRoomCheck(): Promise<object> } }
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 interface Output {
-  projection: { views: Record<string, { room: { icon: string; canManage: boolean; participantSessionIds: string[] }; publications: unknown[] }> };
+  projection: {
+    summary: { icon: string };
+    capabilities: { attachments: boolean };
+    participantSessionIds: string[];
+    publications: unknown[];
+    voice: unknown[];
+    views: Record<string, { authorized: boolean; canManage: boolean }>;
+  };
   reply: { result: { type: string; code?: string; key?: string; invitation?: { state: string; key?: string } } } | null;
 }
 window.runBrowserRoomCheck = async () => {
@@ -108,7 +115,7 @@ window.runBrowserRoomCheck = async () => {
     check(png.startsWith("data:image/png;") && png.length <= IDENTITY_IMAGE_URL_BYTES, "native PNG fallback also fits the identity budget");
     const imageChange = { type: "update_room", roomId: host.roomId, name: "Browser-owned room", icon, access: "public", hidden: false };
     const imageSaved = await dispatch(imageChange);
-    check(imageSaved.reply?.result.type === "done" && imageSaved.projection.views[peerSession].room.icon === icon,
+    check(imageSaved.reply?.result.type === "done" && imageSaved.projection.summary.icon === icon && imageSaved.projection.views[peerSession].authorized,
       "shared Rust commits and projects identity images to authorized readers");
     const imageAbort = new AbortController(), originalRoomPut = IDBObjectStore.prototype.put;
     IDBObjectStore.prototype.put = function (...args) {
@@ -130,10 +137,12 @@ window.runBrowserRoomCheck = async () => {
     const initial = await dispatch({ type: "browse", active: true, roomId: host.roomId });
     check(initial.reply?.result.type === "done", "browse confirms activity without reading history");
     check((await history()).messages.length === 0, "history is an explicit independent read");
-    check(initial.projection.views[session].room.canManage, "room owner view comes from shared Rust");
-    check(initial.projection.views[session].room.participantSessionIds.join() === session
-      && initial.projection.views[peerSession].room.participantSessionIds.join() === session,
+    check(initial.projection.views[session].canManage, "room owner view comes from shared Rust");
+    check(initial.projection.participantSessionIds.join() === session
+      && initial.projection.views[session].authorized && initial.projection.views[peerSession].authorized,
     "shared Rust projects reading activity to every authorized view without inventing a seat for an idle endpoint");
+    check(Object.values(initial.projection.views).every(view => !('room' in view) && !('publications' in view) && !('voice' in view)),
+      "recipient projections retain their scoped facts without duplicated room/live state");
     const privatePolicy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Hidden room", icon: "future-room_7", creatorId: owner.userId,
       access: "private", hidden: true });
     const privateHost = await BrowserRoomHost.open(database, privatePolicy);
@@ -264,20 +273,20 @@ window.runBrowserRoomCheck = async () => {
     const original = await send("Changed again", "first", [{ ...file, sha256: "0".repeat(64) }]);
     check(!original.inserted && JSON.stringify(original.message) === JSON.stringify(first.message), "nonce survives reopen");
     check((await dispatch({ type: "publish", publication: { id: crypto.randomUUID(), roomId: host.roomId,
-      kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } })).reply?.result.type === "done",
+      kind: "screen", source: { kind: "screen", name: null }, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } })).reply?.result.type === "done",
     "the source is published before checking restart cleanup");
     await host.close();
     host = await BrowserRoomHost.open(database, policy);
     await bindHost();
     const restored = await dispatch({ type: "browse", active: true, roomId: host.roomId });
-    check(restored.projection.views[session].publications.length === 0, "restart restores policy/history, not capture");
+    check(restored.projection.publications.length === 0, "restart restores policy/history, not capture");
     check((await BrowserRoomHost.storedPolicies(database)).length === 2, "persisted room policies enumerated");
     const publication = crypto.randomUUID();
     check((await dispatch({ type: "publish", publication: { id: publication, roomId: host.roomId,
-      kind: "screen", videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } })).reply?.result.type === "done",
+      kind: "screen", source: { kind: "screen", name: null }, videoSettings: screenVideoSettings(QUALITY_PROFILES["720p30"]) } })).reply?.result.type === "done",
     "the source is published before checking same-binding continuity");
     await bindHost();
-    check((await dispatch({ type: "browse", active: true, roomId: host.roomId })).projection.views[session].publications.length === 1,
+    check((await dispatch({ type: "browse", active: true, roomId: host.roomId })).projection.publications.length === 1,
       "same binding preserves live activity");
     const previousHost = host, previousBinding = bindingId;
     const lateClaim = await BrowserRoomHost.open(database, policy);
@@ -287,7 +296,7 @@ window.runBrowserRoomCheck = async () => {
     try {
       const output = await dispatch({ type: "update_room", roomId: replacement.roomId,
         name: "New binding policy", icon: "future-room_7", access: "public", hidden: false }, undefined, replacement);
-      check(output.reply?.result.type === "done" && output.projection.views[session].publications.length === 0,
+      check(output.reply?.result.type === "done" && output.projection.publications.length === 0,
         "new binding reloads policy without old activity");
       try { await lateClaim.bind(crypto.randomUUID()); throw new Error("late claim succeeded"); }
       catch (error) { check(error instanceof Error && error.message === "room_host_conflict", "late claim cannot replace new owner"); }

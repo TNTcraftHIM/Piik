@@ -3,9 +3,9 @@
 use crate::{
     history::{HistoryRequest, HistoryResult},
     identity::{Endpoint, Member},
-    room::{RoomRuntime, RoomSnapshot},
+    room::{RoomRecipient, RoomRuntime, RoomSnapshot},
     transport::{BaseLink, Flow},
-    wire::{Command, FlowState, RoomAccess},
+    wire::{Command, FlowState, PublicationInfo, Room, RoomAccess, RoomCapabilities, VoiceInfo},
     RoomState,
 };
 use serde::{Deserialize, Serialize};
@@ -158,9 +158,59 @@ pub struct RoomReply {
 pub struct RoomProjection {
     pub next_route_deadline: Option<u64>,
     pub summary: RoomSummary,
-    pub views: BTreeMap<Uuid, RoomSnapshot>,
+    pub capabilities: RoomCapabilities,
+    pub participant_session_ids: Vec<Uuid>,
+    pub publications: Vec<PublicationInfo>,
+    pub voice: Vec<VoiceInfo>,
+    pub views: BTreeMap<Uuid, RoomRecipient>,
     pub flows: Vec<Flow>,
     pub base_links: Vec<BaseLink>,
+}
+
+impl RoomProjection {
+    /// Assemble only the recipient's authorized view; the host owns these rights.
+    pub fn snapshot(&self, session: Uuid, available: bool) -> Option<RoomSnapshot> {
+        let view = self.views.get(&session)?;
+        Some(RoomSnapshot {
+            room: Room {
+                id: self.summary.id.clone(),
+                name: self.summary.name.clone(),
+                icon: self.summary.icon.clone(),
+                creator_id: self.summary.creator_id,
+                access: self.summary.access,
+                hidden: self.summary.hidden,
+                has_password: self.summary.has_password,
+                voice_bitrate: self.summary.voice_bitrate,
+                relay_capacity: self.summary.relay_capacity,
+                relay_override: view.relay_override,
+                authorized: view.authorized,
+                can_manage: view.can_manage,
+                reading: view.reading,
+                available,
+                delivery: None,
+                members: view.members.clone(),
+                capabilities: self.capabilities.clone(),
+                participant_session_ids: if view.authorized && available {
+                    self.participant_session_ids.clone()
+                } else {
+                    vec![]
+                },
+            },
+            publications: if view.authorized {
+                self.publications.clone()
+            } else {
+                vec![]
+            },
+            voice: if view.authorized {
+                self.voice.clone()
+            } else {
+                vec![]
+            },
+            files: view.files.clone(),
+            subscriptions: view.subscriptions.clone(),
+            failed_subscriptions: view.failed_subscriptions.clone(),
+        })
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -653,7 +703,7 @@ mod tests {
                 session == browser
             );
             let output = host.finish(None).unwrap();
-            let room = &output.projection.views[&session].room;
+            let room = output.projection.snapshot(session, true).unwrap().room;
             assert!(room.authorized && room.hidden);
             assert!(!room.reading);
             if session == native {
@@ -1168,26 +1218,10 @@ impl RoomHost {
     }
 
     fn output(&self, pending: Pending) -> HostOutput {
-        let views = pending
-            .input
-            .endpoints
-            .iter()
-            .filter_map(|(session, endpoint)| {
-                self.room
-                    .snapshot(endpoint.member, *session)
-                    .map(|snapshot| (*session, snapshot))
-            })
-            .collect();
         HostOutput {
             binding_id: pending.input.binding_id,
             revision: pending.input.revision,
-            projection: RoomProjection {
-                next_route_deadline: self.room.next_route_deadline(),
-                summary: self.summary(),
-                views,
-                flows: self.room.flows().collect(),
-                base_links: self.room.base_links().collect(),
-            },
+            projection: self.room.projection(&pending.input.endpoints),
             reply: pending.reply,
         }
     }

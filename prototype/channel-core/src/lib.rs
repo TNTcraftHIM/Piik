@@ -34,7 +34,7 @@ pub use access::{RoomPermission, RoomState};
 pub use attachment::{AttachmentDescriptor, AttachmentLimits, ATTACHMENT_LIMITS};
 pub use channel::DurableState;
 pub use identity::{Endpoint, Member, User, RECOVERY_MS};
-pub use room::{RoomRuntime, RoomSnapshot};
+pub use room::{RoomRecipient, RoomRuntime, RoomSnapshot};
 #[cfg(feature = "sqlite")]
 pub use stored_room::{RoomBackup, StoredRoomHost};
 

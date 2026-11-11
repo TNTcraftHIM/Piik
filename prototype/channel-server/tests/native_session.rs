@@ -191,7 +191,7 @@ async fn committed_domain_restore_reports_native_restart_failure_without_rolling
         .headers_mut()
         .insert("Origin", origin.parse().unwrap());
     let (mut page, _) = tokio_tungstenite::connect_async(upgrade).await.unwrap();
-    page.send(Message::Text(json!({"type":"join","protocol":1,"name":"Owner","ownerKey":"old-owner","signingKey":vec![7u8;32]}).to_string().into())).await.unwrap();
+    page.send(Message::Text(json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"name":"Owner","ownerKey":"old-owner","signingKey":vec![7u8;32]}).to_string().into())).await.unwrap();
     let credential = tokio::time::timeout(Duration::from_secs(10), async {
         let mut credential = None;
         loop {

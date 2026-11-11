@@ -51,6 +51,20 @@ pub struct RoomSnapshot {
     pub failed_subscriptions: Vec<Uuid>,
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomRecipient {
+    pub authorized: bool,
+    pub can_manage: bool,
+    pub reading: bool,
+    pub relay_override: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub members: Option<Vec<Uuid>>,
+    pub files: Vec<crate::file_room::FilePlan>,
+    pub subscriptions: Vec<Uuid>,
+    pub failed_subscriptions: Vec<Uuid>,
+}
+
 impl RoomRuntime {
     pub fn new(policy: RoomState) -> Self {
         Self {
@@ -86,24 +100,72 @@ impl RoomRuntime {
         }
     }
 
-    pub fn snapshot(&self, member: Member, session: Uuid) -> Option<RoomSnapshot> {
-        let mut room = self.policy.view(member.user_id)?;
-        room.relay_override = self
-            .activity
-            .get(&session)
-            .and_then(|activity| activity.relay_capacity);
-        room.capabilities.attachments = self.base.is_some();
-        room.reading = room.authorized && self.reading(session);
-        let mut snapshot = RoomSnapshot {
-            room,
-            files: Vec::new(),
-            publications: Vec::new(),
-            voice: Vec::new(),
-            subscriptions: Vec::new(),
-            failed_subscriptions: Vec::new(),
+    #[cfg(test)]
+    pub(crate) fn snapshot(&self, member: Member, session: Uuid) -> Option<RoomSnapshot> {
+        let view = self.recipient(member, session)?;
+        self.project(BTreeMap::from([(session, view)]))
+            .snapshot(session, true)
+    }
+
+    pub(crate) fn projection(
+        &self,
+        endpoints: &BTreeMap<Uuid, Endpoint>,
+    ) -> crate::host::RoomProjection {
+        self.project(
+            endpoints
+                .iter()
+                .filter_map(|(session, endpoint)| {
+                    self.recipient(endpoint.member, *session)
+                        .map(|view| (*session, view))
+                })
+                .collect(),
+        )
+    }
+
+    fn recipient(&self, member: Member, session: Uuid) -> Option<RoomRecipient> {
+        let room = self.policy.view(member.user_id)?;
+        let subscriptions = if room.authorized {
+            self.subscriptions(session).into_iter().collect::<Vec<_>>()
+        } else {
+            vec![]
         };
-        if snapshot.room.authorized {
-            snapshot.room.participant_session_ids = self
+        Some(RoomRecipient {
+            authorized: room.authorized,
+            can_manage: room.can_manage,
+            members: room.members,
+            reading: room.authorized && self.reading(session),
+            relay_override: self
+                .activity
+                .get(&session)
+                .and_then(|activity| activity.relay_capacity),
+            files: if room.authorized {
+                self.base
+                    .as_ref()
+                    .map(|base| self.files.plans(&self.policy.id, session, base))
+                    .unwrap_or_default()
+            } else {
+                vec![]
+            },
+            failed_subscriptions: self
+                .publications
+                .values()
+                .filter(|publication| {
+                    publication.delivery_failed(session)
+                        && subscriptions.contains(&publication.info.id)
+                })
+                .map(|publication| publication.info.id)
+                .collect(),
+            subscriptions,
+        })
+    }
+
+    fn project(&self, views: BTreeMap<Uuid, RoomRecipient>) -> crate::host::RoomProjection {
+        crate::host::RoomProjection {
+            summary: crate::host::RoomSummary::from_policy(&self.policy),
+            capabilities: crate::wire::RoomCapabilities {
+                attachments: self.base.is_some(),
+            },
+            participant_session_ids: self
                 .media_sessions()
                 .into_iter()
                 .chain(
@@ -113,13 +175,8 @@ impl RoomRuntime {
                 )
                 .collect::<BTreeSet<_>>()
                 .into_iter()
-                .collect();
-            snapshot.files = self
-                .base
-                .as_ref()
-                .map(|base| self.files.plans(&self.policy.id, session, base))
-                .unwrap_or_default();
-            snapshot.publications = self
+                .collect(),
+            publications: self
                 .publications
                 .values()
                 .map(|publication| {
@@ -147,20 +204,13 @@ impl RoomRuntime {
                     }
                     info
                 })
-                .collect();
-            snapshot.voice = self.voice().cloned().collect();
-            snapshot.subscriptions = self.subscriptions(session).into_iter().collect();
-            snapshot.failed_subscriptions = self
-                .publications
-                .values()
-                .filter(|publication| {
-                    publication.delivery_failed(session)
-                        && snapshot.subscriptions.contains(&publication.info.id)
-                })
-                .map(|publication| publication.info.id)
-                .collect();
+                .collect(),
+            voice: self.voice().cloned().collect(),
+            views,
+            next_route_deadline: self.next_route_deadline(),
+            flows: self.flows().collect(),
+            base_links: self.base_links().collect(),
         }
-        Some(snapshot)
     }
 
     pub(crate) fn set_default_relay_capacity(&mut self, capacity: u8) {

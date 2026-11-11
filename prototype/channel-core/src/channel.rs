@@ -267,8 +267,22 @@ impl Channel {
                 let readable_sessions: BTreeSet<_> = projection
                     .views
                     .iter()
-                    .filter_map(|(session, view)| view.room.authorized.then_some(*session))
+                    .filter_map(|(session, view)| view.authorized.then_some(*session))
                     .collect();
+                projection
+                    .publications
+                    .retain(|p| readable_sessions.contains(&p.session_id));
+                for publication in &mut projection.publications {
+                    publication
+                        .audience
+                        .retain(|viewer| readable_sessions.contains(&viewer.session_id));
+                }
+                projection
+                    .voice
+                    .retain(|v| readable_sessions.contains(&v.session_id));
+                projection
+                    .participant_session_ids
+                    .retain(|session| readable_sessions.contains(session));
                 for view in projection.views.values_mut() {
                     for file in &mut view.files {
                         if file
@@ -288,34 +302,24 @@ impl Channel {
                         file.downstream
                             .retain(|peer| readable_sessions.contains(peer));
                     }
-                    view.publications
-                        .retain(|p| readable_sessions.contains(&p.session_id));
-                    for publication in &mut view.publications {
-                        publication
-                            .audience
-                            .retain(|viewer| readable_sessions.contains(&viewer.session_id));
-                    }
-                    view.voice
-                        .retain(|v| readable_sessions.contains(&v.session_id));
                     view.subscriptions
-                        .retain(|id| view.publications.iter().any(|p| p.id == *id));
+                        .retain(|id| projection.publications.iter().any(|p| p.id == *id));
+                    view.failed_subscriptions
+                        .retain(|id| view.subscriptions.contains(id));
                 }
                 projection.flows.retain(|flow| {
-                    [flow.sender, flow.receiver].into_iter().all(|s| {
-                        projection.views.get(&s).is_some_and(|view| {
-                            view.publications
-                                .iter()
-                                .any(|p| p.id == flow.publication_id)
-                        })
-                    })
+                    [flow.sender, flow.receiver]
+                        .into_iter()
+                        .all(|s| readable_sessions.contains(&s))
+                        && projection
+                            .publications
+                            .iter()
+                            .any(|p| p.id == flow.publication_id)
                 });
                 projection.base_links.retain(|link| {
-                    [link.parent, link.child].into_iter().all(|s| {
-                        projection
-                            .views
-                            .get(&s)
-                            .is_some_and(|view| view.room.authorized)
-                    })
+                    [link.parent, link.child]
+                        .into_iter()
+                        .all(|s| projection.views.get(&s).is_some_and(|view| view.authorized))
                 });
             }
         }
@@ -357,10 +361,10 @@ impl Channel {
             .find_map(|room| {
                 let projection = room.projection.as_ref()?;
                 let view = projection.views.get(&controller)?;
-                if !view.room.authorized || !view.subscriptions.contains(&publication) {
+                if !view.authorized || !view.subscriptions.contains(&publication) {
                     return None;
                 }
-                let source = view
+                let source = projection
                     .publications
                     .iter()
                     .find(|p| p.id == publication && p.kind == Kind::Screen)?
@@ -461,11 +465,10 @@ impl Channel {
             room.projection
                 .as_ref()
                 .is_some_and(|projection| {
-                    projection.views.values().any(|view| {
-                        view.publications
-                            .iter()
-                            .any(|publication| publication.id == publication_id)
-                    })
+                    projection
+                        .publications
+                        .iter()
+                        .any(|publication| publication.id == publication_id)
                 })
                 .then(|| id.clone())
         })
@@ -913,7 +916,10 @@ impl Channel {
             return Ok(self.finish_host_output(id, output, false));
         }
         let projection = &output.projection;
-        if projection.summary.id != id || projection.summary.creator_id != room.summary.creator_id {
+        if projection.summary.validate().is_err()
+            || projection.summary.id != id
+            || projection.summary.creator_id != room.summary.creator_id
+        {
             return Err("invalid_room_projection");
         }
         // One room has at most two publications per authenticated endpoint.
@@ -936,33 +942,41 @@ impl Channel {
         {
             return Err("invalid_room_projection");
         }
+        if projection.publications.len() > 40
+            || projection.voice.len() > 20
+            || projection.participant_session_ids.len() > 20
+            || projection
+                .participant_session_ids
+                .iter()
+                .any(|session| !projection.views.get(session).is_some_and(|v| v.authorized))
+            || projection.voice.iter().any(|voice| {
+                voice.room_id != id
+                    || !projection
+                        .views
+                        .get(&voice.session_id)
+                        .is_some_and(|v| v.authorized)
+            })
+        {
+            return Err("invalid_room_projection");
+        }
         for (recipient, view) in &projection.views {
             if !endpoints.contains_key(recipient)
-                || view.room.id != id
-                || view.room.creator_id != room.summary.creator_id
-                || view.publications.len() > 40
-                || view.voice.len() > 20
-                || view.room.participant_session_ids.len() > 20
-                || view.room.participant_session_ids.iter().any(|session| {
-                    !projection
-                        .views
-                        .get(session)
-                        .is_some_and(|v| v.room.authorized)
-                })
+                || view.can_manage
+                    && (!view.authorized
+                        || endpoints[recipient].member.user_id != projection.summary.creator_id)
+                || view.members.is_some() && !view.can_manage
+                || view.relay_override.is_some_and(|capacity| capacity > 20)
                 || view.subscriptions.len() > 40
                 || view.failed_subscriptions.len() > 40
                 || view.failed_subscriptions.iter().any(|id| {
                     !view.subscriptions.contains(id)
-                        || !view.publications.iter().any(|publication| {
+                        || !projection.publications.iter().any(|publication| {
                             publication.id == *id && publication.kind == Kind::Screen
                         })
                 })
                 || view.files.len() > HISTORY_WINDOW
-                || (!view.room.authorized
-                    && (view.room.reading
-                        || !view.room.participant_session_ids.is_empty()
-                        || !view.publications.is_empty()
-                        || !view.voice.is_empty()
+                || (!view.authorized
+                    && (view.reading
                         || !view.subscriptions.is_empty()
                         || !view.failed_subscriptions.is_empty()
                         || !view.files.is_empty()))
@@ -991,7 +1005,7 @@ impl Channel {
                         !projection
                             .views
                             .get(&source)
-                            .is_some_and(|view| view.room.authorized)
+                            .is_some_and(|view| view.authorized)
                     })
                     || file.upstream.is_some_and(|peer| !neighbor(peer))
                     || file.downstream.iter().any(|peer| !neighbor(*peer))
@@ -999,66 +1013,55 @@ impl Channel {
                     return Err("invalid_room_projection");
                 }
             }
-            for publication in &view.publications {
-                if validate_video_settings(publication.kind, publication.video_settings).is_err()
-                    || publication.room_id != id
-                    || publication.audience.len() > crate::identity::MAX_SESSIONS
-                    || (publication.kind != Kind::Screen && !publication.audience.is_empty())
-                    || publication
-                        .audience
-                        .iter()
-                        .map(|viewer| viewer.session_id)
-                        .collect::<BTreeSet<_>>()
-                        .len()
-                        != publication.audience.len()
-                    || publication.audience.iter().any(|viewer| {
-                        viewer.session_id == publication.session_id
-                            || !projection
-                                .views
-                                .get(&viewer.session_id)
-                                .is_some_and(|view| {
-                                    view.room.authorized
-                                        && view.subscriptions.contains(&publication.id)
-                                })
-                    })
-                    || !endpoints
-                        .get(&publication.session_id)
-                        .is_some_and(|e| e.member.user_id == publication.user_id)
-                    || self.remote.iter().any(|(other_id, other)| {
-                        other_id != id
-                            && other.projection.as_ref().is_some_and(|p| {
-                                p.views
-                                    .values()
-                                    .any(|v| v.publications.iter().any(|p| p.id == publication.id))
-                            })
-                    })
-                {
-                    return Err("invalid_room_projection");
-                }
-            }
         }
         let mut publications = BTreeMap::new();
-        for publication in projection
-            .views
-            .values()
-            .flat_map(|view| &view.publications)
-        {
-            let source = (
-                publication.session_id,
-                publication.user_id,
-                publication.kind,
-                publication.video_settings,
-                &publication.audience,
-            );
-            if publications
-                .insert(publication.id, source)
-                .is_some_and(|previous| previous != source)
+        for publication in &projection.publications {
+            if publications.insert(publication.id, publication).is_some()
+                || validate_video_settings(publication.kind, publication.video_settings).is_err()
+                || match (publication.kind, &publication.screen) {
+                    (Kind::Screen, Some(screen)) => [&screen.source.name, &screen.title]
+                        .into_iter()
+                        .flatten()
+                        .any(|value| title(value).as_deref() != Some(value.as_str())),
+                    (Kind::Voice, None) => false,
+                    _ => true,
+                }
+                || publication.room_id != id
+                || publication.audience.len() > crate::identity::MAX_SESSIONS
+                || (publication.kind != Kind::Screen && !publication.audience.is_empty())
+                || publication
+                    .audience
+                    .iter()
+                    .map(|viewer| viewer.session_id)
+                    .collect::<BTreeSet<_>>()
+                    .len()
+                    != publication.audience.len()
+                || publication.audience.iter().any(|viewer| {
+                    viewer.session_id == publication.session_id
+                        || !projection
+                            .views
+                            .get(&viewer.session_id)
+                            .is_some_and(|view| {
+                                view.authorized && view.subscriptions.contains(&publication.id)
+                            })
+                })
+                || !endpoints
+                    .get(&publication.session_id)
+                    .is_some_and(|e| e.member.user_id == publication.user_id)
+                || !projection
+                    .views
+                    .get(&publication.session_id)
+                    .is_some_and(|view| view.authorized)
+                || self.remote.iter().any(|(other_id, other)| {
+                    other_id != id
+                        && other
+                            .projection
+                            .as_ref()
+                            .is_some_and(|p| p.publications.iter().any(|p| p.id == publication.id))
+                })
             {
                 return Err("invalid_room_projection");
             }
-        }
-        if publications.len() > 40 {
-            return Err("invalid_room_projection");
         }
         let mut flow_ids: BTreeSet<_> = self
             .remote
@@ -1086,10 +1089,10 @@ impl Channel {
                 || !endpoints.contains_key(&flow.sender)
                 || !endpoints.contains_key(&flow.receiver)
                 || !projection.views.get(&flow.sender).is_some_and(|v| {
-                    v.room.authorized && v.publications.iter().any(|p| p.id == flow.publication_id)
+                    v.authorized && publications.contains_key(&flow.publication_id)
                 })
                 || !projection.views.get(&flow.receiver).is_some_and(|v| {
-                    v.room.authorized && v.publications.iter().any(|p| p.id == flow.publication_id)
+                    v.authorized && publications.contains_key(&flow.publication_id)
                 })
                 || previous.get(&flow.id).is_some_and(|old| {
                     old.publication_id != flow.publication_id
@@ -1103,7 +1106,7 @@ impl Channel {
         }
         let mut shadow_roots = BTreeMap::new();
         for flow in &projection.flows {
-            let source = publications[&flow.publication_id].0;
+            let source = publications[&flow.publication_id].session_id;
             if flow.receiver == source {
                 return Err("invalid_room_projection");
             }
@@ -1156,12 +1159,9 @@ impl Channel {
         for link in &projection.base_links {
             if link.room_id != id
                 || link.parent == link.child
-                || ![link.parent, link.child].into_iter().all(|s| {
-                    projection
-                        .views
-                        .get(&s)
-                        .is_some_and(|view| view.room.authorized)
-                })
+                || ![link.parent, link.child]
+                    .into_iter()
+                    .all(|s| projection.views.get(&s).is_some_and(|view| view.authorized))
             {
                 return Err("invalid_room_projection");
             }
@@ -1232,11 +1232,7 @@ impl Channel {
             .failed_pairs
             .retain(|_, revision| *revision > output.revision);
         room.summary = projection.summary.clone();
-        let mut projection = projection.clone();
-        for view in projection.views.values_mut() {
-            view.room.available = true;
-        }
-        room.projection = Some(projection);
+        room.projection = Some(projection.clone());
         self.reconcile();
         Ok(self.finish_host_output(id, output, true))
     }

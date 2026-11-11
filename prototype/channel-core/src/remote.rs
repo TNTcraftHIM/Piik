@@ -96,13 +96,14 @@ impl RemoteRoom {
             projection.next_route_deadline = None;
             projection.flows.clear();
             projection.base_links.clear();
+            projection.publications.clear();
+            projection.voice.clear();
+            projection.participant_session_ids.clear();
             for view in projection.views.values_mut() {
-                view.publications.clear();
-                view.voice.clear();
                 view.subscriptions.clear();
-                view.room.available = false;
-                view.room.reading = false;
-                view.room.participant_session_ids.clear();
+                view.failed_subscriptions.clear();
+                view.files.clear();
+                view.reading = false;
             }
         }
         replies
@@ -181,12 +182,11 @@ impl RemoteRoom {
     }
 
     pub fn snapshot(&self, member: Member, session: Uuid, available: bool) -> Option<RoomSnapshot> {
-        if let Some(view) = self.projection.as_ref().and_then(|p| p.views.get(&session)) {
-            let mut view = view.clone();
-            view.room.available = available;
-            if !available {
-                view.room.participant_session_ids.clear();
-            }
+        if let Some(view) = self
+            .projection
+            .as_ref()
+            .and_then(|p| p.snapshot(session, available))
+        {
             return Some(view);
         }
         let manager = member.user_id == self.summary.creator_id;

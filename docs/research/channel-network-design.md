@@ -86,6 +86,12 @@ connection, separately from the owner's persistent user identity. With no runtim
 the room is unavailable. One room has one current runtime binding. Reconnecting
 the same retained runtime replaces its socket; a fresh hosting runtime obtains
 a new binding, without granting a stale session authority over its successor.
+The room projection carries its summary and common live publications, voice and
+participant facts once. Recipient entries retain their own access, management,
+reading, forwarding preference, subscriptions and file plans. The domain assembles
+the existing complete client view only for an admitted recipient; it does not infer
+private-room grants from the common activity. Binding and revision checks still
+fence the whole projection, including host retirement and recovery.
 Room admission, initial offer/answer and broken-tree repair instructions travel
 through this existing domain rendezvous to the room
 runtime; establishing or repairing the tree cannot depend on that tree already

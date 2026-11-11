@@ -86,12 +86,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
         },
     })
     .unwrap();
-    assert_eq!(
-        host.finish(None).unwrap().projection.views[&reader]
-            .publications
-            .len(),
-        1
-    );
+    assert_eq!(host.finish(None).unwrap().projection.publications.len(), 1);
     endpoints.remove(&publisher);
     let work = host
         .dispatch(HostInput {
@@ -119,7 +114,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
     assert!(work.policy.is_some());
     let output = host.abort("storage_failed".into()).unwrap();
     assert!(
-        output.projection.views[&reader].publications.is_empty(),
+        output.projection.publications.is_empty(),
         "storage failure restored the expired publisher's retired activity"
     );
     assert!(output.projection.flows.is_empty());
@@ -229,6 +224,8 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
                 _ => None,
             })
             .unwrap();
+        let publisher = Uuid::new_v4();
+        let publisher_session = review_admit(&mut core, publisher, "friend");
         let room_id = "retiring-host";
         let mut host = RoomHost::new(
             RoomState::new(
@@ -244,8 +241,66 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
         );
         let input = review_register(&mut core, owner, &host);
         let binding = input.binding_id;
+        let publisher_user = input.endpoints[&publisher_session].member.user_id;
         host.dispatch(input).unwrap();
-        review_host_turn(&mut core, owner, room_id, host.finish(None).unwrap());
+        let mut initial = host.finish(None).unwrap();
+        let publication = Uuid::new_v4();
+        initial.projection.publications.push(piik_channel_core::wire::PublicationInfo {
+            id: publication, room_id: room_id.into(), session_id: publisher_session,
+            user_id: publisher_user, kind: Kind::Screen, paused: false,
+            screen: Some(piik_channel_core::wire::ScreenInfo { source: Default::default(), title: None }),
+            video_settings: Some(serde_json::from_value(serde_json::json!({"ceiling":{"resolution":{"width":640,"height":360},"maxFramerate":30,"maxBitrate":1000000},"degradationPreference":"balanced"})).unwrap()),
+            audience: vec![piik_channel_core::wire::PublicationAudience { session_id: reader_session, state: piik_channel_core::wire::AudienceState::Failed }],
+        });
+        let recipient = initial.projection.views.get_mut(&reader_session).unwrap();
+        recipient.subscriptions.push(publication);
+        recipient.failed_subscriptions.push(publication);
+        recipient
+            .files
+            .push(piik_channel_core::file_room::FilePlan {
+                room_id: room_id.into(),
+                message_seq: 1,
+                attachment: piik_channel_core::AttachmentDescriptor {
+                    id: Uuid::new_v4(),
+                    name: "waiting.bin".into(),
+                    media_type: "application/octet-stream".into(),
+                    size: 1,
+                    sha256: "0".repeat(64),
+                },
+                source_id: None,
+                upstream: None,
+                downstream: vec![],
+                receiving: true,
+            });
+        let accepted = review_host_turn(&mut core, owner, room_id, initial);
+        assert!(!accepted
+            .events
+            .iter()
+            .any(|(_, event)| matches!(event, Event::Error { .. })));
+        if case == "stop" {
+            let mut retired_source = core.clone();
+            let retired = retired_source.handle(
+                publisher,
+                Request {
+                    request_id: None,
+                    command: Command::Leave,
+                },
+                1,
+            );
+            let state = retired
+                .events
+                .iter()
+                .find_map(|(target, event)| match event {
+                    Event::State { state } if *target == reader => Some(state),
+                    _ => None,
+                })
+                .unwrap();
+            assert!(
+                state.publications.is_empty()
+                    && state.subscriptions.is_empty()
+                    && state.failed_subscriptions.is_empty()
+            );
+        }
 
         let pending = core.handle(
             reader,
@@ -287,7 +342,17 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
                 2,
             ),
             "expire" => {
-                core.disconnect(owner, 2);
+                let grace = core.disconnect(owner, 2);
+                let state = grace
+                    .events
+                    .iter()
+                    .find_map(|(target, event)| match event {
+                        Event::State { state } if *target == reader => Some(state),
+                        _ => None,
+                    })
+                    .unwrap();
+                assert_eq!(state.files.len(), 1);
+                assert_eq!(state.failed_subscriptions, vec![publication]);
                 core.expire(RECOVERY_MS + 2)
             }
             "rebind" | "resume" => core.handle(
@@ -313,6 +378,22 @@ fn pending_room_request_finishes_when_its_host_binding_retires() {
                 2,
             ),
         };
+        if matches!(case, "stop" | "leave" | "expire" | "rebind") {
+            let state = effects
+                .events
+                .iter()
+                .find_map(|(target, event)| match event {
+                    Event::State { state } if *target == reader => Some(state),
+                    _ => None,
+                })
+                .unwrap();
+            assert!(
+                state.publications.is_empty()
+                    && state.files.is_empty()
+                    && state.failed_subscriptions.is_empty(),
+                "{case} retained retired activity"
+            );
+        }
         let replies: Vec<_> = effects
             .events
             .iter()
@@ -633,7 +714,7 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
         .iter()
         .any(|(_, e)| matches!(e, Event::HostInput { .. })));
     host.dispatch(input).unwrap();
-    let mut output = host.finish(None).unwrap();
+    let output = host.finish(None).unwrap();
     let mut forged_delete = output.clone();
     forged_delete.reply.as_mut().unwrap().result =
         piik_channel_core::host::RoomResult::Deleted { data_removed: true };
@@ -641,13 +722,6 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
     assert!(rejected.events.iter().any(
         |(_, event)| matches!(event, Event::Error { code, .. } if code == "invalid_room_reply")
     ));
-    for view in output.projection.views.values_mut() {
-        view.room.delivery = Some(piik_channel_core::wire::RoomDelivery {
-            host_session_id: Uuid::new_v4(),
-            binding_id: Uuid::new_v4(),
-            next_hops: BTreeMap::from([(Uuid::new_v4(), Uuid::new_v4())]),
-        });
-    }
     let completed = review_host_turn(&mut core, b, "concurrent-review", output);
     assert!(
         completed.events.iter().any(|(target, e)| *target == b
@@ -706,7 +780,17 @@ fn host_projection_rejects_conflicting_flow_identity_and_audience_scope() {
         "candidate_without_selected",
         "audience_unknown",
         "audience_duplicate",
-        "audience_conflict",
+        "publication_duplicate",
+        "members_nonmanager",
+        "manager_wrong_user",
+        "unauthorized_activity",
+        "missing_screen_metadata",
+        "voice_screen_metadata",
+        "long_source_name",
+        "long_screen_title",
+        "invalid_summary_voice_bitrate",
+        "invalid_summary_relay_capacity",
+        "invalid_relay_override",
     ] {
         let mut core = Authority::new("owner".into(), vec![]).unwrap();
         let source = Uuid::new_v4();
@@ -833,16 +917,82 @@ fn host_projection_rejects_conflicting_flow_identity_and_audience_scope() {
                             }
                         }
                         "candidate_without_selected" => flows[0].selected = false,
-                        "audience_unknown" | "audience_duplicate" | "audience_conflict" => {
-                            let unknown = Uuid::new_v4();
-                            for (index, view) in output.projection.views.values_mut().enumerate() {
-                                let audience = &mut view.publications[0].audience;
-                                match conflict {
-                                    "audience_unknown" => audience[0].session_id = unknown,
-                                    "audience_duplicate" => audience.push(audience[0].clone()),
-                                    "audience_conflict" if index == 0 => audience.clear(),
-                                    _ => {}
+                        "invalid_summary_voice_bitrate" => {
+                            output.projection.summary.voice_bitrate = 0
+                        }
+                        "invalid_summary_relay_capacity" => {
+                            output.projection.summary.relay_capacity = 21
+                        }
+                        "invalid_relay_override" => {
+                            output
+                                .projection
+                                .views
+                                .get_mut(&viewer_session)
+                                .unwrap()
+                                .relay_override = Some(21)
+                        }
+                        "missing_screen_metadata" => {
+                            output.projection.publications[0].screen = None
+                        }
+                        "voice_screen_metadata" => {
+                            let publication = &mut output.projection.publications[0];
+                            publication.kind = Kind::Voice;
+                            publication.video_settings = None;
+                            publication.audience.clear();
+                        }
+                        "long_source_name" => {
+                            output.projection.publications[0]
+                                .screen
+                                .as_mut()
+                                .unwrap()
+                                .source
+                                .name = Some("\u{1f600}".repeat(33))
+                        }
+                        "long_screen_title" => {
+                            output.projection.publications[0]
+                                .screen
+                                .as_mut()
+                                .unwrap()
+                                .title = Some("x".repeat(65))
+                        }
+                        "members_nonmanager" => {
+                            output
+                                .projection
+                                .views
+                                .get_mut(&viewer_session)
+                                .unwrap()
+                                .members = Some(vec![user])
+                        }
+                        "manager_wrong_user" => {
+                            output
+                                .projection
+                                .views
+                                .get_mut(&viewer_session)
+                                .unwrap()
+                                .can_manage = true
+                        }
+                        "unauthorized_activity" => {
+                            output
+                                .projection
+                                .views
+                                .get_mut(&viewer_session)
+                                .unwrap()
+                                .authorized = false
+                        }
+                        "audience_unknown" | "audience_duplicate" | "publication_duplicate" => {
+                            let publication = &mut output.projection.publications[0];
+                            match conflict {
+                                "audience_unknown" => {
+                                    publication.audience[0].session_id = Uuid::new_v4()
                                 }
+                                "audience_duplicate" => {
+                                    publication.audience.push(publication.audience[0].clone())
+                                }
+                                "publication_duplicate" => {
+                                    let duplicate = publication.clone();
+                                    output.projection.publications.push(duplicate)
+                                }
+                                _ => unreachable!(),
                             }
                         }
                         _ => unreachable!(),
@@ -994,7 +1144,6 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
         "promotion",
         "fresh_lineage",
         "source_descriptor",
-        "ceiling_descriptor",
         "invalid_ceiling",
         "missing_input",
         "other_publication",
@@ -1118,40 +1267,26 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
         ];
         let other_publication = Uuid::new_v4();
         if matches!(case, "other_publication" | "live_publication") {
-            for view in prepared.projection.views.values_mut() {
-                let mut other = view.publications[0].clone();
-                other.id = other_publication;
-                other.kind = Kind::Voice;
-                other.video_settings = None;
-                view.publications.push(other);
-            }
+            let mut other = prepared.projection.publications[0].clone();
+            other.id = other_publication;
+            other.kind = Kind::Voice;
+            other.video_settings = None;
+            other.screen = None;
+            other.audience.clear();
+            prepared.projection.publications.push(other);
         }
         let flows = &mut prepared.projection.flows;
         match case {
-            "ceiling_descriptor" | "invalid_ceiling" => {
-                prepared
-                    .projection
-                    .views
-                    .get_mut(&viewer)
-                    .unwrap()
-                    .publications[0]
+            "invalid_ceiling" => {
+                prepared.projection.publications[0]
                     .video_settings
                     .as_mut()
                     .unwrap()
                     .ceiling
-                    .max_bitrate = if case == "invalid_ceiling" {
-                    0
-                } else {
-                    1_000_000
-                };
+                    .max_bitrate = 0;
             }
             "source_descriptor" => {
-                let publication = &mut prepared
-                    .projection
-                    .views
-                    .get_mut(&viewer)
-                    .unwrap()
-                    .publications[0];
+                let publication = &mut prepared.projection.publications[0];
                 publication.session_id = relay;
                 publication.user_id = relay_user;
             }

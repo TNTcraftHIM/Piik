@@ -122,58 +122,63 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
     let mut output = host.finish(None).unwrap();
     // Full directory, three active rooms, both publication kinds, voice and one
     // attachment selection per active room. This is not a total catalog limit.
-    for view in output.projection.views.values_mut() {
-        view.room.participant_session_ids = sessions.clone();
-        view.publications = sessions
-            .iter()
-            .flat_map(|session| {
-                [Kind::Screen, Kind::Voice].map(|kind| PublicationInfo {
-                    screen: (kind == Kind::Screen).then(|| crate::wire::ScreenInfo {
-                        source: Default::default(),
-                        title: None,
-                    }),
-                    id: Uuid::new_v4(),
-                    room_id: room_id.clone(),
-                    session_id: *session,
-                    user_id: channel.identity.sessions[session].user_id,
-                    kind,
-                    paused: false,
-                    audience: if kind == Kind::Screen {
-                        sessions
-                            .iter()
-                            .filter(|viewer| *viewer != session)
-                            .map(|viewer| PublicationAudience {
-                                session_id: *viewer,
-                                state: AudienceState::Active,
-                            })
-                            .collect()
-                    } else {
-                        Vec::new()
-                    },
-                    video_settings: (kind == Kind::Screen).then_some(VideoSettings {
-                        degradation_preference: DegradationPreference::Balanced,
-                        ceiling: VideoCeiling {
-                            resolution: VideoResolution {
-                                width: 1280,
-                                height: 720,
-                            },
-                            max_framerate: 29.97,
-                            max_bitrate: 2_500_000,
-                        },
-                    }),
-                })
-            })
-            .collect();
-        view.voice = sessions
-            .iter()
-            .map(|session| VoiceInfo {
-                session_id: *session,
+    output.projection.participant_session_ids = sessions.clone();
+    output.projection.publications = sessions
+        .iter()
+        .flat_map(|session| {
+            [Kind::Screen, Kind::Voice].map(|kind| PublicationInfo {
+                screen: (kind == Kind::Screen).then(|| crate::wire::ScreenInfo {
+                    source: Default::default(),
+                    title: None,
+                }),
+                id: Uuid::new_v4(),
                 room_id: room_id.clone(),
-                muted: false,
-                deafened: false,
+                session_id: *session,
+                user_id: channel.identity.sessions[session].user_id,
+                kind,
+                paused: false,
+                audience: if kind == Kind::Screen {
+                    sessions
+                        .iter()
+                        .filter(|viewer| *viewer != session)
+                        .map(|viewer| PublicationAudience {
+                            session_id: *viewer,
+                            state: AudienceState::Active,
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                },
+                video_settings: (kind == Kind::Screen).then_some(VideoSettings {
+                    degradation_preference: DegradationPreference::Balanced,
+                    ceiling: VideoCeiling {
+                        resolution: VideoResolution {
+                            width: 1280,
+                            height: 720,
+                        },
+                        max_framerate: 29.97,
+                        max_bitrate: 2_500_000,
+                    },
+                }),
             })
+        })
+        .collect();
+    output.projection.voice = sessions
+        .iter()
+        .map(|session| VoiceInfo {
+            session_id: *session,
+            room_id: room_id.clone(),
+            muted: false,
+            deafened: false,
+        })
+        .collect();
+    for view in output.projection.views.values_mut() {
+        view.subscriptions = output
+            .projection
+            .publications
+            .iter()
+            .map(|source| source.id)
             .collect();
-        view.subscriptions = view.publications.iter().map(|source| source.id).collect();
         view.files = (0..8)
             .map(|index| FilePlan {
                 room_id: room_id.clone(),
@@ -192,7 +197,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
             })
             .collect();
     }
-    let room = output.projection.views[&sessions[0]].clone();
+    let room = output.projection.snapshot(sessions[0], true).unwrap();
     output.projection.base_links = sessions
         .iter()
         .enumerate()

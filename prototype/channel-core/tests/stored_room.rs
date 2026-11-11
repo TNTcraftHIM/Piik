@@ -534,7 +534,7 @@ fn failed_storage_withholds_grant_and_confirmation_then_retry_survives_reopen() 
     assert!(
         matches!(failed.reply.unwrap().result, RoomResult::Error { code } if code == "storage_failed")
     );
-    assert!(!failed.projection.views[&viewer].room.authorized);
+    assert!(!failed.projection.views[&viewer].authorized);
     assert!(host.policy().grants.is_empty());
     assert!(StoredRoomHost::open(&path)
         .unwrap()
@@ -547,7 +547,7 @@ fn failed_storage_withholds_grant_and_confirmation_then_retry_survives_reopen() 
         .unwrap();
     let granted = enter(&mut host, owner, viewer, &key);
     assert!(matches!(granted.reply.unwrap().result, RoomResult::Done));
-    assert!(granted.projection.views[&viewer].room.authorized);
+    assert!(granted.projection.views[&viewer].authorized);
     // Fail COMMIT after the message INSERT succeeded, using the production SQLite transaction.
     database.execute_batch("CREATE TABLE commit_failure (id TEXT REFERENCES message(id) DEFERRABLE INITIALLY DEFERRED);
         CREATE TRIGGER reject_message AFTER INSERT ON message BEGIN INSERT INTO commit_failure VALUES('missing'); END;").unwrap();
@@ -633,10 +633,7 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
             owner,
             json!({"type":"relay_capacity","roomId":room,"capacity":0}),
         );
-        assert_eq!(
-            personal.projection.views[&owner].room.relay_override,
-            Some(0)
-        );
+        assert_eq!(personal.projection.views[&owner].relay_override, Some(0));
         let invalid = command(
             host,
             owner,
@@ -699,14 +696,11 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
         let output = restored
             .dispatch(input(owner, owner, |_| HostAction::Sync))
             .unwrap();
-        assert!(!output.projection.views[&owner].room.reading);
-        assert_eq!(output.projection.views[&owner].room.relay_override, None);
-        assert_eq!(output.projection.views[&owner].room.relay_capacity, 7);
-        assert!(output.projection.views[&owner]
-            .room
-            .participant_session_ids
-            .is_empty());
-        assert!(output.projection.views[&owner].publications.is_empty());
+        assert!(!output.projection.views[&owner].reading);
+        assert_eq!(output.projection.views[&owner].relay_override, None);
+        assert_eq!(output.projection.summary.relay_capacity, 7);
+        assert!(output.projection.participant_session_ids.is_empty());
+        assert!(output.projection.publications.is_empty());
         assert!(output.projection.base_links.is_empty());
         assert!(
             matches!(peer(&mut restored, owner, owner, ConversationCommand::History { before: None }).unwrap(),

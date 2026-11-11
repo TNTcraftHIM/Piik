@@ -12,7 +12,7 @@ async fn hosting_starts_wss_tls_and_cancels_an_unfinished_handshake() {
             url: format!("wss://{address}/prototype/channel"),
             origin: format!("https://{address}"),
             name: "TLS fixture".into(),
-            key: None,
+            owner_key: None,
             credential: None,
             server_udp: None,
         },
