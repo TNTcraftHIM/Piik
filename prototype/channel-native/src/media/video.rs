@@ -204,6 +204,9 @@ impl Video {
     pub fn bitrate(&self, now: Instant) -> Option<u64> {
         self.rates(now).full
     }
+    pub(super) fn observe_rate(&self, active: bool, now: Instant) {
+        self.0.rate.lock().unwrap().observing(active, now);
+    }
     fn rates(&self, now: Instant) -> Rates {
         Rates::new(self.0.rate.lock().unwrap().sample_bins(now))
     }

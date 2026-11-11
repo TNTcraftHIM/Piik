@@ -323,6 +323,17 @@ impl Encodings {
         owned.then_some(result)
     }
     pub fn retire_unused(&mut self) {
+        // Selection and IDR adoption wake this existing owner even when a pump
+        // is waiting for a static source. Sleep is not a zero-cost observation.
+        let now = Instant::now();
+        for entry in self
+            .baseline
+            .iter()
+            .chain(self.supplied.iter())
+            .chain(self.limited.values())
+        {
+            entry.video.observe_rate(entry.video.needed(), now);
+        }
         let retired: Vec<_> = self
             .limited
             .iter()
@@ -419,6 +430,72 @@ mod tests {
     use crate::EncodedFrame;
     use rtc_shared::time::SystemInstant;
     use std::time::Duration;
+
+    #[test]
+    fn sleeping_supply_keeps_observed_cost_and_resumes_without_counting_the_gap() -> Result<()> {
+        use crate::media::{MediaKind, RtpCodec, SourceFeed, SourceOrigin};
+        let epoch = Instant::now();
+        let time = SourceTime::local(epoch, SystemInstant::now(epoch));
+        let changed = Arc::new(Notify::new());
+        let baseline = Video::new(time.clone(), changed.clone());
+        let limited = Video::new(time.clone(), changed.clone());
+        let input = Input::new(time, changed);
+        let frame = |bytes, n| EncodedFrame {
+            bytes: vec![1; bytes],
+            vp8: None,
+            keyframe: true,
+            presentation_time: epoch + Duration::from_millis(n),
+        };
+        input.select(&baseline, true)?;
+        input.set_active(true);
+        baseline.write(frame(125_000, 1));
+        let source = Source {
+            id: Uuid::new_v4(),
+            publication_id: Uuid::new_v4(),
+            origin: SourceOrigin::Local,
+            kind: MediaKind::Video,
+            codec: RtpCodec {
+                mime_type: "video/H264".into(),
+                clock_rate: 90_000,
+                ..Default::default()
+            },
+            feed: SourceFeed::Video(baseline.clone()),
+            layers: None,
+        };
+        let resolve = |now| {
+            demands(
+                &source,
+                Uuid::nil(),
+                vec![(String::new(), Arc::downgrade(&input))],
+                EncodingDemand::Limited(100_000),
+                now,
+            )
+        };
+        let sampled = epoch + Duration::from_secs(2);
+        let first = resolve(sampled);
+        assert_eq!(first[0].encoding, EncodingDemand::Limited(100_000));
+        select(&first[0], &limited, true);
+        limited.write(frame(12_000, 2));
+        assert!(!baseline.needed() && limited.needed());
+        let cost = baseline.bitrate(sampled);
+        // The encoding owner pauses observation when its last reader moves away.
+        baseline.observe_rate(false, sampled);
+        let asleep = resolve(sampled + Duration::from_secs(60));
+        assert_eq!(asleep[0].encoding, EncodingDemand::Limited(100_000));
+        assert_eq!(baseline.bitrate(sampled + Duration::from_secs(60)), cost);
+        assert!(limited.needed());
+        // Another real reader can wake this supply without disturbing that output.
+        let sibling = baseline.subscribe();
+        let resumed = sampled + Duration::from_secs(60);
+        baseline.observe_rate(true, resumed);
+        baseline.write(frame(125_000, 3));
+        assert!(baseline.needed() && limited.needed());
+        assert!(baseline.bitrate(resumed + Duration::from_secs(1)).unwrap() > 900_000);
+        // A genuinely observed static interval still reports zero normally.
+        assert_eq!(baseline.bitrate(resumed + Duration::from_secs(2)), Some(0));
+        drop(sibling);
+        Ok(())
+    }
 
     #[tokio::test]
     async fn limited_allocation_follows_retirement_and_current_reader() -> Result<()> {

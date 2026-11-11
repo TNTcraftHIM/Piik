@@ -268,6 +268,17 @@ impl<const N: usize> Default for Rate<N> {
     }
 }
 impl<const N: usize> Rate<N> {
+    fn observing(&mut self, active: bool, now: Instant) {
+        if active {
+            self.start.get_or_insert(now);
+        } else {
+            // Keep the ordinary observation window: a partial IDR burst is
+            // not a sustainable rate. Preserve the last complete sample.
+            self.sample_bins(now);
+            self.start = None;
+            self.bytes = self.bytes.map(|bytes| bytes.map(|_| 0));
+        }
+    }
     fn observe_bin(&mut self, now: Instant, bin: usize, bytes: usize) {
         if self
             .bps
@@ -280,7 +291,10 @@ impl<const N: usize> Rate<N> {
         *self.bytes[bin].get_or_insert(0) += bytes as u64;
     }
     fn sample_bins(&mut self, now: Instant) -> Option<[Option<u64>; N]> {
-        let elapsed = now.duration_since(self.start?);
+        let Some(start) = self.start else {
+            return self.bps;
+        };
+        let elapsed = now.duration_since(start);
         if elapsed >= Duration::from_secs(1) {
             self.bps = Some(self.bytes.map(|bytes| {
                 bytes.map(|bytes| (bytes as f64 * 8.0 / elapsed.as_secs_f64()) as u64)
@@ -328,6 +342,25 @@ impl Relay {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sleeping_rate_keeps_complete_cost_without_inflating_a_partial_idr() {
+        let start = Instant::now();
+        let mut rate = Rate::default();
+        rate.observe(start, 1000);
+        assert_eq!(rate.sample(start + Duration::from_secs(1)), Some(8000));
+        rate.observe(start + Duration::from_millis(1001), 125_000);
+        rate.observing(false, start + Duration::from_millis(1005));
+        assert_eq!(rate.sample(start + Duration::from_secs(60)), Some(8000));
+        rate.observing(true, start + Duration::from_secs(60));
+        rate.observe(start + Duration::from_secs(60), 2000);
+        assert_eq!(rate.sample(start + Duration::from_secs(61)), Some(16_000));
+        assert_eq!(rate.sample(start + Duration::from_secs(62)), Some(0));
+        let mut unknown = Rate::default();
+        unknown.observe(start, 125_000);
+        unknown.observing(false, start + Duration::from_millis(5));
+        assert_eq!(unknown.sample(start + Duration::from_secs(60)), None);
+    }
 
     #[test]
     fn relay_measures_ingress_once_and_keeps_rate_with_its_source() {
