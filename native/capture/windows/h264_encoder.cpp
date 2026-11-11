@@ -345,7 +345,8 @@ ComPtr<IMFMediaType> CreateOutputType(
   Check(type->SetUINT32(MF_MT_INTERLACE_MODE,
                         MFVideoInterlace_Progressive),
         "output-type-interlace");
-  Check(type->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base),
+  // Baseline alone does not require the constrained tools negotiated by WebRTC.
+  Check(type->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_ConstrainedBase),
         "output-type-profile");
   // MF recommends automatic level selection. Forcing a valid level can still
   // make hardware reject the type; validate the actual SPS instead.
@@ -399,7 +400,7 @@ void ValidateMediaTypes(
   RequireTypeU32(output.Get(), MF_MT_AVG_BITRATE, profile.bit_rate,
                  "output-type-bitrate");
   RequireTypeU32(output.Get(), MF_MT_MPEG2_PROFILE,
-                 eAVEncH264VProfile_Base, "output-type-profile");
+                 eAVEncH264VProfile_ConstrainedBase, "output-type-profile");
 
   UINT32 width = 0;
   UINT32 height = 0;
