@@ -67,6 +67,17 @@ backs up their own rooms, without centralizing everyone's records at the site op
 3. To read back, select **Earlier messages**. **Latest messages** returns to
    the current conversation.
 
+An unread dot beside a room means it has messages beyond your last reading
+position. Reading the latest messages to the bottom in a focused conversation
+clears it. This browser remembers that position; background voice or watching
+does not mark messages as read.
+
+Type `@` and choose a person to mention them. The highlighted name stays linked
+to that user even if their nickname changes. Use **Reply to this message** beside
+a message to quote it above the composer; cancel the quote without losing your
+draft, or turn off **Notify reply recipient** for that reply. Select a sent quote to jump
+to its original message, then **Latest messages** to return.
+
 On a desktop, Enter sends and Shift+Enter adds a line. On a touchscreen, Return
 adds a line and **Send** sends the message. Ctrl+Enter or Command+Enter also sends.
 

@@ -211,6 +211,7 @@ impl RemoteRoom {
                 available: false,
                 reading: false,
                 participant_session_ids: Vec::new(),
+                last_message_seq: 0,
                 realtime_session_ids: Vec::new(),
                 capabilities: RoomCapabilities { attachments: false },
                 members: None,

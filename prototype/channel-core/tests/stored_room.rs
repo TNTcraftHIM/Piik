@@ -161,6 +161,8 @@ fn deleting_room_policy_and_history_is_one_commit_and_keeps_other_stores() {
         owner,
         owner,
         ConversationCommand::Chat {
+            mentions: vec![],
+            reply: None,
             inline_images: Default::default(),
             text: "Retained".into(),
             nonce: "before-delete".into(),
@@ -253,9 +255,18 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
             owner,
             owner,
             ConversationCommand::Chat {
+                mentions: vec![piik_channel_core::history::Mention {
+                    user_id: owner,
+                    start: 0,
+                    end: 6,
+                }],
+                reply: (seq > 1).then_some(piik_channel_core::history::ReplyTarget {
+                    seq: 1,
+                    notify: true,
+                }),
                 inline_images: BTreeMap::from([(attachment.id, "R0lGODlhYWJj".into())]),
                 nonce: format!("send-{seq}"),
-                text: format!("Message {seq}"),
+                text: format!("@Owner Message {seq}"),
                 attachments: vec![attachment.clone()],
             },
         ));
@@ -294,6 +305,21 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         })
         .unwrap();
     assert_eq!(rows.len(), 55);
+    assert!(
+        command(
+            &mut host,
+            owner,
+            owner,
+            json!({"type":"browse","roomId":"retained","active":false})
+        )
+        .projection
+        .last_message_seq
+            == 55
+    );
+    assert_eq!(
+        rows[1].message.message.reply.as_ref().unwrap().text,
+        "@Owner Message 1"
+    );
     assert_eq!(rows[0].nonce, "send-1");
     assert_eq!(rows[0].message.message.attachments, vec![attachment]);
     assert_eq!(rows[0].message.reactions.revision, 1);
@@ -359,6 +385,22 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         importer.finish().unwrap();
         let archived = copied[0].message.message.user_id;
         assert_ne!(archived, owner);
+        assert_eq!(
+            copied[1].message.message.reply.as_ref().unwrap().user_id,
+            archived
+        );
+        assert_eq!(copied[0].message.message.mentions[0].user_id, archived);
+        assert_eq!(
+            copied[1]
+                .message
+                .message
+                .reply
+                .as_ref()
+                .unwrap()
+                .archived_author_name
+                .as_deref(),
+            Some("Original owner")
+        );
         for (original, copy) in rows.iter().zip(&copied) {
             assert_eq!(copy.message.message.user_id, archived);
             assert_eq!(
@@ -413,6 +455,18 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         let copied_path = folder.join("copied.sqlite");
         drop(StoredRoomHost::from_backup(&copied_path, &staged_copy).unwrap());
         let mut copied_host = StoredRoomHost::open(&copied_path).unwrap();
+        assert_eq!(
+            command(
+                &mut copied_host,
+                new_owner,
+                new_owner,
+                json!({"type":"browse","roomId":"copied","active":false})
+            )
+            .projection
+            .last_message_seq,
+            55,
+            "reopened history seeds the authoritative head"
+        );
         let HistoryResult::Page { messages, .. } = peer(
             &mut copied_host,
             new_owner,
@@ -431,6 +485,8 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
             new_owner,
             new_owner,
             ConversationCommand::Chat {
+                mentions: vec![],
+                reply: None,
                 inline_images: Default::default(),
                 nonce: rows[0].nonce.clone(),
                 text: "A new conversation".into(),
@@ -448,6 +504,8 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         owner,
         owner,
         ConversationCommand::Chat {
+            mentions: vec![],
+            reply: None,
             inline_images: Default::default(),
             nonce: "later".into(),
             text: "After the backup".into(),
@@ -472,6 +530,8 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         owner,
         owner,
         ConversationCommand::Chat {
+            mentions: vec![],
+            reply: None,
             inline_images: Default::default(),
             nonce: "send-1".into(),
             text: "A changed retry must not replace retained content".into(),
@@ -538,6 +598,8 @@ fn message_reaction_counts_commit_once_and_recover_without_replaying_effects() {
         owner,
         author,
         ConversationCommand::Chat {
+            mentions: vec![],
+            reply: None,
             inline_images: Default::default(),
             text: "Retained".into(),
             nonce: "original".into(),
@@ -638,6 +700,8 @@ fn message_reaction_counts_commit_once_and_recover_without_replaying_effects() {
         owner,
         author,
         ConversationCommand::Chat {
+            mentions: vec![],
+            reply: None,
             inline_images: Default::default(),
             text: "Changed retry".into(),
             nonce: "original".into(),
@@ -693,6 +757,8 @@ fn failed_storage_withholds_grant_and_confirmation_then_retry_survives_reopen() 
     database.execute_batch("CREATE TABLE commit_failure (id TEXT REFERENCES message(id) DEFERRABLE INITIALLY DEFERRED);
         CREATE TRIGGER reject_message AFTER INSERT ON message BEGIN INSERT INTO commit_failure VALUES('missing'); END;").unwrap();
     let message = ConversationCommand::Chat {
+        mentions: vec![],
+        reply: None,
         inline_images: Default::default(),
         text: "Original".into(),
         nonce: "same-send".into(),
@@ -722,6 +788,8 @@ fn failed_storage_withholds_grant_and_confirmation_then_retry_survives_reopen() 
         owner,
         viewer,
         ConversationCommand::Chat {
+            mentions: vec![],
+            reply: None,
             inline_images: Default::default(),
             text: "Changed retry".into(),
             nonce: "same-send".into(),
@@ -791,6 +859,8 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
             owner,
             owner,
             ConversationCommand::Chat {
+                mentions: vec![],
+                reply: None,
                 inline_images: Default::default(),
                 text: room.into(),
                 nonce: "same-send".into(),
@@ -871,6 +941,8 @@ fn embedded_descriptions_commit_with_chat_and_lookup_requires_room_read() {
             owner,
             owner,
             ConversationCommand::Chat {
+                mentions: vec![],
+                reply: None,
                 inline_images: Default::default(),
                 text: "Caption".into(),
                 nonce: "file-send".into(),
@@ -936,6 +1008,8 @@ fn embedded_descriptions_commit_with_chat_and_lookup_requires_room_read() {
             owner,
             owner,
             ConversationCommand::Chat {
+                mentions: vec![],
+                reply: None,
                 inline_images: Default::default(),
                 text: "Changed".into(),
                 nonce: "file-send".into(),

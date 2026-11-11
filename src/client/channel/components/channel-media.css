@@ -2,7 +2,7 @@
   position: relative;
   aspect-ratio: 16 / 9;
   overflow: hidden;
-  border-radius: 14px 14px 0 0;
+  border-radius: var(--c3-media-radius) var(--c3-media-radius) 0 0;
   background: var(--stage, var(--wall-2));
   isolation: isolate;
   container-type: inline-size;
@@ -79,7 +79,7 @@
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-radius: 12px;
+  border-radius: var(--c3-inset-radius);
   background: var(--paper);
   color: var(--muted);
   font-size: 12px;

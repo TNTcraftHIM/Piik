@@ -118,6 +118,8 @@ fn signed_conversation_uses_domain_carriage_without_media_paths_or_a_second_conf
             &ConversationRequest {
                 address: address.clone(),
                 command: ConversationCommand::Chat {
+                    mentions: vec![],
+                    reply: None,
                     inline_images: Default::default(),
                     text: "Works without ICE".into(),
                     nonce: "one-write".into(),
@@ -151,6 +153,30 @@ fn signed_conversation_uses_domain_carriage_without_media_paths_or_a_second_conf
         }
     }
     assert!(confirmed.is_some());
+    assert_eq!(
+        network
+            .state(owner)
+            .channel
+            .rooms
+            .iter()
+            .find(|value| value.id == room)
+            .unwrap()
+            .last_message_seq,
+        1,
+        "the authorized owner learns the head without browsing or media paths"
+    );
+    assert_eq!(
+        network
+            .state(outsider)
+            .channel
+            .rooms
+            .iter()
+            .find(|value| value.id == room)
+            .unwrap()
+            .last_message_seq,
+        0,
+        "a locked private-room directory does not reveal its message head"
+    );
     let history = signer
         .sign(
             reader_session,

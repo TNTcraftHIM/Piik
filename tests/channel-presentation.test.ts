@@ -27,7 +27,7 @@ it("merges a user's real-time endpoints without treating chat-only presence as p
     channel: { id: "site", name: "Site", icon: "couch", ownerId: "self", historyWindow: 1000, rooms: [{
       id: "room", name: "Room", icon: "couch", creatorId: "self", access: "public", hidden: false,
       hasPassword: false, authorized: true, canManage: true, available: true, reading: true,
-      participantSessionIds: ["self-page", "chat-page"], realtimeSessionIds: ["self-page", "self-helper", "route-peer"], capabilities: { attachments: true },
+      participantSessionIds: ["self-page", "chat-page"], lastMessageSeq: 0, realtimeSessionIds: ["self-page", "self-helper", "route-peer"], capabilities: { attachments: true },
     }] }, users: ["self", "chat", "route"].map(id => ({ id, name: id, avatar: null })),
     sessions: [["self-page", "self"], ["self-helper", "self"], ["chat-page", "chat"], ["route-peer", "route"]]
       .map(([id, userId]) => ({ id, userId, online: true, signingKey: Array(32).fill(0) })),

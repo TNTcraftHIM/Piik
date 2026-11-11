@@ -1,4 +1,4 @@
-import { BrowserRoomHost, conversation_broadcast, createRoomPolicy, createSessionSigner, decode_control, encode_control, verify_reply, type SentResult } from "../src/room-host";
+import { BrowserRoomHost, conversation_broadcast, createRoomPolicy, createSessionSigner, initializeRuntime, decode_control, encode_control, verify_reply, type SentResult } from "../src/room-host";
 import type { SignedConversationPacket } from "../../../src/client/channel/protocol";
 import { IDENTITY_IMAGE_URL_BYTES, identityIconSchema } from "../../../src/client/channel/protocol";
 import { prepareIdentityImage } from "../../../src/client/channel/identity-image";
@@ -12,7 +12,7 @@ interface Output {
     summary: { icon: string };
     capabilities: { attachments: boolean };
     participantSessionIds: string[];
-    realtimeSessionIds: string[];
+    lastMessageSeq: number;
     publications: unknown[];
     voice: unknown[];
     views: Record<string, { authorized: boolean; canManage: boolean }>;
@@ -21,8 +21,10 @@ interface Output {
 }
 window.runBrowserRoomCheck = async () => {
   const database = `piik-browser-room-check-${crypto.randomUUID()}`;
-  const signer = await createSessionSigner(crypto.getRandomValues(new Uint8Array(32)));
-  const peerSigner = await createSessionSigner(crypto.getRandomValues(new Uint8Array(32)));
+  const [signer, peerSigner] = await Promise.all([
+    createSessionSigner(crypto.getRandomValues(new Uint8Array(32))),
+    createSessionSigner(crypto.getRandomValues(new Uint8Array(32))), initializeRuntime(),
+  ]);
   const signingKey = Array.from(signer.signing_key()), peerSigningKey = Array.from(peerSigner.signing_key());
   const owner = { userId: crypto.randomUUID() };
   const session = crypto.randomUUID(), connection = crypto.randomUUID();
@@ -66,6 +68,51 @@ window.runBrowserRoomCheck = async () => {
     check(snapshots.length === messages.length, "every retained body has its reaction snapshot");
     return { messages, hasMore: end.hasMore, oldestSeq: end.oldestSeq, before: end.before };
   };
+  async function checkReplyStorage() {
+    const name = `${database}-replies`;
+    const replyPolicy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Replies", icon: "couch", creatorId: owner.userId, access: "public", hidden: false });
+    const otherPolicy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Other", icon: "couch", creatorId: owner.userId, access: "public", hidden: false });
+    let current = await BrowserRoomHost.open(name, replyPolicy);
+    const other = await BrowserRoomHost.open(name, otherPolicy);
+    const binding = crypto.randomUUID(); let turn = 0;
+    const sync = async (target = current) => {
+      await target.bind(binding);
+      return await target.dispatch({ now: Date.now(), bindingId: binding, hostSessionId: session, revision: ++turn, endpoints, action: { type: "sync" } }) as Output;
+    };
+    const chat = (target: BrowserRoomHost, body: object, signal?: AbortSignal) => target.dispatchPeer(JSON.parse(peerSigner.sign(peerSession, JSON.stringify({
+      roomId: target.roomId, bindingId: binding, sender: peerSession, recipient: session, requestId: crypto.randomUUID(),
+      command: { type: "chat", attachments: [], ...body },
+    }))), Date.now(), signal);
+    try {
+      check((await sync()).projection.lastMessageSeq === 0, "reply room starts with an empty sequence"); await sync(other);
+      const first = (await chat(current, { text: "Original author text", nonce: "original" }))[0].record;
+      check(first.type === "confirmed" && first.message.seq === 1, "reference message is committed before replying");
+      const crossRoom = (await chat(other, { text: "Cross room", nonce: "cross-room", reply: { seq: 1, notify: true } }))[0].record;
+      check(crossRoom.type === "error" && crossRoom.code === "message_unavailable", "reply lookup is scoped to the same room's IndexedDB key");
+      const mentions = [{ userId: owner.userId, start: 3, end: 9 }];
+      const replied = (await chat(current, { text: "Hi @Owner", nonce: "reply", mentions, reply: { seq: 1, notify: true } }))[0].record;
+      check(replied.type === "confirmed" && replied.message.reply?.seq === 1 && replied.message.reply.userId === peerMember.userId
+        && replied.message.reply.text === "Original author text" && replied.message.reply.notify
+        && JSON.stringify(replied.message.mentions) === JSON.stringify(mentions), "Core confirms mention ranges and derives reply author/excerpt from the stored original");
+      const retried = (await chat(current, { text: "Changed", nonce: "reply", reply: { seq: 999, notify: false } }))[0].record;
+      check(retried.type === "confirmed" && !retried.inserted && JSON.stringify(retried.message) === JSON.stringify(replied.message),
+        "a nonce retry returns the original reply without looking up the changed target");
+      const cancellation = new AbortController(), add = IDBObjectStore.prototype.add;
+      IDBObjectStore.prototype.add = function (...args) { const request = add.apply(this, args);
+        if (this.name === "messages") request.addEventListener("success", () => cancellation.abort(), { once: true }); return request; };
+      try { const cancelled = (await chat(current, { text: "Aborted reply", nonce: "aborted", reply: { seq: 1, notify: false } }, cancellation.signal))[0].record;
+        check(cancelled.type === "error" && cancelled.code === "AbortError", "reply insert aborts before a confirmation is returned");
+      } finally { IDBObjectStore.prototype.add = add; }
+      check((await sync()).projection.lastMessageSeq === 2, "aborted reply cannot advance the confirmed sequence");
+      await current.close(); current = await BrowserRoomHost.open(name, replyPolicy);
+      check((await sync()).projection.lastMessageSeq === 2, "reopen seeds the reply history without scanning it in the UI");
+      const records = await current.dispatchPeer(JSON.parse(peerSigner.sign(peerSession, JSON.stringify({ roomId: current.roomId,
+        bindingId: binding, sender: peerSession, recipient: session, requestId: crypto.randomUUID(), command: { type: "history", before: null } }))), Date.now());
+      check(records.some(({ record }) => record.type === "history_message" && record.message.seq === 2
+        && JSON.stringify(record.message.reply) === JSON.stringify(replied.message.reply)), "reopened history preserves the confirmed reply");
+    } finally { await current.close(); await other.close(); await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(name); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); }); }
+  }
   try {
     const previousDatabase = `${database}-schema-2`;
     const old = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -139,8 +186,9 @@ window.runBrowserRoomCheck = async () => {
     check(initial.reply?.result.type === "done", "browse confirms activity without reading history");
     check((await history()).messages.length === 0, "history is an explicit independent read");
     check(initial.projection.views[session].canManage, "room owner view comes from shared Rust");
+    check(initial.projection.lastMessageSeq === 0, "a fresh Browser owner seeds an empty confirmed history");
     check(initial.projection.participantSessionIds.join() === session
-      && initial.projection.realtimeSessionIds.length === 0
+      && initial.projection.publications.length === 0 && initial.projection.voice.length === 0
       && initial.projection.views[session].authorized && initial.projection.views[peerSession].authorized,
     "shared Rust projects reading activity to every authorized view without inventing a seat for an idle endpoint");
     check(Object.values(initial.projection.views).every(view => !('room' in view) && !('publications' in view) && !('voice' in view)),
@@ -272,6 +320,8 @@ window.runBrowserRoomCheck = async () => {
     host = await BrowserRoomHost.open(database, policy);
     await bindHost();
     check(JSON.stringify(await history()) === JSON.stringify(latest), "history survives runtime/database reopen");
+    check((await dispatch({ type: "browse", roomId: host.roomId, active: true })).projection.lastMessageSeq === 110,
+      "reopened Browser host projects the latest committed IndexedDB sequence without reading history first");
     const original = await send("Changed again", "first", [{ ...file, sha256: "0".repeat(64) }]);
     check(!original.inserted && JSON.stringify(original.message) === JSON.stringify(first.message), "nonce survives reopen");
     check((await dispatch({ type: "publish", publication: { id: crypto.randomUUID(), roomId: host.roomId,
@@ -449,6 +499,8 @@ window.runBrowserRoomCheck = async () => {
     check(host.summary().name === "New binding policy" && host.currentReaders().length === 0,
       "restore reopens stable policy with no previous live activity");
     check((await history()).messages.at(-1)?.seq === 112, "older restored history remains authoritative over the newer discarded sequence");
+    check((await dispatch({ type: "browse", roomId: host.roomId, active: true })).projection.lastMessageSeq === 112,
+      "restored Browser host seeds the restored history rather than the discarded newer sequence");
     const restoredRetry = await send("Changed retry", "first");
     check(!restoredRetry.inserted && restoredRetry.message.seq === 1 && restoredRetry.message.text === "Original", "restored retry nonce retains its original confirmation");
     check((await send("After restore", "after-restore")).message.seq === 113, "new writes continue the restored sequence floor");
@@ -497,6 +549,7 @@ window.runBrowserRoomCheck = async () => {
       check(rejected, "old room policy without icon is explicitly rejected");
       check((await BrowserRoomHost.storedPolicies(database)).includes(oldPolicy), "invalid old policy remains unchanged");
     } finally { db.close(); }
+    await checkReplyStorage();
     await new Promise<void>((resolve, reject) => {
       const upgrade = indexedDB.open(database, 6);
       upgrade.onsuccess = () => { upgrade.result.close(); resolve(); }; upgrade.onerror = () => reject(upgrade.error);
@@ -515,6 +568,7 @@ window.runBrowserRoomCheck = async () => {
       identityImage: true, identityPngFallback: true, identityAbortAfterPutSuccess: true, identityPresetReplacement: true,
       previousSchemaPreserved: true,
       consistentPortableSnapshot: true, stagedAtomicRestore: true, backupUniqueIndexes: true, restoreRollbackAfterCopy: restoreWriteSucceeded,
+      mentionReplyStorage: true, seededLatestSequence: true, concurrentFirstUse: true,
       restoredWriterFence: true, boundedBackupSlot: true, previousChoicesSchemaRejected: true,
       missingIconRejectedWithoutOverwrite: true, domainCredentialDatabaseProvided: false };
   } finally {

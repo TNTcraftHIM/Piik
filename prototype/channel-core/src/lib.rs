@@ -165,13 +165,18 @@ impl Authority {
         match &request.command {
             Command::Conversation { packet } => {
                 match self.channel.relay_conversation(session_id, packet) {
-                    Ok(recipient) => self.deliver(
-                        recipient,
-                        Event::Conversation {
-                            packet: packet.clone(),
-                        },
-                        &mut effects,
-                    ),
+                    Ok((recipient, changed)) => {
+                        self.deliver(
+                            recipient,
+                            Event::Conversation {
+                                packet: packet.clone(),
+                            },
+                            &mut effects,
+                        );
+                        if changed {
+                            self.broadcast(None, &mut effects);
+                        }
+                    }
                     Err(code) => Self::error(connection, request.request_id, code, &mut effects),
                 }
                 return effects;

@@ -5,7 +5,7 @@ import { ChannelConversation } from "./conversation";
 import { selectedRoom } from "./navigation";
 import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, ChannelEventDecoder, channelTopologySchema, roomSummarySchema, userSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { ChannelAttachments, type DraftFile } from "./attachments";
-import type { ChannelView, ScreenPresentation, SourceMicrophoneConfiguration, SourceMicrophoneSettings } from "./types";
+import type { ChannelView, ChatOptions, ScreenPresentation, SourceMicrophoneConfiguration, SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryImport, type BackupHistoryRow } from "./hosting";
 import { ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics } from "./app-link";
 import { isClientActivated } from "../lib/app-launch";
@@ -123,10 +123,12 @@ export class ChannelSession {
     appConnected: false,
     ownedScreens: new Set(),
     localScreens: new Set(),
-    state: null, sessionId: null, self: null, connection: "connecting", messagesByRoom: {}, historyByRoom: {},
+    state: null, sessionId: null, self: null, connection: "connecting", messagesByRoom: {}, historyByRoom: {}, readByRoom: {},
     streams: new Map(), screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), error: null, siteURL: null, pending: new Set(),
   };
   private listeners = new Set<() => void>();
+  private readMarkerKey: string | null = null;
+  private historyJump: { roomId: string; seq: number } | null = null;
   private socket: WebSocket | null = null;
   private retry: ReturnType<typeof setTimeout> | null = null;
   private recoveryDeadline: ReturnType<typeof setTimeout> | null = null;
@@ -439,6 +441,7 @@ export class ChannelSession {
     for (const id of this.localNativeEndpoints) if (!state.sessions.some(endpoint => endpoint.id === id)) this.localNativeEndpoints.delete(id);
     const previousRooms = this.view.state?.channel.rooms;
     const userId = state.sessions.find(session => session.id === sessionId)?.userId;
+    const readByRoom = this.readMarkers(state, userId);
     for (const id of this.admittedPublications) {
       if (!state.publications.some(publication => publication.id === id)) {
         const roomId = this.local.get(id)?.roomId;
@@ -483,7 +486,7 @@ export class ChannelSession {
       request.reject(new Error("room_unavailable"));
     }
     for (const id of this.outgoingMessages.keys()) if (!canRead(id)) this.outgoingMessages.delete(id);
-    this.patch({ state: visible, self: state.users.find(user => user.id === userId) ?? null,
+    this.patch({ state: visible, self: state.users.find(user => user.id === userId) ?? null, readByRoom,
       siteURL: this.siteURL(),
       voicePlaybackByUser: sameChannel ? new Map([...this.view.voicePlaybackByUser].filter(([id]) => state.users.some(user => user.id === id))) : new Map(),
       messagesByRoom: Object.fromEntries(Object.entries(this.view.messagesByRoom).filter(([id]) => canRead(id) && !freshBindings.has(id))),
@@ -666,7 +669,8 @@ export class ChannelSession {
   private applyHistory(roomId: string, page: ChannelMessage[], result: Extract<ConversationReply["record"], { type: "history_end" }>): void {
     const state = this.view.state;
     if (!state?.channel.rooms.some(room => room.id === roomId && room.authorized)) return;
-    const current = this.view.messagesByRoom[roomId] ?? [];
+    const jumping = this.historyJump?.roomId === roomId && result.before === this.historyJump.seq + 1;
+    const current = jumping ? [] : this.view.messagesByRoom[roomId] ?? [];
     const last = page.at(-1)?.seq ?? 0;
     const latest = result.before === null;
     const existing = latest ? current.filter(message => message.seq > last) : current;
@@ -674,7 +678,7 @@ export class ChannelSession {
     const merged = mergeMessages([...existing, ...projected]
       .filter(message => result.oldestSeq === null || message.seq >= result.oldestSeq));
     const messages = latest ? merged.slice(-state.channel.historyWindow) : merged.slice(0, state.channel.historyWindow);
-    const atLatest = latest || ((this.view.historyByRoom[roomId]?.atLatest ?? true) && merged.length <= state.channel.historyWindow);
+    const atLatest = latest || (!jumping && (this.view.historyByRoom[roomId]?.atLatest ?? true) && merged.length <= state.channel.historyWindow);
     this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [roomId]: messages },
       historyByRoom: { ...this.view.historyByRoom, [roomId]: { hasMore: result.hasMore, before: messages[0]?.seq, atLatest } } });
   }
@@ -1021,7 +1025,7 @@ export class ChannelSession {
     if (this.view.connection === "connected") await this.action(`enter:${roomId}`, () => this.request({ type: "enter_room", roomId, inviteKey: key }));
     return roomId;
   };
-  sendMessage = (roomId: string, text: string, files: DraftFile[] = [], signal?: AbortSignal): Promise<void> => this.action(`chat:${roomId}`, async () => {
+  sendMessage = (roomId: string, text: string, files: DraftFile[] = [], signal?: AbortSignal, options: ChatOptions = {}): Promise<void> => this.action(`chat:${roomId}`, async () => {
     if (files.length && !this.view.state?.channel.rooms.find(room => room.id === roomId)?.capabilities.attachments) throw new Error("attachments_unavailable");
     const sessionId = this.view.sessionId;
     const prepared = files.length ? await this.attachments.describe(files, signal) : [];
@@ -1029,11 +1033,11 @@ export class ChannelSession {
     signal?.throwIfAborted();
     const attachments = prepared.map(file => file.attachment);
     const inlineImages = Object.fromEntries(prepared.flatMap(file => file.inlineImage ? [[file.id, file.inlineImage]] : []));
-    const content = JSON.stringify({ text, attachments, inlineImages });
+    const content = JSON.stringify({ text, attachments, inlineImages, ...options });
     const previous = this.outgoingMessages.get(roomId);
     const attempt = previous?.content === content ? previous : { content, nonce: crypto.randomUUID() };
     this.outgoingMessages.set(roomId, attempt);
-    await this.request({ type: "chat", roomId, text, attachments, inlineImages, nonce: attempt.nonce }, event => {
+    await this.request({ type: "chat", roomId, text, attachments, inlineImages, ...options, nonce: attempt.nonce }, event => {
       if (event.type === "confirmed") this.attachments.confirmed(roomId, event.message, prepared);
     });
     this.outgoingMessages.delete(roomId);
@@ -1041,6 +1045,45 @@ export class ChannelSession {
   });
   loadHistory = (roomId: string): Promise<void> => this.requestHistory(roomId, this.view.historyByRoom[roomId]?.before);
   loadLatestHistory = (roomId: string): Promise<void> => this.requestHistory(roomId);
+  loadMessage = async (roomId: string, seq: number): Promise<void> => {
+    if (!this.view.messagesByRoom[roomId]?.some(message => message.seq === seq)) {
+      const jump = { roomId, seq };
+      this.historyJump = jump;
+      try { await this.requestHistory(roomId, seq + 1); }
+      finally { if (this.historyJump === jump) this.historyJump = null; }
+    }
+    if (!this.view.messagesByRoom[roomId]?.some(message => message.seq === seq)) throw new Error("message_unavailable");
+  };
+
+  private readMarkers(state: ChannelSnapshot, userId?: string): Record<string, number> {
+    if (!userId) { this.readMarkerKey = null; return {}; }
+    const key = `piik.channel.read.${state.channel.id}.${userId}`;
+    let saved: Record<string, number> = {};
+    try { saved = z.record(z.string(), z.number().int().nonnegative()).parse(JSON.parse(stored(key) ?? "{}")); } catch { /* Local reading preferences can be reset. */ }
+    const previous = this.readMarkerKey === key ? this.view.readByRoom : {};
+    this.readMarkerKey = key;
+    const markers = Object.fromEntries(state.channel.rooms.filter(room => room.authorized).map(room => {
+      const read = Math.max(saved[room.id] ?? 0, previous[room.id] ?? 0);
+      return [room.id, room.available ? Math.min(room.lastMessageSeq, saved[room.id] === undefined && previous[room.id] === undefined ? room.lastMessageSeq : read) : read];
+    }));
+    if (JSON.stringify(markers) !== JSON.stringify(saved)) stored(key, JSON.stringify(markers));
+    return markers;
+  }
+
+  refreshReadMarkers = (): void => {
+    if (this.view.state) this.patch({ readByRoom: this.readMarkers(this.view.state, this.view.self?.id) });
+  };
+
+  markRead = (roomId: string, seq: number): void => {
+    const room = this.view.state?.channel.rooms.find(room => room.id === roomId && room.authorized);
+    if (!room || !this.readMarkerKey) return;
+    const current = this.readMarkers(this.view.state!, this.view.self?.id);
+    const read = Math.min(seq, room.lastMessageSeq);
+    if ((current[roomId] ?? 0) >= read) return;
+    const readByRoom = { ...current, [roomId]: read };
+    stored(this.readMarkerKey, JSON.stringify(readByRoom));
+    this.patch({ readByRoom });
+  };
   private requestHistory(roomId: string, before?: number): Promise<void> {
     const reading = this.reading?.roomId === roomId ? this.reading : null;
     const pending = this.view.pending.has(`history:${roomId}`);

@@ -250,6 +250,8 @@ mod tests {
                 nonce: format!("retry-{seq}"),
                 message: StoredMessage {
                     message: ChatMessage {
+                        mentions: vec![],
+                        reply: None,
                         inline_images: Default::default(),
                         seq,
                         id: Uuid::new_v4(),

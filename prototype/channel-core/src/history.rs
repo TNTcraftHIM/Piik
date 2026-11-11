@@ -7,6 +7,55 @@ use uuid::Uuid;
 pub const HISTORY_WINDOW: usize = 1000;
 // Each retained message has a body and a reaction snapshot on the peer wire.
 pub const HISTORY_PAGE: usize = 50;
+pub const MESSAGE_MENTION_LIMIT: usize = 64;
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Mention {
+    pub user_id: Uuid,
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReplyTarget {
+    pub seq: u64,
+    pub notify: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MessageReply {
+    pub seq: u64,
+    pub user_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archived_author_name: Option<String>,
+    pub text: String,
+    pub notify: bool,
+}
+
+fn validate_mentions(text: &str, mentions: &[Mention]) -> Result<(), &'static str> {
+    if mentions.len() > MESSAGE_MENTION_LIMIT {
+        return Err("invalid_mentions");
+    }
+    let units: Vec<_> = text.encode_utf16().collect();
+    let mut previous = 0;
+    for mention in mentions {
+        if mention.user_id.is_nil()
+            || mention.start < previous
+            || mention.end > units.len()
+            || mention.end <= mention.start
+            || mention.end - mention.start < 2
+            || units.get(mention.start) != Some(&('@' as u16))
+            || String::from_utf16(&units[mention.start..mention.end]).is_err()
+        {
+            return Err("invalid_mentions");
+        }
+        previous = mention.end;
+    }
+    Ok(())
+}
 
 #[derive(Clone, Default, Deserialize, Serialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -72,6 +121,10 @@ pub fn valid_message_reaction(reaction: &str) -> bool {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageDraft {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mentions: Vec<Mention>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply: Option<ReplyTarget>,
     pub user_id: Uuid,
     pub nonce: String,
     pub text: String,
@@ -88,8 +141,17 @@ impl MessageDraft {
         text: String,
         attachments: Vec<AttachmentDescriptor>,
         inline_images: BTreeMap<Uuid, String>,
+        mentions: Vec<Mention>,
+        reply: Option<ReplyTarget>,
         time: u64,
     ) -> Result<Self, &'static str> {
+        validate_mentions(text.trim(), &mentions)?;
+        if reply
+            .as_ref()
+            .is_some_and(|reply| reply.seq == 0 || reply.seq > i64::MAX as u64)
+        {
+            return Err("invalid_reply");
+        }
         if attachments.len() > ATTACHMENT_LIMITS.max_attachments_per_message
             || attachments
                 .iter()
@@ -131,6 +193,8 @@ impl MessageDraft {
             return Err("invalid_message");
         }
         Ok(Self {
+            mentions,
+            reply,
             user_id,
             nonce,
             text: text.trim().to_owned(),
@@ -151,22 +215,51 @@ impl MessageDraft {
                 message,
                 inserted: false,
             }),
-            ConfirmationInput::New { last_seq } => Ok(MessageConfirmation {
-                message: StoredMessage {
-                    message: ChatMessage {
-                        seq: last_seq + 1,
-                        id: Uuid::new_v4(),
-                        user_id: self.user_id,
-                        archived_author_name: None,
-                        text: self.text.clone(),
-                        time: self.time,
-                        attachments: self.attachments.clone(),
-                        inline_images: self.inline_images.clone(),
+            ConfirmationInput::New { last_seq, reply } => {
+                let reply = self
+                    .reply
+                    .as_ref()
+                    .map(|target| {
+                        let original = reply
+                            .filter(|message| message.seq == target.seq && message.seq <= last_seq)
+                            .ok_or("message_unavailable")?;
+                        let mut length = 0;
+                        let text = original
+                            .text
+                            .chars()
+                            .take_while(|c| {
+                                length += c.len_utf16();
+                                length <= 160
+                            })
+                            .collect();
+                        Ok::<_, &'static str>(MessageReply {
+                            seq: original.seq,
+                            user_id: original.user_id,
+                            archived_author_name: original.archived_author_name,
+                            text,
+                            notify: target.notify,
+                        })
+                    })
+                    .transpose()?;
+                Ok(MessageConfirmation {
+                    message: StoredMessage {
+                        message: ChatMessage {
+                            mentions: self.mentions.clone(),
+                            reply,
+                            seq: last_seq + 1,
+                            id: Uuid::new_v4(),
+                            user_id: self.user_id,
+                            archived_author_name: None,
+                            text: self.text.clone(),
+                            time: self.time,
+                            attachments: self.attachments.clone(),
+                            inline_images: self.inline_images.clone(),
+                        },
+                        reactions: MessageReactions::default(),
                     },
-                    reactions: MessageReactions::default(),
-                },
-                inserted: true,
-            }),
+                    inserted: true,
+                })
+            }
         }
     }
 }
@@ -178,8 +271,14 @@ impl MessageDraft {
     rename_all_fields = "camelCase"
 )]
 pub enum ConfirmationInput {
-    Existing { message: StoredMessage },
-    New { last_seq: u64 },
+    Existing {
+        message: StoredMessage,
+    },
+    New {
+        last_seq: u64,
+        #[serde(default)]
+        reply: Option<ChatMessage>,
+    },
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -335,13 +434,25 @@ mod inline_tests {
             sha256: crate::attachment::sha256_hex(bytes),
         };
         let check = |files, images| {
-            MessageDraft::new(Uuid::new_v4(), "send".into(), "".into(), files, images, 1)
+            MessageDraft::new(
+                Uuid::new_v4(),
+                "send".into(),
+                "".into(),
+                files,
+                images,
+                vec![],
+                None,
+                1,
+            )
         };
         let images = BTreeMap::from([(file.id, Base64::encode_string(bytes))]);
         let draft = check(vec![file.clone()], images.clone()).unwrap();
         assert_eq!(
             draft
-                .prepare_confirmation(ConfirmationInput::New { last_seq: 0 })
+                .prepare_confirmation(ConfirmationInput::New {
+                    last_seq: 0,
+                    reply: None
+                })
                 .unwrap()
                 .message
                 .message
@@ -393,5 +504,107 @@ mod inline_tests {
             .map(|a| (a.id, Base64::encode_string(&large)))
             .collect();
         assert!(check(files, images).is_err());
+    }
+}
+
+#[cfg(test)]
+mod reference_tests {
+    use super::*;
+    #[test]
+    fn mentions_follow_final_utf16_text_and_replies_use_committed_rows() {
+        let user = Uuid::new_v4();
+        let mention = Mention {
+            user_id: user,
+            start: 2,
+            end: 5,
+        };
+        let make = |mentions, reply| {
+            MessageDraft::new(
+                user,
+                "reference".into(),
+                "\u{1f600}@Zo".into(),
+                vec![],
+                BTreeMap::new(),
+                mentions,
+                reply,
+                1,
+            )
+        };
+        let draft = make(vec![mention.clone()], None).unwrap();
+        for bad in [
+            Mention {
+                start: 1,
+                ..mention.clone()
+            },
+            Mention {
+                end: 99,
+                ..mention.clone()
+            },
+            Mention {
+                user_id: Uuid::nil(),
+                ..mention.clone()
+            },
+        ] {
+            assert!(make(vec![bad], None).is_err());
+        }
+        assert!(make(vec![mention.clone(), mention], None).is_err());
+        assert!(validate_mentions(
+            "@\u{1f600}",
+            &[Mention {
+                user_id: user,
+                start: 0,
+                end: 2
+            }]
+        )
+        .is_err());
+        assert!(validate_mentions(
+            &"@x".repeat(65),
+            &(0..65)
+                .map(|i| Mention {
+                    user_id: user,
+                    start: i * 2,
+                    end: i * 2 + 2
+                })
+                .collect::<Vec<_>>()
+        )
+        .is_err());
+        let mut original = draft
+            .prepare_confirmation(ConfirmationInput::New {
+                last_seq: 0,
+                reply: None,
+            })
+            .unwrap()
+            .message
+            .message;
+        original.text = "\u{1f600}".repeat(100);
+        original.archived_author_name = Some("Original".into());
+        let reply = make(
+            vec![],
+            Some(ReplyTarget {
+                seq: 1,
+                notify: false,
+            }),
+        )
+        .unwrap();
+        assert!(reply
+            .prepare_confirmation(ConfirmationInput::New {
+                last_seq: 1,
+                reply: None
+            })
+            .is_err());
+        let confirmed = reply
+            .prepare_confirmation(ConfirmationInput::New {
+                last_seq: 1,
+                reply: Some(original.clone()),
+            })
+            .unwrap();
+        let reference = confirmed.message.message.reply.unwrap();
+        assert_eq!(reference.user_id, user);
+        assert_eq!(reference.text.encode_utf16().count(), 160);
+        assert!(!reference.notify);
+        assert_eq!(
+            reference.archived_author_name,
+            original.archived_author_name
+        );
     }
 }

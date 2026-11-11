@@ -477,6 +477,8 @@ fn text_limits_match_browser_utf16_and_room_history() {
         "\u{1f600}".repeat(2000),
         vec![],
         Default::default(),
+        vec![],
+        None,
         0
     )
     .is_ok());
@@ -486,6 +488,8 @@ fn text_limits_match_browser_utf16_and_room_history() {
         "\u{1f600}".repeat(2001),
         vec![],
         Default::default(),
+        vec![],
+        None,
         0
     )
     .is_err());

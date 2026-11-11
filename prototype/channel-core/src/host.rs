@@ -156,6 +156,7 @@ pub struct RoomReply {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomProjection {
+    pub last_message_seq: u64,
     pub next_route_deadline: Option<u64>,
     pub summary: RoomSummary,
     pub capabilities: RoomCapabilities,
@@ -199,6 +200,11 @@ impl RoomProjection {
         let view = self.views.get(&session)?;
         Some(RoomSnapshot {
             room: Room {
+                last_message_seq: if view.authorized {
+                    self.last_message_seq
+                } else {
+                    0
+                },
                 id: self.summary.id.clone(),
                 name: self.summary.name.clone(),
                 icon: self.summary.icon.clone(),
@@ -873,6 +879,13 @@ impl RoomHost {
             pending: None,
         }
     }
+    pub fn seed_history(&mut self, last_seq: u64) -> Result<(), &'static str> {
+        if self.authority.is_some() || last_seq > i64::MAX as u64 {
+            return Err("invalid_history_seed");
+        }
+        self.room.last_message_seq = last_seq;
+        Ok(())
+    }
     pub fn policy(&self) -> &RoomState {
         self.room.policy()
     }
@@ -972,6 +985,8 @@ impl RoomHost {
                 }))
             })(),
             ConversationCommand::Chat {
+                mentions,
+                reply,
                 inline_images,
                 text,
                 nonce,
@@ -984,6 +999,8 @@ impl RoomHost {
                     nonce,
                     attachments,
                     inline_images,
+                    mentions,
+                    reply,
                     now,
                 )
                 .map(ConversationWork::History),
@@ -1011,6 +1028,12 @@ impl RoomHost {
             || address.recipient != authority.host_session_id
         {
             return Err("invalid_conversation_scope");
+        }
+        if let Ok(ConversationResult::History(HistoryResult::Sent(confirmation))) = &result {
+            self.room.last_message_seq = self
+                .room
+                .last_message_seq
+                .max(confirmation.message.message.seq);
         }
         let committed = match &mut result {
             Ok(ConversationResult::History(HistoryResult::Reacted(confirmation))) => confirmation

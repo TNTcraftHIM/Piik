@@ -125,6 +125,11 @@ pub fn backup_record_bytes() -> usize {
     piik_channel_core::backup::RECORD_BYTES
 }
 
+#[wasm_bindgen]
+pub fn message_mention_limit() -> usize {
+    piik_channel_core::history::MESSAGE_MENTION_LIMIT
+}
+
 fn parse_backup<T: serde::de::DeserializeOwned>(input: &str) -> Result<T, JsValue> {
     if input.len() > piik_channel_core::backup::RECORD_BYTES {
         return Err(error("backup_record_too_large"));
@@ -141,6 +146,8 @@ pub fn prepare_confirmation(draft: &str, input: &str) -> Result<String, JsValue>
         draft.text,
         draft.attachments,
         draft.inline_images,
+        draft.mentions,
+        draft.reply,
         draft.time,
     )
     .map_err(error)?
@@ -294,6 +301,9 @@ impl RoomHost {
     }
     pub fn room_id(&self) -> String {
         self.room.policy().id.clone()
+    }
+    pub fn seed_history(&mut self, last_seq: u64) -> Result<(), JsValue> {
+        self.room.seed_history(last_seq).map_err(error)
     }
     pub fn policy(&self) -> Result<String, JsValue> {
         encode(self.room.policy())

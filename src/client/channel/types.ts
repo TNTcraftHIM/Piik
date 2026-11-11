@@ -1,4 +1,5 @@
-import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomInvitationState, RoomSettings, PublicationReactionSnapshot } from "./protocol";
+import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomInvitationState, RoomSettings, PublicationReactionSnapshot, ChatOptions } from "./protocol";
+export type { ChatOptions } from "./protocol";
 import type { ChannelAttachments, DraftFile } from "./attachments";
 import type { RoomCopyInfo } from "./backup-archive";
 import type { NativeCaptureTarget } from "../native/wire";
@@ -63,6 +64,7 @@ export interface ChannelView {
   connection: "connecting" | "connected" | "reconnecting" | "closed";
   messagesByRoom: Record<string, ChannelMessage[]>;
   historyByRoom: Record<string, { hasMore: boolean; before?: number; atLatest: boolean }>;
+  readByRoom: Record<string, number>;
   streams: ReadonlyMap<string, MediaStream>;
   screenInputs: ReadonlyMap<string, readonly ChannelScreenInput[]>;
   inputChannels: ReadonlyMap<string, InputTransport>;
@@ -92,7 +94,9 @@ export interface ChannelActions {
   roomTopology(roomId: string, publicationId?: string, signal?: AbortSignal): Promise<ChannelTopology>;
   connectionMetrics(roomId: string, publicationId?: string): Promise<ChannelMediaMetric[]>;
   appConnectionMetrics(roomId: string, publicationId?: string, signal?: AbortSignal): Promise<NativeConnectionMetrics>;
-  sendMessage(roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal): Promise<void>;
+  sendMessage(roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal, options?: ChatOptions): Promise<void>;
+  markRead(roomId: string, seq: number): void;
+  loadMessage(roomId: string, seq: number): Promise<void>;
   loadHistory(roomId: string): Promise<void>;
   loadLatestHistory(roomId: string): Promise<void>;
   attachments: ChannelAttachments;

@@ -67,6 +67,8 @@ export function channelErrorPresentation(error: string | null, copy: (zh: string
     return display("房间通信未能完成，请重试。", "Room communication did not complete. Please try again.", true);
   if (error === "incomplete_history")
     return display("聊天记录接收不完整，请重新加载。", "Chat history was interrupted. Please load it again.");
+  if (error === "message_unavailable")
+    return display("原消息已不可用。", "The original message is no longer available.");
   if (/(capture|camera|microphone|source_audio)_unavailable|notfound|notreadable/i.test(error))
     return display("设备暂不可用，请检查浏览器权限及设备占用。", "Device unavailable. Check browser permissions and other apps.");
   if (/disconnect|closed|offline/i.test(error))

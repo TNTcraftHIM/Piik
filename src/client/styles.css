@@ -36,6 +36,10 @@
   --frame-highlight: #3e4b5b;
   --radius: 16px;
   --control-radius: 18px;
+  --c3-shell-radius: 22px;
+  --c3-surface-radius: var(--radius);
+  --c3-inset-radius: 12px;
+  --c3-media-radius: calc(var(--c3-surface-radius) - 1px);
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   --mono: ui-monospace, "Cascadia Mono", SFMono-Regular, Consolas, monospace;

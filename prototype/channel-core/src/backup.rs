@@ -253,6 +253,22 @@ impl CopyHistoryImport {
     pub fn accept(&mut self, mut row: HistoryRow) -> Result<HistoryRow, &'static str> {
         self.history.accept(&row)?;
         let message = &mut row.message.message;
+        for mention in &mut message.mentions {
+            mention.user_id = *self
+                .authors
+                .entry(mention.user_id)
+                .or_insert_with(Uuid::new_v4);
+        }
+        if let Some(reply) = &mut message.reply {
+            reply.archived_author_name = reply
+                .archived_author_name
+                .take()
+                .or_else(|| self.names.get(&reply.user_id).cloned());
+            reply.user_id = *self
+                .authors
+                .entry(reply.user_id)
+                .or_insert_with(Uuid::new_v4);
+        }
         message.archived_author_name = message
             .archived_author_name
             .take()
@@ -287,6 +303,16 @@ impl HistoryRow {
             || message.seq > i64::MAX as u64
             || message.id.is_nil()
             || message.user_id.is_nil()
+            || message.reply.as_ref().is_some_and(|reply| {
+                reply.seq == 0
+                    || reply.seq >= message.seq
+                    || reply.user_id.is_nil()
+                    || reply.text.encode_utf16().count() > 160
+                    || reply
+                        .archived_author_name
+                        .as_deref()
+                        .is_some_and(|name| !valid_author_name(name))
+            })
             || message
                 .archived_author_name
                 .as_deref()
@@ -306,6 +332,14 @@ impl HistoryRow {
             message.text.clone(),
             message.attachments.clone(),
             message.inline_images.clone(),
+            message.mentions.clone(),
+            message
+                .reply
+                .as_ref()
+                .map(|reply| crate::history::ReplyTarget {
+                    seq: reply.seq,
+                    notify: reply.notify,
+                }),
             message.time,
         )?;
         Ok(())

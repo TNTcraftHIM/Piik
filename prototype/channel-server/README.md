@@ -104,7 +104,7 @@ The `piik-channel-app` entry uses the same App button, local approval page and
 saved-site controls as the shared Web interface.
 
 Current internal pages require App control protocol 7 and domain signaling
-protocol 12. Build the App, bundled Web files and domain server from the same
+protocol 13. Build the App, bundled Web files and domain server from the same
 source for internal testing. Incompatible control or signaling protocols are
 rejected at entry. The storage format and reset boundary are documented below.
 
@@ -342,7 +342,7 @@ Sessions, captures and routes are not restored after a process restart.
 
 This unpublished prototype uses domain hosting metadata version 2 around domain
 authority version 6, room backup metadata version 2, room-copy metadata version 1,
-and SQLite schema version 6.
+and SQLite schema version 7.
 Browser room storage uses IndexedDB version 5. Older experimental
 checkpoints and the old unscoped `rooms/*.sqlite` layout are rejected rather than
 silently discarding or attaching their history to another domain. Keep any

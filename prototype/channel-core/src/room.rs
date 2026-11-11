@@ -32,6 +32,7 @@ struct Activity {
 /// domain identities nor creates physical peer connections.
 #[derive(Clone)]
 pub struct RoomRuntime {
+    pub(crate) last_message_seq: u64,
     policy: RoomState,
     activity: BTreeMap<Uuid, Activity>,
     publications: BTreeMap<Uuid, Publication>,
@@ -68,6 +69,7 @@ pub struct RoomRecipient {
 impl RoomRuntime {
     pub fn new(policy: RoomState) -> Self {
         Self {
+            last_message_seq: 0,
             policy,
             activity: BTreeMap::new(),
             publications: BTreeMap::new(),
@@ -161,6 +163,7 @@ impl RoomRuntime {
 
     fn project(&self, views: BTreeMap<Uuid, RoomRecipient>) -> crate::host::RoomProjection {
         crate::host::RoomProjection {
+            last_message_seq: self.last_message_seq,
             summary: crate::host::RoomSummary::from_policy(&self.policy),
             capabilities: crate::wire::RoomCapabilities {
                 attachments: self.base.is_some(),
@@ -481,6 +484,8 @@ impl RoomRuntime {
         nonce: String,
         attachments: Vec<crate::attachment::AttachmentDescriptor>,
         inline_images: BTreeMap<Uuid, String>,
+        mentions: Vec<crate::history::Mention>,
+        reply: Option<crate::history::ReplyTarget>,
         now: u64,
     ) -> Result<HistoryRequest, &'static str> {
         self.authorize(member, RoomPermission::Read)?;
@@ -489,7 +494,16 @@ impl RoomRuntime {
         }
         Ok(HistoryRequest::Send {
             room_id: self.policy.id.clone(),
-            draft: MessageDraft::new(member.user_id, nonce, text, attachments, inline_images, now)?,
+            draft: MessageDraft::new(
+                member.user_id,
+                nonce,
+                text,
+                attachments,
+                inline_images,
+                mentions,
+                reply,
+                now,
+            )?,
         })
     }
 

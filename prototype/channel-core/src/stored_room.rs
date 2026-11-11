@@ -77,15 +77,16 @@ impl StoredRoomHost {
         }
         self.store.replace_from(&backup.store)?;
         self.host = RoomHost::new(policy.clone());
+        self.host
+            .seed_history(self.store.last_message_seq(&policy.id)?)?;
         Ok(())
     }
 
     pub fn from_backup(path: &Path, backup: &RoomBackup) -> StoreResult<Self> {
         let store = backup.store.snapshot(path)?;
-        Ok(Self {
-            host: RoomHost::new(backup.metadata.policy.clone()),
-            store,
-        })
+        let mut host = RoomHost::new(backup.metadata.policy.clone());
+        host.seed_history(store.last_message_seq(&backup.metadata.policy.id)?)?;
+        Ok(Self { host, store })
     }
 
     /// The caller supplies a trusted, separate database path for this room.
@@ -104,11 +105,10 @@ impl StoredRoomHost {
     pub fn open(path: &Path) -> StoreResult<Self> {
         std::fs::metadata(path)?;
         let store = Storage::open(path)?;
-        let policy = serde_json::from_value(store.load()?.ok_or("room_not_found")?)?;
-        Ok(Self {
-            host: RoomHost::new(policy),
-            store,
-        })
+        let policy: RoomState = serde_json::from_value(store.load()?.ok_or("room_not_found")?)?;
+        let mut host = RoomHost::new(policy);
+        host.seed_history(store.last_message_seq(&host.policy().id)?)?;
+        Ok(Self { host, store })
     }
 
     pub fn dispatch_peer(

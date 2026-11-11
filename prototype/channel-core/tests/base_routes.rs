@@ -1558,6 +1558,8 @@ fn file_copy_selection_uses_the_last_base_candidate_ack_without_an_extra_sync() 
             source,
             &room,
             ConversationCommand::Chat {
+                mentions: vec![],
+                reply: None,
                 inline_images: Default::default(),
                 text: String::new(),
                 nonce: "committed-copy".into(),
@@ -1681,6 +1683,8 @@ fn file_delivery_uses_a_ready_copy_when_its_online_source_loses_every_receiver_p
         source,
         &room,
         ConversationCommand::Chat {
+            mentions: vec![],
+            reply: None,
             inline_images: Default::default(),
             text: String::new(),
             nonce: "reachable-copy".into(),
@@ -1767,6 +1771,8 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
         source,
         &room,
         ConversationCommand::Chat {
+            mentions: vec![],
+            reply: None,
             inline_images: Default::default(),
             text: String::new(),
             nonce: "file".into(),
@@ -2424,6 +2430,8 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
         source,
         &room,
         ConversationCommand::Chat {
+            mentions: vec![],
+            reply: None,
             inline_images: Default::default(),
             text: String::new(),
             nonce: "retained".into(),

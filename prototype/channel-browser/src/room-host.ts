@@ -1,8 +1,9 @@
 import init, { attachment_result, create_room_policy, history_page, history_page_size, prepare_confirmation, reaction_result, RoomHost, SessionSigner } from "../pkg/piik_channel_browser.js";
-export { AttachmentHash, BackupHistoryImport, CopyHistoryImport, FileDelivery, attachment_limits, attachment_media_type, backup_metadata, backup_record_bytes, conversation_broadcast, decode_control, encode_control, verify_conversation, route_input, input_binding_current, verify_reply } from "../pkg/piik_channel_browser.js";
-export async function initializeRuntime(): Promise<void> { await init(); }
-export async function createSessionSigner(seed: Uint8Array): Promise<SessionSigner> { await init(); return new SessionSigner(seed); }
-import type { ChannelMessage, ConversationAddress, ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket, ReactionEvent } from "../../../src/client/channel/protocol";
+export { AttachmentHash, BackupHistoryImport, CopyHistoryImport, FileDelivery, attachment_limits, attachment_media_type, backup_metadata, backup_record_bytes, message_mention_limit, conversation_broadcast, decode_control, encode_control, verify_conversation, route_input, input_binding_current, verify_reply } from "../pkg/piik_channel_browser.js";
+let initialization: Promise<void> | undefined;
+export function initializeRuntime(): Promise<void> { return initialization ??= init().then(() => {}); }
+export async function createSessionSigner(seed: Uint8Array): Promise<SessionSigner> { await initializeRuntime(); return new SessionSigner(seed); }
+import type { ChannelMessage, ChatOptions, ConversationAddress, ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket, ReactionEvent } from "../../../src/client/channel/protocol";
 import type { BackupHistoryRow, BrowserRoomSnapshot, BrowserRoomStage } from "../../../src/client/channel/hosting";
 
 export interface NewRoomPolicy extends RoomSettings {
@@ -19,7 +20,7 @@ export interface PageResult {
 interface AttachmentResult { type: "attachment"; messageSeq: number; attachment: ChannelMessage["attachments"][number] }
 interface ReactionResult { type: "reacted"; nonce: number; snapshot: MessageReactions & { messageId: string; messageSeq: number }; event: ReactionEvent | null }
 type HistoryResult = SentResult | PageResult | AttachmentResult | ReactionResult;
-interface SendRequest { type: "send"; roomId: string; draft: { userId: string; nonce: string; text: string; time: number; attachments: ChannelMessage["attachments"]; inlineImages?: ChannelMessage["inlineImages"] } }
+interface SendRequest { type: "send"; roomId: string; draft: ChatOptions & { userId: string; nonce: string; text: string; time: number; attachments: ChannelMessage["attachments"]; inlineImages?: ChannelMessage["inlineImages"] } }
 interface ReadRequest { type: "read"; roomId: string; before: number | null }
 interface AttachmentRequest { type: "attachment"; roomId: string; messageSeq: number; attachmentId: string }
 interface ReactionRequest { type: "react"; roomId: string; messageSeq: number; nonce: number; event: ReactionEvent | null }
@@ -151,7 +152,7 @@ class RoomBackup implements BrowserRoomSnapshot, BrowserRoomStage {
 }
 
 export async function createRoomPolicy(input: NewRoomPolicy): Promise<string> {
-  await init();
+  await initializeRuntime();
   return create_room_policy(JSON.stringify(input));
 }
 
@@ -176,21 +177,26 @@ export class BrowserRoomHost {
   }
 
   static async open(databaseName: string, policy: string): Promise<BrowserRoomHost> {
-    await init();
-    const room = new RoomHost(policy);
+    await initializeRuntime();
+    let room = new RoomHost(policy);
     let db: IDBDatabase | undefined;
     try {
       db = await openDatabase(databaseName);
       const host = new BrowserRoomHost(db, room);
       let saved: RoomRecord | undefined;
-      await host.transaction(["rooms"], "readwrite", (tx, abort) => {
+      let lastSeq = 0;
+      await host.transaction(["rooms", "messages"], "readwrite", (tx, abort) => {
         const rooms = tx.objectStore("rooms");
         read(rooms.get(room.room_id()), value => {
           saved = value;
           if (!saved) rooms.add({ id: room.room_id(), policy: room.policy() });
         }, abort);
+        read(tx.objectStore("messages").openCursor(IDBKeyRange.bound([host.roomId], [host.roomId, Infinity]), "prev"), cursor => {
+          lastSeq = cursor?.value.seq ?? 0;
+        }, abort);
       }, () => {});
-      if (saved) { host.room = new RoomHost(saved.policy); room.free(); }
+      if (saved) { const previous = room; room = new RoomHost(saved.policy); host.room = room; previous.free(); }
+      host.room.seed_history(BigInt(lastSeq));
       host.storedBindingId = saved?.bindingId;
       return host;
     } catch (error) { room.free(); db?.close(); throw error; }
@@ -245,12 +251,17 @@ export class BrowserRoomHost {
     return this.enqueue(async () => {
       let replacement: RoomHost | undefined;
       try {
-        await this.transaction(["rooms"], "readwrite", (tx, abort) => {
+        await this.transaction(["rooms", "messages"], "readwrite", (tx, abort) => {
           const rooms = tx.objectStore("rooms");
           read<RoomRecord | undefined>(rooms.get(this.roomId), record => {
             if (!record) throw new Error("storage_failed");
             if (record.bindingId !== this.storedBindingId) throw new Error("room_host_conflict");
-            if (this.bindingId !== bindingId) replacement = new RoomHost(record.policy);
+            if (this.bindingId !== bindingId) {
+              replacement = new RoomHost(record.policy);
+              read(tx.objectStore("messages").openCursor(IDBKeyRange.bound([this.roomId], [this.roomId, Infinity]), "prev"), cursor => {
+                replacement!.seed_history(BigInt(cursor?.value.seq ?? 0));
+              }, abort);
+            }
             if (record.bindingId !== bindingId) rooms.put({ ...record, bindingId });
           }, abort);
         }, () => {
@@ -363,7 +374,12 @@ export class BrowserRoomHost {
         read<StoredMessage | undefined>(messages.index("send").get([request.roomId, request.draft.userId, request.draft.nonce]), previous => {
           if (previous) { prepare({ type: "existing", message: previous }); return; }
           read(messages.openCursor(IDBKeyRange.bound([request.roomId], [request.roomId, Infinity]), "prev"), cursor => {
-            prepare({ type: "new", lastSeq: cursor?.value.seq ?? 0 });
+            const lastSeq = cursor?.value.seq ?? 0;
+            if (request.draft.reply) {
+              read<StoredMessage | undefined>(messages.get([request.roomId, request.draft.reply.seq]), reply => {
+                prepare({ type: "new", lastSeq, reply: reply ?? null });
+              }, abort);
+            } else prepare({ type: "new", lastSeq });
           }, abort);
         }, abort);
       } else if (request.type === "react") {

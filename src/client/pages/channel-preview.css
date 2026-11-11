@@ -1,5 +1,5 @@
 /* The workspace owns placement; shared controls, palette, cast and motion keep their owners. */
-.c3-app { --c3-content-width: calc(100% - 40px); --c3-companion-width: 320px; --c3-heading-height: 66px; --c3-shell-radius: 22px; --c3-surface-radius: 16px; --c3-inset-radius: 12px; --c3-media-radius: 14px; height: 100dvh; min-height: 0; padding-top: 20px; }
+.c3-app { --c3-content-width: calc(100% - 40px); --c3-companion-width: 320px; --c3-heading-height: 66px; height: 100dvh; min-height: 0; padding-top: 20px; }
 .c3-shell { flex: 1; min-height: 0; width: var(--c3-content-width); margin: 0 auto 24px; display: grid; grid-template-columns: 240px minmax(0, 1fr) var(--c3-companion-width); grid-template-rows: 58px var(--c3-heading-height) minmax(0, 1fr) auto; background: var(--paper); border: 1px solid var(--line); border-radius: var(--c3-shell-radius); box-shadow: var(--panel-shadow); overflow: clip; container: channel-shell / size; }
 .c3-shell[data-companion="none"] { --c3-companion-width: 0px; }
 .c3-shell:not([data-companion="people"]) > .c3-people-panel { display: none; }

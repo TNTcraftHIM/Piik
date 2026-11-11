@@ -25,6 +25,7 @@ export interface HostedRoom {
 interface RoomHosting {
   backup_metadata(input: string): string;
   backup_record_bytes(): number;
+  message_mention_limit(): number;
   BackupHistoryImport: new (metadata: string) => BackupHistoryImport;
   CopyHistoryImport: new (metadata: string) => BackupHistoryImport;
   createSessionSigner(seed: Uint8Array): Promise<SessionSigner>;

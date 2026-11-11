@@ -179,6 +179,10 @@ pub enum ConversationCommand {
         reaction: String,
     },
     Chat {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        mentions: Vec<crate::history::Mention>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply: Option<crate::history::ReplyTarget>,
         #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
         inline_images: std::collections::BTreeMap<Uuid, String>,
         text: String,
@@ -473,13 +477,26 @@ mod tests {
         let draft = crate::history::MessageDraft::new(
             Uuid::new_v4(),
             "\0".repeat(128),
-            "\0".repeat(2000),
+            "@x".repeat(64) + &"\0".repeat(1872),
             attachments,
             inline_images,
+            (0..64)
+                .map(|i| crate::history::Mention {
+                    user_id: Uuid::new_v4(),
+                    start: i * 2,
+                    end: i * 2 + 2,
+                })
+                .collect(),
+            Some(crate::history::ReplyTarget {
+                seq: 1,
+                notify: true,
+            }),
             1,
         )
         .unwrap();
         request.command = ConversationCommand::Chat {
+            mentions: draft.mentions.clone(),
+            reply: draft.reply.clone(),
             inline_images: draft.inline_images.clone(),
             text: draft.text.clone(),
             nonce: draft.nonce.clone(),
@@ -489,7 +506,21 @@ mod tests {
         let bytes = serde_json::to_vec(&crate::wire::Command::Conversation { packet }).unwrap();
         assert!(bytes.len() <= CONVERSATION_FRAME_BYTES);
         let mut message = draft
-            .prepare_confirmation(crate::history::ConfirmationInput::New { last_seq: 0 })
+            .prepare_confirmation(crate::history::ConfirmationInput::New {
+                last_seq: 1,
+                reply: Some(ChatMessage {
+                    seq: 1,
+                    id: Uuid::new_v4(),
+                    user_id: Uuid::new_v4(),
+                    archived_author_name: Some("x".repeat(40)),
+                    text: "\0".repeat(160),
+                    time: 0,
+                    attachments: vec![],
+                    inline_images: Default::default(),
+                    mentions: vec![],
+                    reply: None,
+                }),
+            })
             .unwrap()
             .message;
         message.reactions.counts = INTERACTION_REACTIONS
@@ -622,6 +653,8 @@ mod room_tests {
         let mut request = ConversationRequest {
             address: address.clone(),
             command: ConversationCommand::Chat {
+                mentions: vec![],
+                reply: None,
                 inline_images: Default::default(),
                 text: "Original".into(),
                 nonce: "same-send".into(),
@@ -652,6 +685,8 @@ mod room_tests {
             address.reply()
         );
         request.command = ConversationCommand::Chat {
+            mentions: vec![],
+            reply: None,
             inline_images: Default::default(),
             text: "Changed retransmission".into(),
             nonce: "same-send".into(),

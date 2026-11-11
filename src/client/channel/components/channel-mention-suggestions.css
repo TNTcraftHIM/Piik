@@ -1,0 +1,8 @@
+.c3-mention-suggestions { position: fixed; inset: auto; margin: 0; width: min(360px, calc(100vw - 16px)); min-width: 0; padding: 6px; overflow: hidden; border: 1px solid var(--control-edge); border-radius: var(--c3-inset-radius); background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); }
+.c3-mention-suggestions:popover-open { display: flex; flex-direction: column; }
+.c3-mention-heading, .c3-mention-suggestions > p { margin: 0; padding: 6px 8px; font-size: 12px; color: var(--muted); }
+.c3-mention-suggestions [role="listbox"] { min-height: 0; max-height: min(224px, 30dvh); overflow-y: auto; overscroll-behavior: contain; }
+.c3-mention-suggestions [role="option"] { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 44px; padding: 4px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); text-align: start; font: inherit; cursor: pointer; }
+.c3-mention-suggestions [role="option"][aria-selected="true"] { background: var(--control-hover); }
+.c3-mention-suggestions [role="option"] > svg { flex: none; width: 25px; height: 30px; }
+.c3-mention-suggestions [role="option"] > span { overflow-wrap: anywhere; min-width: 0; }

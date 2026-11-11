@@ -110,7 +110,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
       rooms: roomIds.map(id => ({ id, name: id, icon: "couch", creatorId: "self", access: "public",
         hidden: false, hasPassword: false, authorized: true, canManage: true,
         participantSessionIds: id === "first" ? ["endpoint"] : [],
-        realtimeSessionIds: [],
+        lastMessageSeq: 0, realtimeSessionIds: [],
         available: true, reading: id === "first", capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } } })) },
     users: [{ id: "self", name: "Me", avatar: null }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
@@ -7023,7 +7023,8 @@ test.each(["registered", "registration-failed"])("portable import retains its ve
       await failed;
       expect(ChannelSocket.current).toBe(admission);
       expect(session.getSnapshot().self?.id).toBe("archived-user");
-      expect(saved).toHaveBeenLastCalledWith("piik.channel.prototype.credential", "accepted-credential");
+      expect(saved.mock.calls.filter(call => call[0] === "piik.channel.prototype.credential").at(-1))
+        .toEqual(["piik.channel.prototype.credential", "accepted-credential"]);
       expect(cache).not.toHaveBeenCalled();
       return;
     }
@@ -7031,7 +7032,7 @@ test.each(["registered", "registration-failed"])("portable import retains its ve
     admission.receive({ type: "ack", requestId: registration.requestId });
     const restored = structuredClone(state);
     restored.channel.rooms = [{ id: "imported", name: "First", creatorId: "archived-user", icon: "couch", access: "public", hidden: false, hasPassword: false,
-      authorized: true, canManage: true, voiceBitrate: 64_000, relayCapacity: 2, relayOverride: null, participantSessionIds: [], realtimeSessionIds: [], available: true, reading: false, capabilities: { attachments: true },
+      authorized: true, canManage: true, voiceBitrate: 64_000, relayCapacity: 2, relayOverride: null, participantSessionIds: [], lastMessageSeq: 0, realtimeSessionIds: [], available: true, reading: false, capabilities: { attachments: true },
       delivery: { hostSessionId: "new-endpoint", bindingId: "imported-binding", nextHops: {} } }];
     admission.receive({ type: "state", state: restored });
     await vi.waitFor(() => expect(admission.sent.some(command => command.type === "browse" && command.roomId === "imported")).toBe(true));
@@ -7283,6 +7284,55 @@ test("Browser capture titles use original metadata and confirmed overrides witho
     state = { ...state, publications: [{ ...state.publications[0], sessionId: "other-endpoint" }] };
     socket.receive({ type: "state", state });
     await expect(session.setScreenTitle(publication.id, "Not mine")).rejects.toThrow("not_publication_owner");
+  } finally { session.close(); }
+});
+
+test("reply navigation loads its own bounded history window and can return to latest", async () => {
+  const { session, peer } = await setup(3);
+  try {
+    await peer.history([message(50), message(51), message(52)]);
+    const loading = session.loadMessage("first", 2);
+    const request = await peer.next();
+    expect(request).toMatchObject({ type: "history", roomId: "first", before: 3 });
+    peer.page(request, [message(1), message(2)], false, 1);
+    await loading;
+    expect(session.getSnapshot().messagesByRoom.first.map(message => message.seq)).toEqual([1, 2]);
+    expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(false);
+    await peer.history([message(50), message(51), message(52)]);
+    expect(session.getSnapshot().messagesByRoom.first.map(message => message.seq)).toEqual([50, 51, 52]);
+    expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(true);
+  } finally { session.close(); }
+});
+
+test("read markers stay personal and do not turn background room activity into reading", async () => {
+  const { session, socket } = await setup(1000, false, "");
+  const storage = new Map<string, string>();
+  vi.stubGlobal("localStorage", { getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => storage.set(key, value) });
+  const state = structuredClone(session.getSnapshot().state!);
+  const key = `piik.channel.read.${state.channel.id}.${session.getSnapshot().self!.id}`;
+  try {
+    session.refreshReadMarkers();
+    state.channel.rooms[0].lastMessageSeq = 5;
+    state.channel.rooms[1].lastMessageSeq = 8;
+    const sent = socket.sent.length;
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().readByRoom).toEqual({ first: 0, second: 0 });
+    expect(socket.sent.slice(sent).some(command => command.type === "browse")).toBe(false);
+    session.markRead("first", 2);
+    expect(session.getSnapshot().readByRoom).toEqual({ first: 2, second: 0 });
+    session.markRead("first", 99);
+    expect(JSON.parse(storage.get(key)!)).toEqual({ first: 5, second: 0 });
+    storage.set(key, JSON.stringify({ first: 5, second: 4 }));
+    session.refreshReadMarkers();
+    expect(session.getSnapshot().readByRoom.second).toBe(4);
+    state.channel.rooms[0].lastMessageSeq = 1;
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().readByRoom.first).toBe(1);
+    state.channel.id = "another-site";
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().readByRoom).toEqual({ first: 1, second: 8 });
+    expect(JSON.parse(storage.get(key)!)).toEqual({ first: 1, second: 4 });
   } finally { session.close(); }
 });
 

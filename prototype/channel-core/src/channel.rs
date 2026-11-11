@@ -612,10 +612,10 @@ impl Channel {
     }
 
     pub(crate) fn relay_conversation(
-        &self,
+        &mut self,
         session: Uuid,
         packet: &crate::conversation::SignedPacket,
-    ) -> Result<Uuid, &'static str> {
+    ) -> Result<(Uuid, bool), &'static str> {
         if packet.sender != session {
             return Err("invalid_conversation_sender");
         }
@@ -663,7 +663,29 @@ impl Channel {
         if !view.room.authorized || binding.applied_revision < binding.projection_floor {
             return Err("room_access_required");
         }
-        Ok(address.recipient)
+        let mut changed = false;
+        if address.sender == binding.session {
+            if let Ok(reply) =
+                serde_json::from_str::<crate::conversation::ConversationReply>(&packet.payload)
+            {
+                if let crate::conversation::ConversationRecord::Confirmed { message, .. } =
+                    reply.record
+                {
+                    if message.seq == 0 || message.seq > i64::MAX as u64 {
+                        return Err("invalid_message");
+                    }
+                    if let Some(projection) = self
+                        .remote
+                        .get_mut(&address.room_id)
+                        .and_then(|room| room.projection.as_mut())
+                    {
+                        changed = message.seq > projection.last_message_seq;
+                        projection.last_message_seq = projection.last_message_seq.max(message.seq);
+                    }
+                }
+            }
+        }
+        Ok((address.recipient, changed))
     }
 
     pub(crate) fn remove_room(&mut self, id: &str) -> Vec<RetiredRoomReply> {
@@ -917,6 +939,7 @@ impl Channel {
         }
         let projection = &output.projection;
         if projection.summary.validate().is_err()
+            || projection.last_message_seq > i64::MAX as u64
             || projection.summary.id != id
             || projection.summary.creator_id != room.summary.creator_id
         {
@@ -1235,7 +1258,11 @@ impl Channel {
             .failed_pairs
             .retain(|_, revision| *revision > output.revision);
         room.summary = projection.summary.clone();
-        room.projection = Some(projection.clone());
+        let mut next = projection.clone();
+        if let Some(previous) = &room.projection {
+            next.last_message_seq = next.last_message_seq.max(previous.last_message_seq);
+        }
+        room.projection = Some(next);
         self.reconcile();
         Ok(self.finish_host_output(id, output, true))
     }

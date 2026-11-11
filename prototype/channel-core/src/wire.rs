@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 12;
+pub const CHANNEL_PROTOCOL: u8 = 13;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -586,6 +586,7 @@ pub struct Track {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Room {
+    pub last_message_seq: u64,
     pub id: String,
     pub name: String,
     pub icon: IdentityIcon,
@@ -751,6 +752,10 @@ pub struct Snapshot {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatMessage {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mentions: Vec<crate::history::Mention>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply: Option<crate::history::MessageReply>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub inline_images: BTreeMap<Uuid, String>,
     pub seq: u64,

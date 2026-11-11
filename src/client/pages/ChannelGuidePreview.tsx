@@ -64,11 +64,13 @@ export function useChannelGuideSample(multiRoom = false) {
   const [attachments] = useState(() => new ChannelAttachments(async () => {}, async () => {}));
   const nextMessage = useRef(3);
   useEffect(() => () => attachments.reset(), [attachments]);
-  const onSend: ChannelController["sendMessage"] = async (roomId, text, files = [], signal) => {
+  const onSend: ChannelController["sendMessage"] = async (roomId, text, files = [], signal, options = {}) => {
     const prepared = await attachments.describe(files, signal);
     signal?.throwIfAborted();
     const seq = nextMessage.current++;
-    const message: ChannelMessage = { id: `sample-${roomId}-${seq}`, seq, userId: "sample-ada", text,
+    const target = options.reply && [...(messagesByRoom[roomId] ?? []), ...sampleMessages].find(message => message.seq === options.reply?.seq);
+    const message: ChannelMessage = { id: `sample-${roomId}-${seq}`, seq, userId: "sample-ada", text, mentions: options.mentions,
+      ...(target && options.reply ? { reply: { seq: target.seq, userId: target.userId, text: target.text.slice(0, 160), notify: options.reply.notify } } : {}),
       time: new Date(2020, 0, 1, 20, seq).getTime(), attachments: prepared.map(file => file.attachment),
       inlineImages: Object.fromEntries(prepared.flatMap(file => file.inlineImage ? [[file.id, file.inlineImage]] : [])) };
     attachments.confirmed(roomId, message, prepared);
@@ -96,7 +98,7 @@ export function useChannelGuideSample(multiRoom = false) {
   const rooms = [{ id: "friday", name: roomName, icon: "couch" },
     ...(multiRoom ? [{ id: "studio", name: zh ? "创作小屋" : "Creative studio", icon: "star" }] : [])]
     .map(room => ({ creatorId: "sample-ada", access: "private" as const, hidden: false, hasPassword: false,
-      authorized: true, canManage: true, available: true, reading: true,
+      authorized: true, canManage: true, available: true, reading: true, lastMessageSeq: room.id === "friday" ? sampleMessages.at(-1)?.seq ?? 0 : messagesByRoom[room.id]?.at(-1)?.seq ?? 0,
       delivery: { hostSessionId: "sample-ada-session", bindingId: `sample-binding-${room.id}`, nextHops: {} },
       realtimeSessionIds: room.id === "studio" ? (voiceByRoom.studio ? ["sample-ada-session"] : []) : ["sample-bo-session", ...(voiceByRoom.friday ? ["sample-ada-session"] : [])],
       participantSessionIds: room.id === "studio" ? ["sample-coco-session", ...(voiceByRoom.studio ? ["sample-ada-session"] : [])] : ["sample-ada-session", "sample-bo-session"], capabilities: { attachments: true },
@@ -126,6 +128,7 @@ export function useChannelGuideSample(multiRoom = false) {
     previewFeedbackSound: feedbackAudio.preview,
     updateProfile: async (value: { name: string; avatar: string | null }) => setProfile(value),
     state, self: state.users[0], sessionId: "sample-ada-session", connection: "connected", appConnected: true, pending, attachments, sendMessage: onSend,
+    readByRoom: {}, markRead: () => {}, loadMessage: async () => {},
     quality, setQuality, videoCodecMode: codec, setVideoCodecMode: setCodec, ownedScreens: new Set<string>(), localScreens: new Set<string>(), streams: new Map<string, MediaStream>(),
     messagesByRoom: { ...messagesByRoom, friday: sampleMessages.map(message => ({ ...message, reactions: messageReactions[message.seq] })) },
     interactionsByRoom: new Map(interaction ? [["friday", interaction]] : []), publicationReactions, roomBackupAvailable,

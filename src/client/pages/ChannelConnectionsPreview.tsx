@@ -15,7 +15,7 @@ export function channelConnectionPreview(mode: "room" | "voice" | "both" | "app"
       rooms: [{ id: "room", name: "Living room", icon: "couch", creatorId: "host-user", access: "public", hidden: false,
         hasPassword: false, authorized: true, canManage: false, participantSessionIds: ["host", "self", "friend", "app"],
         realtimeSessionIds: mode === "room" ? [] : ["host", "self", "friend", ...(mode === "app" ? ["app"] : [])],
-        available: true, reading: true, capabilities: { attachments: true },
+        available: true, reading: true, lastMessageSeq: 0, capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding", nextHops: mode === "room" ? {} : { host: "host" } } }] },
     users: [{ id: "host-user", name: longNames ? "Host with a very long display name" : "Momo", avatar: null },
       { id: "self-user", name: "Nori", avatar: null }, { id: "friend-user", name: "Kiki", avatar: null }],

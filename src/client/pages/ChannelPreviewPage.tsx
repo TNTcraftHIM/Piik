@@ -260,6 +260,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             : overview && <section className="c3-site-overview">
             {rooms.length ? <><h2><ChannelIdentityMark icon={state.channel.icon} size={30} />{state.channel.name}</h2><div className="c3-overview-rooms">{rooms.map(value => <ChannelRoomItem key={value.id}
               room={value} selected={false} screenCount={screens.filter(source => source.roomId === value.id).length}
+              unread={value.authorized && value.lastMessageSeq > (channel.readByRoom[value.id] ?? value.lastMessageSeq)}
               onSelect={() => selectRoom(value.id)} onManage={() => setManagedRoomId(value.id)} />)}</div></>
               : <div className="c3-first-room"><span className="c3-room-start-mark"><ChannelIdentityMark icon="couch" size={46} /></span>
                 <h2>{copy("从一间房间开始", "Start with a room")}</h2>
@@ -334,6 +335,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             attachments={channel.attachments} attachmentsAvailable={room?.capabilities.attachments ?? false} available={connected && !!room?.authorized && room.available}
             history={channel.historyByRoom[roomId]} loadingHistory={busy("history", roomId)}
             onHistory={channel.loadHistory} onLatest={channel.loadLatestHistory}
+            onMessage={channel.loadMessage} onRead={channel.markRead} unreadAfter={channel.readByRoom[roomId]} selfUserId={self?.id}
             onBack={!toolSurface.open && !sidebarsInline && visibleScreens.length > 0 ? () => setMobilePane("room") : undefined}
             interaction={channel.interactionsByRoom.get(roomId) ?? null}
             onSend={channel.sendMessage} floating={toolSurface.open} hidden={room?.authorized === false || (!toolSurface.open && visibleScreens.length > 0 && !inlineChatOpen)} /></>}

@@ -32,6 +32,25 @@ The pre-cutover Server release is guaranteed only through bounded health
 and postflight. It has no retention contract afterward and is not a maintained
 backup; Git and immutable artifacts own history.
 
+## Managed One-click Hosting
+
+Reviewed 2026-11-11. Vercel can serve Web assets, and its
+[WebSocket support is now generally available](https://vercel.com/changelog/websocket-support-is-now-generally-available).
+That does not make the current Piik Server a stateless Function: it owns a live
+site authority, durable SQLite files and Native UDP transport. Functions have
+[bounded invocation lifetimes](https://vercel.com/docs/functions/limitations)
+and a [read-only filesystem with temporary scratch space](https://vercel.com/docs/functions/runtimes).
+The newer [Daemons beta](https://vercel.com/docs/daemons#what-does-the-daemons-beta-support)
+also has ephemeral storage.
+
+A Vercel-hosted frontend would still need an externally running Piik Server
+with matching assets, origin admission and persistent data. A static copy of the
+marketing website is not a Piik deployment. Do not expose a one-click Server
+button until its ordinary room, restart and peer-transfer flows run on the
+chosen hosting model. The existing Server archive and Compose service remain
+the supported starting points; use a persistent host rather than changing the
+room model to fit a hosting badge.
+
 ## Build Host
 
 Start from a clean exact revision using Node from [`.node-version`](../.node-version),

@@ -20,11 +20,13 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
     const returned = () => { if (document.visibilityState === "visible") void session.resumeApp(); };
     window.addEventListener("pagehide", close);
     window.addEventListener("focus", returned);
+    window.addEventListener("storage", session.refreshReadMarkers);
     document.addEventListener("visibilitychange", returned);
     if (import.meta.env.DEV) window.__channelGate = { session, snapshot: session.getSnapshot };
     return () => {
       window.removeEventListener("pagehide", close);
       window.removeEventListener("focus", returned);
+      window.removeEventListener("storage", session.refreshReadMarkers);
       document.removeEventListener("visibilitychange", returned);
       if (window.__channelGate?.session === session) delete window.__channelGate;
       session.close();
@@ -43,6 +45,7 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
     sourceMicrophones: session.sourceMicrophones,
     activateApp: session.activateApp,
     browse: session.browse, sendMessage: session.sendMessage, updateProfile: session.updateProfile, updateDomain: session.updateDomain,
+    markRead: session.markRead, loadMessage: session.loadMessage,
     roomTopology: session.roomTopology, connectionMetrics: session.connectionMetrics, appConnectionMetrics: session.appConnectionMetrics,
     exportDomainBackup: session.exportDomainBackup, restoreDomainBackup: session.restoreDomainBackup,
     createRoom: session.createRoom, updateRoom: session.updateRoom, deleteRoom: session.deleteRoom, enterRoom: session.enterRoom,

@@ -638,6 +638,8 @@ fn room_peer_commit_owns_confirmation_retry_without_domain_checkpoint() {
             })
     };
     let chat = |text: &str| ConversationCommand::Chat {
+        mentions: vec![],
+        reply: None,
         inline_images: Default::default(),
         text: text.into(),
         nonce: "same-send".into(),
@@ -1183,6 +1185,8 @@ async fn websocket_history_crosses_the_bounded_queue_without_a_media_pair() {
                         request_id: request_id.clone(),
                     },
                     command: ConversationCommand::Chat {
+                        mentions: vec![],
+                        reply: None,
                         inline_images: Default::default(),
                         text: format!("Saved message {index}"),
                         nonce: request_id.clone(),
@@ -1716,6 +1720,8 @@ async fn room_backup_http_restores_native_history_and_reopens_named_imports() {
             nonce: format!("retained-{seq}"),
             message: StoredMessage {
                 message: piik_channel_core::wire::ChatMessage {
+                    mentions: vec![],
+                    reply: None,
                     inline_images: Default::default(),
                     id: Uuid::new_v4(),
                     seq,

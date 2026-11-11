@@ -94,6 +94,23 @@ site or every attachment's bytes.
 | Attachment within a message | Stable identity, filename, media type, byte size and expected whole-file digest. |
 | Image presentation | Optional dimensions and preview reference on the same attachment; no separate image storage or delivery lifecycle. |
 
+Mentions refer to stable user IDs and UTF-16 ranges in the confirmed text;
+renaming a user does not retarget a mention. They grant no room access. Replies
+refer to a sequence within the same room. The storage transaction reads the
+original message, and Core confirms its author and a short excerpt. The sender
+may turn off the reply's author notification. Copies remap historical identities
+while preserving room-local reference sequences.
+
+The room host initializes the latest confirmed message sequence from its stored
+history. The domain projects only current-host confirmations into authorized
+room summaries, so a closed conversation can show an unread dot without joining
+media routes or loading every room's history. A read marker belongs to the local
+browser's site/user/room scope. Only a visible, focused conversation at its latest
+messages advances it. Background voice, watching and transport reading are not
+read receipts, and sequence differences are not exact unread counts. Inline
+mentions and replies highlight the addressed user in received conversation;
+there is no separate offline push or global mention-count service.
+
 Send time and author belong to the message rather than a second copy on every
 attachment. A text message can contain attachments, and an attachment message
 can have a caption. Store descriptions inside the confirmed message, rather

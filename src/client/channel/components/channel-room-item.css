@@ -1,6 +1,11 @@
 .c3-room-item { display: flex; align-items: center; min-width: 0; border-radius: 12px; }
 .c3-room-item:hover, .c3-room-item:focus-within { background: var(--control-hover); }
 .c3-room-item[data-selected] { background: var(--control-selected); box-shadow: inset 3px 0 0 var(--action); }
+.c3-room-item[data-unread] .c3-room-link { color: var(--ink); }
+.c3-room-item[data-unread] .c3-room-link strong { font-weight: 750; }
+.c3-room-item[data-unread] .c3-identity-mark { position: relative; }
+.c3-room-item[data-unread] .c3-identity-mark::after { content: ""; position: absolute; width: 6px; height: 6px; inset-inline-start: -8px; top: calc(50% - 3px); background: var(--action); border-radius: 50%; }
+.c3-room-unread-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .c3-room-item[data-selected] .lr-btn { --ink: var(--control-selected-ink); --muted: var(--control-selected-ink); --control-hover: var(--control-selected); }
 .c3-room-item > .c3-room-label { flex: 1; min-width: 0; }
 .c3-room-list-item { --room-disclosure-width: 18px; --room-content-inset: 10px; --room-icon-size: 21px; --room-content-gap: 9px; }

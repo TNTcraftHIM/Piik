@@ -17,6 +17,7 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, onS
   const screens = state?.publications.filter(source => source.roomId === room.id && source.kind === "screen") ?? [];
   return <div className="c3-room-list-item">
       <ChannelRoomItem room={room} selected={selected} settingsOpen={settingsOpen}
+        unread={room.authorized && room.lastMessageSeq > (channel.readByRoom[room.id] ?? room.lastMessageSeq)}
         participantDisclosure={people.length ? { open, count: people.length, controls: id, onToggle: () => setOpen(!open) } : undefined}
         voice={voices.some(voice => voice.sessionId === channel.sessionId)} screenCount={screens.length}
         sharing={screens.some(source => channel.ownedScreens.has(source.id))}

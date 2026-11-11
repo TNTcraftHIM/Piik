@@ -18,10 +18,10 @@
 .c3-room-start.is-empty .c3-room-start-mark { width: 78px; height: 78px; border-radius: 25px; }
 @container channel-room (max-width: 600px) and (max-height: 680px) {
   .c3-main:not(:has(.has-screens)) .c3-room-start.is-empty { gap: 6px; padding: 6px; }
-  .c3-main:not(:has(.has-screens)) .c3-room-start.is-empty .c3-room-start-mark { width: 48px; height: 48px; border-radius: 16px; }
+  .c3-main:not(:has(.has-screens)) .c3-room-start.is-empty .c3-room-start-mark { width: 48px; height: 48px; border-radius: var(--c3-surface-radius); }
 }
 .c3-chat-panel .c3-room-start { margin-block: 12px 24px; }
-.c3-chat-panel .c3-room-start-mark { width: 48px; height: 48px; border-radius: 16px; }
+.c3-chat-panel .c3-room-start-mark { width: 48px; height: 48px; border-radius: var(--c3-surface-radius); }
 .c3-chat-panel .c3-room-start h3 { font-size: 16px; }
 @container (max-width: 800px) {
   .c3-chat-panel .c3-room-start-mark { display: none; }
@@ -61,18 +61,51 @@
 .c3-message-date::before, .c3-message-date::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
 .c3-message-date > time { flex: none; }
 .c3-message-date + .c3-message { margin-top: 12px; }
-.c3-composer { display: flex; align-items: flex-end; gap: 10px; border: 1px solid var(--line); background: var(--wall); border-radius: 16px; padding: 10px; flex: none; }
+.c3-composer { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); background: var(--wall); border-radius: var(--c3-surface-radius); padding: 10px; flex: none; }
+.c3-compose-input { display: flex; align-items: flex-end; gap: 10px; width: 100%; min-width: 0; }
+.c3-compose-reply { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.c3-compose-reply > span { flex: 1; min-width: 0; }
+.c3-compose-reply strong, .c3-compose-reply small { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }
+.c3-compose-reply small { margin-top: 3px; color: var(--muted); }
+.c3-reply-notify { flex: none; font-size: 19px; }
+.c3-reply-notify[aria-pressed="true"] { color: var(--action); }
+.c3-message-reference { display: flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; padding: 3px 0; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; text-align: start; cursor: pointer; }
+.c3-message-reference > svg, .c3-message-reference > strong { flex: none; }
+.c3-message-reference > strong { max-width: 35%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c3-message-reference > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c3-message-mention { padding: 0 2px; border-radius: 3px; color: var(--action); background: var(--control-hover); }
+.c3-message-mention.is-self { font-weight: 650; background: color-mix(in srgb, var(--action) 22%, var(--paper)); }
+.c3-unread-divider { color: var(--action); }
+.c3-unread-divider::before, .c3-unread-divider::after { border-color: var(--action); }
+.c3-message:focus { outline: 2px solid var(--action); outline-offset: 4px; border-radius: 4px; }
+.c3-message.is-mentioned { background: color-mix(in srgb, var(--action) 8%, transparent); box-shadow: -3px 0 0 var(--action); }
+.c3-message-content-body { position: relative; padding-inline-end: 36px; }
+.c3-message-reply-action { position: absolute; inset-inline-end: 0; inset-block-start: 0; transform: translateY(calc((1lh - var(--message-action-size, 32px)) / 2)); }
+.c3-message-reply-action .lr-btn { --button-size: 32px; --button-padding: 4px; min-width: 32px; }
+.c3-message-content-body:has(> .c3-message-reactions:not([data-has-counts="true"])) { padding-inline-end: 72px; }
+.c3-message-content-body > .c3-message-reactions:not([data-has-counts="true"]) { inset-inline-end: 36px; }
+@media (hover: hover) and (pointer: fine) {
+  .c3-message-reply-action { opacity: 0; pointer-events: none; }
+  .c3-message:is(:hover, :focus-within) .c3-message-reply-action { opacity: 1; pointer-events: auto; }
+}
+@media (hover: none) {
+  .c3-message-reply-action { transform: none; }
+  .c3-message-content-body { padding-inline-end: 48px; }
+  .c3-message-reply-action .lr-btn { --button-size: 44px; min-width: 44px; }
+  .c3-message-content-body:has(> .c3-message-reactions:not([data-has-counts="true"])) { padding-inline-end: 96px; }
+  .c3-message-content-body > .c3-message-reactions:not([data-has-counts="true"]) { inset-inline-end: 48px; }
+}
 .c3-composer:focus-within { border-color: var(--action); }
 .c3-history-more { display: flex; justify-content: center; margin-bottom: 14px; }
 .c3-draft-files { display: grid; gap: 6px; max-height: 150px; overflow-y: auto; }
-.c3-draft-files > div { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 8px; background: var(--wall); border-radius: 10px; font-size: 12px; }
+.c3-draft-files > div { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 8px; background: var(--wall); border-radius: var(--c3-inset-radius); font-size: 12px; }
 .c3-draft-files > div > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .c3-draft-files > div > svg { flex: none; }
 .c3-draft-files small { color: var(--muted); white-space: nowrap; }
 .c3-draft-files .lr-btn { width: var(--control-compact-size); padding-inline: 0; }
 .c3-file-error { font-size: 12px; line-height: 1.6; color: var(--danger); }
 .c3-file-retry { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
-.c3-attachment { display: grid; gap: 8px; max-width: 440px; border: 1px solid var(--line); border-radius: 12px; background: var(--wall); padding: 10px; margin-top: 8px; }
+.c3-attachment { display: grid; gap: 8px; max-width: 440px; border: 1px solid var(--line); border-radius: var(--c3-inset-radius); background: var(--wall); padding: 10px; margin-top: 8px; }
 .c3-message-content-body > .c3-attachment:first-child { margin-top: 0; }
 .c3-attachment-file { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .c3-attachment-file > svg { flex: none; color: var(--muted); }
@@ -81,6 +114,6 @@
 .c3-attachment-file strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 12px; font-weight: 650; overflow-wrap: anywhere; }
 .c3-attachment small { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
 .c3-attachment > .lr-btn { justify-self: start; }
-.c3-attachment img { display: block; max-width: 100%; max-height: 260px; border-radius: 6px; object-fit: contain; }
+.c3-attachment img { display: block; max-width: 100%; max-height: 260px; border-radius: max(0px, calc(var(--c3-inset-radius) - 10px)); object-fit: contain; }
 .c3-composer textarea { flex: 1; min-width: 0; width: 100%; border: 0; border-radius: 0; background: transparent; color: var(--ink); font: inherit; font-size: 16px; line-height: 1.5; padding: calc((var(--control-compact-size, 44px) - 1lh) / 2) 4px; min-height: var(--control-compact-size, 44px); max-height: min(160px, 30dvh); overflow-y: auto; resize: none; field-sizing: content; }
 .c3-composer textarea:focus { outline: 0; }

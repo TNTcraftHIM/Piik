@@ -11,7 +11,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 12;
+export const CHANNEL_PROTOCOL = 13;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("missing") }),
@@ -29,6 +29,7 @@ export const roomSchema = z.object({
   participantSessionIds: z.array(id),
   realtimeSessionIds: z.array(id),
   available: z.boolean(), reading: z.boolean(),
+  lastMessageSeq: z.number().int().nonnegative(),
   capabilities: z.object({ attachments: z.boolean() }),
   delivery: z.object({ hostSessionId: id, bindingId: id, nextHops: z.record(id, id) }).optional(),
 });
@@ -55,9 +56,12 @@ export const filePlanSchema = z.object({
   sourceId: id.nullable(), upstream: id.nullable(), downstream: z.array(id), receiving: z.boolean(),
 });
 export const MAX_MESSAGE_CODE_POINTS = 2000;
+const mentionSchema = z.object({ userId: id, start: z.number().int().nonnegative(), end: z.number().int().positive() });
 export const messageSchema = z.object({
   id, userId: id, text: z.string().max(MAX_MESSAGE_CODE_POINTS * 2), time: z.number(), seq: z.number().int().positive(), attachments: z.array(attachmentSchema),
   archivedAuthorName: z.string().min(1).max(40).optional(),
+  mentions: z.array(mentionSchema).optional(),
+  reply: z.object({ seq: z.number().int().positive(), userId: id, archivedAuthorName: z.string().max(40).optional(), text: z.string().max(160), notify: z.boolean() }).optional(),
   inlineImages: z.record(id, z.string()).optional(),
 });
 export const snapshotSchema = z.object({
@@ -115,6 +119,7 @@ export type ReactionTarget = { type: "message"; messageSeq: number } | { type: "
 export interface ReactionEvent { id: string; occurredAt: number; senderUserId: string; target: ReactionTarget; reaction: string }
 export type ReactionSnapshot = ({ type: "message" } & MessageReactionSnapshot) | ({ type: "publication" } & PublicationReactionSnapshot);
 export type ChannelMessage = z.infer<typeof messageSchema> & { reactions?: MessageReactions };
+export interface ChatOptions { mentions?: z.infer<typeof mentionSchema>[]; reply?: { seq: number; notify: boolean } }
 export type ChannelAttachment = z.infer<typeof attachmentSchema>;
 export type ChannelFileKey = z.infer<typeof fileKeySchema>;
 export type ChannelFilePlan = z.infer<typeof filePlanSchema>;
@@ -203,7 +208,7 @@ export type ChannelCommand =
   | { type: "interaction_ready"; roomId: string }
   | { type: "react"; roomId: string; reaction: string; target: ReactionTarget; nonce: number }
   | { type: "history"; roomId: string; before?: number }
-  | { type: "chat"; roomId: string; text: string; nonce: string; attachments: ChannelAttachment[]; inlineImages?: Record<string, string> }
+  | ({ type: "chat"; roomId: string; text: string; nonce: string; attachments: ChannelAttachment[]; inlineImages?: Record<string, string> } & ChatOptions)
   | ({ type: "file_offer"; sha256: string; available: boolean } & ChannelFileKey)
   | ({ type: "file_receive"; enabled: boolean } & ChannelFileKey)
   | ({ type: "update_room"; roomId: string } & RoomSettings)

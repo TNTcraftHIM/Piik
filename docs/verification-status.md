@@ -10,6 +10,13 @@ Research owns measurements, and [TODO](./todo.md) owns remaining work.
 
 ## Current Evidence
 
+The current conversation path verifies unread summaries in an unopened room
+without browsing or peer connections, local read-position retention after
+reload, identity-bound mentions, confirmed replies and navigation to a reference
+outside the latest history page. Browser/WASM concurrent first use now shares
+one initialization promise; a regression verifies that independently created
+signers keep working when components initialize at the same time.
+
 The first internal test targets matched Windows and Android packages with the
 shared Browser UI. Normal packaged flows have verified room creation and
 reopened history, bidirectional confirmed chat, file delivery with an exact
