@@ -31,7 +31,7 @@ export function ChannelRoomTool({ title, caption, home, surface, onSurfaceChange
   const detached = Boolean(surface.document && surface.document !== document);
   const windowAvailable = panelWindowAPI(typeof window === "undefined" ? null : window);
   const inline = (surface.open && !detached) || !windowAvailable;
-  const label = detached ? (lang === "zh" ? "聚焦房间小窗" : "Focus room window")
+  const label = surface.open ? (lang === "zh" ? "收回房间小窗" : "Return room to page")
     : inline ? (lang === "zh" ? "房间交流面板" : "Room panel")
     : (lang === "zh" ? "弹出房间小窗" : "Pop out room");
   // A stable home ref can point to a new layout slot; an open tool keeps its content.
@@ -41,10 +41,10 @@ export function ChannelRoomTool({ title, caption, home, surface, onSurfaceChange
   useEffect(() => () => { for (const part of parts) targets[part].remove(); }, [targets]);
   return <>
     <div className="c3-room-tool-entry"><small>{caption ?? title}</small>
-      <Tooltip kind={inline ? "hint-chat-open" : "hint-window-detach"} disabled={surface.open} text={vis ? undefined : label}>
-        <button ref={trigger} type="button" className="lr-btn is-dense is-quiet" aria-label={label}
-          aria-haspopup="dialog" aria-expanded={surface.open} popoverTarget={detached ? undefined : id}>
-          <Glyph name="pip" size={18} />
+      <Tooltip kind={surface.open ? "hint-pip-exit" : inline ? "hint-chat-open" : "hint-window-detach"} text={vis ? undefined : label}>
+        <button ref={trigger} type="button" className={`lr-btn is-dense is-quiet${surface.open ? " is-on" : ""}`} aria-label={label}
+          aria-haspopup="dialog" aria-pressed={surface.open} aria-expanded={surface.open} popoverTarget={detached ? undefined : id}>
+          <Glyph name={surface.open ? "pipExit" : "pip"} size={18} />
         </button>
       </Tooltip>
     </div>

@@ -45,19 +45,28 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
   useLayoutEffect(() => {
     const invoker = getTrigger();
     if (!directWindow || !invoker) return;
-    const openWindow = (event: MouseEvent) => {
+    const toggleWindow = (event: MouseEvent) => {
+      if (detached) {
+        event.preventDefault();
+        panelWindow.close();
+        return;
+      }
+      if (panelRef.current?.matches(":popover-open")) {
+        event.preventDefault();
+        panelRef.current.hidePopover();
+        return;
+      }
       if (!panelWindowAPI(window)) return;
       event.preventDefault();
-      if (detached) { surfaceDocument?.defaultView?.focus(); return; }
       if (panelWindow.opening) return;
       void panelWindow.open({ width: PANEL_SIZE.width, height: PANEL_SIZE.width }).then(() => {
         // A refused request retains this same panel as the usable in-page fallback.
         if (panelRef.current?.ownerDocument === document) panelRef.current.showPopover();
       });
     };
-    invoker.addEventListener("click", openWindow);
-    return () => invoker.removeEventListener("click", openWindow);
-  }, [directWindow, trigger, detached, surfaceDocument, panelWindow.opening, panelWindow.open]);
+    invoker.addEventListener("click", toggleWindow);
+    return () => invoker.removeEventListener("click", toggleWindow);
+  }, [directWindow, trigger, detached, panelWindow.opening, panelWindow.open, panelWindow.close]);
 
   useLayoutEffect(() => {
     const panel = panelRef.current;
