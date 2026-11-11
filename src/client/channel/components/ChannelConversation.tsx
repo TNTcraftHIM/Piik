@@ -13,6 +13,7 @@ import { ChannelContentReactions } from "./ChannelContentReactions";
 import { BackButton } from "../../components/living/primitives";
 import type { RoomInteractionSession } from "../../lib/room-interactions";
 import { useSurfaceDocument } from "../../ui/panel-window";
+import { Tooltip } from "../../components/living/Tooltip";
 import type { ChatOptions } from "../types";
 import { loadRoomHosting } from "../hosting";
 import { ChannelMentionSuggestions, editMentions, matchingMentionUsers, mentionQuery } from "./ChannelMentionSuggestions";
@@ -289,9 +290,12 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
       <ChannelAction icon="refresh" quiet label={zh ? "重试" : "Retry"} onClick={() => setLimitsRetry(value => value + 1)} /></div>}
     {roomId && <form className="c3-composer" onSubmit={event => { void send(event); }}>
       {draft.reply && <div className="c3-compose-reply"><span><strong>{zh ? "回复 " : "Replying to "}{draft.reply.name}</strong><small>{draft.reply.text}</small></span>
-        <button type="button" className="lr-btn is-compact is-quiet c3-reply-notify" aria-pressed={draft.reply.notify}
-          aria-label={zh ? "提醒回复对象" : "Notify reply recipient"} onClick={() => updateDraft(value => ({ ...value, reply: value.reply && { ...value.reply, notify: !value.reply.notify } }))}>@</button>
-        <ChannelAction icon="x" quiet iconOnly label={zh ? "取消回复" : "Cancel reply"} onClick={() => updateDraft(value => ({ ...value, reply: undefined }))} />
+        <Tooltip text={draft.reply.notify ? (zh ? "会提醒对方；关闭后只引用原消息" : "Notifies the author; turn off to quote without notifying")
+          : (zh ? "不会提醒对方；开启后发送提醒" : "Doesn't notify the author; turn on to notify")}>
+          <button type="button" className="lr-btn is-compact is-quiet c3-reply-notify" aria-pressed={draft.reply.notify}
+            aria-label={zh ? "提醒回复对象" : "Notify reply recipient"} onClick={() => updateDraft(value => ({ ...value, reply: value.reply && { ...value.reply, notify: !value.reply.notify } }))}>@</button>
+        </Tooltip>
+        <ChannelAction icon="x" quiet iconOnly textTooltip label={zh ? "取消回复，保留草稿" : "Cancel reply and keep draft"} onClick={() => updateDraft(value => ({ ...value, reply: undefined }))} />
       </div>}
       {query && <ChannelMentionSuggestions id={mentionId} anchor={input} users={candidates} activeIndex={activeMention} onActiveIndex={setMentionIndex} onSelect={selectMention} />}
       <div className="c3-compose-input">
@@ -356,7 +360,9 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
       inlineImage={message.inlineImages?.[file.id]} />)}
     <ChannelContentReactions reactions={message.reactions} session={interaction} target={{ messageSeq: message.seq }} disabled={!available}
       effectAnchor={effectAnchor} effectsEnabled={effectsEnabled} />
-    <span className="c3-message-reply-action"><ChannelAction icon="arrowLeft" iconOnly quiet label={lang === "zh" ? "回复这条消息" : "Reply to this message"} disabled={!available} onClick={onReply} /></span>
+    <span className="c3-message-reply-action"><ChannelAction icon="arrowLeft" iconOnly quiet textTooltip
+      label={!available ? (lang === "zh" ? "房间重新连接后可回复" : "Reply after the room reconnects") : (lang === "zh" ? "回复这条消息" : "Reply to this message")}
+      disabled={!available} onClick={onReply} /></span>
     </div></div>
     </article>
   </>;

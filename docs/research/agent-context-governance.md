@@ -97,6 +97,12 @@ Piik's [Unslop adaptation](../../.agents/skills/unslop/UPSTREAM.md) credits Dami
 Sokolovsky and adds a focused method for product-specific hierarchy and rendered
 UI review. Existing visual-language and engineering owners retain the rules.
 
+The [Modern Web Guidance adaptation](../../.agents/skills/modern-web-guidance/UPSTREAM.md)
+adds Google's platform-oriented guide lookup alongside Unslop. It applies to
+browser behavior and implementation choices; it does not replace Piik's visual
+identity or make every frontend edit run a broad audit. The guide collection
+remains on demand, with its source revision and Apache license recorded locally.
+
 OpenCode's instructions make several of these decisions concrete: validate at
 the owning boundary, extract helpers for real concepts or reuse, test production
 code, and use existing generation and delivery commands. Piik consolidates these

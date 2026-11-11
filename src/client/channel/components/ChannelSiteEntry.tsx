@@ -1,6 +1,7 @@
 import { useCopy } from "../../ui/copy";
 import { useProjectLink } from "../../lib/use-project-link";
 import { Glyph } from "../../ui/icons";
+import { BrandLoader } from "../../components/living/BrandMark";
 import { Tooltip } from "../../components/living/Tooltip";
 import type { ChannelController } from "../types";
 import type { ChannelErrorPresentation } from "../error-presentation";
@@ -20,7 +21,7 @@ export function ChannelSiteEntry({ channel, failure }: {
   const helpLabel = zh ? "连接问题排查" : "Connection help";
   const title = connecting ? (zh ? "正在连接" : "Connecting") : (zh ? "未能连接此站点" : "Could not connect to this site");
   return <main className="c3-locked-room c3-site-entry" aria-labelledby="c3-site-entry-title">
-    <Glyph name="signal" size={46} />
+    {connecting ? <BrandLoader /> : <Glyph name="signal" size={46} />}
     <h1 id="c3-site-entry-title" className={vis ? "visually-hidden" : undefined}>{title}</h1>
     <p className="c3-site-entry-address">{location.host}</p>
     {connecting ? <span role="status" className="visually-hidden">{title}</span>

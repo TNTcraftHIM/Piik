@@ -12,7 +12,6 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-
 - [ ] **3.0 Windows shared-sound noise.** A beta2 Host reports noise that stops
   when excluding the Piik console's process tree, but returns when excluding a
   silent unrelated window. Verify which Browser playback belongs to that tree
@@ -79,11 +78,6 @@ the feedback period; they do not delay that delivery.
   recovery on a persistent hosting target. The
   [deployment assessment](./deployment.md#managed-one-click-hosting) distinguishes
   a full Server from a Vercel-hosted frontend that still needs an external Server.
-- [ ] **Personal sound customization.** Extend the existing local feedback audio
-  owner with a small import/preview/reset flow; keep sound assets separate from
-  executable plugins and room permissions. The
-  [sound boundary](./research/room-interactions.md#sound-feedback) owns the proposal.
-
 - [ ] **Unified 3.0 quick-sharing entry.** Bring the short create/share/invite/watch
   flow into the same room runtime and UI as the full workspace, then end long-term
   maintenance of a separate 2.x line; fix confirmed defects during the transition.

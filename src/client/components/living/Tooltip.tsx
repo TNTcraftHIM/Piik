@@ -49,6 +49,7 @@ type Placement = "above" | "below" | "left" | "right";
 type OverflowText = { text: string; selector: string };
 type TooltipContent =
   | { kind: ComicKind | HintKind; text?: string; overflow?: OverflowText }
+  | { kind?: never; text: string; overflow?: OverflowText }
   | { kind?: never; text?: never; overflow: OverflowText };
 
 export function Tooltip({
@@ -102,7 +103,7 @@ export function Tooltip({
   // True while the current gesture is a touch, so contextmenu can tell a
   // long-press from a mouse right-click without reading vendor event fields.
   const touchGesture = useRef(false);
-  const enabled = !disabled && (kind !== undefined || overflowing);
+  const enabled = !disabled && (kind !== undefined || text !== undefined || overflowing);
   const caption = [overflowing ? overflow?.text : undefined, text].filter(Boolean).join("\n") || undefined;
   const interactionOpen = enabled && (hoverOpen || focusOpen || pressOpen);
   const trigger = isValidElement<{
@@ -586,7 +587,7 @@ export function Tooltip({
       }}
     >
       {trigger && (caption || toggleOnClick) ? cloneElement(trigger, {
-        "aria-describedby": [trigger.props["aria-describedby"], kind && interactionOpen ? tooltipId : undefined].filter(Boolean).join(" ") || undefined,
+        "aria-describedby": [trigger.props["aria-describedby"], interactionOpen ? tooltipId : undefined].filter(Boolean).join(" ") || undefined,
         "aria-expanded": toggleOnClick ? interactionOpen : trigger.props["aria-expanded"],
         "aria-controls": toggleOnClick ? tooltipId : trigger.props["aria-controls"],
       }) : children}

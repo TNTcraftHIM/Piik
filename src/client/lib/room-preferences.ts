@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
 import { remoteControlModeSchema, remoteShortcutKeySchema } from "../remote-control/protocol";
+import { feedbackClipSchema } from "../channel/feedback-clip";
 
 const STORAGE_KEY = "piik:room-preferences:v1";
 export const CHAT_OVERLAY_LIMITS = { scale: [.8, 1.3], opacity: [.4, 1], speed: [.5, 1.5] } as const;
@@ -8,7 +9,9 @@ export const CHAT_OVERLAY_DEFAULTS = { scale: 1, opacity: 1, speed: 1, colorBySe
 export const REMOTE_KEYBOARD_PAGES = ["letters", "symbols", "functions", "text"] as const;
 
 const roomPreferencesSchema = z.object({
-  feedbackSound: z.object({ enabled: z.boolean(), volume: z.number().min(0).max(1) }).default({ enabled: false, volume: 1 }),
+  feedbackSound: z.object({ enabled: z.boolean(), volume: z.number().min(0).max(1),
+    clips: z.object({ message: feedbackClipSchema.optional(), throw: feedbackClipSchema.optional() }).optional(),
+  }).default({ enabled: false, volume: 1 }),
   sharingView: z.boolean().default(false),
   pictureFit: z.enum(["contain", "cover", "fill"]).default("contain"),
   pictureRotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).catch(0).default(0),
@@ -46,12 +49,14 @@ export function readRoomPreferences(): RoomPreferences {
   return roomPreferencesSchema.parse({});
 }
 
-export function saveRoomPreferences(patch: Partial<RoomPreferences>): void {
+export function saveRoomPreferences(patch: Partial<RoomPreferences>): boolean {
   const result = roomPreferencesSchema.safeParse({ ...readRoomPreferences(), ...patch });
-  if (!result.success) return;
+  if (!result.success) return false;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(result.data));
+    return true;
   } catch {
-    // A preference write must not turn an applied action into a failure.
+    // Ordinary preferences may remain usable in memory; persistent imports check this result.
+    return false;
   }
 }

@@ -11,7 +11,8 @@ import { snapshotSchema, type ChannelMessage, type ChannelRoom, type ChannelSnap
 import type { ChannelController } from "../channel/types";
 import { ChannelAttachments } from "../channel/attachments";
 import { readBackup } from "../channel/backup-archive";
-import { FeedbackAudio } from "../channel/feedback-audio";
+import { FeedbackAudio, type FeedbackCue } from "../channel/feedback-audio";
+import { validateCustomFeedbackClip } from "../channel/feedback-clip";
 import { QUALITY_PROFILES, type QualityProfile } from "../media/quality";
 import { usePreviewInteractions } from "./use-preview-interactions";
 import { useCopy } from "../ui/copy";
@@ -44,9 +45,15 @@ export function useChannelGuideSample(multiRoom = false) {
   const roomName = settings.name ?? (zh ? "周五小聚" : "Friday with friends");
   const [quality, setQuality] = useState<QualityProfile>(QUALITY_PROFILES["1080p30"]);
   const [codec, setCodec] = useState<BrowserVideoCodecMode>("auto");
-  const [feedbackSound, setFeedbackSound] = useState({ enabled: false, volume: 1 });
+  const [feedbackSound, setFeedbackSound] = useState<ChannelController["feedbackSound"]>({ enabled: false, volume: 1 });
+  const feedbackCurrent = useRef(feedbackSound), feedbackImport = useRef(0);
   const [feedbackAudio] = useState(() => new FeedbackAudio());
-  useEffect(() => () => feedbackAudio.close(), [feedbackAudio]);
+  useEffect(() => () => { feedbackImport.current++; feedbackAudio.close(); }, [feedbackAudio]);
+  function updateFeedback(patch: Partial<typeof feedbackSound>) {
+    const next = { ...feedbackCurrent.current, ...patch };
+    feedbackCurrent.current = next; setFeedbackSound(next); feedbackAudio.configure(next);
+    if (next.enabled) feedbackAudio.activate();
+  }
   const [voiceByRoom, setVoiceByRoom] = useState<Record<string, { muted: boolean; deafened: boolean }>>({
     friday: { muted: false, deafened: false },
   });
@@ -120,10 +127,14 @@ export function useChannelGuideSample(multiRoom = false) {
     },
     exportRoomCopy: async () => { received(); throw new Error("preview_only"); },
     importRoomCopy: async () => { received(); throw new Error("preview_only"); },
-    feedbackSound, setFeedbackSound: (patch: Partial<typeof feedbackSound>) => {
-      const next = { ...feedbackSound, ...patch };
-      setFeedbackSound(next); feedbackAudio.configure(next);
-      if (next.enabled) feedbackAudio.activate();
+    feedbackSound, setFeedbackSound: updateFeedback,
+    setFeedbackClip: async (cue: FeedbackCue, file: File | null) => {
+      const current = ++feedbackImport.current;
+      const clip = file ? await validateCustomFeedbackClip(file) : undefined;
+      if (current !== feedbackImport.current) return;
+      const clips = { ...feedbackCurrent.current.clips };
+      if (clip) clips[cue] = clip; else delete clips[cue];
+      updateFeedback({ clips });
     },
     previewFeedbackSound: feedbackAudio.preview,
     updateProfile: async (value: { name: string; avatar: string | null }) => setProfile(value),

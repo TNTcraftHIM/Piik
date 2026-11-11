@@ -20,7 +20,8 @@ import { audioInputConstraints } from "../media/audio-capture";
 import { browserCaptureDevices } from "../media/capture-devices";
 import { RoomInteractionSession, type RoomInteraction } from "../lib/room-interactions";
 import { MAX_CHAT_CODE_POINTS, isThrow } from "../../shared/room-interactions";
-import { FeedbackAudio } from "./feedback-audio";
+import { FeedbackAudio, type FeedbackCue } from "./feedback-audio";
+import { validateCustomFeedbackClip } from "./feedback-clip";
 import { createOpaqueId } from "../lib/opaque-id";
 import { captureBrowserSource, setMediaPaused, type BrowserCaptureSource } from "../media/quality";
 import { loadCameraPreviews, type CameraPreview } from "../media/camera-previews";
@@ -134,6 +135,7 @@ export class ChannelSession {
   private recoveryDeadline: ReturnType<typeof setTimeout> | null = null;
   private closed = true;
   private feedbackAudio = new FeedbackAudio();
+  private feedbackImports = new Map<FeedbackCue, symbol>();
   private reactionNonce = 0;
   private credential = stored(credentialKey) ?? undefined;
   private invitationOrigin = location.origin;
@@ -226,11 +228,27 @@ export class ChannelSession {
     if (!Number.isFinite(feedbackSound.volume)) return;
     feedbackSound.volume = Math.min(1, Math.max(0, feedbackSound.volume));
     saveRoomPreferences({ feedbackSound });
+    this.applyFeedbackSound(feedbackSound);
+  };
+  private applyFeedbackSound(feedbackSound: RoomPreferences["feedbackSound"]): void {
     this.patch({ feedbackSound });
     this.feedbackAudio.configure(feedbackSound);
     if (feedbackSound.enabled) this.feedbackAudio.activate();
+  }
+  previewFeedbackSound = (cue?: FeedbackCue): void => { this.feedbackAudio.preview(cue); };
+  setFeedbackClip = async (cue: FeedbackCue, file: File | null): Promise<void> => {
+    const operation = Symbol();
+    this.feedbackImports.set(cue, operation);
+    try {
+      const clip = file ? await validateCustomFeedbackClip(file) : undefined;
+      if (this.feedbackImports.get(cue) !== operation) throw new DOMException("Cancelled", "AbortError");
+      const clips = { ...this.view.feedbackSound.clips };
+      if (clip) clips[cue] = clip; else delete clips[cue];
+      const feedbackSound = { ...this.view.feedbackSound, clips };
+      if (!saveRoomPreferences({ feedbackSound })) throw new Error("feedback_clip_storage_failed");
+      this.applyFeedbackSound(feedbackSound);
+    } finally { if (this.feedbackImports.get(cue) === operation) this.feedbackImports.delete(cue); }
   };
-  previewFeedbackSound = (): void => { this.feedbackAudio.preview(); };
 
   private playFeedback(roomId: string, event: RoomInteraction): void {
     const self = this.view.self?.id;
@@ -2395,6 +2413,7 @@ export class ChannelSession {
   }
 
   close = (): void => {
+    this.feedbackImports.clear();
     this.closed = true;
     this.feedbackAudio.close();
     this.endRecovery();

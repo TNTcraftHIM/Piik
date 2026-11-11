@@ -1,6 +1,7 @@
 import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomInvitationState, RoomSettings, PublicationReactionSnapshot, ChatOptions } from "./protocol";
 export type { ChatOptions } from "./protocol";
 import type { ChannelAttachments, DraftFile } from "./attachments";
+import type { FeedbackCue } from "./feedback-audio";
 import type { RoomCopyInfo } from "./backup-archive";
 import type { NativeCaptureTarget } from "../native/wire";
 import type { NativeCaptureRequest, NativeCaptureSources, ChannelRemoteControlState, NativeConnectionMetrics } from "./app-link";
@@ -76,7 +77,8 @@ export interface ChannelView {
 
 export interface ChannelActions {
   setFeedbackSound(patch: Partial<RoomPreferences["feedbackSound"]>): void;
-  previewFeedbackSound(): void;
+  previewFeedbackSound(cue?: FeedbackCue): void;
+  setFeedbackClip(cue: FeedbackCue, file: File | null): Promise<void>;
   setQuality(profile: QualityProfile): void;
   setVideoCodecMode(mode: BrowserVideoCodecMode): void;
   screenQuality(publicationId: string): { applied: QualityProfile; requested: QualityProfile } | undefined;

@@ -108,6 +108,10 @@ new messages over the picture. **Playback settings → On-screen chat** adjusts
 their appearance. Loading earlier history does not replay these effects.
 System video fullscreen and video picture in picture do not show chat overlays.
 
+For each sound, **Choose** selects a local audio file up to 256 KiB and three
+seconds. Preview it or restore the built-in sound. Custom sounds stay in this
+browser's site storage and are not sent to the room.
+
 ## Room voice
 
 1. In the lower-left personal area, select **Join voice** and allow microphone

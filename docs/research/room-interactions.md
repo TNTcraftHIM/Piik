@@ -519,12 +519,14 @@ Disabling feedback or setting zero volume releases its audio resources. Original
 Web Audio cues play to the local output, separately from voice and share mixers;
 OS or tab audio capture can still include that playback.
 
-Custom sound files are a proposed extension to this local playback owner. Keep
-the existing enabled/volume preference and message/throw slots, with locally
-selected audio resources and an explicit reset to the built-in cues. Import is
-not a room broadcast or executable plugin: no remote script, shared-room mixer
-or separate notification transport is needed. Choose the supported size and
-duration with a rendered import/preview flow before adding persistent assets.
+The message and throw slots can each use a local audio file of at most 256 KiB
+and three seconds. Native browser decoding validates the file before replacing
+the saved choice. Its name and encoded bytes use the existing origin-local
+preference store; no separate file database or pack registry is needed for two
+short clips. Each slot has a preview and reset to the built-in cue. A failed
+decode or save keeps the previous choice. Replacement, mute and page shutdown
+stop current output; stale decode results cannot replace a newer slot.
+These are personal playback assets, not room broadcasts or executable plugins.
 
 ### Extension Boundaries (PROPOSED)
 

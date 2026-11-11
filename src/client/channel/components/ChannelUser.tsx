@@ -3,6 +3,7 @@ import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { useCopy } from "../../ui/copy";
 import { ChannelImageDialog } from "./ChannelImageDialog";
+import { Tooltip } from "../../components/living/Tooltip";
 
 export function ChannelUser({ id, name, avatar, self, owner, online, voice, activity, actions }: {
   id: string; name: string; self: boolean; owner: boolean; online: boolean;
@@ -12,11 +13,12 @@ export function ChannelUser({ id, name, avatar, self, owner, online, voice, acti
   const { lang } = useCopy();
   const zh = lang === "zh";
   const [preview, setPreview] = useState(false);
+  const previewLabel = zh ? `查看 ${name} 的头像` : `View ${name}'s avatar`;
   const pawn = <PawnSvg color={participantColor(id)} identity={id} avatar={avatar} host={owner} voice={voice} />;
   return <div className={`c3-user${online ? "" : " is-offline"}`} data-user-id={id}>
     <div className="c3-person">
-      {avatar ? <button type="button" className="c3-avatar-preview" aria-haspopup="dialog"
-        aria-label={zh ? `查看 ${name} 的头像` : `View ${name}'s avatar`} onClick={() => setPreview(true)}>{pawn}</button> : pawn}
+      {avatar ? <Tooltip text={previewLabel}><button type="button" className="c3-avatar-preview" aria-haspopup="dialog"
+        aria-label={previewLabel} onClick={() => setPreview(true)}>{pawn}</button></Tooltip> : pawn}
       <div className="c3-person-copy">
         <strong>{name}{self && <span className="c3-you">{zh ? "你" : "you"}</span>}</strong>
         {(activity || owner) && <small>{activity || (zh ? "房主" : "Room owner")}</small>}

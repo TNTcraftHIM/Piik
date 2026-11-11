@@ -3,4 +3,10 @@
 .c3-feedback-sounds > label { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
 .c3-feedback-sounds output { color: var(--muted); font-variant-numeric: tabular-nums; }
 .c3-feedback-sounds > input { width: 100%; min-width: 0; }
-.c3-feedback-sounds > .lr-btn { justify-self: start; }
+.c3-feedback-clip { display: grid; gap: 4px; min-width: 0; padding-top: 6px; }
+.c3-feedback-clip-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 12px; }
+.c3-feedback-clip-name > strong { flex: none; font-weight: 650; }
+.c3-feedback-clip-name > .lr-comic-tip-wrap { min-width: 0; flex: 1; }
+.c3-feedback-clip-name > .lr-comic-tip-wrap > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.c3-feedback-clip-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.c3-feedback-sounds p.c3-feedback-error { color: var(--danger); }

@@ -54,6 +54,7 @@ invocation; follow their relevant guidance without importing unrelated workflows
 | Implementation, debugging, or review | [Stop That Shit](./.agents/skills/stop-that-shit/SKILL.md): proportionate investigation, verification and complete delivery |
 | Cross-surface consistency, recurring sibling-path defects, or standardization audits | [Context consistency](./.agents/skills/context-consistency/SKILL.md): trace shared meanings and ownership; ordinary changes check only their affected family |
 | Material UI visual design, redesign or polish | [Unslop](./.agents/skills/unslop/SKILL.md): product-specific hierarchy, semantic grouping, shared visual consistency and rendered review |
+| Browser APIs, accessibility, responsive interaction or Web performance | [Modern Web Guidance](./.agents/skills/modern-web-guidance/SKILL.md): current platform patterns, supported-browser behavior and focused verification; complements Unslop |
 
 ## Product Contract
 

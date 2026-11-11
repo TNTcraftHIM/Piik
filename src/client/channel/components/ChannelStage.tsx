@@ -22,6 +22,7 @@ import { ChannelUser } from "./ChannelUser";
 import { screenTitle, type ScreenAudiencePerson } from "../presentation";
 import type { MessageReactions } from "../protocol";
 import { ChannelContentReactions } from "./ChannelContentReactions";
+import { BrandLoader } from "../../components/living/BrandMark";
 
 export interface ChannelStageSource {
   id: string;
@@ -213,7 +214,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
               }}
               label={`${title} / ${source.name} / ${source.roomName}`} />
               : <div className="c3-monitor-wait" data-failed={!source.paused && source.deliveryFailed || undefined} role="status">
-                <Glyph name={source.paused ? "pause" : source.deliveryFailed ? "x" : "loader"} size={24} className={source.paused || source.deliveryFailed ? undefined : "lr-spin"} />
+                {source.paused || source.deliveryFailed ? <Glyph name={source.paused ? "pause" : "x"} size={24} /> : <BrandLoader />}
                 <span>{source.paused ? t("host.pauseNotice") : source.deliveryFailed
                   ? copy("画面传输失败，正在重试。", "Picture delivery failed. Retrying.")
                   : copy("正在连接画面", "Connecting picture")}</span></div>}

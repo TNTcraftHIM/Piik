@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { readRoomPreferences, saveRoomPreferences } from "../src/client/lib/room-preferences";
 import { RoomInteractionSession } from "../src/client/lib/room-interactions";
+import { FEEDBACK_CLIP_MAX_BYTES } from "../src/client/channel/feedback-clip";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -78,4 +79,18 @@ it("keeps room tools working when Browser storage is unavailable", () => {
   session.setOverlayAppearance({ scale: 1.2, opacity: .5 });
   expect(session.getSnapshot()).toMatchObject({ overlayEnabled: true, overlayAppearance: { scale: 1.2, opacity: .5 } });
   session.close();
+});
+
+it("keeps bounded custom sounds with their preferences and reports a failed persistent write", () => {
+  storage();
+  const clip = { name: "short.wav", data: Buffer.alloc(FEEDBACK_CLIP_MAX_BYTES).toString("base64") };
+  expect(saveRoomPreferences({ feedbackSound: { enabled: true, volume: .6, clips: { message: clip } } })).toBe(true);
+  saveRoomPreferences({ pictureFit: "cover" });
+  expect(readRoomPreferences().feedbackSound).toEqual({ enabled: true, volume: .6, clips: { message: clip } });
+  expect(saveRoomPreferences({ feedbackSound: { enabled: true, volume: .6,
+    clips: { message: { ...clip, data: Buffer.alloc(FEEDBACK_CLIP_MAX_BYTES + 1).toString("base64") } } } })).toBe(false);
+  expect(readRoomPreferences().feedbackSound.clips?.message).toEqual(clip);
+  vi.spyOn(window.localStorage, "setItem").mockImplementation(() => { throw new Error("quota full"); });
+  expect(saveRoomPreferences({ feedbackSound: { enabled: true, volume: .6, clips: {} } })).toBe(false);
+  expect(readRoomPreferences().feedbackSound.clips?.message).toEqual(clip);
 });

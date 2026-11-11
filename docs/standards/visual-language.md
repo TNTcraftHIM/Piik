@@ -326,10 +326,17 @@ hover timing belong to the shared component.
 Constrain oversized hints to the visible viewport and let their content scroll
 without dismissing the panel or clipping its caret.
 
-Add a tooltip when it explains an action, a limitation or a status that needs
-context. Plain names, decorative participants and self-explanatory text do not
-need another popup. Keep participant details on their existing click action and
-state explanations on the dedicated status indicator.
+Use tooltips for icon-only actions, clipped values and non-obvious consequences;
+omit a popup that only repeats a clear visible button label. Use a brief text
+hint for identification; a comic is useful when it explains a cause or interaction,
+not as decoration on every control. A disabled action explains what enables it.
+Keep required instructions, current state and operation failures visible in their
+own surface; a tooltip is supplementary. Touch keeps the direct action and shared
+hold-to-explain behavior, without making hover the only route to useful information.
+These choices follow [Apple's contextual help guidance](https://developer.apple.com/design/human-interface-guidelines/offering-help)
+and [Fluent's tooltip guidance](https://fluent2.microsoft.design/components/web/react/core/tooltip/usage).
+Keep participant details on their existing click action and state explanations on
+the dedicated status indicator.
 
 When a nickname is clipped, the shared tooltip reveals its complete literal
 text in every language mode, without a comic or repeated role/status labels.

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Btn } from "../../components/living/primitives";
+import { BrandMark } from "../../components/living/BrandMark";
 import { PlaybackControlsReveal } from "../../components/living/PlaybackControlsReveal";
 import { PlaybackWindowControls } from "../../components/living/PlaybackWindowControls";
 import { PlaybackSettings } from "../../components/living/PlaybackSettings";
@@ -17,7 +18,6 @@ import { playbackFailure } from "../../media/viewer-playback";
 import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
 import type { VideoFit, VideoRotation } from "../../media/video-geometry";
 import type { ChannelScreenInput, ScreenPresentation } from "../types";
-import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { RemoteControl } from "../../components/living/RemoteControl";
 import type { InputTransport } from "../../remote-control/input-route";
@@ -262,7 +262,7 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
       label={label} fit={pictureFit} register={register} frame={frame} issue={issue} playing={playing} fullscreen={fullscreenToggle} />)}
     <RoomChatOverlay session={interaction} visible={interactive && ready && !blocked && !paused} />
     {!ready && !blocked && <div className="c3-mini-message" role="status">
-      <span className="c3-frame-wait"><Glyph name="loader" className="lr-spin" size={22} />
+      <span className="c3-frame-wait"><BrandMark size={32} motion="loop" />
         {lang === "zh" ? "等待画面" : "Waiting for picture"}</span>
     </div>}
     {blocked && <div className="c3-mini-message"><Btn icon="play" title="playback.play" cap="playback.play"

@@ -58,6 +58,7 @@ export function Btn({
   onClick,
   type = "button",
   hint,
+  textTooltip,
   hintText,
   hintVars,
   hintTone,
@@ -82,6 +83,8 @@ export function Btn({
   type?: "button" | "submit";
   /** Shared hint comic; text modes add the localized caption. */
   hint?: ComicKind | HintKind;
+  /** Use the existing title as a plain text hint, without an illustration. */
+  textTooltip?: boolean;
   /** Optional explanation beyond the control's accessible name. */
   hintText?: CopyKey;
   hintVars?: Record<string, string>;
@@ -94,7 +97,7 @@ export function Btn({
 }) {
   const { t, vis } = useCopy();
   const label = typeof title === "string" ? t(title) : title.text;
-  const wrapped = Boolean(hint);
+  const wrapped = Boolean(hint || textTooltip);
   const softDisabled = Boolean(wrapped && disabled);
   const activeTone = tone ?? (pressed ? "on" : undefined);
   const button = (
@@ -135,7 +138,7 @@ export function Btn({
   );
   return hint ? (
     <Tooltip kind={hint} disabled={expanded} tone={hintTone} motion={hintMotion} text={vis ? undefined : hintText ? t(hintText, hintVars) : label}>{button}</Tooltip>
-  ) : (
+  ) : textTooltip ? <Tooltip text={label} disabled={expanded}>{button}</Tooltip> : (
     button
   );
 }

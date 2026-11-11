@@ -18,6 +18,8 @@ class AudioBoundary {
   onstatechange: (() => void) | null = null;
   destination = {};
   oscillators: OscillatorBoundary[] = [];
+  buffers: { buffer?: AudioBuffer; start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn>; connect(): void; disconnect(): void; onended?: () => void }[] = [];
+  decodeAudioData = vi.fn(async (_bytes: ArrayBuffer) => ({ duration: .2 }) as AudioBuffer);
   resume = vi.fn(async () => { this.state = "running"; });
   close = vi.fn(async () => { this.state = "closed"; });
   constructor() { AudioBoundary.instances.push(this); }
@@ -28,6 +30,10 @@ class AudioBoundary {
     const oscillator = new OscillatorBoundary();
     this.oscillators.push(oscillator);
     return oscillator;
+  }
+  createBufferSource() {
+    const source = { buffer: undefined as AudioBuffer | undefined, start: vi.fn(), stop: vi.fn(), connect() {}, disconnect() {} };
+    this.buffers.push(source); return source;
   }
 }
 
@@ -65,6 +71,30 @@ test("feedback requires activation, bounds active sound and releases mute/close 
   expect(AudioBoundary.instances).toHaveLength(2);
   audio.close();
   expect(AudioBoundary.instances[1].close).toHaveBeenCalledOnce();
+});
+
+test("custom sound decoding cannot queue notifications or overwrite a replacement/closed owner", async () => {
+  vi.stubGlobal("document", new EventTarget()); vi.stubGlobal("AudioContext", AudioBoundary);
+  const audio = new FeedbackAudio(), first = { name: "first.wav", data: "YQ==" }, second = { name: "second.wav", data: "Yg==" };
+  audio.configure({ enabled: true, volume: 1 }); audio.activate(); await Promise.resolve();
+  const context = AudioBoundary.instances[0];
+  let finishFirst!: (buffer: AudioBuffer) => void, finishSecond!: (buffer: AudioBuffer) => void;
+  context.decodeAudioData.mockImplementationOnce(() => new Promise(resolve => { finishFirst = resolve; }))
+    .mockImplementationOnce(() => new Promise(resolve => { finishSecond = resolve; }));
+  audio.configure({ enabled: true, volume: 1, clips: { message: first } });
+  audio.play("message"); audio.preview("message"); await Promise.resolve();
+  expect(context.buffers).toHaveLength(0);
+  audio.configure({ enabled: true, volume: 1, clips: { message: second } });
+  const oldBuffer = { duration: .2 } as AudioBuffer, newBuffer = { duration: .3 } as AudioBuffer;
+  finishFirst(oldBuffer); await Promise.resolve(); await Promise.resolve();
+  expect(context.buffers).toHaveLength(0);
+  finishSecond(newBuffer); await Promise.resolve(); await Promise.resolve();
+  expect(context.buffers).toHaveLength(0);
+  audio.play("message"); expect(context.buffers[0].buffer).toBe(newBuffer);
+  audio.configure({ enabled: true, volume: 1, clips: { message: first } });
+  expect(context.buffers[0].stop).toHaveBeenCalledOnce();
+  audio.preview("message"); audio.close(); await Promise.resolve(); await Promise.resolve();
+  expect(context.buffers).toHaveLength(1); expect(context.close).toHaveBeenCalledOnce();
 });
 
 test("a pending preview cannot play after mute and a later activation", async () => {

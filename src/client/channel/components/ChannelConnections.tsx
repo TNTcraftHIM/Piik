@@ -30,6 +30,7 @@ export function ChannelConnectionReport({ state, roomId, sessionId, topology, me
   const displayOnly = hasSelectedLocalDisplay(topology, sessionId);
   return <div className="c3-connection-report">
     {graph && <section aria-label={t("host.topology")}><RouteGraph {...graph} /></section>}
+    {graph && <p className="c3-connection-note">{t(graph.edges.length ? "connection.pathLegend" : "connection.signalOnly")}</p>}
     {displayOnly && <p className={vis ? "visually-hidden" : "c3-connection-note"}>{t("connection.localDisplayHint")}</p>}
     <ConnectionDetails rows={rows} />
     {!rows.length && <p className={vis ? "visually-hidden" : "c3-connection-note"}>{t("connection.noMedia")}</p>}

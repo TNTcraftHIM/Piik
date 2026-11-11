@@ -9,9 +9,14 @@ import { screenVideoSettings } from "../media/quality";
 import type { ChannelController } from "../channel/types";
 import type { ChannelRoom } from "../channel/protocol";
 import { useAnchoredPopover } from "../components/living/use-anchored-popover";
+import { AppConnectionButton } from "../components/living/AppConnectionButton";
+import type { AppDiscovery } from "../native/discovery";
 import "./channel-room-preview.css";
 
 const screenCounts = [0, 1, 2, 3, 4, 8];
+const previewAppDiscovery: AppDiscovery = {
+  health: async () => null, connect: async () => null, isIncompatible: () => false,
+};
 
 /** The production room view with local samples. No Session, device access or App discovery. */
 export function ChannelRoomPreview() {
@@ -134,9 +139,9 @@ export function ChannelRoomPreview() {
   } satisfies Partial<ChannelController> as unknown as ChannelController;
   return <div className="c3-room-preview">
     <ChannelRoomPage channel={channel} layout={layout} selected={selected} onSelect={setSelected}
-      appControl={<span ref={optionsTrigger} className="c3-room-preview-trigger"><Btn icon="sliders" title={{ text: zh ? "预览选项" : "Preview options" }}
-          cap={{ text: zh ? "预览选项" : "Preview options" }} quiet size="compact" hint="hint-advanced"
-          expanded={optionsOpen} controls={optionsId} popoverTarget={optionsId} /></span>} />
+      appControl={<><AppConnectionButton discovery={previewAppDiscovery} connected={false} />
+        <span ref={optionsTrigger} className="c3-room-preview-trigger"><Btn icon="sliders" title={{ text: zh ? "预览选项" : "Preview options" }}
+          quiet size="compact" hint="hint-advanced" expanded={optionsOpen} controls={optionsId} popoverTarget={optionsId} /></span></>} />
     <div ref={optionsPanel} id={optionsId} popover="auto" role="dialog" aria-label={zh ? "预览选项" : "Preview options"}
           className="lr-anchored-card c3-room-preview-options" onToggle={event => {
             if (event.target === event.currentTarget) setOptionsOpen(event.newState === "open");
