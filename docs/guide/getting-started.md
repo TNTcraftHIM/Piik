@@ -105,10 +105,12 @@ Manage approved sites from the App launcher. See the
 
 ### Upgrading
 
-Use the 3.0 test update supplied to you and keep your existing App data when
-updating. After updating App, refresh the Web page. If its App connection reports
-an incompatible interface, follow the update prompt. Public 2.x downloads are
-not the 3.0 test update.
+Read the upgrade instructions supplied with your 3.0 test package, then refresh
+the Web page after updating App. If App reports `unsupported_domain_checkpoint`,
+it has preserved data from an older test format. Keep that data and follow the
+package's fresh-data instructions; [saved-data settings](../../prototype/channel-server/README.md#saved-data-and-files)
+explain the separate App and Server directories. Public 2.x downloads are not
+the 3.0 test update.
 
 ## Share from an existing site
 
@@ -128,8 +130,8 @@ the native sources supported by your device.
   **Leave voice** ends your participation in that room's call.
 - Closing your page ends its personal shares, viewing and voice. An
   **App-hosted room** continues while App runs; a **Browser-hosted room** is
-  unavailable while its hosting page is closed. Switching rooms or toggling
-  **Compact interface** keeps your other room activities running.
+  unavailable while its hosting page is closed. Switching rooms or collapsing
+  sidebars keeps your other room activities running.
 - Closing the App launcher page leaves App running. Stopping App ends the
   activities it runs and makes its hosted rooms unavailable across all its
   connected sites. Reopen App to host those rooms again.

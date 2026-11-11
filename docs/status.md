@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-11-10
+Last updated: 2026-11-11
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -13,8 +13,10 @@ across Server, Native and Browser/WASM, with the shared Web UI for chat, screen
 sharing, selective watching, room voice and App control. Normal development and
 distribution use these Rust/Web paths; Go tooling only builds the pinned
 Cloudflared helper. Work stays on `feat/channel-prototype`, separately from 2.x.
-Windows and Android normal-package candidates are ready for initial internal
-testing. Exact delivered revisions and acceptance receipts remain with the packages.
+Matched Windows and Android candidates have been delivered for internal testing.
+Windows package acceptance passed; installation and runtime acceptance of the
+latest Android candidate remain pending. Exact revisions and receipts stay with
+the packages.
 
 The site owns user identity and directory summaries. Room plans and shared transport
 leases keep separate Rust owners. Rooms created in the UI run in their owner's
@@ -61,13 +63,11 @@ First-beta feedback and confirmed blocking defects take priority. Follow-up UI,
 terminal and documentation work stays separate from the delivered test package.
 Conversation now uses the domain WebSocket to reach its actual room host,
 independently of peer reachability. Media and file bytes retain their peer paths.
-The current internal Windows and Android packages include this path and the
-reorganized room controls. Upgrade checks preserve existing room data and history;
-delivered package receipts retain their exact source and tested scope.
-Newer source includes room-list management, responsive grid/focus viewing and
-the shared Native picture-quality policy across Windows, Android, macOS and Linux.
-The next internal package follows workspace design acceptance; existing delivered
-packages retain their recorded revisions and matched protocols.
+The delivered candidates include this path, room-list management, responsive
+grid/focus viewing and the shared Native picture-quality policy. Data retention
+across updates depends on the supported storage formats; older private experiments
+follow the [documented reset boundary](../prototype/channel-server/README.md#saved-data-and-files).
+Package receipts retain each candidate's exact source and tested scope.
 [TODO](./todo.md) owns remaining work and owner holds. Applicable defects continue
 to feed the separate 2.x maintenance line, which preserves its published contracts.
 

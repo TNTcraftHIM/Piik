@@ -44,8 +44,10 @@ The site operator opens settings by selecting the site name above the room list.
 
 1. Select a room and send a message in its conversation. Use the attachment
    button to add an image or file; you can include text with it.
-2. Use **React to this message** to choose a reaction. Each confirmed click adds
-   one to its count; selecting it again adds another after the brief cooldown.
+2. Hover over a message or focus its reaction button with the keyboard to show
+   **React to this message**. Touchscreens keep the button visible. Existing
+   counts stay below the message; each confirmed click adds one, including
+   another click on the same reaction after the brief cooldown.
 3. To read back, select **Earlier messages**. **Latest messages** returns to
    the current conversation.
 
@@ -59,8 +61,8 @@ File content, voice and shared pictures use their own P2P connections.
 
 Selecting a person in the room opens their interaction menu. Expressions and
 thrown props are live effects; they are not saved as message reactions.
-Each shared picture shows its reaction counts underneath, using the same controls
-as messages. Click an existing reaction to add another, or use **React to this screen**
+Beside the viewer count on each picture, reactions use the same controls as
+messages. Click an existing reaction to add another, or use **React to this screen**
 to choose a different one. Counts last for that share; loading counts does not replay animations.
 
 While watching a picture, **On screen** in its playback bar shows that room's

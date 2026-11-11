@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-10
+Last updated: 2026-11-11
 
 This page summarizes the current 3.0 evidence and limits that affect product
 claims. [Status](./status.md#isolated-30-prototype) owns delivery readiness;
@@ -22,11 +22,18 @@ The newer conversation path passes normal Browser-hosted and App-hosted room
 checks with peer signaling blocked: history, bidirectional messages and saved
 reactions work without RTC connections. Attachment descriptions also arrive
 without RTC; their file content downloads over P2P once that path is available.
-The current internal Windows and Android packages include this path. Windows
-upgrade checks used a copy of the previous candidate's data; Android's same-signature
-update retained its existing room/history and kept a generated invitation after reload.
+The delivered Windows and Android candidates include this path. Earlier Windows
+upgrade checks used a copy of the previous candidate's data; an Android
+same-signature update retained compatible room/history and its invitation after
+reload. Older private storage formats follow the
+[storage reset boundary](../prototype/channel-server/README.md#saved-data-and-files).
 
-The current Windows package also passes normal control request and Host
+The latest Windows candidate passed normal App acceptance. The matched Android
+candidate passed build and package checks but has not been installed for runtime
+acceptance. Its correction to dormant-encoder bitrate observation has focused
+regression coverage; an Android runtime comparison remains pending.
+
+Windows package checks also cover normal control request and Host
 approval, real pointer and keyboard input to an isolated window, and **End
 control** with no held test keys. Closing the Windows console during active
 Native capture retires the App, encoder children and listeners. Android's
@@ -66,9 +73,10 @@ execution evidence. OS permission, protected/admin application and game
 compatibility remain bounded by the
 [input assessment](./research/room-interactions.md#attended-remote-control-prototype).
 
-Android runtime acceptance includes the official API35 x64 emulator, system
-capture consent, decoded picture, room data across same-signature updates, and
-normal source/runtime stop. ARM64 is packaged and checked statically; it has not
+Android runtime evidence from preceding candidates includes the official API35
+x64 emulator, system capture consent, decoded picture, compatible room data across
+same-signature updates, and normal source/runtime stop. ARM64 is packaged and
+checked statically; it has not
 received equivalent physical-device acceptance. Phone, tablet and TV performance,
 suspension behavior and physical sound remain device acceptance work.
 
