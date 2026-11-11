@@ -42,7 +42,7 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
       <small>{zh ? "语音已加入" : "Voice joined"}</small>
       <Tooltip className="c3-voice-room" overflow={{ text: nameOfRoom(roomId), selector: "button, select" }}>
       {joined.length === 1 ? <button type="button" onClick={() => onBrowse(roomId)}>{nameOfRoom(roomId)}</button>
-        : <select aria-label={zh ? "选择要控制的语音房间" : "Choose a voice room to control"} value={roomId}
+        : <select className="lr-select" aria-label={zh ? "选择要控制的语音房间" : "Choose a voice room to control"} value={roomId}
           onChange={event => onSelect(event.target.value)}>
           {joined.map(value => <option key={value.roomId} value={value.roomId}>{nameOfRoom(value.roomId)}</option>)}
         </select>}

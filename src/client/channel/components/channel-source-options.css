@@ -1,5 +1,0 @@
-.c3-source-options-trigger { display: inline-flex; }
-.lr-anchored-card.c3-source-options { width: min(340px, calc(100vw - 16px)); max-height: min(480px, calc(100dvh - 16px)); }
-.c3-source-options > h3 { margin: 0 0 12px; font-size: 14px; }
-.c3-source-options-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.c3-source-options-controls > p { width: 100%; font-size: 12px; color: var(--muted); }

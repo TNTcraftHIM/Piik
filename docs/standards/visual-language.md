@@ -133,9 +133,10 @@ equal weight; focus gives one picture the main area and keeps the others in a
 thumbnail strip. Thumbnails show the picture and a single identity line; selecting
 one promotes it to the full controls without remounting its player. Full-size grid
 and focused pictures use the same source-information bar and action order. The
-bar overlays the picture and follows playback-control visibility. Frequent
-playback, volume and viewing controls stay directly available; source settings
-use the shared secondary menu. Counts yield space before primary actions, and
+bar overlays the picture and follows playback-control visibility. Playback,
+volume, focus, source selection and share settings stay directly available.
+Narrow cards place source actions on a second overlay row without an extra menu.
+Counts yield space before primary actions, and
 cards retain enough height for their upper and lower controls. Conversation and people are optional
 companion surfaces; narrow layouts switch surfaces instead of squeezing several
 unusable regions together. Source controls stay with their picture, and personal

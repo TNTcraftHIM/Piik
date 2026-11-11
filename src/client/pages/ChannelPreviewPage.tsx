@@ -267,7 +267,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             audience: state ? screenAudience(state, publication) : [],
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id), localSource: channel.localScreens.has(publication.id),
             shareControls: channel.ownedScreens.has(publication.id) && <ChannelShareControl channel={channel}
-              roomId={publication.roomId} publicationId={publication.id}
+              roomId={publication.roomId} publicationId={publication.id} compact
               disabled={!connected || !rooms.find(room => room.id === publication.roomId)?.available} />,
             paused: publication.paused, pausePending: publication.sessionId !== sessionId && busy("pause", publication.id),
             pauseAvailable: publication.sessionId === sessionId || connected,

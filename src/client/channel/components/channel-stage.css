@@ -21,7 +21,7 @@
 .c3-monitor-grid.is-focused:has(> .is-thumbnail) { grid-template-rows: minmax(min-content, 1fr) auto; }
 .c3-monitor-grid:has(.lr-remote-keyboard, .lr-remote-password) { grid-auto-rows: minmax(min-content, 1fr); }
 .c3-monitor-tile { position: relative; display: flex; flex-direction: column; grid-column: span 2; min-width: 0; min-height: 0; background: var(--wall); border: 1px solid var(--line); border-radius: 16px; container-type: inline-size; }
-.c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) { flex: 1; min-height: 128px; aspect-ratio: auto; }
+.c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) { flex: 1; min-height: 160px; aspect-ratio: auto; }
 .c3-monitor-tile.is-focused { grid-column: 1 / -1; grid-row: 1; order: -1; position: sticky; left: 0; width: 100cqi; justify-self: start; border-color: var(--action); box-shadow: 0 0 0 1px var(--action); }
 .c3-monitor-tile.is-thumbnail { grid-column: auto; grid-row: 2; width: 100%; height: max-content; min-height: 0; }
 .c3-monitor-tile.is-thumbnail > :is(.c3-video, .c3-monitor-wait) { flex: none; min-height: 90px; aspect-ratio: 16 / 9; }
@@ -29,7 +29,7 @@
 .c3-monitor-tile.is-thumbnail .c3-monitor-source-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px; }
 .c3-monitor-tile.is-thumbnail .c3-monitor-source > .lr-comic-tip-wrap:last-child { display: none; }
 /* Keep source drafts and detached panels mounted; only their tile invokers hide. */
-.c3-monitor-tile.is-thumbnail .c3-monitor-tile-actions { display: none; }
+.c3-monitor-tile.is-thumbnail :is(.c3-monitor-social, .c3-monitor-tile-actions) { display: none; }
 .c3-thumbnail-focus { position: absolute; inset: 0; z-index: 6; border: 0; border-radius: inherit; background: transparent; padding: 0; cursor: pointer; }
 .c3-thumbnail-focus:is(:hover, :focus-visible) { outline: 2px solid var(--action); outline-offset: -2px; }
 .c3-monitor-tile[data-focusable] .c3-video { cursor: pointer; }
@@ -53,24 +53,16 @@
 .c3-monitor-tile:not(.is-thumbnail) > footer { padding: 0; }
 .c3-monitor-tile:not(.is-thumbnail) > .c3-video { border-radius: 14px; }
 .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source-row { position: absolute; inset: 6px 6px auto; z-index: 5; padding: 4px 6px; gap: 6px; color: var(--ink); background: var(--paper-translucent); border: 1px solid var(--control-edge); border-radius: 12px; box-shadow: var(--control-shadow); backdrop-filter: blur(14px); transition: opacity 160ms ease, transform 160ms ease; }
-.c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source-row { flex-wrap: nowrap; }
-.c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source { flex: none; width: clamp(64px, 22cqi, 180px); }
-.c3-monitor-tile:not(.is-thumbnail) .c3-monitor-tile-actions { flex: 1; flex-wrap: nowrap; }
-.c3-monitor-tile:not(.is-thumbnail) .c3-monitor-tile-actions > :not(.c3-message-reactions) { flex: none; }
-.c3-monitor-tile:not(.is-thumbnail) .c3-monitor-tile-actions > .c3-message-reactions { flex: 1; flex-wrap: nowrap; }
+.c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source-row { display: grid; grid-template-columns: 20px minmax(64px, 180px) minmax(100px, 1fr) auto; }
+.c3-monitor-social { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.c3-monitor-social > .c3-message-reactions { flex: 1; min-width: 0; flex-wrap: nowrap; }
 .c3-monitor-source-row .c3-message-reaction-counts { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; }
 .c3-monitor-source-row .c3-message-reaction-counts > button, .c3-monitor-source-row .c3-message-action { flex: none; }
-@container (max-width: 380px) {
-  .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source-row { display: grid; grid-template-columns: 20px minmax(0, 1fr); row-gap: 4px; }
-  .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source-row > svg { height: 20px; }
-  .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source { width: auto; flex-direction: row; align-items: center; gap: 8px; }
-  .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source > .lr-comic-tip-wrap:first-child { flex: 1; }
-  .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source > .lr-comic-tip-wrap:last-child { flex: 0 1 auto; max-width: 50%; }
-  .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source small { margin: 0; }
+@container (max-width: 720px) {
+  .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source-row { grid-template-columns: 20px minmax(64px, 1fr) minmax(100px, 1fr); row-gap: 4px; }
   .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-tile-actions { grid-column: 1 / -1; width: 100%; }
 }
 .c3-monitor-tile:not(.is-thumbnail):has(> .c3-video[data-controls-hidden="true"]) > footer:not(:hover):not(:focus-within):not(:has([aria-expanded="true"])) .c3-monitor-source-row { opacity: 0; pointer-events: none; transform: translateY(-4px); }
-.c3-monitor-tile.is-focused > :is(.c3-video, .c3-monitor-wait) { min-height: 160px; }
 .c3-monitor-wait { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; aspect-ratio: 16 / 9; padding: 18px; border-radius: 14px 14px 0 0; background: var(--stage, var(--wall-2)); color: var(--muted); font-size: 12px; }
 .c3-monitor-wait[data-failed] > svg { color: var(--danger); }
 /* Theater changes the existing stage's layout; every subscription stays mounted. */
