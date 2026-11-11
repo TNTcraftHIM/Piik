@@ -173,11 +173,34 @@ serves people using Piik alongside their existing voice software. It centres on
 screen sharing and retains the 2.x composition: a single central television area, sharing and
 playback actions beside the picture, the couch below, and a compact room,
 identity and invitation area. Conversation and voice are supporting tools.
-Site and room administration, directory navigation and backups belong to the
-full workspace; the quick view need not expose every workspace feature.
+Voice, remote control, concurrent sharing and selective multi-picture watching
+remain available. Keep their entrances beside the relevant picture or couch;
+the room directory and administration do not dominate this view. Room access
+settings remain reachable from the invitation panel. Opening the inline
+interaction panel keeps the main couch in place; detaching uses the existing
+single-content window owner.
 Use the current visual language and the same 3.0 room, media and tool components.
 Changing the view never creates a room or starts, stops or reassigns an activity.
 Activities already in progress retain a visible status and an explicit exit.
+
+### Content Rows And Embedded Actions
+
+Content rows and controls have different emphasis. Apply the same distinction
+in conversation, room lists and compact tool panels:
+
+| State or action | Presentation |
+| --- | --- |
+| Pointer over a message | A quiet background change; message text stays selectable. No full-row button outline. |
+| Jump to a referenced message | Brief background emphasis on the destination, using its existing navigation owner. |
+| Keyboard focus | A visible focus indicator, contained within the scroll area; never remove keyboard feedback to fix pointer decoration. |
+| Reply, react or fold within a row | Compact shared controls without positional lift across the row boundary. Hover, press and selected colours still respond. Reserve the full target width. |
+| Selected room | The shared navigation selection treatment; selecting a room is distinct from hovering over its child actions. |
+
+Use a reply arrow for quoting a message and the straight back arrow for navigation.
+Following [Discord's contextual reply interaction](https://support.discord.com/hc/en-us/articles/360057382374-Replies-FAQ),
+message actions stay close to their content and remain discoverable on touch.
+[W3C focus guidance](https://www.w3.org/WAI/WCAG22/Understanding/focus-visible.html)
+requires visible keyboard focus; it does not require the same outline for a pointer click.
 
 ### Control Selection
 
@@ -383,6 +406,8 @@ Shared buttons and chips use pill shapes and a quiet lower edge.
 Standalone buttons, chips and option tiles lift 2 px on hover or keyboard focus, sink 2 px
 on press, and spring back over 260 ms on release. Selected and unselected states
 use the same motion; selection changes only their colour and outline.
+Embedded row actions follow [the content-row rule](#content-rows-and-embedded-actions)
+so their movement does not cross neighbouring content or clipping boundaries.
 Inputs and option tiles share softer corners. Press feedback uses the shared
 motion values in `button.css` and releases the lower shadow. Captions inside
 sliding tracks stay centred on their selection surface during hover and focus;
@@ -628,6 +653,7 @@ type checking rather than silently render a warning triangle.
 | Size and viewing mode / 尺寸与观看模式 | `expand`, `contract`, `pip`, `pipExit`, `theater`, `theaterExit`, `fitContain`, `fitCover`, `fitStretch`, `rotatePicture` | Expand/restore, enter/leave picture in picture or theatre mode; contain, proportional crop and stretch change only local picture fit. Picture rotation switches the local landscape/portrait view. The same size symbol can accompany a resolution measurement. |
 | Local actions / 本地操作 | `copy`, `save`, `pencil`, `eye`, `eyeOff` | Copy, save, edit, reveal and conceal the named object. An action icon does not prove completion. |
 | Text appearance / 文字外观 | `textSize`, `opacity` | Relative text size and opacity. These are local display preferences, not message delivery states. |
+| Reply / 回复 | `reply` | Quote a message or identify its referenced message. The bent return arrow is distinct from `arrowLeft` page or panel navigation. |
 | Repeat and disclosure / 重试与展开 | `refresh`, `chevron`, `arrowRight`, `arrowLeft` | Repeat/refresh, expand/collapse, proceed/enter and return. Direction follows the control's action; no arrow alone establishes delivery. |
 | Transfer and upgrade / 传输与更新 | `arrowUp`, `arrowDown` | Outbound/inbound or upload/download, qualified by the adjacent label. An explicit update label may use the upward arrow for upgrade; neither arrow is a connection-quality rating. |
 | Diagnostics / 诊断 | `cpu` | Technical diagnostics in the labelled diagnostic control; in metrics the same processor identifies encoding work. The surrounding control or measured field states the scope. |

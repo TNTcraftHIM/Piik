@@ -116,7 +116,13 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   useLayoutEffect(() => {
     if (!jump || jump.room !== roomId || loadingHistory) return;
     const target = log.current?.querySelector<HTMLElement>(`[data-message-seq="${jump.seq}"]`);
-    if (target) { target.scrollIntoView({ block: "center" }); target.focus({ preventScroll: true }); reading.current = { position: log.current!.scrollTop, following: false }; setJump(null); }
+    if (target) {
+      target.scrollIntoView({ block: "center" }); target.focus({ preventScroll: true });
+      if (!target.ownerDocument.defaultView?.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        target.animate([{ backgroundColor: "color-mix(in srgb, var(--action) 18%, transparent)" }, { backgroundColor: getComputedStyle(target).backgroundColor }], { duration: 900, easing: "ease-out" });
+      }
+      reading.current = { position: log.current!.scrollTop, following: false }; setJump(null);
+    }
   }, [jump, roomId, loadingHistory, messages]);
   useLayoutEffect(() => { setSelection(null); setJump(null); jumpRequest.current = null; setJumpFailed(false); }, [roomId]);
   async function showMessage(seq: number) {
@@ -356,14 +362,14 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
       <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
     </div>}<div className="c3-message-content-body">
     {message.reply && <button type="button" className="c3-message-reference" onClick={() => onMessage(message.reply!.seq)}>
-      <Glyph name="arrowLeft" size={14} /><strong>{message.reply.archivedAuthorName ?? users.find(user => user.id === message.reply!.userId)?.name ?? (lang === "zh" ? "用户" : "User")}</strong>
+      <Glyph name="reply" size={14} /><strong>{message.reply.archivedAuthorName ?? users.find(user => user.id === message.reply!.userId)?.name ?? (lang === "zh" ? "用户" : "User")}</strong>
       <span>{message.reply.text || (lang === "zh" ? "附件" : "Attachment")}</span></button>}
     {message.text && <p><MessageText message={message} users={users} selfUserId={selfUserId} /></p>}
     {message.attachments.map(file => <ChannelAttachment key={file.id} roomId={roomId} messageSeq={message.seq} file={file} client={attachments}
       inlineImage={message.inlineImages?.[file.id]} />)}
     <ChannelContentReactions reactions={message.reactions} session={interaction} target={{ messageSeq: message.seq }} disabled={!available}
       effectAnchor={effectAnchor} effectsEnabled={effectsEnabled} />
-    <span className="c3-message-reply-action"><ChannelAction icon="arrowLeft" iconOnly quiet textTooltip
+    <span className="c3-message-reply-action"><ChannelAction icon="reply" iconOnly quiet textTooltip
       label={!available ? (lang === "zh" ? "房间重新连接后可回复" : "Reply after the room reconnects") : (lang === "zh" ? "回复这条消息" : "Reply to this message")}
       disabled={!available} onClick={onReply} /></span>
     </div></div>

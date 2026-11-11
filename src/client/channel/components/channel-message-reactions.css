@@ -8,6 +8,6 @@
 .c3-add-reaction > .lr-glyph:last-child { width: 10px; height: 10px; }
 .c3-message-reaction-menu { position: fixed; inset: auto; margin: 0; width: max-content; max-width: calc(100vw - 16px); padding: 8px; border: 1px solid var(--control-edge); border-radius: var(--c3-inset-radius); background: var(--paper); color: var(--ink); box-shadow: var(--panel-shadow); }
 .c3-message-reaction-menu .lr-reaction-grid { grid-template-columns: repeat(4, 44px); gap: 4px; }
-@media (hover: none) {
+@media (hover: none), (any-pointer: coarse) {
   .c3-add-reaction.lr-btn { --button-size: var(--control-compact-size); min-width: 44px; }
 }
