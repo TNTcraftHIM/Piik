@@ -678,6 +678,35 @@ test.each([false, true])("App viewing assistance withdraws without ending the wa
   } finally { session.close(); }
 });
 
+test("App rewatch admits its current helper in the first subscription without a second lookup", async () => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
+  const helperSessionId = crypto.randomUUID();
+  const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helperSessionId, roomIds: [] });
+  const { session, socket } = await setup();
+  const state = { ...session.getSnapshot().state!, publications: [
+    { audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", source: { kind: "screen", name: null }, title: null,
+      videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
+  ] };
+  socket.receive({ type: "state", state });
+  try {
+    const connecting = session.activateApp();
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
+    const app = ChannelSocket.current;
+    await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
+    for (const round of [1, 2]) {
+      const watching = session.watch("screen");
+      await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true, helperSessionId }));
+      socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await watching;
+      expect(description).toHaveBeenCalledTimes(round);
+      const stopping = session.unwatch("screen");
+      socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await stopping;
+    }
+    const subscriptions = socket.sent.filter(command => command.type === "subscribe");
+    expect(subscriptions.map(command => command.enabled)).toEqual([true, false, true, false]);
+    expect(subscriptions.filter(command => command.enabled).every(command => command.helperSessionId === helperSessionId)).toBe(true);
+  } finally { session.close(); }
+});
+
 test.each([false, true])("local Native playback provenance follows endpoint lifetime, without ownership or user inference (description rejected: %s)", async rejected => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
   const native = crypto.randomUUID(), remote = crypto.randomUUID();
@@ -814,24 +843,23 @@ test("an App description completing after unwatch cannot recreate a subscription
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 7, port: 8793, token: "approved" });
   let describe!: (value: { sessionId: string; roomIds: string[] }) => void;
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting")
-    .mockImplementation(() => new Promise(resolve => { describe = resolve; }))
-    .mockResolvedValueOnce({ sessionId: crypto.randomUUID(), roomIds: [] });
+    .mockImplementation(() => new Promise(resolve => { describe = resolve; }));
   const { session, socket } = await setup();
   socket.receive({ type: "state", state: { ...session.getSnapshot().state!, publications: [
     { audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false },
   ] } });
   try {
+    const watching = session.watch("screen");
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true }));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await watching;
     const connecting = session.activateApp();
     await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
     const app = ChannelSocket.current;
     await app.onopen?.();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await connecting;
-    const watching = session.watch("screen");
-    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true }));
-    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
-    await watching;
-    await vi.waitFor(() => expect(description).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(description).toHaveBeenCalledOnce());
     const stopping = session.unwatch("screen");
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     await stopping;

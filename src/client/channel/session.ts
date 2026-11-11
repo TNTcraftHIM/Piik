@@ -1423,6 +1423,7 @@ export class ChannelSession {
   revokeRoomAccess = (roomId: string, userId: string, reportError = true): Promise<void> => this.action(`revoke:${roomId}:${userId}`, () => this.request({ type: "revoke_room_access", roomId, userId }), reportError);
   watch = (publicationId: string, roomId?: string, signal?: AbortSignal): Promise<void> => {
     const watch: ScreenWatch = {};
+    let describedApp: ChannelApp | undefined;
     const operation = this.action(`watch:${publicationId}`, async () => {
       if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
       this.watching.set(publicationId, watch);
@@ -1434,10 +1435,14 @@ export class ChannelSession {
           const description = await app.describeHosting(lifetime).catch(() => undefined);
           watch.query = undefined;
           lifetime.throwIfAborted();
-          if (description) this.rememberLocalEndpoint(app, description.sessionId);
+          if (description && this.app === app && app.connected) {
+            this.rememberLocalEndpoint(app, description.sessionId);
+            watch.helperSessionId = description.sessionId;
+            describedApp = app;
+          }
           if (!this.watching.has(publicationId)) return;
         }
-        await this.request({ type: "subscribe", publicationId, enabled: true }, undefined, roomId);
+        await this.request({ type: "subscribe", publicationId, enabled: true, helperSessionId: watch.helperSessionId }, undefined, roomId);
         if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
       } catch (error) {
         if (!signal?.aborted && error instanceof Error && error.message === "disconnected") return;
@@ -1448,7 +1453,9 @@ export class ChannelSession {
       }
     });
     watch.operation = operation;
-    return operation.finally(() => { watch.operation = undefined; }).then(() => { void this.syncAppWatching(); });
+    return operation.finally(() => { watch.operation = undefined; }).then(() => {
+      if (this.app !== describedApp || !describedApp?.connected) void this.syncAppWatching();
+    });
   };
   private retireWatch(publicationId: string): void {
     this.watching.get(publicationId)?.query?.abort();
