@@ -40,9 +40,15 @@ export function ChannelAttachment({ roomId, messageSeq, file, client }: { roomId
     </div>
     {file.mediaType.startsWith("image/") && !preview && <ChannelAction icon="eye" quiet label={zh ? "查看图片" : "View image"}
       busy={previewBusy} onClick={() => { void showImage(); }} />}
-    {preview && <img src={preview} alt={file.name} />}
+    {preview && <img src={preview} alt={file.name} onError={() => {
+      const current = resource.current;
+      if (!current || current.url !== preview) return;
+      URL.revokeObjectURL(current.url); current.url = null;
+      setPreview(null); setPreviewFailed(true);
+    }} />}
     {(previewFailed || download.error) && <small role="status">{download.error === "file_offer_failed"
       ? (zh ? "消息已保存，文件暂时无法分享。" : "Message saved. The file could not be offered yet.")
-      : (zh ? "暂时无法读取，请重试。" : "Couldn't load this file. Try again.")}</small>}
+      : download.error ? (zh ? "暂时无法读取，请重试。" : "Couldn't load this file. Try again.")
+      : (zh ? "图片预览失败，可重试或下载原文件。" : "Couldn't preview this image. Retry or download the file.")}</small>}
   </div>;
 }
