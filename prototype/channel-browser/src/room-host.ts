@@ -19,7 +19,7 @@ export interface PageResult {
 interface AttachmentResult { type: "attachment"; messageSeq: number; attachment: ChannelMessage["attachments"][number] }
 interface ReactionResult { type: "reacted"; nonce: number; snapshot: MessageReactions & { messageId: string; messageSeq: number }; event: ReactionEvent | null }
 type HistoryResult = SentResult | PageResult | AttachmentResult | ReactionResult;
-interface SendRequest { type: "send"; roomId: string; draft: { userId: string; nonce: string; text: string; time: number; attachments: ChannelMessage["attachments"] } }
+interface SendRequest { type: "send"; roomId: string; draft: { userId: string; nonce: string; text: string; time: number; attachments: ChannelMessage["attachments"]; inlineImages?: ChannelMessage["inlineImages"] } }
 interface ReadRequest { type: "read"; roomId: string; before: number | null }
 interface AttachmentRequest { type: "attachment"; roomId: string; messageSeq: number; attachmentId: string }
 interface ReactionRequest { type: "react"; roomId: string; messageSeq: number; nonce: number; event: ReactionEvent | null }

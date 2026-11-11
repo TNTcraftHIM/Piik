@@ -118,6 +118,7 @@ fn signed_conversation_uses_domain_carriage_without_media_paths_or_a_second_conf
             &ConversationRequest {
                 address: address.clone(),
                 command: ConversationCommand::Chat {
+                    inline_images: Default::default(),
                     text: "Works without ICE".into(),
                     nonce: "one-write".into(),
                     attachments: vec![],

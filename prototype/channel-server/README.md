@@ -104,7 +104,7 @@ The `piik-channel-app` entry uses the same App button, local approval page and
 saved-site controls as the shared Web interface.
 
 Current internal pages require App control protocol 7 and domain signaling
-protocol 11. Build the App, bundled Web files and domain server from the same
+protocol 12. Build the App, bundled Web files and domain server from the same
 source for internal testing. Incompatible control or signaling protocols are
 rejected at entry. The storage format and reset boundary are documented below.
 
@@ -238,6 +238,8 @@ confirmed history and loads pages of up to 50; it does not automatically discard
 old messages. The interface keeps a reading window of up to 1,000 messages and
 lets readers move through earlier pages or return to the latest messages.
 Each message supports 2,000 Unicode characters and up to eight attachments.
+Small recognized images share a 64 KiB inline budget per message and travel
+with its confirmed history. Other attachment bytes retain on-demand P2P delivery.
 Read pages and drafts stay in memory; refreshing retrieves history from the host.
 There is no separate offline history database or peer history replication.
 
@@ -340,7 +342,7 @@ Sessions, captures and routes are not restored after a process restart.
 
 This unpublished prototype uses domain hosting metadata version 2 around domain
 authority version 6, room backup metadata version 2, room-copy metadata version 1,
-and SQLite schema version 5.
+and SQLite schema version 6.
 Browser room storage uses IndexedDB version 5. Older experimental
 checkpoints and the old unscoped `rooms/*.sqlite` layout are rejected rather than
 silently discarding or attaching their history to another domain. Keep any

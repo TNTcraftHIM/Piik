@@ -426,6 +426,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
                             request_id: "post-restore-chat".into(),
                         },
                         command: ConversationCommand::Chat {
+                            inline_images: Default::default(),
                             text: "Saved after restore".into(),
                             nonce: "post-restore-chat".into(),
                             attachments: vec![],

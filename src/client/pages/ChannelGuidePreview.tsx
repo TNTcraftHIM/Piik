@@ -69,7 +69,8 @@ export function useChannelGuideSample(multiRoom = false) {
     signal?.throwIfAborted();
     const seq = nextMessage.current++;
     const message: ChannelMessage = { id: `sample-${roomId}-${seq}`, seq, userId: "sample-ada", text,
-      time: new Date(2020, 0, 1, 20, seq).getTime(), attachments: prepared.map(file => file.attachment) };
+      time: new Date(2020, 0, 1, 20, seq).getTime(), attachments: prepared.map(file => file.attachment),
+      inlineImages: Object.fromEntries(prepared.flatMap(file => file.inlineImage ? [[file.id, file.inlineImage]] : [])) };
     attachments.confirmed(roomId, message, prepared);
     setMessagesByRoom(previous => ({ ...previous, [roomId]: [...(previous[roomId] ?? []), message] }));
   };

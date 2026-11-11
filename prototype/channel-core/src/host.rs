@@ -972,12 +972,20 @@ impl RoomHost {
                 }))
             })(),
             ConversationCommand::Chat {
+                inline_images,
                 text,
                 nonce,
                 attachments,
             } => self
                 .room
-                .chat(endpoint.member, text, nonce, attachments, now)
+                .chat(
+                    endpoint.member,
+                    text,
+                    nonce,
+                    attachments,
+                    inline_images,
+                    now,
+                )
                 .map(ConversationWork::History),
             ConversationCommand::History { before } => self
                 .room

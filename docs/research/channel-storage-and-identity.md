@@ -22,7 +22,7 @@ arrangement adds a storage server, a second application or a configuration task.
 | Domain identity, users and room-to-owner binding | Domain runtime's durable data. Clients and room runtimes receive authenticated identity facts. |
 | Room name, icon, access and grants | Room runtime's durable data. The domain directory holds only its authorized summary. |
 | Identity images | Small retained metadata at their domain or room owner; independent of the uploader's live session. The directory carries the authorized room summary. |
-| Messages and attachment descriptions | Confirmed history at the room runtime; participants may keep readable local copies. |
+| Messages, attachment descriptions and small inline images | Confirmed history at the room runtime; participants may keep readable local copies. |
 | File bytes | The sender and recipients that retain complete copies. The site operator does not automatically receive or store them. |
 | Presence, available file holders and active activities | Current authenticated sessions. Rebuild these facts when participants reconnect; a saved record does not prove present availability. |
 | Live sessions, voice, pictures and route plans | Their active runtimes. Reconnection reconciles existing work; a runtime restart establishes new sessions and activities. Saved data does not restore a call. |
@@ -198,7 +198,7 @@ history store is needed. The room remains the single writer and confirmation own
 
 ## File Sources And Reachability
 
-Attachment records are distributed with chat through the domain WebSocket; file
+Attachment records and bounded inline images are distributed with chat through the domain WebSocket; other file
 bytes and pull control use the existing room peer network. A readable description
 does not prove that its bytes are currently reachable. The sender prepares a readable source before submitting the description.
 A complete, verified copy can become another source while its holder remains
@@ -359,8 +359,22 @@ currently readable selection, retained copy or granted handle. Browser-managed
 storage follows [origin, quota and persistence rules](https://storage.spec.whatwg.org/).
 A session-only source must not be presented as a retained copy.
 
-Conversation images use this same attachment/transfer model. Loading a visible
-image requests its preview; it does not subscribe everyone to every original file.
+Conversation images retain the same attachment identity and whole-file digest.
+Recognized PNG, JPEG, GIF and WebP originals share a 64 KiB decoded-byte budget
+per message; those that fit travel with the confirmed message and display without
+a peer connection. Original GIF bytes retain their animation. The room host saves
+these bytes as history, and the site carries them with the conversation. They are
+not copied into route plans or participant-holder announcements. Images outside
+the message budget and other files use the existing on-demand P2P transfer.
+There is no thumbnail generation or separate image-hosting service.
+
+The message owner checks the inline total, attachment identity, size, image
+signature and digest before confirming the message. The signed conversation
+frame budget covers the complete largest legal message, including encoding
+overhead; the file-control frame budget is independent. Reading or downloading
+an inline image does not allocate a file route. Original-image and avatar
+enlargement reuse one local lightbox; closing it keeps the conversation and file
+owners alive.
 User avatars and domain/room icons are small visible metadata: the Browser encodes a bounded
 square raster and its existing owner saves and projects that value alongside the
 name. User profiles follow domain identity visibility; room icons follow the

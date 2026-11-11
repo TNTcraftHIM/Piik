@@ -1028,11 +1028,12 @@ export class ChannelSession {
     if (this.closed || this.view.sessionId !== sessionId) throw new Error("disconnected");
     signal?.throwIfAborted();
     const attachments = prepared.map(file => file.attachment);
-    const content = JSON.stringify({ text, attachments });
+    const inlineImages = Object.fromEntries(prepared.flatMap(file => file.inlineImage ? [[file.id, file.inlineImage]] : []));
+    const content = JSON.stringify({ text, attachments, inlineImages });
     const previous = this.outgoingMessages.get(roomId);
     const attempt = previous?.content === content ? previous : { content, nonce: crypto.randomUUID() };
     this.outgoingMessages.set(roomId, attempt);
-    await this.request({ type: "chat", roomId, text, attachments, nonce: attempt.nonce }, event => {
+    await this.request({ type: "chat", roomId, text, attachments, inlineImages, nonce: attempt.nonce }, event => {
       if (event.type === "confirmed") this.attachments.confirmed(roomId, event.message, prepared);
     });
     this.outgoingMessages.delete(roomId);

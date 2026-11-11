@@ -10,6 +10,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use uuid::Uuid;
 
 pub const CONTROL_FRAME_BYTES: usize = 32768;
+pub const CONVERSATION_FRAME_BYTES: usize = 128 * 1024;
 pub const INTERACTION_INTERVAL_MS: u64 = 800;
 pub const INTERACTION_REACTIONS: &[&str] = &[
     "thumbsup",
@@ -45,7 +46,7 @@ impl SessionSigner {
         payload: &impl Serialize,
     ) -> Result<SignedPacket, &'static str> {
         let payload = serde_json::to_string(payload).map_err(|_| "invalid_conversation")?;
-        if payload.len() > CONTROL_FRAME_BYTES {
+        if payload.len() > CONVERSATION_FRAME_BYTES {
             return Err("control_frame_too_large");
         }
         let signature = self.0.sign(&signing_bytes(&payload)).to_bytes().to_vec();
@@ -70,7 +71,7 @@ pub fn verify<T: DeserializeOwned>(
     packet: &SignedPacket,
     key: [u8; 32],
 ) -> Result<T, &'static str> {
-    if packet.payload.len() > CONTROL_FRAME_BYTES {
+    if packet.payload.len() > CONVERSATION_FRAME_BYTES {
         return Err("control_frame_too_large");
     }
     let key = VerifyingKey::from_bytes(&key).map_err(|_| "invalid_conversation_signature")?;
@@ -178,6 +179,8 @@ pub enum ConversationCommand {
         reaction: String,
     },
     Chat {
+        #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+        inline_images: std::collections::BTreeMap<Uuid, String>,
         text: String,
         nonce: String,
         attachments: Vec<AttachmentDescriptor>,
@@ -451,31 +454,40 @@ mod tests {
         let mut request = request();
         request.address.room_id = "\0".repeat(128);
         request.address.request_id = "\0".repeat(128);
-        let attachments = (0..8)
+        use base64ct::{Base64, Encoding};
+        let mut image = vec![0; crate::ATTACHMENT_LIMITS.max_inline_image_bytes / 8];
+        image[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        let attachments: Vec<_> = (0..8)
             .map(|_| AttachmentDescriptor {
                 id: Uuid::new_v4(),
                 name: "\u{10ffff}".repeat(240),
-                size: crate::ATTACHMENT_LIMITS.max_file_bytes,
-                media_type: "application/octet-stream".into(),
-                sha256: "f".repeat(64),
+                size: image.len() as u64,
+                media_type: "image/png".into(),
+                sha256: crate::attachment::sha256_hex(&image),
             })
+            .collect();
+        let inline_images = attachments
+            .iter()
+            .map(|a| (a.id, Base64::encode_string(&image)))
             .collect();
         let draft = crate::history::MessageDraft::new(
             Uuid::new_v4(),
             "\0".repeat(128),
             "\0".repeat(2000),
             attachments,
+            inline_images,
             1,
         )
         .unwrap();
         request.command = ConversationCommand::Chat {
+            inline_images: draft.inline_images.clone(),
             text: draft.text.clone(),
             nonce: draft.nonce.clone(),
             attachments: draft.attachments.clone(),
         };
         let packet = signer.sign(request.address.sender, &request).unwrap();
         let bytes = serde_json::to_vec(&crate::wire::Command::Conversation { packet }).unwrap();
-        assert!(bytes.len() <= CONTROL_FRAME_BYTES);
+        assert!(bytes.len() <= CONVERSATION_FRAME_BYTES);
         let mut message = draft
             .prepare_confirmation(crate::history::ConfirmationInput::New { last_seq: 0 })
             .unwrap()
@@ -514,7 +526,7 @@ mod tests {
         for reply in replies {
             let packet = signer.sign(reply.address.sender, &reply).unwrap();
             let bytes = serde_json::to_vec(&crate::wire::Command::Conversation { packet }).unwrap();
-            assert!(bytes.len() <= CONTROL_FRAME_BYTES);
+            assert!(bytes.len() <= CONVERSATION_FRAME_BYTES);
         }
     }
 }
@@ -610,6 +622,7 @@ mod room_tests {
         let mut request = ConversationRequest {
             address: address.clone(),
             command: ConversationCommand::Chat {
+                inline_images: Default::default(),
                 text: "Original".into(),
                 nonce: "same-send".into(),
                 attachments: vec![],
@@ -639,6 +652,7 @@ mod room_tests {
             address.reply()
         );
         request.command = ConversationCommand::Chat {
+            inline_images: Default::default(),
             text: "Changed retransmission".into(),
             nonce: "same-send".into(),
             attachments: vec![],

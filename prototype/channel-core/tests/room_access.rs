@@ -1229,6 +1229,7 @@ fn private_room_entry_and_revoke_preserve_site_identity_and_other_activity() {
     for request in [
         piik_channel_core::conversation::ConversationCommand::History { before: None },
         piik_channel_core::conversation::ConversationCommand::Chat {
+            inline_images: Default::default(),
             text: "Revoked".into(),
             nonce: "revoked".into(),
             attachments: vec![],
@@ -1290,6 +1291,7 @@ fn public_to_private_requires_explicit_grant_and_password_rotation_keeps_existin
             guest,
             &room,
             piik_channel_core::conversation::ConversationCommand::Chat {
+                inline_images: Default::default(),
                 text: "blocked".into(),
                 nonce: "1".into(),
                 attachments: vec![]
@@ -1470,6 +1472,7 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
         new_page,
         &room,
         piik_channel_core::conversation::ConversationCommand::Chat {
+            inline_images: Default::default(),
             text: "Still admitted".into(),
             nonce: "after-legacy-restore".into(),
             attachments: vec![],

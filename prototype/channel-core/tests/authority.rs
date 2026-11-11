@@ -288,6 +288,7 @@ fn hosted_history_uses_authenticated_peer_author_and_the_original_confirmation()
     let room = core.create(owner, RoomAccess::Public, false);
     core.command(author, json!({"type":"browse","active":true,"roomId":room}));
     let send = |text: &str| ConversationCommand::Chat {
+        inline_images: Default::default(),
         text: text.into(),
         nonce: "send-once".into(),
         attachments: vec![],

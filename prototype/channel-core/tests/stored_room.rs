@@ -161,6 +161,7 @@ fn deleting_room_policy_and_history_is_one_commit_and_keeps_other_stores() {
         owner,
         owner,
         ConversationCommand::Chat {
+            inline_images: Default::default(),
             text: "Retained".into(),
             nonce: "before-delete".into(),
             attachments: vec![],
@@ -242,9 +243,9 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
     let attachment = piik_channel_core::AttachmentDescriptor {
         id: Uuid::new_v4(),
         name: "retained.bin".into(),
-        size: 3,
-        media_type: "application/octet-stream".into(),
-        sha256: piik_channel_core::attachment::sha256_hex(b"abc"),
+        size: 9,
+        media_type: "image/gif".into(),
+        sha256: piik_channel_core::attachment::sha256_hex(b"GIF89aabc"),
     };
     for seq in 1..=55 {
         sent(peer(
@@ -252,6 +253,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
             owner,
             owner,
             ConversationCommand::Chat {
+                inline_images: BTreeMap::from([(attachment.id, "R0lGODlhYWJj".into())]),
                 nonce: format!("send-{seq}"),
                 text: format!("Message {seq}"),
                 attachments: vec![attachment.clone()],
@@ -295,6 +297,16 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
     assert_eq!(rows[0].nonce, "send-1");
     assert_eq!(rows[0].message.message.attachments, vec![attachment]);
     assert_eq!(rows[0].message.reactions.revision, 1);
+    assert_eq!(
+        rows[0]
+            .message
+            .message
+            .inline_images
+            .values()
+            .next()
+            .unwrap(),
+        "R0lGODlhYWJj"
+    );
     let manifest = serde_json::to_value(Metadata::Room(backup.metadata().clone())).unwrap();
     assert_eq!(manifest["kind"], "room");
     assert!(manifest.get("ownCredential").is_none());
@@ -362,6 +374,10 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
                 original.message.message.attachments
             );
             assert_eq!(copy.message.reactions, original.message.reactions);
+            assert_eq!(
+                copy.message.message.inline_images,
+                original.message.message.inline_images
+            );
         }
         let mut copying_again = CopyHistoryImport::new(RoomCopyMetadata {
             authors: BTreeMap::new(),
@@ -415,6 +431,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
             new_owner,
             new_owner,
             ConversationCommand::Chat {
+                inline_images: Default::default(),
                 nonce: rows[0].nonce.clone(),
                 text: "A new conversation".into(),
                 attachments: vec![],
@@ -431,6 +448,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         owner,
         owner,
         ConversationCommand::Chat {
+            inline_images: Default::default(),
             nonce: "later".into(),
             text: "After the backup".into(),
             attachments: vec![],
@@ -454,6 +472,7 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         owner,
         owner,
         ConversationCommand::Chat {
+            inline_images: Default::default(),
             nonce: "send-1".into(),
             text: "A changed retry must not replace retained content".into(),
             attachments: vec![],
@@ -519,6 +538,7 @@ fn message_reaction_counts_commit_once_and_recover_without_replaying_effects() {
         owner,
         author,
         ConversationCommand::Chat {
+            inline_images: Default::default(),
             text: "Retained".into(),
             nonce: "original".into(),
             attachments: vec![],
@@ -618,6 +638,7 @@ fn message_reaction_counts_commit_once_and_recover_without_replaying_effects() {
         owner,
         author,
         ConversationCommand::Chat {
+            inline_images: Default::default(),
             text: "Changed retry".into(),
             nonce: "original".into(),
             attachments: vec![],
@@ -672,6 +693,7 @@ fn failed_storage_withholds_grant_and_confirmation_then_retry_survives_reopen() 
     database.execute_batch("CREATE TABLE commit_failure (id TEXT REFERENCES message(id) DEFERRABLE INITIALLY DEFERRED);
         CREATE TRIGGER reject_message AFTER INSERT ON message BEGIN INSERT INTO commit_failure VALUES('missing'); END;").unwrap();
     let message = ConversationCommand::Chat {
+        inline_images: Default::default(),
         text: "Original".into(),
         nonce: "same-send".into(),
         attachments: vec![],
@@ -700,6 +722,7 @@ fn failed_storage_withholds_grant_and_confirmation_then_retry_survives_reopen() 
         owner,
         viewer,
         ConversationCommand::Chat {
+            inline_images: Default::default(),
             text: "Changed retry".into(),
             nonce: "same-send".into(),
             attachments: vec![],
@@ -768,6 +791,7 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
             owner,
             owner,
             ConversationCommand::Chat {
+                inline_images: Default::default(),
                 text: room.into(),
                 nonce: "same-send".into(),
                 attachments: vec![],
@@ -847,6 +871,7 @@ fn embedded_descriptions_commit_with_chat_and_lookup_requires_room_read() {
             owner,
             owner,
             ConversationCommand::Chat {
+                inline_images: Default::default(),
                 text: "Caption".into(),
                 nonce: "file-send".into(),
                 attachments: vec![serde_json::from_value(attachment.clone()).unwrap()],
@@ -911,6 +936,7 @@ fn embedded_descriptions_commit_with_chat_and_lookup_requires_room_read() {
             owner,
             owner,
             ConversationCommand::Chat {
+                inline_images: Default::default(),
                 text: "Changed".into(),
                 nonce: "file-send".into(),
                 attachments: vec![serde_json::from_value(changed).unwrap()],

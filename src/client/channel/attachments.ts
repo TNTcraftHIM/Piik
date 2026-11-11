@@ -4,10 +4,10 @@ import { FileStore, type FileScope, type FileRetentionLimits, type RetainedFile 
 import { loadRoomHosting, type AttachmentHash, type FileDelivery } from "./hosting";
 import { attachmentSchema, type ChannelAttachment, type ChannelCommand, type ChannelFileKey, type ChannelFilePlan, type ChannelMessage, type ChannelRoom, type ChannelPair } from "./protocol";
 
-export const attachmentLimitsSchema = z.object({ maxFileBytes: z.number().positive(), maxAttachmentsPerMessage: z.number().positive(), maxRetainedBytes: z.number().positive(), maxRetainedFiles: z.number().positive() });
+export const attachmentLimitsSchema = z.object({ maxFileBytes: z.number().positive(), maxAttachmentsPerMessage: z.number().positive(), maxRetainedBytes: z.number().positive(), maxRetainedFiles: z.number().positive(), maxInlineImageBytes: z.number().int().positive() });
 export type AttachmentLimits = z.infer<typeof attachmentLimitsSchema>;
 export interface DraftFile { id: string; file: File }
-export interface PreparedFile extends DraftFile { attachment: ChannelAttachment }
+export interface PreparedFile extends DraftFile { attachment: ChannelAttachment; inlineImage?: string }
 type Hosting = Awaited<ReturnType<typeof loadRoomHosting>>;
 type Effect =
   | { type: "send_control"; peer: string; control: { type: string; key: ChannelFileKey; requestId: string } }
@@ -187,6 +187,7 @@ export class ChannelAttachments {
     signal?.throwIfAborted(); lifetime.signal.throwIfAborted();
     if (files.length > limits.maxAttachmentsPerMessage || files.some(entry => entry.file.size > limits.maxFileBytes)) throw new Error("invalid_attachments");
     const prepared: PreparedFile[] = [];
+    let inlineBytes = 0;
     for (const entry of files) {
       let hash: AttachmentHash | null = new module.AttachmentHash();
       try {
@@ -200,7 +201,15 @@ export class ChannelAttachments {
         const sha256 = finished.finish();
         const mediaType = module.attachment_media_type(new Uint8Array(await entry.file.slice(0, 12).arrayBuffer()));
         signal?.throwIfAborted(); lifetime.signal.throwIfAborted();
-        prepared.push({ ...entry, attachment: attachmentSchema.parse({ id: entry.id, name: entry.file.name, size: entry.file.size, mediaType, sha256 }) });
+        let inlineImage: string | undefined;
+        if (mediaType.startsWith("image/") && entry.file.size <= limits.maxInlineImageBytes - inlineBytes) {
+          const bytes = new Uint8Array(await entry.file.arrayBuffer());
+          signal?.throwIfAborted(); lifetime.signal.throwIfAborted();
+          inlineImage = btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join(""));
+          inlineBytes += bytes.length;
+        }
+        prepared.push({ ...entry, attachment: attachmentSchema.parse({ id: entry.id, name: entry.file.name, size: entry.file.size, mediaType, sha256 }),
+          ...(inlineImage !== undefined ? { inlineImage } : {}) });
       } finally { hash?.free(); }
     }
     return prepared;
@@ -232,19 +241,20 @@ export class ChannelAttachments {
       }
     }).catch(() => {});
   }
-  download(key: ChannelFileKey, attachment: ChannelAttachment): Promise<void> {
+  download(key: ChannelFileKey, attachment: ChannelAttachment, inlineImage?: string): Promise<void> {
     const id = keyOf(key), previous = this.downloads.get(id);
     if (previous?.status.busy) return previous.promise;
     const download: Download = { controller: new AbortController(), promise: Promise.resolve(), status: { busy: true, error: null } };
     this.downloads.set(id, download); this.changed();
-    download.promise = this.content(key, attachment, download.controller.signal).then(file => { download.controller.signal.throwIfAborted(); downloadBlob(file, attachment.name); })
+    download.promise = this.content(key, attachment, download.controller.signal, inlineImage).then(file => { download.controller.signal.throwIfAborted(); downloadBlob(file, attachment.name); })
       .catch(error => { if (this.downloads.get(id) === download) download.status = { busy: false, error: download.controller.signal.aborted ? null : errorOf(error).message }; throw error; })
       .finally(() => { if (this.downloads.get(id) === download) { download.status = { ...download.status, busy: false }; this.changed(); } });
     return download.promise;
   }
   cancelDownload(key: ChannelFileKey): void { this.downloads.get(keyOf(key))?.controller.abort(); }
-  async content(key: ChannelFileKey, attachment: ChannelAttachment, signal: AbortSignal): Promise<File> {
+  async content(key: ChannelFileKey, attachment: ChannelAttachment, signal: AbortSignal, inlineImage?: string): Promise<File> {
     signal.throwIfAborted();
+    if (inlineImage !== undefined) return new File([Uint8Array.from(atob(inlineImage), character => character.charCodeAt(0))], attachment.name, { type: attachment.mediaType });
     const source = this.sources.get(keyOf(key));
     if (source) {
       if (!sameContent(source.attachment, attachment)) { this.withdraw(source, true); throw new Error("attachment_unavailable"); }

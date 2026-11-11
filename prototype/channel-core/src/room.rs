@@ -480,6 +480,7 @@ impl RoomRuntime {
         text: String,
         nonce: String,
         attachments: Vec<crate::attachment::AttachmentDescriptor>,
+        inline_images: BTreeMap<Uuid, String>,
         now: u64,
     ) -> Result<HistoryRequest, &'static str> {
         self.authorize(member, RoomPermission::Read)?;
@@ -488,7 +489,7 @@ impl RoomRuntime {
         }
         Ok(HistoryRequest::Send {
             room_id: self.policy.id.clone(),
-            draft: MessageDraft::new(member.user_id, nonce, text, attachments, now)?,
+            draft: MessageDraft::new(member.user_id, nonce, text, attachments, inline_images, now)?,
         })
     }
 

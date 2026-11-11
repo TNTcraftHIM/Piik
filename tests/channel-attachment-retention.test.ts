@@ -12,7 +12,7 @@ const message: ChannelMessage = { id: "message", seq: 1, userId: "self", time: 1
 
 function setup() {
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ initializeRuntime: async () => {},
-    attachment_limits: () => JSON.stringify({ maxFileBytes: 1024, maxAttachmentsPerMessage: 8, maxRetainedBytes: 1024, maxRetainedFiles: 8 }),
+    attachment_limits: () => JSON.stringify({ maxFileBytes: 1024, maxAttachmentsPerMessage: 8, maxRetainedBytes: 1024, maxRetainedFiles: 8, maxInlineImageBytes: 65536 }),
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
   const files = new ChannelAttachments(async () => {}, async () => {});
@@ -33,6 +33,23 @@ test("a confirmed attachment uses its committed readable copy after the selected
     const readable = await files.content(key, attachment, new AbortController().signal);
     expect(new TextDecoder().decode(await readable.arrayBuffer())).toBe("GIF89a");
   } finally { files.reset(); }
+});
+
+test("a confirmed inline GIF remains readable without a live session, cache or transfer", async () => {
+  const command = vi.fn(), send = vi.fn(), load = vi.spyOn(hosting, "loadRoomHosting");
+  const files = new ChannelAttachments(command, send);
+  const content = await files.content(key, attachment, new AbortController().signal, btoa("GIF89a"));
+  expect(content.name).toBe(attachment.name);
+  expect(content.type).toBe("image/gif");
+  expect(await content.text()).toBe("GIF89a");
+  expect(command).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled(); expect(load).not.toHaveBeenCalled();
+});
+
+test("an already cancelled inline read preserves cancellation without opening a transfer", async () => {
+  const command = vi.fn(), send = vi.fn(), files = new ChannelAttachments(command, send);
+  const request = new AbortController(); request.abort();
+  await expect(files.content(key, attachment, request.signal, btoa("GIF89a"))).rejects.toMatchObject({ name: "AbortError" });
+  expect(command).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled();
 });
 
 test("a late retained copy cannot replace a successor source for the same attachment", async () => {

@@ -31,7 +31,7 @@ impl Storage {
         let connection = Connection::open(normalized.as_deref().unwrap_or(path))?;
         let version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         let existing: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message','attachment'))", [], |row| row.get(0))?;
-        if version != 5 && (version != 0 || existing) {
+        if version != 6 && (version != 0 || existing) {
             return Err("unsupported_storage_version".into());
         }
         connection.execute_batch(
@@ -41,10 +41,10 @@ impl Storage {
                room_id TEXT NOT NULL, seq INTEGER NOT NULL, id TEXT NOT NULL UNIQUE,
                user_id TEXT NOT NULL, nonce TEXT NOT NULL, text TEXT NOT NULL,
                time INTEGER NOT NULL, attachments TEXT NOT NULL, reactions TEXT NOT NULL,
-               archived_author_name TEXT,
+               archived_author_name TEXT, inline_images TEXT NOT NULL,
                PRIMARY KEY(room_id,seq), UNIQUE(room_id,user_id,nonce)
              );
-             PRAGMA user_version=5;",
+             PRAGMA user_version=6;",
         )?;
         Ok(Self { connection })
     }
@@ -116,13 +116,13 @@ impl Storage {
         mut visit: impl FnMut(HistoryRow) -> StoreResult<()>,
     ) -> StoreResult<()> {
         let mut statement = self.connection.prepare(
-            "SELECT seq,id,user_id,text,time,attachments,reactions,archived_author_name,nonce FROM message
+            "SELECT seq,id,user_id,text,time,attachments,reactions,archived_author_name,inline_images,nonce FROM message
              WHERE room_id=?1 ORDER BY seq",
         )?;
         let rows = statement.query_map([room_id], |row| {
             Ok(HistoryRow {
                 message: read_message(row)?,
-                nonce: row.get(8)?,
+                nonce: row.get(9)?,
             })
         })?;
         for row in rows {
@@ -147,8 +147,8 @@ impl Storage {
             import.accept(&row)?;
             let message = row.message.message;
             transaction.execute(
-                "INSERT INTO message(room_id,seq,id,user_id,nonce,text,time,attachments,reactions,archived_author_name)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+                "INSERT INTO message(room_id,seq,id,user_id,nonce,text,time,attachments,reactions,archived_author_name,inline_images)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
                 params![
                     policy.id,
                     message.seq,
@@ -160,6 +160,7 @@ impl Storage {
                     serde_json::to_string(&message.attachments)?,
                     serde_json::to_string(&row.message.reactions)?,
                     message.archived_author_name,
+                    serde_json::to_string(&message.inline_images)?,
                 ],
             )?;
         }
@@ -190,7 +191,7 @@ impl Storage {
                 ..
             } => {
                 let message = transaction.query_row(
-                    "SELECT seq,id,user_id,text,time,attachments,reactions,archived_author_name FROM message WHERE room_id=?1 AND seq=?2",
+                    "SELECT seq,id,user_id,text,time,attachments,reactions,archived_author_name,inline_images FROM message WHERE room_id=?1 AND seq=?2",
                     params![room_id, message_seq], read_message).optional().map_err(|_| "storage_failed")?;
                 let confirmation = request.reaction_result(message)?;
                 if confirmation.event.is_some() {
@@ -211,7 +212,7 @@ impl Storage {
                 ..
             } => {
                 let message = transaction.query_row(
-                    "SELECT seq,id,user_id,text,time,attachments,reactions,archived_author_name FROM message WHERE room_id=?1 AND seq=?2",
+                    "SELECT seq,id,user_id,text,time,attachments,reactions,archived_author_name,inline_images FROM message WHERE room_id=?1 AND seq=?2",
                     params![room_id, message_seq], read_message).optional().map_err(|_| "storage_failed")?
                     ;
                 request.attachment_result(message)?
@@ -224,7 +225,7 @@ impl Storage {
                 let messages = {
                     let mut query = transaction
                         .prepare(
-                            "SELECT seq,id,user_id,text,time,attachments,reactions,archived_author_name FROM message
+                            "SELECT seq,id,user_id,text,time,attachments,reactions,archived_author_name,inline_images FROM message
                          WHERE room_id=?1 AND seq<=?2
                          ORDER BY seq DESC LIMIT ?3",
                         )
@@ -248,7 +249,7 @@ impl Storage {
             HistoryRequest::Send { room_id, draft } => {
                 let previous = transaction
                     .query_row(
-                        "SELECT seq,id,user_id,text,time,attachments,reactions,archived_author_name FROM message
+                        "SELECT seq,id,user_id,text,time,attachments,reactions,archived_author_name,inline_images FROM message
                          WHERE room_id=?1 AND user_id=?2 AND nonce=?3",
                         params![room_id, draft.user_id.to_string(), draft.nonce],
                         read_message,
@@ -277,11 +278,11 @@ impl Storage {
                     let reactions = serde_json::to_string(&confirmation.message.reactions)
                         .map_err(|_| "storage_failed")?;
                     transaction.execute(
-                        "INSERT INTO message(room_id,seq,id,user_id,nonce,text,time,attachments,reactions)
-                         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                        "INSERT INTO message(room_id,seq,id,user_id,nonce,text,time,attachments,reactions,inline_images)
+                         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
                         params![room_id, message.seq, message.id.to_string(),
                             message.user_id.to_string(), draft.nonce, message.text,
-                            message.time, attachments, reactions],
+                            message.time, attachments, reactions, serde_json::to_string(&message.inline_images).map_err(|_| "storage_failed")?],
                     ).map_err(|_| "storage_failed")?;
                 }
                 HistoryResult::Sent(confirmation)
@@ -312,6 +313,9 @@ fn read_message(row: &Row<'_>) -> rusqlite::Result<StoredMessage> {
     })?;
     Ok(StoredMessage {
         message: ChatMessage {
+            inline_images: serde_json::from_str(&row.get::<_, String>(8)?).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(8, Type::Text, Box::new(error))
+            })?,
             seq: row.get(0)?,
             id: read_uuid(row, 1)?,
             user_id: read_uuid(row, 2)?,
@@ -373,6 +377,7 @@ mod tests {
 
     fn copy_draft(draft: &MessageDraft) -> MessageDraft {
         MessageDraft {
+            inline_images: draft.inline_images.clone(),
             user_id: draft.user_id,
             nonce: draft.nonce.clone(),
             text: draft.text.clone(),
@@ -399,8 +404,15 @@ mod tests {
         policy.enter(guest, None, Some(&previous)).unwrap();
         let mut legacy = serde_json::to_value(&policy).unwrap();
         legacy.as_object_mut().unwrap().remove("inviteKey");
-        let draft =
-            MessageDraft::new(guest, "kept".into(), "Retained history".into(), vec![], 1).unwrap();
+        let draft = MessageDraft::new(
+            guest,
+            "kept".into(),
+            "Retained history".into(),
+            vec![],
+            Default::default(),
+            1,
+        )
+        .unwrap();
         {
             let mut store = Storage::open(&path).unwrap();
             store.save(&legacy).unwrap();
@@ -507,6 +519,7 @@ mod tests {
             "same-send".into(),
             "original".into(),
             vec![file.clone()],
+            Default::default(),
             2,
         )
         .unwrap();
@@ -577,6 +590,7 @@ mod tests {
         let user_id = Uuid::new_v4();
         for seq in 1..=1010 {
             let draft = MessageDraft {
+                inline_images: Default::default(),
                 user_id,
                 nonce: format!("send-{seq}"),
                 text: format!("retained-{seq}"),
@@ -609,6 +623,7 @@ mod tests {
         let mut store = Storage::open(Path::new(":memory:")).unwrap();
         let file = attachment();
         let mut draft = MessageDraft {
+            inline_images: Default::default(),
             user_id: Uuid::new_v4(),
             nonce: "first".into(),
             text: "saved".into(),

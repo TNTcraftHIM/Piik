@@ -305,6 +305,7 @@ impl HistoryRow {
             self.nonce.clone(),
             message.text.clone(),
             message.attachments.clone(),
+            message.inline_images.clone(),
             message.time,
         )?;
         Ok(())

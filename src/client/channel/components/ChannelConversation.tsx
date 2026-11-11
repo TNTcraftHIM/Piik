@@ -241,7 +241,8 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
     <div className="c3-message-body">{!grouped && <div className="c3-message-meta"><strong>{name}</strong>
       <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
     </div>}<div className="c3-message-content-body">{message.text && <p>{message.text}</p>}
-    {message.attachments.map(file => <ChannelAttachment key={file.id} roomId={roomId} messageSeq={message.seq} file={file} client={attachments} />)}
+    {message.attachments.map(file => <ChannelAttachment key={file.id} roomId={roomId} messageSeq={message.seq} file={file} client={attachments}
+      inlineImage={message.inlineImages?.[file.id]} />)}
     <ChannelContentReactions reactions={message.reactions} session={interaction} target={{ messageSeq: message.seq }} disabled={!available}
       effectAnchor={effectAnchor} effectsEnabled={effectsEnabled} /></div></div>
     </article>

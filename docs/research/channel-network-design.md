@@ -26,7 +26,7 @@ The owner accepted this routing foundation and durable room records with cached
 attachments. The [room-data model](./channel-storage-and-identity.md) owns simple
 shared file delivery on those same paths. Browser and Native room owners run the
 shared Rust core with local confirmation/storage. Text, history, reactions and
-attachment descriptions use domain WebSocket carriage; reading alone needs no
+attachment descriptions and bounded small images use domain WebSocket carriage; reading alone needs no
 peer connection. TODO owns remaining implementation and platform integration.
 
 ## Terminology And Responsibilities
@@ -121,8 +121,8 @@ domain WebSocket after room admission. This is their normal, single transport,
 not a fallback after ICE failure. The domain verifies the sending connection,
 current room-host binding and destination admission, then forwards the signed
 packet. It neither stores conversation content nor acknowledges a room commit.
-The domain operator can see the forwarded text: signatures authenticate content
-but do not encrypt it from the carrier. File bytes and file-pull control remain
+The domain operator can see forwarded text and inline images: signatures authenticate content
+but do not encrypt it from the carrier. Other file bytes and file-pull control remain
 on the room's peer paths.
 Use short-lived session signing keys, bound to admitted sessions and the current
 room-host binding through authenticated domain rendezvous. Sign the original

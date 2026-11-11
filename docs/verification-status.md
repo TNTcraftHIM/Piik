@@ -21,7 +21,12 @@ These package checks ran on a controlled local network.
 The newer conversation path passes normal Browser-hosted and App-hosted room
 checks with peer signaling blocked: history, bidirectional messages and saved
 reactions work without RTC connections. Attachment descriptions also arrive
-without RTC; their file content downloads over P2P once that path is available.
+without RTC. Bounded small images now arrive and persist in that same history;
+other file content downloads over P2P once that path is available. A real
+two-Browser check displayed a small animated GIF with no peer connection,
+loaded a larger GIF over P2P on request, and reloaded the small original from
+history after its sender left. Inline originals, size/type/digest validation
+and backup/copy retention share the room's confirmed-message boundary.
 The delivered Windows and Android candidates include this path. Earlier Windows
 upgrade checks used a copy of the previous candidate's data; an Android
 same-signature update retained compatible room/history and its invitation after

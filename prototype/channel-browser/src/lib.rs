@@ -134,9 +134,18 @@ fn parse_backup<T: serde::de::DeserializeOwned>(input: &str) -> Result<T, JsValu
 
 #[wasm_bindgen]
 pub fn prepare_confirmation(draft: &str, input: &str) -> Result<String, JsValue> {
-    let confirmation = parse::<MessageDraft>(draft)?
-        .prepare_confirmation(parse::<ConfirmationInput>(input)?)
-        .map_err(error)?;
+    let draft = parse::<MessageDraft>(draft)?;
+    let confirmation = MessageDraft::new(
+        draft.user_id,
+        draft.nonce,
+        draft.text,
+        draft.attachments,
+        draft.inline_images,
+        draft.time,
+    )
+    .map_err(error)?
+    .prepare_confirmation(parse::<ConfirmationInput>(input)?)
+    .map_err(error)?;
     encode(&HistoryResult::Sent(confirmation))
 }
 

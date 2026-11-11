@@ -76,15 +76,18 @@ pub struct MessageDraft {
     pub nonce: String,
     pub text: String,
     pub attachments: Vec<AttachmentDescriptor>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub inline_images: BTreeMap<Uuid, String>,
     pub time: u64,
 }
 
 impl MessageDraft {
-    pub(crate) fn new(
+    pub fn new(
         user_id: Uuid,
         nonce: String,
         text: String,
         attachments: Vec<AttachmentDescriptor>,
+        inline_images: BTreeMap<Uuid, String>,
         time: u64,
     ) -> Result<Self, &'static str> {
         if attachments.len() > ATTACHMENT_LIMITS.max_attachments_per_message
@@ -100,6 +103,27 @@ impl MessageDraft {
         for attachment in &attachments {
             attachment.validate()?;
         }
+        use base64ct::{Base64, Encoding};
+        let mut total = 0;
+        for (id, encoded) in &inline_images {
+            let attachment = attachments
+                .iter()
+                .find(|file| file.id == *id)
+                .ok_or("invalid_inline_images")?;
+            if encoded.len() > (ATTACHMENT_LIMITS.max_inline_image_bytes + 2) / 3 * 4 {
+                return Err("invalid_inline_images");
+            }
+            let bytes = Base64::decode_vec(encoded).map_err(|_| "invalid_inline_images")?;
+            total += bytes.len();
+            if total > ATTACHMENT_LIMITS.max_inline_image_bytes
+                || bytes.len() as u64 != attachment.size
+                || attachment.media_type == "application/octet-stream"
+                || crate::attachment::sniff_media_type(&bytes) != attachment.media_type
+                || !crate::attachment::sha256_hex(&bytes).eq_ignore_ascii_case(&attachment.sha256)
+            {
+                return Err("invalid_inline_images");
+            }
+        }
         if (text.trim().is_empty() && attachments.is_empty())
             || text.chars().count() > 2000
             || !valid_id(&nonce)
@@ -111,6 +135,7 @@ impl MessageDraft {
             nonce,
             text: text.trim().to_owned(),
             attachments,
+            inline_images,
             time,
         })
     }
@@ -136,6 +161,7 @@ impl MessageDraft {
                         text: self.text.clone(),
                         time: self.time,
                         attachments: self.attachments.clone(),
+                        inline_images: self.inline_images.clone(),
                     },
                     reactions: MessageReactions::default(),
                 },
@@ -291,5 +317,81 @@ impl HistoryResult {
             oldest_seq,
             before,
         }
+    }
+}
+
+#[cfg(test)]
+mod inline_tests {
+    use super::*;
+    use base64ct::{Base64, Encoding};
+    #[test]
+    fn inline_images_require_matching_image_descriptions_and_a_message_budget() {
+        let bytes = b"GIF89aoriginal-gif-bytes";
+        let file = AttachmentDescriptor {
+            id: Uuid::new_v4(),
+            name: "image.gif".into(),
+            size: bytes.len() as u64,
+            media_type: "image/gif".into(),
+            sha256: crate::attachment::sha256_hex(bytes),
+        };
+        let check = |files, images| {
+            MessageDraft::new(Uuid::new_v4(), "send".into(), "".into(), files, images, 1)
+        };
+        let images = BTreeMap::from([(file.id, Base64::encode_string(bytes))]);
+        let draft = check(vec![file.clone()], images.clone()).unwrap();
+        assert_eq!(
+            draft
+                .prepare_confirmation(ConfirmationInput::New { last_seq: 0 })
+                .unwrap()
+                .message
+                .message
+                .inline_images,
+            images
+        );
+        for invalid in [
+            AttachmentDescriptor {
+                size: file.size + 1,
+                ..file.clone()
+            },
+            AttachmentDescriptor {
+                sha256: "0".repeat(64),
+                ..file.clone()
+            },
+            AttachmentDescriptor {
+                media_type: "image/png".into(),
+                ..file.clone()
+            },
+            AttachmentDescriptor {
+                media_type: "application/octet-stream".into(),
+                ..file.clone()
+            },
+        ] {
+            assert!(check(vec![invalid], images.clone()).is_err());
+        }
+        assert!(check(
+            vec![file.clone()],
+            BTreeMap::from([(Uuid::new_v4(), Base64::encode_string(bytes))])
+        )
+        .is_err());
+        assert!(check(
+            vec![file.clone()],
+            BTreeMap::from([(file.id, "%%%".into())])
+        )
+        .is_err());
+        let mut large = vec![0; ATTACHMENT_LIMITS.max_inline_image_bytes / 2 + 1];
+        large[..6].copy_from_slice(b"GIF89a");
+        let files: Vec<_> = (0..2)
+            .map(|_| AttachmentDescriptor {
+                id: Uuid::new_v4(),
+                size: large.len() as u64,
+                sha256: crate::attachment::sha256_hex(&large),
+                ..file.clone()
+            })
+            .collect();
+        let images = files
+            .iter()
+            .map(|a| (a.id, Base64::encode_string(&large)))
+            .collect();
+        assert!(check(files, images).is_err());
     }
 }

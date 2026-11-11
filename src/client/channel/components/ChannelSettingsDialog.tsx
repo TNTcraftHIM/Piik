@@ -12,8 +12,8 @@ import { channelErrorPresentation } from "../error-presentation";
 import "./channel-settings-dialog.css";
 
 /** Task contents keep their own state; the native modal owns focus and dismissal. */
-export function ChannelSettingsDialog({ title, caption, compact = false, error = null, onClose, children }: {
-  title: string; caption?: string; compact?: boolean; error?: string | null; onClose(): void; children: ReactNode;
+export function ChannelSettingsDialog({ title, caption, compact = false, error = null, className = "", dismissOnBackdrop = false, onClose, children }: {
+  title: string; caption?: string; compact?: boolean; error?: string | null; className?: string; dismissOnBackdrop?: boolean; onClose(): void; children: ReactNode;
 }) {
   const ownerDocument = useSurfaceDocument();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -25,8 +25,13 @@ export function ChannelSettingsDialog({ title, caption, compact = false, error =
     element.showModal();
     return () => { if (element.open) element.close(); };
   }, [ownerDocument]);
-  return ownerDocument && createPortal(<dialog ref={dialog} className="c3-settings-dialog" data-compact={compact || undefined}
-    aria-labelledby={titleId} onClose={event => { if (!event.currentTarget.open) onClose(); }}>
+  return ownerDocument && createPortal(<dialog ref={dialog} className={`c3-settings-dialog ${className}`} data-compact={compact || undefined}
+    aria-labelledby={titleId} onClose={event => { if (!event.currentTarget.open) onClose(); }}
+    onClick={event => {
+      if (!dismissOnBackdrop || event.target !== event.currentTarget) return;
+      const bounds = event.currentTarget.getBoundingClientRect();
+      if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) event.currentTarget.close();
+    }}>
     <header className="c3-settings-dialog-heading">
       {/* Start at the heading so automatic focus does not open an action's tooltip. */}
       <div>{caption && <p>{caption}</p>}<h2 id={titleId} tabIndex={-1}
