@@ -12,16 +12,15 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **3.0 external integrations.** Review and integrate the proven independent
-  text participant and local OBS/WHIP input through the existing conversation
-  and media owners. Issuer, room scope,
-  revocation and unattended input remain decisions at the
-  [extension boundary](./research/room-interactions.md#extension-boundaries-proposed);
-  they do not block isolated interoperability work.
-- [ ] **Desktop graphical entry.** Evaluate the small Rust-native status-window
-  prototype against the current App's startup, diagnostics and normal shutdown.
-  Keep the shared Browser room UI and avoid a second runtime-state owner; review
-  the actual appearance and desktop lifecycle before production integration.
+- [ ] **3.0 production external integrations.** Independent text participation and
+  local OBS/WHIP interoperability are proven in isolated examples. Integrate a
+  narrow adapter through the existing conversation and media owners only after
+  deciding issuer, room scope, revocation, source representation and unattended
+  input at the [extension boundary](./research/room-interactions.md#extension-boundaries-proposed).
+- [ ] **Desktop graphical entry integration.** A small Rust-native status-window
+  prototype is verified on Windows. Evaluate it against the current App's startup,
+  diagnostics and normal shutdown before production integration; keep the shared
+  Browser room UI and avoid a second runtime-state owner.
 - [ ] **3.0 Windows shared-sound noise.** The reporter confirms electrical or
   crackling sound in beta9/10 as well as beta2, while 2.x sounds normal. Excluding
   the window titled Piik removes it; excluding a silent unrelated window does
