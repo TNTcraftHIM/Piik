@@ -12,6 +12,16 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **3.0 external integrations.** Review and integrate the proven independent
+  text participant and local OBS/WHIP input through the existing conversation
+  and media owners. Issuer, room scope,
+  revocation and unattended input remain decisions at the
+  [extension boundary](./research/room-interactions.md#extension-boundaries-proposed);
+  they do not block isolated interoperability work.
+- [ ] **Desktop graphical entry.** Evaluate the small Rust-native status-window
+  prototype against the current App's startup, diagnostics and normal shutdown.
+  Keep the shared Browser room UI and avoid a second runtime-state owner; review
+  the actual appearance and desktop lifecycle before production integration.
 - [ ] **3.0 Windows shared-sound noise.** The reporter confirms electrical or
   crackling sound in beta9/10 as well as beta2, while 2.x sounds normal. Excluding
   the window titled Piik removes it; excluding a silent unrelated window does
@@ -87,11 +97,6 @@ the feedback period; they do not delay that delivery.
   remain shared. End the separate 2.x maintenance line only at the accepted 3.0
   cutover; fix confirmed defects during the transition. A short room-code locator
   remains a separate product decision.
-- [ ] **3.0 permissions and extension decisions.** Review the
-  [proposed boundaries](./research/room-interactions.md#extension-boundaries-proposed)
-  before API or plugin work: keep ordinary sharing simple, choose the first
-  bot/media use case, and decide bot identity, authority scope and revocation.
-  External media should reuse the shared Source and routing owners.
 - [ ] **3.0 route improvement and fallback scope.** Resolve the remaining
   scenarios against the accepted multi-source model: replacing a still-working
   but persistently limited upstream, and a service media bridge for Browser/App

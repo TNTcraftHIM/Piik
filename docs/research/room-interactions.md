@@ -547,6 +547,14 @@ examples of this small integration boundary. Piik need not add a generic webhook
 server or a second Markdown format to supply it. A ready-check bot can retain one
 choice per authenticated user; existing cumulative reaction counts are not ballots.
 
+The [independent text example](../../prototype/channel-browser/examples/README.md)
+uses its own ordinary identity with the shared Core signer and reply verifier.
+A real Browser-hosted room verified history, a confirmed reply, socket reconnect,
+host-offline rejection and restored live delivery. A new host binding requires
+reissuing the client's existing Browse intent; reading history does not replay
+old commands. This demonstrates an external consumer, not server-enforced Bot
+scope or independent revocation.
+
 Shared pads, checklists and watch queues can begin as ordinary links or bot replies.
 Embedding arbitrary web tools adds identity, capability and instance-lifetime work:
 [Discord Activities](https://docs.discord.com/developers/activities/how-activities-work)
@@ -570,8 +578,15 @@ completed ICE/DTLS and retained RTP timestamp progression and sender reports.
 It used synthetic in-process datagrams, not OBS or an HTTP endpoint. No SDK fork
 is needed for that transport boundary. A local WHIP input must also restrict its
 media listeners and candidates to the local scope; binding only the HTTP entry
-to loopback is insufficient. Actual OBS interoperability, input authorization
-and publication integration remain unimplemented.
+to loopback is insufficient. A subsequent isolated OBS 33.0.1 portable control
+sent generated picture and stereo tones through real loopback WHIP HTTP/SRTP.
+H264, decoded stereo Opus and sender reports progressed; normal OBS stop sent
+DELETE, joined the receiver and released UDP. Reopening created a fresh resource;
+an old DELETE could not stop it. The standard Cargo build used the current SDK
+without another fork. Production input authorization and publication integration
+remain unimplemented: the current runtime's wildcard sockets and capture-only
+local-source path need an explicit scoped external producer, not a fabricated
+room flow.
 
 ## Attended Remote-Control Prototype
 
