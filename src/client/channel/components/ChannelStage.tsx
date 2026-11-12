@@ -128,7 +128,8 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
       const style = getComputedStyle(parent), children = [...parent.children] as HTMLElement[];
       const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
       const gap = parseFloat(style.rowGap) || 0;
-      const height = parent.clientHeight - padding - children.filter(child => child !== tiles).reduce((sum, child) => sum + child.offsetHeight, 0)
+      const availableHeight = Math.min(parent.clientHeight, Math.max(160, window.innerHeight - parent.getBoundingClientRect().top));
+      const height = availableHeight - padding - children.filter(child => child !== tiles).reduce((sum, child) => sum + child.offsetHeight, 0)
         - gap * (children.length - 1);
       const footer = Math.max(...[...tiles.querySelectorAll("article:not([hidden]) > footer")].map(node => node.getBoundingClientRect().height)) + 2;
       const layout = getComputedStyle(tiles);
@@ -145,11 +146,13 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
     for (const footer of tiles.querySelectorAll("article > footer")) observer.observe(footer);
     tiles.addEventListener("loadedmetadata", measure, true);
     tiles.addEventListener("resize", measure, true);
+    window.addEventListener("resize", measure);
     measure();
     return () => {
       observer.disconnect();
       tiles.removeEventListener("loadedmetadata", measure, true);
       tiles.removeEventListener("resize", measure, true);
+      window.removeEventListener("resize", measure);
     };
   }, [layoutSources, focused?.id, theater, lang]);
   useLayoutEffect(() => {
