@@ -61,16 +61,18 @@ An earlier Android same-signature update retained compatible room/history and
 its invitation after reload. Older private storage formats follow the
 [storage reset boundary](../prototype/channel-server/README.md#saved-data-and-files).
 
-The latest matched Windows candidate passed fresh empty-site first-use acceptance: the
+Windows package evidence covers fresh empty-site first-use acceptance: the
 site started with zero rooms and publications, Skip persisted the workspace view,
 manual Quick selection persisted after reload, and no room or capture was created
-by the choice. The matched Linux Server passed the existing Native-room,
-signed-confirmation and clean-shutdown checks. The matched Android
-candidate passed build, signature, dual-ABI, 16 KiB alignment and bundled-Web
-identity checks but has not been installed for runtime acceptance. An Android
-runtime comparison remains pending; earlier emulator results do not establish
-the current candidate's runtime acceptance. Package receipts retain the exact
-revisions and environment evidence.
+by the choice. Current Windows package checks also verified private-room
+invitation consumption, credential-backed reload and bidirectional chat between
+independent Browser identities. The matched Linux Server passed Native-room,
+signed-confirmation and clean-shutdown checks.
+
+An earlier Android candidate passed build, signature, dual-ABI, 16 KiB alignment
+and bundled-Web identity checks. An updated matched package and its runtime
+acceptance remain pending; earlier emulator results do not establish that
+acceptance. Package receipts retain exact revisions and environment evidence.
 
 Windows package checks also cover normal control request and Host
 approval, real pointer and keyboard input to an isolated window, and **End

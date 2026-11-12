@@ -110,8 +110,8 @@ the feedback period; they do not delay that delivery.
   Native root. Define evidence, authorization and resource cost before extending
   the current admission/switch owners; 2.x route-policy labels do not directly
   describe these 3.0 paths.
-- [ ] **3.0 Native platform acceptance.** Validate the current Android candidate
-  at runtime, then complete remaining Linux/macOS device acceptance, including
+- [ ] **3.0 Native platform acceptance.** Build the matching Android candidate
+  and validate it at runtime, then complete remaining Linux/macOS device acceptance, including
   macOS Quit, Dock/Finder return and permissions,
   and Linux hardware encoding and physical sound. Retain the accepted
   [network model](./research/channel-network-design.md)
