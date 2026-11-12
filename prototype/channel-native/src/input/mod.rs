@@ -113,7 +113,10 @@ impl Desktop {
         let gamepad = gamepad::Backend::connect().ok();
         #[cfg(target_os = "windows")]
         {
-            Ok(Self::with_backend(Box::new(windows::System), gamepad))
+            Ok(Self::with_backend(
+                Box::new(windows::System::new()),
+                gamepad,
+            ))
         }
         #[cfg(target_os = "macos")]
         {
