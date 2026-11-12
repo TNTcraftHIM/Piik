@@ -20,6 +20,8 @@ services:
       - "${PIIK_CHANNEL_UDP_PORT:-8787}:${PIIK_CHANNEL_UDP_PORT:-8787}/udp"
     volumes:
       - piik-data:/home/nonroot
+      - piik-tmp:/tmp
 
 volumes:
   piik-data:
+  piik-tmp:

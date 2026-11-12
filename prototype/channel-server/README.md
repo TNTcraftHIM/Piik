@@ -56,6 +56,13 @@ owner key; changing or removing the environment value does not rotate it.
 Keep the key and hosting backups private and out of
 committed files and saved logs. Server does not print key-bearing URLs.
 
+The [Compose recipe](../../deploy/container/compose.yaml) keeps the root filesystem
+read-only. `piik-data` holds durable site/room data; the separate `piik-tmp` disk
+volume at `/tmp` holds backup snapshots and restore staging. Allow free disk space
+for the uploaded archive and its extracted data. Normal completion, rejection and
+cancellation remove their temporary directories. After an abnormal container stop,
+the scratch volume can be recreated while the service is stopped; keep `piik-data`.
+
 In another terminal, start the development interface:
 
 ```powershell

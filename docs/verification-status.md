@@ -81,6 +81,9 @@ progressing media on retained connections. Native App and Server package checks
 verify bundled Web/WASM identity, notices, startup and orderly shutdown.
 Windows Server checks also cover IPv4/IPv6 wildcard listeners with working
 internal room hosting, and same-origin WebSockets on IPv6 loopback.
+The Compose check covers room backup and restore with a read-only root,
+invalid-archive rejection, scratch cleanup, and retained site/room identity
+after container recreation. Media UDP and NAT have separate network checks.
 
 Switching between the full workspace and simple sharing retains actual Browser
 picture and Opus tracks, publication and transport identities, microphone

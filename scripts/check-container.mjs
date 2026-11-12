@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
-import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,7 @@ const project = `piik-check-${randomUUID()}`;
 const workspace = resetBuildWorkspace(root, "container-check", project);
 const origin = "https://share.example.com";
 const ownerKey = randomUUID();
+let credential;
 const environment = { ...process.env, PIIK_IMAGE: image,
   PIIK_CHANNEL_OWNER_KEY: ownerKey };
 function docker(...args) {
@@ -63,6 +64,7 @@ async function rooms() {
         try {
           const event = JSON.parse(bytes.toString());
           assert.notEqual(event.type, "error", event.code);
+          if (event.type === "welcome") credential = event.credential;
           if (!["welcome", "state"].includes(event.type)) return;
           const { channel } = event.state;
           if (channel.rooms.length === 3 && channel.rooms.every(room => room.available)) {
@@ -92,6 +94,20 @@ try {
   const html = await (await request("/")).text();
   await checkWebSourceIdentity(html, revision, async asset => (await request(asset)).text());
   const initial = await rooms();
+  const backupURL = "http://127.0.0.1:8787/prototype/channel/rooms/living/backup";
+  const headers = { Origin: origin, Authorization: `Bearer ${credential}` };
+  const backup = await fetch(backupURL, { headers, signal: AbortSignal.timeout(10_000) });
+  assert.equal(backup.status, 200, `Native room snapshot needs writable temporary space${backup.ok ? "" : `: ${await backup.text()}`}`);
+  const archive = await backup.arrayBuffer();
+  assert.equal(Buffer.from(archive).subarray(0, 2).toString(), "PK");
+  const restoreURL = "http://127.0.0.1:8787/prototype/channel/rooms/backup";
+  const restored = await fetch(restoreURL, { method: "PUT", headers: { ...headers, "Content-Type": "application/zip" }, body: archive, signal: AbortSignal.timeout(10_000) });
+  assert.equal(restored.status, 200, "Native room restore stages its upload before replacement");
+  await restored.body?.cancel();
+  const invalid = await fetch(restoreURL, { method: "PUT", headers: { ...headers, "Content-Type": "application/zip" }, body: "invalid owned archive", signal: AbortSignal.timeout(10_000) });
+  assert.equal(invalid.status, 400, "invalid archives fail without replacing the room");
+  await invalid.body?.cancel();
+  assert.deepEqual(await rooms(), initial);
   const container = JSON.parse(docker("inspect", compose("ps", "-q", "piik")))[0];
   assert.equal(container.HostConfig.ReadonlyRootfs, true);
   assert.ok(container.HostConfig.CapDrop.includes("ALL"));
@@ -106,10 +122,14 @@ try {
   const state = join(workspace, "state");
   mkdirSync(state);
   compose("cp", "piik:/home/nonroot/.", state);
+  const scratch = join(workspace, "scratch");
+  mkdirSync(scratch);
+  compose("cp", "piik:/tmp/.", scratch);
+  assert.ok(!readdirSync(scratch).some(name => /^piik-(backup|restore)-/.test(name)), "Completed and rejected backups release their staging directories");
   for (const file of ["channel.sqlite", ...initial.roomIds.map(id => join("rooms", initial.channelId, initial.ownerId, `${id}.sqlite`))]) {
     assert.equal(readFileSync(join(state, file)).subarray(0, 16).toString(), "SQLite format 3\0");
   }
-  process.stdout.write("Container checks passed: shared frontend, authenticated Native rooms, persistence and shutdown.\n");
+  process.stdout.write("Container checks passed: shared frontend, authenticated Native rooms, backup/restore, persistence and shutdown.\n");
 } catch (error) {
   try { process.stderr.write(`${compose("logs", "--no-color", "--tail", "60")}\n`); } catch { /* Startup may have failed. */ }
   throw error;
