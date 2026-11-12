@@ -12,11 +12,9 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **3.0 production external integrations.** Independent text participation and
-  local OBS/WHIP interoperability are proven in isolated examples. Integrate a
-  narrow adapter through the existing conversation and media owners only after
-  deciding issuer, room scope, revocation, source representation and unattended
-  input at the [extension boundary](./research/room-interactions.md#extension-boundaries-proposed).
+- [ ] **3.0 external media input.** Integrate OBS/WHIP through the page-owned
+  source adapter, local listener, existing quality adaptation and stop lifecycle at
+  the [extension boundary](./research/room-interactions.md#extension-boundaries-proposed).
 - [ ] **Desktop graphical entry integration.** A small Rust-native status-window
   prototype is verified on Windows. Evaluate it against the current App's startup,
   diagnostics and normal shutdown before production integration; keep the shared
@@ -110,8 +108,8 @@ the feedback period; they do not delay that delivery.
   Native root. Define evidence, authorization and resource cost before extending
   the current admission/switch owners; 2.x route-policy labels do not directly
   describe these 3.0 paths.
-- [ ] **3.0 Native platform acceptance.** Build the matching Android candidate
-  and validate it at runtime, then complete remaining Linux/macOS device acceptance, including
+- [ ] **3.0 Native platform acceptance.** Install and validate the matching
+  Android candidate, then complete remaining Linux/macOS device acceptance, including
   macOS Quit, Dock/Finder return and permissions,
   and Linux hardware encoding and physical sound. Retain the accepted
   [network model](./research/channel-network-design.md)

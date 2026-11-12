@@ -13,11 +13,10 @@ across Server, Native and Browser/WASM, with the shared Web UI for chat, screen
 sharing, selective watching, room voice and App control. Normal development and
 distribution use these Rust/Web paths; Go tooling only builds the pinned
 Cloudflared helper. Work stays on `feat/channel-prototype`, separately from 2.x.
-Matched Windows App and Linux x64 Server candidates have been delivered for
-internal testing with the current capacity and profile-reading protocol. Both
-passed their scoped package and runtime acceptance. Android's earlier package
-checks remain valid for that artifact; an updated package and its device
-acceptance have not yet joined this matched set.
+Matched Windows App, Linux x64 Server and Android candidates have been delivered
+for internal testing with the current capacity and profile-reading protocol.
+Windows and Linux passed their scoped package and runtime acceptance; Android
+passed package checks and still awaits installation and device acceptance.
 Exact revisions and receipts stay with the immutable packages, and
 [verification status](./verification-status.md) records their tested scope.
 

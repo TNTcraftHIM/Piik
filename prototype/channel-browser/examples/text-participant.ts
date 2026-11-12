@@ -1,6 +1,6 @@
-// Prototype ordinary test participant, NOT production room-scoped bot admission.
+// Independent ordinary participant using the existing signed conversation API.
 import { EventEmitter } from 'node:events';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { parseArgs } from 'node:util';
@@ -13,6 +13,15 @@ await init({ module_or_path: readFileSync(new URL('../pkg/piik_channel_browser_b
 type ConversationCommand = Extract<ChannelCommand, {
   type: 'chat' | 'history';
 }>;
+
+export interface TextParticipantOptions {
+  url: string;
+  origin: string;
+  roomId: string;
+  name: string;
+  credential?: string;
+  admission?: { inviteKey?: string; password?: string };
+}
 type Pending = {
   conversation: boolean;
   records: ChannelMessage[];
@@ -31,8 +40,9 @@ export class TextParticipant extends EventEmitter {
   private pending = new Map<string, Pending>();
   private decoder = new ChannelEventDecoder();
   private stopped = false;
-  constructor(readonly url: string, readonly origin: string, readonly roomId: string, readonly name: string) {
+  constructor(private readonly options: TextParticipantOptions) {
     super();
+    this.credential = options.credential;
   }
 
   async connect() {
@@ -41,7 +51,7 @@ export class TextParticipant extends EventEmitter {
     if (this.socket)
       throw new Error('already_connected');
     this.decoder = new ChannelEventDecoder();
-    const socket = this.socket = new WebSocket(this.url, { origin: this.origin, maxPayload: CHANNEL_EVENT_BYTES });
+    const socket = this.socket = new WebSocket(this.options.url, { origin: this.options.origin, maxPayload: CHANNEL_EVENT_BYTES });
     await new Promise<void>((resolve, reject) => {
       let settled = false, welcomed = false;
       const settle = (error?: Error) => {
@@ -63,7 +73,7 @@ export class TextParticipant extends EventEmitter {
       };
       const join = () => {
         try {
-          this.write({ type: 'join', protocol: CHANNEL_PROTOCOL, name: this.name, credential: this.credential,
+          this.write({ type: 'join', protocol: CHANNEL_PROTOCOL, name: this.options.name, credential: this.credential,
             sessionId: this.sessionId, signingKey: Array.from(this.signer.signing_key()) });
         }
         catch (error) {
@@ -96,12 +106,15 @@ export class TextParticipant extends EventEmitter {
         this.emit('disconnected');
       });
     });
-    await this.request({ type: 'browse', roomId: this.roomId, active: true });
+    const admission = this.options.admission;
+    if (admission?.inviteKey !== undefined || admission?.password !== undefined)
+      await this.request({ type: 'enter_room', roomId: this.options.roomId, ...admission });
+    await this.request({ type: 'browse', roomId: this.options.roomId, active: true });
     this.emit('ready', this.summary());
   }
   summary() {
-    const room = this.state?.channel.rooms.find(room => room.id === this.roomId);
-    return { userId: this.userId, sessionId: this.sessionId, roomId: this.roomId, available: room?.available ?? false,
+    const room = this.state?.channel.rooms.find(room => room.id === this.options.roomId);
+    return { userId: this.userId, sessionId: this.sessionId, roomId: this.options.roomId, available: room?.available ?? false,
       bindingId: room?.delivery?.bindingId ?? null, reading: room?.reading ?? false, pairs: this.state?.pairs.length ?? 0,
       publications: this.state?.publications.length ?? 0, voice: this.state?.voice.length ?? 0 };
   }
@@ -133,7 +146,7 @@ export class TextParticipant extends EventEmitter {
   private conversation(command: ConversationCommand) {
     if (this.stopped)
       return Promise.reject(new Error('closed'));
-    const delivery = this.state?.channel.rooms.find(room => room.id === this.roomId)?.delivery;
+    const delivery = this.state?.channel.rooms.find(room => room.id === this.options.roomId)?.delivery;
     if (!delivery || !this.sessionId)
       return Promise.reject(new Error('room_host_offline'));
     const requestId = randomUUID(), { roomId, ...body } = command;
@@ -143,12 +156,12 @@ export class TextParticipant extends EventEmitter {
   }
 
   async chat(text: string): Promise<ChannelMessage> {
-    return await this.conversation({ type: 'chat', roomId: this.roomId, text,
+    return await this.conversation({ type: 'chat', roomId: this.options.roomId, text,
       nonce: randomUUID(), attachments: [] }) as ChannelMessage;
   }
 
   async history(): Promise<ChannelMessage[]> {
-    return await this.conversation({ type: 'history', roomId: this.roomId }) as ChannelMessage[];
+    return await this.conversation({ type: 'history', roomId: this.options.roomId }) as ChannelMessage[];
   }
 
   private complete(id: string, value?: unknown, error?: Error) {
@@ -166,18 +179,19 @@ export class TextParticipant extends EventEmitter {
   private receive(event: ChannelEvent) {
     if (event.type === 'welcome') {
       this.credential = event.credential;
+      this.emit('credential', event.credential);
       this.sessionId = event.sessionId;
       this.userId = event.selfProfile.id;
       this.state = event.state;
       return;
     }
     if (event.type === 'state') {
-      const previous = this.state?.channel.rooms.find(room => room.id === this.roomId)?.delivery?.bindingId;
+      const previous = this.state?.channel.rooms.find(room => room.id === this.options.roomId)?.delivery?.bindingId;
       this.state = event.state;
-      const room = this.state.channel.rooms.find(room => room.id === this.roomId);
+      const room = this.state.channel.rooms.find(room => room.id === this.options.roomId);
       // A restored Host has a fresh runtime: restate this participant's one reading intent.
       if (room?.delivery && room.delivery.bindingId !== previous)
-        void this.request({ type: 'browse', roomId: this.roomId, active: true }).catch(error => this.emit('failure', error));
+        void this.request({ type: 'browse', roomId: this.options.roomId, active: true }).catch(error => this.emit('failure', error));
       this.emit('state', this.summary());
       return;
     }
@@ -198,7 +212,7 @@ export class TextParticipant extends EventEmitter {
       return;
     const address = JSON.parse(verify_conversation(JSON.stringify(event.packet), this.sessionId, JSON.stringify(this.state)));
     const room = this.state.channel.rooms.find(room => room.id === address.roomId);
-    if (address.roomId !== this.roomId || address.sender !== room?.delivery?.hostSessionId)
+    if (address.roomId !== this.options.roomId || address.sender !== room?.delivery?.hostSessionId)
       throw new Error('invalid_conversation_sender');
     const sender = this.state.sessions.find(session => session.id === address.sender)!;
     const reply = JSON.parse(verify_reply(JSON.stringify(event.packet), Uint8Array.from(sender.signingKey))) as ConversationReply;
@@ -249,10 +263,29 @@ async function main(): Promise<void> {
   const { values } = parseArgs({ options: {
       url: { type: 'string' }, origin: { type: 'string' }, room: { type: 'string' },
       name: { type: 'string', default: 'Independent text example' }, message: { type: 'string' },
+      'identity-file': { type: 'string' },
     } });
   if (!values.url || !values.origin || !values.room)
     throw new Error('Required: --url ws://host/prototype/channel --origin http://host --room ROOM_ID');
-  const participant = new TextParticipant(values.url, values.origin, values.room, values.name);
+  const identityFile = values['identity-file'];
+  if (identityFile === '') throw new Error('identity_file_path_required');
+  let credential: string | undefined;
+  if (identityFile) {
+    try { credential = readFileSync(identityFile, 'utf8').trim(); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+        throw new Error('identity_file_read_failed');
+    }
+    if (credential === '') throw new Error('identity_file_empty');
+  }
+  const participant = new TextParticipant({ url: values.url, origin: values.origin, roomId: values.room, name: values.name,
+    credential, admission: { inviteKey: process.env.PIIK_TEXT_INVITE_KEY, password: process.env.PIIK_TEXT_ROOM_PASSWORD } });
+  if (identityFile) participant.on('credential', (current: string) => {
+    if (credential === current) return;
+    try { writeFileSync(identityFile, `${current}\n`, { mode: 0o600 }); }
+    catch { throw new Error('identity_file_write_failed'); }
+    credential = current;
+  });
   const print = (message: ChannelMessage) => console.log(`${message.seq} ${message.userId}: ${message.text}`);
   participant.on('failure', error => console.error(error.message));
   participant.on('live', (message: ChannelMessage) => {

@@ -69,10 +69,10 @@ invitation consumption, credential-backed reload and bidirectional chat between
 independent Browser identities. The matched Linux Server passed Native-room,
 signed-confirmation and clean-shutdown checks.
 
-An earlier Android candidate passed build, signature, dual-ABI, 16 KiB alignment
-and bundled-Web identity checks. An updated matched package and its runtime
-acceptance remain pending; earlier emulator results do not establish that
-acceptance. Package receipts retain exact revisions and environment evidence.
+The matched Android candidate passed build, signature, dual-ABI, 16 KiB alignment
+and bundled-Web identity checks. Installation and runtime acceptance remain
+pending; earlier emulator results do not establish that acceptance. Package
+receipts retain exact revisions and environment evidence.
 
 Windows package checks also cover normal control request and Host
 approval, real pointer and keyboard input to an isolated window, and **End

@@ -511,24 +511,31 @@ These are personal playback assets, not room broadcasts or executable plugins.
 
 ### Extension Boundaries (PROPOSED)
 
-Proposed 2026-11-10, awaiting product decisions. Ordinary friends should not need
-to configure permissions to share or collaborate. The accepted Domain, Room and
-Source owners remain the starting point; no bot permissions or API are accepted here.
+Proposed 2026-11-10; production adapters remain unfinished. Ordinary friends should
+not need to configure permissions to share or collaborate. Start text automation
+as an independent ordinary user under the accepted Domain and Room owners. This
+does not introduce a Bot role, separate credential issuer or permission system;
+external media still needs the Source integration described below.
 
 | Decision | Recommended starting point | Additional cost to accept |
 | --- | --- | --- |
-| Permissions | Keep current ownership and room participation. Consider a few room capability switches only for a concrete moderated-room need. | Each switch needs Core enforcement and an active-session withdrawal rule. Full roles add assignment, inheritance and conflict semantics; defer them. |
-| Bots and APIs | Prove one small bot/client in a separate process, using the same Core commands, room confirmations and lifecycle. An HTTP entry can adapt those operations when needed. | A bot needs its own identity and credential with real revocation. Its issuer, allowed rooms and ability to create rooms must be decided explicitly. |
+| Permissions | Keep current ownership and room participation for people and automation alike. | Address a demonstrated user-management need at its shared owner; the first adapter needs no Bot-specific privileges or roles. |
+| Bots and APIs | Use an independent ordinary identity in a separate process, with existing site admission, room invitations and confirmed conversation commands. | Keep its credential with the process. Its configured room is a business target, not a server-enforced permission scope. |
 | External media | First assess one OBS-to-Native-App input through WHIP and the shared Source adapter, then the ordinary publication and P2P paths. | Ingest authorization, supported codecs, source timing and stop ownership are real work; this does not accept every streaming protocol or unattended publishing. |
 
-Giving a script a person's credential does not create a separately revocable bot.
-Revocation must reject that bot's future authentication and retire its live sessions,
-while preserving authored history. Access to all public rooms or room creation is
-not an accepted bot default; a configured target room is not an authorization scope.
-[Discord's bot identity](https://docs.discord.com/developers/topics/oauth2#bot-users)
-and [Matrix's token lifecycle](https://spec.matrix.org/latest/client-server-api/#client-authentication)
-illustrate these separate responsibilities without requiring Piik to adopt their
-role or OAuth systems.
+The site already creates an identity and personal credential for an ordinary
+participant. An automated participant uses its own credential, kept with its
+process and local configuration rather than supplied by a person's Browser session
+or exposed back to a web page. It has the same public-room access and ability to
+create rooms as any other ordinary user. Private-room entry uses the existing
+invitation or password and the room host's saved grant.
+
+Room owners can remove a private-room grant through the existing room settings;
+this preserves authored history. A still-valid shared invitation or password can
+permit admission again, for people and automation alike. Strict account scopes,
+site-wide credential revocation and identity deletion would be shared user
+management features if a concrete need arises. They are not prerequisites for
+this ordinary-user adapter, and the current runtime does not provide them.
 
 APIs should call existing owners, not write room databases or fabricate confirmations.
 A bot cannot replace an offline room host's authority or storage. Hosting follows the
@@ -552,8 +559,10 @@ uses its own ordinary identity with the shared Core signer and reply verifier.
 A real Browser-hosted room verified history, a confirmed reply, socket reconnect,
 host-offline rejection and restored live delivery. A new host binding requires
 reissuing the client's existing Browse intent; reading history does not replay
-old commands. This demonstrates an external consumer, not server-enforced Bot
-scope or independent revocation.
+old commands. It also supports existing private-room invitations/passwords and
+optional local retention of its own credential. A new process restores that user
+and grants with a fresh session and signing key. Invalid saved credentials fail
+through the shared admission owner without replacing the local file.
 
 Shared pads, checklists and watch queues can begin as ordinary links or bot replies.
 Embedding arbitrary web tools adds identity, capability and instance-lifetime work:
