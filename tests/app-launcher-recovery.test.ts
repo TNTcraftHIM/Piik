@@ -86,6 +86,18 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { startup = 
 }
 
 describe("App launcher state recovery", () => {
+  it("offers an available mode after the saved startup mode becomes unavailable", async () => {
+    const page = mount(vi.fn().mockResolvedValue({
+      ok: true, status: 200, json: async () => ({
+        ...saved, modes: ["local"], startupMode: "link", detail: "public-link helper unavailable",
+      }),
+    }), false, { startup: true });
+    try {
+      await settle();
+      expect(page.state).toMatchObject({ Mode: "local", StartupMode: "link", Error: { kind: "launch" } });
+      expect(page.navigate).not.toHaveBeenCalled();
+    } finally { page.cleanup(); }
+  });
   it("replaces a failed launch response with the running App's state on return", async () => {
     const fetch = vi.fn().mockResolvedValueOnce(response(saved))
       .mockRejectedValueOnce(new Error("Startup response disconnected"));

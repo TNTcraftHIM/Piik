@@ -120,7 +120,7 @@ export function AppLauncherPage() {
           setModes(state.modes);
           setLocalAccessPassword(state.localAccessPassword);
           setLan(state.lan);
-          if (state.startupMode) setMode(state.startupMode);
+          if (state.startupMode && state.modes.includes(state.startupMode)) setMode(state.startupMode);
           restoredSettings = true;
         }
         setVersion(state.version === "development" && /^[a-f0-9]{40}$/i.test(state.revision)
