@@ -346,8 +346,12 @@ can read the current link. The site's bootstrap key is private hosting data.
 Sessions, captures and routes are not restored after a process restart.
 
 This unpublished prototype uses domain hosting metadata version 2 around domain
-authority version 6, room backup metadata version 2, room-copy metadata version 1,
-and SQLite schema version 8.
+authority version 6 and SQLite schema version 8. Portable site archives use
+version 3, with `manifest.json` and `users.ndjson`; changing that archive format
+does not reset the live database. Room backup metadata remains version 2 and
+room-copy metadata version 1.
+Earlier private site archive formats are rejected explicitly; use the exporting
+version to read them. Current database files remain readable by this change.
 Browser room storage uses IndexedDB version 6. Older experimental
 checkpoints and the old unscoped `rooms/*.sqlite` layout are rejected rather than
 silently discarding or attaching their history to another domain. Keep any
@@ -426,7 +430,8 @@ one voice source per room. Retained identities do not consume live slots.
 Live user summaries are lightweight; full profiles and the offline directory
 use bounded pages of up to 32 records over the existing site connection.
 Portable backups bound each JSON record, including the site metadata manifest,
-to 4 MiB. This archive bound is independent of online admission.
+to 4 MiB. Site identities are separate NDJSON records, so this bound applies to
+each user rather than the complete user directory.
 
 ## Checks
 

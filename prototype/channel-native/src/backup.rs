@@ -3,11 +3,13 @@
 use anyhow::{bail, Result};
 use piik_channel_core::{
     attachment::AttachmentHash,
-    backup::{DomainMetadata, HistoryImport, HistoryRow, Metadata, RetainedFile, RECORD_BYTES},
+    backup::{
+        DomainMetadata, HistoryImport, Metadata, RetainedFile, StoredUser, RECORD_BYTES,
+    },
     storage::StoreResult,
     AttachmentDescriptor, RoomBackup,
 };
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::File,
@@ -18,6 +20,7 @@ use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
 const MANIFEST: &str = "manifest.json";
 const HISTORY: &str = "history.ndjson";
+const USERS: &str = "users.ndjson";
 
 /// The SQLite handle closes before its disposable directory is removed, even
 /// when an HTTP caller disappears while the owning actor consumes the snapshot.
@@ -38,10 +41,15 @@ pub enum StagedBackup {
 /// STORE keeps Piik's native and Browser writers interoperable without a
 /// compression engine. The output can be a file or a bounded HTTP stream.
 pub fn write_domain(metadata: &DomainMetadata, output: impl Write) -> Result<()> {
-    metadata.validate().map_err(anyhow::Error::msg)?;
+    let manifest = metadata.archive_metadata().map_err(anyhow::Error::msg)?;
     let mut zip = ZipWriter::new_stream(output);
     zip.start_file(MANIFEST, options())?;
-    zip.write_all(&record(&Metadata::Domain(metadata.clone()))?)?;
+    zip.write_all(&record(&Metadata::Domain(manifest))?)?;
+    zip.start_file(USERS, options().large_file(true))?;
+    for user in metadata.users() {
+        zip.write_all(&record(user)?)?;
+        zip.write_all(b"\n")?;
+    }
     zip.finish()?;
     Ok(())
 }
@@ -95,6 +103,9 @@ pub fn stage(input: impl Read + Seek, directory: &Path) -> Result<StagedBackup> 
     if matches!(metadata, Metadata::RoomCopy(_)) {
         bail!("expected_room_backup");
     }
+    if matches!(metadata, Metadata::Domain(_)) {
+        expected.insert(USERS.into());
+    }
     if let Metadata::Room(room) = &metadata {
         expected.insert(HISTORY.into());
         for file in &room.retained_files {
@@ -119,13 +130,20 @@ pub fn stage(input: impl Read + Seek, directory: &Path) -> Result<StagedBackup> 
     }
     match metadata {
         Metadata::RoomCopy(_) => bail!("expected_room_backup"),
-        Metadata::Domain(domain) => Ok(StagedBackup::Domain(domain)),
+        Metadata::Domain(domain) => {
+            let users = records::<StoredUser>(BufReader::new(zip.by_name(USERS)?))
+                .collect::<StoreResult<Vec<_>>>()
+                .map_err(anyhow::Error::from_boxed)?;
+            Ok(StagedBackup::Domain(
+                domain.into_metadata(users).map_err(anyhow::Error::msg)?,
+            ))
+        }
         Metadata::Room(room) => {
             let history = BufReader::new(zip.by_name(HISTORY)?);
             let snapshot = RoomBackup::stage(
                 &directory.join("room.sqlite"),
                 room.clone(),
-                history_rows(history),
+                records(history),
             )
             .map_err(anyhow::Error::from_boxed)?;
             let mut content = BTreeMap::new();
@@ -170,7 +188,7 @@ fn read_record(input: impl Read) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn history_rows(mut input: impl BufRead) -> impl Iterator<Item = StoreResult<HistoryRow>> {
+fn records<T: DeserializeOwned>(mut input: impl BufRead) -> impl Iterator<Item = StoreResult<T>> {
     std::iter::from_fn(move || {
         let mut line = Vec::new();
         let result = input
@@ -228,7 +246,7 @@ mod tests {
     use super::*;
     use piik_channel_core::{
         attachment::sha256_hex,
-        backup::{OwnCredential, RoomMetadata},
+        backup::{HistoryRow, OwnCredential, RoomMetadata},
         history::{MessageReactions, StoredMessage},
         wire::{ChatMessage, RoomAccess},
         Authority, RoomState,
@@ -440,13 +458,15 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("backup_record_too_large"));
-        assert!(history_rows(Cursor::new(vec![b' '; RECORD_BYTES + 3]))
-            .next()
-            .unwrap()
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("backup_record_too_large"));
+        assert!(
+            records::<HistoryRow>(Cursor::new(vec![b' '; RECORD_BYTES + 3]))
+                .next()
+                .unwrap()
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("backup_record_too_large")
+        );
         assert!(record(&"x".repeat(RECORD_BYTES))
             .unwrap_err()
             .to_string()
@@ -475,15 +495,27 @@ mod tests {
 
     #[test]
     fn domain_archive_contains_only_its_own_authority() -> Result<()> {
+        use base64::Engine;
         use piik_channel_core::wire::{Event, Request, CHANNEL_PROTOCOL};
         let mut authority = Authority::new("owner".into(), vec![]).unwrap();
+        let mut png = base64::engine::general_purpose::STANDARD.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==")?;
+        png.resize(
+            (piik_channel_core::wire::IDENTITY_IMAGE_URL_BYTES - "data:image/png;base64,".len())
+                / 4
+                * 3,
+            0,
+        );
+        let avatar = format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(png)
+        );
         let mut identities = Vec::new();
-        for index in 0..76 {
+        for index in 0..200 {
             let connection = Uuid::new_v4();
             let request = serde_json::json!({"type":"join","protocol":CHANNEL_PROTOCOL,"name":format!("Friend {index}"),"ownerKey":(index==0).then_some("owner"),"signingKey":vec![1;32]});
             let effects =
                 authority.handle(connection, Request::parse(&request.to_string()).unwrap(), 0);
-            let (credential, profile) = effects
+            let (credential, _) = effects
                 .events
                 .into_iter()
                 .find_map(|(_, event)| match event {
@@ -495,6 +527,17 @@ mod tests {
                     _ => None,
                 })
                 .unwrap();
+            let update = serde_json::json!({"type":"set_profile","name":format!("Friend {index}"),"avatar":avatar});
+            let updated =
+                authority.handle(connection, Request::parse(&update.to_string()).unwrap(), 0);
+            assert!(!updated
+                .events
+                .iter()
+                .any(|(_, event)| matches!(event, Event::Error { .. })));
+            let profile = authority
+                .user_for_credential(&credential)
+                .unwrap()
+                .profile();
             identities.push((credential, profile));
             authority.handle(
                 connection,
@@ -503,8 +546,14 @@ mod tests {
             );
         }
         let metadata = authority.export_backup();
+        assert!(serde_json::to_vec(&metadata)?.len() > RECORD_BYTES);
         let mut bytes = vec![];
         write_domain(&metadata, &mut bytes)?;
+        let archive_bytes = bytes.len();
+        let mut inspect = ZipArchive::new(Cursor::new(&bytes))?;
+        assert!(inspect.by_name(MANIFEST)?.size() < RECORD_BYTES as u64);
+        assert!(inspect.by_name(USERS)?.size() > RECORD_BYTES as u64);
+        drop(inspect);
         let StagedBackup::Domain(restored) = stage(Cursor::new(bytes), Path::new("unused"))? else {
             panic!("domain expected");
         };
@@ -520,8 +569,48 @@ mod tests {
                 serde_json::to_value(expected)?
             );
         }
+        let manifest = record(&Metadata::Domain(metadata.archive_metadata().unwrap()))?;
+        let owner = metadata
+            .users()
+            .iter()
+            .find(|user| {
+                user.id
+                    == metadata
+                        .clone()
+                        .into_authority(vec![])
+                        .unwrap()
+                        .identity()
+                        .1
+            })
+            .unwrap();
+        let line = record(owner)?;
+        for rows in [
+            b"{}\n".to_vec(),
+            [line.as_slice(), b"\n", line.as_slice(), b"\n"].concat(),
+            Vec::new(),
+        ] {
+            assert!(stage(
+                Cursor::new(pack(vec![(MANIFEST, manifest.clone()), (USERS, rows)])),
+                Path::new("unused")
+            )
+            .is_err());
+        }
+        let old = serde_json::to_value(&metadata)?;
+        let mut old = old.as_object().unwrap().clone();
+        old.insert("kind".into(), "domain".into());
+        assert!(stage(
+            Cursor::new(pack(vec![(MANIFEST, serde_json::to_vec(&old)?)])),
+            Path::new("unused")
+        )
+        .is_err());
+        eprintln!(
+            "200-user domain archive: {archive_bytes} bytes; bounded manifest and streamed users"
+        );
         let bytes = pack(vec![
-            (MANIFEST, record(&Metadata::Domain(metadata))?),
+            (
+                MANIFEST,
+                record(&Metadata::Domain(metadata.archive_metadata().unwrap()))?,
+            ),
             (HISTORY, vec![]),
         ]);
         assert!(stage(Cursor::new(bytes), Path::new("unused"))

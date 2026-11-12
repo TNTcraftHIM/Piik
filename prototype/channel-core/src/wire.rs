@@ -229,7 +229,7 @@ pub(crate) fn title(value: &str) -> Option<String> {
 
 pub const IDENTITY_IMAGE_URL_BYTES: usize = 24 * 1024;
 
-fn identity_image(value: &str) -> bool {
+pub(crate) fn identity_image(value: &str) -> bool {
     if value.len() > IDENTITY_IMAGE_URL_BYTES {
         return false;
     }

@@ -1467,9 +1467,7 @@ export class ChannelSession {
 
   restoreDomainBackup = (archive: Blob): Promise<DomainSettings> => this.action("domain-backup", async () => {
     const owner = this.domainBackupOwner();
-    const metadata = await readBackup(archive, { metadata(value) {
-      if (value.kind !== "domain") throw new Error("expected_domain_backup");
-    }, row() {}, content() {} });
+    const metadata = await readBackup(archive);
     owner.current();
     if (metadata.kind !== "domain") throw new Error("expected_domain_backup");
     this.close();

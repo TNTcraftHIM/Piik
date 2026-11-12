@@ -596,6 +596,14 @@ fn admission_expires_old_endpoint_without_requiring_a_transport_timer() {
 fn domain_checkpoint_and_backup_preserve_profile_across_endpoint_admission() {
     let mut core = Authority::new("owner".into(), vec![]).unwrap();
     assert_eq!(core.owner_name(), None);
+    // A fresh persistent checkpoint may reserve an owner who has not joined yet.
+    let fresh = core.export_backup();
+    assert!(fresh.clone().into_authority(vec![]).is_ok());
+    assert!(fresh.archive_metadata().is_err());
+    let guest = Uuid::new_v4();
+    join(&mut core, guest, false, 0);
+    assert!(core.export_backup().into_authority(vec![]).is_ok());
+    apply(&mut core, guest, json!({"type":"leave"}), 0);
     let owner = Uuid::new_v4();
     let (_, credential, initial) = join(&mut core, owner, true, 0);
     assert!(initial.channel.rooms.is_empty());
@@ -631,6 +639,15 @@ fn domain_checkpoint_and_backup_preserve_profile_across_endpoint_admission() {
                 .avatar
                 .as_deref(),
             Some(avatar)
+        );
+        assert_eq!(restored.owner_name(), Some("Saved owner"));
+    }
+    for field in ["id", "ownerId"] {
+        let mut invalid = checkpoint.clone();
+        invalid[field] = json!(Uuid::nil());
+        assert_eq!(
+            restored.import_state(serde_json::from_value(invalid).unwrap()),
+            Err("invalid_state")
         );
         assert_eq!(restored.owner_name(), Some("Saved owner"));
     }

@@ -12,11 +12,6 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **Large site metadata backups.** The current single site manifest is bounded
-  to 4 MiB. When extending beyond that archive size, stream retained profiles
-  through the existing backup owner so the full identity set remains portable;
-  do not restore a permanent user-count admission limit.
-
 - [ ] **3.0 Windows shared-sound noise.** A beta2 Host reports noise that stops
   when excluding the Piik console's process tree, but returns when excluding a
   silent unrelated window. Verify which Browser playback belongs to that tree

@@ -323,7 +323,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
         })
         .collect();
     let mut durable = channel.export_state();
-    durable.icon = icon.clone();
+    durable.header.icon = icon.clone();
     durable.users = state
         .users
         .iter()
@@ -340,7 +340,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
             credential: [255; 32],
         })
         .collect();
-    durable.hosted_rooms = state
+    durable.header.hosted_rooms = state
         .channel
         .rooms
         .iter()

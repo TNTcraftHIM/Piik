@@ -32,7 +32,7 @@ pub mod wire_images;
 
 pub use access::{RoomPermission, RoomState};
 pub use attachment::{AttachmentDescriptor, AttachmentLimits, ATTACHMENT_LIMITS};
-pub use channel::DurableState;
+pub use channel::{DomainStateHeader, DurableState};
 pub use identity::{Endpoint, Member, User, MAX_SESSIONS, PROFILE_PAGE_SIZE, RECOVERY_MS};
 pub use room::{RoomRecipient, RoomRuntime, RoomSnapshot};
 #[cfg(feature = "sqlite")]

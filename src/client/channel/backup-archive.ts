@@ -1,11 +1,11 @@
 import { loadRoomHosting, type AttachmentHash, type BackupHistoryRow } from "./hosting";
-import type { ChannelAttachment, RoomSettings } from "./protocol";
+import type { ChannelAttachment, RoomSettings, RoomSummary } from "./protocol";
 import type { FileEntry } from "@zip.js/zip.js";
 
 export interface RetainedBackupFile { messageSeq: number; attachment: ChannelAttachment }
 export type RoomCopyInfo = Pick<RoomSettings, "name" | "icon"> & { voiceBitrate: number; relayCapacity: number };
 export type BackupMetadata =
-  | { kind: "domain"; version: 2; state: Record<string, unknown> & { id: string; ownerId: string }; ownerKey: string }
+  | { kind: "domain"; version: 3; state: { id: string; name: string; icon: string; ownerId: string; hostedRooms: Record<string, RoomSummary> }; ownerKey: string }
   | { kind: "room"; version: 2; domainId: string; policy: RoomCopyInfo & Record<string, unknown> & { id: string; creatorId: string };
       ownCredential?: { userId: string; credential: string }; retainedFiles: RetainedBackupFile[] }
   | { kind: "room_copy"; version: 1; roomInfo?: RoomCopyInfo; authors: Record<string, string>; retainedFiles: RetainedBackupFile[] };
@@ -18,7 +18,7 @@ export interface BackupVisitor {
 type Runtime = Awaited<ReturnType<typeof loadRoomHosting>>;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
-const manifest = "manifest.json", history = "history.ndjson";
+const manifest = "manifest.json", history = "history.ndjson", users = "users.ndjson";
 const zipOptions = { useWebWorkers: false, compressionMethod: 0, level: 0 } as const;
 
 async function runtime(): Promise<Runtime> {
@@ -32,7 +32,7 @@ function inventory(metadata: BackupMetadata): Map<string, RetainedBackupFile> {
     ? metadata.retainedFiles.map(file => [file.attachment.sha256.toLowerCase(), file]) : []);
 }
 
-/** Without a visitor, inspect the manifest. Import visitors receive Core-validated rows and verified files. */
+/** Inspect metadata; domain records are preflighted before restore, room visitors validate history and content. */
 export async function readBackup(blob: Blob, visitor?: BackupVisitor): Promise<BackupMetadata> {
   const [module, zip] = await Promise.all([runtime(), import("@zip.js/zip.js/lib/zip-core-native.js")]);
   const reader = new zip.ZipReader(new zip.BlobReader(blob), { useWebWorkers: false });
@@ -49,14 +49,21 @@ export async function readBackup(blob: Blob, visitor?: BackupVisitor): Promise<B
     if (!entry) throw new Error("invalid_backup_entries");
     const metadata = JSON.parse(module.backup_metadata(await readRecord(entry, limit))) as BackupMetadata;
     const files = inventory(metadata);
-    const expected = new Set([manifest, ...(metadata.kind !== "domain" ? [history] : []), ...Array.from(files.keys(), hash => `content/${hash}`)]);
+    const expected = new Set([manifest, metadata.kind === "domain" ? users : history, ...Array.from(files.keys(), hash => `content/${hash}`)]);
     if (entries.size !== expected.size || Array.from(entries.keys()).some(name => !expected.has(name))) throw new Error("invalid_backup_entries");
+    if (metadata.kind === "domain") {
+      const check = new module.DomainArchiveCheck(JSON.stringify(metadata));
+      try {
+        await readRecords(entries.get(users)!, limit, line => check.accept(line));
+        check.finish();
+      } finally { check.free(); }
+    }
     if (!visitor) return metadata;
     await visitor.metadata(metadata);
     if (metadata.kind !== "domain") {
       const importer = new module.BackupHistoryImport(JSON.stringify(metadata));
       try {
-        await readHistory(entries.get(history)!, limit, line => visitor.row(JSON.parse(importer.accept(line)) as BackupHistoryRow));
+        await readRecords(entries.get(history)!, limit, line => visitor.row(JSON.parse(importer.accept(line)) as BackupHistoryRow));
         importer.finish();
       } finally { importer.free(); }
       for (const [hash, retained] of files) {
@@ -87,7 +94,7 @@ async function readRecord(entry: FileEntry, limit: number): Promise<string> {
   return decoder.decode(bytes.subarray(0, size));
 }
 
-async function readHistory(entry: FileEntry, limit: number, accept: (line: string) => void | Promise<void>): Promise<void> {
+async function readRecords(entry: FileEntry, limit: number, accept: (line: string) => void | Promise<void>): Promise<void> {
   const bytes = new Uint8Array(limit + 2);
   let size = 0;
   const row = async () => {
@@ -128,39 +135,36 @@ function verifiedContent(module: Runtime, descriptor: ChannelAttachment) {
 }
 
 /** The caller supplies a stable snapshot; no live storage or file authority is changed here. */
-export async function writeBackup(metadata: BackupMetadata, rows?: AsyncIterable<BackupHistoryRow>, open?: (file: RetainedBackupFile) => Promise<Blob>): Promise<Blob> {
+export async function writeBackup(metadata: Exclude<BackupMetadata, { kind: "domain" }>, rows: AsyncIterable<BackupHistoryRow>, open?: (file: RetainedBackupFile) => Promise<Blob>): Promise<Blob> {
   const [module, zip] = await Promise.all([runtime(), import("@zip.js/zip.js/lib/zip-core-native.js")]);
   const canonical = module.backup_metadata(JSON.stringify(metadata));
-  metadata = JSON.parse(canonical) as BackupMetadata;
+  metadata = JSON.parse(canonical) as typeof metadata;
   const limit = module.backup_record_bytes();
   const manifestBytes = encoder.encode(canonical);
   if (manifestBytes.length > limit) throw new Error("backup_record_too_large");
   const writer = new zip.ZipWriter(new zip.BlobWriter("application/zip"), zipOptions);
   try {
     await writer.add(manifest, new zip.Uint8ArrayReader(manifestBytes));
-    if (metadata.kind !== "domain") {
-      if (!rows) throw new Error("invalid_backup_history");
-      const importer = new module.BackupHistoryImport(canonical);
-      const iterator = rows[Symbol.asyncIterator]();
-      try {
-        await writer.add(history, new ReadableStream<Uint8Array>({ async pull(controller) {
-          const next = await iterator.next();
-          if (next.done) { importer.finish(); controller.close(); }
-          else {
-            const bytes = encoder.encode(`${importer.accept(JSON.stringify(next.value))}\n`);
-            if (bytes.length > limit + 1) throw new Error("backup_record_too_large");
-            controller.enqueue(bytes);
-          }
-        }, async cancel() { await iterator.return?.(); } }));
-      } finally { importer.free(); await iterator.return?.(); }
-      for (const [hash, retained] of inventory(metadata)) {
-        if (!open) throw new Error("backup_content_mismatch");
-        const blob = await open(retained);
-        if (blob.size !== retained.attachment.size) throw new Error("backup_content_mismatch");
-        const check = verifiedContent(module, retained.attachment);
-        try { await writer.add(`content/${hash}`, blob.stream().pipeThrough(check.stream)); }
-        finally { check.free(); }
-      }
+    const importer = new module.BackupHistoryImport(canonical);
+    const iterator = rows[Symbol.asyncIterator]();
+    try {
+      await writer.add(history, new ReadableStream<Uint8Array>({ async pull(controller) {
+        const next = await iterator.next();
+        if (next.done) { importer.finish(); controller.close(); }
+        else {
+          const bytes = encoder.encode(`${importer.accept(JSON.stringify(next.value))}\n`);
+          if (bytes.length > limit + 1) throw new Error("backup_record_too_large");
+          controller.enqueue(bytes);
+        }
+      }, async cancel() { await iterator.return?.(); } }));
+    } finally { importer.free(); await iterator.return?.(); }
+    for (const [hash, retained] of inventory(metadata)) {
+      if (!open) throw new Error("backup_content_mismatch");
+      const blob = await open(retained);
+      if (blob.size !== retained.attachment.size) throw new Error("backup_content_mismatch");
+      const check = verifiedContent(module, retained.attachment);
+      try { await writer.add(`content/${hash}`, blob.stream().pipeThrough(check.stream)); }
+      finally { check.free(); }
     }
     return await writer.close();
   } catch (error) { await writer.close().catch(() => {}); throw error; }

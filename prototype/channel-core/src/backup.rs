@@ -1,21 +1,22 @@
 //! Portable hosting data. Live bindings and activities never enter a backup.
+pub use crate::identity::StoredUser;
 use crate::{
     attachment::{AttachmentDescriptor, ATTACHMENT_LIMITS},
     history::{valid_message_reaction, MessageDraft, StoredMessage},
     wire::valid_id,
-    Authority, DurableState, RoomState,
+    Authority, DomainStateHeader, DurableState, RoomState,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
-/// Limit one manifest or history JSON record, never the complete history stream.
+/// Limit one manifest or NDJSON record, never the complete record stream.
 pub const RECORD_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Metadata {
-    Domain(DomainMetadata),
+    Domain(DomainArchiveMetadata),
     Room(RoomMetadata),
     RoomCopy(RoomCopyMetadata),
 }
@@ -74,6 +75,7 @@ fn valid_author_name(name: &str) -> bool {
     !name.trim().is_empty() && name == name.trim() && name.encode_utf16().count() <= 40
 }
 
+/// Durable domain checkpoint, independent of the portable archive's version.
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DomainMetadata {
@@ -82,7 +84,67 @@ pub struct DomainMetadata {
     pub owner_key: String,
 }
 
+/// Portable site archive header. The live checkpoint keeps its own format.
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DomainArchiveMetadata {
+    pub version: u32,
+    pub state: DomainStateHeader,
+    pub owner_key: String,
+}
+
+impl DomainArchiveMetadata {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.version != 3 {
+            return Err("unsupported_backup_version");
+        }
+        if !valid_id(&self.owner_key) {
+            return Err("invalid_owner_key");
+        }
+        self.state.validate()
+    }
+
+    pub fn into_metadata(self, users: Vec<StoredUser>) -> Result<DomainMetadata, &'static str> {
+        let mut check = DomainArchiveCheck::new(&self)?;
+        for user in &users {
+            check.accept(user)?;
+        }
+        check.finish()?;
+        let metadata = DomainMetadata {
+            version: 2,
+            state: DurableState {
+                version: 6,
+                header: self.state,
+                users,
+            },
+            owner_key: self.owner_key,
+        };
+        Ok(metadata)
+    }
+}
+
 impl DomainMetadata {
+    pub fn archive_metadata(&self) -> Result<DomainArchiveMetadata, &'static str> {
+        if self.version != 2 || self.state.version != 6 {
+            return Err("unsupported_backup_version");
+        }
+        let metadata = DomainArchiveMetadata {
+            version: 3,
+            state: self.state.header.clone(),
+            owner_key: self.owner_key.clone(),
+        };
+        let mut check = DomainArchiveCheck::new(&metadata)?;
+        for user in self.users() {
+            check.accept(user)?;
+        }
+        check.finish()?;
+        Ok(metadata)
+    }
+
+    pub fn users(&self) -> &[StoredUser] {
+        &self.state.users
+    }
+
     pub fn validate(&self) -> Result<(), &'static str> {
         self.clone().into_authority(vec![]).map(|_| ())
     }
@@ -97,6 +159,43 @@ impl DomainMetadata {
         let mut authority = Authority::new(self.owner_key, ice_servers)?;
         authority.import_state(self.state)?;
         Ok(authority)
+    }
+}
+
+/// Streaming archive validation retains identity keys, never profile contents.
+pub struct DomainArchiveCheck {
+    seen: BTreeSet<Uuid>,
+    required: BTreeSet<Uuid>,
+}
+
+impl DomainArchiveCheck {
+    pub fn new(metadata: &DomainArchiveMetadata) -> Result<Self, &'static str> {
+        metadata.validate()?;
+        Ok(Self {
+            seen: BTreeSet::new(),
+            required: std::iter::once(metadata.state.owner_id)
+                .chain(
+                    metadata
+                        .state
+                        .hosted_rooms
+                        .values()
+                        .map(|room| room.creator_id),
+                )
+                .collect(),
+        })
+    }
+    pub fn accept(&mut self, user: &StoredUser) -> Result<(), &'static str> {
+        user.validate()?;
+        if !self.seen.insert(user.id) {
+            return Err("invalid_state");
+        }
+        Ok(())
+    }
+    pub fn finish(&self) -> Result<(), &'static str> {
+        if !self.required.is_subset(&self.seen) {
+            return Err("invalid_state");
+        }
+        Ok(())
     }
 }
 

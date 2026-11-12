@@ -339,16 +339,18 @@ impl Channel {
     pub fn export_state(&self) -> DurableState {
         DurableState {
             version: 6,
-            id: self.id,
-            name: self.name.clone(),
-            icon: self.icon.clone(),
-            owner_id: self.identity.owner_id,
             users: self.identity.export_users(),
-            hosted_rooms: self
-                .remote
-                .iter()
-                .map(|(id, room)| (id.clone(), room.summary.clone()))
-                .collect(),
+            header: DomainStateHeader {
+                id: self.id,
+                name: self.name.clone(),
+                icon: self.icon.clone(),
+                owner_id: self.identity.owner_id,
+                hosted_rooms: self
+                    .remote
+                    .iter()
+                    .map(|(id, room)| (id.clone(), room.summary.clone()))
+                    .collect(),
+            },
         }
     }
 
@@ -404,17 +406,27 @@ impl Channel {
     }
 
     pub fn import_state(&mut self, state: DurableState) -> Result<(), &'static str> {
-        if state.version != 6 || state.hosted_rooms.len() > 32 {
+        if state.version != 6 {
             return Err("invalid_state");
         }
+        state.header.validate()?;
         let mut identity = Identity::new(self.identity.owner_key.clone());
-        identity.restore_users(state.owner_id, state.users)?;
-        let name = title(&state.name).ok_or("invalid_state")?;
+        identity.restore_users(state.header.owner_id, state.users)?;
+        if state
+            .header
+            .hosted_rooms
+            .values()
+            .any(|room| !identity.users.contains_key(&room.creator_id))
+        {
+            return Err("invalid_state");
+        }
+        let name = title(&state.header.name).ok_or("invalid_state")?;
         self.identity = identity;
-        self.id = state.id;
+        self.id = state.header.id;
         self.name = name;
-        self.icon = state.icon;
+        self.icon = state.header.icon;
         self.remote = state
+            .header
             .hosted_rooms
             .into_iter()
             .map(|(id, summary)| (id, RemoteRoom::restored(summary)))
@@ -1533,13 +1545,37 @@ fn room_next_hops(session: Uuid, links: &[crate::transport::BaseLink]) -> BTreeM
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DurableState {
-    version: u32,
-    id: Uuid,
-    name: String,
-    icon: IdentityIcon,
-    owner_id: Uuid,
-    users: Vec<StoredUser>,
-    hosted_rooms: BTreeMap<String, RoomSummary>,
+    pub(crate) version: u32,
+    #[serde(flatten)]
+    pub(crate) header: DomainStateHeader,
+    pub(crate) users: Vec<StoredUser>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DomainStateHeader {
+    pub(crate) id: Uuid,
+    pub(crate) name: String,
+    pub(crate) icon: IdentityIcon,
+    pub(crate) owner_id: Uuid,
+    pub(crate) hosted_rooms: BTreeMap<String, RoomSummary>,
+}
+
+impl DomainStateHeader {
+    pub(crate) fn validate(&self) -> Result<(), &'static str> {
+        if self.id.is_nil()
+            || self.owner_id.is_nil()
+            || title(&self.name).is_none()
+            || self.hosted_rooms.len() > 32
+            || self
+                .hosted_rooms
+                .iter()
+                .any(|(id, room)| id != &room.id || room.validate().is_err())
+        {
+            return Err("invalid_state");
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

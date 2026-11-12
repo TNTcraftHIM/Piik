@@ -6769,8 +6769,8 @@ test("domain backup uses its actual service owner and validates kind before reti
 test("domain restore closes the old connection, admits archived keys only after HTTP commit and verifies Welcome before saving identity", async () => {
   const { session, socket } = await setup(3, false, "owner=old-key&room=old-room");
   const domainId = crypto.randomUUID(), ownerId = crypto.randomUUID();
-  const metadata = { kind: "domain" as const, version: 2 as const, state: { id: domainId, ownerId }, ownerKey: "restored-owner" };
-  vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => { await visitor?.metadata(metadata); return metadata; });
+  const metadata = { kind: "domain" as const, version: 3 as const, state: { id: domainId, ownerId, name: "Restored", icon: "couch", hostedRooms: {} }, ownerKey: "restored-owner" };
+  const inspect = vi.spyOn(backupArchive, "readBackup").mockResolvedValue(metadata);
   let answer!: (response: Response) => void;
   const fetch = vi.fn((_url: string, _options: RequestInit) => new Promise<Response>(resolve => { answer = resolve; })); vi.stubGlobal("fetch", fetch);
   const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
@@ -6778,11 +6778,14 @@ test("domain restore closes the old connection, admits archived keys only after 
   state.channel.id = domainId; state.channel.ownerId = ownerId; state.channel.rooms = [];
   state.users = [{ id: ownerId, name: "Restored owner", version: profileVersion }]; state.sessions[0].userId = ownerId;
   try {
-    const restoring = session.restoreDomainBackup(new Blob(["complete-domain-zip"]));
+    const archive = new Blob(["complete-domain-zip"]);
+    const restoring = session.restoreDomainBackup(archive);
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     expect(socket.readyState).toBe(3); expect(session.getSnapshot().connection).toBe("closed");
     expect(new Headers(fetch.mock.calls[0][1].headers).get("Authorization")).toBe("Bearer credential");
     expect(fetch.mock.calls[0][1].method).toBe("PUT"); expect(saved).not.toHaveBeenCalled();
+    expect(inspect).toHaveBeenCalledWith(archive);
+    expect(fetch.mock.calls[0][1].body).toBe(archive);
     answer(new Response(JSON.stringify({ domainId })));
     await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
     const admission = ChannelSocket.current; await admission.onopen?.();
@@ -6798,10 +6801,22 @@ test("domain restore closes the old connection, admits archived keys only after 
   } finally { session.close(); }
 });
 
+test("invalid domain user preflight preserves the current connection and never uploads", async () => {
+  const { session, socket } = await setup();
+  const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+  vi.spyOn(backupArchive, "readBackup").mockRejectedValue(new Error("invalid_state"));
+  const before = session.getSnapshot(), close = vi.spyOn(socket, "close");
+  try {
+    await expect(session.restoreDomainBackup(new Blob(["invalid users.ndjson"]))).rejects.toThrow("invalid_state");
+    expect(fetch).not.toHaveBeenCalled(); expect(close).not.toHaveBeenCalled();
+    expect(session.getSnapshot()).toMatchObject({ connection: "connected", sessionId: before.sessionId, state: before.state });
+  } finally { session.close(); }
+});
+
 test("a rejected domain replacement restarts the unchanged personal identity without importing its keys", async () => {
   const { session, socket } = await setup();
   const state = structuredClone(session.getSnapshot().state!);
-  const metadata = { kind: "domain" as const, version: 2 as const, state: { id: crypto.randomUUID(), ownerId: crypto.randomUUID() }, ownerKey: "not-committed" };
+  const metadata = { kind: "domain" as const, version: 3 as const, state: { id: crypto.randomUUID(), ownerId: crypto.randomUUID(), name: "Restored", icon: "couch", hostedRooms: {} }, ownerKey: "not-committed" };
   vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => { await visitor?.metadata(metadata); return metadata; });
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "restore_rejected" }), { status: 409 })));
   try {
@@ -6817,8 +6832,8 @@ test("a rejected domain replacement restarts the unchanged personal identity wit
 
 test("domain admission does not save a Welcome whose current owner differs from the restored authority", async () => {
   const { session, socket } = await setup();
-  const domainId = crypto.randomUUID(), metadata = { kind: "domain" as const, version: 2 as const,
-    state: { id: domainId, ownerId: "self" }, ownerKey: "restored-owner" };
+  const domainId = crypto.randomUUID(), metadata = { kind: "domain" as const, version: 3 as const,
+    state: { id: domainId, ownerId: "self", name: "Restored", icon: "couch", hostedRooms: {} }, ownerKey: "restored-owner" };
   vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => { await visitor?.metadata(metadata); return metadata; });
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId }))));
   const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
@@ -6839,8 +6854,8 @@ test("a committed domain restore with unavailable hosting keeps the restored ide
   const { session, socket } = await setup();
   const oldState = structuredClone(session.getSnapshot().state!);
   const domainId = crypto.randomUUID(), ownerId = crypto.randomUUID();
-  const metadata = { kind: "domain" as const, version: 2 as const,
-    state: { id: domainId, ownerId }, ownerKey: "restored-owner" };
+  const metadata = { kind: "domain" as const, version: 3 as const,
+    state: { id: domainId, ownerId, name: "Restored", icon: "couch", hostedRooms: {} }, ownerKey: "restored-owner" };
   vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => { await visitor?.metadata(metadata); return metadata; });
   const fetch = vi.fn(async () => new Response(JSON.stringify({ error: "domain_restored_connection_failed" }), { status: 409 }));
   vi.stubGlobal("fetch", fetch);

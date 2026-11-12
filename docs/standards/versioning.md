@@ -17,6 +17,7 @@ state; automatic publication follows the product-change boundary below.
 | Browser/App control identifier | Current App discovery/approval: Browser `channel/app-link.ts` and Server `app.rs`; published 2.x: [matched App control wire](https://github.com/TNTcraftHIM/Piik/blob/f2f9d27db66565f9234c16d46ddd10f4d143cc16/src/client/native/wire.ts) on the maintenance line | Independent compatibility boundary; installed App and Site can update separately |
 | Capture probe and encoded-frame envelope | Rust Native capture/media owners; retained standalone helpers own their matched private formats | Internal matched bundle; change only the affected format |
 | SQLite schema, App config format, Browser storage-key format | Their storage/parser owners | Change with the actual stored representation; preserve accepted authority across a compatible upgrade |
+| Portable backup format | Core backup metadata and the archive adapters | Change when the exported archive representation changes; a new backup format does not imply resetting an unchanged live database |
 | Release descriptor schema | Packager and descriptor readers | Describes metadata format, not the product release |
 | Room authorization generation, share/route/publication/media generations, connection IDs | Current authority and resource owners | Runtime identity/freshness only; never reset or align them with release numbers |
 

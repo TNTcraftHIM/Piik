@@ -68,6 +68,29 @@ pub fn backup_metadata(input: &str) -> Result<String, JsValue> {
 }
 
 #[wasm_bindgen]
+pub struct DomainArchiveCheck(piik_channel_core::backup::DomainArchiveCheck);
+
+#[wasm_bindgen]
+impl DomainArchiveCheck {
+    #[wasm_bindgen(constructor)]
+    pub fn new(metadata: &str) -> Result<Self, JsValue> {
+        let piik_channel_core::backup::Metadata::Domain(metadata) = parse_backup(metadata)? else {
+            return Err(error("invalid_backup_kind"));
+        };
+        Ok(Self(
+            piik_channel_core::backup::DomainArchiveCheck::new(&metadata).map_err(error)?,
+        ))
+    }
+    pub fn accept(&mut self, input: &str) -> Result<(), JsValue> {
+        let user = parse_backup::<piik_channel_core::backup::StoredUser>(input)?;
+        self.0.accept(&user).map_err(error)
+    }
+    pub fn finish(&self) -> Result<(), JsValue> {
+        self.0.finish().map_err(error)
+    }
+}
+
+#[wasm_bindgen]
 pub struct BackupHistoryImport(piik_channel_core::backup::HistoryImport);
 
 #[wasm_bindgen]

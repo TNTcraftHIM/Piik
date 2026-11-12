@@ -522,6 +522,20 @@ reading windows and files are local copies, not additional authoritative histori
 Site backup does not collect other owners' rooms, and exporting a room does not
 give its owner the site's credential database.
 
+The portable site archive contains a small `manifest.json` for site metadata and
+`users.ndjson` with one retained identity per record. Each record keeps its
+existing byte bound; the complete user stream can be larger. This archive
+format is independent of the live SQLite checkpoint format. Room backups keep
+their existing history and content entries.
+
+Before a site restore retires its current session, the Browser streams the user
+records through the shared Core validator. It keeps identity references, not a
+second complete profile collection. Native staging repeats the same validation
+at its own input boundary before sending a restore to the service owner.
+Malformed records, duplicate identities and missing referenced owners reject
+the archive without replacing the current authority. The validated original
+ZIP is uploaded without reconstructing its user data in JavaScript.
+
 A room copy carries no credentials, access grants, password or invitation from
 the original room. Import uses the ordinary room form, with private access
 selected initially, and creates fresh room, message and historical-author

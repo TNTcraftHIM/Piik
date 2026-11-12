@@ -25,6 +25,7 @@ export interface HostedRoom {
 interface RoomHosting {
   backup_metadata(input: string): string;
   backup_record_bytes(): number;
+  DomainArchiveCheck: new (header: string) => { accept(line: string): void; finish(): void; free(): void };
   message_mention_limit(): number;
   BackupHistoryImport: new (metadata: string) => BackupHistoryImport;
   CopyHistoryImport: new (metadata: string) => BackupHistoryImport;

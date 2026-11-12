@@ -18,7 +18,10 @@ and serialization acceptance; the network/media checks below own transport evide
 Real Browser/Server checks admitted 65 new retained identities, read paged offline
 profiles without peer connections, applied rename and avatar removal, found an
 unloaded offline mention target, and exported an old author outside the reading
-window. Native archive checks retained 76 identities and their credentials.
+window. Native archive checks retain 200 maximum-image identities and their
+credentials in a roughly 5 MB archive. Normal Browser export and restore retain
+237 identities across reload; invalid user records, duplicate identities and
+CRC errors fail before upload and preserve the existing shares, voice and session.
 
 The current conversation path verifies unread summaries in an unopened room
 without browsing or peer connections, local read-position retention after

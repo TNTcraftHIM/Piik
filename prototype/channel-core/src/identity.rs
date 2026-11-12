@@ -296,22 +296,22 @@ impl Identity {
         owner_id: Uuid,
         users: Vec<StoredUser>,
     ) -> Result<(), &'static str> {
+        let mut restored = BTreeMap::new();
+        for user in users {
+            user.validate()?;
+            let user = User {
+                version: profile_version(&user.name, &user.avatar),
+                id: user.id,
+                name: user.name,
+                avatar: user.avatar,
+                credential: user.credential,
+            };
+            if restored.insert(user.id, user).is_some() {
+                return Err("invalid_state");
+            }
+        }
         self.owner_id = owner_id;
-        self.users = users
-            .into_iter()
-            .map(|u| {
-                (
-                    u.id,
-                    User {
-                        version: profile_version(&u.name, &u.avatar),
-                        id: u.id,
-                        name: u.name,
-                        avatar: u.avatar,
-                        credential: u.credential,
-                    },
-                )
-            })
-            .collect();
+        self.users = restored;
         Ok(())
     }
 
@@ -352,6 +352,23 @@ pub struct StoredUser {
     #[serde(deserialize_with = "crate::wire::avatar")]
     pub avatar: Option<String>,
     pub credential: [u8; 32],
+}
+
+impl StoredUser {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.id.is_nil()
+            || self.name.trim().is_empty()
+            || self.name != self.name.trim()
+            || self.name.encode_utf16().count() > 40
+            || self
+                .avatar
+                .as_deref()
+                .is_some_and(|image| !crate::wire::identity_image(image))
+        {
+            return Err("invalid_state");
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
