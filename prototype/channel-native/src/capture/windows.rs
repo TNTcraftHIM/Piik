@@ -267,6 +267,13 @@ fn run(
     runtime: tokio::runtime::Handle,
 ) -> Result<()> {
     let border = border_settings(show_capture_border, &Control(shared.clone()), &runtime);
+    // WGC's default interval can throttle high-rate sources before our cadence.
+    // Leave the requested output rate to Cadence, including the 240 FPS ceiling.
+    let interval = if GraphicsCaptureApi::is_minimum_update_interval_supported().unwrap_or(false) {
+        MinimumUpdateIntervalSettings::Custom(std::time::Duration::from_millis(4))
+    } else {
+        MinimumUpdateIntervalSettings::Default
+    };
     let mut recovering = None;
     while !shared.state.lock().unwrap().stop {
         let mut display = DisplayColor::new(&target)?;
@@ -276,7 +283,7 @@ fn run(
             CursorCaptureSettings::Default,
             border,
             SecondaryWindowSettings::Default,
-            MinimumUpdateIntervalSettings::Default,
+            interval,
             DirtyRegionSettings::Default,
             color.format(),
             (shared.clone(), fps.clone(), display),
