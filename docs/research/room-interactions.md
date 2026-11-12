@@ -594,6 +594,14 @@ DELETE, joined the receiver and released UDP. Reopening created a fresh resource
 an old DELETE could not stop it. Production input authorization and publication
 integration remain unimplemented. The current capture-only local-source path
 needs an external producer adapter, with the local listener scope above.
+Native capture preparation currently waits for a first frame before returning;
+external input must instead return its connection details before OBS can send
+that frame. Extend the existing local-producer lease and readiness owner rather
+than fabricate an incoming Core flow. H264 RTP forwarding alone also lacks the
+capture path's quality adaptation: reuse the existing access-unit/source-clock
+and derived-output owners for encoded video. The remaining experience decision
+is whether stopping OBS also retires the input activity or leaves the page
+waiting for another stream; page closure and explicit Piik stop still revoke it.
 
 ## Attended Remote-Control Prototype
 
