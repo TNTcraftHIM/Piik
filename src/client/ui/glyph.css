@@ -3,7 +3,7 @@
   1% { opacity: 1; }
   100% { opacity: 1; stroke-dashoffset: 0; }
 }
-.lr-glyph { --glyph-duration: 280ms; }
+.lr-glyph { --glyph-duration: var(--motion-surface); }
 @keyframes lr-glyph-pop {
   0% { opacity: 0; transform: scale(.3); }
   100% { opacity: 1; transform: scale(1); }

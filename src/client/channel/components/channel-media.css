@@ -28,7 +28,7 @@
   background: var(--paper-translucent);
   box-shadow: var(--control-shadow);
   backdrop-filter: blur(14px);
-  transition: opacity 160ms ease, transform 160ms ease;
+  transition: opacity var(--motion-feedback) ease, transform var(--motion-control) ease;
 }
 .c3-mini-controls .lr-btn:not(:where(.c3-mini-controls [popover] *)) { --button-size: var(--control-compact-size); flex: none; min-width: 0; width: var(--button-size); height: var(--button-size); padding: 0; }
 @container (max-width: 520px) {

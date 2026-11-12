@@ -1,3 +1,8 @@
+/** Shared CSS tokens use milliseconds; callers pass an element in the rendered surface. */
+export function motionDuration(element: Element, role: "press" | "feedback" | "control" | "surface" | "emphasis"): number {
+  return parseFloat(element.ownerDocument.defaultView!.getComputedStyle(element).getPropertyValue(`--motion-${role}`));
+}
+
 /** Restart the CSS animations owned by one marked interactive graphic. */
 export function replaySvgAnimations(root: Element): void {
   const elements = [root, ...Array.from(root.querySelectorAll("*"))];

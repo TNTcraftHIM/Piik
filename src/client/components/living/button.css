@@ -1,6 +1,11 @@
 /* Shared control geometry and motion for the application and static website. */
 :root {
   --spring: cubic-bezier(.3, 1.45, .45, 1);
+  --motion-press: 70ms;
+  --motion-feedback: 110ms;
+  --motion-control: 150ms;
+  --motion-surface: 240ms;
+  --motion-emphasis: 400ms;
   --control-size: 52px;
   --control-compact-size: 44px;
   --control-dense-size: 36px;
@@ -9,7 +14,7 @@
   --control-border-width: 2px;
   --control-hover-transform: translateY(-2px);
   --control-press-transform: translateY(2px);
-  --control-motion: transform 260ms var(--spring);
+  --control-motion: transform var(--motion-control) var(--spring);
 }
 button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .lr-btn {
@@ -30,11 +35,11 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
   white-space: nowrap;
   text-decoration: none;
   box-shadow: var(--control-shadow);
-  transition: var(--control-motion), background-color 140ms ease, border-color 140ms ease;
+  transition: var(--control-motion), background-color var(--motion-feedback) ease, border-color var(--motion-feedback) ease;
 }
 .lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { transform: var(--control-hover-transform); }
 .lr-btn:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]):not(.is-primary):not(.is-on):not(.is-danger) { background: var(--control-hover); border-color: var(--ink); }
-.lr-btn:active:not(:disabled):not([aria-disabled="true"]) { transform: var(--control-press-transform); box-shadow: none; transition-duration: 80ms; }
+.lr-btn:active:not(:disabled):not([aria-disabled="true"]) { transform: var(--control-press-transform); box-shadow: none; transition-duration: var(--motion-press); }
 .lr-btn.is-primary { --primary-fill: var(--primary); border-color: var(--primary-fill); background: var(--primary-fill); color: var(--primary-ink); }
 .lr-btn.is-primary:is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { --primary-fill: color-mix(in srgb, var(--primary) 88%, #000); }
 .lr-btn.is-danger { border-color: var(--danger); color: color-mix(in srgb, var(--danger) 70%, var(--ink)); }
@@ -52,7 +57,7 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
 .lr-embedded-actions { --control-hover-transform: none; --control-press-transform: none; }
 .lr-embedded-actions :is(.lr-btn, .lr-chip):focus-visible { outline-color: currentColor; outline-offset: -3px; }
 @media (prefers-reduced-motion: reduce) {
-  :root { --control-hover-transform: none; --control-press-transform: none; }
+  :root { --control-hover-transform: none; --control-press-transform: none; --motion-press: 0ms; --motion-feedback: 0ms; --motion-control: 0ms; --motion-surface: 0ms; --motion-emphasis: 0ms; }
   .lr-btn { transform: none !important; transition: none !important; }
 }
-html[data-reduced-motion] { --control-hover-transform: none; --control-press-transform: none; }
+html[data-reduced-motion] { --control-hover-transform: none; --control-press-transform: none; --motion-press: 0ms; --motion-feedback: 0ms; --motion-control: 0ms; --motion-surface: 0ms; --motion-emphasis: 0ms; }

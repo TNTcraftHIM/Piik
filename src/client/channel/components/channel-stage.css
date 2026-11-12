@@ -52,7 +52,7 @@
 /* Source controls share the existing playback reveal state without taking picture space. */
 .c3-monitor-tile:not(.is-thumbnail) > footer { padding: 0; }
 .c3-monitor-tile:not(.is-thumbnail) > :is(.c3-video, .c3-monitor-wait) { border-radius: var(--c3-media-radius); }
-.c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source-row { position: absolute; inset: 6px 6px auto; z-index: 5; padding: 4px 6px; gap: 6px; color: var(--ink); background: var(--paper-translucent); border: 1px solid var(--control-edge); border-radius: var(--c3-inset-radius); box-shadow: var(--control-shadow); backdrop-filter: blur(14px); transition: opacity 160ms ease, transform 160ms ease; }
+.c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source-row { position: absolute; inset: 6px 6px auto; z-index: 5; padding: 4px 6px; gap: 6px; color: var(--ink); background: var(--paper-translucent); border: 1px solid var(--control-edge); border-radius: var(--c3-inset-radius); box-shadow: var(--control-shadow); backdrop-filter: blur(14px); transition: opacity var(--motion-feedback) ease, transform var(--motion-control) ease; }
 .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source-row { display: grid; grid-template-columns: 20px minmax(64px, 180px) minmax(100px, 1fr) auto; }
 .c3-monitor-social { display: flex; align-items: center; gap: 2px; min-width: 0; }
 .c3-monitor-social > .c3-message-reactions { flex: 1; min-width: 0; flex-wrap: nowrap; }

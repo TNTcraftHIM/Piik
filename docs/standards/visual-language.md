@@ -868,6 +868,30 @@ failure; lack of PiP support is a limitation.
 
 ## Motion Grammar
 
+Interaction timing uses the following shared roles in `button.css`, derived from
+[Carbon's duration scale](https://carbondesignsystem.com/elements/motion/overview/#duration).
+Choose by purpose and distance, following
+[Fluent's duration and choreography guidance](https://fluent2.microsoft.design/motion).
+These assignments are Piik's design choices; one duration does not fit every effect.
+
+| Role | Duration | Use |
+| --- | --- | --- |
+| `--motion-press` | 70ms | Immediate pressed feedback |
+| `--motion-feedback` | 110ms | Control colour and opacity changes |
+| `--motion-control` | 150ms | Small movements, selection indicators and tooltip position/exit |
+| `--motion-surface` | 240ms | Floating-surface entrance, expansion and the complete glyph drawing |
+| `--motion-emphasis` | 400ms | Brief result emphasis, message-location highlight and reaction impact |
+
+Keep the existing shared spring for Piik's control lift; opacity/colour and
+continuous rotation retain their appropriate standard easing. Dependent visibility
+or unmount timing follows the same role. JavaScript animation consumers read the
+rendered surface's CSS token through `animation.ts`, including reduced motion;
+they do not copy its number. System or explicit reduced motion sets these roles
+to zero while existing final-pose rules retain readable state.
+Hover intent, long-press recognition, reading holds, reaction delivery/expiry and
+ongoing comic or idle-character cycles keep their existing semantic owners.
+Those lifetimes are not short interaction transitions.
+
 The brand mascot keeps its body still: antenna twitch, wink, then two sparkles.
 Web/App and website identity marks share `site/assets/brand-motion.css`.
 An entrance draws the shell once and starts the gesture only after the last

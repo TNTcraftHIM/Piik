@@ -2,7 +2,7 @@
 .lr-voice-settings { display: grid; align-content: start; gap: 16px; }
 .lr-voice-panel-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
 .lr-voice-mic-level { position: absolute; left: 50%; top: 50%; width: var(--control-icon-size); height: var(--control-icon-size); transform: translate(-50%, -50%); pointer-events: none; fill: var(--live); }
-.lr-voice-member-mic { --control-icon-size: 20px; position: relative; display: inline-flex; flex: none; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: default; transition: color 140ms ease; }
+.lr-voice-member-mic { --control-icon-size: 20px; position: relative; display: inline-flex; flex: none; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: default; transition: color var(--motion-feedback) ease; }
 .lr-voice-member-mic[data-speaking] { color: var(--live); }
 .lr-voice-hint { display: flex; align-items: flex-start; gap: 6px; margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .lr-voice-hint > svg, .lr-voice-control-error > svg { flex: none; margin-top: 2px; }
@@ -10,7 +10,7 @@
 .lr-voice-member:last-child { border-bottom: 0; }
 .lr-voice-identity { display: flex; flex: 1; min-width: 0; align-items: center; gap: 10px; }
 .lr-voice-identity > svg { flex: none; width: 28px; height: 34px; }
-.lr-voice-avatar { display: grid; place-items: center; flex: none; width: var(--control-compact-size); height: var(--control-compact-size); padding: 0; border: 0; border-radius: 12px; background: transparent; color: inherit; cursor: pointer; transition: background-color 140ms ease; }
+.lr-voice-avatar { display: grid; place-items: center; flex: none; width: var(--control-compact-size); height: var(--control-compact-size); padding: 0; border: 0; border-radius: 12px; background: transparent; color: inherit; cursor: pointer; transition: background-color var(--motion-feedback) ease; }
 .lr-voice-avatar:is(:hover, :focus-visible) { background: var(--control-hover); }
 .lr-voice-avatar:focus-visible { outline-offset: -3px; }
 .lr-voice-avatar > svg { width: 28px; height: 34px; }

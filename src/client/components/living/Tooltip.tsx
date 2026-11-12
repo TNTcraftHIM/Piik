@@ -29,13 +29,12 @@ import {
 import { Comic, type ComicKind } from "./Comic";
 import { HintComic, isHintKind, type HintKind } from "./hints";
 import { isCopyKey, say } from "../../ui/copy";
-import { replaySvgAnimations } from "../../ui/animation";
+import { motionDuration, replaySvgAnimations } from "../../ui/animation";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { comicStyle, getComicPresentation, type ComicTone, type ComicMotion } from "./comic-presentation";
 
 export const LONG_PRESS_MS = 500;
 const TOUCH_HIDE_MS = 1500;
-const PANEL_EXIT_MS = 160;
 export const HOVER_ENTER_MS = 500;
 // Minimum clearance the re-picked alignment keeps to each viewport edge.
 const EDGE_MARGIN = 8;
@@ -368,11 +367,12 @@ export function Tooltip({
   }, [interactionOpen, ownerDocument]);
 
   useEffect(() => {
-    if (interactionOpen || !panelMounted) return;
+    const tip = tipRef.current;
+    if (interactionOpen || !panelMounted || !tip) return;
     panelUnmountTimer.current = window.setTimeout(() => {
       panelUnmountTimer.current = null;
       setPanelMounted(false);
-    }, PANEL_EXIT_MS);
+    }, motionDuration(tip, "control"));
     return () => {
       if (panelUnmountTimer.current !== null) {
         window.clearTimeout(panelUnmountTimer.current);

@@ -27,11 +27,11 @@
 .lr-person-status[data-microphone][data-deafened] .lr-person-mic-tip { transform: translate(-6px, -7px); }
 @media (prefers-reduced-motion: no-preference) {
   :where(html:not([data-reduced-motion])) {
-    .lr-person-headset, .lr-person-collaboration { transition: opacity 180ms ease, transform 220ms ease-out; }
+    .lr-person-headset, .lr-person-collaboration { transition: opacity var(--motion-feedback) ease, transform var(--motion-control) ease-out; }
     .lr-person-headband, .lr-person-neckband,
     .lr-person-earcup-left, .lr-person-earcup-right, .lr-person-mic-position,
     .lr-person-mic-open, .lr-person-mic-folded, .lr-person-mic-tip {
-      transition: transform 260ms ease-in-out, opacity 180ms ease;
+      transition: transform var(--motion-control) ease-in-out, opacity var(--motion-feedback) ease;
     }
     .lr-person[data-motion] .lr-person-body { animation: lr-person-lean var(--person-duration) ease-in-out infinite; }
     .lr-person[data-motion] .lr-person-eyes { animation: lr-person-eyes var(--person-duration) ease-in-out infinite; }

@@ -3,6 +3,7 @@ import { REACTION_DURATION_MS, REACTION_GLYPHS, isThrow, type ReactionId } from 
 import type { RoomInteraction } from "../../lib/room-interactions";
 import { identityHash } from "../../lib/identity-hash";
 import { Glyph } from "../../ui/icons";
+import { motionDuration } from "../../ui/animation";
 import { useSurfaceDocument } from "../../ui/panel-window";
 
 /** Active throws coexist; a person's newest self-expression replaces their older one. */
@@ -160,14 +161,15 @@ export function RoomReaction({ reaction, area, now }: {
       !view.matchMedia("(prefers-reduced-motion: reduce)").matches && !root.closest("[data-comic-reduced-motion]")) {
       const elapsed = Math.max(0, REACTION_DURATION_MS - (reaction.expiresAt - now()));
       const delay = REACTION_DURATION_MS * .32 - elapsed;
-      if (delay > -560) {
+      const duration = motionDuration(body, "emphasis");
+      if (delay > -duration) {
         const direction = sender.getBoundingClientRect().x > recipient.getBoundingClientRect().x ? -1 : 1;
         impact = body.animate([
           { transform: "none" },
           { transform: payload.reaction === "tomato" ? `rotate(${direction * 6}deg) scale(1.05,.95)` : `translateX(${direction * 4}px) rotate(${direction * 8}deg)` },
           { transform: `rotate(${-direction * 3}deg)` },
           { transform: "none" },
-        ], { duration: 560, delay, easing: "ease-out" });
+        ], { duration, delay, easing: "ease-out" });
       }
     }
     return () => { view.cancelAnimationFrame(frame); impact?.cancel(); };

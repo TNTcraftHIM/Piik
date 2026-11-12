@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useId, useLayoutEffect, useRef, useState,
 import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { Glyph } from "../../ui/icons";
+import { motionDuration } from "../../ui/animation";
 import { useCopy } from "../../ui/copy";
 import { MAX_MESSAGE_CODE_POINTS, type ChannelMessage, type ChannelUser, type ChannelUserSummary } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
@@ -152,7 +153,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
     if (target) {
       target.scrollIntoView({ block: "center" }); target.focus({ preventScroll: true });
       if (!target.ownerDocument.defaultView?.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        target.animate([{ backgroundColor: "color-mix(in srgb, var(--action) 18%, transparent)" }, { backgroundColor: getComputedStyle(target).backgroundColor }], { duration: 900, easing: "ease-out" });
+        target.animate([{ backgroundColor: "color-mix(in srgb, var(--action) 18%, transparent)" }, { backgroundColor: getComputedStyle(target).backgroundColor }], { duration: motionDuration(target, "emphasis"), easing: "ease-out" });
       }
       reading.current = { position: log.current!.scrollTop, following: false }; setJump(null);
     }
