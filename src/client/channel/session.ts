@@ -1126,7 +1126,8 @@ export class ChannelSession {
     if (this.view.connection === "connected") {
       await this.action(`enter:${roomId}`, () => this.request({ type: "enter_room", roomId, inviteKey: key }));
       const current = new URLSearchParams(location.hash.slice(1));
-      if (current.get("room") === roomId && current.get("invite") === key) {
+      if (this.credential && stored(credentialKey) === this.credential
+        && current.get("room") === roomId && current.get("invite") === key) {
         current.delete("invite");
         const hash = current.toString();
         try {

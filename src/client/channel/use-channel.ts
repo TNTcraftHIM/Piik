@@ -10,7 +10,11 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
   const [session] = useState(() => new ChannelSession());
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
   useEffect(() => {
-    const accept = () => { void session.acceptInvitation().then(room => { if (room) onInvitation?.(room); }).catch(() => {}); };
+    const accept = () => {
+      const room = new URLSearchParams(location.hash.slice(1)).get("room");
+      if (room) onInvitation?.(room);
+      void session.acceptInvitation().catch(() => {});
+    };
     window.addEventListener("hashchange", accept);
     return () => window.removeEventListener("hashchange", accept);
   }, [session, onInvitation]);

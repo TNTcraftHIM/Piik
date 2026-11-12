@@ -4,5 +4,6 @@ export function selectedRoom(): string {
 }
 
 export function rememberRoom(roomId: string): void {
-  history.replaceState({ ...history.state, piikChannelRoom: roomId }, "");
+  try { history.replaceState({ ...history.state, piikChannelRoom: roomId }, ""); }
+  catch { /* Remembering the view is optional; navigation still succeeds. */ }
 }

@@ -60,7 +60,11 @@ class ChannelSocket {
 const profileVersion = "0".repeat(64);
 const testSigningKey = Array.from(Buffer.from("8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c", "hex"));
 beforeEach(() => {
-  vi.stubGlobal("history", { state: null, replaceState: vi.fn() });
+  const browserHistory = { state: null as unknown, replaceState: vi.fn((state: unknown, _title: string, url?: string | URL | null) => {
+    browserHistory.state = state;
+    if (url != null) location.href = new URL(url, location.href).href;
+  }) };
+  vi.stubGlobal("history", browserHistory);
   vi.spyOn(launchSession, "isClientActivated").mockReturnValue(false);
   vi.spyOn(ChannelConversation.prototype, "initialize").mockResolvedValue(testSigningKey);
   vi.stubGlobal("MediaStream", RoomMediaStream);
@@ -70,9 +74,13 @@ beforeEach(() => {
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
-async function setup(window = 1000, read = true, hash = "room=first", readyInteractions = true, roomIds = ["first", "second"]) {
+async function setup(window = 1000, read = true, hash = "room=first", readyInteractions = true, roomIds = ["first", "second"], storage: "saved" | "throws" | "ignores-write" = "saved") {
   vi.stubGlobal("location", new URL(`https://channel.test/__channel-preview${hash ? `#${hash}` : ""}`));
-  vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  const values = new Map<string, string>();
+  vi.stubGlobal("localStorage", { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => {
+    if (storage === "throws") throw new Error("storage unavailable");
+    if (storage === "saved") values.set(key, value);
+  } });
   vi.stubGlobal("WebSocket", ChannelSocket);
   const session = new ChannelSession();
   type PeerRequest = Extract<ChannelCommand, { type: "chat" | "history" }> & { requestId: string };
@@ -369,7 +377,7 @@ test("a keyless room fragment supplies navigation without performing admission",
 });
 
 test("restoring the viewed room does not turn its navigation state into an invitation", async () => {
-  vi.stubGlobal("history", { state: { piikChannelRoom: "second" }, replaceState: vi.fn() });
+  history.replaceState({ piikChannelRoom: "second" }, "");
   const { session, socket } = await setup(1000, false, "room=first&invite=room-link");
   try {
     expect(socket.sent.find(command => command.type === "join")).toMatchObject({ protocol: CHANNEL_PROTOCOL });
@@ -378,11 +386,12 @@ test("restoring the viewed room does not turn its navigation state into an invit
     expect(entering).toMatchObject({ roomId: "first", inviteKey: "room-link" });
     socket.receive({ type: "ack", requestId: entering.requestId });
     await vi.waitFor(() => expect(history.replaceState).toHaveBeenCalledWith({ piikChannelRoom: "second" }, "", "/__channel-preview#room=first"));
+    expect(location.hash).toBe("#room=first");
   } finally { session.close(); }
 });
 
 test("a saved owner credential retires only the consumed owner URL parameter and owns reconnect and reload", async () => {
-  const { session, socket } = await setup(3, false, "owner=owner-secret&room=first&invite=friend-link&other=keep");
+  const { session, socket } = await setup(3, false, "owner=owner-secret&room=first&invite=friend-link&other=keep", true, undefined, "ignores-write");
   const values = new Map<string, string>();
   vi.stubGlobal("localStorage", { getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => { values.set(key, value); } });
@@ -412,7 +421,7 @@ test("a saved owner credential retires only the consumed owner URL parameter and
 });
 
 test.each(["throws", "ignores-write"] as const)("owner bootstrap stays recoverable when Browser storage %s", async failure => {
-  const { session, socket } = await setup(3, false, "owner=owner-secret&other=keep");
+  const { session, socket } = await setup(3, false, "owner=owner-secret&other=keep", true, undefined, failure);
   const replaceState = vi.fn(); vi.stubGlobal("history", { state: null, replaceState });
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => { if (failure === "throws") throw new Error("storage unavailable"); } });
   try {
@@ -431,6 +440,7 @@ test.each(["invalid_room_id", "room_not_found", "room_unavailable"])("%s present
 
 test("opening the site creates identity before independently applying a room invitation", async () => {
   const { session, socket } = await setup(1000, false, "room=first&invite=room-key");
+  let reloaded: ChannelSession | undefined;
   try {
     const join = socket.sent.find(command => command.type === "join")!;
     expect(join).toMatchObject({ type: "join", protocol: CHANNEL_PROTOCOL, name: "Guest" });
@@ -447,7 +457,65 @@ test("opening the site creates identity before independently applying a room inv
     await expect(entering).resolves.toBe("second");
     expect(session.getSnapshot().connection).toBe("connected");
     expect(history.replaceState).toHaveBeenCalledWith(null, "", "/__channel-preview#room=second");
+    expect(location.hash).toBe("#room=second");
     expect(socket.sent.filter(command => command.type === "join")).toHaveLength(1);
+    const state = session.getSnapshot().state!;
+    session.close();
+    reloaded = new ChannelSession(); reloaded.start();
+    const nextSocket = ChannelSocket.current;
+    await nextSocket.onopen?.();
+    expect(nextSocket.sent.find(command => command.type === "join")).toMatchObject({ credential: "credential" });
+    nextSocket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint", state });
+    expect(nextSocket.sent.some(command => command.type === "enter_room")).toBe(false);
+    expect(nextSocket.sent.find(command => command.type === "browse" && command.active)).toMatchObject({ roomId: "second" });
+  } finally { session.close(); reloaded?.close(); }
+});
+
+test.each(["throws", "ignores-write"] as const)("room invitation survives reload when identity storage %s", async failure => {
+  const { session, socket } = await setup(1000, false, "room=first&invite=room-key", true, undefined, failure);
+  let reloaded: ChannelSession | undefined;
+  try {
+    const entry = socket.sent.find(command => command.type === "enter_room")!;
+    socket.receive({ type: "ack", requestId: entry.requestId });
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("enter:first")).toBe(false));
+    expect(location.hash).toBe("#room=first&invite=room-key");
+    expect(history.replaceState).not.toHaveBeenCalled();
+    const state = session.getSnapshot().state!;
+    session.close();
+    reloaded = new ChannelSession(); reloaded.start();
+    const nextSocket = ChannelSocket.current;
+    await nextSocket.onopen?.();
+    expect(nextSocket.sent.find(command => command.type === "join")).not.toHaveProperty("credential");
+    nextSocket.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "new-credential", sessionId: "endpoint", state });
+    expect(nextSocket.sent.find(command => command.type === "enter_room")).toMatchObject({ roomId: "first", inviteKey: "room-key" });
+  } finally { session.close(); reloaded?.close(); }
+});
+
+test("late room admission preserves a newer invitation fragment", async () => {
+  const { session, socket } = await setup(1000, false, "");
+  try {
+    location.hash = "room=first&invite=first-key";
+    const entering = session.acceptInvitation();
+    const entry = socket.sent.find(command => command.type === "enter_room")!;
+    location.hash = "room=second&invite=second-key";
+    socket.receive({ type: "ack", requestId: entry.requestId });
+    await entering;
+    expect(location.hash).toBe("#room=second&invite=second-key");
+    expect(history.replaceState).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
+test("room admission succeeds when History rejects invitation cleanup", async () => {
+  const { session, socket } = await setup(1000, false, "");
+  vi.mocked(history.replaceState).mockImplementation(() => { throw new DOMException("History unavailable", "SecurityError"); });
+  try {
+    location.hash = "room=first&invite=room-key";
+    const entering = session.acceptInvitation();
+    const entry = socket.sent.find(command => command.type === "enter_room")!;
+    socket.receive({ type: "ack", requestId: entry.requestId });
+    await expect(entering).resolves.toBe("first");
+    expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null });
+    expect(location.hash).toBe("#room=first&invite=room-key");
   } finally { session.close(); }
 });
 
