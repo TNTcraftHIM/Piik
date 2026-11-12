@@ -198,6 +198,12 @@ code instead of repeatedly running the full platform matrix for one candidate.
   build paths. `check:rust` uses `CARGO_TARGET_DIR`, defaulting to `build/rust-check`,
   and supplies its built executables to the integration tests. Keep browser
   profiles isolated and diagnose the active firewall without changing global rules.
+- Reuse a small set of Cargo target directories by platform/build purpose on a
+  volume with sufficient free space. Keep them outside versioned source copies;
+  do not allocate a new cache for every SHA or acceptance attempt. Repeated
+  candidate builds should use stable checkout paths and separate immutable outputs.
+  Keep source, credentials, running environments and required evidence separate
+  from disposable compiler output when preparing cleanup.
 - CI, versioning and release automation belong to complete, accepted squash
   merges into `main`; ordinary branch pushes stay quiet. PRs run only the
   lightweight public release-note check before merge. The
