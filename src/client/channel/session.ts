@@ -1123,7 +1123,15 @@ export class ChannelSession {
     const roomId = params.get("room"), key = params.get("invite");
     if (!key) return roomId || null;
     if (!roomId) return null;
-    if (this.view.connection === "connected") await this.action(`enter:${roomId}`, () => this.request({ type: "enter_room", roomId, inviteKey: key }));
+    if (this.view.connection === "connected") {
+      await this.action(`enter:${roomId}`, () => this.request({ type: "enter_room", roomId, inviteKey: key }));
+      const current = new URLSearchParams(location.hash.slice(1));
+      if (current.get("room") === roomId && current.get("invite") === key) {
+        current.delete("invite");
+        const hash = current.toString();
+        history.replaceState(history.state, "", location.pathname + location.search + (hash ? `#${hash}` : ""));
+      }
+    }
     return roomId;
   };
   sendMessage = (roomId: string, text: string, files: DraftFile[] = [], signal?: AbortSignal, options: ChatOptions = {}): Promise<void> => this.action(`chat:${roomId}`, async () => {

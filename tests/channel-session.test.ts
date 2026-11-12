@@ -374,8 +374,10 @@ test("restoring the viewed room does not turn its navigation state into an invit
   try {
     expect(socket.sent.find(command => command.type === "join")).toMatchObject({ protocol: CHANNEL_PROTOCOL });
     expect(socket.sent.filter(command => command.type === "browse" && command.active).map(command => command.roomId)).toEqual(["second"]);
-    expect(socket.sent.find(command => command.type === "enter_room")).toMatchObject({ roomId: "first", inviteKey: "room-link" });
-    expect(location.hash).toBe("#room=first&invite=room-link");
+    const entering = socket.sent.find(command => command.type === "enter_room")!;
+    expect(entering).toMatchObject({ roomId: "first", inviteKey: "room-link" });
+    socket.receive({ type: "ack", requestId: entering.requestId });
+    await vi.waitFor(() => expect(history.replaceState).toHaveBeenCalledWith({ piikChannelRoom: "second" }, "", "/__channel-preview#room=first"));
   } finally { session.close(); }
 });
 
@@ -444,6 +446,7 @@ test("opening the site creates identity before independently applying a room inv
     socket.receive({ type: "ack", requestId: next.requestId });
     await expect(entering).resolves.toBe("second");
     expect(session.getSnapshot().connection).toBe("connected");
+    expect(history.replaceState).toHaveBeenCalledWith(null, "", "/__channel-preview#room=second");
     expect(socket.sent.filter(command => command.type === "join")).toHaveLength(1);
   } finally { session.close(); }
 });
