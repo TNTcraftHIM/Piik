@@ -311,7 +311,9 @@ fn run(
     let (process, client) = match input {
         Input::System(target, include_tree) => {
             let process = process(&target)?;
-            let client = client(process.as_ref().map(|_| (target.pid, include_tree)))?;
+            let scope = process.as_ref().map(|_| (target.pid, include_tree));
+            let client = client(scope)?;
+            crate::diagnostics::system_audio_source(scope);
             (process, client)
         }
         Input::Microphone(id) => {

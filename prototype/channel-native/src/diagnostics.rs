@@ -1,5 +1,5 @@
-//! Explicit App diagnostics, retained only in this process. These targets carry
-//! reviewed technical failures, never input content, requests or SDK dumps.
+//! Explicit App diagnostics, retained only in this process. Records carry reviewed
+//! technical failures and capture configuration, never input content or SDK dumps.
 use anyhow::{anyhow, Result};
 use log::{LevelFilter, Log, Metadata, Record};
 use serde::Serialize;
@@ -20,6 +20,12 @@ static INSTALLED: OnceLock<std::result::Result<(), log::SetLoggerError>> = OnceL
 
 pub fn enabled() -> bool {
     RECORDER.0.lock().unwrap().is_some()
+}
+
+/// The selected sound scope is useful even when capture succeeds without an error.
+#[cfg(all(feature = "capture", windows))]
+pub(crate) fn system_audio_source(process: Option<(u32, bool)>) {
+    RECORDER.system_audio_source(process);
 }
 
 /// Logger installation and opt-in survive Android runtime restarts in one PID.
@@ -118,6 +124,28 @@ fn target(value: &str) -> Option<&'static str> {
     }
 }
 struct Recorder(Mutex<Option<Buffer>>);
+impl Recorder {
+    #[cfg(any(test, all(feature = "capture", windows)))]
+    fn system_audio_source(&self, process: Option<(u32, bool)>) {
+        let mut state = self.0.lock().unwrap();
+        let Some(buffer) = state.as_mut() else { return };
+        let (scope, process_id) = match process {
+            None => ("default-output", None),
+            Some((pid, true)) => ("include-process-tree", Some(pid)),
+            Some((pid, false)) => ("exclude-process-tree", Some(pid)),
+        };
+        buffer.push(
+            &Record::builder()
+                .level(log::Level::Info)
+                .args(format_args!(
+                    "System audio configured: scope={scope} selected_pid={process_id:?} app_pid={}",
+                    std::process::id(),
+                ))
+                .build(),
+            "piik.capture",
+        );
+    }
+}
 impl Log for Recorder {
     fn enabled(&self, metadata: &Metadata<'_>) -> bool {
         target(metadata.target()).is_some()
@@ -234,6 +262,33 @@ impl Snapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn audio_scope_is_opt_in_and_distinguishes_process_exclusion() {
+        let recorder = Recorder(Mutex::new(None));
+        recorder.system_audio_source(Some((42, false)));
+        assert!(recorder.0.lock().unwrap().is_none());
+        *recorder.0.lock().unwrap() = Some(Buffer::new());
+        recorder.system_audio_source(None);
+        recorder.system_audio_source(Some((41, true)));
+        recorder.system_audio_source(Some((42, false)));
+        let state = recorder.0.lock().unwrap();
+        let events = &state.as_ref().unwrap().events;
+        assert_eq!(events.len(), 3);
+        assert!(events[0]
+            .message
+            .contains("scope=default-output selected_pid=None"));
+        assert!(events[1]
+            .message
+            .contains("scope=include-process-tree selected_pid=Some(41)"));
+        assert!(events[2]
+            .message
+            .contains("scope=exclude-process-tree selected_pid=Some(42)"));
+        assert!(events.iter().all(|event| event.level == "INFO"
+            && event
+                .message
+                .contains(&format!("app_pid={}", std::process::id()))));
+    }
+
     #[test]
     fn opt_in_bounds_targets_and_export() {
         let recorder = Recorder(Mutex::new(None));

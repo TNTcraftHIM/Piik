@@ -187,6 +187,12 @@ the intended game/video sound survives exclusion before attributing the result
 to Piik playback. With the capture mode unchanged, muting only Piik's Browser
 playback is a useful discriminator if the updated candidate remains noisy.
 
+Opt-in App diagnostics retain the configured Windows shared-sound scope and the
+selected/App process IDs after identity validation and audio-client initialization.
+This allows a report to distinguish excluding the App itself from excluding another
+process without inferring identity from its window title. It records configuration,
+not proof that the stream started or that an audible feedback loop occurred.
+
 An [OBS reporter](https://obsproject.com/forum/threads/application-audio-capture-beta-not-working-properly.162419/)
 resolved application-capture interference by disabling Windows audio enhancements.
 This makes endpoint effects a plausible alternative, but does not explain why
