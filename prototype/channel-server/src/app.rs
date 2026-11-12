@@ -1189,7 +1189,6 @@ async fn connection(
                                                             target,
                                                             settings,
                                                             codec_mode,
-                                                            audio_settings,
                                                             audio,
                                                             exclude_audio,
                                                             show_capture_border,
@@ -1609,7 +1608,6 @@ async fn prepare_capture(
     target: Target,
     settings: Settings,
     codec_mode: VideoCodecMode,
-    audio_settings: SourceAudioSettings,
     audio: bool,
     exclude_audio: Option<Target>,
     show_capture_border: bool,
@@ -1619,7 +1617,6 @@ async fn prepare_capture(
         bail!("capture_unavailable");
     }
     settings.validate()?;
-    audio_settings.validate()?;
     let (result, response) = oneshot::channel();
     commands
         .send(HostCommand::PrepareCapture(PrepareCapture {
@@ -2215,7 +2212,6 @@ mod tests {
             target.clone(),
             settings,
             codec_mode,
-            audio_settings,
             audio,
             exclude_audio,
             show_capture_border,
@@ -2255,7 +2251,6 @@ mod tests {
             target,
             invalid,
             VideoCodecMode::H264,
-            SourceAudioSettings::default(),
             false,
             None,
             false,
