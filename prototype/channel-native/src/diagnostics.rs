@@ -138,7 +138,7 @@ impl Recorder {
             &Record::builder()
                 .level(log::Level::Info)
                 .args(format_args!(
-                    "System audio configured: scope={scope} selected_pid={process_id:?} app_pid={}",
+                    "System audio configured: scope={scope} selected_pid={process_id:?} native_process_id={}",
                     std::process::id(),
                 ))
                 .build(),
@@ -286,7 +286,7 @@ mod tests {
         assert!(events.iter().all(|event| event.level == "INFO"
             && event
                 .message
-                .contains(&format!("app_pid={}", std::process::id()))));
+                .contains(&format!("native_process_id={}", std::process::id()))));
     }
 
     #[test]

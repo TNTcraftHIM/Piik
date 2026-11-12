@@ -231,7 +231,7 @@ service does not clear them. Only an explicit export produces a report, containi
 build metadata and these records. Approved sites cannot read this process-wide
 report. Browser reports are separate downloads from the page's **Help** menu.
 Windows shared-sound configuration records distinguish default-output, process-tree
-inclusion and process-tree exclusion, with the selected and App process IDs.
+inclusion and process-tree exclusion, with the selected and Native process IDs.
 They contain no window titles, program paths, device identifiers or audio samples.
 
 ## UI previews
