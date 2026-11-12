@@ -537,32 +537,33 @@ to a bot through room administration. Defer in-process plugins: the
 [TeamSpeak native SDK](https://github.com/teamspeak/ts3client-pluginsdk) illustrates
 the exported API and callback boundary that Piik would then have to maintain.
 
-[OBS already supplies WHIP output](https://obsproject.com/kb/whip-streaming-guide).
-The candidate Piik input would authorize one source lease on an authenticated App,
-reuse its media clock, output demand and routing, and stop with that share. The
-OBS-to-App input adds a local media connection, not a Bot identity or another
-Core room pair/topology. These source adapters
-are internal interfaces, not an existing public plugin ABI.
-After choosing the first use case and authorization scope, verify one complete
-integration and its revoke/stop behavior before extracting a general SDK.
+Start the bot adapter with a useful notification and one conversational command
+in an explicitly authorized room. Game-server/build notices, dice or team choices,
+and short reminders fit ordinary confirmed messages. External event handling and
+timers belong to that process; delivery still needs the actual room host online.
+[Mattermost webhooks](https://docs.mattermost.com/developers/integrate/webhooks)
+and [Zulip interactive bots](https://zulip.com/help/interactive-bots-api) provide
+examples of this small integration boundary. Piik need not add a generic webhook
+server or a second Markdown format to supply it. A ready-check bot can retain one
+choice per authenticated user; existing cumulative reaction counts are not ballots.
 
-The requested bot/API and OBS work can start with two separate, bounded adapters.
-For a support bot, first prove receiving confirmed messages and sending a reply
-in one explicitly selected room. Keep its identity distinct from the operator,
-and decide who may admit and revoke it before publishing an API. Reuse existing
-conversation confirmation and storage; Markdown is message presentation and
-does not require a second bot message format. A native plugin ABI, extension
-marketplace and general role system are outside that first integration.
+Shared pads, checklists and watch queues can begin as ordinary links or bot replies.
+Embedding arbitrary web tools adds identity, capability and instance-lifetime work:
+[Discord Activities](https://docs.discord.com/developers/activities/how-activities-work)
+has an explicit iframe/SDK boundary. Keep that separate from personal sound/visual
+preferences and external media adapters. Full/quick presentation must share the
+same activity instance. General widget runtimes and native plugin ABIs remain
+deferred; extra collaboration pointers remain under the owner's existing hold.
 
-For OBS, [its WHIP output](https://obsproject.com/kb/whip-streaming-guide) already
-accepts an endpoint URL and bearer token. A proposed first flow lets a sharer
-create a local App input for the chosen room, then paste those two values into
-OBS. [WHIP](https://www.rfc-editor.org/rfc/rfc9725.html) owns media-session setup
-and deletion; Piik's existing publication owns room distribution and stop.
-The adapter must retain source timestamps and feed the current media owners,
-without a second room topology. Token lifetime, page closure and reconnect
-behavior still need an explicit choice. This remains a design proposal, not an
-implemented ingest endpoint or an authorization for unattended publishing.
+[OBS WHIP output](https://obsproject.com/kb/whip-streaming-guide) accepts an endpoint
+URL and bearer token. The proposed flow creates one local source lease on the
+authenticated App for a chosen room. [WHIP](https://www.rfc-editor.org/rfc/rfc9725.html)
+owns input-session setup/deletion; the existing publication owns room distribution
+and stop. Preserve source timestamps, media-clock and output-demand owners. This
+adds an OBS-to-App media connection, not another Core room topology. Token lifetime,
+page closure and reconnect behavior still need a decision. Verify one complete
+integration and revocation/stop before extracting a public SDK or plugin ABI;
+unattended publishing is not accepted by this proposal.
 
 A bounded control with the pinned str0m SDK accepted a send-only H264/Opus offer,
 completed ICE/DTLS and retained RTP timestamp progression and sender reports.
