@@ -110,7 +110,7 @@ func TestEntryTracksCurrentStartupPreferenceAndSiteRevocation(t *testing.T) {
 	if err := appconfig.Save(configPath, appconfig.Config{Version: 1, Sites: []string{"https://first.example", "https://second.example"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := launcher.SaveStartupSite(configPath, "https://first.example"); err != nil {
+	if err := launcher.SaveStartupSite(configPath, launcher.StartupIntent{Site: "https://first.example"}); err != nil {
 		t.Fatal(err)
 	}
 	r, err := Start(&testPlatform{}, "", `{"platform":"android","provider":"Android MediaCodec","systemAudio":true,"encoders":[]}`, directory, t.TempDir(), "", "piik://media")

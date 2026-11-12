@@ -41,6 +41,7 @@ type Runtime struct {
 	cancel             context.CancelFunc
 	once               sync.Once
 	url                string
+	invitation         string
 	configMu           sync.Mutex
 	configPath         string
 	config             appconfig.Config
@@ -144,7 +145,7 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 			r.configMu.Unlock()
 			return sites, err
 		},
-		SaveStartupSite: func(site string) error { return launcher.SaveStartupSite(r.configPath, site) },
+		SaveStartupSite: func(site launcher.StartupIntent) error { return launcher.SaveStartupSite(r.configPath, site) },
 	})
 	if err != nil {
 		return nil, errors.Join(err, r.Close())
@@ -156,38 +157,52 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 	if err != nil {
 		return nil, errors.Join(err, r.Close())
 	}
+	if startup.Owned != nil {
+		r.launcher.Begin()
+	}
 	r.launchDone = make(chan struct{})
 	go func() {
 		defer close(r.launchDone)
-		r.runLauncher(lanAddress)
+		r.runLauncher(lanAddress, startup.Owned)
 	}()
 	go r.watchServices()
 	return r, nil
 }
 
 // Failed startup has already retired its resources before a new selection starts.
-func (r *Runtime) runLauncher(lanAddress string) {
+func (r *Runtime) runLauncher(lanAddress string, initial *launcher.StartupLaunch) {
 	for {
-		select {
-		case selected := <-r.launcher.Selection():
-			if err := launcher.SaveMode(r.configPath, selected.Mode); err != nil {
-				slog.Debug("Could not save the launcher mode", diagnostics.Error(err))
+		var selected launcher.Selection
+		if initial != nil {
+			r.configMu.Lock()
+			selected = launcher.Selection{Mode: initial.Mode, LANAddress: initial.LANAddress, LocalAccessPassword: r.config.LocalAccessPassword}
+			r.configMu.Unlock()
+			initial = nil
+		} else {
+			select {
+			case selected = <-r.launcher.Selection():
+			case <-r.ctx.Done():
+				return
 			}
-			target, err := r.startLocal(selected, lanAddress)
+		}
+		if err := launcher.SaveMode(r.configPath, selected.Mode); err != nil {
+			slog.Debug("Could not save the launcher mode", diagnostics.Error(err))
+		}
+		target, err := r.startLocal(selected, lanAddress)
+		if err != nil {
 			r.launcher.SetResult(target, err)
-			if err == nil {
-				r.configMu.Lock()
-				server, tunnel := r.server, r.tunnel
-				r.configMu.Unlock()
-				err = r.watchRoom(server, tunnel)
-				if r.ctx.Err() != nil {
-					r.closeErr = errors.Join(r.closeErr, err)
-					return
-				}
-				r.launcher.SetResult("", err)
+		}
+		if err == nil {
+			r.configMu.Lock()
+			invitation, server, tunnel := r.invitation, r.server, r.tunnel
+			r.configMu.Unlock()
+			r.launcher.SetReady(target, invitation, selected)
+			err = r.watchRoom(server, tunnel)
+			if r.ctx.Err() != nil {
+				r.closeErr = errors.Join(r.closeErr, err)
+				return
 			}
-		case <-r.ctx.Done():
-			return
+			r.launcher.SetResult("", err)
 		}
 	}
 }
@@ -287,6 +302,7 @@ func (r *Runtime) startLocal(selection launcher.Selection, address string) (targ
 		return "", err
 	}
 	r.server, r.tunnel, r.url = server, tunnel, target
+	r.invitation = config.Origin(configuration.PublicBaseURL)
 	committed = true
 	r.configMu.Unlock()
 	return target, nil
@@ -325,6 +341,7 @@ func (r *Runtime) watchRoom(server *serverapp.Server, tunnel *publictunnel.Proce
 			origin = r.localOrigin()
 		}
 		r.server, r.tunnel, r.url = nil, nil, ""
+		r.invitation = ""
 	}
 	r.configMu.Unlock()
 	if origin != "" {

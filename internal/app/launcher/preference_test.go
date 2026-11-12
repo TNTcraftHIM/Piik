@@ -86,7 +86,7 @@ func TestStarredSiteSurvivesOtherApprovalsAndClearsOnRevocation(t *testing.T) {
 	}
 	sites := []string{"https://share.example"}
 	server, err := Start(t.Context(), appAssets(), Options{Sites: sites, ControlPort: 39730,
-		SaveStartupSite: func(site string) error { return SaveStartupSite(path, site) },
+		SaveStartupSite: func(site StartupIntent) error { return SaveStartupSite(path, site) },
 		ChangeSite: func(site string, allowed bool) ([]string, error) {
 			sites = editSites(sites, site, allowed)
 			return sites, nil
@@ -121,8 +121,8 @@ func TestStarredSiteSurvivesOtherApprovalsAndClearsOnRevocation(t *testing.T) {
 		if err != nil || response.StatusCode != test.status || state.StartupSite != test.want {
 			t.Fatalf("%+v: %+v %v", test, state, err)
 		}
-		if saved, err := LoadStartupSite(path, state.Sites...); err != nil || saved != test.want {
-			t.Fatalf("saved startup: %q %v", saved, err)
+		if saved, err := LoadStartupSite(path, state.Sites...); err != nil || saved.Site != test.want {
+			t.Fatalf("saved startup: %+v %v", saved, err)
 		}
 		entry := server.URL()
 		if test.want != "" {

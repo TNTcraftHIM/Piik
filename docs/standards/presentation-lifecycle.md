@@ -66,9 +66,16 @@ connection state. Android adds an explicit wake action. Browser and camera
 actions retain their own capability checks.
 A Site's explicit App action discovers the local approval
 page, where the user confirms its exact origin. The launcher lists approvals and
-revokes each independently. Starring one approved Site makes an ordinary App launch open it;
-without a star, the launcher opens. This preference grants no access and starts
-no room. Revoking that Site clears its star; other approvals leave it intact. Explicit CLI entry keeps
+revokes each independently. Starring an external Site makes an ordinary App launch
+open its fixed address without starting a room. Starring the current App-owned
+Site records its launch selection instead: the next App run starts that mode and
+enters its fresh ready address. The current runtime's exact origins determine
+ownership; a temporary invitation hostname alone does not. Without a startup
+choice, the launcher opens. This preference grants no access or capture permission.
+Its launcher checkbox can clear an App-owned choice; revoking its current origin
+also clears it. Other approvals leave the choice intact. Older saved temporary
+URLs have no ownership information: start the Site from the launcher and select
+the startup checkbox again on its current entry. Explicit CLI entry keeps
 precedence. The ready App button and terminal launcher address return to its
 management page in every mode. A pending or healthy Local/public room keeps its
 startup selection; reopening the launcher does not stop or replace that room.
