@@ -260,6 +260,9 @@ confirmed history and loads pages of up to 50; it does not automatically discard
 old messages. The interface keeps a reading window of up to 1,000 messages and
 lets readers move through earlier pages or return to the latest messages.
 Each message supports 2,000 Unicode characters and up to eight attachments.
+Text supports Markdown emphasis, lists, quotes, links, inline code and fenced code
+blocks with a copy action. Formatting preserves the saved message and confirmed
+mention identities; code remains literal and message HTML is not executed.
 Images share a 512 KiB rendition budget per message and travel with confirmed
 history. Originals that fit are retained unchanged; larger static images can
 carry a high-quality preview while the original keeps on-demand P2P delivery.

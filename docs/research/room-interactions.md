@@ -563,6 +563,14 @@ without a second room topology. Token lifetime, page closure and reconnect
 behavior still need an explicit choice. This remains a design proposal, not an
 implemented ingest endpoint or an authorization for unattended publishing.
 
+A bounded control with the pinned str0m SDK accepted a send-only H264/Opus offer,
+completed ICE/DTLS and retained RTP timestamp progression and sender reports.
+It used synthetic in-process datagrams, not OBS or an HTTP endpoint. No SDK fork
+is needed for that transport boundary. A local WHIP input must also restrict its
+media listeners and candidates to the local scope; binding only the HTTP entry
+to loopback is insufficient. Actual OBS interoperability, input authorization
+and publication integration remain unimplemented.
+
 ## Attended Remote-Control Prototype
 
 Reviewed 2026-10-19. Remote control is included in the accepted release scope.

@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-11-11
+Last updated: 2026-11-12
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -53,8 +53,9 @@ tree's [versioning rules](./standards/versioning.md).
 ## Accepted Interaction Phase
 
 The 3.0 shared UI implements conversation and retained reactions, unread markers,
-mentions and replies, inline image previews and file delivery, room voice, multiple
-screen sources with selective watching, personal sound choices and attended input.
+mentions and replies, Markdown with copyable code blocks, inline image previews
+and file delivery, room voice, multiple screen sources with selective watching,
+personal sound choices and attended input.
 The full workspace remains the default; an optional screen-centred interface
 keeps the same rooms and activities, with a direct first-share entry.
 Their ownership follows the network and data models above; current platform
