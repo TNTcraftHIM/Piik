@@ -867,7 +867,10 @@ export class ChannelSession {
     return app;
   }
 
-  activateApp = (): Promise<void> => this.action("app", async () => { await this.connectApp(); });
+  activateApp = (): Promise<void> => {
+    if (this.closed || this.view.connection !== "connected") return Promise.resolve();
+    return this.action("app", async () => { await this.connectApp(); });
+  };
 
   private rememberLocalEndpoint(app: ChannelApp, sessionId: string): void {
     if (this.app !== app || !app.connected || this.closed || this.localNativeEndpoints.has(sessionId)

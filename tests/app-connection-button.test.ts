@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
+import { ChannelSession } from "../src/client/channel/session";
 import { createElement, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -583,6 +584,51 @@ describe("App connection approval", () => {
 });
 
 describe("initial App discovery", () => {
+  it("late automatic App readiness preserves a failed site's WebAssembly guidance", async () => {
+    const pageSource = ts.createSourceFile("ChannelPreviewPage.tsx", readFileSync("src/client/pages/ChannelPreviewPage.tsx", "utf8"),
+      ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let callback = "";
+    const visit = (node: ts.Node) => {
+      if (ts.isJsxAttribute(node) && node.name.getText(pageSource) === "onConnected" && node.initializer && ts.isJsxExpression(node.initializer))
+        callback = node.initializer.expression!.getText(pageSource);
+      ts.forEachChild(node, visit);
+    };
+    visit(pageSource);
+    expect(callback).not.toBe("");
+    class SiteSocket {
+      static current: SiteSocket;
+      static OPEN = 1;
+      readyState = 1;
+      sent: string[] = [];
+      onopen: (() => Promise<void>) | null = null;
+      onclose: (() => void) | null = null;
+      constructor() { SiteSocket.current = this; }
+      send(data: string) { this.sent.push(data); }
+      close() { this.readyState = 3; this.onclose?.(); }
+    }
+    vi.stubGlobal("WebAssembly", undefined);
+    vi.stubGlobal("WebSocket", SiteSocket);
+    vi.stubGlobal("location", new URL("https://owned.test/"));
+    vi.stubGlobal("history", { state: null });
+    const session = new ChannelSession();
+    let ready!: (value: object) => void;
+    const discovery = { connect: vi.fn(async () => approval), health: vi.fn(() => new Promise<object>(resolve => { ready = resolve; })), isIncompatible: () => false };
+    const page = mount(false, "idle", false, false, discovery, true);
+    const onConnected = runInNewContext(ts.transpileModule(`(${callback})`, {
+      compilerOptions: { target: ts.ScriptTarget.ES2022 },
+    }).outputText, { channel: session });
+    page.onConnected.mockImplementation(onConnected);
+    try {
+      session.start(); await SiteSocket.current.onopen?.(); await settle();
+      expect(session.getSnapshot()).toMatchObject({ connection: "closed", error: "webassembly_unavailable" });
+      const closedCommands = [...SiteSocket.current.sent];
+      ready({}); await settle();
+      expect(page.onConnected).toHaveBeenCalledOnce();
+      expect(page.setState).toHaveBeenLastCalledWith("ready");
+      expect(session.getSnapshot()).toMatchObject({ connection: "closed", error: "webassembly_unavailable" });
+      expect(SiteSocket.current.sent).toEqual(closedCommands);
+    } finally { page.cleanup(); session.close(); vi.unstubAllGlobals(); }
+  });
   it("verifies an already approved App without opening another page", async () => {
     const discovery = { connect: vi.fn(async () => approval), health: vi.fn(async () => ({})), isIncompatible: () => false };
     const page = mount(false, "idle", false, false, discovery, true);
