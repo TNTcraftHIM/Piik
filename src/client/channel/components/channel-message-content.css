@@ -1,4 +1,6 @@
-.c3-message-markdown { max-width: 80ch; min-width: 0; }
+.c3-message-markdown { min-width: 0; }
+.c3-message-markdown:has(> p:only-child) { display: contents; }
+.c3-message-markdown > p:only-child { display: inline; }
 .c3-message-markdown > :not(:first-child) { margin-top: .6em; }
 .c3-message .c3-message-markdown p { white-space: normal; }
 .c3-message-markdown :is(ul, ol) { margin-block: .3em; padding-inline-start: 1.6em; }

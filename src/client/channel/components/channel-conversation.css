@@ -36,7 +36,10 @@
 .c3-message-content-body { display: flow-root; font-size: 14px; line-height: 1.65; margin-top: 3px; }
 .c3-message.is-continuation .c3-message-content-body { margin-top: 0; }
 .c3-message-body { flex: 0 1 auto; width: fit-content; max-width: 100%; min-width: 0; }
-.c3-message-content-body { --message-action-size: 32px; position: relative; padding-inline-end: 104px; }
+.c3-message-content-body { --message-action-size: 32px; position: relative; max-width: 80ch; }
+.c3-message-content-body::before { content: ""; float: inline-end; width: calc(3 * var(--message-action-size) + 8px); height: var(--message-action-size); }
+.c3-message-content-body:has(> .c3-message-markdown > p:only-child)::first-line { line-height: var(--message-action-size); }
+.c3-message-content-body > .c3-attachment, .c3-message-markdown > :not(p) { clear: both; }
 .c3-message-content-body > .c3-message-reactions { position: static; }
 .c3-message-content-body > .c3-message-reactions:not([data-has-counts="true"]) { margin-top: 0; }
 .c3-message-content-body .c3-content-actions { position: absolute; inset-block-start: 0; inset-inline-end: 0; opacity: 0; pointer-events: none; }
@@ -44,12 +47,12 @@
 .c3-message .c3-content-actions .lr-btn { --button-size: var(--message-action-size); min-width: var(--message-action-size); height: var(--message-action-size); padding: 4px; }
 .c3-mention-author { font-size: 17px; }
 @media (hover: none), (any-pointer: coarse) {
-  .c3-message-content-body { --message-action-size: 44px; min-height: 44px; padding-inline-end: 140px; }
+  .c3-message-content-body { --message-action-size: 44px; min-height: 44px; }
 }
 .c3-message-meta { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
 .c3-message-meta strong { font-size: 13px; font-weight: 650; }
 .c3-message-meta time { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.c3-message p { max-width: 80ch; white-space: pre-wrap; font-size: inherit; line-height: inherit; margin: 0; }
+.c3-message p { white-space: pre-wrap; font-size: inherit; line-height: inherit; margin: 0; }
 .c3-message.is-continuation { margin-top: 4px; padding-inline-start: 40px; }
 .c3-message-date { display: flex; align-items: center; gap: 12px; margin-top: 24px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .c3-message-date::before, .c3-message-date::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
