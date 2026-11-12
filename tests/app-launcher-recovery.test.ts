@@ -101,6 +101,21 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = fa
 }
 
 describe("App launcher state recovery", () => {
+  it("replaces a failed launch response with the running App's state on return", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(response(saved))
+      .mockRejectedValueOnce(new Error("Startup response disconnected"));
+    const page = mount(fetch);
+    try {
+      await settle();
+      await page.launch({ preventDefault() {} });
+      expect(page.state.Error).toEqual({ kind: "launch" });
+      const localCertificate = { origin: "https://192.0.2.1:8791", sha256Fingerprint: "a".repeat(64) };
+      fetch.mockResolvedValueOnce(response({ ...saved, target: "http://127.0.0.1:8791/", localCertificate }));
+      page.focus(); await settle();
+      expect(page.state).toMatchObject({ Target: "http://127.0.0.1:8791/", LocalCertificate: localCertificate, Starting: false, Error: null });
+      expect(page.navigate).not.toHaveBeenCalled();
+    } finally { page.cleanup(); }
+  });
   it("restores explicit Browser mode choices on reload while running-state reads never save a preference", async () => {
     const values = new Map<string, string>();
     const setItem = vi.fn((key: string, value: string) => values.set(key, value));
