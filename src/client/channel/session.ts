@@ -2041,8 +2041,9 @@ export class ChannelSession {
               local.audio?.setVolume(volume.muted ? 0 : volume.level);
               appliedVolume = volume;
               if (local.profile?.maxAudioBitrate !== profile.maxAudioBitrate) {
+                await this.media.configureLocalAudio(publicationId, profile.maxAudioBitrate!);
+                if (!current() || this.local.get(publicationId) !== local) throw new DOMException("Capture cancelled", "AbortError");
                 local.profile = { ...local.profile!, maxAudioBitrate: profile.maxAudioBitrate };
-                this.media.setLocal(publicationId, local.stream, local.profile, share.codec);
                 appliedProfile = profile;
               }
             }

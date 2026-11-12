@@ -733,6 +733,18 @@ export class ChannelTransport {
     });
   }
 
+  configureAudio(id: string, bitrate: number): Promise<void> {
+    const owner = this.sending.get(id);
+    return this.senderOperation(async () => {
+      if (this.closed || !owner || this.sending.get(id) !== owner || owner.failed) return;
+      for (const binding of owner.senders) if (binding.source.kind === "audio" && binding.sender.getParameters().encodings.length) {
+        await waitForConnectionOperation(binding.lifetime.signal,
+          () => configureAudioSender(binding.sender, bitrate));
+      }
+      if (this.sending.get(id) === owner) owner.audioBitrate = bitrate;
+    });
+  }
+
   private removeSender(binding: SenderBinding): void {
     const { sender, encoded, pooled } = binding;
     binding.lifetime.abort();

@@ -2348,6 +2348,70 @@ test("Browser source output gain and bitrate survive replacement and close with 
   expect(next.getAudioTracks()[0].stop).toHaveBeenCalledOnce();
 });
 
+test("explicit source audio edits report sender rejection, restore sibling outputs and accept peer ceilings", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  vi.stubGlobal("Audio", RoomAudio);
+  vi.stubGlobal("document", { body: { append: vi.fn() }, createElement: vi.fn((tag: string) => new RoomAudio(tag.toUpperCase())) });
+  const { session, socket } = await setup(1000, false);
+  session.setVideoCodecMode("vp8");
+  const firstVideo = remoteTrack("video"), firstAudio = remoteTrack("audio");
+  const secondVideo = remoteTrack("video"), secondAudio = remoteTrack("audio");
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn()
+    .mockResolvedValueOnce(remoteStream("first", [firstVideo, firstAudio]))
+    .mockResolvedValueOnce(remoteStream("second", [secondVideo, secondAudio])) } });
+  const state = structuredClone(session.getSnapshot().state!);
+  try {
+    for (const roomId of ["first", "second"]) {
+      const starting = session.startScreen(roomId);
+      await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "publish", publication: { roomId } }));
+      const request = socket.sent.at(-1)!;
+      const publication = request.publication as { id: string; roomId: string; kind: "screen"; source: ScreenSource; videoSettings: VideoSettings };
+      socket.receive({ type: "ack", requestId: request.requestId }); await starting;
+      state.publications.push({ audience: [], title: null, ...publication, paused: false, sessionId: "endpoint", userId: "self" });
+      socket.receive({ type: "state", state });
+    }
+    const [first, second] = state.publications;
+    await session.setSourceAudio(second.id, { bitrate: 96_000 });
+    const flow = (id: string, publicationId: string) => ({ id, publicationId, selected: true, inputFlowId: null });
+    state.pairs = [
+      { id: "first-pair", peerId: "first-peer", canReceiveVideoLayers: false, rooms: ["first", "second"], incoming: [], outgoing: [flow("first-output", first.id), flow("other-source", second.id)] },
+      { id: "second-pair", peerId: "second-peer", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [flow("second-output", first.id)] },
+    ];
+    socket.receive({ type: "state", state });
+    const [firstPeer, secondPeer] = RoomPeerConnection.instances;
+    const firstSender = firstPeer.senders.find(sender => sender.track === firstAudio)!;
+    const secondSender = secondPeer.senders.find(sender => sender.track === firstAudio)!;
+    const otherSender = firstPeer.senders.find(sender => sender.track === secondAudio)!;
+    const bitrate = (sender: typeof firstSender) => sender.getParameters().encodings[0].maxBitrate;
+    await vi.waitFor(() => expect([bitrate(firstSender), bitrate(secondSender), bitrate(otherSender)]).toEqual([128_000, 128_000, 96_000]));
+    const before = session.sourceAudio(first.id);
+    const rejected = new DOMException("Audio sender rejected update", "OperationError");
+    vi.spyOn(firstSender, "setParameters").mockRejectedValueOnce(rejected);
+    const sibling = vi.spyOn(secondSender, "setParameters");
+    await expect(session.setSourceAudio(first.id, { bitrate: 192_000 })).rejects.toBe(rejected);
+    expect(sibling.mock.calls.map(([parameters]) => parameters.encodings[0].maxBitrate)).toEqual([192_000, 128_000]);
+    expect([bitrate(firstSender), bitrate(secondSender), bitrate(otherSender)]).toEqual([128_000, 128_000, 96_000]);
+    expect(session.sourceAudio(first.id)).toEqual(before);
+    expect(session.sourceAudio(second.id)?.bitrate).toBe(96_000);
+    expect(session.getSnapshot().error).toBe("OperationError");
+    expect(session.getSnapshot().pending.has(`source-audio:${first.id}`)).toBe(false);
+
+    const parameters = firstSender.getParameters.bind(firstSender);
+    vi.spyOn(firstSender, "getParameters").mockImplementation(() => ({ ...parameters(), codecs: [
+      { payloadType: 111, mimeType: "audio/opus", clockRate: 48_000, channels: 2, sdpFmtpLine: "stereo=1;maxaveragebitrate=64000" },
+    ] }));
+    await session.setSourceAudio(first.id, { bitrate: 192_000 });
+    expect([bitrate(firstSender), bitrate(secondSender), bitrate(otherSender)]).toEqual([64_000, 192_000, 96_000]);
+    expect(session.sourceAudio(first.id)?.bitrate).toBe(192_000);
+    expect(session.getSnapshot().error).toBeNull();
+    expect(session.getSnapshot().ownedScreens).toEqual(new Set([first.id, second.id]));
+    for (const peer of [firstPeer, secondPeer]) expect(peer.close).not.toHaveBeenCalled();
+    for (const track of [firstVideo, firstAudio, secondVideo, secondAudio]) expect(track.stop).not.toHaveBeenCalled();
+    expect(socket.sent.some(command => command.type === "flow_state" && command.state === "failed")).toBe(false);
+  } finally { session.close(); }
+});
+
 test("a late source-ceiling rejection cannot configure a stopped capture or its replacement", async () => {
   const { session, socket } = await setup();
   const previous = remoteTrack("video"), next = remoteTrack("video");
@@ -3309,7 +3373,7 @@ test("room voice settings use the managed room update without changing local inp
   } finally { session.close(); }
 });
 
-test("room voice sender ceilings update in place independently of source sound", async () => {
+test("automatic audio ceilings isolate room voice and tolerate a source sender rejection", async () => {
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   const transport = new ChannelTransport({ polite: true, iceServers: [],
@@ -3317,9 +3381,9 @@ test("room voice sender ceilings update in place independently of source sound",
   const pc = RoomPeerConnection.instances[0];
   const voice = remoteStream("voice", [remoteTrack("audio")]);
   const screen = remoteStream("source", [remoteTrack("audio")]);
-  const update = (voiceBitrate: number) => transport.setOutgoing(new Map([
+  const update = (voiceBitrate: number, audioBitrate = 192_000) => transport.setOutgoing(new Map([
     ["voice", { kind: "voice", stream: voice, voiceBitrate }],
-    ["screen", { kind: "screen", stream: screen, profile: QUALITY_PROFILES["1080p30"], audioBitrate: 192_000 }],
+    ["screen", { kind: "screen", stream: screen, profile: QUALITY_PROFILES["1080p30"], audioBitrate }],
   ]));
   try {
     update(96_000);
@@ -3330,6 +3394,13 @@ test("room voice sender ceilings update in place independently of source sound",
     expect(pc.senders).toEqual(senders);
     expect(senders[0].replaceTrack).not.toHaveBeenCalled();
     expect(senders[1].getParameters().encodings[0].maxBitrate).toBe(192_000);
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const rejected = new DOMException("Automatic audio settings rejected", "OperationError");
+    vi.spyOn(senders[1], "setParameters").mockRejectedValueOnce(rejected);
+    update(32_000, 96_000);
+    await vi.waitFor(() => expect(warning).toHaveBeenCalledWith("Channel audio bitrate could not be applied", { flowId: "screen" }, rejected));
+    expect(senders.map(sender => sender.getParameters().encodings[0].maxBitrate)).toEqual([32_000, 192_000]);
+    expect(pc.senders).toEqual(senders);
     expect(pc.close).not.toHaveBeenCalled();
   } finally { transport.close(); }
 });

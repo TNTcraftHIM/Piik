@@ -5,7 +5,7 @@ import { VIEWER_QUALITY_EVIDENCE_INTERVAL_MS } from "../../shared/protocol";
 import type { ChannelCommand, ChannelPair, ChannelSignal, ChannelSnapshot } from "./protocol";
 import type { ChannelMediaMetric, ChannelScreenInput, ScreenPresentation } from "./types";
 import { ChannelTransport, type OutgoingMedia } from "./transport";
-import { applyCaptureProfile, type QualityProfile } from "../media/quality";
+import { applyCaptureProfile, screenAudioBitrate, type QualityProfile } from "../media/quality";
 import { automaticVideoCodecPreference, VP8_ONLY_VIDEO_CODEC, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
 import { preferredVideoCodecForTrack } from "../webrtc/video-codec-preflight";
 import { BrowserEncodingPool } from "../media/browser-encoding-pool";
@@ -86,6 +86,30 @@ export class ChannelMedia {
       if (current()) {
         const restored = await Promise.allSettled([applyCaptureProfile(local.stream, previous), ...senders(previous)]);
         for (const result of restored) if (result.status === "rejected") console.warn("Channel source quality rollback failed", result.reason);
+      }
+      throw error;
+    }
+  }
+
+  async configureLocalAudio(id: string, bitrate: number): Promise<void> {
+    const local = this.local.get(id);
+    if (!local?.profile) throw new Error("capture_unavailable");
+    const previous = screenAudioBitrate(local.profile.maxAudioBitrate);
+    const current = () => this.local.get(id) === local;
+    const senders = (value: number) => [...this.peers.values()].flatMap(peer => peer.plan.outgoing
+      .filter(flow => flow.publicationId === id && flow.inputFlowId === null)
+      .map(flow => peer.transport.configureAudio(flow.id, value)));
+    try {
+      const applied = await Promise.allSettled(senders(bitrate));
+      const failure = applied.find(result => result.status === "rejected");
+      if (failure?.status === "rejected") throw failure.reason;
+      if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+      local.profile = { ...local.profile, maxAudioBitrate: bitrate };
+      this.refresh();
+    } catch (error) {
+      if (current()) {
+        const restored = await Promise.allSettled(senders(previous));
+        for (const result of restored) if (result.status === "rejected") console.warn("Channel source audio rollback failed", result.reason);
       }
       throw error;
     }
