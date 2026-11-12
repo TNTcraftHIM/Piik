@@ -1,0 +1,19 @@
+.c3-message-markdown { max-width: 80ch; min-width: 0; }
+.c3-message-markdown > :not(:first-child) { margin-top: .6em; }
+.c3-message .c3-message-markdown p { white-space: normal; }
+.c3-message-markdown :is(ul, ol) { margin-block: .3em; padding-inline-start: 1.6em; }
+.c3-message-markdown ul { list-style: disc; }
+.c3-message-markdown ol { list-style: decimal; }
+.c3-message-markdown li > p { margin: 0; }
+.c3-message-markdown blockquote { margin-inline: 0; padding-inline-start: .8em; border-inline-start: 3px solid var(--line); color: var(--muted); }
+.c3-message-markdown a { color: var(--action); text-decoration: underline; overflow-wrap: anywhere; }
+.c3-message-markdown code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9em; }
+.c3-message-markdown :not(pre) > code { padding: .12em .3em; border-radius: 4px; background: var(--wall); white-space: pre-wrap; }
+.c3-code-block { min-width: 0; border: 1px solid var(--line); border-radius: var(--c3-inset-radius); background: var(--wall); overflow: hidden; }
+.c3-code-actions { display: flex; justify-content: flex-end; padding: 3px 5px; border-bottom: 1px solid var(--line); }
+.c3-code-block pre { margin: 0; padding: 10px 12px; overflow-x: auto; white-space: pre; tab-size: 4; }
+.c3-code-block pre code { white-space: inherit; }
+.c3-code-block small { display: block; padding: 0 12px 10px; color: var(--danger); }
+@media (hover: none), (any-pointer: coarse) {
+  .c3-message-markdown > p:only-child { min-height: 44px; padding-block: max(0px, calc((44px - 1lh) / 2)); }
+}

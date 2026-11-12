@@ -7,6 +7,7 @@ import { MAX_MESSAGE_CODE_POINTS, type ChannelMessage, type ChannelUser, type Ch
 import { ChannelAction } from "./ChannelAction";
 import { messageAuthorName } from "../presentation";
 import { ChannelAttachment } from "./ChannelAttachment";
+import { ChannelMessageContent } from "./ChannelMessageContent";
 import { type AttachmentLimits, type DraftFile, type ChannelAttachments, fileSize } from "../attachments";
 import { ChannelRoomStart, type ChannelEntry } from "./ChannelRoomStart";
 import { ChannelContentReactions } from "./ChannelContentReactions";
@@ -405,7 +406,7 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
     {message.reply && <button type="button" className="c3-message-reference" disabled={!onMessage} onClick={() => onMessage?.(message.reply!.seq)}>
       <Glyph name="reply" size={14} /><strong>{message.reply.archivedAuthorName ?? users.find(user => user.id === message.reply!.userId)?.name ?? (lang === "zh" ? "用户" : "User")}</strong>
       <span>{message.reply.text || (lang === "zh" ? "附件" : "Attachment")}</span></button>}
-    {message.text && <p><MessageText message={message} users={users} selfUserId={selfUserId} /></p>}
+    {message.text && <ChannelMessageContent message={message} users={users} selfUserId={selfUserId} />}
     {message.attachments.map(file => <ChannelAttachment key={file.id} roomId={roomId} messageSeq={message.seq} file={file} client={attachments}
       inlineImage={message.inlineImages?.[file.id]} />)}
     <ChannelContentReactions reactions={message.reactions} session={interaction} target={{ messageSeq: message.seq }} disabled={!available}
@@ -417,14 +418,3 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
     </article>
   </>;
 });
-
-function MessageText({ message, users, selfUserId }: { message: ChannelMessage; users: ChannelUserSummary[]; selfUserId?: string | null }) {
-  let cursor = 0;
-  const parts = (message.mentions ?? []).map((mention, index) => {
-    const plain = message.text.slice(cursor, mention.start);
-    cursor = mention.end;
-    return <span key={index}>{plain}<mark className={`c3-message-mention${mention.userId === selfUserId ? " is-self" : ""}`} title={users.find(user => user.id === mention.userId)?.name}>
-      {message.text.slice(mention.start, mention.end)}</mark></span>;
-  });
-  return <>{parts}{message.text.slice(cursor)}</>;
-}
