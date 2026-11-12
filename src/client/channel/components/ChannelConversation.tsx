@@ -84,11 +84,11 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   const [mentionRetry, setMentionRetry] = useState(0);
   const localCandidates = query ? matchingMentionUsers(users, query.query) : [];
   const matchingIds = [...new Set([...localCandidates.map(user => user.id), ...(mentionPage.query === queryText ? mentionPage.ids : [])])];
-  const candidates = matchingIds.flatMap(id => {
+  const candidates = matchingMentionUsers(matchingIds.flatMap(id => {
     const summary = users.find(user => user.id === id), profile = profiles.get(id);
     return summary ? [{ ...summary, avatar: summary.version === profile?.version ? profile.avatar : null }]
       : profile ? [profile] : [];
-  });
+  }), query?.query ?? "");
   const moreMentions = mentionPage.query === queryText && mentionPage.next !== null;
   async function loadMentions(after?: string) {
     if (queryText === null) return;
