@@ -539,8 +539,9 @@ the exported API and callback boundary that Piik would then have to maintain.
 
 [OBS already supplies WHIP output](https://obsproject.com/kb/whip-streaming-guide).
 The candidate Piik input would authorize one source lease on an authenticated App,
-reuse its media clock, output demand and routing, and stop with that share. It is
-neither a bot identity nor a second Core pair or media network. These source adapters
+reuse its media clock, output demand and routing, and stop with that share. The
+OBS-to-App input adds a local media connection, not a Bot identity or another
+Core room pair/topology. These source adapters
 are internal interfaces, not an existing public plugin ABI.
 After choosing the first use case and authorization scope, verify one complete
 integration and its revoke/stop behavior before extracting a general SDK.
