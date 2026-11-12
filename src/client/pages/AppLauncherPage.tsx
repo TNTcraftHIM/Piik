@@ -127,7 +127,7 @@ export function AppLauncherPage() {
         setAppDebug(state.debug);
         setDebug(state.debug === true);
         setError(previous => state.detail ? { kind: "launch", reason: state.reason, detail: state.detail }
-          : previous?.kind === "load" ? null : previous);
+          : state.target || previous?.kind === "load" ? null : previous);
         setLoading(false);
         if (state.starting) timer = setTimeout(() => void readState(), 750);
         setBuild({ version: state.version, revision: state.revision, packageTarget: state.packageTarget });

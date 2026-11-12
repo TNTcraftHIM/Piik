@@ -39,7 +39,7 @@ const saved = {
   revision: "test", version: "development", debug: false,
   lan: { addresses: [{ address: "192.0.2.1", name: "LAN" }], selected: "192.0.2.1" },
 };
-const response = (state: typeof saved & { detail?: string } = saved) => ({ ok: true, status: 200, json: async () => state });
+const response = (state: typeof saved & { detail?: string; target?: string } = saved) => ({ ok: true, status: 200, json: async () => state });
 
 function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
   const state: Record<string, unknown> = {};
@@ -86,6 +86,20 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
 }
 
 describe("App launcher state recovery", () => {
+  it("replaces a failed launch response with the running App's state on return", async () => {
+    const fetch = vi.fn().mockResolvedValueOnce(response(saved))
+      .mockRejectedValueOnce(new Error("Startup response disconnected"));
+    const page = mount(fetch);
+    try {
+      await settle();
+      await page.launch({ preventDefault() {} });
+      expect(page.state.Error).toEqual({ kind: "launch" });
+      fetch.mockResolvedValueOnce(response({ ...saved, target: "http://127.0.0.1:8791/" }));
+      page.focus(); await settle();
+      expect(page.state).toMatchObject({ Target: "http://127.0.0.1:8791/", Starting: false, Error: null });
+      expect(page.navigate).not.toHaveBeenCalled();
+    } finally { page.cleanup(); }
+  });
   it.each([
     ["v2.4.1", "v2.4.1"],
     ["development", "development (aaaaaaa)"],
