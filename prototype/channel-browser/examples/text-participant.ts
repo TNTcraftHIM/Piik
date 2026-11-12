@@ -221,9 +221,8 @@ export class TextParticipant extends EventEmitter {
 
   async reconnect() {
     const socket = this.socket;
-    if (!socket)
-      throw new Error('disconnected');
-    await new Promise<void>(resolve => { socket.once('close', () => resolve()); socket.close(); });
+    if (socket)
+      await new Promise<void>(resolve => { socket.once('close', () => resolve()); socket.close(); });
     await this.connect();
   }
 
@@ -279,10 +278,15 @@ async function main(): Promise<void> {
       for await (const line of input) {
         if (line === '/quit')
           break;
-        if (line === '/reconnect')
-          await participant.reconnect();
-        else if (line.trim())
-          print(await participant.chat(line));
+        try {
+          if (line === '/reconnect')
+            await participant.reconnect();
+          else if (line.trim())
+            print(await participant.chat(line));
+        }
+        catch (error) {
+          console.error(error instanceof Error ? error.message : String(error));
+        }
       }
     }
     finally {

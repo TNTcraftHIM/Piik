@@ -26,7 +26,9 @@ Add `--name "Build notices"` to name this independent participant. Add
 `--message "Build finished"` to send one notification, wait for its Host
 confirmation, then leave. Otherwise stdin sends text; `/reconnect` explicitly
 reopens the socket with the same in-memory identity, and `/quit`, EOF or Ctrl+C
-leaves. There is no background daemon, automatic reconnect or replay outbox.
+leaves. `/reconnect` also works after a lost connection. A failed interactive
+command prints its error and keeps the prompt open for another command. There
+is no background daemon, automatic reconnect or replay outbox.
 
 `TextParticipant` can also be imported. It exposes `connect`, `chat`, `history`,
 `reconnect`, `stop`, and verified `live`/`confirmed` events; the example's `!ping`
