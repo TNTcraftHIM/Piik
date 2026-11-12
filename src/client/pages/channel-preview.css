@@ -246,6 +246,8 @@
 .c3-app:has(> .c3-shell[data-layout="quick"]) { height: auto; min-height: 100dvh; }
 .c3-shell[data-layout="quick"] { display: flex; flex-direction: column; flex: none; width: min(var(--c3-content-width), 1180px); min-height: 0; margin-bottom: 32px; border: 0; border-radius: 0; background: transparent; box-shadow: none; overflow: visible; container-type: inline-size; position: relative; gap: 16px; }
 .c3-shell[data-layout="quick"] > .c3-site-bar { order: 0; min-height: 58px; padding-inline: 0; background: transparent; }
+.c3-shell[data-layout="quick"] > .c3-sidebar { order: 1; flex: none; width: min(100%, 990px); max-height: min(60dvh, 480px); margin-inline: auto; border: 1px solid var(--line); border-radius: var(--c3-surface-radius); background: var(--paper); }
+.c3-shell[data-layout="quick"][data-pane="rooms"] .c3-main-body { visibility: visible; }
 .c3-shell[data-layout="quick"] .c3-main-body { order: 1; flex: none; width: min(100%, 990px); margin: 0 auto; overflow: visible; container-type: inline-size; }
 .c3-shell[data-layout="quick"] .c3-workspace { display: block; }
 .c3-shell[data-layout="quick"] .c3-main-body .c3-conversation { display: none; }
@@ -253,7 +255,7 @@
 .c3-shell[data-layout="quick"] .c3-workspace.has-screens > .c3-monitor:not(.is-theater) { container-type: inline-size; }
 .c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-grid { flex: none; min-height: 0; grid-auto-rows: auto; }
 .c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) { border: 0; background: transparent; box-shadow: none; }
-.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) > .c3-video:not(:fullscreen) { box-sizing: content-box; flex: none; min-height: 160px; aspect-ratio: 16 / 9; width: calc(100% - 2 * (var(--tv-frame-inset) + var(--tv-frame-border))); margin: 0; border: calc(var(--tv-frame-inset) + var(--tv-frame-border)) solid transparent; border-bottom-width: calc(var(--tv-frame-chin) + var(--tv-frame-border)); border-radius: var(--tv-frame-radius); background: var(--tv-frame-background); box-shadow: var(--tv-frame-shadow); }
+.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) > :is(.c3-video:not(:fullscreen), .c3-monitor-wait) { box-sizing: content-box; flex: none; padding: 0; min-height: 160px; aspect-ratio: 16 / 9; width: calc(100% - 2 * (var(--tv-frame-inset) + var(--tv-frame-border))); margin: 0; border: calc(var(--tv-frame-inset) + var(--tv-frame-border)) solid transparent; border-bottom-width: calc(var(--tv-frame-chin) + var(--tv-frame-border)); border-radius: var(--tv-frame-radius); background: var(--tv-frame-background); box-shadow: var(--tv-frame-shadow); }
 .c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) > .c3-video:not(:fullscreen) > video { border-radius: var(--tv-screen-radius); }
 .c3-shell[data-layout="quick"]:has(.c3-monitor-grid.is-grid) .c3-main-body { width: 100%; }
 .c3-shell[data-layout="quick"] .c3-monitor-grid.is-grid .c3-monitor-tile { --tv-frame-inset: 3px; --tv-frame-chin: 7px; --tv-frame-radius: var(--c3-surface-radius); }

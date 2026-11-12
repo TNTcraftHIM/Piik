@@ -195,7 +195,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       onClose={closeRoomSettings} />}
     {newRoomName !== null && <ChannelRoomCreateDialog channel={channel} initialName={newRoomName}
       onCreated={selectRoom} onClose={() => setNewRoomName(null)} />}
-    <main ref={workspaceElement} className="c3-shell" data-layout={layout} data-pane={layout === "quick" ? "room" : mobilePane} data-view={sharingView ? "share" : "workspace"} data-sidebars={sidebarsInline ? "inline" : "overlay"} data-overview={overview || undefined}
+    <main ref={workspaceElement} className="c3-shell" data-layout={layout} data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"} data-sidebars={sidebarsInline ? "inline" : "overlay"} data-overview={overview || undefined}
       data-companion={companionVisible ? mobilePane === "people" || !visibleScreens.length ? "people" : toolSurface.open ? "none" : "chat" : "none"}>
       <header className="c3-site-bar"><div className="c3-site-identity">
         {layout === "quick" ? <span className="c3-site-home"><BrandMark size={30} motion="once" /></span>
@@ -204,13 +204,16 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           : <Tooltip overflow={{ text: state?.channel.name ?? "Piik", selector: "strong" }}><span className="c3-site-name-readonly"><ChannelIdentityMark icon={state?.channel.icon ?? "couch"} size={22} /><strong>{state?.channel.name ?? "Piik"}</strong></span></Tooltip>}</div>
         <LedStrip state={connected ? "live" : connection === "closed" ? "bad" : "busy"}
           label={connectionLabel} comic={connected ? "signal-connected" : "signal-connecting"} />
+        {layout === "quick" && <Btn id="c3-rooms-trigger" icon="couch" quiet size="compact"
+          title={{ text: copy("房间列表", "Rooms") }} cap={{ text: copy("房间", "Rooms") }} hint="hint-room-list"
+          controls="c3-room-list" expanded={mobilePane === "rooms"} onClick={showRooms} />}
       </div><div className="lr-top c3-global-tools">
         <HeaderControls appControl={appControl} personalControls={<>
           {onLayoutChange && <ChannelInterfaceControl value={layout} onChange={onLayoutChange} />}
           <ChannelFeedbackSounds channel={channel} />
         </>} />
       </div></header>
-      {layout !== "quick" && <aside id="c3-room-list" className="c3-sidebar" onKeyDown={event => {
+      <aside id="c3-room-list" className="c3-sidebar" onKeyDown={event => {
         if (!sidebarsInline && mobilePane === "rooms" && event.key === "Escape" && !event.defaultPrevented) {
           event.preventDefault(); setMobilePane("room");
         }
@@ -233,7 +236,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           {state && !rooms.length && <p className="c3-room-list-empty">{copy("暂无可进入的房间", "No rooms available yet")}</p>}
         </div>
         </div>
-      </aside>}
+      </aside>
       <div className="c3-personal"><div ref={voiceSlot} className="c3-room-slot" />
         {self && <div className="c3-identity"><PawnSvg color={participantColor(self.id)} identity={self.id} avatar={self.avatar ?? undefined} />
           <div><strong>{self.name}</strong><small>{copy("你的名字", "Your name")}</small></div>

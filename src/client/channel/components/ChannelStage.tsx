@@ -128,17 +128,29 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
       const style = getComputedStyle(parent), children = [...parent.children] as HTMLElement[];
       const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
       const gap = parseFloat(style.rowGap) || 0;
-      const availableHeight = Math.min(parent.clientHeight, Math.max(160, window.innerHeight - parent.getBoundingClientRect().top));
+      const layout = getComputedStyle(tiles);
+      const frame = tiles.querySelector<HTMLElement>('article:not([hidden]) > .c3-video, article:not([hidden]) > .c3-monitor-wait');
+      const frameStyle = frame && getComputedStyle(frame);
+      const [ratioWidth, ratioHeight = 1] = frameStyle?.aspectRatio.split("/").map(Number) ?? [];
+      const natural = layout.gridAutoRows === "auto" && frameStyle ? {
+        ratio: ratioWidth / ratioHeight || 0,
+        insetX: parseFloat(frameStyle.borderLeftWidth) + parseFloat(frameStyle.borderRightWidth) + parseFloat(frameStyle.paddingLeft) + parseFloat(frameStyle.paddingRight),
+        insetY: parseFloat(frameStyle.borderTopWidth) + parseFloat(frameStyle.borderBottomWidth) + parseFloat(frameStyle.paddingTop) + parseFloat(frameStyle.paddingBottom),
+        minHeight: parseFloat(frameStyle.minHeight) || 0,
+      } : undefined;
+      // A natural grid's height is its output; neither it nor page scrolling sets its budget.
+      const availableHeight = natural
+        ? Math.max(160, window.innerHeight - (parent.getBoundingClientRect().top + window.scrollY))
+        : parent.clientHeight;
       const height = availableHeight - padding - children.filter(child => child !== tiles).reduce((sum, child) => sum + child.offsetHeight, 0)
         - gap * (children.length - 1);
       const footer = Math.max(...[...tiles.querySelectorAll("article:not([hidden]) > footer")].map(node => node.getBoundingClientRect().height)) + 2;
-      const layout = getComputedStyle(tiles);
       const ratios = [...tiles.children].filter(tile => !(tile as HTMLElement).hidden).map(tile => {
         const video = tile.querySelector<HTMLVideoElement>('video[data-selected="true"]');
         return video?.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9;
       });
       setColumns(stageColumns(tiles.clientWidth, height, ratios, parseFloat(layout.columnGap) || 0, footer,
-        parseFloat(layout.getPropertyValue("--stage-tile-min"))));
+        parseFloat(layout.getPropertyValue("--stage-tile-min")), natural));
     };
     const observer = new ResizeObserver(measure);
     observer.observe(parent);
