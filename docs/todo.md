@@ -61,10 +61,11 @@ the feedback period; they do not delay that delivery.
   retain the grant and receive authorized mouse events, but Windows `SendInput`
   rejects a button event and subsequent release attempts. Capture whether local
   physical input also stops during the refusal to identify its OS trigger.
-  The 3.0 Native input owner now keeps the grant, records bounded desktop facts,
-  and retries only the unaccepted suffix after restoring the original desktop
-  when the active desktop still matches it. Pure policy/lifecycle checks pass;
-  the local controlled Chrome trial did not reproduce the failure. Reporter-machine
+  A first attempted desktop-context patch was rejected in review because a
+  Tokio-worker implementation cannot safely own `SetThreadDesktop` and can leak
+  desktop handles on common failures. Keep the existing grant/release semantics;
+  implement recovery only through a dedicated Windows input-thread owner. The
+  local controlled Chrome trial did not reproduce the failure; reporter-machine
   SendInput and physical-input acceptance remain open.
 - [ ] **2.x: return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
