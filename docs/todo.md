@@ -111,9 +111,9 @@ the feedback period; they do not delay that delivery.
   and Linux hardware encoding and physical sound. Retain the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-  The new local OBS input needs matched-package acceptance and non-Windows desktop
-  coverage; its [Windows path](./research/room-interactions.md#local-obs-input) has
-  source-level media and retirement evidence.
+  Local OBS input still needs non-Windows desktop runtime coverage; its
+  [Windows path](./research/room-interactions.md#local-obs-input) has media,
+  retirement and matched-package evidence.
 - [ ] **Stronger microphone noise suppression (#518).** Compare RNNoise's voice
   clarity and mobile runtime cost before deciding on an enhanced mode. The
   [microphone assessment](./research/media-fidelity.md#stronger-microphone-suppression)

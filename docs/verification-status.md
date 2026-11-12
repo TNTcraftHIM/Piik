@@ -93,11 +93,12 @@ The Compose check covers room backup and restore with a read-only root,
 invalid-archive rejection, scratch cleanup, and retained site/room identity
 after container recreation. Media UDP and NAT have separate network checks.
 
-The working-tree local OBS input passed Windows App-to-Browser picture and muted
+Local OBS input passed Windows App-to-Browser picture and muted
 stereo-audio checks using synthetic sources, followed by OBS stop/restart,
 retired-resource deletion, Piik stop and page closure. Input permissions and UDP
-resources retired normally. These source-level checks do not establish a newly
-packaged release, other desktop platforms or cross-NAT media. Android compiles
+resources retired normally. The matched Windows package separately verified
+entry, permission preparation/revocation and retention of compatible saved data.
+Other desktop platforms and cross-NAT media remain outside this input evidence. Android compiles
 with the shared changes but does not advertise this desktop input capability.
 
 Switching between the full workspace and simple sharing retains actual Browser

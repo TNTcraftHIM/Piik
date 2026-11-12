@@ -82,8 +82,8 @@ to feed the separate 2.x maintenance line, which preserves its published contrac
 
 Independent text automation and local OBS input reuse the conversation and source
 owners described in the [integration boundaries](./research/room-interactions.md#extension-boundaries).
-The OBS working-tree path has Windows media and lifecycle evidence; it is not yet
-part of the delivered candidate set. A native desktop entry remains an isolated
+The matched candidate set now includes local OBS input on supported desktop Apps,
+with Windows media and lifecycle evidence. A native desktop entry remains an isolated
 [GUI prototype](./research/cross-platform-client-runtime.md#30-windows-native-entry-prototype).
 
 ## Deployment
