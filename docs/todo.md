@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-11
+Last reviewed: 2026-11-12
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -95,8 +95,9 @@ the feedback period; they do not delay that delivery.
   opportunities than 2.x, and its central-fallback and route-preference controls
   are not equivalent. Choose required behavior with the accepted multi-source
   model before extending existing admission and switch owners.
-- [ ] **3.0 Native platform acceptance.** Complete the remaining Linux/macOS
-  device acceptance, including macOS Quit, Dock/Finder return and permissions,
+- [ ] **3.0 Native platform acceptance.** Validate the current Android candidate
+  at runtime, then complete remaining Linux/macOS device acceptance, including
+  macOS Quit, Dock/Finder return and permissions,
   and Linux hardware encoding and physical sound. Retain the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).

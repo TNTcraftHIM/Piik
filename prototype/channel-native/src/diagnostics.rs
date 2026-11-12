@@ -271,6 +271,11 @@ mod tests {
         for _ in 0..MAX_BYTES / MAX_RECORD_BYTES + 1 {
             emit("piik.input", format_args!("{large}"));
         }
+        emit("piik.app", format_args!("App startup tunnel-start: https://synthetic-private.invalid/?invite=synthetic-invite#owner=synthetic-owner credential=synthetic-credential"));
+        emit(
+            "str0m",
+            format_args!("synthetic-chat-body synthetic-source-title"),
+        );
         let state = recorder.0.lock().unwrap();
         let buffer = state.as_ref().unwrap();
         assert!(buffer.bytes <= MAX_BYTES && buffer.truncated > 0);
@@ -296,7 +301,28 @@ mod tests {
             .unwrap();
         let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
         assert_eq!(zip.len(), 2);
-        assert!(zip.by_name("metadata.json").is_ok());
-        assert!(zip.by_name("events.ndjson").is_ok());
+        let metadata: serde_json::Value =
+            serde_json::from_reader(zip.by_name("metadata.json").unwrap()).unwrap();
+        assert_eq!(metadata["version"], "test");
+        assert_eq!(metadata["revision"], "revision");
+        assert_eq!(metadata["packageTarget"], "fixture");
+        let mut events = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("events.ndjson").unwrap(), &mut events)
+            .unwrap();
+        assert!(events.contains("App startup tunnel-start"));
+        assert!(events.contains("[URL omitted]"));
+        for marker in [
+            "synthetic-private",
+            "synthetic-invite",
+            "synthetic-owner",
+            "synthetic-credential",
+            "synthetic-chat-body",
+            "synthetic-source-title",
+        ] {
+            assert!(
+                !events.contains(marker),
+                "private marker retained: {marker}"
+            );
+        }
     }
 }

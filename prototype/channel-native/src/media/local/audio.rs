@@ -436,7 +436,7 @@ fn run(
         microphone.enabled = false;
         publish_state(&system, &microphone);
         if let Err(error) = work {
-            eprintln!("Native audio source failed: {error:#}");
+            log::warn!(target: "piik.capture", "Native audio source failed: {error:#}");
         }
         // The Driver removes this mixer's last source after joining it.
         // Keep that identity until either its end event is queued or that join.
@@ -477,7 +477,7 @@ async fn failed(mut input: Input, error: &str) {
             let _ = warning.send(error.into());
         }
     }
-    eprintln!("Native audio input ended: {error}");
+    log::warn!(target: "piik.capture", "Native audio input ended: {error}");
     close(input).await;
 }
 
@@ -969,6 +969,7 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[tokio::test]
     async fn independent_inputs_retain_one_opus_source_and_join_on_cancel() -> Result<()> {
+        crate::diagnostics::enable()?;
         use futures_util::FutureExt;
         use std::sync::Mutex;
         tokio::time::timeout(Duration::from_secs(3), async {
@@ -1181,6 +1182,12 @@ mod tests {
             assert_eq!(replacement_warning.unwrap().await?, "audio input ended");
             let mut state = control.state.clone();
             state.wait_for(|state| !state.source_audio).await?;
+            let mut report = Vec::new();
+            crate::diagnostics::snapshot().unwrap().write_archive(&mut report, "test", "revision", "fixture")?;
+            let mut report = zip::ZipArchive::new(std::io::Cursor::new(report))?;
+            let mut recorded = String::new();
+            std::io::Read::read_to_string(&mut report.by_name("events.ndjson")?, &mut recorded)?;
+            assert!(recorded.contains("Native audio input ended: audio input ended"));
             assert!(control.state.borrow().microphone.enabled);
             assert!(!mic_control.is_stopped());
             let (quiet, _quiet_pcm, quiet_joined) = AudioCapture::fixture(true)?;
