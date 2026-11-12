@@ -78,7 +78,19 @@ runtime checks; it does not select a new default or measure acoustic echo contro
 The listening comparison time-aligns these captures, matches normal-speech RMS
 with one gain per mode and preserves relative quiet speech and pause levels.
 It reuses recorded test audio without requesting a microphone or running the
-candidate in the product. Mobile runtime cost remains a separate decision input.
+candidate in the product.
+
+An Android API 35 emulator running Chrome 124 completed one 22-second dry control
+and one RNNoise AudioWorklet run with the same licensed speech/noise input,
+processing 1,056,000 samples per run without processor errors or non-finite output.
+No microphone was opened and output gain was zero. RNNoise initialization took
+315 ms with a 16 MiB WASM heap; its 2,200 processing frames averaged 0.669 ms,
+with p99 6 ms and a maximum of 26 ms. Two exceeded the 10 ms frame budget.
+The worklet's millisecond-resolution clock limits timing precision, and Chrome
+exposed no hardware playback-underrun statistics. Module loading also included
+cache effects between runs. This is emulator candidate evidence, not physical-phone
+acceptance or a mode decision; matched-level listening, real-device cost, power
+and sustained playback remain unverified.
 
 Any accepted enhancement belongs before gain in the shared `MicrophoneInput`,
 once per captured microphone; rooms continue to clone its stable output. Keep
