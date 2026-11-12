@@ -49,10 +49,10 @@ the feedback period; they do not delay that delivery.
   supplies the allocator input Piik needs, verify recovery and remove the
   temporary replacement. [Dependency provenance](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/thirdparty/README.md#local-encoder-probe-demand)
   owns the patch and removal boundary.
-- [ ] **Return the 3.0 RTC dependency to an upstream release.** Follow
-  the submitted defect repairs in
+- [ ] **Replace the official RTC Git pin with a published release.** Follow
+  the merged parser repair in
   [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency).
-  Once upstream provides those changes, verify the consumers and remove the fork.
+  Once a release includes it, verify the consumers and remove the Cargo patch entries.
 - [ ] **Return portmapper to an upstream release.** Follow
   [upstream PR #268](https://github.com/n0-computer/net-tools/pull/268), then
   verify an official release containing the repair.
@@ -91,10 +91,13 @@ the feedback period; they do not delay that delivery.
   before API or plugin work: keep ordinary sharing simple, choose the first
   bot/media use case, and decide bot identity, authority scope and revocation.
   External media should reuse the shared Source and routing owners.
-- [ ] **Routing parity decisions.** The current direct-source/helper trials cover fewer improvement
-  opportunities than 2.x, and its central-fallback and route-preference controls
-  are not equivalent. Choose required behavior with the accepted multi-source
-  model before extending existing admission and switch owners.
+- [ ] **3.0 route improvement and fallback scope.** Resolve the remaining
+  scenarios against the accepted multi-source model: replacing a still-working
+  but persistently limited upstream, and a service media bridge for Browser/App
+  rooms with no usable peer path. Existing Server-hosted rooms already use their
+  Native root. Define evidence, authorization and resource cost before extending
+  the current admission/switch owners; 2.x route-policy labels do not directly
+  describe these 3.0 paths.
 - [ ] **3.0 Native platform acceptance.** Validate the current Android candidate
   at runtime, then complete remaining Linux/macOS device acceptance, including
   macOS Quit, Dock/Finder return and permissions,

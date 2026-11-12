@@ -172,17 +172,15 @@ warm output, stream, SSRC, source clock and feedback owner.
 
 ## RTC Dependency
 
-Native, Server and Android patch `rtc-rtp` to commit
-`3b6d3c0a03a641a92aff7518418c6eeb67cf1444` in the temporary
-[bug-fix fork](https://github.com/TNTcraftHIM/rtc/tree/3b6d3c0a03a641a92aff7518418c6eeb67cf1444).
-It contains only [PR #308](https://github.com/webrtc-rs/rtc/pull/308) on the
-published 0.21.1 baseline: a new FU-A start clears unfinished fragments, and an
-incomplete STAP-A length returns an error. The unchanged `rtc-shared` crate uses
-the same revision so its public error and marshal types have one identity.
-Upstream merged the repair on 2026-11-11 in
-[`81fde93b`](https://github.com/webrtc-rs/rtc/commit/81fde93b46f8fb1c1a191415558fa3574e48d5c7).
-The published 0.21.1 crates still predate it; retain this pin until the release
-replacement passes the consumer checks below.
+Native, Server and Android use `rtc-rtp` and `rtc-shared` from the official
+[`81fde93b46f8fb1c1a191415558fa3574e48d5c7` commit](https://github.com/webrtc-rs/rtc/commit/81fde93b46f8fb1c1a191415558fa3574e48d5c7).
+It includes [PR #308](https://github.com/webrtc-rs/rtc/pull/308), merged on
+2026-11-11: a new H264 FU-A start clears unfinished fragments, and an incomplete
+STAP-A length returns an error. These two package trees and their workspace
+dependency definitions are identical to the former bug-fix fork. Using the same
+revision for `rtc-shared` keeps public error and marshal types under one identity.
+The published 0.21.1 crates predate the repair, so Cargo patch entries still
+select this official revision until a release passes the consumer checks below.
 The other RTC helpers use published 0.21.1 crates for STUN, TURN and crypto.
 The existing `url` crate parses configured UDP STUN/TURN
 server addresses. Piik does not depend on the umbrella
@@ -194,14 +192,15 @@ and validates actual SPS separately from advertised decoder levels, as defined
 by the [network design](../../docs/research/channel-network-design.md).
 
 Cargo's patches belong to each workspace root. All three consuming manifests and
-lockfiles carry the same Git revision for the two patched packages. The fork
-retains upstream MIT/Apache-2.0 licensing; no build-time source patch or
+lockfiles carry the same official Git revision. Upstream MIT/Apache-2.0 licensing
+is retained; no build-time source patch or
 registry-cache edit is used. When an upstream release provides the parser repair,
 update the three roots and locks, run the existing media interoperability and
 platform checks, and remove the patch entries.
 
 Use the shared [upstream refresh procedure](../../CONTRIBUTING.md#temporary-dependency-patches)
-to prepare and review updates without changing the current pin.
+for the remaining temporary forks below; it prepares review candidates without
+changing their current pins.
 
 Optional port mapping selects its socket in the pair-owned worker, independently
 of host-candidate signaling. Native pins `portmapper` 0.20.0 to
