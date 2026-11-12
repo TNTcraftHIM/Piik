@@ -25,4 +25,11 @@ describe("textarea mention references", () => {
     expect(editMentions("hi @Bo!", "hi @Bo!!", [mention])).toEqual([mention]);
     expect(editMentions("hi @Bo!", "hi @Bo hello", [mention])).toEqual([mention]);
   });
+  it("replaces the selected reference without retargeting another identity in the draft", () => {
+    const references = [{ userId: "ada", start: 0, end: 4 }, { userId: "bo", start: 9, end: 12 }];
+    expect(editMentions("@Ada and @Bo", "@Coco and @Bo", references)).toEqual([{ userId: "bo", start: 10, end: 13 }]);
+    expect(editMentions("@Ada and @Bo", "@Ada then @Bo", references)).toEqual([
+      { userId: "ada", start: 0, end: 4 }, { userId: "bo", start: 10, end: 13 },
+    ]);
+  });
 });

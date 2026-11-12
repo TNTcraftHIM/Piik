@@ -305,7 +305,9 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
             users={displayUsers} selfUserId={selfUserId} unread={newMessages} onMessage={loadingHistory ? undefined : seq => { void showMessage(seq); }}
             onReply={() => { updateDraft(value => ({ ...value, reply: { seq: message.seq, notify: true, name, text: message.text || (zh ? "附件" : "Attachment") } })); input.current?.focus(); }}
             onMention={available && mentionLimit !== null && draft.mentions.length < mentionLimit && displayUsers.some(user => user.id === message.userId)
-              ? () => selectMention(displayUsers.find(user => user.id === message.userId)!, { start: draft.text.length, end: draft.text.length, query: "" }) : undefined}
+              ? () => selectMention(displayUsers.find(user => user.id === message.userId)!, {
+                start: input.current?.selectionStart ?? draft.text.length, end: input.current?.selectionEnd ?? draft.text.length, query: "",
+              }) : undefined}
             dateLabel={newDay ? date.toLocaleDateString(zh ? "zh-CN" : "en", { dateStyle: "long" }) : undefined}
             attachments={attachments} available={available} interaction={interaction} effectsEnabled={!hidden && !loadingHistory} />;
         })}
