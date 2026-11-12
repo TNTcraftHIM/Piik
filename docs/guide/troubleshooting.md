@@ -142,10 +142,10 @@ If the browser times out before showing Piik, check access to the Host's App:
 3. After extracting an update to another folder, update any firewall rule that
    points to the old file. Add the current App manually if needed; keep the firewall on.
 
-If App reports that a local port is unavailable, close the older App instance
-using it. For a deliberately configured port, use the current
-[App runtime settings](../../prototype/channel-server/README.md#local-app-link),
-then send the newly generated invitation; editing only its URL does not move the service.
+If App reports that a local port is unavailable, check the address in its error
+details. Close the program using that port normally, then retry startup. App
+keeps its saved local site address so browser data remains accessible; changing
+only the invitation URL does not move the service.
 
 Changing permissions may require an administrator; see
 [Microsoft's instructions](https://support.microsoft.com/en-us/windows/security/firewall/risks-of-allowing-apps-through-windows-firewall).

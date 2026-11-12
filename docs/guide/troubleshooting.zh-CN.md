@@ -122,9 +122,8 @@ Piik 在 QUIC（UDP）失败后会尝试 HTTP/2（TCP），请允许两者使用
    需要更小范围时，可在高级规则中限定该虚拟网卡和网段。
 3. 更新后换了解压目录，请更新仍指向旧文件的防火墙规则；需要时手动添加当前 App，保持防火墙开启。
 
-App 提示本地端口不可用时，先关闭占用它的旧 App 实例。
-需要指定端口时，按当前 [App 运行设置](../../prototype/channel-server/README.md#local-app-link)配置，
-再发送新生成的邀请；只修改链接里的端口不会移动实际服务。
+App 提示本地端口不可用时，先核对错误详情中的地址，正常关闭占用该端口的程序，再重试启动。
+App 会保留本机站点地址，让浏览器数据保持可用；只修改邀请链接里的端口不会移动实际服务。
 
 放行操作可能需要管理员权限，参阅 [Microsoft 说明](https://support.microsoft.com/zh-cn/windows/security/firewall/risks-of-allowing-apps-through-windows-firewall)。
 网页能打开但画面连不上时，再按[画面连接排查](#画面连接不上)检查媒体线路。

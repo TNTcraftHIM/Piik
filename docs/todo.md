@@ -12,11 +12,13 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **3.0 Windows shared-sound noise.** A beta2 Host reports noise that stops
-  when excluding the Piik console's process tree, but returns when excluding a
-  silent unrelated window. Verify which Browser playback belongs to that tree
-  and whether the intended source sound remains after exclusion; trace the
-  actual capture/playback loop before changing audio processing.
+- [ ] **3.0 Windows shared-sound noise.** The reporter confirms electrical or
+  crackling sound in beta9/10 as well as beta2, while 2.x sounds normal. Excluding
+  the Piik console's process tree removes it; excluding a silent unrelated window
+  does not. Compare Windows capture and Rust mixing/encoding against 2.x, and
+  verify which Browser playback belongs to that tree and whether the intended
+  source sound remains after exclusion. The incident remains unresolved; the
+  earlier local-preview correction alone does not establish its cause.
 - [ ] **Windows sound only works with exclusion (#534).** Compare the affected
   application's playback endpoint with Piik's default-endpoint capture. The
   [output-routing control](./research/media-fidelity.md#windows-output-routing)
