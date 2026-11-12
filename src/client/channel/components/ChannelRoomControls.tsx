@@ -230,7 +230,7 @@ function RoomSettings({ channel, room, onClose }: {
   const backupBusy = channel.pending.has("room-backup");
   const removing = channel.pending.has(`delete:${room.id}`);
   const working = busy || backupBusy || removing;
-  const members = room.members?.filter(userId => userId !== room.creatorId && userId !== channel.state?.channel.ownerId) ?? [];
+  const members = room.members?.filter(userId => userId !== room.creatorId) ?? [];
   const [membersError, setMembersError] = useState(false);
   useEffect(() => {
     let current = true; setMembersError(false);
