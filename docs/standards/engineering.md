@@ -190,6 +190,14 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
   Remove superseded paths in the same change; retain no unused legacy copy.
   A platform adapter can be justified with one implementation; judge its boundary
   and consumers before removing it.
+- Prefer one rule derived from the responsible owner's state, capabilities and
+  user intent over accumulating platform, page, event-order or incident-specific
+  exceptions. Before adding another case, check whether the shared model or
+  boundary should change so the behavior follows naturally for all its consumers.
+  Keep branches for real differences in authority, semantics, lifecycle or platform
+  capability. Fewer `if` statements are not a goal in themselves: do not conceal
+  exceptions in flags or tables, invent a generic manager, or weaken necessary
+  validation merely to reduce the visible branch count.
 - Keep simple logic at its call site. Extract a helper for actual reuse, a
   substantial boundary, or a distinct concept whose name makes the caller clearer.
   In longer orchestration, keep the main flow readable and move substantial
