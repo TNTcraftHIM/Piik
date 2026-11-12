@@ -141,6 +141,14 @@ control packet-for-packet and sample-for-sample after decoding, with 960 RTP tic
 per frame. Focused checks also retain partial frames across input retirement,
 explicit gaps, source changes and the existing capture cleanup.
 
+The matched Windows package also shared an owned program's 440/880 Hz stereo
+signal to an independent Browser through the normal App UI. The source rendered
+only to a named virtual output; the receiver stayed muted and analysed the signal
+without speaker output. Both channels remained distinct over a five-second
+sample, with no clipping or non-finite values, followed by normal sharing stop
+and App shutdown. This checks the packaged process-capture path, not the
+reporter's default output device or room playback.
+
 The beta9/10 report that excluding Piik removes noise while excluding Notepad
 does not remains unexplained by these controls: both exclusions use process
 loopback. The observed mixer defect is not yet the demonstrated cause of that

@@ -135,8 +135,10 @@ retain platform details and tested-source records.
 
 ### macOS And Linux
 
-macOS SDK/package checks cover capture, encoding, sound and input compilation,
+Earlier macOS SDK/package checks cover capture, encoding, sound and input compilation,
 synthetic encode/decode, LaunchServices startup and startup-error cleanup.
+The current audio-continuity change has source review but no new macOS build
+or device check; the local cross-build lacks the required Apple C toolchain.
 The [current VideoToolbox control](https://github.com/TNTcraftHIM/Piik/actions/runs/42697708222)
 also verifies QP feedback, independent geometry changes, a continuing sibling
 and source-time preservation in the shared quality implementation.
