@@ -64,6 +64,27 @@ describe("channel connection presentation", () => {
     expect(renderToStaticMarkup(createElement(ChannelConnectionReport, fixture))).not.toContain(say("connection.localDisplayHint"));
   });
 
+  it("scopes an unwatched picture's empty path to that share while room voice remains active", () => {
+    const fixture = channelConnectionPreview("unwatched");
+    expect(fixture.topology.base.edges.length).toBeGreaterThan(0);
+    expect(fixture.topology.screen?.edges).toEqual([]);
+    const html = renderToStaticMarkup(createElement(ChannelConnectionReport, fixture));
+    expect(html).toContain(say("connection.noScreenPath"));
+    expect(html).not.toContain(say("connection.signalOnly"));
+    expect(html).not.toContain(say("host.topology.idle"));
+    expect(html).toContain('data-media="audio" data-direction="receive"');
+  });
+
+  it("keeps unclassified picture samples out of network totals when topology is unavailable", () => {
+    const fixture = channelConnectionPreview("app");
+    const rows = channelConnectionRows(fixture.state, fixture.sessionId, null, fixture.metrics, t);
+    expect(rows.filter(row => row.media === "video")).toHaveLength(4);
+    expect(rows.filter(row => row.media === "video").every(row => row.detailOnly)).toBe(true);
+    expect(rows.filter(row => row.media === "audio").every(row => !row.detailOnly)).toBe(true);
+    expect(channelConnectionRows(fixture.state, fixture.sessionId, fixture.topology, fixture.metrics, t)
+      .some(row => row.media === "video" && !row.detailOnly)).toBe(true);
+  });
+
   it("uses the shared four groups for picture and voice in both directions", () => {
     const fixture = channelConnectionPreview("both");
     const html = renderToStaticMarkup(createElement(ChannelConnectionReport, fixture));

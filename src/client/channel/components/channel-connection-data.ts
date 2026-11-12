@@ -65,8 +65,9 @@ export function channelConnectionRows(state: ChannelSnapshot, sessionId: string,
       : sample.direction === "receive" ? t("voice.details.receiveFrom", { name: peer })
       : publication.sessionId !== sample.ownerSessionId ? t("voice.details.forwardTo", { source, name: peer })
       : t("voice.details.sendTo", { name: peer });
+    // Without picture topology, a sample may be the App's local display hop.
     return [{ key: `${sample.ownerSessionId}/${sample.flowId}/${sample.metrics.rtpStatsId}`, connectionId: sample.connectionId,
       media: publication.kind === "voice" ? "audio" : "video", direction: sample.direction, route: "p2p", label, metrics,
-      detailOnly: localDisplay || !sample.selected || undefined }];
+      detailOnly: publication.kind === "screen" && !topology?.screen || localDisplay || !sample.selected || undefined }];
   });
 }

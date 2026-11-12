@@ -721,6 +721,7 @@ export const zh = {
   "connection.localDisplayHint": "App 接收画面，本页负责显示。展开详情可查看显示链路。",
   "connection.noMedia": "暂无媒体统计。",
   "connection.signalOnly": "仅有信令连接，尚无媒体或文件传输路径。",
+  "connection.noScreenPath": "此分享暂无画面传输路径。",
   "connection.pathLegend": "实线：已就绪。流动虚线：建立或切换中。静态虚线：本机显示。",
   "connection.loading": "正在读取连接详情…",
   "connection.unavailable": "暂时无法读取连接详情。",

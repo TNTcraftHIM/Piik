@@ -721,6 +721,7 @@ export const en: Record<CopyKey, string> = {
   "connection.localDisplayHint": "The App receives the picture for this page. Expand details to inspect the display hop.",
   "connection.noMedia": "No media measurements yet.",
   "connection.signalOnly": "Only signaling is connected. No media or file-transfer paths yet.",
+  "connection.noScreenPath": "This share has no picture delivery path.",
   "connection.pathLegend": "Solid: ready. Moving dashes: establishing or switching. Static dashes: local display.",
   "connection.loading": "Reading connection details…",
   "connection.unavailable": "Connection details are temporarily unavailable.",

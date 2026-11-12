@@ -9,7 +9,7 @@ import { useCopy } from "../ui/copy";
 import { PREVIEW_METRICS } from "./preview-metrics";
 import { QUALITY_PROFILES, screenVideoSettings } from "../media/quality";
 
-export function channelConnectionPreview(mode: "room" | "voice" | "both" | "app", longNames = false) {
+export function channelConnectionPreview(mode: "room" | "voice" | "both" | "app" | "unwatched", longNames = false) {
   const state = snapshotSchema.parse({
     channel: { id: "domain", name: "Friends", icon: "couch", ownerId: "host-user", historyWindow: 100, userCount: 3,
       rooms: [{ id: "room", name: "Living room", icon: "couch", creatorId: "host-user", access: "public", hidden: false,
@@ -33,7 +33,7 @@ export function channelConnectionPreview(mode: "room" | "voice" | "both" | "app"
     { sender: "host", receiver: "app", selected: true, proof: "forwardable", presented: null, presentation: false },
     { sender: "app", receiver: "self", selected: true, proof: "decoded", presented: null, presentation: true },
     { sender: "app", receiver: "friend", selected: false, proof: null, presented: false, presentation: false },
-  ] } : mode === "both" ? { publicationId: "screen-host", sourceSessionId: "host", edges: [
+  ] } : mode === "both" || mode === "unwatched" ? { publicationId: "screen-host", sourceSessionId: "host", edges: mode === "unwatched" ? [] : [
     { sender: "host", receiver: "self", selected: true, proof: "decoded", presented: true, presentation: false },
     { sender: "self", receiver: "friend", selected: true, proof: "decoded", presented: true, presentation: false },
   ] } : null };
@@ -48,7 +48,7 @@ export function channelConnectionPreview(mode: "room" | "voice" | "both" | "app"
   const metrics: ChannelConnectionSample[] = mode === "room" ? [] : [
     metric("voice-host", "host", "receive", "audio"), metric("voice-friend", "host", "receive", "audio"),
     metric("voice-self", "host", "send", "audio"),
-    ...(mode === "voice" ? [] : [metric("screen-host", mode === "app" ? "app" : "host", "receive", "video"),
+    ...(mode === "voice" || mode === "unwatched" ? [] : [metric("screen-host", mode === "app" ? "app" : "host", "receive", "video"),
       metric(mode === "app" ? "screen-self" : "screen-host", "friend", "send", "video")]),
   ];
   if (mode === "app") {
@@ -70,11 +70,12 @@ export function channelConnectionPreview(mode: "room" | "voice" | "both" | "app"
 export function ChannelConnectionsPreview() {
   const { lang, t } = useCopy();
   const en = lang === "en";
-  const [mode, setMode] = useState<"room" | "voice" | "both" | "app">("both");
+  const [mode, setMode] = useState<"room" | "voice" | "both" | "app" | "unwatched">("both");
   const [longNames, setLongNames] = useState(false);
   const modes = [
     { value: "room", label: en ? "Room" : "房间连接" }, { value: "voice", label: en ? "Voice" : "语音" },
     { value: "both", label: en ? "Picture and voice" : "画面与语音" }, { value: "app", label: en ? "App display" : "App 显示" },
+    { value: "unwatched", label: en ? "Unwatched share" : "尚未观看的分享" },
   ] as const;
   return <section id="channel-connections-preview" className="cp-section">
     <header className="cp-section-head"><h2>{en ? "Multi-source connections" : "多源媒体连接"}</h2></header>

@@ -32,13 +32,14 @@ function edgeClass(edge: RouteGraphEdge): string {
 }
 
 /** Pure route presentation: callers own identities, topology, selection and proof. */
-export const RouteGraph = memo(function RouteGraph({ nodes, rootId, edges, selectedId, selectableIds, onSelect }: {
+export const RouteGraph = memo(function RouteGraph({ nodes, rootId, edges, selectedId, selectableIds, onSelect, emptyLabel }: {
   nodes: readonly RouteGraphNode[];
   rootId: string;
   edges: readonly RouteGraphEdge[];
   selectedId?: string | null;
   selectableIds?: readonly string[];
   onSelect?: (id: string) => void;
+  emptyLabel?: string;
 }) {
   const { t, vis } = useCopy();
   const titleId = useId();
@@ -99,7 +100,7 @@ export const RouteGraph = memo(function RouteGraph({ nodes, rootId, edges, selec
   const drawableEdges = edges.filter(edge => points.has(edge.from) && points.has(edge.to));
   return <div ref={routeRef} className={`lr-route${outline ? " is-outline" : ""}`} role="group" aria-labelledby={titleId} tabIndex={0}>
     <span id={titleId} className="visually-hidden">{t("host.topology")}</span>
-    {drawableEdges.length === 0 && !nodes.some(pending) ? <p className={vis ? "visually-hidden" : "lr-route-idle"}>{t("host.topology.idle")}</p> : null}
+    {drawableEdges.length === 0 && !nodes.some(pending) ? <p className={vis ? "visually-hidden" : "lr-route-idle"}>{emptyLabel ?? t("host.topology.idle")}</p> : null}
     <svg viewBox={`0 0 ${width} ${height}`} aria-label={t("host.topology")}
       style={{ width: "100%", maxWidth: outline || nodes.length > 11 ? config.baseWidth : 880 }}>
       {drawableEdges.map((edge, index) => {
