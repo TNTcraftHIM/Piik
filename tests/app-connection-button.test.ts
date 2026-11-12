@@ -421,14 +421,75 @@ describe("App connection approval", () => {
 });
 
 
-describe("initial App discovery",()=>{
- it("automatically verifies an approved App without opening another page",async()=>{
-  const page=mount(true,"idle",false,true);await settle();expect(page.native.discoverNativeConnect).toHaveBeenCalledOnce();expect(page.onConnected).toHaveBeenCalledOnce();expect(page.window.open).not.toHaveBeenCalled();expect(page.showHelp).not.toHaveBeenCalled();page.cleanup();
- });
- it("keeps unapproved discovery pending for the real approval click",async()=>{
-  const page=mount(false,"idle",false,true);await settle();expect(page.setState).toHaveBeenLastCalledWith("approval");expect(page.onConnected).not.toHaveBeenCalled();expect(page.window.open).not.toHaveBeenCalled();await page.connect();expect(page.window.open).toHaveBeenCalledOnce();page.cleanup();
- });
- it("does not repeat failed discovery on focus and aborts a manual retry on unmount",async()=>{
-  const page=mount(true,"idle",false,true);page.native.discoverNativeConnect.mockResolvedValue(null);await settle();expect(page.setState).toHaveBeenLastCalledWith("unavailable");page.window.dispatchEvent(new Event("focus"));page.activateElsewhere();await settle();expect(page.native.discoverNativeConnect).toHaveBeenCalledOnce();expect(page.native.discoverNativeHealth).not.toHaveBeenCalled();let signal:AbortSignal|undefined;page.native.discoverNativeConnect.mockImplementationOnce(s=>{signal=s;return new Promise(()=>{});});void page.connect();await settle();expect(page.native.discoverNativeConnect).toHaveBeenCalledTimes(2);page.cleanup();expect(signal?.aborted).toBe(true);
- });
+describe("initial App discovery", () => {
+  it("automatically verifies an approved App without opening another page", async () => {
+    const page = mount(true, "idle", false, true);
+    await settle();
+    expect(page.native.discoverNativeConnect).toHaveBeenCalledOnce();
+    expect(page.onConnected).toHaveBeenCalledOnce();
+    expect(page.window.open).not.toHaveBeenCalled();
+    expect(page.showHelp).not.toHaveBeenCalled();
+    page.cleanup();
+  });
+
+  it("keeps unapproved discovery pending for the real approval click", async () => {
+    const page = mount(false, "idle", false, true);
+    await settle();
+    expect(page.setState).toHaveBeenLastCalledWith("approval");
+    expect(page.onConnected).not.toHaveBeenCalled();
+    expect(page.window.open).not.toHaveBeenCalled();
+    await page.connect();
+    expect(page.window.open).toHaveBeenCalledOnce();
+    page.cleanup();
+  });
+
+  it("does not repeat failed discovery on focus and aborts a manual retry on unmount", async () => {
+    const page = mount(true, "idle", false, true);
+    page.native.discoverNativeConnect.mockResolvedValue(null);
+    await settle();
+    expect(page.setState).toHaveBeenLastCalledWith("idle");
+    page.window.dispatchEvent(new Event("focus"));
+    page.activateElsewhere();
+    await settle();
+    expect(page.native.discoverNativeConnect).toHaveBeenCalledOnce();
+    expect(page.native.discoverNativeHealth).not.toHaveBeenCalled();
+    let signal: AbortSignal | undefined;
+    page.native.discoverNativeConnect.mockImplementationOnce(value => {
+      signal = value;
+      return new Promise(() => {});
+    });
+    void page.connect();
+    await settle();
+    expect(page.native.discoverNativeConnect).toHaveBeenCalledTimes(2);
+    page.cleanup();
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it.each([false, true])("automatic discovery stays idle; explicit failure keeps recovery guidance (incompatible: %s)", async incompatible => {
+    const page = mount(false, "idle", false, true);
+    page.native.discoverNativeConnect.mockImplementation(async () => {
+      if (incompatible) throw new page.native.NativeCompatibilityError("incompatible");
+      return null;
+    });
+    try {
+      await settle();
+      expect(page.setState).toHaveBeenLastCalledWith("idle");
+      expect(page.showHelp).not.toHaveBeenCalled();
+      await page.connect();
+      expect(page.setState).toHaveBeenLastCalledWith(incompatible ? "incompatible" : "unavailable");
+      expect(page.showHelp).toHaveBeenCalled();
+    } finally { page.cleanup(); }
+  });
+
+  it("an explicit approval click takes over the automatic attempt's failure feedback", async () => {
+    const page = mount(false, "idle", false, true);
+    try {
+      await settle();
+      expect(page.setState).toHaveBeenLastCalledWith("approval");
+      page.window.open.mockReturnValue(null);
+      await page.connect();
+      expect(page.setState).toHaveBeenLastCalledWith("unavailable");
+      expect(page.showHelp).toHaveBeenCalled();
+    } finally { page.cleanup(); }
+  });
 });

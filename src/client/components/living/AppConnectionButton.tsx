@@ -20,6 +20,7 @@ interface AppConnectionProps {
 interface ConnectionAttempt {
   controller: AbortController;
   popup: Window | null;
+  automatic: boolean;
   open?: () => void;
   cancel?: () => void;
 }
@@ -83,12 +84,15 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
 
   async function connect(wake = false, automatic = false): Promise<void> {
     if (!automatic) setAutomaticHint(false);
-    if (pending.current) { pending.current.open?.(); return; }
+    if (pending.current) {
+      if (!automatic) pending.current.automatic = false;
+      pending.current.open?.(); return;
+    }
     let manage = state === "ready";
     healthCheck.current?.abort();
     // Discovery and its browser permission prompt stay in the current tab.
     // A fresh click opens the real approval page without reserving a blank tab.
-    const attempt: ConnectionAttempt = { controller: new AbortController(), popup: null };
+    const attempt: ConnectionAttempt = { controller: new AbortController(), popup: null, automatic };
     pending.current = attempt;
     if (!automatic) showHelp();
     const signal = attempt.controller.signal;
@@ -130,9 +134,10 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
       if (pending.current === attempt) {
         pending.current = null;
         automaticFailed.current = result !== "ready";
-        setAutomaticHint(automatic && (result === "unavailable" || result === "incompatible"));
-        setState(result);
-        if (!automatic && (result === "unavailable" || result === "incompatible")) showHelp();
+        const failed = result === "unavailable" || result === "incompatible";
+        setAutomaticHint(false);
+        setState(attempt.automatic && failed ? "idle" : result);
+        if (!attempt.automatic && failed) showHelp();
         else help.current?.hidePopover();
       }
     };
