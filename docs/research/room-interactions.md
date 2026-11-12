@@ -1,12 +1,13 @@
 # Room Interaction Design
 
-The owner accepted the text/reaction UI and model with bounded local acceptance.
-[Status](../status.md#accepted-interaction-phase) owns release readiness and
+This document retains published 2.x interaction research and the separate
+[3.0 assessment](#piik-30-channels-rooms-and-sharing). Sections before that
+assessment describe 2.x unless explicitly marked otherwise. Its authority and
+retention belong to [rooms and access](../standards/rooms-access.md#room-interactions),
+with [presentation and lifecycle](../standards/presentation-lifecycle.md#product-surface)
+owning room/publication lifetime. The 3.0 section links to its current owners.
+[Status](../status.md#accepted-interaction-phase) owns delivery readiness;
 [TODO](../todo.md#now) owns remaining work.
-This document records the implementation design and its tradeoffs;
-[rooms and access](../standards/rooms-access.md#room-interactions) owns authority
-and retention, while [presentation and lifecycle](../standards/presentation-lifecycle.md#product-surface)
-owns room/publication lifetime.
 
 ## Model And Owners
 
@@ -241,14 +242,16 @@ This follows the same-input principle described in
 [Deterministic Lockstep](https://gafferongames.com/post/deterministic_lockstep/),
 without introducing lockstep waiting or frame-by-frame simulation.
 
-## History Direction (Not Yet Implemented)
+## 2.x History Assessment
 
-History ownership remains undecided. A Host cache can also miss live messages and
-is unavailable while the Host is absent; treating its copy as server-confirmed
-history would change message authority. Compare that cost with a bounded room-server
-memory buffer before adding replay. Either design needs explicit access and
-retention boundaries. Recovered text would enter the log, never replay old
-danmaku or reaction effects. Current behavior remains the no-history contract above.
+Published 2.x keeps no server history. The earlier history proposal was not
+adopted: a Host cache can miss live messages and is unavailable while the Host
+is absent. Treating its copy as server-confirmed history would change message
+authority. The assessment also considered a bounded room-server memory buffer;
+either design required explicit access and retention boundaries.
+Recovered text would enter the log, never replay old
+danmaku or reaction effects. The separate 3.0 implementation follows the accepted
+[confirmed-history owner](./channel-storage-and-identity.md#confirmed-history).
 
 ## Audio Boundary
 
@@ -438,7 +441,7 @@ The [accepted channel and network design](./channel-network-design.md) owns the 
 direction, responsibility boundaries, activity lifecycles and multi-source routing.
 The [room-data model](./channel-storage-and-identity.md) owns persistence and
 file availability. The [3.0 vocabulary](./channel-network-design.md#terminology-and-responsibilities)
-defines domains containing rooms, with hosting, sharing, watching and forwarding
+defines sites containing rooms, with hosting, sharing, watching and forwarding
 as independent responsibilities. The isolated 3.0 design does not change the
 published 2.x contract.
 
@@ -446,44 +449,22 @@ The isolated [Rust channel prototype](../../prototype/channel-server/README.md)
 uses the shared Rust core for rooms, conversation, files, voice and multi-source
 sharing. Its README and [status](../status.md) own the runnable boundary.
 
-### Workspace Hierarchy Proposal
+### Workspace Hierarchy
 
-Reviewed 2026-11-10. The selected direction presents one site with rooms, without
-an additional domain chooser or invitation gate. The underlying identity,
-directory and host-coordination responsibilities remain in the network/data owners.
-
-| Area | Responsibility |
-| --- | --- |
-| Left | Piik returns to this site's room overview. The room list contains navigation, room management and each room's voice participants. |
-| Lower left | Personal identity and the current voice activity's join, microphone, listening and leave controls. Keep the target room explicit. |
-| Centre | Conversation, or selected pictures in grid/focus view. The couch anchors the bottom of this body and aligns with the personal area's upper edge. |
-| Upper right | One instance of signaling, App, language, theme and help controls. These remain reachable when the companion pane is collapsed. |
-| Right companion | Optional conversation while watching, or room member details when requested. Do not reserve an empty full-height column after closing it. |
-
-Room invitation belongs beside the upper room title; Share and its parameters
-form their own group. Private entry remains a room responsibility. A public room
-uses its ordinary URL; a private room uses its invitation or password. The site
-maintenance panel holds name/icon and operator-owned backup/restore, without
-separate admission controls or role groups.
-
-Browsing the overview or another room changes the view, not existing voice,
-sharing or watch activities. Keep each picture's source-room label. Focus uses
-one main picture with thumbnails below. Voice membership appears beside its room
-while personal controls keep their selected activity scope. The couch retains
-its existing interaction owner and does not become a second participant database.
-
-The couch's pop-out opens the existing compact external room tool directly where
-supported, with the in-page tool as the named alternative. Return preserves drafts
-and activity owners. Narrow layouts reuse the same controls and temporary drawers
-without overwriting desktop sidebar preferences. Corresponding headers and the
-bottom personal/presence row share their alignment from the containing grid.
+The selected direction presents one site with rooms, without an additional domain
+chooser or invitation gate. [Visual language](../standards/visual-language.md#30-channel-workspace)
+owns the current workspace composition, control placement and responsive rules;
+its [quick-sharing section](../standards/visual-language.md#30-quick-sharing) owns
+the optional screen-centred view. The network/data owners retain identity,
+directory, private-room admission and activity lifetimes.
 
 This grouping follows Discord's [channel navigation and contextual chat](https://support.discord.com/hc/en-us/articles/4412085582359-Text-Channels-Text-Chat-In-Voice-Channels),
 [personal voice controls](https://support.discord.com/hc/en-us/articles/33030151293079-Discord-Voice-Video-Streaming-Guide)
 and [focus/pop-out views](https://support.discord.com/hc/en-us/articles/360041721052-Video-Calls).
 Piik keeps its independent sharing lifecycle and couch rather than making a voice
-call a prerequisite for watching or sharing. [Visual language](../standards/visual-language.md#30-channel-workspace)
-owns accepted layout rules; [TODO](../todo.md) owns remaining integration work.
+call a prerequisite for watching or sharing. View changes and detached tools
+present the existing activities rather than creating another session or
+participant model. [TODO](../todo.md) owns remaining integration work.
 
 ### Identity And Share Titles
 

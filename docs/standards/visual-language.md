@@ -117,7 +117,7 @@ the media's upper corners, while an attached pane keeps the shell edge.
 
 Keep the room invitation beside the upper room title, and group Share with its
 parameters on the opposite side. Personal voice and identity stay lower left.
-The left list contains rooms and their voice participants; the Piik mark returns
+The left list contains rooms and their realtime participants; the Piik mark returns
 to this site's room overview. Keep the site name visible beside it, with maintenance
 actions attached to that name rather than the personal controls. Global connection,
 App, language, theme and help belong to the site bar above the room toolbar.
