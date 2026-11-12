@@ -15,7 +15,7 @@ use tokio::{
 };
 
 #[derive(Clone)]
-struct Failure {
+pub(super) struct Failure {
     reason: &'static str,
     detail: String,
 }
@@ -34,14 +34,14 @@ impl Failure {
     }
 }
 #[derive(Clone)]
-enum Progress {
+pub(super) enum Progress {
     Starting,
     Ready(Ready),
     Failed(Failure),
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Ready {
+pub(super) struct Ready {
     target: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     local_certificate: Option<LocalCertificate>,
@@ -83,16 +83,16 @@ impl Launch {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
-enum Mode {
+pub(super) enum Mode {
     Local,
     Link,
 }
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Request {
-    mode: Mode,
+    pub mode: Mode,
     lan_address: Option<String>,
     language: Option<String>,
 }
@@ -118,39 +118,7 @@ pub(super) async fn describe(app: &App, state: &mut Value) -> anyhow::Result<()>
 }
 
 pub(super) async fn launch(State(app): State<Arc<App>>, Json(request): Json<Request>) -> ApiResult {
-    let mut progress = {
-        let mut current = app.launch.lock().await;
-        if *app.closing.borrow() {
-            return Err(Failure::new("local-server", "Piik App is closing").response());
-        }
-        if current.as_ref().is_some_and(|launch| {
-            launch.task.is_finished() || matches!(*launch.progress.borrow(), Progress::Failed(_))
-        }) {
-            current.take().unwrap().close().await;
-        }
-        if current.is_none() {
-            let (progress, receiver) = watch::channel(Progress::Starting);
-            let (stop, stopped) = watch::channel(false);
-            let owner = app.clone();
-            let task = tokio::spawn(async move {
-                let console = Console::new(request.language.as_deref());
-                console.starting(matches!(request.mode, Mode::Link));
-                let port = owner.port;
-                if let Err(failure) = run(owner, request, stopped, &progress, &console).await {
-                    eprintln!("App startup {}: {}", failure.reason, failure.detail);
-                    log::error!(target: "piik.app", "App startup {}: {}", failure.reason, failure.detail);
-                    console.failed(port);
-                    progress.send_replace(Progress::Failed(failure));
-                }
-            });
-            *current = Some(Launch {
-                progress: receiver,
-                stop,
-                task,
-            });
-        }
-        current.as_ref().unwrap().progress.clone()
-    };
+    let mut progress = begin(&app, request).await?;
     // The App owns startup. Closing this HTTP request only stops this wait.
     loop {
         match progress.borrow().clone() {
@@ -162,6 +130,43 @@ pub(super) async fn launch(State(app): State<Arc<App>>, Json(request): Json<Requ
             return Err(Failure::new("local-server", "The local service stopped").response());
         }
     }
+}
+
+pub(super) async fn begin(
+    app: &Arc<App>,
+    request: Request,
+) -> Result<watch::Receiver<Progress>, (StatusCode, Json<Value>)> {
+    let mut current = app.launch.lock().await;
+    if *app.closing.borrow() {
+        return Err(Failure::new("local-server", "Piik App is closing").response());
+    }
+    if current.as_ref().is_some_and(|launch| {
+        launch.task.is_finished() || matches!(*launch.progress.borrow(), Progress::Failed(_))
+    }) {
+        current.take().unwrap().close().await;
+    }
+    if current.is_none() {
+        let (progress, receiver) = watch::channel(Progress::Starting);
+        let (stop, stopped) = watch::channel(false);
+        let owner = app.clone();
+        let task = tokio::spawn(async move {
+            let console = Console::new(request.language.as_deref());
+            console.starting(matches!(request.mode, Mode::Link));
+            let port = owner.port;
+            if let Err(failure) = run(owner, request, stopped, &progress, &console).await {
+                eprintln!("App startup {}: {}", failure.reason, failure.detail);
+                log::error!(target: "piik.app", "App startup {}: {}", failure.reason, failure.detail);
+                console.failed(port);
+                progress.send_replace(Progress::Failed(failure));
+            }
+        });
+        *current = Some(Launch {
+            progress: receiver,
+            stop,
+            task,
+        });
+    }
+    Ok(current.as_ref().unwrap().progress.clone())
 }
 
 async fn run(
@@ -281,7 +286,12 @@ async fn run(
         eprintln!("Certificate SHA-256: {}", certificate.sha256_fingerprint);
     }
     let permission = Arc::new(Permission::new(identity.namespace));
-    app.registry.lock().await.local = Some((origin.clone(), permission.clone()));
+    app.registry.lock().await.local = Some(super::LocalSite {
+        origin: origin.clone(),
+        invitation: invitation.clone(),
+        request: request.clone(),
+        permission: permission.clone(),
+    });
     let (commands, mut restores) = mpsc::channel::<crate::domain::RestoreDomain>(1);
     let domain = domain.with_restores(commands);
     let (stop_domain, mut domain_stopped) = watch::channel(false);

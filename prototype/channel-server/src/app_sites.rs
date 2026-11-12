@@ -8,6 +8,15 @@ use uuid::Uuid;
 
 pub(super) struct Sites(Connection);
 
+#[derive(Clone, Default, Deserialize, Serialize)]
+#[serde(tag = "kind", content = "value", rename_all = "camelCase")]
+pub(super) enum StartupIntent {
+    #[default]
+    None,
+    External(String),
+    Owned(super::hosted::Request),
+}
+
 // Approval covers room hosting and device capture. A narrower saved consent
 // must be approved again; its room-data namespace remains the same.
 const APPROVAL_SCOPE: i64 = 2;
@@ -64,16 +73,20 @@ impl Sites {
         })
         .collect()
     }
-    pub fn startup(&self) -> Result<String> {
-        Ok(self
+    pub fn startup(&self) -> Result<StartupIntent> {
+        let saved: Option<String> = self
             .0
             .query_row(
                 "SELECT value FROM app_setting WHERE key = 'startup'",
                 [],
                 |row| row.get(0),
             )
-            .optional()?
-            .unwrap_or_default())
+            .optional()?;
+        match saved.as_deref().unwrap_or("") {
+            "" => Ok(StartupIntent::None),
+            value if value.starts_with('{') => Ok(serde_json::from_str(value)?),
+            site => Ok(StartupIntent::External(origin(site)?)),
+        }
     }
     pub fn local_identity(&self) -> Result<LocalIdentity> {
         let saved: Option<String> = self
@@ -97,24 +110,26 @@ impl Sites {
         )?;
         Ok(identity)
     }
-    pub fn set_startup(&self, site: &str) -> Result<()> {
-        if !site.is_empty()
-            && !self.0.query_row(
-                "SELECT EXISTS(SELECT 1 FROM app_site WHERE origin = ?1 AND allowed = ?2)",
-                params![site, APPROVAL_SCOPE],
-                |row| row.get::<_, bool>(0),
-            )?
-        {
-            bail!("site_not_approved");
+    pub fn set_startup(&self, startup: &StartupIntent) -> Result<()> {
+        if let StartupIntent::External(site) = startup {
+            if !self.approved()?.contains_key(site) {
+                bail!("site_not_approved");
+            }
         }
         self.0.execute(
             "INSERT INTO app_setting(key,value) VALUES('startup',?1)
             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            [site],
+            [match startup {
+                StartupIntent::None => String::new(),
+                StartupIntent::External(site) => site.clone(),
+                StartupIntent::Owned(_) => serde_json::to_string(startup)?,
+            }],
         )?;
         Ok(())
     }
     pub fn approve(&mut self, site: &str, allowed: bool) -> Result<Uuid> {
+        let clear_startup = !allowed
+            && matches!(self.startup()?, StartupIntent::External(origin) if origin == site);
         let transaction = self.0.transaction()?;
         let previous: Option<String> = transaction
             .query_row(
@@ -136,11 +151,8 @@ impl Sites {
                 if allowed { APPROVAL_SCOPE } else { 0 }
             ],
         )?;
-        if !allowed {
-            transaction.execute(
-                "DELETE FROM app_setting WHERE key='startup' AND value=?1",
-                [site],
-            )?;
+        if clear_startup {
+            transaction.execute("DELETE FROM app_setting WHERE key='startup'", [])?;
         }
         transaction.commit()?;
         Ok(id)
@@ -161,13 +173,15 @@ mod tests {
             .0
             .execute("UPDATE app_site SET allowed=1 WHERE origin=?1", [site])?;
         assert!(!sites.approved()?.contains_key(site));
-        assert!(sites.set_startup(site).is_err());
+        assert!(sites
+            .set_startup(&StartupIntent::External(site.into()))
+            .is_err());
         assert_eq!(sites.approve(site, true)?, namespace);
         assert_eq!(sites.approved()?.get(site), Some(&namespace));
-        sites.set_startup(site)?;
+        sites.set_startup(&StartupIntent::External(site.into()))?;
         sites.approve(site, false)?;
         assert!(sites.approved()?.is_empty());
-        assert!(sites.startup()?.is_empty());
+        assert!(matches!(sites.startup()?, StartupIntent::None));
         assert_eq!(sites.approve(site, true)?, namespace);
         drop(sites);
         std::fs::remove_dir_all(directory)?;
@@ -185,14 +199,23 @@ mod tests {
         let (namespace, identity) = {
             let mut sites = Sites::open(&directory)?;
             let namespace = sites.approve(site, true)?;
-            sites.set_startup(site)?;
+            sites.set_startup(&StartupIntent::External(site.into()))?;
+            let saved: String = sites.0.query_row(
+                "SELECT value FROM app_setting WHERE key='startup'",
+                [],
+                |row| row.get(0),
+            )?;
+            assert_eq!(
+                saved, site,
+                "fixed external bookmarks keep their existing representation"
+            );
             assert!(sites.domain_port()?.is_none());
             sites.set_domain_port(NonZeroU16::new(31337).unwrap())?;
             (namespace, serde_json::to_value(sites.local_identity()?)?)
         };
         let sites = Sites::open(&directory)?;
         assert_eq!(sites.approved()?.get(site), Some(&namespace));
-        assert_eq!(sites.startup()?, site);
+        assert!(matches!(sites.startup()?, StartupIntent::External(origin) if origin == site));
         assert_eq!(sites.domain_port()?.unwrap().get(), 31337);
         assert_eq!(serde_json::to_value(sites.local_identity()?)?, identity);
         Ok(())

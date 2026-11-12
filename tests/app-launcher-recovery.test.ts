@@ -55,22 +55,22 @@ const saved = {
 };
 const response = (state: typeof saved & { detail?: string; target?: string; localCertificate?: LocalCertificate } = saved) => ({ ok: true, status: 200, json: async () => state });
 
-function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = false, mode }: { debug?: boolean; mode?: AppMode } = {}) {
+function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = false, mode, startup = false }: { debug?: boolean; mode?: AppMode; startup?: boolean } = {}) {
   const downloads = vi.fn();
   const initialMode = mode ?? runInNewContext(`(${modeInitializer})()`, { readPreferredAppMode }) as AppMode;
   const state: Record<string, unknown> = { Mode: initialMode };
   const setters = Object.fromEntries([
-    "Mode", "Lan", "ControlPort", "Target", "LocalCertificate", "Starting", "Sites", "StartupSite",
+    "Mode", "Lan", "ControlPort", "Target", "LocalCertificate", "Starting", "Sites", "StartupSite", "StartupMode", "OwnedSites",
     "AppDebug", "Error", "Loading", "Build", "RemoteControlPrototype",
     "SiteBusy", "SiteError", "DebugBusy", "DebugError", "Reload",
   ].map(name => [`set${name}`, vi.fn((value: unknown) => {
     state[name] = typeof value === "function" ? value(state[name]) : value;
   })]));
-  const window = Object.assign(new EventTarget(), { location: { replace: vi.fn() } });
+  const window = Object.assign(new EventTarget(), { location: { replace: vi.fn(), search: startup ? "?start=1" : "" } });
   const timers = new Map<number, { callback: () => void; delay: number }>();
   let nextTimer = 0;
   const actions = runInNewContext(executable, {
-    ...setters, z, fetch, window, AbortController, downloadBlob: downloads,
+    ...setters, z, fetch, window, URLSearchParams, AbortController, downloadBlob: downloads,
     stateChanges: { current: { revision: 0, pending: 0 } },
     siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, manualSite, openOnApproval: false,
     mode: initialMode, lang: "en", vis: false, appDebug: debug, lan: saved.lan, savePreferredAppMode,
@@ -472,3 +472,57 @@ it("keeps committed approval when the startup preference body stalls", async () 
     expect(page.state).toMatchObject({ Sites: approved.sites, StartupSite: "", SiteBusy: false, SiteError: "client.connect.saveFailed" });
     page.cleanup();
   });
+
+it("enters the fresh App-owned startup result once with its current debug setting and port", async () => {
+  vi.stubGlobal("window", { location: { href: "http://127.0.0.1:39731/client?start=1" } });
+  const fetch = vi.fn().mockResolvedValueOnce(response({ ...saved, starting: true } as typeof saved));
+  const page = mount(fetch, false, { startup: true });
+  try {
+    await settle();
+    expect(page.navigate).not.toHaveBeenCalled();
+    const fresh = "http://127.0.0.1:45678/#piik-client=1";
+    fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ ...saved, target: fresh, debug: true, controlPort: 39732 }) });
+    page.retry();
+    await settle();
+    const destination = new URL(page.navigate.mock.calls[0]![0]);
+    expect(destination.origin).toBe("http://127.0.0.1:45678");
+    expect(destination.searchParams.get("debug")).toBe("1");
+    expect(destination.searchParams.get("piik-client-port")).toBe("39732");
+    page.focus();
+    await settle();
+    expect(page.navigate).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls.every(call => !call[1]?.method)).toBe(true);
+  } finally {
+    page.cleanup();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("leaves a failed owned startup available for manual retry", async () => {
+  const fetch = vi.fn().mockResolvedValueOnce(response({ ...saved, detail: "tunnel failed" }));
+  const page = mount(fetch, false, { startup: true });
+  try {
+    await settle();
+    expect(page.state.Starting).toBe(false);
+    expect(page.state.Error).toMatchObject({ kind: "launch" });
+    fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ target: "http://127.0.0.1:45678/" }) });
+    await page.launch({ preventDefault() {} });
+    expect(page.navigate).toHaveBeenCalledTimes(1);
+  } finally { page.cleanup(); }
+});
+
+it("clears an owned startup from the existing settings operation", async () => {
+  const fetch = vi.fn().mockResolvedValueOnce({
+    ok: true, status: 200, json: async () => ({ ...saved, startupMode: "link", ownedSites: ["https://current.example"] }),
+  });
+  const page = mount(fetch);
+  try {
+    await settle();
+    expect(page.state.StartupMode).toBe("link");
+    fetch.mockResolvedValueOnce(response(saved));
+    expect(await page.changeSite("", "startup-site")).toBe(true);
+    expect(JSON.parse(fetch.mock.calls[1]![1].body)).toEqual({ site: "" });
+    expect(page.state.StartupMode).toBeUndefined();
+    expect(page.navigate).not.toHaveBeenCalled();
+  } finally { page.cleanup(); }
+});

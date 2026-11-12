@@ -1527,14 +1527,22 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
         let address = listener.local_addr().unwrap();
         let local = format!("http://{address}");
         let (stop, stopped) = oneshot::channel();
+        let (entry_ready, entry) = oneshot::channel();
         let service = tokio::spawn(app::serve(
             listener,
             config(),
             async {
                 let _ = stopped.await;
             },
-            None,
+            Some(entry_ready),
         ));
+        assert_eq!(
+            entry.await.unwrap(),
+            format!(
+                "{local}/client{}",
+                if attempt == 1 { "?start=1" } else { "" }
+            )
+        );
         if attempt == 0 {
             let (status, failure) = app_http(
                 address,
@@ -1595,15 +1603,18 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
         let request = json!({"mode":"local","lanAddress":lan.address});
         if attempt == 1 {
             let before = saved_port().unwrap();
-            let (status, failure) = app_http(
-                address,
-                "POST",
-                "/api/client-launcher/launch",
-                Some(&local),
-                Some(request.clone()),
-            )
-            .await;
-            assert_eq!(status, 503);
+            let failure = tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let (_, state) =
+                        app_http(address, "GET", "/api/client-launcher", None, None).await;
+                    if state.get("detail").is_some() {
+                        break state;
+                    }
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .unwrap();
             assert_eq!(failure["reason"], "local-port");
             assert!(failure["detail"]
                 .as_str()
@@ -1662,6 +1673,38 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
         let lan_address =
             std::net::SocketAddr::new(lan.address.parse().unwrap(), domain_address.port());
         let invitation = format!("https://{lan_address}");
+        if attempt == 0 {
+            assert_eq!(
+                app_http(address, "GET", "/health", Some(&invitation), None)
+                    .await
+                    .0,
+                403,
+                "the invitation origin needs its own explicit approval"
+            );
+            assert_eq!(
+                app_http(
+                    address,
+                    "POST",
+                    "/api/client-launcher/site",
+                    Some(&local),
+                    Some(json!({"site":invitation,"allowed":true}))
+                )
+                .await
+                .0,
+                200
+            );
+            let (status, saved) = app_http(
+                address,
+                "POST",
+                "/api/client-launcher/startup-site",
+                Some(&local),
+                Some(json!({"site":invitation})),
+            )
+            .await;
+            assert_eq!(status, 200);
+            assert_eq!(saved["startupMode"], "local");
+            assert_eq!(saved["startupSite"], invitation);
+        }
         assert!(
             TcpListener::bind(lan_address).await.is_err(),
             "the TLS entry is actually bound"
@@ -1683,7 +1726,7 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
             app_http(address, "GET", "/health", Some(&invitation), None)
                 .await
                 .0,
-            403
+            200
         );
         assert_eq!(
             app_http(

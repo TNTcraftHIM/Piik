@@ -108,11 +108,17 @@ struct Host {
     task: JoinHandle<Result<()>>,
 }
 type HostKey = (String, Uuid, Uuid);
+struct LocalSite {
+    origin: String,
+    invitation: String,
+    request: hosted::Request,
+    permission: Arc<Permission>,
+}
 struct Registry {
     sites: sites::Sites,
     approvals: BTreeMap<String, Arc<Permission>>,
     hosts: BTreeMap<HostKey, Host>,
-    local: Option<(String, Arc<Permission>)>,
+    local: Option<LocalSite>,
 }
 impl Registry {
     async fn join_host(&mut self, key: &HostKey) {
@@ -123,8 +129,8 @@ impl Registry {
     fn permission(&self, site: &str) -> Option<&Arc<Permission>> {
         self.local
             .as_ref()
-            .filter(|(origin, _)| origin == site)
-            .map(|(_, permission)| permission)
+            .filter(|local| local.origin == site)
+            .map(|local| &local.permission)
             .or_else(|| self.approvals.get(site))
     }
 }
@@ -242,7 +248,7 @@ impl App {
             for permission in registry.approvals.values() {
                 permission.revoked.send_replace(true);
             }
-            if let Some((_, permission)) = &registry.local {
+            if let Some(LocalSite { permission, .. }) = &registry.local {
                 permission.revoked.send_replace(true);
             }
             std::mem::take(&mut registry.hosts).into_values().collect()
@@ -316,7 +322,12 @@ pub async fn serve(
     }
     let owner = lock_directory(&config.data_root)?;
     let sites = sites::Sites::open(&config.data_root)?;
-    let entry = entry_url(&sites.startup()?, address.port())?;
+    let startup_intent = sites.startup()?;
+    let entry = match &startup_intent {
+        sites::StartupIntent::External(site) => entry_url(site, address.port())?,
+        sites::StartupIntent::Owned(_) => format!("{}?start=1", entry_url("", address.port())?),
+        sites::StartupIntent::None => entry_url("", address.port())?,
+    };
     let open_browser = config.open_browser;
     let approvals = sites
         .approved()?
@@ -340,6 +351,11 @@ pub async fn serve(
         closing: watch::channel(false).0,
         launch: Mutex::new(None),
     });
+    if let sites::StartupIntent::Owned(request) = startup_intent {
+        hosted::begin(&app, request)
+            .await
+            .map_err(|(_, detail)| anyhow::anyhow!("{}", detail.0))?;
+    }
     let router = Router::new()
         .route("/", web::document(index.clone()))
         .route("/index.html", web::document(index))
@@ -515,8 +531,23 @@ async fn health(State(app): State<Arc<App>>) -> Json<Value> {
     )
 }
 fn launcher_state(registry: &Registry, port: u16) -> Result<Value> {
+    let startup = registry.sites.startup()?;
+    let site = match &startup {
+        sites::StartupIntent::External(site) => site.as_str(),
+        sites::StartupIntent::Owned(_) => registry
+            .local
+            .as_ref()
+            .map(|local| local.invitation.as_str())
+            .unwrap_or(""),
+        sites::StartupIntent::None => "",
+    };
+    let mode = match &startup {
+        sites::StartupIntent::Owned(request) => Some(&request.mode),
+        _ => None,
+    };
     Ok(
-        json!({"sites":registry.approvals.keys().collect::<Vec<_>>(),"startupSite":registry.sites.startup()?,
+        json!({"sites":registry.approvals.keys().collect::<Vec<_>>(),"startupSite":site,"startupMode":mode,
+        "ownedSites":registry.local.as_ref().map(|local| vec![&local.origin,&local.invitation]).unwrap_or_default(),
         "version":BUILD_VERSION,"revision":BUILD_REVISION,
         "packageTarget":PACKAGE_TARGET,"controlPort":port,"debug":piik_channel_native::diagnostics::enabled()}),
     )
@@ -553,6 +584,21 @@ async fn approve(State(app): State<Arc<App>>, Json(change): Json<Approval>) -> A
         )
     })?;
     let mut registry = app.registry.lock().await;
+    if !change.allowed
+        && registry
+            .local
+            .as_ref()
+            .is_some_and(|local| local.origin == site || local.invitation == site)
+        && matches!(
+            registry.sites.startup().map_err(operation_failure)?,
+            sites::StartupIntent::Owned(_)
+        )
+    {
+        registry
+            .sites
+            .set_startup(&sites::StartupIntent::None)
+            .map_err(operation_failure)?;
+    }
     let id = registry
         .sites
         .approve(&site, change.allowed)
@@ -596,9 +642,20 @@ async fn startup(State(app): State<Arc<App>>, Json(change): Json<Startup>) -> Ap
             Json(launcher_state(&registry, app.port).map_err(operation_failure)?),
         ));
     }
+    let intent = if change.site.is_empty() {
+        sites::StartupIntent::None
+    } else if let Some(local) = registry
+        .local
+        .as_ref()
+        .filter(|local| local.origin == change.site || local.invitation == change.site)
+    {
+        sites::StartupIntent::Owned(local.request.clone())
+    } else {
+        sites::StartupIntent::External(change.site.clone())
+    };
     registry
         .sites
-        .set_startup(&change.site)
+        .set_startup(&intent)
         .map_err(operation_failure)?;
     launcher_state(&registry, app.port)
         .map(Json)
@@ -1719,6 +1776,108 @@ mod lifecycle_tests {
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpStream,
     };
+
+    #[tokio::test]
+    async fn owned_startup_tracks_the_live_invitation_and_not_a_hostname() {
+        let directory = tempfile::tempdir().unwrap();
+        let old = "https://first.example";
+        let fresh = "https://next.example";
+        let external = "https://other.trycloudflare.com";
+        let app = |invitation: &str| {
+            let mut sites = sites::Sites::open(directory.path()).unwrap();
+            let permission = Arc::new(Permission::new(Uuid::new_v4()));
+            for site in [old, fresh, external] {
+                sites.approve(site, true).unwrap();
+            }
+            Arc::new(App {
+                config: Config {
+                    data_root: directory.path().into(),
+                    assets: directory.path().into(),
+                    open_browser: false,
+                    cloudflared: PathBuf::new(),
+                    ice_servers: vec![],
+                },
+                port: 39731,
+                token: "test".into(),
+                registry: Mutex::new(Registry {
+                    sites,
+                    approvals: [old, fresh, external]
+                        .into_iter()
+                        .map(|site| (site.into(), permission.clone()))
+                        .collect(),
+                    hosts: BTreeMap::new(),
+                    local: Some(LocalSite {
+                        origin: "http://127.0.0.1:8787".into(),
+                        invitation: invitation.into(),
+                        request: serde_json::from_value(json!({"mode":"link"})).unwrap(),
+                        permission,
+                    }),
+                }),
+                closing: watch::channel(false).0,
+                launch: Mutex::new(None),
+                desktop: Desktop::new().unwrap(),
+            })
+        };
+        let first = app(old);
+        let saved = startup(State(first.clone()), Json(Startup { site: old.into() }))
+            .await
+            .unwrap()
+            .0;
+        assert_eq!(saved["startupSite"], old);
+        assert_eq!(saved["startupMode"], "link");
+        {
+            let registry = first.registry.lock().await;
+            let stored = serde_json::to_string(&registry.sites.startup().unwrap()).unwrap();
+            assert!(!stored.contains(old));
+        }
+        drop(first);
+        let restarted = app(fresh);
+        let state = launcher(State(restarted.clone())).await.unwrap().0;
+        assert_eq!(state["startupSite"], fresh);
+        // Revoking an obsolete grant cannot change the owned launch intention.
+        let _ = approve(
+            State(restarted.clone()),
+            Json(Approval {
+                site: old.into(),
+                allowed: false,
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            launcher(State(restarted.clone())).await.unwrap().0["startupMode"],
+            "link"
+        );
+        let saved = startup(
+            State(restarted.clone()),
+            Json(Startup {
+                site: external.into(),
+            }),
+        )
+        .await
+        .unwrap()
+        .0;
+        assert_eq!(saved["startupSite"], external);
+        assert!(saved["startupMode"].is_null());
+        let _ = startup(
+            State(restarted.clone()),
+            Json(Startup { site: fresh.into() }),
+        )
+        .await
+        .unwrap();
+        let cleared = approve(
+            State(restarted),
+            Json(Approval {
+                site: fresh.into(),
+                allowed: false,
+            }),
+        )
+        .await
+        .unwrap()
+        .0;
+        assert_eq!(cleared["startupSite"], "");
+        assert!(cleared["startupMode"].is_null());
+    }
 
     #[test]
     fn publication_audio_settings_survive_pending_picture_work_and_end_with_the_page_capture() {

@@ -131,7 +131,15 @@ $env:PIIK_CHANNEL_CLOUDFLARED = "cloudflared"
 cargo +1.91.0 run --manifest-path prototype/channel-server/Cargo.toml --features capture --bin piik-channel-app
 ```
 
-The App opens its local page in the system Browser, or the saved starred site.
+The App opens its local page in the system Browser, or the saved startup choice.
+An external site's star opens its fixed address. Selecting startup on the current
+App-owned site saves its launch selection: the next App run starts that mode and
+enters the new ready owner address, rather than reopening an expired invitation.
+Ownership follows the running App's exact local and invitation origins, not a
+hostname pattern. This preference grants no site access or capture permission;
+its launcher checkbox clears it, as does revoking its current origin. Older saved
+temporary URLs have no ownership information: start the site from the launcher
+and select the startup checkbox again on its current entry.
 The shared launcher offers **Local network** and **Public invite**. Local uses a
 temporary certificate on the selected IPv4 address, including a virtual-LAN
 adapter; its fingerprint is printed locally. Follow the existing
