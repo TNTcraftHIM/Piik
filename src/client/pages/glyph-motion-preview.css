@@ -1,0 +1,16 @@
+.gm-main { width: min(960px, 100%); padding: 24px; margin-inline: auto; }
+.gm-main > header p, .gm-runtime p { color: var(--muted); font-size: 13px; line-height: 1.7; max-width: 65ch; }
+.gm-main h1 { margin-block: 0 12px; font-size: 28px; }
+.gm-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin-block: 24px; }
+.gm-controls label { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.gm-controls output { min-width: 4ch; color: var(--muted); }
+.gm-board { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.gm-example { padding: 18px; border: 1px solid var(--line); border-radius: var(--c3-surface-radius); background: var(--paper); }
+.gm-example h2 { margin: 0 0 18px; font-size: 14px; line-height: 1.5; }
+.gm-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.gm-comparison > div { display: grid; justify-items: center; gap: 14px; padding: 12px 0; }
+.gm-comparison span { color: var(--muted); font-size: 12px; }
+.gm-before .lr-glyph > * { --glyph-stroke-start: 0 !important; --glyph-stroke-share: 1 !important; }
+.gm-runtime { display: flex; flex-wrap: wrap; gap: 12px; padding-block: 24px; }
+.gm-runtime h2, .gm-runtime p { width: 100%; }
+@media (max-width: 650px) { .gm-main { padding: 16px; } .gm-board { grid-template-columns: minmax(0, 1fr); } }

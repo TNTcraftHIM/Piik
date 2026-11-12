@@ -928,7 +928,12 @@ surface colour, lift, focus and press feedback carry the interaction. Reserve
 icon drawing/replay for primary actions such as starting a share or joining a
 room, and for explicit state-entry feedback. The whole control owns the trigger.
 Stroke and solid drawings share one total duration and easing; stroke count
-must not lengthen the animation. Disabled controls and passive status icons
+must not lengthen the animation. [Path direction](https://www.w3.org/TR/SVG2/paths.html#PathDirectionality) and any grouped stroke phases
+belong to the shared icon definition: draw a check in one left-to-right stroke,
+build an object before its details, and reveal an off-state slash last. Related
+directions and on/off variants follow the same grammar; equivalent parts may draw
+together. Keep ordinary icons still rather than choreographing every path.
+Disabled controls and passive status icons
 retain their informative pose; busy indicators retain their progress beat.
 Do not add a per-scene timer or another interaction/state owner. Outside status
 comics, the brand mascot and participant figures may blink or glance occasionally;

@@ -1,4 +1,9 @@
-@keyframes lr-glyph-in { to { stroke-dashoffset: 0; } }
+@keyframes lr-glyph-in {
+  0% { opacity: 0; }
+  1% { opacity: 1; }
+  100% { opacity: 1; stroke-dashoffset: 0; }
+}
+.lr-glyph { --glyph-duration: 280ms; }
 @keyframes lr-glyph-pop {
   0% { opacity: 0; transform: scale(.3); }
   100% { opacity: 1; transform: scale(1); }
@@ -8,12 +13,12 @@
    each stroke. Reduced motion and ordinary controls use the unanimated SVG. */
 @media (prefers-reduced-motion: no-preference) {
   :where(html:not([data-reduced-motion])) {
-    .lr-glyph-draw:not(.lr-spin),
+    .lr-glyph-draw:not(.lr-spin):not(:disabled *, [aria-disabled="true"] *),
     :is(button, a):is(.lr-btn.is-primary, .lr-tv-big, .lr-join-go, .lr-tv-overlay):not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible) .lr-glyph:not(.lr-glyph-draw):not(.lr-spin) {
       & > :is(path, circle, rect, line) {
         stroke-dasharray: 1;
         stroke-dashoffset: 1;
-        animation: lr-glyph-in 280ms cubic-bezier(.45, .05, .35, 1) both;
+        animation: lr-glyph-in calc(var(--glyph-duration) * var(--glyph-stroke-share, 1)) cubic-bezier(.45, .05, .35, 1) calc(var(--glyph-duration) * var(--glyph-stroke-start, 0)) both;
       }
       &.is-solid > :is(path, circle, rect), & > :is([fill="currentColor"], [fill^="#"]) {
         stroke-dasharray: none;

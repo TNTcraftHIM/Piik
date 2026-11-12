@@ -3,11 +3,14 @@
 // children (never dangerouslySetInnerHTML — React re-sets innerHTML on every
 // render pass, which would restart the draw-in animation on unrelated state
 // changes; reconciled children stay put, so the draw only replays on a true
-// icon swap). pathLength={1} on every shape paces the draw-in evenly.
+// icon swap). pathLength={1} normalizes each shape; optional stroke phases
+// define semantic pen order within the same shared animation duration.
 // Meanings are shared across controls, comics and text placeholders; see
 // docs/standards/visual-language.md#symbol-reference before adding a symbol.
-import { useEffect, useRef, type ReactNode } from "react";
+import { Children, cloneElement, useEffect, useRef, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { bindSvgReplayOnPointerEnter } from "./animation";
+
+type GlyphDefinition = { body: ReactElement<{ children: ReactNode }>; solid?: boolean; phases?: number[] };
 
 const PATHS = {
   qr: { body: (<><path pathLength={1} d="M3 3h6v6H3zM15 3h6v6h-6zM3 15h6v6H3zM15 15h3v3h3v3h-6zM12 3v3m0 6h6m3 0v3M3 12h6m3 3v6" /></>) },
@@ -29,8 +32,8 @@ const PATHS = {
   camera: { body: (<><rect pathLength={1} x="2" y="6" width="14" height="12" rx="3"/><path pathLength={1} d="m16 10 6-3v10l-6-3"/></>) },
   microphone: { body: (<><rect pathLength={1} x="9" y="2" width="6" height="13" rx="3"/><path pathLength={1} d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></>) },
   microphoneOff: { body: (<><path pathLength={1} d="M9 5a3 3 0 0 1 6 0v5m0 4a3 3 0 0 1-6-2V9M5 10v2a7 7 0 0 0 12 5m2-5v-2M12 19v3m-4 0h8M3 3l18 18"/></>) },
-  headphones: { body: (<><path pathLength={1} d="M3 14v-2a9 9 0 0 1 18 0v2"/><rect pathLength={1} x="3" y="12" width="5" height="9" rx="2"/><rect pathLength={1} x="16" y="12" width="5" height="9" rx="2"/></>) },
-  headphonesOff: { body: (<><path pathLength={1} d="M3 14v-2c0-2 .6-3.8 1.7-5.3M9 3.5A9 9 0 0 1 21 12v3M3 3l18 18"/><rect pathLength={1} x="3" y="12" width="5" height="9" rx="2"/><path pathLength={1} d="M16 16v3a2 2 0 0 0 2 2h1m2-4v-3a2 2 0 0 0-2-2h-1"/></>) },
+  headphones: { phases: [0, 1, 1], body: (<><path pathLength={1} d="M3 14v-2a9 9 0 0 1 18 0v2"/><rect pathLength={1} x="3" y="12" width="5" height="9" rx="2"/><rect pathLength={1} x="16" y="12" width="5" height="9" rx="2"/></>) },
+  headphonesOff: { phases: [0, 1, 1, 2], body: (<><path pathLength={1} d="M3 14v-2c0-2 .6-3.8 1.7-5.3M9 3.5A9 9 0 0 1 21 12v3"/><rect pathLength={1} x="3" y="12" width="5" height="9" rx="2"/><path pathLength={1} d="M16 16v3a2 2 0 0 0 2 2h1m2-4v-3a2 2 0 0 0-2-2h-1"/><path pathLength={1} d="M3 3l18 18"/></>) },
   couch: { body: (<><path pathLength={1} d="M5 12V8a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v4M6 19v2m12-2v2"/><path pathLength={1} d="M5 15h14v-3a2 2 0 0 1 4 0v5a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-5a2 2 0 0 1 4 0Z"/></>) },
   gamepad: { body: (<><path pathLength={1} d="M8 7h8c3 0 4 2 5 6l1 5c.3 2-2 3-3.5 1.5L16 17H8l-2.5 2.5C4 21 1.7 20 2 18l1-5c1-4 2-6 5-6Z"/><path pathLength={1} d="M6 12h4m-2-2v4m8-3h.01M18 14h.01"/></>) },
   save: { body: (<><path pathLength={1} d="M5 3h12l4 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path pathLength={1} d="M7 3v6h9V3M7 21v-7h10v7"/></>) },
@@ -45,7 +48,7 @@ const PATHS = {
   copy: { body: (<><rect pathLength={1} x="9" y="9" width="12" height="12" rx="2"/><path pathLength={1} d="M5 15V5a2 2 0 0 1 2-2h10"/></>) },
   check: { body: (<><path pathLength={1} d="M4 12.5 9.5 18 20 6.5"/></>) },
   refresh: { body: (<><path pathLength={1} d="M3 12a9 9 0 0 1 9-9 9.7 9.7 0 0 1 6.7 2.7L21 8"/><path pathLength={1} d="M21 3v5h-5"/><path pathLength={1} d="M21 12a9 9 0 0 1-9 9 9.7 9.7 0 0 1-6.7-2.7L3 16"/><path pathLength={1} d="M8 16H3v5"/></>) },
-  x: { body: (<><path pathLength={1} d="M18 6 6 18M6 6l12 12"/></>) },
+  x: { phases: [0, 1], body: (<><path pathLength={1} d="M6 6l12 12"/><path pathLength={1} d="M18 6 6 18"/></>) },
   eye: { body: (<><path pathLength={1} d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle pathLength={1} cx="12" cy="12" r="3"/></>) },
   eyeOff: { body: (<><path pathLength={1} d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19M6.61 6.61A13.5 13.5 0 0 0 2 12s3 8 10 8a9.74 9.74 0 0 0 5.39-1.61"/><path pathLength={1} d="m2 2 20 20"/><path pathLength={1} d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/></>) },
   play: { solid: true, body: (<><path pathLength={1} d="M7 4.8v14.4a1 1 0 0 0 1.52.86l11.4-7.2a1 1 0 0 0 0-1.72L8.52 3.94A1 1 0 0 0 7 4.8Z"/></>) },
@@ -64,12 +67,12 @@ const PATHS = {
   pencil: { body: (<><path pathLength={1} d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3Z"/></>) },
   link: { body: (<><path pathLength={1} d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path pathLength={1} d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></>) },
   linkOff: { body: (<><path pathLength={1} d="M10 13a5 5 0 0 0 7.54.54l1.1-1.1M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/><path pathLength={1} d="m3 3 18 18"/></>) },
-  arrowRight: { body: (<><path pathLength={1} d="M4 12h16m-6.5-6.5L20 12l-6.5 6.5"/></>) },
-  arrowLeft: { body: (<><path pathLength={1} d="M20 12H4m6.5-6.5L4 12l6.5 6.5"/></>) },
+  arrowRight: { phases: [0, 1], body: (<><path pathLength={1} d="M4 12h16"/><path pathLength={1} d="m13.5 5.5 6.5 6.5-6.5 6.5"/></>) },
+  arrowLeft: { phases: [0, 1], body: (<><path pathLength={1} d="M20 12H4"/><path pathLength={1} d="m10.5 5.5-6.5 6.5 6.5 6.5"/></>) },
   reply: { body: (<><path pathLength={1} d="m9 5-6 6 6 6M3 11h10a7 7 0 0 1 7 7v1"/></>) },
-  arrowUp: { body: (<><path pathLength={1} d="M12 20V4m-6.5 6.5L12 4l6.5 6.5"/></>) },
-  arrowDown: { body: (<><path pathLength={1} d="M12 4v16m-6.5-6.5L12 20l6.5-6.5"/></>) },
-  key: { body: (<><circle pathLength={1} cx="7.5" cy="15.5" r="4.5"/><path pathLength={1} d="m11 12.5 9.5-9.5M14.5 6l3 3M17.5 3l3 3"/></>) },
+  arrowUp: { phases: [0, 1], body: (<><path pathLength={1} d="M12 20V4"/><path pathLength={1} d="m5.5 10.5 6.5-6.5 6.5 6.5"/></>) },
+  arrowDown: { phases: [0, 1], body: (<><path pathLength={1} d="M12 4v16"/><path pathLength={1} d="m5.5 13.5 6.5 6.5 6.5-6.5"/></>) },
+  key: { phases: [0, 1, 2, 2], body: (<><circle pathLength={1} cx="7.5" cy="15.5" r="4.5"/><path pathLength={1} d="m11 12.5 9.5-9.5"/><path pathLength={1} d="m14.5 6 3 3"/><path pathLength={1} d="m17.5 3 3 3"/></>) },
   globe: { body: (<><circle pathLength={1} cx="12" cy="12" r="9"/><path pathLength={1} d="M3 12h18"/><path pathLength={1} d="M12 3c2.5 2.6 3.9 5.6 3.9 9s-1.4 6.4-3.9 9c-2.5-2.6-3.9-5.6-3.9-9S9.5 5.6 12 3Z"/></>) },
   lock: { body: (<><rect pathLength={1} x="4" y="11" width="16" height="10" rx="2"/><path pathLength={1} d="M8 11V7a4 4 0 0 1 8 0v4"/></>) },
   signal: { body: (<><path pathLength={1} d="M2 9a15 15 0 0 1 20 0"/><path pathLength={1} d="M5 12.5a10 10 0 0 1 14 0"/><path pathLength={1} d="M8.5 16a5 5 0 0 1 7 0"/><path pathLength={1} d="M12 19.5h.01"/></>) },
@@ -106,7 +109,7 @@ const PATHS = {
   zap: { body: (<><path pathLength={1} d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></>) },
   cast: { body: (<><path pathLength={1} d="M4 16a4 4 0 0 1 4 4M4 12a8 8 0 0 1 8 8"/><circle pathLength={1} cx="4" cy="20" r="1.2" fill="currentColor" stroke="none"/><path pathLength={1} d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></>) },
   sun: { body: (<><circle pathLength={1} cx="12" cy="12" r="4"/><path pathLength={1} d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></>) },
-} satisfies Record<string, { body: ReactNode; solid?: boolean }>;
+} satisfies Record<string, GlyphDefinition>;
 
 export type GlyphName = keyof typeof PATHS;
 
@@ -125,8 +128,17 @@ export function Glyph({
    */
   draw?: string;
 }) {
-  const icon: { body: ReactNode; solid?: boolean } = PATHS[name];
+  const icon: GlyphDefinition = PATHS[name];
   const isSolid = icon.solid === true;
+  const phases = icon.phases;
+  let body: ReactNode = icon.body;
+  if (phases) {
+    const total = Math.max(...phases) + 1;
+    body = Children.map(icon.body.props.children, (shape, index) => {
+      const style = { "--glyph-stroke-start": phases[index] / total, "--glyph-stroke-share": 1 / total } as CSSProperties;
+      return cloneElement(shape as ReactElement<{ style?: CSSProperties }>, { style });
+    });
+  }
   const glyphClass = [
     "lr-glyph",
     draw ? "lr-glyph-draw" : null,
@@ -158,7 +170,7 @@ export function Glyph({
       focusable="false"
       className={glyphClass}
     >
-      {icon.body}
+      {body}
     </svg>
   );
 }
