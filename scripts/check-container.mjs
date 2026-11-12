@@ -8,6 +8,7 @@ import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import WebSocket from "ws";
+import { tsImport } from "tsx/esm/api";
 import { resetBuildWorkspace } from "./build-workspace.mjs";
 import { checkWebSourceIdentity } from "./container-web-identity.mjs";
 
@@ -16,6 +17,7 @@ if (process.argv.length !== 4 || !image || !/^[0-9a-f]{40}$/.test(revision ?? ""
   throw new Error("Usage: node scripts/check-container.mjs <local-image> <full-source-sha>");
 }
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const { CHANNEL_PROTOCOL } = await tsImport("../src/client/channel/protocol.ts", import.meta.url);
 const project = `piik-check-${randomUUID()}`;
 const workspace = resetBuildWorkspace(root, "container-check", project);
 const origin = "https://share.example.com";
@@ -54,7 +56,7 @@ async function rooms() {
       socket.once("error", reject);
       socket.once("open", () => {
         const publicKey = generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" });
-        socket.send(JSON.stringify({ type: "join", name: "Container check", ownerKey,
+        socket.send(JSON.stringify({ type: "join", protocol: CHANNEL_PROTOCOL, name: "Container check", ownerKey,
           signingKey: [...Buffer.from(publicKey.x, "base64url")] }));
       });
       socket.on("message", bytes => {
