@@ -108,14 +108,12 @@ Manage approved sites from the App launcher. See the
 
 ### Upgrading
 
-Read the upgrade instructions supplied with your 3.0 test package, then refresh
-the Web page after updating App. If App reports `unsupported_domain_checkpoint`,
-it has preserved data from an older test format. Keep that data and follow the
-package's fresh-data instructions; [saved-data settings](../../prototype/channel-server/README.md#saved-data-and-files)
-explain the separate App and Server directories. Public 2.x downloads are not
-the 3.0 test update. If the beta reports `unsupported_storage_version`, stop
-App and run the supplied `reset-beta-app-data.ps1`; it keeps the old App
-directory as a timestamped backup.
+Read the upgrade instructions supplied with your 3.0 test package, keep the
+existing data directory unless those instructions require otherwise, and refresh
+the Web page after updating App. For `unsupported_storage_version` or
+`unsupported_domain_checkpoint`, preserve the old data and follow the
+[storage-format checks](./troubleshooting.md#the-beta-app-reports-unsupportedstorageversion).
+Public 2.x downloads are not the 3.0 test update.
 
 ## Share from an existing site
 

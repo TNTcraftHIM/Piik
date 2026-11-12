@@ -221,8 +221,8 @@ query parameter. `PIIK_CHANNEL_APP_WEB_DIR` selects the built frontend and
 
 ## App diagnostics
 
-On the App's local launcher page, enable **Debug launch** before reproducing the
-problem. Return to that page and select **App report** to download the ZIP.
+On the App's local launcher page, enable **Help → Debug** before reproducing the
+problem. Return to **Help → App report** on that page to download the ZIP.
 This works on desktop and Android, including while the local domain is running.
 
 Diagnostics are off in each new App process. Enabling them retains bounded

@@ -297,7 +297,6 @@ export const en: Record<CopyKey, string> = {
   "client.launch.failure.launcher": "The App launcher is unavailable. Check the technical details.",
   "client.launch.failure.diagnostics": "Diagnostic logs could not be saved. Check the log folder and write permissions.",
   "client.launch.failure.local-server": "The local room service is unavailable. Check the technical details.",
-  "client.launch.debug": "Debug launch",
   "client.launch.debugHint": "Enable App diagnostics before reproducing the problem, then return here to download the App report. Pages opened from here also record browser diagnostics.",
   "client.launch.debugFailed": "Could not start diagnostics. Please try again.",
   "client.launch.debugExport": "App report",

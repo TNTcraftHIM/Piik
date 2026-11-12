@@ -29,7 +29,8 @@ The picture, playback controls and couch stay central; **Interact** opens the ro
 **Join voice** stays beside the couch; after joining, its voice controls include
 mute, listening and leave. Opening the inline interaction panel leaves the couch in place.
 Several people can share at once: select **Watch** on each picture you want,
-then choose grid or focus. Stopping one picture keeps the others playing.
+then choose grid or focus. The grid arranges separate screens to fit the window;
+focus keeps the other pictures available. Stopping one picture keeps the others playing.
 
 Changing interfaces keeps current shares, watches, drafts and joined voice.
 Joined voice retains its controls and leave action. Switch back to **Full workspace**
@@ -78,10 +79,10 @@ backs up their own rooms, without centralizing everyone's records at the site op
 
 1. Select a room and send a message in its conversation. Use the attachment
    button to add an image or file; you can include text with it.
-2. Hover over a message or focus its reaction button with the keyboard to show
-   **React to this message**. Touchscreens keep the button visible. Existing
-   counts stay below the message; each confirmed click adds one, including
-   another click on the same reaction after the brief cooldown.
+2. Hover over a message, focus it with the keyboard, or tap it to reveal its
+   reaction, **@** and reply actions. Existing reaction counts stay
+   visible; each confirmed click adds one, including another click on the same
+   reaction after the brief cooldown.
 3. To read back, select **Earlier messages**. **Latest messages** returns to
    the current conversation.
 
@@ -90,10 +91,18 @@ position. Reading the latest messages to the bottom in a focused conversation
 clears it. This browser remembers that position; background voice or watching
 does not mark messages as read.
 
-Type `@` and choose a person to mention them. The highlighted name stays linked
-to that user even if their nickname changes. Use **Reply to this message** beside
-a message to quote it above the composer; cancel the quote without losing your
-draft, or turn off **Notify reply recipient** for that reply. Select a sent quote to jump
+Messages allow up to 2,000 characters and support Markdown emphasis, lists, quotes,
+links and code. Wrap inline code in backticks, or put a code block between lines
+of three backticks; its
+**Copy code** action copies the code without those fences. Code stays literal;
+message HTML is not executed.
+
+Type `@` and choose a person to mention them, or use a message's **@**
+action to insert that author at the draft's current cursor or selected text.
+The highlighted name stays linked to that user even if their nickname changes.
+Use **Reply to this message** beside a message to quote it above the composer;
+cancel the quote without losing your draft, or turn off **Notify reply recipient**
+for that reply. Select a sent quote to jump
 to its original message, then **Latest messages** to return.
 
 On a desktop, Enter sends and Shift+Enter adds a line. On a touchscreen, Return

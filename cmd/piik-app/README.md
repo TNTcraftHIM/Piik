@@ -32,10 +32,11 @@ Choose **Local network** or **Public invite**, then **Open Piik**. This starts
 one site containing your rooms. Anyone opening its address can create a room;
 a private room needs its own invitation or password.
 
-The mode preference stays in this browser. Returning to an already running
-site does not replace that preference or create another site. To change
-the running mode, finish its shares, quit App normally and reopen it before
-selecting the other mode. An approved starred site can open instead on startup.
+The launcher's mode preference stays in this browser. An App-owned startup
+choice also saves the mode in App and starts it on the next run. Returning to
+an already running site keeps its current mode. To choose another mode, first
+clear **Open my site when App starts** if enabled, finish your activities, then
+quit App normally and reopen the launcher.
 
 ### Local Network
 
@@ -94,8 +95,11 @@ its own connection step. Room admission and remote-control consent remain separa
 In the approved-site list:
 
 - Select a site to open it.
-- Use its star to open that one site when App starts. Clear the star to return
-  to the launcher on startup.
+- Star an external site to open its fixed address when App starts. Starring
+  the current App-owned site saves its Local network or Public invite mode;
+  App starts that mode and opens its new ready address. The launcher names
+  this choice **Open my site when App starts (mode)**. Clear it to return to
+  the launcher on the next start; the current site keeps running.
 - Remove approval to stop that site's App hosting and control connections.
   Saved rooms remain and other sites continue. Reapprove the same site and use
   the same domain account to reopen its rooms.
@@ -147,11 +151,9 @@ incompatible, update the domain's Server and connected Apps together, then refre
 3. Start with the same application-data directory. Send the current invitation
    if its address changed.
 
-If a private beta reports `unsupported_storage_version`, stop App and run the
-supplied `reset-beta-app-data.ps1` helper. It renames the old Windows data
-directory to a timestamped backup and leaves it in place; the next start uses a
-fresh directory. This intentionally resets the private beta format instead of
-silently migrating an old experiment.
+If App reports `unsupported_storage_version` or `unsupported_domain_checkpoint`,
+preserve the old data and follow the [storage-format checks](../../docs/guide/troubleshooting.md#the-beta-app-reports-unsupportedstorageversion)
+and the instructions supplied with that test package.
 
 The launcher checks published releases and links to their notes. During this
 unpublished test, follow the supplied test-update instructions rather than

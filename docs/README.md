@@ -17,7 +17,7 @@ This page indexes developer and maintainer references.
 | Operate published 2.x | [Self-hosting](./operations/self-hosting.md) · [Configuration](./standards/configuration.md) · [Service management](./operations/service-management.md) |
 | Build App packages and native capture | [Rust App](../prototype/channel-server/README.md#local-app-link) · [Packaging](./deployment.md#build-host) |
 | Build, publish or recover a maintained release | [Maintainer release tooling](./deployment.md) |
-| Send a useful bug report | [Diagnostics and export](./standards/configuration.md#diagnostics) |
+| Send a useful 3.0 bug report | [Diagnostics and export](./guide/troubleshooting.md#reporting-a-problem) |
 | Translate Piik or improve wording | [Translation guide](./guide/translating.md) · [中文翻译教程](./guide/translating.zh-CN.md) |
 | Check release and platform readiness | [Current status](./status.md) |
 

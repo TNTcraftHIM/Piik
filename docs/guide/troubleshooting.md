@@ -46,6 +46,12 @@ symptom's simple checks have failed. Change one thing at a time.
 3. If startup still fails, enable **Help → Debug** on the App launcher, retry and save the complete
    error and an [App report](#reporting-a-problem).
 
+If startup opens an expired temporary invitation, return to the App launcher,
+start your site and select startup on its current entry again. **Open my site
+when App starts (mode)** saves the launch mode; an external site's star saves
+its fixed address. Clear the owned-site option before restarting App to choose
+a different mode.
+
 ### Android APK will not install
 
 Use the 3.0 test APK supplied with your invitation; the [App guide](./getting-started.md#share-with-piik-app) covers installation.
@@ -227,12 +233,18 @@ storage to retry; that can remove retained files, identity or a Browser-hosted r
 
 ### The beta App reports `unsupported_storage_version`
 
-This is the expected boundary when a private beta changes its local storage
-format. Stop Piik App, keep any room backups, and run the supplied
-`reset-beta-app-data.ps1` helper. It renames the old App data directory with a
-timestamp and keeps it as a backup; the next start creates a fresh beta directory.
-The helper does not migrate or delete the old database. This reset helper is for
-the 3.0 internal beta only.
+This error, or `unsupported_domain_checkpoint`, means the running version cannot
+read the saved format. Stop the affected App or Server, preserve its data and
+follow that test package's upgrade instructions. The [saved-data reference](../../prototype/channel-server/README.md#saved-data-and-files)
+identifies the App and Server directories. Updating a compatible beta does not
+require a reset. If the package has no matching recovery instructions, report
+the version and complete error before changing its data.
+
+If your Windows test package supplies `reset-beta-app-data.ps1` and explicitly
+requires fresh data, that helper renames the old App directory to a timestamped
+backup; it does not migrate the database. It is not an Android or macOS/Linux
+reset procedure. Do not uninstall Android App or clear browser storage to retry
+a connection.
 
 ## Starting a share
 

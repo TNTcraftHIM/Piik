@@ -108,7 +108,7 @@ is insufficient. Choose a tool everyone in your group can use:
 ![Join the same virtual network, select its address in the App's Local network mode, then send the site address or room link and confirm the local certificate.](../assets/guide/virtual-lan.en.svg)
 
 1. Everyone runs the networking tool and joins the same virtual network.
-2. In the App launcher, choose **Local network** and select the tool's virtual IP from the available invitation addresses, then **Open Piik**. If another mode is already running, finish its shares and reopen App before selecting the mode.
+2. In the App launcher, choose **Local network** and select the tool's virtual IP from the available invitation addresses, then **Open Piik**. If another mode is already running, clear **Open my site when App starts** if enabled, finish its activities, then quit and reopen App before selecting the mode.
 3. Create or open the intended room. Send the site address or room link using that virtual address. Friends [confirm the local certificate](./troubleshooting.md#local-https-certificate-warning) with the App owner before entering.
 4. Try chat, then **Watch**, voice or the file download. Everyone keeps the networking tool running; the App owner also keeps Piik App running.
 

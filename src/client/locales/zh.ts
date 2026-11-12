@@ -297,7 +297,6 @@ export const zh = {
   "client.launch.failure.launcher": "App 启动页不可用，请查看技术详情。",
   "client.launch.failure.diagnostics": "无法保存诊断日志，请检查日志目录及写入权限。",
   "client.launch.failure.local-server": "本地房间服务不可用，请查看技术详情。",
-  "client.launch.debug": "诊断启动",
   "client.launch.debugHint": "复现问题前开启 App 诊断，再回到此处下载 App 报告。从此页进入的网页也会记录网页诊断。",
   "client.launch.debugFailed": "未能开启诊断，请重试。",
   "client.launch.debugExport": "App 报告",
