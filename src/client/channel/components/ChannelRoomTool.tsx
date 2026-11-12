@@ -57,7 +57,7 @@ export function ChannelRoomTool({ title, caption, home, surface, onSurfaceChange
       </Tooltip>
       {actions}
     </div>
-    <FloatingPanel id={id} trigger={trigger} title={title} icon="couch" directWindow={!preferPanel} detachable={preferPanel} className="c3-room-tool"
+    <FloatingPanel id={id} trigger={trigger} title={title} icon="couch" directWindow={!preferPanel} detachable={preferPanel} detachedAction="return" className="c3-room-tool"
       onOpenChange={(open, owner) => {
         // Placement-dependent children must render against their new ancestry.
         place(open, owner);

@@ -267,8 +267,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
           <Btn id={`${id}-toggle`} icon="chat" title={detached ? "interaction.focus" : chatOpen ? "interaction.close" : "interaction.open"}
             cap="interaction.open" expanded={chatOpen} controls={detached ? undefined : id}
             hint={detached ? "hint-window-detach" : chatOpen ? "hint-close" : "hint-chat-open"}
-            tone={chatOpen ? "on" : undefined} popoverTarget={detached ? undefined : id}
-            onClick={detached ? () => chatDocument?.defaultView?.focus() : undefined} />
+            tone={chatOpen ? "on" : undefined} popoverTarget={detached ? undefined : id} />
           {unread > 0 && <span className="lr-interaction-unread" aria-label={t("interaction.unread", { count: String(unread) })}>{unread}</span>}
         </span>} />
       <RoomReactionEffects reactions={state.reactions} participants={participants} area={area} now={session.now} />

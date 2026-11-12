@@ -108,8 +108,7 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
       <Btn id={`${id}-trigger`} icon="mouse" cap={iconOnly ? undefined : "remote.title"} size={size}
         title={detached ? "floating.focus" : pending ? "remote.requests" : controller?.state === "suspended" ? "remote.hostFocus" : controller ? "remote.controlling" : "remote.title"} hint={detached ? "hint-window-detach" : "hint-remote-control"}
         tone={mode !== "off" || open ? "on" : undefined}
-        popoverTarget={detached ? undefined : id} expanded={open} controls={detached ? undefined : id}
-        onClick={detached ? () => surfaceDocument?.defaultView?.focus() : undefined} />
+        popoverTarget={detached ? undefined : id} expanded={open} controls={detached ? undefined : id} />
       {pending > 0 && <span className="lr-remote-count" role="status" aria-label={`${t("remote.requests")}: ${pending}`}>{pending}</span>}
     </span>
     {createPortal(<FloatingPanel id={id} trigger={`${id}-trigger`} title={t("remote.title")} icon="mouse" compact anchorOnOpen detachable

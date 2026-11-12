@@ -317,6 +317,9 @@ Close, return-to-tab, movement and resizing belong to that frame; do not duplica
 its controls in the tool header. Keep messages and text contrast
 primary; do not simulate transparent desktop content with a washed-out panel.
 Moving or detaching changes the surface, not the domain owner or protocol.
+The page's invoker remains usable while detached. Its label and action agree:
+focus the existing tool, or return the same content to the page. `FloatingPanel`
+owns that action; feature triggers do not add competing window handlers.
 Request the tool's current rendered size when detaching, within browser window
 limits. The native title bar replaces the floating panel's header; keep body
 spacing and control sizes consistent with the in-page tool.

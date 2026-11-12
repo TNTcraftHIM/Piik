@@ -301,7 +301,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
           const name = messageAuthorName(message, displayUsers, zh ? "用户" : "User");
           return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name} authorMessageId={authorMessageId}
             avatar={(!summary || summary.version === author?.version ? author?.avatar : null) ?? undefined}
-            users={displayUsers} selfUserId={selfUserId} unread={newMessages} onMessage={seq => { void showMessage(seq); }}
+            users={displayUsers} selfUserId={selfUserId} unread={newMessages} onMessage={loadingHistory ? undefined : seq => { void showMessage(seq); }}
             onReply={() => { updateDraft(value => ({ ...value, reply: { seq: message.seq, notify: true, name, text: message.text || (zh ? "附件" : "Attachment") } })); input.current?.focus(); }}
             dateLabel={newDay ? date.toLocaleDateString(zh ? "zh-CN" : "en", { dateStyle: "long" }) : undefined}
             attachments={attachments} available={available} interaction={interaction} effectsEnabled={!hidden && !loadingHistory} />;
@@ -385,7 +385,7 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
   roomId: string; message: ChannelMessage; grouped: boolean; name: string; avatar?: string; dateLabel?: string;
   attachments: ChannelAttachments; available: boolean; interaction: RoomInteractionSession | null;
   authorMessageId: string; effectsEnabled: boolean;
-  users: ChannelUserSummary[]; unread: boolean; onReply(): void; onMessage(seq: number): void;
+  users: ChannelUserSummary[]; unread: boolean; onReply(): void; onMessage?(seq: number): void;
   selfUserId?: string | null;
 }) {
   const { lang } = useCopy();
@@ -402,7 +402,7 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
     <div className="c3-message-body">{!grouped && <div className="c3-message-meta"><strong>{name}</strong>
       <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
     </div>}<div className="c3-message-content-body">
-    {message.reply && <button type="button" className="c3-message-reference" onClick={() => onMessage(message.reply!.seq)}>
+    {message.reply && <button type="button" className="c3-message-reference" disabled={!onMessage} onClick={() => onMessage?.(message.reply!.seq)}>
       <Glyph name="reply" size={14} /><strong>{message.reply.archivedAuthorName ?? users.find(user => user.id === message.reply!.userId)?.name ?? (lang === "zh" ? "用户" : "User")}</strong>
       <span>{message.reply.text || (lang === "zh" ? "附件" : "Attachment")}</span></button>}
     {message.text && <p><MessageText message={message} users={users} selfUserId={selfUserId} /></p>}

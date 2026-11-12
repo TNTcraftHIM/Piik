@@ -11,11 +11,12 @@ type PanelGesture = "move" | "nw" | "se";
 type PanelChange = { x: number; y: number } | { rect: DOMRect; corner: "nw" | "se"; dx: number; dy: number };
 
 /** Native visibility owns the shell; content owns its session, draft and reading position. */
-export function FloatingPanel({ id, trigger, title, icon, compact = false, anchorOnOpen = false, detachable = false, directWindow = false, className = "", children, onOpenChange }: {
+export function FloatingPanel({ id, trigger, title, icon, compact = false, anchorOnOpen = false, detachable = false, directWindow = false, detachedAction = directWindow ? "return" : "focus", className = "", children, onOpenChange }: {
   id: string; trigger: string | RefObject<HTMLElement | null>; title: string; icon: GlyphName; compact?: boolean; className?: string;
   anchorOnOpen?: boolean;
   detachable?: boolean;
   directWindow?: boolean;
+  detachedAction?: "focus" | "return";
   children: ReactNode; onOpenChange?: (open: boolean, ownerDocument: Document) => void;
 }) {
   const { t, vis, lang } = useCopy();
@@ -44,11 +45,12 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
 
   useLayoutEffect(() => {
     const invoker = getTrigger();
-    if (!directWindow || !invoker) return;
+    if ((!directWindow && !detached) || !invoker) return;
     const toggleWindow = (event: MouseEvent) => {
       if (detached) {
         event.preventDefault();
-        panelWindow.close();
+        if (detachedAction === "return") panelWindow.close();
+        else surfaceDocument?.defaultView?.focus();
         return;
       }
       if (panelRef.current?.matches(":popover-open")) {
@@ -66,7 +68,7 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
     };
     invoker.addEventListener("click", toggleWindow);
     return () => invoker.removeEventListener("click", toggleWindow);
-  }, [directWindow, trigger, detached, panelWindow.opening, panelWindow.open, panelWindow.close]);
+  }, [directWindow, detachedAction, trigger, detached, surfaceDocument, panelWindow.opening, panelWindow.open, panelWindow.close]);
 
   useLayoutEffect(() => {
     const panel = panelRef.current;
