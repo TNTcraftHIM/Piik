@@ -574,8 +574,10 @@ integration and revocation/stop before extracting a public SDK or plugin ABI;
 unattended publishing is not accepted by this proposal.
 
 The smallest production lease would live in the authenticated App/Native Driver,
-not in room storage: `{ resourceId, issuerSessionId, roomId, bindingId,
-publicationId, sourceGeneration, endpoint }` plus a short-lived in-memory secret.
+not in room storage: `{ generation, issuerSessionId, roomId, bindingId,
+publicationId }` plus a short-lived in-memory secret. The generation is also the
+WHIP resource identifier and derives the loopback endpoint; one identifier fences
+replacement and stale DELETE callbacks.
 The current snapshot supplies the issuer and scope; OBS cannot choose them. A
 single lease may feed one publication. The existing Driver turn, `SourceFeed::Rtp`,
 relay and output owners retain the RTP clock and resource accounting. Binding
