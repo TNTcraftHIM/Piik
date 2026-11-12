@@ -186,7 +186,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
           </div>
         </div>}
       </header>
-      <div ref={grid} hidden={!active.length} className={`c3-monitor-grid${focused ? " is-focused" : ""}`}
+      <div ref={grid} hidden={!active.length} className={`c3-monitor-grid${focused ? " is-focused" : active.length > 1 ? " is-grid" : ""}`}
         style={{ "--stage-columns": columns ?? 1, "--stage-thumbnails": Math.max(1, active.length - 1) } as CSSProperties}>
         {retained.map(source => {
           const index = active.indexOf(source);

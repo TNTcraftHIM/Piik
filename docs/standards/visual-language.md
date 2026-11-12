@@ -145,7 +145,8 @@ one promotes it to the full controls without remounting its player. Full-size gr
 and focused pictures use the same source-information bar and action order. The
 bar overlays the picture and follows playback-control visibility. Playback,
 volume, focus, source selection and share settings stay directly available.
-Narrow cards place source actions on a second overlay row without an extra menu.
+Narrow cards condense captions before wrapping; use a second compact overlay row
+only when the direct controls otherwise cannot fit, without an extra menu.
 Counts yield space before primary actions, and
 cards retain enough height for their upper and lower controls. Conversation and people are optional
 companion surfaces; narrow layouts switch surfaces instead of squeezing several

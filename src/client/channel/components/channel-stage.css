@@ -59,8 +59,15 @@
 .c3-monitor-source-row .c3-message-reaction-counts { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; }
 .c3-monitor-source-row .c3-message-reaction-counts > button, .c3-monitor-source-row .c3-message-action { flex: none; }
 @container (max-width: 720px) {
-  .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source-row { grid-template-columns: 20px minmax(64px, 1fr) minmax(100px, 1fr); row-gap: 4px; }
-  .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-tile-actions { grid-column: 1 / -1; width: 100%; }
+  .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source-row { grid-template-columns: minmax(56px, 1fr) minmax(64px, 96px) auto; gap: 4px; padding: 2px 4px; }
+  .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source-row > svg,
+  .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source > .lr-comic-tip-wrap:last-child { display: none; }
+  .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-tile-actions { flex-wrap: nowrap; }
+  .c3-monitor-source-row .lr-btn:not(:where(.c3-monitor-source-row [popover] *)) { --button-size: var(--control-dense-size); --button-padding: 6px; }
+}
+@container (max-width: 360px) {
+  .c3-monitor-tile:not(.is-thumbnail):has(.c3-share-control) .c3-monitor-source-row { grid-template-columns: minmax(56px, 1fr) minmax(64px, 96px); }
+  .c3-monitor-tile:not(.is-thumbnail):has(.c3-share-control) .c3-monitor-tile-actions { grid-column: 1 / -1; width: 100%; }
 }
 .c3-monitor-tile:not(.is-thumbnail):has(> .c3-video[data-controls-hidden="true"]) > footer:not(:hover):not(:focus-within):not(:has([aria-expanded="true"])) .c3-monitor-source-row { opacity: 0; pointer-events: none; transform: translateY(-4px); }
 .c3-monitor-wait { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; aspect-ratio: 16 / 9; padding: 18px; border-radius: var(--c3-media-radius) var(--c3-media-radius) 0 0; background: var(--stage, var(--wall-2)); color: var(--muted); font-size: 12px; }
