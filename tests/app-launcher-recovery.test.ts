@@ -142,6 +142,7 @@ describe("App launcher state recovery", () => {
     expect(html).toContain('value="saved password"');
     expect(html).toMatch(/type="submit"[^>]*aria-label="(?:Retry|重试)"/);
     expect(html).toContain(saved.sites[0]);
+    expect(html).toContain('aria-pressed="false"');
   });
 
   it("reopens a healthy room without offering another mode or password", () => {
@@ -431,4 +432,16 @@ it("clears an owned startup from the existing settings operation", async () => {
     expect(page.state.StartupMode).toBeUndefined();
     expect(page.navigate).not.toHaveBeenCalled();
   } finally { page.cleanup(); }
+});
+
+
+it.each(["local", "link"] as const)("names the owned startup site and saved %s mode", mode => {
+  const html = renderToStaticMarkup(createElement(LauncherForm, {
+    mode, sites: saved.sites, startupSite: "", ownedStartup: mode,
+    onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onSubmit() {},
+    localAccessPassword: "", onLocalAccessPasswordChange() {},
+  }));
+  expect(html).toMatch(/my site|我的站点/);
+  expect(html).toMatch(mode === "local" ? /Local room|本地房间/ : /Public invite|公网邀请/);
+  expect(html).toMatch(/type="checkbox"[^>]*checked/);
 });

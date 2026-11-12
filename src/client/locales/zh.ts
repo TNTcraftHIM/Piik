@@ -260,6 +260,7 @@ export const zh = {
   "client.connect.standbyHint": "在 Piik 站点右上角点击 App，选择「打开 App 页面」，再确认「允许使用」。",
   "client.connect.remove": "取消此站点的 App 授权",
   "client.connect.openOnStart": "启动 App 时打开此站点",
+  "client.connect.openOwnedOnStart": "启动 App 时打开我的站点（{mode}）",
   "client.connect.manage": "App 已就绪，点击管理。",
   "client.connect.update": "App {current}，可更新至 {version}。",
   "client.connect.approveTitle": "允许使用 Piik App？",
