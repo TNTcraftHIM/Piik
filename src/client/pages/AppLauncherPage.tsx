@@ -383,7 +383,7 @@ export function AppLauncherPage() {
               setSiteError(undefined);
             }}
             startupSite={startupSite}
-            ownedStartup={Boolean(startupMode)}
+            ownedStartup={startupMode}
             ownedSites={ownedSites}
             onToggleStartupSite={site => void changeSite(startupSite === site || startupMode && ownedSites.includes(site) ? "" : site, "startup-site")}
             onModeChange={changeMode}

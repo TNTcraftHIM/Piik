@@ -256,6 +256,7 @@ export const en: Record<CopyKey, string> = {
   "client.connect.standbyHint": "Click App at the top right of a Piik site, choose Open App page, then confirm Allow access.",
   "client.connect.remove": "Revoke this Site's App access",
   "client.connect.openOnStart": "Open this site when App starts",
+  "client.connect.openOwnedOnStart": "Open my site when App starts ({mode})",
   "client.connect.manage": "App is ready. Manage App.",
   "client.connect.update": "App {current}. Update to {version}.",
   "client.connect.approveTitle": "Allow this Site to use Piik App?",

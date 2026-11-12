@@ -59,7 +59,7 @@ export function LauncherForm({
   onModeChange,
   sites,
   startupSite,
-  ownedStartup = false,
+  ownedStartup,
   ownedSites = [],
   onToggleStartupSite,
   onRemoveSite,
@@ -80,7 +80,7 @@ export function LauncherForm({
   onModeChange: (mode: AppMode) => void;
   sites: readonly string[];
   startupSite: string;
-  ownedStartup?: boolean;
+  ownedStartup?: AppMode;
   ownedSites?: readonly string[];
   onToggleStartupSite: (site: string) => void;
   onRemoveSite: (site: string) => void;
@@ -155,7 +155,7 @@ export function LauncherForm({
         {sites.length > 0 && <div className="lr-client-approved-sites" role="list">{sites.map((site, index) => <div key={site} className="lr-client-approved-site" role="listitem">
           <a href={entryURL(`${site}/#piik-client=1`)} target="_blank" rel="noopener noreferrer" onClick={onOpen}>{site}<span aria-hidden="true">&nbsp;↗</span></a>
           <div className="lr-client-site-actions">
-            <Btn icon="star" title="client.connect.openOnStart" size="dense" pressed={startupSite === site || ownedStartup && ownedSites.includes(site)}
+            <Btn icon="star" title="client.connect.openOnStart" size="dense" pressed={startupSite === site || Boolean(ownedStartup && ownedSites.includes(site))}
               hint="hint-client-site" disabled={siteBusy} onClick={() => onToggleStartupSite(site)} />
             <Btn id={`${accessHintId}-remove-${index}`} icon="x" title="client.connect.remove" size="dense" hint="hint-close" disabled={siteBusy} onClick={() => {
               const button = standbyRef.current?.ownerDocument.activeElement;
@@ -169,7 +169,7 @@ export function LauncherForm({
       {ownedStartup && <label className="lr-client-approval-startup">
         <input type="checkbox" checked disabled={siteBusy} onChange={() => onToggleStartupSite("")} />
         <Glyph name="star" size={18} />
-        <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.openOnStart")}</span>
+        <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.openOwnedOnStart", { mode: t(ownedStartup === "local" ? "client.launch.local" : "client.launch.link") })}</span>
       </label>}
       {roomError}
       {target ? <><a className="lr-btn is-primary" href={entryURL(target)} onClick={onOpen} aria-label={t("client.launch.go")}>
