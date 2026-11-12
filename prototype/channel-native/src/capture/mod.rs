@@ -26,17 +26,17 @@ pub fn capture_border_control() -> bool {
 pub const fn supports_video_adaptation() -> bool {
     cfg!(feature = "capture")
 }
-#[cfg(any(test, all(feature = "capture", any(target_os = "windows", target_os = "linux", target_os = "macos"))))]
+#[cfg(any(feature = "capture", test))]
 mod adaptation;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod audio;
-#[cfg(any(test, all(feature = "capture", any(target_os = "windows", target_os = "linux", target_os = "macos"))))]
+#[cfg(any(feature = "capture", test))]
 mod cadence;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod converter;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod decoder;
-#[cfg(any(test, all(feature = "capture", any(target_os = "windows", target_os = "linux", target_os = "macos"))))]
+#[cfg(any(feature = "capture", test))]
 mod frame_dropper;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod frames;
@@ -371,7 +371,7 @@ pub(super) struct FramerateRequest {
 }
 impl Settings {
     /// Match the shared screen profile's half-size, same-FPS simulcast encoding.
-    #[cfg(any(test, all(feature = "capture", any(target_os = "windows", target_os = "linux", target_os = "macos"))))]
+    #[cfg(any(feature = "capture", test))]
     pub(crate) fn lower_layer(self) -> Self {
         Self {
             width: (self.width / 2 & !1).max(2),
