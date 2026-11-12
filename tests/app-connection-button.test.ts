@@ -654,7 +654,7 @@ describe("initial App discovery", () => {
     const discovery = { connect: vi.fn(async (_signal?: AbortSignal): Promise<string | null> => null), health: vi.fn(async () => ({})), isIncompatible: () => false };
     const page = mount(true, "idle", false, false, discovery, true);
     await settle();
-    expect(page.setState).toHaveBeenLastCalledWith("unavailable");
+    expect(page.setState).toHaveBeenLastCalledWith("idle");
     expect(page.showHelp).not.toHaveBeenCalled();
     page.window.dispatchEvent(new Event("focus")); page.activateElsewhere(); await settle();
     expect(discovery.connect).toHaveBeenCalledOnce(); expect(discovery.health).not.toHaveBeenCalled();
@@ -662,5 +662,30 @@ describe("initial App discovery", () => {
     discovery.connect.mockImplementationOnce(value => { signal = value; return new Promise(() => {}); });
     void page.connect(); expect(discovery.connect).toHaveBeenCalledTimes(2);
     page.cleanup(); expect(signal?.aborted).toBe(true);
+  });
+  it.each([false, true])("automatic discovery stays idle; explicit failure keeps recovery guidance (incompatible: %s)", async incompatible => {
+    const discovery = { connect: vi.fn(async (): Promise<string | null> => { if (incompatible) throw new Error("incompatible"); return null; }),
+      health: vi.fn(async () => null), isIncompatible: () => incompatible };
+    const page = mount(false, "idle", false, false, discovery, true);
+    try {
+      await settle();
+      expect(page.setState).toHaveBeenLastCalledWith("idle");
+      expect(page.showHelp).not.toHaveBeenCalled();
+      await page.connect();
+      expect(page.setState).toHaveBeenLastCalledWith(incompatible ? "incompatible" : "unavailable");
+      expect(page.showHelp).toHaveBeenCalled();
+    } finally { page.cleanup(); }
+  });
+  it("an explicit approval click takes over the automatic attempt's failure feedback", async () => {
+    const discovery = { connect: vi.fn(async () => approval), health: vi.fn(async () => null), isIncompatible: () => false };
+    const page = mount(false, "idle", false, false, discovery, true);
+    try {
+      await settle();
+      expect(page.setState).toHaveBeenLastCalledWith("approval");
+      page.window.open.mockReturnValue(null);
+      await page.connect();
+      expect(page.setState).toHaveBeenLastCalledWith("unavailable");
+      expect(page.showHelp).toHaveBeenCalled();
+    } finally { page.cleanup(); }
   });
 });
