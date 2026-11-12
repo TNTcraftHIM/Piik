@@ -11,7 +11,7 @@ import { ChannelShareControl } from "../src/client/channel/components/ChannelSha
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 import type { ChannelController } from "../src/client/channel/types";
 import { setCopy, t } from "../src/client/ui/copy";
-import { channelAppDiscovery } from "../src/client/channel/app-link";
+import { APP_PROTOCOL, channelAppDiscovery } from "../src/client/channel/app-link";
 import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
 import { NATIVE_CLIENT_PORT_START } from "../src/client/native/discovery-ports";
 
@@ -73,7 +73,7 @@ describe("shared App connection entry", () => {
       ...(entry.camera ? { getUserMedia: vi.fn() } : {}),
       ...(entry.display ? { getDisplayMedia: vi.fn() } : {}),
     } });
-    const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined } as unknown as ChannelController;
+    const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined } as unknown as ChannelController;
     const html = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", disabled: false }));
     const button = html.match(/<button\b[^>]*>/)![0];
     expect(button.includes("disabled")).toBe(!entry.available);
@@ -84,7 +84,7 @@ describe("shared App connection entry", () => {
   it("binds live controls to their owned publication without retargeting a retired source", () => {
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn() } });
     const ownedScreens = new Set(["mine"]);
-    const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined,
+    const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined,
       screenQuality: () => undefined, screenCodecMode: () => undefined,
       sourceAudio: () => undefined, sourceMicrophone: () => undefined,
       ownedScreens, streams: new Map(), state: { channel: { rooms: [{ id: "room", name: "Friday" }] }, publications: [{ id: "mine", roomId: "room" }], voice: [] },
@@ -110,13 +110,14 @@ describe("Native sharing capabilities", () => {
     const sources = { kind: "ready", codecs: ["h264"], processAudio: false, systemAudio: false,
       sources: [{ kind: "window", sourceId: "1", title: "Owned Native window", pid: 1, creationTime: "1" }] };
     const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: true, pending: new Set(),
-      videoCodecMode: "vp8", nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined,
+      videoCodecMode: "vp8", nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined,
       screenQuality: () => undefined, screenCodecMode: () => "h264", sourceAudio: () => undefined, sourceMicrophone: () => undefined,
       ownedScreens: new Set<string>(), streams: new Map(), state: { channel: { rooms: [{ id: "room", name: "Friday" }] }, publications: [] as { id: string; roomId: string }[], voice: [] },
     };
     const render = (settings = false) => {
       // Open the real picker with the same completed targets response on each render.
       vi.mocked(useState).mockReturnValueOnce([!settings, vi.fn()]).mockReturnValueOnce([settings, vi.fn()])
+        .mockReturnValueOnce([false, vi.fn()])
         .mockReturnValueOnce([sources, vi.fn()]);
       return renderToStaticMarkup(createElement(ChannelShareControl, { channel: channel as unknown as ChannelController,
         roomId: "room", publicationId: channel.ownedScreens.has("mine") ? "mine" : undefined, disabled: false }));
@@ -225,7 +226,7 @@ describe("App connection approval", () => {
       const url = new URL(input), port = Number(url.port);
       if (port === NATIVE_CLIENT_PORT_START) return Response.json({ service: "piik-client", protocol: 10, port, instanceToken: "fixture-token" });
       if (current && port === NATIVE_CLIENT_PORT_START + 1) {
-        const identity = { service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port };
+        const identity = { service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port };
         if (url.pathname === "/connect-discovery") return Response.json({ ...identity, connectURL: `http://127.0.0.1:${port}/client` });
         return authorized ? Response.json({ ...identity, token: "fixture-token" }) : new Response(null, { status: 403 });
       }
@@ -253,7 +254,7 @@ describe("App connection approval", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: string) => {
       const port = Number(new URL(input).port);
       if (port !== NATIVE_CLIENT_PORT_START) throw new TypeError("No fixture App");
-      return Response.json({ service: "piik-channel-app", protocol: 7, domainProtocol: CHANNEL_PROTOCOL, port, token: "fixture-token" });
+      return Response.json({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port, token: "fixture-token" });
     }));
     await expect(discovery.health()).resolves.toMatchObject({ port: NATIVE_CLIENT_PORT_START });
   });

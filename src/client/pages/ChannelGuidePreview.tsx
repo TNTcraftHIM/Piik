@@ -25,7 +25,7 @@ import "./channel-guide-preview.css";
 const invitation = "https://friends.example/#room=friday&invite=sample";
 const pending = new Set<string>();
 const roomBackupAvailable = async () => false;
-const sources: NativeCaptureSources = { ...SOURCES, codecs: ["h264", "vp8"], videoAdaptation: true,
+const sources: NativeCaptureSources = { ...SOURCES, codecs: ["h264", "vp8"], videoAdaptation: true, externalInput: false,
   sources: SOURCES.sources.filter(source => source.kind === "display" || source.sourceId === "101" || source.sourceId === "102") };
 
 /** Local samples have identities, but no measured or simulated network paths. */
@@ -161,6 +161,7 @@ export function useChannelGuideSample(multiRoom = false) {
       setSettingsByRoom(previous => ({ ...previous, [roomId]: { ...previous[roomId], relayOverride } })); received();
     },
     nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined,
+    externalInput: () => undefined, startExternalScreen: async () => received(),
     nativeSources: async () => sources, nativePreview: previewSource, cameraPreviews: previewCameras,
     setScreenTitle: async () => received(),
     sourceMicrophones: async () => [], startScreen: async () => received(), startNativeScreen: async () => received(),

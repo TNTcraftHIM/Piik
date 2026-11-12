@@ -14,6 +14,8 @@ import type { ChannelController } from "../types";
 import { screenTitle } from "../presentation";
 import { channelErrorPresentation } from "../error-presentation";
 import { useSettingsAction } from "./ChannelSettingsDialog";
+import { ChannelExternalInput } from "./ChannelExternalInput";
+import { ChannelAction } from "./ChannelAction";
 import type { ChannelPublication } from "../protocol";
 import "./channel-share-control.css";
 
@@ -66,12 +68,14 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const request = useRef<object | null>(null);
   const [open, setOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [externalOpen, setExternalOpen] = useState(false);
   const [sources, setSources] = useState<Exclude<NativeSourceList, { kind: "ready" }> | ({ kind: "ready" } & NativeCaptureSources)>({ kind: "browser" });
   const { appConnected, nativeSources, startNativeScreen, startScreen } = channel;
   const browserSupported = typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getDisplayMedia === "function";
   const cameraSupported = typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function";
   const captureRequest = channel.nativeCaptureRequest(roomId);
   const selectedNative = channel.nativeCaptureSelection(roomId);
+  const externalInput = channel.externalInput(roomId);
   const available = browserSupported || cameraSupported || appConnected;
   const pickerAvailable = appConnected || cameraSupported;
   const sharing = publicationId ? channel.state?.publications.find(publication =>
@@ -128,6 +132,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     return () => { request.current = null; };
   }, [open, settingsOpen, refresh]);
   useLayoutEffect(() => { close(); }, [roomId, publicationId, disabled, close]);
+  useEffect(() => { setExternalOpen(false); }, [roomId]);
   useEffect(() => {
     if (!openRequested || disabled || !available || !panel.current) return;
     panel.current.showPopover();
@@ -157,6 +162,8 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
       <Btn icon="sliders" title={{ text: settingsTitle }} cap={vis || compact ? undefined : { text: settingsLabel }} hint="hint-quality" size="compact" quiet
         disabled={disabled || busy} busy={qualityPending} popoverTarget={`${id}-settings`} controls={`${id}-settings`} expanded={settingsOpen} />
     </span>
+    {externalInput && <ChannelAction icon="cast" label={externalInput.state === "live" ? "OBS" : (lang === "zh" ? "等待 OBS" : "Waiting for OBS")}
+      quiet onClick={() => setExternalOpen(true)} />}
     </span>
     <div ref={settingsPanel} id={`${id}-settings`} popover="auto" role="dialog" aria-label={settingsTitle} className="lr-anchored-card c3-quality-picker"
       onToggle={event => { if (event.target === event.currentTarget) setSettingsOpen(event.newState === "open"); }}>
@@ -164,7 +171,9 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         {!vis && <p>{sharing ? (lang === "zh" ? `调整你在${roomName ?? "当前房间"}中的分享。` : `Changes apply to your share in ${roomName ?? "this room"}.`)
           : (lang === "zh" ? "用于你接下来开始的分享。" : "Used when you start your next share.")}</p>}</div>}
       {settingsOpen && sharing?.kind === "screen" && <ShareTitleEditor key={sharing.id} sharing={sharing} channel={channel} disabled={disabled || busy} />}
-      <SharingSettings id={`${id}-quality`} open={settingsOpen} busy={qualityPending || microphonePending}
+      {externalInput?.state === "live" ? <div className="c3-settings-panels"><p>{lang === "zh" ? "画质和声音在 OBS 中设置，观众的接收画质仍会自动适配。" : "Configure picture and sound in OBS. Delivery still adapts to each viewer."}</p>
+        <ChannelAction icon="cast" label={lang === "zh" ? "OBS 连接设置" : "OBS connection settings"} onClick={() => { close(); setExternalOpen(true); }} /></div>
+        : <SharingSettings id={`${id}-quality`} open={settingsOpen} busy={qualityPending || microphonePending}
         presets={<QualityPresets selected={matchingQualityProfileId(quality)} disabled={busy} busy={qualityPending}
           onSelect={preset => setQuality({ ...QUALITY_PROFILES[preset], maxAudioBitrate: quality.maxAudioBitrate })} />}
         pictureSummary={<PictureSettingsSummary value={screenQuality?.applied ?? quality} />}
@@ -202,7 +211,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
           onChange={bitrate => {
             if (sharing) void channel.setSourceAudio(sharing.id, { bitrate }).catch(() => {});
             else setQuality({ ...quality, maxAudioBitrate: bitrate });
-          }} /></>} />
+          }} /></>} />}
     </div>
     <div ref={panel} id={id} popover="auto" className="lr-anchored-card c3-share-picker"
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
@@ -212,10 +221,17 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         initialAudio={selectedNative?.audio} initialExcludeAudio={selectedNative?.excludeAudio} initialShowCaptureBorder={selectedNative?.showCaptureBorder}
         onBrowser={() => start(() => startScreen(roomId))}
         onCamera={deviceId => start(() => startScreen(roomId, "camera", deviceId))}
+        onExternalInput={sources.kind === "ready" && sources.externalInput ? () => {
+          close();
+          if (externalInput) setExternalOpen(true);
+          else void channel.startExternalScreen(roomId).then(() => setExternalOpen(true)).catch(() => {});
+        } : undefined}
         onNative={(target, audio, border, excludeAudio) => start(() => startNativeScreen(roomId, target, audio, excludeAudio, border))}
         onPreview={channel.nativePreview} onRefresh={refresh} onCancel={() => {
           close(); trigger.current?.querySelector("button")?.focus({ preventScroll: true });
         }} />}
     </div>
+    {externalOpen && externalInput && <ChannelExternalInput input={externalInput} busy={channel.pending.has(`stop:${externalInput.publicationId}`)}
+      onStop={() => { void channel.stopScreen(externalInput.publicationId).then(() => setExternalOpen(false)).catch(() => {}); }} onClose={() => setExternalOpen(false)} />}
   </>;
 }

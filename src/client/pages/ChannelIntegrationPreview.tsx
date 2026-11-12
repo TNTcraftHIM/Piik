@@ -7,9 +7,11 @@ import { useCopy } from "../ui/copy";
 import { useClipboardResult } from "../ui/use-clipboard-result";
 import { ChannelAction } from "../channel/components/ChannelAction";
 import { ChannelSettingsDialog } from "../channel/components/ChannelSettingsDialog";
+import { ChannelExternalInput } from "../channel/components/ChannelExternalInput";
 import "./channel-integration-preview.css";
 
-const botKey = "EXAMPLE_ONLY.room_bot.test_key";
+const textCommand = 'node --import tsx prototype/channel-browser/examples/text-participant.ts --url wss://YOUR_SITE/prototype/channel --origin https://YOUR_SITE --room YOUR_ROOM_ID --name "Build notices"';
+const textExample = "https://github.com/TNTcraftHIM/Piik/blob/feat/channel-prototype/prototype/channel-browser/examples/README.md";
 const obsKey = "EXAMPLE_ONLY.whip.input_permit";
 const obsEndpoint = "https://inert.example/whip/owned-input";
 
@@ -23,17 +25,13 @@ function ExampleValue({ label, value }: { label: string; value: string }) {
   </div>;
 }
 
-/** Proposed controls only. No Session, network adapter, device or persistent preference. */
+/** Shared integration controls with inert values; no Session or device access. */
 export function ChannelIntegrationPreview() {
   const { lang } = useCopy(), zh = lang === "zh";
   const copy = (cn: string, en: string) => zh ? cn : en;
   const [panel, setPanel] = useState<"bot" | "obs" | null>(null);
-  const [botName, setBotName] = useState("Piik helper");
-  const [bot, setBot] = useState<"none" | "active" | "revoked">("none");
-  const [showKey, setShowKey] = useState(false), [confirmRevoke, setConfirmRevoke] = useState(false);
-  const [botTest, setBotTest] = useState(false);
   const [input, setInput] = useState<"idle" | "waiting" | "live" | "stopped" | "revoked">("idle");
-  const close = () => { setPanel(null); setShowKey(false); setConfirmRevoke(false); };
+  const close = () => setPanel(null);
   const permitted = input === "waiting" || input === "live" || input === "stopped";
   const inputLabel = input === "live" ? copy("正在接收示例画面", "Receiving sample picture")
     : input === "waiting" ? copy("等待 OBS 推流", "Waiting for OBS")
@@ -42,19 +40,18 @@ export function ChannelIntegrationPreview() {
   return <div className="lr-app c3-integration-preview">
     <AppHeader appControl={null} diagnosticControl={null} />
     <main className="lr-room c3-integration-main">
-      <header><p className="c3-integration-design-note" role="note">{copy("交互设计稿，未连接 API", "Interaction proposal — no API connected")}</p>
+      <header><p className="c3-integration-design-note" role="note">{copy("工具接入预览；连接值仅作示例", "Integration preview; connection values are examples")}</p>
         <h1>{copy("把你的工具接进来", "Bring your tools along")}</h1>
-        <p>{copy("两个入口，各自保持清楚的范围。以下行为是待讨论方案，可点击体验。", "Two entrances with separate scopes. Explore the proposed interactions below.")}</p>
+        <p>{copy("让独立客户端参与聊天，或使用本机 OBS 分享画面。", "Connect an independent text client, or share pictures from local OBS.")}</p>
       </header>
       <div className="c3-integration-cards">
         <section className="c3-integration-card">
-          <div className="c3-integration-scope"><Glyph name="couch" size={20} /><span>{copy("周五小聚的房间设置", "Settings for Friday with friends")}</span></div>
-          <h2>{copy("文字 Bot", "Text bot")}</h2>
-          <div className="c3-integration-person"><PawnSvg color="var(--pawn-2)" /><div><strong>{bot === "none" ? copy("给房间添个小帮手", "A little help for this room") : botName}</strong>
-            <small>{bot === "active" ? copy("已创建示例身份", "Example identity created") : bot === "revoked" ? copy("已撤销，保留历史作者", "Revoked; historical author retained") : copy("独立名字与身份", "Its own name and identity")}</small></div></div>
-          <p>{copy("读取本房间的文字与历史，发送文字回复。房间离线时等待恢复。", "Read this room's text and history, and send text replies. Wait while its host is offline.")}</p>
-          <ChannelAction icon="chat" label={bot === "none" ? copy("添加文字 Bot", "Add text bot") : copy("管理 Bot", "Manage bot")}
-            onClick={() => { setBotTest(false); setPanel("bot"); }} />
+          <div className="c3-integration-scope"><Glyph name="chat" size={20} /><span>{copy("独立客户端", "Independent client")}</span></div>
+          <h2>{copy("文字自动化", "Text automation")}</h2>
+          <div className="c3-integration-person"><PawnSvg color="var(--pawn-2)" /><div><strong>{copy("给房间添个小帮手", "A little help for your room")}</strong>
+            <small>{copy("使用自己的普通用户身份", "Uses its own ordinary user identity")}</small></div></div>
+          <p>{copy("在你自己的进程中读取已获准房间的消息与历史，发送通知和回复。", "Read messages and history in rooms your client can access, and send notifications and replies from your own process.")}</p>
+          <ChannelAction icon="chat" label={copy("查看接入示例", "View client example")} onClick={() => setPanel("bot")} />
         </section>
         <section className="c3-integration-card">
           <div className="c3-integration-scope"><Glyph name="cast" size={20} /><span>{copy("开始分享时选择画面", "Choose a source when starting a share")}</span></div>
@@ -68,46 +65,22 @@ export function ChannelIntegrationPreview() {
           <p role="status">{inputLabel}</p>
           <ChannelAction icon="cast" label={permitted ? copy("查看输入连接", "View input connection") : copy("使用 OBS 画面", "Use OBS picture")}
             onClick={() => { if (!permitted) setInput("waiting"); setPanel("obs"); }} />
+          {permitted && <ChannelAction icon={input === "live" ? "pause" : "play"} quiet
+            label={input === "live" ? copy("模拟 OBS 停止推流", "Simulate OBS stopping") : copy("模拟收到画面", "Simulate incoming picture")}
+            onClick={() => setInput(input === "live" ? "stopped" : "live")} />}
         </section>
       </div>
-      <p className="c3-integration-footnote">{copy("建议先做单房间文字 Bot，再做本机 OBS 输入。认证与活动归属尚待确认。", "Suggested order: a text bot for one room, then local OBS input. Authentication and activity ownership remain proposals.")}</p>
     </main>
-    {panel === "bot" && <ChannelSettingsDialog title={copy("房间文字 Bot", "Room text bot")} caption={copy("周五小聚的待定方案", "Proposal for Friday with friends")} compact onClose={close}>
+    {panel === "bot" && <ChannelSettingsDialog title={copy("接入文字客户端", "Connect a text client")} caption={copy("使用普通用户身份参与房间", "Join rooms as an ordinary user")} compact onClose={close}>
       <div className="c3-settings-panels c3-integration-panel">
-        <p>{copy("建议由房主添加和撤销。读取此房间已确认的消息与历史，发送新的文字回复；不提供其他房间、管理、媒体或设备权限。", "Proposed: the room owner adds and revokes bots. Read this room's confirmed messages and history, and send new text replies. No access to other rooms, management, media or devices.")}</p>
-        {bot !== "active" ? <form onSubmit={event => { event.preventDefault(); if (!botName.trim()) return; setBotName(botName.trim()); setBot("active"); setShowKey(true); setBotTest(false); }}>
-          <label>{copy("Bot 名字", "Bot name")}<input className="c3-input" value={botName} maxLength={40} required onChange={event => setBotName(event.target.value)} /></label>
-          <ChannelAction icon="plus" primary type="submit" label={copy("创建示例身份与密钥", "Create example identity and key")} disabled={!botName.trim()} />
-        </form> : <>
-          <div className="c3-integration-person"><PawnSvg color="var(--pawn-2)" /><strong>{botName}</strong></div>
-          {showKey ? <><ExampleValue label={copy("Bot 密钥（示例）", "Bot key (example)")} value={botKey} />
-            <p>{copy("建议只在创建时显示一次。关闭此面板后隐藏；遗失时撤销并重新创建。", "Proposed one-time display. Closing this panel hides the key; revoke and create again if lost.")}</p></>
-            : <p>{copy("密钥已隐藏。示例身份仍保留在本页，刷新后清空。", "Key hidden. This page retains the example identity until refresh.")}</p>}
-          <ChannelAction icon="play" quiet label={copy("模拟 /ping 回复", "Simulate /ping reply")} onClick={() => setBotTest(true)} />
-          {botTest && <div className="c3-integration-example" role="status"><strong>{botName}</strong><p>Pong! {copy("这是本页示例回复。", "This reply exists only on this page.")}</p></div>}
-          <details open={confirmRevoke} onToggle={event => setConfirmRevoke(event.currentTarget.open)}><summary>{copy("撤销 Bot 密钥", "Revoke bot key")}</summary>
-            <p>{copy("建议停止此 Bot 的全部连接并禁止旧密钥重连，保留历史消息与作者名字。", "Proposed: stop its connections and reject the old key, while retaining historical messages and attribution.")}</p>
-            <ChannelAction icon="x" danger label={copy("确认撤销示例密钥", "Confirm example-key revocation")} onClick={() => { setBot("revoked"); setShowKey(false); setBotTest(false); setConfirmRevoke(false); }} />
-          </details>
-        </>}
-        {bot === "revoked" && <p role="status">{copy("示例密钥已撤销。旧 Bot 不再接收或发送消息。", "Example key revoked. The old bot would no longer receive or send messages.")}</p>}
+        <p>{copy("在自己的 Node 进程中运行仓库示例。它建立独立用户身份，通过现有聊天接口读取历史、发送消息，并响应新的 !ping 消息。", "Run the repository example in your own Node process. It creates an independent user identity, reads history and sends messages through the existing chat API, and replies to new !ping messages.")}</p>
+        <ExampleValue label={copy("示例命令（先替换站点和房间）", "Example command (replace site and room first)")} value={textCommand} />
+        <p>{copy("私密房间仍需现有邀请或密码。凭据由外部进程本地管理；此页面不创建身份或密钥。", "Private rooms still require an existing invitation or password. Credentials stay with the external process; this page creates no identity or key.")}</p>
+        <p>{copy("示例默认只在内存保留身份。需要恢复同一用户时，按接入说明选择本地身份文件；发送失败会明确返回错误。", "The example keeps its identity in memory by default. To restore the same user, follow the instructions for an optional local identity file. Failed sends return an error.")}</p>
+        <a href={textExample} target="_blank" rel="noopener noreferrer">{copy("查看示例与完整接入说明", "Read the example and setup instructions")}</a>
       </div>
     </ChannelSettingsDialog>}
-    {panel === "obs" && <ChannelSettingsDialog title={copy("OBS 本机输入", "Local OBS input")} caption={copy("当前分享页的待定方案", "Proposal for the current sharing page")} compact onClose={close}>
-      <div className="c3-settings-panels c3-integration-panel">
-        <p>{copy("建议由 Piik App 接收本机 WHIP 推流，作为本页的一个分享源；不会共享桌面或打开麦克风。", "Proposed: Piik App receives local WHIP input as a source for this sharing page. It does not capture the desktop or open a microphone.")}</p>
-        <p>{copy("在 OBS 的 WHIP 设置中填写 Server 和 Bearer Token。以下地址与令牌均为不可用示例。", "Enter Server and Bearer Token in OBS WHIP settings. The values below are inert examples.")}</p>
-        {permitted && <><ExampleValue label="Server (WHIP)" value={obsEndpoint} /><ExampleValue label="Bearer Token" value={obsKey} /></>}
-        <div className="c3-integration-example" role="status"><strong>{inputLabel}</strong>
-          <p>{copy("建议：关闭分享页或在 Piik 中取消，都会撤销本次输入许可。只关闭此设置面板不会停止输入。", "Proposed: closing the sharing page or canceling in Piik revokes this permit. Closing these settings keeps the input active.")}</p></div>
-        <div className="c3-integration-actions">
-          {input === "waiting" && <ChannelAction icon="play" primary label={copy("模拟收到画面", "Simulate incoming picture")} onClick={() => setInput("live")} />}
-          {input === "live" && <ChannelAction icon="pause" quiet label={copy("模拟 OBS 停止推流", "Simulate OBS stopping")} onClick={() => setInput("stopped")} />}
-          {input === "stopped" && <ChannelAction icon="refresh" label={copy("模拟 OBS 重新推流", "Simulate OBS resuming")} onClick={() => setInput("live")} />}
-          {permitted && <ChannelAction icon="stop" danger label={copy("在 Piik 取消输入", "Cancel input in Piik")} onClick={() => setInput("revoked")} />}
-          {input === "revoked" && <ChannelAction icon="cast" label={copy("准备新的示例输入", "Prepare another example input")} onClick={() => setInput("waiting")} />}
-        </div>
-      </div>
-    </ChannelSettingsDialog>}
+    {panel === "obs" && permitted && <ChannelExternalInput input={{ endpoint: obsEndpoint, token: obsKey, state: input === "live" ? "live" : "waiting" }} busy={false}
+      onClose={close} onStop={() => { setInput("revoked"); close(); }} />}
   </div>;
 }

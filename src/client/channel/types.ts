@@ -4,7 +4,7 @@ import type { ChannelAttachments, DraftFile } from "./attachments";
 import type { FeedbackCue } from "./feedback-audio";
 import type { RoomCopyInfo } from "./backup-archive";
 import type { NativeCaptureTarget } from "../native/wire";
-import type { NativeCaptureRequest, NativeCaptureSources, ChannelRemoteControlState, NativeConnectionMetrics } from "./app-link";
+import type { NativeCaptureRequest, NativeCaptureSources, NativeExternalInput, ChannelRemoteControlState, NativeConnectionMetrics } from "./app-link";
 import type { RemoteStopShortcut } from "../native/wire";
 import type { InputTransport } from "../remote-control/input-route";
 import type { RemoteControlMode } from "../remote-control/protocol";
@@ -127,6 +127,8 @@ export interface ChannelActions {
   startScreen(roomId: string, source?: BrowserCaptureSource, deviceId?: string): Promise<void>;
   cameraPreviews: typeof loadCameraPreviews;
   nativeSources(): Promise<NativeCaptureSources>;
+  externalInput(roomId: string): (NativeExternalInput & { publicationId: string }) | undefined;
+  startExternalScreen(roomId: string): Promise<void>;
   nativePreview(target: NativeCaptureTarget, signal?: AbortSignal): Promise<string | null>;
   nativeCaptureRequest(roomId: string): NativeCaptureRequest | undefined;
   nativeCaptureSelection(roomId: string): { target: NativeCaptureTarget; audio: boolean; excludeAudio?: NativeCaptureTarget; showCaptureBorder: boolean; current: boolean } | undefined;

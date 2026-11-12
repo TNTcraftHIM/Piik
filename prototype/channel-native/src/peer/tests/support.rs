@@ -71,7 +71,7 @@ impl Fixture {
             publications: HashMap::new(),
             sources: HashMap::new(),
             #[cfg(feature = "capture")]
-            captures: HashMap::new(),
+            local_producers: HashMap::new(),
             #[cfg(feature = "capture")]
             capture_audio: HashMap::new(),
             #[cfg(all(

@@ -5,7 +5,8 @@ use crate::{
     capture::{Settings, Target},
     hosted_room::HostedRoom,
     peer::{
-        CaptureInput, CaptureLease, CaptureScope, NativeConnectionMetrics, NativeEvent, NativePeers,
+        CaptureInput, CaptureLease, CaptureScope, InputAuthority, NativeConnectionMetrics,
+        NativeEvent, NativePeers, PreparedExternal,
     },
 };
 use anyhow::{anyhow, bail, Result};
@@ -271,6 +272,13 @@ pub struct CommitCapture {
     pub video_settings: Option<VideoSettings>,
     pub result: oneshot::Sender<Result<CaptureInput, String>>,
 }
+pub struct PrepareExternal {
+    pub publication_id: Uuid,
+    pub room_id: String,
+    pub offer: String,
+    pub replaces: Option<Uuid>,
+    pub result: oneshot::Sender<Result<PreparedExternal, String>>,
+}
 pub struct TransferSource {
     pub scope: CaptureScope,
     pub capture_id: Uuid,
@@ -297,6 +305,12 @@ pub struct PublishCaptureSettings {
 }
 enum PendingCapture {
     Prepare(PrepareCapture),
+    External(PrepareExternal),
+    Authorize {
+        publication_id: Uuid,
+        room_id: String,
+        result: oneshot::Sender<Result<InputAuthority, String>>,
+    },
     Commit(CommitCapture),
     Transfer(TransferSource),
     Pause(PauseCapture),
@@ -306,7 +320,7 @@ enum PendingCapture {
 impl PendingCapture {
     fn scope(&self) -> Option<&CaptureScope> {
         match self {
-            Self::Prepare(_) => None,
+            Self::Prepare(_) | Self::External(_) | Self::Authorize { .. } => None,
             Self::Commit(r) => Some(&r.scope),
             Self::Transfer(r) => Some(&r.scope),
             Self::Title(r) => Some(&r.scope),
@@ -317,18 +331,24 @@ impl PendingCapture {
     fn room_id(&self) -> &str {
         match self {
             Self::Prepare(request) => &request.room_id,
+            Self::External(request) => &request.room_id,
+            Self::Authorize { room_id, .. } => room_id,
             _ => &self.scope().unwrap().room_id,
         }
     }
     fn publication_id(&self) -> Uuid {
         match self {
             Self::Prepare(request) => request.publication_id,
+            Self::External(request) => request.publication_id,
+            Self::Authorize { publication_id, .. } => *publication_id,
             _ => self.scope().unwrap().publication_id,
         }
     }
     fn closed(&self) -> bool {
         match self {
             Self::Prepare(request) => request.result.is_closed(),
+            Self::External(request) => request.result.is_closed(),
+            Self::Authorize { result, .. } => result.is_closed(),
             Self::Commit(r) => r.result.is_closed(),
             Self::Transfer(r) => r.result.is_closed(),
             Self::Title(r) => r.result.is_closed(),
@@ -340,6 +360,12 @@ impl PendingCapture {
         match self {
             Self::Prepare(request) => {
                 let _ = request.result.send(Err(code));
+            }
+            Self::External(request) => {
+                let _ = request.result.send(Err(code));
+            }
+            Self::Authorize { result, .. } => {
+                let _ = result.send(Err(code));
             }
             Self::Commit(r) => {
                 let _ = r.result.send(Err(code));
@@ -381,6 +407,12 @@ pub enum HostCommand {
     Snapshot(SnapshotRoom),
     Restore(RestoreRoom),
     PrepareCapture(PrepareCapture),
+    PrepareExternal(PrepareExternal),
+    AuthorizeInput {
+        publication_id: Uuid,
+        room_id: String,
+        result: oneshot::Sender<Result<InputAuthority, String>>,
+    },
     CommitCapture(CommitCapture),
     TransferSource(TransferSource),
     PauseCapture(PauseCapture),
@@ -407,6 +439,12 @@ impl HostCommand {
             }
             Self::PrepareCapture(request) => {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
+            }
+            Self::PrepareExternal(request) => {
+                let _ = request.result.send(Err("hosting_unavailable".into()));
+            }
+            Self::AuthorizeInput { result, .. } => {
+                let _ = result.send(Err("hosting_unavailable".into()));
             }
             Self::CommitCapture(request) => {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
@@ -656,6 +694,8 @@ impl Session {
                                 HostCommand::Snapshot(request) => self.snapshot_room(request),
                                 HostCommand::Restore(request) => self.restore_room(request, socket).await?,
                                 HostCommand::PrepareCapture(request) => self.prepare_capture(request, socket).await?,
+                                HostCommand::PrepareExternal(request) => self.prepare_external(request, socket).await?,
+                                HostCommand::AuthorizeInput { publication_id, room_id, result } => self.authorize_input(publication_id, room_id, result, socket).await?,
                                 HostCommand::CommitCapture(request) => self.commit_capture(request, socket).await?,
                                 HostCommand::TransferSource(request) => self.transfer_source(request, socket).await?,
                                 HostCommand::TitleCapture(request) => self.title_capture(request, socket).await?,
@@ -1159,6 +1199,37 @@ impl Session {
                         (PendingCapture::Prepare(request), RoomResult::Done) => {
                             self.prepare_source(request, socket).await?
                         }
+                        (PendingCapture::External(request), RoomResult::Done) => {
+                            self.prepare_external_source(request, socket).await?
+                        }
+                        (
+                            PendingCapture::Authorize {
+                                publication_id,
+                                room_id,
+                                result,
+                            },
+                            RoomResult::Done,
+                        ) => {
+                            let authority =
+                                self.live
+                                    .as_ref()
+                                    .and_then(|live| {
+                                        let binding_id =
+                                            live.room.snapshot.borrow().as_ref().and_then(
+                                                |state| capture_binding(state, &room_id),
+                                            )?;
+                                        Some(InputAuthority {
+                                            scope: CaptureScope {
+                                                publication_id,
+                                                room_id,
+                                                binding_id,
+                                            },
+                                            snapshot: live.room.snapshot.subscribe(),
+                                        })
+                                    })
+                                    .ok_or_else(|| "room_unavailable".to_string());
+                            let _ = result.send(authority);
+                        }
                         (PendingCapture::Commit(request), RoomResult::Done) => {
                             self.finish_capture(request, socket).await?
                         }
@@ -1253,6 +1324,104 @@ impl Session {
             .insert(id.clone(), PendingCapture::Prepare(request));
         // The room host confirms access and projects this endpoint before replying.
         write(socket, &command, Some(&id)).await
+    }
+
+    async fn authorize_input(
+        &mut self,
+        publication_id: Uuid,
+        room_id: String,
+        result: oneshot::Sender<Result<InputAuthority, String>>,
+        socket: &mut Socket,
+    ) -> Result<()> {
+        if result.is_closed() {
+            return Ok(());
+        }
+        if !crate::peer::supports_external_input() || self.live.is_none() {
+            let _ = result.send(Err("external_input_unavailable".into()));
+            return Ok(());
+        }
+        let command = Command::EnterRoom {
+            room_id: room_id.clone(),
+            password: None,
+            invite_key: None,
+        };
+        let id = Uuid::new_v4().to_string();
+        self.pending_captures.insert(
+            id.clone(),
+            PendingCapture::Authorize {
+                publication_id,
+                room_id,
+                result,
+            },
+        );
+        write(socket, &command, Some(&id)).await
+    }
+
+    async fn prepare_external(
+        &mut self,
+        request: PrepareExternal,
+        socket: &mut Socket,
+    ) -> Result<()> {
+        if request.result.is_closed() {
+            return Ok(());
+        }
+        if !crate::peer::supports_external_input() || self.live.is_none() {
+            let _ = request
+                .result
+                .send(Err("external_input_unavailable".into()));
+            return Ok(());
+        }
+        let command = Command::EnterRoom {
+            room_id: request.room_id.clone(),
+            password: None,
+            invite_key: None,
+        };
+        let id = Uuid::new_v4().to_string();
+        self.pending_captures
+            .insert(id.clone(), PendingCapture::External(request));
+        write(socket, &command, Some(&id)).await
+    }
+
+    async fn prepare_external_source(
+        &mut self,
+        request: PrepareExternal,
+        socket: &mut Socket,
+    ) -> Result<()> {
+        if request.result.is_closed() {
+            return Ok(());
+        }
+        let binding_id = self.live.as_ref().and_then(|live| {
+            live.room
+                .snapshot
+                .borrow()
+                .as_ref()
+                .and_then(|state| capture_binding(state, &request.room_id))
+        });
+        let Some(binding_id) = binding_id else {
+            let _ = request.result.send(Err("room_unavailable".into()));
+            return Ok(());
+        };
+        let live = self.live.as_mut().unwrap();
+        let result = await_peer(
+            live.peers.prepare_external(
+                CaptureScope {
+                    publication_id: request.publication_id,
+                    room_id: request.room_id,
+                    binding_id,
+                },
+                request.replaces,
+                request.offer,
+            ),
+            &mut live.commands,
+            &live.pairs,
+            &mut live.room,
+            &live.peers,
+            socket,
+        )
+        .await
+        .map_err(|error| error.to_string());
+        let _ = request.result.send(result);
+        Ok(())
     }
 
     async fn prepare_source(&mut self, request: PrepareCapture, socket: &mut Socket) -> Result<()> {
@@ -1558,8 +1727,7 @@ impl Session {
         };
         // Transfer preserves the incumbent source settings. Only a genuinely different
         // prepared configuration needs the existing Publish upsert before commit.
-        if request.video_settings.is_some() && request.video_settings != publication.video_settings
-        {
+        if !request.retaining && request.video_settings != publication.video_settings {
             let command = Command::Publish {
                 publication: PublicationInput {
                     source: None,

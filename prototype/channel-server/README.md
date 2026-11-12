@@ -115,8 +115,8 @@ Its own local site retains the first successfully bound port across restarts,
 so browser preferences and retained files remain at the same origin. An occupied
 saved port reports a startup error; release the port and retry to use the same address.
 
-Current internal pages require App control protocol 7 and domain signaling
-protocol 15. Build the App, bundled Web files and domain server from the same
+Current internal pages require App control protocol 8 and domain signaling
+protocol 16. Build the App, bundled Web files and domain server from the same
 source for internal testing. Incompatible control or signaling protocols are
 rejected at entry. App discovery advertises both protocol identifiers so the Web
 page checks native control and domain participation before approval. The storage
@@ -219,6 +219,27 @@ normal discovery range; a launch URL can supply the non-secret `piik-client-port
 query parameter. `PIIK_CHANNEL_APP_WEB_DIR` selects the built frontend and
 `PIIK_CHANNEL_APP_NO_BROWSER=1` suppresses browser opening for automated checks.
 
+## Local OBS input
+
+With a supported desktop App connected, choose **Start sharing → OBS / WHIP**.
+Copy Server and Bearer Token into OBS's WHIP stream settings, using H.264 video
+and optional Opus audio. This input is local to the App's computer and works with
+either Local network or Public invite mode. The receiving page, room admission
+and ordinary viewer routes remain the existing owners.
+
+Configure input picture and sound in OBS. Piik retains automatic delivery
+adaptation without treating its capture presets as OBS's encoding limits.
+Closing the settings panel leaves the connection active. Stopping OBS ends that
+picture but retains the input connection; viewers select Watch again after a
+restart. **Stop OBS sharing**, closing the controlling page, or losing room
+authority revokes the connection and joins its receiver. Credentials stay in
+memory and are not part of room history or backups.
+
+The shared Native capability controls availability. Android currently lacks the
+received-video adaptation used by this input and does not expose this choice.
+Windows OBS-to-Browser media and retirement have been exercised; other desktop
+platforms still need their runtime acceptance.
+
 ## App diagnostics
 
 On the App's local launcher page, enable **Help → Debug** before reproducing the
@@ -248,8 +269,8 @@ sample data. Add `&screens=4` for multiple pictures, `&no-rooms` for first-room
 creation, or `&empty-chat` for an empty conversation.
 `/__tooltip-preview?channel-entry` shows the current first-use controls with local
 sample state; it does not change actual saved preferences.
-`/__tooltip-preview?channel-integrations` is a clickable Bot/OBS design proposal
-with inert example values. It does not connect an API or start a media input.
+`/__tooltip-preview?channel-integrations` presents the text-client example and
+the shared OBS settings with inert values. It does not connect an API or start a media input.
 
 These previews use the current shared components without a Rust service,
 real capture or network permissions. Sample actions change preview state only;

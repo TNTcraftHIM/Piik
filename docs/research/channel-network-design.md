@@ -718,8 +718,11 @@ at full demand and independently encodes constrained outputs; zero allocation
 pauses the output. Restoration adopts a newer baseline keyframe before retiring
 the constrained encoder. An unused baseline rests on its bounded AU queue.
 `Original`/`Limited` identify feed reuse, not delivered quality or a permanent
-outgoing RID geometry cap. Each publication carries its sharer's requested
+outgoing RID geometry cap. Sources configured by Piik carry the sharer's requested
 resolution/FPS/bitrate ceiling and picture preference together as `VideoSettings`.
+An externally configured source can omit those settings: its ceiling is unknown,
+and derived outputs use the default Balanced preference. Observed input format
+and bitrate do not become a fabricated configuration limit.
 Browser relay senders and Native derived encodings consume that intent; decoded
 format and transport counters are not preference authorities. Quality changes
 preserve publication/routes and acknowledge producer plus room acceptance;

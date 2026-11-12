@@ -98,8 +98,9 @@ async fn retained_capture_transfers_its_single_completion_to_the_new_lease() {
     );
 }
 
-#[test]
-fn capture_scope_survives_host_signaling_recovery_but_not_retired_authority() {
+#[tokio::test]
+async fn capture_scope_survives_host_signaling_recovery_but_not_retired_authority() {
+    use futures_util::FutureExt;
     use piik_channel_core::{
         host::RoomHost,
         wire::{Event as CoreEvent, Request, RoomAccess},
@@ -241,6 +242,13 @@ fn capture_scope_survives_host_signaling_recovery_but_not_retired_authority() {
         binding_id: binding,
     };
     assert!(scope.is_current(state(&registered, native_connection)));
+    let (projection, snapshot) =
+        watch::channel(Some(state(&registered, native_connection).clone()));
+    let mut authority = InputAuthority {
+        scope: scope.clone(),
+        snapshot,
+    };
+    assert!(authority.is_current());
     let publish = json!({"type":"publish","publication":{"id":scope.publication_id,"roomId":"capture","kind":"screen","source":{"kind":"screen","name":null},
         "videoSettings":{"ceiling":{"resolution":{"width":640,"height":360},"maxFramerate":30,"maxBitrate":5_000_000},"degradationPreference":"balanced"}}});
     let published = send(&mut core, native_connection, publish.clone(), 3);
@@ -260,6 +268,12 @@ fn capture_scope_survives_host_signaling_recovery_but_not_retired_authority() {
     assert!(
         scope.is_current(recovering),
         "pending permission and active captures retain their authority"
+    );
+    projection.send_replace(Some(recovering.clone()));
+    assert!(authority.is_current());
+    assert!(
+        authority.retired().now_or_never().is_none(),
+        "temporary unavailability is not revocation"
     );
     assert!(recovering
         .publications
@@ -342,6 +356,17 @@ fn capture_scope_survives_host_signaling_recovery_but_not_retired_authority() {
         .delivery
         .is_none());
     assert!(!scope.is_current(state(&revoked, native_connection)));
+    projection.send_replace(Some(state(&revoked, native_connection).clone()));
+    authority.retired().await;
+    assert!(!authority.is_current());
+    projection.send_replace(Some(state(&resumed, native_connection).clone()));
+    assert!(authority.is_current());
+    drop(projection);
+    authority.retired().await;
+    assert!(
+        !authority.is_current(),
+        "a retained snapshot cannot outlive its Native owner"
+    );
 }
 
 pub(super) fn driver() -> (
@@ -371,7 +396,7 @@ pub(super) fn driver() -> (
             publications: HashMap::new(),
             sources: HashMap::new(),
             #[cfg(feature = "capture")]
-            captures: HashMap::new(),
+            local_producers: HashMap::new(),
             #[cfg(feature = "capture")]
             capture_audio: HashMap::new(),
             #[cfg(all(

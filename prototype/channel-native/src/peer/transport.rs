@@ -94,8 +94,7 @@ enum Command {
     Add(
         Uuid,
         Box<Engine>,
-        discovery::Config,
-        turn::Setup,
+        Option<(discovery::Config, turn::Setup)>,
         oneshot::Sender<()>,
     ),
     TurnReady(Uuid, Uuid),
@@ -142,6 +141,65 @@ pub(crate) struct Transport {
     pair: Uuid,
     instance: Uuid,
     tx: mpsc::Sender<Command>,
+}
+pub(crate) struct AcceptedInput {
+    pub answer: String,
+    pub transport: Transport,
+    pub tracks: mpsc::Receiver<Track>,
+    pub ended: watch::Receiver<Option<Result<(), String>>>,
+}
+enum EventTarget {
+    Peer(mpsc::Sender<Event>),
+    Local {
+        tracks: mpsc::Sender<Track>,
+        ended: watch::Sender<Option<Result<(), String>>>,
+    },
+}
+impl EventTarget {
+    fn local(&self) -> bool {
+        matches!(self, Self::Local { .. })
+    }
+}
+fn validate_local_offer(offer: &SdpOffer) -> Result<()> {
+    ensure!(
+        (1..=2).contains(&offer.media_lines.len()),
+        "local input requires one video and optional audio track"
+    );
+    let mut video = 0;
+    let mut audio = 0;
+    for line in &offer.media_lines {
+        ensure!(
+            line.direction() == Direction::SendOnly,
+            "local input must be send-only"
+        );
+        ensure!(
+            line.simulcast().is_none(),
+            "local input does not accept layered tracks"
+        );
+        let (kind, expected) = match line.typ.to_string().as_str() {
+            "video" => {
+                video += 1;
+                (MediaKind::Video, Codec::H264)
+            }
+            "audio" => {
+                audio += 1;
+                (MediaKind::Audio, Codec::Opus)
+            }
+            _ => anyhow::bail!("unsupported local input media"),
+        };
+        ensure!(
+            line.rtp_params()
+                .iter()
+                .any(|params| params.spec().codec == expected
+                    && crate::media::supported(&codec(params).rtp_codec, kind)),
+            "unsupported local input codec"
+        );
+    }
+    ensure!(
+        video == 1 && audio <= 1,
+        "local input requires one video and optional audio track"
+    );
+    Ok(())
 }
 struct Outgoing {
     since: Instant,
@@ -269,7 +327,7 @@ pub(crate) struct Engine {
     turn_setup: mpsc::Receiver<turn::Endpoint>,
     turn_setup_task: Option<JoinHandle<()>>,
     retired_turn: Vec<usize>,
-    events: mpsc::Sender<Event>,
+    events: EventTarget,
     overflow: Arc<AtomicBool>,
     state: Arc<AtomicU8>,
     channels: HashMap<Uuid, ChannelState>,
@@ -326,14 +384,16 @@ impl Runtime {
                     .unwrap_or_else(|| Instant::now() + Duration::from_secs(3600));
                 tokio::select! {
                     command=commands.recv()=> match command {
-                        Some(Command::Add(id,mut engine,config,turn,done))=> {
+                        Some(Command::Add(id,mut engine,connectivity,done))=> {
                             for socket in &engine.sockets {
                                 if !sockets.iter().any(|s|Arc::ptr_eq(&s.socket,socket)) { add_reader(&mut sockets,socket.clone(),Some((id,engine.handle.instance)),network.clone()); }
                             }
                             engine.drain(); engines.insert(id,engine);
                             let engine=engines.get_mut(&id).unwrap();
-                            engine.discovery=Some(tokio::spawn(discovery::gather(engine.handle.clone(),config)));
-                            engine.turn_setup_task=Some(tokio::spawn(turn::setup(engine.handle.clone(),turn)));
+                            if let Some((config,turn))=connectivity {
+                                engine.discovery=Some(tokio::spawn(discovery::gather(engine.handle.clone(),config)));
+                                engine.turn_setup_task=Some(tokio::spawn(turn::setup(engine.handle.clone(),turn)));
+                            }
                             let _=done.send(());
                         }
                         Some(Command::TurnReady(id,instance))=>if let Some(engine)=engines.get_mut(&id).filter(|e|e.handle.instance==instance) {
@@ -404,17 +464,107 @@ impl Runtime {
         events: mpsc::Sender<Event>,
         overflow: Arc<AtomicBool>,
         state: Arc<AtomicU8>,
+        demand: watch::Receiver<BandwidthDemand>,
+        changed: Arc<Notify>,
+        ice: &[IceServer],
+    ) -> Result<(Transport, watch::Receiver<Estimate>)> {
+        self.add_engine(
+            pair,
+            prepared,
+            EventTarget::Peer(events),
+            overflow,
+            state,
+            demand,
+            changed,
+            ice,
+        )
+        .await
+    }
+    pub async fn accept_local_input(&self, offer: &str) -> Result<AcceptedInput> {
+        ensure!(
+            offer.len() <= 150_000,
+            "local input SDP exceeds media limit"
+        );
+        let parsed = SdpOffer::from_sdp_string(offer)?;
+        validate_local_offer(&parsed)?;
+        let (tracks, received) = mpsc::channel(2);
+        let (ended, end) = watch::channel(None);
+        let (_, demand) = watch::channel(BandwidthDemand {
+            minimum_bps: 0,
+            desired_bps: Some(0),
+        });
+        let (transport, _) = self
+            .add_engine(
+                Uuid::new_v4(),
+                None,
+                EventTarget::Local { tracks, ended },
+                Arc::new(AtomicBool::new(false)),
+                Arc::new(AtomicU8::new(PeerState::New as u8)),
+                demand,
+                Arc::new(Notify::new()),
+                &[],
+            )
+            .await?;
+        let result = async {
+            transport.accept("offer".into(), offer.to_owned()).await?;
+            let (_, answer) = transport.local_description().await?;
+            let parsed = SdpAnswer::from_sdp_string(&answer)?;
+            let mids = parsed
+                .media_lines
+                .iter()
+                .map(|line| line.mid())
+                .collect::<Vec<_>>();
+            transport
+                .call(move |engine| {
+                    ensure!(
+                        mids.iter().all(|mid| engine
+                            .rtc
+                            .media(*mid)
+                            .is_some_and(|media| !media.disabled()
+                                && media.direction() == Direction::RecvOnly
+                                && !media.remote_pts().is_empty())),
+                        "local input tracks were not negotiated"
+                    );
+                    Ok(())
+                })
+                .await?;
+            Ok(answer)
+        }
+        .await;
+        match result {
+            Ok(answer) => Ok(AcceptedInput {
+                answer,
+                transport,
+                tracks: received,
+                ended: end,
+            }),
+            Err(error) => {
+                transport.close().await?;
+                Err(error)
+            }
+        }
+    }
+    async fn add_engine(
+        &self,
+        pair: Uuid,
+        prepared: Option<std::net::UdpSocket>,
+        events: EventTarget,
+        overflow: Arc<AtomicBool>,
+        state: Arc<AtomicU8>,
         mut demand: watch::Receiver<BandwidthDemand>,
         changed: Arc<Notify>,
         ice: &[IceServer],
     ) -> Result<(Transport, watch::Receiver<Estimate>)> {
+        let local_input = events.local();
         let handle = Transport {
             pair,
             instance: Uuid::new_v4(),
             tx: self.tx.clone(),
         };
         let mut sockets = vec![];
-        if let Some(fixed) = &self.fixed {
+        if local_input {
+            sockets.push(Arc::new(UdpIo::new(UdpSocket::bind("127.0.0.1:0").await?)?));
+        } else if let Some(fixed) = &self.fixed {
             ensure!(
                 prepared.is_none(),
                 "fixed UDP cannot consume prepared socket"
@@ -424,7 +574,7 @@ impl Runtime {
             socket.set_nonblocking(true)?;
             sockets.push(Arc::new(UdpIo::new(UdpSocket::from_std(socket)?)?));
         }
-        if self.fixed.is_none() {
+        if !local_input && self.fixed.is_none() {
             for bind in ["0.0.0.0:0", "[::]:0"] {
                 if sockets.iter().any(|s| {
                     s.local_addr()
@@ -440,7 +590,7 @@ impl Runtime {
         ensure!(!sockets.is_empty(), "no UDP socket");
         let mut config = Rtc::builder()
             .clear_codecs()
-            .enable_vp8(true)
+            .enable_vp8(!local_input)
             .set_rtp_mode(true)
             .enable_bwe(Some(Bitrate::bps(300_000)))
             // Forwarding awaits a source clock; use video's report cadence for audio too.
@@ -471,15 +621,19 @@ impl Runtime {
             Bitrate::bps(requested.minimum_bps),
             Bitrate::bps(desired_bps(requested.desired_bps)),
         );
-        let interfaces = netwatch::interfaces::State::new().await;
+        let interfaces = if local_input {
+            None
+        } else {
+            Some(netwatch::interfaces::State::new().await)
+        };
         let mut bases = Vec::new();
         for socket in &sockets {
             let local = socket.local_addr()?;
             let candidates = host_candidates(
                 local,
                 interfaces
-                    .interfaces
-                    .values()
+                    .iter()
+                    .flat_map(|state| state.interfaces.values())
                     .filter(|i| i.is_up())
                     .flat_map(|i| i.addrs())
                     .map(|a| a.addr()),
@@ -495,7 +649,9 @@ impl Runtime {
                         local: address,
                     });
                 }
-                let _ = events.try_send(Event::Candidate(pair, candidate));
+                if let EventTarget::Peer(events) = &events {
+                    let _ = events.try_send(Event::Candidate(pair, candidate));
+                }
             }
         }
         let (bandwidth, rx) = watch::channel(Estimate::Startup(300_000.0));
@@ -541,11 +697,15 @@ impl Runtime {
             .send(Command::Add(
                 pair,
                 Box::new(engine),
-                discovery::Config::new(bases, &urls),
-                turn::Setup {
-                    urls,
-                    ready: turn_ready,
-                },
+                (!local_input).then(|| {
+                    (
+                        discovery::Config::new(bases, &urls),
+                        turn::Setup {
+                            urls,
+                            ready: turn_ready,
+                        },
+                    )
+                }),
                 done,
             ))
             .await
@@ -657,6 +817,7 @@ impl Transport {
     }
     pub async fn offer(&self) -> Result<bool> {
         self.call(|e| {
+            ensure!(!e.events.local(), "local input is receive-only");
             ensure!(e.pending.is_none(), "pending transport offer");
             // Browser addTrack can send on one of our offered media sections.
             // Output retirement/reuse owns only that section's sending half.
@@ -712,11 +873,20 @@ impl Transport {
     pub async fn accept(&self, kind: String, sdp: String) -> Result<()> {
         self.call(move |e| {
             let parsed = SdpOffer::from_sdp_string(&sdp)?;
+            if e.events.local() {
+                ensure!(
+                    !e.remote && kind == "offer",
+                    "local input does not renegotiate"
+                );
+            }
             let remote_media = parsed
                 .media_lines
                 .iter()
                 .filter(|line| line.direction().is_sending())
                 .filter_map(|line| {
+                    if e.events.local() {
+                        return Some((line.mid(), ("local-input".into(), line.mid().to_string())));
+                    }
                     line.msid()
                         .map(|msid| (line.mid(), (msid.stream_id, msid.track_id)))
                 })
@@ -795,6 +965,7 @@ impl Transport {
     }
     pub async fn add_candidate(&self, candidate: String) -> Result<()> {
         self.call(move |e| {
+            ensure!(!e.events.local(), "local input does not trickle ICE");
             e.rtc
                 .add_remote_candidate(Candidate::from_sdp_string(&candidate)?);
             Ok(())
@@ -820,6 +991,7 @@ impl Transport {
             closed: closed.clone(),
         });
         self.call(move |e| {
+            ensure!(!e.events.local(), "local input does not use data channels");
             e.channels.insert(
                 token,
                 ChannelState {
@@ -845,6 +1017,7 @@ impl Transport {
         rids: Vec<String>,
     ) -> Result<(mpsc::Receiver<String>, Arc<Notify>, String)> {
         self.call(move |e| {
+            ensure!(!e.events.local(), "local input is receive-only");
             let (tx, rx) = mpsc::channel(8);
             let writable = Arc::new(Notify::new());
             let companion = e
@@ -1185,6 +1358,13 @@ impl Engine {
         self.discovery_routes.clear();
         self.rtc.disconnect();
         self.drain();
+        self.tracks.clear();
+        if let EventTarget::Local { ended, .. } = &self.events {
+            let unfinished = ended.borrow().is_none();
+            if unfinished {
+                ended.send_replace(Some(Ok(())));
+            }
+        }
     }
 
     fn receive(
@@ -1194,6 +1374,12 @@ impl Engine {
         destination: SocketAddr,
         bytes: &[u8],
     ) -> bool {
+        if self.events.local()
+            && (source.ip() != std::net::Ipv4Addr::LOCALHOST
+                || destination.ip() != std::net::Ipv4Addr::LOCALHOST)
+        {
+            return false;
+        }
         let Ok(contents) = bytes.try_into() else {
             return false;
         };
@@ -1260,8 +1446,29 @@ impl Engine {
         }
     }
     fn emit(&self, event: Event) {
-        if self.events.try_send(event).is_err() {
-            self.overflow.store(true, Ordering::Release);
+        match &self.events {
+            EventTarget::Peer(events) => {
+                if events.try_send(event).is_err() {
+                    self.overflow.store(true, Ordering::Release);
+                }
+            }
+            EventTarget::Local { tracks, ended } => match event {
+                Event::Track(_, track) => {
+                    if tracks.try_send(track).is_err() {
+                        ended.send_replace(Some(Err("local_input_track_unavailable".into())));
+                    }
+                }
+                Event::State(_, PeerState::Failed) => {
+                    ended.send_replace(Some(Err("local_input_failed".into())));
+                }
+                Event::State(_, PeerState::Closed) => {
+                    let unfinished = ended.borrow().is_none();
+                    if unfinished {
+                        ended.send_replace(Some(Ok(())));
+                    }
+                }
+                _ => {}
+            },
         }
     }
     fn drain(&mut self) {
@@ -1309,6 +1516,11 @@ impl Engine {
                     break;
                 }
                 Ok(Output::Transmit(packet)) => {
+                    if self.events.local()
+                        && packet.destination.ip() != std::net::Ipv4Addr::LOCALHOST
+                    {
+                        continue;
+                    }
                     let available = super::MAX_ICE_CANDIDATES.saturating_sub(
                         self.turn
                             .values()
@@ -1590,6 +1802,9 @@ impl Engine {
                     self.emit(Event::Track(self.handle.pair, track));
                 }
                 let track = self.tracks.get(&mid).unwrap();
+                if self.events.local() && track.track.first_ssrc != ssrc {
+                    return;
+                }
                 if !packet.payload.is_empty() {
                     track
                         .track

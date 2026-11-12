@@ -12,9 +12,6 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **3.0 external media input.** Integrate OBS/WHIP through the page-owned
-  source adapter, local listener, existing quality adaptation and stop lifecycle at
-  the [extension boundary](./research/room-interactions.md#extension-boundaries-proposed).
 - [ ] **Desktop graphical entry integration.** A small Rust-native status-window
   prototype is verified on Windows. Evaluate it against the current App's startup,
   diagnostics and normal shutdown before production integration; keep the shared
@@ -114,6 +111,9 @@ the feedback period; they do not delay that delivery.
   and Linux hardware encoding and physical sound. Retain the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
+  The new local OBS input needs matched-package acceptance and non-Windows desktop
+  coverage; its [Windows path](./research/room-interactions.md#local-obs-input) has
+  source-level media and retirement evidence.
 - [ ] **Stronger microphone noise suppression (#518).** Compare RNNoise's voice
   clarity and mobile runtime cost before deciding on an enhanced mode. The
   [microphone assessment](./research/media-fidelity.md#stronger-microphone-suppression)
@@ -146,7 +146,7 @@ the feedback period; they do not delay that delivery.
 
 ## Parked Product Work
 
-- **NDI and additional codecs (#535, #530).** Assess NDI through the proposed
+- **NDI and additional codecs (#535, #530).** Assess NDI through the existing
   OBS/DistroAV-to-WHIP input before considering another native dependency.
   VP9/AV1/SVC support needs a concrete interoperability and resource decision.
   Transport feedback and retransmission remain with the existing RTC owner;

@@ -1,5 +1,12 @@
 .c3-share-control { display: inline-flex; gap: 8px; }
 .c3-share-actions { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.c3-external-input, .c3-external-input-field { display: grid; gap: 10px; min-width: 0; }
+.c3-external-input p { margin: 0; font-size: 12px; line-height: 1.7; color: var(--muted); }
+.c3-external-input-field label { font-size: 12px; font-weight: 650; }
+.c3-external-input-field > div { display: flex; gap: 8px; min-width: 0; }
+.c3-external-input-field input { min-width: 0; flex: 1; }
+.c3-external-input-field .lr-btn { flex: none; }
+.c3-external-input > .lr-btn { justify-self: start; }
 .lr-anchored-card.c3-quality-picker {
   width: min(640px, calc(100vw - 16px)); max-height: calc(100dvh - 16px);
   padding: 0;

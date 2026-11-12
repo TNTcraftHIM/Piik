@@ -11,6 +11,8 @@ mod hosted;
 mod sites;
 #[path = "app_tunnel.rs"]
 mod tunnel;
+#[path = "app_whip.rs"]
+mod whip;
 
 use crate::web;
 use anyhow::{anyhow, bail, Result};
@@ -35,7 +37,8 @@ use piik_channel_native::{
     capture::{Settings, Target, VideoCodec, VideoCodecMode},
     input::{Desktop, Mode, SourceView},
     peer::{
-        CaptureAudio, CaptureLease, SourceAudioSettings, SourceAudioState, SourceMicrophoneSettings,
+        CaptureAudio, CaptureLease, ExternalLease, SourceAudioSettings, SourceAudioState,
+        SourceMicrophoneSettings,
     },
     session::{
         self, CommitCapture, HostCommand, Hosting, OpenRoom, PauseCapture, PrepareCapture,
@@ -57,7 +60,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 7;
+const PROTOCOL: u8 = 8;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -142,6 +145,7 @@ struct App {
     closing: watch::Sender<bool>,
     launch: Mutex<Option<hosted::Launch>>,
     desktop: Desktop,
+    external_inputs: whip::Inputs,
 }
 
 impl App {
@@ -339,6 +343,7 @@ pub async fn serve(
         web::static_files(ServeDir::new(&config.assets).fallback(web::document(index.clone())));
     let app = Arc::new(App {
         desktop: Desktop::new()?,
+        external_inputs: whip::Inputs::default(),
         config,
         port: address.port(),
         token: Uuid::new_v4().to_string(),
@@ -362,6 +367,11 @@ pub async fn serve(
         .route("/connect-discovery", get(discovery))
         .route("/health", get(health))
         .route("/rooms", get(upgrade))
+        .route("/whip/{permit}", post(whip::offer))
+        .route(
+            "/whip/{permit}/{generation}",
+            axum::routing::delete(whip::delete),
+        )
         .route("/rooms/{domain}/{user}/{room}/backup", get(backup::export))
         .route("/rooms/{domain}/{user}/backup", put(backup::restore))
         .route("/rooms/{domain}/{user}/hosting", get(backup::describe))
@@ -724,6 +734,10 @@ enum Operation {
         publication_id: Option<Uuid>,
     },
     Targets,
+    PrepareExternalInput {
+        publication_id: Uuid,
+        room_id: String,
+    },
     Microphones,
     Preview {
         target: Target,
@@ -807,24 +821,113 @@ enum Operation {
 
 #[derive(Default)]
 struct Capture {
-    active: Option<CaptureLease>,
+    active: Option<SourceLease>,
     pending: Option<PendingCapture>,
     audio: Option<CaptureAudio>,
     audio_settings: SourceAudioSettings,
 }
+enum SourceLease {
+    Capture(CaptureLease),
+    External(ExternalLease),
+}
+impl SourceLease {
+    fn external_identity(&self) -> Option<(Uuid, Uuid)> {
+        match self {
+            Self::External(lease) if !lease.is_stopped() => Some((lease.id, lease.session_id)),
+            _ => None,
+        }
+    }
+    fn id(&self) -> Uuid {
+        match self {
+            Self::Capture(lease) => lease.id,
+            Self::External(lease) => lease.id,
+        }
+    }
+    fn producer_id(&self) -> Uuid {
+        match self {
+            Self::Capture(lease) => lease.producer_id(),
+            Self::External(lease) => lease.id,
+        }
+    }
+    fn is_stopped(&self) -> bool {
+        match self {
+            Self::Capture(lease) => lease.is_stopped(),
+            Self::External(lease) => lease.is_stopped(),
+        }
+    }
+    fn scope(&self) -> &piik_channel_native::peer::CaptureScope {
+        match self {
+            Self::Capture(lease) => &lease.scope,
+            Self::External(lease) => &lease.scope,
+        }
+    }
+    fn capture(&self) -> Option<&CaptureLease> {
+        match self {
+            Self::Capture(lease) => Some(lease),
+            _ => None,
+        }
+    }
+}
 struct PendingCapture {
     request: AbortHandle,
-    lease: Option<CaptureLease>,
+    lease: Option<SourceLease>,
+    producer: Option<Uuid>,
 }
 enum CaptureResult {
     Prepared {
         lease: CaptureLease,
         codec: VideoCodec,
     },
-    Committed(CaptureLease),
+    Committed(SourceLease),
 }
 impl Capture {
+    fn pending_for(&mut self, producer: Uuid) -> Option<&mut PendingCapture> {
+        self.pending
+            .as_mut()
+            .filter(|pending| pending.producer == Some(producer))
+    }
+    fn retire_producer(&mut self, producer: Uuid) -> bool {
+        let active = self
+            .active
+            .as_ref()
+            .is_some_and(|source| source.id() == producer);
+        let pending = self.pending_for(producer).is_some();
+        if active {
+            self.active = None;
+        }
+        if pending {
+            self.pending = None;
+        }
+        active || pending
+    }
+    fn external_event(
+        &self,
+        publication: Uuid,
+        prepared: bool,
+        closed: bool,
+        error: Option<&str>,
+    ) -> Value {
+        external_input_event(
+            publication,
+            self.active
+                .as_ref()
+                .and_then(SourceLease::external_identity),
+            prepared
+                .then(|| {
+                    self.pending
+                        .as_ref()
+                        .and_then(|pending| pending.lease.as_ref())
+                        .and_then(SourceLease::external_identity)
+                })
+                .flatten(),
+            closed,
+            error,
+        )
+    }
     fn lease(&self) -> Option<&CaptureLease> {
+        self.source().and_then(SourceLease::capture)
+    }
+    fn source(&self) -> Option<&SourceLease> {
         self.active.as_ref().filter(|lease| !lease.is_stopped())
     }
     fn prepare(
@@ -840,6 +943,7 @@ impl Capture {
         self.pending = Some(PendingCapture {
             request: request.clone(),
             lease: None,
+            producer: None,
         });
         Ok((request, registration))
     }
@@ -865,12 +969,42 @@ impl Capture {
         if let Some(audio) = &self.audio {
             audio.configure(self.audio_settings)?;
         }
-        self.pending
+        let pending = self
+            .pending
             .as_mut()
-            .ok_or_else(|| anyhow!("capture_cancelled"))?
-            .lease = Some(lease);
+            .ok_or_else(|| anyhow!("capture_cancelled"))?;
+        pending.producer = Some(lease.id);
+        pending.lease = Some(SourceLease::Capture(lease));
         Ok(())
     }
+}
+fn external_input_event(
+    publication: Uuid,
+    active: Option<(Uuid, Uuid)>,
+    prepared: Option<(Uuid, Uuid)>,
+    closed: bool,
+    error: Option<&str>,
+) -> Value {
+    let (state, source) = if closed {
+        ("closed", None)
+    } else if prepared.is_some() {
+        ("prepared", prepared)
+    } else if active.is_some() {
+        ("live", active)
+    } else {
+        (if error.is_some() { "error" } else { "waiting" }, None)
+    };
+    let mut event =
+        json!({"type":"external_input_state","publicationId":publication,"state":state});
+    if let Some((capture, session)) = source {
+        event["captureId"] = json!(capture);
+        event["sessionId"] = json!(session);
+        event["codec"] = json!("h264");
+    }
+    if let Some(error) = error {
+        event["error"] = json!(error);
+    }
+    event
 }
 impl Drop for PendingCapture {
     fn drop(&mut self) {
@@ -922,10 +1056,190 @@ async fn connection(
             let mut audio_states = FuturesUnordered::new();
             let mut operations = FuturesUnordered::new();
             let mut previews = FuturesUnordered::new();
+            let (external_requests, mut external_queue) = mpsc::channel(8);
+            let mut external_permits = whip::Page::default();
+            let mut external_resources: BTreeMap<Uuid, whip::Resource> = BTreeMap::new();
+            let mut external_offers: FuturesUnordered<
+                BoxFuture<
+                    'static,
+                    (
+                        Arc<whip::Permit>,
+                        AbortHandle,
+                        futures_util::future::AbortRegistration,
+                        oneshot::Sender<Result<(Uuid, String), StatusCode>>,
+                        Result<piik_channel_native::peer::PreparedExternal>,
+                    ),
+                >,
+            > = FuturesUnordered::new();
+            let mut external_ready: FuturesUnordered<
+                BoxFuture<'static, (Arc<whip::Permit>, Uuid, AbortHandle, Result<ExternalLease>)>,
+            > = FuturesUnordered::new();
+            let mut external_ends: FuturesUnordered<
+                BoxFuture<'static, (Uuid, Uuid, Result<(), String>)>,
+            > = FuturesUnordered::new();
+            let mut external_deletes: FuturesUnordered<BoxFuture<'static, ()>> =
+                FuturesUnordered::new();
+            let mut external_authorizations: FuturesUnordered<
+                BoxFuture<
+                    'static,
+                    (
+                        String,
+                        Uuid,
+                        String,
+                        AbortHandle,
+                        Result<piik_channel_native::peer::InputAuthority>,
+                    ),
+                >,
+            > = FuturesUnordered::new();
+            let mut external_revocations: FuturesUnordered<BoxFuture<'static, (Uuid, Uuid)>> =
+                FuturesUnordered::new();
             let mut preview: Option<(String, Option<oneshot::Sender<()>>)> = None;
             loop {
                 captures.retain(|_, capture| capture.pending.is_some() || capture.active.is_some());
                 let message = tokio::select! {
+                    Some((id, publication_id, room_id, cancel, authority)) = external_authorizations.next(), if !external_authorizations.is_empty() => {
+                        let cancelled = cancel.is_aborted();
+                        if !cancelled { if let Some(capture) = captures.get_mut(&publication_id) { capture.pending = None; } }
+                        let result = authority.and_then(|authority| {
+                            anyhow::ensure!(!cancelled, "capture_cancelled");
+                            anyhow::ensure!(authority.is_current(), "room_unavailable");
+                            if let Some(permit) = external_permits.0.get(&publication_id) {
+                                anyhow::ensure!(permit.room == room_id && !permit.stopped(), "capture_room_mismatch");
+                                return Ok(permit.descriptor(app.port));
+                            }
+                            anyhow::ensure!(!external_permits.0.values().any(|permit| permit.room == room_id), "capture_pending");
+                            let permit = app.external_inputs.permit(publication_id, room_id, external_requests.clone(), authority);
+                            let watching = permit.clone();
+                            external_revocations.push(async move {
+                                let mut authority = watching.authority.clone();
+                                let mut cancelled = watching.cancelled();
+                                tokio::select! {
+                                    _ = authority.retired() => {},
+                                    _ = cancelled.wait_for(|cancelled| *cancelled) => {},
+                                }
+                                (watching.publication, watching.id)
+                            }.boxed());
+                            let descriptor = permit.descriptor(app.port);
+                            external_permits.0.insert(publication_id, permit);
+                            Ok(descriptor)
+                        });
+                        let response = match result { Ok(value) => json!({"id":id,"result":value}), Err(error) => json!({"id":id,"error":error.to_string()}) };
+                        timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
+                        continue;
+                    }
+                    Some((publication_id, permit_id)) = external_revocations.next(), if !external_revocations.is_empty() => {
+                        if !external_permits.0.get(&publication_id).is_some_and(|permit| permit.id == permit_id) { continue; }
+                        external_permits.remove(publication_id);
+                        for resource in external_resources.values().filter(|resource| resource.permit == permit_id) { resource.control.stop(); }
+                        let event = external_input_event(publication_id, None, None, true, None);
+                        timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                        continue;
+                    }
+                    Some(request) = external_queue.recv() => {
+                        match request {
+                            whip::Request::Offer { permit, offer, response } => {
+                                if permit.stopped() || !external_permits.0.get(&permit.publication).is_some_and(|p| Arc::ptr_eq(p, &permit)) {
+                                    let _ = response.send(Err(StatusCode::GONE)); continue;
+                                }
+                                let Some(commands) = host.clone() else { let _ = response.send(Err(StatusCode::GONE)); continue; };
+                                let capture = captures.entry(permit.publication).or_default();
+                                let Ok((cancel, registration)) = capture.prepare(capture.audio_settings) else { let _ = response.send(Err(StatusCode::CONFLICT)); continue; };
+                                let replaces = capture.source().map(SourceLease::producer_id);
+                                external_offers.push(async move {
+                                    let (result, prepared) = oneshot::channel();
+                                    let result = async {
+                                        commands.send(HostCommand::PrepareExternal(session::PrepareExternal { publication_id: permit.publication, room_id: permit.room.clone(), offer, replaces, result })).await.map_err(|_| anyhow!("hosting_unavailable"))?;
+                                        prepared.await.map_err(|_| anyhow!("hosting_unavailable"))?.map_err(anyhow::Error::msg)
+                                    }.await;
+                                    (permit, cancel, registration, response, result)
+                                }.boxed());
+                            }
+                            whip::Request::Delete { permit, generation, response } => {
+                                let Some(resource) = external_resources.get_mut(&generation).filter(|r| r.permit == permit.id) else { let _ = response.send(Err(StatusCode::NOT_FOUND)); continue; };
+                                if resource.deleting { let _ = response.send(Err(StatusCode::CONFLICT)); continue; }
+                                resource.deleting = true;
+                                resource.control.stop();
+                                let ended = resource.ended.clone();
+                                external_deletes.push(async move { let _ = ended.await; let _ = response.send(Ok(())); }.boxed());
+                            }
+                        }
+                        continue;
+                    }
+                    Some(()) = external_deletes.next(), if !external_deletes.is_empty() => { continue; }
+                    Some((permit, cancel, registration, response, prepared)) = external_offers.next(), if !external_offers.is_empty() => {
+                        let publication_id = permit.publication;
+                        if cancel.is_aborted() || permit.stopped() || response.is_closed() {
+                            if !cancel.is_aborted() { if let Some(capture) = captures.get_mut(&publication_id) { capture.pending = None; } }
+                            drop(prepared); let _ = response.send(Err(StatusCode::GONE)); continue;
+                        }
+                        match prepared {
+                            Ok(mut prepared) => {
+                                let generation = prepared.lease.id;
+                                captures.get_mut(&publication_id).unwrap().pending.as_mut().unwrap().producer = Some(generation);
+                                let ended = prepared.lease.ended.take().expect("external generation owns completion");
+                                let ended: whip::Ended = async move { ended.await.unwrap_or_else(|_| Err("external_input_stopped".into())) }.boxed().shared();
+                                external_resources.insert(generation, whip::Resource { permit: permit.id, publication: publication_id, control: prepared.lease.control(), ended: ended.clone(), deleting: false });
+                                external_ends.push(async move { (publication_id, generation, ended.await) }.boxed());
+                                if response.send(Ok((generation, prepared.answer))).is_err() { prepared.lease.stop(); }
+                                external_ready.push(async move {
+                                    let mut revoked = permit.cancelled();
+                                    let work = async {
+                                        prepared.lease.ready().await?;
+                                        Ok(prepared.lease)
+                                    };
+                                    let result = tokio::select! {
+                                        result = Abortable::new(work, registration) => result.unwrap_or_else(|_| Err(anyhow!("capture_cancelled"))),
+                                        _ = revoked.wait_for(|value| *value) => Err(anyhow!("capture_cancelled")),
+                                    };
+                                    (permit, generation, cancel, result)
+                                }.boxed());
+                            }
+                            Err(error) => {
+                                if let Some(capture) = captures.get_mut(&publication_id) { capture.pending = None; }
+                                let _ = response.send(Err(StatusCode::UNPROCESSABLE_ENTITY));
+                                let retired = error.to_string() == "room_unavailable";
+                                if retired { external_permits.remove(publication_id); }
+                                let event = captures.get(&publication_id).unwrap().external_event(publication_id, false, retired, Some(if retired {"room_unavailable"} else {"external_input_failed"}));
+                                timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                            }
+                        }
+                        continue;
+                    }
+                    Some((permit, generation, cancel, result)) = external_ready.next(), if !external_ready.is_empty() => {
+                        let publication_id = permit.publication;
+                        let Some(capture) = captures.get_mut(&publication_id) else { drop(result); continue; };
+                        let Some(pending) = capture.pending_for(generation) else { drop(result); continue; };
+                        if cancel.is_aborted() || permit.stopped() {
+                            capture.pending = None;
+                            drop(result); continue;
+                        }
+                        let event = match result {
+                            Ok(lease) if !lease.is_stopped() => {
+                                pending.lease = Some(SourceLease::External(lease));
+                                capture.external_event(publication_id, true, false, None)
+                            }
+                            result => {
+                                let retired = result.as_ref().err().is_some_and(|error| error.to_string() == "room_unavailable");
+                                capture.pending = None;
+                                if retired { external_permits.remove(publication_id); }
+                                capture.external_event(publication_id, false, retired, Some(if retired {"room_unavailable"} else {"external_input_failed"}))
+                            }
+                        };
+                        timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                        continue;
+                    }
+                    Some((publication_id, generation, ended)) = external_ends.next(), if !external_ends.is_empty() => {
+                        let Some(resource) = external_resources.remove(&generation) else { continue; };
+                        let Some(capture) = captures.get_mut(&publication_id) else { continue; };
+                        if !capture.retire_producer(generation) { continue; }
+                        if let Some(permit) = external_permits.0.get(&publication_id).filter(|p| p.id == resource.permit) {
+                            let retired = ended.as_ref().err().is_some_and(|error| error == "room_unavailable");
+                            if retired { permit.revoke(); external_permits.remove(publication_id); }
+                            let event = capture.external_event(publication_id, false, retired, ended.as_ref().err().map(String::as_str));
+                            timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                        }
+                        continue;
+                    }
                     _ = async {
                         match &host {
                             Some(commands) => commands.closed().await,
@@ -946,7 +1260,7 @@ async fn connection(
                     }
                     Some((publication_id, producer_id, result)) = capture_ends.next(), if !capture_ends.is_empty() => {
                         if let Some(capture) = captures.get_mut(&publication_id) {
-                            let current = capture.active.as_ref().map(|lease| (lease.producer_id(), lease.id));
+                            let current = capture.active.as_ref().map(|lease| (lease.producer_id(), lease.id()));
                             if let Some(event) = capture_end_event(publication_id, producer_id, current, result) {
                                 capture.active = None;
                                 timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
@@ -1008,10 +1322,10 @@ async fn connection(
                                         Err(anyhow!("capture_cancelled"))
                                     }
                                 }
-                                Ok(CaptureResult::Committed(mut lease)) => {
+                                Ok(CaptureResult::Committed(SourceLease::Capture(mut lease))) => {
                                     let retained = lease.retains_video();
                                     let capture = captures.entry(publication_id).or_default();
-                                    if let Some(previous) = capture.active.as_mut() { lease.adopt_previous(previous); }
+                                    if let Some(SourceLease::Capture(previous)) = capture.active.as_mut() { lease.adopt_previous(previous); }
                                     let capture_id = lease.id;
                                     if let Some(ended) = lease.ended.take() {
                                         let producer_id = lease.producer_id();
@@ -1028,7 +1342,21 @@ async fn connection(
                                         initial_audio = Some(state.borrow().clone());
                                     }
                                     capture.pending = None;
-                                    capture.active = Some(lease);
+                                    capture.active = Some(SourceLease::Capture(lease));
+                                    if external_permits.remove(publication_id) {
+                                        for resource in external_resources.values().filter(|resource| resource.publication == publication_id) { resource.control.stop(); }
+                                        let event = external_input_event(publication_id, None, None, true, None);
+                                        timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                                    }
+                                    Ok(Value::Null)
+                                }
+                                Ok(CaptureResult::Committed(SourceLease::External(lease))) => {
+                                    let capture = captures.entry(publication_id).or_default();
+                                    capture.pending = None;
+                                    capture.audio = None;
+                                    capture.active = Some(SourceLease::External(lease));
+                                    let event = capture.external_event(publication_id, false, false, None);
+                                    timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                                     Ok(Value::Null)
                                 }
                                 Err(error) => Err(error),
@@ -1038,7 +1366,15 @@ async fn connection(
                             Ok(value) => json!({"id":id,"result":value}),
                             Err(error) => {
                                 if !request.is_aborted() {
-                                    if let Some(capture) = captures.get_mut(&publication_id) { capture.pending = None; }
+                                    if let Some(capture) = captures.get_mut(&publication_id) {
+                                        let external = capture.pending.as_ref().and_then(|pending| pending.producer)
+                                            .is_some_and(|producer| external_resources.contains_key(&producer));
+                                        capture.pending = None;
+                                        if external && external_permits.0.contains_key(&publication_id) {
+                                            let event = capture.external_event(publication_id, false, false, Some("external_input_failed"));
+                                            timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                                        }
+                                    }
                                 }
                                 json!({"id":id,"error":error.to_string()})
                             }
@@ -1064,6 +1400,76 @@ async fn connection(
                 let response = match (id, serde_json::from_value::<Request>(value.clone())) {
                     (Some(_), Ok(request)) => {
                         let result: Result<Value> = match request.operation {
+                            Operation::PrepareExternalInput {
+                                publication_id,
+                                room_id,
+                            } => {
+                                if !piik_channel_native::peer::supports_external_input() {
+                                    Err(anyhow!("external_input_unavailable"))
+                                } else if host.is_none() {
+                                    Err(anyhow!("hello_required"))
+                                } else if let Some(permit) = external_permits.0.get(&publication_id)
+                                {
+                                    if permit.room != room_id || permit.stopped() {
+                                        Err(anyhow!("capture_room_mismatch"))
+                                    } else {
+                                        Ok(permit.descriptor(app.port))
+                                    }
+                                } else if external_permits
+                                    .0
+                                    .values()
+                                    .any(|permit| permit.room == room_id)
+                                {
+                                    Err(anyhow!("capture_pending"))
+                                } else {
+                                    let commands = host.clone().unwrap();
+                                    let capture = captures.entry(publication_id).or_default();
+                                    match capture.prepare(capture.audio_settings) {
+                                        Err(error) => Err(error),
+                                        Ok((cancel, registration)) => {
+                                            external_authorizations.push(
+                                                async move {
+                                                    let (result, authorized) = oneshot::channel();
+                                                    let authority = Abortable::new(
+                                                        async {
+                                                            commands
+                                                                .send(HostCommand::AuthorizeInput {
+                                                                    publication_id,
+                                                                    room_id: room_id.clone(),
+                                                                    result,
+                                                                })
+                                                                .await
+                                                                .map_err(|_| {
+                                                                    anyhow!("hosting_unavailable")
+                                                                })?;
+                                                            authorized
+                                                                .await
+                                                                .map_err(|_| {
+                                                                    anyhow!("hosting_unavailable")
+                                                                })?
+                                                                .map_err(anyhow::Error::msg)
+                                                        },
+                                                        registration,
+                                                    )
+                                                    .await
+                                                    .unwrap_or_else(|_| {
+                                                        Err(anyhow!("capture_cancelled"))
+                                                    });
+                                                    (
+                                                        request.id,
+                                                        publication_id,
+                                                        room_id,
+                                                        cancel,
+                                                        authority,
+                                                    )
+                                                }
+                                                .boxed(),
+                                            );
+                                            continue;
+                                        }
+                                    }
+                                }
+                            }
                             Operation::Hello {
                                 channel_id,
                                 user_id,
@@ -1177,7 +1583,7 @@ async fn connection(
                                         Err(error) => Err(error),
                                         Ok((cancel, registration)) => {
                                             let replaces =
-                                                capture.lease().map(CaptureLease::producer_id);
+                                                capture.source().map(SourceLease::producer_id);
                                             let commands = commands.clone();
                                             capture_starts.push(
                                                 async move {
@@ -1218,7 +1624,9 @@ async fn connection(
                                     .get_mut(&publication_id)
                                     .and_then(|capture| capture.pending.as_mut())
                                     .and_then(|pending| pending.lease.as_mut())
-                                    .filter(|lease| lease.id == capture_id && !lease.is_stopped());
+                                    .filter(|lease| {
+                                        lease.id() == capture_id && !lease.is_stopped()
+                                    });
                                 if lease.is_none() {
                                     Err(anyhow!("capture_unavailable"))
                                 } else if let Some(commands) = &host {
@@ -1230,6 +1638,7 @@ async fn connection(
                                     capture.pending = Some(PendingCapture {
                                         request: cancel.clone(),
                                         lease: None,
+                                        producer: Some(lease.id()),
                                     });
                                     let commands = commands.clone();
                                     capture_starts.push(
@@ -1277,11 +1686,11 @@ async fn connection(
                             } => {
                                 let lease = captures
                                     .get(&publication_id)
-                                    .and_then(Capture::lease)
-                                    .filter(|lease| lease.id == capture_id);
+                                    .and_then(Capture::source)
+                                    .filter(|lease| lease.id() == capture_id);
                                 if let (Some(commands), Some(lease)) = (&host, lease) {
                                     let commands = commands.clone();
-                                    let scope = lease.scope.clone();
+                                    let scope = lease.scope().clone();
                                     let capture_id = lease.producer_id();
                                     operations.push(async move {
                                         let result = transfer_source(&commands, scope, capture_id, to_session_id).await;
@@ -1296,6 +1705,26 @@ async fn connection(
                                 }
                             }
                             Operation::StopCapture { publication_id } => {
+                                if external_permits.remove(publication_id) {
+                                    for resource in external_resources
+                                        .values()
+                                        .filter(|resource| resource.publication == publication_id)
+                                    {
+                                        resource.control.stop();
+                                    }
+                                    let event = external_input_event(
+                                        publication_id,
+                                        None,
+                                        None,
+                                        true,
+                                        None,
+                                    );
+                                    timeout(
+                                        IO_TIMEOUT,
+                                        writer.send(Message::Text(event.to_string().into())),
+                                    )
+                                    .await??;
+                                }
                                 drop(captures.remove(&publication_id));
                                 Ok(Value::Null)
                             }
@@ -1388,11 +1817,11 @@ async fn connection(
                             } => {
                                 let lease = captures
                                     .get(&publication_id)
-                                    .and_then(Capture::lease)
-                                    .filter(|lease| lease.id == capture_id);
+                                    .and_then(Capture::source)
+                                    .filter(|lease| lease.id() == capture_id);
                                 if let (Some(commands), Some(lease)) = (&host, lease) {
                                     let commands = commands.clone();
-                                    let scope = lease.scope.clone();
+                                    let scope = lease.scope().clone();
                                     let capture_id = lease.producer_id();
                                     operations.push(async move {
                                         let result = pause_capture(&commands, scope, capture_id, paused).await;
@@ -1413,11 +1842,11 @@ async fn connection(
                             } => {
                                 let lease = captures
                                     .get(&publication_id)
-                                    .and_then(Capture::lease)
-                                    .filter(|lease| lease.id == capture_id);
+                                    .and_then(Capture::source)
+                                    .filter(|lease| lease.id() == capture_id);
                                 if let (Some(commands), Some(lease)) = (&host, lease) {
                                     let commands = commands.clone();
-                                    let scope = lease.scope.clone();
+                                    let scope = lease.scope().clone();
                                     let capture_id = lease.producer_id();
                                     operations.push(async move {
                                         let result = title_capture(&commands, scope, capture_id, title).await;
@@ -1586,7 +2015,7 @@ async fn capture_targets() -> Result<Value> {
                 piik_channel_native::capture::targets()?
             };
             let audio = piik_channel_native::capture::audio_capabilities();
-            let mut result = json!({"sources": sources, "codecs": codecs, "processAudio": audio.process_audio, "processAudioExclusion": audio.process_audio_exclusion, "systemAudio": audio.system_audio, "captureBorderControl": piik_channel_native::capture::capture_border_control(), "videoAdaptation": piik_channel_native::capture::supports_video_adaptation()});
+            let mut result = json!({"externalInput": piik_channel_native::peer::supports_external_input(), "sources": sources, "codecs": codecs, "processAudio": audio.process_audio, "processAudioExclusion": audio.process_audio_exclusion, "systemAudio": audio.system_audio, "captureBorderControl": piik_channel_native::capture::capture_border_control(), "videoAdaptation": piik_channel_native::capture::supports_video_adaptation()});
             if let Some(activation) = piik_channel_native::capture::activation_url()? {
                 result["activationURL"] = json!(activation);
             }
@@ -1596,7 +2025,7 @@ async fn capture_targets() -> Result<Value> {
     #[cfg(not(feature = "capture"))]
     {
         Ok(
-            json!({"sources": [], "codecs": [], "processAudio": false, "processAudioExclusion": false, "systemAudio": false, "captureBorderControl": false, "videoAdaptation": false}),
+            json!({"externalInput": false, "sources": [], "codecs": [], "processAudio": false, "processAudioExclusion": false, "systemAudio": false, "captureBorderControl": false, "videoAdaptation": false}),
         )
     }
 }
@@ -1652,17 +2081,19 @@ async fn prepare_capture(
 
 async fn commit_capture(
     commands: &mpsc::Sender<HostCommand>,
-    mut lease: CaptureLease,
+    mut lease: SourceLease,
     replacing: bool,
-) -> Result<CaptureLease> {
+) -> Result<SourceLease> {
+    anyhow::ensure!(!lease.is_stopped(), "capture_cancelled");
     let (result, response) = oneshot::channel();
+    let capture = lease.capture();
     commands
         .send(HostCommand::CommitCapture(CommitCapture {
-            scope: lease.scope.clone(),
-            capture_id: lease.id,
+            scope: lease.scope().clone(),
+            capture_id: lease.id(),
             replacing,
-            retaining: lease.retains_video(),
-            video_settings: lease.video_settings(),
+            retaining: capture.is_some_and(CaptureLease::retains_video),
+            video_settings: capture.and_then(CaptureLease::video_settings),
             result,
         }))
         .await
@@ -1671,11 +2102,13 @@ async fn commit_capture(
         .await
         .map_err(|_| anyhow!("hosting_unavailable"))?
         .map_err(anyhow::Error::msg)?;
-    lease.remote = input.remote;
-    lease.input_state = input.state;
+    anyhow::ensure!(!lease.is_stopped(), "capture_cancelled");
+    if let SourceLease::Capture(lease) = &mut lease {
+        lease.remote = input.remote;
+        lease.input_state = input.state;
+    }
     Ok(lease)
 }
-
 async fn transfer_source(
     commands: &mpsc::Sender<HostCommand>,
     scope: piik_channel_native::peer::CaptureScope,
@@ -1813,6 +2246,7 @@ mod lifecycle_tests {
                 closing: watch::channel(false).0,
                 launch: Mutex::new(None),
                 desktop: Desktop::new().unwrap(),
+                external_inputs: whip::Inputs::default(),
             })
         };
         let first = app(old);
@@ -1998,6 +2432,7 @@ mod lifecycle_tests {
             closing: watch::channel(false).0,
             launch: Mutex::new(None),
             desktop: Desktop::new().unwrap(),
+            external_inputs: whip::Inputs::default(),
         });
         // Observe the actual HTTP handler future being dropped, without replacing
         // its production approval/retirement work with a test implementation.
@@ -2117,6 +2552,50 @@ mod lifecycle_tests {
 #[cfg(all(test, feature = "capture"))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn old_external_ready_and_end_cannot_retire_the_successor_pending_source() {
+        let mut capture = Capture::default();
+        let first = Uuid::new_v4();
+        let second = Uuid::new_v4();
+        let (old, _) = capture.prepare(SourceAudioSettings::default()).unwrap();
+        capture.pending.as_mut().unwrap().producer = Some(first);
+        capture.pending = None;
+        let (current, _) = capture.prepare(SourceAudioSettings::default()).unwrap();
+        capture.pending.as_mut().unwrap().producer = Some(second);
+        assert!(old.is_aborted());
+        assert!(capture.pending_for(first).is_none());
+        assert!(!capture.retire_producer(first));
+        assert_eq!(capture.pending.as_ref().unwrap().producer, Some(second));
+        assert!(!current.is_aborted());
+        assert!(capture.retire_producer(second));
+        assert!(current.is_aborted());
+        assert!(capture.pending.is_none());
+    }
+
+    #[test]
+    fn external_candidate_failure_preserves_the_active_source_projection() {
+        let publication = Uuid::new_v4();
+        let active = (Uuid::new_v4(), Uuid::new_v4());
+        let event = external_input_event(
+            publication,
+            Some(active),
+            None,
+            false,
+            Some("external_input_failed"),
+        );
+        assert_eq!(event["state"], "live");
+        assert_eq!(event["captureId"], json!(active.0));
+        assert_eq!(event["sessionId"], json!(active.1));
+        assert_eq!(event["error"], "external_input_failed");
+        assert_eq!(
+            external_input_event(publication, None, None, false, None)["state"],
+            "waiting"
+        );
+        let closed = external_input_event(publication, Some(active), None, true, None);
+        assert_eq!(closed["state"], "closed");
+        assert!(closed.get("captureId").is_none());
+    }
 
     #[tokio::test]
     async fn capture_completion_follows_the_active_producer_and_current_lease() {

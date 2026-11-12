@@ -7,7 +7,7 @@ import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventD
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView, ChatOptions, ScreenPresentation, SourceMicrophoneConfiguration, SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryImport, type BackupHistoryRow } from "./hosting";
-import { ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics } from "./app-link";
+import { ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics, type NativeExternalInputState } from "./app-link";
 import { isClientActivated } from "../lib/app-launch";
 import type { NativeCaptureTarget } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
@@ -856,6 +856,13 @@ export class ChannelSession {
           if (this.app === app) this.patch({ remoteControls: new Map(this.view.remoteControls).set(id, state) });
         }, () => {
           if (this.app === app) this.patch({});
+        }, event => {
+          if (this.app !== app) return;
+          if (event.state === "prepared") void this.commitExternalScreen(app, event).catch(() => {});
+          if (event.state === "closed" && !app.screens.has(event.publicationId)) {
+            for (const [roomId, share] of this.screenShares) if (share.id === event.publicationId && !this.local.has(share.id)) this.screenShares.delete(roomId);
+          }
+          this.patch({});
         });
         this.app = app;
       }
@@ -1887,6 +1894,47 @@ export class ChannelSession {
     loadCameraPreviews(signal, publish, [...this.local.values()].find(capture => capture.camera
       && capture.stream.getVideoTracks().some(track => track.readyState === "live"))?.stream);
   nativeSources = async (): Promise<NativeCaptureSources> => (await this.connectApp()).sources();
+  externalInput = (roomId: string) => {
+    const share = this.screenShares.get(roomId);
+    const input = share && this.app?.externalInput(share.id);
+    return input && { ...input, publicationId: share!.id };
+  };
+  startExternalScreen = (roomId: string): Promise<void> => this.action(`screen:${roomId}`, async () => {
+    const { share, current } = this.selectScreen(roomId);
+    try {
+      const app = await this.connectApp();
+      if (!current()) throw new DOMException("Input cancelled", "AbortError");
+      await app.prepareExternalInput(share.id, roomId);
+      if (!current()) throw new DOMException("Input cancelled", "AbortError");
+      this.patch({});
+    } finally { this.finishScreenSelection(roomId, share); }
+  });
+  private commitExternalScreen(app: ChannelApp, event: Extract<NativeExternalInputState, { state: "prepared" | "live" }>): Promise<void> {
+    const entry = [...this.screenShares].find(([, share]) => share.id === event.publicationId);
+    if (!entry) return Promise.resolve();
+    const [roomId, share] = entry;
+    const current = () => this.app === app && this.screenShares.get(roomId) === share
+      && app.externalInput(share.id)?.captureId === event.captureId;
+    return this.action(`screen:${roomId}`, async () => {
+      try {
+        if (this.local.has(share.id)) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: event.sessionId }, undefined, roomId);
+        if (!current()) throw new DOMException("Input cancelled", "AbortError");
+        await app.commitCapture(share.id, event.captureId);
+        if (!current()) return;
+        share.native = undefined;
+        share.paused = undefined;
+        share.codec = automaticVideoCodecPreference(event.codec);
+        this.retireCapture(share.id);
+        const remoteControls = new Map(this.view.remoteControls);
+        remoteControls.delete(share.id);
+        this.patch({ remoteControls });
+        if (!this.watching.has(share.id)) await this.watch(share.id, roomId);
+      } catch (error) {
+        if (current()) await app.cancelCapture(share.id).catch(() => {});
+        throw error;
+      }
+    });
+  }
   nativePreview = (target: NativeCaptureTarget, signal?: AbortSignal): Promise<string | null> =>
     this.app?.preview(target, signal) ?? Promise.resolve(null);
   nativeCaptureRequest = (roomId: string) => this.app?.captureRequest(roomId);
@@ -1902,13 +1950,13 @@ export class ChannelSession {
     const browser = local?.kind === "screen";
     const actual = browser ? { ...share.microphone, enabled: !!local.audio?.microphoneEnabled }
       : this.app?.sourceMicrophone(publicationId) ?? { enabled: false, deviceId: "", volume: 1 };
-    return { ...actual, browser, canDisable: browser ? !!local.audio : !!this.app?.connected && this.app.screens.has(publicationId),
-      available: browser ? !!local.audio?.commentaryAvailable : !!this.app?.screens.has(publicationId),
+    return { ...actual, browser, canDisable: browser ? !!local.audio : !!this.app?.hasSourceAudioControl(publicationId),
+      available: browser ? !!local.audio?.commentaryAvailable : !!this.app?.hasSourceAudioControl(publicationId),
       requested: share.requestedMicrophone ?? actual };
   };
 
   sourceMicrophones = (publicationId: string) => this.local.get(publicationId)?.kind === "screen"
-    ? browserCaptureDevices("audioinput") : this.app?.screens.has(publicationId) ? this.app.sourceMicrophones() : Promise.resolve([]);
+    ? browserCaptureDevices("audioinput") : this.app?.hasSourceAudioControl(publicationId) ? this.app.sourceMicrophones() : Promise.resolve([]);
 
   setSourceMicrophone = (publicationId: string, settings: SourceMicrophoneSettings): Promise<void> => {
     const owner = [...this.screenShares].find(([, share]) => share.id === publicationId);

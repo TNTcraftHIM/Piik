@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 15;
+pub const CHANNEL_PROTOCOL: u8 = 16;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -342,7 +342,7 @@ pub fn validate_video_settings(
     settings: Option<VideoSettings>,
 ) -> Result<(), &'static str> {
     match (kind, settings.map(|settings| settings.ceiling)) {
-        (Kind::Voice, None) => Ok(()),
+        (Kind::Voice | Kind::Screen, None) => Ok(()),
         (Kind::Screen, Some(value))
             if value.resolution.width > 0
                 && value.resolution.height > 0
@@ -409,7 +409,7 @@ fn video_settings_preserves_fractional_fps_and_rejects_invalid_source_facts() {
     ] {
         assert!(validate_video_settings(Kind::Screen, Some(settings(invalid))).is_err());
     }
-    assert!(validate_video_settings(Kind::Screen, None).is_err());
+    assert_eq!(validate_video_settings(Kind::Screen, None), Ok(()));
     assert!(validate_video_settings(Kind::Voice, Some(settings(valid))).is_err());
     let input = PublicationInput {
         source: None,

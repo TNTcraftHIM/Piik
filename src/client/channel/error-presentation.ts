@@ -25,6 +25,10 @@ export function channelErrorPresentation(error: string | null, copy: (zh: string
     return display("房间副本无效，请重新导出。", "This room copy is invalid. Export it again.");
   if (error === "app_disconnected")
     return display("与 App 的连接已断开。请确认 App 正在运行，然后重试。", "Connection to the App was lost. Check that it is running, then retry.");
+  if (error === "external_input_unavailable")
+    return display("当前 App 无法接收本机推流。", "This App cannot receive local streaming input.");
+  if (error === "external_input_failed")
+    return display("未能接收画面。请检查 OBS 的推流设置后重试。", "Could not receive the picture. Check the OBS stream settings and try again.");
   if (error === "invalid_title")
     return display("标题不能超过 64 个字符。", "The title cannot exceed 64 characters.");
   if (error === "capture_failed")

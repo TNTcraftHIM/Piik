@@ -12,10 +12,13 @@ pub(super) struct BandwidthPlan {
 impl Driver {
     #[cfg(feature = "capture")]
     fn has_video_producer(&self, source: Uuid) -> bool {
-        if self.captures.values().any(|capture| {
+        if self.local_producers.values().any(|capture| {
             capture.selected
-                && !capture.producer.control.is_stopped()
-                && capture.producer.video == source
+                && !capture.producer.is_stopped()
+                && capture
+                    .producer
+                    .capture()
+                    .is_some_and(|capture| capture.producer.video == source)
         }) {
             return true;
         }
@@ -156,12 +159,15 @@ impl Driver {
                 return (audio.source() == Some(source.id) && !audio.control.is_stopped())
                     .then(|| audio.control.settings.borrow().bitrate);
             }
-            let capture = self.captures.values().find(|capture| {
+            let capture = self.local_producers.values().find(|capture| {
                 capture.selected
-                    && !capture.producer.control.is_stopped()
-                    && capture.producer.video == source.id
+                    && !capture.producer.is_stopped()
+                    && capture
+                        .producer
+                        .capture()
+                        .is_some_and(|capture| capture.producer.video == source.id)
             })?;
-            let producer = &capture.producer;
+            let producer = &capture.producer.capture()?.producer;
             Some(
                 if let Some(layers) = source.layers.as_ref().filter(|_| preserve_layers) {
                     layers
@@ -287,8 +293,11 @@ impl Driver {
                     ));
             }
         }
-        for capture in self.captures.values() {
-            let producer = &capture.producer;
+        for capture in self.local_producers.values() {
+            let Some(details) = capture.producer.capture() else {
+                continue;
+            };
+            let producer = &details.producer;
             let mut next = if capture.selected && !producer.control.is_stopped() {
                 demands.remove(&producer.video).unwrap_or_default()
             } else {
@@ -303,8 +312,12 @@ impl Driver {
                 .sources
                 .get(source)
                 .and_then(|source| self.publications.get(&source.publication_id))
-                .and_then(|publication| publication.video_settings)
-                .map(|settings| settings.degradation_preference)
+                .map(|publication| {
+                    publication.video_settings.map_or(
+                        piik_channel_core::wire::DegradationPreference::Balanced,
+                        |settings| settings.degradation_preference,
+                    )
+                })
             else {
                 continue;
             };

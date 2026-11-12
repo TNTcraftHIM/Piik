@@ -10,6 +10,189 @@ mod feedback;
 #[path = "media_reuse.rs"]
 mod media_reuse;
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn local_input_receives_h264_opus_reports_and_pli_then_joins_its_socket() -> Result<()> {
+    use crate::peer::tests::support::{endpoint, h264, send, video_payloads};
+    use futures_util::{stream::FuturesUnordered, StreamExt};
+    let sender_runtime = Runtime::new(None);
+    // Local ingest must not consume or advertise the room server's shared UDP.
+    let fixed = ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
+    let receiver_runtime = Runtime::new(Some(fixed));
+    let prepared = std::net::UdpSocket::bind("127.0.0.1:0")?;
+    let (sender, _events) = endpoint(&sender_runtime, Uuid::new_v4(), Some(prepared)).await?;
+    let video = Uuid::new_v4();
+    let audio = Uuid::new_v4();
+    let (mut feedback, video_writable, _) = sender
+        .add_output(
+            video,
+            h264(),
+            MediaKind::Video,
+            "obs".into(),
+            vec![String::new()],
+        )
+        .await?;
+    let (_, audio_writable, _) = sender
+        .add_output(
+            audio,
+            crate::peer::codec(),
+            MediaKind::Audio,
+            "obs".into(),
+            vec![],
+        )
+        .await?;
+    sender.offer().await?;
+    let (_, offer) = sender.local_description().await?;
+    // OBS can advertise its LAN interfaces as well as connect to our local answer.
+    let local_offer = offer.replace(
+        "a=sendonly",
+        "a=candidate:lan 1 udp 1 192.0.2.1 49152 typ host\r\na=sendonly",
+    );
+    let mut input = receiver_runtime
+        .accept_local_input(&local_offer)
+        .await
+        .context("local SDP accept/answer")?;
+    let answer = SdpAnswer::from_sdp_string(&input.answer)?;
+    let address = answer
+        .media_lines
+        .iter()
+        .flat_map(|line| line.ice_candidates())
+        .next()
+        .context("no local candidate")?
+        .addr();
+    ensure!(address.ip() == std::net::Ipv4Addr::LOCALHOST);
+    ensure!(
+        input.ended.borrow().is_none(),
+        "answer must precede first media"
+    );
+    input
+        .transport
+        .call(|engine| {
+            ensure!(
+                engine.sockets.len() == 1
+                    && engine.sockets[0].local_addr()?.ip() == std::net::Ipv4Addr::LOCALHOST
+            );
+            ensure!(
+                engine.discovery.is_none()
+                    && engine.turn_setup_task.is_none()
+                    && engine.turn.is_empty()
+            );
+            Ok(())
+        })
+        .await?;
+    sender
+        .accept("answer".into(), input.answer.clone())
+        .await
+        .context("sender SDP answer")?;
+    let mut tracks = HashMap::<MediaKind, Track>::new();
+    let mut packets = HashMap::<MediaKind, Vec<rtp::Packet>>::new();
+    let mut reports = HashSet::new();
+    let mut frame = 0u32;
+    let mut tick = tokio::time::interval(Duration::from_millis(20));
+    let result = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let mut reading = FuturesUnordered::new();
+            for (&kind, track) in &tracks {
+                let track = track.clone();
+                reading.push(async move { (kind, track.poll().await) });
+            }
+            tokio::select! {
+                Some(track) = input.tracks.recv(), if tracks.len()<2 => { tracks.insert(track.kind, track); },
+                Some((kind,event)) = reading.next(), if !reading.is_empty() => match event {
+                    Some(TrackEvent::Rtp(packet,..)) => { packets.entry(kind).or_default().push(packet); },
+                    Some(TrackEvent::Report(values)) => if !values.is_empty() { reports.insert(kind); },
+                    _ => anyhow::bail!("local track ended before its media"),
+                },
+                _ = tick.tick() => {
+                    frame += 1;
+                    let audio_packet = rtp::Packet { header: rtp::header::Header { version:2,marker:true,timestamp:frame*960,..Default::default() }, payload:vec![0xf8,0xff,0xfe].into() };
+                    send(&sender,audio,vec![audio_packet],Instant::now(),&audio_writable).await.context("audio ICE/DTLS/RTP admission")?;
+                    let payloads=video_payloads(&h264(),frame,true)?;
+                    let last=payloads.len()-1;
+                    let video_packets=payloads.into_iter().enumerate().map(|(index,payload)|rtp::Packet{header:rtp::header::Header{version:2,marker:index==last,timestamp:frame*1800,..Default::default()},payload}).collect();
+                    send(&sender,video,video_packets,Instant::now(),&video_writable).await.context("video RTP admission")?;
+                }
+            }
+            if reports.len()==2 && packets.get(&MediaKind::Audio).is_some_and(|p|p.len()>1) && packets.get(&MediaKind::Video).is_some_and(|p|p.iter().filter(|p|p.header.marker).count()>1) { break; }
+        }
+        use rtc_rtp::packetizer::Depacketizer;
+        let mut decoder=rtc_rtp::codec::h264::H264Packet::default();
+        let mut access_unit=Vec::new();
+        for packet in &packets[&MediaKind::Video] {
+            access_unit.extend_from_slice(&decoder.depacketize(&packet.payload)?);
+            if packet.header.marker {break;}
+        }
+        ensure!(crate::media::h264::nals(&access_unit)?.any(|nal|nal[0]&31==5), "complete H264 IDR was not delivered");
+        ensure!(packets[&MediaKind::Audio].iter().all(|p| p.payload.as_ref()==[0xf8,0xff,0xfe]));
+        let video_track=&tracks[&MediaKind::Video];
+        ensure!(video_track.report(video_track.first_ssrc).lock().unwrap().is_some());
+        video_track.request_keyframe(video_track.first_ssrc).await.context("send PLI after complete A/V and SR")?;
+        tokio::time::timeout(Duration::from_secs(5),feedback.recv()).await.context("PLI feedback timed out after complete H264/Opus and both SRs")?.context("sender feedback channel closed")?;
+        Ok::<_,anyhow::Error>(())
+    }).await;
+    input
+        .transport
+        .close()
+        .await
+        .context("close and join local transport")?;
+    ensure!(matches!(&*input.ended.borrow(), Some(Ok(()))));
+    ensure!(
+        std::net::UdpSocket::bind(address).is_ok(),
+        "local input socket was not joined/released"
+    );
+    for track in tracks.values() {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while track.poll().await.is_some() {}
+        })
+        .await
+        .context("drain closed input track")?;
+    }
+    sender.close().await?;
+    sender_runtime.close().await;
+    receiver_runtime.close().await;
+    result.context("local A/V RTP and Sender Report progression deadline")??;
+    Ok(())
+}
+
+#[tokio::test]
+async fn local_input_rejects_direction_codec_and_extra_media() -> Result<()> {
+    use crate::peer::tests::support::{endpoint, h264};
+    let runtime = Runtime::new(None);
+    let (sender, _) = endpoint(
+        &runtime,
+        Uuid::new_v4(),
+        Some(std::net::UdpSocket::bind("127.0.0.1:0")?),
+    )
+    .await?;
+    sender
+        .add_output(
+            Uuid::new_v4(),
+            h264(),
+            MediaKind::Video,
+            "obs".into(),
+            vec![],
+        )
+        .await?;
+    sender.offer().await?;
+    let (_, sdp) = sender.local_description().await?;
+    let offer = sdp;
+    for invalid in [
+        offer.replace("a=sendonly", "a=sendrecv"),
+        offer.replace("H264/90000", "VP8/90000"),
+    ] {
+        ensure!(runtime.accept_local_input(&invalid).await.is_err());
+    }
+    let accepted = runtime.accept_local_input(&offer).await?;
+    sender.accept("answer".into(), accepted.answer).await?;
+    accepted.transport.close().await?;
+    sender.create_channel("not-local-media").await?;
+    sender.offer().await?;
+    let (_, sdp) = sender.local_description().await?;
+    ensure!(runtime.accept_local_input(&sdp).await.is_err());
+    sender.close().await?;
+    runtime.close().await;
+    Ok(())
+}
+
 #[test]
 fn wildcard_candidates_ignore_unusable_interfaces_without_losing_valid_paths() -> Result<()> {
     let interfaces = [

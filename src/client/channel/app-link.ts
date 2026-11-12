@@ -9,7 +9,7 @@ import { NativeRoomHosting } from "./hosting-api";
 import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 
-const APP_PROTOCOL = 7;
+export const APP_PROTOCOL = 8;
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), domainProtocol: z.number().int().positive().optional(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), domainProtocol: z.literal(CHANNEL_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
   version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional() });
@@ -34,11 +34,19 @@ export type NativeConnectionMetrics = z.infer<typeof nativeConnectionMetricsSche
 const captureSourcesSchema = z.object({ sources: z.array(nativeCaptureTargetSchema),
   codecs: z.array(nativeVideoCodecSchema),
   videoAdaptation: z.boolean(),
+  externalInput: z.boolean(),
   processAudio: z.boolean(), processAudioExclusion: z.boolean(), systemAudio: z.boolean(), captureBorderControl: z.boolean(), activationURL: z.string().url().max(512).optional() }).strict();
 export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
 export type NativeCaptureRequest = { publicationId: string; activationURL: string };
 const preparedCaptureSchema = z.object({ captureId: z.uuid(), sessionId: z.uuid(), codec: nativeVideoCodecSchema }).strict();
 export type PreparedNativeCapture = z.infer<typeof preparedCaptureSchema>;
+const externalInputSchema = z.object({ endpoint: z.string().url(), token: z.string().min(1).max(256) }).strict();
+const externalInputStateSchema = z.discriminatedUnion("state", [
+  z.object({ type: z.literal("external_input_state"), publicationId: z.uuid(), state: z.enum(["prepared", "live"]), ...preparedCaptureSchema.shape, error: z.string().optional() }).strict(),
+  z.object({ type: z.literal("external_input_state"), publicationId: z.uuid(), state: z.enum(["waiting", "closed", "error"]), error: z.string().optional() }).strict(),
+]);
+export type NativeExternalInputState = z.infer<typeof externalInputStateSchema>;
+export type NativeExternalInput = z.infer<typeof externalInputSchema> & { state: NativeExternalInputState["state"]; captureId?: string; error?: string };
 const previewSchema = z.string().max(23 + 4 * Math.ceil(64 * 1024 / 3))
   .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/).nullable();
 const captureAudioFailureSchema = z.object({ type: z.literal("capture_audio_failed"), publicationId: z.uuid() }).strict();
@@ -91,7 +99,8 @@ export class ChannelApp {
   private timer: ReturnType<typeof setTimeout>;
   private authenticated = false;
   private readonly lifetime = new AbortController();
-  private captures = new Map<string, string>();
+  private captures = new Map<string, { id: string; kind: "capture" | "external" }>();
+  private externalInputs = new Map<string, NativeExternalInput>();
   private audioStates = new Map<string, z.infer<typeof audioStateSchema>>();
   private prepared = new Set<string>();
   private activationURL?: string;
@@ -101,7 +110,8 @@ export class ChannelApp {
   private readonly roomHosting: NativeRoomHosting;
 
   get connected(): boolean { return this.authenticated && this.socket.readyState === WebSocket.OPEN; }
-  get screens(): ReadonlySet<string> { return new Set(this.captures.keys()); }
+  get screens(): ReadonlySet<string> { return new Set([...this.captures.keys(), ...this.externalInputs.keys()]); }
+  externalInput(publicationId: string): NativeExternalInput | undefined { return this.externalInputs.get(publicationId); }
   supportsCaptureCodec(codec: NativeCaptureSources["codecs"][number]): boolean { return this.captureCodecs.includes(codec); }
 
   captureRequest(roomId: string): NativeCaptureRequest | undefined {
@@ -118,7 +128,8 @@ export class ChannelApp {
   constructor(health: AppHealth, channelId: string, userId: string, credential: string, name: string,
     onClose: () => void, onCaptureState: (publicationId: string, error?: "capture_audio_failed" | "capture_failed") => void,
     onInputState: (publicationId: string, state: ChannelRemoteControlState) => void = () => {},
-    private readonly onAudioState: (publicationId: string) => void = () => {}) {
+    private readonly onAudioState: (publicationId: string) => void = () => {},
+    onExternalInput: (event: NativeExternalInputState) => void = () => {}) {
     this.roomHosting = new NativeRoomHosting(`http://127.0.0.1:${health.port}/rooms/${channelId}/${userId}`,
       { Authorization: `Bearer ${health.token}`, "X-Piik-Credential": credential });
     const socket = this.socket = new WebSocket(`ws://127.0.0.1:${health.port}/rooms`, `piik-channel-rooms.${health.token}`);
@@ -149,7 +160,7 @@ export class ChannelApp {
         }
         if (reply.type === "capture_ended") {
           const { publicationId, captureId, failed } = captureEndedSchema.parse(reply);
-          if (this.captures.get(publicationId) === captureId) {
+          if (this.captures.get(publicationId)?.id === captureId) {
             this.captures.delete(publicationId);
             this.audioStates.delete(publicationId);
             onCaptureState(publicationId, failed ? "capture_failed" : undefined);
@@ -162,6 +173,24 @@ export class ChannelApp {
             this.audioStates.set(publicationId, state);
             onAudioState(publicationId);
           }
+          return;
+        }
+        if (reply.type === "external_input_state") {
+          const event = externalInputStateSchema.parse(reply);
+          const input = this.externalInputs.get(event.publicationId);
+          if (!input) return;
+          if (event.state === "closed") {
+            this.externalInputs.delete(event.publicationId);
+            if (this.captures.get(event.publicationId)?.id === input.captureId) this.captures.delete(event.publicationId);
+          }
+          else {
+            this.externalInputs.set(event.publicationId, { ...input, state: event.state,
+              captureId: "captureId" in event ? event.captureId : undefined, error: "error" in event ? event.error : undefined });
+            if (event.state === "live") this.captures.set(event.publicationId, { id: event.captureId, kind: "external" });
+            else if (event.state === "prepared") this.prepared.add(event.publicationId);
+            else if (this.captures.get(event.publicationId)?.id === input.captureId) this.captures.delete(event.publicationId);
+          }
+          onExternalInput(event);
           return;
         }
         const request = this.requests.get(reply.id);
@@ -251,6 +280,15 @@ export class ChannelApp {
     }
   }
 
+  async prepareExternalInput(publicationId: string, roomId: string): Promise<void> {
+    this.prepared.add(publicationId);
+    try {
+      const input = externalInputSchema.parse(await this.request({ type: "prepare_external_input", publicationId, roomId }));
+      if (!this.prepared.delete(publicationId)) throw new DOMException("Input cancelled", "AbortError");
+      this.externalInputs.set(publicationId, { ...input, state: "waiting" });
+    } catch (error) { this.prepared.delete(publicationId); throw error; }
+  }
+
   async setSourceAudio(publicationId: string, bitrate: number, gain: number): Promise<void> {
     if (!this.hasSourceAudioControl(publicationId)) throw new Error("capture_unavailable");
     await this.request({ type: "capture_audio_settings", publicationId, settings: { bitrate, gain } });
@@ -258,7 +296,7 @@ export class ChannelApp {
   }
 
   hasSourceAudioControl(publicationId: string): boolean {
-    return this.connected && (this.captures.has(publicationId) || this.prepared.has(publicationId));
+    return this.connected && this.captures.get(publicationId)?.kind !== "external" && (this.captures.has(publicationId) || this.prepared.has(publicationId));
   }
 
   sourceMicrophone(publicationId: string): NativeSourceMicrophone | undefined {
@@ -275,48 +313,50 @@ export class ChannelApp {
   }
 
   async setSourceMicrophone(publicationId: string, roomId: string, settings: NativeSourceMicrophone): Promise<void> {
-    const captureId = this.captures.get(publicationId);
+    const captureId = this.captures.get(publicationId)?.id;
     if (!captureId) throw new Error("capture_unavailable");
     const pending = this.request({ type: "capture_microphone", publicationId, captureId, roomId, settings });
     if (settings.enabled && !this.sourceMicrophone(publicationId)?.enabled) activateNativePicker(this.activationURL);
     const applied = microphoneSchema.parse(await pending);
-    if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture cancelled", "AbortError");
+    if (this.captures.get(publicationId)?.id !== captureId) throw new DOMException("Capture cancelled", "AbortError");
     this.audioStates.set(publicationId, { sourceAudio: this.audioStates.get(publicationId)?.sourceAudio ?? false, microphone: applied });
     this.onAudioState(publicationId);
   }
 
   async setCapturePaused(publicationId: string, paused: boolean): Promise<void> {
-    const captureId = this.captures.get(publicationId);
+    const captureId = this.captures.get(publicationId)?.id;
     if (!captureId) throw new Error("capture_unavailable");
     await this.request({ type: "capture_paused", publicationId, captureId, paused });
-    if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture cancelled", "AbortError");
+    if (this.captures.get(publicationId)?.id !== captureId) throw new DOMException("Capture cancelled", "AbortError");
   }
 
   async setCaptureTitle(publicationId: string, title: string | null): Promise<void> {
-    const captureId = this.captures.get(publicationId);
+    const captureId = this.captures.get(publicationId)?.id;
     if (!captureId) throw new Error("capture_unavailable");
     await this.request({ type: "capture_title", publicationId, captureId, title });
-    if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture replaced", "AbortError");
+    if (this.captures.get(publicationId)?.id !== captureId) throw new DOMException("Capture replaced", "AbortError");
   }
 
   async setCaptureQuality(publicationId: string, profile: QualityProfile): Promise<void> {
-    const captureId = this.captures.get(publicationId);
+    const captureId = this.captures.get(publicationId)?.id;
     if (!captureId) throw new Error("capture_unavailable");
     await this.request({ type: "capture_video_settings", publicationId, captureId, settings: {
       width: profile.resolution.width, height: profile.resolution.height, fps: profile.maxFramerate, bitrate: profile.maxBitrate,
       degradationPreference: profile.degradationPreference,
     } });
-    if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture cancelled", "AbortError");
+    if (this.captures.get(publicationId)?.id !== captureId) throw new DOMException("Capture cancelled", "AbortError");
   }
 
   async commitCapture(publicationId: string, captureId: string): Promise<void> {
     await this.request({ type: "commit_capture", publicationId, captureId });
     if (!this.prepared.delete(publicationId)) throw new DOMException("Capture cancelled", "AbortError");
-    this.captures.set(publicationId, captureId);
+    const kind = this.externalInputs.get(publicationId)?.captureId === captureId ? "external" : "capture";
+    this.captures.set(publicationId, { id: captureId, kind });
+    if (kind === "external") this.audioStates.delete(publicationId);
   }
 
   async transferSource(publicationId: string, toSessionId: string): Promise<void> {
-    const captureId = this.captures.get(publicationId);
+    const captureId = this.captures.get(publicationId)?.id;
     if (!captureId) throw new Error("capture_unavailable");
     await this.request({ type: "transfer_source", publicationId, captureId, toSessionId });
   }
@@ -330,17 +370,18 @@ export class ChannelApp {
 
   async stopCapture(publicationId: string): Promise<void> {
     const active = this.captures.delete(publicationId);
+    const external = this.externalInputs.delete(publicationId);
     this.audioStates.delete(publicationId);
     const prepared = this.prepared.delete(publicationId);
-    if (!active && !prepared) return;
+    if (!active && !prepared && !external) return;
     if (this.connected) await this.request({ type: "stop_capture", publicationId });
   }
 
   async inputPolicy(publicationId: string, policy: { mode: RemoteControlMode; password?: string; simultaneous?: boolean }): Promise<void> {
-    const captureId = this.captures.get(publicationId);
+    const captureId = this.captures.get(publicationId)?.id;
     if (!captureId) throw new Error("capture_unavailable");
     await this.request({ type: "input_policy", publicationId, captureId, ...policy });
-    if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture replaced", "AbortError");
+    if (this.captures.get(publicationId)?.id !== captureId) throw new DOMException("Capture replaced", "AbortError");
   }
 
   async inputDecide(publicationId: string, controllerSessionId: string, intent: string, allow: boolean): Promise<void> {
@@ -348,21 +389,22 @@ export class ChannelApp {
   }
 
   async inputShortcut(publicationId: string, key: number): Promise<ChannelStopShortcut> {
-    const captureId = this.captures.get(publicationId);
+    const captureId = this.captures.get(publicationId)?.id;
     if (!captureId) throw new Error("capture_unavailable");
     const result = await this.request({ type: "input_shortcut", publicationId, key });
-    if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture replaced", "AbortError");
+    if (this.captures.get(publicationId)?.id !== captureId) throw new DOMException("Capture replaced", "AbortError");
     return stopShortcutSchema.parse(result);
   }
 
   stopCaptures(): void {
-    for (const id of new Set([...this.captures.keys(), ...this.prepared])) void this.stopCapture(id).catch(() => {});
+    for (const id of new Set([...this.screens, ...this.prepared])) void this.stopCapture(id).catch(() => {});
   }
 
   close(): void {
     this.lifetime.abort();
     this.authenticated = false;
     this.captures.clear();
+    this.externalInputs.clear();
     this.audioStates.clear();
     this.prepared.clear();
     clearTimeout(this.timer);

@@ -49,6 +49,7 @@ export function CaptureSourcePicker({
   onBrowser,
   onCamera,
   onNative,
+  onExternalInput,
   onPreview,
   onRefresh,
   onCancel,
@@ -71,6 +72,7 @@ export function CaptureSourcePicker({
   activeCameraVideo?: HTMLVideoElement | null;
   loadCameras?: typeof loadCameraPreviews;
   onNative: (target: NativeCaptureTarget, audio: boolean, showCaptureBorder: boolean, excludeAudio?: NativeCaptureTarget) => void;
+  onExternalInput?: () => void;
   onPreview: (
     target: NativeCaptureTarget,
     signal?: AbortSignal,
@@ -387,6 +389,11 @@ export function CaptureSourcePicker({
           </div>
           </>}
 
+          {onExternalInput && <div className="lr-source-picker-list"><button type="button" className="lr-source-option is-action"
+            disabled={selectionDisabled} onClick={onExternalInput}>
+            <span className="lr-source-option-icon" aria-hidden="true"><Glyph name="cast" size={23} /></span>
+            <span className="lr-source-option-copy"><strong>OBS / WHIP</strong></span>
+          </button></div>}
           {nativeTab && nativeSources.kind === "loading" ? (
             <span className="lr-source-picker-status" role="status" aria-label={t("host.sourcePicker.loading")}>
               <Glyph name="refresh" className="lr-spin" size={18} />{!vis && t("host.sourcePicker.loading")}

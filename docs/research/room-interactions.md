@@ -509,19 +509,19 @@ decode or save keeps the previous choice. Replacement, mute and page shutdown
 stop current output; stale decode results cannot replace a newer slot.
 These are personal playback assets, not room broadcasts or executable plugins.
 
-### Extension Boundaries (PROPOSED)
+### Extension Boundaries
 
-Proposed 2026-11-10; production adapters remain unfinished. Ordinary friends should
-not need to configure permissions to share or collaborate. Start text automation
-as an independent ordinary user under the accepted Domain and Room owners. This
+Ordinary friends should not need to configure permissions to share or collaborate.
+Text automation runs as an independent ordinary user under the accepted Domain
+and Room owners. This
 does not introduce a Bot role, separate credential issuer or permission system;
-external media still needs the Source integration described below.
+external media follows the Source integration described below.
 
 | Decision | Recommended starting point | Additional cost to accept |
 | --- | --- | --- |
 | Permissions | Keep current ownership and room participation for people and automation alike. | Address a demonstrated user-management need at its shared owner; the first adapter needs no Bot-specific privileges or roles. |
 | Bots and APIs | Use an independent ordinary identity in a separate process, with existing site admission, room invitations and confirmed conversation commands. | Keep its credential with the process. Its configured room is a business target, not a server-enforced permission scope. |
-| External media | First assess one OBS-to-Native-App input through WHIP and the shared Source adapter, then the ordinary publication and P2P paths. | Ingest authorization, supported codecs, source timing and stop ownership are real work; this does not accept every streaming protocol or unattended publishing. |
+| External media | Local OBS-to-App WHIP input uses the shared Source, publication and P2P owners. | Remote input, additional streaming protocols and unattended publishing need their own concrete scope. |
 
 The site already creates an identity and personal credential for an ordinary
 participant. An automated participant uses its own credential, kept with its
@@ -572,45 +572,45 @@ preferences and external media adapters. Full/quick presentation must share the
 same activity instance. General widget runtimes and native plugin ABIs remain
 deferred; extra collaboration pointers remain under the owner's existing hold.
 
+### Local OBS Input
+
 [OBS WHIP output](https://obsproject.com/kb/whip-streaming-guide) accepts an endpoint
-URL and bearer token. The proposed flow creates one local source lease on the
-authenticated App for a chosen room. [WHIP](https://www.rfc-editor.org/rfc/rfc9725.html)
-owns input-session setup/deletion; the existing publication owns room distribution
-and stop. Preserve source timestamps, media-clock and output-demand owners. This
-adds an OBS-to-App media connection, not another Core room topology. Token lifetime,
-page closure and reconnect behavior still need a decision. Verify one complete
-integration and revocation/stop before extracting a public SDK or plugin ABI;
-unattended publishing is not accepted by this proposal.
+URL and bearer token. The current adapter creates one input permission for the
+authenticated page's selected room, after Native room admission. The existing
+room snapshot owns its validity; changing the room binding, losing its grant,
+closing the page or stopping the input revokes it. Credentials remain in memory.
+The [runtime reference](../../prototype/channel-server/README.md#local-obs-input)
+owns the user flow and current platform scope. Remote or unattended ingestion
+and a general plugin runtime remain outside this implementation.
 
-The proposed lease belongs to the authenticated App/Native Driver and one
-publication, using the selecting page's existing room authority. Its receiver
-and temporary secret retire with that activity; resource identity prevents an
-old WHIP DELETE from stopping a replacement. Keep source clocks, forwarding and
-resource accounting with their existing owners. Exact fields and unattended
-lifetimes remain design work, not a new room-storage or authorization contract.
+[WHIP](https://www.rfc-editor.org/rfc/rfc9725.html) owns each input resource's
+setup and deletion. SDP answers return before media is ready; the first complete
+keyframe then enters the same local-producer prepare/commit path as capture.
+The controlling Browser performs any Browser-to-Native source transfer before
+commit. Producer generations share the existing Driver owner, while OS capture
+retains its specific mixer and input controls. Stopping OBS withdraws the current
+publication; its page permission can accept a new stream. Viewers follow ordinary
+publication lifetimes and select Watch again. Old DELETE/ready/end callbacks can
+retire only their own resource.
 
-Local OBS input need not restrict the site's Local/Public invite mode: the App's
-loopback control listener is already separate from the site's tunnel target.
-Keep ingest on a listener that is not published by the tunnel, with authorized
-leases and local media listeners/candidates. A loopback peer address alone is
-insufficient because tunnel traffic can also arrive from loopback. Remote ingest
-remains outside this proposal.
+The App's loopback control listener is separate from the site's tunnel target,
+so Local network and Public invite use the same input adapter. HTTP requires the
+page-issued bearer; the existing RTC pump supplies loopback-only media sockets,
+candidates and actual datagrams, without public discovery or a second room graph.
+H264 complete access units and Opus RTP retain the existing source clocks and
+Sender Reports. Derived outputs use the existing encoder policy; an externally
+configured source carries no invented capture ceiling. No RTC fork was added.
 
-An isolated OBS 33.0.1 control sent generated picture and stereo tones through
-real loopback WHIP HTTP/SRTP using the pinned str0m SDK without another fork.
-H264, decoded stereo Opus and sender reports progressed; normal OBS stop sent
-DELETE, joined the receiver and released UDP. Reopening created a fresh resource;
-an old DELETE could not stop it. Production input authorization and publication
-integration remain unimplemented. The current capture-only local-source path
-needs an external producer adapter, with the local listener scope above.
-Native capture preparation currently waits for a first frame before returning;
-external input must instead return its connection details before OBS can send
-that frame. Extend the existing local-producer lease and readiness owner rather
-than fabricate an incoming Core flow. H264 RTP forwarding alone also lacks the
-capture path's quality adaptation: reuse the existing access-unit/source-clock
-and derived-output owners for encoded video. The remaining experience decision
-is whether stopping OBS also retires the input activity or leaves the page
-waiting for another stream; page closure and explicit Piik stop still revoke it.
+A Windows control used OBS 33.0.1's generated picture and stereo tones through
+the real App and an independent Browser. H264 pictures decoded and stereo Opus
+retained separate channels without speaker output. OBS stop/restart, old DELETE,
+Piik stop and page closure exercised publication withdrawal, permission revocation
+and UDP release. This establishes the same-machine path, not new cross-NAT or
+other-platform evidence.
+An additional controlled input exercised real derived encoding at constrained,
+partially restored and original demand on the same source/feed/clock. Each phase
+produced decodable frames, and returning to the original feed retired the limited
+encoder. It verifies the adapter's existing output path, not a new congestion policy.
 
 ## Attended Remote-Control Prototype
 

@@ -2564,7 +2564,13 @@ mod tests {
                 id(3),
                 id(10),
                 Kind::Screen,
-                None,
+                Some(crate::wire::VideoSettings {
+                    ceiling: crate::wire::VideoCeiling {
+                        max_bitrate: 0,
+                        ..ceiling.ceiling
+                    },
+                    ..ceiling
+                }),
                 Some(crate::wire::ScreenSource::default())
             ),
             Err("invalid_video_settings")
@@ -2584,6 +2590,10 @@ mod tests {
         let publication = room.publication(id(10)).unwrap();
         assert_eq!(publication.video_settings, Some(ceiling));
         assert!(publication.paused);
+        room.publish(member, id(4), id(10), Kind::Screen, None, None)
+            .unwrap();
+        assert!(room.publication(id(10)).unwrap().video_settings.is_none());
+        assert!(room.publication(id(10)).unwrap().paused);
     }
 
     #[test]

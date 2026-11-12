@@ -80,10 +80,11 @@ Package receipts retain each candidate's exact source and tested scope.
 [TODO](./todo.md) owns remaining work and owner holds. Applicable defects continue
 to feed the separate 2.x maintenance line, which preserves its published contracts.
 
-External text participation, OBS input and a native desktop entry remain isolated
-prototypes. Their [integration boundaries](./research/room-interactions.md#extension-boundaries-proposed)
-and [GUI assessment](./research/cross-platform-client-runtime.md#30-windows-native-entry-prototype)
-distinguish measured feasibility from production work still to be accepted.
+Independent text automation and local OBS input reuse the conversation and source
+owners described in the [integration boundaries](./research/room-interactions.md#extension-boundaries).
+The OBS working-tree path has Windows media and lifecycle evidence; it is not yet
+part of the delivered candidate set. A native desktop entry remains an isolated
+[GUI prototype](./research/cross-platform-client-runtime.md#30-windows-native-entry-prototype).
 
 ## Deployment
 
