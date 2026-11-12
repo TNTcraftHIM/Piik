@@ -115,9 +115,9 @@
 .c3-file-retry { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
 .c3-attachment { display: grid; gap: 8px; max-width: 440px; border: 1px solid var(--line); border-radius: var(--c3-inset-radius); background: var(--wall); padding: 10px; margin-top: 8px; }
 .c3-message-content-body > .c3-attachment:first-child { margin-top: 0; }
-.c3-attachment-file { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.c3-attachment-file { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; }
 .c3-attachment-file > svg { flex: none; color: var(--muted); }
-.c3-attachment-file > div { flex: 1; min-width: 0; }
+.c3-attachment-file > div { flex: 1 1 14ch; min-width: 0; }
 .c3-attachment-file .lr-comic-tip-wrap { display: block; }
 .c3-attachment-file strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 12px; font-weight: 650; overflow-wrap: anywhere; }
 .c3-attachment small { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
