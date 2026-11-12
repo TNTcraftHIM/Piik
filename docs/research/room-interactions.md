@@ -573,39 +573,27 @@ page closure and reconnect behavior still need a decision. Verify one complete
 integration and revocation/stop before extracting a public SDK or plugin ABI;
 unattended publishing is not accepted by this proposal.
 
-The smallest production lease would live in the authenticated App/Native Driver,
-not in room storage: `{ generation, issuerSessionId, roomId, bindingId,
-publicationId }` plus a short-lived in-memory secret. The generation is also the
-WHIP resource identifier and derives the loopback endpoint; one identifier fences
-replacement and stale DELETE callbacks.
-The current snapshot supplies the issuer and scope; OBS cannot choose them. A
-single lease may feed one publication. The existing Driver turn, `SourceFeed::Rtp`,
-relay and output owners retain the RTP clock and resource accounting. Binding
-replacement, publication withdrawal, App/session close and room revoke all stop
-the lease and join its receiver. A stale DELETE or callback only retires its own
-resource generation. The endpoint and secret never enter SQLite, history or wire
-metadata. This is an implementation boundary for later review, not an accepted
-authorization contract.
-For the first local-OBS slice, the route belongs only to Local mode and an
-authorized lease; Link mode must reject it explicitly because a tunnel can make
-a remote request appear to come from loopback. Peer IP checks are not the scope
-boundary. A remotely reachable ingest path would require a separate resource and
-authorization decision.
+The proposed lease belongs to the authenticated App/Native Driver and one
+publication, using the selecting page's existing room authority. Its receiver
+and temporary secret retire with that activity; resource identity prevents an
+old WHIP DELETE from stopping a replacement. Keep source clocks, forwarding and
+resource accounting with their existing owners. Exact fields and unattended
+lifetimes remain design work, not a new room-storage or authorization contract.
 
-A bounded control with the pinned str0m SDK accepted a send-only H264/Opus offer,
-completed ICE/DTLS and retained RTP timestamp progression and sender reports.
-It used synthetic in-process datagrams, not OBS or an HTTP endpoint. No SDK fork
-is needed for that transport boundary. A local WHIP input must also restrict its
-media listeners and candidates to the local scope; binding only the HTTP entry
-to loopback is insufficient. A subsequent isolated OBS 33.0.1 portable control
-sent generated picture and stereo tones through real loopback WHIP HTTP/SRTP.
+Local OBS input need not restrict the site's Local/Public invite mode: the App's
+loopback control listener is already separate from the site's tunnel target.
+Keep ingest on a listener that is not published by the tunnel, with authorized
+leases and local media listeners/candidates. A loopback peer address alone is
+insufficient because tunnel traffic can also arrive from loopback. Remote ingest
+remains outside this proposal.
+
+An isolated OBS 33.0.1 control sent generated picture and stereo tones through
+real loopback WHIP HTTP/SRTP using the pinned str0m SDK without another fork.
 H264, decoded stereo Opus and sender reports progressed; normal OBS stop sent
 DELETE, joined the receiver and released UDP. Reopening created a fresh resource;
-an old DELETE could not stop it. The standard Cargo build used the current SDK
-without another fork. Production input authorization and publication integration
-remain unimplemented: the current runtime's wildcard sockets and capture-only
-local-source path need an explicit scoped external producer, not a fabricated
-room flow.
+an old DELETE could not stop it. Production input authorization and publication
+integration remain unimplemented. The current capture-only local-source path
+needs an external producer adapter, with the local listener scope above.
 
 ## Attended Remote-Control Prototype
 

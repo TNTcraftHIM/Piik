@@ -1474,7 +1474,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-door-reveal.is-open { grid-template-rows: 1fr; }
 .lr-door-reveal > div { overflow: hidden; }
 /* Once open, tooltips inside the door must escape the reveal clip; the
-   discrete flip is delayed past the 260ms row transition so the opening
+   discrete flip waits for the shared surface transition so the opening
    animation still renders clipped. */
 .lr-door-reveal.is-open > div { overflow: visible; transition: overflow 0s var(--motion-surface); }
 .lr-door-group { display: grid; gap: 10px; }

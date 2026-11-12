@@ -1,6 +1,7 @@
 # Cross-Platform App Runtime Research
 
-The Go/Pion implementation and measured results below describe 2.x development.
+The Go/Pion implementation and measured results below describe 2.x development;
+the separate 3.0 native-entry assessment is labelled explicitly.
 The [current Rust source map](../standards/engineering.md#module-map) identifies
 the private 3.x owners; these results do not establish its acceptance.
 
@@ -57,29 +58,6 @@ room server; the same process remains the Site's loopback native-media owner.
 The persistent launcher owns local approval and room startup independently.
 The system Browser remains the UI.
 
-### Windows Native Entry Prototype
-
-An isolated Windows proof tested a small native entry window with official
-`eframe`/`egui` 0.33.3, built by Rust 1.91. The prototype reused the existing
-Piik favicon and palette, rendered Chinese text, exposed Preparing, Ready and
-Failure states, and worked at a 360-pixel narrow width. Its Windows renderer,
-keyboard activation, AccessKit names and normal `WM_CLOSE` exit were exercised.
-It has no WebView, browser launch, App process attachment, permissions, media
-capture or room connection; its Open and Diagnostics controls are explicitly
-demonstration actions. The debug prototype executable was about 9.8 MiB and
-adds the native GUI dependency/build cost. macOS/Linux rendering, font
-availability and packaged runtime acceptance remain unverified.
-
-A future native entry must project the existing App startup progress, diagnostic
-export and shutdown owners. It must not create a second room, authorization,
-retry or preference state owner. The proof is therefore a feasibility boundary,
-not a second desktop product or an accepted replacement for the system Browser.
-The current launcher API has status, launch and diagnostics operations but no
-external Stop command. A production window must therefore either run as a thin
-projection in the App process or wait for an App-owned, authenticated loopback
-shutdown command. Killing the App process from a separate window would bypass
-the ordered Host → Domain → tunnel cleanup and is not an acceptable lifecycle.
-
 Official Go process APIs require every started child to be waited and provide a
 bounded `WaitDelay` for cancellation and stuck I/O. That guidance now covers the
 capture and cloudflared sidecars only: the room authority is no longer a child
@@ -129,6 +107,22 @@ gate for Electron, Tauri, Wails, Neutralino, or another shell. That gate must
 compare actual capture, audio, H.264/VP8 sender implementation, 1080p cadence,
 relay, background behavior, and resource use on every target platform. The
 result selects one UI runtime; it does not create parallel products.
+
+## 3.0 Windows Native Entry Prototype
+
+An isolated Windows proof with `eframe`/`egui` 0.33.3 reused Piik's favicon and
+palette, rendered Chinese text and worked at a 360-pixel narrow width. Keyboard
+activation and normal `WM_CLOSE` exit were exercised. Preparing, Ready and
+Failure are demonstration states; Open and Diagnostics are not connected to App.
+The debug executable was about 9.4 MiB. Accessibility, macOS/Linux rendering,
+font availability and packaged App integration remain unverified.
+
+A production entry should project the existing App startup, diagnostics and
+ordered shutdown, while rooms continue in the shared system-Browser UI. It must
+not own another room, authorization, retry or preference state. The current App
+has no external Stop command; integrating a window must preserve App-owned
+Host → Domain → tunnel cleanup rather than terminate a separate process.
+This proof establishes native-window feasibility, not production App acceptance.
 
 ## Historical Package Evidence
 

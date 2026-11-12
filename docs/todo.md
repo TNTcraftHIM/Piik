@@ -38,11 +38,6 @@ the feedback period; they do not delay that delivery.
   HDR/SDR details. Existing SDR conversion evidence cannot identify its cause;
   obtain a sender/receiver colour-bar or solid-colour comparison before changing
   bitrate, colour metadata or filters.
-- [ ] **NDI and expanded codec requests (#535, #530).** Evaluate NDI through the
-  OBS/DistroAV-to-WHIP adapter first. VP9/AV1/SVC/TWCC/NACK would change codec
-  negotiation and adaptation owners; defer it until a concrete capability and
-  resource decision exists. Do not add an NDI SDK or wire codec branch from an
-  issue request alone.
 - [ ] **3.0 iOS/iPadOS room voice feedback.** With noise processing disabled on
   the phone/tablet, a computer listener reports mono sound. Check that device's
   raw capture channels against its received sound; the shared microphone,
@@ -61,12 +56,11 @@ the feedback period; they do not delay that delivery.
   retain the grant and receive authorized mouse events, but Windows `SendInput`
   rejects a button event and subsequent release attempts. Capture whether local
   physical input also stops during the refusal to identify its OS trigger.
-  A first attempted desktop-context patch was rejected in review because a
-  Tokio-worker implementation cannot safely own `SetThreadDesktop` and can leak
-  desktop handles on common failures. Keep the existing grant/release semantics;
-  implement recovery only through a dedicated Windows input-thread owner. The
-  local controlled Chrome trial did not reproduce the failure; reporter-machine
-  SendInput and physical-input acceptance remain open.
+  Keep the existing grant/release semantics and locate the OS rejection trigger
+  before adding desktop recovery. Any recovery must restore the calling thread's
+  desktop context and release owned handles. The local controlled Chrome trial
+  did not reproduce the failure; reporter-machine SendInput and physical-input
+  acceptance remain open.
 - [ ] **2.x: return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
@@ -154,6 +148,11 @@ the feedback period; they do not delay that delivery.
 
 ## Parked Product Work
 
+- **NDI and additional codecs (#535, #530).** Assess NDI through the proposed
+  OBS/DistroAV-to-WHIP input before considering another native dependency.
+  VP9/AV1/SVC support needs a concrete interoperability and resource decision.
+  Transport feedback and retransmission remain with the existing RTC owner;
+  investigate a demonstrated defect there separately from codec expansion.
 - **Native H264 scene-change latency.** Revisit when a concrete encoder or SDK
   improvement can reduce coded-frame bursts while preserving quality and live
   recovery. The available small parameter changes were evaluated and rejected;

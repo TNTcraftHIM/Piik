@@ -61,18 +61,16 @@ An earlier Android same-signature update retained compatible room/history and
 its invitation after reload. Older private storage formats follow the
 [storage reset boundary](../prototype/channel-server/README.md#saved-data-and-files).
 
-The beta.17 Windows candidate passed fresh empty-site first-use acceptance: the
+The latest matched Windows candidate passed fresh empty-site first-use acceptance: the
 site started with zero rooms and publications, Skip persisted the workspace view,
 manual Quick selection persisted after reload, and no room or capture was created
-by the choice. The matched Linux beta.17 Server passed the existing Native-room,
-signed-confirmation and clean-shutdown checks. The matched Android beta.17
+by the choice. The matched Linux Server passed the existing Native-room,
+signed-confirmation and clean-shutdown checks. The matched Android
 candidate passed build, signature, dual-ABI, 16 KiB alignment and bundled-Web
 identity checks but has not been installed for runtime acceptance. An Android
-runtime comparison remains pending. The current MuMu QA process has a missing
-response from its ADB shell; the Manager and the actual running MuMu executable
-path are present. No APK installation or device write was attempted. This is an
-environment gate, not evidence about the APK runtime; the corrected read-only
-path record is kept with the beta17 runtime evidence.
+runtime comparison remains pending; earlier emulator results do not establish
+the current candidate's runtime acceptance. Package receipts retain the exact
+revisions and environment evidence.
 
 Windows package checks also cover normal control request and Host
 approval, real pointer and keyboard input to an isolated window, and **End
