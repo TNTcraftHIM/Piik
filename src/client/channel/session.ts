@@ -1129,7 +1129,12 @@ export class ChannelSession {
       if (current.get("room") === roomId && current.get("invite") === key) {
         current.delete("invite");
         const hash = current.toString();
-        history.replaceState(history.state, "", location.pathname + location.search + (hash ? `#${hash}` : ""));
+        try {
+          history.replaceState(history.state, "", location.pathname + location.search + (hash ? `#${hash}` : ""));
+        } catch {
+          // Admission already succeeded; an unavailable history API must not
+          // turn that committed room entry into a failed operation.
+        }
       }
     }
     return roomId;
