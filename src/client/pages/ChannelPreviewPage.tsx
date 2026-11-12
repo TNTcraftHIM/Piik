@@ -20,7 +20,7 @@ import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
 import { ChannelPeople } from "../channel/components/ChannelPeople";
 import { ChannelProfileEditor } from "../channel/components/ChannelProfileEditor";
 import { ChannelFeedbackSounds } from "../channel/components/ChannelFeedbackSounds";
-import { ChannelInterfaceControl } from "../channel/components/ChannelInterfaceControl";
+import { ChannelInterfaceControl, ChannelInterfaceSuggestion } from "../channel/components/ChannelInterfaceControl";
 import { ChannelRoomCreateDialog, ChannelRoomSettingsDialog, roomDraft, roomSettings } from "../channel/components/ChannelRoomControls";
 import { ChannelRoomEntry, ChannelUnlistedRoomEntry } from "../channel/components/ChannelRoomEntry";
 import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
@@ -35,7 +35,7 @@ import { ChannelConnections } from "../channel/components/ChannelConnections";
 import { listeningVoicePublications, roomPeople, screenAudience, screenTitle, userProfile } from "../channel/presentation";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { channelAppDiscovery } from "../channel/app-link";
-import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
+import { readRoomPreferences, saveRoomPreferences, type InterfaceLayout } from "../lib/room-preferences";
 import { useElementWidth } from "../lib/use-element-width";
 import type { ChannelController } from "../channel/types";
 import "../channel/bootstrap";
@@ -44,21 +44,21 @@ import "./channel-preview.css";
 export function ChannelPreviewPage() {
   const [selected, setSelected] = useState(selectedRoom);
   const [layout, setLayout] = useState(() => readRoomPreferences().interfaceLayout);
-  const changeLayout = useCallback((value: RoomPreferences["interfaceLayout"]) => {
+  const changeLayout = useCallback((value: InterfaceLayout) => {
     setLayout(value); saveRoomPreferences({ interfaceLayout: value });
   }, []);
   const onSelect = useCallback((id: string) => { rememberRoom(id); setSelected(id); }, []);
   const channel = useChannel(onSelect);
-  return <ChannelRoomPage channel={channel} selected={selected} onSelect={onSelect} layout={layout} onLayoutChange={changeLayout}
+  return <ChannelRoomPage channel={channel} selected={selected} onSelect={onSelect} layout={layout ?? "workspace"} offerLayout={layout === undefined} onLayoutChange={changeLayout}
     appControl={<AppConnectionButton discovery={channelAppDiscovery} connected={channel.appConnected}
       onConnected={() => { void channel.activateApp().catch(() => {}); }} />} />;
 }
 
 /** Session and App connection owners supply data; this view keeps one set of room slots. */
-export function ChannelRoomPage({ channel, selected, onSelect, appControl, layout = "workspace", onLayoutChange }: {
+export function ChannelRoomPage({ channel, selected, onSelect, appControl, layout = "workspace", offerLayout = false, onLayoutChange }: {
   channel: ChannelController; selected: string; onSelect(id: string): void; appControl: ReactNode;
-  layout?: RoomPreferences["interfaceLayout"];
-  onLayoutChange?: (value: RoomPreferences["interfaceLayout"]) => void;
+  layout?: InterfaceLayout; offerLayout?: boolean;
+  onLayoutChange?: (value: InterfaceLayout) => void;
 }) {
   const { lang, vis } = useCopy();
   const zh = lang === "zh";
@@ -118,6 +118,10 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     setMobilePane("room");
   };
   const connected = connection === "connected";
+  const chooseInitialLayout = (value: InterfaceLayout) => {
+    onLayoutChange?.(value);
+    requestAnimationFrame(() => document.getElementById("c3-first-action")?.focus());
+  };
   const busy = (action: string, id?: string) => pending.has(action) || pending.has(`${action}:${id}`);
   const prepareShare = async () => {
     if (preparingShare.current || pending.has("create-room")) return;
@@ -296,7 +300,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             : overview && <section className="c3-site-overview">
             {layout === "quick" ? <StageTv hasEntry label={copy("开始分享", "Start sharing")}><div className="c3-quick-start">
               <p>{copy("选择要分享的画面，再把邀请发给朋友。", "Choose a screen, then invite your friends.")}</p>
-              <Btn icon="cast" tone="primary" title={{ text: copy("开始分享", "Start sharing") }} cap={{ text: copy("开始分享", "Start sharing") }}
+              <Btn id="c3-first-action" icon="cast" tone="primary" title={{ text: copy("开始分享", "Start sharing") }} cap={{ text: copy("开始分享", "Start sharing") }}
                 disabled={!connected || busy("create-room")} busy={busy("create-room")} onClick={() => { void prepareShare(); }} />
             </div></StageTv> : rooms.length ? <><h2><ChannelIdentityMark icon={state.channel.icon} size={30} />{state.channel.name}</h2><div className="c3-overview-rooms">{rooms.map(value => <ChannelRoomItem key={value.id}
               room={value} selected={false} screenCount={screens.filter(source => source.roomId === value.id).length}
@@ -305,9 +309,11 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
               : <div className="c3-first-room"><span className="c3-room-start-mark"><ChannelIdentityMark icon="couch" size={46} /></span>
                 <h2>{copy("从一间房间开始", "Start with a room")}</h2>
                 <p>{copy("先创建房间，再把邀请发给朋友。聊天、语音和分享都在房间里。", "Create a room, then invite your friends. Chat, voice and screen sharing happen there.")}</p>
-                <Btn icon="plus" size="compact" tone="primary" hint="hint-create-room"
+                <Btn id="c3-first-action" icon="plus" size="compact" tone="primary" hint="hint-create-room"
                   title={{ text: copy("创建第一间房间", "Create your first room") }} cap={{ text: copy("创建第一间房间", "Create your first room") }}
                   expanded={newRoomName !== null} disabled={!connected} onClick={() => setNewRoomName(copy("客厅", "Living room"))} />
+                {offerLayout && onLayoutChange && connected && <ChannelInterfaceSuggestion value={layout}
+                  onChange={chooseInitialLayout} onDismiss={() => chooseInitialLayout(layout)} />}
               </div>}
           </section>}
         <div className={`c3-workspace${visibleScreens.length ? " has-screens" : ""}${inlineChatOpen && !toolSurface.open ? "" : " chat-collapsed"}`} hidden={overview}>

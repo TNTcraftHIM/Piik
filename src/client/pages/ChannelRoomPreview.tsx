@@ -11,7 +11,7 @@ import type { ChannelRoom } from "../channel/protocol";
 import { useAnchoredPopover } from "../components/living/use-anchored-popover";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import type { AppDiscovery } from "../native/discovery";
-import { ChannelSharingEntryPreview } from "./ChannelSharingEntryPreview";
+import type { InterfaceLayout } from "../lib/room-preferences";
 import "./channel-room-preview.css";
 
 const screenCounts = [0, 1, 2, 3, 4, 8];
@@ -20,24 +20,15 @@ const previewAppDiscovery: AppDiscovery = {
 };
 
 /** The production room view with local samples. No Session, device access or App discovery. */
-export function ChannelRoomPreview() {
+export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean }) {
   const { lang } = useCopy(), zh = lang === "zh";
   const sample = useChannelGuideSample(true);
-  const entryCandidate = new URLSearchParams(location.search).get("entry") === "quick";
   const invitedRoom = new URLSearchParams(location.search).get("invite-preview") === "studio" ? "studio" : null;
-  const [entryOpen, setEntryOpen] = useState(entryCandidate && !invitedRoom);
-  const entryFocus = useRef(entryCandidate), entryHost = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!entryFocus.current) return;
-    const frame = requestAnimationFrame(() => {
-      const target = entryHost.current?.querySelector<HTMLElement>(entryOpen ? ".c3-entry-preview h1" : ".c3-entry-room .c3-room-name h2");
-      if (target) { target.tabIndex = -1; target.focus({ preventScroll: true }); }
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [entryOpen]);
-  const [layout, setLayout] = useState<"workspace" | "quick">(entryCandidate || new URLSearchParams(location.search).get("layout") === "quick" ? "quick" : "workspace");
+  const [layout, setLayout] = useState<InterfaceLayout>(new URLSearchParams(location.search).get("layout") === "quick" ? "quick" : "workspace");
+  const [offerLayout, setOfferLayout] = useState(firstUse);
+  const changeLayout = (value: InterfaceLayout) => { setLayout(value); setOfferLayout(false); };
   const [longNames, setLongNames] = useState(() => new URLSearchParams(location.search).has("long-names"));
-  const [roomCount, setRoomCount] = useState(() => new URLSearchParams(location.search).has("no-rooms") ? 0 : 2);
+  const [roomCount, setRoomCount] = useState(() => firstUse || new URLSearchParams(location.search).has("no-rooms") ? 0 : 2);
   const [emptyChat, setEmptyChat] = useState(() => new URLSearchParams(location.search).has("empty-chat"));
   const [fileSample, setFileSample] = useState(() => new URLSearchParams(location.search).has("file"));
   const [audienceSample, setAudienceSample] = useState(() => new URLSearchParams(location.search).has("audience"));
@@ -157,16 +148,11 @@ export function ChannelRoomPreview() {
     restoreDomainBackup: async () => { sample.received(); throw new Error("preview_storage_unavailable"); },
     restoreRoomBackup: async () => { sample.received(); throw new Error("preview_storage_unavailable"); },
   } satisfies Partial<ChannelController> as unknown as ChannelController;
-  return <div ref={entryHost} className="c3-room-preview">
-    <ChannelSharingEntryPreview channel={channel} hidden={!entryOpen}
-      appControl={entryOpen && <AppConnectionButton discovery={previewAppDiscovery} connected={false} />}
-      onContinue={id => { setSelected(id); setEntryOpen(false); }} />
-    <div className="c3-entry-room" hidden={entryOpen}>
-    <ChannelRoomPage channel={channel} layout={layout} onLayoutChange={setLayout} selected={selected} onSelect={setSelected}
-      appControl={<>{!entryOpen && <AppConnectionButton discovery={previewAppDiscovery} connected={false} />}
+  return <div className="c3-room-preview">
+    <ChannelRoomPage channel={channel} layout={layout} offerLayout={offerLayout} onLayoutChange={changeLayout} selected={selected} onSelect={setSelected}
+      appControl={<><AppConnectionButton discovery={previewAppDiscovery} connected={false} />
         <span ref={optionsTrigger} className="c3-room-preview-trigger"><Btn icon="sliders" title={{ text: zh ? "预览选项" : "Preview options" }}
           quiet size="compact" hint="hint-advanced" expanded={optionsOpen} controls={optionsId} popoverTarget={optionsId} /></span></>} />
-    </div>
     <div ref={optionsPanel} id={optionsId} popover="auto" role="dialog" aria-label={zh ? "预览选项" : "Preview options"}
           className="lr-anchored-card c3-room-preview-options" onToggle={event => {
             if (event.target === event.currentTarget) setOptionsOpen(event.newState === "open");
@@ -174,11 +160,11 @@ export function ChannelRoomPreview() {
           <header><h2>{zh ? "预览选项" : "Preview options"}</h2><Btn icon="x" title="common.close" hint="hint-close" quiet size="compact"
             onClick={() => optionsPanel.current?.hidePopover()} /></header>
           <p>{zh ? "画面为本地合成样本，没有实际网络连接。" : "Pictures are local synthetic samples, without network connections."}</p>
-          <fieldset><legend>{zh ? "分享入口候选" : "Sharing entry candidate"}</legend><div className="c3-room-preview-tools">
-            <Btn icon="couch" quiet size="compact" cap={{ text: zh ? "打开极简入口" : "Open simple entry" }}
-              title={{ text: zh ? "打开极简入口" : "Open simple entry" }} onClick={() => { entryFocus.current = true; optionsPanel.current?.hidePopover(); setLayout("quick"); setEntryOpen(true); }} />
+          <fieldset><legend>{zh ? "界面入口" : "Interface entry"}</legend><div className="c3-room-preview-tools">
+            <Btn icon="sidebar" quiet size="compact" cap={{ text: zh ? "首次使用提示" : "First-use suggestion" }}
+              title={{ text: zh ? "首次使用提示" : "First-use suggestion" }} onClick={() => { optionsPanel.current?.hidePopover(); setRoomCount(0); setCreatedRooms([]); setCount(0); setSharingRoom(null); setSelected(""); setLayout("workspace"); setOfferLayout(true); }} />
             {rooms.some(room => room.id === "studio") && <Btn icon="link" quiet size="compact" cap={{ text: zh ? "模拟邀请到创作小屋" : "Preview studio invitation" }}
-              title={{ text: zh ? "模拟邀请到创作小屋" : "Preview studio invitation" }} onClick={() => { optionsPanel.current?.hidePopover(); setLayout("quick"); setSelected("studio"); setEntryOpen(false); }} />}
+              title={{ text: zh ? "模拟邀请到创作小屋" : "Preview studio invitation" }} onClick={() => { optionsPanel.current?.hidePopover(); setSelected("studio"); }} />}
           </div></fieldset>
           <fieldset><legend>{zh ? "画面数量" : "Screens"}</legend><div className="c3-room-preview-tools">
             {screenCounts.map(value => <Chip key={value} title={zh ? `${value} 个画面` : `${value} screen${value === 1 ? "" : "s"}`} selected={count === value}

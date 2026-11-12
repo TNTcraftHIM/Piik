@@ -18,7 +18,7 @@ it("keeps independent room-tool choices across reads without storing private run
   const values = storage();
   expect(readRoomPreferences().previewAutoPause).toBe(true);
   expect(readRoomPreferences().sharingView).toBe(false);
-  expect(readRoomPreferences().interfaceLayout).toBe("workspace");
+  expect(readRoomPreferences().interfaceLayout).toBeUndefined();
   expect(readRoomPreferences().remoteTouchMode).toBe("direct");
   saveRoomPreferences({ sharingView: true, interfaceLayout: "quick", pictureFit: "cover", pictureRotation: 270, previewAutoPause: false, keyboardPage: "text", combineKeys: true });
   saveRoomPreferences({ remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8, remoteTouchMode: "trackpad",
@@ -44,6 +44,19 @@ it("keeps independent room-tool choices across reads without storing private run
   expect(readRoomPreferences()).toMatchObject({ pictureFit: "cover", pictureRotation: 0, remoteTouchMode: "direct" });
   values.set("piik:room-preferences:v1", JSON.stringify({ overlayAppearance: { scale: 1.2, opacity: .7 } }));
   expect(readRoomPreferences().overlayAppearance).toEqual({ scale: 1.2, opacity: .7, speed: 1, colorBySender: false });
+});
+
+it("keeps layout undecided until an explicit choice, independently of other preferences", () => {
+  const values = storage();
+  expect(saveRoomPreferences({ feedbackSound: { enabled: true, volume: .5 } })).toBe(true);
+  expect(readRoomPreferences().interfaceLayout).toBeUndefined();
+  expect(JSON.parse(values.get("piik:room-preferences:v1")!)).not.toHaveProperty("interfaceLayout");
+  for (const layout of ["workspace", "quick"] as const) {
+    expect(saveRoomPreferences({ interfaceLayout: layout })).toBe(true);
+    expect(saveRoomPreferences({ overlayEnabled: true })).toBe(true);
+    expect(readRoomPreferences().interfaceLayout).toBe(layout);
+    expect(JSON.parse(values.get("piik:room-preferences:v1")!).interfaceLayout).toBe(layout);
+  }
 });
 
 it("rejects malformed saved data and invalid patches while retaining useful defaults", () => {

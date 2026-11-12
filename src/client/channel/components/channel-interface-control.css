@@ -1,1 +1,11 @@
 .c3-interface-choice { display: grid; gap: 6px; min-width: 0; font-size: 12px; }
+.c3-interface-suggestion { display: grid; gap: 12px; width: 100%; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+.c3-interface-suggestion h3 { margin: 0; font-size: 14px; line-height: 1.5; }
+.c3-interface-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 12px; }
+.c3-interface-options .lr-chip { display: grid; align-content: start; justify-items: start; gap: 8px; min-width: 0; padding: 12px; border-radius: var(--c3-inset-radius); text-align: start; }
+.c3-interface-option-label { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.c3-interface-option-label small { margin: 0; }
+.c3-interface-option-description { color: var(--muted); font-size: 12px; font-weight: 400; line-height: 1.6; }
+.c3-interface-options .is-selected .c3-interface-option-description { color: inherit; }
+.c3-interface-suggestion footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.c3-interface-suggestion footer > span { flex: 1 1 160px; color: var(--muted); font-size: 11px; line-height: 1.6; }

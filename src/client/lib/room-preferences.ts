@@ -7,13 +7,15 @@ const STORAGE_KEY = "piik:room-preferences:v1";
 export const CHAT_OVERLAY_LIMITS = { scale: [.8, 1.3], opacity: [.4, 1], speed: [.5, 1.5] } as const;
 export const CHAT_OVERLAY_DEFAULTS = { scale: 1, opacity: 1, speed: 1, colorBySender: false };
 export const REMOTE_KEYBOARD_PAGES = ["letters", "symbols", "functions", "text"] as const;
+const interfaceLayoutSchema = z.enum(["workspace", "quick"]);
+export type InterfaceLayout = z.infer<typeof interfaceLayoutSchema>;
 
 const roomPreferencesSchema = z.object({
   feedbackSound: z.object({ enabled: z.boolean(), volume: z.number().min(0).max(1),
     clips: z.object({ message: feedbackClipSchema.optional(), throw: feedbackClipSchema.optional() }).optional(),
   }).default({ enabled: false, volume: 1 }),
   sharingView: z.boolean().default(false),
-  interfaceLayout: z.enum(["workspace", "quick"]).default("workspace"),
+  interfaceLayout: interfaceLayoutSchema.optional(),
   pictureFit: z.enum(["contain", "cover", "fill"]).default("contain"),
   pictureRotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).catch(0).default(0),
   previewAutoPause: z.boolean().default(true),

@@ -169,6 +169,14 @@ User-initiated mode changes are not thereby WCAG failures or necessarily CLS eve
 
 ### 3.0 Quick Sharing
 
+An empty site with no saved interface choice offers a small inline suggestion
+below its primary room-creation action. Creation remains immediately usable.
+Choosing a view or skipping saves the current presentation preference, so the
+suggestion does not return after reload. Existing rooms and room invitations
+continue directly. The ordinary **More options → Interface** control remains
+available afterward; both entrances share their option labels and controls.
+Changing or dismissing the suggestion returns focus to the next primary action.
+
 The complete 3.0 workspace remains the default. Its optional quick-sharing view
 serves people using Piik alongside their existing voice software. It centres on
 screen sharing and retains the 2.x composition: a single central television area, sharing and
