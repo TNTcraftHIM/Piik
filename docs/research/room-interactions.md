@@ -584,6 +584,11 @@ the lease and join its receiver. A stale DELETE or callback only retires its own
 resource generation. The endpoint and secret never enter SQLite, history or wire
 metadata. This is an implementation boundary for later review, not an accepted
 authorization contract.
+For the first local-OBS slice, the route belongs only to Local mode and an
+authorized lease; Link mode must reject it explicitly because a tunnel can make
+a remote request appear to come from loopback. Peer IP checks are not the scope
+boundary. A remotely reachable ingest path would require a separate resource and
+authorization decision.
 
 A bounded control with the pinned str0m SDK accepted a send-only H264/Opus offer,
 completed ICE/DTLS and retained RTP timestamp progression and sender reports.
