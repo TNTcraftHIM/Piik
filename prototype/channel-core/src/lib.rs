@@ -247,8 +247,8 @@ impl Authority {
                         }
                     }
                 } else {
-                    for (room, binding, reply) in self.channel.remove_room(room_id) {
-                        self.room_reply(&room, binding, reply, &mut effects);
+                    for (room, reply) in self.channel.remove_room(room_id) {
+                        self.room_reply(&room, reply, &mut effects);
                     }
                     self.broadcast(None, &mut effects);
                     effects.events.push((
@@ -296,8 +296,8 @@ impl Authority {
                 );
                 match result {
                     Ok((events, replies)) => {
-                        for (room, binding, reply) in replies {
-                            self.room_reply(&room, binding, reply, &mut effects);
+                        for (room, reply) in replies {
+                            self.room_reply(&room, reply, &mut effects);
                         }
                         for (session, event) in events {
                             self.deliver(session, event, &mut effects);
@@ -332,8 +332,8 @@ impl Authority {
                     .stop_host(room_id, session_id, connection, *binding_id)
                 {
                     Ok(replies) => {
-                        for (room, binding, reply) in replies {
-                            self.room_reply(&room, binding, reply, &mut effects);
+                        for (room, reply) in replies {
+                            self.room_reply(&room, reply, &mut effects);
                         }
                         self.broadcast(None, &mut effects);
                         if let Some(request_id) = request.request_id {
@@ -356,8 +356,8 @@ impl Authority {
         let sync_hosts = matches!(request.command, Command::Leave);
         match self.channel.handle(session_id, request.command, now) {
             Ok(outcome) => {
-                for (room, binding, reply) in outcome.replies {
-                    self.room_reply(&room, binding, reply, &mut effects);
+                for (room, reply) in outcome.replies {
+                    self.room_reply(&room, reply, &mut effects);
                 }
                 for (recipient, event) in outcome.events {
                     self.deliver(recipient, event, &mut effects);
@@ -413,9 +413,9 @@ impl Authority {
     pub fn failed_room_delete(&mut self, id: &str, request: &RequestContext) -> Effects {
         let mut effects = Effects::default();
         if let Some(room) = self.channel.remote.get_mut(id) {
-            for (room, binding, reply) in room.pause() {
+            for (room, reply) in room.pause() {
                 if &reply.context != request {
-                    self.room_reply(&room, binding, reply, &mut effects);
+                    self.room_reply(&room, reply, &mut effects);
                 }
             }
         }
@@ -429,8 +429,8 @@ impl Authority {
         self.channel.now = now;
         let mut effects = Effects::default();
         let (expired, replies) = self.channel.expire_sessions(now);
-        for (room, binding, reply) in replies {
-            self.room_reply(&room, binding, reply, &mut effects);
+        for (room, reply) in replies {
+            self.room_reply(&room, reply, &mut effects);
         }
         if expired {
             self.sync_hosts(&mut effects, true);
@@ -571,8 +571,8 @@ impl Authority {
             .as_ref()
             .is_some_and(|reply| matches!(reply.result, RoomResult::Deleted { data_removed: true }))
         {
-            for (room, binding, reply) in self.channel.remove_room(room_id) {
-                self.room_reply(&room, binding, reply, effects);
+            for (room, reply) in self.channel.remove_room(room_id) {
+                self.room_reply(&room, reply, effects);
             }
             self.broadcast(None, effects);
         }
@@ -580,18 +580,12 @@ impl Authority {
             self.broadcast(None, effects);
         }
         for reply in accepted.replies {
-            self.room_reply(room_id, output.binding_id, reply, effects);
+            self.room_reply(room_id, reply, effects);
         }
         Ok(())
     }
 
-    fn room_reply(
-        &mut self,
-        room_id: &str,
-        _binding_id: Uuid,
-        reply: RoomReply,
-        effects: &mut Effects,
-    ) {
+    fn room_reply(&mut self, room_id: &str, reply: RoomReply, effects: &mut Effects) {
         let context = reply.context;
         if self
             .channel

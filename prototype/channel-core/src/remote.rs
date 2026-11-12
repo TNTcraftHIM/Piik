@@ -32,7 +32,7 @@ pub(crate) enum ReplyOwner {
     RouteWake,
 }
 
-pub(crate) type RetiredRoomReply = (String, Uuid, RoomReply);
+pub(crate) type RetiredRoomReply = (String, RoomReply);
 
 #[derive(Clone)]
 pub(crate) struct RemoteRoom {
@@ -76,7 +76,6 @@ impl RemoteRoom {
             .filter_map(|owner| match owner {
                 ReplyOwner::Request { context, .. } => Some((
                     self.summary.id.clone(),
-                    binding.id,
                     RoomReply {
                         context,
                         result: RoomResult::Error {
