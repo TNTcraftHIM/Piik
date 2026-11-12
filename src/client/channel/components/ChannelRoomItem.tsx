@@ -17,7 +17,7 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
   const unreadId = useId();
   const settingsLabel = lang === "zh" ? `${room.name}的房间设置` : `Settings for ${room.name}`;
   return <div className="c3-room-item" data-selected={selected || undefined} data-unread={unread || undefined} data-settings-open={settingsOpen || undefined}>
-    {participantDisclosure && <span className="c3-room-voice-toggle"><Tooltip kind="hint-collapse"
+    {participantDisclosure && <span className="c3-room-voice-toggle lr-embedded-actions"><Tooltip kind="hint-collapse"
       text={lang === "zh" ? `${participantDisclosure.open ? "收起" : "展开"}参与者（${participantDisclosure.count}人）` : `${participantDisclosure.open ? "Hide" : "Show"} participants (${participantDisclosure.count})`}>
       <button type="button" className="lr-btn is-dense is-quiet" aria-expanded={participantDisclosure.open} aria-controls={participantDisclosure.controls}
         aria-label={lang === "zh" ? "折叠参与者列表" : "Toggle participants"} onClick={participantDisclosure.onToggle}><Glyph name="chevron" size={12} /></button>
@@ -37,7 +37,7 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
       </button>
     </Tooltip>
     {unread && <span id={unreadId} className="c3-room-unread-label">{lang === "zh" ? "有未读消息" : "Unread messages"}</span>}
-    {(room.authorized || room.canManage) && <span className="c3-room-manage">
+    {(room.authorized || room.canManage) && <span className="c3-room-manage lr-embedded-actions">
       <Tooltip kind="hint-advanced" text={vis ? undefined : settingsLabel} disabled={settingsOpen}>
         <button type="button" className="lr-btn is-dense is-quiet" data-room-settings={room.id}
           aria-label={settingsLabel} aria-haspopup="dialog" aria-expanded={settingsOpen} onClick={onManage}>

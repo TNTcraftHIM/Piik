@@ -11,8 +11,7 @@
 .c3-room-list-item { --room-disclosure-width: 24px; --room-content-inset: 10px; --room-icon-size: 28px; --room-content-gap: 9px; }
 .c3-room-list-item > .c3-room-item { position: relative; padding-inline-start: calc(var(--room-disclosure-width) + 4px); min-height: 52px; }
 .c3-room-voice-toggle { position: absolute; inset-inline-start: 4px; inset-block: 4px; display: flex; align-items: center; }
-.c3-room-voice-toggle .lr-btn { --button-size: var(--room-disclosure-width); --button-icon-size: 12px; --button-padding: 0; --control-hover-transform: none; --control-press-transform: none; width: var(--room-disclosure-width); min-width: var(--room-disclosure-width); height: 40px; box-shadow: none; border: 0; }
-.c3-room-voice-toggle .lr-btn:focus-visible { outline-offset: -3px; }
+.c3-room-voice-toggle .lr-btn { --button-size: var(--room-disclosure-width); --button-icon-size: 12px; --button-padding: 0; width: var(--room-disclosure-width); min-width: var(--room-disclosure-width); height: 40px; box-shadow: none; border: 0; }
 .c3-room-voice-toggle [aria-expanded="false"] > svg { transform: rotate(-90deg); }
 @media (any-pointer: coarse) {
   .c3-room-list-item { --room-disclosure-width: 44px; }

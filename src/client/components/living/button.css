@@ -48,6 +48,9 @@ button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: no
 .lr-btn.is-quiet { border-radius: 12px; }
 .lr-btn.is-quiet:not(.is-on):not(.is-primary):not(.is-danger) { background: transparent; border-color: transparent; color: var(--muted); box-shadow: none; }
 .lr-btn.is-quiet:not(.is-on):not(.is-primary):not(.is-danger):is(:hover, :focus-visible):not(:disabled):not([aria-disabled="true"]) { background: var(--control-hover); border-color: transparent; color: var(--ink); }
+/* Actions embedded in content keep their position and their focus ring inside it. */
+.lr-embedded-actions { --control-hover-transform: none; --control-press-transform: none; }
+.lr-embedded-actions :is(.lr-btn, .lr-chip):focus-visible { outline-color: currentColor; outline-offset: -3px; }
 @media (prefers-reduced-motion: reduce) {
   :root { --control-hover-transform: none; --control-press-transform: none; }
   .lr-btn { transform: none !important; transition: none !important; }

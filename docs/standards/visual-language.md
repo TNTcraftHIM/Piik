@@ -199,7 +199,9 @@ in conversation, room lists and compact tool panels:
 
 Use a reply arrow for quoting a message and the straight back arrow for navigation.
 Following [Discord's contextual reply interaction](https://support.discord.com/hc/en-us/articles/360057382374-Replies-FAQ),
-message actions stay close to their content and remain discoverable on touch.
+message actions stay close to their content and appear on hover or focus;
+tapping a focusable message reveals the same controls on touch. Existing reaction
+counts remain visible when those actions are hidden.
 [W3C focus guidance](https://www.w3.org/WAI/WCAG22/Understanding/focus-visible.html)
 requires visible keyboard focus; it does not require the same outline for a pointer click.
 

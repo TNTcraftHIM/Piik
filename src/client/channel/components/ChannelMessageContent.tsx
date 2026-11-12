@@ -13,7 +13,7 @@ const tags = new Set(["p", "em", "strong", "s", "ul", "ol", "li", "blockquote"])
 function CodeBlock({ text }: { text: string }) {
   const { lang } = useCopy(), zh = lang === "zh", clipboard = useClipboardResult(text);
   return <div className="c3-code-block">
-    <div className="c3-code-actions"><ChannelAction icon={clipboard.status === "copied" ? "check" : "copy"}
+    <div className="c3-code-actions lr-embedded-actions"><ChannelAction icon={clipboard.status === "copied" ? "check" : "copy"}
       label={clipboard.status === "copied" ? (zh ? "已复制" : "Copied") : (zh ? "复制代码" : "Copy code")}
       quiet disabled={!text} onClick={clipboard.copy} /></div>
     <pre tabIndex={0}><code>{text}</code></pre>

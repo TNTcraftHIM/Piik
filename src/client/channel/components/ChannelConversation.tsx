@@ -119,13 +119,14 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   function updateDraft(update: (previous: Draft) => Draft) {
     setDrafts(previous => ({ ...previous, [roomId]: update(previous[roomId] ?? emptyDraft) }));
   }
-  function selectMention(user: ChannelUser) {
-    if (!query) return;
-    const inserted = `@${user.name} `;
-    const next = draft.text.slice(0, query.start) + inserted + draft.text.slice(query.end);
+  function selectMention(user: Pick<ChannelUser, "id" | "name">, range = query) {
+    if (!range) return;
+    const prefix = range.start > 0 && !/\s/.test(draft.text[range.start - 1]) ? " " : "";
+    const inserted = `${prefix}@${user.name} `;
+    const next = draft.text.slice(0, range.start) + inserted + draft.text.slice(range.end);
     updateDraft(previous => ({ ...previous, text: next,
-      mentions: [...editMentions(previous.text, next, previous.mentions), { userId: user.id, start: query.start, end: query.start + inserted.length - 1 }].sort((a, b) => a.start - b.start) }));
-    const caret = query.start + inserted.length;
+      mentions: [...editMentions(previous.text, next, previous.mentions), { userId: user.id, start: range.start + prefix.length, end: range.start + inserted.length - 1 }].sort((a, b) => a.start - b.start) }));
+    const caret = range.start + inserted.length;
     setSelection(null);
     input.current?.focus();
     surfaceDocument?.defaultView?.requestAnimationFrame(() => input.current?.setSelectionRange(caret, caret));
@@ -303,6 +304,8 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
             avatar={(!summary || summary.version === author?.version ? author?.avatar : null) ?? undefined}
             users={displayUsers} selfUserId={selfUserId} unread={newMessages} onMessage={loadingHistory ? undefined : seq => { void showMessage(seq); }}
             onReply={() => { updateDraft(value => ({ ...value, reply: { seq: message.seq, notify: true, name, text: message.text || (zh ? "附件" : "Attachment") } })); input.current?.focus(); }}
+            onMention={available && mentionLimit !== null && draft.mentions.length < mentionLimit && displayUsers.some(user => user.id === message.userId)
+              ? () => selectMention(displayUsers.find(user => user.id === message.userId)!, { start: draft.text.length, end: draft.text.length, query: "" }) : undefined}
             dateLabel={newDay ? date.toLocaleDateString(zh ? "zh-CN" : "en", { dateStyle: "long" }) : undefined}
             attachments={attachments} available={available} interaction={interaction} effectsEnabled={!hidden && !loadingHistory} />;
         })}
@@ -381,12 +384,13 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   </section>;
 }
 
-const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, avatar, dateLabel, attachments, available, interaction, authorMessageId, effectsEnabled, users, selfUserId, unread, onReply, onMessage }: {
+const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, avatar, dateLabel, attachments, available, interaction, authorMessageId, effectsEnabled, users, selfUserId, unread, onReply, onMessage, onMention }: {
   roomId: string; message: ChannelMessage; grouped: boolean; name: string; avatar?: string; dateLabel?: string;
   attachments: ChannelAttachments; available: boolean; interaction: RoomInteractionSession | null;
   authorMessageId: string; effectsEnabled: boolean;
   users: ChannelUserSummary[]; unread: boolean; onReply(): void; onMessage?(seq: number): void;
   selfUserId?: string | null;
+  onMention?: () => void;
 }) {
   const { lang } = useCopy();
   const mentioned = message.mentions?.some(mention => mention.userId === selfUserId)
@@ -397,7 +401,7 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
   return <>
     {dateLabel && <div className="c3-message-date"><time dateTime={new Date(message.time).toISOString()}>{dateLabel}</time></div>}
     {unread && <div className="c3-message-date c3-unread-divider">{lang === "zh" ? "新消息" : "New messages"}</div>}
-    <article ref={row} tabIndex={-1} className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}${mentioned ? " is-mentioned" : ""}`} data-message-id={message.id} data-message-seq={message.seq}>
+    <article ref={row} tabIndex={0} className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}${mentioned ? " is-mentioned" : ""}`} data-message-id={message.id} data-message-seq={message.seq}>
     {!grouped && <PawnSvg color={participantColor(message.userId)} identity={message.userId} avatar={avatar} />}
     <div className="c3-message-body">{!grouped && <div className="c3-message-meta"><strong>{name}</strong>
       <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
@@ -409,10 +413,12 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
     {message.attachments.map(file => <ChannelAttachment key={file.id} roomId={roomId} messageSeq={message.seq} file={file} client={attachments}
       inlineImage={message.inlineImages?.[file.id]} />)}
     <ChannelContentReactions reactions={message.reactions} session={interaction} target={{ messageSeq: message.seq }} disabled={!available}
-      effectAnchor={effectAnchor} effectsEnabled={effectsEnabled} />
-    <span className="c3-message-reply-action"><ChannelAction icon="reply" iconOnly quiet textTooltip
+      effectAnchor={effectAnchor} effectsEnabled={effectsEnabled} actions={<>
+      <Tooltip text={lang === "zh" ? `提及 ${name}` : `Mention ${name}`}><button type="button" className="lr-btn is-compact is-quiet c3-mention-author" aria-label={lang === "zh" ? `提及 ${name}` : `Mention ${name}`}
+        disabled={!onMention} onClick={onMention}>@</button></Tooltip>
+      <ChannelAction icon="reply" iconOnly quiet textTooltip
       label={!available ? (lang === "zh" ? "房间重新连接后可回复" : "Reply after the room reconnects") : (lang === "zh" ? "回复这条消息" : "Reply to this message")}
-      disabled={!available} onClick={onReply} /></span>
+      disabled={!available} onClick={onReply} /></>} />
     </div></div>
     </article>
   </>;
