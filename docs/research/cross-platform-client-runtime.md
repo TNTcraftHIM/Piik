@@ -57,6 +57,24 @@ room server; the same process remains the Site's loopback native-media owner.
 The persistent launcher owns local approval and room startup independently.
 The system Browser remains the UI.
 
+### Windows Native Entry Prototype
+
+An isolated Windows proof tested a small native entry window with official
+`eframe`/`egui` 0.33.3, built by Rust 1.91. The prototype reused the existing
+Piik favicon and palette, rendered Chinese text, exposed Preparing, Ready and
+Failure states, and worked at a 360-pixel narrow width. Its Windows renderer,
+keyboard activation, AccessKit names and normal `WM_CLOSE` exit were exercised.
+It has no WebView, browser launch, App process attachment, permissions, media
+capture or room connection; its Open and Diagnostics controls are explicitly
+demonstration actions. The debug prototype executable was about 9.8 MiB and
+adds the native GUI dependency/build cost. macOS/Linux rendering, font
+availability and packaged runtime acceptance remain unverified.
+
+A future native entry must project the existing App startup progress, diagnostic
+export and shutdown owners. It must not create a second room, authorization,
+retry or preference state owner. The proof is therefore a feasibility boundary,
+not a second desktop product or an accepted replacement for the system Browser.
+
 Official Go process APIs require every started child to be waited and provide a
 bounded `WaitDelay` for cancellation and stuck I/O. That guidance now covers the
 capture and cloudflared sidecars only: the room authority is no longer a child

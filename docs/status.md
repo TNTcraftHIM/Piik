@@ -15,9 +15,10 @@ distribution use these Rust/Web paths; Go tooling only builds the pinned
 Cloudflared helper. Work stays on `feat/channel-prototype`, separately from 2.x.
 Matched Windows App, Linux x64 Server and Android candidates have been delivered
 for internal testing with the current capacity and profile-reading protocol.
-Windows and Linux startup, compatible saved-data reuse and orderly shutdown have
-passed acceptance. Android has passed package checks; device acceptance remains
-pending. Exact revisions and receipts stay with the immutable packages.
+The latest matched candidate is beta.17 at `dac63396`; Windows and Linux startup,
+the empty-site first-use choice, compatible saved-data reuse and orderly shutdown
+have passed acceptance. Android has passed package checks; device acceptance
+remains pending. Exact revisions and receipts stay with the immutable packages.
 
 The site owns user identity and directory summaries. Room plans and shared transport
 leases keep separate Rust owners. Rooms created in the UI run in their owner's
@@ -57,7 +58,9 @@ mentions and replies, Markdown with copyable code blocks, inline image previews
 and file delivery, room voice, multiple screen sources with selective watching,
 personal sound choices and attended input.
 The full workspace remains the default; an optional screen-centred interface
-keeps the same rooms and activities, with a direct first-share entry.
+keeps the same rooms and activities. A first-use suggestion appears only in an
+empty site without a saved view choice; invitations and existing rooms remain
+direct, and the choice can be changed later from Interface settings.
 Their ownership follows the network and data models above; current platform
 coverage is in [verification status](./verification-status.md).
 Published 2.x interaction behavior remains with the
@@ -76,6 +79,14 @@ follow the [documented reset boundary](../prototype/channel-server/README.md#sav
 Package receipts retain each candidate's exact source and tested scope.
 [TODO](./todo.md) owns remaining work and owner holds. Applicable defects continue
 to feed the separate 2.x maintenance line, which preserves its published contracts.
+
+An independent text participant has been exercised against a real Browser-hosted
+room, including confirmed replies, reconnect, Host offline rejection and restored
+live delivery. An isolated OBS 33.0.1 WHIP/SRTP prototype has received real H264,
+stereo Opus and Sender Reports and has passed stop/rebind cleanup. Both remain
+examples: production Bot issuer/scope/revocation and an external Source lease are
+not accepted yet. A small Rust-native GUI entry prototype is also verified on
+Windows; formal App integration remains a separate lifecycle review.
 
 ## Deployment
 
