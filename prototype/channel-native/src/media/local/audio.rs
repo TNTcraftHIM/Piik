@@ -510,14 +510,25 @@ impl Mix {
         self.anchors[index] = None;
     }
     fn push(&mut self, index: usize, frame: AudioFrame) {
-        let at = match &self.anchors[index] {
-            Some(anchor) if anchor.segment == frame.segment => {
+        let aligned = self.anchors[index]
+            .as_ref()
+            .filter(|anchor| anchor.segment == frame.segment)
+            .map(|anchor| {
                 if frame.sample_position >= anchor.sample_position {
                     anchor.at + sample_duration(frame.sample_position - anchor.sample_position)
                 } else {
                     anchor.at - sample_duration(anchor.sample_position - frame.sample_position)
                 }
-            }
+            });
+        let at = match aligned {
+            Some(at)
+                if !self.cursor.as_ref().is_some_and(|cursor| {
+                    // Independent device clocks can outlive the original alignment.
+                    // Recover a current capture, without reviving genuinely late PCM.
+                    at + Duration::from_millis(20) <= cursor.alignment_end
+                        && frame.presentation_time + Duration::from_millis(20)
+                            > cursor.capture_end
+                }) => at,
             _ => {
                 let at = self
                     .cursor
@@ -698,6 +709,45 @@ mod tests {
         assert!(mix.pop(false, 1.0).is_none());
         mix.push(0, frame(at, 20, [0.2, 0.4]));
         assert!(mix.pop(false, 1.0).is_none());
+    }
+
+    #[test]
+    fn independent_capture_clocks_do_not_permanently_silence_either_input() {
+        for slower in 0..2 {
+            let epoch = Instant::now();
+            let mut mix = Mix::default();
+            let mut captured = [0_u64; 2];
+            let mut periods = [20_000_000_u64; 2];
+            periods[slower] += 2_000; // Controlled 100 ppm drift, not timestamp jitter.
+            let mut last_second = 0;
+            loop {
+                let arrivals = [
+                    (captured[0] + 1) * periods[0],
+                    (captured[1] + 1) * periods[1],
+                ];
+                let input = usize::from(arrivals[1] < arrivals[0]);
+                let now = arrivals[input];
+                if now > 300_000_000_000 {
+                    break;
+                }
+                let position = captured[input];
+                captured[input] += 1;
+                mix.push(input, AudioFrame {
+                    segment: 0,
+                    sample_position: position * 960,
+                    samples: if input == 0 { [0.2, 0.0] } else { [0.0, 0.4] }.repeat(960),
+                    presentation_time: epoch + Duration::from_nanos(position * periods[input]),
+                });
+                while let Some(frame) = mix.pop(true, 1.0) {
+                    if now > 299_000_000_000 {
+                        last_second += 1;
+                        assert!(frame.samples.chunks_exact(2).all(|pair| pair == [0.2, 0.4]),
+                            "input {slower} stopped contributing after its clock drifted");
+                    }
+                }
+            }
+            assert!(last_second >= 49);
+        }
     }
 
     #[test]

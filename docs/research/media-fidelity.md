@@ -153,8 +153,19 @@ control packet-for-packet and sample-for-sample after decoding, with 960 RTP tic
 per frame. Focused checks also retain partial frames across input retirement,
 explicit gaps, source changes and the existing capture cleanup.
 
-The matched Windows package also shared an owned program's 440/880 Hz stereo
-signal to an independent Browser through the normal App UI. The source rendered
+A separate five-minute control used two continuous inputs with a 100 ppm rate
+difference. Fixed input anchors made the slower input permanently expire after
+about 200 seconds; neither that rate nor the failure was measured on the
+reporter's device. The mixer now renews an expired alignment only when the
+frame's actual capture time is still current. Genuinely late PCM stays discarded,
+and ordinary timestamp jitter still preserves sample order. Both input directions
+recover in the control, with one 20 ms missing-input frame rather than permanent
+silence. This bounded recovery does not provide smooth asynchronous resampling;
+continued independent-clock drift can still require occasional realignment.
+
+The sample-order correction was also checked in a Windows package, sharing an
+owned program's 440/880 Hz stereo signal to an independent Browser through the
+normal App UI. The source rendered
 only to a named virtual output; the receiver stayed muted and analysed the signal
 without speaker output. Both channels remained distinct over a five-second
 sample, with no clipping or non-finite values, followed by normal sharing stop
