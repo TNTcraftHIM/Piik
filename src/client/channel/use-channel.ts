@@ -73,6 +73,6 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
     setInputVolume: session.setInputVolume, setListeningVolume: session.setListeningVolume,
     microphones: session.microphones, configureVoiceInput: session.configureVoiceInput,
     setVoiceVolume: session.setVoiceVolume, setVoiceMuted: session.setVoiceMuted,
-    setDeafened: session.setDeafened, clearError: session.clearError, reconnect: session.reconnect,
+    setDeafened: session.setDeafened, clearError: session.clearError, reconnect: session.reconnect, joinAsNewIdentity: session.joinAsNewIdentity,
   };
 }

@@ -40,6 +40,14 @@ does not permanently consume an online slot, and admitting new friends does not
 delete historical authors, room ownership or room grants. The retained identity
 owner stays in the existing domain storage.
 
+Joining without a credential creates an ordinary identity. An explicitly supplied
+credential must identify an existing user; rejection never silently creates a new
+user or overwrites the client's saved credential. A valid operator bootstrap key
+can explicitly select that operator identity. After a rejection, the Browser can
+retry the saved identity or let the user choose a new one; only a successful
+Welcome saves its replacement. This does not erase local room data or transfer
+the original user's room access.
+
 Live projections carry the lightweight identities they currently reference.
 Full profiles and the offline directory are read in bounded batches through the
 existing authenticated domain connection. The Browser session owns one display

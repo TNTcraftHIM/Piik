@@ -53,6 +53,8 @@ export function channelErrorPresentation(error: string | null, copy: (zh: string
     return display("需要有效邀请。请向邀请方索取新的完整链接。", "A valid invitation is required. Ask the sender for a new, complete link.");
   if (error === "invalid_owner_key")
     return display("管理链接无效。请重新打开 App 的站点入口，或核对服务端配置的管理密钥。", "Invalid operator link. Reopen the site from the App, or check the server’s configured operator key.");
+  if (error === "invalid_credential")
+    return display("此站点未接受已保存的身份。你可以重试原身份，或使用新身份加入。", "This site did not accept your saved identity. Retry it or join with a new identity.");
   if (/credential|unauthorized|join_required/i.test(error))
     return display("未能确认当前身份，请重新连接。", "Could not verify your identity. Reconnect and try again.");
   if (error === "session_expired")

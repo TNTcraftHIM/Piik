@@ -535,6 +535,61 @@ test("a browser without WebAssembly reports its capability failure before joinin
   } finally { session.close(); }
 });
 
+test("rejected saved identity stops recovery and preserves credentials for an explicit retry", async () => {
+  const { session, socket } = await setup(1000, false, "");
+  try {
+    vi.useFakeTimers();
+    socket.close(); await vi.advanceTimersByTimeAsync(1000);
+    const retry = ChannelSocket.current; await retry.onopen?.();
+    expect(retry.sent.find(command => command.type === "join")).toMatchObject({ credential: "credential" });
+    retry.receive({ type: "error", code: "invalid_credential" });
+    expect(session.getSnapshot()).toMatchObject({ connection: "closed", sessionId: null, state: null, error: "invalid_credential" });
+    expect(localStorage.getItem("piik.channel.prototype.credential")).toBe("credential");
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(ChannelSocket.current).toBe(retry);
+    expect(session.getSnapshot().error).toBe("invalid_credential");
+    session.reconnect(); await ChannelSocket.current.onopen?.();
+    expect(ChannelSocket.current.sent.find(command => command.type === "join")).toMatchObject({ credential: "credential" });
+  } finally { session.close(); }
+});
+
+test.each(["rejection", "disconnect"])("new identity %s retains the saved identity until a later successful Welcome", async failure => {
+  const { session, socket } = await setup(1000, false, "");
+  const state = structuredClone(session.getSnapshot().state!);
+  try {
+    socket.receive({ type: "error", code: "invalid_credential" });
+    session.joinAsNewIdentity();
+    const joining = ChannelSocket.current; await joining.onopen?.();
+    const join = joining.sent.find(command => command.type === "join")!;
+    for (const field of ["credential", "ownerKey", "sessionId"]) expect(join).not.toHaveProperty(field);
+    expect(localStorage.getItem("piik.channel.prototype.credential")).toBe("credential");
+    vi.useFakeTimers();
+    if (failure === "rejection") joining.receive({ type: "error", code: "channel_full" });
+    else {
+      joining.close();
+      await vi.advanceTimersByTimeAsync(1000);
+      const retry = ChannelSocket.current; await retry.onopen?.();
+      expect(retry.sent.find(command => command.type === "join")).toMatchObject({ credential: "credential" });
+      retry.receive({ type: "error", code: "invalid_credential" });
+    }
+    const rejected = ChannelSocket.current;
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(ChannelSocket.current).toBe(rejected);
+    expect(session.getSnapshot().connection).toBe("closed");
+    expect(localStorage.getItem("piik.channel.prototype.credential")).toBe("credential");
+    session.reconnect(); await ChannelSocket.current.onopen?.();
+    expect(ChannelSocket.current.sent.find(command => command.type === "join")).toMatchObject({ credential: "credential" });
+    ChannelSocket.current.receive({ type: "error", code: "invalid_credential" });
+    session.joinAsNewIdentity(); await ChannelSocket.current.onopen?.();
+    state.users = [{ id: "new-user", name: "New user", version: profileVersion }];
+    state.sessions = [{ id: "new-session", userId: "new-user", online: true, signingKey: testSigningKey }];
+    state.channel.rooms = [];
+    ChannelSocket.current.receive({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "new-credential", sessionId: "new-session", state });
+    expect(session.getSnapshot()).toMatchObject({ connection: "connected", self: { id: "new-user" } });
+    expect(localStorage.getItem("piik.channel.prototype.credential")).toBe("new-credential");
+  } finally { session.close(); }
+});
+
 test("message reaction clicks count independently while nonce retries settle without another live effect", async () => {
   vi.useFakeTimers();
   const { session, peer } = await setup();

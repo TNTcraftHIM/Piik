@@ -155,6 +155,7 @@ export interface ChannelActions {
   setVoiceMuted(userId: string, muted: boolean): void;
   clearError(): void;
   reconnect(): void;
+  joinAsNewIdentity(): void;
 }
 
 export type ChannelController = ChannelView & ChannelActions;

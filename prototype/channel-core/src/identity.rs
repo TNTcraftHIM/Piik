@@ -197,6 +197,9 @@ impl Identity {
         if input.owner_key.is_some() && !owner {
             return Err("invalid_owner_key");
         }
+        if !owner && input.credential.is_some() && existing.is_none() {
+            return Err("invalid_credential");
+        }
         let user_id = if owner {
             self.owner_id
         } else if let Some(user) = existing {
@@ -433,10 +436,35 @@ mod tests {
             .unwrap();
         assert_eq!(user(&identity, &owner), identity.owner_id);
         assert_ne!(user(&identity, &owner), user(&identity, &first));
-        let fresh = identity
-            .admit(input(None, Some("invalid"), None), Uuid::new_v4(), 0)
+        let users = identity.users.len();
+        let sessions = identity.sessions.len();
+        assert_eq!(
+            identity
+                .admit(input(None, Some("invalid"), None), Uuid::new_v4(), 0)
+                .err(),
+            Some("invalid_credential")
+        );
+        assert_eq!(identity.users.len(), users);
+        assert_eq!(identity.sessions.len(), sessions);
+        assert_eq!(
+            identity
+                .admit(
+                    input(Some("wrong-owner"), Some(&first.credential), None),
+                    Uuid::new_v4(),
+                    0
+                )
+                .err(),
+            Some("invalid_owner_key")
+        );
+        let recovered_owner = identity
+            .admit(
+                input(Some("owner"), Some("invalid"), None),
+                Uuid::new_v4(),
+                0,
+            )
             .unwrap();
-        assert_ne!(user(&identity, &fresh), user(&identity, &first));
+        assert_eq!(user(&identity, &recovered_owner), identity.owner_id);
+        assert_eq!(identity.users.len(), users);
     }
 
     #[test]

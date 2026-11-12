@@ -332,19 +332,21 @@ export class ChannelSession {
     if (event.sender.peerId === self || recipient === self) this.feedbackAudio.play("throw");
   }
 
-  private connect(acceptWelcome?: (event: Extract<ChannelEvent, { type: "welcome" }>) => string | undefined): void {
+  private connect(acceptWelcome?: (event: Extract<ChannelEvent, { type: "welcome" }>) => string | undefined, newIdentity = false): void {
     if (this.closed) return;
     const url = new URL("/prototype/channel", location.href);
     url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(url);
     const decoder = new ChannelEventDecoder();
+    const credential = newIdentity ? undefined : this.credential;
+    const ownerKey = newIdentity ? undefined : this.ownerKey;
     this.socket = socket;
     this.patch({ connection: this.view.sessionId ? "reconnecting" : "connecting" });
     socket.onopen = async () => {
       try {
         const signingKey = await this.conversation.initialize();
         if (this.socket !== socket || this.closed) return;
-        this.write({ type: "join", protocol: CHANNEL_PROTOCOL, signingKey, name: stored(nameKey) ?? "Guest", credential: this.credential, ownerKey: this.ownerKey, sessionId: this.view.sessionId ?? undefined });
+        this.write({ type: "join", protocol: CHANNEL_PROTOCOL, signingKey, name: stored(nameKey) ?? "Guest", credential, ownerKey, sessionId: this.view.sessionId ?? undefined });
       } catch (error) {
         if (this.socket === socket && !this.closed) {
           this.close();
@@ -514,7 +516,7 @@ export class ChannelSession {
         if (event.type === "ack") request.resolve();
         else request.reject(new Error(event.code));
       } else if (event.type === "error" && !event.requestId) {
-        if (event.code === "incompatible_protocol") {
+        if (event.code === "incompatible_protocol" || event.code === "invalid_credential") {
           this.close(); this.patch({ error: event.code }); return;
         }
           this.patch({ error: event.code });
@@ -2423,6 +2425,12 @@ export class ChannelSession {
     this.beginRecovery();
     this.closed = false;
     this.connect();
+  };
+
+  joinAsNewIdentity = (): void => {
+    this.close();
+    this.closed = false;
+    this.connect(undefined, true);
   };
 
   private rejectRequests(message: string): void {
