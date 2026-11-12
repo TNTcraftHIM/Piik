@@ -154,6 +154,24 @@ does not remains unexplained by these controls: both exclusions use process
 loopback. The observed mixer defect is not yet the demonstrated cause of that
 report. Changing a capture API or adding a filter would not establish its cause.
 
+Exclusion follows the selected window's process identity, not its title.
+Windows excludes that [process and its children](https://learn.microsoft.com/en-us/windows/win32/api/audioclientactivationparams/ne-audioclientactivationparams-process_loopback_mode).
+Classic console windows can [report their attached client as their owner](https://github.com/microsoft/terminal/blob/main/src/interactivity/win32/windowio.cpp),
+so neither Piik nor the terminal host can be inferred from the title alone.
+Piik's pinned browser launcher starts the browser directly; a newly started
+browser may belong to that tree. Confirm the actual selected process and that
+the intended game/video sound survives exclusion before attributing the result
+to Piik playback. With the capture mode unchanged, muting only Piik's Browser
+playback is a useful discriminator if the updated candidate remains noisy.
+
+An [OBS reporter](https://obsproject.com/forum/threads/application-audio-capture-beta-not-working-properly.162419/)
+resolved application-capture interference by disabling Windows audio enhancements.
+This makes endpoint effects a plausible alternative, but does not explain why
+two excluded processes differ. Piik's current shared-mode Float32 reader and
+Opus input agree on sample layout; the known WASAPI silent-buffer reader defect
+is bypassed. These findings do not justify a dependency upgrade or driver change
+without a matching reproduction.
+
 ## SDR Conversion
 
 [#445](https://github.com/TNTcraftHIM/Piik/issues/445) reports washed-out Native

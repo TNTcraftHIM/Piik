@@ -114,7 +114,7 @@ impl AudioCapture {
         let event = unsafe { CreateEventW(None, true, false, None)? };
         let control = AudioControl(Arc::new(unsafe { OwnedHandle::from_raw_handle(event.0) }));
         let worker = control.clone();
-        // Raw PCM can be dropped under backpressure; its capture timestamps retain the gap.
+        // Raw PCM can be dropped under backpressure; its sample positions retain the gap.
         let (frames, receiver) = mpsc::channel(2);
         let (ready, started) = oneshot::channel();
         let (complete, completion) = oneshot::channel();

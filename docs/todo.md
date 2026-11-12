@@ -14,8 +14,9 @@ the feedback period; they do not delay that delivery.
 
 - [ ] **3.0 Windows shared-sound noise.** The reporter confirms electrical or
   crackling sound in beta9/10 as well as beta2, while 2.x sounds normal. Excluding
-  the Piik console's process tree removes it; excluding a silent unrelated window
-  does not. The [PCM continuity correction](./research/media-fidelity.md#30-pcm-continuity)
+  the window titled Piik removes it; excluding a silent unrelated window does
+  not. Its selected process identity remains unconfirmed. The
+  [PCM continuity correction](./research/media-fidelity.md#30-pcm-continuity)
   fixes a separate reproduced defect; verify the updated candidate on the
   reported setup and whether intended sound remains after exclusion. Neither
   that correction nor the earlier local-preview fix yet explains the PID-specific report.
