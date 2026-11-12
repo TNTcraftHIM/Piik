@@ -735,8 +735,14 @@ picture proof. Ingress measures opaque RTP once before fanout and deduplicates
 primary sequence numbers after RTX repair, retaining first late repairs and
 out-of-order packets. Downstream retransmissions belong to each sender.
 
-Capture presentation time owns RTP and Sender Report correlation, independently
-of encoding/delivery delay. Metadata without RTP retains the last correlation.
+Capture facts own RTP and Sender Report correlation, independently of
+encoding/delivery delay. Video maps capture presentation time to RTP; audio
+advances by its producer's sample positions, pairing those RTP timestamps with
+actual capture time in Sender Reports. Capture-clock jitter cannot remove PCM
+or change a continuous audio block's sample count. Known queue loss preserves
+its missing samples; a discontinuity or input replacement establishes a new
+input segment. This follows the [RTP sampling-clock contract](https://www.rfc-editor.org/rfc/rfc3550.html#section-5.1).
+Metadata without RTP retains the last correlation.
 Audio/video have separate source identities. A new incoming source gets a new
 sender/SSRC; an encoding change retains capture identity, sender and packetizer,
 committing on a newer keyframe. Required lower-rate replacement releases the

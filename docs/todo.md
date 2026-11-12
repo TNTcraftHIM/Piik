@@ -15,10 +15,10 @@ the feedback period; they do not delay that delivery.
 - [ ] **3.0 Windows shared-sound noise.** The reporter confirms electrical or
   crackling sound in beta9/10 as well as beta2, while 2.x sounds normal. Excluding
   the Piik console's process tree removes it; excluding a silent unrelated window
-  does not. Compare Windows capture and Rust mixing/encoding against 2.x, and
-  verify which Browser playback belongs to that tree and whether the intended
-  source sound remains after exclusion. The incident remains unresolved; the
-  earlier local-preview correction alone does not establish its cause.
+  does not. The [PCM continuity correction](./research/media-fidelity.md#30-pcm-continuity)
+  fixes a separate reproduced defect; verify the updated candidate on the
+  reported setup and whether intended sound remains after exclusion. Neither
+  that correction nor the earlier local-preview fix yet explains the PID-specific report.
 - [ ] **Windows sound only works with exclusion (#534).** Compare the affected
   application's playback endpoint with Piik's default-endpoint capture. The
   [output-routing control](./research/media-fidelity.md#windows-output-routing)

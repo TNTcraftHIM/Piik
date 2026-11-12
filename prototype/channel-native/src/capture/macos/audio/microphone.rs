@@ -152,7 +152,7 @@ impl Converted {
         {
             self.converter = av::AudioConverter::with_formats(&self.input, &self.output)
                 .context("microphone converter")?;
-            self.pcm = Pcm::default();
+            self.pcm.discontinuity();
             self.next_sample = None;
         }
         self.expected_sample = Some(time.sample_time() + i64::from(buffer.frame_len()));

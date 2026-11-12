@@ -26,17 +26,17 @@ pub fn capture_border_control() -> bool {
 pub const fn supports_video_adaptation() -> bool {
     cfg!(feature = "capture")
 }
-#[cfg(any(feature = "capture", test))]
+#[cfg(any(test, all(feature = "capture", any(target_os = "windows", target_os = "linux", target_os = "macos"))))]
 mod adaptation;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod audio;
-#[cfg(any(feature = "capture", test))]
+#[cfg(any(test, all(feature = "capture", any(target_os = "windows", target_os = "linux", target_os = "macos"))))]
 mod cadence;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod converter;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod decoder;
-#[cfg(any(feature = "capture", test))]
+#[cfg(any(test, all(feature = "capture", any(target_os = "windows", target_os = "linux", target_os = "macos"))))]
 mod frame_dropper;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod frames;
@@ -145,10 +145,46 @@ pub fn audio_capabilities() -> AudioCapabilities {
 
 #[derive(Debug)]
 pub struct AudioFrame {
+    /// Continuity segment within this capture's lifetime.
+    pub segment: u64,
+    /// First per-channel sample frame in this segment, at 48 kHz.
+    pub sample_position: u64,
     /// 960 interleaved stereo sample frames (20 ms at 48 kHz).
     pub samples: Vec<f32>,
     /// The first sample's capture time, never buffer delivery time.
     pub presentation_time: std::time::Instant,
+}
+
+#[cfg(any(test, all(feature = "capture", any(target_os = "windows", target_os = "linux", target_os = "macos"))))]
+#[derive(Default)]
+pub(crate) struct AudioPosition {
+    segment: u64,
+    next: u64,
+}
+
+#[cfg(any(test, all(feature = "capture", any(target_os = "windows", target_os = "linux", target_os = "macos"))))]
+impl AudioPosition {
+    pub fn skip(&mut self, samples: u64) {
+        self.next += samples;
+    }
+    pub fn discontinuity(&mut self) {
+        self.segment += 1;
+        self.next = 0;
+    }
+    pub fn frame(
+        &mut self,
+        samples: Vec<f32>,
+        presentation_time: std::time::Instant,
+    ) -> AudioFrame {
+        let frame = AudioFrame {
+            segment: self.segment,
+            sample_position: self.next,
+            samples,
+            presentation_time,
+        };
+        self.next += frame.samples.len() as u64 / 2;
+        frame
+    }
 }
 
 #[cfg(all(
@@ -335,7 +371,7 @@ pub(super) struct FramerateRequest {
 }
 impl Settings {
     /// Match the shared screen profile's half-size, same-FPS simulcast encoding.
-    #[cfg(any(feature = "capture", test))]
+    #[cfg(any(test, all(feature = "capture", any(target_os = "windows", target_os = "linux", target_os = "macos"))))]
     pub(crate) fn lower_layer(self) -> Self {
         Self {
             width: (self.width / 2 & !1).max(2),
@@ -377,6 +413,28 @@ impl Settings {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn audio_positions_keep_queue_loss_and_discontinuity_separate_from_capture_time() {
+        let mut position = super::AudioPosition::default();
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
+        let now = std::time::Instant::now();
+        sender
+            .try_send(position.frame(vec![0.25; 1920], now))
+            .unwrap();
+        assert!(sender
+            .try_send(position.frame(vec![0.5; 1920], now))
+            .is_err());
+        let first = receiver.try_recv().unwrap();
+        let next = position.frame(vec![0.75; 1920], now);
+        assert_eq!((first.segment, first.sample_position), (0, 0));
+        assert_eq!((next.segment, next.sample_position), (0, 1920));
+        assert_eq!(next.presentation_time, now);
+        position.discontinuity();
+        let restarted = position.frame(vec![0.0; 1920], now);
+        assert_eq!((restarted.segment, restarted.sample_position), (1, 0));
+        position.skip(480);
+        assert_eq!(position.frame(vec![0.0; 1920], now).sample_position, 1440);
+    }
     #[test]
     fn source_metadata_uses_selected_names_without_exporting_picker_or_display_ids() {
         let mut target = super::Target {

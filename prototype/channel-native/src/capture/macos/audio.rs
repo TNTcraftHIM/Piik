@@ -173,16 +173,24 @@ impl Drop for AudioCapture {
 struct Pcm {
     samples: Vec<f32>,
     first: Option<Instant>,
+    position: crate::capture::AudioPosition,
 }
 impl Pcm {
+    fn discontinuity(&mut self) {
+        self.samples.clear();
+        self.first = None;
+        self.position.discontinuity();
+    }
     fn push(&mut self, sample: [f32; 2], time: Instant) -> Option<AudioFrame> {
         if self.samples.is_empty() {
             self.first = Some(time);
         }
         self.samples.extend_from_slice(&sample);
-        (self.samples.len() == 1920).then(|| AudioFrame {
-            samples: std::mem::replace(&mut self.samples, Vec::with_capacity(1920)),
-            presentation_time: self.first.take().unwrap(),
+        (self.samples.len() == 1920).then(|| {
+            self.position.frame(
+                std::mem::replace(&mut self.samples, Vec::with_capacity(1920)),
+                self.first.take().unwrap(),
+            )
         })
     }
 }

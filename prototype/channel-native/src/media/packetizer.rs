@@ -13,7 +13,7 @@ use rtc_rtp::{
 };
 use std::time::Instant;
 
-/// A stable sender's RTP timeline, mapped from original capture time.
+/// A stable sender's RTP timeline and its original capture-time correlation.
 pub(crate) struct Packetizer {
     inner: Box<dyn RtpPacketizer>,
     vp8: Option<vp8::Descriptor>,
@@ -97,11 +97,31 @@ impl Packetizer {
         presentation_time: Instant,
         metadata: Option<Vp8FrameMetadata>,
     ) -> Result<Vec<Packet>> {
-        ensure!(!bytes.is_empty(), "video produced an empty encoded frame");
-        let keyframe = bytes[0] & 1 == 0;
         // Only the hop RTP timeline is translated on a source switch. Retain
         // the offset for this feed, preserving its subsequent frame intervals.
         let ticks = self.source_ticks(presentation_time) + self.offset;
+        self.packetize_ticks(bytes, presentation_time, metadata, ticks)
+    }
+
+    /// Audio sample positions own RTP spacing; capture time still owns the SR.
+    pub fn packetize_audio(
+        &mut self,
+        bytes: Vec<u8>,
+        presentation_time: Instant,
+        sample_position: u64,
+    ) -> Result<Vec<Packet>> {
+        self.packetize_ticks(bytes, presentation_time, None, sample_position)
+    }
+
+    fn packetize_ticks(
+        &mut self,
+        bytes: Vec<u8>,
+        presentation_time: Instant,
+        metadata: Option<Vp8FrameMetadata>,
+        ticks: u64,
+    ) -> Result<Vec<Packet>> {
+        ensure!(!bytes.is_empty(), "source produced an empty encoded frame");
+        let keyframe = bytes[0] & 1 == 0;
         // Advance before packetizing: irregular capture intervals and dropped raw
         // frames must not move the RTP clock onto the encoder's delivery cadence.
         self.inner

@@ -343,6 +343,7 @@ fn run(
     let result = (|| {
         let mut samples = Vec::with_capacity(1920);
         let mut first = None;
+        let mut position = super::AudioPosition::default();
         loop {
             let signaled = unsafe { WaitForMultipleObjects(&handles, false, INFINITE) };
             if signaled == WAIT_FAILED {
@@ -374,6 +375,7 @@ fn run(
                 {
                     samples.clear();
                     first = None;
+                    position.discontinuity();
                 }
                 let mut closed = false;
                 if flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32 == 0 {
@@ -398,10 +400,10 @@ fn run(
                         };
                         samples.extend_from_slice(&sample);
                         if samples.len() == 1920 {
-                            let frame = AudioFrame {
-                                samples: std::mem::replace(&mut samples, Vec::with_capacity(1920)),
-                                presentation_time: first.take().unwrap(),
-                            };
+                            let frame = position.frame(
+                                std::mem::replace(&mut samples, Vec::with_capacity(1920)),
+                                first.take().unwrap(),
+                            );
                             match frames.try_send(frame) {
                                 Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}
                                 Err(mpsc::error::TrySendError::Closed(_)) => {

@@ -402,7 +402,7 @@ fn run(
                     }
                     let (encoder, rtp, first) = output.as_mut().unwrap();
                     let length = encode_audio(encoder, &mut frame.samples, *audio_settings.borrow(), &mut encoded)?;
-                    let packets = rtp.packetize(encoded[..length].to_vec(), frame.presentation_time)?;
+                    let packets = rtp.packetize_audio(encoded[..length].to_vec(), frame.presentation_time, frame.sample_position)?;
                     if *first {
                         tokio::select! {
                             result = ready_sources.send(SourceReady { source: rtp.source.clone(), media: InitialMedia::Rtp(packets) }) => { result?; }
@@ -481,31 +481,77 @@ async fn failed(mut input: Input, error: &str) {
     close(input).await;
 }
 
-/// One PCM frame of lookahead aligns native capture timestamps. Queues remain
-/// bounded by the same two-frame raw-input budget; no silence timer or drift loop.
+struct AlignedFrame {
+    frame: AudioFrame,
+    at: Instant,
+}
+struct InputAnchor {
+    segment: u64,
+    sample_position: u64,
+    at: Instant,
+}
+struct MixCursor {
+    alignment_end: Instant,
+    capture_end: Instant,
+    sample_position: u64,
+}
+
+/// Continuous PCM follows sample positions, not jitter in capture timestamps.
+/// One frame of lookahead aligns two inputs within the existing bounded queues.
 #[derive(Default)]
 struct Mix {
-    inputs: [VecDeque<AudioFrame>; 2],
-    next: Option<Instant>,
+    inputs: [VecDeque<AlignedFrame>; 2],
+    anchors: [Option<InputAnchor>; 2],
+    cursor: Option<MixCursor>,
 }
 impl Mix {
     fn clear(&mut self, index: usize) {
         self.inputs[index].clear();
+        self.anchors[index] = None;
     }
     fn push(&mut self, index: usize, frame: AudioFrame) {
+        let at = match &self.anchors[index] {
+            Some(anchor) if anchor.segment == frame.segment => {
+                if frame.sample_position >= anchor.sample_position {
+                    anchor.at + sample_duration(frame.sample_position - anchor.sample_position)
+                } else {
+                    anchor.at - sample_duration(anchor.sample_position - frame.sample_position)
+                }
+            }
+            _ => {
+                let at = self
+                    .cursor
+                    .as_ref()
+                    .map_or(frame.presentation_time, |cursor| {
+                        if frame.presentation_time >= cursor.capture_end {
+                            cursor.alignment_end
+                                + frame.presentation_time.duration_since(cursor.capture_end)
+                        } else {
+                            cursor.alignment_end
+                                - cursor.capture_end.duration_since(frame.presentation_time)
+                        }
+                    });
+                self.anchors[index] = Some(InputAnchor {
+                    segment: frame.segment,
+                    sample_position: frame.sample_position,
+                    at,
+                });
+                at
+            }
+        };
         let frames = &mut self.inputs[index];
         if frames.len() == 2 {
             frames.pop_front();
         }
-        frames.push_back(frame);
+        frames.push_back(AlignedFrame { frame, at });
     }
     fn pop(&mut self, two: bool, gain: f32) -> Option<AudioFrame> {
         let duration = Duration::from_millis(20);
-        if let Some(next) = self.next {
+        if let Some(cursor) = &self.cursor {
             for queue in &mut self.inputs {
                 while queue
                     .front()
-                    .is_some_and(|frame| frame.presentation_time + duration <= next)
+                    .is_some_and(|frame| frame.at + duration <= cursor.alignment_end)
                 {
                     queue.pop_front();
                 }
@@ -514,29 +560,51 @@ impl Mix {
         let earliest = self
             .inputs
             .iter()
-            .filter_map(|q| q.front().map(|f| f.presentation_time))
+            .filter_map(|q| q.front().map(|f| f.at))
             .min()?;
-        let start = self.next.map_or(earliest, |next| next.max(earliest));
+        let start = self
+            .cursor
+            .as_ref()
+            .map_or(earliest, |cursor| cursor.alignment_end.max(earliest));
         let end = start + duration;
         let latest = self
             .inputs
             .iter()
-            .filter_map(|q| q.back().map(|f| f.presentation_time))
+            .filter_map(|q| q.back().map(|f| f.at))
             .max()?;
-        if two && latest < end {
+        if (two && latest < end) || (!two && latest + duration < end) {
             return None;
         }
+        if !two && self.inputs.iter().filter(|queue| !queue.is_empty()).count() == 1 {
+            let index = usize::from(self.inputs[0].is_empty());
+            if self.inputs[index].front().unwrap().at == start {
+                let mut frame = self.inputs[index].pop_front().unwrap().frame;
+                if index == 1 {
+                    for sample in &mut frame.samples {
+                        *sample *= gain;
+                    }
+                }
+                return Some(self.finish(frame, start));
+            }
+        }
+        let presentation_time = self
+            .inputs
+            .iter()
+            .flatten()
+            .find(|frame| frame.at <= start && frame.at + duration > start)
+            .map(|frame| {
+                frame.frame.presentation_time
+                    + sample_duration(duration_samples(start.duration_since(frame.at)))
+            })?;
         let mut samples = vec![0.0; 1920];
         for (index, queue) in self.inputs.iter_mut().enumerate() {
             for frame in queue.iter() {
-                let offset = if frame.presentation_time >= start {
-                    (frame.presentation_time.duration_since(start).as_secs_f64() * 48_000.0).round()
-                        as i64
+                let offset = if frame.at >= start {
+                    duration_samples(frame.at.duration_since(start)) as i64
                 } else {
-                    -(start.duration_since(frame.presentation_time).as_secs_f64() * 48_000.0)
-                        .round() as i64
+                    -(duration_samples(start.duration_since(frame.at)) as i64)
                 };
-                for (at, pair) in frame.samples.chunks_exact(2).enumerate() {
+                for (at, pair) in frame.frame.samples.chunks_exact(2).enumerate() {
                     let at = at as i64 + offset;
                     if (0..960).contains(&at) {
                         for channel in 0..2 {
@@ -548,27 +616,54 @@ impl Mix {
             }
             while queue
                 .front()
-                .is_some_and(|frame| frame.presentation_time + duration <= end)
+                .is_some_and(|frame| frame.at + duration <= end)
             {
                 queue.pop_front();
             }
         }
-        self.next = Some(end);
-        Some(AudioFrame {
-            samples,
-            presentation_time: start,
-        })
+        Some(self.finish(
+            AudioFrame {
+                samples,
+                presentation_time,
+                segment: 0,
+                sample_position: 0,
+            },
+            start,
+        ))
     }
+    fn finish(&mut self, mut frame: AudioFrame, start: Instant) -> AudioFrame {
+        let duration = Duration::from_millis(20);
+        frame.segment = 0;
+        frame.sample_position = self.cursor.as_ref().map_or(0, |cursor| {
+            cursor.sample_position + duration_samples(start.duration_since(cursor.alignment_end))
+        });
+        self.cursor = Some(MixCursor {
+            alignment_end: start + duration,
+            capture_end: frame.presentation_time + duration,
+            sample_position: frame.sample_position + 960,
+        });
+        frame
+    }
+}
+
+fn sample_duration(samples: u64) -> Duration {
+    Duration::from_secs(samples / 48_000)
+        + Duration::from_nanos(samples % 48_000 * 1_000_000_000 / 48_000)
+}
+fn duration_samples(duration: Duration) -> u64 {
+    ((duration.as_nanos() * 48_000 + 500_000_000) / 1_000_000_000) as u64
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn frame(at: Instant, values: [f32; 2]) -> AudioFrame {
+    fn frame(epoch: Instant, millis: u64, values: [f32; 2]) -> AudioFrame {
         AudioFrame {
             samples: values.repeat(960),
-            presentation_time: at,
+            presentation_time: epoch + Duration::from_millis(millis),
+            segment: 0,
+            sample_position: millis * 48,
         }
     }
 
@@ -576,29 +671,189 @@ mod tests {
     fn captured_pcm_alignment_preserves_stereo_gain_gaps_and_input_retirement() {
         let at = Instant::now();
         let mut mix = Mix::default();
-        mix.push(0, frame(at, [0.2, 0.4]));
-        mix.push(1, frame(at + Duration::from_millis(10), [0.6, 0.8]));
+        mix.push(0, frame(at, 0, [0.2, 0.4]));
+        mix.push(1, frame(at, 10, [0.6, 0.8]));
         assert!(mix.pop(true, 0.5).is_none());
-        mix.push(0, frame(at + Duration::from_millis(20), [0.2, 0.4]));
+        mix.push(0, frame(at, 20, [0.2, 0.4]));
         let first = mix.pop(true, 0.5).unwrap();
         assert_eq!(first.presentation_time, at);
+        assert_eq!(first.sample_position, 0);
         assert_eq!(&first.samples[..2], &[0.2, 0.4]);
         assert_eq!(&first.samples[960..962], &[0.5, 0.8]);
         // Retire only the system sound: the microphone's remaining half frame
         // retains its position on the same output clock.
         mix.clear(0);
-        mix.push(1, frame(at + Duration::from_millis(30), [0.6, 0.8]));
+        assert!(mix.pop(false, 0.5).is_none());
+        mix.push(1, frame(at, 30, [0.6, 0.8]));
         let next = mix.pop(false, 0.5).unwrap();
         assert_eq!(next.presentation_time, at + Duration::from_millis(20));
+        assert_eq!(next.sample_position, 960);
         assert!(next.samples.chunks_exact(2).all(|pair| pair == [0.3, 0.4]));
         mix.clear(1);
-        mix.push(1, frame(at + Duration::from_millis(100), [0.6, 0.8]));
+        mix.push(1, frame(at, 100, [0.6, 0.8]));
         let gap = mix.pop(false, 0.0).unwrap();
         assert_eq!(gap.presentation_time, at + Duration::from_millis(100));
+        assert_eq!(gap.sample_position, 4800);
         assert!(gap.samples.iter().all(|sample| *sample == 0.0));
         assert!(mix.pop(false, 1.0).is_none());
-        mix.push(0, frame(at + Duration::from_millis(20), [0.2, 0.4]));
+        mix.push(0, frame(at, 20, [0.2, 0.4]));
         assert!(mix.pop(false, 1.0).is_none());
+    }
+
+    #[test]
+    fn captured_pcm_keeps_hardware_sample_order_through_opus_rtp_and_sender_reports() -> Result<()>
+    {
+        // Three seconds of WASAPI timestamp metadata; no captured audio is retained.
+        let ticks: Vec<u64> = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/audio-capture-timestamps.json"
+        ))?;
+        assert!(ticks.windows(2).any(|pair| pair[1] - pair[0] != 200_000));
+        let epoch = Instant::now();
+        let clock = SystemInstant::now(epoch);
+        let mut position = crate::capture::AudioPosition::default();
+        let mut mix = Mix::default();
+        let mut source = RtpSource::new(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            MediaKind::Audio,
+            crate::peer::codec(),
+            111,
+            epoch,
+            clock,
+        )?;
+        let encoder = || -> Result<_> {
+            let mut encoder =
+                rusty_opus::OpusEncoder::new(48_000, 2, rusty_opus::Application::Audio)?;
+            encoder.bitrate_bps = 128_000;
+            encoder.complexity = 10;
+            encoder.use_cbr = true;
+            Ok(encoder)
+        };
+        let mut actual = encoder()?;
+        let mut reference = encoder()?;
+        let mut decoder = rusty_opus::OpusDecoder::new(48_000, 2)?;
+        let mut reference_decoder = rusty_opus::OpusDecoder::new(48_000, 2)?;
+        let mut encoded = [0; 1500];
+        let mut reference_packet = [0; 1500];
+        let mut decoded = [0.0; 1920];
+        let mut reference_pcm = [0.0; 1920];
+        let mut previous = None;
+        for (index, tick) in ticks.into_iter().enumerate() {
+            let samples: Vec<_> = (0..960)
+                .flat_map(|sample| {
+                    let time = (index * 960 + sample) as f64 / 48_000.0;
+                    [
+                        (time * 997.0 * std::f64::consts::TAU).sin() as f32 * 0.25,
+                        (time * 697.0 * std::f64::consts::TAU).sin() as f32 * 0.20,
+                    ]
+                })
+                .collect();
+            let captured = epoch + Duration::from_nanos(tick * 100);
+            mix.push(0, position.frame(samples.clone(), captured));
+            let mut frame = mix.pop(false, 1.0).unwrap();
+            assert_eq!(frame.samples, samples);
+            assert_eq!(frame.presentation_time, captured);
+            assert_eq!(frame.sample_position, index as u64 * 960);
+            let length = encode_audio(
+                &mut actual,
+                &mut frame.samples,
+                SourceAudioSettings {
+                    bitrate: 128_000,
+                    gain: 1.0,
+                },
+                &mut encoded,
+            )?;
+            let expected = reference.encode(&samples, 960, &mut reference_packet)?;
+            assert_eq!(&encoded[..length], &reference_packet[..expected]);
+            let packets = source.packetize_audio(
+                encoded[..length].to_vec(),
+                captured,
+                frame.sample_position,
+            )?;
+            assert_eq!(packets.len(), 1);
+            let packet = &packets[0];
+            if let Some(previous) = previous {
+                assert_eq!(packet.header.timestamp.wrapping_sub(previous), 960);
+            }
+            previous = Some(packet.header.timestamp);
+            assert_eq!(decoder.decode(&packet.payload, 960, &mut decoded)?, 960);
+            reference_decoder.decode(&reference_packet[..expected], 960, &mut reference_pcm)?;
+            assert_eq!(decoded, reference_pcm);
+            assert!(decoded.iter().all(|sample| sample.is_finite()));
+            let crate::media::SourceFeed::Rtp { report, .. } = &source.source.feed else {
+                unreachable!()
+            };
+            let report = report.lock().unwrap().clone().unwrap();
+            assert_eq!(report.0.rtp_time, packet.header.timestamp);
+            assert_eq!(report.0.ntp_time, clock.ntp(captured));
+            assert_eq!(report.1, captured);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn captured_pcm_drops_keep_exact_sample_gaps_despite_timestamp_jitter() -> Result<()> {
+        let epoch = Instant::now();
+        let mut position = crate::capture::AudioPosition::default();
+        let (send, mut receive) = mpsc::channel(2);
+        for index in 0..3 {
+            let frame = position.frame(vec![0.2; 1920], epoch + Duration::from_millis(index * 20));
+            let result = send.try_send(frame);
+            assert_eq!(result.is_ok(), index < 2);
+        }
+        let mut mix = Mix::default();
+        for index in 0..2 {
+            mix.push(0, receive.try_recv()?);
+            assert_eq!(mix.pop(false, 1.0).unwrap().sample_position, index * 960);
+        }
+        let captured = epoch + Duration::from_micros(60_138);
+        send.try_send(position.frame(vec![0.4; 1920], captured))?;
+        mix.push(0, receive.try_recv()?);
+        let frame = mix.pop(false, 1.0).unwrap();
+        assert_eq!(frame.samples, vec![0.4; 1920]);
+        assert_eq!(frame.presentation_time, captured);
+        assert_eq!(frame.sample_position, 2880);
+        Ok(())
+    }
+
+    #[test]
+    fn captured_pcm_new_segments_use_the_current_capture_clock_when_inputs_change() {
+        let epoch = Instant::now();
+        let mut mix = Mix::default();
+        mix.push(0, frame(epoch, 0, [0.2, 0.4]));
+        mix.pop(false, 1.0).unwrap();
+        let mut later = frame(epoch, 20, [0.2, 0.4]);
+        later.presentation_time += Duration::from_millis(60);
+        mix.push(0, later);
+        assert_eq!(mix.pop(false, 1.0).unwrap().sample_position, 960);
+        // Joining at the actual next capture time adds no fictional drift gap.
+        mix.push(1, frame(epoch, 100, [0.6, 0.8]));
+        let mut system = frame(epoch, 40, [0.2, 0.4]);
+        system.presentation_time += Duration::from_millis(60);
+        mix.push(0, system);
+        let mut ahead = frame(epoch, 60, [0.2, 0.4]);
+        ahead.presentation_time += Duration::from_millis(60);
+        mix.push(0, ahead);
+        let mixed = mix.pop(true, 0.5).unwrap();
+        assert_eq!(mixed.sample_position, 1920);
+        assert_eq!(mixed.presentation_time, epoch + Duration::from_millis(100));
+        assert!(mixed.samples.chunks_exact(2).all(|pair| pair == [0.5, 0.8]));
+        mix.clear(1);
+        let system = mix.pop(false, 1.0).unwrap();
+        assert_eq!(system.sample_position, 2880);
+        assert_eq!(system.samples[..2], [0.2, 0.4]);
+        // A discontinuous replacement starts from its capture time, not the old segment's position.
+        let mut replacement = frame(epoch, 200, [0.7, 0.9]);
+        replacement.segment = 1;
+        replacement.sample_position = 0;
+        mix.push(0, replacement);
+        let replacement = mix.pop(false, 1.0).unwrap();
+        assert_eq!(replacement.sample_position, 6720);
+        assert_eq!(
+            replacement.presentation_time,
+            epoch + Duration::from_millis(200)
+        );
+        assert_eq!(replacement.samples[..2], [0.7, 0.9]);
     }
 
     #[cfg(target_os = "windows")]
@@ -779,7 +1034,7 @@ mod tests {
             // A started but silent input exists before its first PCM/RTP packet.
             assert!(control.state.borrow().source_audio);
             assert!(control.source.borrow().is_none());
-            system_pcm.send(frame(epoch, [0.1, 0.2])).await?;
+            system_pcm.send(frame(epoch, 0, [0.1, 0.2])).await?;
             let first = ready.recv().await.unwrap();
             let id = first.source.id;
             let InitialMedia::Rtp(first_packets) = first.media else {
@@ -798,10 +1053,10 @@ mod tests {
                 .await?;
             for millis in [20, 40] {
                 mic_pcm
-                    .send(frame(epoch + Duration::from_millis(millis), [0.2, 0.4]))
+                    .send(frame(epoch, millis, [0.2, 0.4]))
                     .await?;
                 system_pcm
-                    .send(frame(epoch + Duration::from_millis(millis), [0.1, 0.2]))
+                    .send(frame(epoch, millis, [0.1, 0.2]))
                     .await?;
             }
             let mixed = received.recv().await.unwrap();
@@ -827,10 +1082,10 @@ mod tests {
             assert!(control.state.borrow().source_audio);
             for millis in [60, 80] {
                 mic_pcm
-                    .send(frame(epoch + Duration::from_millis(millis), [0.2, 0.4]))
+                    .send(frame(epoch, millis, [0.2, 0.4]))
                     .await?;
                 system_pcm
-                    .send(frame(epoch + Duration::from_millis(millis), [0.1, 0.2]))
+                    .send(frame(epoch, millis, [0.1, 0.2]))
                     .await?;
             }
             while received
@@ -855,7 +1110,7 @@ mod tests {
             system_joined.await?;
             for millis in [100, 120] {
                 mic_pcm
-                    .send(frame(epoch + Duration::from_millis(millis), [0.2, 0.4]))
+                    .send(frame(epoch, millis, [0.2, 0.4]))
                     .await?;
             }
             while received
@@ -883,10 +1138,10 @@ mod tests {
             system_lease.stop(); // Late retirement belongs only to the old picture's input.
             for millis in [140, 160] {
                 mic_pcm
-                    .send(frame(epoch + Duration::from_millis(millis), [0.2, 0.4]))
+                    .send(frame(epoch, millis, [0.2, 0.4]))
                     .await?;
                 replacement_pcm
-                    .send(frame(epoch + Duration::from_millis(millis), [0.3, 0.1]))
+                    .send(frame(epoch, millis, [0.3, 0.1]))
                     .await?;
             }
             let after_commit = loop {
@@ -938,7 +1193,7 @@ mod tests {
             assert!(!control.state.borrow().source_audio);
             assert!(control.state.borrow().microphone.enabled);
             mic_pcm
-                .send(frame(epoch + Duration::from_millis(200), [0.2, 0.4]))
+                .send(frame(epoch, 200, [0.2, 0.4]))
                 .await?;
             loop {
                 let packet = received.recv().await.unwrap();
@@ -979,7 +1234,7 @@ mod tests {
                 })
                 .await?;
             again_pcm
-                .send(frame(epoch + Duration::from_millis(320), [0.2, 0.4]))
+                .send(frame(epoch, 320, [0.2, 0.4]))
                 .await?;
             let resumed = ready.recv().await.unwrap();
             assert_ne!(resumed.source.id, id);
@@ -1057,7 +1312,7 @@ mod tests {
             let (lease, started, _) = producer.control.prepare_system(Some(system)).await?;
             started.await??;
             producer.control.commit_system(&lease).await?;
-            pcm.send(frame(Instant::now(), [0.1, 0.2])).await?;
+            pcm.send(frame(Instant::now(), 0, [0.1, 0.2])).await?;
             ready.recv().await.unwrap();
             producer.close().await;
             system_joined.await?;

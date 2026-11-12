@@ -8,7 +8,7 @@ all-device acceptance or full HDR support.
 
 Browser display capture requests two channels without speech processing. The
 Host mixer uses a stereo Web Audio destination; Native capture and mixing use
-48 kHz, two-channel PCM16. Native Opus uses the audio application mode. Browser,
+48 kHz, two-channel PCM16 on 2.x and Float32 on 3.0. Native Opus uses the audio application mode. Browser,
 Native and SFU receivers request stereo. Audio settings are bitrate ceilings,
 not a lossless-audio promise; the media-quality owner defines the current controls.
 
@@ -104,6 +104,47 @@ This reproduces the reported contrast between capture modes. The report's
 change after first using exclusion still needs its actual playback endpoint and
 capture result. Clearing exclusion is already verified to select a fresh default
 capture; do not retain an arbitrary exclusion as a supposed repair.
+
+### 3.0 PCM Continuity
+
+On 2026-11-12 UTC, source `5090abfb`, a three-second Razer endpoint control
+read only WASAPI packet counts, flags and timestamps while rendering silence;
+no PCM was read or saved and no default device changed. Its 150 assembled
+20 ms frames included 17 timestamp steps early by more than half a sample,
+including adjacent 20.1381/19.868 ms steps. Device sample positions remained
+continuous. Process inclusion of a private tone on a virtual endpoint produced
+exact 20 ms frame steps with both Float32 and PCM16; that API returned zero
+device positions, so those positions cannot supply a common Windows clock.
+
+WASAPI's [device-clock contract](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudioclock-getfrequency)
+allows drift and jitter relative to QPC. Chromium's
+[WASAPI input](https://github.com/chromium/chromium/blob/main/media/audio/win/audio_low_latency_input_win.cc)
+keeps PCM in FIFO order and supplies capture time separately, rather than
+using each QPC observation as an instruction to remove or insert samples.
+
+Feeding the recorded hardware timestamps and a generated continuous tone through
+the unmodified production `Mix` changed PCM in 134 of 150 frames and inserted
+1,010 zero channel samples. The mixer aligned every frame independently to its
+previous output deadline, converting timestamp variation into sample removal.
+Using the production `encode_audio` and pinned `rusty-opus` encoder/decoder,
+144 packets differed from a direct-PCM control; decoded RMS difference was
+0.07747 for input peaks of 0.25/0.20. Exact 20 ms timestamps produced identical
+packets and decoded samples. This demonstrates a Piik continuity defect before
+encoding, not an Opus format or stereo failure.
+
+The correction carries capture-segment sample positions through the existing
+mixer. Continuous frames keep their PCM order; a new segment uses the current
+capture-time correlation for alignment. Audio RTP follows output sample positions,
+including exact known queue losses, while sender reports retain the original
+capture timestamps. The frozen hardware sequence now matches the direct-PCM
+control packet-for-packet and sample-for-sample after decoding, with 960 RTP ticks
+per frame. Focused checks also retain partial frames across input retirement,
+explicit gaps, source changes and the existing capture cleanup.
+
+The beta9/10 report that excluding Piik removes noise while excluding Notepad
+does not remains unexplained by these controls: both exclusions use process
+loopback. The observed mixer defect is not yet the demonstrated cause of that
+report. Changing a capture API or adding a filter would not establish its cause.
 
 ## SDR Conversion
 

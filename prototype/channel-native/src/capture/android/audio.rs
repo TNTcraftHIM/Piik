@@ -198,7 +198,9 @@ fn run(
                     .j()?;
                 let first = nanos + (position - 960 - capture_position) * 1_000_000_000 / 48_000;
                 // Source timestamps advance even when the existing bounded PCM queue is full.
-                let _ = frames.try_send(AudioFrame {
+                let frame = AudioFrame {
+                    segment: 0,
+                    sample_position: (position - 960) as u64,
                     samples: if channels == 1 {
                         samples
                             .iter()
@@ -208,7 +210,8 @@ fn run(
                         samples.clone()
                     },
                     presentation_time: clock.project(first),
-                });
+                };
+                let _ = frames.try_send(frame);
             }
             filled = 0;
         }

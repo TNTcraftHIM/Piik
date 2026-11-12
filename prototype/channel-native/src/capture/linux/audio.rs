@@ -159,6 +159,8 @@ impl Drop for AudioCapture {
 struct Pcm {
     samples: Vec<f32>,
     first: Option<Instant>,
+    position: crate::capture::AudioPosition,
+    expected_offset: Option<u64>,
 }
 impl Pcm {
     fn push(
@@ -168,28 +170,26 @@ impl Pcm {
         output: &mpsc::Sender<AudioFrame>,
     ) -> Result<()> {
         let buffer = sample.buffer().context("missing PCM buffer")?;
-        if buffer.flags().contains(gst::BufferFlags::DISCONT) {
+        let offset = buffer.offset();
+        ensure!(offset != u64::MAX, "audio sample offset missing");
+        let bytes = buffer.map_readable()?;
+        ensure!(bytes.len() % 8 == 0, "invalid stereo Float32 PCM length");
+        if buffer.flags().contains(gst::BufferFlags::DISCONT)
+            || self
+                .expected_offset
+                .is_some_and(|expected| offset < expected)
+        {
+            self.samples.clear();
+            self.first = None;
+            self.position.discontinuity();
+        } else if let Some(expected) = self.expected_offset.filter(|expected| offset > *expected) {
+            self.position
+                .skip(self.samples.len() as u64 / 2 + offset - expected);
             self.samples.clear();
             self.first = None;
         }
+        self.expected_offset = Some(offset + bytes.len() as u64 / 8);
         let time = clock.sample_time(sample)?;
-        // appsink may discard a raw buffer without marking its successor
-        // DISCONT. Never combine samples from opposite sides of that gap.
-        if let Some(first) = self.first {
-            let expected = first
-                + Duration::from_nanos(self.samples.len() as u64 / 2 * 1_000_000_000 / 48_000);
-            let distance = if time >= expected {
-                time.duration_since(expected)
-            } else {
-                expected.duration_since(time)
-            };
-            if distance > Duration::from_nanos(1_000_000_000 / 48_000 + 1) {
-                self.samples.clear();
-                self.first = None;
-            }
-        }
-        let bytes = buffer.map_readable()?;
-        ensure!(bytes.len() % 8 == 0, "invalid stereo Float32 PCM length");
         for (index, stereo) in bytes.chunks_exact(8).enumerate() {
             if self.samples.is_empty() {
                 self.first =
@@ -201,10 +201,10 @@ impl Pcm {
                     .map(|s| f32::from_le_bytes(s.try_into().unwrap())),
             );
             if self.samples.len() == 1920 {
-                let frame = AudioFrame {
-                    samples: std::mem::replace(&mut self.samples, Vec::with_capacity(1920)),
-                    presentation_time: self.first.take().unwrap(),
-                };
+                let frame = self.position.frame(
+                    std::mem::replace(&mut self.samples, Vec::with_capacity(1920)),
+                    self.first.take().unwrap(),
+                );
                 match output.try_send(frame) {
                     Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}
                     Err(mpsc::error::TrySendError::Closed(_)) => {
@@ -230,6 +230,7 @@ mod tests {
         let mut pcm = Pcm::default();
         let sample = |millis: u64, value: f32| -> Result<gst::Sample> {
             let mut buffer = gst::Buffer::from_mut_slice(value.to_le_bytes().repeat(960));
+            buffer.get_mut().unwrap().set_offset(millis * 48);
             buffer
                 .get_mut()
                 .unwrap()
@@ -248,8 +249,32 @@ mod tests {
         let frame = receiver.try_recv()?;
         assert_eq!(frame.presentation_time, start + Duration::from_millis(20));
         assert_eq!(frame.samples.len(), 1920);
+        assert_eq!(frame.sample_position, 960);
         assert!(frame.samples[..960].iter().all(|s| *s == 0.2));
         assert!(frame.samples[960..].iter().all(|s| *s == 0.3));
+        for millis in [40, 50, 60, 70, 80, 90] {
+            pcm.push(&sample(millis, 0.4)?, &clock, &output)?;
+        }
+        assert_eq!(receiver.try_recv()?.sample_position, 1920);
+        assert_eq!(receiver.try_recv()?.sample_position, 2880);
+        for millis in [100, 110] {
+            pcm.push(&sample(millis, 0.5)?, &clock, &output)?;
+        }
+        assert_eq!(
+            receiver.try_recv()?.sample_position,
+            4800,
+            "Full drops preserve the missing 960 samples"
+        );
+        pcm.push(&sample(120, 0.6)?, &clock, &output)?;
+        let mut reset = sample(130, 0.7)?;
+        let mut buffer = reset.buffer().unwrap().to_owned();
+        buffer.make_mut().set_flags(gst::BufferFlags::DISCONT);
+        reset.make_mut().set_buffer(Some(&buffer));
+        pcm.push(&reset, &clock, &output)?;
+        pcm.push(&sample(140, 0.8)?, &clock, &output)?;
+        let frame = receiver.try_recv()?;
+        assert_eq!((frame.segment, frame.sample_position), (1, 0));
+        assert!(frame.samples[..960].iter().all(|sample| *sample == 0.7));
         Ok(())
     }
 }

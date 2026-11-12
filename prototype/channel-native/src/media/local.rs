@@ -324,7 +324,7 @@ fn encode_audio(
     Ok(encoder.encode(samples, 960, encoded)?)
 }
 
-/// Packet timestamps and reports share capture time, never encode/arrival time.
+/// Audio RTP follows sample positions; sender reports retain capture time.
 struct RtpSource {
     source: Source,
     packetizer: Packetizer,
@@ -364,12 +364,14 @@ impl RtpSource {
             packetizer,
         })
     }
-    fn packetize(
+    fn packetize_audio(
         &mut self,
         bytes: Vec<u8>,
         presentation_time: Instant,
+        sample_position: u64,
     ) -> Result<Vec<rtc_rtp::Packet>> {
-        self.packetizer.packetize(bytes, presentation_time, None)
+        self.packetizer
+            .packetize_audio(bytes, presentation_time, sample_position)
     }
 }
 
@@ -568,9 +570,9 @@ mod tests {
         let length = encoder.encode(&pcm, 960, &mut encoded)?;
         assert_eq!(length, 320);
         let at = |millis| epoch + Duration::from_millis(millis);
-        let first_audio = audio.packetize(encoded[..length].to_vec(), at(100))?;
-        let second_audio = audio.packetize(encoded[..length].to_vec(), at(120))?;
-        let after_gap = audio.packetize(encoded[..length].to_vec(), at(180))?;
+        let first_audio = audio.packetize_audio(encoded[..length].to_vec(), at(100), 0)?;
+        let second_audio = audio.packetize_audio(encoded[..length].to_vec(), at(120), 960)?;
+        let after_gap = audio.packetize_audio(encoded[..length].to_vec(), at(180), 3840)?;
         assert_eq!(
             second_audio[0]
                 .header
@@ -585,8 +587,12 @@ mod tests {
                 .wrapping_sub(second_audio[0].header.timestamp),
             2880
         );
-        let first_video = video.packetize(vec![0x65, 1, 2, 3], at(100))?;
-        let last_video = video.packetize(vec![0x65, 4, 5, 6], at(180))?;
+        let first_video = video
+            .packetizer
+            .packetize(vec![0x65, 1, 2, 3], at(100), None)?;
+        let last_video = video
+            .packetizer
+            .packetize(vec![0x65, 4, 5, 6], at(180), None)?;
         assert_eq!(
             last_video[0]
                 .header
