@@ -61,8 +61,11 @@ the feedback period; they do not delay that delivery.
   retain the grant and receive authorized mouse events, but Windows `SendInput`
   rejects a button event and subsequent release attempts. Capture whether local
   physical input also stops during the refusal to identify its OS trigger.
-  Later same-process reports clear the release backlog; the local controlled
-  Chrome trial did not reproduce the failure.
+  The 3.0 Native input owner now keeps the grant, records bounded desktop facts,
+  and retries only the unaccepted suffix after restoring the original desktop
+  when the active desktop still matches it. Pure policy/lifecycle checks pass;
+  the local controlled Chrome trial did not reproduce the failure. Reporter-machine
+  SendInput and physical-input acceptance remain open.
 - [ ] **2.x: return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
