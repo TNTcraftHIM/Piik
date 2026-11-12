@@ -545,6 +545,24 @@ are internal interfaces, not an existing public plugin ABI.
 After choosing the first use case and authorization scope, verify one complete
 integration and its revoke/stop behavior before extracting a general SDK.
 
+The requested bot/API and OBS work can start with two separate, bounded adapters.
+For a support bot, first prove receiving confirmed messages and sending a reply
+in one explicitly selected room. Keep its identity distinct from the operator,
+and decide who may admit and revoke it before publishing an API. Reuse existing
+conversation confirmation and storage; Markdown is message presentation and
+does not require a second bot message format. A native plugin ABI, extension
+marketplace and general role system are outside that first integration.
+
+For OBS, [its WHIP output](https://obsproject.com/kb/whip-streaming-guide) already
+accepts an endpoint URL and bearer token. A proposed first flow lets a sharer
+create a local App input for the chosen room, then paste those two values into
+OBS. [WHIP](https://www.rfc-editor.org/rfc/rfc9725.html) owns media-session setup
+and deletion; Piik's existing publication owns room distribution and stop.
+The adapter must retain source timestamps and feed the current media owners,
+without a second room topology. Token lifetime, page closure and reconnect
+behavior still need an explicit choice. This remains a design proposal, not an
+implemented ingest endpoint or an authorization for unattended publishing.
+
 ## Attended Remote-Control Prototype
 
 Reviewed 2026-10-19. Remote control is included in the accepted release scope.
