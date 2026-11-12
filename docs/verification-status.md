@@ -52,11 +52,13 @@ An actual sender TCP connection paced at 1 Mbps each way verified a full-budget
 inline image through both Native and Browser room hosts. Both committed once,
 received their confirmation and continued ordinary chat; the adjusted conversation
 deadline no longer reports failure before that confirmation arrives.
-Delivered candidates include peer-independent conversation; the newer image
-work remains on the development branch. Earlier Windows
-upgrade checks used a copy of the previous candidate's data; an Android
-same-signature update retained compatible room/history and its invitation after
-reload. Older private storage formats follow the
+Delivered candidates include peer-independent conversation and the current image
+path. Windows and Linux upgrade checks used copies of the previous candidate's
+data, retaining room identity, credentials and confirmed history. Windows App
+restarts preserve the saved local origin, a newly retained file's exact bytes and
+the chosen interface layout. Old random-origin Browser caches are not migrated.
+An earlier Android same-signature update retained compatible room/history and
+its invitation after reload. Older private storage formats follow the
 [storage reset boundary](../prototype/channel-server/README.md#saved-data-and-files).
 
 The latest Windows candidate passed normal App acceptance. The matched Android

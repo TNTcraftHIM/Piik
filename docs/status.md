@@ -13,11 +13,11 @@ across Server, Native and Browser/WASM, with the shared Web UI for chat, screen
 sharing, selective watching, room voice and App control. Normal development and
 distribution use these Rust/Web paths; Go tooling only builds the pinned
 Cloudflared helper. Work stays on `feat/channel-prototype`, separately from 2.x.
-Windows App and Linux x64 Server candidates have been delivered for internal
-testing. An Android candidate has passed package checks; device acceptance remains
-pending. The newer capacity and profile-reading protocol remains on this branch
-and needs matching Web/App/Server packages. Exact revisions and receipts stay
-with the immutable packages.
+Matched Windows App, Linux x64 Server and Android candidates have been delivered
+for internal testing with the current capacity and profile-reading protocol.
+Windows and Linux startup, compatible saved-data reuse and orderly shutdown have
+passed acceptance. Android has passed package checks; device acceptance remains
+pending. Exact revisions and receipts stay with the immutable packages.
 
 The site owns user identity and directory summaries. Room plans and shared transport
 leases keep separate Rust owners. Rooms created in the UI run in their owner's
@@ -28,8 +28,9 @@ participant for persistent rooms and retains its fixed UDP deployment entry.
 App hosting follows its Native endpoint and process lifetime. Personal voice,
 shares, watches and capture consent remain page-owned; connecting an App does not
 transfer existing Browser rooms. The shared launcher supports Local HTTPS and
-Cloudflare public invitations, with separate data per approved site. Room identity
-and storage survive local-port and invitation-address changes.
+Cloudflare public invitations, with separate data per approved site. The App saves
+its local site address for later starts. Changes to the public invitation address
+do not replace Native room identity or storage.
 
 The [network model](./research/channel-network-design.md) owns routing and activity
 lifetimes; the [data model](./research/channel-storage-and-identity.md) owns identity,
