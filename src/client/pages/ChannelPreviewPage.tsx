@@ -273,7 +273,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         </div>}
         {room && !room.available && <div className="c3-notice" role="status"><Glyph name="couch" size={20} />
           <span className="c3-notice-message">{copy("房间暂不可用，请等待恢复托管。", "This room is unavailable. Wait for hosting to resume.")}</span></div>}
-        {otherScreens.length > 0 && <div className="c3-other-activities" aria-label={copy("其他房间的画面", "Screens in other rooms")}>
+        {otherScreens.length > 0 && <div className="c3-other-activities" aria-label={copy("进行中的画面", "Ongoing screens")}>
           {otherScreens.map(source => {
             const owned = channel.ownedScreens.has(source.id), title = screenTitle(source, lang);
             return <div key={source.id} className="c3-other-activity"><Glyph name={owned ? "cast" : "eye"} size={17} />
@@ -283,7 +283,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
                 cap={{ text: copy("返回", "Return") }} onClick={() => showSource(source.roomId, source.id)} />
               <Btn icon={owned ? "stop" : "x"} quiet size="dense" tone={owned ? "danger" : undefined}
                 title={{ text: owned ? copy(`停止分享 ${title}`, `Stop sharing ${title}`) : copy(`停止观看 ${title}`, `Stop watching ${title}`) }}
-                disabled={busy(owned ? "screen" : "watch", owned ? source.roomId : source.id)}
+                busy={busy(owned ? "stop" : "watch", source.id)} disabled={busy(owned ? "stop" : "watch", source.id)}
                 onClick={() => run(owned ? channel.stopScreen(source.id) : channel.unwatch(source.id))} />
             </div>;
           })}

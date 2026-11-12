@@ -50,7 +50,7 @@
 @media (hover: none), (any-pointer: coarse) {
   .c3-message-content-body:has(> .c3-message-reactions:not([data-has-counts="true"])) { --message-action-size: 44px; min-height: var(--message-action-size); }
   .c3-message-content-body > .c3-message-reactions:not([data-has-counts="true"]) { transform: none; opacity: 1; pointer-events: auto; }
-  .c3-message-content-body:has(> .c3-message-reactions:not([data-has-counts="true"])) > p { min-height: var(--message-action-size); display: flex; align-items: center; }
+  .c3-message-content-body:has(> .c3-message-reactions:not([data-has-counts="true"])) > p { min-height: var(--message-action-size); padding-block: max(0px, calc((var(--message-action-size) - 1lh) / 2)); }
 }
 .c3-message-meta { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
 .c3-message-meta strong { font-size: 13px; font-weight: 650; }
