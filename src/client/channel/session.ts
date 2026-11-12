@@ -143,7 +143,6 @@ export class ChannelSession {
   private profileLoads = new Map<string, Promise<void>>();
   private missingProfiles = new Set<string>();
   private readMarkerKey: string | null = null;
-  private historyJump: { roomId: string; seq: number } | null = null;
   private socket: WebSocket | null = null;
   private retry: ReturnType<typeof setTimeout> | null = null;
   private recoveryDeadline: ReturnType<typeof setTimeout> | null = null;
@@ -157,7 +156,7 @@ export class ChannelSession {
   private roomId = selectedRoom();
   private requests = new Map<string, {
     roomId?: string; bindingId?: string;
-    history?: { before?: number; entries: Map<number, { message?: ChannelMessage; snapshot?: MessageReactionSnapshot }> };
+    history?: { before?: number; replace: boolean; entries: Map<number, { message?: ChannelMessage; snapshot?: MessageReactionSnapshot }> };
     resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void; timer: ReturnType<typeof setTimeout>;
   }>();
   private hostedRooms = new Map<string, { host: HostedRoom; bindingId?: string }>();
@@ -631,7 +630,7 @@ export class ChannelSession {
     else if (command.type === "signal" && this.signals.length < 256) this.signals.push(command);
   }
 
-  private async request(command: ChannelCommand, result?: (event: ChannelReply) => void, roomId = this.commandRoom(command), signal?: AbortSignal): Promise<void> {
+  private async request(command: ChannelCommand, result?: (event: ChannelReply) => void, roomId = this.commandRoom(command), signal?: AbortSignal, replaceHistory = false): Promise<void> {
     const reading = roomId ? this.readings.get(roomId) : undefined;
     const conversation = command.type === "chat" || command.type === "history" || command.type === "react";
     if (conversation && reading && reading.roomId === roomId) await reading.ready;
@@ -652,7 +651,7 @@ export class ChannelSession {
       const timer = setTimeout(() => { this.requests.delete(requestId); reject(new Error("request_timeout")); }, conversation || command.type === "profiles" ? 30000 : 10000);
       this.requests.set(requestId, { resolve, reject, timer, result, roomId,
         ...(delivery && (conversation || command.type === "browse" || command.type === "room_topology") ? { bindingId: delivery.bindingId } : {}),
-        ...(command.type === "history" ? { history: { before: command.before, entries: new Map() } } : {}) });
+        ...(command.type === "history" ? { history: { before: command.before, replace: replaceHistory, entries: new Map() } } : {}) });
       signal?.addEventListener("abort", abort, { once: true });
       if (conversation) void this.conversation.send(command, requestId).catch(error => {
         if (!this.requests.delete(requestId)) return;
@@ -724,7 +723,7 @@ export class ChannelSession {
         return;
       }
       const page = entries.map(({ message, snapshot }) => ({ ...message!, reactions: { revision: snapshot!.revision, counts: snapshot!.counts } }));
-      this.applyHistory(reply.roomId, page.sort((a, b) => a.seq - b.seq), record);
+      this.applyHistory(reply.roomId, page.sort((a, b) => a.seq - b.seq), record, request.history.replace);
     } else if (record.type === "confirmed") {
       request.result?.(record);
       this.applyMessage(reply.roomId, record.message);
@@ -761,10 +760,9 @@ export class ChannelSession {
     this.patch({ publicationReactions: new Map(this.view.publicationReactions).set(snapshot.publicationId, snapshot) });
   }
 
-  private applyHistory(roomId: string, page: ChannelMessage[], result: Extract<ConversationReply["record"], { type: "history_end" }>): void {
+  private applyHistory(roomId: string, page: ChannelMessage[], result: Extract<ConversationReply["record"], { type: "history_end" }>, jumping: boolean): void {
     const state = this.view.state;
     if (!state?.channel.rooms.some(room => room.id === roomId && room.authorized)) return;
-    const jumping = this.historyJump?.roomId === roomId && result.before === this.historyJump.seq + 1;
     const current = jumping ? [] : this.view.messagesByRoom[roomId] ?? [];
     const last = page.at(-1)?.seq ?? 0;
     const latest = result.before === null;
@@ -1147,10 +1145,7 @@ export class ChannelSession {
   loadLatestHistory = (roomId: string): Promise<void> => this.requestHistory(roomId);
   loadMessage = async (roomId: string, seq: number): Promise<void> => {
     if (!this.view.messagesByRoom[roomId]?.some(message => message.seq === seq)) {
-      const jump = { roomId, seq };
-      this.historyJump = jump;
-      try { await this.requestHistory(roomId, seq + 1); }
-      finally { if (this.historyJump === jump) this.historyJump = null; }
+      await this.requestHistory(roomId, seq + 1, true);
     }
     if (!this.view.messagesByRoom[roomId]?.some(message => message.seq === seq)) throw new Error("message_unavailable");
   };
@@ -1184,10 +1179,11 @@ export class ChannelSession {
     stored(this.readMarkerKey, JSON.stringify(readByRoom));
     this.patch({ readByRoom });
   };
-  private requestHistory(roomId: string, before?: number): Promise<void> {
+  private requestHistory(roomId: string, before?: number, replace = false): Promise<void> {
     const reading = this.reading?.roomId === roomId ? this.reading : null;
     const pending = this.view.pending.has(`history:${roomId}`);
-    const loading = this.action(`history:${roomId}`, () => this.request({ type: "history", roomId, ...(before !== undefined ? { before } : {}) }));
+    const loading = this.action(`history:${roomId}`, () => this.request(
+      { type: "history", roomId, ...(before !== undefined ? { before } : {}) }, undefined, roomId, undefined, replace));
     if (reading && !pending) reading.history = loading;
     return loading;
   }
