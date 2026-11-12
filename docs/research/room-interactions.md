@@ -573,6 +573,18 @@ page closure and reconnect behavior still need a decision. Verify one complete
 integration and revocation/stop before extracting a public SDK or plugin ABI;
 unattended publishing is not accepted by this proposal.
 
+The smallest production lease would live in the authenticated App/Native Driver,
+not in room storage: `{ resourceId, issuerSessionId, roomId, bindingId,
+publicationId, sourceGeneration, endpoint }` plus a short-lived in-memory secret.
+The current snapshot supplies the issuer and scope; OBS cannot choose them. A
+single lease may feed one publication. The existing Driver turn, `SourceFeed::Rtp`,
+relay and output owners retain the RTP clock and resource accounting. Binding
+replacement, publication withdrawal, App/session close and room revoke all stop
+the lease and join its receiver. A stale DELETE or callback only retires its own
+resource generation. The endpoint and secret never enter SQLite, history or wire
+metadata. This is an implementation boundary for later review, not an accepted
+authorization contract.
+
 A bounded control with the pinned str0m SDK accepted a send-only H264/Opus offer,
 completed ICE/DTLS and retained RTP timestamp progression and sender reports.
 It used synthetic in-process datagrams, not OBS or an HTTP endpoint. No SDK fork

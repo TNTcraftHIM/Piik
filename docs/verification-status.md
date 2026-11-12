@@ -68,7 +68,10 @@ by the choice. The matched Linux beta.17 Server passed the existing Native-room,
 signed-confirmation and clean-shutdown checks. The matched Android beta.17
 candidate passed build, signature, dual-ABI, 16 KiB alignment and bundled-Web
 identity checks but has not been installed for runtime acceptance. An Android
-runtime comparison remains pending.
+runtime comparison remains pending. The current MuMu QA process has a missing
+executable path and an ADB shell that does not respond; no APK installation or
+device write was attempted. This is an environment gate, not evidence about the
+APK runtime.
 
 Windows package checks also cover normal control request and Host
 approval, real pointer and keyboard input to an isolated window, and **End
