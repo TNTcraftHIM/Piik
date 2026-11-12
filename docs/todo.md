@@ -34,6 +34,15 @@ the feedback period; they do not delay that delivery.
   [output-routing control](./research/media-fidelity.md#windows-output-routing)
   reproduces this contrast with an alternate output device; the reported change
   after first using exclusion remains to be located.
+- [ ] **Blue-tinted sharing (#529).** The report has no source, codec, GPU or
+  HDR/SDR details. Existing SDR conversion evidence cannot identify its cause;
+  obtain a sender/receiver colour-bar or solid-colour comparison before changing
+  bitrate, colour metadata or filters.
+- [ ] **NDI and expanded codec requests (#535, #530).** Evaluate NDI through the
+  OBS/DistroAV-to-WHIP adapter first. VP9/AV1/SVC/TWCC/NACK would change codec
+  negotiation and adaptation owners; defer it until a concrete capability and
+  resource decision exists. Do not add an NDI SDK or wire codec branch from an
+  issue request alone.
 - [ ] **3.0 iOS/iPadOS room voice feedback.** With noise processing disabled on
   the phone/tablet, a computer listener reports mono sound. Check that device's
   raw capture channels against its received sound; the shared microphone,
