@@ -1,0 +1,29 @@
+.c3-integration-main { width: min(960px, 100%); margin-inline: auto; padding: 24px; }
+.c3-integration-main > header { margin-bottom: 28px; }
+.c3-integration-main h1 { margin: 10px 0; font-size: clamp(26px, 4vw, 38px); letter-spacing: -.035em; }
+.c3-integration-design-note { width: fit-content; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--c3-inset-radius); color: var(--muted); font-size: 12px; }
+.c3-integration-main p { line-height: 1.7; }
+.c3-integration-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.c3-integration-card { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: var(--c3-surface-radius); background: var(--paper); }
+.c3-integration-card h2, .c3-integration-card p { margin: 0; }
+.c3-integration-card > .lr-comic-tip-wrap { margin-top: auto; }
+.c3-integration-scope { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.c3-integration-person { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.c3-integration-person > svg { flex: none; width: 32px; height: 40px; }
+.c3-integration-person small { display: block; margin-top: 4px; color: var(--muted); }
+.c3-integration-card .lr-tv { width: 100%; }
+.c3-integration-picture { min-height: 130px; display: grid; place-content: center; justify-items: center; gap: 10px; color: var(--muted); }
+.c3-integration-picture.is-live { color: var(--action); background: var(--control-selected); }
+.c3-integration-footnote { color: var(--muted); font-size: 12px; margin-top: 20px; }
+.c3-integration-panel { display: grid; gap: 16px; }
+.c3-integration-panel form, .c3-integration-panel label { display: grid; gap: 8px; min-width: 0; }
+.c3-integration-panel form { justify-items: start; }
+.c3-integration-panel form > label { width: 100%; }
+.c3-integration-value { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; min-width: 0; }
+.c3-integration-value > label { flex: 1 1 22ch; }
+.c3-integration-value label { font-size: 12px; }
+.c3-integration-value small { width: 100%; color: var(--danger); }
+.c3-integration-example { padding: 12px; border-radius: var(--c3-inset-radius); background: var(--wall); }
+.c3-integration-example > p { margin-top: 6px; }
+.c3-integration-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 650px) { .c3-integration-main { padding: 16px; } .c3-integration-cards { grid-template-columns: minmax(0, 1fr); } }

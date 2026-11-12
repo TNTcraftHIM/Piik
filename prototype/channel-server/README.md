@@ -238,6 +238,8 @@ including room management, invitations, App connection and error states.
 `/__tooltip-preview?channel-room` renders the production room view with local
 sample data. Add `&screens=4` for multiple pictures, `&no-rooms` for first-room
 creation, or `&empty-chat` for an empty conversation.
+`/__tooltip-preview?channel-integrations` is a clickable Bot/OBS design proposal
+with inert example values. It does not connect an API or start a media input.
 
 These previews use the current shared components without a Rust service,
 real capture or network permissions. Sample actions change preview state only;

@@ -15,6 +15,7 @@ import { usePreviewAnchor } from "./use-preview-anchor";
 import { usePreviewReducedMotion } from "./use-preview-reduced-motion";
 import { ChannelGuidePreview } from "./ChannelGuidePreview";
 import { ChannelRoomPreview } from "./ChannelRoomPreview";
+import { ChannelIntegrationPreview } from "./ChannelIntegrationPreview";
 
 const EXAMPLES: { label: string; kind: HintKind | ComicKind; tone: ComicTone; motion: ComicMotion; text: CopyKey }[] = [
   { label: "说明 / Neutral", kind: "hint-volume", tone: "off", motion: "demo", text: "playback.volume" },
@@ -60,6 +61,7 @@ function PreviewCard({ kind, tone, motion, label, text }: {
 }
 
 export function TooltipPreviewPage() {
+  if (new URLSearchParams(location.search).has("channel-integrations")) return <ChannelIntegrationPreview />;
   if (new URLSearchParams(location.search).has("channel-room")) return <ChannelRoomPreview />;
   return <TooltipCatalogue />;
 }
@@ -81,6 +83,7 @@ function TooltipCatalogue() {
             {en ? "Reduced motion" : "减少动态效果"}</label>
         </header>
         <nav className="cp-nav" aria-label={en ? "Preview sections" : "预览目录"}>
+          <a href="/__tooltip-preview?channel-integrations">{en ? "Bot & OBS proposals" : "Bot 与 OBS 设计稿"}</a>
           <a href="#button-preview">{en ? "Buttons" : "按钮"}</a><a href="#option-preview">{en ? "Options" : "选择与开关"}</a>
           <a href="#sharing-preview">{t("host.advanced")}</a>
           <a href="#input-preview">{en ? "Inputs" : "输入与房间号"}</a><a href="#feedback-preview">{en ? "Feedback" : "反馈"}</a>
