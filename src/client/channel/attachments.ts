@@ -137,9 +137,13 @@ export class ChannelAttachments {
     const store = this.store, lifetime = this.lifetime;
     if (!store || !this.rooms.some(room => room.id === roomId && room.authorized)) return [];
     const files = await store.list();
-    return this.store === store && this.lifetime === lifetime && !lifetime.signal.aborted
-      && this.rooms.some(room => room.id === roomId && room.authorized)
-      ? files.filter(file => file.key.roomId === roomId) : [];
+    if (this.store !== store || this.lifetime !== lifetime || lifetime.signal.aborted
+      || !this.rooms.some(room => room.id === roomId && room.authorized)) return [];
+    const available = new Map(files.filter(file => file.key.roomId === roomId).map(file => [keyOf(file.key), file]));
+    for (const { key, attachment, file } of this.sources.values()) {
+      if (key.roomId === roomId) available.set(keyOf(key), { key, attachment, file });
+    }
+    return [...available.values()];
   }
   /** Called after authority commit with archive-verified bytes; cache failure keeps live sources. */
   async restoreRetained(roomId: string, files: RetainedFile[]): Promise<boolean> {

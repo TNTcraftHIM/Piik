@@ -46,6 +46,25 @@ test("a confirmed inline GIF remains readable without a live session, cache or t
   expect(command).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled(); expect(load).not.toHaveBeenCalled();
 });
 
+test("backup inventory includes confirmed and restored live files when optional retention fails", async () => {
+  const files = setup(), file = new File(["GIF89a"], attachment.name);
+  const entry = { key, attachment, file };
+  vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new Error("quota"));
+  try {
+    expect(await files.retained(key.roomId)).toEqual([]);
+    files.confirmed(key.roomId, message, [{ id: attachment.id, attachment, file }]);
+    expect(await files.content(key, attachment, new AbortController().signal)).toBe(file);
+    expect(await files.retained(key.roomId)).toEqual([entry]);
+    const restoredAttachment = { ...attachment, id: "restored" }, restoredKey = { ...key, attachmentId: "restored" };
+    const restored = { key: restoredKey, attachment: restoredAttachment, file };
+    expect(await files.restoreRetained(key.roomId, [restored])).toBe(false);
+    expect(await files.retained(key.roomId)).toEqual([entry, restored]);
+    vi.mocked(FileStore.prototype.list).mockResolvedValue([entry]);
+    expect(await files.retained(key.roomId)).toEqual([entry, restored]);
+    expect(await files.retained("other-room")).toEqual([]);
+  } finally { files.reset(); }
+});
+
 test("an already cancelled inline read preserves cancellation without opening a transfer", async () => {
   const command = vi.fn(), send = vi.fn(), files = new ChannelAttachments(command, send);
   const request = new AbortController(); request.abort();

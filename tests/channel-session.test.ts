@@ -6686,7 +6686,11 @@ async function setupRoomBackup() {
   const nextHost = { ...host, close: vi.fn(async () => {}), bind: vi.fn(async () => {}) };
   const open = vi.fn().mockResolvedValueOnce(host).mockResolvedValue(nextHost);
   vi.stubGlobal("indexedDB", {});
-  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: { storedPolicies: async () => [policy], open, stage: vi.fn(async () => stage) } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
+    initializeRuntime: async () => {},
+    attachment_limits: () => JSON.stringify({ maxFileBytes: 1024, maxInlineImageBytes: 65536, maxAttachmentsPerMessage: 8, maxRetainedBytes: 1024, maxRetainedFiles: 8 }),
+    BrowserRoomHost: { storedPolicies: async () => [policy], open, stage: vi.fn(async () => stage) },
+  } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const context = await setup();
   await vi.waitFor(() => expect(context.socket.sent.some(command => command.type === "host_register")).toBe(true));
   const register = context.socket.sent.find(command => command.type === "host_register")!;
@@ -6879,13 +6883,14 @@ test("a committed domain restore with unavailable hosting keeps the restored ide
 });
 
 test("room backup exports its actual Browser host snapshot, full nonce/reactions and only matching retained copies", async () => {
+  const list = vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
+  const retain = vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new Error("quota"));
   const { session, host, snapshot, row } = await setupRoomBackup();
   const attachment = { id: "file", name: "pixel.png", size: 3, mediaType: "image/png" as const, sha256: "a".repeat(64) };
   row.attachments.push(attachment as never);
   row.reactions = { revision: 2, counts: { wave: 2 } };
   const file = new File([new Uint8Array([1, 2, 3])], attachment.name);
-  vi.spyOn(session.attachments, "retained").mockResolvedValue([
-    { key: { roomId: "first", messageSeq: 1, attachmentId: attachment.id }, attachment, file },
+  list.mockResolvedValue([
     { key: { roomId: "first", messageSeq: 77, attachmentId: "stale" }, attachment: { ...attachment, id: "stale" }, file },
   ]);
   let exported: unknown[] = [];
@@ -6896,6 +6901,8 @@ test("room backup exports its actual Browser host snapshot, full nonce/reactions
     return new Blob(["archive"]);
   });
   try {
+    session.attachments.confirmed("first", row, [{ id: attachment.id, attachment, file }]);
+    await vi.waitFor(() => expect(retain).toHaveBeenCalledOnce());
     expect(await session.roomBackupAvailable("first")).toBe(true);
     expect(await session.roomBackupAvailable("second")).toBe(false);
     await expect(session.exportRoomBackup("first")).resolves.toBeInstanceOf(Blob);
