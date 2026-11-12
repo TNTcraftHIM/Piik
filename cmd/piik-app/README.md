@@ -118,11 +118,12 @@ confirmed history remain for the next start. Do not delete data to close a room.
 ## Data And Backups
 
 App saves domain identity, approved sites and hosted room databases in its
-application-data directory. A changed local port or temporary public address
-does not create new copies of those local rooms. Browser-hosted rooms instead
+application-data directory. Its local site keeps the same address across restarts,
+preserving the browser's file cache and preferences. A changed public invitation
+address does not create new copies of the App's rooms. Browser-hosted rooms instead
 use that browser's site storage; clearing it can delete their data.
 
-Use the room's **Settings → Records and backups** for a room backup when you manage
+Use the room's **Settings → Records** for a room backup when you manage
 the room. A text export keeps the loaded messages for reading; it is not a
 restorable room backup. The site operator uses **Site settings → Backup** to save
 site identity and directory metadata at the hosting service; this does not export

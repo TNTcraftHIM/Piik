@@ -3,7 +3,7 @@ use crate::web::origin;
 use anyhow::{bail, Result};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, path::Path};
+use std::{collections::BTreeMap, num::NonZeroU16, path::Path};
 use uuid::Uuid;
 
 pub(super) struct Sites(Connection);
@@ -20,6 +20,26 @@ pub(super) struct LocalIdentity {
 }
 
 impl Sites {
+    pub fn domain_port(&self) -> Result<Option<NonZeroU16>> {
+        let saved: Option<String> = self
+            .0
+            .query_row(
+                "SELECT value FROM app_setting WHERE key='domain_port'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        saved
+            .map(|value| value.parse().map_err(Into::into))
+            .transpose()
+    }
+    pub fn set_domain_port(&self, port: NonZeroU16) -> Result<()> {
+        self.0.execute(
+            "INSERT INTO app_setting(key,value) VALUES('domain_port',?1)",
+            [port.to_string()],
+        )?;
+        Ok(())
+    }
     pub fn open(directory: &Path) -> Result<Self> {
         std::fs::create_dir_all(directory)?;
         // Resolve the directory so SQLite can create journals beside long Windows paths.
@@ -166,11 +186,14 @@ mod tests {
             let mut sites = Sites::open(&directory)?;
             let namespace = sites.approve(site, true)?;
             sites.set_startup(site)?;
+            assert!(sites.domain_port()?.is_none());
+            sites.set_domain_port(NonZeroU16::new(31337).unwrap())?;
             (namespace, serde_json::to_value(sites.local_identity()?)?)
         };
         let sites = Sites::open(&directory)?;
         assert_eq!(sites.approved()?.get(site), Some(&namespace));
         assert_eq!(sites.startup()?, site);
+        assert_eq!(sites.domain_port()?.unwrap().get(), 31337);
         assert_eq!(serde_json::to_value(sites.local_identity()?)?, identity);
         Ok(())
     }

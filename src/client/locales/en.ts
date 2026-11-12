@@ -289,7 +289,7 @@ export const en: Record<CopyKey, string> = {
   "client.launch.failure.tunnel-unavailable": "The public invitation component is unavailable. Check that the complete Piik App is installed.",
   "client.launch.failure.tunnel-start": "The public invitation component could not start. Check the technical details.",
   "client.launch.failure.tunnel-stopped": "The public invitation disconnected. Create a new invitation and send the new link.",
-  "client.launch.failure.local-port": "The local service port is unavailable. Check whether Piik is already running.",
+  "client.launch.failure.local-port": "The local address is unavailable. Close the program using its port, then retry.",
   "client.launch.failure.local-network": "The local network address is unavailable. Check your network and select the invitation address again.",
   "client.launch.failure.configuration": "App settings could not be applied. Check the technical details.",
   "client.launch.failure.native-control": "The App connection service is unavailable. Check the technical details.",

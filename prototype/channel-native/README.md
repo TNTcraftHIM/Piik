@@ -179,6 +179,10 @@ It contains only [PR #308](https://github.com/webrtc-rs/rtc/pull/308) on the
 published 0.21.1 baseline: a new FU-A start clears unfinished fragments, and an
 incomplete STAP-A length returns an error. The unchanged `rtc-shared` crate uses
 the same revision so its public error and marshal types have one identity.
+Upstream merged the repair on 2026-11-11 in
+[`81fde93b`](https://github.com/webrtc-rs/rtc/commit/81fde93b46f8fb1c1a191415558fa3574e48d5c7).
+The published 0.21.1 crates still predate it; retain this pin until the release
+replacement passes the consumer checks below.
 The other RTC helpers use published 0.21.1 crates for STUN, TURN and crypto.
 The existing `url` crate parses configured UDP STUN/TURN
 server addresses. Piik does not depend on the umbrella

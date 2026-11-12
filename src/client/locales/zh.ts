@@ -289,7 +289,7 @@ export const zh = {
   "client.launch.failure.tunnel-unavailable": "公网邀请组件不可用，请检查 Piik App 是否完整安装。",
   "client.launch.failure.tunnel-start": "无法启动公网邀请组件，请查看技术详情。",
   "client.launch.failure.tunnel-stopped": "公网邀请已断开。重新创建后，请发送新的邀请链接。",
-  "client.launch.failure.local-port": "本地服务端口不可用，请检查是否已有 Piik 在运行。",
+  "client.launch.failure.local-port": "本机地址暂时不可用，请关闭占用该端口的程序后重试。",
   "client.launch.failure.local-network": "局域网地址不可用，请检查网络并重新选择邀请地址。",
   "client.launch.failure.configuration": "无法应用 App 设置，请查看技术详情。",
   "client.launch.failure.native-control": "App 联动服务不可用，请查看技术详情。",

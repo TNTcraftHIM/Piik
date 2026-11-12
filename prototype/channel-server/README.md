@@ -104,6 +104,9 @@ deployed frontend requires no Node runtime.
 
 The `piik-channel-app` entry uses the same App button, local approval page and
 saved-site controls as the shared Web interface.
+Its own local site retains the first successfully bound port across restarts,
+so browser preferences and retained files remain at the same origin. An occupied
+saved port reports a startup error; release the port and retry to use the same address.
 
 Current internal pages require App control protocol 7 and domain signaling
 protocol 15. Build the App, bundled Web files and domain server from the same

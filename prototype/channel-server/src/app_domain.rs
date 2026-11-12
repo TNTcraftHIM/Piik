@@ -180,9 +180,18 @@ async fn run(
         .sites
         .local_identity()
         .map_err(|error| Failure::new("configuration", error))?;
-    let http = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+    let saved_port = app
+        .registry
+        .lock()
         .await
-        .map_err(|error| Failure::new("local-port", error))?;
+        .sites
+        .domain_port()
+        .map_err(|error| Failure::new("configuration", error))?;
+    let bind_address =
+        std::net::SocketAddrV4::new(Ipv4Addr::LOCALHOST, saved_port.map_or(0, |port| port.get()));
+    let http = TcpListener::bind(bind_address)
+        .await
+        .map_err(|error| Failure::new("local-port", format!("{bind_address}: {error}")))?;
     let address = http
         .local_addr()
         .map_err(|error| Failure::new("local-port", error))?;
@@ -192,6 +201,14 @@ async fn run(
     } else {
         None
     };
+    if saved_port.is_none() {
+        app.registry
+            .lock()
+            .await
+            .sites
+            .set_domain_port(std::num::NonZeroU16::new(address.port()).expect("bound TCP port"))
+            .map_err(|error| Failure::new("configuration", error))?;
+    }
     let stun = match &https {
         Some(https) => Some(
             UdpSocket::bind((

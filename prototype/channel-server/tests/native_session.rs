@@ -166,8 +166,12 @@ async fn committed_domain_restore_reports_native_restart_failure_without_rolling
     let mut replacement = Authority::new("restored-owner".into(), vec![]).unwrap();
     replacement.handle(
         Uuid::new_v4(),
-        Request::parse(&json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
-            "name":"Restored owner","ownerKey":"restored-owner","signingKey":vec![7u8;32]}).to_string()).unwrap(),
+        Request::parse(
+            &json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,
+            "name":"Restored owner","ownerKey":"restored-owner","signingKey":vec![7u8;32]})
+            .to_string(),
+        )
+        .unwrap(),
         0,
     );
     let identity = replacement.identity();
@@ -882,7 +886,10 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let (status, discovery) = app_http(address, "GET", "/connect-discovery", None, None).await;
     assert_eq!(status, 200);
     assert_eq!(discovery["service"], "piik-channel-app");
-    assert_eq!(discovery["domainProtocol"], piik_channel_core::wire::CHANNEL_PROTOCOL);
+    assert_eq!(
+        discovery["domainProtocol"],
+        piik_channel_core::wire::CHANNEL_PROTOCOL
+    );
     assert!(
         discovery.get("token").is_none(),
         "discovery grants no authority"
@@ -1459,7 +1466,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
 }
 
 #[tokio::test]
-async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() {
+async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
     use piik_channel_core::conversation::SessionSigner;
     use piik_channel_core::{backup::DomainMetadata, storage::Storage};
     use piik_channel_prototype::{app, web};
@@ -1501,7 +1508,19 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
     };
     let lan = web::lan_addresses().unwrap().into_iter().next();
     let mut first = None;
-    let mut retired_listeners = Vec::new();
+    let saved_port = || -> Option<u16> {
+        use rusqlite::OptionalExtension;
+        let db = rusqlite::Connection::open(folder.join("app.sqlite")).unwrap();
+        db.query_row(
+            "SELECT value FROM app_setting WHERE key='domain_port'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .unwrap()
+        .map(|port| port.parse().unwrap())
+    };
+    let mut blocked_http = None;
     let mut retired_stun = Vec::new();
     for attempt in 0..2 {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1527,6 +1546,27 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
             .await;
             assert_eq!(status, 503);
             assert_eq!(failure["reason"], "local-network");
+            assert_eq!(
+                saved_port(),
+                None,
+                "failed HTTPS preparation cannot pin an origin"
+            );
+            let failure_db = rusqlite::Connection::open(folder.join("app.sqlite")).unwrap();
+            failure_db.execute_batch("CREATE TRIGGER reject_port BEFORE INSERT ON app_setting WHEN NEW.key='domain_port' BEGIN SELECT RAISE(ABORT,'port-save-failed'); END;").unwrap();
+            let (status, failure) = app_http(
+                address,
+                "POST",
+                "/api/client-launcher/launch",
+                Some(&local),
+                Some(json!({"mode":"link"})),
+            )
+            .await;
+            assert_eq!(status, 503);
+            assert_eq!(failure["reason"], "configuration");
+            assert_eq!(saved_port(), None);
+            failure_db
+                .execute_batch("DROP TRIGGER reject_port")
+                .unwrap();
             let (status, failure) = app_http(
                 address,
                 "POST",
@@ -1553,6 +1593,25 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
             continue;
         };
         let request = json!({"mode":"local","lanAddress":lan.address});
+        if attempt == 1 {
+            let before = saved_port().unwrap();
+            let (status, failure) = app_http(
+                address,
+                "POST",
+                "/api/client-launcher/launch",
+                Some(&local),
+                Some(request.clone()),
+            )
+            .await;
+            assert_eq!(status, 503);
+            assert_eq!(failure["reason"], "local-port");
+            assert!(failure["detail"]
+                .as_str()
+                .unwrap()
+                .contains(&format!("127.0.0.1:{before}")));
+            assert_eq!(saved_port(), Some(before));
+            drop(blocked_http.take());
+        }
         let ((status, launched), (again_status, again)) = tokio::join!(
             app_http(
                 address,
@@ -1727,15 +1786,15 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
         );
         let domain = welcome["state"]["channel"]["id"].clone();
         if let Some((old_port, old_domain, old_identity)) = &first {
-            assert_ne!(
+            assert_eq!(
                 domain_address.port(),
                 *old_port,
-                "the old port remains held by the test"
+                "retry and restart preserve the Browser origin"
             );
             assert_eq!(&domain, old_domain);
             assert_eq!(
                 &identity, old_identity,
-                "port changes cannot select another local data namespace"
+                "restart preserves the local data namespace"
             );
         } else {
             first = Some((domain_address.port(), domain, identity));
@@ -1904,11 +1963,16 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
         })
         .await
         .expect("App stop retires the local Domain's actual socket");
-        retired_listeners.push(TcpListener::bind(domain_address).await.unwrap());
-        retired_listeners.push(TcpListener::bind(lan_address).await.unwrap());
+        assert_eq!(saved_port(), Some(domain_address.port()));
+        if attempt == 0 {
+            blocked_http = Some(TcpListener::bind(domain_address).await.unwrap());
+        } else {
+            drop(TcpListener::bind(domain_address).await.unwrap());
+        }
+        drop(TcpListener::bind(lan_address).await.unwrap());
         retired_stun.push(UdpSocket::bind(stun_address).await.unwrap());
     }
-    drop(retired_listeners);
+    drop(blocked_http);
     drop(retired_stun);
     std::fs::remove_dir_all(folder).unwrap();
 }

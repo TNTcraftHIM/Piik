@@ -589,6 +589,10 @@ cross-origin identity recovery; a new invitation alone does not
 restore an old user's management permission.
 
 App-held room data can survive a domain URL change without moving its files.
+The App saves its local site's chosen loopback port and reuses it across starts,
+keeping the owner's browser origin stable for file caches and preferences.
+If that address is occupied, startup reports the address and allows retry after
+it is released. A public invitation URL may still change independently.
 A Browser-held room authority additionally needs access to its original local
 data and credential. Explicit export/import can support that move; it is separate
 from editing a bookmark. This is part of Browser hosting design, not a reason to
