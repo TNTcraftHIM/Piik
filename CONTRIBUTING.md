@@ -204,6 +204,10 @@ code instead of repeatedly running the full platform matrix for one candidate.
   candidate builds should use stable checkout paths and separate immutable outputs.
   Keep source, credentials, running environments and required evidence separate
   from disposable compiler output when preparing cleanup.
+  On the development workstation, `F:\Piik-build\Use-PiikBuild.ps1 -Kind
+  windows|android|wasm|experiments` selects the shared external cache before a
+  large build. This helper is local workstation policy; repository scripts keep
+  their portable defaults for other contributors.
 - CI, versioning and release automation belong to complete, accepted squash
   merges into `main`; ordinary branch pushes stay quiet. PRs run only the
   lightweight public release-note check before merge. The
