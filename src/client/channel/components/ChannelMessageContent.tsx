@@ -26,9 +26,10 @@ export function ChannelMessageContent({ message, users, selfUserId }: {
   message: Pick<ChannelMessage, "text" | "mentions">; users: readonly ChannelUserSummary[]; selfUserId?: string | null;
 }) {
   const { marker, references, tokens } = useMemo(() => {
-    // Choose a delimiter absent from the raw message so user text cannot forge a reference.
+    // Markdown also decodes entities; neither raw nor decoded text may forge a reference.
+    const decoded = markdown.utils.unescapeAll(message.text);
     let marker = "\uE000";
-    while (message.text.includes(marker) || message.text.toLowerCase().includes(encodeURI(marker).toLowerCase())) marker += "\uE000";
+    while ([message.text, decoded].some(text => text.includes(marker) || text.toLowerCase().includes(encodeURI(marker).toLowerCase()))) marker += "\uE000";
     const mentions = message.mentions ?? [];
     const references = mentions.map((mention, index) => ({ mention, marker: `${marker}${index}${marker}`,
       text: message.text.slice(mention.start, mention.end) }));

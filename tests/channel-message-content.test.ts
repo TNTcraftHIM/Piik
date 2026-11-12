@@ -55,3 +55,13 @@ test("percent-encoded user URLs are not changed when confirmed mentions are prot
   expect(html).toContain(`href="${href}"`);
   expect(html.match(/<mark\b/g)).toHaveLength(1);
 });
+
+test("Markdown entity decoding cannot forge mention markers in text or destinations", () => {
+  const text = "@Bo &#xE000;0&#57344; [literal](https://example.org/&#xE000;0&#57344;)\n\n`&#xE000;0&#57344;`\n\n```\n&#xE000;0&#57344;\n```";
+  const html = render(text, [{ userId: "bo", start: 0, end: 3 }]);
+  expect(html.match(/<mark\b/g)).toHaveLength(1);
+  expect(html).toContain("\uE0000\uE000");
+  expect(html).toContain('href="https://example.org/%EE%80%800%EE%80%80"');
+  expect(html).toContain("<code>&amp;#xE000;0&amp;#57344;</code>");
+  expect(html).toContain("<code>&amp;#xE000;0&amp;#57344;\n</code>");
+});
