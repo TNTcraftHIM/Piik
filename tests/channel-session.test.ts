@@ -1,3 +1,5 @@
+import { en } from "../src/client/locales/en";
+import { zh } from "../src/client/locales/zh";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ChannelConversation } from "../src/client/channel/conversation";
 import { ChannelSession } from "../src/client/channel/session";
@@ -435,7 +437,7 @@ test.each(["throws", "ignores-write"] as const)("owner bootstrap stays recoverab
 });
 
 test.each(["invalid_room_id", "room_not_found", "room_unavailable"])("%s presents an unavailable room instead of a password failure", error => {
-  expect(channelErrorPresentation(error, (_zh, en) => en).message).toBe("The room does not exist or is no longer available.");
+  expect(channelErrorPresentation(error, key => en[key]).message).toBe("The room does not exist or is no longer available.");
 });
 
 test("opening the site creates identity before independently applying a room invitation", async () => {
@@ -7648,8 +7650,8 @@ test("Browser capture titles use original metadata and confirmed overrides witho
     socket.receive({ type: "state", state });
     const bindings = bind.mock.calls.length;
     await expect(session.setScreenTitle(publication.id, "x".repeat(65))).rejects.toThrow("invalid_title");
-    expect(channelErrorPresentation("invalid_title", (_zh, en) => en).message).toBe("The title cannot exceed 64 characters.");
-    expect(channelErrorPresentation("invalid_title", (zh) => zh).message).toBe("标题不能超过 64 个字符。");
+    expect(channelErrorPresentation("invalid_title", key => en[key]).message).toBe("The title cannot exceed 64 characters.");
+    expect(channelErrorPresentation("invalid_title", key => zh[key]).message).toBe("标题不能超过 64 个字符。");
     const editing = session.setScreenTitle(publication.id, "  Weekly review  ");
     const edit = socket.sent.at(-1)!;
     expect(edit).toMatchObject({ type: "set_title", publicationId: publication.id, title: "Weekly review" });

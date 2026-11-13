@@ -22,11 +22,11 @@ function ConnectionField({ label, value }: { label: string; value: string }) {
 export function ChannelExternalInput({ input, busy, onStop, onClose }: {
   input: NativeExternalInput; busy: boolean; onStop(): void; onClose(): void;
 }) {
-  const { lang } = useCopy(), zh = lang === "zh";
+  const { t, lang } = useCopy(), zh = lang === "zh";
   const state = input.state === "live" ? (zh ? "正在分享 OBS 画面" : "Sharing OBS output")
     : input.state === "prepared" ? (zh ? "正在连接画面…" : "Connecting the picture…")
       : (zh ? "等待 OBS 开始推流" : "Waiting for OBS to start");
-  const { message } = channelErrorPresentation(input.error ?? null, (cn, en) => zh ? cn : en);
+  const { message } = channelErrorPresentation(input.error ?? null, t);
   return <ChannelSettingsDialog title="OBS / WHIP" compact onClose={onClose}>
     <div className="c3-settings-panels c3-external-input">
       <p role="status">{state}</p>

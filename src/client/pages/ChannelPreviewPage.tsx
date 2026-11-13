@@ -60,7 +60,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   layout?: InterfaceLayout; offerLayout?: boolean;
   onLayoutChange?: (value: InterfaceLayout) => void;
 }) {
-  const { lang, vis } = useCopy();
+  const { t, lang, vis } = useCopy();
   const zh = lang === "zh";
   const copy = (cn: string, en: string) => zh ? cn : en;
   const [pickerRoom, setPickerRoom] = useState<string | null>(null);
@@ -172,7 +172,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   }, []);
   useEffect(() => { if (!voiceStreams.length) closeVoiceAudioContext(); }, [voiceStreams.length, closeVoiceAudioContext]);
   useEffect(() => closeVoiceAudioContext, [closeVoiceAudioContext]);
-  const failure = channelErrorPresentation(channel.error, copy);
+  const failure = channelErrorPresentation(channel.error, t);
   useEffect(() => {
     if (!state) return;
     channel.browse(roomId);

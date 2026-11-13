@@ -37,7 +37,7 @@ export function ChannelRoomInvitation({ channel, room, onManageAccess }: {
 function RoomInvitation({ channel, room, onClose, onManageAccess }: {
   channel: ChannelController; room: ChannelRoom; onClose(): void; onManageAccess?(): void;
 }) {
-  const { lang } = useCopy(), zh = lang === "zh";
+  const { t, lang } = useCopy(), zh = lang === "zh";
   const { error, run } = useSettingsAction();
   const [invitation, setInvitation] = useState<RoomInvitationState | { state: "loading" | "failed" }>({ state: "loading" });
   const [retry, setRetry] = useState(0);
@@ -59,7 +59,7 @@ function RoomInvitation({ channel, room, onClose, onManageAccess }: {
   const passwordLink = room.access === "private" && room.hasPassword && !includeInvite;
   const invite = room.access === "public" || passwordLink ? roomURL?.href ?? ""
     : room.canManage && available && invitation.state === "available" ? invitation.url : "";
-  const { message } = channelErrorPresentation(error, (cn, en) => zh ? cn : en);
+  const { message } = channelErrorPresentation(error, t);
   const generate = (reset = false) => <ChannelAction icon="link" label={reset ? (zh ? "确认重置邀请" : "Confirm invitation reset")
     : (zh ? "生成免密邀请" : "Generate password-free invitation")} hint="hint-rotate-invite"
     busy={busy} disabled={!available || busy || invitation.state === "loading"}

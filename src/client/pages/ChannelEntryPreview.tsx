@@ -16,7 +16,7 @@ const cases = [
 
 /** Sample failures use the actual entry surface without opening a room session. */
 export function ChannelEntryPreview() {
-  const { lang } = useCopy();
+  const { t, lang } = useCopy();
   const zh = lang === "zh";
   const [selected, setSelected] = useState("offline");
   const [action, setAction] = useState<"retry" | "new-identity" | null>(null);
@@ -41,6 +41,6 @@ export function ChannelEntryPreview() {
         : (zh ? "正式组件与示例状态，不会连接站点。" : "Production components with sample states; no site connection.")}</p>
     </div>
     <ChannelSiteEntry key={sample.value} channel={channel}
-      failure={channelErrorPresentation(sample.error, (cn, en) => zh ? cn : en)} />
+      failure={channelErrorPresentation(sample.error, t)} />
   </div>;
 }

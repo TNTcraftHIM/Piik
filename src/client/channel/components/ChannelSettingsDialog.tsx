@@ -69,8 +69,8 @@ export function ChannelSettingsTabs<T extends string>({ id, label, tasks, select
 
 /** The action owner supplies its failure; error copy stays shared with the page. */
 function ChannelSettingsError({ error }: { error: string | null }) {
-  const { lang } = useCopy();
-  const { message } = channelErrorPresentation(error, (zh, en) => lang === "zh" ? zh : en);
+  const { t } = useCopy();
+  const { message } = channelErrorPresentation(error, t);
   return message && <p className="c3-settings-error" role="alert">{message}</p>;
 }
 

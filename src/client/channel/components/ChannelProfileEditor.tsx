@@ -13,7 +13,7 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, busy, onSa
   name: string; avatar: string | null; color: string; disabled: boolean; busy: boolean;
   onSave(profile: { name: string; avatar: string | null }): Promise<void>;
 }) {
-  const { lang } = useCopy(), zh = lang === "zh";
+  const { t, lang } = useCopy(), zh = lang === "zh";
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null), file = useRef<HTMLInputElement>(null), preparation = useRef(0);
   const [open, setOpen] = useState(false), [draft, setDraft] = useState(name), [picture, setPicture] = useState(avatar);
@@ -32,7 +32,7 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, busy, onSa
     finally { if (preparation.current === current) setPreparing(false); }
   }
   const locked = disabled || busy || preparing;
-  const { message } = channelErrorPresentation(error, (cn, en) => zh ? cn : en);
+  const { message } = channelErrorPresentation(error, t);
   return <>
     <span ref={trigger} className="c3-profile-editor"><Btn icon="pencil" title={{ text: zh ? "修改个人资料" : "Edit profile" }}
       hint="hint-rename" size="dense" quiet disabled={disabled} popoverTarget={id} controls={id} expanded={open} />

@@ -22,13 +22,13 @@ import "./channel-share-control.css";
 function ShareTitleEditor({ sharing, channel, disabled }: {
   sharing: Extract<ChannelPublication, { kind: "screen" }>; channel: ChannelController; disabled: boolean;
 }) {
-  const { lang } = useCopy(), zh = lang === "zh";
+  const { t, lang } = useCopy(), zh = lang === "zh";
   const id = useId(), details = useRef<HTMLDetailsElement>(null);
   const [open, setOpen] = useState(false), [draft, setDraft] = useState("");
   const { error, run } = useSettingsAction(open);
   const pending = channel.pending.has(`title:${sharing.id}`);
   const automatic = screenTitle({ ...sharing, title: null }, lang);
-  const { message } = channelErrorPresentation(error, (cn, en) => zh ? cn : en);
+  const { message } = channelErrorPresentation(error, t);
   const close = () => { if (details.current) details.current.open = false; };
   return <details ref={details} className="c3-share-title" onToggle={event => {
     if (event.target !== event.currentTarget) return;
