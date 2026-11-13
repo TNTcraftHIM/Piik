@@ -112,8 +112,7 @@ and inset cards use the smaller surface radius with a further inset radius for
 compact notices and fields. Shared `styles.css` root tokens own these roles,
 including previews and detached panels; do not round every adjacent region
 independently or use a pill for a panel. Media clipping subtracts the tile's
-border from its surface radius; a thumbnail with an attached footer rounds only
-the media's upper corners, while an attached pane keeps the shell edge.
+border from its surface radius; an attached pane keeps the shell edge.
 
 Keep the room invitation beside the upper room title, and group Share with its
 parameters on the opposite side. Personal voice and identity stay lower left.
@@ -140,11 +139,10 @@ regions. Source cards retain their media boundary inside the stage.
 
 Let the media stage use the available workspace. Grid gives watched pictures
 equal weight; focus gives one picture the main area and keeps the others in a
-thumbnail strip. Thumbnails retain a compact identity line and a direct stop
-watching or stop sharing action; selecting the picture promotes it to the full
-controls without remounting its player. Full-size grid
-and focused pictures use the same source-information bar and action order. The
-bar overlays the picture and follows playback-control visibility. Playback,
+thumbnail strip. All pictures share the same source-information overlay and
+action order. Thumbnail density retains the title and direct stop watching or
+stop sharing action; selecting the picture promotes it to the full controls
+without remounting its player. The bar follows playback-control visibility. Playback,
 volume, focus, source selection and share settings stay directly available.
 Narrow cards condense captions before wrapping; use a second compact overlay row
 only when the direct controls otherwise cannot fit, without an extra menu.
@@ -211,6 +209,10 @@ Following [Discord's contextual reply interaction](https://support.discord.com/h
 message actions stay close to their content and appear on hover or focus;
 tapping a focusable message reveals the same controls on touch. Existing reaction
 counts remain visible when those actions are hidden.
+Keep consecutive messages within an author group close, with a larger break
+between groups. Hidden actions do not determine text height or reserve a column
+beside multiline content. Their floating toolbar preserves the message layout
+and remains reachable at the conversation's scrolling edges.
 [W3C focus guidance](https://www.w3.org/WAI/WCAG22/Understanding/focus-visible.html)
 requires visible keyboard focus; it does not require the same outline for a pointer click.
 

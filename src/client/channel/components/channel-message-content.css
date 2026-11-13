@@ -16,6 +16,3 @@
 .c3-code-block pre { margin: 0; padding: 10px 12px; overflow-x: auto; white-space: pre; tab-size: 4; }
 .c3-code-block pre code { white-space: inherit; }
 .c3-code-block small { display: block; padding: 0 12px 10px; color: var(--danger); }
-@media (hover: none), (any-pointer: coarse) {
-  .c3-message-markdown > p:only-child { min-height: 44px; padding-block: max(0px, calc((44px - 1lh) / 2)); }
-}
