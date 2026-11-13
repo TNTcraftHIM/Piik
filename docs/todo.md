@@ -7,6 +7,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Complete the v2.6.3 download mirror.** GitHub and managed services are
+  updated. AtomGit source synchronization has not supplied the release commit;
+  resume the [original-artifact mirror](./operations/github.md#atomgit-download-mirror)
+  when it is ready, then verify uploaded packages and anonymous checksums.
 - [ ] **Windows sound only works with exclusion (#534).** Compare the affected
   application's playback endpoint with Piik's default-endpoint capture. The
   [audio scope control](./research/native-client-media.md#windows-audio-exclusion)
