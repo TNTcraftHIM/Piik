@@ -142,11 +142,14 @@ to an independent Browser. Closing it with both paths active retired the App,
 sockets and capture processes while retaining confirmed messages. The existing
 App approval flow also passed against an independent current Site: the child
 retained its opener and authorization return, then closed without stopping the
-App. Closing the main window retired any remaining child windows. Native sound,
-microphone/camera permission, file saves and non-Windows operation remain
-unverified. The installed WebView2 renderer crashed during an automation
-accessibility snapshot; ordinary clicks and page reload worked, but that does
-not establish accessibility compatibility or identify the crash's cause.
+App. Closing the main window retired any remaining child windows. Shared
+attachment upload and download retained the filename and exact bytes using the
+runtime's default download behavior; that path needed no shell adapter.
+Native sound, microphone/camera permission, Save As and non-Windows operation
+remain unverified. The installed WebView2 renderer crashed with `0xC0000005`
+when the automation tool enabled accessibility on its attached session. Direct
+page-level accessibility queries passed, but this does not identify the crash's
+cause or establish accessibility compatibility. Ordinary reload recovered.
 
 The window must present Piik as an application: Piik owns navigation, settings
 and player controls; the host window owns minimize, maximize and close. Do not
