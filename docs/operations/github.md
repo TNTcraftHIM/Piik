@@ -100,11 +100,13 @@ mirror's initialized default branch when the local tag does not exist.
 Its repository Actions secret is `ATOMGIT_TOKEN`. Never put this token in source,
 a remote URL or a distributed package. GitHub publication keeps its scoped token.
 
-Use a writable repository for package distribution. AtomGit's Pull-mirror mode
-rejects Release creation when it needs to create a tag, with an `image repository`
-error. Remove that Pull association in **Project Settings → Repository Mirroring**
-without deleting the repository or its Releases. Automatic source synchronization
-is optional; it must not make the distribution repository read-only. Provider-generated
+AtomGit's current Pull-mirror repository rejects new-tag creation with an
+`image repository` error. The platform's immediate-sync action can supply that
+tag, after which package publication resumes. The overwrite/force setting did
+not remove this restriction; disabling synchronization or removing its association
+has not been verified as a conversion to a writable repository. Keep the existing
+configuration until a supported replacement is verified. A blocked publication
+remains unfinished release work, not a successful deferred mirror. Provider-generated
 source archives are not the canonical source linked in the mirrored release body.
 
 After a completed main-push CI run, the workflow checks the current stable GitHub
