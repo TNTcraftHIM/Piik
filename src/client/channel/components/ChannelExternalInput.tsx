@@ -13,7 +13,7 @@ function ConnectionField({ label, value }: { label: string; value: string }) {
   return <div className="c3-external-input-field">
     <label htmlFor={id}>{label}</label>
     <div><input id={id} className="c3-input" readOnly value={value} onFocus={event => event.currentTarget.select()} />
-      <ChannelAction icon={copy.status === "copied" ? "check" : "copy"} quiet
+      <ChannelAction icon={copy.status === "copied" ? "check" : "copy"} quiet iconOnly textTooltip
         label={copy.status === "copied" ? (zh ? "已复制" : "Copied") : `${zh ? "复制" : "Copy"} ${label}`} onClick={copy.copy} /></div>
     {copy.status === "failed" && <p role="status">{zh ? "请选中内容后手动复制。" : "Select the value and copy it manually."}</p>}
   </div>;
