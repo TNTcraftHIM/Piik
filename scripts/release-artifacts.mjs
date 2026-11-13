@@ -14,6 +14,7 @@ export function readReleaseArtifacts(directory, version, revision) {
   const packages = [];
   const servers = [];
   const targets = new Set();
+  const packagesByTarget = new Map();
   function asset(name) {
     if (typeof name !== "string" || basename(name) !== name || !/^[a-zA-Z0-9._-]+$/.test(name)) {
       throw new Error("Release asset name is invalid");
@@ -38,6 +39,7 @@ export function readReleaseArtifacts(directory, version, revision) {
       throw new Error(`Release artifact checksum mismatch: ${name}`);
     }
     packages.push(archive);
+    packagesByTarget.set(target, archive);
     const serverTarget = SERVER_PACKAGE_TARGETS.find(candidate => candidate.id === target);
     if (serverTarget) {
       if (asset(descriptor.manifest).sha256 !== descriptor.manifestSha256) {
@@ -54,5 +56,5 @@ export function readReleaseArtifacts(directory, version, revision) {
     throw new Error("Publication requires every registered Server and App target");
   }
   // Sidecars prove the local build; only installable packages are public assets.
-  return { files: packages, servers, targets: [...targets] };
+  return { version, revision, files: packages, servers, targets: [...targets], packagesByTarget };
 }

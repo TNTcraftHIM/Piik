@@ -438,9 +438,15 @@ resolve and verify the official package; a connected site's page cannot choose a
 executable or authorize its replacement.
 
 Update the complete executable, Web assets, helper and notices as one bundle.
-Keep application data and the saved local port outside that replacement. A signed
-descriptor must bind the version, target, revision, size and bundle digest;
-a checksum from the same download source does not establish publisher authority.
+Only a dedicated program directory can be replaced; the current flat ZIP does not
+make every executable parent directory Piik-owned. Keep application data, including
+the WebView profile and saved site port, outside that replacement. The publisher
+can derive one version-level `update.json` from its verified target descriptors,
+binding version and source revision to each target's artifact name, size and digest.
+Sign its original bytes and publish `update.json.sig` alongside it; both download
+lines carry the same bytes. Existing descriptors remain build evidence, not a
+second update plan. A checksum from the download source alone does not establish
+publisher authority.
 Publisher-key custody and release signing still need their delivery decision.
 The first updater-capable App requires an ordinary installation of its trust root.
 
@@ -448,10 +454,20 @@ For the requested faster-line choice, compare a bounded initial portion of at mo
 two actual downloads of the same signed artifact, then cancel the losing transfer.
 API latency alone does not measure package transfer. Downloading can coexist with
 current activity; installing waits for explicit restart and the existing orderly
-retirement of hosting, media, transfers and input. A small replacement helper can
-stage the new bundle, retain the old one and restore it if replacement or startup
-fails. It must not roll back authority databases. Platform replacement and recovery
-need actual installed-package acceptance before offering automatic installation.
+retirement of hosting, media, transfers and input. A small replacement helper waits
+for the old process to exit, then moves the current bundle aside and installs the
+staged bundle on the same volume. A failed replacement or process creation can
+restore the old directory while retaining all recoverable files. Once the new
+process has run, it may already have written data; a startup or health failure
+does not authorize automatic downgrade. Keep an old program copy for explicit
+recovery and never roll back authority databases.
+
+A local Windows control verified this replacement boundary with real executable
+processes and a blocked directory rename. A separate temporary-key control verified
+Node signatures with Rust `ring` before reading the update identity and package
+digest. These establish the primitive boundaries, not an installed updater or
+published trust root. Platform replacement still needs a complete App acceptance
+flow before automatic installation is offered.
 
 [Tauri's updater](https://v2.tauri.app/plugin/updater/) supplies signing and installer
 semantics, but its host and installer layout do not directly fit the existing Wry
