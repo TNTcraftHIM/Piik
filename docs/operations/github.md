@@ -117,13 +117,21 @@ signing identity before distributing a package that promises automatic updates.
 ## AtomGit Download Mirror
 
 [AtomGit TNTcraftHIM/Piik](https://atomgit.com/TNTcraftHIM/Piik) is the public
-source and Release mirror. GitHub owns development, issues and original packages.
-AtomGit's configured repository synchronization handles branches, tags and commits;
-the **AtomGit mirror** GitHub workflow separately copies published binary assets.
-Git synchronization remains AtomGit's responsibility; this workflow does not push,
-create or change Git references, and does not ask users to synchronize them manually.
+download mirror. GitHub owns development, issues, source identity and original packages.
+The **AtomGit mirror** GitHub workflow copies published binary assets. Repository
+synchronization is optional and must not gate package distribution. A mirror's
+local Release tag only locates attachments; the GitHub source marker and verified
+original package digests establish their identity. Release creation uses the
+mirror's initialized default branch when the local tag does not exist.
 Its repository Actions secret is `ATOMGIT_TOKEN`. Never put this token in source,
 a remote URL or a distributed package. GitHub publication keeps its scoped token.
+
+Use a writable repository for package distribution. AtomGit's Pull-mirror mode
+rejects Release creation when it needs to create a tag, with an `image repository`
+error. Remove that Pull association in **Project Settings → Repository Mirroring**
+without deleting the repository or its Releases. Automatic source synchronization
+is optional; it must not make the distribution repository read-only. Provider-generated
+source archives are not the canonical source linked in the mirrored release body.
 
 After a completed main-push CI run, the workflow checks the current stable GitHub
 release and finds its original publishing CI run, even when the triggering run
@@ -134,18 +142,19 @@ If that published Release includes signed update metadata, the mirror restores
 those two original GitHub attachments, verifies their digest and signature against
 the package inventory, and uploads identical bytes. It never generates a new
 signature or requires the private signing key.
-GitHub publication and **Website** do not depend on mirror success. An unfinished mirror remains a
+An authorized release is not complete until its mirror and managed deployments
+pass their postflight checks. GitHub publication and **Website** can proceed independently,
+but a failed mirror remains unfinished release work. An unfinished mirror remains a
 prerelease until every package passes anonymous full-download SHA-256 validation.
 This includes the original signed Android APK without rebuilding it.
 
 Every three hours the same workflow also checks the latest GitHub release's mirror
 metadata. A stable mirror with the matching source marker and complete package
 inventory of uploaded attachments needs no further work; provider-generated source
-archives do not count as packages. A missing source commit or matching tag is
-reported as deferred until AtomGit's scheduled Git synchronization completes.
-Both outcomes use a sparse tools-only checkout and skip dependency installation
-and artifact downloads. API failures
-or conflicting source identities remain failures, not successful deferrals.
+archives do not count as packages. A missing or incomplete prerelease resumes
+publication from original artifacts without reading mirrored commits or tags.
+Completed mirrors use a sparse tools-only checkout and skip dependency installation
+and artifact downloads. API failures or conflicting source identities remain failures.
 
 When ready, recovery locates the completed main-push CI run for that exact source,
 downloads its original artifacts and resumes the existing publisher. It never
@@ -161,9 +170,10 @@ For recovery, rerun **AtomGit mirror** with the original publishing CI run ID:
 gh workflow run atomgit-mirror.yml --repo TNTcraftHIM/Piik --ref main -f run_id=RUN_ID
 ```
 
-The run ID is optional for a manual status check; without it, the workflow uses
-the same latest-release lookup as its scheduled check. Ordinary delayed source
-synchronization or interrupted uploads need no manual trigger.
+The run ID is optional; without it, the workflow resolves the latest GitHub release.
+The scheduled check is recovery support, not the release-completion gate. If a
+scheduled run is delayed or an upload fails, run this recovery during the authorized
+release instead of assuming a later schedule will finish it.
 
 The source must be a completed main-push CI run matching the latest published
 GitHub release. The workflow runs trusted main tooling and treats artifacts only

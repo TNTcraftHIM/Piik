@@ -12,24 +12,6 @@ export async function readMirror(path) {
   return response.json();
 }
 
-// Git synchronization belongs to AtomGit. Release creation must never create a tag.
-export async function mirrorSourceReady(version, revision, read = readMirror) {
-  const commit = await read(`/commits/${revision}`);
-  if (!commit) return false;
-  if (commit.sha !== revision) throw new Error("AtomGit source commit differs from the published source");
-  for (let page = 1; page <= 10; page++) {
-    const tags = await read(`/tags?per_page=100&page=${page}`);
-    if (!Array.isArray(tags)) throw new Error("Unexpected AtomGit tag list");
-    const tag = tags.find(tag => tag.name === version);
-    if (tag) {
-      if (tag.commit?.sha !== revision) throw new Error("AtomGit release tag belongs to another source revision");
-      return true;
-    }
-    if (tags.length < 100) return false;
-  }
-  throw new Error("AtomGit tag inventory exceeds 10 pages; source readiness cannot be determined");
-}
-
 export async function mirrorReadiness(source, read = readMirror) {
   if (source.draft !== false || source.prerelease !== false || typeof source.tag_name !== "string"
     || !/^[a-f0-9]{40}$/.test(source.target_commitish)) throw new Error("A published GitHub release with a full source SHA is required");
@@ -55,7 +37,7 @@ export async function mirrorReadiness(source, read = readMirror) {
       return { status: "complete", version, revision };
     }
   }
-  return { status: await mirrorSourceReady(version, revision, read) ? "ready" : "deferred", version, revision };
+  return { status: "ready", version, revision };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -65,8 +47,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const result = await mirrorReadiness(source);
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `status=${result.status}\n`);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY,
-    result.status === "deferred" ? `Mirror ${result.version} deferred until AtomGit's scheduled Git synchronization supplies the matching commit and tag. The next mirror check will resume automatically.\n`
-      : result.status === "complete" ? `Mirror ${result.version} is already stable with the complete published attachment inventory.\n`
+    result.status === "complete" ? `Mirror ${result.version} is already stable with the complete published attachment inventory.\n`
         : `Mirror ${result.version} is ready to resume from original CI artifacts.\n`);
   console.log(JSON.stringify(result));
 }

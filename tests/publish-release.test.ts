@@ -52,7 +52,7 @@ describe("AtomGit mirror publication", () => {
   async function mirror(options: { existing?: "pending" | "published" | "unknown"; corrupt?: boolean;
     updates?: { name: string; bytes: Buffer }[];
     wrongSource?: boolean; wrongDigest?: boolean; missing?: boolean; uploadFailure?: boolean | number;
-    stale?: boolean; supersededDuringUpload?: boolean; mirrorSourceMissing?: boolean;
+    stale?: boolean; supersededDuringUpload?: boolean;
     downloadFault?: { remaining: number; name: "TimeoutError" | "TypeError" };
     fault?: { method: string; remaining: number; status: number | "timeout" | "body-timeout" } } = {}) {
     const interrupted = (bytes: Uint8Array, error: Error) => {
@@ -136,11 +136,10 @@ describe("AtomGit mirror publication", () => {
         ? Response.json({ id: 42, tag_name: version, body: options.existing === "unknown" ? "unknown" : marker,
           prerelease: pending, assets: [...present] }) : new Response(null, { status: 404 });
       if (path === "") return Response.json({ private: false, default_branch: "master" });
-      if (path === `/commits/${revision}`) return options.mirrorSourceMissing ? new Response(null, { status: 404 }) : Response.json({ sha: revision });
-      if (path === "/tags?per_page=100&page=1") return Response.json([{ name: version, commit: { sha: revision } }]);
       if (path === "/releases" && method === "POST") {
         const body = JSON.parse(String(init?.body));
         expect(body.release_status).toBe("pre");
+        expect(body.target_commitish).toBe("master");
         expect(body.body).toContain(marker);
         return Response.json({ ...body, prerelease: true, assets: [] });
       }
@@ -175,13 +174,7 @@ describe("AtomGit mirror publication", () => {
     return { mutations, failure };
   }
 
-  it("waits for AtomGit Git synchronization without creating a release or tag", async () => {
-    const result = await mirror({ mirrorSourceMissing: true });
-    expect(result.failure).toContain("Git synchronization is pending");
-    expect(result.mutations).toEqual([]);
-  });
-
-  it("copies the published bytes, verifies anonymous downloads and marks stable last", async () => {
+  it("copies original packages without mirrored source lookups, verifies anonymous downloads and marks stable last", async () => {
     const result = await mirror();
     expect(result.failure).toBeUndefined();
     expect(result.mutations[0]).toBe("POST /releases");

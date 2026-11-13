@@ -20,6 +20,10 @@ the feedback period; they do not delay that delivery.
   fixes a separate reproduced defect; verify the updated candidate on the
   reported setup and whether intended sound remains after exclusion. Neither
   that correction nor the earlier local-preview fix yet explains the PID-specific report.
+- [ ] **Release mirror repository mode.** Remove AtomGit's read-only Pull
+  association so future Release tags can be created independently of source
+  synchronization. Keep the repository URL and published attachments;
+  [mirror operations](./operations/github.md#atomgit-download-mirror) owns setup.
 - [ ] **Windows sound only works with exclusion (#534).** Compare the affected
   application's playback endpoint with Piik's default-endpoint capture. The
   [output-routing control](./research/media-fidelity.md#windows-output-routing)

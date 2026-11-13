@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { mirrorReadiness, mirrorSourceReady, readMirror } from "../scripts/release-mirror-ready.mjs";
+import { mirrorReadiness, readMirror } from "../scripts/release-mirror-ready.mjs";
 
 const revision = "a".repeat(40), version = "v2.6.1";
 const asset = { name: "piik-app-fixture.zip", state: "uploaded", size: 1024, digest: `sha256:${"b".repeat(64)}` };
@@ -25,23 +25,18 @@ test("signed releases require both original update attachments in the completed 
   ] }))).toEqual({ status: "complete", version, revision });
 });
 
-test.each(["commit", "tag"])("missing synced %s defers without a Git mutation", async missing => {
-  const read = vi.fn(async (path: string) => path.startsWith("/releases/") ? null
-    : path.startsWith("/commits/") ? missing === "commit" ? null : { sha: revision } : []);
-  expect(await mirrorReadiness(source, read)).toEqual({ status: "deferred", version, revision });
-});
-
-test("a pending release resumes only after its exact tag and source exist", async () => {
-  const read = vi.fn(async (path: string) => path.startsWith("/releases/") ? { ...mirror, prerelease: true, assets: [] }
-    : path.startsWith("/commits/") ? { sha: revision } : [{ name: version, commit: { sha: revision } }]);
+test.each([null, { ...mirror, prerelease: true, assets: [] }])("a missing or pending mirror is ready without querying mirrored commits or tags", async pending => {
+  const read = vi.fn(async (path: string) => {
+    if (path !== `/releases/tags/${version}`) throw new Error("Mirrored source is irrelevant to release distribution");
+    return pending;
+  });
   expect(await mirrorReadiness(source, read)).toEqual({ status: "ready", version, revision });
-  expect(read.mock.calls.every(([path]) => path.startsWith("/releases/") || path.startsWith("/commits/") || path.startsWith("/tags?"))).toBe(true);
+  expect(read.mock.calls).toEqual([[`/releases/tags/${version}`]]);
 });
 
-test("a missing attachment in a published release and a conflicting tag fail rather than silently repairing identity", async () => {
+test("a missing attachment or conflicting source marker fails rather than claiming a completed mirror", async () => {
   await expect(mirrorReadiness(source, async () => ({ ...mirror, assets: [] }))).rejects.toThrow("incomplete");
-  await expect(mirrorSourceReady(version, revision, async (path: string) => path.startsWith("/commits/")
-    ? { sha: revision } : [{ name: version, commit: { sha: "c".repeat(40) } }])).rejects.toThrow("another source");
+  await expect(mirrorReadiness(source, async () => ({ ...mirror, body: `<!-- piik-source: ${"c".repeat(40)} -->` }))).rejects.toThrow("different or unknown source revision");
 });
 
 test("a provider source archive cannot stand in for a published package", async () => {
@@ -50,16 +45,14 @@ test("a provider source archive cannot stand in for a published package", async 
   }))).rejects.toThrow("incomplete");
 });
 
-test("a truncated tag inventory fails after ten pages rather than claiming the source is absent", async () => {
-  const read = vi.fn(async (path: string) => path.startsWith("/commits/") ? { sha: revision }
-    : Array.from({ length: 100 }, (_, index) => ({ name: `other-${index}`, commit: { sha: revision } })));
-  await expect(mirrorSourceReady(version, revision, read)).rejects.toThrow("exceeds 10 pages");
-  expect(read).toHaveBeenCalledTimes(11);
-  expect(read.mock.calls.at(-1)).toEqual(["/tags?per_page=100&page=10"]);
+test.each([{ ...source, draft: true }, { ...source, prerelease: true }, { ...source, target_commitish: "main" }])("GitHub published source identity remains required before any mirror lookup", async invalid => {
+  const read = vi.fn();
+  await expect(mirrorReadiness(invalid, read)).rejects.toThrow("published GitHub release");
+  expect(read).not.toHaveBeenCalled();
 });
 
-test("readiness treats an unavailable API as failure, not pending synchronization", async () => {
+test("readiness treats an unavailable API as failure, not an absent or completed mirror", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 503 })));
-  try { await expect(readMirror("/commits/" + revision)).rejects.toThrow("HTTP 503"); }
+  try { await expect(mirrorReadiness(source, readMirror)).rejects.toThrow("HTTP 503"); }
   finally { vi.unstubAllGlobals(); }
 });
