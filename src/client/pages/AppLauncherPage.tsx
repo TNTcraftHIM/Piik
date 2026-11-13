@@ -16,6 +16,7 @@ import { currentThemePreference, subscribeTheme } from "../ui/theme";
 import { clientLaunchURL, readPreferredAppMode, savePreferredAppMode, type AppMode, type ClientLaunchPresentation } from "../lib/app-launch";
 import type { AppReleaseIdentity } from "../lib/release-update";
 import { useReleaseUpdate } from "../lib/use-release-update";
+import { AppSiteBookmarks } from "./AppSiteBookmarks";
 import { downloadBlob } from "../lib/download";
 
 const localCertificateSchema = z.object({ origin: z.string().url(), sha256Fingerprint: z.string().regex(/^[A-Fa-f0-9]{64}$/) });
@@ -33,6 +34,7 @@ const launcherStateSchema = z.object({
   version: z.string().default("development"),
   packageTarget: z.string().optional(),
   controlPort: z.number().int().optional(),
+  windowNavigation: z.boolean().default(false),
   debug: z.boolean().optional(),
   lan: z.object({
     addresses: z.array(z.object({ address: z.string(), name: z.string() })),
@@ -70,6 +72,8 @@ export function AppLauncherPage() {
   const [target, setTarget] = useState<string>();
   const [localCertificate, setLocalCertificate] = useState<LocalCertificate>();
   const [controlPort, setControlPort] = useState<number>();
+  const [windowNavigation, setWindowNavigation] = useState(false);
+  const [bookmarksOnly] = useState(() => new URLSearchParams(location.search).has("bookmarks") || new URLSearchParams(location.hash.slice(1)).has("open"));
   const [siteBusy, setSiteBusy] = useState(false);
   const [siteError, setSiteError] = useState<string>();
   const [siteEntry, setSiteEntry] = useState({ origin: "", confirming: false });
@@ -124,6 +128,7 @@ export function AppLauncherPage() {
           restoredSettings = true;
         }
         setControlPort(state.controlPort);
+        setWindowNavigation(state.windowNavigation);
         setTarget(state.target);
         setLocalCertificate(state.localCertificate);
         setStarting(state.starting === true);
@@ -305,7 +310,7 @@ export function AppLauncherPage() {
       )} />
       <main className="lr-client-launch">
         {debugError && <Pill icon="alert" tone="bad" comic="warning" alert label={t(appDebug ? "client.launch.debugExportFailed" : "client.launch.debugFailed")} />}
-        {loading || (starting && !requestedSite) ? (
+        {loading || (starting && !requestedSite && !bookmarksOnly) ? (
           <LoadingStatus label={starting ? "client.launch.starting" : "common.loading"} waitingCaption={starting} />
         ) : error?.kind === "load" ? (
           <div className="lr-client-launch-panel">
@@ -324,6 +329,8 @@ export function AppLauncherPage() {
               onClick={() => window.location.reload()}
             />
           </div>
+        ) : bookmarksOnly ? (
+          <AppSiteBookmarks windowNavigation={windowNavigation} closeOnOpen />
         ) : requestedSite ? (
           <section className="lr-client-approval" aria-labelledby="site-approval-title">
             <header className="lr-client-approval-heading">
@@ -368,7 +375,8 @@ export function AppLauncherPage() {
               </a>}
             </div>
           </section>
-        ) : (
+        ) : (<>
+          <AppSiteBookmarks windowNavigation={windowNavigation} />
           <LauncherForm
             roomError={error?.kind === "launch" ? <>
               <Pill icon="alert" tone="bad" label={t("client.launch.error")} alert comic="signal-failed" />
@@ -403,7 +411,7 @@ export function AppLauncherPage() {
             {update ? <AppReleaseNotice update={update} native={appUpdate.view ? { ...appUpdate, view: appUpdate.view } : undefined} />
               : appUpdate.view && (appUpdate.view.operationId || appUpdate.error) && <AppUpdateStatus {...appUpdate} view={appUpdate.view} />}
           </LauncherForm>
-        )}
+        </>)}
       </main>
       <footer className="lr-client-footer">
         <a className="lr-btn is-dense is-quiet" href="https://github.com/TNTcraftHIM/Piik" target="_blank" rel="noopener noreferrer">GitHub<span aria-hidden="true"> ↗</span></a>

@@ -12,8 +12,8 @@ import { channelErrorPresentation } from "../error-presentation";
 import "./channel-settings-dialog.css";
 
 /** Task contents keep their own state; the native modal owns focus and dismissal. */
-export function ChannelSettingsDialog({ title, caption, compact = false, error = null, className = "", dismissOnBackdrop = false, onClose, children }: {
-  title: string; caption?: string; compact?: boolean; error?: string | null; className?: string; dismissOnBackdrop?: boolean; onClose(): void; children: ReactNode;
+export function ChannelSettingsDialog({ title, caption, compact = false, error = null, className = "", dismissOnBackdrop = false, closeDisabled = false, onClose, children }: {
+  title: string; caption?: string; compact?: boolean; error?: string | null; className?: string; dismissOnBackdrop?: boolean; closeDisabled?: boolean; onClose(): void; children: ReactNode;
 }) {
   const ownerDocument = useSurfaceDocument();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -31,18 +31,19 @@ export function ChannelSettingsDialog({ title, caption, compact = false, error =
     return () => { if (element.open) element.close(); };
   }, [ownerDocument]);
   return ownerDocument && createPortal(<dialog ref={dialog} className={`c3-settings-dialog ${className}`} data-compact={compact || undefined}
-    closedby={dismissOnBackdrop ? "any" : "closerequest"}
+    closedby={closeDisabled ? "none" : dismissOnBackdrop ? "any" : "closerequest"}
+    onCancel={event => { if (closeDisabled) event.preventDefault(); }}
     aria-labelledby={titleId} onClose={event => { if (!event.currentTarget.open) onClose(); }}
     onPointerDown={event => { backdropPointer.current = dismissOnBackdrop && !("closedBy" in event.currentTarget) && outside(event) ? event.pointerId : null; }}
     onPointerUp={event => {
-      if (backdropPointer.current === event.pointerId && outside(event)) event.currentTarget.close();
+      if (!closeDisabled && backdropPointer.current === event.pointerId && outside(event)) event.currentTarget.close();
       backdropPointer.current = null;
     }} onPointerCancel={() => { backdropPointer.current = null; }}>
     <header className="c3-settings-dialog-heading">
       {/* Start at the heading so automatic focus does not open an action's tooltip. */}
       <div>{caption && <p>{caption}</p>}<h2 id={titleId} tabIndex={-1}
         ref={element => { element?.setAttribute("autofocus", ""); }}>{title}</h2></div>
-      <ChannelAction icon="x" iconOnly quiet textTooltip label={lang === "zh" ? "关闭" : "Close"}
+      <ChannelAction icon="x" iconOnly quiet textTooltip disabled={closeDisabled} label={lang === "zh" ? "关闭" : "Close"}
         onClick={() => dialog.current?.close()} />
     </header>
     <div className="c3-settings-content">{children}</div>

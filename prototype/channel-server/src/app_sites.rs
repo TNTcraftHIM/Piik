@@ -8,6 +8,13 @@ use uuid::Uuid;
 
 pub(super) struct Sites(Connection);
 
+#[derive(Serialize)]
+pub(super) struct Bookmark {
+    pub id: Uuid,
+    pub origin: String,
+    pub name: String,
+}
+
 #[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "value", rename_all = "camelCase")]
 pub(super) enum StartupIntent {
@@ -56,9 +63,50 @@ impl Sites {
         db.execute_batch(
             "CREATE TABLE IF NOT EXISTS app_site (
                origin TEXT PRIMARY KEY, data_id TEXT NOT NULL, allowed INTEGER NOT NULL);
-             CREATE TABLE IF NOT EXISTS app_setting (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+             CREATE TABLE IF NOT EXISTS app_setting (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS app_bookmark (
+               id TEXT PRIMARY KEY, origin TEXT NOT NULL UNIQUE, name TEXT NOT NULL);",
         )?;
         Ok(Self(db))
+    }
+    pub fn bookmarks(&self) -> Result<Vec<Bookmark>> {
+        let mut statement = self
+            .0
+            .prepare("SELECT id, origin, name FROM app_bookmark ORDER BY rowid")?;
+        let rows = statement.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get(1)?, row.get(2)?))
+        })?;
+        rows.map(|row| {
+            let (id, origin, name) = row?;
+            Ok(Bookmark {
+                id: Uuid::parse_str(&id)?,
+                origin,
+                name,
+            })
+        })
+        .collect()
+    }
+    // False means another bookmark already owns this origin.
+    pub fn save_bookmark(&self, bookmark: &Bookmark) -> Result<bool> {
+        let duplicate: bool = self.0.query_row(
+            "SELECT EXISTS(SELECT 1 FROM app_bookmark WHERE origin=?1 AND id<>?2)",
+            params![bookmark.origin, bookmark.id.to_string()],
+            |row| row.get(0),
+        )?;
+        if duplicate {
+            return Ok(false);
+        }
+        self.0.execute(
+            "INSERT INTO app_bookmark(id,origin,name) VALUES(?1,?2,?3)
+             ON CONFLICT(id) DO UPDATE SET origin=excluded.origin,name=excluded.name",
+            params![bookmark.id.to_string(), bookmark.origin, bookmark.name],
+        )?;
+        Ok(true)
+    }
+    pub fn delete_bookmark(&self, id: Uuid) -> Result<()> {
+        self.0
+            .execute("DELETE FROM app_bookmark WHERE id=?1", [id.to_string()])?;
+        Ok(())
     }
     pub fn approved(&self) -> Result<BTreeMap<String, Uuid>> {
         let mut statement = self
@@ -162,6 +210,44 @@ impl Sites {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bookmarks_reopen_edit_and_delete_without_changing_approval_or_startup() -> Result<()> {
+        let directory = tempfile::tempdir()?;
+        let site = "https://friend.example";
+        let mut bookmark = Bookmark {
+            id: Uuid::new_v4(),
+            origin: site.into(),
+            name: "Friend".into(),
+        };
+        let namespace = {
+            let mut sites = Sites::open(directory.path())?;
+            assert!(sites.save_bookmark(&bookmark)?);
+            assert!(sites.approved()?.is_empty());
+            assert!(matches!(sites.startup()?, StartupIntent::None));
+            let namespace = sites.approve(site, true)?;
+            sites.set_startup(&StartupIntent::External(site.into()))?;
+            namespace
+        };
+        let sites = Sites::open(directory.path())?;
+        assert_eq!(sites.bookmarks()?[0].id, bookmark.id);
+        bookmark.origin = "https://next.example".into();
+        bookmark.name = String::new();
+        assert!(sites.save_bookmark(&bookmark)?);
+        assert_eq!(sites.bookmarks()?[0].origin, bookmark.origin);
+        assert!(sites.bookmarks()?[0].name.is_empty());
+        let duplicate = Bookmark {
+            id: Uuid::new_v4(),
+            origin: bookmark.origin.clone(),
+            name: "Other".into(),
+        };
+        assert!(!sites.save_bookmark(&duplicate)?);
+        sites.delete_bookmark(bookmark.id)?;
+        assert!(sites.bookmarks()?.is_empty());
+        assert_eq!(sites.approved()?.get(site), Some(&namespace));
+        assert!(matches!(sites.startup()?, StartupIntent::External(origin) if origin == site));
+        Ok(())
+    }
 
     #[test]
     fn capture_requires_current_consent_and_preserves_room_namespace() -> Result<()> {

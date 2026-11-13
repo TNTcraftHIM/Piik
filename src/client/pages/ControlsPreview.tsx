@@ -18,6 +18,7 @@ import { HostShareControls } from "../components/living/HostShareControls";
 import { HostRemoteControl } from "../components/living/HostRemoteControl";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { LauncherForm } from "../components/living/LauncherForm";
+import { BookmarkPreview } from "./BookmarkPreview";
 import type { AppMode } from "../lib/app-launch";
 import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
 import type { AppUpdateView } from "../lib/use-app-update";
@@ -380,6 +381,7 @@ export function ControlsPreview() {
         </LauncherForm>
       </div>
     </section>
+    <BookmarkPreview />
     <section id="interaction-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">09</span><div><h2>{en ? "A little company" : "聊两句，丢个番茄。"}</h2>
         <p>{en ? "Chat, reactions and room voice share one window. This catalogue simulates voice controls without opening your microphone." : "聊天、表情与房间语音共用一个窗口。这里的语音控件仅作演示，不会打开麦克风。"}</p></div></header>

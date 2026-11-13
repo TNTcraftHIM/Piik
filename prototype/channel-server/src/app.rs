@@ -21,7 +21,7 @@ use anyhow::{anyhow, bail, Result};
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        DefaultBodyLimit, State,
+        DefaultBodyLimit, Path, State,
     },
     http::{header, HeaderMap, Request as HttpRequest, StatusCode},
     middleware::{self, Next},
@@ -80,6 +80,7 @@ pub struct Config {
     pub data_root: PathBuf,
     pub assets: PathBuf,
     pub open_browser: bool,
+    pub window_navigation: Option<Arc<dyn Fn(String) -> bool + Send + Sync>>,
     pub cloudflared: PathBuf,
     pub ice_servers: Vec<Value>,
     pub update: update::Config,
@@ -385,6 +386,15 @@ pub async fn serve(
         .route("/rooms/{domain}/{user}/hosting", get(backup::describe))
         .route("/api/client-launcher", get(launcher))
         .route(
+            "/api/client-launcher/bookmarks",
+            get(bookmarks).post(save_bookmark),
+        )
+        .route(
+            "/api/client-launcher/bookmarks/{id}",
+            axum::routing::delete(delete_bookmark),
+        )
+        .route("/api/client-launcher/open", post(open_window))
+        .route(
             "/api/client-launcher/update",
             get(update_state).post(update_request),
         )
@@ -471,14 +481,18 @@ async fn access(
     };
     if path.starts_with("/api/client-launcher") {
         let local = origin.as_ref().is_some_and(|site| local_origin(&app, site));
-        if request.method() == axum::http::Method::POST {
+        if !matches!(
+            *request.method(),
+            axum::http::Method::GET | axum::http::Method::HEAD | axum::http::Method::OPTIONS
+        ) {
             if !local
-                || headers
-                    .get(header::CONTENT_TYPE)
-                    .and_then(|value| value.to_str().ok())
-                    .and_then(|value| value.split(';').next())
-                    .map(str::trim)
-                    != Some("application/json")
+                || (request.method() == axum::http::Method::POST
+                    && headers
+                        .get(header::CONTENT_TYPE)
+                        .and_then(|value| value.to_str().ok())
+                        .and_then(|value| value.split(';').next())
+                        .map(str::trim)
+                        != Some("application/json"))
             {
                 return StatusCode::FORBIDDEN.into_response();
             }
@@ -548,14 +562,14 @@ async fn access(
 async fn discovery(State(app): State<Arc<App>>) -> Json<Value> {
     Json(
         json!({"service":SERVICE,"protocol":PROTOCOL,"domainProtocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"port":app.port,
-        "connectURL":format!("http://127.0.0.1:{}/client",app.port)}),
+        "windowNavigation":app.config.window_navigation.is_some(),"connectURL":format!("http://127.0.0.1:{}/client",app.port)}),
     )
 }
 async fn health(State(app): State<Arc<App>>) -> Json<Value> {
     Json(
         json!({"service":SERVICE,"protocol":PROTOCOL,"domainProtocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"port":app.port,"token":app.token,
         "version":BUILD_VERSION,"revision":BUILD_REVISION,"packageTarget":PACKAGE_TARGET,
-        "updateSupported":app.update.supported()}),
+        "windowNavigation":app.config.window_navigation.is_some(),"updateSupported":app.update.supported()}),
     )
 }
 fn launcher_state(registry: &Registry, port: u16) -> Result<Value> {
@@ -593,10 +607,110 @@ async fn launcher(State(app): State<Arc<App>>) -> ApiResult {
         let registry = app.registry.lock().await;
         launcher_state(&registry, app.port).map_err(operation_failure)?
     };
+    state["windowNavigation"] = json!(app.config.window_navigation.is_some());
     hosted::describe(&app, &mut state)
         .await
         .map_err(operation_failure)?;
     Ok(Json(state))
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SaveBookmark {
+    id: Option<Uuid>,
+    origin: String,
+    name: String,
+}
+fn invalid_request(detail: &str) -> (StatusCode, Json<Value>) {
+    (StatusCode::BAD_REQUEST, Json(json!({"detail":detail})))
+}
+async fn bookmarks(State(app): State<Arc<App>>) -> ApiResult {
+    let registry = app.registry.lock().await;
+    Ok(Json(
+        json!({"bookmarks":registry.sites.bookmarks().map_err(operation_failure)?}),
+    ))
+}
+async fn save_bookmark(
+    State(app): State<Arc<App>>,
+    Json(request): Json<SaveBookmark>,
+) -> ApiResult {
+    let origin =
+        web::origin(&request.origin).map_err(|_| invalid_request("Invalid site address"))?;
+    let name = request.name.trim();
+    if origin.len() > 4096 || name.encode_utf16().count() > 40 {
+        return Err(invalid_request("Invalid bookmark"));
+    }
+    let registry = app.registry.lock().await;
+    if let Some(id) = request.id {
+        if !registry
+            .sites
+            .bookmarks()
+            .map_err(operation_failure)?
+            .iter()
+            .any(|entry| entry.id == id)
+        {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(json!({"detail":"Bookmark not found"})),
+            ));
+        }
+    }
+    let bookmark = sites::Bookmark {
+        id: request.id.unwrap_or_else(Uuid::new_v4),
+        origin,
+        name: name.into(),
+    };
+    if !registry
+        .sites
+        .save_bookmark(&bookmark)
+        .map_err(operation_failure)?
+    {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({"detail":"Site already bookmarked"})),
+        ));
+    }
+    Ok(Json(
+        json!({"bookmarks":registry.sites.bookmarks().map_err(operation_failure)?}),
+    ))
+}
+async fn delete_bookmark(State(app): State<Arc<App>>, Path(id): Path<Uuid>) -> ApiResult {
+    let registry = app.registry.lock().await;
+    registry
+        .sites
+        .delete_bookmark(id)
+        .map_err(operation_failure)?;
+    Ok(Json(
+        json!({"bookmarks":registry.sites.bookmarks().map_err(operation_failure)?}),
+    ))
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OpenWindow {
+    url: String,
+}
+async fn open_window(State(app): State<Arc<App>>, Json(request): Json<OpenWindow>) -> ApiResult {
+    let url = url::Url::parse(&request.url).map_err(|_| invalid_request("Invalid site URL"))?;
+    if request.url.len() > 4096
+        || !matches!(url.scheme(), "http" | "https")
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err(invalid_request("Invalid site URL"));
+    }
+    let Some(navigate) = &app.config.window_navigation else {
+        return Err((
+            StatusCode::NOT_IMPLEMENTED,
+            Json(json!({"detail":"Window navigation is not supported"})),
+        ));
+    };
+    if !navigate(request.url) {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"detail":"Window unavailable"})),
+        ));
+    }
+    Ok(Json(json!({"opened":true})))
 }
 async fn update_state(State(app): State<Arc<App>>) -> Json<update::View> {
     Json(app.update.view())
@@ -2248,6 +2362,260 @@ mod lifecycle_tests {
     };
 
     #[tokio::test]
+    async fn bookmarks_and_window_navigation_are_local_and_keep_separate_authority() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Mutex as StdMutex,
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let local = format!("http://{address}");
+        let remote = "https://friend.example";
+        let mut sites = sites::Sites::open(directory.path()).unwrap();
+        let permission = Arc::new(Permission::new(sites.approve(remote, true).unwrap()));
+        sites
+            .set_startup(&sites::StartupIntent::External(remote.into()))
+            .unwrap();
+        let navigations = Arc::new(StdMutex::new(Vec::new()));
+        let available = Arc::new(AtomicBool::new(true));
+        let app = Arc::new(App {
+            config: Config {
+                data_root: directory.path().into(),
+                assets: directory.path().into(),
+                open_browser: false,
+                window_navigation: Some(Arc::new({
+                    let navigations = navigations.clone();
+                    let available = available.clone();
+                    move |url| {
+                        if !available.load(Ordering::Relaxed) {
+                            return false;
+                        }
+                        navigations.lock().unwrap().push(url);
+                        true
+                    }
+                })),
+                cloudflared: PathBuf::new(),
+                ice_servers: vec![],
+                update: Default::default(),
+            },
+            port: address.port(),
+            token: "test".into(),
+            registry: Mutex::new(Registry {
+                sites,
+                approvals: BTreeMap::from([(remote.into(), permission.clone())]),
+                hosts: BTreeMap::new(),
+                local: None,
+            }),
+            closing: watch::channel(false).0,
+            launch: Mutex::new(None),
+            desktop: Desktop::new().unwrap(),
+            external_inputs: whip::Inputs::default(),
+            update: update::Owner::disabled(),
+        });
+        let router = Router::new()
+            .route(
+                "/api/client-launcher/bookmarks",
+                get(bookmarks).post(save_bookmark),
+            )
+            .route(
+                "/api/client-launcher/bookmarks/{id}",
+                axum::routing::delete(delete_bookmark),
+            )
+            .route("/api/client-launcher/open", post(open_window))
+            .layer(middleware::from_fn_with_state(app.clone(), access))
+            .with_state(app.clone());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let client = reqwest::Client::builder()
+            .timeout(IO_TIMEOUT)
+            .build()
+            .unwrap();
+        let endpoint = format!("{local}/api/client-launcher/bookmarks");
+        let create = json!({"origin":remote,"name":"  Friend  "});
+        for method in [
+            reqwest::Method::GET,
+            reqwest::Method::POST,
+            reqwest::Method::DELETE,
+        ] {
+            let response = client
+                .request(method, &endpoint)
+                .header("Origin", remote)
+                .header("Content-Type", "application/json")
+                .body(create.to_string())
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        }
+        assert_eq!(
+            client
+                .get(&endpoint)
+                .header("Host", "untrusted.example")
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            client
+                .post(&endpoint)
+                .header("Content-Type", "application/json")
+                .body(create.to_string())
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        for origin in [
+            "https://friend.example/#invite=secret",
+            "https://user:secret@friend.example",
+            "file:///private",
+        ] {
+            assert_eq!(
+                client
+                    .post(&endpoint)
+                    .header("Origin", &local)
+                    .header("Content-Type", "application/json")
+                    .body(json!({"origin":origin,"name":""}).to_string())
+                    .send()
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::BAD_REQUEST
+            );
+        }
+        let response = client
+            .post(&endpoint)
+            .header("Origin", &local)
+            .header("Content-Type", "application/json")
+            .body(create.to_string())
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let saved: Value = serde_json::from_str(&response.text().await.unwrap()).unwrap();
+        assert_eq!(saved["bookmarks"][0]["name"], "Friend");
+        let id = saved["bookmarks"][0]["id"].as_str().unwrap();
+        assert_eq!(
+            client
+                .post(&endpoint)
+                .header("Origin", &local)
+                .header("Content-Type", "application/json")
+                .body(create.to_string())
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::CONFLICT
+        );
+        let invitation = "https://friend.example/rooms/abc?view=screen#invite=secret";
+        let open = format!("{local}/api/client-launcher/open");
+        assert_eq!(
+            client
+                .post(&open)
+                .header("Origin", remote)
+                .header("Content-Type", "application/json")
+                .body(json!({"url":invitation}).to_string())
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            client
+                .post(&open)
+                .header("Origin", &local)
+                .header("Content-Type", "application/json")
+                .body(json!({"url":invitation}).to_string())
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+        assert_eq!(*navigations.lock().unwrap(), vec![invitation]);
+        for url in [
+            "javascript:alert(1)",
+            "file:///private",
+            "https://user:secret@friend.example/",
+        ] {
+            assert_eq!(
+                client
+                    .post(&open)
+                    .header("Origin", &local)
+                    .header("Content-Type", "application/json")
+                    .body(json!({"url":url}).to_string())
+                    .send()
+                    .await
+                    .unwrap()
+                    .status(),
+                StatusCode::BAD_REQUEST
+            );
+        }
+        available.store(false, Ordering::Relaxed);
+        assert_eq!(
+            client
+                .post(&open)
+                .header("Origin", &local)
+                .header("Content-Type", "application/json")
+                .body(json!({"url":invitation}).to_string())
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        let current = client
+            .get(&endpoint)
+            .header("Origin", &local)
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&current).unwrap(), saved);
+        assert_eq!(
+            client
+                .delete(format!("{endpoint}/{id}"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            client
+                .delete(format!("{endpoint}/{id}"))
+                .header("Origin", &local)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+        assert!(navigations.lock().unwrap().len() == 1);
+        let registry = app.registry.lock().await;
+        assert!(registry.sites.bookmarks().unwrap().is_empty());
+        assert!(
+            matches!(registry.sites.startup().unwrap(), sites::StartupIntent::External(origin) if origin == remote)
+        );
+        assert!(Arc::ptr_eq(
+            registry.permission(remote).unwrap(),
+            &permission
+        ));
+        drop(registry);
+        server.abort();
+        let _ = server.await;
+    }
+
+    #[tokio::test]
     async fn owned_startup_tracks_the_live_invitation_and_not_a_hostname() {
         let directory = tempfile::tempdir().unwrap();
         let old = "https://first.example";
@@ -2264,6 +2632,7 @@ mod lifecycle_tests {
                     data_root: directory.path().into(),
                     assets: directory.path().into(),
                     open_browser: false,
+                    window_navigation: None,
                     cloudflared: PathBuf::new(),
                     ice_servers: vec![],
                     update: Default::default(),
@@ -2460,6 +2829,7 @@ mod lifecycle_tests {
                 data_root: directory.path().into(),
                 assets: directory.path().into(),
                 open_browser: false,
+                window_navigation: None,
                 cloudflared: PathBuf::new(),
                 ice_servers: vec![],
                 update: Default::default(),

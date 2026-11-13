@@ -1,6 +1,6 @@
 import { CHANNEL_PROTOCOL, type RoomSummary } from "./protocol";
 import { z } from "zod";
-import { appApprovalURL, discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
+import { appApprovalURL, appManagementURL, discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
 import { nativeCaptureTargetSchema, nativeVideoCodecSchema, remoteControlStateSchema, remoteStopShortcutSchema, type NativeCaptureTarget } from "../native/wire";
 import { remoteShortcutKeySchema, type RemoteControlMode } from "../remote-control/protocol";
 import type { QualityProfile } from "../media/quality";
@@ -83,6 +83,13 @@ export function discoverChannelAppHealth(options: AppDiscoveryOptions = {}): Pro
 
 export const channelAppDiscovery: AppDiscovery = {
   health: discoverChannelAppHealth,
+  navigation: signal => discoverLocalApp("connect-discovery", (body, port) => {
+    identity(body, port);
+    const result = identitySchema.extend({ connectURL: z.string().url().max(256), windowNavigation: z.boolean() }).parse(body);
+    const url = appManagementURL(result.connectURL);
+    if (Number(url.port) !== port) throw new Error("invalid_app_response");
+    return { url: url.href, windowNavigation: result.windowNavigation };
+  }, { signal }, error => error instanceof AppCompatibilityError),
   connect: signal => discoverLocalApp("connect-discovery", (body, port) => {
     identity(body, port);
     return appApprovalURL(identitySchema.extend({ connectURL: z.string().url().max(256) }).parse(body).connectURL);

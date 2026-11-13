@@ -64,6 +64,7 @@ fn configuration() -> Result<(Config, Option<u16>)> {
             .map(PathBuf::from)
             .unwrap_or_else(|| resources.join("web")),
         open_browser: env::var_os("PIIK_CHANNEL_APP_NO_BROWSER").is_none(),
+        window_navigation: None,
         cloudflared: env::var_os("PIIK_CHANNEL_CLOUDFLARED")
             .map(PathBuf::from)
             .unwrap_or_else(|| {

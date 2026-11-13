@@ -21,7 +21,7 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 const controls = __PIIK_WINDOW_CONTROLS__;
 let language = navigator.language.startsWith('zh') ? 'zh' : 'en';
 let maximized = false;
-for (const action of ['minimize', 'maximize', 'close']) {
+for (const action of ['bookmarks', 'minimize', 'maximize', 'close']) {
   const button = document.createElement('button');
   button.dataset.action = action;
   button.onclick = () => window.ipc.postMessage(action);

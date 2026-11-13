@@ -11,6 +11,7 @@ export interface AppDiscoveryOptions {
 export interface AppDiscovery {
   health(options?: AppDiscoveryOptions): Promise<(Partial<AppReleaseIdentity> & { updateSupported?: boolean; managementURL?: string }) | null>;
   connect(signal?: AbortSignal): Promise<string | null>;
+  navigation?(signal?: AbortSignal): Promise<{ url: string; windowNavigation: boolean } | null>;
   isIncompatible(error: unknown): boolean;
 }
 
@@ -78,11 +79,16 @@ export async function discoverLocalApp<T>(
 }
 
 export function appApprovalURL(value: string): string {
+  const url = appManagementURL(value);
+  url.searchParams.set("site", window.location.origin);
+  return url.toString();
+}
+
+export function appManagementURL(value: string): URL {
   const url = new URL(value);
   if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.port ||
       url.username || url.password || url.pathname !== "/client" || url.search || url.hash) {
     throw new Error("Invalid local App approval address");
   }
-  url.searchParams.set("site", window.location.origin);
-  return url.toString();
+  return url;
 }

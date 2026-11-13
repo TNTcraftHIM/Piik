@@ -35,6 +35,7 @@ import { ChannelConnections } from "../channel/components/ChannelConnections";
 import { listeningVoicePublications, roomPeople, screenAudience, screenTitle, userProfile } from "../channel/presentation";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { channelAppDiscovery } from "../channel/app-link";
+import { useClientNavigationTarget } from "../channel/client-navigation";
 import { readRoomPreferences, saveRoomPreferences, type InterfaceLayout } from "../lib/room-preferences";
 import { useElementWidth } from "../lib/use-element-width";
 import type { ChannelController } from "../channel/types";
@@ -43,6 +44,8 @@ import "./channel-preview.css";
 
 export function ChannelPreviewPage() {
   const [selected, setSelected] = useState(selectedRoom);
+  // Capture incoming hashes before the session's admission listener can consume them.
+  const targetURL = useClientNavigationTarget(selected);
   const [layout, setLayout] = useState(() => readRoomPreferences().interfaceLayout);
   const changeLayout = useCallback((value: InterfaceLayout) => {
     setLayout(value); saveRoomPreferences({ interfaceLayout: value });
@@ -50,7 +53,7 @@ export function ChannelPreviewPage() {
   const onSelect = useCallback((id: string) => { rememberRoom(id); setSelected(id); }, []);
   const channel = useChannel(onSelect);
   return <ChannelRoomPage channel={channel} selected={selected} onSelect={onSelect} layout={layout ?? "workspace"} offerLayout={layout === undefined} onLayoutChange={changeLayout}
-    appControl={<AppConnectionButton discovery={channelAppDiscovery} connected={channel.appConnected}
+    appControl={<AppConnectionButton discovery={channelAppDiscovery} connected={channel.appConnected} targetURL={targetURL}
       onConnected={() => { void channel.activateApp().catch(() => {}); }} />} />;
 }
 

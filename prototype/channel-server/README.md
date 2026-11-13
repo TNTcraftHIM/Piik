@@ -140,6 +140,19 @@ The launcher and saved startup choice work in either interface.
 Windows microphone and camera requests use a Piik permission window naming the
 requesting site. Allow applies to that request; rejecting, closing or pressing Esc
 denies it. Closing the requesting window cancels its pending requests.
+The window's star opens saved sites without leaving the current page. Bookmarks
+store a site address and optional name separately from device approval. Editing or
+removing a bookmark does not grant or revoke access. A changed invitation address
+can be updated manually; saved bookmarks contain no room invitation key.
+
+From a Browser page, **App → Open in client** finds a running native-window App
+and opens its local confirmation page. The original room invitation can be passed
+without granting device access or transferring the Browser's identity. Confirming
+a different site ends the old page's personal activities and Browser-hosted rooms;
+App-hosted rooms continue. Same-site room links retain ordinary room navigation.
+The star remains available when a site fails to load. Platforms using the Browser
+entry can use the launcher's saved-site list without a native-window handoff.
+
 The launcher and Site's App control show release notes and update notices.
 Updater-capable Windows packages can download a newer stable release and install
 it through the local launcher. Installation restarts the App and ends its active

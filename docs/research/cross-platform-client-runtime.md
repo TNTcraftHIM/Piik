@@ -423,6 +423,27 @@ link and inline major-upgrade guidance. The accepted behavior belongs to
 clients still follow their released behavior; a notice cannot substitute for
 actual App/Site compatibility checks.
 
+## Client Site Navigation
+
+The accepted client model has one current site. A local saved-site window may be
+opened and edited without replacing its document. Explicit navigation to a
+different site ends the old page's personal activity and Browser hosting; App
+hosting stays with the process. Same-site room invitations follow existing room
+navigation rather than creating another site session.
+
+Bookmarks belong to the App's local SQLite data, independently of exact-origin
+device approval and startup selection. They retain only a clean HTTP(S) origin
+and user-supplied name. Manual address replacement changes the navigation target,
+not identity, stored room ownership or permission. An incoming room invitation
+may be handed from its Browser page to local confirmation in memory; its key is
+neither saved in bookmarks nor converted into device approval.
+
+The trusted window caption owns the entry even when remote content fails to load.
+Local launcher HTTP requests drive the native window's navigation callback;
+remote content keeps its appearance-only IPC. The
+[App reference](../../prototype/channel-server/README.md#local-app-link) owns the
+user flow; runtime acceptance remains separate from this design.
+
 ## 3.0 App Update Delivery
 
 Reviewed 2026-11-13. The requested flow adds release notes inside the App, selects

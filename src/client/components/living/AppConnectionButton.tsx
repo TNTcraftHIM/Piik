@@ -14,12 +14,15 @@ import type { AppReleaseIdentity } from "../../lib/release-update";
 import { useReleaseUpdate } from "../../lib/use-release-update";
 import { AppReleaseNotice } from "./AppReleaseNotice";
 import { channelAppDiscovery } from "../../channel/app-link";
+import { OpenInClient } from "./OpenInClient";
+import type {} from "../../ui/native-window";
 
 interface AppConnectionProps {
   onConnected?: () => void;
   discovery?: AppDiscovery;
   /** A current control connection, supplied by its owning session. */
   connected?: boolean;
+  targetURL?: string;
 }
 
 interface ConnectionAttempt {
@@ -30,7 +33,7 @@ interface ConnectionAttempt {
   cancel?: () => void;
 }
 
-export function AppConnectionButton({ onConnected, discovery = channelAppDiscovery, connected }: AppConnectionProps) {
+export function AppConnectionButton({ onConnected, discovery = channelAppDiscovery, connected, targetURL }: AppConnectionProps) {
   const { t, vis } = useCopy();
   const [state, setState] = useState<"idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible">("idle");
   const wakeURL = androidAppIntent("piik://app");
@@ -281,6 +284,8 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
           <Glyph name="arrowDown" size={16} /><span className={vis ? "visually-hidden" : undefined}>{t("client.connect.download")}</span>
         </a>}
       </div>
+      {targetURL && !(typeof window !== "undefined" && window.piikNativeWindow) && <OpenInClient
+        discovery={discovery} targetURL={targetURL} active={helpOpen} disabled={busy} downloadURL={downloadURL} />}
       {state !== "ready" && <p className={vis ? "visually-hidden" : "lr-app-connect-optional"}>{t("client.connect.browserHint")}</p>}
     </div>
   </>;
