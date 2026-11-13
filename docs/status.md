@@ -40,7 +40,10 @@ history, reactions and participant-held files. The
 [Server reference](../prototype/channel-server/README.md) covers shared UI/App flows;
 the [Native reference](../prototype/channel-native/README.md) covers capture, encoding,
 sound and input, with the [Android runtime](../mobile/README.md) owning its shell.
-Sites open through ordinary URLs or browser bookmarks; automatic address discovery is not planned.
+Sites open through ordinary URLs, Browser bookmarks or the App's local saved-site
+list. Browser invitations can be opened in a running native-window App through
+local confirmation. Navigation remains separate from device approval; automatic
+address discovery is not planned.
 [Verification status](./verification-status.md) owns evidence and platform limits;
 [TODO](./todo.md) owns remaining implementation and acceptance work.
 

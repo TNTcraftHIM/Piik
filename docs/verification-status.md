@@ -146,6 +146,15 @@ check used the documented per-process WebView2 runtime override. The delivered
 App opened the default Browser, retained Native room/history access and message
 submission, then closed normally through the terminal without remaining listeners.
 
+Saved-site and Browser-to-client navigation checks exercised the actual Windows
+caption, local confirmation page and SQLite persistence. Viewing the list and
+same-document room navigation retained joined voice; cross-site navigation retired
+the old page while another Browser still wrote to its Native-hosted room. Complete
+synthetic invitation paths and fragments reached the destination without entering
+bookmarks or device approval. The caption reopened the list from a failed network
+page; reopening the App retained the bookmark. These are local navigation and
+resource checks, not public-network or physical-microphone acceptance.
+
 The Windows updater completed a signed whole-bundle replacement using the real
 product helper, followed by saved-site and Native room/history recovery. Closing
 before helper readiness retained the old program; a blocked directory rename

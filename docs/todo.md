@@ -88,6 +88,8 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **3.0 App launcher.** Review the new entry-page prototype, then integrate
+  the accepted layout with the existing launch, device-approval and saved-site owners.
 - [ ] **App update distribution.** Configure the production signing identity and
   decide the beta-feed policy before distributing updater-capable packages;
   retain manual download. The
@@ -97,11 +99,6 @@ the feedback period; they do not delay that delivery.
   proxy control verified exact-origin admission, stable App domain identity/port
   and protected local management. Resolve the launcher and restart flow before
   integration; public-provider and media-path acceptance remain separate.
-- [ ] **Client site navigation acceptance.** Validate saved-site persistence,
-  Browser invitation handoff, same-site navigation and cross-site activity
-  retirement in the Windows package. Keep bookmarks separate from device approval;
-  the [navigation model](./research/cross-platform-client-runtime.md#client-site-navigation)
-  owns the accepted single-current-site boundary.
 - [ ] **Managed one-click deployment.** Validate an ordinary Piik room and data
   recovery on a persistent hosting target. The
   [deployment assessment](./deployment.md#managed-one-click-hosting) distinguishes
