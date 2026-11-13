@@ -84,9 +84,9 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **App update delivery.** Complete installed-package acceptance of the Windows
-  signed download and explicit install/restart flow. Configure the production signing
-  identity and decide the beta-feed policy before distribution; retain manual download. The
+- [ ] **App update distribution.** Configure the production signing identity and
+  decide the beta-feed policy before distributing updater-capable packages;
+  retain manual download. The
   [delivery proposal](./research/cross-platform-client-runtime.md#30-app-update-delivery)
   keeps authority, active sessions and data outside the download operation.
 - [ ] **App entry through an operator-managed HTTPS address.** A private local

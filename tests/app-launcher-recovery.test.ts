@@ -9,6 +9,48 @@ import { LauncherForm, type LocalCertificate } from "../src/client/components/li
 import { Btn } from "../src/client/components/living/primitives";
 import { siteEntryOrigin, siteEntryURL } from "../src/client/lib/site-address";
 import { clientLaunchURL, readPreferredAppMode, savePreferredAppMode, type AppMode } from "../src/client/lib/app-launch";
+import { appUpdateSchema } from "../src/client/lib/use-app-update";
+
+it("reloads the installed UI once after observed installation hands over, while failures and outages preserve the page", async () => {
+  const updateSource = ts.createSourceFile("use-app-update.ts", readFileSync(
+    new URL("../src/client/lib/use-app-update.ts", import.meta.url), "utf8",
+  ), ts.ScriptTarget.Latest, true);
+  const hook = updateSource.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === "useAppUpdate")!;
+  const code = ts.transpileModule(`${hook.getText(updateSource).replace(/^export /, "")}\nuseAppUpdate();`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  for (const state of ["idle", "unavailable", "failed"] as const) {
+    const reload = vi.fn();
+    const window = Object.assign(new EventTarget(), { location: { reload } });
+    const fetch = vi.fn().mockResolvedValueOnce(Response.json({ state: "installing", operationId: "original-install" }))
+      .mockRejectedValueOnce(new Error("App is restarting"))
+      .mockResolvedValue(Response.json(state === "failed" ? { state, operationId: "original-install" } : { state }));
+    let cleanup: (() => void) | undefined;
+    let timer: (() => void) | undefined;
+    const views: unknown[] = [];
+    let stateSlot = 0;
+    runInNewContext(code, {
+      appUpdateSchema, fetch, window, AbortController,
+      useRef: (current: unknown) => ({ current }),
+      useState: (initial: unknown) => [initial, stateSlot++ === 0 ? (view: unknown) => views.push(view) : () => {}],
+      useEffect: (effect: () => () => void) => { cleanup = effect(); },
+      setTimeout: (callback: () => void) => { timer = callback; return 1; },
+      clearTimeout: () => { timer = undefined; },
+    });
+    await settle();
+    expect(reload).not.toHaveBeenCalled();
+    timer!(); await settle();
+    expect(reload).not.toHaveBeenCalled();
+    expect(views).toEqual([{ state: "installing", operationId: "original-install" }]);
+    expect(timer).toBeDefined();
+    timer!(); await settle();
+    expect(reload).toHaveBeenCalledTimes(state === "failed" ? 0 : 1);
+    fetch.mockResolvedValue(Response.json({ state: "idle" }));
+    window.dispatchEvent(new Event("focus")); await settle();
+    expect(reload).toHaveBeenCalledTimes(state === "failed" ? 0 : 1);
+    cleanup!();
+  }
+});
 
 // Run the page's actual state-read effect, including cleanup, without a DOM.
 const source = ts.createSourceFile("AppLauncherPage.tsx", readFileSync(

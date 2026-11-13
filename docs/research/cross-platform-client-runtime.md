@@ -427,7 +427,7 @@ actual App/Site compatibility checks.
 
 Reviewed 2026-11-13. The requested flow adds release notes inside the App, selects
 between the existing download lines, and installs a complete update on an explicit
-restart. The Windows implementation is integrated for local acceptance; delivered
+restart. The Windows implementation passed local installed-package acceptance; delivered
 internal candidates still use manual downloads. Release identity and published compatibility remain with
 [versioning](../standards/versioning.md).
 
@@ -463,12 +463,12 @@ process has run, it may already have written data; a startup or health failure
 does not authorize automatic downgrade. Keep an old program copy for explicit
 recovery and never roll back authority databases.
 
-A local Windows control verified this replacement boundary with real executable
-processes and a blocked directory rename. A separate temporary-key control verified
-Node signatures with Rust `ring` before reading the update identity and package
-digest. These establish the primitive boundaries, not an installed updater or
-published trust root. Platform replacement still needs a complete App acceptance
-flow before automatic installation is offered.
+The integrated Windows updater verified Node signatures with Rust `ring`, streamed
+the selected complete package, and performed replacement through the product
+helper. Saved room data survived both successful replacement and a blocked rename;
+closing before helper readiness retired its work. These local controls use a test
+signing identity. [Verification status](../verification-status.md#windows-and-android)
+owns the remaining platform and distribution limits.
 
 [Tauri's updater](https://v2.tauri.app/plugin/updater/) supplies signing and installer
 semantics, but its host and installer layout do not directly fit the existing Wry

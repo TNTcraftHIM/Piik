@@ -20,7 +20,15 @@ export function useAppUpdate() {
   const generation = useRef(0);
   const pending = useRef(false);
   const mounted = useRef(false);
+  const observedInstalling = useRef(false);
   const [refresh, setRefresh] = useState(0);
+  function acceptView(next: AppUpdateView) {
+    // A fresh runtime retires the installation operation and serves the new UI bundle.
+    const restarted = observedInstalling.current && !next.operationId && (next.state === "idle" || next.state === "unavailable");
+    observedInstalling.current = next.state === "installing";
+    setView(next);
+    if (restarted) window.location.reload();
+  }
   useEffect(() => {
     mounted.current = true;
     let current = true;
@@ -39,7 +47,7 @@ export function useAppUpdate() {
         const next = appUpdateSchema.parse(await response.json());
         if (current && started === generation.current && !pending.current) {
           observing = next.state === "downloading" || next.state === "installing";
-          setView(next);
+          acceptView(next);
         }
       } catch { /* A lost observation never changes the App-owned operation. */ }
       finally { reading = false; if (current && observing) timer = setTimeout(read, 1000); }
@@ -63,7 +71,7 @@ export function useAppUpdate() {
       });
       if (!response.ok) throw new Error();
       const next = appUpdateSchema.parse(await response.json());
-      if (mounted.current && started === generation.current) setView(next);
+      if (mounted.current && started === generation.current) acceptView(next);
     } catch {
       if (mounted.current && started === generation.current) setError({ operationId: command.action === "download" ? undefined : command.operationId });
     }

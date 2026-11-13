@@ -140,6 +140,12 @@ The launcher and saved startup choice work in either interface.
 Windows microphone and camera requests use a Piik permission window naming the
 requesting site. Allow applies to that request; rejecting, closing or pressing Esc
 denies it. Closing the requesting window cancels its pending requests.
+The launcher and Site's App control show release notes and update notices.
+Updater-capable Windows packages can download a newer stable release and install
+it through the local launcher. Installation restarts the App and ends its active
+sessions; other installations retain manual downloads. The
+[update contract](../../docs/standards/versioning.md#app-download-and-installation)
+defines package trust, data preservation and recovery.
 An external site's star opens its fixed address. Selecting startup on the current
 App-owned site saves its launch selection: the next App run starts that mode and
 enters the new ready owner address, rather than reopening an expired invitation.

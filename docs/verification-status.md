@@ -144,6 +144,13 @@ shell before the permission-window change. The final permission-path shutdown
 left no App/WebView processes or TCP/UDP resources. Browser fallback on an
 unavailable system runtime remains a separate platform check.
 
+The Windows updater completed a signed whole-bundle replacement using the real
+product helper, followed by saved-site and Native room/history recovery. Closing
+before helper readiness retained the old program; a blocked directory rename
+restarted it. These checks used isolated data, a temporary signing identity and
+two local streamed providers. They establish the installation lifecycle, not
+public CDN performance, production key distribution or other platforms' installers.
+
 Android runtime evidence from preceding candidates includes the official API35
 x64 emulator, system capture consent, decoded picture, compatible room data across
 same-signature updates, and normal source/runtime stop. ARM64 is packaged and
