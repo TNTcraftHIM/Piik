@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 16;
+pub const CHANNEL_PROTOCOL: u8 = 17;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -536,7 +536,7 @@ pub enum UdpSignal {
 pub struct UdpPrediction {
     pub address: std::net::Ipv4Addr,
     pub port: u16,
-    pub step: u16,
+    pub step: i16,
 }
 impl UdpPrediction {
     pub fn target(&self) -> Option<std::net::SocketAddrV4> {
@@ -548,14 +548,13 @@ impl UdpPrediction {
             || address.is_multicast()
             || address.is_broadcast()
             || self.port < 1024
-            || self.step > 16
+            || !(-16..=16).contains(&self.step)
         {
             return None;
         }
-        Some(std::net::SocketAddrV4::new(
-            address,
-            self.port.checked_add(4 * self.step)?,
-        ))
+        let port = i32::from(self.port).checked_add(4 * i32::from(self.step))?;
+        let port = u16::try_from(port).ok().filter(|port| *port >= 1024)?;
+        Some(std::net::SocketAddrV4::new(address, port))
     }
 }
 

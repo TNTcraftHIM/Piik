@@ -3733,6 +3733,21 @@ fn coordinated_udp_signals_use_only_the_required_pair_and_fixed_endpoint_roles()
         (responder, offer, false),
         (responder, answer.clone(), true),
         (initiator, answer, false),
+        (
+            responder,
+            json!({"udp":{"type":"answer","prediction":{"address":"203.0.113.5","port":42000,"step":-2}}}),
+            true,
+        ),
+        (
+            responder,
+            json!({"udp":{"type":"answer","prediction":{"address":"203.0.113.5","port":1024,"step":-1}}}),
+            false,
+        ),
+        (
+            responder,
+            json!({"udp":{"type":"answer","prediction":{"address":"203.0.113.5","port":42000,"step":-17}}}),
+            false,
+        ),
         (initiator, json!({"udp":{"type":"complete"}}), true),
         (responder, json!({"udp":{"type":"complete"}}), true),
         (
@@ -3982,4 +3997,25 @@ fn two_twenty_person_rooms_share_site_capacity_with_browser_app_and_bounded_prof
             .count(),
         20
     );
+}
+
+#[test]
+fn udp_prediction_preserves_port_bounds_in_both_directions() {
+    use piik_channel_core::wire::UdpPrediction;
+    for (port, step, target) in [
+        (1088, -16, Some(1024)),
+        (1087, -16, None),
+        (65471, 16, Some(65535)),
+        (65472, 16, None),
+        (42000, 17, None),
+        (42000, -17, None),
+        (1024, 0, Some(1024)),
+    ] {
+        let prediction = UdpPrediction {
+            address: "203.0.113.5".parse().unwrap(),
+            port,
+            step,
+        };
+        assert_eq!(prediction.target().map(|address| address.port()), target);
+    }
 }

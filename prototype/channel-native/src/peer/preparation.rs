@@ -265,14 +265,14 @@ impl Preparation {
             ensure!(
                 a.ip() == b.ip()
                     && b.ip() == c.ip()
-                    && (0..=16).contains(&step)
+                    && (-16..=16).contains(&step)
                     && i32::from(b.port()) - i32::from(a.port()) == step,
                 "no usable ordered mapping observation"
             );
             let prediction = Prediction {
                 address: *c.ip(),
                 port: c.port(),
-                step: step as u16,
+                step: step as i16,
             };
             // The public peer target is checked when supplied by signaling.
             Ok(Survey {
@@ -773,6 +773,68 @@ mod tests {
         driver.retire_pair(pair).await;
         driver.files.close().await;
         driver.transport.close().await;
+        Ok(())
+    }
+    #[tokio::test]
+    async fn ordered_mapping_surveys_accept_both_directions_and_reject_irregular_ports(
+    ) -> Result<()> {
+        for (name, ports) in [
+            ("increasing", [42000u16, 42002, 42004]),
+            ("decreasing", [42004, 42002, 42000]),
+            ("irregular", [42000, 42003, 42004]),
+            ("stable", [42000, 42000, 42000]),
+        ] {
+            let mut addresses = Vec::new();
+            let mut tasks = Vec::new();
+            for port in ports {
+                let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+                let SocketAddr::V4(address) = socket.local_addr()? else {
+                    unreachable!()
+                };
+                addresses.push(address);
+                tasks.push(tokio::spawn(async move {
+                    let mut bytes = vec![0; 2048];
+                    let (n, peer) = socket.recv_from(&mut bytes).await?;
+                    let mut request = Message::new();
+                    request.raw = bytes[..n].to_vec();
+                    request.decode()?;
+                    let mut response = Message::new();
+                    response.build(&[
+                        Box::new(BINDING_SUCCESS),
+                        Box::new(request.transaction_id),
+                        Box::new(XorMappedAddress {
+                            ip: Ipv4Addr::new(203, 0, 113, 5).into(),
+                            port,
+                        }),
+                    ])?;
+                    socket.send_to(&response.raw, peer).await?;
+                    Ok::<_, anyhow::Error>(())
+                }));
+            }
+            let result = Preparation::new(
+                Uuid::new_v4(),
+                [1; 32],
+                Ipv4Addr::LOCALHOST,
+                Instant::now() + Duration::from_secs(3),
+            )?
+            .survey(addresses.try_into().unwrap())
+            .await;
+            if name == "irregular" {
+                assert!(result.is_err());
+            } else {
+                let survey = result?;
+                let expected = match name {
+                    "increasing" => 2,
+                    "decreasing" => -2,
+                    _ => 0,
+                };
+                assert_eq!(survey.prediction.step, expected);
+                assert_eq!(survey.retained.is_some(), expected == 0);
+            }
+            for task in tasks {
+                task.await??;
+            }
+        }
         Ok(())
     }
 }
