@@ -285,7 +285,7 @@
 }
 /* Leave room for the site bar, picture toolbar and persistent voice dock;
    secondary content can scroll without making the television taller than the view. */
-.c3-shell[data-layout="quick"] .c3-main-body { max-width: min(990px, calc(max(160px, 100svh - 300px) * 16 / 9 + 30px)); }
+.c3-shell[data-layout="quick"]:not(:has(.c3-monitor-grid.is-grid)) .c3-main-body { max-width: min(990px, calc(max(160px, 100svh - 300px) * 16 / 9 + 30px)); }
 @media (max-width: 700px) {
   .c3-shell[data-layout="quick"] { gap: 12px; }
   .c3-shell[data-layout="quick"] .c3-room-heading { display: flex; }
