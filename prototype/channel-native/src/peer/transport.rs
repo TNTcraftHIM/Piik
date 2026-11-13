@@ -963,6 +963,15 @@ impl Transport {
     pub async fn remote_description(&self) -> bool {
         self.call(|e| Ok(e.remote)).await.unwrap_or(false)
     }
+    pub(super) async fn add_local_candidate(&self, candidate: Candidate) -> Result<()> {
+        self.call(move |e| {
+            if let Some(candidate) = e.rtc.add_local_candidate(candidate).cloned() {
+                e.emit(Event::Candidate(e.handle.pair, candidate));
+            }
+            Ok(())
+        })
+        .await
+    }
     pub async fn add_candidate(&self, candidate: String) -> Result<()> {
         self.call(move |e| {
             ensure!(!e.events.local(), "local input does not trickle ICE");

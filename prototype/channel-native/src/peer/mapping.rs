@@ -1,5 +1,5 @@
 //! Optional default-gateway mapping for one connection's actual IPv4 socket.
-use super::{Event, MAX_ICE_CANDIDATES};
+use super::{transport::Transport, MAX_ICE_CANDIDATES};
 use netwatch::interfaces::HomeRouter;
 use portmapper::Client;
 use std::{
@@ -11,7 +11,6 @@ use tokio::{
     sync::{mpsc, watch},
     task::JoinHandle,
 };
-use uuid::Uuid;
 
 pub(super) struct Mapping {
     client: Client,
@@ -20,16 +19,11 @@ pub(super) struct Mapping {
 }
 
 impl Mapping {
-    pub(super) fn start(
-        pair: Uuid,
-        candidate: &Candidate,
-        events: mpsc::Sender<Event>,
-    ) -> Option<Self> {
+    pub(super) fn start(candidate: &Candidate, transport: Transport) -> Option<Self> {
         let base = eligible(candidate)?;
         Some(Self::with_lookup(
-            pair,
             base,
-            events,
+            transport,
             tokio::task::spawn_blocking(HomeRouter::new),
         ))
     }
@@ -42,9 +36,8 @@ impl Mapping {
     }
 
     fn with_lookup(
-        pair: Uuid,
         base: Candidate,
-        events: mpsc::Sender<Event>,
+        transport: Transport,
         lookup: JoinHandle<Option<HomeRouter>>,
     ) -> Self {
         let (candidates, pending) = mpsc::channel(MAX_ICE_CANDIDATES);
@@ -62,7 +55,7 @@ impl Mapping {
             let addresses = worker.watch_external_address();
             let _ = worker.probe().await;
             worker.update_local_port(port);
-            forward(pair, base, addresses, events).await;
+            forward(base, addresses, transport).await;
         });
         Self {
             client,
@@ -119,10 +112,9 @@ async fn select_base(
 
 // Only publish successful address updates; absence does not revoke ICE paths.
 async fn forward(
-    pair: Uuid,
     base: Candidate,
     mut addresses: watch::Receiver<Option<SocketAddrV4>>,
-    events: mpsc::Sender<Event>,
+    transport: Transport,
 ) {
     while addresses.changed().await.is_ok() {
         let mapped = *addresses.borrow_and_update();
@@ -130,11 +122,7 @@ async fn forward(
         let Ok(candidate) = Candidate::server_reflexive(mapped.into(), base.addr(), "udp") else {
             continue;
         };
-        if events
-            .send(Event::Candidate(pair, candidate))
-            .await
-            .is_err()
-        {
+        if transport.add_local_candidate(candidate).await.is_err() {
             break;
         }
     }
@@ -143,9 +131,11 @@ async fn forward(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::{anyhow, ensure, Context, Result};
+    use crate::peer::{tests::support::endpoint, transport::Runtime, Event};
+    use anyhow::{anyhow, ensure, Result};
     use std::{net::SocketAddr, time::Duration};
     use tokio::sync::oneshot;
+    use uuid::Uuid;
     #[tokio::test]
     async fn gateway_lookup_yields_accepts_later_candidates_and_retires() -> Result<()> {
         fn host(address: &str, port: u16) -> Result<Candidate> {
@@ -204,12 +194,17 @@ mod tests {
                 my_ip: Some(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
             })
         });
-        let (events, mut results) = mpsc::channel(1);
-        let mut mapping = Mapping::with_lookup(Uuid::new_v4(), wrong, events, lookup);
+        let runtime = Runtime::new(None);
+        let (transport, mut results) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+        while results.try_recv().is_ok() {}
+        let mut mapping = Mapping::with_lookup(wrong, transport.clone(), lookup);
         mapping.observe(&expected);
         waiting.await?;
         mapping.close().await;
         ensure!(mapping.watcher.is_finished() && mapping.candidates.is_closed());
+        transport.close().await?;
+        runtime.close().await;
+        while results.try_recv().is_ok() {}
         ensure!(
             results.recv().await.is_none(),
             "retired lookup retained its publisher"
@@ -225,39 +220,57 @@ mod tests {
 
     #[tokio::test]
     async fn mapped_updates_keep_the_bound_base_and_cancel_the_publisher() -> Result<()> {
-        let socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await?;
+        let socket = std::net::UdpSocket::bind("127.0.0.1:0")?;
         let local = socket.local_addr()?;
         let base = Candidate::host(local, "udp")?;
-        let (updates, addresses) = watch::channel(None);
-        let (events, mut received) = mpsc::channel(8);
+        let runtime = Runtime::new(None);
         let pair = Uuid::new_v4();
-        let worker = tokio::spawn(forward(pair, base.clone(), addresses, events));
+        let (transport, mut received) = endpoint(&runtime, pair, Some(socket)).await?;
+        while received.try_recv().is_ok() {}
+        let (updates, addresses) = watch::channel(None);
+        let worker = tokio::spawn(forward(base, addresses, transport.clone()));
+        let mut signaled = Vec::new();
         for port in [41000, 41001] {
-            updates.send(Some(SocketAddrV4::new(std::net::Ipv4Addr::LOCALHOST, port)))?;
-            let Event::Candidate(id, candidate) =
-                received.recv().await.context("mapping publisher ended")?
-            else {
-                anyhow::bail!("unexpected mapping event")
-            };
+            updates.send(Some(SocketAddrV4::new("203.0.113.5".parse()?, port)))?;
+            let candidate = tokio::time::timeout(Duration::from_secs(2), async {
+                loop {
+                    if let Some(Event::Candidate(id, candidate)) = received.recv().await {
+                        if candidate.kind() == CandidateKind::ServerReflexive {
+                            ensure!(id == pair);
+                            return Ok::<_, anyhow::Error>(candidate);
+                        }
+                    }
+                }
+            })
+            .await??;
+            ensure!(candidate.addr().port() == port && candidate.local() == local);
             ensure!(
-                id == pair
-                    && candidate.addr().port() == port
-                    && candidate.kind() == CandidateKind::ServerReflexive
-                    && candidate.local() == local,
-                "mapping replaced its socket base"
+                candidate.ufrag().is_some(),
+                "mapping bypassed RTC admission"
             );
+            signaled.push(candidate.to_sdp_string());
+        }
+        transport.create_channel("mapping-check").await?;
+        transport.offer().await?;
+        let (_, description) = transport.local_description().await?;
+        for candidate in signaled {
             ensure!(
-                socket.local_addr()? == local,
-                "mapping changed socket ownership"
+                description.contains(&candidate),
+                "canonical mapped candidate missing from SDK SDP"
             );
         }
         worker.abort();
         let _ = worker.await;
+        ensure!(updates
+            .send(Some(SocketAddrV4::new("203.0.113.5".parse()?, 41002)))
+            .is_err());
+        transport.close().await?;
+        runtime.close().await;
+        while received.try_recv().is_ok() {}
         ensure!(
             received.recv().await.is_none(),
-            "retired publisher kept event sender"
+            "retired publisher retained events"
         );
-        drop(socket);
         std::net::UdpSocket::bind(local)?;
         Ok(())
     }

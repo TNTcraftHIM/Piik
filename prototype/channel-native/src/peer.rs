@@ -2801,8 +2801,7 @@ impl Driver {
                         if let Some(mapping) = &p.mapping {
                             mapping.observe(&candidate);
                         } else {
-                            p.mapping =
-                                mapping::Mapping::start(id, &candidate, self.events.clone());
+                            p.mapping = mapping::Mapping::start(&candidate, p.pc.clone());
                         }
                     }
                     for candidate in std::iter::once(candidate).chain(mapped) {
