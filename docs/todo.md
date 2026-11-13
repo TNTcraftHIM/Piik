@@ -12,10 +12,6 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **Desktop graphical entry integration.** Evaluate the same-process Windows
-  proof for production, including active-room/tunnel shutdown and platform
-  language/font support. Keep setup, diagnostics and rooms in the shared Browser
-  UI, with one runtime-state owner.
 - [ ] **3.0 Windows shared-sound noise.** The reporter confirms electrical or
   crackling sound in beta9/10 as well as beta2, while 2.x sounds normal. Excluding
   the window titled Piik removes it; excluding a silent unrelated window does
@@ -122,6 +118,11 @@ the feedback period; they do not delay that delivery.
 
 ## Held By Owner
 
+- [ ] **Native desktop interface.** Keep the terminal entry and shared system-
+  Browser UI. The owner meant a complete native client, not a graphical status
+  window; do not integrate the status-window proof. The
+  [runtime assessment](./research/cross-platform-client-runtime.md#30-windows-native-entry-prototype)
+  records the distinction and evidence.
 - [ ] **Automatic room-voice exclusion from Native display sound.** Deferred
   from the first 3.0 internal test. Keep Browser playback; the
   [playback/AEC boundary](./research/channel-network-design.md#implementation-boundary)

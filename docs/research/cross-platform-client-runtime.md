@@ -102,32 +102,24 @@ uses GStreamer for WebRTC. Electron instead bundles one Chromium and Node but
 makes the App responsible for shipping those updates and adds substantial
 package size. These facts do not prove equivalent Piik media behavior.
 
-Only a reproduced Browser-launch failure should open a comparative physical
-gate for Electron, Tauri, Wails, Neutralino, or another shell. That gate must
-compare actual capture, audio, H.264/VP8 sender implementation, 1080p cadence,
-relay, background behavior, and resource use on every target platform. The
-result selects one UI runtime; it does not create parallel products.
+A concrete interaction or runtime need can justify comparing another shell.
+Any proposed replacement needs actual capture, playback, permissions and
+lifecycle evidence on its target platforms; sharing the same HTML does not
+establish equivalent media behavior. Keep one frontend and one runtime owner.
 
 ## 3.0 Windows Native Entry Prototype
 
-An isolated Windows proof with `eframe`/`egui` 0.33.3 now runs the existing App
-service in the same process. The main thread owns the window; one backend thread
-runs `app::serve`. Its existing ready and stop channels supply the displayed
-state and ordered shutdown. Closing the window requests service retirement and
-waits for completion; it does not terminate a child App or poll a local API.
-Site selection, authorization, diagnostics and rooms keep their Browser owners.
+Owner decision, 2026-11-12: retain the terminal entry and system-Browser UI. The
+requested alternative was a complete native client, not a graphical status
+window. The latter does not deliver that experience, so its production
+integration is withdrawn.
 
-The proof reuses Piik's favicon and palette and reads the installed Windows CJK
-font without bundling it. Windows UI Automation exercised the actual ready
-window, Browser-entry action, occupied-port failure and normal exit. The App
-listener closed and its port could be rebound. This establishes idle startup
-and retirement, not shutdown during an active room, capture or tunnel.
-
-A paired release build with the same runtime dependency versions and compiler
-profile added about 4.3 MiB to the App executable. GUI dependencies remain in the
-isolated proof. Production packaging, language/font portability, assistive-tool
-acceptance and macOS/Linux lifecycle integration remain unverified; the normal
-App entry has not changed.
+An isolated Windows `eframe`/`egui` 0.33.3 proof ran the existing `app::serve` in
+the same process, with a main-thread window and one backend thread. Real Native
+room chat, ordered window-close retirement and same-data history recovery were
+exercised. A paired release build added about 4.3 MiB. This does not establish a
+native room UI, capture/tunnel shutdown or macOS/Linux behavior; no GUI dependency
+or entry-point change was added to the product.
 
 ## Historical Package Evidence
 
