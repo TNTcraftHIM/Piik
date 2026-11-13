@@ -31,6 +31,26 @@ describe("native capture source selection", () => {
   const game = target("My Game", "1");
   afterEach(() => setCopy({ lang: "en", vis: true }));
 
+  it("offers OBS only with input capability and waits for its explicit connect action", () => {
+    setCopy({ lang: "en", vis: false });
+    let preparations = 0;
+    const props = {
+      nativeSources: { kind: "browser" } as const,
+      onBrowser() {}, onNative() {}, onPreview: async () => null, onRefresh() {}, onCancel() {},
+    };
+    const unavailable = renderToStaticMarkup(createElement(CaptureSourcePicker, props));
+    expect(unavailable).not.toContain('data-source-tab="external"');
+    const supported = { ...props, onExternalInput: () => { preparations++; } };
+    const browser = renderToStaticMarkup(createElement(CaptureSourcePicker, supported));
+    expect(browser).toContain('data-source-tab="external"');
+    expect(browser).not.toContain(t("en", "host.sourcePicker.externalAction"));
+    const external = renderToStaticMarkup(createElement(CaptureSourcePicker, { ...supported, initialTab: "external" }));
+    expect(external).toMatch(/data-source-tab="external"[^>]*aria-selected="true"/);
+    expect(external).toContain(t("en", "host.sourcePicker.externalAction"));
+    expect(external).not.toContain(t("en", "host.sourcePicker.empty"));
+    expect(preparations).toBe(0);
+  });
+
   it("shows one system chooser for picker-only Apps instead of duplicate desktop tabs", () => {
     setCopy({ lang: "en", vis: false });
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {

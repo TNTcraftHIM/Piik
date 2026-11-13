@@ -294,6 +294,7 @@ export function ControlsPreview() {
           initialTab={displayPreview ? "display" : "window"}
           onBrowser={() => { setSourceOpen(false); notify(); }}
           onCamera={() => { setSourceOpen(false); notify(); }}
+          onExternalInput={() => { setSourceOpen(false); notify(); }}
           loadCameras={previewCameras}
           onNative={(_target, _audio, showBorder) => { setShowCaptureBorder(showBorder); setSourceOpen(false); notify(); }}
           onPreview={previewSource} onRefresh={() => setSourceState("refreshing")} onCancel={() => setSourceOpen(false)} />

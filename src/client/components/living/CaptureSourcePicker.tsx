@@ -13,7 +13,7 @@ import { CaptureSourceCard } from "./CaptureSourceCard";
 import { AudioExclusionSelect } from "./AudioExclusionSelect";
 import type { loadCameraPreviews } from "../../media/camera-previews";
 
-const SOURCE_TABS = ["browser", "camera", "window", "display", "picker"] as const;
+const SOURCE_TABS = ["browser", "camera", "window", "display", "picker", "external"] as const;
 type SourceTab = (typeof SOURCE_TABS)[number];
 const SOURCE_ICONS = {
   browser: "globe",
@@ -21,6 +21,7 @@ const SOURCE_ICONS = {
   display: "display",
   camera: "camera",
   picker: "share",
+  external: "cast",
 } satisfies Record<SourceTab, GlyphName>;
 
 export type NativeSourceList =
@@ -101,6 +102,7 @@ export function CaptureSourcePicker({
   const pickerOnly = (nativeSources.kind === "ready" || nativeSources.kind === "loading") && !!nativeSources.sources?.length &&
     nativeSources.sources.every(target => target.kind === "picker");
   const tabs = SOURCE_TABS.filter(value => value === "browser" ? browserSupported
+    : value === "external" ? !!onExternalInput
     : value === "camera" ? cameraSupported
     : value === "picker" ? pickerOnly
     : !pickerOnly && (appDetected || nativeSources.kind === "loading"));
@@ -267,7 +269,7 @@ export function CaptureSourcePicker({
             return (
               <Tooltip
                 key={value}
-                kind={value === "picker" ? "hint-source-picker" : `hint-capture-${value}`}
+                kind={value === "external" || value === "picker" ? "hint-source-picker" : `hint-capture-${value}`}
                 text={vis ? undefined : t(value === "browser" ? "host.sourcePicker.browserHint"
                   : value === "camera" ? "host.sourcePicker.cameraHint" : `host.sourcePicker.tab.${value}`)}
                 place="below"
@@ -389,10 +391,10 @@ export function CaptureSourcePicker({
           </div>
           </>}
 
-          {onExternalInput && <div className="lr-source-picker-list"><button type="button" className="lr-source-option is-action"
+          {activeTab === "external" && onExternalInput && <div className="lr-source-picker-list"><button type="button" className="lr-source-option is-action"
             disabled={selectionDisabled} onClick={onExternalInput}>
             <span className="lr-source-option-icon" aria-hidden="true"><Glyph name="cast" size={23} /></span>
-            <span className="lr-source-option-copy"><strong>OBS / WHIP</strong></span>
+            <span className="lr-source-option-copy"><strong>{t("host.sourcePicker.externalAction")}</strong>{!vis && <small>{t("host.sourcePicker.externalHint")}</small>}</span>
           </button></div>}
           {nativeTab && nativeSources.kind === "loading" ? (
             <span className="lr-source-picker-status" role="status" aria-label={t("host.sourcePicker.loading")}>
@@ -400,7 +402,7 @@ export function CaptureSourcePicker({
             </span>
           ) : issueKey ? (
             <Pill icon="alert" label={t(issueKey)} comic="warning" />
-          ) : browserCapture || activeTab === "camera" ? null : sources.length === 0 ? (
+          ) : browserCapture || activeTab === "camera" || activeTab === "external" ? null : sources.length === 0 ? (
             <span
               className="lr-source-picker-status"
               role="status"
