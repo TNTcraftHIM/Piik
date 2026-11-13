@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -84,12 +85,14 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
       await f.action(index, `updateProfile({name:${JSON.stringify(index ? 'Owned viewer' : 'Owned source')},avatar:null})`);
       await f.until('Native room available', () => f.view(index), (value: any) => value.state.channel.rooms.some((entry: any) => entry.id === room && entry.available));
       await browser(index, 'click', '.c3-room-link[aria-label="Kernel room"]');
-      await f.until('Room base DataChannel opens', () => f.sample(index), (value: any) => value.channels.some((entry: any) => entry.state === 'open'));
     }
+    for (const index of indices) await f.action(index, `joinVoice('${room}')`);
     result.initial = await Promise.all(indices.map(index => f.view(index)));
-    const pairs = result.initial.map((value: any) => value.state.pairs.find((pair: any) => pair.rooms.includes(room)));
-    assert(pairs[0] && pairs[1]);
-    result.nativeEndpoint = pairs[1].peerId;
+    const hostEndpoint = result.initial[0].state.channel.rooms.find((entry: any) => entry.id === room).delivery.hostSessionId;
+    const transitEndpoint = relay?.records.find(row => row.event?.type === 'admitted')?.event.sessionId;
+    assert(hostEndpoint && (!prepared || (transitEndpoint && transitEndpoint !== hostEndpoint)));
+    result.nativeHostEndpoint = hostEndpoint;
+    result.nativeEndpoint = prepared ? transitEndpoint : hostEndpoint;
     if (relayed) {
       const links = (value: any) => value.state.pairs.filter((pair: any) => pair.rooms.includes(room));
       result.initial = await f.until('Core forms the Browser relay base branch', () => Promise.all(indices.map(index => f.view(index))), (views: any[]) => {
@@ -113,17 +116,7 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
       for (const [from, to] of result.blockedShortcuts) network.exec(network.router(from), 'nft', [
         `add rule inet lab_filter faults ip daddr ${network.publicIP(to)} meta l4proto udp counter drop`,
       ]);
-    } else if (relay) {
-      assert.notEqual(pairs[0].peerId, pairs[1].peerId);
-      result.preparedNativePairs = relay.records.filter(row => row.event?.type === 'plan')
-        .flatMap(row => row.event.pairs).filter((pair: any) => pair.peerId === pairs[0].peerId && pair.preparation === 'required');
-      assert(result.preparedNativePairs.length, 'Core must require Native UDP preparation');
-      assert(relay.records.some(row => row.event?.type === 'native-signal' && row.event.udp === 'complete'));
-      result.probeBoundary = 'Second Native is a NativePeers transport/media probe; conversation acceptance belongs to ordinary';
-    } else {
-      assert.equal(pairs[0].peerId, pairs[1].peerId);
     }
-    if (!relayed) assert(!result.initial.some((value: any) => [pairs[0].peerId, pairs[1].peerId].includes(value.sessionId)));
     if (mode === 'ordinary') {
     await f.action(0, `sendMessage('${room}', 'Confirmed across calibrated NAT')`);
     await f.until('Native confirmed chat', () => f.evaluate(1, `${f.hook}.snapshot().messagesByRoom['${room}']`), (messages: any[]) => messages?.some(message => message.text === 'Confirmed across calibrated NAT'));
@@ -132,12 +125,20 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
     const stored = new DatabaseSync(join(output, 'host/room.sqlite'), { readOnly: true });
     try { result.nativeConfirmedMessages = stored.prepare('SELECT count(*) AS count FROM message WHERE room_id=?').get(room)!.count; assert.equal(result.nativeConfirmedMessages, 1); } finally { stored.close(); }
     }
-    await f.action(sourceBrowser, `joinVoice('${room}')`); await f.action(viewerBrowser, `joinVoice('${room}')`);
     await f.until('bidirectional Native-forwarded voice', () => Promise.all([sourceBrowser, viewerBrowser].map(index => f.sample(index))), (values: any[]) => values.every(value => value.inbound.some((row: any) => row.kind === 'audio' && row.samples > 0 && row.energy > 0)));
     await f.evaluate(sourceBrowser, 'window.__channelProbe.captureAudio(true)');
     const publication = await f.capturedScreen(sourceBrowser, room); result.publication = publication;
     await f.action(viewerBrowser, `watch(${JSON.stringify(publication)})`);
     result.phase = 'viewer playing'; await f.playing(viewerBrowser, publication);
+    if (relay) {
+      result.preparedNativePairs = relay.records.filter(row => row.event?.type === 'plan')
+        .flatMap(row => row.event.pairs).filter((pair: any) => pair.peerId === hostEndpoint && pair.preparation === 'required'
+          && pair.incoming.some((flow: any) => flow.publicationId === publication && flow.selected));
+      assert(result.preparedNativePairs.length, 'Selected publication must cross the prepared Native pair');
+      assert(relay.records.some(row => row.event?.type === 'native-signal' && row.event.udp === 'complete'
+        && result.preparedNativePairs.some((pair: any) => pair.id === row.event.pairId)), 'Matching Native pair must complete preparation');
+      result.probeBoundary = 'Native transit follows real voice and selected publication demand';
+    }
     result.phase = 'viewer source audio progressing'; await f.audioProgressing(viewerBrowser, publication);
     result.phase = 'initial decoded continuity';
     const mediaSample = () => f.evaluate(viewerBrowser, `(async () => {
@@ -222,7 +223,8 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
   } catch (error) {
     result.failure = { atMs: Date.now(), phase: result.phase,
       memory: command('cat', ['/proc/meminfo']),
-      memoryPressure: command('cat', ['/proc/pressure/memory']), cpuPressure: command('cat', ['/proc/pressure/cpu']),
+      memoryPressure: existsSync('/proc/pressure/memory') ? command('cat', ['/proc/pressure/memory']) : null,
+      cpuPressure: existsSync('/proc/pressure/cpu') ? command('cat', ['/proc/pressure/cpu']) : null,
       processes: await Promise.allSettled(network.namespaces.map(async namespace => {
         const pids = command('ip', ['netns', 'pids', namespace]).split(/\s+/).filter(Boolean);
         return { namespace, pids, status: pids.length ? command('ps', ['-p', pids.join(','), '-o', 'pid,ppid,stat,pcpu,rss,etime,comm']) : '' };

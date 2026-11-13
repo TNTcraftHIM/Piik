@@ -206,7 +206,12 @@ export function checkMapping(probe: ProbeResult, mode: NatMode): void {
   if (probe.mappings.length !== 3 || (mode === "preserve" ? ports.size !== 1 : ports.size < 2)) {
     throw new Error(`Observed mappings do not match the configured ${mode} SNAT behavior`);
   }
-  if (mode === "sequential") {
+  if (mode === "sequential" || mode === "descending") {
+    const observed = probe.mappings.map(value => value.port);
+    const step = mode === "descending" ? -1 : 1;
+    if (observed[1]! - observed[0]! !== step || observed[2]! - observed[1]! !== step) {
+      throw new Error("Sequential SNAT allocation direction did not match the requested mapping");
+    }
     const ordered = [...ports].sort((a, b) => a - b);
     if (ordered.length !== 3 || ordered[0]! < 40000 || ordered[2]! >= 44096 ||
       ordered[1]! !== ordered[0]! + 1 || ordered[2]! !== ordered[1]! + 1) {

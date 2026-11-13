@@ -137,6 +137,16 @@ node --import tsx scripts/network-lab.ts --list
 node --import tsx scripts/network-lab.ts --case ordinary --output build/network-lab/ordinary-current
 ```
 
+`--mapping descending` selects decreasing sequential NAT allocation for
+`prepared` and `media`; the default is `sequential` (increasing). Calibration
+checks the observed destination order, not just a sorted set of ports. Both
+variants keep the same preparation socket and packet budgets.
+The November 13 controlled comparison retained increasing-map playback, rejected
+the decreasing map before the signed-step change, and decoded media on both
+directions afterward. The maintained decreasing-map control also recovered
+picture and source sound after its 50-second interruption. These are isolated
+kernel-NAT results, not physical-network success rates.
+
 `ordinary` covers the real Native room's history, file and Browser media path;
 `prepared` covers the prepared Native DataChannel; `recovery` covers its established
 UDP loss and remapping; `media` covers decoded media through a prepared Native

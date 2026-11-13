@@ -170,11 +170,13 @@ async fn participant() -> Result<()> {
                     _ => None,
                 };
                 if let Some(state) = state {
-                    emit(json!({"type":"plan", "pairs":state.pairs.iter().map(|p| json!({"id":p.id,"peerId":p.peer_id,"preparation":p.udp_preparation,"rooms":p.rooms})).collect::<Vec<_>>()}));
+                    emit(json!({"type":"plan", "pairs":state.pairs.iter().map(|p| json!({"id":p.id,"peerId":p.peer_id,"preparation":p.udp_preparation,"rooms":p.rooms,"incoming":p.incoming,"outgoing":p.outgoing})).collect::<Vec<_>>()}));
                     snapshots.send_replace(Some(state.clone()));
                     peers.as_ref().unwrap().update(state.pairs, state.publications, state.files).await?;
                     if !browsing && state.channel.rooms.iter().any(|room| room.id == ROOM && room.available && room.authorized) {
-                        send(&mut socket, Command::Browse { room_id: ROOM.into(), active: true, relay_capacity: None }).await?; browsing = true;
+                        send(&mut socket, Command::Browse { room_id: ROOM.into(), active: true, relay_capacity: None }).await?;
+                        send(&mut socket, Command::Voice { room_id: ROOM.into(), joined: true, muted: true, deafened: false }).await?;
+                        browsing = true;
                     }
                 }
             }

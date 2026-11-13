@@ -6,7 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 export const SITE_IP = "198.51.100.1";
 export const SITE_IPV6 = "2001:db8:71::1";
 export const SITE_ORIGIN = `http://${SITE_IP}:9000`;
-export type NatMode = "preserve" | "sequential" | "random";
+export type NatMode = "preserve" | "sequential" | "descending" | "random";
 export type Fault = "none" | "peer-block" | "udp-block" | "ipv4-block" | "stun-primary" | "delay" | "loss" | "rate" | "signaling";
 
 export function command(program: string, args: string[], input?: string): string {
@@ -91,9 +91,9 @@ export class LabNetwork {
       }
       this.exec(router, "nft", [`
 table ip lab_nat {
- ${mode === "sequential" ? `map ports { typeof numgen inc mod 4096 : udp dport; elements = { ${Array.from({ length: 4096 }, (_, port) => `${port} : ${40000 + port}`).join(", ")} } }` : ""}
+ ${(mode === "sequential" || mode === "descending") ? `map ports { typeof numgen inc mod 4096 : udp dport; elements = { ${Array.from({ length: 4096 }, (_, port) => `${port} : ${mode === "descending" ? 44095 - port : 40000 + port}`).join(", ")} } }` : ""}
  chain postrouting { type nat hook postrouting priority srcnat; policy accept;
-  ${mode === "sequential" ? `oifname "wan0" meta l4proto udp snat to ${this.publicIP(index)}:numgen inc mod 4096 map @ports` : ""}
+  ${(mode === "sequential" || mode === "descending") ? `oifname "wan0" meta l4proto udp snat to ${this.publicIP(index)}:numgen inc mod 4096 map @ports` : ""}
   oifname "wan0" snat to ${this.publicIP(index)}${mode === "random" ? " fully-random" : ""}
  }
 }

@@ -21,6 +21,7 @@ const cases = {
 };
 const { values } = parseArgs({ options: {
   list: { type: "boolean" }, case: { type: "string" }, output: { type: "string" },
+  mapping: { type: "string", default: "sequential" },
   executable: { type: "string" }, worker: { type: "string" },
 } });
 if (values.list) console.log(Object.entries(cases).map(([name, text]) => `${name}: ${text}`).join("\n"));
@@ -31,6 +32,7 @@ else if (values.worker) {
   else throw Error("Unknown LAB worker");
 } else {
   assert(values.case && Object.hasOwn(cases, values.case), "Choose --case ordinary|prepared|recovery|media|browser-relay (or --list)");
+  assert(["sequential", "descending"].includes(values.mapping!), "Choose --mapping sequential|descending");
   assert.equal(process.platform, "linux", "Kernel controls run only on Linux");
   assert.equal(process.getuid?.(), 0, "Kernel controls need root for owned namespaces");
   await run(values.case as keyof typeof cases);
@@ -56,11 +58,12 @@ async function run(name: keyof typeof cases): Promise<void> {
   const worker = (label: string, ns: string, task: string) => start(label, ns, process.execPath,
     [...process.execArgv, process.argv[1]!, "--worker", task]);
   const browserCase = name === "ordinary" || name === "media" || name === "browser-relay";
-  const modes: NatMode[] = name === "media" ? ["sequential", "sequential", "preserve", "preserve"]
+  const mapping = values.mapping as "sequential" | "descending";
+  const modes: NatMode[] = name === "media" ? [mapping, mapping, "preserve", "preserve"]
     : name === "browser-relay" ? ["preserve", "preserve", "preserve", "preserve"]
     : name === "ordinary" ? ["preserve", "preserve", "preserve"]
-    : name === "prepared" ? ["sequential", "sequential"] : ["preserve", "preserve"];
-  const result: any = { case: name, scope: cases[name], passed: false,
+    : name === "prepared" ? [mapping, mapping] : ["preserve", "preserve"];
+  const result: any = { case: name, scope: cases[name], mapping, passed: false,
     sourceHead: process.env.SOURCE_HEAD ?? command("git", ["-C", source, "rev-parse", "HEAD"]), kernel: command("uname", ["-sr"]), node: process.version };
   let capture: LabProcess | undefined;
   try {
@@ -139,6 +142,14 @@ async function run(name: keyof typeof cases): Promise<void> {
           const edges = result.mediaEdges ?? (name === "ordinary" ? [[0, 1], [0, 2]] : name === "media" ? [[0, 2], [0, 1], [1, 3]] : [[0, 1]]);
           for (const [a, b] of edges) for (const [from, to] of [[a!, b!], [b!, a!]]) assert(result.packetFlows.some((flow: any) =>
             flow.source === network.publicIP(from) && flow.destination === network.publicIP(to) && (browserCase ? flow.kind === "rtp" : flow.kind === "other")), "Actual peer wire traffic must cross every selected edge");
+          if (name === "media") {
+            const nativeMedia = result.packetFlows.filter((flow: any) => flow.kind === "rtp"
+              && flow.source === network.publicIP(0) && flow.destination === network.publicIP(1));
+            assert(nativeMedia.some((media: any) => result.packetFlows.some((feedback: any) => feedback.kind === "rtcp"
+              && feedback.source === media.destination && feedback.destination === media.source
+              && feedback.sourcePort === media.destinationPort && feedback.destinationPort === media.sourcePort)),
+            "Prepared Native media tuple must carry reverse RTCP");
+          }
         }
       }
       result.remainingNamespacePids = Object.fromEntries(network.namespaces.map(ns => [ns, command("ip", ["netns", "pids", ns])]));
