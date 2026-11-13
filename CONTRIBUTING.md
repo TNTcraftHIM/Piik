@@ -108,6 +108,11 @@ index; do not substitute a move for the rejected deletion.
 The [engineering reference](./docs/standards/engineering.md) owns module and
 interface discipline, including the post-change ablation pass.
 
+External citations in repository files must use publicly published, verifiable
+sources, such as documentation, open-source repositories, articles and websites.
+Interoperability guides and compatibility notes may name the relevant tools;
+retain required attribution and licenses.
+
 Follow the [naming convention](./docs/standards/naming.md) for product copy,
 commands, packages and code ownership. Keep display names separate from stable
 protocol identifiers; use normal language-specific identifier conventions.
