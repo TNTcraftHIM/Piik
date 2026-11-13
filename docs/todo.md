@@ -7,6 +7,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Release mirror repository mode.** Remove AtomGit's read-only Pull
+  association so future Release tags can be created independently of source
+  synchronization. Keep the repository URL and published attachments;
+  [mirror operations](./operations/github.md#atomgit-download-mirror) owns setup.
 - [ ] **Windows sound only works with exclusion (#534).** Compare the affected
   application's playback endpoint with Piik's default-endpoint capture. The
   [audio scope control](./research/native-client-media.md#windows-audio-exclusion)

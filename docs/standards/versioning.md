@@ -351,10 +351,11 @@ presentation, not Piik's version selection or feature claims.
 ## Release Sources
 
 GitHub Releases is the primary publication. The public
-[AtomGit project](https://atomgit.com/TNTcraftHIM/Piik) mirrors source branches,
-tags and commits through its configured repository synchronization. Release
-metadata and binary attachments are published separately; Git synchronization
-alone does not make packages available.
+[AtomGit project](https://atomgit.com/TNTcraftHIM/Piik) distributes the same original
+Release packages. Optional source synchronization is independent of that duty
+and must not delay it. The mirror's local tag is an attachment locator, not the
+authority for the package's source revision; GitHub and the retained source marker
+own that identity.
 
 Build each target once. The mirror publisher reuses the shared artifact validator,
 compares every original package with GitHub's published SHA-256 digest, and copies
@@ -369,8 +370,9 @@ credentials and must not appear in logs. Before marking the release stable,
 anonymously download every package and verify its complete size and SHA-256.
 A rerun inventories the existing release and attachments first; never blindly
 retry a timed-out mutation or replace a published package. An incomplete release
-remains a prerelease. GitHub and website publication remain independent of mirror
-success. No automatic deletion or Gitee-specific quota policy applies to AtomGit.
+remains a prerelease. GitHub and website publication may proceed independently,
+but release completion requires the matching verified mirror. Scheduled retries
+do not replace this postflight. No automatic deletion or Gitee-specific quota policy applies to AtomGit.
 
 GitHub remains the first update source. Already published App and Server binaries
 retain their embedded Gitee fallback until a subsequent software release changes

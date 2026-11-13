@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { openAsBlob } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import { readReleaseArtifacts } from "./release-artifacts.mjs";
-import { mirrorSourceReady } from "./release-mirror-ready.mjs";
 
 const [directory, version, revision, option] = process.argv.slice(2);
 if (option && option !== "--dry-run") {
@@ -59,7 +58,13 @@ async function request(path, method = "GET", body) {
     body: body ? JSON.stringify(body) : undefined,
   }, 20_000, async response => {
     if (response.status === 404 && method === "GET") return null;
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) {
+      const detail = await response.json().catch(() => null);
+      const message = typeof detail?.message === "string" ? detail.message
+        : typeof detail?.error_message === "string" ? detail.error_message
+        : typeof detail?.error === "string" ? detail.error : "";
+      throw new Error(`HTTP ${response.status}${message ? `: ${message.replaceAll(token, "[redacted]").slice(0, 500)}` : ""}`);
+    }
     return response.json();
   });
 }
@@ -109,16 +114,14 @@ if (option === "--dry-run") {
       !release.body?.split(/\r?\n/).includes(marker))) {
     throw new Error("Existing mirror release belongs to a different or unknown source revision");
   }
-  const body = `${source.body ?? ""}\n\nSource: https://github.com/${repository}/commit/${revision}\n\n${marker}\n`;
+  const body = `${source.body ?? ""}\n\n此镜像分发 GitHub 的原始安装包；源码以 GitHub 为准。 / This mirror distributes the original GitHub packages; GitHub owns their source.\n\nSource: https://github.com/${repository}/commit/${revision}\n\n${marker}\n`;
   if (!release || release.prerelease) requireLatestSource();
   if (!release) {
-    if (!await mirrorSourceReady(version, revision, request))
-      throw new Error("AtomGit Git synchronization is pending; the scheduled mirror check will resume after the matching commit and tag arrive");
     const repo = await request("");
     if (!repo || repo.private || !repo.default_branch) throw new Error("A public initialized AtomGit mirror is required");
     release = await request("/releases", "POST", {
       tag_name: version, name: source.name || `Piik ${version}`, body, release_status: "pre",
-      target_commitish: revision,
+      target_commitish: repo.default_branch,
     });
   }
   const attachments = release.assets;
