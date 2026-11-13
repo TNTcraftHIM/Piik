@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Piik</title>
+<style>
+__PIIK_PALETTE__
+__PIIK_BUTTONS__
+__PIIK_PANEL__
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body { background: var(--paper); color: var(--ink); font: 15px/1.5 system-ui; }
+button { font-family: inherit; cursor: pointer; app-region: no-drag; }
+button:focus-visible { outline: 2px solid var(--action); outline-offset: 3px; }
+.c3-settings-dialog { position: static; width: 100%; height: 100%; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
+.c3-settings-dialog-heading { app-region: drag; }
+.c3-settings-dialog-heading .lr-btn { flex: none; }
+.permission-body { display: flex; flex-direction: column; flex: 1; gap: 20px; }
+.permission-origin { flex: 1; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; user-select: text; }
+.permission-actions { display: flex; justify-content: flex-end; gap: 12px; flex: none; }
+svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+<dialog open class="c3-settings-dialog" aria-labelledby="permission-title" aria-describedby="permission-origin">
+  <header class="c3-settings-dialog-heading">
+    <div><p>Piik</p><h2 id="permission-title"></h2></div>
+    <button id="close" class="lr-btn is-quiet is-compact" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"></svg></button>
+  </header>
+  <div class="c3-settings-panels permission-body">
+    <div id="permission-origin" class="permission-origin" dir="ltr"></div>
+    <footer class="permission-actions">
+      <button id="deny" class="lr-btn is-compact" type="button" autofocus></button>
+      <button id="allow" class="lr-btn is-primary is-compact" type="button"></button>
+    </footer>
+  </div>
+</dialog>
+<script>
+const controls = __PIIK_WINDOW_CONTROLS__;
+const request = window.piikPermission;
+const close = document.getElementById('close');
+const deny = document.getElementById('deny');
+const allow = document.getElementById('allow');
+for (const geometry of controls.icons.close) {
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', geometry);
+  close.querySelector('svg').append(path);
+}
+document.getElementById('permission-origin').textContent = request.origin;
+window.updateAppearance = (theme, language) => {
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme;
+  document.documentElement.lang = language;
+  const copy = controls.labels[language];
+  document.getElementById('permission-title').textContent = request.camera ? copy.camera : copy.microphone;
+  close.title = copy.permissionClose;
+  close.setAttribute('aria-label', copy.permissionClose);
+  deny.textContent = copy.deny;
+  allow.textContent = copy.allow;
+};
+const answer = allowed => window.ipc.postMessage(allowed ? 'allow' : 'deny');
+close.onclick = deny.onclick = () => answer(false);
+allow.onclick = () => answer(true);
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') { event.preventDefault(); answer(false); }
+});
+window.updateAppearance(request.theme, request.language);
+deny.focus();
+window.ipc.postMessage('ready');
+</script>
+</html>

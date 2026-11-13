@@ -155,10 +155,11 @@ The default microphone request stayed pending without a visible permission
 prompt on the tested runtime. An isolated official `PermissionRequested`
 deferral with an origin-labelled system dialog completed both explicit allow
 and deny through the shared voice UI using a synthetic device. The choice was
-not saved. This establishes a narrow shell permission adapter, not accepted
-permission UX: the modal proof requires a choice before closing the owner, and
-the existing denial guidance still refers to Browser settings. Those boundaries
-remain part of client integration; the proof is not the default App entry.
+not saved. The integration replaces that system dialog with a trusted Piik
+permission window under the same request owner. Its event loop stays available
+for owner shutdown; the [App reference](../../prototype/channel-server/README.md#local-app-link)
+owns permission choices and cancellation. Actual integrated-window acceptance
+remains separate from this proof.
 
 The window must present Piik as an application: Piik owns navigation, settings
 and player controls; the host window owns minimize, maximize and close. Do not

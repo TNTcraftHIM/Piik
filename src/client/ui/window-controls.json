@@ -13,9 +13,11 @@
       "maximize": "Maximize",
       "restore": "Restore",
       "close": "Close Piik",
-      "microphone": "Allow this page to use your microphone?",
-      "camera": "Allow this page to use your camera?",
-      "permissionNote": "This choice applies to this request. You can try again after denying or cancelling.",
+      "microphone": "Allow microphone access?",
+      "camera": "Allow camera access?",
+      "allow": "Allow",
+      "deny": "Don't allow",
+      "permissionClose": "Cancel",
       "startupFailed": "Piik could not start. See the terminal for details."
     },
     "zh": {
@@ -23,9 +25,11 @@
       "maximize": "最大化",
       "restore": "还原",
       "close": "关闭 Piik",
-      "microphone": "允许此页面使用麦克风吗？",
-      "camera": "允许此页面使用摄像头吗？",
-      "permissionNote": "此选择仅用于本次请求。拒绝或取消后可以重试。",
+      "microphone": "允许使用麦克风？",
+      "camera": "允许使用摄像头？",
+      "allow": "允许",
+      "deny": "不允许",
+      "permissionClose": "取消",
       "startupFailed": "Piik 未能启动，请查看终端中的详细信息。"
     }
   }

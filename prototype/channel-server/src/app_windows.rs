@@ -1,6 +1,9 @@
 //! Windows owns presentation; the existing HTTP App owns all room and capture work.
+mod permission;
+
 use crate::app::{self, Config};
 use anyhow::{Context, Result};
+use permission::{permissions, PendingPermissions, Prompt};
 use serde::Deserialize;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::{
@@ -20,16 +23,8 @@ use tao::{
 };
 use tokio::sync::oneshot;
 use webview2_com::{
-    ContainsFullScreenElementChangedEventHandler,
-    Microsoft::Web::WebView2::Win32::{
-        ICoreWebView2Deferral, ICoreWebView2PermissionRequestedEventArgs,
-        ICoreWebView2PermissionRequestedEventArgs3, COREWEBVIEW2_PERMISSION_KIND_CAMERA,
-        COREWEBVIEW2_PERMISSION_KIND_MICROPHONE, COREWEBVIEW2_PERMISSION_STATE_ALLOW,
-        COREWEBVIEW2_PERMISSION_STATE_DENY,
-    },
-    PermissionRequestedEventHandler, WindowCloseRequestedEventHandler,
+    ContainsFullScreenElementChangedEventHandler, WindowCloseRequestedEventHandler,
 };
-use windows_core::Interface;
 use wry::{
     NewWindowResponse, WebContext, WebView, WebViewBuilder, WebViewBuilderExtWindows,
     WebViewExtWindows,
@@ -101,6 +96,8 @@ enum ServiceEvent {
     Finished,
     PopupClosed(WindowId),
     Permission,
+    PermissionReady(WindowId),
+    PermissionDecision(WindowId, bool),
     Fullscreen(bool),
     Caption(WindowAction),
     Content(ContentMessage),
@@ -114,22 +111,19 @@ struct WindowControls {
 }
 #[derive(Deserialize)]
 struct Labels {
-    en: PermissionCopy,
-    zh: PermissionCopy,
+    en: WindowCopy,
+    zh: WindowCopy,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct PermissionCopy {
-    microphone: String,
-    camera: String,
-    permission_note: String,
+struct WindowCopy {
     startup_failed: String,
 }
 impl WindowControls {
     fn size(&self) -> LogicalSize<f64> {
         LogicalSize::new(self.width, self.height)
     }
-    fn copy(&self, language: Language) -> &PermissionCopy {
+    fn copy(&self, language: Language) -> &WindowCopy {
         match language {
             Language::En => &self.labels.en,
             Language::Zh => &self.labels.zh,
@@ -203,88 +197,13 @@ impl Drop for Core {
     }
 }
 
-struct Permission {
-    owner: WindowId,
-    args: ICoreWebView2PermissionRequestedEventArgs,
-    deferral: Option<ICoreWebView2Deferral>,
-    origin: String,
-    camera: bool,
-}
-impl Permission {
-    fn answer(&mut self, allowed: bool) {
-        if let Some(deferral) = self.deferral.take() {
-            // SAFETY: These COM objects and every decision stay on the WebView thread.
-            unsafe {
-                let _ = self.args.SetState(if allowed {
-                    COREWEBVIEW2_PERMISSION_STATE_ALLOW
-                } else {
-                    COREWEBVIEW2_PERMISSION_STATE_DENY
-                });
-                let _ = deferral.Complete();
-            }
-        }
-    }
-}
-impl Drop for Permission {
-    fn drop(&mut self) {
-        self.answer(false);
-    }
-}
-type PendingPermissions = Rc<RefCell<Vec<Permission>>>;
-type Popups = Rc<RefCell<Vec<(WebView, Window)>>>;
-
-fn permissions(
-    webview: &WebView,
-    owner: WindowId,
-    pending: PendingPermissions,
-    events: EventLoopProxy<ServiceEvent>,
-) -> Result<()> {
-    // Wry's generic permission callback omits origin and deferred decisions.
-    // Use WebView2's event so the native prompt names the actual requesting site.
-    unsafe {
-        webview.webview().add_PermissionRequested(
-            &PermissionRequestedEventHandler::create(Box::new(move |_, args| {
-                let Some(args) = args else { return Ok(()) };
-                let mut kind = Default::default();
-                args.PermissionKind(&mut kind)?;
-                if kind != COREWEBVIEW2_PERMISSION_KIND_MICROPHONE
-                    && kind != COREWEBVIEW2_PERMISSION_KIND_CAMERA
-                {
-                    return Ok(());
-                }
-                args.cast::<ICoreWebView2PermissionRequestedEventArgs3>()?
-                    .SetSavesInProfile(false)?;
-                let mut uri = windows_core::PWSTR::null();
-                args.Uri(&mut uri)?;
-                let origin = url::Url::parse(&webview2_com::take_pwstr(uri))
-                    .ok()
-                    .filter(|url| matches!(url.scheme(), "http" | "https"))
-                    .map(|url| url.origin().ascii_serialization());
-                let Some(origin) = origin else {
-                    args.SetState(COREWEBVIEW2_PERMISSION_STATE_DENY)?;
-                    return Ok(());
-                };
-                pending.borrow_mut().push(Permission {
-                    owner,
-                    args: args.clone(),
-                    deferral: Some(args.GetDeferral()?),
-                    origin,
-                    camera: kind == COREWEBVIEW2_PERMISSION_KIND_CAMERA,
-                });
-                let _ = events.send_event(ServiceEvent::Permission);
-                Ok(())
-            })),
-            &mut Default::default(),
-        )?;
-    }
-    Ok(())
-}
+type Popups = Rc<RefCell<Vec<(WebView, Rc<Window>)>>>;
 
 // Fields drop in this order: both WebViews retire before their native owner.
 struct MainWindow {
     caption: WebView,
     content: WebView,
-    window: Window,
+    window: Rc<Window>,
 }
 impl MainWindow {
     fn new(
@@ -296,15 +215,17 @@ impl MainWindow {
         controls: &WindowControls,
     ) -> Result<Self> {
         let icon = Icon::from_resource(1, None)?;
-        let window = WindowBuilder::new()
-            .with_title("Piik")
-            .with_decorations(false)
-            .with_undecorated_shadow(true)
-            .with_window_icon(Some(icon.clone()))
-            .with_taskbar_icon(Some(icon))
-            .with_inner_size(LogicalSize::new(1120.0, 760.0))
-            .with_visible(false)
-            .build(target)?;
+        let window = Rc::new(
+            WindowBuilder::new()
+                .with_title("Piik")
+                .with_decorations(false)
+                .with_undecorated_shadow(true)
+                .with_window_icon(Some(icon.clone()))
+                .with_taskbar_icon(Some(icon))
+                .with_inner_size(LogicalSize::new(1120.0, 760.0))
+                .with_visible(false)
+                .build(target)?,
+        );
         set_minimum_client_size(&window);
         let popup_target = target.clone();
         let popup_events = events.clone();
@@ -320,9 +241,9 @@ impl MainWindow {
             })
             .with_new_window_req_handler(move |_, features| {
                 let create = || -> Result<NewWindowResponse> {
-                    let window = WindowBuilder::new().with_title("Piik")
-                        .with_inner_size(LogicalSize::new(720.0, 760.0)).build(&popup_target)?;
-                    let webview = WebViewBuilder::new().with_environment(features.opener.environment).build(&window)?;
+                    let window = Rc::new(WindowBuilder::new().with_title("Piik")
+                        .with_inner_size(LogicalSize::new(720.0, 760.0)).build(&popup_target)?);
+                    let webview = WebViewBuilder::new().with_environment(features.opener.environment).build(window.as_ref())?;
                     let id = window.id();
                     permissions(&webview, id, popup_pending.clone(), popup_events.clone())?;
                     let closed = popup_events.clone();
@@ -345,7 +266,7 @@ impl MainWindow {
                 })
             })
             .with_bounds(wry::Rect { position: LogicalPosition::new(0.0, 0.0).into(), size: window.inner_size().into() })
-            .build_as_child(&window)?;
+            .build_as_child(window.as_ref())?;
         permissions(&content, window.id(), pending, events.clone())?;
         let fullscreen_events = events.clone();
         unsafe {
@@ -387,7 +308,7 @@ impl MainWindow {
                 };
                 let _ = events.send_event(ServiceEvent::Caption(action));
             })
-            .build_as_child(&window)?;
+            .build_as_child(window.as_ref())?;
         caption.load_html(
             &CAPTION
                 .replace("__PIIK_PALETTE__", PALETTE)
@@ -480,22 +401,29 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
     let mut core = Core::start(config, port, events.create_proxy())?;
     let mut result = Ok(());
     let mut language = Language::En;
+    let mut theme = Theme::Light;
+    let mut prompt: Option<Prompt> = None;
     let mut slot = None;
     let mut minimum_scale = window.as_ref().map(|main| main.window.scale_factor());
-    events.run_return(|event, _, flow| {
+    let permission_events = events.create_proxy();
+    events.run_return(|event, target, flow| {
         *flow = ControlFlow::Wait;
         match event {
             Event::UserEvent(ServiceEvent::Content(ContentMessage::Appearance {
-                theme,
+                theme: next_theme,
                 language: next,
             })) => {
                 language = next;
+                theme = next_theme;
                 if let Some(main) = &window {
                     let _ = main.caption.evaluate_script(&format!(
                         "window.updateAppearance('{}','{}')",
                         theme.code(),
                         language.code()
                     ));
+                }
+                if let Some(prompt) = &prompt {
+                    prompt.update_appearance(&theme, language);
                 }
             }
             Event::UserEvent(ServiceEvent::Content(ContentMessage::Header { slot: next })) => {
@@ -550,33 +478,26 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                     main.position_caption(&controls, slot);
                 }
             }
-            Event::UserEvent(ServiceEvent::Permission) => {
-                let requests = std::mem::take(&mut *pending.borrow_mut());
-                for mut request in requests {
-                    let owner = window
-                        .as_ref()
-                        .filter(|main| main.window.id() == request.owner)
-                        .map(|main| main.window.hwnd())
-                        .or_else(|| {
-                            popups
-                                .borrow()
-                                .iter()
-                                .find(|(_, child)| child.id() == request.owner)
-                                .map(|(_, child)| child.hwnd())
-                        });
-                    let allowed = owner.is_some_and(|owner| {
-                        let copy = controls.copy(language);
-                        let prompt = if request.camera {
-                            &copy.camera
-                        } else {
-                            &copy.microphone
-                        };
-                        let text =
-                            format!("{prompt}\n\n{}\n\n{}", request.origin, copy.permission_note);
-                        // Native Yes/No/Cancel; No is the default. Closing or Esc cancels.
-                        message_box(owner, &text, 0x03 | 0x20 | 0x100) == 6
-                    });
-                    request.answer(allowed);
+            Event::UserEvent(ServiceEvent::PermissionReady(id)) => {
+                if let Some(prompt) = prompt.as_ref().filter(|prompt| prompt.id() == id) {
+                    prompt.update_appearance(&theme, language);
+                    prompt.show();
+                }
+            }
+            Event::UserEvent(ServiceEvent::PermissionDecision(id, allowed)) => {
+                if prompt.as_ref().is_some_and(|prompt| prompt.id() == id) {
+                    let current = prompt.take().unwrap();
+                    let owner = current.owner();
+                    current.answer(allowed);
+                    if let Some(main) = window.as_ref().filter(|main| main.window.id() == owner) {
+                        let _ = main.content.focus();
+                    } else if let Some((webview, _)) = popups
+                        .borrow()
+                        .iter()
+                        .find(|(_, window)| window.id() == owner)
+                    {
+                        let _ = webview.focus();
+                    }
                 }
             }
             Event::UserEvent(ServiceEvent::Ready(entry)) => {
@@ -596,13 +517,26 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                 event: WindowEvent::CloseRequested,
                 window_id,
                 ..
-            } => {
-                if window
+            }
+            | Event::UserEvent(ServiceEvent::PopupClosed(window_id)) => {
+                if prompt
+                    .as_ref()
+                    .is_some_and(|prompt| prompt.id() == window_id)
+                {
+                    let _ = permission_events
+                        .send_event(ServiceEvent::PermissionDecision(window_id, false));
+                } else if window
                     .as_ref()
                     .is_some_and(|main| main.window.id() == window_id)
                 {
                     core.stop();
                 } else {
+                    if prompt
+                        .as_ref()
+                        .is_some_and(|prompt| prompt.owner() == window_id)
+                    {
+                        prompt.take();
+                    }
                     pending
                         .borrow_mut()
                         .retain(|request| request.owner != window_id);
@@ -611,16 +545,49 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                         .retain(|(_, child)| child.id() != window_id);
                 }
             }
-            Event::UserEvent(ServiceEvent::PopupClosed(id)) => {
-                pending.borrow_mut().retain(|request| request.owner != id);
-                popups.borrow_mut().retain(|(_, child)| child.id() != id);
-            }
             Event::UserEvent(ServiceEvent::Finished) => {
+                core.stop();
                 *flow = ControlFlow::Exit;
             }
             _ => {}
         }
+        if core.stop.is_none() {
+            prompt.take();
+            pending.borrow_mut().clear();
+        } else {
+            while prompt.is_none() {
+                let Some(request) = pending.borrow_mut().pop_front() else {
+                    break;
+                };
+                let owner = window
+                    .as_ref()
+                    .filter(|main| main.window.id() == request.owner)
+                    .map(|main| main.window.clone())
+                    .or_else(|| {
+                        popups
+                            .borrow()
+                            .iter()
+                            .find(|(_, child)| child.id() == request.owner)
+                            .map(|(_, child)| child.clone())
+                    });
+                if let Some(owner) = owner {
+                    match Prompt::new(
+                        target,
+                        permission_events.clone(),
+                        &mut context,
+                        request,
+                        owner,
+                        &theme,
+                        language,
+                    ) {
+                        Ok(next) => prompt = Some(next),
+                        Err(error) => eprintln!("Open Piik permission window: {error:#}"),
+                    }
+                }
+            }
+        }
     });
+    drop(prompt);
     pending.borrow_mut().clear();
     popups.borrow_mut().clear();
     result = result.and(core.finish());
