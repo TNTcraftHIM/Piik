@@ -8,7 +8,6 @@ use std::sync::{Mutex as SyncMutex, Weak};
 pub(super) type Ended = Shared<BoxFuture<'static, Result<(), String>>>;
 pub(super) struct Resource {
     pub permit: Uuid,
-    pub publication: Uuid,
     pub control: ExternalControl,
     pub ended: Ended,
     pub deleting: bool,
@@ -19,11 +18,21 @@ impl Drop for Resource {
     }
 }
 #[derive(Default)]
-pub(super) struct Page(pub BTreeMap<Uuid, Arc<Permit>>);
+pub(super) struct Page {
+    pub permits: BTreeMap<Uuid, Arc<Permit>>,
+    pub resources: BTreeMap<Uuid, Resource>,
+}
 impl Page {
     pub fn remove(&mut self, publication: Uuid) -> bool {
-        if let Some(permit) = self.0.remove(&publication) {
+        if let Some(permit) = self.permits.remove(&publication) {
             permit.revoke();
+            for resource in self
+                .resources
+                .values()
+                .filter(|resource| resource.permit == permit.id)
+            {
+                resource.control.stop();
+            }
             true
         } else {
             false
@@ -32,7 +41,7 @@ impl Page {
 }
 impl Drop for Page {
     fn drop(&mut self) {
-        for permit in self.0.values() {
+        for permit in self.permits.values() {
             permit.revoke();
         }
     }
@@ -223,7 +232,12 @@ mod tests {
             authority(publication),
         );
         let publication = Uuid::new_v4();
-        let second = inputs.permit(publication, "room".into(), requests, authority(publication));
+        let second = inputs.permit(
+            publication,
+            "room".into(),
+            requests.clone(),
+            authority(publication),
+        );
         let mut headers = HeaderMap::new();
         headers.insert(
             header::AUTHORIZATION,
@@ -231,10 +245,26 @@ mod tests {
         );
         assert!(inputs.authorized(first.id, &headers).is_some());
         assert!(inputs.authorized(second.id, &headers).is_none());
-        let page = Page(BTreeMap::from([(first.publication, first.clone())]));
+        let mut page = Page {
+            permits: BTreeMap::from([(first.publication, first.clone())]),
+            resources: BTreeMap::new(),
+        };
+        assert!(page.remove(first.publication));
+        let successor = inputs.permit(
+            first.publication,
+            "room".into(),
+            requests,
+            authority(first.publication),
+        );
+        page.permits
+            .insert(successor.publication, successor.clone());
+        assert!(first.stopped());
+        assert!(!successor.stopped());
+        assert!(inputs.authorized(first.id, &headers).is_none());
         // The HTTP request can retain its Arc, but never extend page authority.
         drop(page);
         assert!(first.stopped());
+        assert!(successor.stopped());
         assert!(inputs.authorized(first.id, &headers).is_none());
         assert!(!second.stopped());
         headers.insert(

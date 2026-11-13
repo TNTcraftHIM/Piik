@@ -1211,8 +1211,7 @@ async fn connection(
             let mut operations = FuturesUnordered::new();
             let mut previews = FuturesUnordered::new();
             let (external_requests, mut external_queue) = mpsc::channel(8);
-            let mut external_permits = whip::Page::default();
-            let mut external_resources: BTreeMap<Uuid, whip::Resource> = BTreeMap::new();
+            let mut external_page = whip::Page::default();
             let mut external_offers: FuturesUnordered<
                 BoxFuture<
                     'static,
@@ -1257,11 +1256,11 @@ async fn connection(
                         let result = authority.and_then(|authority| {
                             anyhow::ensure!(!cancelled, "capture_cancelled");
                             anyhow::ensure!(authority.is_current(), "room_unavailable");
-                            if let Some(permit) = external_permits.0.get(&publication_id) {
+                            if let Some(permit) = external_page.permits.get(&publication_id) {
                                 anyhow::ensure!(permit.room == room_id && !permit.stopped(), "capture_room_mismatch");
                                 return Ok(permit.descriptor(app.port));
                             }
-                            anyhow::ensure!(!external_permits.0.values().any(|permit| permit.room == room_id), "capture_pending");
+                            anyhow::ensure!(!external_page.permits.values().any(|permit| permit.room == room_id), "capture_pending");
                             let permit = app.external_inputs.permit(publication_id, room_id, external_requests.clone(), authority);
                             let watching = permit.clone();
                             external_revocations.push(async move {
@@ -1274,7 +1273,7 @@ async fn connection(
                                 (watching.publication, watching.id)
                             }.boxed());
                             let descriptor = permit.descriptor(app.port);
-                            external_permits.0.insert(publication_id, permit);
+                            external_page.permits.insert(publication_id, permit);
                             Ok(descriptor)
                         });
                         let response = match result { Ok(value) => json!({"id":id,"result":value}), Err(error) => json!({"id":id,"error":error.to_string()}) };
@@ -1282,9 +1281,8 @@ async fn connection(
                         continue;
                     }
                     Some((publication_id, permit_id)) = external_revocations.next(), if !external_revocations.is_empty() => {
-                        if !external_permits.0.get(&publication_id).is_some_and(|permit| permit.id == permit_id) { continue; }
-                        external_permits.remove(publication_id);
-                        for resource in external_resources.values().filter(|resource| resource.permit == permit_id) { resource.control.stop(); }
+                        if !external_page.permits.get(&publication_id).is_some_and(|permit| permit.id == permit_id) { continue; }
+                        external_page.remove(publication_id);
                         let event = external_input_event(publication_id, None, None, true, None);
                         timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                         continue;
@@ -1292,7 +1290,7 @@ async fn connection(
                     Some(request) = external_queue.recv() => {
                         match request {
                             whip::Request::Offer { permit, offer, response } => {
-                                if permit.stopped() || !external_permits.0.get(&permit.publication).is_some_and(|p| Arc::ptr_eq(p, &permit)) {
+                                if permit.stopped() || !external_page.permits.get(&permit.publication).is_some_and(|p| Arc::ptr_eq(p, &permit)) {
                                     let _ = response.send(Err(StatusCode::GONE)); continue;
                                 }
                                 let Some(commands) = host.clone() else { let _ = response.send(Err(StatusCode::GONE)); continue; };
@@ -1309,7 +1307,7 @@ async fn connection(
                                 }.boxed());
                             }
                             whip::Request::Delete { permit, generation, response } => {
-                                let Some(resource) = external_resources.get_mut(&generation).filter(|r| r.permit == permit.id) else { let _ = response.send(Err(StatusCode::NOT_FOUND)); continue; };
+                                let Some(resource) = external_page.resources.get_mut(&generation).filter(|r| r.permit == permit.id) else { let _ = response.send(Err(StatusCode::NOT_FOUND)); continue; };
                                 if resource.deleting { let _ = response.send(Err(StatusCode::CONFLICT)); continue; }
                                 resource.deleting = true;
                                 resource.control.stop();
@@ -1332,7 +1330,7 @@ async fn connection(
                                 captures.get_mut(&publication_id).unwrap().pending.as_mut().unwrap().producer = Some(generation);
                                 let ended = prepared.lease.ended.take().expect("external generation owns completion");
                                 let ended: whip::Ended = async move { ended.await.unwrap_or_else(|_| Err("external_input_stopped".into())) }.boxed().shared();
-                                external_resources.insert(generation, whip::Resource { permit: permit.id, publication: publication_id, control: prepared.lease.control(), ended: ended.clone(), deleting: false });
+                                external_page.resources.insert(generation, whip::Resource { permit: permit.id, control: prepared.lease.control(), ended: ended.clone(), deleting: false });
                                 external_ends.push(async move { (publication_id, generation, ended.await) }.boxed());
                                 if response.send(Ok((generation, prepared.answer))).is_err() { prepared.lease.stop(); }
                                 external_ready.push(async move {
@@ -1352,7 +1350,7 @@ async fn connection(
                                 if let Some(capture) = captures.get_mut(&publication_id) { capture.pending = None; }
                                 let _ = response.send(Err(StatusCode::UNPROCESSABLE_ENTITY));
                                 let retired = error.to_string() == "room_unavailable";
-                                if retired { external_permits.remove(publication_id); }
+                                if retired { external_page.remove(publication_id); }
                                 let event = captures.get(&publication_id).unwrap().external_event(publication_id, false, retired, Some(if retired {"room_unavailable"} else {"external_input_failed"}));
                                 timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                             }
@@ -1375,7 +1373,7 @@ async fn connection(
                             result => {
                                 let retired = result.as_ref().err().is_some_and(|error| error.to_string() == "room_unavailable");
                                 capture.pending = None;
-                                if retired { external_permits.remove(publication_id); }
+                                if retired { external_page.remove(publication_id); }
                                 capture.external_event(publication_id, false, retired, Some(if retired {"room_unavailable"} else {"external_input_failed"}))
                             }
                         };
@@ -1383,12 +1381,12 @@ async fn connection(
                         continue;
                     }
                     Some((publication_id, generation, ended)) = external_ends.next(), if !external_ends.is_empty() => {
-                        let Some(resource) = external_resources.remove(&generation) else { continue; };
+                        let Some(resource) = external_page.resources.remove(&generation) else { continue; };
                         let Some(capture) = captures.get_mut(&publication_id) else { continue; };
                         if !capture.retire_producer(generation) { continue; }
-                        if let Some(permit) = external_permits.0.get(&publication_id).filter(|p| p.id == resource.permit) {
+                        if external_page.permits.get(&publication_id).is_some_and(|p| p.id == resource.permit) {
                             let retired = ended.as_ref().err().is_some_and(|error| error == "room_unavailable");
-                            if retired { permit.revoke(); external_permits.remove(publication_id); }
+                            if retired { external_page.remove(publication_id); }
                             let event = capture.external_event(publication_id, false, retired, ended.as_ref().err().map(String::as_str));
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                         }
@@ -1497,8 +1495,7 @@ async fn connection(
                                     }
                                     capture.pending = None;
                                     capture.active = Some(SourceLease::Capture(lease));
-                                    if external_permits.remove(publication_id) {
-                                        for resource in external_resources.values().filter(|resource| resource.publication == publication_id) { resource.control.stop(); }
+                                    if external_page.remove(publication_id) {
                                         let event = external_input_event(publication_id, None, None, true, None);
                                         timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                                     }
@@ -1522,9 +1519,9 @@ async fn connection(
                                 if !request.is_aborted() {
                                     if let Some(capture) = captures.get_mut(&publication_id) {
                                         let external = capture.pending.as_ref().and_then(|pending| pending.producer)
-                                            .is_some_and(|producer| external_resources.contains_key(&producer));
+                                            .is_some_and(|producer| external_page.resources.contains_key(&producer));
                                         capture.pending = None;
-                                        if external && external_permits.0.contains_key(&publication_id) {
+                                        if external && external_page.permits.contains_key(&publication_id) {
                                             let event = capture.external_event(publication_id, false, false, Some("external_input_failed"));
                                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                                         }
@@ -1562,15 +1559,16 @@ async fn connection(
                                     Err(anyhow!("external_input_unavailable"))
                                 } else if host.is_none() {
                                     Err(anyhow!("hello_required"))
-                                } else if let Some(permit) = external_permits.0.get(&publication_id)
+                                } else if let Some(permit) =
+                                    external_page.permits.get(&publication_id)
                                 {
                                     if permit.room != room_id || permit.stopped() {
                                         Err(anyhow!("capture_room_mismatch"))
                                     } else {
                                         Ok(permit.descriptor(app.port))
                                     }
-                                } else if external_permits
-                                    .0
+                                } else if external_page
+                                    .permits
                                     .values()
                                     .any(|permit| permit.room == room_id)
                                 {
@@ -1859,13 +1857,7 @@ async fn connection(
                                 }
                             }
                             Operation::StopCapture { publication_id } => {
-                                if external_permits.remove(publication_id) {
-                                    for resource in external_resources
-                                        .values()
-                                        .filter(|resource| resource.publication == publication_id)
-                                    {
-                                        resource.control.stop();
-                                    }
+                                if external_page.remove(publication_id) {
                                     let event = external_input_event(
                                         publication_id,
                                         None,
