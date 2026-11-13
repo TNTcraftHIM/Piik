@@ -68,7 +68,7 @@
 .c3-input:focus { outline: 2px solid var(--action); outline-offset: 2px; }
 .c3-copy-fallback { display: grid; gap: 8px; font-size: 12px; color: var(--muted); }
 /* Stable content slots also move into the room tool without recreating players. */
-.c3-main-body { grid-column: 2; grid-row: 3; min-width: 0; min-height: 0; display: flex; flex-direction: column; container: channel-room / size; }
+.c3-main-body { grid-column: 2 / 3; grid-row: 3; min-width: 0; min-height: 0; display: flex; flex-direction: column; container: channel-room / size; }
 .c3-shell[data-companion="none"] :is(.c3-main-body, .c3-room-presence) { grid-column-end: 4; }
 .c3-shell[data-overview] .c3-main-body { grid-row: 3 / 5; }
 .c3-workspace { flex: 1; min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
