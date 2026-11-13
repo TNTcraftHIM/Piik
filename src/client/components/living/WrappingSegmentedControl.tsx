@@ -8,11 +8,16 @@ export function WrappingSegmentedControl({ children, className = "", ...props }:
     const selected = element.querySelector<HTMLElement>(".is-selected");
     if (!selected) return;
     const measure = () => {
-      const bounds = element.getBoundingClientRect(), item = selected.getBoundingClientRect();
-      element.style.setProperty("--lr-selection-x", `${item.left - bounds.left - element.clientLeft}px`);
-      element.style.setProperty("--lr-selection-y", `${item.top - bounds.top - element.clientTop}px`);
-      element.style.setProperty("--lr-selection-width", `${item.width}px`);
-      element.style.setProperty("--lr-selection-height", `${item.height}px`);
+      // Include tooltip offset parents without measuring opening or press transforms.
+      let x = 0, y = 0;
+      for (let item: HTMLElement | null = selected; item && item !== element; item = item.offsetParent as HTMLElement | null) {
+        x += item.offsetLeft;
+        y += item.offsetTop;
+      }
+      element.style.setProperty("--lr-selection-x", `${x}px`);
+      element.style.setProperty("--lr-selection-y", `${y}px`);
+      element.style.setProperty("--lr-selection-width", `${selected.offsetWidth}px`);
+      element.style.setProperty("--lr-selection-height", `${selected.offsetHeight}px`);
     };
     measure();
     const observer = new ResizeObserver(measure);
