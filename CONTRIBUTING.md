@@ -72,7 +72,7 @@ one complete, reviewed change; a contribution merge does not authorize publicati
 
 1. Create one short-lived branch/worktree from exact canonical `main`, following the [branch naming convention](#commit-pr-and-branch-names).
 2. Update only the single durable owner for changed semantics and any materially changed current snapshot. If semantics remain disputed, record a hold and stop dependent work.
-3. Implement and run repository hygiene, `npm run check`, the relevant browser/network gates, and review in proportion to the whole acceptance boundary.
+3. Before release approval, review official security and patch releases for direct runtime/build dependencies and whether upstream now covers retained patches. Update for concrete fixes and verify the affected consumers; a newer version alone is not a release blocker. Run repository hygiene, dependency advisory checks, `npm run check`, and the relevant browser/network gates in proportion to the whole acceptance boundary. CI checks advisories before the full Go build and package matrix.
 4. Keep accepted truth checkpoints and dependent candidates on branches until the phase is complete. Rebase or rebuild a retained candidate from exact `main` only when starting a new phase, preserving main's owning truth on conflicts and transplanting only approved scoped code, tests, and new facts.
 5. Open one pull request for the complete phase, resolve required review/checks, meet the [release approval boundary](./docs/standards/versioning.md#automatic-publication) before a publishing merge, squash-merge it once, deploy that merged revision when authorized, perform scoped postflight, then audit references and reparse safety before cleanup.
 
@@ -165,6 +165,7 @@ Actions at review and acceptance boundaries; reuse passing results for unchanged
 code instead of repeatedly running the full platform matrix for one candidate.
 
 - `npm run check` owns deterministic Web type-check, unit, and build acceptance.
+- `npm audit --audit-level=high` checks the locked Web/build dependencies for known high or critical advisories. It complements upstream release review; a clean database scan does not establish that no unpublished or newly disclosed fix exists.
 - `npm run check:go` owns Go formatting, unit tests, vet, Windows/Linux
   builds, Darwin builds on macOS, and the current platform's capture compile/probe.
   The server core is Go, so its acceptance runs here. It builds the Web UI first when
