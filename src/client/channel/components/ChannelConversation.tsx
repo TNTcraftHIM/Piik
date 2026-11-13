@@ -6,7 +6,7 @@ import { motionDuration } from "../../ui/animation";
 import { useCopy } from "../../ui/copy";
 import { MAX_MESSAGE_CODE_POINTS, type ChannelMessage, type ChannelUser, type ChannelUserSummary } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
-import { messageAuthorName } from "../presentation";
+import { firstUnreadMessageId, messageAuthorName } from "../presentation";
 import { ChannelAttachment } from "./ChannelAttachment";
 import { ChannelMessageContent } from "./ChannelMessageContent";
 import { type AttachmentLimits, type DraftFile, type ChannelAttachments, fileSize } from "../attachments";
@@ -54,6 +54,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   const jumpRequest = useRef<object | null>(null);
   const [jumpFailed, setJumpFailed] = useState(false);
   const [unreadBoundary, setUnreadBoundary] = useState({ room: roomId, after: unreadAfter });
+  const unreadMessage = firstUnreadMessageId(messages, unreadBoundary.room === roomId ? unreadBoundary.after : undefined, selfUserId);
   // Capture a visit's divider before markRead advances the durable personal cursor.
   useLayoutEffect(() => {
     setUnreadBoundary(previous => previous.room !== roomId
@@ -295,8 +296,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
           const newDay = !!previousDate && (date.getFullYear() !== previousDate.getFullYear()
             || date.getMonth() !== previousDate.getMonth() || date.getDate() !== previousDate.getDate());
           const elapsed = previous ? message.time - previous.time : 0;
-          const after = unreadBoundary.room === roomId ? unreadBoundary.after : undefined;
-          const newMessages = after !== undefined && message.seq > after && (!previous || previous.seq <= after);
+          const newMessages = message.id === unreadMessage;
           const grouped = !!previous && !newDay && !newMessages && !message.reply && previous.userId === message.userId && elapsed >= 0 && elapsed < 120_000;
           if (!grouped) authorMessageId = message.id;
           const author = profiles.get(message.userId), summary = users.find(user => user.id === message.userId);

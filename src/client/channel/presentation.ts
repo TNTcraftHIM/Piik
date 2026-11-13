@@ -1,5 +1,10 @@
 import type { ChannelMessage, ChannelPublication, ChannelSnapshot, ChannelUser } from "./protocol";
 
+/** A visit's unread divider starts at another person's message, never our own send. */
+export function firstUnreadMessageId(messages: readonly Pick<ChannelMessage, "id" | "seq" | "userId">[], after: number | undefined, selfUserId?: string | null): string | undefined {
+  return after === undefined ? undefined : messages.find(message => message.seq > after && message.userId !== selfUserId)?.id;
+}
+
 export function messageAuthorName(message: ChannelMessage, users: readonly Pick<ChannelUser, "id" | "name">[], fallback: string): string {
   return message.archivedAuthorName ?? users.find(user => user.id === message.userId)?.name ?? fallback;
 }

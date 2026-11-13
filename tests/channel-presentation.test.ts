@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { roomPeople, roomRealtimePeople, screenTitle } from "../src/client/channel/presentation";
+import { firstUnreadMessageId, roomPeople, roomRealtimePeople, screenTitle } from "../src/client/channel/presentation";
 import { snapshotSchema } from "../src/client/channel/protocol";
+
+it("starts unread messages at another person without consuming earlier unread history", () => {
+  const own = { id: "own", seq: 1, userId: "self" };
+  const other = { id: "other", seq: 2, userId: "friend" };
+  expect(firstUnreadMessageId([own], 0, "self")).toBeUndefined();
+  expect(firstUnreadMessageId([own, other], 0, "self")).toBe("other");
+  expect(firstUnreadMessageId([other, { ...own, seq: 3 }], 0, "self")).toBe("other");
+  expect(firstUnreadMessageId([own, other], 2, "self")).toBeUndefined();
+  expect(firstUnreadMessageId([own, other], undefined, "self")).toBeUndefined();
+  expect(firstUnreadMessageId([own, other], 0, "friend")).toBe("own");
+});
 
 describe("screen titles", () => {
   it("keeps a custom title across source replacement, then clears to the latest source", () => {
