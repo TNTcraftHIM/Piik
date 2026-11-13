@@ -7,14 +7,13 @@ import { LoadingStatus } from "../components/living/WaitingStatus";
 import { AppReleaseNotice, AppUpdateStatus } from "../components/living/AppReleaseNotice";
 import { useAppUpdate } from "../lib/use-app-update";
 import { AppHeader } from "../components/living/Header";
-import { LauncherForm, type LocalCertificate } from "../components/living/LauncherForm";
+import { LauncherForm } from "../components/living/LauncherForm";
 import { Btn, Pill } from "../components/living/primitives";
 import { hasCopyPreference, isCopyKey, useCopy } from "../ui/copy";
 import { consoleLanguage } from "../locales";
 import { Glyph } from "../ui/icons";
 import { currentThemePreference, subscribeTheme } from "../ui/theme";
 import { clientLaunchURL, readPreferredAppMode, savePreferredAppMode, type AppMode, type ClientLaunchPresentation } from "../lib/app-launch";
-import type { AppReleaseIdentity } from "../lib/release-update";
 import { useReleaseUpdate } from "../lib/use-release-update";
 import { AppSiteBookmarks } from "./AppSiteBookmarks";
 import { downloadBlob } from "../lib/download";
@@ -49,30 +48,27 @@ export function AppLauncherPage() {
   // Rendered entry URLs follow theme changes before any browser link action.
   useSyncExternalStore(subscribeTheme, currentThemePreference);
   const [loading, setLoading] = useState(true);
-  const [starting, setStarting] = useState(false);
+  const [launching, setLaunching] = useState(false);
   const [mode, setMode] = useState<AppMode>(readPreferredAppMode);
-  const [sites, setSites] = useState<string[]>([]);
-  const [startupSite, setStartupSite] = useState("");
-  const [ownedSites, setOwnedSites] = useState<string[]>([]);
-  const [startupMode, setStartupMode] = useState<AppMode | undefined>();
+  const [serverState, setServerState] = useState<z.infer<typeof launcherStateSchema>>();
+  const { sites = [], startupSite = "", ownedSites = [], target, localCertificate,
+    controlPort, windowNavigation = false, debug: appDebug } = serverState ?? {};
+  const startupMode = serverState?.startupMode || undefined;
   const [openOnApproval, setOpenOnApproval] = useState(false);
   const [error, setError] = useState<{ kind: "load" | "launch"; reason?: string; detail?: string } | null>(null);
-  const [appDebug, setAppDebug] = useState<boolean | undefined>();
+  const starting = error?.kind !== "load" && (launching || serverState?.starting === true);
   const [debugBusy, setDebugBusy] = useState(false);
   const [debugError, setDebugError] = useState(false);
   const [reload, setReload] = useState(0);
-  const [lan, setLan] = useState<z.infer<typeof launcherStateSchema>["lan"]>();
-  const [build, setBuild] = useState<AppReleaseIdentity>();
+  const [lanAddress, setLanAddress] = useState<string>();
+  const lan = serverState?.lan && { ...serverState.lan, selected: lanAddress ?? serverState.lan.selected };
+  const build = serverState;
   const appUpdate = useAppUpdate();
   const operation = appUpdate.view?.operationId && appUpdate.view.version && appUpdate.view.revision
     ? { version: appUpdate.view.version, revision: appUpdate.view.revision } : undefined;
   const { update } = useReleaseUpdate(build, operation);
   const version = build?.version === "development" && /^[a-f0-9]{40}$/i.test(build.revision)
     ? `${build.version} (${build.revision.slice(0, 7)})` : build?.version;
-  const [target, setTarget] = useState<string>();
-  const [localCertificate, setLocalCertificate] = useState<LocalCertificate>();
-  const [controlPort, setControlPort] = useState<number>();
-  const [windowNavigation, setWindowNavigation] = useState(false);
   const [bookmarksOnly] = useState(() => new URLSearchParams(location.search).has("bookmarks") || new URLSearchParams(location.hash.slice(1)).has("open"));
   const [siteBusy, setSiteBusy] = useState(false);
   const [siteError, setSiteError] = useState<string>();
@@ -123,20 +119,12 @@ export function AppLauncherPage() {
       .then((state) => {
         if (!fresh()) return;
         if (!restoredSettings) {
-          setLan(state.lan);
+          setLanAddress(state.lan?.selected);
           if (state.startupMode) setMode(state.startupMode);
           restoredSettings = true;
         }
-        setControlPort(state.controlPort);
-        setWindowNavigation(state.windowNavigation);
-        setTarget(state.target);
-        setLocalCertificate(state.localCertificate);
-        setStarting(state.starting === true);
-        setSites(state.sites);
-        setStartupSite(state.startupSite);
-        setStartupMode(state.startupMode || undefined);
-        setOwnedSites(state.ownedSites);
-        setAppDebug(state.debug);
+        setServerState(state);
+        setLaunching(false);
         setError(previous => state.detail ? { kind: "launch", reason: state.reason, detail: state.detail }
           : state.target || previous?.kind === "load" ? null : previous);
         setLoading(false);
@@ -145,12 +133,11 @@ export function AppLauncherPage() {
           if (state.target) window.location.replace(launchURL(state.target, { debug: state.debug === true, controlPort: state.controlPort }));
         }
         if (state.starting) timer = setTimeout(() => void readState(), 750);
-        setBuild({ version: state.version, revision: state.revision, packageTarget: state.packageTarget });
       })
       .catch(() => {
         if (!fresh()) return;
         setError({ kind: "load" });
-        setStarting(false);
+        setLaunching(false);
         setLoading(false);
       }).finally(() => {
         reading = false;
@@ -183,7 +170,7 @@ export function AppLauncherPage() {
         method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
       });
       if (!response.ok) throw new Error();
-      setAppDebug(true);
+      setServerState(previous => previous && { ...previous, debug: true });
     } catch { setDebugError(true); }
     finally { finish(); setDebugBusy(false); }
   }
@@ -224,7 +211,7 @@ export function AppLauncherPage() {
     if (starting ||
       (mode === "local" && lan !== undefined && !lan.selected)) return;
     const finish = beginStateChange();
-    setStarting(true);
+    setLaunching(true);
     setError(null);
     try {
       const response = await fetch("/api/client-launcher/launch", {
@@ -244,14 +231,14 @@ export function AppLauncherPage() {
       if (!response.ok) {
         const failure = launcherErrorSchema.safeParse(await response.json().catch(() => null));
         setError({ kind: "launch", ...(failure.success ? failure.data : {}) });
-        setStarting(false);
+        setLaunching(false);
         return;
       }
       const result = launcherResultSchema.parse(await response.json());
       window.location.replace(launchURL(result.target));
     } catch {
       setError({ kind: "launch" });
-      setStarting(false);
+      setLaunching(false);
     } finally { finish(); }
   }
 
@@ -270,10 +257,7 @@ export function AppLauncherPage() {
       });
       const result = launcherStateSchema.pick({ sites: true, startupSite: true, startupMode: true, ownedSites: true }).safeParse(await response.json().catch(() => null));
       if (result.success) {
-        setSites(result.data.sites);
-        setStartupSite(result.data.startupSite);
-        setStartupMode(result.data.startupMode || undefined);
-        setOwnedSites(result.data.ownedSites);
+        setServerState(previous => previous && { ...previous, ...result.data, startupMode: result.data.startupMode });
       }
       if (response.status === 409 && result.success) {
         setSiteError(t("client.connect.changed"));
@@ -405,7 +389,7 @@ export function AppLauncherPage() {
             target={target}
             localCertificate={localCertificate}
             entryURL={launchURL}
-            lan={lan && { ...lan, onChange: (selected) => setLan({ ...lan, selected }) }}
+            lan={lan && { ...lan, onChange: setLanAddress }}
             onSubmit={launch}
           >
             {update ? <AppReleaseNotice update={update} native={appUpdate.view ? { ...appUpdate, view: appUpdate.view } : undefined} />

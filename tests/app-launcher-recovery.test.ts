@@ -101,9 +101,24 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = fa
   const downloads = vi.fn();
   const initialMode = mode ?? runInNewContext(`(${modeInitializer})()`, { readPreferredAppMode }) as AppMode;
   const state: Record<string, unknown> = { Mode: initialMode };
+  // Keep assertions about the rendered facts while the page owns one snapshot.
+  for (const [name, field] of Object.entries({ ControlPort: "controlPort", Target: "target",
+    LocalCertificate: "localCertificate", Sites: "sites", StartupSite: "startupSite",
+    StartupMode: "startupMode", OwnedSites: "ownedSites", AppDebug: "debug" })) {
+    Object.defineProperty(state, name, { get: () => {
+      const value = (state.ServerState as Record<string, unknown> | undefined)?.[field];
+      return name === "StartupMode" ? value || undefined : value;
+    } });
+  }
+  Object.defineProperty(state, "Build", { get: () => state.ServerState });
+  Object.defineProperty(state, "Lan", { get: () => {
+    const lan = (state.ServerState as typeof saved | undefined)?.lan;
+    return lan && { ...lan, selected: state.LanAddress ?? lan.selected };
+  } });
+  Object.defineProperty(state, "Starting", { get: () => (state.Error as { kind?: string } | null)?.kind !== "load"
+    && (state.Launching === true || (state.ServerState as { starting?: boolean } | undefined)?.starting === true) });
   const setters = Object.fromEntries([
-    "Mode", "Lan", "ControlPort", "Target", "LocalCertificate", "Starting", "Sites", "StartupSite", "StartupMode", "OwnedSites",
-    "AppDebug", "Error", "Loading", "Build", "RemoteControlPrototype",
+    "Mode", "LanAddress", "ServerState", "Launching", "Error", "Loading",
     "SiteBusy", "SiteError", "DebugBusy", "DebugError", "Reload",
   ].map(name => [`set${name}`, vi.fn((value: unknown) => {
     state[name] = typeof value === "function" ? value(state[name]) : value;
@@ -246,7 +261,7 @@ describe("App launcher state recovery", () => {
     const fetch = vi.fn(async () => response({ ...saved, version: "development", revision, localCertificate }));
     const page = mount(fetch);
     await settle();
-    expect(page.state.Build).toEqual({ version: "development", revision, packageTarget: undefined });
+    expect(page.state.Build).toMatchObject({ version: "development", revision });
     expect(page.state.LocalCertificate).toEqual(localCertificate);
     fetch.mockResolvedValueOnce(response(saved));
     page.focus(); await settle();
@@ -383,7 +398,7 @@ describe("App launcher state recovery", () => {
     expect(page.state).toMatchObject({
       Error: null, Loading: false, Sites: saved.sites, Lan: saved.lan,
     });
-    Object.assign(page.state, { Mode: "local", Lan: { selected: "192.0.2.2" } });
+    Object.assign(page.state, { Mode: "local", LanAddress: "192.0.2.2" });
     page.focus();
     await settle();
     expect(page.state).toMatchObject({ Mode: "local", Lan: { selected: "192.0.2.2" } });
@@ -441,7 +456,7 @@ describe("App launcher state recovery", () => {
       await settle();
       expect(page.state).toEqual(committed);
       // One existing poll recovers the current App fact without restoring user edits.
-      page.state.Lan = { selected: "192.0.2.2" };
+      page.state.LanAddress = "192.0.2.2";
       fetch.mockResolvedValueOnce(response({ ...saved, sites: [], debug: true }));
       page.retry();
       await settle();
