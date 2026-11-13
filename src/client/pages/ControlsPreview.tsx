@@ -86,6 +86,8 @@ export function ControlsPreview() {
   const [pictureFit, setPictureFit] = useState<VideoFit>("contain");
   const [pictureRotation, setPictureRotation] = useState<VideoRotation>(0);
   const [viewerRoute, setViewerRoute] = useState<"auto" | "p2p" | "sfu">("auto");
+  const [bufferTarget, setBufferTarget] = useState<number | null>(null);
+  const [bufferStatus, setBufferStatus] = useState<"supported" | "unsupported" | "failed">("supported");
   const video = useRef<HTMLVideoElement>(null);
   const notify = () => setFeedback(en ? "Got it. This is a preview." : "收到，只在预览里演示。" );
   return <>
@@ -294,7 +296,8 @@ export function ControlsPreview() {
           initialTab={displayPreview ? "display" : "window"}
           onBrowser={() => { setSourceOpen(false); notify(); }}
           onCamera={() => { setSourceOpen(false); notify(); }}
-          onExternalInput={() => { setSourceOpen(false); notify(); }}
+          onExternalInput={sourceState === "ready" || sourceState === "refreshing" || sourceState === "empty"
+            ? () => { setSourceOpen(false); notify(); } : undefined}
           loadCameras={previewCameras}
           onNative={(_target, _audio, showBorder) => { setShowCaptureBorder(showBorder); setSourceOpen(false); notify(); }}
           onPreview={previewSource} onRefresh={() => setSourceState("refreshing")} onCancel={() => setSourceOpen(false)} />
@@ -304,11 +307,17 @@ export function ControlsPreview() {
     <section id="playback-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">07</span><div><h2>{en ? "The playback bar" : "播放时，顺手就能找到。"}</h2>
         <p>{en ? "This bar shows its waiting state. The playback test page includes a moving picture, volume and picture in picture." : "这里展示等待画面时的播放栏；动态画面、音量和小窗可进入完整播放预览试用。"}</p></div></header>
+      <div className="cp-tools" role="group" aria-label={t("playback.buffering")}>
+        {(["supported", "unsupported", "failed"] as const).map((status, index) => <Chip key={status} selected={bufferStatus === status}
+          title={t(status === "supported" ? "playback.buffering" : status === "unsupported" ? "playback.bufferUnsupported" : "playback.bufferFailed")}
+          onClick={() => setBufferStatus(status)}>{en ? ["Buffer available", "Buffer unsupported", "Buffer failed"][index] : ["可设置缓冲", "不支持缓冲设置", "缓冲设置失败"][index]}</Chip>)}
+      </div>
       <div className={theater ? "lr-room is-theater" : "cp-stage"}><div className="lr-scene"><StageTv label={t("playback.controls")} indicator={<StatusIndicator status={STATUS_CATALOG.joining} />}>
         <video ref={video} poster={POSTER} playsInline inert style={{ objectFit: pictureFit }} />
         <StageOverlay dim waiting icon={STATUS_CATALOG.joining.icon} message={t(STATUS_CATALOG.joining.labelKey)} comic={STATUS_CATALOG.joining.comic} />
         <PlaybackControls videoRef={video} stream={null} canPlay={false} theaterMode={theater} onPlay={notify}
-          settings={{ pictureFit, setPictureFit, pictureRotation, setPictureRotation, route: { preference: viewerRoute, onChange: setViewerRoute,
+          settings={{ pictureFit, setPictureFit, pictureRotation, setPictureRotation,
+            buffering: { target: bufferTarget, status: bufferStatus, onChange: setBufferTarget }, route: { preference: viewerRoute, onChange: setViewerRoute,
             sfuAvailable: true, sfuOnly: false, peerOnly: false, disabled: false, rejected: false } }}
           onToggleTheater={() => setTheater(!theater)} onReconnect={notify} reconnectAvailable />
       </StageTv></div></div>

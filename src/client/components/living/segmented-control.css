@@ -32,6 +32,20 @@
   transition: transform var(--motion-control) var(--spring);
   pointer-events: none;
 }
+.lr-toggle.is-wrapping {
+  display: grid;
+  grid-auto-flow: row;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--selection-item-min-width, var(--selection-item-size))), 1fr));
+  gap: 4px;
+  border-radius: var(--control-radius);
+}
+.lr-toggle.is-wrapping::before {
+  top: 0; bottom: auto; left: 0;
+  width: var(--lr-selection-width, 0px);
+  height: var(--lr-selection-height, 0px);
+  transform: translate(var(--lr-selection-x, 0px), var(--lr-selection-y, 0px));
+  transition: transform var(--motion-control) var(--spring), width var(--motion-control) var(--spring), height var(--motion-control) var(--spring);
+}
 :is(.lr-toggle, .lr-lang):not(:has(.is-selected, input:checked))::before,
 .lr-toggle:disabled::before { opacity: 0; }
 :is(.lr-toggle, .lr-lang):has(> :nth-child(2).is-selected, > :nth-child(2) .is-selected, > label:nth-of-type(2) input:checked) { --lr-selected-index: 1; }

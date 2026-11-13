@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import type { NativeCaptureTarget } from "../../native/wire";
 import { audioApplicationKey, audioApplications, nativeCaptureTargetKey } from "../../native/capture-selection";
@@ -10,6 +10,7 @@ import { HintComic } from "./hints";
 import { Pill } from "./primitives";
 import { CameraSources, useCameraSources } from "./CameraSources";
 import { CaptureSourceCard } from "./CaptureSourceCard";
+import { WrappingSegmentedControl } from "./WrappingSegmentedControl";
 import { AudioExclusionSelect } from "./AudioExclusionSelect";
 import type { loadCameraPreviews } from "../../media/camera-previews";
 
@@ -26,7 +27,7 @@ const SOURCE_ICONS = {
 
 export type NativeSourceList =
   | { kind: "browser" }
-  | { kind: "loading"; appDetected?: boolean; sources?: NativeCaptureTarget[] }
+  | { kind: "loading"; appDetected?: boolean; sources?: NativeCaptureTarget[]; externalInput?: boolean }
   | { kind: "unavailable" }
   | { kind: "incompatible" }
   | { kind: "unsupported" }
@@ -234,9 +235,8 @@ export function CaptureSourcePicker({
           </Tooltip>
         </header>
 
-        {tabs.length > 0 && <div
-          className="lr-toggle lr-source-picker-tabs"
-          style={{ "--lr-segments": tabs.length, "--lr-selected-index": tabs.indexOf(activeTab) } as CSSProperties}
+        {tabs.length > 0 && <WrappingSegmentedControl
+          className="lr-source-picker-tabs"
           role="tablist"
           aria-label={t("host.sourcePicker.title")}
           onKeyDown={navigateTabs}
@@ -278,7 +278,7 @@ export function CaptureSourcePicker({
               </Tooltip>
             );
           })}
-        </div>}
+        </WrappingSegmentedControl>}
 
         <div
           ref={bodyRef}
@@ -391,11 +391,12 @@ export function CaptureSourcePicker({
           </div>
           </>}
 
-          {activeTab === "external" && onExternalInput && <div className="lr-source-picker-list"><button type="button" className="lr-source-option is-action"
-            disabled={selectionDisabled} onClick={onExternalInput}>
+          {activeTab === "external" && onExternalInput && <div className="lr-source-picker-list"><Tooltip kind="hint-source-picker"
+            text={vis ? undefined : t("host.sourcePicker.externalHint")} className="lr-source-option-hint"><button type="button" className="lr-source-option is-action"
+            aria-label={t("host.sourcePicker.externalAction")} disabled={selectionDisabled} onClick={onExternalInput}>
             <span className="lr-source-option-icon" aria-hidden="true"><Glyph name="cast" size={23} /></span>
-            <span className="lr-source-option-copy"><strong>{t("host.sourcePicker.externalAction")}</strong>{!vis && <small>{t("host.sourcePicker.externalHint")}</small>}</span>
-          </button></div>}
+            <span className="lr-source-option-copy"><strong>{vis ? "OBS" : t("host.sourcePicker.externalAction")}</strong>{!vis && <small>{t("host.sourcePicker.externalHint")}</small>}</span>
+          </button></Tooltip></div>}
           {nativeTab && nativeSources.kind === "loading" ? (
             <span className="lr-source-picker-status" role="status" aria-label={t("host.sourcePicker.loading")}>
               <Glyph name="refresh" className="lr-spin" size={18} />{!vis && t("host.sourcePicker.loading")}

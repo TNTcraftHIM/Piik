@@ -115,15 +115,17 @@ export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVo
       <div className="lr-viewer-settings-heading"><h3><Glyph name="clock" size={17} /><Cap k="playback.buffering" /></h3></div>
       <RowGroup><SwitchItem checked={buffering.target === null} onChange={automatic => buffering.onChange(automatic ? null : 300)}
         disabled={buffering.status === "unsupported" && buffering.target === null}
-        icon="sliders" label={t("playback.bufferAutomatic")} note={t("playback.bufferHint")} /></RowGroup>
+        icon="sliders" label={t("playback.bufferAutomatic")} hint="hint-metric-video-buffer"
+        note={`${t("playback.bufferHint")}\n${t("playback.bufferScope")}`} /></RowGroup>
       {buffering.target !== null && <NumberControl value={buffering.target} min={0} max={4000} step={1} unit="ms"
         name="screen-buffer-target" label={t("playback.bufferTarget")} disabled={buffering.status === "unsupported"}
         onChange={buffering.onChange} className="lr-door-group">{input => <div className="lr-quality-heading">
-          <FieldCap k="playback.bufferTarget" />{input}
+          {vis ? <Glyph name="clock" size={16} /> : <FieldCap k="playback.bufferTarget" />}
+          <Tooltip kind="hint-metric-video-buffer" text={vis ? undefined : t("playback.bufferHint")}>{input}</Tooltip>
         </div>}</NumberControl>}
-      <p>{t("playback.bufferHint")}</p><p>{t("playback.bufferScope")}</p>
-      {buffering.status === "unsupported" && <p role="status">{t("playback.bufferUnsupported")}</p>}
-      {buffering.status === "failed" && <p role="status">{t("playback.bufferFailed")}</p>}
+      {!vis && <><p>{t("playback.bufferHint")}</p><p>{t("playback.bufferScope")}</p></>}
+      {buffering.status === "unsupported" && <Pill icon="alert" label={t("playback.bufferUnsupported")} comic="warning" />}
+      {buffering.status === "failed" && <Pill icon="alert" tone="bad" label={t("playback.bufferFailed")} comic="settings-failed" />}
     </section>}
     {remoteTouch && <RemoteTouchSettings {...remoteTouch} />}
     {overlaySettings && <section aria-label={t("playback.overlay")}>

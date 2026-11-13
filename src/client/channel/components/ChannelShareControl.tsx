@@ -120,7 +120,8 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     const current = request.current = {};
     if (!appConnected) { setSources({ kind: "browser" }); return; }
     setSources(previous => ({ kind: "loading", appDetected: true,
-      sources: previous.kind === "ready" ? previous.sources : undefined }));
+      ...(previous.kind === "ready" || previous.kind === "loading"
+        ? { sources: previous.sources, externalInput: previous.externalInput } : {}) }));
     void nativeSources().then(result => {
       if (request.current === current) setSources({ kind: "ready", ...result });
     }, () => {
@@ -221,7 +222,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         initialAudio={selectedNative?.audio} initialExcludeAudio={selectedNative?.excludeAudio} initialShowCaptureBorder={selectedNative?.showCaptureBorder}
         onBrowser={() => start(() => startScreen(roomId))}
         onCamera={deviceId => start(() => startScreen(roomId, "camera", deviceId))}
-        onExternalInput={sources.kind === "ready" && sources.externalInput ? () => {
+        onExternalInput={(sources.kind === "ready" || sources.kind === "loading") && sources.externalInput ? () => {
           close();
           if (externalInput) setExternalOpen(true);
           else void channel.startExternalScreen(roomId).then(() => setExternalOpen(true)).catch(() => {});

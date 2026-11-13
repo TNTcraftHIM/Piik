@@ -122,6 +122,7 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
   const [theaterMode, setTheaterMode] = useTheaterMode();
   const [pictureFit, setPictureFit] = useState<VideoFit>("contain");
   const [pictureRotation, setPictureRotation] = useState<VideoRotation>(0);
+  const [bufferTarget, setBufferTarget] = useState<number | null>(null);
   const [previewAutoPause, setPreviewAutoPause] = useState(() => readRoomPreferences().previewAutoPause);
   const [viewerRoute, setViewerRoute] = useState<"auto" | "p2p" | "sfu">("auto");
   const [relayVolunteer, setRelayVolunteer] = useState(false);
@@ -220,6 +221,7 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
               sourceAudio.current?.setVolume(muted ? 0 : level); setShareVolume({ level, muted });
             } }}
             settings={{ pictureFit, setPictureFit, pictureRotation, setPictureRotation,
+              buffering: viewer ? { target: bufferTarget, status: "supported", onChange: setBufferTarget } : undefined,
               preview: viewer ? undefined : { autoPause: previewAutoPause, onChange: autoPause => {
                 setPreviewAutoPause(autoPause); saveRoomPreferences({ previewAutoPause: autoPause });
               } },
