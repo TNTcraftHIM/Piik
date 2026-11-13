@@ -1,6 +1,6 @@
 // Living-room control primitives. Every glyph control keeps its copy in
 // tooltip/aria; text modes add a visible caption from the same catalog.
-import { useId, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { useId, type AriaAttributes, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { Tooltip } from "./Tooltip";
 import { participantColor } from "./participant-color";
 import type { ComicKind } from "./Comic";
@@ -53,6 +53,7 @@ export function Btn({
   busy,
   pressed,
   expanded,
+  hasPopup,
   controls,
   popoverTarget,
   onClick,
@@ -77,6 +78,7 @@ export function Btn({
   busy?: boolean;
   pressed?: boolean;
   expanded?: boolean;
+  hasPopup?: AriaAttributes["aria-haspopup"];
   controls?: string;
   popoverTarget?: string;
   onClick?: () => void;
@@ -111,6 +113,7 @@ export function Btn({
       aria-busy={busy || undefined}
       aria-pressed={pressed}
       aria-expanded={expanded}
+      aria-haspopup={hasPopup}
       aria-controls={controls}
       popoverTarget={popoverTarget}
       style={softDisabled ? SOFT_DISABLED_STYLE : undefined}

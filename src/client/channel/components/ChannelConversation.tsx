@@ -74,6 +74,21 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   const content = useRef<HTMLDivElement>(null);
   const reading = useRef({ position: 0, following: true });
   const readingAnchor = useRef<{ room: string; message: string; offset: number } | null>(null);
+  const lastArrival = useRef<{ room: string; seq: number; ready: boolean } | null>(null);
+  useLayoutEffect(() => {
+    const previous = lastArrival.current;
+    const ready = !hidden && !loadingHistory && history?.atLatest === true;
+    lastArrival.current = { room: roomId, seq: messages.at(-1)?.seq ?? 0, ready };
+    if (!ready || !previous?.ready || previous.room !== roomId || !reading.current.following || !log.current) return;
+    const duration = motionDuration(log.current, "surface");
+    if (!duration) return;
+    for (const row of log.current.querySelectorAll<HTMLElement>("[data-message-seq]")) {
+      if (Number(row.dataset.messageSeq) > previous.seq) {
+        row.animate([{ opacity: 0, transform: "translateY(8px)" }, { opacity: 1, transform: "translateY(0)" }],
+          { duration, easing: "cubic-bezier(.2, 0, 0, 1)" });
+      }
+    }
+  }, [messages, roomId, hidden, loadingHistory, history?.atLatest]);
   let authorMessageId = "";
   const draft = drafts[roomId] ?? emptyDraft;
   const text = draft.text.trim();

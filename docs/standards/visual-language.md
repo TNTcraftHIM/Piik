@@ -140,8 +140,9 @@ regions. Source cards retain their media boundary inside the stage.
 
 Let the media stage use the available workspace. Grid gives watched pictures
 equal weight; focus gives one picture the main area and keeps the others in a
-thumbnail strip. Thumbnails show the picture and a single identity line; selecting
-one promotes it to the full controls without remounting its player. Full-size grid
+thumbnail strip. Thumbnails retain a compact identity line and a direct stop
+watching or stop sharing action; selecting the picture promotes it to the full
+controls without remounting its player. Full-size grid
 and focused pictures use the same source-information bar and action order. The
 bar overlays the picture and follows playback-control visibility. Playback,
 volume, focus, source selection and share settings stay directly available.
@@ -614,10 +615,13 @@ Measured speech may tint the open microphone boom and tip with `--live`, using
 the same level scale as the toolbar microphone fill. Keep the headband, body,
 name and layout stable; missing measurements leave the ordinary appearance.
 
-The couch has a back, seat, arms and feet. A full room reflows into rows of seats
-without hiding people or requiring horizontal scrolling. Topology preserves
-each participant and actual parent edge at a readable scale; reduce spare
-spacing, then use a vertical outline when depth exceeds the available width.
+The couch has a back, seat, arms and feet. In the compact 3.0 presence strip,
+seats adapt to the available width; crowded rooms page through guests while
+keeping the local person visible. Reserve space for the shared paging controls
+instead of shrinking their targets or covering names. In short workspaces,
+scenery yields before conversation and pictures. Topology preserves each
+participant and actual parent edge at a readable scale; reduce spare spacing,
+then use a vertical outline when depth exceeds the available width.
 
 Couch upholstery uses the fixed warm orange/yellow `--couch` / `--couch-dark`
 palette. Never draw upholstery from the participant palette or randomize it by
@@ -899,6 +903,23 @@ to zero while existing final-pose rules retain readable state.
 Hover intent, long-press recognition, reading holds, reaction delivery/expiry and
 ongoing comic or idle-character cycles keep their existing semantic owners.
 Those lifetimes are not short interaction transitions.
+
+Workspace motion follows four rules:
+
+- Navigation and companion panes enter and leave along their attached edge, using
+  the surface duration in both directions. Reversing a toggle continues from the
+  current position. Keep the pane visible through its exit;
+  closed panes stop accepting pointer input immediately.
+- Media remains live and opaque. Settle its layout once per pane change; move the
+  pane above it without resizing the player every frame. Personal controls and
+  the room toolbar do not participate in the pane's motion.
+- Only newly appended messages in the visible, latest conversation may settle
+  upward briefly, and only while following the conversation. Initial history,
+  pagination, room changes and reading earlier messages remain still. Motion
+  never owns scroll position or input focus.
+- Ordinary controls retain their shared feedback; avoid animating every icon,
+  roster row or content update. Reduced motion settles immediately using the
+  same CSS timing owner, without delayed hidden states.
 
 The brand mascot keeps its body still: antenna twitch, wink, then two sparkles.
 Web/App and website identity marks share `site/assets/brand-motion.css`.

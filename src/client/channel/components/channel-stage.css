@@ -25,11 +25,13 @@
 .c3-monitor-tile.is-focused { grid-column: 1 / -1; grid-row: 1; order: -1; position: sticky; left: 0; width: 100cqi; justify-self: start; border-color: var(--action); box-shadow: 0 0 0 1px var(--action); }
 .c3-monitor-tile.is-thumbnail { grid-column: auto; grid-row: 2; width: 100%; height: max-content; min-height: 0; }
 .c3-monitor-tile.is-thumbnail > :is(.c3-video, .c3-monitor-wait) { flex: none; min-height: 90px; aspect-ratio: 16 / 9; }
-.c3-monitor-tile.is-thumbnail > footer { padding: 6px 8px; }
-.c3-monitor-tile.is-thumbnail .c3-monitor-source-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px; }
+.c3-monitor-tile.is-thumbnail > footer { position: relative; z-index: 7; padding: 6px 8px; }
+.c3-monitor-tile.is-thumbnail .c3-monitor-source-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; }
 .c3-monitor-tile.is-thumbnail .c3-monitor-source > .lr-comic-tip-wrap:last-child { display: none; }
 /* Keep source drafts and detached panels mounted; only their tile invokers hide. */
-.c3-monitor-tile.is-thumbnail :is(.c3-monitor-social, .c3-monitor-tile-actions) { display: none; }
+.c3-monitor-tile.is-thumbnail .c3-monitor-social,
+.c3-monitor-tile.is-thumbnail .c3-monitor-tile-actions > :not(.c3-monitor-close) { display: none; }
+.c3-monitor-close { display: inline-flex; }
 .c3-thumbnail-focus { position: absolute; inset: 0; z-index: 6; border: 0; border-radius: inherit; background: transparent; padding: 0; cursor: pointer; }
 .c3-thumbnail-focus:is(:hover, :focus-visible) { outline: 2px solid var(--action); outline-offset: -2px; }
 .c3-monitor-tile[data-focusable] .c3-video { cursor: pointer; }
@@ -94,9 +96,7 @@
 @container channel-stage (max-height: 420px) {
   .c3-monitor-heading { flex-wrap: nowrap; justify-content: flex-end; }
   .c3-monitor-heading > div:first-child { display: none; }
-  .c3-monitor:has(> .c3-monitor-grid.is-focused) .c3-theater-source { display: flex; }
-  .c3-monitor-grid.is-focused, .c3-monitor-grid.is-focused:has(> .is-thumbnail) { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(min-content, 1fr); }
-  .c3-monitor-grid.is-focused > .is-thumbnail { display: none; }
+  .c3-monitor-grid.is-focused > .is-thumbnail > :is(.c3-video, .c3-monitor-wait) { display: none; }
   .c3-monitor-grid { grid-auto-rows: minmax(min-content, 1fr); }
   .c3-monitor-heading:not(:has(.c3-monitor-layout)) { display: none; }
   .c3-monitor-tile.is-thumbnail > footer { padding-block: 4px; }

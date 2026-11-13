@@ -271,11 +271,11 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
                     onClick={() => onPause(source.id, !source.paused)} />}
                   {source.owned && source.remoteControl && <SourceControl source={{ ...source, remoteControl: source.remoteControl }}
                     onInputPolicy={onInputPolicy} onInputDecide={onInputDecide} onInputSimultaneous={onInputSimultaneous} onInputShortcut={onInputShortcut} />}
-                  <Btn icon={source.owned ? "stop" : "x"} tone={source.owned ? "danger" : undefined} quiet={!source.owned} size="dense"
+                  <span className="c3-monitor-close"><Btn icon={source.owned ? "stop" : "x"} tone={source.owned ? "danger" : undefined} quiet={!source.owned} size="dense"
                     title={{ text: source.owned ? copy(`停止分享 ${title}`, `Stop sharing ${title}`)
                       : copy(`停止观看 ${title}`, `Stop watching ${title}`) }}
                     hint={source.owned ? "hint-share-stop" : "hint-close"} busy={source.pending} disabled={source.pending}
-                    onClick={() => source.owned ? onStop(source.id) : onUnwatch(source.id)} />
+                    onClick={() => source.owned ? onStop(source.id) : onUnwatch(source.id)} /></span>
                 </div>
               </div>
             </footer>

@@ -1,5 +1,5 @@
 .c3-couch { width: 328px; max-width: 100%; min-width: 0; }
-.c3-couch-width { min-width: 0; }
+.c3-couch-width { min-width: 0; margin-inline: calc(var(--control-compact-size) / 2); }
 .c3-couch-scene { position: relative; height: 94px; max-width: 100%; margin: auto; }
 .c3-couch-bench { position: absolute; inset: 13px 0 0; pointer-events: none; }
 .c3-couch-bench > svg { display: block; width: 100%; height: auto; }
@@ -13,11 +13,9 @@
 .c3-couch-seat .lr-pawn { min-width: 44px; max-width: 100%; }
 .c3-couch-seat .lr-person { width: 42px; height: 50px; }
 .c3-couch-seat .lr-pawn-name { max-width: 100%; }
-.c3-couch-browse { position: absolute; top: 57px; }
-.c3-couch-browse.is-previous { left: -2px; }
-.c3-couch-browse.is-next { right: -2px; }
-.c3-couch-browse .lr-btn { --button-size: 28px; --button-padding: 0; width: 28px; }
-.c3-couch-browse .lr-glyph { width: 14px; height: 14px; }
+.c3-couch-browse { position: absolute; top: 50px; }
+.c3-couch-browse.is-previous { left: calc(var(--control-compact-size) / -2); }
+.c3-couch-browse.is-next { right: calc(var(--control-compact-size) / -2); }
 /* Presence keeps the same people and reaction anchors; scenery yields to work. */
 @container channel-shell (max-height: 680px) {
   .c3-room-presence .c3-couch-scene { height: 44px; }
@@ -26,7 +24,7 @@
   .c3-room-presence .c3-couch-seat .lr-pawn { min-height: 44px; }
   .c3-room-presence .c3-couch-seat .lr-person { width: 30px; height: 36px; }
   .c3-room-presence .c3-couch-seat .lr-pawn-name { display: none; }
-  .c3-room-presence .c3-couch-browse { top: 8px; }
+  .c3-room-presence .c3-couch-browse { top: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .c3-couch-guests { scroll-behavior: auto; }

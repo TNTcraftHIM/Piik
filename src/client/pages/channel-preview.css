@@ -1,6 +1,6 @@
 /* The workspace owns placement; shared controls, palette, cast and motion keep their owners. */
-.c3-app { --c3-content-width: calc(100% - 40px); --c3-companion-width: 320px; --c3-heading-height: 66px; height: 100dvh; min-height: 0; padding-top: 20px; }
-.c3-shell { flex: 1; min-height: 0; width: var(--c3-content-width); margin: 0 auto 24px; display: grid; grid-template-columns: 240px minmax(0, 1fr) var(--c3-companion-width); grid-template-rows: 58px var(--c3-heading-height) minmax(0, 1fr) auto; background: var(--paper); border: 1px solid var(--line); border-radius: var(--c3-shell-radius); box-shadow: var(--panel-shadow); overflow: clip; container: channel-shell / size; }
+.c3-app { --c3-content-width: calc(100% - 40px); --c3-navigation-size: 240px; --c3-companion-size: 320px; --c3-companion-width: var(--c3-companion-size); --c3-heading-height: 66px; height: 100dvh; min-height: 0; padding-top: 20px; }
+.c3-shell { flex: 1; min-height: 0; width: var(--c3-content-width); margin: 0 auto 24px; display: grid; grid-template-columns: var(--c3-navigation-size) minmax(0, 1fr) var(--c3-companion-width); grid-template-rows: 58px var(--c3-heading-height) minmax(0, 1fr) auto; background: var(--paper); border: 1px solid var(--line); border-radius: var(--c3-shell-radius); box-shadow: var(--panel-shadow); overflow: clip; container: channel-shell / size; }
 .c3-shell[data-companion="none"] { --c3-companion-width: 0px; }
 .c3-shell:not([data-companion="people"]) > .c3-people-panel { display: none; }
 :where(.c3-shell) :is(h1,h2,h3,p) { margin: 0; }
@@ -217,6 +217,25 @@
   .c3-pane-back, .c3-pane-navigation { display: inline-flex; flex: none; }
   .c3-sidebar, .c3-people-panel, .c3-chat-panel { border-inline: 0; }
 }
+/* Panes travel along their own edge; media settles once beneath them. */
+.c3-shell:not([data-layout="quick"]) .c3-main-body { isolation: isolate; }
+.c3-shell:not([data-layout="quick"]) > :is(.c3-sidebar, .c3-people-panel, .c3-chat-panel) {
+  position: relative;
+  z-index: 2;
+  translate: 0;
+  transition: translate var(--motion-surface) cubic-bezier(.2, 0, 0, 1), display var(--motion-surface) allow-discrete;
+}
+.c3-shell[data-sidebars="inline"] > .c3-sidebar { width: var(--c3-navigation-size); }
+.c3-shell[data-sidebars="inline"] > :is(.c3-people-panel, .c3-chat-panel) { width: var(--c3-companion-size); justify-self: end; }
+.c3-shell:not([data-layout="quick"]):is([data-view="share"][data-sidebars="inline"], [data-sidebars="overlay"]:not([data-pane="rooms"])) > .c3-sidebar { translate: -100% 0; pointer-events: none; }
+.c3-shell:not([data-layout="quick"]):not([data-companion="people"]) > .c3-people-panel,
+.c3-shell:not([data-layout="quick"]):not([data-companion="chat"]) > .c3-chat-panel { translate: 100% 0; pointer-events: none; }
+.c3-shell:not([data-layout="quick"]) .c3-chat-panel .c3-conversation { transition: display var(--motion-surface) allow-discrete; }
+.c3-shell[data-sidebars="overlay"] .c3-main-body { transition: visibility var(--motion-surface); }
+@starting-style {
+  .c3-shell:not([data-layout="quick"]) > .c3-sidebar { translate: -100% 0; }
+  .c3-shell:not([data-layout="quick"]) > :is(.c3-people-panel, .c3-chat-panel) { translate: 100% 0; }
+}
 @media (max-width: 700px) {
   .c3-app { --c3-content-width: calc(100% - 16px); --c3-heading-height: 60px; padding-top: 8px; }
   .c3-shell[data-sidebars="overlay"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: 58px auto minmax(0, 1fr) auto auto; margin-bottom: 8px; border-radius: var(--c3-shell-radius); }
@@ -254,11 +273,22 @@
 .c3-shell[data-layout="quick"] .c3-monitor { width: 100%; flex: none; padding: 0; overflow: visible; }
 .c3-shell[data-layout="quick"] .c3-workspace.has-screens > .c3-monitor:not(.is-theater) { container-type: inline-size; }
 .c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-grid { flex: none; min-height: 0; grid-auto-rows: auto; }
-.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) { border: 0; background: transparent; box-shadow: none; }
-.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) > :is(.c3-video:not(:fullscreen), .c3-monitor-wait) { box-sizing: content-box; flex: none; padding: 0; min-height: 160px; aspect-ratio: 16 / 9; width: calc(100% - 2 * (var(--tv-frame-inset) + var(--tv-frame-border))); margin: 0; border: calc(var(--tv-frame-inset) + var(--tv-frame-border)) solid transparent; border-bottom-width: calc(var(--tv-frame-chin) + var(--tv-frame-border)); border-radius: var(--tv-frame-radius); background: var(--tv-frame-background); box-shadow: var(--tv-frame-shadow); }
-.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) > .c3-video:not(:fullscreen) > video { border-radius: var(--tv-screen-radius); }
+.c3-shell[data-layout="quick"] { --quick-tv-screen-height: max(160px, 100svh - 300px); }
+.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) { width: 100%; max-width: calc(var(--quick-tv-screen-height) * 16 / 9 + 2 * (var(--tv-frame-inset) + var(--tv-frame-border))); justify-self: center; border: 0; background: transparent; box-shadow: none; }
+.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile.is-focused { width: 100cqi; }
+.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) > :is(.c3-video:not(:fullscreen), .c3-monitor-wait) { box-sizing: content-box; flex: none; padding: var(--tv-frame-inset) var(--tv-frame-inset) var(--tv-frame-chin); min-height: 160px; aspect-ratio: 16 / 9; width: calc(100% - 2 * (var(--tv-frame-inset) + var(--tv-frame-border))); margin: 0; border: var(--tv-frame-border) solid var(--frame); border-radius: var(--tv-frame-radius); background: var(--tv-frame-background); box-shadow: var(--tv-frame-shadow); }
+/* The frame's padding stays outside the screen. A shared grid area positions
+   video, remote input and picture overlays against exactly the same rectangle. */
+.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) > .c3-video:not(:fullscreen) {
+  display: grid;
+  grid-template: minmax(0, 1fr) auto auto / minmax(0, 1fr);
+  > :is(video, .lr-remote-input-surface, .lr-chat-overlay, .c3-mini-message, .lr-playback-reveal) { grid-area: 1 / 1 / 3 / 2; }
+  > :is(video, .lr-remote-input-surface, .lr-chat-overlay) { border-radius: var(--tv-screen-radius); }
+  > video { background: var(--stage); }
+  > .c3-mini-controls { position: relative; inset: auto; grid-area: 2 / 1; justify-self: center; margin-bottom: 10px; }
+}
 .c3-shell[data-layout="quick"]:has(.c3-monitor-grid.is-grid) .c3-main-body { width: 100%; }
-.c3-shell[data-layout="quick"] .c3-monitor-grid.is-grid .c3-monitor-tile { --tv-frame-inset: 3px; --tv-frame-chin: 7px; --tv-frame-radius: var(--c3-surface-radius); }
+.c3-shell[data-layout="quick"] .c3-monitor-grid.is-grid .c3-monitor-tile { --tv-frame-inset: 3px; --tv-frame-chin: 7px; --tv-frame-radius: var(--c3-surface-radius); --tv-screen-radius: calc(var(--c3-surface-radius) - var(--tv-frame-inset) - var(--tv-frame-border)); }
 .c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-grid:not(.is-grid) .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source-row { position: static; display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; opacity: 1; pointer-events: auto; transform: none; }
 .c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-grid:not(.is-grid) .c3-monitor-tile:not(.is-thumbnail):has(> .c3-video[data-controls-hidden="true"]) > footer:not(:hover):not(:focus-within):not(:has([aria-expanded="true"])) .c3-monitor-source-row { opacity: 1; pointer-events: auto; transform: none; }
 .c3-shell[data-layout="quick"] .c3-monitor-grid:not(.is-grid) .c3-monitor-source { flex: 1 1 140px; }
@@ -285,7 +315,7 @@
 }
 /* Leave room for the site bar, picture toolbar and persistent voice dock;
    secondary content can scroll without making the television taller than the view. */
-.c3-shell[data-layout="quick"]:not(:has(.c3-monitor-grid.is-grid)) .c3-main-body { max-width: min(990px, calc(max(160px, 100svh - 300px) * 16 / 9 + 30px)); }
+.c3-shell[data-layout="quick"]:not(:has(.c3-monitor-grid.is-grid)) .c3-main-body { max-width: min(990px, calc(var(--quick-tv-screen-height) * 16 / 9 + 30px)); }
 @media (max-width: 700px) {
   .c3-shell[data-layout="quick"] { gap: 12px; }
   .c3-shell[data-layout="quick"] .c3-room-heading { display: flex; }

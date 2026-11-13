@@ -1,4 +1,4 @@
-.c3-room-item { display: flex; align-items: center; min-width: 0; border-radius: 12px; }
+.c3-room-item { display: flex; align-items: center; min-width: 0; border-radius: 12px; transition: background-color var(--motion-feedback) ease, box-shadow var(--motion-feedback) ease; }
 .c3-room-item:hover, .c3-room-item:focus-within { background: var(--control-hover); }
 .c3-room-item[data-selected] { background: var(--control-selected); box-shadow: inset 3px 0 0 var(--action); }
 .c3-room-item[data-unread] .c3-room-link { color: var(--ink); }
@@ -13,6 +13,7 @@
 .c3-room-voice-toggle { position: absolute; inset-inline-start: 0; inset-block: 4px; display: flex; align-items: center; }
 .c3-room-voice-toggle .lr-btn { --button-size: var(--room-disclosure-width); --button-icon-size: 12px; --button-padding: 0; width: var(--room-disclosure-width); min-width: var(--room-disclosure-width); height: 40px; box-shadow: none; border: 0; }
 .c3-room-voice-toggle [aria-expanded="false"] > svg { transform: rotate(-90deg); }
+.c3-room-voice-toggle .lr-btn > svg { transition: transform var(--motion-control) var(--spring); }
 @media (any-pointer: coarse) {
   .c3-room-voice-toggle .lr-btn { height: var(--control-compact-size); }
 }
