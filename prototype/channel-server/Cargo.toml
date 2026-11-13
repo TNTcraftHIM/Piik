@@ -16,7 +16,7 @@ path = "src/bin/app.rs"
 required-features = ["capture"]
 
 [features]
-capture = ["piik-channel-native/capture"]
+capture = ["piik-channel-native/capture", "dep:wry", "dep:tao", "dep:webview2-com", "dep:windows-core"]
 
 [dependencies]
 piik-channel-core = { path = "../channel-core", features = ["sqlite"] }
@@ -44,6 +44,12 @@ semver = "1"
 ureq = { version = "=3.5.0", default-features = false, features = ["rustls"] }
 tokio-util = { version = "0.7", features = ["io-util"] }
 tempfile = "=3.27.0"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+wry = { version = "=0.57.2", default-features = false, features = ["os-webview"], optional = true }
+tao = { version = "=0.37.2", default-features = false, features = ["rwh_06"], optional = true }
+webview2-com = { version = "=0.39.1", optional = true }
+windows-core = { version = "=0.62.2", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "=0.6.5"

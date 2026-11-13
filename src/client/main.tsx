@@ -1,6 +1,7 @@
 import { lazy, type ComponentType } from "react";
 import { mountApp } from "./mount";
 import "./channel/bootstrap";
+import "./ui/native-window";
 
 const AppLauncherPage = lazy(() => import("./pages/AppLauncherPage").then(module => ({ default: module.AppLauncherPage })));
 const ChannelPreviewPage = lazy(() => import("./pages/ChannelPreviewPage").then(module => ({ default: module.ChannelPreviewPage })));

@@ -9,6 +9,7 @@
 // docs/standards/visual-language.md#symbol-reference before adding a symbol.
 import { Children, cloneElement, useEffect, useRef, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { bindSvgReplayOnPointerEnter } from "./animation";
+import windowControls from "./window-controls.json";
 
 type GlyphDefinition = { body: ReactElement<{ children: ReactNode }>; solid?: boolean; phases?: number[] };
 
@@ -48,7 +49,7 @@ const PATHS = {
   copy: { body: (<><rect pathLength={1} x="9" y="9" width="12" height="12" rx="2"/><path pathLength={1} d="M5 15V5a2 2 0 0 1 2-2h10"/></>) },
   check: { body: (<><path pathLength={1} d="M4 12.5 9.5 18 20 6.5"/></>) },
   refresh: { body: (<><path pathLength={1} d="M3 12a9 9 0 0 1 9-9 9.7 9.7 0 0 1 6.7 2.7L21 8"/><path pathLength={1} d="M21 3v5h-5"/><path pathLength={1} d="M21 12a9 9 0 0 1-9 9 9.7 9.7 0 0 1-6.7-2.7L3 16"/><path pathLength={1} d="M8 16H3v5"/></>) },
-  x: { phases: [0, 1], body: (<><path pathLength={1} d="M6 6l12 12"/><path pathLength={1} d="M18 6 6 18"/></>) },
+  x: { phases: [0, 1], body: (<>{windowControls.icons.close.map((path, index) => <path key={index} pathLength={1} d={path}/>)}</>) },
   eye: { body: (<><path pathLength={1} d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle pathLength={1} cx="12" cy="12" r="3"/></>) },
   eyeOff: { body: (<><path pathLength={1} d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19M6.61 6.61A13.5 13.5 0 0 0 2 12s3 8 10 8a9.74 9.74 0 0 0 5.39-1.61"/><path pathLength={1} d="m2 2 20 20"/><path pathLength={1} d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/></>) },
   play: { solid: true, body: (<><path pathLength={1} d="M7 4.8v14.4a1 1 0 0 0 1.52.86l11.4-7.2a1 1 0 0 0 0-1.72L8.52 3.94A1 1 0 0 0 7 4.8Z"/></>) },

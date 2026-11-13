@@ -206,6 +206,12 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
   Cumulative observations need a valid baseline for the resource generation
   they describe; missing measurements are not zero. Serialized recovery reads
   current committed intent when it executes rather than replaying a queued snapshot.
+- Separate ordinary operation rejection from an unusable resource instance.
+  Retire a broken instance at its existing lifetime owner; recreate it only from
+  current authorized intent and committed state. Keep one bounded recovery policy
+  at that boundary. Recreating resources does not replay user commands or renew
+  expired authority. Failure of an independently owned resource does not retire
+  healthy siblings.
 - The operation that acquires a connection, clone, listener or queue owns its
   retirement. After an await/callback, and inside cleanup, validate the original
   operation/resource identity before changing current state. Cancellation,
@@ -334,7 +340,7 @@ the test. Keep test-only setup and state seeding in the harness, and do not expo
 mutable resources solely for tests. Defaults and restoration use the production
 construction path.
 
-Judge a change by verified user value against implementation, maintenance,
+Judge a change by verified user value against implementation, review, maintenance,
 compatibility, runtime and failure cost. After a material module, remove any
 new state, dependency, branch or abstraction that the accepted behavior does
 not need. A small performance gain does not justify permanent complexity;
@@ -344,6 +350,12 @@ A concrete reduction in duplicated writers, cross-module dependencies or
 repeated edit sites can justify structural refactoring without a reproduced
 runtime failure. Name that gain and its regression risk. A completed audit is
 bounded evidence, not a claim that every current module boundary is optimal.
+
+[OTP supervision](https://www.erlang.org/doc/system/sup_princ.html) provides the
+failure-scope and bounded-restart reference. [LLVM's contribution guidance](https://llvm.org/docs/AIToolPolicy.html)
+emphasizes understanding generated changes before transferring their review cost.
+Judge progress by accepted behavior and maintainable boundaries, not generated
+volume or an agent's confidence.
 
 Before changing production recovery or state, trace the real request producers
 and their guards. A test that bypasses disabled controls or writes private state

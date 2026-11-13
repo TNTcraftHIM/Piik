@@ -8,6 +8,15 @@ fn main() -> Result<()> {
         return Ok(());
     }
     let _capture_runtime = piik_channel_native::capture::Runtime::new()?;
+    #[cfg(target_os = "windows")]
+    if env::var_os("PIIK_CHANNEL_APP_NO_BROWSER").is_none()
+        && !env::args_os()
+            .skip(1)
+            .any(|argument| argument == "--browser")
+    {
+        let (config, port) = configuration()?;
+        return piik_channel_prototype::app_windows::run(config, port);
+    }
     #[cfg(target_os = "macos")]
     return piik_channel_prototype::app_macos::run(run);
     #[cfg(not(target_os = "macos"))]
@@ -30,6 +39,14 @@ async fn run(
             None => stop.await,
         }
     };
+    let (config, port) = configuration()?;
+    let listener = listen(port).await?;
+    #[cfg(not(target_os = "macos"))]
+    let ready = None;
+    serve(listener, config, stop, ready).await
+}
+
+fn configuration() -> Result<(Config, Option<u16>)> {
     let executable = env::current_exe().context("Locate the App executable")?;
     let resources = executable.parent().context("Locate the App directory")?;
     let config = Config {
@@ -63,8 +80,5 @@ async fn run(
         .ok()
         .map(|port| port.parse())
         .transpose()?;
-    let listener = listen(port).await?;
-    #[cfg(not(target_os = "macos"))]
-    let ready = None;
-    serve(listener, config, stop, ready).await
+    Ok((config, port))
 }

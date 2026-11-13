@@ -1,0 +1,18 @@
+html[data-piik-native-window] .c3-app { --c3-content-width: 100%; padding: 0; }
+html[data-piik-native-window] .c3-shell { width: 100%; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
+html[data-piik-native-window] :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading) {
+  min-height: var(--native-caption-height);
+  padding: 7px calc(var(--native-caption-width) + 16px) 7px 16px;
+  app-region: drag;
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  background: var(--wall);
+}
+html[data-piik-native-window] .c3-site-bar { height: var(--native-caption-height); }
+html[data-piik-native-window] :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading)
+  :is(button, a, input, select, textarea, [role=button], [popover], .lr-comic-tip-wrap) { app-region: no-drag; }
+html[data-piik-native-window] :is(.c3-site-identity, .c3-global-tools) { min-width: 0; }
+html[data-piik-native-window] .c3-site-identity { flex: 1; }
+html[data-piik-native-window]:has(:fullscreen)
+  :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading) { padding-right: 16px; app-region: no-drag; }

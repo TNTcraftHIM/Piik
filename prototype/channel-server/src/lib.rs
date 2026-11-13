@@ -2,6 +2,8 @@
 pub mod app;
 #[cfg(target_os = "macos")]
 pub mod app_macos;
+#[cfg(all(target_os = "windows", feature = "capture"))]
+pub mod app_windows;
 mod backup;
 pub mod domain;
 pub mod web;

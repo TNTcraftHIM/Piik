@@ -131,7 +131,12 @@ $env:PIIK_CHANNEL_CLOUDFLARED = "cloudflared"
 cargo +1.91.0 run --manifest-path prototype/channel-server/Cargo.toml --features capture --bin piik-channel-app
 ```
 
-The App opens its local page in the system Browser, or the saved startup choice.
+On Windows, the App opens the shared interface in its own window using the installed
+system WebView. Window controls belong to the shell; rooms, media and site approval
+keep their existing owners. Closing the main window stops the App and its child
+windows. Pass `--browser` to use the system Browser instead; this is also the fallback
+when the system WebView cannot be created. Other desktop platforms use the Browser.
+The launcher and saved startup choice work in either interface.
 An external site's star opens its fixed address. Selecting startup on the current
 App-owned site saves its launch selection: the next App run starts that mode and
 enters the new ready owner address, rather than reopening an expired invitation.

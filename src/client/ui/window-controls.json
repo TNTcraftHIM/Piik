@@ -1,0 +1,32 @@
+{
+  "width": 138,
+  "height": 58,
+  "icons": {
+    "minimize": ["M5 12h14"],
+    "maximize": ["M5 5h14v14H5z"],
+    "restore": ["M8 8H4v12h12v-4", "M8 8V4h12v12h-4", "M8 8h8v8"],
+    "close": ["M6 6l12 12", "M18 6 6 18"]
+  },
+  "labels": {
+    "en": {
+      "minimize": "Minimize",
+      "maximize": "Maximize",
+      "restore": "Restore",
+      "close": "Close Piik",
+      "microphone": "Allow this page to use your microphone?",
+      "camera": "Allow this page to use your camera?",
+      "permissionNote": "This choice applies to this request. You can try again after denying or cancelling.",
+      "startupFailed": "Piik could not start. See the terminal for details."
+    },
+    "zh": {
+      "minimize": "最小化",
+      "maximize": "最大化",
+      "restore": "还原",
+      "close": "关闭 Piik",
+      "microphone": "允许此页面使用麦克风吗？",
+      "camera": "允许此页面使用摄像头吗？",
+      "permissionNote": "此选择仅用于本次请求。拒绝或取消后可以重试。",
+      "startupFailed": "Piik 未能启动，请查看终端中的详细信息。"
+    }
+  }
+}

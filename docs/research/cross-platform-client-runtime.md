@@ -174,13 +174,16 @@ Linux library can prevent process startup, before a window-creation fallback
 could run. Platform distribution and actual media behavior remain evaluation
 questions, not promises established by the Windows window.
 
-The proposed minimal boundary keeps one `app::serve`, one persistent WebView
+The Windows integration keeps one `app::serve`, one persistent WebView
 profile and the current HTTP(S) frontend and authorization protocol. The shell
 does not expose a generic Native command bridge to remote sites. Failure to
 create the WebView before a session starts can open the same entry in the system
 Browser while retaining the App service. App startup errors still need their
 actual error. Reopening an active session in a Browser is explicit: its separate
 origin storage does not inherit WebView credentials, history or live media.
+The [App reference](../../prototype/channel-server/README.md#local-app-link) owns
+the window entry and explicit Browser alternative. Integrated-package acceptance
+remains separate from the earlier proof above.
 
 Client-side site bookmarks would own navigation only. They must remain separate
 from `app_site`, which grants capture and Native room hosting. Save a clean site

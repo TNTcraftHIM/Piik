@@ -141,6 +141,9 @@ export function writeAppLicenseNotices(repositoryRoot, packageRoot, target, tunn
   }
   if (target.goos === "windows") {
     text += section("libvpx 1.16.0 (BSD-3-Clause, ISC and patent grant)", pinnedNotice("libvpx@1.16.0"));
+    // These crates omit their workspace LICENSE from their published archives.
+    text += section("webview2-com 0.39.1, webview2-com-sys 0.39.1 and webview2-com-macros 0.8.1 (MIT)",
+      pinnedNotice("webview2-rs@0.39.1"));
   }
   writeFileSync(join(packageRoot, "THIRD-PARTY-NOTICES.txt"), text);
 }

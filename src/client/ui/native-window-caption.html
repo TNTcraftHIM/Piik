@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Piik</title>
+<style>
+__PIIK_PALETTE__
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body { background: var(--wall); color: var(--ink); font: 12px system-ui; display: flex; align-items: center; user-select: none; }
+.controls { display: flex; gap: 3px; padding: 0 7px; app-region: no-drag; }
+button { app-region: no-drag; width: 38px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: inherit; display: grid; place-items: center; cursor: pointer; }
+button:hover { background: var(--control-hover); }
+button:active { background: var(--control-selected); }
+button:focus-visible { outline: 2px solid var(--action); outline-offset: -2px; }
+button:last-child:hover { background: var(--danger); color: var(--primary-ink); }
+svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+<div class="controls"></div>
+<script>
+const controls = __PIIK_WINDOW_CONTROLS__;
+let language = navigator.language.startsWith('zh') ? 'zh' : 'en';
+let maximized = false;
+for (const action of ['minimize', 'maximize', 'close']) {
+  const button = document.createElement('button');
+  button.dataset.action = action;
+  button.onclick = () => window.ipc.postMessage(action);
+  document.querySelector('.controls').append(button);
+}
+function render() {
+  document.documentElement.lang = language;
+  for (const button of document.querySelectorAll('button')) {
+    const name = button.dataset.action === 'maximize' && maximized ? 'restore' : button.dataset.action;
+    button.title = controls.labels[language][name];
+    button.setAttribute('aria-label', button.title);
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    for (const geometry of controls.icons[name]) {
+      const path = document.createElementNS(svg.namespaceURI, 'path');
+      path.setAttribute('d', geometry);
+      svg.append(path);
+    }
+    button.replaceChildren(svg);
+  }
+}
+window.updateAppearance = (theme, lang) => {
+  document.documentElement.dataset.theme = theme;
+  language = lang;
+  render();
+};
+window.updateMaximized = value => { maximized = value; render(); };
+render();
+</script>
+</html>

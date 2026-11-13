@@ -12,11 +12,10 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **System WebView client evaluation.** Measure a thin Windows window over
-  the existing App and shared UI, including media, Browser fallback and package
-  cost, following the
+- [ ] **Windows WebView candidate acceptance.** Verify the integrated App package's
+  window, media, permissions, Browser fallback and shutdown. The
   [runtime assessment](./research/cross-platform-client-runtime.md#30-system-webview-client-evaluation)
-  before changing the default entry; keep current Browser access working.
+  records the earlier proof; its evidence does not replace this package's acceptance.
 - [ ] **3.0 Windows shared-sound noise.** The reporter confirms electrical or
   crackling sound in beta9/10 as well as beta2, while 2.x sounds normal. Excluding
   the window titled Piik removes it; excluding a silent unrelated window does

@@ -83,10 +83,11 @@ to feed the separate 2.x maintenance line, which preserves its published contrac
 Independent text automation and local OBS input reuse the conversation and source
 owners described in the [integration boundaries](./research/room-interactions.md#extension-boundaries).
 The matched candidate set now includes local OBS input on supported desktop Apps,
-with Windows media and lifecycle evidence. The desktop App retains its terminal
-entry and shared Browser UI; the
-[native-entry assessment](./research/cross-platform-client-runtime.md#30-windows-native-entry-prototype)
-does not change that product boundary.
+with Windows media and lifecycle evidence. The next Windows candidate integrates
+the shared interface into a system WebView window, retaining an explicit Browser
+entry. The [runtime assessment](./research/cross-platform-client-runtime.md#30-system-webview-client-evaluation)
+separates earlier proof evidence from the integrated package's pending acceptance;
+other desktop platforms retain their current entry.
 
 ## Deployment
 
