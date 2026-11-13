@@ -123,12 +123,12 @@ or entry-point change was added to the product.
 
 ## 3.0 System WebView Client Evaluation
 
-The owner's subsequent request on 2026-11-12 opens an evaluation of a complete
-client window using the existing Web UI, with the Browser as an alternative
-entry. This is distinct from the status-window proof above; the shipped entry
-has not changed. A Windows proof uses the installed system WebView and the
-existing App service to measure actual behavior and package cost before choosing
-a production shell.
+The Windows internal candidate now uses the shared Web UI inside a system-WebView
+window, with the Browser as an alternative entry. The
+[App reference](../../prototype/channel-server/README.md#local-app-link) owns this
+behavior and [verification status](../verification-status.md#windows-and-android)
+owns integrated-package coverage. The earlier isolated proofs below established
+the shell boundary and package cost; they do not replace that acceptance.
 
 The Wry/Tao release-size control, including authorization child windows, added
 548,352 bytes to the executable; the same gzip level 9 added 224,732 bytes.
@@ -423,9 +423,49 @@ link and inline major-upgrade guidance. The accepted behavior belongs to
 clients still follow their released behavior; a notice cannot substitute for
 actual App/Site compatibility checks.
 
+## 3.0 App Update Delivery
+
+Reviewed 2026-11-13. The requested flow adds release notes inside the App, selects
+between the existing download lines, and installs a complete update on an explicit
+restart. Full installation is a proposal; the current App still uses manual package
+downloads. Release identity and published compatibility remain with
+[versioning](../standards/versioning.md).
+
+Keep one release body for the website, provider pages and App. The existing
+headline is the short notice; full notes can use the installed Markdown renderer
+without raw HTML or another notes database. The App's local update owner must
+resolve and verify the official package; a connected site's page cannot choose an
+executable or authorize its replacement.
+
+Update the complete executable, Web assets, helper and notices as one bundle.
+Keep application data and the saved local port outside that replacement. A signed
+descriptor must bind the version, target, revision, size and bundle digest;
+a checksum from the same download source does not establish publisher authority.
+Publisher-key custody and release signing still need their delivery decision.
+The first updater-capable App requires an ordinary installation of its trust root.
+
+For the requested faster-line choice, compare a bounded initial portion of at most
+two actual downloads of the same signed artifact, then cancel the losing transfer.
+API latency alone does not measure package transfer. Downloading can coexist with
+current activity; installing waits for explicit restart and the existing orderly
+retirement of hosting, media, transfers and input. A small replacement helper can
+stage the new bundle, retain the old one and restore it if replacement or startup
+fails. It must not roll back authority databases. Platform replacement and recovery
+need actual installed-package acceptance before offering automatic installation.
+
+[Tauri's updater](https://v2.tauri.app/plugin/updater/) supplies signing and installer
+semantics, but its host and installer layout do not directly fit the existing Wry
+portable bundle. [CC Switch's update interface](https://github.com/farion1231/cc-switch/blob/3c76d3bda670297dd8c27d7d9be9b18a4c9143f5/src/components/settings/AboutSection.tsx)
+provides a public example of inline notes and explicit restart. These references
+inform the flow without introducing a second App host. Beta-feed publication is
+a separate decision; stable-only discovery must not silently become a beta feed.
+
 ## Android Capture Bridge Assessment
 
-The [Android App](../../mobile/README.md) builds an APK for arm64 and
+This assessment describes the published 2.x bridge. The current Rust-based
+3.0 implementation belongs to the [Android runtime reference](../../mobile/README.md).
+
+The 2.x Android App builds an APK for arm64 and
 x86-64 from the repository's single Go dependency graph. The system browser
 presents the shared Web UI at its loopback origin or an explicitly approved
 site. `AppRuntimeService` owns the one Go runtime and pending OS requests;

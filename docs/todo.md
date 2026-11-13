@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-12
+Last reviewed: 2026-11-13
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -12,10 +12,6 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **Windows WebView candidate acceptance.** Verify the integrated App package's
-  window, media, permissions, Browser fallback and shutdown. The
-  [runtime assessment](./research/cross-platform-client-runtime.md#30-system-webview-client-evaluation)
-  records the earlier proof; its evidence does not replace this package's acceptance.
 - [ ] **3.0 Windows shared-sound noise.** The reporter confirms electrical or
   crackling sound in beta9/10 as well as beta2, while 2.x sounds normal. Excluding
   the window titled Piik removes it; excluding a silent unrelated window does
@@ -88,6 +84,12 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **App update delivery.** Show the existing release notes inside the App,
+  then implement verified whole-bundle download and an explicit install/restart
+  flow. Resolve publisher signing and the beta-feed policy before enabling
+  automatic replacement; retain the current manual download path. The
+  [delivery proposal](./research/cross-platform-client-runtime.md#30-app-update-delivery)
+  keeps authority, active sessions and data outside the download operation.
 - [ ] **App entry through an operator-managed HTTPS address.** A private local
   proxy control verified exact-origin admission, stable App domain identity/port
   and protected local management. Resolve the launcher and restart flow before
@@ -113,8 +115,12 @@ the feedback period; they do not delay that delivery.
   Native root. Define evidence, authorization and resource cost before extending
   the current admission/switch owners; 2.x route-policy labels do not directly
   describe these 3.0 paths.
-- [ ] **3.0 Native platform acceptance.** Install and validate the matching
-  Android candidate, then complete remaining Linux/macOS device acceptance, including
+- [ ] **3.0 Native platform acceptance.** Build, install and validate the matching
+  Android candidate. Complete physical microphone/camera and unavailable-runtime
+  Browser-fallback acceptance for the Windows WebView entry; controlled device
+  permission and shutdown checks are in the
+  [verification record](./verification-status.md#windows-and-android).
+  Continue remaining Linux/macOS device acceptance, including
   macOS Quit, Dock/Finder return and permissions,
   and Linux hardware encoding and physical sound. Retain the accepted
   [network model](./research/channel-network-design.md)

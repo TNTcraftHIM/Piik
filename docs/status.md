@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-11-12
+Last updated: 2026-11-13
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -13,10 +13,11 @@ across Server, Native and Browser/WASM, with the shared Web UI for chat, screen
 sharing, selective watching, room voice and App control. Normal development and
 distribution use these Rust/Web paths; Go tooling only builds the pinned
 Cloudflared helper. Work stays on `feat/channel-prototype`, separately from 2.x.
-Matched Windows App, Linux x64 Server and Android candidates have been delivered
-for internal testing with the current capacity and profile-reading protocol.
-Windows and Linux passed their scoped package and runtime acceptance; Android
-passed package checks and still awaits installation and device acceptance.
+Matched Windows App and Linux x64 Server candidates have been delivered for
+internal testing with the current protocol and shared frontend. Windows includes
+the integrated system-WebView window and custom device permission prompts; both
+packages passed their scoped runtime acceptance. Matching-package acceptance on
+Android remains open; the preceding Android package does not match this protocol.
 Exact revisions and receipts stay with the immutable packages, and
 [verification status](./verification-status.md) records their tested scope.
 
@@ -83,10 +84,10 @@ to feed the separate 2.x maintenance line, which preserves its published contrac
 Independent text automation and local OBS input reuse the conversation and source
 owners described in the [integration boundaries](./research/room-interactions.md#extension-boundaries).
 The matched candidate set now includes local OBS input on supported desktop Apps,
-with Windows media and lifecycle evidence. The next Windows candidate integrates
+with Windows media and lifecycle evidence. The delivered Windows candidate integrates
 the shared interface into a system WebView window, retaining an explicit Browser
 entry. The [runtime assessment](./research/cross-platform-client-runtime.md#30-system-webview-client-evaluation)
-separates earlier proof evidence from the integrated package's pending acceptance;
+separates earlier proof evidence from the integrated package's acceptance;
 other desktop platforms retain their current entry.
 
 ## Deployment

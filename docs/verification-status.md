@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-12
+Last updated: 2026-11-13
 
 This page summarizes the current 3.0 evidence and limits that affect product
 claims. [Status](./status.md#isolated-30-prototype) owns delivery readiness;
@@ -69,10 +69,10 @@ invitation consumption, credential-backed reload and bidirectional chat between
 independent Browser identities. The matched Linux Server passed Native-room,
 signed-confirmation and clean-shutdown checks.
 
-The matched Android candidate passed build, signature, dual-ABI, 16 KiB alignment
-and bundled-Web identity checks. Installation and runtime acceptance remain
-pending; earlier emulator results do not establish that acceptance. Package
-receipts retain exact revisions and environment evidence.
+The preceding Android candidate passed build, signature, dual-ABI, 16 KiB alignment
+and bundled-Web identity checks. A package matching the newly delivered protocol
+needs its own acceptance; preceding package and emulator results do not establish its
+acceptance. Package receipts retain exact revisions and environment evidence.
 
 Windows package checks also cover normal control request and Host
 approval, real pointer and keyboard input to an isolated window, and **End
@@ -93,11 +93,12 @@ The Compose check covers room backup and restore with a read-only root,
 invalid-archive rejection, scratch cleanup, and retained site/room identity
 after container recreation. Media UDP and NAT have separate network checks.
 
-Local OBS input passed Windows App-to-Browser picture and muted
-stereo-audio checks using synthetic sources, followed by OBS stop/restart,
-retired-resource deletion, Piik stop and page closure. Input permissions and UDP
-resources retired normally. The matched Windows package separately verified
-entry, permission preparation/revocation and retention of compatible saved data.
+Local OBS input passed picture and muted stereo-audio checks through the actual
+packaged Windows App to an independent Browser, using synthetic sources. Normal
+OBS stop and Piik revocation released input permissions and UDP resources. The
+unchanged input implementation also passed stop/restart, retired-resource
+deletion, reauthorization and controlling-page closure; package receipts identify
+that preceding regression separately from the final package's media check.
 Other desktop platforms and cross-NAT media remain outside this input evidence. Android compiles
 with the shared changes but does not advertise this desktop input capability.
 
@@ -132,6 +133,16 @@ Windows has normal App window-capture, Browser viewing and attended input
 execution evidence. OS permission, protected/admin application and game
 compatibility remain bounded by the
 [input assessment](./research/room-interactions.md#attended-remote-control-prototype).
+
+The integrated Windows package retained its Native-hosted room and confirmed
+messages across restart into the new window. Its trusted device-permission
+window passed microphone allow/deny/Esc, camera cancellation, language/theme
+changes and App shutdown while a request was pending. These use synthetic
+devices, not physical microphone or camera acceptance. Window sizing, controls,
+two-screen viewing, theater and fullscreen were exercised on the same integrated
+shell before the permission-window change. The final permission-path shutdown
+left no App/WebView processes or TCP/UDP resources. Browser fallback on an
+unavailable system runtime remains a separate platform check.
 
 Android runtime evidence from preceding candidates includes the official API35
 x64 emulator, system capture consent, decoded picture, compatible room data across
