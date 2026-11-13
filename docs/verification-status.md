@@ -141,8 +141,10 @@ changes and App shutdown while a request was pending. These use synthetic
 devices, not physical microphone or camera acceptance. Window sizing, controls,
 two-screen viewing, theater and fullscreen were exercised on the same integrated
 shell before the permission-window change. The final permission-path shutdown
-left no App/WebView processes or TCP/UDP resources. Browser fallback on an
-unavailable system runtime remains a separate platform check.
+left no App/WebView processes or TCP/UDP resources. A controlled unavailable-runtime
+check used the documented per-process WebView2 runtime override. The delivered
+App opened the default Browser, retained Native room/history access and message
+submission, then closed normally through the terminal without remaining listeners.
 
 The Windows updater completed a signed whole-bundle replacement using the real
 product helper, followed by saved-site and Native room/history recovery. Closing

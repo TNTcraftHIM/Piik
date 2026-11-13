@@ -115,8 +115,8 @@ the feedback period; they do not delay that delivery.
   the current admission/switch owners; 2.x route-policy labels do not directly
   describe these 3.0 paths.
 - [ ] **3.0 Native platform acceptance.** Build, install and validate the matching
-  Android candidate. Complete physical microphone/camera and unavailable-runtime
-  Browser-fallback acceptance for the Windows WebView entry; controlled device
+  Android candidate. Complete physical microphone/camera acceptance for the
+  Windows WebView entry; controlled runtime fallback, device
   permission and shutdown checks are in the
   [verification record](./verification-status.md#windows-and-android).
   Continue remaining Linux/macOS device acceptance, including
