@@ -130,15 +130,19 @@ has not changed. A Windows proof uses the installed system WebView and the
 existing App service to measure actual behavior and package cost before choosing
 a production shell.
 
-The first Wry/Tao release-size control added 527,872 bytes to the executable;
-the same gzip level 9 added 213,799 bytes. Web assets and the tunnel helper were
+The Wry/Tao release-size control, including authorization child windows, added
+548,352 bytes to the executable; the same gzip level 9 added 224,732 bytes.
+Web assets and the tunnel helper were
 unchanged, and the system WebView2 runtime was not bundled. This is a prototype
 delta, not a final package-size promise.
 
 The actual embedded Windows window completed Native-hosted conversation,
 received Browser-generated VP8/Opus, and sent Native-captured test-window H.264
 to an independent Browser. Closing it with both paths active retired the App,
-sockets and capture processes while retaining confirmed messages. Native sound,
+sockets and capture processes while retaining confirmed messages. The existing
+App approval flow also passed against an independent current Site: the child
+retained its opener and authorization return, then closed without stopping the
+App. Closing the main window retired any remaining child windows. Native sound,
 microphone/camera permission, file saves and non-Windows operation remain
 unverified. The installed WebView2 renderer crashed during an automation
 accessibility snapshot; ordinary clicks and page reload worked, but that does
