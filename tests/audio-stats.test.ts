@@ -69,6 +69,30 @@ function outboundReport(
 }
 
 describe("audio stats selection", () => {
+  it("uses the same fresh RTCP loss for voice and screen sound without inheriting replaced tracks", () => {
+    const voicePrevious = createStatsAccumulator(), screenPrevious = createStatsAccumulator();
+    const sample = (timestamp: number, feedbackTimestamp: number, track = "audio-a", fractionLost = 0.125) => {
+      const report = outboundReport(timestamp, timestamp * 10, timestamp * 20);
+      report.get(track + "-out").remoteId = "audio-feedback";
+      (report as unknown as Map<string, unknown>).set("audio-feedback", {
+        id: "audio-feedback", type: "remote-inbound-rtp", kind: "audio",
+        timestamp: feedbackTimestamp, fractionLost,
+      });
+      const voice = collectConnectionMetricsFromReport(report, "send", voicePrevious,
+        { kind: "audio", trackIdentifier: track, audioTrackIdentifier: track });
+      const screen = collectConnectionMetricsFromReport(report, "send", screenPrevious,
+        { trackIdentifier: "video-current", audioTrackIdentifier: track });
+      expect(screen.audioPacketLossPercent).toBe(voice.packetLossPercent);
+      return screen.audioPacketLossPercent;
+    };
+    expect(sample(1000, 900)).toBeNull();
+    expect(sample(2000, 1900)).toBe(12.5);
+    expect(sample(3000, 1900)).toBeNull(); // Local polling is not a new RTCP report.
+    expect(sample(4000, 3900, "audio-b")).toBeNull(); // Reused feedback ID, different track.
+    expect(sample(5000, 4900, "audio-b", 0.25)).toBe(25);
+    expect(sample(6000, 5900, "audio-b", 0)).toBe(0);
+  });
+
   it("uses audio-only RTP identity, interval loss and transport RTT in both directions", () => {
     for (const direction of ["send", "receive"] as const) {
       const previous = createStatsAccumulator();

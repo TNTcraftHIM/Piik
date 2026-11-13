@@ -47,6 +47,7 @@ export interface StatsAccumulator {
   audioSsrc: number | null;
   audioTrackIdentifier: string | null;
   audioLossSourceId: string | null;
+  audioLossReportTimestamp: number | null;
   audioBytes: number | null;
   audioTimestamp: number | null;
   previousAudioPacketsReceived: number | null;
@@ -64,144 +65,6 @@ export interface StatsMediaSelector {
   rtpStatsId?: string;
   rid?: string | null;
   audioTrackIdentifier?: string | null;
-}
-
-interface NativeSenderQualityPrevious {
-  timestamp: number;
-  durations: QualityLimitationDurations | null;
-  framesEncoded: number | null;
-  bytesSent: number | null;
-}
-
-export interface NativeSenderQualityAccumulator {
-  previousByStatsId: Map<string, NativeSenderQualityPrevious>;
-}
-
-export function createNativeSenderQualityAccumulator(): NativeSenderQualityAccumulator {
-  return { previousByStatsId: new Map() };
-}
-
-export function collectNativeSenderQualityFromReport(
-  report: RTCStatsReport,
-  trackIdentifier: string,
-  accumulator: NativeSenderQualityAccumulator,
-): Pick<
-  ConnectionMetrics,
-  | "sampleTimestampMs"
-  | "nativeEdgeQualityState"
-  | "qualityLimitationReason"
-  | "sampleWindowMs"
-  | "intervalFramesEncoded"
-  | "bitrateKbps"
-> {
-  const records: StatsRecord[] = [];
-  report.forEach((raw) => {
-    const record = raw as StatsRecord;
-    if (
-      record.type === "outbound-rtp" &&
-      record.kind === "video" &&
-      record.isRemote !== true &&
-      record.active !== false &&
-      mediaTrackIdentifier(report, record, "send") === trackIdentifier
-    ) {
-      records.push(record);
-    }
-  });
-  const activeIds = new Set(records.map((record) => record.id));
-  for (const id of accumulator.previousByStatsId.keys()) {
-    if (!activeIds.has(id)) accumulator.previousByStatsId.delete(id);
-  }
-  const samples = records.map((record) => {
-    const timestamp = numberValue(record, "timestamp");
-    const durations = qualityLimitationDurationsValue(record);
-    const reason = stringValue(record, "qualityLimitationReason");
-    const framesEncoded = numberValue(record, "framesEncoded");
-    const bytesSent = numberValue(record, "bytesSent");
-    const previous = accumulator.previousByStatsId.get(record.id);
-    const windowMs =
-      timestamp !== null && previous && timestamp > previous.timestamp
-        ? timestamp - previous.timestamp
-        : null;
-    const state = nativeEdgeQualityState(
-      reason,
-      durations,
-      previous?.durations ?? null,
-      windowMs !== null,
-    );
-    const intervalFramesEncoded =
-      previous &&
-      framesEncoded !== null &&
-      previous.framesEncoded !== null &&
-      framesEncoded >= previous.framesEncoded
-        ? framesEncoded - previous.framesEncoded
-        : null;
-    const bitrateKbps =
-      previous &&
-      windowMs !== null &&
-      bytesSent !== null &&
-      previous.bytesSent !== null &&
-      bytesSent >= previous.bytesSent
-        ? ((bytesSent - previous.bytesSent) * 8) / (windowMs / 1_000) / 1_000
-        : null;
-    if (timestamp !== null) {
-      accumulator.previousByStatsId.set(record.id, {
-        timestamp,
-        durations,
-        framesEncoded,
-        bytesSent,
-      });
-    } else {
-      accumulator.previousByStatsId.delete(record.id);
-    }
-    return {
-      timestamp,
-      state,
-      reason,
-      windowMs,
-      intervalFramesEncoded,
-      bitrateKbps,
-    };
-  });
-  const bitrateKbps =
-    samples.length > 0 && samples.every((sample) => sample.bitrateKbps !== null)
-      ? samples.reduce((total, sample) => total + sample.bitrateKbps!, 0)
-      : null;
-  if (
-    samples.length === 0 ||
-    samples.some(
-      (sample) =>
-        sample.state === "unknown" ||
-        sample.timestamp === null ||
-        sample.windowMs === null ||
-        sample.intervalFramesEncoded === null,
-    )
-  ) {
-    return {
-      sampleTimestampMs: null,
-      nativeEdgeQualityState: "unknown",
-      qualityLimitationReason: null,
-      sampleWindowMs: null,
-      intervalFramesEncoded: null,
-      bitrateKbps,
-    };
-  }
-  const degraded = samples.filter((sample) => sample.state === "degraded");
-  return {
-    sampleTimestampMs: Math.min(...samples.map((sample) => sample.timestamp!)),
-    nativeEdgeQualityState: degraded.length > 0 ? "degraded" : "healthy",
-    qualityLimitationReason:
-      degraded.some((sample) => sample.reason === "bandwidth")
-        ? "bandwidth"
-        : degraded.length > 0
-          ? "cpu"
-          : "none",
-    sampleWindowMs: Math.min(...samples.map((sample) => sample.windowMs!)),
-    intervalFramesEncoded: samples.reduce(
-      (total, sample) => total + sample.intervalFramesEncoded!,
-      0,
-    ),
-    bitrateKbps,
-  };
 }
 
 export function captureMetrics(
@@ -257,6 +120,7 @@ export function createStatsAccumulator(): StatsAccumulator {
     audioSsrc: null,
     audioTrackIdentifier: null,
     audioLossSourceId: null,
+    audioLossReportTimestamp: null,
     audioBytes: null,
     audioTimestamp: null,
     previousAudioPacketsReceived: null,
@@ -267,6 +131,20 @@ export function createStatsAccumulator(): StatsAccumulator {
     previousAudioConcealedSamples: null,
     previousAudioConcealmentEvents: null,
   };
+}
+
+// RTCP defines fractionLost over its own report interval. Consume each report
+// once, independently of local RTP sampling and the companion media's feedback.
+function remotePacketLossPercent(
+  report: StatsRecord | null,
+  previousTimestamp: number | null,
+  sameSource: boolean,
+): number | null {
+  const timestamp = numberValue(report, "timestamp");
+  const fraction = numberValue(report, "fractionLost");
+  return sameSource && timestamp !== null && previousTimestamp !== null &&
+    timestamp > previousTimestamp && fraction !== null && fraction >= 0 && fraction <= 1
+    ? fraction * 100 : null;
 }
 
 function intervalDelta(
@@ -776,7 +654,6 @@ export function collectConnectionMetricsFromReport(
   const packetsSent = numberValue(media, "packetsSent");
   const packetsReceived = numberValue(lossSource, "packetsReceived");
   const packetsLost = numberValue(lossSource, "packetsLost");
-  const fractionLost = numberValue(remoteInbound, "fractionLost");
   const totalEncodeTime = numberValue(media, "totalEncodeTime");
   const totalDecodeTime = numberValue(media, "totalDecodeTime");
   const framesDropped = numberValue(media, "framesDropped");
@@ -879,19 +756,9 @@ export function collectConnectionMetricsFromReport(
     previous.previousPacketsLost,
     sampleWindowMs !== null && sameLossSource,
   );
-  // RTCP already defines fractionLost over its own report interval. Consume a
-  // report once instead of mixing that remote interval with local send deltas.
-  const senderPacketLossPercent =
-    direction === "send" &&
-    sameLossSource &&
-    lossReportTimestamp !== null &&
-    previous.lossReportTimestamp !== null &&
-    lossReportTimestamp > previous.lossReportTimestamp &&
-    fractionLost !== null &&
-    fractionLost >= 0 &&
-    fractionLost <= 1
-      ? fractionLost * 100
-      : null;
+  const senderPacketLossPercent = direction === "send"
+    ? remotePacketLossPercent(remoteInbound, previous.lossReportTimestamp, sameLossSource)
+    : null;
   const intervalFramesDecoded =
     direction === "receive"
       ? intervalDelta(
@@ -1008,6 +875,7 @@ export function collectConnectionMetricsFromReport(
     ? mediaTrackIdentifier(report, audio, direction)
     : null;
   const audioLossSourceId = audioLossSource?.id ?? null;
+  const audioLossReportTimestamp = numberValue(audioLossSource, "timestamp");
   const sameAudio =
     audioMediaId !== null &&
     audioMediaId === previous.audioMediaId &&
@@ -1029,6 +897,9 @@ export function collectConnectionMetricsFromReport(
     audioTimestamp > previous.audioTimestamp
       ? audioTimestamp - previous.audioTimestamp
       : null;
+  const audioSenderPacketLossPercent = direction === "send"
+    ? remotePacketLossPercent(audioRemoteInbound, previous.audioLossReportTimestamp, sameAudioLossSource)
+    : null;
   const audioPacketsReceived = numberValue(audioLossSource, "packetsReceived");
   const audioPacketsLost = numberValue(audioLossSource, "packetsLost");
   const audioJitterBufferDelay = numberValue(audio, "jitterBufferDelay");
@@ -1098,6 +969,7 @@ export function collectConnectionMetricsFromReport(
   previous.audioSsrc = audioSsrc;
   previous.audioTrackIdentifier = audioTrackIdentifier;
   previous.audioLossSourceId = audioLossSourceId;
+  previous.audioLossReportTimestamp = audioLossReportTimestamp;
   previous.audioBytes = audioBytes;
   previous.audioTimestamp = audioTimestamp;
   previous.previousAudioPacketsReceived = audioPacketsReceived;
@@ -1185,10 +1057,8 @@ export function collectConnectionMetricsFromReport(
     codecProfile: codecEvidence.profile,
     codecParameters: codecEvidence.parameters,
     audioBitrateKbps,
-    audioPacketLossPercent: packetLossPercentFromDeltas(
-      audioPacketsReceivedDelta,
-      audioPacketsLostDelta,
-    ),
+    audioPacketLossPercent: direction === "send" ? audioSenderPacketLossPercent
+      : packetLossPercentFromDeltas(audioPacketsReceivedDelta, audioPacketsLostDelta),
     audioJitterMs:
       numberValue(audioLossSource, "jitter") !== null
         ? numberValue(audioLossSource, "jitter")! * 1_000

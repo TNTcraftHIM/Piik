@@ -14,8 +14,6 @@ export interface ConnectionMetrics {
   rtpSsrc: number | null;
   rtpMid: string | null;
   rtpRid: string | null;
-  videoEncodingCount: number | null;
-  activeVideoEncodingCount: number | null;
   trackIdentifier: string | null;
   selectedCandidatePairId: string | null;
   captureWidth: number | null;
@@ -101,8 +99,6 @@ export const EMPTY_METRICS: ConnectionMetrics = {
   rtpSsrc: null,
   rtpMid: null,
   rtpRid: null,
-  videoEncodingCount: null,
-  activeVideoEncodingCount: null,
   trackIdentifier: null,
   selectedCandidatePairId: null,
   captureWidth: null,

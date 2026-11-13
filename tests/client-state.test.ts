@@ -6,8 +6,6 @@ import { labelParticipantNames, labelParticipantSnapshot } from "../src/client/l
 import {
   collectConnectionMetrics,
   collectConnectionMetricsFromReport,
-  collectNativeSenderQualityFromReport,
-  createNativeSenderQualityAccumulator,
   createStatsAccumulator,
 } from "../src/client/webrtc/stats.ts";
 
@@ -266,71 +264,6 @@ describe("App launch handoff", () => {
 });
 
 describe("WebRTC stats parsing", () => {
-  it("sums sender layers and rebases incomplete bitrate windows", () => {
-    const accumulator = createNativeSenderQualityAccumulator();
-    const sample = (
-      timestamp: number,
-      bytesByLayer: Readonly<Record<string, number>>,
-    ): number | null => {
-      const records: Array<[string, Record<string, unknown>]> = [
-        [
-          "source",
-          {
-            id: "source",
-            type: "media-source",
-            timestamp,
-            trackIdentifier: "track",
-          },
-        ],
-      ];
-      for (const [id, bytesSent] of Object.entries(bytesByLayer)) {
-        records.push([
-          id,
-          {
-            id,
-            type: "outbound-rtp",
-            kind: "video",
-            timestamp,
-            mediaSourceId: "source",
-            bytesSent,
-            framesEncoded: timestamp / 20,
-            qualityLimitationReason: "none",
-            qualityLimitationDurations: {
-              none: timestamp / 1_000,
-              bandwidth: 0,
-              cpu: 0,
-              other: 0,
-            },
-          },
-        ]);
-      }
-      return collectNativeSenderQualityFromReport(
-        new Map(records) as unknown as RTCStatsReport,
-        "track",
-        accumulator,
-      ).bitrateKbps;
-    };
-
-    expect(sample(1_000, { low: 10_000, high: 20_000 })).toBeNull();
-    expect(sample(3_000, { low: 110_000, high: 220_000 })).toBe(1_200);
-    expect(
-      sample(5_000, { low: 210_000, high: 420_000, mid: 50_000 }),
-    ).toBeNull();
-    expect(
-      sample(7_000, { low: 310_000, high: 620_000, mid: 150_000 }),
-    ).toBe(1_600);
-    expect(
-      sample(9_000, { low: 10_000, high: 820_000, mid: 250_000 }),
-    ).toBeNull();
-    expect(
-      sample(11_000, {
-        low: 110_000,
-        high: 1_020_000,
-        mid: 350_000,
-      }),
-    ).toBe(1_600);
-  });
-
   it("binds media, remote evidence, transport, and pair without guessing", async () => {
     const entry = (
       id: string,
@@ -1508,12 +1441,13 @@ describe("WebRTC stats parsing", () => {
     });
   });
 
-  it("uses linked remote inbound counters for outbound audio loss", async () => {
+  it("uses linked RTCP feedback for outbound audio loss", async () => {
     const report = (
       timestamp: number,
       audioBytesSent: number,
       packetsReceived: number | undefined,
       packetsLost: number | undefined,
+      fractionLost: number | undefined = 0.125,
     ) =>
       new Map<string, unknown>([
         [
@@ -1568,6 +1502,7 @@ describe("WebRTC stats parsing", () => {
             kind: "audio",
             packetsReceived,
             packetsLost,
+            fractionLost,
             jitter: 0.004,
           },
         ],
@@ -1581,7 +1516,7 @@ describe("WebRTC stats parsing", () => {
       report(3_000, 50_000, 500, 1),
       report(5_000, 80_000, 650, 4),
       report(7_000, 110_000, 50, 1),
-      report(9_000, 140_000, 200, undefined),
+      report(9_000, 140_000, 200, undefined, -1),
     ];
     const connection = {
       getStats: async () => reports.shift()!,
@@ -1604,7 +1539,7 @@ describe("WebRTC stats parsing", () => {
       "send",
       accumulator,
     );
-    const missing = await collectConnectionMetrics(
+    const invalid = await collectConnectionMetrics(
       connection,
       "send",
       accumulator,
@@ -1621,8 +1556,8 @@ describe("WebRTC stats parsing", () => {
       audioCodecClockRate: 48_000,
       audioCodecChannels: 2,
     });
-    expect(stable.audioPacketLossPercent).toBeCloseTo((3 / 153) * 100);
-    expect(reset.audioPacketLossPercent).toBeNull();
-    expect(missing.audioPacketLossPercent).toBeNull();
+    expect(stable.audioPacketLossPercent).toBe(12.5);
+    expect(reset.audioPacketLossPercent).toBe(12.5); // Cumulative counters do not define this RTCP interval.
+    expect(invalid.audioPacketLossPercent).toBeNull();
   });
 });

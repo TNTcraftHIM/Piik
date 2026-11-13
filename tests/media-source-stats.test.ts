@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   collectConnectionMetricsFromReport,
   collectTrackConnectionMetrics,
-  collectNativeSenderQualityFromReport,
-  createNativeSenderQualityAccumulator,
   createStatsAccumulator,
   maxEncodedVideoFrames,
   mediaSourceRecord,
@@ -68,11 +66,6 @@ describe("sender source statistics", () => {
     });
     expect(maxEncodedVideoFrames(report(3_000, "replacement"), "video-track")).toBeNull();
     expect(maxEncodedVideoFrames(report(3_000, "replacement"), "replacement")).toBe(90);
-
-    const quality = createNativeSenderQualityAccumulator();
-    collectNativeSenderQualityFromReport(report(1_000), "video-track", quality);
-    expect(collectNativeSenderQualityFromReport(report(2_000), "video-track", quality))
-      .toMatchObject({ bitrateKbps: 800, nativeEdgeQualityState: "unknown" });
   });
 
   it.each(["media-source", "outbound-rtp"])("does not infer a source with another %s of the same kind", (type) => {
