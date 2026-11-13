@@ -2,7 +2,7 @@ import { mountBrands } from './assets/brand.js';
 import { initialLanguage, rememberLanguage } from './assets/language.js';
 import { createTextCycle } from '../src/client/ui/text-rotation.ts';
 import { applyTheme, currentTheme, currentThemePreference, initTheme, subscribeTheme } from '../src/client/ui/theme.ts';
-import { DEFAULT_RELEASE_API_URL, MIRROR_RELEASE_API_URL, parseReleaseMetadata, parseMirrorReleaseMetadata } from '../src/client/lib/release-update.ts';
+import { DEFAULT_RELEASE_API_URL, parseReleaseMetadata } from '../src/client/lib/release-update.ts';
 import { splitReleaseHeadline } from '../scripts/release-headline.mjs';
 mountBrands();
 const architecturePickers = document.querySelectorAll('.download-architecture');
@@ -21,24 +21,6 @@ for (const picker of architecturePickers) {
 }
 // Content and download links remain usable without scripts or release metadata.
 const releaseLabel = document.getElementById('download-release');
-const mirrorLinks = document.querySelectorAll('.download-card a[href^="https://atomgit.com/"]');
-if (mirrorLinks.length) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
-  void fetch(`${MIRROR_RELEASE_API_URL}/latest`, {
-    credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error',
-    signal: controller.signal, headers: { Accept: 'application/json' },
-  }).then(response => response.ok ? response.json() : null).then(metadata => {
-    const release = parseMirrorReleaseMetadata(metadata);
-    if (!release) return;
-    for (const link of mirrorLinks) {
-      link.href = link.href.replace('/download/latest/', `/download/${release.version}/`);
-      const version = document.createElement('span');
-      version.textContent = ` ${release.version}`;
-      link.append(version);
-    }
-  }).catch(() => {}).finally(() => clearTimeout(timeout));
-}
 if (releaseLabel) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
