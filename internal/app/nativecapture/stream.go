@@ -516,13 +516,17 @@ func startStreamWithEnvironment(
 	if len(environment) > 0 {
 		command.Env = append(os.Environ(), environment...)
 	}
-	stdout, err := command.StdoutPipe()
+	// Stream owns stdout until its consumer drains it; Wait must not close unread output.
+	stdout, output, err := os.Pipe()
 	if err != nil {
 		cancel()
 		return nil, err
 	}
+	command.Stdout = output
 	stdin, err := command.StdinPipe()
 	if err != nil {
+		_ = stdout.Close()
+		_ = output.Close()
 		cancel()
 		return nil, err
 	}
@@ -531,11 +535,14 @@ func startStreamWithEnvironment(
 	command.Stderr = io.MultiWriter(stderr, trace)
 	hideWindow(command)
 	if err = command.Start(); err != nil {
+		_ = stdout.Close()
+		_ = output.Close()
 		_ = trace.Close()
 		cancel()
 		logger.DebugContext(ctx, "piik-client", "event", "capture-process-start-failed", diagnostics.Error(err))
 		return nil, fmt.Errorf("start native capture process: %w", err)
 	}
+	_ = output.Close() // Only the child keeps the write end alive.
 	logger = logger.With("pid", command.Process.Pid)
 	mode := "capture"
 	if len(arguments) > 0 {
@@ -747,6 +754,7 @@ func (stream *Stream) Close() error {
 		<-stream.done
 		stream.cancel()
 		<-drained
+		_ = stream.input.Close()
 	})
 	return stream.failure
 }
