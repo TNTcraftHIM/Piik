@@ -15,7 +15,7 @@ export function SiteBookmarks({ bookmarks, initialSite, onSave, onRemove, onOpen
 }) {
   const { t, vis } = useCopy();
   const heading = useId();
-  const [draft, setDraft] = useState<BookmarkDraft | undefined>(() => initialSite ? { name: "", origin: initialSite } : undefined);
+  const [draft, setDraft] = useState<BookmarkDraft>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<"client.bookmarks.duplicate" | "client.bookmarks.invalidAddress" | "client.connect.saveFailed">();
   function edit(value: BookmarkDraft): void { setError(undefined); setDraft(value); }
@@ -34,7 +34,7 @@ export function SiteBookmarks({ bookmarks, initialSite, onSave, onRemove, onOpen
   return <>
     <section className="lr-site-bookmarks" aria-labelledby={heading}>
       <header><h3 id={heading}><Glyph name="star" size={20} /><span className={vis ? "visually-hidden" : undefined}>{t("client.bookmarks.title")}</span></h3>
-        <Btn icon="plus" size="compact" title="client.bookmarks.add" cap="client.bookmarks.add" textTooltip disabled={busy} onClick={() => edit({ name: "", origin: "" })} />
+        <Btn icon="plus" size="compact" title="client.bookmarks.add" cap="client.bookmarks.add" textTooltip disabled={busy} onClick={() => edit({ name: "", origin: initialSite ?? "" })} />
       </header>
       {bookmarks.length ? <ul>{bookmarks.map(site => <li key={site.id}>
         <div className="lr-site-bookmark-identity"><strong>{site.name || new URL(site.origin).hostname}</strong><span dir="ltr">{site.origin}</span></div>
