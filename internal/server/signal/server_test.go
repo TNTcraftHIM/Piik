@@ -2794,7 +2794,7 @@ func TestSignalKeepsMediaIdentityThroughGraceWhilePresenceReturnsOnce(t *testing
 		`{"fromPeerId":%q,"connectionId":"connection-during-grace","rebuild":false}`, firstViewerAuth.PeerID))
 }
 
-func TestSignalAllowsRetainedChildRestartWhileRelayRepairsIngress(t *testing.T) {
+func TestSignalAllowsRetainedChildRestartWhileSourcePathRecovers(t *testing.T) {
 	h := startHarness(t, harnessOptions{endpointMediaCopyCapacity: 1})
 	host := openClient(t, h)
 	hostAuth := authenticate(t, host, h.room, protocol.RoleHost, "restart-host-client", 0, "", presenceOptions{})
@@ -2823,7 +2823,9 @@ func TestSignalAllowsRetainedChildRestartWhileRelayRepairsIngress(t *testing.T) 
 		"type": "route-failed", "phase": "active", "revision": relayEdge.revision,
 		"connectionId": relayEdge.connectionID,
 	})
-	repair := nextPreparedRoute(t, relay)
+	// A child's earlier prepare is still queued on its relay. Wait for the
+	// committed failure update, not that unrelated preparation message.
+	nextActiveRouteAfter(t, relay, active.Revision)
 	h.locked(func() {
 		rm, _ := h.server.router.rooms.Get(h.room.RoomID)
 		snapshot := rm.controller.Snapshot()
@@ -2859,8 +2861,8 @@ func TestSignalAllowsRetainedChildRestartWhileRelayRepairsIngress(t *testing.T) 
 	})
 	expectMatch(t, relay.next("error").raw, `{"code":"FORBIDDEN"}`)
 	relay.sendJSON(map[string]any{
-		"type": "restart-request", "targetPeerId": repair.Assignment.Upstream.PeerID,
-		"connectionId": repair.Candidate.ConnectionID, "rebuild": true,
+		"type": "restart-request", "targetPeerId": hostAuth.PeerID,
+		"connectionId": relayEdge.connectionID, "rebuild": true,
 	})
 	expectMatch(t, relay.next("error").raw, `{"code":"FORBIDDEN"}`)
 }
