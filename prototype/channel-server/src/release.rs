@@ -2,10 +2,8 @@
 use semver::Version;
 use serde::Serialize;
 use serde_json::Value;
-use std::{
-    io::Read,
-    time::{Duration, Instant},
-};
+use std::time::Duration;
+use tokio::time::Instant;
 use url::Url;
 
 const GITHUB_API: &str = "https://api.github.com/repos/TNTcraftHIM/Piik/releases/latest";
@@ -185,7 +183,7 @@ fn build_version() -> &'static str {
     option_env!("PIIK_BUILD_VERSION").unwrap_or("development")
 }
 
-pub fn check_build(endpoint: &str) -> ReleaseResult {
+pub async fn check_build(endpoint: &str) -> ReleaseResult {
     check(
         build_version(),
         option_env!("PIIK_BUILD_REVISION").unwrap_or("development"),
@@ -193,18 +191,25 @@ pub fn check_build(endpoint: &str) -> ReleaseResult {
         (endpoint == GITHUB_API).then_some(MIRROR_API),
         &std::env::var("GITHUB_TOKEN").unwrap_or_default(),
     )
+    .await
 }
 
 pub fn startup_notice() {
     if version(build_version()).is_none() {
         return;
     }
-    // One process-owned thread keeps blocking HTTP/DNS off startup and Tokio's
+    // One process-owned thread keeps HTTP/DNS off startup and the server runtime's
     // shutdown path. Process exit retires it; there is no periodic checker.
     let _ = std::thread::Builder::new()
         .name("piik-release-check".into())
         .spawn(|| {
-            if let Some(notice) = check_build(GITHUB_API).notice() {
+            let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            else {
+                return;
+            };
+            if let Some(notice) = runtime.block_on(check_build(GITHUB_API)).notice() {
                 eprintln!("{notice}");
             }
         });
@@ -281,7 +286,7 @@ fn published(value: &Value, mirror: bool) -> Option<PublishedRelease> {
     }
 }
 
-fn check(
+async fn check(
     current_version: &str,
     current_revision: &str,
     endpoint: &str,
@@ -306,14 +311,36 @@ fn check(
     if current.is_none() && result.current_revision.is_none() {
         return result;
     }
-    let agent = ureq::Agent::config_builder()
-        .max_redirects(0)
+    // Metadata uses Mozilla roots and ring without platform-specific initialization.
+    let Ok(tls) = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions() else {
+        return result;
+    };
+    let tls = tls
+        .with_root_certificates(rustls::RootCertStore::from_iter(
+            webpki_roots::TLS_SERVER_ROOTS.iter().cloned(),
+        ))
+        .with_no_client_auth();
+    // This client is only for metadata; package downloads have their own
+    // redirect policy for provider/CDN delivery.
+    let Ok(client) = reqwest::Client::builder()
+        .tls_backend_preconfigured(tls)
+        .redirect(reqwest::redirect::Policy::none())
         .user_agent("Piik-release-check")
-        .timeout_global(Some(PROVIDER_TIMEOUT))
+        .timeout(PROVIDER_TIMEOUT)
         .build()
-        .new_agent();
-    let latest =
-        latest(&agent, endpoint, token, false).or_else(|| latest(&agent, mirror?, "", true));
+    else {
+        return result;
+    };
+    let latest = match latest(&client, endpoint, token, false).await {
+        Some(release) => Some(release),
+        None => match mirror {
+            Some(mirror) => latest(&client, mirror, "", true).await,
+            None => None,
+        },
+    };
     let Some(latest) = latest else {
         return result;
     };
@@ -342,8 +369,8 @@ fn check(
     result
 }
 
-fn latest(
-    agent: &ureq::Agent,
+async fn latest(
+    client: &reqwest::Client,
     endpoint: &str,
     token: &str,
     mirror: bool,
@@ -363,7 +390,7 @@ fn latest(
                 .append_pair("page", &page.to_string())
                 .append_pair("direction", "desc");
         }
-        let mut request = agent.get(endpoint.as_str()).header(
+        let mut request = client.get(endpoint.as_str()).header(
             "Accept",
             if mirror {
                 "application/json"
@@ -381,24 +408,16 @@ fn latest(
             }
         }
         let remaining = deadline.checked_duration_since(Instant::now())?;
-        let mut response = request
-            .config()
-            .timeout_global(Some(remaining))
-            .build()
-            .call()
-            .ok()?;
+        let mut response = request.timeout(remaining).send().await.ok()?;
         if !response.status().is_success() {
             return None;
         }
         let mut body = Vec::new();
-        response
-            .body_mut()
-            .as_reader()
-            .take(MAX_METADATA_BYTES + 1)
-            .read_to_end(&mut body)
-            .ok()?;
-        if body.len() as u64 > MAX_METADATA_BYTES {
-            return None;
+        while let Some(chunk) = response.chunk().await.ok()? {
+            if chunk.len() as u64 > MAX_METADATA_BYTES - body.len() as u64 {
+                return None;
+            }
+            body.extend_from_slice(&chunk);
         }
         let data: Value = serde_json::from_slice(&body).ok()?;
         if !mirror {

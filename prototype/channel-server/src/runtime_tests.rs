@@ -843,33 +843,30 @@ async fn room_backup_http(
     credential: &str,
     upload: Option<Vec<u8>>,
 ) -> (u16, Vec<u8>) {
-    let (path, credential) = (path.to_owned(), credential.to_owned());
-    tokio::task::spawn_blocking(move || {
-        use std::io::Read;
-        let agent = ureq::Agent::config_builder()
-            .http_status_as_error(false)
-            .timeout_global(Some(Duration::from_secs(10)))
-            .build()
-            .new_agent();
-        let request = ureq::http::Request::builder()
-            .method(if upload.is_some() { "PUT" } else { "GET" })
-            .uri(format!("http://{address}{path}"))
-            .header("Authorization", format!("Bearer {credential}"))
-            .header("Content-Type", "application/zip")
-            .body(upload.unwrap_or_default())
-            .unwrap();
-        let mut response = agent.run(request).unwrap();
-        let status = response.status().as_u16();
-        let mut bytes = vec![];
-        response
-            .body_mut()
-            .as_reader()
-            .read_to_end(&mut bytes)
-            .unwrap();
-        (status, bytes)
-    })
-    .await
-    .unwrap()
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .unwrap();
+    let response = client
+        .request(
+            if upload.is_some() {
+                reqwest::Method::PUT
+            } else {
+                reqwest::Method::GET
+            },
+            format!("http://{address}{path}"),
+        )
+        .bearer_auth(credential)
+        .header("Content-Type", "application/zip")
+        .body(upload.unwrap_or_default())
+        .send()
+        .await
+        .unwrap();
+    (
+        response.status().as_u16(),
+        response.bytes().await.unwrap().to_vec(),
+    )
 }
 async fn start_server(
     folder: &Path,

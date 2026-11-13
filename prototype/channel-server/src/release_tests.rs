@@ -69,7 +69,7 @@ fn published_headlines_share_the_website_body_contract() {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test]
 async fn operator_results_preserve_version_precedence_and_manual_build_choices() {
     let requests = Arc::new(AtomicUsize::new(0));
     let observed = requests.clone();
@@ -101,7 +101,8 @@ async fn operator_results_preserve_version_precedence_and_manual_build_choices()
             &format!("{}/latest", service.url),
             None,
             "operator-token",
-        );
+        )
+        .await;
         assert_eq!(result.status, status);
         assert_eq!(result.exit_code(), code);
         let json = serde_json::to_value(&result).unwrap();
@@ -119,7 +120,7 @@ async fn operator_results_preserve_version_precedence_and_manual_build_choices()
             assert!(result.notice().is_none());
         }
     }
-    let unknown = check("development", "development", &service.url, None, "");
+    let unknown = check("development", "development", &service.url, None, "").await;
     assert_eq!(unknown.exit_code(), 20);
     assert_eq!(
         serde_json::to_value(unknown).unwrap()["currentRevision"],
@@ -128,7 +129,7 @@ async fn operator_results_preserve_version_precedence_and_manual_build_choices()
     assert_eq!(requests.load(Ordering::SeqCst), 6);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test]
 async fn fallback_pages_share_the_published_mirror_fixture_and_keep_github_primary() {
     let pages = Arc::new(AtomicUsize::new(0));
     let observed = pages.clone();
@@ -175,7 +176,8 @@ async fn fallback_pages_share_the_published_mirror_fixture_and_keep_github_prima
         &format!("{}/unavailable", service.url),
         Some(&mirror),
         "operator-token",
-    );
+    )
+    .await;
     assert_eq!(result.status, Status::UpdateAvailable);
     assert_eq!(result.latest_version.as_deref(), Some("v1.10.0"));
     assert_eq!(result.latest_revision.as_deref(), Some(SOURCE));
@@ -195,7 +197,8 @@ async fn fallback_pages_share_the_published_mirror_fixture_and_keep_github_prima
         &format!("{}/latest", service.url),
         Some(&mirror),
         "",
-    );
+    )
+    .await;
     assert_eq!(current.status, Status::UpToDate);
     assert_eq!(
         pages.load(Ordering::SeqCst),
@@ -204,7 +207,40 @@ async fn fallback_pages_share_the_published_mirror_fixture_and_keep_github_prima
     );
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test]
+async fn cancelling_a_check_releases_its_inflight_response() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    let (started, response_started) = tokio::sync::oneshot::channel();
+    let service = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = Vec::new();
+        while !request.ends_with(b"\r\n\r\n") {
+            request.push(socket.read_u8().await.unwrap());
+        }
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 4096\r\n\r\n{")
+            .await
+            .unwrap();
+        started.send(()).unwrap();
+        let mut byte = [0];
+        assert_eq!(socket.read(&mut byte).await.unwrap(), 0);
+    });
+    let mut checking = Box::pin(check("v2.0.0", LOCAL, &endpoint, None, ""));
+    tokio::select! {
+        _ = &mut checking => panic!("The incomplete response must remain pending"),
+        result = response_started => result.unwrap(),
+    }
+    drop(checking);
+    tokio::time::timeout(Duration::from_secs(2), service)
+        .await
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
 async fn unavailable_checks_bound_response_size_and_time_without_following_redirects() {
     let redirected = Arc::new(AtomicUsize::new(0));
     let observed = redirected.clone();
@@ -231,10 +267,19 @@ async fn unavailable_checks_bound_response_size_and_time_without_following_redir
                     tokio::time::sleep(PROVIDER_TIMEOUT * 2).await;
                     Json(github())
                 }),
+            )
+            .route(
+                "/slow-body",
+                get(|| async {
+                    axum::body::Body::from_stream(futures_util::stream::once(async {
+                        tokio::time::sleep(PROVIDER_TIMEOUT * 2).await;
+                        Ok::<_, std::io::Error>("{}")
+                    }))
+                }),
             ),
     )
     .await;
-    for path in ["/redirect", "/large", "/slow"] {
+    for path in ["/redirect", "/large", "/slow", "/slow-body"] {
         let started = Instant::now();
         let result = check(
             "v2.0.0",
@@ -242,7 +287,8 @@ async fn unavailable_checks_bound_response_size_and_time_without_following_redir
             &format!("{}{path}", service.url),
             None,
             "operator-token",
-        );
+        )
+        .await;
         assert_eq!(result.status, Status::Unavailable);
         assert_eq!(result.exit_code(), 20);
         assert!(result.notice().is_none());

@@ -14,6 +14,11 @@ use tokio::{
 use tokio_tungstenite::{accept_async, tungstenite::Message, WebSocketStream};
 use uuid::Uuid;
 
+fn http_client(timeout: Duration) -> reqwest::Client {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    reqwest::Client::builder().timeout(timeout).build().unwrap()
+}
+
 // The socket boundary delivers production Authority effects without mirroring
 // room permissions, persistence, sequence allocation or routing in the fixture.
 struct Domain {
@@ -26,11 +31,16 @@ struct Domain {
 }
 impl Domain {
     async fn accept(listener: &TcpListener) -> Self {
-        let (stream, _) = listener.accept().await.unwrap();
+        let socket = tokio::time::timeout(Duration::from_secs(5), async {
+            let (stream, _) = listener.accept().await.unwrap();
+            accept_async(stream).await.unwrap()
+        })
+        .await
+        .expect("Native TCP connection and WebSocket handshake must complete within 5 seconds");
         Self {
             authority: Authority::new("owner".into(), vec![json!({"urls":"stun:127.0.0.1:9"})])
                 .unwrap(),
-            socket: accept_async(stream).await.unwrap(),
+            socket,
             connection: Uuid::new_v4(),
             events: Vec::new(),
             commands: Vec::new(),
@@ -229,25 +239,20 @@ async fn committed_domain_restore_reports_native_restart_failure_without_rolling
     })
     .await
     .unwrap();
-    let (status, body) = tokio::task::spawn_blocking(move || {
-        let agent = ureq::Agent::config_builder()
-            .http_status_as_error(false)
-            .timeout_global(Some(Duration::from_secs(10)))
-            .build()
-            .new_agent();
-        let mut response = agent
+    let (status, body) = {
+        let response = http_client(Duration::from_secs(10))
             .put(format!("http://{address}/prototype/channel/backup"))
             .header("Authorization", format!("Bearer {credential}"))
             .header("Content-Type", "application/zip")
-            .send(&archive)
+            .body(archive)
+            .send()
+            .await
             .unwrap();
         (
             response.status().as_u16(),
-            serde_json::from_str::<Value>(&response.body_mut().read_to_string().unwrap()).unwrap(),
+            serde_json::from_slice::<Value>(&response.bytes().await.unwrap()).unwrap(),
         )
-    })
-    .await
-    .unwrap();
+    };
     let stopped = tokio::time::timeout(Duration::from_secs(10), service)
         .await
         .unwrap()
@@ -509,6 +514,9 @@ fn start(
 
 #[tokio::test]
 async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() {
+    let executable = std::env::var_os("CHANNEL_NATIVE_EXECUTABLE").expect(
+        "Run with npm run check:rust, or set CHANNEL_NATIVE_EXECUTABLE to a matching Native build",
+    );
     let folder = std::env::temp_dir().join(format!("piik-native-{}", Uuid::new_v4()));
     std::fs::create_dir(&folder).unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -578,16 +586,6 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
     // A second real process cannot steal the database during the first process's
     // recovery window, even though the domain could admit its new endpoint.
     let contender_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let executable = std::env::var_os("CHANNEL_NATIVE_EXECUTABLE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../channel-native/target/debug")
-                .join(format!(
-                    "piik-channel-native{}",
-                    std::env::consts::EXE_SUFFIX
-                ))
-        });
     let contender = std::process::Command::new(executable)
         .args([
             "--room",
@@ -786,19 +784,20 @@ async fn app_diagnostics_are_local_opt_in_and_survive_service_restart() {
         }
         let (_, state) = app_http(address, "GET", "/api/client-launcher", None, None).await;
         assert_eq!(state["debug"], true);
-        let bytes = tokio::task::spawn_blocking(move || {
-            let mut response = ureq::post(format!("{local}/api/client-launcher/debug/export"))
+        let bytes = {
+            let response = http_client(Duration::from_secs(10))
+                .post(format!("{local}/api/client-launcher/debug/export"))
                 .header("Origin", &local)
                 .header("Content-Type", "application/json")
-                .send("{}")
+                .body("{}")
+                .send()
+                .await
                 .unwrap();
             assert_eq!(response.status().as_u16(), 200);
             assert_eq!(response.headers()["content-type"], "application/zip");
             assert_eq!(response.headers()["cache-control"], "no-store");
-            response.body_mut().read_to_vec().unwrap()
-        })
-        .await
-        .unwrap();
+            response.bytes().await.unwrap()
+        };
         assert!(bytes.starts_with(b"PK"));
         let contains = |value: &[u8]| bytes.windows(value.len()).any(|part| part == value);
         for value in [
@@ -1068,28 +1067,20 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
                 "https://unapproved.example".into()
             };
             let url = format!("http://{address}/rooms/{channel}/{user}/{suffix}");
-            let (status, headers) = tokio::task::spawn_blocking(move || {
-                let agent = ureq::Agent::config_builder()
-                    .http_status_as_error(false)
-                    .timeout_global(Some(Duration::from_secs(5)))
-                    .build()
-                    .new_agent();
-                let request = ureq::http::Request::builder()
-                    .method("OPTIONS")
-                    .uri(url)
+            let (status, headers) = {
+                let response = http_client(Duration::from_secs(5))
+                    .request(reqwest::Method::OPTIONS, url)
                     .header("Origin", site)
                     .header("Access-Control-Request-Method", method)
                     .header(
                         "Access-Control-Request-Headers",
                         "authorization,content-type,x-piik-credential",
                     )
-                    .body(Vec::<u8>::new())
+                    .send()
+                    .await
                     .unwrap();
-                let response = agent.run(request).unwrap();
                 (response.status().as_u16(), response.headers().clone())
-            })
-            .await
-            .unwrap();
+            };
             assert_eq!(status, if allowed { 204 } else { 403 });
             if allowed {
                 assert_eq!(headers["access-control-allow-origin"], origin);
@@ -1117,44 +1108,34 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         let token = token.to_owned();
         let url = format!("http://{address}/rooms/{channel}/{user}/{room}/backup");
         let description_url = format!("http://{address}/rooms/{channel}/{user}/hosting");
-        let (status, bytes, description) = tokio::task::spawn_blocking(move || {
-            use std::io::Read;
-            let agent = ureq::Agent::config_builder()
-                .http_status_as_error(false)
-                .timeout_global(Some(Duration::from_secs(5)))
-                .build()
-                .new_agent();
-            let mut response = agent
+        let (status, bytes, description) = {
+            let client = http_client(Duration::from_secs(5));
+            let response = client
                 .get(url)
                 .header("Origin", &request_origin)
                 .header("Authorization", format!("Bearer {token}"))
                 .header("X-Piik-Credential", &current_credential)
-                .call()
+                .send()
+                .await
                 .unwrap();
             let status = response.status().as_u16();
-            let mut bytes = vec![];
-            response
-                .body_mut()
-                .as_reader()
-                .read_to_end(&mut bytes)
-                .unwrap();
+            let bytes = response.bytes().await.unwrap();
             let description: Option<Value> = if status == 200 {
-                let mut response = agent
+                let response = client
                     .get(description_url)
                     .header("Origin", request_origin)
                     .header("Authorization", format!("Bearer {token}"))
                     .header("X-Piik-Credential", current_credential)
-                    .call()
+                    .send()
+                    .await
                     .unwrap();
                 assert_eq!(response.status().as_u16(), 200);
-                Some(serde_json::from_str(&response.body_mut().read_to_string().unwrap()).unwrap())
+                Some(serde_json::from_slice(&response.bytes().await.unwrap()).unwrap())
             } else {
                 None
             };
             (status, bytes, description)
-        })
-        .await
-        .unwrap();
+        };
         assert_eq!(status, expected);
         if status == 200 {
             let description = description.unwrap();
@@ -1921,24 +1902,18 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
                 .join(channel)
                 .join(user)
                 .join(format!("{room}.sqlite"));
-            let restored_owner = tokio::task::spawn_blocking(move || {
-                use std::io::Read;
+            let restored_owner = {
                 let url = format!("http://{domain_address}/prototype/channel/backup");
-                let agent = ureq::Agent::config_builder()
-                    .timeout_global(Some(Duration::from_secs(10)))
-                    .build()
-                    .new_agent();
-                let mut response = agent
+                let client = http_client(Duration::from_secs(10));
+                let response = client
                     .get(&url)
                     .header("Authorization", format!("Bearer {credential}"))
-                    .call()
+                    .send()
+                    .await
+                    .unwrap()
+                    .error_for_status()
                     .unwrap();
-                let mut bytes = vec![];
-                response
-                    .body_mut()
-                    .as_reader()
-                    .read_to_end(&mut bytes)
-                    .unwrap();
+                let bytes = response.bytes().await.unwrap();
                 let directory = tempfile::tempdir().unwrap();
                 let StagedBackup::Domain(mut metadata) =
                     backup::stage(std::io::Cursor::new(bytes), directory.path()).unwrap()
@@ -1948,17 +1923,17 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
                 metadata.owner_key = Uuid::new_v4().to_string();
                 let mut archive = vec![];
                 backup::write_domain(&metadata, &mut archive).unwrap();
-                let response = agent
+                let response = client
                     .put(url)
                     .header("Authorization", format!("Bearer {credential}"))
                     .header("Content-Type", "application/zip")
-                    .send(&archive)
+                    .body(archive)
+                    .send()
+                    .await
                     .unwrap();
                 assert_eq!(response.status().as_u16(), 200);
                 metadata.owner_key
-            })
-            .await
-            .unwrap();
+            };
             tokio::time::timeout(Duration::from_secs(5), async {
                 while let Some(frame) = control.next().await {
                     if matches!(frame.unwrap(), Message::Close(_)) {

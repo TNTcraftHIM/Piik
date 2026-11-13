@@ -11,7 +11,7 @@ mod release;
 #[tokio::main]
 async fn main() -> anyhow::Result<std::process::ExitCode> {
     if let Some(endpoint) = release::check_argument(std::env::args().skip(1))? {
-        let result = release::check_build(&endpoint);
+        let result = release::check_build(&endpoint).await;
         println!("{}", serde_json::to_string(&result)?);
         return Ok(std::process::ExitCode::from(result.exit_code()));
     }
