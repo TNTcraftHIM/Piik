@@ -3,7 +3,7 @@ import { Btn } from "../../components/living/primitives";
 import { BrandMark } from "../../components/living/BrandMark";
 import { PlaybackControlsReveal } from "../../components/living/PlaybackControlsReveal";
 import { PlaybackWindowControls } from "../../components/living/PlaybackWindowControls";
-import { PlaybackSettings } from "../../components/living/PlaybackSettings";
+import { PlaybackSettings, type PlaybackSettingsProps } from "../../components/living/PlaybackSettings";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../../components/living/RoomChatOverlay";
 import type { RoomInteractionSession } from "../../lib/room-interactions";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
@@ -69,11 +69,12 @@ export interface SourceAudioControl {
   onChange(settings: { level?: number; muted?: boolean }): void;
 }
 
-export function ChannelVideo({ stream, owned, localSource, label, presentation = "full", inputs, onPresentation, input, sourceAudio, interaction = null, theaterMode, onToggleTheater }: {
+export function ChannelVideo({ stream, owned, localSource, label, presentation = "full", inputs, onPresentation, input, sourceAudio, interaction = null, buffering, theaterMode, onToggleTheater }: {
   stream: MediaStream; owned: boolean; localSource: boolean; label: string; inputs?: readonly ChannelScreenInput[];
   presentation?: "full" | "thumbnail" | "background";
   input?: InputTransport;
   sourceAudio?: SourceAudioControl;
+  buffering?: PlaybackSettingsProps["buffering"];
   interaction?: RoomInteractionSession | null;
   theaterMode: boolean; onToggleTheater(): void;
   onPresentation?: (flowId: string, stream: MediaStream, state: ScreenPresentation) => void;
@@ -302,7 +303,7 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
         className="lr-floating-surface lr-playback-menu lr-playback-settings" onToggle={event => {
           if (event.target === event.currentTarget) setPictureOpen(event.newState === "open");
         }}>
-        <PlaybackSettings picture={{ pictureFit, pictureRotation,
+        <PlaybackSettings buffering={!localSource ? buffering : undefined} picture={{ pictureFit, pictureRotation,
           setPictureFit: (fit: VideoFit) => { setPictureFit(fit); saveRoomPreferences({ pictureFit: fit }); },
           setPictureRotation: (rotation: VideoRotation) => { setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation }); },
         }} preview={owned ? { autoPause: previewAutoPause, onChange: autoPause => {

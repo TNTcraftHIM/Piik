@@ -81,6 +81,7 @@ export function SourceAudience({ people }: { people: readonly ScreenAudiencePers
 }
 
 export interface ChannelStageProps {
+  buffering?: import("../../components/living/PlaybackSettings").PlaybackSettingsProps["buffering"];
   sources: ChannelStageSource[];
   focusedId: string | null;
   canSubscribe: boolean;
@@ -108,7 +109,7 @@ function SourceControl({ source, onInputPolicy, onInputDecide, onInputSimultaneo
 }
 
 /** Subscription belongs to the caller. Focus only changes the layout of existing players. */
-export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatch, onUnwatch, onPause, onStop, onPresentation,
+export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFocus, onWatch, onUnwatch, onPause, onStop, onPresentation,
   onInputPolicy, onInputDecide, onInputSimultaneous, onInputShortcut }: ChannelStageProps) {
   const { lang, vis, t } = useCopy();
   const zh = lang === "zh";
@@ -221,7 +222,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
               if (!focusable || (event.target instanceof Element && event.target.closest("button, input, select, a, [popover]"))) return;
               onFocus(source.id);
             }}>
-            {source.stream ? <ChannelVideo stream={source.stream} owned={source.owned} localSource={source.localSource}
+            {source.stream ? <ChannelVideo buffering={buffering} stream={source.stream} owned={source.owned} localSource={source.localSource}
               presentation={source.hidden ? "background" : thumbnail ? "thumbnail" : "full"} inputs={source.inputs} onPresentation={onPresentation} input={source.input}
               sourceAudio={source.sourceAudio} interaction={source.interaction}
               theaterMode={theater && isFocused} onToggleTheater={() => {

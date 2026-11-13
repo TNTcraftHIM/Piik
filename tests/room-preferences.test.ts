@@ -108,3 +108,15 @@ it("keeps bounded custom sounds with their preferences and reports a failed pers
   expect(saveRoomPreferences({ feedbackSound: { enabled: true, volume: .6, clips: {} } })).toBe(false);
   expect(readRoomPreferences().feedbackSound.clips?.message).toEqual(clip);
 });
+
+
+it("persists the total screen buffer target independently, including zero and automatic", () => {
+  storage();
+  expect(readRoomPreferences().screenBufferTargetMs).toBeNull();
+  for (const target of [300, 0, 4000, null]) {
+    expect(saveRoomPreferences({ screenBufferTargetMs: target })).toBe(true);
+    expect(readRoomPreferences().screenBufferTargetMs).toBe(target);
+  }
+  expect(saveRoomPreferences({ screenBufferTargetMs: 4001 })).toBe(false);
+  expect(readRoomPreferences().screenBufferTargetMs).toBeNull();
+});

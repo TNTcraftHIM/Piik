@@ -46,7 +46,11 @@ export interface ChannelScreenInput {
 
 export type ScreenPresentation = "prepared" | "waiting" | "failed";
 
+export type ScreenBufferStatus = "supported" | "unsupported" | "failed" | null;
+
 export interface ChannelView {
+  screenBufferTargetMs: number | null;
+  screenBufferStatus: ScreenBufferStatus;
   feedbackSound: RoomPreferences["feedbackSound"];
   quality: QualityProfile;
   videoCodecMode: BrowserVideoCodecMode;
@@ -77,6 +81,7 @@ export interface ChannelView {
 }
 
 export interface ChannelActions {
+  setScreenBufferTarget(target: number | null): void;
   queryProfiles(query: { after?: string; query?: string }, signal?: AbortSignal): Promise<ProfilePage>;
   loadProfiles(ids: readonly string[], signal?: AbortSignal): Promise<ChannelUser[]>;
   setFeedbackSound(patch: Partial<RoomPreferences["feedbackSound"]>): void;

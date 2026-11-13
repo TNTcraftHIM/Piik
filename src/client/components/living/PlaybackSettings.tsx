@@ -14,6 +14,11 @@ export interface PlaybackSettingsProps {
   setPictureFit: (fit: VideoFit) => void;
   pictureRotation: VideoRotation;
   setPictureRotation: (rotation: VideoRotation) => void;
+  buffering?: {
+    target: number | null;
+    status: "supported" | "unsupported" | "failed" | null;
+    onChange(target: number | null): void;
+  };
   preview?: {
     autoPause: boolean;
     onChange: (enabled: boolean) => void;
@@ -82,7 +87,7 @@ export function RemoteTouchSettings({ mode, onChange }: NonNullable<PlaybackSett
 }
 
 // Local display and connection intent; media and routing keep their owners.
-export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVolunteer, overlaySettings, reconnect }: Pick<PlaybackSettingsProps, "preview" | "remoteTouch" | "route" | "relayVolunteer"> & {
+export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVolunteer, buffering, overlaySettings, reconnect }: Pick<PlaybackSettingsProps, "preview" | "remoteTouch" | "route" | "relayVolunteer" | "buffering"> & {
   picture?: PlaybackSettingsProps;
   overlaySettings?: ReactNode; reconnect: ReactNode;
 }) {
@@ -90,7 +95,7 @@ export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVo
   const routeHint = route?.rejected ? "playback.routeRejected" : route?.sfuOnly ? "playback.routeSfuOnly"
     : route?.peerOnly ? "playback.routePeerOnly" : !route?.sfuAvailable ? "playback.routeNoSfu"
     : `playback.routeHint.${route.preference}` as const;
-  const detailedSections = [preview, remoteTouch, overlaySettings, route || relayVolunteer || reconnect].filter(Boolean).length;
+  const detailedSections = [preview, buffering, remoteTouch, overlaySettings, route || relayVolunteer || reconnect].filter(Boolean).length;
   return <div className={`lr-viewer-settings${detailedSections <= 1 ? " is-single" : ""}`}>
     {picture && <section className="lr-playback-compact-picture" aria-label={t("playback.viewControls")}>
       <div className="lr-viewer-settings-heading">
@@ -105,6 +110,20 @@ export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVo
       <RowGroup><SwitchItem checked={preview.autoPause} onChange={preview.onChange} icon="pause"
         label={t("host.previewAutoPause")} note={t("host.previewAutoPauseHint")} hint="hint-local-pause" /></RowGroup>
       {!vis && <p>{t("host.previewAutoPauseHint")}</p>}
+    </section>}
+    {buffering && <section aria-label={t("playback.buffering")}>
+      <div className="lr-viewer-settings-heading"><h3><Glyph name="clock" size={17} /><Cap k="playback.buffering" /></h3></div>
+      <RowGroup><SwitchItem checked={buffering.target === null} onChange={automatic => buffering.onChange(automatic ? null : 300)}
+        disabled={buffering.status === "unsupported" && buffering.target === null}
+        icon="sliders" label={t("playback.bufferAutomatic")} note={t("playback.bufferHint")} /></RowGroup>
+      {buffering.target !== null && <NumberControl value={buffering.target} min={0} max={4000} step={1} unit="ms"
+        name="screen-buffer-target" label={t("playback.bufferTarget")} disabled={buffering.status === "unsupported"}
+        onChange={buffering.onChange} className="lr-door-group">{input => <div className="lr-quality-heading">
+          <FieldCap k="playback.bufferTarget" />{input}
+        </div>}</NumberControl>}
+      <p>{t("playback.bufferHint")}</p><p>{t("playback.bufferScope")}</p>
+      {buffering.status === "unsupported" && <p role="status">{t("playback.bufferUnsupported")}</p>}
+      {buffering.status === "failed" && <p role="status">{t("playback.bufferFailed")}</p>}
     </section>}
     {remoteTouch && <RemoteTouchSettings {...remoteTouch} />}
     {overlaySettings && <section aria-label={t("playback.overlay")}>

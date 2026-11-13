@@ -37,6 +37,7 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
     };
   }, [session]);
   return { ...view,
+    setScreenBufferTarget: session.setScreenBufferTarget,
     queryProfiles: session.queryProfiles, loadProfiles: session.loadProfiles,
     setFeedbackSound: session.setFeedbackSound, previewFeedbackSound: session.previewFeedbackSound,
     setFeedbackClip: session.setFeedbackClip,

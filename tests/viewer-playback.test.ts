@@ -163,3 +163,20 @@ describe("Screen delivery result", () => {
     expect(paused).not.toContain("Picture delivery failed");
   });
 });
+
+
+it("shows shared buffer intent on received screens, including limitations, and omits local previews", () => {
+  setCopy({ lang: "en", vis: false });
+  const stream = { id: "buffer-ui", getAudioTracks: () => [] } as unknown as MediaStream;
+  const props = { stream, owned: false, localSource: false, label: "Screen", theaterMode: false, onToggleTheater: vi.fn(),
+    buffering: { target: 725, status: "unsupported" as const, onChange: vi.fn() } };
+  const remote = renderToStaticMarkup(createElement(ChannelVideo, props));
+  expect(remote).toContain('aria-label="Playback buffering"');
+  expect(remote).toContain('name="screen-buffer-target"');
+  expect(remote).toContain('max="4000"');
+  expect(remote).toContain('value="725"');
+  expect(remote).toContain("This browser cannot set the playback buffer target.");
+  expect(remote).toContain("viewers downstream");
+  const preview = renderToStaticMarkup(createElement(ChannelVideo, { ...props, localSource: true }));
+  expect(preview).not.toContain('aria-label="Playback buffering"');
+});

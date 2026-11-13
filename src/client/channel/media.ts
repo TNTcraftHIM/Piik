@@ -3,7 +3,7 @@ import { collectConnectionMetrics, collectTrackConnectionMetrics, createStatsAcc
 import { P2pQualityProbe } from "../media/candidate-quality-probe";
 import { VIEWER_QUALITY_EVIDENCE_INTERVAL_MS } from "../../shared/protocol";
 import type { ChannelCommand, ChannelPair, ChannelSignal, ChannelSnapshot } from "./protocol";
-import type { ChannelMediaMetric, ChannelScreenInput, ScreenPresentation } from "./types";
+import type { ChannelMediaMetric, ChannelScreenInput, ScreenPresentation, ScreenBufferStatus } from "./types";
 import { ChannelTransport, type OutgoingMedia } from "./transport";
 import { applyCaptureProfile, screenAudioBitrate, type QualityProfile } from "../media/quality";
 import { automaticVideoCodecPreference, VP8_ONLY_VIDEO_CODEC, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
@@ -36,6 +36,7 @@ interface MediaInput {
 }
 
 export class ChannelMedia {
+  private screenBufferTargetMs: number | null = null;
   private peers = new Map<string, Peer>();
   private publications: ChannelSnapshot["publications"] = [];
   private subscriptions: ChannelSnapshot["subscriptions"] = [];
@@ -51,7 +52,39 @@ export class ChannelMedia {
     private data?: (peer: string, kind: "control" | "chunk", data: string | Uint8Array) => void,
     private dataState?: (peer: string, ready: boolean) => void,
     private bulkClosed?: (peer: string) => void,
-    private input?: (pairId: string, channel: RTCDataChannel | null) => void) {}
+    private input?: (pairId: string, channel: RTCDataChannel | null) => void,
+    private buffering?: { target: number | null; changed(status: ScreenBufferStatus): void }) {
+    this.screenBufferTargetMs = buffering?.target ?? null;
+  }
+
+  setScreenBufferTarget(target: number | null): void {
+    this.screenBufferTargetMs = target;
+    this.applyScreenBufferTarget();
+  }
+
+  private applyScreenBufferTarget(): void {
+    let status: ScreenBufferStatus = null;
+    for (const peer of this.peers.values()) for (const [id, input] of peer.inputs) {
+      const publicationId = peer.plan.incoming.find(flow => flow.id === id)?.publicationId;
+      const kind = this.publications.find(publication => publication.id === publicationId)?.kind;
+      if (!kind) continue;
+      for (const receiver of peer.transport.pc.getReceivers()) {
+        if (!input.stream.getTracks().includes(receiver.track)) continue;
+        if (!("jitterBufferTarget" in receiver)) {
+          if (kind === "screen" && status !== "failed") status = "unsupported";
+          continue;
+        }
+        try {
+          const buffered = receiver as RTCRtpReceiver & { jitterBufferTarget: number | null };
+          // Native forwarding may reuse an audio MID from a screen for room voice.
+          const target = kind === "screen" ? this.screenBufferTargetMs : null;
+          if (buffered.jitterBufferTarget !== target) buffered.jitterBufferTarget = target;
+          if (kind === "screen") status ??= "supported";
+        } catch { if (kind === "screen") status = "failed"; }
+      }
+    }
+    this.buffering?.changed(status);
+  }
 
   setLocal(id: string, stream: MediaStream, profile?: QualityProfile, codec?: BrowserVideoCodecPreference, paused = this.local.get(id)?.paused): void {
     this.local.set(id, { stream, profile, codec, paused });
@@ -447,6 +480,7 @@ export class ChannelMedia {
   }
 
   private refresh(released = false): void {
+    this.applyScreenBufferTarget();
     const streams = new Map([...this.local].map(([id, local]) => [id, local.stream]));
     const relayMedia = new Map<string, MediaStreamTrack[]>();
     for (const publication of this.publications) {

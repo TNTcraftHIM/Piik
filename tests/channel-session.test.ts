@@ -4308,7 +4308,7 @@ class RoomMediaStream {
   removeTrack(track: MediaStreamTrack) { this.tracks = this.tracks.filter(current => current !== track); }
 }
 
-async function setupRoomMedia(layered = false, localSessionId = "a") {
+async function setupRoomMedia(layered = false, localSessionId = "a", buffering?: ConstructorParameters<typeof ChannelMedia>[6]) {
   RoomPeerConnection.instances = [];
   RoomAudio.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
@@ -4318,7 +4318,7 @@ async function setupRoomMedia(layered = false, localSessionId = "a") {
   const state = structuredClone(session.getSnapshot().state!);
   const sent: ChannelCommand[] = [];
   const changed = vi.fn<(streams: ReadonlyMap<string, MediaStream>, inputs: ReadonlyMap<string, readonly ChannelScreenInput[]>) => void>();
-  const media = new ChannelMedia(command => sent.push(command), changed);
+  const media = new ChannelMedia(command => sent.push(command), changed, undefined, undefined, undefined, undefined, buffering);
   state.pairs = [{ id: "pair", peerId: "z", canReceiveVideoLayers: layered, rooms: ["first"], incoming: [], outgoing: [] }];
   media.update(localSessionId, state);
   return { session, socket, media, state, sent, changed, pc: RoomPeerConnection.instances[0] };
@@ -4328,8 +4328,8 @@ const decodedReport = (framesDecoded: number) => new Map([["video", {
   id: "video", type: "inbound-rtp", kind: "video", framesDecoded,
 }]]) as unknown as RTCStatsReport;
 
-async function screenFixture() {
-  const fixture = await setupRoomMedia();
+async function screenFixture(buffering?: ConstructorParameters<typeof ChannelMedia>[6]) {
+  const fixture = await setupRoomMedia(false, "a", buffering);
   fixture.state.publications = [{ audience: [], id: "screen", roomId: "first", sessionId: "z", userId: "other", kind: "screen", source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false }];
   fixture.state.pairs[0].incoming = [{ id: "screen-flow", publicationId: "screen", selected: true, inputFlowId: null }];
   fixture.media.update("a", fixture.state);
@@ -7790,4 +7790,70 @@ test.each([
     expect(socket.sent.at(-1)).toMatchObject({ publication: { source: { kind: "screen", name } } });
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await publishing;
   } finally { session.close(); }
+});
+
+
+test("screen buffering follows current and replaced receivers, late source audio, candidates and automatic reset", async () => {
+  const status = vi.fn();
+  const fixture = await screenFixture({ target: null, changed: status });
+  const { media, pc, session, state } = fixture;
+  const video = remoteTrack("video"), tracks = [video];
+  const stream = remoteStream("buffered-screen", tracks);
+  const receiver = (track: MediaStreamTrack) => ({ track, jitterBufferTarget: null as number | null, getStats: async () => decodedReport(0) });
+  const first = receiver(video);
+  pc.receivers = [first as unknown as RTCRtpReceiver];
+  try {
+    await receiveScreen(fixture, stream);
+    media.setScreenBufferTarget(300);
+    expect(first.jitterBufferTarget).toBe(300);
+    const audio = remoteTrack("audio"), companion = receiver(audio);
+    tracks.push(audio); pc.receivers.push(companion as unknown as RTCRtpReceiver);
+    pc.ontrack?.({ streams: [stream] });
+    expect(companion.jitterBufferTarget).toBe(300);
+    state.pairs[0].incoming[0].selected = false;
+    media.update("a", state);
+    const replacement = receiver(remoteTrack("video"));
+    pc.receivers = [replacement as unknown as RTCRtpReceiver];
+    await receiveScreen(fixture, remoteStream("replacement-screen", [replacement.track]));
+    expect(replacement.jitterBufferTarget).toBe(300);
+    media.setScreenBufferTarget(null);
+    expect(replacement.jitterBufferTarget).toBeNull();
+    expect(status).toHaveBeenLastCalledWith("supported");
+  } finally { media.reset(); session.close(); }
+});
+
+test("room voice restores a reused screen audio receiver to automatic without adopting screen buffering", async () => {
+  const fixture = await screenFixture({ target: 300, changed: vi.fn() });
+  const { media, pc, state, session } = fixture;
+  const audio = remoteTrack("audio");
+  const receiver = { track: audio, jitterBufferTarget: 300, getStats: async () => decodedReport(0) };
+  pc.receivers = [receiver as unknown as RTCRtpReceiver];
+  state.publications[0] = { ...state.publications[0], kind: "voice" } as typeof state.publications[number];
+  media.update("a", state);
+  try {
+    await receiveScreen(fixture, remoteStream("voice-reused", [audio]));
+    expect(receiver.jitterBufferTarget).toBeNull();
+    media.setScreenBufferTarget(1000);
+    expect(receiver.jitterBufferTarget).toBeNull();
+  } finally { media.reset(); session.close(); }
+});
+
+test("optional screen buffering reports unsupported and rejected assignments without failing media", async () => {
+  const status = vi.fn();
+  const fixture = await screenFixture({ target: 300, changed: status });
+  const { media, pc, session } = fixture;
+  try {
+    expect(status).toHaveBeenLastCalledWith(null);
+    const video = remoteTrack("video");
+    const receiver = { track: video, getStats: async () => decodedReport(0) };
+    pc.receivers = [receiver as unknown as RTCRtpReceiver];
+    await receiveScreen(fixture, remoteStream("unsupported-buffer", [video]));
+    expect(status).toHaveBeenLastCalledWith("unsupported");
+    Object.defineProperty(receiver, "jitterBufferTarget", { configurable: true, get: () => null, set: () => { throw new Error("rejected"); } });
+    expect(() => media.setScreenBufferTarget(400)).not.toThrow();
+    expect(status).toHaveBeenLastCalledWith("failed");
+    media.setScreenBufferTarget(null);
+    expect(status).toHaveBeenLastCalledWith("supported");
+    expect(pc.connectionState).toBe("connected");
+  } finally { media.reset(); session.close(); }
 });

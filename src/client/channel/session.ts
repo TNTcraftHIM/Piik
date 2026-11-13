@@ -125,6 +125,8 @@ function readingWindow(messages: ChannelMessage[], count: number, latest: boolea
 /** The live browser endpoint owns captures and reconnects; browsing owns neither. */
 export class ChannelSession {
   private view: ChannelView = {
+    screenBufferTargetMs: readRoomPreferences().screenBufferTargetMs,
+    screenBufferStatus: null,
     quality: readPreferredQuality(),
     videoCodecMode: "auto",
     interactionsByRoom: new Map(),
@@ -199,13 +201,20 @@ export class ChannelSession {
       if (kind === "chunk") this.attachments.data(peer, kind, data);
       else void this.conversation.receiveFile(peer, data as string).catch(() => {});
     }, (peer, ready) => this.attachments.peerState(peer, ready), peer => this.attachments.bulkClosed(peer),
-    (pair, channel) => this.input.setChannel(pair, channel));
+    (pair, channel) => this.input.setChannel(pair, channel), { target: this.view.screenBufferTargetMs,
+      changed: screenBufferStatus => { if (screenBufferStatus !== this.view.screenBufferStatus) this.patch({ screenBufferStatus }); } });
   readonly attachments = new ChannelAttachments(command => this.request(command), async (peer, kind, data, allowed) =>
     this.media.sendData(peer, kind, kind === "control" ? await this.conversation.fileFrame(data as string) : data, allowed));
 
   getSnapshot = (): ChannelView => this.view;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   stats = () => this.media.stats();
+  setScreenBufferTarget = (target: number | null): void => {
+    if (target !== null && (!Number.isFinite(target) || target < 0 || target > 4000)) return;
+    saveRoomPreferences({ screenBufferTargetMs: target });
+    this.patch({ screenBufferTargetMs: target });
+    this.media.setScreenBufferTarget(target);
+  };
   private mergeProfiles(users: readonly ChannelUser[]): void {
     const profiles = new Map(this.view.profiles);
     for (const user of users) {

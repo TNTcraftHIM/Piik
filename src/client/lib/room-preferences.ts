@@ -16,6 +16,7 @@ const roomPreferencesSchema = z.object({
   }).default({ enabled: false, volume: 1 }),
   sharingView: z.boolean().default(false),
   interfaceLayout: interfaceLayoutSchema.optional(),
+  screenBufferTargetMs: z.number().min(0).max(4000).nullable().default(null),
   pictureFit: z.enum(["contain", "cover", "fill"]).default("contain"),
   pictureRotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).catch(0).default(0),
   previewAutoPause: z.boolean().default(true),
