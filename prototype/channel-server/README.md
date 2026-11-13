@@ -116,7 +116,7 @@ so browser preferences and retained files remain at the same origin. An occupied
 saved port reports a startup error; release the port and retry to use the same address.
 
 Current internal pages require App control protocol 8 and domain signaling
-protocol 16. Build the App, bundled Web files and domain server from the same
+protocol 17. Build the App, bundled Web files and domain server from the same
 source for internal testing. Incompatible control or signaling protocols are
 rejected at entry. App discovery advertises both protocol identifiers so the Web
 page checks native control and domain participation before approval. The storage
