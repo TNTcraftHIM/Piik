@@ -3473,12 +3473,13 @@ describe("WebRTC stats parsing", () => {
     });
   });
 
-  it("uses linked remote inbound counters for outbound audio loss", async () => {
+  it("uses linked RTCP feedback for outbound audio loss", async () => {
     const report = (
       timestamp: number,
       audioBytesSent: number,
       packetsReceived: number | undefined,
       packetsLost: number | undefined,
+      fractionLost: number | undefined = 0.125,
     ) =>
       new Map<string, unknown>([
         [
@@ -3533,6 +3534,7 @@ describe("WebRTC stats parsing", () => {
             kind: "audio",
             packetsReceived,
             packetsLost,
+            fractionLost,
             jitter: 0.004,
           },
         ],
@@ -3546,7 +3548,7 @@ describe("WebRTC stats parsing", () => {
       report(3_000, 50_000, 500, 1),
       report(5_000, 80_000, 650, 4),
       report(7_000, 110_000, 50, 1),
-      report(9_000, 140_000, 200, undefined),
+      report(9_000, 140_000, 200, undefined, -1),
     ];
     const connection = {
       getStats: async () => reports.shift()!,
@@ -3569,7 +3571,7 @@ describe("WebRTC stats parsing", () => {
       "send",
       accumulator,
     );
-    const missing = await collectConnectionMetrics(
+    const invalid = await collectConnectionMetrics(
       connection,
       "send",
       accumulator,
@@ -3586,8 +3588,8 @@ describe("WebRTC stats parsing", () => {
       audioCodecClockRate: 48_000,
       audioCodecChannels: 2,
     });
-    expect(stable.audioPacketLossPercent).toBeCloseTo((3 / 153) * 100);
-    expect(reset.audioPacketLossPercent).toBeNull();
-    expect(missing.audioPacketLossPercent).toBeNull();
+    expect(stable.audioPacketLossPercent).toBe(12.5);
+    expect(reset.audioPacketLossPercent).toBe(12.5); // Cumulative counters do not define this RTCP interval.
+    expect(invalid.audioPacketLossPercent).toBeNull();
   });
 });

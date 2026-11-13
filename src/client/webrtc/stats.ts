@@ -47,6 +47,7 @@ export interface StatsAccumulator {
   audioSsrc: number | null;
   audioTrackIdentifier: string | null;
   audioLossSourceId: string | null;
+  audioLossReportTimestamp: number | null;
   audioBytes: number | null;
   audioTimestamp: number | null;
   previousAudioPacketsReceived: number | null;
@@ -256,6 +257,7 @@ export function createStatsAccumulator(): StatsAccumulator {
     audioSsrc: null,
     audioTrackIdentifier: null,
     audioLossSourceId: null,
+    audioLossReportTimestamp: null,
     audioBytes: null,
     audioTimestamp: null,
     previousAudioPacketsReceived: null,
@@ -266,6 +268,20 @@ export function createStatsAccumulator(): StatsAccumulator {
     previousAudioConcealedSamples: null,
     previousAudioConcealmentEvents: null,
   };
+}
+
+// RTCP defines fractionLost over its own report interval. Consume each report
+// once, independently of local RTP sampling and the companion media's feedback.
+function remotePacketLossPercent(
+  report: StatsRecord | null,
+  previousTimestamp: number | null,
+  sameSource: boolean,
+): number | null {
+  const timestamp = numberValue(report, "timestamp");
+  const fraction = numberValue(report, "fractionLost");
+  return sameSource && timestamp !== null && previousTimestamp !== null &&
+    timestamp > previousTimestamp && fraction !== null && fraction >= 0 && fraction <= 1
+    ? fraction * 100 : null;
 }
 
 function intervalDelta(
@@ -734,7 +750,6 @@ export function collectConnectionMetricsFromReport(
   const packetsSent = numberValue(media, "packetsSent");
   const packetsReceived = numberValue(lossSource, "packetsReceived");
   const packetsLost = numberValue(lossSource, "packetsLost");
-  const fractionLost = numberValue(remoteInbound, "fractionLost");
   const totalEncodeTime = numberValue(media, "totalEncodeTime");
   const totalDecodeTime = numberValue(media, "totalDecodeTime");
   const framesDropped = numberValue(media, "framesDropped");
@@ -837,19 +852,9 @@ export function collectConnectionMetricsFromReport(
     previous.previousPacketsLost,
     sampleWindowMs !== null && sameLossSource,
   );
-  // RTCP already defines fractionLost over its own report interval. Consume a
-  // report once instead of mixing that remote interval with local send deltas.
-  const senderPacketLossPercent =
-    direction === "send" &&
-    sameLossSource &&
-    lossReportTimestamp !== null &&
-    previous.lossReportTimestamp !== null &&
-    lossReportTimestamp > previous.lossReportTimestamp &&
-    fractionLost !== null &&
-    fractionLost >= 0 &&
-    fractionLost <= 1
-      ? fractionLost * 100
-      : null;
+  const senderPacketLossPercent = direction === "send"
+    ? remotePacketLossPercent(remoteInbound, previous.lossReportTimestamp, sameLossSource)
+    : null;
   const intervalFramesDecoded =
     direction === "receive"
       ? intervalDelta(
@@ -966,6 +971,7 @@ export function collectConnectionMetricsFromReport(
     ? mediaTrackIdentifier(report, audio, direction)
     : null;
   const audioLossSourceId = audioLossSource?.id ?? null;
+  const audioLossReportTimestamp = numberValue(audioLossSource, "timestamp");
   const sameAudio =
     audioMediaId !== null &&
     audioMediaId === previous.audioMediaId &&
@@ -987,6 +993,9 @@ export function collectConnectionMetricsFromReport(
     audioTimestamp > previous.audioTimestamp
       ? audioTimestamp - previous.audioTimestamp
       : null;
+  const audioSenderPacketLossPercent = direction === "send"
+    ? remotePacketLossPercent(audioRemoteInbound, previous.audioLossReportTimestamp, sameAudioLossSource)
+    : null;
   const audioPacketsReceived = numberValue(audioLossSource, "packetsReceived");
   const audioPacketsLost = numberValue(audioLossSource, "packetsLost");
   const audioJitterBufferDelay = numberValue(audio, "jitterBufferDelay");
@@ -1056,6 +1065,7 @@ export function collectConnectionMetricsFromReport(
   previous.audioSsrc = audioSsrc;
   previous.audioTrackIdentifier = audioTrackIdentifier;
   previous.audioLossSourceId = audioLossSourceId;
+  previous.audioLossReportTimestamp = audioLossReportTimestamp;
   previous.audioBytes = audioBytes;
   previous.audioTimestamp = audioTimestamp;
   previous.previousAudioPacketsReceived = audioPacketsReceived;
@@ -1143,10 +1153,8 @@ export function collectConnectionMetricsFromReport(
     codecProfile: codecEvidence.profile,
     codecParameters: codecEvidence.parameters,
     audioBitrateKbps,
-    audioPacketLossPercent: packetLossPercentFromDeltas(
-      audioPacketsReceivedDelta,
-      audioPacketsLostDelta,
-    ),
+    audioPacketLossPercent: direction === "send" ? audioSenderPacketLossPercent
+      : packetLossPercentFromDeltas(audioPacketsReceivedDelta, audioPacketsLostDelta),
     audioJitterMs:
       numberValue(audioLossSource, "jitter") !== null
         ? numberValue(audioLossSource, "jitter")! * 1_000
