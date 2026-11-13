@@ -31,5 +31,5 @@ export function releaseNotesBody(body) {
   if (typeof body !== "string") return "";
   return body
     .replace(/^<!-- piik-build-checksums:start -->\r?\n[\s\S]*?^<!-- piik-build-checksums:end -->\r?$/gm, "")
-    .replace(/(?:^|\r?\n)<!-- piik-source: [0-9a-f]{40} -->\s*$/, "");
+    .replace(/(?:^|\r?\n)Source: https:\/\/github\.com\/TNTcraftHIM\/Piik\/commit\/([0-9a-f]{40})\r?\n\r?\n<!-- piik-source: \1 -->\s*$/, "");
 }

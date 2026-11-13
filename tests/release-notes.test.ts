@@ -18,12 +18,21 @@ test("release HTML remains text and unsafe or App-relative links cannot navigate
   expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
 });
 
-test("only the mirror's trailing provenance marker is hidden from the reader", () => {
-  const marker = `<!-- piik-source: ${"a".repeat(40)} -->`;
-  expect(renderReleaseNotes(`## Changes\n\nPublished text.\n\n${marker}\n`))
+test("only the mirror's complete matching provenance tail is hidden from the reader", () => {
+  // Actual AtomGit v2.6.2 tail, produced by scripts/mirror-release.mjs.
+  const revision = "ad02ae0bbcb70456611c44fd42fa1198d0d5d639";
+  const source = `Source: https://github.com/TNTcraftHIM/Piik/commit/${revision}`;
+  const marker = `<!-- piik-source: ${revision} -->`;
+  const tail = `${source}\n\n${marker}\n`;
+  expect(renderReleaseNotes(`## Changes\n\nPublished text.\n\n${tail}`))
     .toBe(renderReleaseNotes("## Changes\n\nPublished text.\n"));
-  expect(renderReleaseNotes(`\`\`\`text\n${marker}\n\`\`\``)).toContain("&lt;!-- piik-source:");
-  expect(renderReleaseNotes(marker)).toBe("");
+  expect(renderReleaseNotes(tail)).toBe("");
+  for (const authored of [source, tail.replace(revision, "a".repeat(40)),
+    tail.replace("TNTcraftHIM/Piik", "other/project"), `${tail}\nMore published text.`,
+    `\`\`\`text\n${tail}\`\`\``]) {
+    expect(renderReleaseNotes(authored)).toContain("Source:");
+  }
+  expect(renderReleaseNotes(marker)).toContain("&lt;!-- piik-source:");
   expect(renderReleaseNotes("   \n")).toBe("");
 });
 
