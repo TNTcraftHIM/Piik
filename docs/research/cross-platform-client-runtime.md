@@ -145,11 +145,20 @@ retained its opener and authorization return, then closed without stopping the
 App. Closing the main window retired any remaining child windows. Shared
 attachment upload and download retained the filename and exact bytes using the
 runtime's default download behavior; that path needed no shell adapter.
-Native sound, microphone/camera permission, Save As and non-Windows operation
+Native sound, physical microphone/camera use, Save As and non-Windows operation
 remain unverified. The installed WebView2 renderer crashed with `0xC0000005`
 when the automation tool enabled accessibility on its attached session. Direct
 page-level accessibility queries passed, but this does not identify the crash's
 cause or establish accessibility compatibility. Ordinary reload recovered.
+
+The default microphone request stayed pending without a visible permission
+prompt on the tested runtime. An isolated official `PermissionRequested`
+deferral with an origin-labelled system dialog completed both explicit allow
+and deny through the shared voice UI using a synthetic device. The choice was
+not saved. This establishes a narrow shell permission adapter, not accepted
+permission UX: the modal proof requires a choice before closing the owner, and
+the existing denial guidance still refers to Browser settings. Those boundaries
+remain part of client integration; the proof is not the default App entry.
 
 The window must present Piik as an application: Piik owns navigation, settings
 and player controls; the host window owns minimize, maximize and close. Do not
