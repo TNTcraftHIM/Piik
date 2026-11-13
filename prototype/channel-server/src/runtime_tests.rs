@@ -1644,6 +1644,278 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
 }
 
 #[tokio::test]
+async fn invalid_room_storage_keeps_sibling_chat_and_http_available_and_recovers_after_repair() {
+    use piik_channel_core::{
+        conversation::{
+            ConversationAddress, ConversationCommand, ConversationRecord, ConversationReply,
+            ConversationRequest, SessionSigner,
+        },
+        history::{HistoryRequest, MessageDraft},
+        storage::Storage,
+        wire::RoomAccess,
+        RoomState, StoredRoomHost,
+    };
+
+    async fn conversation(
+        socket: &mut Socket,
+        session: Uuid,
+        state: &Snapshot,
+        command: ConversationCommand,
+    ) -> Vec<ConversationRecord> {
+        let delivery = state
+            .channel
+            .rooms
+            .iter()
+            .find(|room| room.id == "healthy")
+            .unwrap()
+            .delivery
+            .as_ref()
+            .unwrap();
+        let key = state
+            .sessions
+            .iter()
+            .find(|peer| peer.id == delivery.host_session_id)
+            .unwrap()
+            .signing_key;
+        let request_id = Uuid::new_v4().to_string();
+        let packet = SessionSigner::from_seed([1; 32])
+            .sign(
+                session,
+                &ConversationRequest {
+                    address: ConversationAddress {
+                        room_id: "healthy".into(),
+                        binding_id: delivery.binding_id,
+                        sender: session,
+                        recipient: delivery.host_session_id,
+                        request_id: request_id.clone(),
+                    },
+                    command,
+                },
+            )
+            .unwrap();
+        send_request(socket, json!({"type":"conversation", "packet":packet})).await;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let mut records = vec![];
+            loop {
+                match event(socket).await {
+                    Event::Conversation { packet } => {
+                        let reply = ConversationReply::verify(&packet, key).unwrap();
+                        if reply.address.request_id != request_id {
+                            continue;
+                        }
+                        assert!(!matches!(reply.record, ConversationRecord::Error { .. }));
+                        let finished = matches!(
+                            reply.record,
+                            ConversationRecord::Confirmed { .. }
+                                | ConversationRecord::HistoryEnd { .. }
+                        );
+                        records.push(reply.record);
+                        if finished {
+                            return records;
+                        }
+                    }
+                    Event::Error { code, .. } => panic!("conversation failed: {code}"),
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .unwrap()
+    }
+
+    for damage in [
+        "empty",
+        "corrupt",
+        "unsupported",
+        "invalid_json",
+        "invalid_policy",
+        "missing_history",
+    ] {
+        let folder = tempfile::tempdir().unwrap();
+        let domain = Domain::open(
+            folder.path(),
+            "owner",
+            "http://localhost".into(),
+            None,
+            vec![],
+        )
+        .unwrap();
+        let identity = domain.identity();
+        let rooms = crate::room_directory(folder.path(), identity);
+        std::fs::create_dir_all(&rooms).unwrap();
+        {
+            let mut hub = domain.hub.lock().unwrap();
+            let owner = Endpoint::join(&mut hub, "owner");
+            for id in ["healthy", "damaged"] {
+                let path = rooms.join(format!("{id}.sqlite"));
+                let room = StoredRoomHost::create(
+                    &path,
+                    RoomState::new(
+                        id.into(),
+                        id.into(),
+                        Default::default(),
+                        identity.1,
+                        RoomAccess::Public,
+                        false,
+                        None,
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+                owner.request(
+                    &mut hub,
+                    json!({"type":"admit_room", "room":room.summary()}),
+                );
+                drop(room);
+                Storage::open(&path)
+                    .unwrap()
+                    .history(&HistoryRequest::Send {
+                        room_id: id.into(),
+                        draft: MessageDraft::new(
+                            identity.1,
+                            "before-restart".into(),
+                            "Retained history".into(),
+                            vec![],
+                            Default::default(),
+                            vec![],
+                            None,
+                            1,
+                        )
+                        .unwrap(),
+                    })
+                    .unwrap();
+            }
+        }
+        drop(domain);
+        let damaged = rooms.join("damaged.sqlite");
+        let original = std::fs::read(&damaged).unwrap();
+        if damage == "empty" {
+            std::fs::write(&damaged, b"").unwrap();
+        } else if damage == "corrupt" {
+            std::fs::write(&damaged, b"not a SQLite database").unwrap();
+        } else {
+            let db = rusqlite::Connection::open(&damaged).unwrap();
+            match damage {
+                "unsupported" => db.execute_batch("PRAGMA user_version=7;").unwrap(),
+                "invalid_json" => {
+                    db.execute("UPDATE checkpoint SET body='{'", []).unwrap();
+                }
+                "invalid_policy" => {
+                    let body: String = db
+                        .query_row("SELECT body FROM checkpoint", [], |row| row.get(0))
+                        .unwrap();
+                    let mut policy: Value = serde_json::from_str(&body).unwrap();
+                    policy["relayCapacity"] = json!(0);
+                    db.execute("UPDATE checkpoint SET body=?1", [policy.to_string()])
+                        .unwrap();
+                }
+                "missing_history" => db.execute_batch("DROP TABLE message;").unwrap(),
+                _ => unreachable!(),
+            }
+        }
+        let rejected_bytes = std::fs::read(&damaged).unwrap();
+        for repaired in [false, true] {
+            if repaired {
+                std::fs::write(&damaged, &original).unwrap();
+            }
+            let (address, stop, task, hub) = start_server(folder.path()).await;
+            let (mut socket, session, initial, credential) =
+                connect_with_credential(address, "owner", "Owner").await;
+            let ready = |state: &Snapshot| {
+                state.channel.rooms.len() == 2
+                    && state
+                        .channel
+                        .rooms
+                        .iter()
+                        .all(|room| room.available == (room.id == "healthy" || repaired))
+            };
+            let state = if ready(&initial) {
+                initial
+            } else {
+                state_when(&mut socket, ready).await
+            };
+            assert_eq!(
+                state
+                    .channel
+                    .rooms
+                    .iter()
+                    .find(|room| room.id == "damaged")
+                    .unwrap()
+                    .creator_id,
+                identity.1
+            );
+            assert_eq!(
+                room_backup_http(address, "/healthz", &credential, None)
+                    .await
+                    .0,
+                200
+            );
+            send_request(
+                &mut socket,
+                json!({"type":"browse", "roomId":"healthy", "active":true}),
+            )
+            .await;
+            let state = state_when(&mut socket, |state| {
+                state
+                    .channel
+                    .rooms
+                    .iter()
+                    .any(|room| room.id == "healthy" && room.reading)
+            })
+            .await;
+            let expected = if repaired { 3 } else { 2 };
+            let sent = conversation(
+                &mut socket,
+                session,
+                &state,
+                ConversationCommand::Chat {
+                    mentions: vec![],
+                    reply: None,
+                    inline_images: Default::default(),
+                    text: format!("Healthy {expected}"),
+                    nonce: format!("healthy-{expected}"),
+                    attachments: vec![],
+                },
+            )
+            .await;
+            assert!(
+                matches!(&sent[0], ConversationRecord::Confirmed { message, .. } if message.seq == expected)
+            );
+            let history = conversation(
+                &mut socket,
+                session,
+                &state,
+                ConversationCommand::History { before: None },
+            )
+            .await;
+            assert!(history.iter().any(|record| matches!(record, ConversationRecord::HistoryMessage { message } if message.text == "Retained history")));
+            assert!(
+                matches!(history.last(), Some(ConversationRecord::HistoryEnd { count, .. }) if *count == expected as usize)
+            );
+            assert!(
+                !task.is_finished(),
+                "{damage}: a room data failure must not end shared hosting"
+            );
+            stop.send(()).unwrap();
+            tokio::time::timeout(Duration::from_secs(10), task)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            drop(socket);
+            drop(hub);
+            if !repaired {
+                assert_eq!(
+                    std::fs::read(&damaged).unwrap(),
+                    rejected_bytes,
+                    "{damage}: failed data stays untouched"
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test]
 async fn native_hosting_failure_stops_the_http_service() {
     use piik_channel_core::{wire::RoomAccess, RoomState, StoredRoomHost};
     let folder = std::env::temp_dir().join(format!("piik-server-failure-{}", Uuid::new_v4()));

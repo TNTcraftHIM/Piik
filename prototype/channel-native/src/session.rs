@@ -3,7 +3,7 @@
 use crate::{
     backup::RoomSnapshot,
     capture::{Settings, Target},
-    hosted_room::HostedRoom,
+    hosted_room::{storage_error, HostedRoom},
     peer::{
         CaptureInput, CaptureLease, CaptureScope, InputAuthority, NativeConnectionMetrics,
         NativeEvent, NativePeers, PreparedExternal,
@@ -877,15 +877,14 @@ impl Session {
                     for mut file in std::mem::take(&mut self.files) {
                         let host = match std::fs::metadata(&file.path) {
                             Ok(_) => {
-                                let store = piik_channel_core::storage::Storage::open(&file.path)
-                                    .map_err(anyhow::Error::from_boxed)?;
-                                let Some(policy) =
-                                    store.load().map_err(anyhow::Error::from_boxed)?
-                                else {
-                                    self.files.push(file);
-                                    continue;
+                                let policy = match stored_room_policy(&file.path) {
+                                    Ok(Some(policy)) => policy,
+                                    Ok(None) => continue,
+                                    Err(error) if room_data_unavailable(&file.path, &error) => {
+                                        continue
+                                    }
+                                    Err(error) => return Err(error),
                                 };
-                                let policy: RoomState = serde_json::from_value(policy)?;
                                 file.id = policy.id;
                                 if !state.channel.rooms.iter().any(|room| room.id == file.id) {
                                     if file.bootstrap {
@@ -934,6 +933,7 @@ impl Session {
                         let host = match host {
                             Ok(host) => host,
                             Err(error) if error.to_string() == "room_not_found" => continue,
+                            Err(error) if room_data_unavailable(&file.path, &error) => continue,
                             Err(error) => return Err(error),
                         };
                         if rooms.insert(file.id.clone(), host).is_some() {
@@ -2146,12 +2146,12 @@ fn stored_rooms(directory: &std::path::Path) -> Result<Vec<RoomFile>> {
         if path.extension().and_then(|value| value.to_str()) != Some("sqlite") {
             continue;
         }
-        let store =
-            piik_channel_core::storage::Storage::open(&path).map_err(anyhow::Error::from_boxed)?;
-        let Some(policy) = store.load().map_err(anyhow::Error::from_boxed)? else {
-            continue;
+        let policy = match stored_room_policy(&path) {
+            Ok(Some(policy)) => policy,
+            Ok(None) => continue,
+            Err(error) if room_data_unavailable(&path, &error) => continue,
+            Err(error) => return Err(error),
         };
-        let policy: RoomState = serde_json::from_value(policy)?;
         files.push(RoomFile {
             path,
             id: policy.id,
@@ -2160,6 +2160,31 @@ fn stored_rooms(directory: &std::path::Path) -> Result<Vec<RoomFile>> {
         });
     }
     Ok(files)
+}
+
+fn stored_room_policy(path: &std::path::Path) -> Result<Option<RoomState>> {
+    let read = || -> piik_channel_core::storage::StoreResult<Option<RoomState>> {
+        std::fs::metadata(path)?;
+        let store = piik_channel_core::storage::Storage::open_existing(path)?;
+        let Some(policy) = store.load()? else {
+            return Ok(None);
+        };
+        let policy: RoomState = serde_json::from_value(policy)
+            .map_err(|error| piik_channel_core::storage::StorageDataError(error.into()))?;
+        policy
+            .validate()
+            .map_err(|error| piik_channel_core::storage::StorageDataError(error.into()))?;
+        Ok(Some(policy))
+    };
+    read().map_err(storage_error)
+}
+
+fn room_data_unavailable(path: &std::path::Path, error: &anyhow::Error) -> bool {
+    if !error.is::<piik_channel_core::storage::StorageDataError>() {
+        return false;
+    }
+    eprintln!("Native room data unavailable: {}: {error}", path.display());
+    true
 }
 
 async fn next_host_command(hosting: &mut Option<Hosting>) -> Option<HostCommand> {

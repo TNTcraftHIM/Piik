@@ -7,25 +7,71 @@ use crate::{
     },
     wire::ChatMessage,
 };
-use rusqlite::{params, Connection, OptionalExtension, Row, TransactionBehavior};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row, TransactionBehavior};
 use serde_json::Value;
 use std::path::Path;
 use uuid::Uuid;
 
 pub type StoreResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+/// Invalid saved representation, distinct from permissions, locks and I/O failure.
+#[derive(Debug)]
+pub struct StorageDataError(pub Box<dyn std::error::Error + Send + Sync>);
+
+impl std::fmt::Display for StorageDataError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.0.as_ref(), formatter)
+    }
+}
+
+impl std::error::Error for StorageDataError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.0.as_ref())
+    }
+}
+
+fn read_error(error: rusqlite::Error) -> Box<dyn std::error::Error + Send + Sync> {
+    // These fixed queries can encounter corrupt files or invalid
+    // stored values. Resource/permission/locking errors retain their own meaning.
+    if matches!(
+        error.sqlite_error_code(),
+        Some(rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase)
+    ) || matches!(
+        error,
+        rusqlite::Error::FromSqlConversionFailure(..)
+            | rusqlite::Error::IntegralValueOutOfRange(..)
+            | rusqlite::Error::InvalidColumnType(..)
+            | rusqlite::Error::Utf8Error(..)
+    ) {
+        Box::new(StorageDataError(error.into()))
+    } else {
+        error.into()
+    }
+}
+
 pub struct Storage {
     connection: Connection,
 }
 impl Storage {
     pub(crate) fn last_message_seq(&self, room: &str) -> StoreResult<u64> {
-        Ok(self.connection.query_row(
-            "SELECT coalesce(max(seq),0) FROM message WHERE room_id=?1",
-            [room],
-            |row| row.get(0),
-        )?)
+        self.connection
+            .query_row(
+                "SELECT coalesce(max(seq),0) FROM message WHERE room_id=?1",
+                [room],
+                |row| row.get(0),
+            )
+            .map_err(read_error)
     }
     pub fn open(path: &Path) -> StoreResult<Self> {
+        Self::open_with_flags(path, OpenFlags::default())
+    }
+
+    /// Open existing room storage without creating or initializing its database.
+    pub fn open_existing(path: &Path) -> StoreResult<Self> {
+        Self::open_with_flags(path, OpenFlags::default() & !OpenFlags::SQLITE_OPEN_CREATE)
+    }
+
+    fn open_with_flags(path: &Path, flags: OpenFlags) -> StoreResult<Self> {
         // Resolve the existing directory before SQLite creates the file and its journals.
         let normalized = match path.file_name() {
             Some(name) if path != Path::new(":memory:") => {
@@ -37,16 +83,27 @@ impl Storage {
             }
             _ => None,
         };
-        let connection = Connection::open(normalized.as_deref().unwrap_or(path))?;
-        let version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        let existing: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message','attachment'))", [], |row| row.get(0))?;
-        if version != 8 && (version != 0 || existing) {
-            return Err("unsupported_storage_version".into());
+        let connection = Connection::open_with_flags(normalized.as_deref().unwrap_or(path), flags)?;
+        let version: u32 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .map_err(read_error)?;
+        let existing: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message','attachment'))", [], |row| row.get(0)).map_err(read_error)?;
+        if version != 8
+            && (version != 0 || existing || !flags.contains(OpenFlags::SQLITE_OPEN_CREATE))
+        {
+            return Err(StorageDataError("unsupported_storage_version".into()).into());
         }
-        connection.execute_batch(
-            "PRAGMA foreign_keys=ON;
-             CREATE TABLE IF NOT EXISTS checkpoint (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
-             CREATE TABLE IF NOT EXISTS message (
+        if version == 8 {
+            let tables: u32 = connection.query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message')", [], |row| row.get(0)).map_err(read_error)?;
+            if tables != 2 {
+                return Err(StorageDataError("invalid_storage_schema".into()).into());
+            }
+        }
+        connection.execute_batch("PRAGMA foreign_keys=ON;")?;
+        if version == 0 {
+            connection.execute_batch(
+            "CREATE TABLE checkpoint (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
+             CREATE TABLE message (
                room_id TEXT NOT NULL, seq INTEGER NOT NULL, id TEXT NOT NULL UNIQUE,
                user_id TEXT NOT NULL, nonce TEXT NOT NULL, text TEXT NOT NULL,
                time INTEGER NOT NULL, attachments TEXT NOT NULL, reactions TEXT NOT NULL,
@@ -55,6 +112,7 @@ impl Storage {
              );
              PRAGMA user_version=8;",
         )?;
+        }
         Ok(Self { connection })
     }
 
@@ -63,8 +121,11 @@ impl Storage {
             .query_row("SELECT body FROM checkpoint WHERE id=1", [], |row| {
                 row.get::<_, String>(0)
             })
-            .optional()?
-            .map(|body| serde_json::from_str(&body).map_err(Into::into))
+            .optional()
+            .map_err(read_error)?
+            .map(|body| {
+                serde_json::from_str(&body).map_err(|error| StorageDataError(error.into()).into())
+            })
             .transpose()
     }
 

@@ -4,6 +4,7 @@ use piik_channel_core::{
     backup::OwnCredential,
     conversation::{ConversationOutcome, SignedPacket},
     host::{HostInput, HostOutput, RoomSummary},
+    storage::StorageDataError,
     RoomBackup, RoomState, StoredRoomHost,
 };
 use std::{
@@ -19,6 +20,14 @@ pub struct HostedRoom {
     binding: Option<Uuid>,
     // Keep the process lock until the room runtime and SQLite connection drop.
     _file_owner: File,
+}
+
+pub(crate) fn storage_error(error: Box<dyn std::error::Error + Send + Sync>) -> anyhow::Error {
+    // Preserve the data-error type across the boxed Core/anyhow boundary.
+    match error.downcast::<StorageDataError>() {
+        Ok(error) => anyhow::Error::new(*error),
+        Err(error) => anyhow::Error::from_boxed(error),
+    }
 }
 
 impl HostedRoom {
@@ -58,7 +67,7 @@ impl HostedRoom {
 
     pub fn open(path: &Path, room_id: &str, creator: Uuid) -> Result<Self> {
         let file_owner = lock(path, room_id)?;
-        let host = StoredRoomHost::open(path).map_err(|error| anyhow!(error.to_string()))?;
+        let host = StoredRoomHost::open(path).map_err(storage_error)?;
         if host.policy().id != room_id || host.policy().creator_id != creator {
             bail!("room storage does not belong to this room and admitted identity");
         }

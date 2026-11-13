@@ -3,7 +3,7 @@
 use crate::{
     backup::{HistoryImport, HistoryRow, OwnCredential, RoomMetadata},
     host::{HostInput, HostOutput, RoomHost, RoomSummary},
-    storage::{Storage, StoreResult},
+    storage::{Storage, StorageDataError, StoreResult},
     RoomState,
 };
 use std::path::Path;
@@ -104,8 +104,12 @@ impl StoredRoomHost {
 
     pub fn open(path: &Path) -> StoreResult<Self> {
         std::fs::metadata(path)?;
-        let store = Storage::open(path)?;
-        let policy: RoomState = serde_json::from_value(store.load()?.ok_or("room_not_found")?)?;
+        let store = Storage::open_existing(path)?;
+        let policy: RoomState = serde_json::from_value(store.load()?.ok_or("room_not_found")?)
+            .map_err(|error| StorageDataError(error.into()))?;
+        policy
+            .validate()
+            .map_err(|error| StorageDataError(error.into()))?;
         let mut host = RoomHost::new(policy);
         host.seed_history(store.last_message_seq(&host.policy().id)?)?;
         Ok(Self { host, store })
