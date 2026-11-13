@@ -92,6 +92,6 @@ jobs:
       - name: Explain recovery
         if: failure() && steps.source.outputs.mirror == 'true'
         run: |
-          printf 'Mirror failed; the scheduled check will retry from original CI run %s. GitHub publication and Website are independent. If artifacts expired, recover the retained original build output; do not rebuild this version. See docs/operations/github.md.\n' "$PIIK_SOURCE_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Release mirror remains incomplete. Resume from original CI run %s; do not wait for source synchronization. If artifacts expired, recover retained original build output without rebuilding this version. See docs/operations/github.md.\n' "$PIIK_SOURCE_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
         env:
           PIIK_SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
