@@ -12,6 +12,11 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **System WebView client evaluation.** Measure a thin Windows window over
+  the existing App and shared UI, including media, Browser fallback and package
+  cost, following the
+  [runtime assessment](./research/cross-platform-client-runtime.md#30-system-webview-client-evaluation)
+  before changing the default entry; keep current Browser access working.
 - [ ] **3.0 Windows shared-sound noise.** The reporter confirms electrical or
   crackling sound in beta9/10 as well as beta2, while 2.x sounds normal. Excluding
   the window titled Piik removes it; excluding a silent unrelated window does
@@ -84,6 +89,10 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **Client site bookmarks.** Reconsider the former main-UI site rail after
+  the system-WebView client proves viable. Keep navigation separate from device
+  approval, and resolve switching activity lifetimes and changing invitation
+  addresses within the existing runtime assessment.
 - [ ] **Managed one-click deployment.** Validate an ordinary Piik room and data
   recovery on a persistent hosting target. The
   [deployment assessment](./deployment.md#managed-one-click-hosting) distinguishes
@@ -118,11 +127,10 @@ the feedback period; they do not delay that delivery.
 
 ## Held By Owner
 
-- [ ] **Native desktop interface.** Keep the terminal entry and shared system-
-  Browser UI. The owner meant a complete native client, not a graphical status
-  window; do not integrate the status-window proof. The
+- [ ] **Non-Web desktop interface.** Do not integrate the graphical status-window
+  proof or rewrite the room UI with native widgets. The
   [runtime assessment](./research/cross-platform-client-runtime.md#30-windows-native-entry-prototype)
-  records the distinction and evidence.
+  records the distinction; the system-WebView evaluation above reuses the Web UI.
 - [ ] **Automatic room-voice exclusion from Native display sound.** Deferred
   from the first 3.0 internal test. Keep Browser playback; the
   [playback/AEC boundary](./research/channel-network-design.md#implementation-boundary)

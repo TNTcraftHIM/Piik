@@ -121,6 +121,68 @@ exercised. A paired release build added about 4.3 MiB. This does not establish a
 native room UI, capture/tunnel shutdown or macOS/Linux behavior; no GUI dependency
 or entry-point change was added to the product.
 
+## 3.0 System WebView Client Evaluation
+
+The owner's subsequent request on 2026-11-12 opens an evaluation of a complete
+client window using the existing Web UI, with the Browser as an alternative
+entry. This is distinct from the status-window proof above; the shipped entry
+has not changed. A Windows proof uses the installed system WebView and the
+existing App service to measure actual behavior and package cost before choosing
+a production shell.
+
+The first Wry/Tao release-size control added 527,872 bytes to the executable;
+the same gzip level 9 added 213,799 bytes. Web assets and the tunnel helper were
+unchanged, and the system WebView2 runtime was not bundled. This is a prototype
+delta, not a final package-size promise.
+
+The actual embedded Windows window completed Native-hosted conversation,
+received Browser-generated VP8/Opus, and sent Native-captured test-window H.264
+to an independent Browser. Closing it with both paths active retired the App,
+sockets and capture processes while retaining confirmed messages. Native sound,
+microphone/camera permission, file saves and non-Windows operation remain
+unverified. The installed WebView2 renderer crashed during an automation
+accessibility snapshot; ordinary clicks and page reload worked, but that does
+not establish accessibility compatibility or identify the crash's cause.
+
+The window must present Piik as an application: Piik owns navigation, settings
+and player controls; the host window owns minimize, maximize and close. Do not
+add browser address/history toolbars or expose browser zoom overlays as product
+controls. This does not remove Piik's existing picture pan/zoom behavior.
+
+[Wry](https://github.com/tauri-apps/wry) supplies the WebView used by Tauri.
+Windows WebView2's [Evergreen runtime](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/evergreen-vs-fixed-version)
+is shared and separately updated; it need not be bundled with each App. That
+reduces Piik's download cost, not the machine's need for a Web engine.
+macOS uses WKWebView and Linux requires WebKitGTK. A missing dynamically linked
+Linux library can prevent process startup, before a window-creation fallback
+could run. Platform distribution and actual media behavior remain evaluation
+questions, not promises established by the Windows window.
+
+The proposed minimal boundary keeps one `app::serve`, one persistent WebView
+profile and the current HTTP(S) frontend and authorization protocol. The shell
+does not expose a generic Native command bridge to remote sites. Failure to
+create the WebView before a session starts can open the same entry in the system
+Browser while retaining the App service. App startup errors still need their
+actual error. Reopening an active session in a Browser is explicit: its separate
+origin storage does not inherit WebView credentials, history or live media.
+
+Client-side site bookmarks would own navigation only. They must remain separate
+from `app_site`, which grants capture and Native room hosting. Save a clean site
+URL and optional label; opening or removing a bookmark does not grant or revoke
+device access. Ordinary HTTP(S) invitations remain valid in either surface and
+retain their complete path, query and fragment until the existing consumer uses
+them. Invitation secrets are not bookmark metadata. A changed public address
+still needs a new address; bookmarks do not provide discovery or identity transfer.
+
+The owner has deferred the former main-UI site rail until client feasibility is
+established. One current site would avoid background session management, but is
+not yet an accepted switching design. Real navigation ends the old page's voice,
+shares, watches and Browser-hosted rooms under their existing owners; App-hosted
+rooms retain the App lifetime. Any later design must make that consequence
+explicit or deliberately retain the affected page. Opening a bookmark list or
+switching full/screen-centred views is presentation only. Cross-surface identity
+transfer is not part of this evaluation.
+
 ## Historical Package Evidence
 
 The runs below exercised the earlier package that bundled Node and an extracted
