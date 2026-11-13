@@ -28,7 +28,8 @@
 .ld-welcome { position: relative; padding: 10px 0 26px; }
 .ld-eyebrow { color: var(--action-text); font-size: 12px; font-weight: 650; margin: 0 0 20px; }
 .ld-welcome h1 { font-size: clamp(32px, 3.5vw, 46px); line-height: 1.28; letter-spacing: -.045em; font-weight: 750; margin: 0 0 20px; }
-.ld-welcome > p:last-child { font-size: 13px; color: var(--muted); line-height: 1.7; margin: 0; }
+.ld-welcome > .ld-description { font-size: 13px; color: var(--muted); line-height: 1.7; margin: 0; }
+.ld-welcome > .lr-welcome { margin-top: 16px; color: var(--muted); font-size: 12px; font-weight: 500; text-align: start; }
 .ld-welcome-mark { float: right; color: var(--action-text); padding: 38px 0 0 18px; transform: rotate(8deg); }
 .ld-join { padding: 20px 0 32px; }
 .ld-join h2, .ld-host h2 { margin: 0 0 12px; font-size: 15px; font-weight: 650; }
