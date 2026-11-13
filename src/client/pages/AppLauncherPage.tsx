@@ -19,6 +19,8 @@ import { useReleaseUpdate } from "../lib/use-release-update";
 const launcherStateSchema = z.object({
   sites: z.array(z.string()),
   startupSite: z.string(),
+  ownedSites: z.array(z.string()).default([]),
+  startupMode: z.enum(["local", "link", ""]).nullish(),
   localAccessPassword: z.string(),
   defaultMode: z.enum(["local", "link"]),
   modes: z.array(z.enum(["local", "link"])).default(["local", "link"]),
@@ -49,6 +51,8 @@ export function AppLauncherPage() {
   const [modes, setModes] = useState<readonly AppMode[]>(["local", "link"]);
   const [sites, setSites] = useState<string[]>([]);
   const [startupSite, setStartupSite] = useState("");
+  const [ownedSites, setOwnedSites] = useState<string[]>([]);
+  const [startupMode, setStartupMode] = useState<AppMode | undefined>();
   const [openOnApproval, setOpenOnApproval] = useState(false);
   const [localAccessPassword, setLocalAccessPassword] = useState("");
   const [error, setError] = useState<{ kind: "load" | "launch"; reason?: string; detail?: string } | null>(null);
@@ -78,7 +82,7 @@ export function AppLauncherPage() {
     } catch { return false; }
   })();
   const approvalCurrent = validSite && sites.includes(requestedSite);
-  const openSiteOnStart = Boolean(approvalCurrent && startupSite === requestedSite);
+  const openSiteOnStart = Boolean(approvalCurrent && (startupSite === requestedSite || startupMode && ownedSites.includes(requestedSite)));
 
   useEffect(() => {
     // The App's saved exact origin owns permission, including repeat connections.
@@ -92,6 +96,7 @@ export function AppLauncherPage() {
     let current = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let restoredSettings = false;
+    let enterOnReady = new URLSearchParams(window.location.search).get("start") === "1";
     let reading = false;
     const readState = () => {
       if (reading || !current) return;
@@ -115,6 +120,7 @@ export function AppLauncherPage() {
           setModes(state.modes);
           setLocalAccessPassword(state.localAccessPassword);
           setLan(state.lan);
+          if (state.startupMode && state.modes.includes(state.startupMode)) setMode(state.startupMode);
           restoredSettings = true;
         }
         setVersion(state.version === "development" && /^[a-f0-9]{40}$/i.test(state.revision)
@@ -124,11 +130,17 @@ export function AppLauncherPage() {
         setStarting(state.starting === true);
         setSites(state.sites);
         setStartupSite(state.startupSite);
+        setStartupMode(state.startupMode || undefined);
+        setOwnedSites(state.ownedSites);
         setAppDebug(state.debug);
         setDebug(state.debug === true);
         setError(previous => state.detail ? { kind: "launch", reason: state.reason, detail: state.detail }
-          : previous?.kind === "load" ? null : previous);
+          : state.target || previous?.kind === "load" ? null : previous);
         setLoading(false);
+        if (enterOnReady && (state.target || state.detail)) {
+          enterOnReady = false;
+          if (state.target) window.location.replace(launchURL(state.target, { debug: state.debug === true, controlPort: state.controlPort }));
+        }
         if (state.starting) timer = setTimeout(() => void readState(), 750);
         setBuild({ version: state.version, revision: state.revision, packageTarget: state.packageTarget });
       })
@@ -174,7 +186,7 @@ export function AppLauncherPage() {
     finally { finish(); setDebugBusy(false); }
   }
 
-  function launchURL(target: string): string {
+  function launchURL(target: string, settings = { debug: debug, controlPort }): string {
     const theme = currentThemePreference();
     const presentation: ClientLaunchPresentation = {
       lang, vis, theme,
@@ -183,7 +195,7 @@ export function AppLauncherPage() {
         ...(theme !== null ? ["theme" as const] : []),
       ],
     };
-    return clientLaunchURL(target, presentation, debug, controlPort);
+    return clientLaunchURL(target, presentation, settings.debug, settings.controlPort);
   }
 
   async function launch(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -237,10 +249,12 @@ export function AppLauncherPage() {
         body: JSON.stringify({ site: nextSite, ...(setting === "site" ? { allowed } : {}) }),
         signal: controller.signal,
       });
-      const result = launcherStateSchema.pick({ sites: true, startupSite: true }).safeParse(await response.json().catch(() => null));
+      const result = launcherStateSchema.pick({ sites: true, startupSite: true, startupMode: true, ownedSites: true }).safeParse(await response.json().catch(() => null));
       if (result.success) {
         setSites(result.data.sites);
         setStartupSite(result.data.startupSite);
+        setStartupMode(result.data.startupMode || undefined);
+        setOwnedSites(result.data.ownedSites);
       }
       if (response.status === 409 && result.success) {
         setSiteError(t("client.connect.changed"));
@@ -356,7 +370,9 @@ export function AppLauncherPage() {
               setSiteError(undefined);
             }}
             startupSite={startupSite}
-            onToggleStartupSite={site => void changeSite(startupSite === site ? "" : site, "startup-site")}
+            ownedStartup={startupMode}
+            ownedSites={ownedSites}
+            onToggleStartupSite={site => void changeSite(startupSite === site || startupMode && ownedSites.includes(site) ? "" : site, "startup-site")}
             localAccessPassword={localAccessPassword}
             onModeChange={setMode}
             onRemoveSite={site => void changeSite(site, "site", false, false)}

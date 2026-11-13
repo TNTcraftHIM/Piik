@@ -40,7 +40,11 @@ func TestMain(tests *testing.M) {
 			os.Exit(7)
 		}
 		if mode == "ready" || mode == "ready-failed" {
-			fmt.Println(`{"message":"https://test-room.trycloudflare.com"}`)
+			origin := os.Getenv("PIIK_APP_TUNNEL_ORIGIN")
+			if origin == "" {
+				origin = "https://test-room.trycloudflare.com"
+			}
+			fmt.Printf("{\"message\":%q}\n", origin)
 			fmt.Println(`{"message":"Registered tunnel connection"}`)
 		}
 		if mode == "ready-failed" {
@@ -421,7 +425,7 @@ func TestHungBrowserHandoffDoesNotBlockLauncherOrSiteExit(t *testing.T) {
 				t.Fatal(err)
 			}
 			if mode == "starred-site" || mode == "revoked-site" {
-				if err := launcher.SaveStartupSite(configPath, "https://share.example"); err != nil {
+				if err := launcher.SaveStartupSite(configPath, launcher.StartupIntent{Site: "https://share.example"}); err != nil {
 					t.Fatal(err)
 				}
 				if mode == "starred-site" {
@@ -430,7 +434,7 @@ func TestHungBrowserHandoffDoesNotBlockLauncherOrSiteExit(t *testing.T) {
 			}
 			if mode == "starred-second-site" {
 				config.SetApprovedSites([]string{"https://first.example", "https://share.example"})
-				if err := launcher.SaveStartupSite(configPath, "https://share.example"); err != nil {
+				if err := launcher.SaveStartupSite(configPath, launcher.StartupIntent{Site: "https://share.example"}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -631,6 +635,124 @@ func TestSavedSiteAllowsBrowserOriginAtNativeControl(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestOwnedStartupUsesFreshInvitation(t *testing.T) {
+	t.Setenv("PIIK_APP_TUNNEL_FIXTURE", "ready")
+	t.Setenv("PIIK_APP_TUNNEL_STARTED", filepath.Join(t.TempDir(), "started"))
+	executable, _ := os.Executable()
+	path := filepath.Join(t.TempDir(), "client.json")
+	config, err := appconfig.LoadOrCreate(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := "https://first-start.trycloudflare.com"
+	config.SetApprovedSites([]string{old, "https://external.example"})
+	for turn := 0; turn < 2; turn++ {
+		invitation := old
+		if turn == 1 {
+			invitation = "https://next-start.trycloudflare.com"
+		}
+		t.Setenv("PIIK_APP_TUNNEL_ORIGIN", invitation)
+		listener, err := net.Listen("tcp4", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		port := listener.Addr().(*net.TCPAddr).Port
+		listener.Close()
+		ctx, cancel := context.WithCancel(t.Context())
+		t.Cleanup(cancel)
+		control, err := loopback.Start(ctx, loopback.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		opened := make(chan string, 4)
+		console := newConsole(cancel, true)
+		console.openURL = func(target string) error { opened <- target; return nil }
+		done := make(chan error, 1)
+		go func() {
+			done <- runLauncher(ctx, Options{Port: port, console: console, TunnelProcess: executable}, path, config, control, func(*Options, appconfig.Config) error { return nil })
+		}()
+		var entry string
+		select {
+		case entry = <-opened:
+		case <-time.After(5 * time.Second):
+			t.Fatal("missing startup entry")
+		}
+		parsed, _ := url.Parse(entry)
+		origin := parsed.Scheme + "://" + parsed.Host
+		api := origin + "/api/client-launcher"
+		post := func(route, body string) map[string]any {
+			req, _ := http.NewRequest(http.MethodPost, api+route, strings.NewReader(body))
+			req.Header.Set("Origin", origin)
+			req.Header.Set("Content-Type", "application/json")
+			response, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			var result map[string]any
+			if err := json.NewDecoder(response.Body).Decode(&result); err != nil || response.StatusCode != 200 {
+				t.Fatalf("%s: %d %+v %v", route, response.StatusCode, result, err)
+			}
+			return result
+		}
+		if turn == 0 {
+			post("/launch", `{"mode":"link","language":"en","localAccessPassword":""}`)
+		} else if parsed.Query().Get("start") != "1" || strings.Contains(entry, old) {
+			t.Fatalf("stale startup entry: %s", entry)
+		}
+		var state map[string]any
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			response, err := http.Get(api)
+			if err != nil {
+				t.Fatal(err)
+			}
+			json.NewDecoder(response.Body).Decode(&state)
+			response.Body.Close()
+			if state["target"] != "" {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("missing ready state: %+v", state)
+			}
+			time.Sleep(time.Millisecond)
+		}
+		if !strings.HasPrefix(state["target"].(string), fmt.Sprintf("http://127.0.0.1:%d/", port)) {
+			t.Fatal(state)
+		}
+		if turn == 0 {
+			result := post("/startup-site", fmt.Sprintf(`{"site":%q}`, old))
+			if result["startupSite"] != old {
+				t.Fatal(result)
+			}
+			stored, err := launcher.LoadStartupSite(path, config.ApprovedSites()...)
+			if err != nil || stored.Owned == nil || stored.Owned.Mode != launcher.ModeLink || stored.Site != "" {
+				t.Fatalf("not owned: %+v %v", stored, err)
+			}
+		} else {
+			if state["startupSite"] != invitation {
+				t.Fatalf("stale star: %+v", state)
+			}
+			post("/startup-site", `{"site":"https://external.example"}`)
+			stored, err := launcher.LoadStartupSite(path, config.ApprovedSites()...)
+			if err != nil || stored.Site != "https://external.example" || stored.Owned != nil {
+				t.Fatalf("external startup changed: %+v %v", stored, err)
+			}
+		}
+		cancel()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("App did not retire")
+		}
+		control.Close()
+		console.finish(nil, "")
 	}
 }
 

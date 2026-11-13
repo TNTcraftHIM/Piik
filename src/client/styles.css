@@ -1814,7 +1814,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   .lr-top-right { gap: 8px; }
   .lr-leds { gap: 4px; padding: 6px; }
   .lr-top .lr-btn.is-compact { width: var(--control-compact-size); padding: 0; }
-  .lr-top .lr-btn.is-compact .lr-cap { display: none; }
+  .lr-top .lr-btn.is-compact .lr-cap:not([popover] .lr-cap) { display: none; }
   .lr-top .lr-header-options[popover] .lr-btn.is-compact { width: auto; padding-inline: 12px; }
   .lr-top .lr-header-options[popover] .lr-cap { display: inline; }
   .lr-top .lr-header-options[popover] .lr-help-content nav .lr-btn { width: 100%; }

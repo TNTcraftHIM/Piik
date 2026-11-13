@@ -61,6 +61,7 @@ type Options struct {
 	CaptureProcess string
 	TunnelProcess  string
 	Ready          func(string)
+	localReady     func(string, string)
 	console        *console
 	logger         *slog.Logger
 }
@@ -274,7 +275,7 @@ func runLauncher(
 		launcher.Options{
 			DefaultMode: mode,
 			StartupSite: startupSite,
-			SaveStartupSite: func(site string) error {
+			SaveStartupSite: func(site launcher.StartupIntent) error {
 				return launcher.SaveStartupSite(configPath, site)
 			},
 			Sites: config.ApprovedSites(), Version: buildinfo.Version(), Revision: buildinfo.Revision,
@@ -324,15 +325,18 @@ func runLauncher(
 	if err != nil {
 		return errors.Join(failure.NativeControl, err)
 	}
-	if !automatic && startupSite == "" {
+	if !automatic && (startupSite.Site == "" || startupSite.Owned != nil) {
+		if startupSite.Owned != nil {
+			launch.Begin()
+		}
 		options.console.show(consoleView{state: "setup", entry: launch.URL()})
-		options.console.openBrowser(launch.URL())
+		options.console.openBrowser(launch.EntryURL())
 	} else if initialConfig.Site != "" && !options.Local && !options.Link {
 		// A starred Site changes only the opening page. --site also remains an
 		// explicit approval shortcut; the launcher can start a Local room later.
 		site := initialConfig.Site
 		if !automatic {
-			site = startupSite
+			site = startupSite.Site
 		}
 		openSite(site, options, control.Endpoint().Port)
 	}
@@ -365,13 +369,14 @@ func runLauncher(
 		if !directRoom {
 			options.DisableBrowser = true
 		}
-		ready := make(chan string, 1)
+		type localResult struct{ target, invitation string }
+		ready := make(chan localResult, 1)
 		onReady := options.Ready
-		options.Ready = func(target string) {
+		options.localReady = func(target, invitation string) {
 			if onReady != nil {
 				onReady(target)
 			}
-			ready <- target
+			ready <- localResult{target, invitation}
 		}
 		runtimeContext, cancelRuntime := context.WithCancel(ctx)
 		runtimeDone := make(chan struct{})
@@ -383,7 +388,7 @@ func runLauncher(
 		var exitErr error
 		select {
 		case target := <-ready:
-			launch.SetResult(target, nil)
+			launch.SetReady(target.target, target.invitation, selection)
 			select {
 			case <-runtimeDone:
 			case exitErr = <-launch.Done():
@@ -398,9 +403,14 @@ func runLauncher(
 		return errors.Join(exitErr, runtimeErr)
 	}
 	var roomErr error
+	startupOwned := startupSite.Owned
 	for {
 		var selection launcher.Selection
-		if directRoom {
+		if !automatic && startupOwned != nil {
+			selection = launcher.Selection{Mode: startupOwned.Mode, LANAddress: startupOwned.LANAddress, LocalAccessPassword: initialConfig.LocalAccessPassword}
+			startupOwned = nil
+			launch.Begin()
+		} else if directRoom {
 			selection = launcher.Selection{Mode: launcher.ModeLocal, LocalAccessPassword: initialConfig.LocalAccessPassword}
 			if initialOptions.Link {
 				selection.Mode = launcher.ModeLink
@@ -636,7 +646,9 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 	if !options.DisableBrowser {
 		options.console.openBrowser(launchURL)
 	}
-	if options.Ready != nil {
+	if options.localReady != nil {
+		options.localReady(launchURL, view.invite)
+	} else if options.Ready != nil {
 		options.Ready(launchURL)
 	}
 	var tunnelDone <-chan struct{}

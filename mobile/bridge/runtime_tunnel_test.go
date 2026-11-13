@@ -60,7 +60,7 @@ func TestCloseJoinsLocalControlRetirementWithoutFalseError(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.launchDone = make(chan struct{})
-	go func() { defer close(r.launchDone); r.runLauncher("") }()
+	go func() { defer close(r.launchDone); r.runLauncher("", nil) }()
 	launcherOrigin := strings.TrimSuffix(r.launcher.URL(), "/client")
 	request, _ := http.NewRequest("POST", launcherOrigin+"/api/client-launcher/launch", strings.NewReader(`{"mode":"link","language":"en"}`))
 	request.Header.Set("Origin", launcherOrigin)
@@ -256,6 +256,42 @@ func TestStartupAndSiteRevocationCommitOneOriginAuthority(t *testing.T) {
 	if status := <-launched; status != http.StatusOK {
 		t.Fatalf("startup = %d", status)
 	}
+	platform.siteChanged = nil
+	if post("site", `{"site":"https://android-fixture.trycloudflare.com","allowed":true}`) != 200 ||
+		post("startup-site", `{"site":"https://android-fixture.trycloudflare.com"}`) != 200 {
+		t.Fatal("owned startup preference was not saved")
+	}
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r, err = Start(&testPlatform{}, "", `{"platform":"android","provider":"fixture","encoders":[]}`, dir, t.TempDir(), executable, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	if r.EntryURL() != r.URL()+"?start=1" {
+		t.Fatal("mobile startup reused the old invitation")
+	}
+	deadline = time.Now().Add(5 * time.Second)
+	for {
+		response, err := client.Get(strings.TrimSuffix(r.URL(), "/client") + "/api/client-launcher")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var state struct{ Target, StartupSite, StartupMode string }
+		json.NewDecoder(response.Body).Decode(&state)
+		response.Body.Close()
+		if state.Target != "" {
+			if state.Target == target || state.StartupSite != "https://android-fixture.trycloudflare.com" || state.StartupMode != "link" {
+				t.Fatalf("bad restored startup: %+v", state)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("owned startup did not reach Ready without a browser command")
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 type runtimePlatform struct {
@@ -369,7 +405,7 @@ func TestLauncherRetriesFailedStartupAndKeepsSuccessfulRoom(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.launchDone = make(chan struct{})
-	go func() { defer close(r.launchDone); r.runLauncher("") }()
+	go func() { defer close(r.launchDone); r.runLauncher("", nil) }()
 	endpoint := strings.TrimSuffix(r.launcher.URL(), "/client") + "/api/client-launcher/launch"
 	client := &http.Client{Timeout: 5 * time.Second}
 	post := func(body string) *http.Response {

@@ -13,15 +13,15 @@ fallback. Exit code zero requires all of these checks in one 360-frame run:
 
 - adapter-LUID-bound hardware H.264 enumeration;
 - asynchronous and D3D11-aware transform readback;
-- exact low-latency, CBR, 3 Mbps and 60-frame GOP property
-  readback, plus Baseline media-type request/readback and output-order
+- exact CBR, 3 Mbps and 60-frame GOP property
+  readback, plus Constrained Baseline media-type request/readback and output-order
   no-reordering checks;
 - 360 GPU-surface NV12 inputs and 360 ordered outputs;
 - one live `3 Mbps -> 1.5 Mbps -> 3 Mbps` rate change whose three equal phases
   lower and then restore actual encoded bytes without recreating the MFT;
 - Annex-B SPS/PPS/IDR at frames 0, 60, 120, 180, 240, and 300;
-- an SPS `profile-level-id` exactly present in the fixture's default Pion
-  mode-1 fmtp set; and
+- an SPS `profile-level-id` accepted by the production Constrained Baseline
+  coding-tool and level check; and
 - process-and-adapter-attributed Windows `VideoEncode` activity.
 
 The generated executable must stay outside the repository. From PowerShell:
@@ -42,7 +42,7 @@ encoded bitstream. A nonzero exit is a measured no-go at the reported stage;
 it must not be worked around by adding a software retry.
 
 Pion transport and browser decode remain separate from this offline fixture;
-the product path reuses its exact `42c01f`, Annex-B, adapter-bound hardware
+the product path reuses the same Constrained Baseline, Annex-B, adapter-bound hardware
 contract without adding those network concerns to this executable.
 
 Primary API references, accessed 2026-08-20:

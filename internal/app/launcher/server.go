@@ -52,7 +52,7 @@ type Options struct {
 	Modes               []Mode
 	DefaultMode         Mode
 	Sites               []string
-	StartupSite         string
+	StartupSite         StartupIntent
 	Version             string
 	Revision            string
 	ControlPort         int
@@ -60,7 +60,7 @@ type Options struct {
 	Debug               bool
 	LANAddress          string
 	ChangeSite          func(string, bool) ([]string, error)
-	SaveStartupSite     func(string) error
+	SaveStartupSite     func(StartupIntent) error
 	EnableDebug         func() error
 }
 
@@ -75,7 +75,7 @@ type Server struct {
 	static              http.Handler
 	client              http.Handler
 	sites               []string
-	startupSite         string
+	startupSite         StartupIntent
 	modes               []Mode
 	defaultMode         Mode
 	localAccessPassword string
@@ -85,7 +85,7 @@ type Server struct {
 	debug               bool
 	lanAddress          string
 	changeSite          func(string, bool) ([]string, error)
-	saveStartupSite     func(string) error
+	saveStartupSite     func(StartupIntent) error
 	enableDebug         func() error
 	selection           chan Selection
 	done                chan error
@@ -97,10 +97,12 @@ type Server struct {
 }
 
 type launchAttempt struct {
-	ready     chan struct{}
-	completed bool
-	target    string
-	err       error
+	ready      chan struct{}
+	completed  bool
+	target     string
+	err        error
+	invitation string
+	selection  *Selection
 }
 
 // Start serves the launcher page and its API on a loopback port. assets is the
@@ -173,8 +175,11 @@ func (server *Server) EntryURL() string {
 	server.mu.Lock()
 	startup := server.startupSite
 	server.mu.Unlock()
-	if startup != "" {
-		return EntryURL(startup+"/", server.controlPort)
+	if startup.Owned != nil {
+		return server.URL() + "?start=1"
+	}
+	if startup.Site != "" {
+		return EntryURL(startup.Site+"/", server.controlPort)
 	}
 	return server.URL()
 }
@@ -202,13 +207,50 @@ func (server *Server) begin() (*launchAttempt, bool) {
 	return server.attempt, true
 }
 
+// SetReady records the actual entry, invitation and selection together.
+func (server *Server) SetReady(target, invitation string, selection Selection) {
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	server.attempt.invitation, server.attempt.selection = invitation, &selection
+	server.setResult(target, nil)
+}
+
+func (server *Server) ownedOrigins() []string {
+	if server.attempt == nil || server.attempt.err != nil || server.attempt.selection == nil {
+		return []string{}
+	}
+	target, _ := url.Parse(server.attempt.target)
+	return []string{target.Scheme + "://" + target.Host, server.attempt.invitation}
+}
+
+func (server *Server) startupMode() Mode {
+	if server.startupSite.Owned != nil {
+		return server.startupSite.Owned.Mode
+	}
+	return ""
+}
+
+func (server *Server) startupOrigin() string {
+	if server.startupSite.Owned == nil {
+		return server.startupSite.Site
+	}
+	if server.attempt != nil && server.attempt.err == nil {
+		return server.attempt.invitation
+	}
+	return ""
+}
+
 // SetResult is called by the serial room owner after readiness or full retirement.
 func (server *Server) SetResult(target string, resultErr error) {
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	server.setResult(target, resultErr)
+}
+
+func (server *Server) setResult(target string, resultErr error) {
 	if resultErr == nil && !validTarget(target) {
 		resultErr = errors.New("App target is invalid")
 	}
-	server.mu.Lock()
-	defer server.mu.Unlock()
 	attempt := server.attempt
 	attempt.target = target
 	attempt.err = resultErr
@@ -300,7 +342,9 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 	}
 	state := map[string]any{
 		"sites":               slices.Clone(server.sites),
-		"startupSite":         server.startupSite,
+		"startupSite":         server.startupOrigin(),
+		"ownedSites":          server.ownedOrigins(),
+		"startupMode":         server.startupMode(),
 		"localAccessPassword": server.localAccessPassword,
 		"version":             server.version,
 		"revision":            server.revision,
@@ -357,7 +401,7 @@ func (server *Server) handleSite(response http.ResponseWriter, request *http.Req
 	server.mu.Lock()
 	defer server.mu.Unlock()
 	result := func() map[string]any {
-		return map[string]any{"sites": slices.Clone(server.sites), "startupSite": server.startupSite}
+		return map[string]any{"sites": slices.Clone(server.sites), "startupSite": server.startupOrigin(), "ownedSites": server.ownedOrigins(), "startupMode": server.startupMode()}
 	}
 	if startupOnly {
 		if site != "" && !slices.Contains(server.sites, site) {
@@ -368,11 +412,16 @@ func (server *Server) handleSite(response http.ResponseWriter, request *http.Req
 			http.Error(response, "startup preference is unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		if err := server.saveStartupSite(site); err != nil {
+		intent := StartupIntent{Site: site}
+		if site != "" && slices.Contains(server.ownedOrigins(), site) {
+			selection := server.attempt.selection
+			intent = StartupIntent{Owned: &StartupLaunch{Mode: selection.Mode, LANAddress: selection.LANAddress}}
+		}
+		if err := server.saveStartupSite(intent); err != nil {
 			writeJSON(response, http.StatusServiceUnavailable, result())
 			return
 		}
-		server.startupSite = site
+		server.startupSite = intent
 		writeJSON(response, http.StatusOK, result())
 		return
 	}
@@ -383,9 +432,9 @@ func (server *Server) handleSite(response http.ResponseWriter, request *http.Req
 	current, err := server.changeSite(site, *change.Allowed)
 	// Permission can be revoked even if its media cleanup times out.
 	server.sites = current
-	if server.startupSite != "" && !slices.Contains(current, server.startupSite) {
-		server.startupSite = ""
-		err = errors.Join(err, server.saveStartupSite(""))
+	if !*change.Allowed && (server.startupSite.Site == site || server.startupSite.Owned != nil && slices.Contains(server.ownedOrigins(), site)) {
+		server.startupSite = StartupIntent{}
+		err = errors.Join(err, server.saveStartupSite(StartupIntent{}))
 	}
 	if err != nil {
 		failure := result()

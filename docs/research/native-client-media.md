@@ -540,11 +540,19 @@ The reporter retracted the initial CBR bitrate-ceiling diagnosis after finding
 that the experimental fixture changed bitrate during the measured interval.
 That switching belongs to `PIIK_H264_FIXTURE` in `windows/main.cpp`, not live
 capture. The corrected experiment reports CBR reaching its requested bitrate.
-Production `h264_encoder.cpp` explicitly requests and validates Baseline; the
+Production `h264_encoder.cpp` explicitly requests and validates Constrained Baseline; the
 Browser's negotiated `profile-level-id` alone is not an inspection of emitted
 SPS. The later experimental CABAC result cannot establish the production
 Baseline bitstream's behavior. Microsoft's [encoder reference](https://learn.microsoft.com/en-us/windows/win32/medfound/h-264-video-encoder)
 distinguishes profile, rate control and optional quality/speed settings.
+
+The MFT request uses `eAVEncH264VProfile_ConstrainedBase` (256), matching the
+negotiated coding-tool subset. Microsoft's [profile enumeration](https://learn.microsoft.com/en-us/windows/win32/api/codecapi/ne-codecapi-eavench264vprofile)
+distinguishes it from ordinary Baseline (66). In [#538](https://github.com/TNTcraftHIM/Piik/issues/538),
+an AMD encoder produced `420420` for 66 and `424020` for 256; only the latter
+passes the unchanged Constrained Baseline bitstream check. Request and readback
+must use the same profile; relaxing the emitted-SPS check would change the
+negotiated contract.
 
 The original 720p comparison remains unresolved. An equal-content comparison
 must preserve actual bitrate, frame rate, latency and production codec settings,
