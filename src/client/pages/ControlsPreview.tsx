@@ -97,6 +97,7 @@ export function ControlsPreview() {
   const notify = () => setFeedback(en ? "Got it. This is a preview." : "收到，只在预览里演示。" );
   return <>
     <div className="cp-grid" id="control-preview">
+      <a className="lr-btn" href="/__tooltip-preview?launcher-design">{en ? "3.0 launcher design" : "3.0 启动页设计原型"}</a>
       <section id="button-preview" className="cp-card">
         <header><span className="cp-number">01</span><h2>{en ? "Buttons, with a little give" : "按钮，按下去有回应。"}</h2></header>
         <p>{en ? "Hover, press, or use Tab and Enter. The disabled one keeps its explanation." : "悬停、按下，或用 Tab 和回车试试。禁用时也能查看原因。"}</p>

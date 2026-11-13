@@ -17,6 +17,7 @@ import { ChannelGuidePreview } from "./ChannelGuidePreview";
 import { ChannelRoomPreview } from "./ChannelRoomPreview";
 import { ChannelIntegrationPreview } from "./ChannelIntegrationPreview";
 import { GlyphMotionPreview } from "./GlyphMotionPreview";
+import { LauncherDesignPreview } from "./LauncherDesignPreview";
 
 const EXAMPLES: { label: string; kind: HintKind | ComicKind; tone: ComicTone; motion: ComicMotion; text: CopyKey }[] = [
   { label: "说明 / Neutral", kind: "hint-volume", tone: "off", motion: "demo", text: "playback.volume" },
@@ -62,6 +63,7 @@ function PreviewCard({ kind, tone, motion, label, text }: {
 }
 
 export function TooltipPreviewPage() {
+  if (new URLSearchParams(location.search).has("launcher-design")) return <LauncherDesignPreview />;
   if (new URLSearchParams(location.search).has("glyph-motion")) return <GlyphMotionPreview />;
   if (new URLSearchParams(location.search).has("channel-entry")) return <ChannelRoomPreview firstUse />;
   if (new URLSearchParams(location.search).has("channel-integrations")) return <ChannelIntegrationPreview />;
