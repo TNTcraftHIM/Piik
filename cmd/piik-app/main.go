@@ -12,6 +12,7 @@ import (
 	"os"
 
 	"github.com/TNTcraftHIM/Piik/internal/app"
+	"github.com/TNTcraftHIM/Piik/internal/app/roomeffects"
 	"github.com/TNTcraftHIM/Piik/internal/processsignal"
 )
 
@@ -25,6 +26,7 @@ func main() {
 
 func run(args []string) int {
 	var options app.Options
+	options.RoomEffects = roomeffects.DefaultOptions()
 	flags := flag.NewFlagSet("piik-app", flag.ContinueOnError)
 	flags.Func("site", "save and open a Piik Site origin", func(value string) error {
 		options.Site = value
@@ -40,10 +42,24 @@ func run(args []string) int {
 	flags.StringVar(&options.ConfigPath, "config", "", "path to the App configuration file")
 	flags.StringVar(&options.LANAddress, "lan-address", "", "LAN IPv4 address used in Local invitations")
 	flags.IntVar(&options.Port, "port", app.DefaultLocalPort, "Local Piik server port")
+	flags.BoolVar(&options.RoomEffects.Danmaku, "danmaku", false, "show Viewer chat over the Windows desktop")
+	flags.Float64Var(&options.RoomEffects.Size, "danmaku-size", options.RoomEffects.Size, "desktop danmaku font size multiplier")
+	flags.Float64Var(&options.RoomEffects.Speed, "danmaku-speed", options.RoomEffects.Speed, "desktop danmaku speed multiplier")
+	flags.Float64Var(&options.RoomEffects.Opacity, "danmaku-opacity", options.RoomEffects.Opacity, "desktop danmaku opacity from 0 to 1")
+	flags.StringVar(&options.RoomEffects.Area, "danmaku-area", options.RoomEffects.Area, "desktop danmaku vertical percentages, TOP:BOTTOM")
+	flags.BoolVar(&options.RoomEffects.AnnounceJoin, "announce-join", false, "speak new Viewer arrivals on Windows")
 	if err := flags.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return 0
 		}
+		return 2
+	}
+	if err := options.RoomEffects.Validate(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	if options.SiteSet && (options.RoomEffects.Danmaku || options.RoomEffects.AnnounceJoin) {
+		fmt.Fprintln(os.Stderr, "desktop room effects require a Local room or Public invite")
 		return 2
 	}
 	options.DisableBrowser = os.Getenv("PIIK_CLIENT_GATE_NO_BROWSER") == "true"

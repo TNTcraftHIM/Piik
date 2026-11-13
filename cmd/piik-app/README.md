@@ -123,6 +123,26 @@ To bypass the launcher in development or automation, select a mode explicitly:
 | `--link` | Temporary Public invite |
 | `--site <origin>` | Save and open a Piik Site |
 
+### Windows desktop room effects
+
+With a Local room or Public invite, open the Host page on the computer running
+App. Enable either effect using the terminal:
+
+```powershell
+piik-app.exe --local --danmaku --danmaku-size=1 --danmaku-speed=1 --danmaku-opacity=0.8 --danmaku-area=5:30 --announce-join
+```
+
+- `--danmaku` scrolls live Viewer chat right to left on the primary display while
+  sharing. Windowed and borderless applications are supported. The overlay
+  passes mouse input through. Size is a multiplier from 0.5 to 3, speed from
+  0.25 to 4, opacity from 0 to 1, and area is a pair of vertical percentages
+  measured from the top of the display.
+- `--announce-join` uses the Windows default speech voice when a Viewer joins,
+  including before sharing begins. A brief reconnection keeps the same
+  admission. Sharing system sound may also transmit the announcement.
+
+Both effects default to off.
+
 ## Upgrading
 
 App and site must use the same major version; **2.x and 1.x cannot be used together**.

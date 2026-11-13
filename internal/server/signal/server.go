@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"sync"
@@ -97,6 +98,9 @@ type Options struct {
 	AfterFunc func(time.Duration, func()) func() bool
 	// Logger receives signaling failures; nil uses slog.Default().
 	Logger *slog.Logger
+	// LocalRoomEffect runs under the signaling lock and must never block.
+	LocalHostOrigin string
+	LocalRoomEffect func(RoomEffect)
 }
 
 // viewerQualityEvidenceGate rejects stale or repeated evidence for the current
@@ -161,6 +165,8 @@ type Server struct {
 	now                       func() int64
 	afterFunc                 func(time.Duration, func()) func() bool
 	logger                    *slog.Logger
+	localHostOrigin           string
+	localRoomEffect           func(RoomEffect)
 
 	authenticationTimeoutMs       int
 	viewerDisconnectGraceMs       int
@@ -218,6 +224,8 @@ func New(options Options) (*Server, error) {
 		now:                           options.Now,
 		afterFunc:                     options.AfterFunc,
 		logger:                        options.Logger,
+		localHostOrigin:               options.LocalHostOrigin,
+		localRoomEffect:               options.LocalRoomEffect,
 		authenticationTimeoutMs:       orDefault(options.AuthenticationTimeoutMs, defaultAuthenticationTimeoutMs),
 		viewerDisconnectGraceMs:       orDefault(options.ViewerDisconnectGraceMs, defaultViewerDisconnectGraceMs),
 		heartbeatIntervalMs:           orDefault(options.HeartbeatIntervalMs, defaultHeartbeatIntervalMs),
@@ -384,7 +392,11 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	conn.SetReadLimit(protocol.MaxSignalBytes)
-	sess = s.accept(conn, siteAccessAuthenticated)
+	remoteIP, _, _ := net.SplitHostPort(request.RemoteAddr)
+	localHost := s.localRoomEffect != nil && net.ParseIP(remoteIP).IsLoopback() && request.TLS == nil &&
+		request.Header.Get("Origin") == s.localHostOrigin &&
+		"http://"+request.Host == s.localHostOrigin
+	sess = s.accept(conn, siteAccessAuthenticated, localHost)
 }
 
 // rejectUpgrade is `HTTP/1.1 {status} {message}\r\nConnection: close\r\n
@@ -926,6 +938,7 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 	if participant.Role == protocol.RoleViewer {
 		s.clearViewerEvidence(roomID, participant.PeerID)
 	}
+	_, reconnecting := s.viewerGraceTimers[viewerKey(roomID, participant.PeerID)]
 	s.clearViewerGrace(roomID, participant.PeerID)
 	mediaActive := participant.Role == protocol.RoleHost && shareGeneration != ""
 	if participant.Role == protocol.RoleViewer {
@@ -1054,6 +1067,13 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 	}
 
 	s.sendViewerPresence(roomID)
+	if participant.Role == protocol.RoleViewer && !reconnecting && participant.ReplacedSessionID == "" {
+		name := ""
+		if displayName != nil {
+			name = *displayName
+		}
+		s.emitRoomEffect(roomID, ViewerArrived, name)
+	}
 
 	if participant.Role == protocol.RoleHost && mediaActive {
 		for _, viewer := range connectedViewers {

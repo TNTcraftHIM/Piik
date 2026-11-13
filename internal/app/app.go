@@ -31,6 +31,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecontrol"
 	"github.com/TNTcraftHIM/Piik/internal/app/publictunnel"
 	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
+	"github.com/TNTcraftHIM/Piik/internal/app/roomeffects"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	serverapp "github.com/TNTcraftHIM/Piik/internal/server/app"
 	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
@@ -60,6 +61,7 @@ type Options struct {
 	LogDir         string
 	CaptureProcess string
 	TunnelProcess  string
+	RoomEffects    roomeffects.Options
 	Ready          func(string)
 	localReady     func(string, string)
 	console        *console
@@ -598,11 +600,15 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(options.console.logWriter(), nil))
 	}
+	effects := roomeffects.Start(ctx, options.RoomEffects, logger)
+	defer effects.Close()
 	localServer, err := serverapp.New(serverapp.Options{
-		Config:    localConfig,
-		Listeners: listeners,
-		Assets:    webassets.FS(),
-		Logger:    logger,
+		Config:          localConfig,
+		Listeners:       listeners,
+		Assets:          webassets.FS(),
+		Logger:          logger,
+		LocalHostOrigin: fmt.Sprintf("http://127.0.0.1:%d", options.Port),
+		LocalRoomEffect: effects.Handler(),
 	})
 	if err != nil {
 		return errors.Join(failure.LocalServer, err)

@@ -59,4 +59,7 @@ func (s *Server) handleRoomInteraction(sess *session, actor *authenticatedSessio
 	for _, viewer := range s.store.GetConnectedViewers(actor.roomID) {
 		deliver(viewer.SessionID)
 	}
+	if actor.role == protocol.RoleViewer && message.Payload.Kind == "chat" {
+		s.emitRoomEffect(actor.roomID, ViewerChat, message.Payload.Text)
+	}
 }

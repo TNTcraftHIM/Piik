@@ -60,7 +60,9 @@ type Options struct {
 	// Now returns Unix milliseconds; nil uses the wall clock.
 	Now func() int64
 	// Logger receives the request-failure record; nil uses slog.Default().
-	Logger *slog.Logger
+	Logger          *slog.Logger
+	LocalHostOrigin string
+	LocalRoomEffect func(signal.RoomEffect)
 
 	AuthenticationTimeoutMs             int
 	ViewerDisconnectGraceMs             int
@@ -173,6 +175,8 @@ func New(options Options) (*Server, error) {
 		MaxUnauthenticatedConnections: options.MaxUnauthenticatedSignalConnections,
 		AfterFunc:                     options.AfterFunc,
 		Logger:                        logger,
+		LocalHostOrigin:               options.LocalHostOrigin,
+		LocalRoomEffect:               options.LocalRoomEffect,
 	}
 	server.httpServer = &http.Server{
 		Handler:           server,

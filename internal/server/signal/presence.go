@@ -191,6 +191,7 @@ func (s *Server) stopSharing(roomID string) {
 		if host, connected := s.store.GetConnectedHost(roomID); connected {
 			if sess := s.sessionsByID[host.SessionID]; sess != nil && sess.authenticated != nil &&
 				sess.authenticated.shareGeneration == current.generation {
+				sess.clearRoomEffectShare()
 				sess.authenticated.shareGeneration = ""
 			}
 		}

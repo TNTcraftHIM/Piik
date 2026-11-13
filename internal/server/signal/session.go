@@ -63,6 +63,11 @@ type session struct {
 	inputEndpoint              string
 	inputSecret                string
 	nextInteractionAtMs        int64
+	localHost                  bool
+	roomEffectHost             context.Context
+	stopRoomEffectHost         context.CancelFunc
+	roomEffectShare            context.Context
+	stopRoomEffectShare        context.CancelFunc
 
 	// authStop stops the authentication deadline; authGeneration is
 	// bumped whenever the timer is cleared so a callback that lost the
@@ -121,6 +126,9 @@ func (sess *session) close(code websocket.StatusCode, reason string) {
 		return
 	}
 	sess.closeQueued = true
+	if sess.stopRoomEffectHost != nil {
+		sess.stopRoomEffectHost()
+	}
 	sess.queue = append(sess.queue, outbound{close: true, code: code, reason: reason})
 	sess.notify()
 }
@@ -146,12 +154,13 @@ func (sess *session) clearAuthenticationTimer() {
 }
 
 // accept counts the slot and starts both goroutines. mu must be held.
-func (s *Server) accept(conn *websocket.Conn, siteAccessAuthenticated bool) *session {
+func (s *Server) accept(conn *websocket.Conn, siteAccessAuthenticated, localHost bool) *session {
 	if !s.hasConnectionCapacity() {
 		go func() { _ = conn.CloseNow() }()
 		return nil
 	}
 	sess := newSession(conn, siteAccessAuthenticated)
+	sess.localHost = localHost
 	s.armAuthenticationTimer(sess)
 	s.sessions.Set(sess, struct{}{})
 	s.sessionsByID[sess.sessionID] = sess
