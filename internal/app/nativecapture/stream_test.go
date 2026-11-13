@@ -94,6 +94,9 @@ func TestCaptureStopHelper(t *testing.T) {
 	if err := writeFrame(os.Stdout, Frame{Kind: FrameStatus, Data: []byte("ready")}); err != nil {
 		os.Exit(2)
 	}
+	if mode == "buffered-exit" {
+		os.Exit(0)
+	}
 	if mode == "unresponsive" {
 		time.Sleep(10 * time.Second)
 		os.Exit(3)
@@ -115,6 +118,34 @@ func TestCaptureStopHelper(t *testing.T) {
 		os.Exit(5)
 	}
 	os.Exit(0)
+}
+
+func TestCaptureOutputRemainsReadableAfterProcessExit(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := startStreamWithEnvironment(t.Context(), executable,
+		[]string{"-test.run=^TestCaptureStopHelper$"}, []string{"PIIK_CAPTURE_STOP_FIXTURE=buffered-exit"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	select {
+	case err := <-stream.Done():
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("fixture did not exit before its buffered output was read")
+	}
+	frame, err := stream.Read()
+	if err != nil || frame.Kind != FrameStatus || string(frame.Data) != "ready" {
+		t.Fatalf("process retirement lost its final frame: %+v, %v", frame, err)
+	}
+	if _, err := stream.Read(); !errors.Is(err, io.EOF) {
+		t.Fatalf("drained output did not end at EOF: %v", err)
+	}
 }
 
 func TestCaptureFailureSurvivesProcessRetirementWithoutDebugLogging(t *testing.T) {
