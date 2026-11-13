@@ -156,7 +156,13 @@ mirror rules. [Android build instructions](../../mobile/README.md#signed-release
 own signing input and installation details.
 
 Public Release attachments contain the App ZIPs/APK and Server runtime archives
-for the registered package targets. Package descriptors (`.release.json`), file manifests (`.manifest.tsv`)
+for the registered package targets. An updater-capable release also carries
+`update.json` and `update.json.sig`: one signed index derived from those verified
+packages, binding their version, revision, target, filename, size and digest.
+The same signed bytes are mirrored; published manual-only releases are not given
+new update metadata on a retry. [Signing operations](../operations/github.md#app-update-signing)
+owns the publisher's key inputs.
+Package descriptors (`.release.json`), file manifests (`.manifest.tsv`)
 and standalone `.sha256` files remain build/deployment inputs in the local output
 and CI artifacts; publishers validate them but do not upload them to GitHub or
 AtomGit Releases. The release body includes a collapsed full source SHA and
@@ -180,26 +186,20 @@ identity separately. Stable update notices ignore prereleases.
 
 Mode entry and the Site's App control share the check against the App's compiled
 identity. A newer stable release marks that App control; its panel groups the
-installed version, manual download and App management. This also covers starred
+installed version, release notes and App management or manual download. This also covers starred
 Site startup, which bypasses mode entry. Approved health supplies build identity;
 older Apps without that metadata retain their ordinary connection and management.
 
 ### Major-Upgrade Guidance
 
-The App update notice keeps direct download as its primary action, with a small
-mirror link below it. Published 2.x binaries retain Gitee until their next release;
-the current manual mirror is AtomGit. A newer major adds a short, visible breaking-change
-notice linking to the selected provider's release page; ordinary updates
-do not add a separate release-notes control. The Server logs the same distinction
-while preserving its checker JSON and exit codes. This is release guidance,
-not a replacement for actual wire checks.
-Updates remain a manual action. Release prose stays on GitHub/AtomGit; the App
-does not fetch or render remote Markdown or add a second changelog store.
-Keep the major warning inline, without a confirmation dialog or mandatory
-website detour. The mirror link opens provider releases without depending on the
-website. API response time does not measure package-download throughput;
-do not add speed probes or automatic
-provider switching to an otherwise valid update check.
+The App presents the selected release's existing body in its shared notes dialog,
+using the common Markdown renderer with raw HTML disabled. Provider pages remain
+the source; there is no second changelog store. A newer major adds a short, visible
+breaking-change notice. The Server logs the same distinction while preserving its
+checker JSON and exit codes. This is release guidance, not a replacement for wire
+checks. Keep the major warning inline, without a mandatory website detour.
+The manual mirror link opens AtomGit releases directly. Older published binaries
+retain the download provider and warning UI they shipped with.
 
 Older installed Apps cannot acquire new warning UI from release metadata.
 Their historical download behavior is accepted; do not split release feeds or
@@ -212,6 +212,27 @@ Verify the oldest relevant public App/page and the last preceding-major release
 against the candidate: actual mismatches must fail clearly at their owning
 contract. Keep historical packages available through GitHub releases. A major
 preparation change does not itself authorize a wire bump, migration or release.
+
+### App Download And Installation
+
+An updater-capable Windows App offers an explicit download, then an explicit
+install and restart. A connected site's page opens the App's local management
+page; it cannot authorize replacement or supply an executable URL. Builds without
+a signing trust root, unsupported platforms and installations outside the packaged
+directory layout retain manual download.
+
+The App verifies the publisher's signed index before selecting its platform's
+complete bundle. At most two bounded initial body transfers compare the existing
+download lines for that same artifact; the winner continues and the other stops.
+API response time is not package throughput. The App owns this operation, so
+closing its management page does not cancel a download or interrupt room activity.
+
+Installation uses the existing orderly App shutdown, then a separate helper
+replaces the complete program directory on the same volume. Application data and
+the WebView profile remain outside it. Failed replacement or process creation
+restores the old program where possible. Once the new process has started, its
+exit does not authorize automatic downgrade or database rollback. The current
+beta feed and installed-package acceptance limits remain in [TODO](../todo.md).
 
 ## Automatic Publication
 
@@ -264,12 +285,11 @@ owner as publication and the PR's net diff. Packaging and publication remain
 post-merge. [GitHub operations](../operations/github.md)
 owns activation and main protection; no workflow changes repository visibility.
 
-Updates remain explicit, outside an active share, using complete matching
-packages. [Deployment](../deployment.md) owns artifact verification, cutover and
+Installation remains explicit and retires active sessions through their existing
+owners, using complete matching packages. [Deployment](../deployment.md) owns artifact verification, cutover and
 recovery. A changed storage format needs its own upgrade and rollback treatment;
 restoring an old authority database after newer grants/revocations is not a safe
-routine downgrade. No automatic updater or generic migration framework is
-introduced by this policy.
+routine downgrade. Storage migrations remain owned by their actual format.
 
 ## Container Distribution
 

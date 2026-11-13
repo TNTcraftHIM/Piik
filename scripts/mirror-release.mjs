@@ -2,14 +2,14 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { openAsBlob } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
-import { readReleaseArtifacts } from "./release-artifacts.mjs";
+import { readReleaseArtifacts, recoverUpdateArtifacts } from "./release-artifacts.mjs";
 import { mirrorSourceReady } from "./release-mirror-ready.mjs";
 
 const [directory, version, revision, option] = process.argv.slice(2);
 if (option && option !== "--dry-run") {
   throw new Error("Use mirror-release.mjs <artifacts> <version> <full-SHA> [--dry-run]");
 }
-const { files } = readReleaseArtifacts(directory, version, revision);
+let artifacts = readReleaseArtifacts(directory, version, revision);
 const repository = "TNTcraftHIM/Piik";
 const api = `https://api.atomgit.com/api/v5/repos/${repository}`;
 const marker = `<!-- piik-source: ${revision} -->`;
@@ -87,6 +87,7 @@ async function verifyDownload(uploaded, file) {
 }
 
 if (option === "--dry-run") {
+  const { files } = artifacts;
   console.log(JSON.stringify({ version, revision, files: files.length, bytes: files.reduce((sum, file) => sum + file.size, 0) }));
 } else {
   if (!token) throw new Error("ATOMGIT_TOKEN must be supplied by the publisher's environment");
@@ -96,6 +97,13 @@ if (option === "--dry-run") {
       source.html_url !== `https://github.com/${repository}/releases/tag/${version}`) {
     throw new Error("Only an already-published matching GitHub stable release can be mirrored");
   }
+  const updates = source.assets.filter(asset => ["update.json", "update.json.sig"].includes(asset.name));
+  if (updates.length && (updates.length !== 2 || new Set(updates.map(asset => asset.name)).size !== 2)) {
+    throw new Error("Published update metadata is incomplete");
+  }
+  if (!updates.length && artifacts.updateFiles.length) throw new Error("Legacy source release has no signed update metadata");
+  artifacts = await recoverUpdateArtifacts(artifacts, source.assets, repository, directory);
+  const { files } = artifacts;
   // Compare every byte identity with GitHub before creating or changing the mirror.
   for (const file of files) {
     const asset = source.assets.find((asset) => asset.name === file.name);

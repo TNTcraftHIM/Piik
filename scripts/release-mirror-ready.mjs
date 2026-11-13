@@ -34,12 +34,16 @@ export async function mirrorReadiness(source, read = readMirror) {
   if (source.draft !== false || source.prerelease !== false || typeof source.tag_name !== "string"
     || !/^[a-f0-9]{40}$/.test(source.target_commitish)) throw new Error("A published GitHub release with a full source SHA is required");
   const version = source.tag_name, revision = source.target_commitish;
+  const updates = source.assets?.filter(asset => ["update.json", "update.json.sig"].includes(asset.name)) ?? [];
+  if (updates.length && (updates.length !== 2 || new Set(updates.map(asset => asset.name)).size !== 2)) {
+    throw new Error("Published update metadata is incomplete");
+  }
   const mirror = await read(`/releases/tags/${encodeURIComponent(version)}`);
   if (mirror) {
     if (mirror.tag_name !== version || ![true, false].includes(mirror.prerelease)
       || !mirror.body?.split(/\r?\n/).includes(`<!-- piik-source: ${revision} -->`))
       throw new Error("Existing mirror release belongs to a different or unknown source revision");
-    const packages = source.assets?.filter(asset => asset.name?.startsWith("piik-"));
+    const packages = source.assets?.filter(asset => asset.name?.startsWith("piik-") || ["update.json", "update.json.sig"].includes(asset.name));
     const complete = packages?.length > 0 && Array.isArray(mirror.assets) && packages.every(asset => {
       const matches = mirror.assets.filter(candidate => candidate.type === "attach" && candidate.name === asset.name);
       return asset.state === "uploaded" && /^sha256:[a-f0-9]{64}$/.test(asset.digest ?? "")

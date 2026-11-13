@@ -1568,6 +1568,13 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-client-launch-detail { max-width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; font: 13px/1.6 var(--mono); }
 .lr-client-release { display: grid; justify-items: center; gap: 6px; max-width: 100%; }
 .lr-client-release-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
+.lr-app-update-status { display: grid; justify-items: center; gap: 8px; max-width: min(100%, 42ch); text-align: center; }
+.lr-app-update-status:empty { display: none; }
+.lr-app-update-manual { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.lr-app-update-status > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; text-wrap: pretty; }
+.lr-app-update-status > p > .lr-glyph { vertical-align: middle; }
+.lr-app-update-status > progress { width: min(100%, 260px); height: 8px; accent-color: var(--ink); }
+.lr-app-update-bytes { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .lr-client-release-headline { display: grid; gap: 4px; max-width: 42ch; margin-block-end: 4px; color: var(--ink); text-align: center; overflow-wrap: anywhere; }
 .lr-client-release-headline > strong { font-size: 14px; line-height: 1.45; text-wrap: balance; }
 .lr-client-release-headline > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; text-wrap: pretty; }

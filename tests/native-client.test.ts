@@ -191,6 +191,7 @@ describe("current App discovery", () => {
     vi.stubGlobal("fetch", fetcher);
     await expect(discoverChannelAppHealth()).resolves.toMatchObject({
       protocol: APP_PROTOCOL, port: NATIVE_CLIENT_PORT_START + 1,
+      managementURL: `http://127.0.0.1:${NATIVE_CLIENT_PORT_START + 1}/client`,
     });
     expect(fetcher).toHaveBeenCalledTimes(NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1);
   });

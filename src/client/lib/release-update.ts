@@ -126,14 +126,16 @@ export async function checkReleaseUpdate(
     fetchImpl?: typeof fetch;
     timeoutMs?: number;
     packageTarget?: string;
+    release?: ReleaseIdentity;
   } = {},
 ): Promise<ReleaseUpdateNotice | null> {
   if (!normalizeVersion(current.version) && !normalizeReleaseRevision(current.revision)) return null;
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   if (typeof fetchImpl !== "function") return null;
   const sources = [
-    { url: options.apiURL ?? DEFAULT_RELEASE_API_URL, mirror: false },
-    { url: options.mirrorAPIURL ?? (options.apiURL ? undefined : MIRROR_RELEASE_API_URL), mirror: true },
+    { url: options.apiURL ?? (options.release ? DEFAULT_RELEASE_API_URL.replace(/latest$/, `tags/${encodeURIComponent(options.release.version)}`) : DEFAULT_RELEASE_API_URL), mirror: false },
+    { url: options.mirrorAPIURL ?? (options.apiURL ? undefined : options.release
+      ? `${MIRROR_RELEASE_API_URL}/tags/${encodeURIComponent(options.release.version)}` : MIRROR_RELEASE_API_URL), mirror: true },
   ];
   for (const source of sources) {
     if (!source.url) continue;
@@ -145,7 +147,7 @@ export async function checkReleaseUpdate(
       let latest: PublishedRelease | null = null;
       // Bound both time and pages. Never treat a truncated mirror list as latest.
       for (let page = 1; page <= 10; page++) {
-        if (source.mirror) {
+        if (source.mirror && !options.release) {
           endpoint.searchParams.set("per_page", "100");
           endpoint.searchParams.set("page", String(page));
           endpoint.searchParams.set("direction", "desc");
@@ -157,9 +159,9 @@ export async function checkReleaseUpdate(
         });
         if (!response.ok) break;
         const data: unknown = await response.json();
-        if (!source.mirror) {
-          latest = parseReleaseMetadata(data, options.packageTarget);
-          if (latest) return releaseUpdateNotice(current, latest);
+        if (!source.mirror || options.release) {
+          latest = source.mirror ? parseMirrorReleaseMetadata(data, options.packageTarget) : parseReleaseMetadata(data, options.packageTarget);
+          if (latest && (!options.release || latest.version === options.release.version && latest.revision === options.release.revision)) return releaseUpdateNotice(current, latest);
           break;
         }
         if (!Array.isArray(data) || data.length > 100) break;

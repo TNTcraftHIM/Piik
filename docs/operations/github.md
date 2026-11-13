@@ -88,6 +88,32 @@ the Docker download. Keep repository Actions access enabled for later releases.
 Image checks, version identity and retries follow
 [container distribution](../standards/versioning.md#container-distribution).
 
+## App Update Signing
+
+The updater-capable Windows package needs one release-signing identity shared by
+its build and publisher. Store its raw 32-byte Ed25519 public key as the repository
+variable `PIIK_UPDATE_PUBLIC_KEY` (64 hexadecimal characters). Store the matching
+PKCS8 PEM private key in the Actions secret `PIIK_UPDATE_SIGNING_KEY`, with a separate
+operator backup. Never put the private key in the repository, a package, or build logs.
+
+App builds receive only the public key. The publication step alone receives the
+private key and derives `update.json` from the already verified release artifacts;
+`update.json.sig` signs those exact bytes. The two files are published with the
+packages and retained as original CI output. Mirrors copy the originals without
+re-signing. Builds without a trust root retain manual downloads. Configuring a new
+key requires a deliberate compatibility decision for already installed clients;
+changing the repository variable cannot change their embedded trust root.
+
+For a local signed index, provide these values through the environment and run:
+
+```sh
+node scripts/release-update-index.mjs <verified-artifacts> <version> <full-SHA> <new-output-directory>
+```
+
+This prepares metadata only; it does not publish or modify installed Apps. The
+3.0 internal candidates do not have a public beta-update feed. Configure the real
+signing identity before distributing a package that promises automatic updates.
+
 ## AtomGit Download Mirror
 
 [AtomGit TNTcraftHIM/Piik](https://atomgit.com/TNTcraftHIM/Piik) is the public
@@ -104,6 +130,10 @@ release and finds its original publishing CI run, even when the triggering run
 only updated tooling. A later failed container step does not prevent
 mirroring already-published packages. It downloads the source run's complete
 original Server and App artifacts and invokes `scripts/mirror-release.mjs`.
+If that published Release includes signed update metadata, the mirror restores
+those two original GitHub attachments, verifies their digest and signature against
+the package inventory, and uploads identical bytes. It never generates a new
+signature or requires the private signing key.
 GitHub publication and **Website** do not depend on mirror success. An unfinished mirror remains a
 prerelease until every package passes anonymous full-download SHA-256 validation.
 This includes the original signed Android APK without rebuilding it.

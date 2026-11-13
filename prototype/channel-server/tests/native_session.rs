@@ -704,6 +704,7 @@ async fn app_diagnostics_are_local_opt_in_and_survive_service_restart() {
         open_browser: false,
         cloudflared: "cloudflared".into(),
         ice_servers: vec![],
+        update: Default::default(),
     };
     for restart in [false, true] {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -869,6 +870,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         open_browser: false,
         cloudflared: "cloudflared".into(),
         ice_servers: vec![],
+        update: Default::default(),
     };
     let app_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = app_listener.local_addr().unwrap();
@@ -1475,6 +1477,7 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
         open_browser: false,
         cloudflared: folder.join("missing-cloudflared"),
         ice_servers: vec![json!({"urls": ["stun:public-discovery.invalid:3478"]})],
+        update: Default::default(),
     };
     let saved_identity = || -> Value {
         let db = rusqlite::Connection::open(folder.join("app.sqlite")).unwrap();

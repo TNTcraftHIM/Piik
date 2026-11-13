@@ -3,6 +3,9 @@ use piik_channel_prototype::app::{listen, serve, Config};
 use std::{env, path::PathBuf};
 
 fn main() -> Result<()> {
+    if piik_channel_prototype::app::update::helper_entry()? {
+        return Ok(());
+    }
     #[cfg(target_os = "windows")]
     if piik_channel_native::capture::worker_entry()? {
         return Ok(());
@@ -70,6 +73,7 @@ fn configuration() -> Result<(Config, Option<u16>)> {
                     .join(format!("cloudflared{}", env::consts::EXE_SUFFIX))
             }),
         ice_servers: piik_channel_prototype::ice_servers_from_environment()?,
+        update: piik_channel_prototype::app::update::Config::packaged(),
     };
     anyhow::ensure!(
         config.assets.join("index.html").is_file(),

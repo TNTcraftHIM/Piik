@@ -14,6 +14,17 @@ test("a completed stable mirror needs only its metadata and no source search or 
   expect(read.mock.calls).toEqual([[`/releases/tags/${version}`]]);
 });
 
+test("signed releases require both original update attachments in the completed mirror", async () => {
+  const updates = ["update.json", "update.json.sig"].map(name => ({ ...asset, name }));
+  const signedSource = { ...source, assets: [...source.assets, ...updates] };
+  await expect(mirrorReadiness(signedSource, async () => mirror)).rejects.toThrow("incomplete");
+  await expect(mirrorReadiness({ ...source, assets: [...source.assets, updates[0]!] }, async () => mirror)).rejects.toThrow("metadata is incomplete");
+  expect(await mirrorReadiness(signedSource, async () => ({ ...mirror, assets: [...mirror.assets,
+    ...updates.map(update => ({ type: "attach", name: update.name, size: update.size,
+      browser_download_url: `https://atomgit.com/TNTcraftHIM/Piik/releases/download/${version}/${update.name}` })),
+  ] }))).toEqual({ status: "complete", version, revision });
+});
+
 test.each(["commit", "tag"])("missing synced %s defers without a Git mutation", async missing => {
   const read = vi.fn(async (path: string) => path.startsWith("/releases/") ? null
     : path.startsWith("/commits/") ? missing === "commit" ? null : { sha: revision } : []);

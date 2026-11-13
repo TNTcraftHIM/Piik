@@ -345,6 +345,7 @@ jobs:
     timeout-minutes: ${{ matrix.target == 'android-universal' && 45 || 35 }}
     env:
       PIIK_BUILD_VERSION: ${{ needs.validate.outputs.version }}
+      PIIK_UPDATE_PUBLIC_KEY: ${{ vars.PIIK_UPDATE_PUBLIC_KEY }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -496,7 +497,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
       # Local descriptors/manifests/checksums are validated before publishing.
-      # Release assets contain packages only; checksums appear in the release body.
+      # Signed update metadata accompanies packages when the App trust root is configured.
       - name: Publish packages with release notes and checksums
         run: >-
           node scripts/publish-release.mjs
@@ -504,6 +505,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PIIK_RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+          PIIK_UPDATE_PUBLIC_KEY: ${{ vars.PIIK_UPDATE_PUBLIC_KEY }}
+          PIIK_UPDATE_SIGNING_KEY: ${{ secrets.PIIK_UPDATE_SIGNING_KEY }}
+      - name: Retain original signed update metadata
+        if: always() && vars.PIIK_UPDATE_PUBLIC_KEY != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: piik-update-${{ github.sha }}
+          path: ${{ runner.temp }}/publish-release/signed-update/*
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Publish the matching Server container
         run: >-
           node scripts/publish-container.mjs "piik-candidate:$GITHUB_SHA"

@@ -4,7 +4,8 @@ import { z } from "zod";
 import { BrandMark } from "../components/living/BrandMark";
 import { HintComic } from "../components/living/hints";
 import { LoadingStatus } from "../components/living/WaitingStatus";
-import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
+import { AppReleaseNotice, AppUpdateStatus } from "../components/living/AppReleaseNotice";
+import { useAppUpdate } from "../lib/use-app-update";
 import { AppHeader } from "../components/living/Header";
 import { LauncherForm, type LocalCertificate } from "../components/living/LauncherForm";
 import { Btn, Pill } from "../components/living/primitives";
@@ -60,7 +61,10 @@ export function AppLauncherPage() {
   const [reload, setReload] = useState(0);
   const [lan, setLan] = useState<z.infer<typeof launcherStateSchema>["lan"]>();
   const [build, setBuild] = useState<AppReleaseIdentity>();
-  const { update } = useReleaseUpdate(build);
+  const appUpdate = useAppUpdate();
+  const operation = appUpdate.view?.operationId && appUpdate.view.version && appUpdate.view.revision
+    ? { version: appUpdate.view.version, revision: appUpdate.view.revision } : undefined;
+  const { update } = useReleaseUpdate(build, operation);
   const version = build?.version === "development" && /^[a-f0-9]{40}$/i.test(build.revision)
     ? `${build.version} (${build.revision.slice(0, 7)})` : build?.version;
   const [target, setTarget] = useState<string>();
@@ -396,7 +400,8 @@ export function AppLauncherPage() {
             lan={lan && { ...lan, onChange: (selected) => setLan({ ...lan, selected }) }}
             onSubmit={launch}
           >
-            {update && <AppReleaseNotice update={update} />}
+            {update ? <AppReleaseNotice update={update} native={appUpdate.view ? { ...appUpdate, view: appUpdate.view } : undefined} />
+              : appUpdate.view && (appUpdate.view.operationId || appUpdate.error) && <AppUpdateStatus {...appUpdate} view={appUpdate.view} />}
           </LauncherForm>
         )}
       </main>

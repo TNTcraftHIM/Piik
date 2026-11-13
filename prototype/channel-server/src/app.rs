@@ -11,6 +11,8 @@ mod hosted;
 mod sites;
 #[path = "app_tunnel.rs"]
 mod tunnel;
+#[path = "app_update.rs"]
+pub mod update;
 #[path = "app_whip.rs"]
 mod whip;
 
@@ -80,6 +82,7 @@ pub struct Config {
     pub open_browser: bool,
     pub cloudflared: PathBuf,
     pub ice_servers: Vec<Value>,
+    pub update: update::Config,
 }
 fn entry_url(site: &str, port: u16) -> Result<String> {
     if site.is_empty() {
@@ -146,6 +149,7 @@ struct App {
     launch: Mutex<Option<hosted::Launch>>,
     desktop: Desktop,
     external_inputs: whip::Inputs,
+    update: update::Owner,
 }
 
 impl App {
@@ -262,6 +266,7 @@ impl App {
         if let Some(launch) = self.launch.lock().await.take() {
             launch.close().await;
         }
+        self.update.shutdown().await;
     }
 }
 async fn stop_hosts(hosts: Vec<Host>) {
@@ -341,6 +346,8 @@ pub async fn serve(
     let index = config.assets.join("index.html");
     let assets =
         web::static_files(ServeDir::new(&config.assets).fallback(web::document(index.clone())));
+    let closing = watch::channel(false).0;
+    let update = update::Owner::new(&config, closing.clone());
     let app = Arc::new(App {
         desktop: Desktop::new()?,
         external_inputs: whip::Inputs::default(),
@@ -353,8 +360,9 @@ pub async fn serve(
             hosts: BTreeMap::new(),
             local: None,
         }),
-        closing: watch::channel(false).0,
+        closing,
         launch: Mutex::new(None),
+        update,
     });
     if let sites::StartupIntent::Owned(request) = startup_intent {
         hosted::begin(&app, request)
@@ -376,6 +384,10 @@ pub async fn serve(
         .route("/rooms/{domain}/{user}/backup", put(backup::restore))
         .route("/rooms/{domain}/{user}/hosting", get(backup::describe))
         .route("/api/client-launcher", get(launcher))
+        .route(
+            "/api/client-launcher/update",
+            get(update_state).post(update_request),
+        )
         .route("/api/client-launcher/debug", post(diagnostics::enable))
         .route(
             "/api/client-launcher/debug/export",
@@ -404,10 +416,15 @@ pub async fn serve(
     axum::serve(crate::web::http_listener(listener), router)
         .with_graceful_shutdown(async move {
             tokio::pin!(stop);
+            let mut closing = app.closing.subscribe();
             let mut tick = tokio::time::interval(Duration::from_millis(100));
             loop {
+                if *closing.borrow() {
+                    break;
+                }
                 tokio::select! {
                     _ = &mut stop => break,
+                    _ = closing.changed() => break,
                     _ = tick.tick() => app.desktop.tick(),
                 }
             }
@@ -537,7 +554,8 @@ async fn discovery(State(app): State<Arc<App>>) -> Json<Value> {
 async fn health(State(app): State<Arc<App>>) -> Json<Value> {
     Json(
         json!({"service":SERVICE,"protocol":PROTOCOL,"domainProtocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"port":app.port,"token":app.token,
-        "version":BUILD_VERSION,"revision":BUILD_REVISION,"packageTarget":PACKAGE_TARGET}),
+        "version":BUILD_VERSION,"revision":BUILD_REVISION,"packageTarget":PACKAGE_TARGET,
+        "updateSupported":app.update.supported()}),
     )
 }
 fn launcher_state(registry: &Registry, port: u16) -> Result<Value> {
@@ -579,6 +597,28 @@ async fn launcher(State(app): State<Arc<App>>) -> ApiResult {
         .await
         .map_err(operation_failure)?;
     Ok(Json(state))
+}
+async fn update_state(State(app): State<Arc<App>>) -> Json<update::View> {
+    Json(app.update.view())
+}
+async fn update_request(
+    State(app): State<Arc<App>>,
+    Json(request): Json<update::Request>,
+) -> std::result::Result<Json<update::View>, (StatusCode, Json<Value>)> {
+    app.update
+        .request(request)
+        .await
+        .map(Json)
+        .map_err(|detail| {
+            (
+                if detail == "invalid-release" {
+                    StatusCode::BAD_REQUEST
+                } else {
+                    StatusCode::CONFLICT
+                },
+                Json(json!({"detail":detail})),
+            )
+        })
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -2226,6 +2266,7 @@ mod lifecycle_tests {
                     open_browser: false,
                     cloudflared: PathBuf::new(),
                     ice_servers: vec![],
+                    update: Default::default(),
                 },
                 port: 39731,
                 token: "test".into(),
@@ -2247,6 +2288,7 @@ mod lifecycle_tests {
                 launch: Mutex::new(None),
                 desktop: Desktop::new().unwrap(),
                 external_inputs: whip::Inputs::default(),
+                update: update::Owner::disabled(),
             })
         };
         let first = app(old);
@@ -2420,6 +2462,7 @@ mod lifecycle_tests {
                 open_browser: false,
                 cloudflared: PathBuf::new(),
                 ice_servers: vec![],
+                update: Default::default(),
             },
             port: address.port(),
             token: "test".into(),
@@ -2433,6 +2476,7 @@ mod lifecycle_tests {
             launch: Mutex::new(None),
             desktop: Desktop::new().unwrap(),
             external_inputs: whip::Inputs::default(),
+            update: update::Owner::disabled(),
         });
         // Observe the actual HTTP handler future being dropped, without replacing
         // its production approval/retirement work with a test implementation.

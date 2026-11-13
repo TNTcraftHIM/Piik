@@ -20,6 +20,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { appPackageTarget, appPackageDirectory, CLOUDFLARED_VERSION, MACOS_MIN_VERSION } from "./app-package-targets.mjs";
+import { assertAppBundleLayout, collectAppBundleLayout } from "./app-bundle-layout.mjs";
 import { writeAppPlatformAssets } from "./app-icons.mjs";
 import { writeAppLicenseNotices } from "./package-licenses.mjs";
 import { buildChannelWeb } from "./build-channel-web.mjs";
@@ -168,18 +169,6 @@ try {
 
   const appName = target.appName;
   const appPath = join(runtimeRoot, appName);
-  const cargoTarget = resolve(repositoryRoot, process.env.CARGO_TARGET_DIR || "prototype/channel-server/target");
-  const captureEnvironment = target.goos === "windows" && !process.env.VPX_LIB_DIR ? windowsCaptureEnvironment(repositoryRoot) : {};
-  run("cargo", ["+1.91.0", "build", "--locked", "--release",
-    "--manifest-path", "prototype/channel-server/Cargo.toml", "--target-dir", cargoTarget,
-    "--target", target.rustTarget, "--features", "capture", "--bin", "piik-channel-app"],
-  repositoryRoot, { ...process.env, ...captureEnvironment,
-    ...(target.goos === "darwin" ? { MACOSX_DEPLOYMENT_TARGET: MACOS_MIN_VERSION } : {}),
-    PIIK_BUILD_VERSION: version, PIIK_BUILD_REVISION: revision, PIIK_BUILD_TARGET: target.id });
-  copyFileSync(join(cargoTarget, target.rustTarget, "release",
-    `piik-channel-app${target.goos === "windows" ? ".exe" : ""}`), appPath);
-  chmodSync(appPath, 0o755);
-  assertTargetExecutable(appPath, target, "App executable");
   writeAppLicenseNotices(repositoryRoot, runtimeRoot, target,
     packagedTunnel ? CLOUDFLARED_VERSION : null);
   const platformAssets = writeAppPlatformAssets({
@@ -190,6 +179,22 @@ try {
     iconPath: join(repositoryRoot, "cmd", "piik-app", "piik.ico"),
   });
   writeFileSync(join(runtimeRoot, "REVISION"), `${revision}\n`, "ascii");
+  const bundleLayout = collectAppBundleLayout(packageRoot,
+    relative(packageRoot, appPath).replaceAll("\\", "/"), { pendingEntrypoint: true });
+  const cargoTarget = resolve(repositoryRoot, process.env.CARGO_TARGET_DIR || "prototype/channel-server/target");
+  const captureEnvironment = target.goos === "windows" && !process.env.VPX_LIB_DIR ? windowsCaptureEnvironment(repositoryRoot) : {};
+  run("cargo", ["+1.91.0", "build", "--locked", "--release",
+    "--manifest-path", "prototype/channel-server/Cargo.toml", "--target-dir", cargoTarget,
+    "--target", target.rustTarget, "--features", "capture", "--bin", "piik-channel-app"],
+  repositoryRoot, { ...process.env, ...captureEnvironment,
+    ...(target.goos === "darwin" ? { MACOSX_DEPLOYMENT_TARGET: MACOS_MIN_VERSION } : {}),
+    PIIK_APP_BUNDLE_LAYOUT: target.goos === "windows" ? JSON.stringify(bundleLayout) : "",
+    PIIK_BUILD_VERSION: version, PIIK_BUILD_REVISION: revision, PIIK_BUILD_TARGET: target.id });
+  copyFileSync(join(cargoTarget, target.rustTarget, "release",
+    `piik-channel-app${target.goos === "windows" ? ".exe" : ""}`), appPath);
+  chmodSync(appPath, 0o755);
+  assertTargetExecutable(appPath, target, "App executable");
+  assertAppBundleLayout(packageRoot, bundleLayout);
 
   assertCleanRevision(repositoryRoot, revision);
   mkdirSync(dirname(outputRoot), { recursive: true });
@@ -202,6 +207,7 @@ try {
       force: false,
     });
   }
+  assertAppBundleLayout(outputRoot, bundleLayout);
   process.stdout.write(`${JSON.stringify({
     root: outputRoot,
     version,

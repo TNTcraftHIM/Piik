@@ -9,7 +9,7 @@ export interface AppDiscoveryOptions {
 }
 
 export interface AppDiscovery {
-  health(options?: AppDiscoveryOptions): Promise<Partial<AppReleaseIdentity> | null>;
+  health(options?: AppDiscoveryOptions): Promise<(Partial<AppReleaseIdentity> & { updateSupported?: boolean; managementURL?: string }) | null>;
   connect(signal?: AbortSignal): Promise<string | null>;
   isIncompatible(error: unknown): boolean;
 }

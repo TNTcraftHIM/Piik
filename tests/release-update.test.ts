@@ -21,6 +21,32 @@ const packageAsset = (target: string, suffix = "") => {
 };
 
 describe("App release update notice", () => {
+  it("keeps an App operation's notes on its exact version and revision when latest changes", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async input => {
+      expect(String(input)).toBe(DEFAULT_RELEASE_API_URL.replace(/latest$/, "tags/v1.2.0"));
+      return Response.json({ ...release, body: "Notes for the downloaded version" });
+    });
+    await expect(checkReleaseUpdate({ version: "v1.0.0", revision: currentRevision }, {
+      fetchImpl, release: { version: "v1.2.0", revision: latestRevision },
+    })).resolves.toMatchObject({ version: "v1.2.0", revision: latestRevision, body: "Notes for the downloaded version" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("never substitutes another build's notes for a pinned operation", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async input => {
+      if (String(input).includes("api.github.com")) return Response.json({ ...release, target_commitish: "c".repeat(40) });
+      expect(String(input)).toBe(`${MIRROR_RELEASE_API_URL}/tags/v1.2.0`);
+      return Response.json({ ...release, prerelease: false, body: `Wrong build\n<!-- piik-source: ${"c".repeat(40)} -->` });
+    });
+    await expect(checkReleaseUpdate({ version: "v1.0.0", revision: currentRevision }, {
+      fetchImpl, release: { version: "v1.2.0", revision: latestRevision },
+    })).resolves.toBeNull();
+    fetchImpl.mockImplementation(async input => String(input).includes("api.github.com") ? new Response(null, { status: 503 })
+      : Response.json({ ...release, prerelease: false, body: `Pinned notes\n<!-- piik-source: ${latestRevision} -->` }));
+    await expect(checkReleaseUpdate({ version: "v1.0.0", revision: currentRevision }, {
+      fetchImpl, release: { version: "v1.2.0", revision: latestRevision },
+    })).resolves.toMatchObject({ version: "v1.2.0", revision: latestRevision });
+  });
   it.each(headlineFixtures)("keeps the shared authored headline across release providers: $body", ({ body, headline }) => {
     expect(splitReleaseHeadline(body).headline).toEqual(headline);
     const expected = headline ?? undefined;

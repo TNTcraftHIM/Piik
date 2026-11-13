@@ -87,6 +87,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ATOMGIT_TOKEN: ${{ secrets.ATOMGIT_TOKEN }}
+          PIIK_UPDATE_PUBLIC_KEY: ${{ vars.PIIK_UPDATE_PUBLIC_KEY }}
           PIIK_RELEASE_VERSION: ${{ steps.source.outputs.version }}
           PIIK_RELEASE_REVISION: ${{ steps.source.outputs.revision }}
       - name: Explain recovery

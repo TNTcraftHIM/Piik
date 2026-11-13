@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { createHash, generateKeyPairSync, verify } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { createHash, generateKeyPairSync, sign, verify } from "node:crypto";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,6 +41,45 @@ function run(output = "signed", identity = { version, revision }, environment: N
 }
 
 describe("signed update index", () => {
+  it("distributes only an index that verifies against the trust root and exact checked packages", () => {
+    expect(run().status).toBe(0);
+    const options = { publicKey: publicHex };
+    for (const name of ["update.json", "update.json.sig"]) copyFileSync(join(root, "signed", name), join(root, name));
+    const release = readReleaseArtifacts(root, version, revision, options);
+    expect(release.files).toHaveLength(11);
+    expect(release.updateFiles.map((file: { name: string }) => file.name)).toEqual(["update.json", "update.json.sig"]);
+    expect(release.packagesByTarget.size).toBe(9);
+    expect(release.servers).toHaveLength(3);
+    expect(() => readReleaseArtifacts(root, version, revision, { publicKey: "0".repeat(64) })).toThrow("signature mismatch");
+    const altered = JSON.parse(readFileSync(join(root, "update.json"), "utf8"));
+    altered.targets["windows-amd64"].artifact = "another.zip";
+    const bytes = Buffer.from(JSON.stringify(altered));
+    writeFileSync(join(root, "update.json"), bytes);
+    writeFileSync(join(root, "update.json.sig"), sign(null, bytes, keys.privateKey));
+    expect(() => readReleaseArtifacts(root, version, revision, options)).toThrow("differs from verified");
+    rmSync(join(root, "update.json.sig"));
+    expect(() => readReleaseArtifacts(root, version, revision, options)).toThrow("must both be present");
+  });
+
+  it("prepares publisher metadata locally, reuses its exact bytes and refuses unsigned updater publication", () => {
+    const publisher = fileURLToPath(new URL("../scripts/publish-release.mjs", import.meta.url));
+    const dryRun = (privateKey: string) => spawnSync(process.execPath, [publisher, root, version, revision, "--dry-run"], {
+      encoding: "utf8", windowsHide: true, timeout: 10_000,
+      env: { ...process.env, PIIK_UPDATE_PUBLIC_KEY: publicHex, PIIK_UPDATE_SIGNING_KEY: privateKey },
+    });
+    expect(dryRun("").status).not.toBe(0);
+    expect(existsSync(join(root, "signed-update"))).toBe(false);
+    const first = dryRun(pem);
+    expect(first.status, first.stderr).toBe(0);
+    expect(JSON.parse(first.stdout).files).toBe(11);
+    const bytes = readFileSync(join(root, "signed-update/update.json"));
+    expect(dryRun("").status).toBe(0);
+    expect(readFileSync(join(root, "signed-update/update.json"))).toEqual(bytes);
+    expect(readReleaseArtifacts(root, version, revision).files).toHaveLength(9);
+    writeFileSync(join(root, "signed-update/update.json"), Buffer.concat([bytes, Buffer.from(" ")]));
+    expect(dryRun(pem).stderr).toContain("signature mismatch");
+  });
+
   it("signs the exact deterministic index bytes from verified target/package associations", () => {
     const result = run();
     expect(result.status, result.stderr).toBe(0);

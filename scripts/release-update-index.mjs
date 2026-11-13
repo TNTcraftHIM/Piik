@@ -4,9 +4,13 @@ import { createPrivateKey, createPublicKey, sign } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { readReleaseArtifacts } from "./release-artifacts.mjs";
+import { readReleaseArtifacts, updateIndex } from "./release-artifacts.mjs";
 
 export function signUpdateIndex(directory, version, revision, outputDirectory) {
+  return writeSignedUpdateIndex(readReleaseArtifacts(directory, version, revision), outputDirectory);
+}
+
+export function writeSignedUpdateIndex(release, outputDirectory) {
   if (!outputDirectory) throw new Error("A new output directory is required");
   const pem = process.env.PIIK_UPDATE_SIGNING_KEY;
   const trustedPublicKey = process.env.PIIK_UPDATE_PUBLIC_KEY;
@@ -28,15 +32,7 @@ export function signUpdateIndex(directory, version, revision, outputDirectory) {
     throw new Error("Signing key does not match PIIK_UPDATE_PUBLIC_KEY");
   }
 
-  // Release identity and package hashes have one verifier; no independent index input.
-  const release = readReleaseArtifacts(directory, version, revision);
-  const targets = Object.fromEntries([...release.packagesByTarget.keys()].sort().map(target => {
-    const asset = release.packagesByTarget.get(target);
-    return [target, { artifact: asset.name, size: asset.size, sha256: asset.sha256 }];
-  }));
-  const bytes = Buffer.from(JSON.stringify({
-    schema: 1, version: release.version, revision: release.revision, targets,
-  }, null, 2) + "\n", "utf8");
+  const bytes = Buffer.from(JSON.stringify(updateIndex(release), null, 2) + "\n", "utf8");
   const signature = sign(null, bytes, key);
   const output = resolve(outputDirectory);
   mkdirSync(dirname(output), { recursive: true });

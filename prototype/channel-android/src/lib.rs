@@ -68,6 +68,7 @@ pub fn nativeStart<'local>(
                     cloudflared: PathBuf::from(helper.mutf8_chars(env)?.to_string()),
                     open_browser: false,
                     ice_servers: piik_channel_prototype::ice_servers_from_environment()?,
+                    update: Default::default(),
                 };
                 anyhow::ensure!(
                     config.assets.join("index.html").is_file(),

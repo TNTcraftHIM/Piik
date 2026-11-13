@@ -427,8 +427,8 @@ actual App/Site compatibility checks.
 
 Reviewed 2026-11-13. The requested flow adds release notes inside the App, selects
 between the existing download lines, and installs a complete update on an explicit
-restart. Full installation is a proposal; the current App still uses manual package
-downloads. Release identity and published compatibility remain with
+restart. The Windows implementation is integrated for local acceptance; delivered
+internal candidates still use manual downloads. Release identity and published compatibility remain with
 [versioning](../standards/versioning.md).
 
 Keep one release body for the website, provider pages and App. The existing
@@ -447,7 +447,8 @@ Sign its original bytes and publish `update.json.sig` alongside it; both downloa
 lines carry the same bytes. Existing descriptors remain build evidence, not a
 second update plan. A checksum from the download source alone does not establish
 publisher authority.
-Publisher-key custody and release signing still need their delivery decision.
+The [signing procedure](../operations/github.md#app-update-signing) defines publisher
+key custody; the production signing identity has not been configured.
 The first updater-capable App requires an ordinary installation of its trust root.
 
 For the requested faster-line choice, compare a bounded initial portion of at most

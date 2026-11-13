@@ -45,8 +45,10 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
   const automaticFailed = useRef(false);
   const [automaticHint, setAutomaticHint] = useState(false);
   const [build, setBuild] = useState<AppReleaseIdentity>();
+  const [updateManagementURL, setUpdateManagementURL] = useState<string>();
   const { update: release, refresh: checkRelease } = useReleaseUpdate(build);
-  function rememberBuild(health: Partial<AppReleaseIdentity> | null) {
+  function rememberBuild(health: (Partial<AppReleaseIdentity> & { updateSupported?: boolean; managementURL?: string }) | null) {
+    setUpdateManagementURL(health?.updateSupported === true ? health.managementURL : undefined);
     setBuild(health?.version && health.revision
       ? { version: health.version, revision: health.revision, packageTarget: health.packageTarget } : undefined);
   }
@@ -267,7 +269,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.version", { version: build.version })}</span>
         {vis && <span aria-hidden="true">{build.version}</span>}
       </p>}
-      {update && <AppReleaseNotice update={update} />}
+      {update && <AppReleaseNotice update={update} managementURL={updateManagementURL} />}
       <div className="lr-app-connect-actions">
         {state !== "busy" && <button type="button" className="lr-btn" aria-label={t(state === "approval" || state === "ready" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")} onClick={() => void connect()}>
           <Glyph name={state === "approval" || state === "ready" ? "arrowRight" : "refresh"} size={16} /><span className={vis ? "visually-hidden" : undefined}>{t(state === "approval" || state === "ready" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")}</span>

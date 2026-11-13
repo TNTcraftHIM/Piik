@@ -1,20 +1,32 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { rmSync, writeFileSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import semver from "semver";
-import { readReleaseArtifacts } from "./release-artifacts.mjs";
+import { readReleaseArtifacts, readUpdateArtifacts, recoverUpdateArtifacts } from "./release-artifacts.mjs";
+import { writeSignedUpdateIndex } from "./release-update-index.mjs";
 import { releaseNotes } from "./release-notes.mjs";
 
 const [directory, version, revision, option] = process.argv.slice(2);
 if (option && option !== "--dry-run") {
   throw new Error("Use publish-release.mjs <artifacts> <version> <full-SHA> [--dry-run]");
 }
-const artifacts = readReleaseArtifacts(directory, version, revision);
-const files = artifacts.files.map((file) => file.path);
+let artifacts = readReleaseArtifacts(directory, version, revision);
+function prepareUpdates(generate) {
+  if (artifacts.updateFiles.length) return;
+  const output = join(directory, "signed-update");
+  artifacts = readUpdateArtifacts(artifacts, output);
+  if (artifacts.updateFiles.length || !generate) return;
+  if (process.env.PIIK_UPDATE_PUBLIC_KEY || process.env.PIIK_UPDATE_SIGNING_KEY) {
+    if (existsSync(output)) throw new Error("Existing signed-update directory has no complete signed index");
+    writeSignedUpdateIndex(artifacts, output);
+    artifacts = readUpdateArtifacts(artifacts, output);
+  }
+}
 if (option === "--dry-run") {
-  process.stdout.write(`${JSON.stringify({ version, revision, targets: artifacts.targets, files: files.length })}\n`);
+  prepareUpdates(true);
+  process.stdout.write(`${JSON.stringify({ version, revision, targets: artifacts.targets, files: artifacts.files.length })}\n`);
 } else {
   const repository = process.env.GITHUB_REPOSITORY || "TNTcraftHIM/Piik";
   const gh = (...args) => execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
@@ -36,21 +48,30 @@ if (option === "--dry-run") {
   }
   verifyTag();
   const releases = gh("api", `repos/${repository}/releases?per_page=100`, "--paginate", "--jq",
-    ".[] | {tag_name,target_commitish,draft,prerelease,body,assets:[.assets[] | {name,state}]} | @json")
+    ".[] | {tag_name,target_commitish,draft,prerelease,body,assets:[.assets[] | {name,state,size,digest,browser_download_url}]} | @json")
     .trim().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
   const existing = releases.find((release) => release.tag_name === version);
   if (existing) {
     if (existing.target_commitish !== revision) throw new Error("Existing release belongs to a different source revision");
     if (!existing.draft) {
       verifyTag(true);
-      if ([...files].some((path) => !existing.assets.some((uploaded) =>
-        uploaded.name === basename(path) && uploaded.state === "uploaded"))) {
+      const updates = existing.assets.filter(asset => ["update.json", "update.json.sig"].includes(asset.name));
+      if (updates.length) {
+        if (updates.length !== 2 || new Set(updates.map(asset => asset.name)).size !== 2) throw new Error("Published update metadata is incomplete");
+        prepareUpdates(false);
+        artifacts = await recoverUpdateArtifacts(artifacts, existing.assets, repository, join(directory, "signed-update"));
+      }
+      // A legacy published release never acquires an update promise on a retry.
+      if ([...artifacts.packagesByTarget.values()].some((file) => !existing.assets.some((uploaded) =>
+        uploaded.name === file.name && uploaded.state === "uploaded")) || updates.some(asset => asset.state !== "uploaded")) {
         throw new Error("Published release is incomplete; publish a new version instead of modifying it");
       }
       process.stdout.write(`Release ${version} is already published; left unchanged.\n`);
       process.exit(0);
     }
   }
+  prepareUpdates(true);
+  const files = artifacts.files.map(file => file.path);
   const checksums = artifacts.files.map((file) => `${file.sha256}  ${file.name}`).join("\n");
   const start = "<!-- piik-build-checksums:start -->", end = "<!-- piik-build-checksums:end -->";
   const generated = `${start}\n<details>\n<summary>构建与校验 / Build and checksums</summary>\n\n` +

@@ -1,8 +1,9 @@
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { signUpdateIndex } from "../scripts/release-update-index.mjs";
 
 const { command, notes } = vi.hoisted(() => ({
   command: vi.fn<(program: string, args: string[]) => string>(), notes: vi.fn<() => string>(),
@@ -14,6 +15,9 @@ vi.mock("node:timers/promises", () => ({ setTimeout: async () => undefined }));
 const directory = mkdtempSync(join(tmpdir(), "piik-publisher-"));
 const version = "v1.0.1", revision = "a".repeat(40);
 const hash = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
+const keys = generateKeyPairSync("ed25519");
+const publicHex = Buffer.from(keys.publicKey.export({ format: "jwk" }).x!, "base64url").toString("hex");
+const pem = keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
 for (const target of ["server", "server-linux-arm64", "server-windows-amd64", "windows-amd64", "linux-amd64", "linux-arm64", "darwin-arm64", "darwin-amd64", "android-universal"]) {
   const server = target.startsWith("server");
   // The Windows Server package ships a ZIP; the Linux Server packages keep tar.gz.
@@ -32,7 +36,7 @@ afterAll(() => rmSync(directory, { recursive: true, force: true }));
 const packageNames = readdirSync(directory).filter((name) => /\.(apk|zip|tar\.gz)$/.test(name));
 const completeAssets = packageNames.map((name) => ({ name, state: "uploaded" }));
 type Release = { tag_name: string; target_commitish: string; draft: boolean;
-  prerelease: boolean; body?: string; assets: typeof completeAssets };
+  prerelease: boolean; body?: string; assets: { name: string; state: string; size?: number; digest?: string; browser_download_url?: string }[] };
 const release = (draft: boolean): Release => ({
   tag_name: version, target_commitish: revision, draft, prerelease: false, assets: completeAssets,
 });
@@ -46,6 +50,7 @@ describe("AtomGit mirror publication", () => {
     return { name, size: bytes.length, digest: `sha256:${hash(bytes)}`, state: "uploaded" };
   });
   async function mirror(options: { existing?: "pending" | "published" | "unknown"; corrupt?: boolean;
+    updates?: { name: string; bytes: Buffer }[];
     wrongSource?: boolean; wrongDigest?: boolean; missing?: boolean; uploadFailure?: boolean | number;
     stale?: boolean; supersededDuringUpload?: boolean; mirrorSourceMissing?: boolean;
     downloadFault?: { remaining: number; name: "TimeoutError" | "TypeError" };
@@ -58,14 +63,18 @@ describe("AtomGit mirror publication", () => {
       } }));
     };
     const mutations: string[] = [];
-    const attachments = sourceAssets
+    const githubDownload = `https://github.com/TNTcraftHIM/Piik/releases/download/${version}/`;
+    const publishedAssets = [...sourceAssets, ...(options.updates ?? []).map(({ name, bytes }) => ({
+      name, size: bytes.length, digest: `sha256:${hash(bytes)}`, state: "uploaded", browser_download_url: githubDownload + name,
+    }))];
+    const attachments = publishedAssets
       .map(({ name, size }) => ({ name, size, browser_download_url: download + name }));
     const present = options.existing === "pending" ? attachments.slice(0, 1) : options.existing && !options.missing ? [...attachments] : [];
     let pending = options.existing !== "published";
     const source = {
       ...release(false), html_url: `https://github.com/TNTcraftHIM/Piik/releases/tag/${version}`,
       target_commitish: options.wrongSource ? "b".repeat(40) : revision,
-      assets: options.wrongDigest ? sourceAssets.map((asset) => ({ ...asset, digest: "sha256:wrong" })) : sourceAssets,
+      assets: options.wrongDigest ? publishedAssets.map((asset) => ({ ...asset, digest: "sha256:wrong" })) : publishedAssets,
     };
     let latestReads = 0;
     command.mockImplementation((_program, args) => {
@@ -78,8 +87,13 @@ describe("AtomGit mirror publication", () => {
       return JSON.stringify(source);
     });
     vi.stubEnv("ATOMGIT_TOKEN", "fixture-mirror-token");
+    if (options.updates) vi.stubEnv("PIIK_UPDATE_PUBLIC_KEY", publicHex);
     vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input, init) => {
       const url = String(input);
+      if (url.startsWith(githubDownload)) {
+        expect(init?.headers).toBeUndefined();
+        return new Response(new Uint8Array(options.updates!.find(asset => githubDownload + asset.name === url)!.bytes));
+      }
       if (url.startsWith(download)) {
 
         expect(init?.headers).toBeUndefined();
@@ -173,6 +187,28 @@ describe("AtomGit mirror publication", () => {
     expect(result.mutations[0]).toBe("POST /releases");
     expect(result.mutations.at(-1)).toBe(`PATCH /releases/${version}`);
     expect(result.mutations.filter((value) => value.startsWith("PUT "))).toHaveLength(sourceAssets.length);
+  });
+
+  it("recovers original GitHub update bytes, verifies authority and mirrors them without a signing key", async () => {
+    const output = join(directory, "metadata-fixture");
+    vi.stubEnv("PIIK_UPDATE_PUBLIC_KEY", publicHex);
+    vi.stubEnv("PIIK_UPDATE_SIGNING_KEY", pem);
+    signUpdateIndex(directory, version, revision, output);
+    vi.unstubAllEnvs();
+    const updates = ["update.json", "update.json.sig"].map(name => ({ name, bytes: readFileSync(join(output, name)) }));
+    try {
+      const invalid = updates.map(asset => asset.name === "update.json" ? { ...asset, bytes: Buffer.concat([asset.bytes, Buffer.from(" ")]) } : asset);
+      expect(await mirror({ updates: invalid })).toEqual({ mutations: [], failure: "Update index signature mismatch" });
+      expect(existsSync(join(directory, "update.json"))).toBe(false);
+      const result = await mirror({ updates });
+      expect(result.failure).toBeUndefined();
+      expect(result.mutations).toContain("PUT update.json");
+      expect(result.mutations).toContain("PUT update.json.sig");
+      for (const asset of updates) expect(readFileSync(join(directory, asset.name))).toEqual(asset.bytes);
+    } finally {
+      for (const asset of updates) rmSync(join(directory, asset.name), { force: true });
+      rmSync(output, { recursive: true, force: true });
+    }
   });
 
   it("resumes pending uploads and leaves complete stable releases unchanged", async () => {
@@ -282,7 +318,8 @@ async function publish(releases: Release[], tag: "absent" | "annotated" | "wrong
       if (args[1] === "edit" && args.includes("--draft=false")) published = true;
       if (args[1] === "upload") {
         expect(args.slice(args.indexOf("--clobber") + 1).sort())
-          .toEqual(packageNames.map((name) => join(directory, name)).sort());
+          .toEqual([...packageNames.map((name) => join(directory, name)),
+            ...(existsSync(join(directory, "signed-update")) ? ["update.json", "update.json.sig"].map(name => join(directory, "signed-update", name)) : [])].sort());
         if (failureAt === "upload") throw new Error("GitHub upload failed");
       }
       return "";
@@ -321,6 +358,50 @@ async function publish(releases: Release[], tag: "absent" | "annotated" | "wrong
 }
 
 describe("publisher recovery", () => {
+  it("publishes signed attachments once, verifies retries and leaves legacy published releases unchanged", async () => {
+    vi.stubEnv("PIIK_UPDATE_PUBLIC_KEY", publicHex);
+    vi.stubEnv("PIIK_UPDATE_SIGNING_KEY", pem);
+    try {
+      expect((await publish([], "absent")).failure).toBeUndefined();
+      const original = new Map(["update.json", "update.json.sig"].map(name => [name, readFileSync(join(directory, "signed-update", name))]));
+      const updateAssets = ["update.json", "update.json.sig"].map(name => {
+        const bytes = readFileSync(join(directory, "signed-update", name));
+        return { name, state: "uploaded", size: bytes.length, digest: `sha256:${hash(bytes)}`,
+          browser_download_url: `https://github.com/TNTcraftHIM/Piik/releases/download/${version}/${name}` };
+      });
+      vi.stubEnv("PIIK_UPDATE_SIGNING_KEY", "");
+      const published = { ...release(false), assets: [...completeAssets, ...updateAssets] };
+      expect(await publish([published], "annotated")).toEqual({ failure: undefined, mutations: [] });
+      const altered = { ...published, assets: [...completeAssets, ...updateAssets.map(asset => ({ ...asset, digest: `sha256:${"0".repeat(64)}` }))] };
+      expect((await publish([altered], "annotated")).failure).toContain("Published update metadata differs");
+      rmSync(join(directory, "signed-update"), { recursive: true });
+      const fetchOriginal = vi.fn<typeof fetch>(async (input, init) => {
+        expect(init?.headers).toBeUndefined();
+        const asset = updateAssets.find(asset => asset.browser_download_url === String(input));
+        expect(asset).toBeDefined();
+        return new Response(new Uint8Array(original.get(asset!.name)!));
+      });
+      vi.stubGlobal("fetch", fetchOriginal);
+      // A fresh failed-job runner has only original package artifacts and the public key.
+      expect(await publish([published], "annotated")).toEqual({ failure: undefined, mutations: [] });
+      expect(fetchOriginal).toHaveBeenCalledTimes(2);
+      for (const [name, bytes] of original) {
+        expect(readFileSync(join(directory, "signed-update", name))).toEqual(bytes);
+        expect(existsSync(join(directory, name))).toBe(false);
+      }
+      rmSync(join(directory, "signed-update"), { recursive: true });
+      expect(await publish([release(false)], "annotated")).toEqual({ failure: undefined, mutations: [] });
+      expect(fetchOriginal).toHaveBeenCalledTimes(2);
+      const missing = await publish([], "absent");
+      expect(missing.failure).toContain("PIIK_UPDATE_SIGNING_KEY");
+      expect(missing.mutations).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      rmSync(join(directory, "signed-update"), { recursive: true, force: true });
+    }
+  });
+
   it.each(["wrong", "api-error"] as const)("stops before mutations for %s tag lookup", async (tag) => {
     const result = await publish([release(true)], tag);
     expect(result.failure).toMatch(/different source revision|lookup failed/);

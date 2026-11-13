@@ -6,6 +6,7 @@ import { createElement, useState } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppConnectionButton } from "../src/client/components/living/AppConnectionButton";
+import { AppReleaseNotice } from "../src/client/components/living/AppReleaseNotice";
 import { CaptureSourcePicker } from "../src/client/components/living/CaptureSourcePicker";
 import { ChannelShareControl } from "../src/client/channel/components/ChannelShareControl";
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
@@ -22,6 +23,18 @@ vi.mock("react", async importOriginal => {
 
 describe("shared App connection entry", () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it("uses one native link to open update management without another discovery click", () => {
+    setCopy({ lang: "en", vis: false });
+    const html = renderToStaticMarkup(createElement(AppReleaseNotice, {
+      update: { kind: "update-available", version: "v3.1.0", revision: "b".repeat(40),
+        url: "https://github.com/TNTcraftHIM/Piik/releases/tag/v3.1.0",
+        releaseURL: "https://github.com/TNTcraftHIM/Piik/releases/tag/v3.1.0" },
+      managementURL: "http://127.0.0.1:39721/client",
+    }));
+    expect(html).toContain('href="http://127.0.0.1:39721/client" target="_blank" rel="noopener noreferrer" aria-label="Update in App"');
+    expect(html).not.toContain("?site=");
+  });
 
   it("keeps an unconnected owner discoverable even after App permission is verified", () => {
     setCopy({ lang: "en", vis: false });
@@ -193,7 +206,7 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   const activateClient = vi.fn();
   const onConnected = vi.fn();
   const operation = runInNewContext(executable, {
-    automatic, automaticFailed: { current: false }, window, document, pending, healthCheck, help, showHelp, setState, setAutomaticHint: vi.fn(), setBuild, activateClient, onConnected, AbortController, URL,
+    automatic, automaticFailed: { current: false }, window, document, pending, healthCheck, help, showHelp, setState, setAutomaticHint: vi.fn(), setUpdateManagementURL: vi.fn(), setBuild, activateClient, onConnected, AbortController, URL,
     wakeURL: android ? "intent://app#Intent;scheme=piik;package=tv.piik.android;end" : null,
     state, connected, isClientActivated: () => activated,
     discovery: discovery ?? { health: native.discoverNativeHealth, connect: native.discoverNativeConnect,

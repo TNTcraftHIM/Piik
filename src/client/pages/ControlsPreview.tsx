@@ -20,6 +20,7 @@ import type { RemoteControlMode } from "../remote-control/protocol";
 import { LauncherForm } from "../components/living/LauncherForm";
 import type { AppMode } from "../lib/app-launch";
 import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
+import type { AppUpdateView } from "../lib/use-app-update";
 import previewRelease from "./preview-release.json";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 
@@ -55,6 +56,7 @@ export function ControlsPreview() {
   const [quality, setQuality] = useState<QualityProfile>(QUALITY_PROFILES["1080p30"]);
   const [launchMode, setLaunchMode] = useState<AppMode>("link");
   const [majorUpdate, setMajorUpdate] = useState(false);
+  const [appUpdateState, setAppUpdateState] = useState<AppUpdateView["state"]>("idle");
   const [releaseHeadline, setReleaseHeadline] = useState(false);
   const [releaseNotes, setReleaseNotes] = useState(true);
   const releaseVersion = majorUpdate ? "v3.0.0" : previewRelease.tag_name;
@@ -343,6 +345,9 @@ export function ControlsPreview() {
           onChange={empty => { setLaunchSites(empty ? [] : ["https://demo.piik.tv"]); setStartupSite(""); }} />
         <SwitchItem checked={releaseHeadline} label={en ? "Sample release headline" : "示例版本主题"} onChange={setReleaseHeadline} />
         <SwitchItem checked={releaseNotes} label={en ? "Release notes" : "更新内容"} onChange={setReleaseNotes} />
+        {(["unavailable", "idle", "downloading", "ready", "installing", "failed"] as const).map(state =>
+          <button key={state} type="button" className="lr-btn" aria-pressed={appUpdateState === state}
+            onClick={() => setAppUpdateState(state)}>{state}</button>)}
       </div>
       <div className="lr-client-launch">
         <LauncherForm mode={launchMode} onModeChange={setLaunchMode}
@@ -357,14 +362,21 @@ export function ControlsPreview() {
           ] }}
           onSubmit={event => { event.preventDefault(); if (launchMode === "local") setLaunchReady(true); }}>
           <AppReleaseNotice update={{ kind: majorUpdate ? "major-update" : "update-available",
-            version: releaseVersion, revision: null,
+            version: releaseVersion, revision: "b".repeat(40),
             body: releaseNotes ? previewRelease.body : undefined,
             headline: releaseHeadline ? {
               en: { title: "Piik, now in your pocket.", description: "Piik App supports Android screen sharing, with touch controls for a friend's computer." },
               "zh-CN": { title: "手机，也能开播。", description: "Piik App 支持 Android 屏幕分享，也能用手机控制朋友的电脑。" },
             } : undefined,
             url: `https://github.com/TNTcraftHIM/Piik/releases/download/${releaseVersion}/piik-app-windows-amd64.zip`,
-            releaseURL }} />
+            releaseURL }} native={{
+              view: { state: appUpdateState, ...(appUpdateState === "unavailable" ? { reason: "untrusted-build" as const } : {}),
+                ...(appUpdateState !== "idle" && appUpdateState !== "unavailable" ? {
+                  operationId: "preview-operation", version: releaseVersion, revision: "b".repeat(40),
+                  receivedBytes: 31 * 1048576, totalBytes: 80 * 1048576,
+                } : {}) }, busy: false, error: false,
+              act: command => setAppUpdateState(command.action === "download" ? "downloading" : command.action === "install" ? "installing" : "idle"),
+            }} />
         </LauncherForm>
       </div>
     </section>

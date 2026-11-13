@@ -82,7 +82,9 @@ and `release-server.sh` remain Linux-only. Windows operation follows the
 [Rust Server startup reference](../prototype/channel-server/README.md#run).
 
 Public Release pages expose the runnable packages and put package checksums in
-the release body. Retain the original complete build output outside the checkout
+the release body. Updater-capable releases also expose the signed metadata defined
+by [versioning](./standards/versioning.md#app-download-and-installation).
+Retain the original complete build output outside the checkout
 for later managed deployment or mirror retries: descriptors and manifests are
 available in CI artifacts for 14 days and are not public Release attachments.
 Do not rebuild an existing published version to replace missing metadata or bytes.
@@ -101,8 +103,10 @@ Assembly refuses a dirty or different revision and emits one directory with the
 App executable, its sibling `web/`, the public-link helper, notices, and matching
 `REVISION`. Its required target
 is one of `windows-amd64`, `linux-amd64`, `linux-arm64`, `darwin-arm64` or `darwin-amd64`; every supplied
-binary input must match it. It does not create an installer, auto-updater,
-release tag, or compatibility bundle.
+binary input must match it. Windows assembly embeds the bundle layout and the
+configured update public key; the [signing procedure](./operations/github.md#app-update-signing)
+owns publisher inputs. Assembly does not create an installer, release tag or
+compatibility bundle.
 
 macOS App assembly requires its native SDK. Linux App assembly requires the
 distribution's GStreamer development libraries and runtime plugins. The
