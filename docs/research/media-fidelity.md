@@ -6,8 +6,8 @@ all-device acceptance or full HDR support.
 
 ## Playback Buffering
 
-Reviewed 2026-11-13. Current Browser receivers use WebRTC's adaptive buffer;
-Piik does not force a zero-delay target. The standard
+Reviewed 2026-11-13. Browser receivers default to WebRTC's adaptive buffer;
+Piik does not default to a zero-delay target. The standard
 [`jitterBufferTarget`](https://www.w3.org/TR/webrtc/#dom-rtcrtpreceiver-jitterbuffertarget)
 requests a preferred total buffer duration, not extra delay or a quality level.
 More buffering can help late arrivals; it cannot restore detail already lost
@@ -26,11 +26,11 @@ buffering increased from 148 to 270 ms. This one synthetic trial did not measure
 end-to-end latency or improved image detail, and does not establish an optimal
 target or a general performance gain.
 
-Any accepted setting should reuse the receiver API and current media owner,
-preserve picture/source-audio synchronization, and leave room voice independent.
-Its scope must account for Browser relay descendants. Sender backpressure and
-receiver buffering have different owners; do not add a parallel JavaScript
-frame queue or promise sharper pictures from delayed playback.
+The implemented setting follows the [screen-delivery owner](./channel-network-design.md#screen-demand-uses-reachable-paths).
+Real-room checks exercised the shared control on screen video/source audio,
+automatic room voice and repeated watching; they do not extend this experiment
+to physical-device compatibility or sharper pictures. Sender backpressure and
+receiver buffering retain separate responsibilities.
 
 ## Stereo
 

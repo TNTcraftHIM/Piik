@@ -301,6 +301,16 @@ The source and viewers determine a screen plan, while the room owner manages
 the plan's lifecycle. Different publications can reuse a physical pair. Stopping
 one publication removes its work, not an unrelated call, file transfer or base link.
 
+Playback buffering is a page-local preference, remembered for the Browser origin.
+Automatic leaves the receiver target unset; a custom 0..4000 ms target applies
+to every received screen and its source audio, including candidate and relay
+inputs. Room voice keeps the automatic target, including an audio receiver reused
+after screen playback. Browser relays re-encode their received tracks, so their
+buffer target can also delay descendants. This preference neither changes routing
+nor creates a separate frame queue. Unsupported receivers retain automatic behavior;
+the [fidelity assessment](./media-fidelity.md#playback-buffering) owns the measured
+smoothness/delay tradeoff and its limits.
+
 ### App-Assisted Viewing
 
 A Browser may attach its currently approved App's live endpoint to its own

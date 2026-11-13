@@ -12,10 +12,6 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **Optional playback buffering.** Resolve the setting's scope and shared
-  control using the [measured delay/smoothness tradeoff](./research/media-fidelity.md#playback-buffering).
-  Preserve room-voice responsiveness and disclose its effect on Browser relay
-  descendants; the controlled result does not promise improved image detail.
 - [ ] **System WebView client evaluation.** Measure a thin Windows window over
   the existing App and shared UI, including media, Browser fallback and package
   cost, following the
