@@ -12,10 +12,10 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **Desktop graphical entry integration.** A small Rust-native status-window
-  prototype is verified on Windows. Evaluate it against the current App's startup,
-  diagnostics and normal shutdown before production integration; keep the shared
-  Browser room UI and avoid a second runtime-state owner.
+- [ ] **Desktop graphical entry integration.** Evaluate the same-process Windows
+  proof for production, including active-room/tunnel shutdown and platform
+  language/font support. Keep setup, diagnostics and rooms in the shared Browser
+  UI, with one runtime-state owner.
 - [ ] **3.0 Windows shared-sound noise.** The reporter confirms electrical or
   crackling sound in beta9/10 as well as beta2, while 2.x sounds normal. Excluding
   the window titled Piik removes it; excluding a silent unrelated window does

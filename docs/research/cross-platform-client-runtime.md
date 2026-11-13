@@ -110,19 +110,24 @@ result selects one UI runtime; it does not create parallel products.
 
 ## 3.0 Windows Native Entry Prototype
 
-An isolated Windows proof with `eframe`/`egui` 0.33.3 reused Piik's favicon and
-palette, rendered Chinese text and worked at a 360-pixel narrow width. Keyboard
-activation and normal `WM_CLOSE` exit were exercised. Preparing, Ready and
-Failure are demonstration states; Open and Diagnostics are not connected to App.
-The debug executable was about 9.4 MiB. Accessibility, macOS/Linux rendering,
-font availability and packaged App integration remain unverified.
+An isolated Windows proof with `eframe`/`egui` 0.33.3 now runs the existing App
+service in the same process. The main thread owns the window; one backend thread
+runs `app::serve`. Its existing ready and stop channels supply the displayed
+state and ordered shutdown. Closing the window requests service retirement and
+waits for completion; it does not terminate a child App or poll a local API.
+Site selection, authorization, diagnostics and rooms keep their Browser owners.
 
-A production entry should project the existing App startup, diagnostics and
-ordered shutdown, while rooms continue in the shared system-Browser UI. It must
-not own another room, authorization, retry or preference state. The current App
-has no external Stop command; integrating a window must preserve App-owned
-Host → Domain → tunnel cleanup rather than terminate a separate process.
-This proof establishes native-window feasibility, not production App acceptance.
+The proof reuses Piik's favicon and palette and reads the installed Windows CJK
+font without bundling it. Windows UI Automation exercised the actual ready
+window, Browser-entry action, occupied-port failure and normal exit. The App
+listener closed and its port could be rebound. This establishes idle startup
+and retirement, not shutdown during an active room, capture or tunnel.
+
+A paired release build with the same runtime dependency versions and compiler
+profile added about 4.3 MiB to the App executable. GUI dependencies remain in the
+isolated proof. Production packaging, language/font portability, assistive-tool
+acceptance and macOS/Linux lifecycle integration remain unverified; the normal
+App entry has not changed.
 
 ## Historical Package Evidence
 
