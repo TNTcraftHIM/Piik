@@ -20,6 +20,7 @@ import type { RemoteControlMode } from "../remote-control/protocol";
 import { LauncherForm } from "../components/living/LauncherForm";
 import type { AppMode } from "../lib/app-launch";
 import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
+import previewRelease from "./preview-release.json";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 
 import { AudioBitrateControl, PicturePreferenceControl, PictureSettingsSummary, QualityPresets, ResolutionControl, VideoRateControls, VideoCodecControl } from "../components/living/QualityPresets";
@@ -54,8 +55,9 @@ export function ControlsPreview() {
   const [quality, setQuality] = useState<QualityProfile>(QUALITY_PROFILES["1080p30"]);
   const [launchMode, setLaunchMode] = useState<AppMode>("link");
   const [majorUpdate, setMajorUpdate] = useState(false);
-  const [releaseHeadline, setReleaseHeadline] = useState(true);
-  const releaseVersion = majorUpdate ? "v3.0.0" : "v2.6.0";
+  const [releaseHeadline, setReleaseHeadline] = useState(false);
+  const [releaseNotes, setReleaseNotes] = useState(true);
+  const releaseVersion = majorUpdate ? "v3.0.0" : previewRelease.tag_name;
   const releaseURL = `https://github.com/TNTcraftHIM/Piik/releases/tag/${releaseVersion}`;
   const [launchSites, setLaunchSites] = useState(["https://demo.piik.tv"]);
   const [startupSite, setStartupSite] = useState("");
@@ -339,7 +341,8 @@ export function ControlsPreview() {
           onChange={many => { setLaunchSites(many ? ["https://demo.piik.tv", "https://friends.example.org", "https://screen-sharing-with-friends.preview.example.org:8443", "https://movie-night.example.net", "https://192.0.2.10:8787", "https://weekend-games.example.org"] : ["https://demo.piik.tv"]); setStartupSite(""); }} />
         <SwitchItem checked={launchSites.length === 0} label={en ? "No approved sites" : "尚未授权站点"}
           onChange={empty => { setLaunchSites(empty ? [] : ["https://demo.piik.tv"]); setStartupSite(""); }} />
-        <SwitchItem checked={releaseHeadline} label={en ? "Release headline" : "版本主题"} onChange={setReleaseHeadline} />
+        <SwitchItem checked={releaseHeadline} label={en ? "Sample release headline" : "示例版本主题"} onChange={setReleaseHeadline} />
+        <SwitchItem checked={releaseNotes} label={en ? "Release notes" : "更新内容"} onChange={setReleaseNotes} />
       </div>
       <div className="lr-client-launch">
         <LauncherForm mode={launchMode} onModeChange={setLaunchMode}
@@ -355,6 +358,7 @@ export function ControlsPreview() {
           onSubmit={event => { event.preventDefault(); if (launchMode === "local") setLaunchReady(true); }}>
           <AppReleaseNotice update={{ kind: majorUpdate ? "major-update" : "update-available",
             version: releaseVersion, revision: null,
+            body: releaseNotes ? previewRelease.body : undefined,
             headline: releaseHeadline ? {
               en: { title: "Piik, now in your pocket.", description: "Piik App supports Android screen sharing, with touch controls for a friend's computer." },
               "zh-CN": { title: "手机，也能开播。", description: "Piik App 支持 Android 屏幕分享，也能用手机控制朋友的电脑。" },

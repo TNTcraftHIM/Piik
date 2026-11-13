@@ -27,10 +27,12 @@ describe("App release update notice", () => {
     const github = parseReleaseMetadata({ ...release, body });
     const mirror = parseMirrorReleaseMetadata({ ...release, prerelease: false,
       body: `${body}\n\n<!-- piik-source: ${latestRevision} -->` });
+    expect(github?.body).toBe(body);
+    expect(mirror?.body).toBe(`${body}\n\n<!-- piik-source: ${latestRevision} -->`);
     for (const parsed of [github, mirror]) {
       expect(parsed?.headline).toEqual(expected);
       expect(parsed && releaseUpdateNotice({ version: "v1.1.0", revision: currentRevision }, parsed))
-        .toMatchObject({ kind: "update-available", version: release.tag_name });
+        .toMatchObject({ kind: "update-available", version: release.tag_name, body: parsed?.body });
     }
   });
 
@@ -194,6 +196,7 @@ describe("App release update notice", () => {
       kind: "update-available", version: "v1.10.0", revision: latestRevision,
       url: "https://atomgit.com/TNTcraftHIM/Piik/releases",
       releaseURL: "https://atomgit.com/TNTcraftHIM/Piik/releases",
+      body: mirrorReleases[1].body,
     });
     await expect(checkReleaseUpdate({ ...current, version: "v2.0.0" }, { fetchImpl })).resolves.toBeNull();
   });

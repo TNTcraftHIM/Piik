@@ -24,3 +24,12 @@ export function splitReleaseHeadline(body) {
     notes: body.slice(opening[0].length).trimStart(),
   };
 }
+
+// Publish/mirror scripts append these marked machine records to the authored copy.
+// Reading a release keeps its prose and headline, without exposing those records.
+export function releaseNotesBody(body) {
+  if (typeof body !== "string") return "";
+  return body
+    .replace(/^<!-- piik-build-checksums:start -->\r?\n[\s\S]*?^<!-- piik-build-checksums:end -->\r?$/gm, "")
+    .replace(/(?:^|\r?\n)<!-- piik-source: [0-9a-f]{40} -->\s*$/, "");
+}

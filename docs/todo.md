@@ -84,8 +84,7 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **App update delivery.** Show the existing release notes inside the App,
-  then implement verified whole-bundle download and an explicit install/restart
+- [ ] **App update delivery.** Implement verified whole-bundle download and an explicit install/restart
   flow. Resolve publisher signing and the beta-feed policy before enabling
   automatic replacement; retain the current manual download path. The
   [delivery proposal](./research/cross-platform-client-runtime.md#30-app-update-delivery)

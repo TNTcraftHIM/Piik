@@ -4,6 +4,7 @@ import type { ChannelMessage, ChannelUserSummary } from "../protocol";
 import { ChannelAction } from "./ChannelAction";
 import { useClipboardResult } from "../../ui/use-clipboard-result";
 import { useCopy } from "../../ui/copy";
+import { isExternalLink } from "../../lib/external-link";
 import "./channel-message-content.css";
 
 const markdown = new MarkdownIt({ html: false, breaks: true, linkify: true, typographer: false })
@@ -67,7 +68,7 @@ export function ChannelMessageContent({ message, users, selfUserId }: {
             const href = references.reduce((href, reference) => href.split(encodeURI(reference.marker)).join(encodeURI(reference.text)),
               restore(String(token.attrGet("href") ?? "")));
             // Chat links never navigate within the app or execute another URL scheme.
-            result.push(/^(?:https?:\/\/|mailto:)/i.test(href)
+            result.push(isExternalLink(href)
               ? <a key={key} href={href} target="_blank" rel="noopener noreferrer">{inner}</a> : <Fragment key={key}>{inner}</Fragment>);
           } else if (tags.has(token.tag)) result.push(createElement(token.tag, { key,
             ...(token.tag === "ol" && token.attrGet("start") ? { start: Number(token.attrGet("start")) } : {}) }, inner));

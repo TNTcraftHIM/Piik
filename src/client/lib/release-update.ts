@@ -21,6 +21,7 @@ interface PublishedRelease {
   releaseURL: string;
   publishedAt?: string;
   headline?: ReleaseHeadline;
+  body?: string;
 }
 export interface ReleaseUpdateNotice extends PublishedRelease {
   kind: "update-available" | "major-update" | "different-build" | "official-release";
@@ -73,6 +74,7 @@ export function parseReleaseMetadata(value: unknown, packageTarget?: string): Pu
     url: RELEASE_PAGE + version,
     releaseURL: RELEASE_PAGE + version,
     ...(headline ? { headline } : {}),
+    ...(typeof release.body === "string" ? { body: release.body } : {}),
     ...(Number.isFinite(publishedTime) ? { publishedAt: new Date(publishedTime).toISOString() } : {}),
   };
   return { ...normalized, url: packageDownloadURL(normalized, release.assets, packageTarget) };

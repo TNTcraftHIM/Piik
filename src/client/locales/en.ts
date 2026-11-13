@@ -353,6 +353,9 @@ export const en: Record<CopyKey, string> = {
   "client.update.majorHint": "This update includes breaking changes. Read the release notes before upgrading.",
   "client.update.downloads": "AtomGit mirror",
   "client.update.download": "Download {version}",
+  "client.update.notes": "What's new",
+  "client.update.notesEmpty": "No release notes were provided for this version.",
+  "client.update.releasePage": "View original release",
   "client.update.differentBuild": "This build differs from the official release",
   "client.update.official": "An official Piik release is available",
 

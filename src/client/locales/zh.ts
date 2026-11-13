@@ -353,6 +353,9 @@ export const zh = {
   "client.update.majorHint": "此更新含不兼容改动。升级前请查看版本说明。",
   "client.update.downloads": "AtomGit 备用下载",
   "client.update.download": "下载 {version}",
+  "client.update.notes": "更新内容",
+  "client.update.notesEmpty": "此版本未提供更新说明。",
+  "client.update.releasePage": "查看原始发布页",
   "client.update.differentBuild": "当前构建与官方发行版不同",
   "client.update.official": "可获取 Piik 正式发行版",
 

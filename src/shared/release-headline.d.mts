@@ -9,3 +9,4 @@ export interface ReleaseHeadline {
 }
 
 export function splitReleaseHeadline(body: unknown): { headline: ReleaseHeadline | null; notes: string };
+export function releaseNotesBody(body: unknown): string;
