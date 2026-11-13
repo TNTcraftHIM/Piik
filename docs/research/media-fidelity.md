@@ -4,6 +4,34 @@ Reviewed 2026-11-09. [Media quality](../standards/media-quality.md) owns behavio
 [TODO](../todo.md) owns remaining work. These synthetic checks do not establish
 all-device acceptance or full HDR support.
 
+## Playback Buffering
+
+Reviewed 2026-11-13. Current Browser receivers use WebRTC's adaptive buffer;
+Piik does not force a zero-delay target. The standard
+[`jitterBufferTarget`](https://www.w3.org/TR/webrtc/#dom-rtcrtpreceiver-jitterbuffertarget)
+requests a preferred total buffer duration, not extra delay or a quality level.
+More buffering can help late arrivals; it cannot restore detail already lost
+in capture or encoding, or overcome sustained bandwidth/decode shortages.
+
+In a two-hop Browser control, setting the relay's target to 300 ms increased
+the leaf's measured picture-delay median from 26.8 to 284.1 ms. The relay
+re-encodes its received track, so this setting is not purely local to its viewer.
+Returning to automatic restored the median, with a delayed tail during transition.
+
+A separate real-process kernel-network control applied seeded 100 ± 20 ms
+downlink delay to one viewer. In sequential 30-second windows, automatic versus
+300 ms target produced 5 versus 3 freezes and 4.733 versus 1.241 seconds frozen.
+Actual average video buffering increased from 213 to 357 ms; source-audio
+buffering increased from 148 to 270 ms. This one synthetic trial did not measure
+end-to-end latency or improved image detail, and does not establish an optimal
+target or a general performance gain.
+
+Any accepted setting should reuse the receiver API and current media owner,
+preserve picture/source-audio synchronization, and leave room voice independent.
+Its scope must account for Browser relay descendants. Sender backpressure and
+receiver buffering have different owners; do not add a parallel JavaScript
+frame queue or promise sharper pictures from delayed playback.
+
 ## Stereo
 
 Browser display capture requests two channels without speech processing. The

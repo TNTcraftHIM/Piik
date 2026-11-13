@@ -12,6 +12,10 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **Optional playback buffering.** Resolve the setting's scope and shared
+  control using the [measured delay/smoothness tradeoff](./research/media-fidelity.md#playback-buffering).
+  Preserve room-voice responsiveness and disclose its effect on Browser relay
+  descendants; the controlled result does not promise improved image detail.
 - [ ] **System WebView client evaluation.** Measure a thin Windows window over
   the existing App and shared UI, including media, Browser fallback and package
   cost, following the
@@ -89,6 +93,10 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **App entry through an operator-managed HTTPS address.** A private local
+  proxy control verified exact-origin admission, stable App domain identity/port
+  and protected local management. Resolve the launcher and restart flow before
+  integration; public-provider and media-path acceptance remain separate.
 - [ ] **Client site bookmarks.** Reconsider the former main-UI site rail after
   the system-WebView client proves viable. Keep navigation separate from device
   approval, and resolve switching activity lifetimes and changing invitation
