@@ -358,11 +358,11 @@ async fn receive(track: &Track, timestamp: u32) -> Result<()> {
 }
 
 pub fn demand_boundary() -> Result<serde_json::Value> {
-    ensure!(desired_bps(None) == 100_000_000, "unknown ceiling lost");
-    ensure!(desired_bps(Some(0)) == 0, "idle ceiling became demand");
+    ensure!(desired_bps(None) == 100_000_000, "unknown demand lost");
+    ensure!(desired_bps(Some(0)) == 0, "idle connection became demand");
     ensure!(
         desired_bps(Some(750_000)) == 750_000,
-        "configured ceiling changed"
+        "known desired capacity changed"
     );
     Ok(
         serde_json::json!({"passed":true,"unknown":100_000_000,"idle":0,"configured":750_000,"scope":"typed transport demand translation; library probe control reviewed separately"}),

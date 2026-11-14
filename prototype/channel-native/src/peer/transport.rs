@@ -60,11 +60,12 @@ const UNKNOWN_DEMAND_PROBE_BPS: u64 = 100_000_000;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BandwidthDemand {
     pub minimum_bps: u64,
+    // Preferred capacity to discover; None retains any unresolved source demand.
     pub desired_bps: Option<u64>,
 }
 
-fn desired_bps(ceiling: Option<u64>) -> u64 {
-    ceiling.unwrap_or(UNKNOWN_DEMAND_PROBE_BPS)
+fn desired_bps(desired: Option<u64>) -> u64 {
+    desired.unwrap_or(UNKNOWN_DEMAND_PROBE_BPS)
 }
 
 fn host_candidates(

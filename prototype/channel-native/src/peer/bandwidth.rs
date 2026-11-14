@@ -14,6 +14,18 @@ pub(super) struct BandwidthPlan {
     video: HashMap<Uuid, VideoAllocation>,
 }
 
+fn desired_bitrate(
+    configured: Option<u32>,
+    intent: Option<u64>,
+    original: Option<u64>,
+    requires_conversion: bool,
+) -> Option<u64> {
+    // Original bytes cannot establish the cost of a different representation.
+    configured
+        .map(u64::from)
+        .or_else(|| intent.max(original.filter(|_| !requires_conversion)))
+}
+
 impl Driver {
     #[cfg(feature = "capture")]
     fn has_video_producer(&self, source: Uuid) -> bool {
@@ -55,7 +67,7 @@ impl Driver {
             .iter()
             .map(|(id, pair)| {
                 let mut minimum = 0;
-                let mut maximum = Some(0u64);
+                let mut desired = Some(0u64);
                 let requests = pair
                     .plan
                     .outgoing
@@ -66,6 +78,10 @@ impl Driver {
                                 || !pair.rejected_outputs.keys().any(|key| key.0 == flow.id))
                     })
                     .map(|flow| {
+                        let publication = &self.publications[&flow.publication_id];
+                        let video_intent = publication
+                            .video_settings
+                            .map(|settings| u64::from(settings.ceiling.max_bitrate));
                         let sources: Vec<_> = self
                             .sources
                             .values()
@@ -77,7 +93,7 @@ impl Driver {
                         };
                         let mut measured = sources.iter().any(|s| s.kind == primary);
                         if !measured {
-                            maximum = None;
+                            desired = desired.zip(video_intent).map(|(total, bps)| total + bps);
                         }
                         let mut opaque_bps = 0;
                         let mut video = None;
@@ -103,9 +119,12 @@ impl Driver {
                             }
                             let configured =
                                 self.configured_bitrate(source, pair.plan.can_receive_video_layers);
-                            maximum = maximum
-                                .zip(configured)
-                                .map(|(total, bps)| total + u64::from(bps));
+                            let intent = (source.kind == MediaKind::Video)
+                                .then_some(video_intent)
+                                .flatten();
+                            let source_desired =
+                                desired_bitrate(configured, intent, rate, requires_conversion);
+                            desired = desired.zip(source_desired).map(|(total, bps)| total + bps);
                             if let Some(full_bps) = self.video_cap(source, configured, rate) {
                                 measured &= full_bps.is_some();
                                 video = Some(VideoRequest {
@@ -144,10 +163,11 @@ impl Driver {
                     })
                     .collect::<Vec<_>>();
                 // Sustain selected original supply with estimate-capped SDK padding.
-                // Desired capacity stays independent of usage and current allocation.
+                // Preferred original supply and source intent remain independent of
+                // this output's current allocation and restricted transmit rate.
                 let requested = BandwidthDemand {
                     minimum_bps: minimum,
-                    desired_bps: maximum,
+                    desired_bps: desired,
                 };
                 pair.demand.send_if_modified(|current| {
                     if *current == requested {
@@ -643,6 +663,11 @@ mod tests {
         // must not become a fabricated minimum.
         let mut f =
             crate::peer::tests::support::Fixture::new(crate::peer::tests::support::vp8()).await?;
+        f.driver
+            .publications
+            .get_mut(&f.publication.id)
+            .unwrap()
+            .video_settings = None;
         let pair = f.driver.pairs.get_mut(&f.sink).unwrap();
         pair.plan.outgoing.retain(|flow| flow.selected);
         let flow = &mut pair.plan.outgoing[0];
@@ -709,7 +734,7 @@ mod tests {
             *f.driver.pairs[&f.sink].demand.borrow(),
             BandwidthDemand {
                 minimum_bps: original_bps,
-                desired_bps: None,
+                desired_bps: Some(original_bps),
             }
         );
         f.driver
@@ -756,6 +781,156 @@ mod tests {
                 desired_bps: Some(0),
             }
         );
+        f.close().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sdk_desired_retains_intent_and_preferred_supply_across_sibling_lifecycles(
+    ) -> Result<()> {
+        let mut f =
+            crate::peer::tests::support::Fixture::new(crate::peer::tests::support::vp8()).await?;
+        let pair = f.driver.pairs.get_mut(&f.sink).unwrap();
+        pair.plan.outgoing.retain(|flow| flow.selected);
+        pair.plan.outgoing[0].input_flow_id = None;
+        // This restricted allocation must not become the desired-capacity input.
+        pair.bandwidth = watch::channel(transport::Estimate::Feedback(100_000.0)).1;
+        let epoch = Instant::now();
+        let time = SourceTime::local(epoch, SystemInstant::now(epoch));
+        let low = Video::new(time.clone(), Arc::new(Notify::new()));
+        let high = Video::new(time, Arc::new(Notify::new()));
+        high.set_codec(crate::peer::tests::support::vp8())?;
+        let layers = Layers::new(vec!["q".into(), "h".into()]);
+        layers.insert("q".into(), low.clone());
+        layers.insert("h".into(), high.clone());
+        let video = Source {
+            id: Uuid::new_v4(),
+            publication_id: f.publication.id,
+            origin: crate::media::SourceOrigin::Local,
+            kind: MediaKind::Video,
+            feed: SourceFeed::Video(high.clone()),
+            layers: Some(layers),
+        };
+        let audio = Source {
+            id: Uuid::new_v4(),
+            publication_id: f.publication.id,
+            origin: crate::media::SourceOrigin::Local,
+            kind: MediaKind::Audio,
+            feed: SourceFeed::Rtp {
+                codec: crate::media::RtpCodec {
+                    mime_type: "audio/opus".into(),
+                    clock_rate: 48_000,
+                    channels: 2,
+                    ..Default::default()
+                },
+                keyframes: watch::channel(0).0,
+                report: Default::default(),
+            },
+            layers: None,
+        };
+        let audio_id = audio.id;
+        f.driver.sources.insert(video.id, video);
+        f.driver.sources.insert(audio.id, audio);
+        f.driver.bandwidth_plans(epoch);
+        assert_eq!(f.driver.pairs[&f.sink].demand.borrow().desired_bps, None);
+
+        for (video, bytes) in [(&low, 128_000), (&high, 512_000)] {
+            video.write(crate::EncodedFrame {
+                bytes: vec![1; bytes],
+                presentation_time: epoch,
+                keyframe: true,
+                vp8: None,
+            });
+        }
+        let measured = epoch + Duration::from_secs(2);
+        let high_bps = high.bitrate(measured).unwrap();
+        let aggregate_bps = high_bps + low.bitrate(measured).unwrap();
+        assert!(aggregate_bps < 5_000_000 && high_bps > 100_000);
+        f.driver.bandwidth_plans(measured);
+        // Known video intent/supply does not resolve an unmeasured sibling.
+        assert_eq!(f.driver.pairs[&f.sink].demand.borrow().desired_bps, None);
+        f.driver.relay.set(audio_id, vec![]);
+        f.driver.relay.write(
+            audio_id,
+            rtp::Packet {
+                payload: vec![0; 16_000].into(),
+                ..Default::default()
+            },
+        );
+        let audio_bps = f.driver.relay.bitrate(audio_id, measured).unwrap();
+        assert!(audio_bps > 0);
+        f.driver.bandwidth_plans(measured);
+        assert_eq!(
+            f.driver.pairs[&f.sink].demand.borrow().desired_bps,
+            Some(5_000_000 + audio_bps)
+        );
+
+        // OBS-style absent settings use preferred original supply, not the grant.
+        f.driver
+            .publications
+            .get_mut(&f.publication.id)
+            .unwrap()
+            .video_settings = None;
+        f.driver.bandwidth_plans(measured);
+        assert_eq!(
+            f.driver.pairs[&f.sink].demand.borrow().desired_bps,
+            Some(high_bps + audio_bps)
+        );
+        f.driver
+            .pairs
+            .get_mut(&f.sink)
+            .unwrap()
+            .plan
+            .can_receive_video_layers = true;
+        f.driver.bandwidth_plans(measured);
+        assert_eq!(
+            f.driver.pairs[&f.sink].demand.borrow().desired_bps,
+            Some(aggregate_bps + audio_bps)
+        );
+
+        // A second publication retains its announced intent before source arrival.
+        let mut second = f.publication.clone();
+        second.id = Uuid::new_v4();
+        second.video_settings.as_mut().unwrap().ceiling.max_bitrate = 2_000_000;
+        f.driver.publications.insert(second.id, second.clone());
+        let pair = f.driver.pairs.get_mut(&f.sink).unwrap();
+        let mut flow = pair.plan.outgoing[0].clone();
+        flow.id = Uuid::new_v4();
+        flow.publication_id = second.id;
+        pair.plan.outgoing.push(flow);
+        f.driver.bandwidth_plans(measured);
+        assert_eq!(
+            f.driver.pairs[&f.sink].demand.borrow().desired_bps,
+            Some(aggregate_bps + audio_bps + 2_000_000)
+        );
+        f.driver.publications.get_mut(&second.id).unwrap().paused = true;
+        f.driver.bandwidth_plans(measured);
+        assert_eq!(
+            f.driver.pairs[&f.sink].demand.borrow().desired_bps,
+            Some(aggregate_bps + audio_bps)
+        );
+
+        let idle = measured + Duration::from_secs(2);
+        f.driver.bandwidth_plans(idle);
+        // Complete zero observations are idle, not unknown source ceilings.
+        assert_eq!(f.driver.pairs[&f.sink].demand.borrow().desired_bps, Some(0));
+        f.driver
+            .publications
+            .get_mut(&f.publication.id)
+            .unwrap()
+            .video_settings = f.publication.video_settings;
+        f.driver.bandwidth_plans(idle);
+        assert_eq!(
+            f.driver.pairs[&f.sink].demand.borrow().desired_bps,
+            Some(5_000_000)
+        );
+        f.driver
+            .publications
+            .get_mut(&f.publication.id)
+            .unwrap()
+            .paused = true;
+        f.driver.bandwidth_plans(idle);
+        assert_eq!(f.driver.pairs[&f.sink].demand.borrow().desired_bps, Some(0));
         f.close().await;
         Ok(())
     }
@@ -968,6 +1143,19 @@ mod tests {
 
     #[test]
     fn conversion_bootstraps_unknown_and_static_sources_without_changing_forwarding() {
+        // Input bitrate is not the cost of the required compatible encoding.
+        // Neither a known original nor the startup allocation invents its target.
+        for original in [None, Some(0), Some(8_000_000)] {
+            assert_eq!(desired_bitrate(None, None, original, true), None);
+            assert_eq!(
+                desired_bitrate(None, Some(5_000_000), original, true),
+                Some(5_000_000)
+            );
+            assert_eq!(
+                desired_bitrate(Some(3_000_000), Some(5_000_000), original, true),
+                Some(3_000_000)
+            );
+        }
         for full_bps in [None, Some(0)] {
             let mut source = request(1, true, Some(0), Some((0, true)));
             let video = source.video.as_mut().unwrap();

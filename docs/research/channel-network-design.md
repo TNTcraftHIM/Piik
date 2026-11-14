@@ -778,7 +778,11 @@ together; unknown cost waits on the existing Driver tick. Pending selected video
 reserves capacity; an initial estimate does not prove measured capacity.
 Selected original supply sets minimum transmit demand
 within the SDK estimate, overuse suppresses padding, and idle/withdrawn supply
-contributes none. Desired capacity remains separate. An unfittable trial retires
+contributes none. Desired capacity uses local configuration or the publication's
+video intent and preferred original supply, independently of the current grant.
+Input bitrate does not establish the cost of a converted representation; any
+unresolved source demand keeps the connection target unknown. These targets
+do not become media ceilings. An unfittable trial retires
 its outputs without retiring selected media or the connection. Stable local-offer
 failure withdraws only unconfirmed additions; sender retirement permits one
 companion-audio retry, not retries on rollback or unchanged projections.
