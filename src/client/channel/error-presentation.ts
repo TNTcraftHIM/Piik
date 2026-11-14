@@ -41,6 +41,8 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey)
     return display("channel.error.appDisconnected");
   if (error === "external_input_unavailable")
     return display("channel.error.externalInputUnavailable");
+  if (error === "external_video_format_unsupported")
+    return display("channel.error.externalVideoFormatUnsupported");
   if (error === "external_input_failed")
     return display("channel.error.externalInputFailed");
   if (error === "invalid_title")
