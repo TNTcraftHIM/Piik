@@ -148,10 +148,10 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     onSelect(sourceRoom); setSourceView({ roomId: sourceRoom, focusedId }); setMobilePane("room");
   };
   useEffect(() => {
-    const added = mine.find(source => !previousOwnedScreens.current.has(source.id));
+    const added = mine.find(source => source.roomId === roomId && !previousOwnedScreens.current.has(source.id));
     previousOwnedScreens.current = new Set(mine.map(source => source.id));
     if (added) setSourceView({ roomId: added.roomId, focusedId: added.id });
-  }, [mine.map(source => source.id).join(",")]);
+  }, [roomId, mine.map(source => source.id).join(",")]);
   const companionKind = visibleScreens.length > 0 ? "chat" : "people";
   const companionPane = sidebarsInline ? companionKind : mobilePane;
   const companionVisible = layout !== "quick" && !overview && !toolSurface.open && (sidebarsInline
