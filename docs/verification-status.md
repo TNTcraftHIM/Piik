@@ -155,6 +155,14 @@ bookmarks or device approval. The caption reopened the list from a failed networ
 page; reopening the App retained the bookmark. These are local navigation and
 resource checks, not public-network or physical-microphone acceptance.
 
+An operator-configured HTTPS entry completed the actual launcher flow through a
+local TLS reverse proxy, followed by an App-hosted private room, generated
+invitation and confirmed chat in an independent HTTPS Browser. Exact WebSocket
+origin checks and App management isolation held, and normal shutdown released
+the listeners. Startup tests retained the configured origin, site identity and
+port across restart. This establishes the entry and authority boundary, not a
+particular proxy provider, Internet certificate setup or media path.
+
 The Windows updater completed a signed whole-bundle replacement using the real
 product helper, followed by saved-site and Native room/history recovery. Closing
 before helper readiness retained the old program; a blocked directory rename

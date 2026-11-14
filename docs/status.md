@@ -29,8 +29,9 @@ participant for persistent rooms and retains its fixed UDP deployment entry.
 
 App hosting follows its Native endpoint and process lifetime. Personal voice,
 shares, watches and capture consent remain page-owned; connecting an App does not
-transfer existing Browser rooms. The shared launcher supports Local HTTPS and
-Cloudflare public invitations, with separate data per approved site. The App saves
+transfer existing Browser rooms. The shared launcher supports Local HTTPS,
+Cloudflare public invitations and an operator-configured HTTPS invitation origin,
+with separate data per approved site. The App saves
 its local site address for later starts. Changes to the public invitation address
 do not replace Native room identity or storage.
 

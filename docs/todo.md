@@ -93,10 +93,6 @@ the feedback period; they do not delay that delivery.
   retain manual download. The
   [delivery proposal](./research/cross-platform-client-runtime.md#30-app-update-delivery)
   keeps authority, active sessions and data outside the download operation.
-- [ ] **App entry through an operator-managed HTTPS address.** A private local
-  proxy control verified exact-origin admission, stable App domain identity/port
-  and protected local management. Resolve the launcher and restart flow before
-  integration; public-provider and media-path acceptance remain separate.
 - [ ] **Managed one-click deployment.** Validate an ordinary Piik room and data
   recovery on a persistent hosting target. The
   [deployment assessment](./deployment.md#managed-one-click-hosting) distinguishes
