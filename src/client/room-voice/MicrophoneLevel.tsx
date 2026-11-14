@@ -1,4 +1,5 @@
 import { useId } from "react";
+import "./microphone-level.css";
 
 export const microphoneLevelFill = (level: number): number => Math.min(1, Math.max(0, level) * 5);
 

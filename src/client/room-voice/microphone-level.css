@@ -1,0 +1,4 @@
+.lr-voice-mic-level { position: absolute; left: 50%; top: 50%; width: var(--control-icon-size); height: var(--control-icon-size); transform: translate(-50%, -50%); pointer-events: none; fill: var(--live); }
+@media (prefers-reduced-motion: no-preference) {
+  :where(html:not([data-reduced-motion])) .lr-voice-mic-level > rect { transition: y 140ms linear, height 140ms linear; }
+}
