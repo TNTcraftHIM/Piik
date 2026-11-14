@@ -50,7 +50,6 @@ test("App webpage selection has its own candidates and closes pending reads with
     socket.receive({ type: "page_closed", pageId });
     await rejected;
     expect(events).toEqual(["closed"]);
-    expect(app.page(pageId)).toBeUndefined();
     socket.reply(null);
     expect((app as unknown as { requests: Map<string, unknown> }).requests.size).toBe(0);
   } finally { app.close(); }
@@ -63,7 +62,6 @@ test("cancelling prepare retires the page and ignores its late confirmation", as
     const command = socket.sent.at(-1)!;
     const rejected = expect(preparing).rejects.toThrow("watch_page_closed");
     cancel.abort(); await rejected;
-    expect(app.page(command.pageId as string)).toBeUndefined();
     socket.receive({ id: command.id, result: { pageId: command.pageId } });
     expect(socket.sent.at(-1)).toMatchObject({ type: "page_close", pageId: command.pageId });
     socket.reply(null);
@@ -89,7 +87,8 @@ test('watch byte source registration retains the original webpage and stop retir
     const stopping = page.stopMedia();
     expect(socket.sent.at(-1)).toMatchObject({ type: 'page_media_stop', pageId });
     socket.reply(null); await stopping;
-    expect(app.page(pageId)).toBe(page);
+    const reading = page.read(); socket.reply(state);
+    await expect(reading).resolves.toEqual(state);
     expect(socket.sent.some(command => command.type === 'page_close')).toBe(false);
   } finally { app.close(); }
 });

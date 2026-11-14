@@ -68,7 +68,7 @@ interface ScreenWatch {
 interface SourceSelection {
   controller: AbortController;
   committing: boolean;
-  pageId?: string;
+  page?: AppPage;
   browserSource?: { candidateId: string; choices: NativePageMediaChoice[] };
 }
 
@@ -1819,7 +1819,7 @@ export class ChannelSession {
     selection.controller.abort();
     if (this.sourceSelections.get(roomId) === selection) {
       this.sourceSelections.delete(roomId);
-      if (selection.pageId && !selection.committing) this.app?.page(selection.pageId)?.close();
+      if (!selection.committing) selection.page?.close();
       const share = this.screenShares.get(roomId);
       if (share) this.forgetInactiveScreen(share.id);
     }
@@ -2015,7 +2015,7 @@ export class ChannelSession {
         selection.controller.signal.throwIfAborted();
         const page = await app.preparePage(url, () => this.patch({}), selection.controller.signal);
         selection.controller.signal.throwIfAborted();
-        selection.pageId = page.id;
+        selection.page = page;
         const unlisten = page.listen(event => {
           if (event === "closed" && this.sourceSelections.get(roomId) === selection) {
             this.finishSourceSelection(roomId, selection); this.patch({});
@@ -2029,15 +2029,15 @@ export class ChannelSession {
   watchPage = (roomId: string, activityId?: string): ReturnType<ChannelActions["watchPage"]> => {
     if (activityId) {
       const media = this.watchPlayers.get(activityId)?.media, page = media instanceof AppPageMedia ? media.page : null;
-      return page instanceof AppPage ? { pageId: page.id, url: page.url, candidates: page.candidates, activityId } : undefined;
+      return page instanceof AppPage ? { url: page.url, candidates: page.candidates, activityId } : undefined;
     }
-    const selection = this.sourceSelections.get(roomId), page = selection?.pageId ? this.app?.page(selection.pageId) : undefined;
-    return page ? { pageId: page.id, url: page.url, candidates: page.candidates, browserSource: selection?.browserSource } : undefined;
+    const selection = this.sourceSelections.get(roomId), page = selection?.page;
+    return page ? { url: page.url, candidates: page.candidates, browserSource: selection?.browserSource } : undefined;
   };
   selectWatchPage = async (roomId: string, candidateId: string, activityId?: string): Promise<boolean> => {
     if (activityId) { await this.selectWatchingPage(activityId, candidateId); return true; }
     return this.action(`screen:${roomId}`, async () => {
-      const selection = this.sourceSelections.get(roomId), page = selection?.pageId ? this.app?.page(selection.pageId) : undefined;
+      const selection = this.sourceSelections.get(roomId), page = selection?.page;
       const candidate = page?.candidates.find(value => value.id === candidateId);
       if (!selection || !page || !candidate) throw new Error("watch_page_unavailable");
       try {
@@ -2064,7 +2064,7 @@ export class ChannelSession {
     });
   };
   selectWatchBrowserSource = (roomId: string, choiceId: string | null): Promise<void> => this.action(`screen:${roomId}`, async () => {
-    const selection = this.sourceSelections.get(roomId), page = selection?.pageId ? this.app?.page(selection.pageId) : undefined;
+    const selection = this.sourceSelections.get(roomId), page = selection?.page;
     const browserSource = selection?.browserSource;
     if (!selection || !page || !browserSource || !page.candidates.some(value => value.id === browserSource.candidateId)) throw new Error("watch_page_unavailable");
     selection.controller.signal.throwIfAborted();
@@ -2078,8 +2078,8 @@ export class ChannelSession {
     if (media instanceof AppPageMedia) await media.page?.focus();
   };
   focusWatchPage = async (roomId: string, activityId?: string): Promise<void> => {
-    const page = this.watchPage(roomId, activityId);
-    if (page) await this.app?.page(page.pageId)?.focus();
+    if (activityId) await this.focusWatch(activityId);
+    else await this.sourceSelections.get(roomId)?.page?.focus();
   };
   watchMediaChoices = async (id: string) => {
     const player = this.watchPlayers.get(id), media = player?.media;

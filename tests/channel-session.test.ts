@@ -8244,7 +8244,7 @@ test('webpage sharing commits the current top-level URL delivered before selecti
     if (command.type === 'page_select') return new Promise(resolve => { confirm = resolve; });
     return Promise.resolve(null);
   }, () => {}, () => {});
-  const app = { preparePage: vi.fn(async () => page), page: () => page, stopCaptures: vi.fn(), close: () => page.close() } as unknown as appLink.ChannelApp;
+  const app = { preparePage: vi.fn(async () => page), stopCaptures: vi.fn(), close: () => page.close() } as unknown as appLink.ChannelApp;
   vi.spyOn(session as unknown as { connectApp(): Promise<appLink.ChannelApp> }, 'connectApp').mockResolvedValue(app);
   (session as unknown as { app: appLink.ChannelApp }).app = app;
   const commit = vi.spyOn(session as unknown as { commitWatch(roomId: string, source: unknown, media: unknown, selection: unknown): Promise<void> }, 'commitWatch').mockResolvedValue();
@@ -8275,7 +8275,7 @@ async function websiteSourceSelection(discover: () => Promise<unknown>) {
   });
   const dispose = vi.fn();
   const page = new appLink.AppPage(pageId, 'https://video.test/film', request, dispose, () => {});
-  const app = { preparePage: vi.fn(async () => page), page: () => page, stopCaptures: vi.fn(), close: () => page.close() } as unknown as appLink.ChannelApp;
+  const app = { preparePage: vi.fn(async () => page), stopCaptures: vi.fn(), close: () => page.close() } as unknown as appLink.ChannelApp;
   vi.spyOn(session as unknown as { connectApp(): Promise<appLink.ChannelApp> }, 'connectApp').mockResolvedValue(app);
   (session as unknown as { app: appLink.ChannelApp }).app = app;
   const commit = vi.spyOn(session as unknown as { commitWatch(roomId: string, source: unknown, media: unknown, selection: unknown): Promise<void> }, 'commitWatch').mockResolvedValue();
@@ -8283,6 +8283,57 @@ async function websiteSourceSelection(discover: () => Promise<unknown>) {
   page.receive({ type: 'page_candidates', pageId, url: page.url, candidates: [{ id: candidateId, title: 'Film', url: null, duration: 60 }] });
   return { ...setupResult, page, candidateId, commit, request, dispose };
 }
+
+test.each(['creator', 'viewer'] as const)('the %s focuses and retires its acquired webpage after the App reference changes', async role => {
+  const { session, socket, page, request, dispose } = await websiteSourceSelection(async () => ({ choices: [], byteSource: null }));
+  const activityId = role === 'viewer' ? 'website-viewer' : undefined;
+  try {
+    if (activityId) {
+      await session.cancelScreenSelection('first');
+      const viewerPage = new appLink.AppPage(crypto.randomUUID(), page.url, request, dispose, () => {});
+      vi.mocked((session as unknown as { connectApp(): Promise<appLink.ChannelApp> }).connectApp).mockResolvedValue({
+        preparePage: async () => viewerPage,
+      } as unknown as appLink.ChannelApp);
+      dispose.mockClear();
+      socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [{
+        id: activityId, roomId: 'first', sessionId: 'other', userId: 'other', source: { kind: 'website', url: page.url },
+        playback: { position: 0, paused: true, rate: 1, anchorTime: 1000 },
+      }] } });
+      await session.prepareWatchPage('first', page.url, activityId);
+    }
+    (session as unknown as { app: appLink.ChannelApp }).app = { stopCaptures: vi.fn(), close: vi.fn() } as unknown as appLink.ChannelApp;
+    await session.focusWatchPage('first', activityId);
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ type: 'page_focus' }), expect.any(AbortSignal));
+    if (activityId) {
+      const leaving = session.leaveWatch(activityId);
+      const command = socket.sent.findLast(value => value.type === 'join_watch')!;
+      socket.receive({ type: 'room_reply', roomId: 'first', requestId: command.requestId, result: { type: 'done' } });
+      await leaving;
+    } else await session.cancelScreenSelection('first');
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(session.watchPage('first', activityId)).toBeUndefined();
+  } finally { session.close(); }
+});
+
+test('committing a webpage transfers its lifetime from selection to the watch player', async () => {
+  const { session, socket, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({ choices: [], byteSource: null }));
+  commit.mockRestore();
+  try {
+    const selecting = session.selectWatchPage('first', candidateId);
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
+    const start = socket.sent.findLast(command => command.type === 'start_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'update_watch')).toBe(true));
+    const update = socket.sent.findLast(command => command.type === 'update_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: update.requestId, result: { type: 'done' } });
+    await expect(selecting).resolves.toBe(true);
+    expect(session.watchPage('first')).toBeUndefined();
+    expect(dispose).not.toHaveBeenCalled();
+    expect(session.getSnapshot().watchPlayers.has(start.id as string)).toBe(true);
+    session.close();
+    expect(dispose).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
 
 test('webpage discovery requires an explicit browser source choice without preparing an upload', async () => {
   const choices = [

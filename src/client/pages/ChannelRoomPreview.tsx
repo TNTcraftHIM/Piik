@@ -177,7 +177,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     setWatchByteSource: async (_id, choiceId) => setForwarding(choiceId !== null),
     pagePlayer: new URLSearchParams(location.search).has("page-player"),
     watchPage: (_roomId, activityId) => pageSample?.activityId === activityId ? pageSample : undefined,
-    prepareWatchPage: async (_roomId, url, activityId) => setPageSample({ pageId: "sample-page", url, activityId,
+    prepareWatchPage: async (_roomId, url, activityId) => setPageSample({ url, activityId,
       candidates: new URLSearchParams(location.search).has("empty-candidates") ? [] : [{ id: "sample-video", title: "An evening with friends", url: null, duration: 240 }] }),
     focusWatchPage: async () => sample.received(), focusWatch: async () => sample.received(),
     cancelScreenSelection: async () => { setBrowserSourcePending(null); setPageSample(undefined); },

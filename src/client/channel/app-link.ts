@@ -288,7 +288,6 @@ export class ChannelApp {
     } catch (error) { page.close(); throw error; }
     finally { signal.removeEventListener("abort", cancel); }
   }
-  page(pageId: string): AppPage | undefined { return this.pages.get(pageId); }
 
   async connectionMetrics(roomId: string, publicationId?: string, signal?: AbortSignal): Promise<NativeConnectionMetrics> {
     signal?.throwIfAborted();
