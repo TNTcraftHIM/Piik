@@ -256,14 +256,28 @@ function RoomSettings({ channel, room, onClose }: {
             <summary>{zh ? "已获准的用户" : "Users with access"}</summary>
             {members.map(userId =>
               <div key={userId}><span>{userProfile(channel.state, channel.profiles, userId)?.name ?? (zh ? "用户" : "User")}</span>
-                <ChannelAction icon="x" quiet iconOnly label={zh ? "移除房间资格" : "Remove room access"} hint="hint-close"
+                <ChannelAction icon="x" quiet iconOnly danger label={zh ? "移除房间资格" : "Remove room access"} hint="hint-close"
                   busy={channel.pending.has(`revoke:${room.id}:${userId}`)} disabled={!available || working}
                   onClick={() => { void run(() => channel.revokeRoomAccess(room.id, userId, false)); }} /></div>)}
             {membersError && <p role="status">{zh ? "未能读取用户资料，请重新打开重试。" : "Could not load user profiles. Reopen to retry."}</p>}
           </details>}
+          <section className="c3-room-removal">
+            <Btn icon="x" size="dense" quiet tone="danger" busy={removing} disabled={!connected || working}
+              title={{ text: room.available ? (zh ? "删除房间" : "Delete room") : (zh ? "从列表移除" : "Remove from list") }}
+              cap={{ text: room.available ? (zh ? "删除房间" : "Delete room") : (zh ? "从列表移除" : "Remove from list") }}
+              onClick={() => {
+                const deleteData = room.available;
+                const question = deleteData
+                  ? (zh ? `删除“${room.name}”及其聊天记录？已下载的文件保留。若托管端已离线，则仅从列表中移除。`
+                    : `Delete “${room.name}” and its chat history? Downloaded files are kept. If hosting has gone offline, only its list entry will be removed.`)
+                  : (zh ? `从列表中移除“${room.name}”？离线托管端的数据保留。`
+                    : `Remove “${room.name}” from this list? Data on its offline host is kept.`);
+                if (window.confirm(question)) void run(() => channel.deleteRoom(room.id, deleteData, false), onClose);
+              }} />
+          </section>
         </section>}
         {room.authorized && <section id={`${id}-relay`} role="tabpanel" aria-labelledby={`${id}-relay-tab`} hidden={selected !== "relay"}>
-          <h3>{zh ? "连接设置" : "Connection settings"}</h3>
+          <h3>{zh ? "本机连接" : "This device"}</h3>
           <PersonalRelay channel={channel} room={room} disabled={!available || working} run={run} />
         </section>}
         {(room.authorized || room.canManage) && <section id={`${id}-data`} role="tabpanel" aria-labelledby={`${id}-data-tab`} hidden={selected !== "data"}>
@@ -283,20 +297,6 @@ function RoomSettings({ channel, room, onClose }: {
                 throw error;
               }
             }} />}
-          {room.canManage && <section className="c3-room-removal">
-            <Btn icon="x" size="dense" quiet tone="danger" busy={removing} disabled={!connected || working}
-              title={{ text: room.available ? (zh ? "删除房间" : "Delete room") : (zh ? "从列表移除" : "Remove from list") }}
-              cap={{ text: room.available ? (zh ? "删除房间" : "Delete room") : (zh ? "从列表移除" : "Remove from list") }}
-              onClick={() => {
-                const deleteData = room.available;
-                const question = deleteData
-                  ? (zh ? `删除“${room.name}”及其聊天记录？已下载的文件保留。若托管端已离线，则仅从列表中移除。`
-                    : `Delete “${room.name}” and its chat history? Downloaded files are kept. If hosting has gone offline, only its list entry will be removed.`)
-                  : (zh ? `从列表中移除“${room.name}”？离线托管端的数据保留。`
-                    : `Remove “${room.name}” from this list? Data on its offline host is kept.`);
-                if (window.confirm(question)) void run(() => channel.deleteRoom(room.id, deleteData, false), onClose);
-              }} />
-          </section>}
         </section>}
       </div>
     </div>

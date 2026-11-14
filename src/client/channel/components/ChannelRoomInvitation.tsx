@@ -61,7 +61,7 @@ function RoomInvitation({ channel, room, onClose, onManageAccess }: {
     : room.canManage && available && invitation.state === "available" ? invitation.url : "";
   const { message } = channelErrorPresentation(error, t);
   const generate = (reset = false) => <ChannelAction icon="link" label={reset ? (zh ? "确认重置邀请" : "Confirm invitation reset")
-    : (zh ? "生成免密邀请" : "Generate password-free invitation")} hint="hint-rotate-invite"
+    : (zh ? "生成免密邀请" : "Generate password-free invitation")} hint="hint-rotate-invite" danger={reset}
     busy={busy} disabled={!available || busy || invitation.state === "loading"}
     onClick={() => { void run(() => channel.createRoomInvite(room.id, false), url => setInvitation({ state: "available", url })); }} />;
   return <>
