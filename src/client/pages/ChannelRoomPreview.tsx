@@ -151,6 +151,15 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
         mediaType: "application/octet-stream", size: 12 * 1024 * 1024, sha256: "0".repeat(64) }] }] };
   }
   const profiles = new Map(users.map(user => [user.id, { ...sample.channel.profiles.get(user.id)!, ...user }]));
+  const browserSourceChoices = [
+    { id: "sample-hls", name: "Evening playlist", displayURL: "https://video-cdn.media.example/films/evening-with-friends/alternate-audio/master.m3u8?private=not-in-title", format: "hls" as const },
+    { id: "sample-file", name: "An evening with friends.mp4", displayURL: "https://media.example/films/evening/video.mp4?private=not-in-title", format: "file" as const },
+  ];
+  const commitPageSelection = (roomId: string, activityId?: string, mediaUrl?: string) => {
+    if (!activityId) setWatchActivity({ id: `sample-watch-${crypto.randomUUID()}`, roomId, source: { kind: "website", url: pageSample!.url, ...(mediaUrl ? { mediaUrl } : {}) },
+      userId: "sample-ada", sessionId: "sample-ada-session", playback: { position: 42, paused: true, rate: 1, anchorTime: 0 } });
+    setWatchMode(activityId ? "native-viewer" : "native-owner"); setPageSample(undefined);
+  };
   const channel = { ...sample.channel, state, self: profiles.get(users[0].id)!, profiles, streams, error: null, siteURL: "https://friends.example/",
     watchPlayers,
     watchMediaChoices: async () => [{ id: "sample-file", name: "An evening with friends.mp4", displayURL: "https://media.example/evening.mp4", format: "file" as const },
@@ -163,9 +172,22 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     focusWatchPage: async () => sample.received(), focusWatch: async () => sample.received(),
     cancelScreenSelection: async () => setPageSample(undefined),
     selectWatchPage: async (roomId, _candidateId, activityId) => {
-      if (!activityId) setWatchActivity({ id: `sample-watch-${crypto.randomUUID()}`, roomId, source: { kind: "website", url: pageSample!.url },
-        userId: "sample-ada", sessionId: "sample-ada-session", playback: { position: 42, paused: true, rate: 1, anchorTime: 0 } });
-      setWatchMode(activityId ? "native-viewer" : "native-owner"); setPageSample(undefined);
+      const query = new URLSearchParams(location.search);
+      if (!activityId && query.has("browser-source")) {
+        if (query.has("browser-source-failed")) {
+          setPageSample({ ...pageSample!, browserSource: { choices: [] } });
+          throw new Error("watch_source_unavailable");
+        }
+        if (!query.has("empty-browser-sources")) {
+          setPageSample({ ...pageSample!, browserSource: { choices: browserSourceChoices } });
+          return false;
+        }
+      }
+      commitPageSelection(roomId, activityId);
+      return true;
+    },
+    selectWatchBrowserSource: async (roomId, choiceId) => {
+      commitPageSelection(roomId, undefined, browserSourceChoices.find(choice => choice.id === choiceId)?.displayURL);
     },
     startWatch: async (roomId, url) => {
       setWatchMode("owner"); setWatchActivity({ id: `sample-watch-${crypto.randomUUID()}`, roomId, source: { kind: "media", url },

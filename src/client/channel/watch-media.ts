@@ -24,7 +24,7 @@ export interface WatchMedia {
   close(): void;
 }
 
-function ready(media: WatchMedia, signal: AbortSignal, setup?: Promise<void>): Promise<void> {
+export function waitForWatchMedia(media: Pick<WatchMedia, "read" | "listen">, signal: AbortSignal, setup?: Promise<void>): Promise<void> {
   return new Promise((resolve, reject) => {
     let checking = false, finished = false, prepared = !setup, failed = false;
     const finish = (error?: Error) => {
@@ -135,7 +135,7 @@ export class HTMLVideoMedia implements WatchMedia {
     if (value.paused === true) this.video.pause();
     else if (value.paused === false) await this.video.play();
   }
-  ready(signal: AbortSignal): Promise<void> { return ready(this, AbortSignal.any([signal, this.lifetime.signal]), this.setup); }
+  ready(signal: AbortSignal): Promise<void> { return waitForWatchMedia(this, AbortSignal.any([signal, this.lifetime.signal]), this.setup); }
   listen(changed: (event: WatchMediaEvent) => void): () => void {
     const lifetime = new AbortController();
     for (const event of ["loadedmetadata", "loadeddata", "play", "playing", "pause", "seeked", "ratechange", "ended", "waiting", "error", "closed"] as const)
@@ -206,7 +206,7 @@ export class AppPageMedia implements WatchMedia {
   }
   async read(): Promise<WatchMediaState> { return (await this.opening).read(); }
   async patch(value: WatchMediaPatch): Promise<void> { await (await this.opening).patch(value); }
-  ready(signal: AbortSignal): Promise<void> { return ready(this, signal); }
+  ready(signal: AbortSignal): Promise<void> { return waitForWatchMedia(this, signal); }
   listen(changed: (event: WatchMediaEvent) => void): () => void { this.listeners.add(changed); return () => this.listeners.delete(changed); }
   close(): void { this.lifetime.abort(); this.unlisten?.(); this.listeners.clear(); this.page?.close(); }
 }

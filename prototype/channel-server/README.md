@@ -294,6 +294,9 @@ platforms still need their runtime acceptance.
 Choose **Start sharing → Browser → Watch together**. A direct video address plays
 inside Piik. With the Windows App connected, **Open webpage and choose video**
 opens a separate website window; select its player after loading or signing in.
+If the player uses a media buffer, Piik offers the video addresses discovered in
+that page. Choose one for Browser viewers to try, or share the original webpage
+only. Selecting an address does not enable uploading.
 The sharer controls play, pause, position and speed. Each viewer controls local
 sound and can stop watching independently.
 

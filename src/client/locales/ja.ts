@@ -1,6 +1,10 @@
 import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 export const ja: Record<CopyKey, string> = {
+  "watch.browserSource.title": "ブラウザー用の再生元を選択",
+  "watch.browserSource.help": "ブラウザーで再生を試す動画リンクを選んでください。あなたの再生は元のウェブページで続きます。",
+  "watch.browserSource.skip": "元のウェブページのみ共有",
+  "watch.browserSource.selectNamed": "ブラウザーで {name} を再生",
   "watch.forward.title": "元の動画を転送",
   "watch.forward.upload": "このデバイスのアップロード帯域を使い、ルームの接続を通して元の動画を送信します。",
   "watch.forward.active": "転送中です。停止してもウェブページは開いたままです。",

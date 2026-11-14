@@ -63,6 +63,11 @@ cancellation also pass. Other native-playable containers still need an origin
 that permits Service Workers. These adapter checks cover Chrome; broader
 Browser and website coverage remains open. The official hls.js demo also passes
 Native webpage discovery, controls and peer forwarding.
+An anonymous HLS webpage also passes Native player selection followed by explicit
+Browser source selection: a delayed manifest is discovered after media readiness,
+and the viewer directly loads and synchronizes it without App access, uploaded
+bytes or added peer demand. Cancelling preparation preserves the existing share;
+private-source refusal retains the App and explicit-forwarding choices.
 
 The first internal test targets matched Windows and Android packages with the
 shared Browser UI. Normal packaged flows have verified room creation and

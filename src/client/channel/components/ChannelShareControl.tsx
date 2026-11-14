@@ -276,6 +276,9 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
   const [url, setURL] = useState(initialURL);
   const { error, run } = useSettingsAction();
   const page = channel.watchPage(roomId, activityId);
+  const browserSources = !activityId ? page?.browserSource : undefined;
+  const browserHeading = useRef<HTMLHeadingElement>(null);
+  useLayoutEffect(() => { if (browserSources) browserHeading.current?.focus(); }, [!!browserSources]);
   const committing = !activityId && channel.sourceSelectionCommitting(roomId);
   const busy = committing || channel.pending.has(activityId ? `watch-video:${activityId}` : `screen:${roomId}`);
   useEffect(() => {
@@ -289,12 +292,24 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
   };
   return <ChannelSettingsDialog compact title={t("watch.start")} error={error} onClose={close} closeDisabled={committing}>
     {page ? <div className="c3-settings-panels c3-external-input">
-      <p>{t("watch.chooseVideo")}</p>
+      {browserSources ? <><h3 ref={browserHeading} tabIndex={-1}>{t("watch.browserSource.title")}</h3><p>{t("watch.browserSource.help")}</p></>
+        : <p>{t("watch.chooseVideo")}</p>}
       <Btn icon="window" quiet size="compact" title="watch.openedPage" cap="watch.openedPage" onClick={() => { void run(() => channel.focusWatchPage(roomId, activityId)); }} />
-      {page.candidates.length ? <div className="lr-source-picker-list">
+      {browserSources ? <>
+        {browserSources.choices.length > 0 && <div className="lr-source-picker-list" data-text-list>
+          {browserSources.choices.map(choice => {
+            const source = new URL(choice.displayURL), name = choice.name || source.host;
+            return <CaptureSourceCard key={choice.id} title={name} description={source.host + source.pathname}
+              action={t("watch.browserSource.selectNamed", { name })} icon="play" hint="hint-source-picker" disabled={busy}
+              onSelect={() => { void run(() => channel.selectWatchBrowserSource(roomId, choice.id), onClose); }} />;
+          })}
+        </div>}
+        <Btn icon="globe" quiet title="watch.browserSource.skip" cap="watch.browserSource.skip" disabled={busy}
+          onClick={() => { void run(() => channel.selectWatchBrowserSource(roomId, null), onClose); }} />
+      </> : page.candidates.length ? <div className="lr-source-picker-list">
         {page.candidates.map((candidate, index) => <CaptureSourceCard key={candidate.id} title={candidate.title || t("watch.videoNumber", { number: String(index + 1) })}
           action={t("watch.selectVideoNamed", { name: candidate.title || String(index + 1) })} icon="play" hint="hint-source-picker" disabled={busy}
-          onSelect={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, activityId), onClose); }} />)}
+          onSelect={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, activityId), committed => { if (committed) onClose(); }); }} />)}
       </div> : <div className="lr-source-picker-status" role="status"><BrandLoader /><span>{t("watch.waitForVideo")}</span></div>}
       <Btn icon="x" quiet title="common.cancel" cap="common.cancel" disabled={committing} onClick={close} />
     </div> : activityId ? <div className="c3-settings-panels c3-external-input"><p role="status">{busy ? t("watch.openingPage") : t("watch.pageUnavailable")}</p>

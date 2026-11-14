@@ -1,7 +1,7 @@
 import { WatchBytes } from "./watch-bytes";
 import { z } from "zod";
 import { WatchPlayer } from "./watch-playback";
-import { HTMLVideoMedia, AppPageMedia, createPeerWatchMedia, type WatchMedia } from "./watch-media";
+import { HTMLVideoMedia, AppPageMedia, createPeerWatchMedia, waitForWatchMedia, type WatchMedia } from "./watch-media";
 import { watchPlaybackSchema, watchSourceSchema, type WatchPlayback, type WatchSource, type WatchMode } from "./protocol";
 import { ChannelMedia } from "./media";
 import { ChannelInput } from "./input";
@@ -13,7 +13,7 @@ import type { ChannelActions, ChannelView, ChatOptions, ScreenPresentation, Sour
 import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryImport, type BackupHistoryRow } from "./hosting";
 import { AppPage, ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics, type NativeExternalInputState } from "./app-link";
 import { isClientActivated } from "../lib/app-launch";
-import type { NativeCaptureTarget, EncodingExecution } from "../native/wire";
+import type { NativeCaptureTarget, EncodingExecution, NativePageMediaChoice } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 import { MicrophoneInput } from "../media/microphone-input";
@@ -69,6 +69,7 @@ interface SourceSelection {
   controller: AbortController;
   committing: boolean;
   pageId?: string;
+  browserSource?: { candidateId: string; choices: NativePageMediaChoice[] };
 }
 
 interface ScreenShare {
@@ -2031,10 +2032,10 @@ export class ChannelSession {
       return page instanceof AppPage ? { pageId: page.id, url: page.url, candidates: page.candidates, activityId } : undefined;
     }
     const selection = this.sourceSelections.get(roomId), page = selection?.pageId ? this.app?.page(selection.pageId) : undefined;
-    return page ? { pageId: page.id, url: page.url, candidates: page.candidates } : undefined;
+    return page ? { pageId: page.id, url: page.url, candidates: page.candidates, browserSource: selection?.browserSource } : undefined;
   };
-  selectWatchPage = (roomId: string, candidateId: string, activityId?: string): Promise<void> => {
-    if (activityId) return this.selectWatchingPage(activityId, candidateId);
+  selectWatchPage = async (roomId: string, candidateId: string, activityId?: string): Promise<boolean> => {
+    if (activityId) { await this.selectWatchingPage(activityId, candidateId); return true; }
     return this.action(`screen:${roomId}`, async () => {
       const selection = this.sourceSelections.get(roomId), page = selection?.pageId ? this.app?.page(selection.pageId) : undefined;
       const candidate = page?.candidates.find(value => value.id === candidateId);
@@ -2042,14 +2043,36 @@ export class ChannelSession {
       try {
         await page.select(candidateId);
         selection.controller.signal.throwIfAborted();
-        const selected = page.candidates.find(value => value.id === candidateId);
-        if (!selected) throw new Error("watch_page_unavailable");
-        const media = new AppPageMedia(page);
-        const source: WatchSource = { kind: "website", url: page.url, ...(selected.url ? { mediaUrl: selected.url } : {}) };
-        await this.commitWatch(roomId, source, media, selection);
       } catch (error) { page.close(); this.finishSourceSelection(roomId, selection); throw error; }
+      const selected = page.candidates.find(value => value.id === candidateId);
+      if (!selected) throw new Error("watch_page_unavailable");
+      if (!selected.url) {
+        // Keep the selected page available for an explicit skip if discovery fails.
+        const browserSource = selection.browserSource = { candidateId, choices: [] as NativePageMediaChoice[] };
+        this.patch({});
+        await waitForWatchMedia(page, selection.controller.signal);
+        selection.controller.signal.throwIfAborted();
+        const { choices } = await page.mediaSources();
+        selection.controller.signal.throwIfAborted();
+        browserSource.choices = choices;
+        this.patch({});
+        if (choices.length) return false;
+      }
+      const source: WatchSource = { kind: "website", url: page.url, ...(selected.url ? { mediaUrl: selected.url } : {}) };
+      await this.commitWatch(roomId, source, new AppPageMedia(page), selection);
+      return true;
     });
   };
+  selectWatchBrowserSource = (roomId: string, choiceId: string | null): Promise<void> => this.action(`screen:${roomId}`, async () => {
+    const selection = this.sourceSelections.get(roomId), page = selection?.pageId ? this.app?.page(selection.pageId) : undefined;
+    const browserSource = selection?.browserSource;
+    if (!selection || !page || !browserSource || !page.candidates.some(value => value.id === browserSource.candidateId)) throw new Error("watch_page_unavailable");
+    selection.controller.signal.throwIfAborted();
+    const choice = choiceId === null ? undefined : browserSource.choices.find(value => value.id === choiceId);
+    if (choiceId !== null && !choice) throw new Error("watch_page_unavailable");
+    const source: WatchSource = { kind: "website", url: page.url, ...(choice ? { mediaUrl: choice.displayURL } : {}) };
+    await this.commitWatch(roomId, source, new AppPageMedia(page), selection);
+  });
   focusWatch = async (id: string): Promise<void> => {
     const media = this.watchPlayers.get(id)?.media;
     if (media instanceof AppPageMedia) await media.page?.focus();

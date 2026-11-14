@@ -521,6 +521,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   gap: 8px;
   padding: 2px;
 }
+.lr-source-picker-list[data-text-list] { grid-template-columns: minmax(0, 1fr); }
 .lr-source-option {
   display: flex;
   min-width: 0;
@@ -587,7 +588,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   object-fit: contain;
   background: var(--wall-2);
 }
-.lr-source-option-copy { flex: 1; }
+.lr-source-option-copy { flex: 1; overflow-wrap: anywhere; }
 .lr-source-option-copy strong {
   overflow: hidden;
   text-overflow: ellipsis;

@@ -89,8 +89,9 @@ export interface ChannelView {
 export interface ChannelActions {
   startWatch(roomId: string, url: string): Promise<void>;
   prepareWatchPage(roomId: string, url: string, activityId?: string): Promise<void>;
-  watchPage(roomId: string, activityId?: string): { pageId: string; url: string; candidates: readonly NativePageCandidate[]; activityId?: string } | undefined;
-  selectWatchPage(roomId: string, candidateId: string, activityId?: string): Promise<void>;
+  watchPage(roomId: string, activityId?: string): { pageId: string; url: string; candidates: readonly NativePageCandidate[]; activityId?: string; browserSource?: { choices: readonly NativePageMediaChoice[] } } | undefined;
+  selectWatchPage(roomId: string, candidateId: string, activityId?: string): Promise<boolean>;
+  selectWatchBrowserSource(roomId: string, choiceId: string | null): Promise<void>;
   focusWatch(id: string): Promise<void>;
   focusWatchPage(roomId: string, activityId?: string): Promise<void>;
   joinWatch(id: string, mode?: WatchMode): Promise<void>;

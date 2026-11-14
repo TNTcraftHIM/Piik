@@ -1,5 +1,9 @@
 // Canonical catalog: add keys here first; every other locale must match it.
 export const zh = {
+  "watch.browserSource.title": "选择浏览器播放来源",
+  "watch.browserSource.help": "选择一个视频地址供浏览器尝试播放。你的播放仍在原网页中。",
+  "watch.browserSource.skip": "仅分享原网页",
+  "watch.browserSource.selectNamed": "使用 {name} 供浏览器播放",
   "watch.forward.title": "转发原始视频",
   "watch.forward.upload": "使用本机上传带宽，通过房间连接发送原始视频。",
   "watch.forward.active": "已开启转发。停止转发会保留网页播放。",

@@ -1,6 +1,10 @@
 import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 export const zhHant: Record<CopyKey, string> = {
+  "watch.browserSource.title": "選擇瀏覽器播放來源",
+  "watch.browserSource.help": "選擇影片網址供瀏覽器嘗試播放。你的播放仍在原網頁中。",
+  "watch.browserSource.skip": "僅分享原網頁",
+  "watch.browserSource.selectNamed": "使用 {name} 供瀏覽器播放",
   "watch.forward.title": "轉發原始影片",
   "watch.forward.upload": "使用本機上傳頻寬，透過房間連線傳送原始影片。",
   "watch.forward.active": "已開啟轉發。停止轉發會保留網頁播放。",

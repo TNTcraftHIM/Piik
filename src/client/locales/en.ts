@@ -2,6 +2,10 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // Community translations are data-only and type-checked against zh.
 export const en: Record<CopyKey, string> = {
+  "watch.browserSource.title": "Choose browser playback source",
+  "watch.browserSource.help": "Choose a video link for browser viewers to try. Your playback stays in the original webpage.",
+  "watch.browserSource.skip": "Share original webpage only",
+  "watch.browserSource.selectNamed": "Use {name} for browser playback",
   "watch.forward.title": "Forward original video",
   "watch.forward.upload": "Use this device’s upload bandwidth to send original video through room connections.",
   "watch.forward.active": "Forwarding is on. Stopping it keeps the webpage open.",

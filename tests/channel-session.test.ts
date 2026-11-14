@@ -8259,9 +8259,123 @@ test('webpage sharing commits the current top-level URL delivered before selecti
       { id: candidateId, title: 'Film', url: 'https://media.test/film.mp4', duration: 60 },
     ] });
     confirm({ position: 0, paused: true, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] as [number, number][] });
-    await selecting;
+    await expect(selecting).resolves.toBe(true);
     expect(commit.mock.calls[0]?.[1]).toEqual({ kind: 'website', url: 'https://video.test/film?chosen=1', mediaUrl: 'https://media.test/film.mp4' });
     expect(session.watchPage('first')?.url).toBe('https://video.test/film?chosen=1');
+  } finally { session.close(); }
+});
+
+async function websiteSourceSelection(discover: () => Promise<unknown>) {
+  const setupResult = await setup(1000, false);
+  const { session } = setupResult;
+  const pageId = crypto.randomUUID(), candidateId = crypto.randomUUID();
+  const request = vi.fn(async (command: { type: string }) => {
+    if (command.type === 'page_media_sources') return discover();
+    return { position: 0, paused: true, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] };
+  });
+  const dispose = vi.fn();
+  const page = new appLink.AppPage(pageId, 'https://video.test/film', request, dispose, () => {});
+  const app = { preparePage: vi.fn(async () => page), page: () => page, stopCaptures: vi.fn(), close: () => page.close() } as unknown as appLink.ChannelApp;
+  vi.spyOn(session as unknown as { connectApp(): Promise<appLink.ChannelApp> }, 'connectApp').mockResolvedValue(app);
+  (session as unknown as { app: appLink.ChannelApp }).app = app;
+  const commit = vi.spyOn(session as unknown as { commitWatch(roomId: string, source: unknown, media: unknown, selection: unknown): Promise<void> }, 'commitWatch').mockResolvedValue();
+  await session.prepareWatchPage('first', page.url);
+  page.receive({ type: 'page_candidates', pageId, url: page.url, candidates: [{ id: candidateId, title: 'Film', url: null, duration: 60 }] });
+  return { ...setupResult, page, candidateId, commit, request, dispose };
+}
+
+test('webpage discovery requires an explicit browser source choice without preparing an upload', async () => {
+  const choices = [
+    { id: crypto.randomUUID(), displayURL: 'https://media.test/master.m3u8?grant=fixture', name: 'Master', format: 'hls' as const },
+    { id: crypto.randomUUID(), displayURL: 'https://media.test/other.m3u8', name: 'Other', format: 'hls' as const },
+  ];
+  const { session, candidateId, commit, request, socket } = await websiteSourceSelection(async () => ({ choices, byteSource: null }));
+  try {
+    await expect(session.selectWatchPage('first', candidateId)).resolves.toBe(false);
+    expect(session.watchPage('first')?.browserSource?.choices).toEqual(choices);
+    expect(session.getSnapshot().watchPlayers.size).toBe(0);
+    expect(commit).not.toHaveBeenCalled();
+    await expect(session.selectWatchBrowserSource('first', crypto.randomUUID())).rejects.toThrow('watch_page_unavailable');
+    expect(commit).not.toHaveBeenCalled();
+    await session.selectWatchBrowserSource('first', choices[0].id);
+    expect(commit.mock.calls[0]?.[1]).toEqual({ kind: 'website', url: 'https://video.test/film', mediaUrl: choices[0].displayURL });
+    expect(request.mock.calls.some(([command]) => command.type === 'page_media_prepare')).toBe(false);
+    expect(socket.sent.some(command => command.type === 'set_watch_byte_source')).toBe(false);
+  } finally { session.close(); }
+});
+
+test('failed webpage discovery keeps its selected page for an explicit original-page share', async () => {
+  const { session, candidateId, commit, dispose } = await websiteSourceSelection(async () => { throw new Error('page_player_timeout'); });
+  try {
+    await expect(session.selectWatchPage('first', candidateId)).rejects.toThrow('page_player_timeout');
+    expect(session.watchPage('first')?.browserSource).toEqual({ candidateId, choices: [] });
+    expect(dispose).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+    await session.selectWatchBrowserSource('first', null);
+    expect(commit.mock.calls[0]?.[1]).toEqual({ kind: 'website', url: 'https://video.test/film' });
+  } finally { session.close(); }
+});
+
+test('webpage source discovery waits for loaded media and cancellation releases that wait', async () => {
+  const choices = [{ id: crypto.randomUUID(), displayURL: 'https://media.test/delayed.m3u8', name: 'Film', format: 'hls' as const }];
+  const discover = vi.fn(async () => ({ choices, byteSource: null }));
+  const { session, page, candidateId, commit, dispose } = await websiteSourceSelection(discover);
+  let readyState = 0;
+  const read = vi.spyOn(page, 'read').mockImplementation(async () => ({ position: 0, paused: true, rate: 1, duration: 60,
+    readyState, ended: false, buffered: [] }));
+  try {
+    const selecting = session.selectWatchPage('first', candidateId);
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+    expect(discover).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+    readyState = 2;
+    page.receive({ type: 'page_sample', pageId: page.id, event: 'loadeddata' });
+    await expect(selecting).resolves.toBe(false);
+    expect(discover).toHaveBeenCalledOnce();
+    expect(session.watchPage('first')?.browserSource?.choices).toEqual(choices);
+    expect(session.getSnapshot().watchPlayers.size).toBe(0);
+
+    readyState = 0; read.mockClear(); discover.mockClear();
+    const preparing = session.selectWatchPage('first', candidateId);
+    const cancelled = expect(preparing).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+    await session.cancelScreenSelection('first');
+    await cancelled;
+    readyState = 2;
+    page.receive({ type: 'page_sample', pageId: page.id, event: 'loadeddata' });
+    expect(read).toHaveBeenCalledOnce();
+    expect(discover).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(session.watchPage('first')).toBeUndefined();
+  } finally { session.close(); }
+});
+
+test('cancelled source discovery cannot restore the candidate or retire an existing watch', async () => {
+  let answer!: (value: unknown) => void;
+  const { session, socket, candidateId, commit, dispose } = await websiteSourceSelection(() => new Promise(resolve => { answer = resolve; }));
+  const video = new WatchTestVideo();
+  vi.stubGlobal('document', { createElement: () => video });
+  const activity = { id: 'existing-watch', roomId: 'first', sessionId: 'other', userId: 'other', source: { kind: 'media' as const, url: 'https://media.test/existing.mp4' },
+    playback: { position: 10, paused: true, rate: 1, anchorTime: 1000 } };
+  try {
+    socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [activity] } });
+    const joining = session.joinWatch(activity.id);
+    const join = socket.sent.findLast(command => command.type === 'join_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: join.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
+    await joining;
+    const existing = session.getSnapshot().watchPlayers.get(activity.id);
+    const selecting = session.selectWatchPage('first', candidateId);
+    const cancelled = expect(selecting).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.waitFor(() => expect(answer).toBeDefined());
+    expect(session.watchPage('first')?.browserSource).toBeDefined();
+    await session.cancelScreenSelection('first');
+    answer({ choices: [{ id: crypto.randomUUID(), displayURL: 'https://media.test/late.m3u8', name: 'Late', format: 'hls' }], byteSource: null });
+    await cancelled;
+    expect(session.watchPage('first')).toBeUndefined();
+    expect(commit).not.toHaveBeenCalled();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().watchPlayers.get(activity.id)).toBe(existing);
   } finally { session.close(); }
 });
 
