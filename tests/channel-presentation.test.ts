@@ -46,7 +46,7 @@ it("merges a user's real-time endpoints without treating chat-only presence as p
       source: { kind: "screen", name: null }, title: null, audience: [{ sessionId: "self-page", state: "active" }],
       videoSettings: { ceiling: { resolution: { width: 1280, height: 720 }, maxFramerate: 30, maxBitrate: 4_000_000 }, degradationPreference: "balanced" },
     }], voice: [{ roomId: "room", sessionId: "self-page", muted: true, deafened: true }],
-    subscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
+    subscriptions: [], watchActivities: [], watchSubscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   });
   expect(roomPeople(state, "room").map(person => person.userId)).toEqual(["self", "chat"]);
   expect(roomRealtimePeople(state, "room").map(({ id, voice, sharing, watching }) => ({ id, voice, sharing, watching }))).toEqual([

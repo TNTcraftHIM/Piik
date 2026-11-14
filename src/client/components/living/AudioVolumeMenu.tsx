@@ -7,9 +7,10 @@ import { useCopy, type CopyKey } from "../../ui/copy";
 import type { GlyphName } from "../../ui/icons";
 
 // The icon keeps its direct mute action; its attached slider never reflows the row.
-export function AudioVolumeMenu({ volume, onVolume, label, icon, heading, disabled, children }: {
+export function AudioVolumeMenu({ volume, onVolume, label, icon, heading, disabled, children, max }: {
   volume: number; onVolume: (volume: number) => void; label: CopyKey; icon: GlyphName;
   heading?: string; disabled?: boolean; children: ReactNode;
+  max?: number;
 }) {
   const { t } = useCopy();
   const ownerDocument = useSurfaceDocument(), view = ownerDocument?.defaultView;
@@ -92,7 +93,7 @@ export function AudioVolumeMenu({ volume, onVolume, label, icon, heading, disabl
     <div ref={panel} popover="auto" role="dialog" aria-label={heading ?? t(label)}
       className="lr-floating-surface lr-audio-settings lr-audio-volume-popover">
       {heading && <b>{heading}</b>}
-      <AudioVolumeControl volume={volume} onVolume={onVolume} label={label} icon={icon} />
+      <AudioVolumeControl volume={volume} onVolume={onVolume} label={label} icon={icon} max={max} />
     </div>
   </span>;
 }

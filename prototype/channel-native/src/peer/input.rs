@@ -350,6 +350,8 @@ mod tests {
     }
     fn state() -> Snapshot {
         Snapshot {
+            watch_activities: vec![],
+            watch_subscriptions: vec![],
             files: vec![],
             channel: ChannelInfo {
                 user_count: 0,

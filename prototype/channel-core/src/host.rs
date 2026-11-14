@@ -128,6 +128,9 @@ pub struct HostInput {
     rename_all_fields = "camelCase"
 )]
 pub enum RoomResult {
+    WatchReady {
+        server_time: u64,
+    },
     Done,
     Deleted {
         data_removed: bool,
@@ -156,6 +159,7 @@ pub struct RoomReply {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomProjection {
+    pub watch_activities: Vec<crate::wire::WatchActivity>,
     pub last_message_seq: u64,
     pub next_route_deadline: Option<u64>,
     pub summary: RoomSummary,
@@ -199,6 +203,12 @@ impl RoomProjection {
     pub fn snapshot(&self, session: Uuid, available: bool) -> Option<RoomSnapshot> {
         let view = self.views.get(&session)?;
         Some(RoomSnapshot {
+            watch_activities: if view.authorized {
+                self.watch_activities.clone()
+            } else {
+                vec![]
+            },
+            watch_subscriptions: view.watch_subscriptions.clone(),
             room: Room {
                 last_message_seq: if view.authorized {
                     self.last_message_seq
@@ -360,6 +370,16 @@ impl RoomRuntime {
                     invitation: self.invitation(member)?,
                 };
             }
+            Command::StartWatch {
+                id, url, playback, ..
+            } => self.start_watch(member, session, id, url, playback)?,
+            Command::UpdateWatch { id, playback, .. } => {
+                self.update_watch(member, session, id, playback)?
+            }
+            Command::JoinWatch { id, enabled, .. } => {
+                self.join_watch(member, session, id, enabled)?
+            }
+            Command::StopWatch { id, .. } => self.stop_watch(member, session, id)?,
             Command::Publish { publication } => self.publish(
                 member,
                 session,
@@ -1173,7 +1193,18 @@ impl RoomHost {
                         work.policy = Some(self.policy().clone());
                     }
                     work.history = op.history;
-                    return Ok(op.result);
+                    return Ok(
+                        if matches!(
+                            command,
+                            Command::StartWatch { .. } | Command::JoinWatch { enabled: true, .. }
+                        ) {
+                            RoomResult::WatchReady {
+                                server_time: context.now,
+                            }
+                        } else {
+                            op.result
+                        },
+                    );
                 }
                 HostAction::Revoke { target, .. } => {
                     self.room.revoke(member.unwrap(), *target)?;

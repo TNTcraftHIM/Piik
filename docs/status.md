@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-11-13
+Last updated: 2026-11-14
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -95,6 +95,9 @@ separates earlier proof evidence from the integrated package's acceptance;
 other desktop platforms retain their current entry.
 Windows software H264 selection is included in matched internal candidates and
 has passed the normal sharing, viewing, bitrate-change and shutdown flow.
+The current source also supports synchronized direct-media viewing through the
+Browser source picker. Playback control uses room commands without peer media;
+website connectors and matching-package acceptance remain in TODO.
 
 ## Deployment
 

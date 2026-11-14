@@ -235,6 +235,7 @@ pair, as described in [RFC 8831](https://www.rfc-editor.org/rfc/rfc8831.html#sec
 An additional logical DataChannel does not require another exposed file port.
 Different peer connections can still use different UDP sockets; this is transport
 reuse within a connection, not a promise of one global socket for the room.
+
 Web delivery and HTTPS/WSS signaling retain their existing control transport;
 UDP-only refers to the selected peer media/data path, not every service in Piik.
 Receivers do not get their own microphone back. Muting local listening does not
@@ -249,6 +250,41 @@ bufferedAmount and bufferedamountlow for bounded sending under the
 Participant cooperation distributes transfer load and permits path/source repair
 where alternatives exist. Room confirmation and authority still belong to the
 room owner; replicated file bytes do not introduce automatic room-owner takeover.
+
+### Synchronized Video Sources
+
+The Browser source choice includes screen capture and synchronized video viewing.
+Each viewer loads the media source independently. A temporary room activity owns
+the source URL, sharer session, viewers and current playback anchor; it uses the
+existing room-command and snapshot path. It creates no media flow or encoder.
+Only the sharer changes common play, pause, position and speed. Viewers own their
+local sound and viewing participation. Room access and session retirement govern
+the activity, and room history does not persist live playback.
+
+Playback anchors use domain time, sampled alongside the sharer's media position.
+Join confirmations provide domain-time samples for each viewer's local clock
+mapping. A late join or restored viewer applies the latest anchor after its media
+and clock are ready; autoplay refusal remains a local request to start playback.
+Actual playback start and recovery from buffering renew the sharer's anchor.
+
+Preparing another source preserves the current one. Cancellation during
+preparation releases only the candidate; submitting the prepared source commits
+the replacement. A new synchronized-video activity atomically replaces the same
+sharer's previous activity in that room, ending its subscriptions. Viewers choose
+whether to join the new source. Cross-kind replacement stops the previous screen
+or synchronized video after the new source is confirmed. Explicitly stopping an
+activity also prevents a pending confirmation from restoring its player.
+
+Direct HTTP(S) media uses the Browser's own player. The Native client supplies
+the webpage-player connector without a separate browser extension. Website
+windows retain their own browsing context and do not inherit Piik device
+authority or room credentials. Browser-only website integration uses a documented
+player-control API. A portable media URL can use the direct-media path; webpage
+synchronization controls each participant's original player instead of requiring
+that URL. Source access stays with each viewer's platform account, while the
+existing room authority carries playback state. The
+[implementation ledger](../todo.md) distinguishes direct-media delivery from
+website-connector work.
 
 ### Screen Demand Uses Reachable Paths
 

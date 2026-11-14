@@ -9,9 +9,9 @@ import "./channel-room-item.css";
 
 /** Room navigation and room management are separate actions on the same item. */
 export function ChannelRoomItem({ room, selected, voice = false, sharing = false, watching = false,
-  screenCount = 0, settingsOpen = false, unread = false, participantDisclosure, onSelect, onManage }: {
+  sourceCount = 0, settingsOpen = false, unread = false, participantDisclosure, onSelect, onManage }: {
   room: ChannelRoom; selected: boolean; voice?: boolean; sharing?: boolean; watching?: boolean;
-  screenCount?: number; settingsOpen?: boolean; unread?: boolean; onSelect(): void; onManage(): void;
+  sourceCount?: number; settingsOpen?: boolean; unread?: boolean; onSelect(): void; onManage(): void;
   participantDisclosure?: { open: boolean; count: number; controls: string; onToggle(): void };
 }) {
   const { lang } = useCopy();
@@ -33,7 +33,7 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
           {room.access === "private" && <Glyph name="lock" size={13} />}
           {voice && <Glyph name="headphones" size={14} />}
           {sharing ? <Glyph name="cast" size={14} /> : watching ? <Glyph name="eye" size={14} />
-            : screenCount > 0 ? <span>{screenCount}<Glyph name="tv" size={13} /></span> : null}
+            : sourceCount > 0 ? <span>{sourceCount}<Glyph name="tv" size={13} /></span> : null}
         </span>
       </button>
     </Tooltip>

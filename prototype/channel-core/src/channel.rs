@@ -271,6 +271,9 @@ impl Channel {
                 projection
                     .publications
                     .retain(|p| readable_sessions.contains(&p.session_id));
+                projection
+                    .watch_activities
+                    .retain(|a| readable_sessions.contains(&a.session_id));
                 for publication in &mut projection.publications {
                     publication
                         .audience
@@ -301,6 +304,9 @@ impl Channel {
                         file.downstream
                             .retain(|peer| readable_sessions.contains(peer));
                     }
+                    view.watch_subscriptions.retain(|id| {
+                        view.authorized && projection.watch_activities.iter().any(|a| a.id == *id)
+                    });
                     view.subscriptions
                         .retain(|id| projection.publications.iter().any(|p| p.id == *id));
                     view.failed_subscriptions
@@ -442,7 +448,11 @@ impl Channel {
 
     pub(crate) fn command_room(&self, command: &Command) -> Option<String> {
         match command {
-            Command::Browse { room_id, .. }
+            Command::StartWatch { room_id, .. }
+            | Command::UpdateWatch { room_id, .. }
+            | Command::JoinWatch { room_id, .. }
+            | Command::StopWatch { room_id, .. }
+            | Command::Browse { room_id, .. }
             | Command::BaseState { room_id, .. }
             | Command::FileOffer { room_id, .. }
             | Command::FileReceive { room_id, .. }
@@ -996,6 +1006,28 @@ impl Channel {
         {
             return Err("invalid_room_projection");
         }
+        let mut watch_ids = BTreeSet::new();
+        let mut watch_owners = BTreeSet::new();
+        if projection.watch_activities.len() > MAX_SESSIONS {
+            return Err("invalid_room_projection");
+        }
+        for activity in &projection.watch_activities {
+            if !watch_ids.insert(activity.id)
+                || !watch_owners.insert(activity.session_id)
+                || activity.room_id != id
+                || activity.playback.validate().is_err()
+                || crate::wire::validate_watch_url(&activity.url).is_err()
+                || !projection
+                    .views
+                    .get(&activity.session_id)
+                    .is_some_and(|v| v.authorized)
+                || !endpoints
+                    .get(&activity.session_id)
+                    .is_some_and(|e| e.member.user_id == activity.user_id)
+            {
+                return Err("invalid_room_projection");
+            }
+        }
         for (recipient, view) in &projection.views {
             if !endpoints.contains_key(recipient)
                 || view.can_manage
@@ -1003,6 +1035,11 @@ impl Channel {
                         || endpoints[recipient].member.user_id != projection.summary.creator_id)
                 || view.members.is_some() && !view.can_manage
                 || view.relay_override.is_some_and(|capacity| capacity > 20)
+                || view.watch_subscriptions.len() > MAX_SESSIONS
+                || view
+                    .watch_subscriptions
+                    .iter()
+                    .any(|id| !watch_ids.contains(id))
                 || view.subscriptions.len() > MAX_PUBLICATIONS
                 || view.failed_subscriptions.len() > MAX_PUBLICATIONS
                 || view.failed_subscriptions.iter().any(|id| {
@@ -1014,6 +1051,7 @@ impl Channel {
                 || view.files.len() > HISTORY_WINDOW
                 || (!view.authorized
                     && (view.reading
+                        || !view.watch_subscriptions.is_empty()
                         || !view.subscriptions.is_empty()
                         || !view.failed_subscriptions.is_empty()
                         || !view.files.is_empty()))
@@ -1390,7 +1428,7 @@ impl Channel {
                         publication.id == publication_id && publication.kind == Kind::Screen
                     })
                     .ok_or("publication_unavailable")?;
-                Ok(ScreenTopology {
+                Ok::<_, &'static str>(ScreenTopology {
                     publication_id,
                     source_session_id: publication.session_id,
                     edges: projection
@@ -1436,6 +1474,8 @@ impl Channel {
             .and_then(|session| self.identity.member(session.user_id).ok());
         let mut rooms = Vec::new();
         let mut publications = Vec::new();
+        let mut watch_activities = Vec::new();
+        let mut watch_subscriptions = BTreeSet::new();
         let mut voice = Vec::new();
         let mut files = Vec::new();
         let mut subscriptions = BTreeSet::new();
@@ -1458,6 +1498,8 @@ impl Channel {
                     };
                     rooms.push(snapshot.room);
                     publications.extend(snapshot.publications);
+                    watch_activities.extend(snapshot.watch_activities);
+                    watch_subscriptions.extend(snapshot.watch_subscriptions);
                     voice.extend(snapshot.voice);
                     files.extend(snapshot.files);
                     subscriptions.extend(snapshot.subscriptions);
@@ -1474,6 +1516,8 @@ impl Channel {
             .chain(std::iter::once(self.identity.owner_id))
             .collect();
         Snapshot {
+            watch_activities,
+            watch_subscriptions: watch_subscriptions.into_iter().collect(),
             files,
             channel: ChannelInfo {
                 user_count: self.identity.users.len(),

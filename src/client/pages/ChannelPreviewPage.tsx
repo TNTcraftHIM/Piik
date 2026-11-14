@@ -12,7 +12,7 @@ import { useChannel } from "../channel/use-channel";
 import { channelErrorPresentation } from "../channel/error-presentation";
 import { rememberRoom, selectedRoom } from "../channel/navigation";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
-import { ChannelStage } from "../channel/components/ChannelStage";
+import { ChannelStage, type WatchStageSource } from "../channel/components/ChannelStage";
 import { ChannelShareControl } from "../channel/components/ChannelShareControl";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
 import { ChannelJoinVoice } from "../channel/components/ChannelJoinVoice";
@@ -141,17 +141,22 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const mine = screens.filter(value => channel.ownedScreens.has(value.id));
   const watched = screens.filter(value => !channel.ownedScreens.has(value.id) && state?.subscriptions.includes(value.id));
   const activeScreens = [...mine, ...watched];
-  const visibleScreens = activeScreens.filter(source => source.roomId === roomId && sourceView?.roomId === roomId);
-  const otherScreens = activeScreens.filter(source => !visibleScreens.includes(source));
+  const watches = state?.watchActivities ?? [];
+  const ownsWatch = (id: string) => watches.some(activity => activity.id === id && activity.sessionId === sessionId);
+  const activeWatches = watches.filter(activity => ownsWatch(activity.id) || state?.watchSubscriptions.includes(activity.id));
+  const activeSources = [...activeScreens, ...activeWatches];
+  const visibleScreens = activeSources.filter(source => source.roomId === roomId && sourceView?.roomId === roomId);
+  const otherScreens = activeSources.filter(source => !visibleScreens.includes(source));
   const focusedScreen = sourceView?.roomId === roomId ? sourceView.focusedId : null;
   const showSource = (sourceRoom: string, focusedId: string | null) => {
     onSelect(sourceRoom); setSourceView({ roomId: sourceRoom, focusedId }); setMobilePane("room");
   };
   useEffect(() => {
-    const added = mine.find(source => source.roomId === roomId && !previousOwnedScreens.current.has(source.id));
-    previousOwnedScreens.current = new Set(mine.map(source => source.id));
+    const owned = [...mine, ...watches.filter(activity => activity.sessionId === sessionId)];
+    const added = owned.find(source => source.roomId === roomId && !previousOwnedScreens.current.has(source.id));
+    previousOwnedScreens.current = new Set(owned.map(source => source.id));
     if (added) setSourceView({ roomId: added.roomId, focusedId: added.id });
-  }, [roomId, mine.map(source => source.id).join(",")]);
+  }, [roomId, mine.map(source => source.id).join(","), watches.map(source => source.id).join(",")]);
   const companionKind = visibleScreens.length > 0 ? "chat" : "people";
   const companionPane = sidebarsInline ? companionKind : mobilePane;
   const companionVisible = layout !== "quick" && !overview && !toolSurface.open && (sidebarsInline
@@ -193,6 +198,19 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     };
   }, [mobilePane]);
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
+  const watchTitle = (url: string) => { const source = new URL(url); return source.host + source.pathname; };
+  const watchSources: WatchStageSource[] = watches.filter(activity => activeWatches.includes(activity) || activity.roomId === roomId).map(activity => ({
+    kind: "watch", id: activity.id, userId: activity.userId, name: nameOfUser(activity.userId), title: watchTitle(activity.url),
+    roomName: nameOfRoom(activity.roomId), avatar: userProfile(state, channel.profiles, activity.userId)?.avatar ?? undefined,
+    owned: ownsWatch(activity.id), subscribed: state?.watchSubscriptions.includes(activity.id) ?? false,
+    shareControls: ownsWatch(activity.id) && <ChannelShareControl channel={channel} roomId={activity.roomId} compact disabled={!connected || !rooms.find(room => room.id === activity.roomId)?.available} />,
+    hidden: activity.roomId !== roomId || activeWatches.includes(activity) && !visibleScreens.includes(activity),
+    paused: activity.playback.paused, player: channel.watchPlayers.get(activity.id),
+    pending: busy("watch", activity.id) || busy("stop", activity.id), available: connected && !!rooms.find(room => room.id === activity.roomId)?.available,
+    onRoom: () => selectRoom(activity.roomId), onJoin: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id)); },
+    onLeave: () => run(channel.leaveWatch(activity.id)), onStop: () => run(channel.stopWatch(activity.id)),
+    onResume: () => run(channel.resumeWatch(activity.id)), onPlayback: patch => run(channel.setWatchPlayback(activity.id, patch)),
+  }));
   const connectionLabel = connected ? copy("已连接", "Connected") : connection === "connecting"
     ? copy("正在连接", "Connecting") : connection === "reconnecting" ? copy("正在重连", "Reconnecting") : copy("连接已断开", "Disconnected");
 
@@ -264,7 +282,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             {room && <ChannelRoomInvitation channel={channel} room={room} onManageAccess={() => setManagedRoomId(room.id)} />}
           </div>
           <div className="c3-room-toolbar"><div className="c3-room-actions">
-            {(layout !== "quick" || visibleScreens.length > 0) && room?.authorized && !mine.some(source => source.roomId === roomId) &&
+            {(layout !== "quick" || visibleScreens.length > 0) && room?.authorized && !mine.some(source => source.roomId === roomId) && !activeWatches.some(source => source.roomId === roomId && ownsWatch(source.id)) &&
               <ChannelShareControl channel={channel} roomId={roomId} disabled={!connected || !room.available}
                 openRequested={layout !== "quick" && pickerRoom === roomId} onPickerOpened={() => setPickerRoom(null)} />}
           </div>
@@ -287,7 +305,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           <span className="c3-notice-message">{copy("房间暂不可用，请等待恢复托管。", "This room is unavailable. Wait for hosting to resume.")}</span></div>}
         {otherScreens.length > 0 && <div className="c3-other-activities" aria-label={copy("进行中的画面", "Ongoing screens")}>
           {otherScreens.map(source => {
-            const owned = channel.ownedScreens.has(source.id), title = screenTitle(source, lang);
+            const watch = "url" in source;
+            const owned = watch ? ownsWatch(source.id) : channel.ownedScreens.has(source.id), title = watch ? watchTitle(source.url) : screenTitle(source, lang);
             return <div key={source.id} className="c3-other-activity"><Glyph name={owned ? "cast" : "eye"} size={17} />
               <span><small>{owned ? copy("仍在分享", "Still sharing") : copy("仍在观看", "Still watching")}</small>
                 <strong>{title}</strong><span className="c3-activity-room">{nameOfRoom(source.roomId)}</span></span>
@@ -296,7 +315,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
               <Btn icon={owned ? "stop" : "x"} quiet size="dense" tone={owned ? "danger" : undefined}
                 title={{ text: owned ? copy(`停止分享 ${title}`, `Stop sharing ${title}`) : copy(`停止观看 ${title}`, `Stop watching ${title}`) }}
                 busy={busy(owned ? "stop" : "watch", source.id)} disabled={busy(owned ? "stop" : "watch", source.id)}
-                onClick={() => run(owned ? channel.stopScreen(source.id) : channel.unwatch(source.id))} />
+                onClick={() => run(watch ? owned ? channel.stopWatch(source.id) : channel.leaveWatch(source.id) : owned ? channel.stopScreen(source.id) : channel.unwatch(source.id))} />
             </div>;
           })}
         </div>}
@@ -308,7 +327,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
               <Btn id="c3-first-action" icon="cast" tone="primary" title={{ text: copy("开始分享", "Start sharing") }} cap={{ text: copy("开始分享", "Start sharing") }}
                 disabled={!connected || busy("create-room")} busy={busy("create-room")} onClick={() => { void prepareShare(); }} />
             </div></StageTv> : rooms.length ? <><h2><ChannelIdentityMark icon={state.channel.icon} size={30} />{state.channel.name}</h2><div className="c3-overview-rooms">{rooms.map(value => <ChannelRoomItem key={value.id}
-              room={value} selected={false} screenCount={screens.filter(source => source.roomId === value.id).length}
+              room={value} selected={false} sourceCount={screens.filter(source => source.roomId === value.id).length + watches.filter(source => source.roomId === value.id).length}
               unread={value.authorized && value.lastMessageSeq > (channel.readByRoom[value.id] ?? value.lastMessageSeq)}
               onSelect={() => selectRoom(value.id)} onManage={() => setManagedRoomId(value.id)} />)}</div></>
               : <div className="c3-first-room"><span className="c3-room-start-mark"><ChannelIdentityMark icon="couch" size={46} /></span>
@@ -326,8 +345,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             <div className="c3-quick-start"><ChannelShareControl channel={channel} roomId={roomId} disabled={!connected || !room.available}
               openRequested={pickerRoom === roomId} onPickerOpened={() => setPickerRoom(null)} /></div>
           </StageTv></div>}
-          <ChannelStage buffering={{ target: channel.screenBufferTargetMs, status: channel.screenBufferStatus, onChange: channel.setScreenBufferTarget }} sources={[...activeScreens, ...availableScreens].map(publication => ({
-            id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
+          <ChannelStage buffering={{ target: channel.screenBufferTargetMs, status: channel.screenBufferStatus, onChange: channel.setScreenBufferTarget }} sources={[...[...activeScreens, ...availableScreens].map(publication => ({
+            kind: "screen" as const, id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
             hidden: !displayedSources.has(publication.id),
             source: publication.source, title: publication.title, onRoom: () => selectRoom(publication.roomId),
             avatar: userProfile(state, channel.profiles, publication.userId)?.avatar ?? undefined,
@@ -361,7 +380,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
                 name: nameOfUser(state?.sessions.find(session => session.id === request.peerId)?.userId ?? request.peerId) })) };
             })(),
             pending: busy(channel.ownedScreens.has(publication.id) ? "stop" : "watch", publication.id),
-          }))} focusedId={focusedScreen} onFocus={id => setSourceView({ roomId, focusedId: id })} canSubscribe={connected}
+          })), ...watchSources]} focusedId={focusedScreen} onFocus={id => setSourceView({ roomId, focusedId: id })} canSubscribe={connected}
             onWatch={id => { showSource(roomId, id); run(channel.watch(id)); }} onUnwatch={id => run(channel.unwatch(id))}
             onPause={(id, paused) => run(channel.setScreenPaused(id, paused))}
             onStop={id => run(channel.stopScreen(id))} onPresentation={channel.screenPresentation}

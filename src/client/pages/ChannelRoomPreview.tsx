@@ -7,7 +7,8 @@ import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
 import { screenVideoSettings } from "../media/quality";
 import type { ChannelController } from "../channel/types";
-import type { ChannelRoom } from "../channel/protocol";
+import type { ChannelRoom, WatchActivity } from "../channel/protocol";
+import { WatchPlayer } from "../channel/watch-playback";
 import { useAnchoredPopover } from "../components/living/use-anchored-popover";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import type { AppDiscovery } from "../native/discovery";
@@ -34,6 +35,13 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const [audienceSample, setAudienceSample] = useState(() => new URLSearchParams(location.search).has("audience"));
   const [createdRooms, setCreatedRooms] = useState<ChannelRoom[]>([]);
   const [sharingRoom, setSharingRoom] = useState<string | null>(null);
+  const [watchMode, setWatchMode] = useState(new URLSearchParams(location.search).get("watch") ?? "off");
+  const [watchActivity, setWatchActivity] = useState<WatchActivity | null>(() => watchMode === "off" ? null : ({
+    id: "sample-watch", roomId: "friday", userId: watchMode === "owner" ? "sample-ada" : "sample-bo",
+    sessionId: watchMode === "owner" ? "sample-ada-session" : "sample-bo-session", url: "https://media.example/evening.mp4?private=not-in-title",
+    playback: { position: 0, paused: true, rate: 1, anchorTime: 0 },
+  }));
+  const [watchPlayers, setWatchPlayers] = useState(new Map<string, WatchPlayer>());
   const optionsId = useId(), optionsTrigger = useRef<HTMLSpanElement>(null), optionsPanel = useRef<HTMLDivElement>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   useAnchoredPopover(optionsTrigger, optionsPanel);
@@ -65,7 +73,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       .map((user, index) => ({ sessionId: `${user.id}-session`, state: index < 3 ? "active" as const : index === 3 ? "preparing" as const : "failed" as const })) : [] }));
   const ownedScreens = new Set(publications.filter(publication => publication.userId === "sample-ada").map(publication => publication.id));
   const subscriptions = publications.filter(publication => !unwatched.has(publication.id)).map(publication => publication.id);
-  const needsSamples = ownedScreens.size > 0 || subscriptions.length > 0;
+  const needsSamples = ownedScreens.size > 0 || subscriptions.length > 0 || !!watchActivity;
   // Keep the same samples while any player needs them.
   useEffect(() => {
     if (!needsSamples) { setStreams(new Map()); return; }
@@ -92,6 +100,18 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       canvases.current = [];
     };
   }, [needsSamples]);
+  useEffect(() => {
+    if (!watchActivity || watchMode === "available") { setWatchPlayers(new Map()); return; }
+    const stream = streams.values().next().value;
+    if (!stream) return;
+    // The real player and controls consume a synthetic picture; no media URL is fetched.
+    const player = new WatchPlayer(watchActivity.roomId, watchMode === "owner", "data:video/webm;base64,", () => {});
+    player.video.removeAttribute("src"); player.video.srcObject = stream;
+    player.blocked = watchMode === "blocked";
+    if (!player.blocked) void player.video.play().catch(() => {});
+    setWatchPlayers(new Map([[watchActivity.id, player]]));
+    return () => player.close();
+  }, [watchActivity?.id, watchMode, streams]);
   const state = { ...sample.channel.state!, channel: { ...sample.channel.state!.channel,
     rooms: rooms.map(room => ({ ...room,
       name: longNames && room.id === "friday" ? zh ? "周五一起看电影与交流的朋友们" : "Friday with friends: a shared evening together" : room.name,
@@ -103,6 +123,8 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     voice: sample.channel.state!.voice.filter(voice => roomIds.has(voice.roomId)),
     users,
     subscriptions,
+    watchActivities: watchActivity ? [watchActivity] : [],
+    watchSubscriptions: watchActivity && watchMode !== "available" ? [watchActivity.id] : [],
   };
   let messagesByRoom = emptyChat ? { ...sample.channel.messagesByRoom,
     friday: sample.channel.messagesByRoom.friday.filter(message => message.seq > 2) } : sample.channel.messagesByRoom;
@@ -115,6 +137,19 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   }
   const profiles = new Map(users.map(user => [user.id, { ...sample.channel.profiles.get(user.id)!, ...user }]));
   const channel = { ...sample.channel, state, self: profiles.get(users[0].id)!, profiles, streams, error: null, siteURL: "https://friends.example/",
+    watchPlayers,
+    startWatch: async (roomId, url) => {
+      setWatchMode("owner"); setWatchActivity({ id: `sample-watch-${crypto.randomUUID()}`, roomId, url,
+        userId: "sample-ada", sessionId: "sample-ada-session", playback: { position: 0, paused: true, rate: 1, anchorTime: 0 } });
+    },
+    joinWatch: async () => setWatchMode("viewer"),
+    leaveWatch: async () => setWatchMode("available"), stopWatch: async () => setWatchActivity(null),
+    resumeWatch: async id => { const player = watchPlayers.get(id); if (player) { player.blocked = false; await player.play(); setWatchPlayers(new Map(watchPlayers)); } },
+    setWatchPlayback: async (_id, patch) => {
+      setWatchActivity(previous => previous && ({ ...previous, playback: { ...previous.playback, ...patch } }));
+      const video = watchPlayers.values().next().value?.video;
+      if (video) { if (patch.paused !== undefined) { if (patch.paused) video.pause(); else await video.play(); } if (patch.rate !== undefined) video.playbackRate = patch.rate; }
+    },
     loadProfiles: async (ids: readonly string[]) => [...profiles.values()].filter(user => ids.includes(user.id)),
     queryProfiles: async ({ after, query }: { after?: string; query?: string }) => {
       const matches = [...profiles.values()].filter(user => !query || user.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).sort((a, b) => a.id.localeCompare(b.id));
@@ -181,6 +216,15 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
           <fieldset><legend>{zh ? "画面数量" : "Screens"}</legend><div className="c3-room-preview-tools">
             {screenCounts.map(value => <Chip key={value} title={zh ? `${value} 个画面` : `${value} screen${value === 1 ? "" : "s"}`} selected={count === value}
               onClick={() => { setCount(value); setSharingRoom(null); setStopped(new Set()); setUnwatched(new Set()); }}>{value}</Chip>)}
+          </div></fieldset>
+          <fieldset><legend>{zh ? "同步观看" : "Watch together"}</legend><div className="c3-room-preview-tools">
+            {["off", "owner", "viewer", "available", "blocked"].map((mode, index) => <Chip key={mode}
+              title={zh ? ["关闭", "分享者", "观看者", "尚未加入", "等待手动播放"][index] : ["Off", "Sharer", "Viewer", "Available", "Playback blocked"][index]}
+              selected={watchMode === mode} onClick={() => {
+                setWatchMode(mode); setWatchActivity(mode === "off" ? null : { id: "sample-watch", roomId: "friday",
+                  userId: mode === "owner" ? "sample-ada" : "sample-bo", sessionId: mode === "owner" ? "sample-ada-session" : "sample-bo-session",
+                  url: "https://media.example/evening.mp4?private=not-in-title", playback: { position: 0, paused: true, rate: 1, anchorTime: 0 } });
+              }}>{zh ? ["关闭", "分享者", "观看者", "尚未加入", "等待手动播放"][index] : ["Off", "Sharer", "Viewer", "Available", "Playback blocked"][index]}</Chip>)}
           </div></fieldset>
           <div className="c3-room-preview-tools">
             <Chip title={zh ? "横竖混合" : "Mixed orientation"} selected={mixed} onClick={() => {

@@ -23,6 +23,75 @@ import { RemoteControl } from "../../components/living/RemoteControl";
 import type { InputTransport } from "../../remote-control/input-route";
 import { ChannelAction } from "./ChannelAction";
 import "./channel-media.css";
+import type { WatchPlayer } from "../watch-playback";
+import type { WatchPlayback } from "../protocol";
+import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
+
+/** The session owns loading and playback; presentation only mounts its existing element. */
+export function ChannelWatchVideo({ player, owned, paused, label, presentation, theaterMode, onToggleTheater, onPlayback, onResume, disabled }: {
+  player: WatchPlayer; owned: boolean; paused: boolean; label: string; presentation: "full" | "thumbnail" | "background";
+  theaterMode: boolean; onToggleTheater(): void; disabled: boolean;
+  onPlayback(patch: Partial<Pick<WatchPlayback, "paused" | "position" | "rate">>): void; onResume(): void;
+}) {
+  const { t } = useCopy();
+  const slot = useRef<HTMLDivElement>(null), controls = useRef<HTMLDivElement>(null);
+  const videoRef = useMemo(() => ({ current: player.video }), [player]);
+  const controlsId = useId();
+  const [media, setMedia] = useState({ position: 0, duration: 0, volume: 1, muted: false, rate: 1 });
+  const [fullscreen, setFullscreen] = useState(() => videoFullscreenState(player.video));
+  const [fullscreenFailed, setFullscreenFailed] = useState(false);
+  const picture = usePictureInPicture(videoRef);
+  const visibility = usePlaybackControlsVisibility(videoRef, controls, paused || player.blocked || !!player.error);
+  useLayoutEffect(() => {
+    const video = player.video;
+    slot.current?.prepend(video);
+    video.setAttribute("aria-label", label); video.dataset.selected = "true"; video.tabIndex = -1;
+    return () => { video.remove(); };
+  }, [player]);
+  useEffect(() => { player.video.setAttribute("aria-label", label); }, [player, label]);
+  useEffect(() => {
+    const video = player.video;
+    const sync = () => {
+      setMedia({ position: video.currentTime, duration: Number.isFinite(video.duration) ? video.duration : 0,
+        volume: video.volume, muted: video.muted, rate: video.playbackRate });
+      setFullscreen(videoFullscreenState(video));
+    };
+    const events = ["timeupdate", "durationchange", "volumechange", "ratechange", "loadedmetadata", "webkitbeginfullscreen", "webkitendfullscreen"];
+    for (const name of events) video.addEventListener(name, sync);
+    document.addEventListener("fullscreenchange", sync); sync();
+    return () => { for (const name of events) video.removeEventListener(name, sync); document.removeEventListener("fullscreenchange", sync); };
+  }, [player]);
+  return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-thumbnail={presentation === "thumbnail" || undefined}
+    data-controls-hidden={visibility.hidden} inert={presentation === "background"}>
+    {player.error ? <div className="c3-mini-message" role="alert"><span className="c3-frame-wait">{t(player.error === "watch_update_failed" ? "watch.updateFailed" : "watch.failed")}</span></div>
+      : player.blocked && <div className="c3-mini-message"><Btn icon="play" title="watch.resume" cap="watch.resume" onClick={onResume} /></div>}
+    <div ref={controls} id={controlsId} className="c3-mini-controls lr-media-toolbar lr-media-controls" role="group" aria-label={t("playback.controls")}>
+      {owned && <div className="c3-watch-shared" role="group" aria-label={t("watch.sharedControls")}>
+        <Btn icon={paused ? "play" : "pause"} quiet size="dense"
+          title={paused ? "watch.play" : "watch.pause"} disabled={disabled} onClick={() => onPlayback({ paused: !paused })} />
+        <input type="range" min="0" max={media.duration || 1} step="0.1" value={Math.min(media.position, media.duration || 1)}
+          aria-label={t("watch.seek")} disabled={disabled || !media.duration}
+          onChange={event => onPlayback({ position: Number(event.target.value) })} />
+        <select className="lr-select" aria-label={t("watch.rate")} value={media.rate} disabled={disabled}
+          onChange={event => onPlayback({ rate: Number(event.target.value) })}>
+          {[0.5, 0.75, 1, 1.25, 1.5, 2].map(rate => <option key={rate} value={rate}>{rate}×</option>)}
+        </select>
+      </div>}
+      {owned && <span className="lr-viewer-action-separator" aria-hidden="true" />}
+      <div className="c3-watch-local" role="group" aria-label={t("watch.localControls")}>
+        <AudioVolumeMenu volume={media.volume} label="playback.volumeBasic" icon="speaker" max={1} onVolume={volume => { player.video.volume = volume; player.video.muted = false; }}>
+          <Btn icon={media.muted || !media.volume ? "speakerOff" : "speaker"} quiet size="dense" title={media.muted ? "playback.unmute" : "playback.mute"}
+            onClick={() => { const silent = player.video.muted || !player.video.volume; if (silent && !player.video.volume) player.video.volume = 1; player.video.muted = !silent; }} />
+        </AudioVolumeMenu>
+        <PlaybackWindowControls picture={picture} canPlay={player.video.readyState >= 2} quiet theaterMode={theaterMode} onToggleTheater={onToggleTheater}
+          fullscreen={fullscreen} fullscreenFailed={fullscreenFailed} toggleFullscreen={() => {
+            setFullscreenFailed(false); void toggleVideoFullscreen(player.video).catch(() => setFullscreenFailed(true));
+          }} />
+      </div>
+    </div>
+    <PlaybackControlsReveal controls={controls} controlsId={controlsId} hidden={visibility.hidden} />
+  </div>;
+}
 
 function ChannelVideoInput({ input, visible, interactive, label, fit, register, frame, issue, playing, fullscreen }: {
   input: ChannelScreenInput; visible: boolean; interactive: boolean; label: string; fit: VideoFit;

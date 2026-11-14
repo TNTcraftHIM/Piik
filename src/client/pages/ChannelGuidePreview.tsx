@@ -118,7 +118,7 @@ export function useChannelGuideSample(multiRoom = false) {
       sessionId: "sample-ada-session", userId: "sample-ada", paused: false })),
     voice: [...Object.entries(voiceByRoom).map(([roomId, voice]) => ({ sessionId: "sample-ada-session", roomId, ...voice })),
       { sessionId: "sample-bo-session", roomId: "friday", muted: false, deafened: false }],
-    subscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
+    subscriptions: [], watchActivities: [], watchSubscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   } satisfies z.input<typeof snapshotSchema>);
   const channel = {
     inspectRoomCopy: async (file: Blob) => {
@@ -162,6 +162,7 @@ export function useChannelGuideSample(multiRoom = false) {
       setSettingsByRoom(previous => ({ ...previous, [roomId]: { ...previous[roomId], relayOverride } })); received();
     },
     nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined,
+    sourceSelectionCommitting: () => false,
     externalInput: () => undefined, startExternalScreen: async () => received(),
     nativeSources: async () => sources, nativePreview: previewSource, cameraPreviews: previewCameras,
     setScreenTitle: async () => received(),

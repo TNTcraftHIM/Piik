@@ -68,7 +68,7 @@ test("signed conversation uses Domain delivery without peers and still fences si
       voiceBitrate: 64000, relayCapacity: 2, relayOverride: null, authorized: true, canManage: true, available: true,
       reading: true, participantSessionIds: [host, sender], lastMessageSeq: 0, realtimeSessionIds: [], capabilities: { attachments: true },
       delivery: { hostSessionId: host, bindingId: binding, nextHops: {} },
-    }] }, sessions: [], users: [], files: [], publications: [], voice: [], subscriptions: [], failedSubscriptions: [], iceServers: [], pairs: [],
+    }] }, sessions: [], users: [], files: [], publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], failedSubscriptions: [], iceServers: [], pairs: [],
   } as ChannelSnapshot;
   const requests: SignedConversationPacket[] = [], replies: SignedConversationPacket[] = [], received = vi.fn();
   const dispatchPeer = vi.fn(async (packet: SignedConversationPacket) => {

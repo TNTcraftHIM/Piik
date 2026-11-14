@@ -1,3 +1,5 @@
+import type { WatchPlayer } from "./watch-playback";
+import type { WatchPlayback } from "./protocol";
 import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomInvitationState, RoomSettings, PublicationReactionSnapshot, ChatOptions, ProfilePage } from "./protocol";
 export type { ChatOptions } from "./protocol";
 import type { ChannelAttachments, DraftFile } from "./attachments";
@@ -49,6 +51,7 @@ export type ScreenPresentation = "prepared" | "waiting" | "failed";
 export type ScreenBufferStatus = "supported" | "unsupported" | "failed" | null;
 
 export interface ChannelView {
+  watchPlayers: ReadonlyMap<string, WatchPlayer>;
   screenBufferTargetMs: number | null;
   screenBufferStatus: ScreenBufferStatus;
   feedbackSound: RoomPreferences["feedbackSound"];
@@ -82,6 +85,12 @@ export interface ChannelView {
 }
 
 export interface ChannelActions {
+  startWatch(roomId: string, url: string): Promise<void>;
+  joinWatch(id: string): Promise<void>;
+  leaveWatch(id: string): Promise<void>;
+  stopWatch(id: string): Promise<void>;
+  setWatchPlayback(id: string, patch: Partial<Pick<WatchPlayback, "paused" | "position" | "rate">>): Promise<void>;
+  resumeWatch(id: string): Promise<void>;
   setScreenBufferTarget(target: number | null): void;
   queryProfiles(query: { after?: string; query?: string }, signal?: AbortSignal): Promise<ProfilePage>;
   loadProfiles(ids: readonly string[], signal?: AbortSignal): Promise<ChannelUser[]>;
@@ -141,6 +150,7 @@ export interface ChannelActions {
   nativeCaptureRequest(roomId: string): NativeCaptureRequest | undefined;
   nativeCaptureSelection(roomId: string): { target: NativeCaptureTarget; audio: boolean; excludeAudio?: NativeCaptureTarget; showCaptureBorder: boolean; current: boolean } | undefined;
   startNativeScreen(roomId: string, target: NativeCaptureTarget, audio?: boolean, excludeAudio?: NativeCaptureTarget, showCaptureBorder?: boolean): Promise<void>;
+  sourceSelectionCommitting(roomId: string): boolean;
   cancelScreenSelection(roomId: string): Promise<void>;
   stopScreen(publicationId: string): Promise<void>;
   watch(publicationId: string): Promise<void>;

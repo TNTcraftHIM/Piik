@@ -21,7 +21,7 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
   useEffect(() => {
     session.start();
     const close = () => session.close();
-    const returned = () => { if (document.visibilityState === "visible") void session.resumeApp(); };
+    const returned = () => { if (document.visibilityState === "visible") { void session.resumeApp(); void session.resumeWatches(); } };
     window.addEventListener("pagehide", close);
     window.addEventListener("focus", returned);
     window.addEventListener("storage", session.refreshReadMarkers);
@@ -37,6 +37,8 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
     };
   }, [session]);
   return { ...view,
+    startWatch: session.startWatch, joinWatch: session.joinWatch, leaveWatch: session.leaveWatch,
+    stopWatch: session.stopWatch, setWatchPlayback: session.setWatchPlayback, resumeWatch: session.resumeWatch,
     setScreenBufferTarget: session.setScreenBufferTarget,
     queryProfiles: session.queryProfiles, loadProfiles: session.loadProfiles,
     setFeedbackSound: session.setFeedbackSound, previewFeedbackSound: session.previewFeedbackSound,
@@ -68,6 +70,7 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
     externalInput: session.externalInput, startExternalScreen: session.startExternalScreen,
     nativeCaptureRequest: session.nativeCaptureRequest,
     nativeCaptureSelection: session.nativeCaptureSelection,
+    sourceSelectionCommitting: session.sourceSelectionCommitting,
     cancelScreenSelection: session.cancelScreenSelection,
     stopScreen: session.stopScreen, watch: session.watch, unwatch: session.unwatch, screenPresentation: session.screenPresentation,
     inputPolicy: session.inputPolicy, inputDecide: session.inputDecide, inputSimultaneous: session.inputSimultaneous, inputShortcut: session.inputShortcut,

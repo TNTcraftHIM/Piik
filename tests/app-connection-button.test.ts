@@ -77,11 +77,12 @@ describe("shared App connection entry", () => {
   });
 
   it.each([
-    { camera: true, display: false, available: true, picker: true },
-    { camera: true, display: true, available: true, picker: true },
-    { camera: false, display: true, available: true, picker: false },
-    { camera: false, display: false, available: false, picker: false },
-  ])("uses actual camera/display capability for the single channel sharing entry ($camera/$display)", entry => {
+    { camera: true, display: false },
+    { camera: true, display: true },
+    { camera: false, display: true },
+    { camera: false, display: false },
+  ])("keeps watch together available while camera/display sources follow their capabilities ($camera/$display)", entry => {
+    setCopy({ lang: "en", vis: false });
     vi.stubGlobal("navigator", { mediaDevices: {
       ...(entry.camera ? { getUserMedia: vi.fn() } : {}),
       ...(entry.display ? { getDisplayMedia: vi.fn() } : {}),
@@ -89,10 +90,21 @@ describe("shared App connection entry", () => {
     const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined } as unknown as ChannelController;
     const html = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", disabled: false }));
     const button = html.match(/<button\b[^>]*>/)![0];
-    expect(button.includes("disabled")).toBe(!entry.available);
-    expect(button.toLowerCase().includes("popovertarget=")).toBe(entry.picker);
+    expect(button.includes("disabled")).toBe(false);
+    expect(button.toLowerCase().includes("popovertarget=")).toBe(true);
     expect(html.match(/<button\b/g)).toHaveLength(2);
     expect(html).toMatch(/aria-label="(?:Share settings|分享设置)"/);
+    const picker = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      nativeSources: { kind: "browser" }, initialTab: "browser", browserSupported: entry.display, cameraSupported: entry.camera,
+      onBrowser: vi.fn(), onWatch: vi.fn(), onCamera: vi.fn(), onNative: vi.fn(), onPreview: async () => null,
+      onRefresh: vi.fn(), onCancel: vi.fn(),
+    }));
+    expect(picker).toContain('data-source-tab="browser"');
+    expect(picker.includes('data-source-tab="camera"')).toBe(entry.camera);
+    const capture = picker.match(/<button\b[^>]*aria-label="Share a screen"[^>]*>/)![0];
+    expect(capture.includes("disabled")).toBe(!entry.display);
+    const watch = picker.match(/<button\b[^>]*aria-label="Watch together"[^>]*>/)![0];
+    expect(watch.includes("disabled")).toBe(false);
   });
   it("binds live controls to their owned publication without retargeting a retired source", () => {
     setCopy({ lang: "en", vis: false });
@@ -106,7 +118,7 @@ describe("shared App connection entry", () => {
         { id: "other-endpoint", roomId: "room", kind: "screen", userId: "self" },
         { id: "voice", roomId: "room", kind: "voice", userId: "self" },
         { id: "mine", roomId: "room", kind: "screen", userId: "self" },
-      ], voice: [] },
+      ], voice: [], watchActivities: [], watchSubscriptions: [] },
     } as unknown as ChannelController;
     const html = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", publicationId: "mine", compact: true, disabled: false }));
     expect(html).toMatch(/aria-label="(?:Switch source in Friday|切换Friday的分享源)"/);
@@ -139,11 +151,12 @@ describe("Native sharing capabilities", () => {
       nativeCaptureSelection: (): ReturnType<ChannelController["nativeCaptureSelection"]> => undefined,
       externalInput: (): ReturnType<ChannelController["externalInput"]> => undefined,
       screenQuality: () => undefined, screenCodecMode: () => "h264", sourceAudio: () => undefined, sourceMicrophone: () => undefined,
-      ownedScreens: new Set<string>(), streams: new Map(), state: { channel: { rooms: [{ id: "room", name: "Friday" }] }, publications: [] as { id: string; roomId: string; kind: "screen"; source: { kind: "screen" } }[], voice: [] },
+      ownedScreens: new Set<string>(), streams: new Map(), state: { channel: { rooms: [{ id: "room", name: "Friday" }] }, publications: [] as { id: string; roomId: string; kind: "screen"; source: { kind: "screen" } }[], voice: [], watchActivities: [], watchSubscriptions: [] },
     };
     const render = (settings = false) => {
       // Open the real picker with the same completed targets response on each render.
       vi.mocked(useState).mockReturnValueOnce([!settings, vi.fn()]).mockReturnValueOnce([settings, vi.fn()])
+        .mockReturnValueOnce([false, vi.fn()])
         .mockReturnValueOnce([false, vi.fn()])
         .mockReturnValueOnce([sources, vi.fn()]);
       return renderToStaticMarkup(createElement(ChannelShareControl, { channel: channel as unknown as ChannelController,

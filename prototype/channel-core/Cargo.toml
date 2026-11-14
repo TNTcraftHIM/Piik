@@ -20,3 +20,5 @@ hmac = "0.12"
 uuid = { version = "=1.16.0", features = ["v4", "serde"] }
 unicode-normalization = "=0.1.26"
 ed25519-dalek = "=2.2.0"
+
+url = "=2.5.8"

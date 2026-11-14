@@ -15,13 +15,15 @@ export function ChannelRoomListItem({ channel, room, selected, settingsOpen, onS
   const voices = state?.voice.filter(voice => voice.roomId === room.id) ?? [];
   const people = state ? roomRealtimePeople(state, room.id) : [];
   const screens = state?.publications.filter(source => source.roomId === room.id && source.kind === "screen") ?? [];
+  const watches = state?.watchActivities.filter(source => source.roomId === room.id) ?? [];
   return <div className="c3-room-list-item">
       <ChannelRoomItem room={room} selected={selected} settingsOpen={settingsOpen}
         unread={room.authorized && room.lastMessageSeq > (channel.readByRoom[room.id] ?? room.lastMessageSeq)}
         participantDisclosure={people.length ? { open, count: people.length, controls: id, onToggle: () => setOpen(!open) } : undefined}
-        voice={voices.some(voice => voice.sessionId === channel.sessionId)} screenCount={screens.length}
-        sharing={screens.some(source => channel.ownedScreens.has(source.id))}
-        watching={screens.some(source => state?.subscriptions.includes(source.id) && !channel.ownedScreens.has(source.id))}
+        voice={voices.some(voice => voice.sessionId === channel.sessionId)} sourceCount={screens.length + watches.length}
+        sharing={screens.some(source => channel.ownedScreens.has(source.id)) || watches.some(source => source.sessionId === channel.sessionId)}
+        watching={screens.some(source => state?.subscriptions.includes(source.id) && !channel.ownedScreens.has(source.id))
+          || watches.some(source => state?.watchSubscriptions.includes(source.id) && source.sessionId !== channel.sessionId)}
         onSelect={onSelect} onManage={onManage} />
     <div id={id} hidden={!open}><ChannelRoomParticipants channel={channel} room={room} /></div>
   </div>;

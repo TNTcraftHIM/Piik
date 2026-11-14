@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-13
+Last updated: 2026-11-14
 
 This page summarizes the current 3.0 evidence and limits that affect product
 claims. [Status](./status.md#isolated-30-prototype) owns delivery readiness;
@@ -29,6 +29,13 @@ reload, identity-bound mentions, confirmed replies and navigation to a reference
 outside the latest history page. Browser/WASM concurrent first use now shares
 one initialization promise; a regression verifies that independently created
 signers keep working when components initialize at the same time.
+
+Direct-media synchronized viewing passes local checks with three independent
+Browsers: common playback and late joining, local sound isolation, conversation,
+and activity retirement through Browser and Server room hosts. Watch-only
+participation constructs no peer connections. A separate control verifies real
+autoplay refusal and trusted-click recovery. This is source-level evidence;
+website players, cross-network clock accuracy and matched packages remain open.
 
 The first internal test targets matched Windows and Android packages with the
 shared Browser UI. Normal packaged flows have verified room creation and

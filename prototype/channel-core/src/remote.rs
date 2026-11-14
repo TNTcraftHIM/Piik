@@ -96,10 +96,12 @@ impl RemoteRoom {
             projection.flows.clear();
             projection.base_links.clear();
             projection.publications.clear();
+            projection.watch_activities.clear();
             projection.voice.clear();
             projection.participant_session_ids.clear();
             for view in projection.views.values_mut() {
                 view.subscriptions.clear();
+                view.watch_subscriptions.clear();
                 view.failed_subscriptions.clear();
                 view.files.clear();
                 view.reading = false;
@@ -193,6 +195,8 @@ impl RemoteRoom {
             return None;
         }
         Some(RoomSnapshot {
+            watch_activities: vec![],
+            watch_subscriptions: vec![],
             room: Room {
                 delivery: None,
                 id: self.summary.id.clone(),

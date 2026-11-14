@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 17;
+pub const CHANNEL_PROTOCOL: u8 = 18;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -125,6 +125,26 @@ pub enum Command {
     RevokeRoomAccess {
         room_id: String,
         user_id: Uuid,
+    },
+    StartWatch {
+        room_id: String,
+        id: Uuid,
+        url: String,
+        playback: WatchPlayback,
+    },
+    UpdateWatch {
+        room_id: String,
+        id: Uuid,
+        playback: WatchPlayback,
+    },
+    JoinWatch {
+        room_id: String,
+        id: Uuid,
+        enabled: bool,
+    },
+    StopWatch {
+        room_id: String,
+        id: Uuid,
     },
     Publish {
         publication: PublicationInput,
@@ -750,6 +770,8 @@ pub struct ChannelInfo {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
+    pub watch_activities: Vec<WatchActivity>,
+    pub watch_subscriptions: Vec<Uuid>,
     pub files: Vec<crate::file_room::FilePlan>,
     pub channel: ChannelInfo,
     pub users: Vec<UserSummary>,
@@ -876,4 +898,50 @@ pub enum ScreenSourceKind {
     #[default]
     Screen,
     Camera,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WatchPlayback {
+    pub position: f64,
+    pub paused: bool,
+    pub rate: f64,
+    pub anchor_time: u64,
+}
+impl WatchPlayback {
+    pub(crate) fn validate(&self) -> Result<(), &'static str> {
+        if !self.position.is_finite()
+            || self.position < 0.0
+            || !self.rate.is_finite()
+            || self.rate <= 0.0
+            || self.rate > 16.0
+        {
+            return Err("invalid_watch_playback");
+        }
+        Ok(())
+    }
+}
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WatchActivity {
+    pub id: Uuid,
+    pub room_id: String,
+    pub user_id: Uuid,
+    pub session_id: Uuid,
+    pub url: String,
+    pub playback: WatchPlayback,
+}
+pub(crate) fn validate_watch_url(value: &str) -> Result<(), &'static str> {
+    if value.len() > 4096 || value.trim() != value {
+        return Err("invalid_watch_url");
+    }
+    let url = url::Url::parse(value).map_err(|_| "invalid_watch_url")?;
+    if !matches!(url.scheme(), "http" | "https")
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err("invalid_watch_url");
+    }
+    Ok(())
 }

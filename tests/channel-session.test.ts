@@ -141,7 +141,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
         available: true, reading: id === "first", capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } } })) },
     users: [{ id: "self", name: "Me", version: profileVersion }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
-    publications: [], voice: [], subscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
+    publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   } });
   if (read) {
     const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
@@ -8035,4 +8035,170 @@ test("optional screen buffering reports unsupported and rejected assignments wit
     expect(status).toHaveBeenLastCalledWith("supported");
     expect(pc.connectionState).toBe("connected");
   } finally { media.reset(); session.close(); }
+});
+
+class WatchTestVideo extends EventTarget {
+  currentTime = 0; duration = 120; playbackRate = 1; paused = true; ended = false; readyState = 2;
+  src = ''; error = null;
+  play = vi.fn(async () => { this.paused = false; this.dispatchEvent(new Event('play')); });
+  pause() { this.paused = true; }
+  removeAttribute() { this.src = ''; }
+  load() {}
+  remove() {}
+}
+
+test('watch creator uses domain confirmation, keeps its element and retires without capture', async () => {
+  const { session, socket } = await setup(1000, false);
+  const video = new WatchTestVideo();
+  vi.stubGlobal('document', { createElement: () => video });
+  try {
+    const opening = session.startWatch('first', 'https://media.test/video.mp4');
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
+    const start = socket.sent.findLast(command => command.type === 'start_watch')!;
+    expect(start.playback).toMatchObject({ paused: true, position: 0 });
+    socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [{
+      id: start.id, roomId: 'first', sessionId: 'endpoint', userId: 'self', url: start.url, playback: start.playback,
+    }] } });
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 100000 } });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'update_watch')).toBe(true));
+    const update = socket.sent.findLast(command => command.type === 'update_watch')!;
+    expect(update.playback).toMatchObject({ paused: false, position: 0 });
+    expect((update.playback as { anchorTime: number }).anchorTime).toBeGreaterThanOrEqual(100000);
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: update.requestId, result: { type: 'done' } });
+    await opening;
+    expect(session.getSnapshot().watchPlayers.get(start.id as string)?.video).toBe(video);
+    session.browse('second');
+    expect(video.src).toBe('https://media.test/video.mp4');
+    expect(socket.sent.some(command => command.type === 'publish')).toBe(false);
+    const stopping = session.stopWatch(start.id as string);
+    const stop = socket.sent.findLast(command => command.type === 'stop_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: stop.requestId, result: { type: 'done' } });
+    await stopping;
+    expect(video.src).toBe('');
+    expect(session.getSnapshot().watchPlayers.size).toBe(0);
+  } finally { session.close(); }
+});
+
+test('watch candidate cancellation preserves an existing activity and creates no screen owner', async () => {
+  const { session, socket } = await setup(1000, false);
+  const first = new WatchTestVideo(), candidate = new WatchTestVideo(); candidate.readyState = 0;
+  vi.stubGlobal('document', { createElement: vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(candidate) });
+  const activity = { id: 'watch-one', roomId: 'first', sessionId: 'other', userId: 'other', url: 'https://media.test/one.mp4',
+    playback: { position: 10, paused: true, rate: 1, anchorTime: 1000 } };
+  try {
+    socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [activity] } });
+    const joining = session.joinWatch(activity.id);
+    const join = socket.sent.findLast(command => command.type === 'join_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: join.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
+    await joining;
+    const opening = session.startWatch('first', 'https://media.test/new.mp4');
+    const rejected = expect(opening).rejects.toMatchObject({ name: 'AbortError' });
+    await session.cancelScreenSelection('first');
+    await rejected;
+    expect(session.getSnapshot().watchPlayers.get(activity.id)?.video).toBe(first);
+    expect(session.getSnapshot().ownedScreens.size).toBe(0);
+    expect(candidate.src).toBe('');
+    expect(socket.sent.some(command => command.type === 'start_watch')).toBe(false);
+  } finally { session.close(); }
+});
+
+test('watch short recovery keeps its player, samples domain time again, and respects local leave', async () => {
+  const { session, socket } = await setup(1000, false);
+  const video = new WatchTestVideo();
+  vi.stubGlobal('document', { createElement: () => video });
+  const activity = { id: 'watch-one', roomId: 'first', sessionId: 'other', userId: 'other', url: 'https://media.test/one.mp4',
+    playback: { position: 10, paused: true, rate: 1, anchorTime: 1000 } };
+  let state = { ...session.getSnapshot().state!, watchActivities: [activity], watchSubscriptions: [activity.id] };
+  try {
+    socket.receive({ type: 'state', state });
+    const joining = session.joinWatch(activity.id);
+    const join = socket.sent.findLast(command => command.type === 'join_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: join.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
+    await joining;
+    session.reconnect();
+    const resumed = ChannelSocket.current; await resumed.onopen?.();
+    state = { ...state, watchActivities: [{ ...activity, playback: { ...activity.playback, position: 24 } }] };
+    resumed.receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'credential', sessionId: 'endpoint', state });
+    const rejoin = resumed.sent.findLast(command => command.type === 'join_watch')!;
+    expect(rejoin).toMatchObject({ id: activity.id, enabled: true });
+    resumed.receive({ type: 'room_reply', roomId: 'first', requestId: rejoin.requestId, result: { type: 'watch_ready', serverTime: 2000 } });
+    expect(session.getSnapshot().watchPlayers.get(activity.id)?.video).toBe(video);
+    expect(video.currentTime).toBe(24);
+    resumed.close();
+    await session.leaveWatch(activity.id);
+    session.reconnect();
+    const returned = ChannelSocket.current; await returned.onopen?.();
+    returned.receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'credential', sessionId: 'endpoint', state });
+    expect(returned.sent).toContainEqual({ type: 'join_watch', roomId: 'first', id: activity.id, enabled: false });
+    expect(session.getSnapshot().watchPlayers.size).toBe(0);
+    expect(video.src).toBe('');
+  } finally { session.close(); }
+});
+
+test.each(['activity', 'subscription'] as const)('watch authority %s removal retires playback during another source selection', async removal => {
+  const { session, socket } = await setup(1000, false);
+  const video = new WatchTestVideo(), candidate = new WatchTestVideo(); candidate.readyState = 0;
+  vi.stubGlobal('document', { createElement: vi.fn().mockReturnValueOnce(video).mockReturnValueOnce(candidate) });
+  const activity = { id: 'watch-one', roomId: 'first', sessionId: 'other', userId: 'other', url: 'https://media.test/one.mp4',
+    playback: { position: 10, paused: true, rate: 1, anchorTime: 1000 } };
+  try {
+    socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [activity] } });
+    const joining = session.joinWatch(activity.id);
+    const join = socket.sent.findLast(command => command.type === 'join_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: join.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
+    await joining;
+    const state = { ...session.getSnapshot().state!, watchSubscriptions: [activity.id] };
+    socket.receive({ type: 'state', state });
+    const opening = session.startWatch('first', 'https://media.test/new.mp4');
+    const cancelled = expect(opening).rejects.toMatchObject({ name: 'AbortError' });
+    socket.receive({ type: 'state', state: { ...state, watchSubscriptions: [], watchActivities: removal === 'activity' ? [] : [activity] } });
+    expect(session.getSnapshot().watchPlayers.has(activity.id)).toBe(false);
+    expect(video.src).toBe('');
+    await session.cancelScreenSelection('first'); await cancelled;
+  } finally { session.close(); }
+});
+
+test.each(['cancel', 'stop'] as const)('watch replacement commit ignores %s cancellation or honors explicit activity stop without resurrection', async operation => {
+  const { session, socket } = await setup(1000, false);
+  const first = new WatchTestVideo(), replacement = new WatchTestVideo();
+  vi.stubGlobal('document', { createElement: vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(replacement) });
+  const acknowledge = (command: Record<string, unknown>, result = { type: 'done' } as Record<string, unknown>) =>
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: command.requestId, result });
+  const authority = (command: Record<string, unknown>) => socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [{
+    id: command.id, roomId: 'first', sessionId: 'endpoint', userId: 'self', url: command.url, playback: command.playback,
+  }] } });
+  try {
+    const initial = session.startWatch('first', 'https://media.test/first.mp4');
+    await vi.waitFor(() => expect(socket.sent.filter(command => command.type === 'start_watch')).toHaveLength(1));
+    const a = socket.sent.findLast(command => command.type === 'start_watch')!;
+    authority(a); acknowledge(a, { type: 'watch_ready', serverTime: 100000 });
+    await initial;
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'update_watch')).toBe(true));
+    acknowledge(socket.sent.findLast(command => command.type === 'update_watch')!);
+    const opening = session.startWatch('first', 'https://media.test/replacement.mp4');
+    const cancelled = operation === 'stop' ? expect(opening).rejects.toMatchObject({ name: 'AbortError' }) : undefined;
+    await vi.waitFor(() => expect(socket.sent.filter(command => command.type === 'start_watch')).toHaveLength(2));
+    const b = socket.sent.findLast(command => command.type === 'start_watch')!;
+    authority(b); // Core has atomically retired A; its confirmation is delayed.
+    expect(first.src).toBe('');
+    expect(session.sourceSelectionCommitting('first')).toBe(true);
+    if (operation === 'cancel') await session.cancelScreenSelection('first');
+    else {
+      const stopping = session.stopWatch(b.id as string);
+      acknowledge(socket.sent.findLast(command => command.type === 'stop_watch')!);
+      await stopping;
+    }
+    acknowledge(b, { type: 'watch_ready', serverTime: 100100 });
+    if (cancelled) {
+      await cancelled;
+      expect(session.getSnapshot().watchPlayers.has(b.id as string)).toBe(false);
+      expect(replacement.src).toBe('');
+    } else {
+      await opening;
+      expect(session.getSnapshot().watchPlayers.get(b.id as string)?.video).toBe(replacement);
+      expect(replacement.src).toBe('https://media.test/replacement.mp4');
+      expect(socket.sent.some(command => command.type === 'stop_watch' && command.id === b.id)).toBe(false);
+    }
+    expect(session.sourceSelectionCommitting('first')).toBe(false);
+  } finally { session.close(); }
 });

@@ -131,13 +131,19 @@ the feedback period; they do not delay that delivery.
   [NAT64 adapter candidate](./research/nat-traversal.md#native-nat64-assessment).
   Integrate through the existing discovery and physical-pair owners, then verify
   ordinary candidates, failed discovery and pair retirement alongside NAT64.
-- [ ] **Shared-link viewing assessment.** Prototype synchronized video within
-  the Browser source choice, alongside screen capture. Define its temporary
-  room activity, playback control and late-join snapshot. Cover direct media,
-  controllable embeds and website players through an authorized page connector.
-  The sharer controls common playback, pause, seeking and speed; viewers control
-  their own sound and viewing participation.
-  Keep account access, source playback and realtime screen routing distinct.
+- [ ] **Native send-consent lifetime.** Review the RTC owner's response-based
+  expiry against RFC 7675, including delayed processing and its existing Chrome
+  interoperability correction. Keep transport consent and Piik route recovery
+  with their existing owners; validate the SDK driving contract before relying
+  on an isolated timeout reproduction.
+- [ ] **Shared-link website connectors.** Build the webpage-player connector
+  into the Native client so participants need no separate browser extension,
+  targeting the playback coverage of VideoTogether. Browser-only use retains
+  direct media and documented embedded-player APIs. Retain the
+  [shared playback owner](./research/channel-network-design.md#synchronized-video-sources):
+  the sharer controls common playback; viewers own sound, participation and
+  access through their own platform accounts. Complete matching-package and
+  cross-network acceptance separately from the local direct-media controls.
 - [ ] **3.0 Native platform acceptance.** Build, install and validate the matching
   Android candidate. Complete physical microphone/camera acceptance for the
   Windows WebView entry; controlled runtime fallback, device

@@ -10,7 +10,7 @@ const snapshot = () => ({
     available: true, reading: false, capabilities: { attachments: true },
   }] },
   users: [{ id: "user", name: "Friend", version }], sessions: [], publications: [], voice: [],
-  subscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
+  subscriptions: [], watchActivities: [], watchSubscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
 });
 const welcome = (state = snapshot()) => ({ type: "welcome", protocol: CHANNEL_PROTOCOL, credential: "credential", sessionId: "endpoint",
   selfProfile: { id: "user", name: "Friend", avatar: picture, version }, state });

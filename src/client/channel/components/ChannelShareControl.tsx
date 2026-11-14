@@ -13,10 +13,10 @@ import type { NativeCaptureSources } from "../app-link";
 import type { ChannelController } from "../types";
 import { screenTitle } from "../presentation";
 import { channelErrorPresentation } from "../error-presentation";
-import { useSettingsAction } from "./ChannelSettingsDialog";
+import { ChannelSettingsDialog, useSettingsAction } from "./ChannelSettingsDialog";
 import { ChannelExternalInput } from "./ChannelExternalInput";
 import { ChannelAction } from "./ChannelAction";
-import type { ChannelPublication } from "../protocol";
+import { MAX_WATCH_URL_LENGTH, type ChannelPublication } from "../protocol";
 import "./channel-share-control.css";
 
 function ShareTitleEditor({ sharing, channel, disabled }: {
@@ -69,6 +69,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const [open, setOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [externalOpen, setExternalOpen] = useState(false);
+  const [watchOpen, setWatchOpen] = useState(false);
   const [sources, setSources] = useState<Exclude<NativeSourceList, { kind: "ready" }> | ({ kind: "ready" } & NativeCaptureSources)>({ kind: "browser" });
   const { appConnected, nativeSources, startNativeScreen, startScreen } = channel;
   const browserSupported = typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getDisplayMedia === "function";
@@ -76,10 +77,9 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const captureRequest = channel.nativeCaptureRequest(roomId);
   const selectedNative = channel.nativeCaptureSelection(roomId);
   const externalInput = channel.externalInput(roomId);
-  const available = browserSupported || cameraSupported || appConnected;
-  const pickerAvailable = appConnected || cameraSupported;
   const sharing = channel.state?.publications.find(publication => publication.kind === "screen" &&
     (!publicationId || publication.id === publicationId) && publication.roomId === roomId && channel.ownedScreens.has(publication.id));
+  const watching = channel.state?.watchActivities.find(activity => activity.roomId === roomId && activity.sessionId === channel.sessionId);
   const roomName = sharing ? channel.state?.channel.rooms.find(room => room.id === roomId)?.name : undefined;
   const settingsTitle = roomName
     ? lang === "zh" ? `${roomName}的分享设置` : `Share settings in ${roomName}`
@@ -113,7 +113,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const loadMicrophones = useCallback(() => sharingId ? sourceMicrophones(sharingId) : Promise.resolve([]), [sharingId, sourceMicrophones]);
   const roomMicrophone = channel.state?.voice.some(voice => voice.sessionId === channel.sessionId && !voice.muted);
   const busy = channel.pending.has(`screen:${roomId}`) || !!sharing && channel.pending.has(`source-audio:${sharing.id}`);
-  const label = t(sharing ? "host.switchSource" : "host.start");
+  const label = t(sharing || watching ? "host.switchSource" : "host.start");
   const sourceTitle = roomName
     ? lang === "zh" ? `切换${roomName}的分享源` : `Switch source in ${roomName}`
     : label;
@@ -138,12 +138,12 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     return () => { request.current = null; };
   }, [open, settingsOpen, refresh]);
   useLayoutEffect(() => { close(); }, [roomId, publicationId, disabled, close]);
-  useEffect(() => { setExternalOpen(false); }, [roomId]);
+  useEffect(() => { setExternalOpen(false); setWatchOpen(false); }, [roomId]);
   useEffect(() => {
-    if (!openRequested || disabled || !available || !panel.current) return;
+    if (!openRequested || disabled || !panel.current) return;
     panel.current.showPopover();
     onPickerOpened?.();
-  }, [openRequested, disabled, available, onPickerOpened]);
+  }, [openRequested, disabled, onPickerOpened]);
   const start = (operation: () => Promise<void>) => {
     close();
     void operation().catch(() => {}); // The session owns the operation's error.
@@ -158,16 +158,15 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         </span>
         <Btn icon="x" title="common.cancel" cap="common.cancel" size="compact" quiet
           onClick={() => { if (channel.nativeCaptureRequest(roomId)) void channel.cancelScreenSelection(roomId).catch(() => {}); }} />
-      </> : <Btn icon={sharing ? "switchSource" : "cast"} title={{ text: sourceTitle }} cap={compact ? undefined : { text: label }} size="compact" tone={sharing ? undefined : "primary"} quiet={compact}
-        hint={available ? sharing ? "hint-switch-source" : "hint-share-start" : "hint-no-sources"} hintText={available ? undefined : "host.capture.noSource"}
-        disabled={disabled || busy || qualityPending || microphonePending || !available} busy={busy || qualityPending} expanded={pickerAvailable || open ? open : undefined}
-        controls={pickerAvailable || open ? id : undefined} popoverTarget={pickerAvailable ? id : undefined}
-        onClick={() => { if (!pickerAvailable) start(() => startScreen(roomId)); }} />}
+      </> : <Btn icon={sharing || watching ? "switchSource" : "cast"} title={{ text: sourceTitle }} cap={compact ? undefined : { text: label }} size="compact" tone={sharing || watching ? undefined : "primary"} quiet={compact}
+        hint={sharing || watching ? "hint-switch-source" : "hint-share-start"}
+        disabled={disabled || busy || qualityPending || microphonePending} busy={busy || qualityPending} expanded={open}
+        controls={id} popoverTarget={id} />}
     </span>
-    <span ref={settingsTrigger} className="c3-share-control">
+    {(!watching || sharing) && <span ref={settingsTrigger} className="c3-share-control">
       <Btn icon="sliders" title={{ text: settingsTitle }} cap={vis || compact ? undefined : { text: settingsLabel }} hint="hint-quality" size="compact" quiet
         disabled={disabled || busy} busy={qualityPending} popoverTarget={`${id}-settings`} controls={`${id}-settings`} expanded={settingsOpen} />
-    </span>
+    </span>}
     {externalInput && <ChannelAction icon="cast" label={externalInput.state === "live" ? "OBS" : (lang === "zh" ? "等待 OBS" : "Waiting for OBS")}
       quiet onClick={() => setExternalOpen(true)} />}
     </span>
@@ -228,6 +227,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         initialTab="window" selectionDisabled={disabled || busy || qualityPending || microphonePending}
         initialAudio={selectedNative?.audio} initialExcludeAudio={selectedNative?.excludeAudio} initialShowCaptureBorder={selectedNative?.showCaptureBorder}
         onBrowser={() => start(() => startScreen(roomId))}
+        onWatch={() => { close(); setWatchOpen(true); }}
         onCamera={deviceId => start(() => startScreen(roomId, "camera", deviceId))}
         onExternalInput={(sources.kind === "ready" || sources.kind === "loading") && sources.externalInput ? () => {
           close();
@@ -241,5 +241,34 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     </div>
     {externalOpen && externalInput && <ChannelExternalInput input={externalInput} busy={channel.pending.has(`stop:${externalInput.publicationId}`)}
       onStop={() => { void channel.stopScreen(externalInput.publicationId).then(() => setExternalOpen(false)).catch(() => {}); }} onClose={() => setExternalOpen(false)} />}
+    {watchOpen && <WatchSourceDialog channel={channel} roomId={roomId} onClose={() => setWatchOpen(false)} />}
   </>;
+}
+
+function WatchSourceDialog({ channel, roomId, onClose }: { channel: ChannelController; roomId: string; onClose(): void }) {
+  const { t } = useCopy();
+  const [url, setURL] = useState("");
+  const { error, run } = useSettingsAction();
+  const committing = channel.sourceSelectionCommitting(roomId);
+  const busy = committing || channel.pending.has(`screen:${roomId}`);
+  const close = () => {
+    if (channel.sourceSelectionCommitting(roomId)) return;
+    if (busy) void channel.cancelScreenSelection(roomId).catch(() => {});
+    onClose();
+  };
+  return <ChannelSettingsDialog compact title={t("watch.start")} error={error} onClose={close} closeDisabled={committing}>
+    <form className="c3-external-input" onSubmit={event => {
+      event.preventDefault();
+      if (!busy) void run(() => channel.startWatch(roomId, url.trim()), onClose);
+    }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}>
+      <p>{t("watch.urlHelp")}</p>
+      <label className="c3-external-input-field">{t("watch.url")}<span className="lr-input">
+        <input type="url" required maxLength={MAX_WATCH_URL_LENGTH} value={url} placeholder="https://example.com/video.mp4" disabled={busy}
+          onChange={event => setURL(event.target.value)} autoComplete="off" />
+      </span></label>
+      <p>{t("watch.connectorHelp")}</p>
+      <div className="c3-share-title-actions"><Btn type="submit" icon="play" tone="primary" title="watch.start" cap="watch.start" busy={busy} disabled={busy || !url.trim()} />
+        <Btn icon="x" quiet title="common.cancel" cap="common.cancel" disabled={committing} onClick={close} /></div>
+    </form>
+  </ChannelSettingsDialog>;
 }

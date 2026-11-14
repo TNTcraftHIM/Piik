@@ -57,10 +57,12 @@
 .c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) { border-radius: var(--c3-media-radius); }
 .c3-monitor-source-row { position: absolute; inset: 6px 6px auto; z-index: 5; display: grid; grid-template-columns: 20px minmax(64px, 180px) minmax(100px, 1fr) auto; padding: 4px 6px; gap: 6px; color: var(--ink); background: var(--paper-translucent); border: 1px solid var(--control-edge); border-radius: var(--c3-inset-radius); box-shadow: var(--control-shadow); backdrop-filter: blur(14px); transition: opacity var(--motion-feedback) ease, transform var(--motion-control) ease; }
 .c3-monitor-social { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.c3-monitor-tile[data-source-kind="watch"] .c3-monitor-source-row { grid-template-columns: 20px minmax(0, 1fr) auto; }
 .c3-monitor-social > .c3-message-reactions { flex: 1; min-width: 0; flex-wrap: nowrap; }
 .c3-monitor-source-row .c3-message-reaction-counts { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; }
 .c3-monitor-source-row .c3-message-reaction-counts > button, .c3-monitor-source-row .c3-message-action { flex: none; }
 @container (max-width: 720px) {
+  .c3-monitor-tile[data-source-kind="watch"] .c3-monitor-source-row { grid-template-columns: minmax(0, 1fr) auto; }
   .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source-row { grid-template-columns: minmax(56px, 1fr) minmax(64px, 96px) auto; gap: 4px; padding: 2px 4px; }
   .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source-row > svg,
   .c3-monitor-tile:not(.is-thumbnail) .c3-monitor-source > .lr-comic-tip-wrap:last-child { display: none; }

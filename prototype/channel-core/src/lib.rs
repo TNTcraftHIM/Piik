@@ -613,6 +613,9 @@ impl Authority {
                     request_id: context.request_id.clone(),
                 },
             )),
+            RoomResult::WatchReady { server_time } => {
+                completion = RoomResult::WatchReady { server_time }
+            }
             RoomResult::Error { code } => completion = RoomResult::Error { code },
             RoomResult::Deleted { data_removed } => {
                 completion = RoomResult::Deleted { data_removed }

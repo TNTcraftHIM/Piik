@@ -49,6 +49,7 @@ export function nativeAppDetected(sources: NativeSourceList | null): boolean {
 export function CaptureSourcePicker({
   nativeSources,
   onBrowser,
+  onWatch,
   onCamera,
   onNative,
   onExternalInput,
@@ -69,6 +70,7 @@ export function CaptureSourcePicker({
 }: {
   nativeSources: NativeSourceList;
   onBrowser: () => void;
+  onWatch?: () => void;
   onCamera?: (deviceId: string) => void;
   initialCamera?: string;
   activeCameraVideo?: HTMLVideoElement | null;
@@ -102,7 +104,7 @@ export function CaptureSourcePicker({
   // Retained targets classify tabs during refresh; only ready targets are selectable.
   const pickerOnly = (nativeSources.kind === "ready" || nativeSources.kind === "loading") && !!nativeSources.sources?.length &&
     nativeSources.sources.every(target => target.kind === "picker");
-  const tabs = SOURCE_TABS.filter(value => value === "browser" ? browserSupported
+  const tabs = SOURCE_TABS.filter(value => value === "browser" ? browserSupported || !!onWatch
     : value === "external" ? !!onExternalInput
     : value === "camera" ? cameraSupported
     : value === "picker" ? pickerOnly
@@ -353,7 +355,7 @@ export function CaptureSourcePicker({
                 type="button"
                 className="lr-source-option is-action"
                 aria-label={t("host.sourcePicker.browser")}
-                disabled={selectionDisabled}
+                disabled={selectionDisabled || !browserSupported}
                 onClick={onBrowser}
               >
                 <span className="lr-source-option-icon" aria-hidden="true">
@@ -371,6 +373,11 @@ export function CaptureSourcePicker({
                 )}
               </button>
             ) : null}
+            {browserCapture && onWatch && <button type="button" className="lr-source-option is-action"
+              disabled={selectionDisabled} onClick={onWatch} aria-label={t("watch.start")}>
+              <span className="lr-source-option-icon" aria-hidden="true"><Glyph name="play" size={23} /></span>
+              <span className="lr-source-option-copy"><strong>{t("watch.start")}</strong><small>{t("watch.sourceHint")}</small></span>
+            </button>}
 
             {nativeTab && !browserCapture
               ? sources.map((target) => (

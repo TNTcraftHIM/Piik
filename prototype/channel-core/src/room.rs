@@ -22,6 +22,7 @@ const REQUIRED_REPAIR_MS: u64 = 5_000;
 #[derive(Clone, Default)]
 struct Activity {
     reading: bool,
+    watch_subscriptions: BTreeSet<Uuid>,
     watching: BTreeMap<Uuid, Option<Uuid>>,
     voice: Option<VoiceInfo>,
     relay_capacity: Option<u8>,
@@ -36,6 +37,7 @@ pub struct RoomRuntime {
     policy: RoomState,
     activity: BTreeMap<Uuid, Activity>,
     publications: BTreeMap<Uuid, Publication>,
+    watch_activities: BTreeMap<Uuid, crate::wire::WatchActivity>,
     base: Option<BaseTree>,
     repair_at: Option<u64>,
     files: crate::file_room::FileRoom,
@@ -44,6 +46,8 @@ pub struct RoomRuntime {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomSnapshot {
+    pub watch_activities: Vec<crate::wire::WatchActivity>,
+    pub watch_subscriptions: Vec<Uuid>,
     pub files: Vec<crate::file_room::FilePlan>,
     pub room: Room,
     pub publications: Vec<PublicationInfo>,
@@ -55,6 +59,7 @@ pub struct RoomSnapshot {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomRecipient {
+    pub watch_subscriptions: Vec<Uuid>,
     pub authorized: bool,
     pub can_manage: bool,
     pub reading: bool,
@@ -73,6 +78,7 @@ impl RoomRuntime {
             policy,
             activity: BTreeMap::new(),
             publications: BTreeMap::new(),
+            watch_activities: BTreeMap::new(),
             base: None,
             repair_at: None,
             files: Default::default(),
@@ -132,6 +138,12 @@ impl RoomRuntime {
             vec![]
         };
         Some(RoomRecipient {
+            watch_subscriptions: self
+                .activity
+                .get(&session)
+                .filter(|_| room.authorized)
+                .map(|a| a.watch_subscriptions.iter().copied().collect())
+                .unwrap_or_default(),
             authorized: room.authorized,
             can_manage: room.can_manage,
             members: room.members,
@@ -163,6 +175,7 @@ impl RoomRuntime {
 
     fn project(&self, views: BTreeMap<Uuid, RoomRecipient>) -> crate::host::RoomProjection {
         crate::host::RoomProjection {
+            watch_activities: self.watch_activities.values().cloned().collect(),
             last_message_seq: self.last_message_seq,
             summary: crate::host::RoomSummary::from_policy(&self.policy),
             capabilities: crate::wire::RoomCapabilities {
@@ -171,11 +184,11 @@ impl RoomRuntime {
             participant_session_ids: self
                 .media_sessions()
                 .into_iter()
-                .chain(
-                    self.activity
-                        .iter()
-                        .filter_map(|(session, activity)| activity.reading.then_some(*session)),
-                )
+                .chain(self.activity.iter().filter_map(|(session, activity)| {
+                    (activity.reading || !activity.watch_subscriptions.is_empty())
+                        .then_some(*session)
+                }))
+                .chain(self.watch_activities.values().map(|a| a.session_id))
                 .collect::<BTreeSet<_>>()
                 .into_iter()
                 .collect(),
@@ -507,6 +520,104 @@ impl RoomRuntime {
         })
     }
 
+    pub(crate) fn start_watch(
+        &mut self,
+        member: Member,
+        session: Uuid,
+        id: Uuid,
+        url: String,
+        playback: crate::wire::WatchPlayback,
+    ) -> Result<(), &'static str> {
+        self.authorize(member, RoomPermission::Read)?;
+        crate::wire::validate_watch_url(&url)?;
+        playback.validate()?;
+        if let Some(current) = self.watch_activities.get(&id) {
+            if current.session_id != session || current.url != url {
+                return Err("watch_identity_conflict");
+            }
+            return Ok(());
+        }
+        if let Some(previous) = self
+            .watch_activities
+            .values()
+            .find(|a| a.session_id == session)
+            .map(|a| a.id)
+        {
+            self.stop_watch(member, session, previous)?;
+        }
+        self.watch_activities.insert(
+            id,
+            crate::wire::WatchActivity {
+                id,
+                room_id: self.policy.id.clone(),
+                user_id: member.user_id,
+                session_id: session,
+                url,
+                playback,
+            },
+        );
+        Ok(())
+    }
+    pub(crate) fn update_watch(
+        &mut self,
+        member: Member,
+        session: Uuid,
+        id: Uuid,
+        playback: crate::wire::WatchPlayback,
+    ) -> Result<(), &'static str> {
+        self.authorize(member, RoomPermission::Read)?;
+        playback.validate()?;
+        let activity = self
+            .watch_activities
+            .get_mut(&id)
+            .ok_or("watch_unavailable")?;
+        if activity.session_id != session {
+            return Err("not_watch_owner");
+        }
+        activity.playback = playback;
+        Ok(())
+    }
+    pub(crate) fn join_watch(
+        &mut self,
+        member: Member,
+        session: Uuid,
+        id: Uuid,
+        enabled: bool,
+    ) -> Result<(), &'static str> {
+        self.authorize(member, RoomPermission::Read)?;
+        if enabled {
+            let source = self.watch_activities.get(&id).ok_or("watch_unavailable")?;
+            if source.session_id != session {
+                self.activity
+                    .entry(session)
+                    .or_default()
+                    .watch_subscriptions
+                    .insert(id);
+            }
+        } else if let Some(activity) = self.activity.get_mut(&session) {
+            activity.watch_subscriptions.remove(&id);
+        }
+        Ok(())
+    }
+    pub(crate) fn stop_watch(
+        &mut self,
+        member: Member,
+        session: Uuid,
+        id: Uuid,
+    ) -> Result<(), &'static str> {
+        self.authorize(member, RoomPermission::Read)?;
+        if let Some(activity) = self.watch_activities.get(&id) {
+            if activity.session_id != session {
+                return Err("not_watch_owner");
+            }
+        }
+        self.watch_activities.remove(&id);
+        for activity in self.activity.values_mut() {
+            activity.watch_subscriptions.remove(&id);
+        }
+        Ok(())
+    }
+
     pub fn publications(&self) -> impl Iterator<Item = &PublicationInfo> {
         self.publications
             .values()
@@ -786,7 +897,13 @@ impl RoomRuntime {
     pub fn retire_session(&mut self, session: Uuid) {
         self.publications
             .retain(|_, publication| publication.info.session_id != session);
+        self.watch_activities.retain(|_, a| a.session_id != session);
         self.activity.remove(&session);
+        for activity in self.activity.values_mut() {
+            activity
+                .watch_subscriptions
+                .retain(|id| self.watch_activities.contains_key(id));
+        }
     }
 
     pub fn reconcile(&mut self, endpoints: &BTreeMap<Uuid, Endpoint>, now: u64) {
@@ -804,12 +921,17 @@ impl RoomRuntime {
                     .then_some(*session)
             })
             .collect();
+        self.watch_activities
+            .retain(|_, a| readable.contains(&a.session_id));
         self.files.reconcile(&readable);
         self.publications
             .retain(|_, publication| readable.contains(&publication.info.session_id));
         self.activity
             .retain(|session, _| readable.contains(session));
         for activity in self.activity.values_mut() {
+            activity
+                .watch_subscriptions
+                .retain(|id| self.watch_activities.contains_key(id));
             activity
                 .watching
                 .retain(|id, _| self.publications.contains_key(id));

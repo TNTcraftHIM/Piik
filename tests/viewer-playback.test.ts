@@ -96,7 +96,7 @@ describe("Playback audio controls", () => {
     setCopy({ lang: "zh", vis: false });
     const stream = { id: "mixed", getAudioTracks: () => [{ kind: "audio", readyState: "live" }] } as unknown as MediaStream;
     const sourceAudio = { hasAudio: false, available: false, level: 1, muted: false, busy: false, canMute: true, onChange: vi.fn() };
-    const source = { id: "screen", userId: "self", name: "Me", roomName: "Room", source: { kind: "screen" as const, name: "Own screen" },
+    const source = { kind: "screen" as const, id: "screen", userId: "self", name: "Me", roomName: "Room", source: { kind: "screen" as const, name: "Own screen" },
       title: null, owned: true, localSource: true, audience: [], subscribed: true, paused: false, stream };
     const render = (sound = sourceAudio) => renderToStaticMarkup(createElement(ChannelStage, {
       sources: [{ ...source, sourceAudio: sound }], focusedId: null, canSubscribe: true,
@@ -188,7 +188,7 @@ describe("Local source playback", () => {
     expect(html).toContain("<video");
     expect(html).not.toContain('class="c3-mini-volume"');
     expect(html).not.toContain("No audio in this share");
-    const source = { id: "screen", userId: "self", name: "Me", roomName: "Room", source: { kind: "screen" as const, name: null },
+    const source = { kind: "screen" as const, id: "screen", userId: "self", name: "Me", roomName: "Room", source: { kind: "screen" as const, name: null },
       title: null, owned: false, localSource: true, audience: [], subscribed: true, paused: false, stream };
     const props: ChannelStageProps = { sources: [source], focusedId: null, canSubscribe: true,
       onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),
@@ -207,7 +207,7 @@ describe("Local source playback", () => {
 describe("Screen delivery result", () => {
   it("shows the watch failure without replacing an existing picture or changing its controls", () => {
     setCopy({ lang: "en", vis: false });
-    const source = { audience: [], id: "screen", userId: "friend", name: "Friend", roomName: "Room", source: { kind: "screen" as const, name: null }, title: null, owned: false, localSource: false,
+    const source = { kind: "screen" as const, audience: [], id: "screen", userId: "friend", name: "Friend", roomName: "Room", source: { kind: "screen" as const, name: null }, title: null, owned: false, localSource: false,
       subscribed: true, paused: false, deliveryFailed: true };
     const props: ChannelStageProps = { sources: [source], focusedId: null, canSubscribe: true,
       onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),

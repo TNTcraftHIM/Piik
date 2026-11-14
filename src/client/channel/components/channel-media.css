@@ -9,6 +9,15 @@
 }
 .c3-mini-player > video { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; outline-offset: -4px; transform: var(--picture-transform, none); }
 .c3-mini-player > video[data-selected="false"] { opacity: 0; pointer-events: none; }
+.c3-watch-shared, .c3-watch-local { display: flex; align-items: center; gap: inherit; min-width: 0; }
+.c3-watch-shared { flex: 1 1 220px; }
+.c3-watch-local { flex: none; }
+.c3-watch-shared input { flex: 1 1 140px; min-width: 36px; width: 140px; height: var(--control-dense-size); accent-color: var(--action); }
+.c3-mini-controls .c3-watch-shared .lr-select { flex: none; min-width: 0; width: auto; min-height: var(--control-dense-size); padding: 0 3px; border: 0; background: transparent; font-size: 12px; }
+.c3-mini-controls .lr-viewer-action-separator { display: block; width: 1px; height: 20px; margin-inline: 2px; background: var(--control-edge); }
+.c3-watch-player[data-thumbnail] .c3-watch-shared { flex: none; }
+.c3-watch-player[data-thumbnail] .c3-watch-shared > :is(input, select),
+.c3-watch-player[data-thumbnail] .lr-playback-window { display: none; }
 .c3-mini-player[data-thumbnail] > :is(.lr-playback-reveal, .lr-remote-input-surface, .c3-mini-message) { display: none; }
 .c3-mini-controls {
   z-index: 4;
@@ -43,7 +52,7 @@
 @container (max-width: 280px) {
   .c3-mini-controls { inset-inline: 2px; width: calc(100% - 4px); max-width: calc(100% - 4px); gap: 0; padding: 2px; }
   .c3-mini-controls .c3-mini-space { display: none; }
-  .c3-mini-controls > :is(.lr-chat-overlay-toggle, .lr-remote-controls, .lr-playback-window) { display: none; }
+  .c3-mini-controls > :is(.lr-chat-overlay-toggle, .lr-remote-controls, .lr-playback-window), .c3-mini-controls .c3-watch-local > .lr-playback-window { display: none; }
   .c3-mini-controls .lr-btn:not(:where(.c3-mini-controls [popover] *)) { --button-size: var(--control-dense-size); }
 }
 .c3-mini-space { flex: 1 1 0; min-width: 4px; }
