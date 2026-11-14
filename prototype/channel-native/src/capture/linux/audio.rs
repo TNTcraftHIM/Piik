@@ -318,7 +318,7 @@ async fn run(
     let mut messages = bus.stream();
     let mut samples = sink.stream();
     let mut pcm = Pcm::default();
-    pipeline.0.set_state(gst::State::Playing)?;
+    pipeline.set_state(gst::State::Playing, &mut messages)?;
     loop {
         tokio::select! {
             biased;

@@ -238,8 +238,8 @@ impl Video {
         pipeline.0.add_many([&source, sink.upcast_ref()])?;
         source.link(&sink)?;
         let samples = sink.stream();
-        let messages = pipeline.0.bus().context("missing capture bus")?.stream();
-        pipeline.0.set_state(gst::State::Playing)?;
+        let mut messages = pipeline.0.bus().context("missing capture bus")?.stream();
+        pipeline.set_state(gst::State::Playing, &mut messages)?;
         Ok(Self {
             _pipeline: pipeline,
             samples,

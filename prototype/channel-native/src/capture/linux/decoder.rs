@@ -59,7 +59,7 @@ pub(crate) async fn run(
             .bus()
             .context("decoder bus missing")?
             .stream_filtered(&[gst::MessageType::Error, gst::MessageType::Eos]);
-        pipeline.0.set_state(gst::State::Playing)?;
+        pipeline.set_state(gst::State::Playing, &mut messages)?;
         let mut samples = sink.stream();
         let mut input = source.sink();
         let mut access_units = Box::pin(access_units);

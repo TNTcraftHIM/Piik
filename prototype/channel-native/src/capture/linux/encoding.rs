@@ -357,12 +357,15 @@ impl Codec {
         settings: Settings,
         sink: gst_app::AppSink,
         encoder: Option<gst::Element>,
-    ) -> Result<Self> {
+    ) -> Result<(Self, gst::bus::BusStream)> {
         if let Some(encoder) = encoder {
             return Self::attempt(clock, settings, &sink, encoder);
         }
-        let mut error = anyhow!("no H264 encoder with live bitrate control");
+        let mut error = None::<anyhow::Error>;
         for factory in encoder_factories() {
+            if let Some(previous) = error.take() {
+                log::info!(target: "piik.encoder", "Linux encoder initialization skipped: {previous:#}");
+            }
             let attempt = factory
                 .create()
                 .build()
@@ -371,18 +374,19 @@ impl Codec {
             match attempt {
                 Ok(codec) => return Ok(codec),
                 Err(failure) => {
-                    error = failure.context(format!("{} initialization failed", factory.name()))
+                    error =
+                        Some(failure.context(format!("{} initialization failed", factory.name())))
                 }
             }
         }
-        Err(error)
+        Err(error.unwrap_or_else(|| anyhow!("no H264 encoder with live bitrate control")))
     }
     fn attempt(
         clock: &Clock,
         settings: Settings,
         sink: &gst_app::AppSink,
         encoder: gst::Element,
-    ) -> Result<Self> {
+    ) -> Result<(Self, gst::bus::BusStream)> {
         let result = Self::with_encoder(clock, settings, sink, encoder);
         if result.is_err() {
             // with_encoder's Pipeline RAII has already moved the failed
@@ -403,7 +407,7 @@ impl Codec {
         settings: Settings,
         sink: &gst_app::AppSink,
         encoder: gst::Element,
-    ) -> Result<Self> {
+    ) -> Result<(Self, gst::bus::BusStream)> {
         ensure!(
             supports_live_kbps(&encoder),
             "encoder has no supported live kbps contract"
@@ -469,9 +473,17 @@ impl Codec {
         enum_nick(&codec.encoder, "rc-mode", "cbr");
         // Hardware factories can exist without a usable device. READY opens
         // that actual encoder; retain this same pipeline when initialization wins.
-        codec.pipeline.0.set_state(gst::State::Ready)?;
-        codec.pipeline.0.set_state(gst::State::Playing)?;
-        Ok(codec)
+        let mut messages = codec
+            .pipeline
+            .0
+            .bus()
+            .context("encoder bus missing")?
+            .stream();
+        codec.pipeline.set_state(gst::State::Ready, &mut messages)?;
+        codec
+            .pipeline
+            .set_state(gst::State::Playing, &mut messages)?;
+        Ok((codec, messages))
     }
     fn bitrate(&self, bitrate: u32) -> Result<()> {
         numeric(&self.encoder, "bitrate", u64::from(bitrate).div_ceil(1_000))?;
@@ -545,7 +557,7 @@ async fn run(
     let output_pad = sink
         .static_pad("sink")
         .context("encoded sink pad missing")?;
-    let codec = Codec::new(&clock, settings, sink, encoder)?;
+    let (codec, messages) = Codec::new(&clock, settings, sink, encoder)?;
     let started = Instant::now();
     let mut dropper = FrameDropper::new();
     dropper.set_rates(settings.bitrate as f32 / 1_000.0, 0.0);
@@ -574,12 +586,12 @@ async fn run(
     shared.state.lock().unwrap().started = true;
     shared.available.notify_waiters();
     let mut input = codec.input.sink();
-    let mut messages = codec
-        .pipeline
-        .0
-        .bus()
-        .context("encoder bus missing")?
-        .stream_filtered(&[gst::MessageType::Error, gst::MessageType::Eos]);
+    let mut messages = messages.filter(|message| {
+        futures_util::future::ready(matches!(
+            message.type_(),
+            gst::MessageType::Error | gst::MessageType::Eos
+        ))
+    });
     let requested_max = capture_timing.then_some(settings.fps);
     let mut frame_limit = requested_max;
     let mut cadence = Cadence::new(settings.fps);
