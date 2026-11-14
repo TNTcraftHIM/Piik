@@ -78,8 +78,8 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const externalInput = channel.externalInput(roomId);
   const available = browserSupported || cameraSupported || appConnected;
   const pickerAvailable = appConnected || cameraSupported;
-  const sharing = publicationId ? channel.state?.publications.find(publication =>
-    publication.id === publicationId && publication.roomId === roomId && channel.ownedScreens.has(publication.id)) : undefined;
+  const sharing = channel.state?.publications.find(publication => publication.kind === "screen" &&
+    (!publicationId || publication.id === publicationId) && publication.roomId === roomId && channel.ownedScreens.has(publication.id));
   const roomName = sharing ? channel.state?.channel.rooms.find(room => room.id === roomId)?.name : undefined;
   const settingsTitle = roomName
     ? lang === "zh" ? `${roomName}的分享设置` : `Share settings in ${roomName}`
@@ -105,7 +105,8 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const microphonePending = !!sharing && channel.pending.has(`source-microphone:${sharing.id}`);
   const { sourceMicrophones } = channel;
   const loadAudioApplications = useCallback(async () => (await nativeSources()).sources, [nativeSources]);
-  const loadMicrophones = useCallback(() => publicationId ? sourceMicrophones(publicationId) : Promise.resolve([]), [publicationId, sourceMicrophones]);
+  const sharingId = sharing?.id;
+  const loadMicrophones = useCallback(() => sharingId ? sourceMicrophones(sharingId) : Promise.resolve([]), [sharingId, sourceMicrophones]);
   const roomMicrophone = channel.state?.voice.some(voice => voice.sessionId === channel.sessionId && !voice.muted);
   const busy = channel.pending.has(`screen:${roomId}`) || !!sharing && channel.pending.has(`source-audio:${sharing.id}`);
   const label = t(sharing ? "host.switchSource" : "host.start");
