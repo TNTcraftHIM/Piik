@@ -210,9 +210,9 @@ message actions stay close to their content and appear on hover or focus;
 tapping a focusable message reveals the same controls on touch. Existing reaction
 counts remain visible when those actions are hidden.
 Keep consecutive messages within an author group close, with a larger break
-between groups. Hidden actions do not determine text height or reserve a column
-beside multiline content. Their floating toolbar preserves the message layout
-and remains reachable at the conversation's scrolling edges.
+between groups. Embedded actions follow the content with compact targets rather
+than reserving a column beside multiline text. Showing them keeps the message
+layout stable; their reaction picker retains the shared floating surface.
 [W3C focus guidance](https://www.w3.org/WAI/WCAG22/Understanding/focus-visible.html)
 requires visible keyboard focus; it does not require the same outline for a pointer click.
 

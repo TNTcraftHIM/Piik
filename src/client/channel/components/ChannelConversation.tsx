@@ -414,7 +414,6 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
   const mentioned = message.mentions?.some(mention => mention.userId === selfUserId)
     || (message.reply?.notify && message.reply.userId === selfUserId);
   const row = useRef<HTMLElement>(null);
-  const body = useRef<HTMLDivElement>(null);
   const effectAnchor = useCallback(() => row.current?.closest(".c3-message-content")
     ?.querySelector(`[data-message-id="${CSS.escape(authorMessageId)}"] > .lr-person`) ?? null, [authorMessageId]);
   return <>
@@ -422,7 +421,7 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
     {unread && <div className="c3-message-date c3-unread-divider">{lang === "zh" ? "新消息" : "New messages"}</div>}
     <article ref={row} tabIndex={0} className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}${mentioned ? " is-mentioned" : ""}`} data-message-id={message.id} data-message-seq={message.seq}>
     {!grouped && <PawnSvg color={participantColor(message.userId)} identity={message.userId} avatar={avatar} />}
-    <div ref={body} className="c3-message-body">{!grouped && <div className="c3-message-meta"><strong>{name}</strong>
+    <div className="c3-message-body">{!grouped && <div className="c3-message-meta"><strong>{name}</strong>
       <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
     </div>}<div className="c3-message-content-body">
     {message.reply && <button type="button" className="c3-message-reference" disabled={!onMessage} onClick={() => onMessage?.(message.reply!.seq)}>
@@ -432,7 +431,6 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
     {message.attachments.map(file => <ChannelAttachment key={file.id} roomId={roomId} messageSeq={message.seq} file={file} client={attachments}
       inlineImage={message.inlineImages?.[file.id]} />)}
     <ChannelContentReactions reactions={message.reactions} session={interaction} target={{ messageSeq: message.seq }} disabled={!available}
-      toolbarAnchor={body} toolbarOwner={row}
       effectAnchor={effectAnchor} effectsEnabled={effectsEnabled} actions={<>
       <Tooltip text={lang === "zh" ? `提及 ${name}` : `Mention ${name}`}><button type="button" className="lr-btn is-compact is-quiet c3-mention-author" aria-label={lang === "zh" ? `提及 ${name}` : `Mention ${name}`}
         disabled={!onMention} onClick={onMention}>@</button></Tooltip>

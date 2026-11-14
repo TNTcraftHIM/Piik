@@ -39,17 +39,15 @@
 .c3-message-content-body { display: flow-root; font-size: 14px; line-height: 1.65; margin-top: 3px; }
 .c3-message.is-continuation .c3-message-content-body { margin-top: 0; }
 .c3-message-body { flex: 0 1 auto; width: fit-content; max-width: 100%; min-width: 0; }
-.c3-message-content-body { --message-action-size: 32px; max-width: 80ch; }
-.c3-message-content-body > .c3-message-reactions { position: static; }
-.c3-message-content-body > .c3-message-reactions:not([data-has-counts="true"]) { margin-top: 0; }
-.c3-content-actions[popover] { display: none; position: fixed; inset: auto; margin: 0; overflow: visible; padding: 2px; border: 1px solid var(--line); border-radius: var(--c3-inset-radius); background: var(--paper); color: var(--ink); box-shadow: var(--panel-shadow); }
-.c3-content-actions[popover]:popover-open { display: inline-flex; }
-.c3-content-actions[popover]::after { content: ""; position: absolute; inset: auto 0 100%; height: 8px; }
-.c3-content-actions[popover].is-above::after { inset: 100% 0 auto; }
-.c3-message .c3-content-actions .lr-btn { --button-size: var(--message-action-size); min-width: var(--message-action-size); height: var(--message-action-size); padding: 4px; }
+.c3-message-content-body { --message-action-size: 24px; max-width: 80ch; }
+.c3-message-content-body > .c3-message-reactions { display: inline; position: static; margin: 0; }
+.c3-message-content-body .c3-content-actions { margin-inline-start: 6px; vertical-align: middle; visibility: hidden; }
+.c3-message:is(:hover, :focus-within, :has([aria-expanded="true"])) .c3-content-actions { visibility: visible; }
+.c3-message .c3-content-actions .lr-btn { --button-size: var(--message-action-size); min-width: var(--message-action-size); height: var(--message-action-size); padding: 2px; }
+.c3-message-content-body .c3-message-reaction-counts:not(:empty) { display: inline-flex; flex-wrap: wrap; gap: 5px; margin-inline-start: 6px; vertical-align: middle; }
 .c3-mention-author { font-size: 17px; }
-@media (hover: none), (any-pointer: coarse) {
-  .c3-message-content-body { --message-action-size: 44px; }
+@media (pointer: coarse) {
+  .c3-message-content-body { --message-action-size: 32px; }
 }
 .c3-message-meta { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
 .c3-message-meta strong { font-size: 13px; font-weight: 650; }
