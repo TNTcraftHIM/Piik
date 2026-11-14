@@ -33,6 +33,13 @@ async fn keyframe_feedback_preserves_rid_and_shared_siblings() -> Result<()> {
     let time = SourceTime::local(now, SystemInstant::now(now));
     let q = Video::new(time.clone(), Arc::new(Notify::new()));
     let h = Video::new(time, Arc::new(Notify::new()));
+    let codec = RtpCodec {
+        mime_type: "video/VP8".into(),
+        clock_rate: 90_000,
+        ..Default::default()
+    };
+    q.set_codec(codec.clone())?;
+    h.set_codec(codec)?;
     let healthy = h.subscribe();
     let layers = Layers::new(vec!["q".into(), "h".into()]);
     layers.insert("q".into(), q.clone());
@@ -45,11 +52,6 @@ async fn keyframe_feedback_preserves_rid_and_shared_siblings() -> Result<()> {
             flow_id: Uuid::new_v4(),
             stream: "shared-feedback-source".into(),
             reader: Uuid::new_v4(),
-        },
-        codec: RtpCodec {
-            mime_type: "video/VP8".into(),
-            clock_rate: 90_000,
-            ..Default::default()
         },
         kind: MediaKind::Video,
         feed: SourceFeed::Video(h.clone()),
@@ -232,7 +234,11 @@ async fn keyframe_feedback_preserves_rid_and_shared_siblings() -> Result<()> {
                 &source,
                 ordinary.id,
                 ordinary.video_inputs(),
-                EncodingDemand::Original,
+                crate::media::video::VideoAllocation {
+                    forwarding: EncodingDemand::Original,
+                    encoder_bps: 0,
+                },
+                &ordinary.codecs(),
                 Instant::now(),
             )
         };

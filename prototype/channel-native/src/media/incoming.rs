@@ -281,6 +281,11 @@ impl H264 {
             if self.waiting && !keyframe {
                 continue;
             }
+            self.video.set_codec(
+                self.sps
+                    .codec()
+                    .ok_or_else(|| anyhow::anyhow!("H264 access unit has no admitted SPS"))?,
+            )?;
             self.waiting = false;
             let mut bytes = Vec::new();
             // A Browser may send parameter sets before its IDR. Every independent
@@ -387,6 +392,13 @@ impl Vp8 {
             }
             if self.waiting && !keyframe {
                 continue;
+            }
+            if self.video.codec().is_none() {
+                self.video.set_codec(super::RtpCodec {
+                    mime_type: "video/VP8".into(),
+                    clock_rate: 90_000,
+                    ..Default::default()
+                })?;
             }
             self.waiting = false;
             return Ok(Some(EncodedFrame {

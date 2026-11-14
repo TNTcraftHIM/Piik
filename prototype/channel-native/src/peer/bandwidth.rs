@@ -1,12 +1,17 @@
 //! Protect selected media when a physical connection also carries route trials.
 use super::*;
-use crate::media::video::EncodingDemand;
+use crate::media::video::{EncodingDemand, VideoAllocation};
+
+const PAUSED: VideoAllocation = VideoAllocation {
+    forwarding: EncodingDemand::Paused,
+    encoder_bps: 0,
+};
 
 #[derive(Default)]
 pub(super) struct BandwidthPlan {
     pub waiting: HashSet<Uuid>,
     pub rejected: HashSet<Uuid>,
-    video: HashMap<Uuid, EncodingDemand>,
+    video: HashMap<Uuid, VideoAllocation>,
 }
 
 impl Driver {
@@ -83,7 +88,17 @@ impl Driver {
                             } else {
                                 highest
                             };
-                            if flow.selected {
+                            let output = pair.outputs.get(&(flow.id, source.kind));
+                            #[cfg(feature = "capture")]
+                            let requires_conversion = self.has_video_producer(source.id)
+                                && output.is_some_and(|out| {
+                                    out.source == source.id && !out.can_forward(source.codec())
+                                });
+                            #[cfg(not(feature = "capture"))]
+                            let requires_conversion = false;
+                            if flow.selected && !requires_conversion {
+                                // Original bytes are not this output's transmit demand
+                                // when negotiation requires another representation.
                                 minimum += rate.unwrap_or(0);
                             }
                             let configured =
@@ -95,15 +110,19 @@ impl Driver {
                                 measured &= full_bps.is_some();
                                 video = Some(VideoRequest {
                                     full_bps,
-                                    stable: pair.outputs.get(&(flow.id, source.kind)).is_some_and(
-                                        |out| {
-                                            out.source == source.id
-                                                && pair
-                                                    .stable_outputs
-                                                    .as_ref()
-                                                    .is_some_and(|ids| ids.contains(&out.id))
-                                        },
-                                    ),
+                                    requires_conversion,
+                                    ceiling_bps: configured.or_else(|| {
+                                        self.publications[&flow.publication_id]
+                                            .video_settings
+                                            .map(|settings| settings.ceiling.max_bitrate)
+                                    }),
+                                    stable: output.is_some_and(|out| {
+                                        out.source == source.id
+                                            && pair
+                                                .stable_outputs
+                                                .as_ref()
+                                                .is_some_and(|ids| ids.contains(&out.id))
+                                    }),
                                 });
                             } else {
                                 let rate = configured
@@ -137,13 +156,10 @@ impl Driver {
                     *current = requested;
                     true
                 });
-                let mut plan = allocate(
-                    pair.bandwidth.borrow().feedback().map(|bps| bps as u64),
-                    &requests,
-                );
+                let mut plan = allocate(*pair.bandwidth.borrow(), &requests);
                 for flow in &pair.plan.outgoing {
                     if self.publications[&flow.publication_id].paused {
-                        plan.video.insert(flow.id, EncodingDemand::Paused);
+                        plan.video.insert(flow.id, PAUSED);
                     }
                 }
                 (*id, plan)
@@ -228,12 +244,16 @@ impl Driver {
                     continue;
                 };
                 let selected = if let Some(layers) = &source.layers {
-                    output.select_layers(layers, *demand, Instant::now())
+                    output.select_layers(layers, demand.forwarding, Instant::now())
                 } else if let Some(video) = source.video() {
                     let Some(input) = output.video_input().and_then(|input| input.upgrade()) else {
                         continue;
                     };
-                    input.select_available(std::iter::once(video), *demand, Instant::now())
+                    input.select_available(
+                        std::iter::once(video),
+                        demand.forwarding,
+                        Instant::now(),
+                    )
                 } else {
                     continue;
                 };
@@ -289,6 +309,7 @@ impl Driver {
                         output.id,
                         output.video_inputs(),
                         *encoding,
+                        &output.codecs(),
                         Instant::now(),
                     ));
             }
@@ -339,39 +360,72 @@ struct Request {
 }
 struct VideoRequest {
     full_bps: Option<u32>,
+    requires_conversion: bool,
+    ceiling_bps: Option<u32>,
     stable: bool,
 }
+impl VideoRequest {
+    fn capacity(&self) -> Option<u32> {
+        if self.requires_conversion {
+            self.ceiling_bps
+        } else {
+            Some(self.full_bps.unwrap_or(0))
+        }
+    }
 
-fn allocate(target: Option<u64>, requests: &[Request]) -> BandwidthPlan {
+    fn allocation(&self, budget: u64, grant: u32) -> VideoAllocation {
+        VideoAllocation {
+            forwarding: if budget == 0 || self.requires_conversion && grant == 0 {
+                EncodingDemand::Paused
+            } else {
+                encoding_demand(self.full_bps, grant)
+            },
+            encoder_bps: grant,
+        }
+    }
+}
+
+fn allocate(estimate: transport::Estimate, requests: &[Request]) -> BandwidthPlan {
     let mut plan = BandwidthPlan::default();
     let protected = requests
         .iter()
         .any(|r| r.selected && (r.present || r.started));
-    let Some(target) = target else {
-        // An existing source rate is not the capacity of a newly connected viewer.
-        // Let its first media establish feedback; protect selected flows from trials.
+    let target = estimate.value() as u64;
+    if estimate.feedback().is_none() {
+        // Original supply still bootstraps without treating the SDK's initial
+        // estimate as measured capacity. Required encoders need its finite seed.
+        let opaque = requests
+            .iter()
+            .filter(|r| r.selected || !protected)
+            .map(|r| r.opaque_bps)
+            .sum::<u64>();
+        share_video_budget(
+            target.saturating_sub(opaque),
+            requests.iter().filter(|r| r.selected || !protected),
+            &mut plan,
+        );
         for request in requests {
             if protected && !request.selected {
                 plan.waiting.insert(request.id);
                 if request.video.as_ref().is_some_and(|video| video.stable) {
-                    plan.video.insert(request.id, EncodingDemand::Paused);
+                    plan.video.insert(request.id, PAUSED);
                 }
-            } else if request.video.as_ref().is_some_and(|video| video.stable) {
-                plan.video.insert(request.id, EncodingDemand::Original);
+            } else if let Some(video) = request.video.as_ref().filter(|v| v.stable) {
+                let allocation = plan.video.get_mut(&request.id).unwrap();
+                allocation.forwarding = if video.requires_conversion && allocation.encoder_bps == 0
+                {
+                    EncodingDemand::Paused
+                } else {
+                    EncodingDemand::Original
+                };
             }
         }
         return plan;
-    };
+    }
     let selected_opaque = requests
         .iter()
         .filter(|r| r.selected)
         .map(|r| r.opaque_bps)
-        .sum::<u64>();
-    let selected_cap = requests
-        .iter()
-        .filter(|r| r.selected)
-        .filter_map(|r| r.video.as_ref())
-        .map(|v| u64::from(v.full_bps.unwrap_or(0)))
         .sum::<u64>();
     share_video_budget(
         target.saturating_sub(selected_opaque),
@@ -389,6 +443,18 @@ fn allocate(target: Option<u64>, requests: &[Request]) -> BandwidthPlan {
         );
         return plan;
     }
+    let selected_cap = requests
+        .iter()
+        .filter(|r| r.selected)
+        .filter_map(|r| r.video.as_ref().map(|video| (r.id, video)))
+        .map(|(id, video)| {
+            u64::from(if video.requires_conversion && video.stable {
+                plan.video[&id].encoder_bps
+            } else {
+                video.full_bps.unwrap_or(0)
+            })
+        })
+        .sum::<u64>();
     let mut remaining = target
         .saturating_sub(selected_opaque)
         .saturating_sub(selected_cap);
@@ -404,7 +470,7 @@ fn allocate(target: Option<u64>, requests: &[Request]) -> BandwidthPlan {
                 known = false;
             }
             if request.video.as_ref().is_some_and(|video| video.stable) {
-                plan.video.insert(request.id, EncodingDemand::Paused);
+                plan.video.insert(request.id, PAUSED);
             }
             continue;
         }
@@ -414,7 +480,7 @@ fn allocate(target: Option<u64>, requests: &[Request]) -> BandwidthPlan {
             || request
                 .video
                 .as_ref()
-                .is_some_and(|v| v.full_bps.is_some_and(|bps| bps > 0))
+                .is_some_and(|v| v.requires_conversion || v.full_bps.is_some_and(|bps| bps > 0))
                 && budget == 0
         {
             if request.started {
@@ -426,27 +492,25 @@ fn allocate(target: Option<u64>, requests: &[Request]) -> BandwidthPlan {
         }
         remaining = budget;
         if let Some(video) = &request.video {
-            let bitrate = remaining.min(u64::from(video.full_bps.unwrap_or(0))) as u32;
+            let bitrate = video
+                .capacity()
+                .map_or(remaining, |cap| remaining.min(u64::from(cap)))
+                .min(u64::from(u32::MAX)) as u32;
             remaining -= u64::from(bitrate);
             if video.stable {
-                plan.video.insert(
-                    request.id,
-                    if budget == 0 {
-                        EncodingDemand::Paused
-                    } else {
-                        encoding_demand(video.full_bps, bitrate)
-                    },
-                );
+                plan.video
+                    .insert(request.id, video.allocation(budget, bitrate));
             }
         }
     }
     plan
 }
 
-// Configured ceilings weight negotiated encoders, as in libwebrtc's relative
-// allocation. Pending selected video encoders reserve optional capacity but cannot
-// reduce an incumbent encoder before their negotiation completes.
-// https://webrtc.googlesource.com/src/+/main/call/bitrate_allocator.cc
+// Allocate by relative demand, redistributing capacity unused by capped outputs.
+// Original supply uses its full demand as weight and capacity. Required conversion
+// keeps that weight but only an explicit ceiling caps its encoded representation.
+// Capped relative redistribution follows libwebrtc's bitrate allocator.
+// https://webrtc.googlesource.com/src/+/c8e422dde9fd36e50fd8ca3e4267cf05a2b49852/call/bitrate_allocator.cc
 fn share_video_budget<'a>(
     budget: u64,
     requests: impl Iterator<Item = &'a Request>,
@@ -457,28 +521,47 @@ fn share_video_budget<'a>(
             r.video
                 .as_ref()
                 .filter(|video| video.stable)
-                .map(|video| (r.id, video.full_bps))
+                .map(|video| (r.id, video))
         })
         .collect();
-    let total: u128 = videos
-        .iter()
-        .map(|(_, cap)| u128::from(cap.unwrap_or(0)))
-        .sum();
-    let allocated = u128::from(budget).min(total);
-    for (id, cap) in videos {
-        let grant = if total == 0 {
-            0
-        } else {
-            (allocated * u128::from(cap.unwrap_or(0)) / total) as u32
-        };
-        plan.video.insert(
-            id,
-            if budget == 0 {
-                EncodingDemand::Paused
+    let start_share = (budget / videos.len().max(1) as u64)
+        .max(1)
+        .min(u64::from(u32::MAX)) as u32;
+    let mut weighted = Vec::new();
+    for (id, video) in videos {
+        plan.video.insert(id, video.allocation(budget, 0));
+        let weight = video.full_bps.filter(|bps| *bps > 0).unwrap_or_else(|| {
+            if video.requires_conversion {
+                start_share
             } else {
-                encoding_demand(cap, grant)
-            },
-        );
+                0
+            }
+        });
+        if weight > 0 {
+            weighted.push((id, video, u128::from(weight), video.capacity()));
+        }
+    }
+    weighted.sort_by(|a, b| match (a.3, b.3) {
+        (Some(a_cap), Some(b_cap)) => (u128::from(a_cap) * b.2).cmp(&(u128::from(b_cap) * a.2)),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
+    });
+    let mut remaining = u128::from(budget);
+    let mut total: u128 = weighted.iter().map(|(_, _, weight, _)| weight).sum();
+    let mut next = 0;
+    while let Some((id, video, weight, Some(cap))) = weighted.get(next) {
+        if u128::from(*cap) * total > remaining * weight {
+            break;
+        }
+        plan.video.insert(*id, video.allocation(budget, *cap));
+        remaining -= u128::from(*cap);
+        total -= weight;
+        next += 1;
+    }
+    for (id, video, weight, _) in weighted.into_iter().skip(next) {
+        let grant = (remaining * weight / total).min(u128::from(u32::MAX)) as u32;
+        plan.video.insert(id, video.allocation(budget, grant));
     }
 }
 
@@ -525,11 +608,11 @@ mod tests {
 
         // The old numeric startup path pauses a late viewer with these actual rates.
         let startup_number = allocate(Some(300_000), &requests);
-        layers.select(&input, startup_number.video[&key], now)?;
+        layers.select(&input, startup_number.video[&key].forwarding, now)?;
         assert!(!low.needed() && !high.needed());
 
         let startup = allocate(None, &requests);
-        layers.select(&input, startup.video[&key], now)?;
+        layers.select(&input, startup.video[&key].forwarding, now)?;
         high.write(frame(64, 2100));
         let received = tokio::time::timeout(Duration::from_millis(100), input.recv()).await?;
         assert_eq!(
@@ -539,10 +622,10 @@ mod tests {
 
         // Real feedback can constrain this same Output after bootstrap.
         let constrained = allocate(Some(100_000), &requests);
-        layers.select(&input, constrained.video[&key], now)?;
+        layers.select(&input, constrained.video[&key].forwarding, now)?;
         assert!(!low.needed() && !high.needed());
         let restored = allocate(Some(u64::from(full)), &requests);
-        layers.select(&input, restored.video[&key], now)?;
+        layers.select(&input, restored.video[&key].forwarding, now)?;
         high.write(frame(64, 2200));
         assert!(
             tokio::time::timeout(Duration::from_millis(100), input.recv())
@@ -571,6 +654,7 @@ mod tests {
             SourceTime::local(epoch, SystemInstant::now(epoch)),
             Arc::new(Notify::new()),
         );
+        original.set_codec(crate::peer::tests::support::vp8())?;
         let source_id = Uuid::new_v4();
         f.driver.sources.insert(
             source_id,
@@ -578,7 +662,6 @@ mod tests {
                 id: source_id,
                 publication_id: f.publication.id,
                 origin: crate::media::SourceOrigin::Local,
-                codec: crate::peer::tests::support::vp8(),
                 kind: MediaKind::Video,
                 feed: SourceFeed::Video(original.clone()),
                 layers: None,
@@ -619,7 +702,7 @@ mod tests {
         assert!(original_bps > 100_000);
         let plan = f.driver.bandwidth_plans(measured);
         assert_eq!(
-            plan[&f.sink].video[&flow_id],
+            plan[&f.sink].video[&flow_id].forwarding,
             EncodingDemand::Limited(100_000)
         );
         assert_eq!(
@@ -691,6 +774,8 @@ mod tests {
             measured: opaque.is_some(),
             video: video.map(|(cap_bps, stable)| VideoRequest {
                 full_bps: Some(cap_bps),
+                requires_conversion: false,
+                ceiling_bps: None,
                 stable,
             }),
         }
@@ -710,16 +795,19 @@ mod tests {
             }
             requests[1].started = true;
             let plan = allocate(Some(0), &requests);
-            assert_eq!(plan.video[&selected], EncodingDemand::Paused);
-            assert_eq!(plan.video[&optional], EncodingDemand::Paused);
+            assert_eq!(plan.video[&selected].forwarding, EncodingDemand::Paused);
+            assert_eq!(plan.video[&optional].forwarding, EncodingDemand::Paused);
             assert!(plan.rejected.is_empty());
             let unprotected = allocate(Some(0), &requests[1..]);
-            assert_eq!(unprotected.video[&optional], EncodingDemand::Paused);
+            assert_eq!(
+                unprotected.video[&optional].forwarding,
+                EncodingDemand::Paused
+            );
 
             let plan = allocate(Some(300_000), &requests);
-            assert_eq!(plan.video[&selected], EncodingDemand::Original);
+            assert_eq!(plan.video[&selected].forwarding, EncodingDemand::Original);
             assert_eq!(
-                plan.video[&optional],
+                plan.video[&optional].forwarding,
                 if full_bps.is_none() {
                     EncodingDemand::Paused
                 } else {
@@ -727,16 +815,19 @@ mod tests {
                 }
             );
             let startup = allocate(None, &requests);
-            assert_eq!(startup.video[&selected], EncodingDemand::Original);
-            assert_eq!(startup.video[&optional], EncodingDemand::Paused);
+            assert_eq!(
+                startup.video[&selected].forwarding,
+                EncodingDemand::Original
+            );
+            assert_eq!(startup.video[&optional].forwarding, EncodingDemand::Paused);
 
             // A silent or unmeasured picture cannot spend the budget reserved
             // for source sound or voice. A positive remainder still wakes it.
             requests[0].opaque_bps = 100_000;
             let plan = allocate(Some(100_000), &requests[..1]);
-            assert_eq!(plan.video[&selected], EncodingDemand::Paused);
+            assert_eq!(plan.video[&selected].forwarding, EncodingDemand::Paused);
             let plan = allocate(Some(200_000), &requests[..1]);
-            assert_eq!(plan.video[&selected], EncodingDemand::Original);
+            assert_eq!(plan.video[&selected].forwarding, EncodingDemand::Original);
         }
 
         let mut requests = vec![
@@ -745,18 +836,21 @@ mod tests {
         ];
         requests[1].started = true;
         let plan = allocate(Some(900_000), &requests);
-        assert_eq!(plan.video[&selected], EncodingDemand::Original);
-        assert_eq!(plan.video[&optional], EncodingDemand::Original);
+        assert_eq!(plan.video[&selected].forwarding, EncodingDemand::Original);
+        assert_eq!(plan.video[&optional].forwarding, EncodingDemand::Original);
         let plan = allocate(Some(300_000), &requests);
-        assert_eq!(plan.video[&selected], EncodingDemand::Limited(300_000));
+        assert_eq!(
+            plan.video[&selected].forwarding,
+            EncodingDemand::Limited(300_000)
+        );
         assert!(plan.rejected.contains(&optional));
         let plan = allocate(Some(0), &requests[..1]);
-        assert_eq!(plan.video[&selected], EncodingDemand::Paused);
+        assert_eq!(plan.video[&selected].forwarding, EncodingDemand::Paused);
 
         requests[0].measured = false;
         let plan = allocate(Some(900_000), &requests);
         assert!(plan.waiting.contains(&optional));
-        assert_eq!(plan.video[&optional], EncodingDemand::Paused);
+        assert_eq!(plan.video[&optional].forwarding, EncodingDemand::Paused);
     }
 
     #[test]
@@ -768,21 +862,24 @@ mod tests {
             request(4, false, Some(400_000), None),
         ];
         let plan = allocate(Some(1_700_000), &requests);
-        assert_eq!(plan.video[&requests[0].id], EncodingDemand::Original);
+        assert_eq!(
+            plan.video[&requests[0].id].forwarding,
+            EncodingDemand::Original
+        );
         assert_eq!(plan.waiting.len(), 2);
         requests[1].video.as_mut().unwrap().stable = true;
         let plan = allocate(Some(1_000_000), &requests);
         assert_eq!(
-            plan.video[&requests[0].id],
+            plan.video[&requests[0].id].forwarding,
             EncodingDemand::Limited(600_000)
         );
         assert_eq!(
-            plan.video[&requests[1].id],
+            plan.video[&requests[1].id].forwarding,
             EncodingDemand::Limited(300_000)
         );
         let plan = allocate(Some(2_500_000), &requests);
         assert_eq!(
-            plan.video[&requests[2].id],
+            plan.video[&requests[2].id].forwarding,
             EncodingDemand::Limited(400_000)
         );
         assert!(plan.waiting.contains(&requests[3].id));
@@ -813,8 +910,92 @@ mod tests {
         independent.push(request(8, true, Some(0), Some((2_000_000, true))));
         let plan = allocate(Some(1_000_000), &independent);
         assert_eq!(
-            plan.video[&independent[3].id],
+            plan.video[&independent[3].id].forwarding,
             EncodingDemand::Limited(900_000)
         );
+    }
+    fn allocate(target: Option<u64>, requests: &[Request]) -> BandwidthPlan {
+        super::allocate(
+            target.map_or(transport::Estimate::Startup(300_000.0), |bps| {
+                transport::Estimate::Feedback(bps as f64)
+            }),
+            requests,
+        )
+    }
+
+    #[test]
+    fn conversion_uses_spare_capacity_without_changing_ordinary_weights() {
+        let mut requests = vec![
+            request(1, true, Some(0), Some((750_000, true))),
+            request(2, true, Some(0), Some((1_500_000, true))),
+            request(3, false, Some(0), Some((300_000, true))),
+        ];
+        requests[0].video.as_mut().unwrap().requires_conversion = true;
+        let converted = requests[0].id;
+        let ordinary = requests[1].id;
+        let optional = requests[2].id;
+
+        let full = allocate(Some(4_000_000), &requests);
+        assert_eq!(full.video[&converted].encoder_bps, 2_500_000);
+        assert_eq!(full.video[&converted].forwarding, EncodingDemand::Original);
+        assert_eq!(full.video[&ordinary].encoder_bps, 1_500_000);
+        assert_eq!(full.video[&ordinary].forwarding, EncodingDemand::Original);
+        assert!(full.waiting.contains(&optional));
+
+        // Existing 1:2 weights also apply under constrained feedback.
+        let constrained = allocate(Some(900_000), &requests[..2]);
+        assert_eq!(constrained.video[&converted].encoder_bps, 300_000);
+        assert_eq!(constrained.video[&ordinary].encoder_bps, 600_000);
+        assert_eq!(
+            constrained.video[&ordinary].forwarding,
+            EncodingDemand::Limited(600_000)
+        );
+
+        // A real configured ceiling can leave capacity for ordinary trials.
+        requests[0].video.as_mut().unwrap().ceiling_bps = Some(1_000_000);
+        let capped = allocate(Some(4_000_000), &requests);
+        assert_eq!(capped.video[&converted].encoder_bps, 1_000_000);
+        assert_eq!(capped.video[&ordinary].encoder_bps, 1_500_000);
+        assert_eq!(capped.video[&optional].forwarding, EncodingDemand::Original);
+        assert!(capped.waiting.is_empty());
+
+        // Optional conversion must not reintroduce its ingress cost as a cap.
+        requests[0].video.as_mut().unwrap().requires_conversion = false;
+        requests[2].video.as_mut().unwrap().requires_conversion = true;
+        let optional_conversion = allocate(Some(4_000_000), &requests);
+        assert_eq!(optional_conversion.video[&optional].encoder_bps, 1_750_000);
+    }
+
+    #[test]
+    fn conversion_bootstraps_unknown_and_static_sources_without_changing_forwarding() {
+        for full_bps in [None, Some(0)] {
+            let mut source = request(1, true, Some(0), Some((0, true)));
+            let video = source.video.as_mut().unwrap();
+            video.full_bps = full_bps;
+            video.requires_conversion = true;
+            let id = source.id;
+            let startup = allocate(None, std::slice::from_ref(&source));
+            assert_eq!(startup.video[&id].encoder_bps, 300_000);
+            assert_eq!(startup.video[&id].forwarding, EncodingDemand::Original);
+            let feedback = allocate(Some(1_000_000), std::slice::from_ref(&source));
+            assert_eq!(feedback.video[&id].encoder_bps, 1_000_000);
+            let stopped = allocate(Some(0), std::slice::from_ref(&source));
+            assert_eq!(stopped.video[&id], PAUSED);
+
+            source.video.as_mut().unwrap().requires_conversion = false;
+            let ordinary = allocate(None, std::slice::from_ref(&source));
+            assert_eq!(ordinary.video[&id].forwarding, EncodingDemand::Original);
+        }
+
+        let mut requests = [
+            request(1, true, Some(100_000), Some((0, true))),
+            request(2, true, Some(0), Some((0, true))),
+        ];
+        for request in &mut requests {
+            request.video.as_mut().unwrap().requires_conversion = true;
+        }
+        let startup = allocate(None, &requests);
+        assert_eq!(startup.video[&requests[0].id].encoder_bps, 100_000);
+        assert_eq!(startup.video[&requests[1].id].encoder_bps, 100_000);
     }
 }

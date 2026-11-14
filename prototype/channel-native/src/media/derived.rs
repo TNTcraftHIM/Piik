@@ -1,7 +1,7 @@
 //! One received video owns at most one decoder; its original AU feed stays live.
 use super::{
-    encodings::{self, Encodings, VideoDemand},
-    video::{EncodingDemand, Input, Video},
+    encodings::{self, EncodingRequest, Encodings, VideoDemand},
+    video::{Input, Video},
 };
 use crate::{
     capture::{Format, FrameTiming, Frames, Settings, VideoCodec},
@@ -148,11 +148,11 @@ impl Decoding {
 }
 fn direct(next: &[VideoDemand]) {
     for demand in next {
-        if demand.encoding == EncodingDemand::Paused {
+        if demand.encoding == EncodingRequest::Paused {
             if let Some(input) = demand.input.upgrade() {
                 input.set_active(false);
             }
-        } else if demand.encoding == EncodingDemand::Original {
+        } else if demand.encoding == EncodingRequest::Forward {
             if let Some(video) = &demand.source {
                 encodings::select(demand, video, false);
             }
@@ -161,7 +161,7 @@ fn direct(next: &[VideoDemand]) {
 }
 fn needs_decoder(next: &[VideoDemand]) -> bool {
     next.iter().any(|d| {
-        matches!(d.encoding, EncodingDemand::Limited(_))
+        matches!(d.encoding, EncodingRequest::Encode(_))
             && d.input.upgrade().is_some_and(|input| !input.is_closed())
     })
 }
@@ -211,7 +211,7 @@ async fn apply(
 // the original feed remains usable.
 fn failed_allocations(next: &[VideoDemand], baseline: &Video) -> Vec<Video> {
     next.iter()
-        .filter(|d| matches!(d.encoding, EncodingDemand::Limited(_)))
+        .filter(|d| matches!(d.encoding, EncodingRequest::Encode(_)))
         .filter_map(|demand| {
             let video = Video::new(baseline.time(), baseline.changed());
             encodings::select(demand, &video, true).then_some(video)
@@ -271,7 +271,7 @@ async fn run(
                 if decoding.is_none() && needs_decoder(&current) {
                     let source = current
                         .iter()
-                        .find(|d| matches!(d.encoding, EncodingDemand::Limited(_)))
+                        .find(|d| matches!(d.encoding, EncodingRequest::Encode(_)))
                         .and_then(|d| d.source.as_ref())
                         .unwrap_or(&baseline);
                     match Decoding::start(source, codec) {
@@ -285,7 +285,7 @@ async fn run(
                 if let Some(decoder) = &mut decoding {
                     if let Some(source) = current
                         .iter()
-                        .find(|d| matches!(d.encoding, EncodingDemand::Limited(_)))
+                        .find(|d| matches!(d.encoding, EncodingRequest::Encode(_)))
                         .and_then(|d| d.source.as_ref())
                     {
                         if let Err(error) = decoder.input.select(source, false) {
@@ -346,7 +346,7 @@ async fn run(
         if !needs_decoder(&current)
             && decoding
                 .as_ref()
-                .is_none_or(|decoder| !decoder.encodings.has_limited())
+                .is_none_or(|decoder| !decoder.encodings.has_derived())
         {
             if let Some(decoder) = decoding.take() {
                 decoder.stop().await;
@@ -488,14 +488,14 @@ mod tests {
                 rid: String::new(),
                 source: Some(baseline.clone()),
                 input: Arc::downgrade(&healthy),
-                encoding: EncodingDemand::Original,
+                encoding: EncodingRequest::Forward,
             },
             VideoDemand {
                 output: Uuid::new_v4(),
                 rid: String::new(),
                 source: Some(baseline.clone()),
                 input: Arc::downgrade(&limited),
-                encoding: EncodingDemand::Limited(500_000),
+                encoding: EncodingRequest::Encode(500_000),
             },
         ];
         let frames = Frames::new(FrameTiming::Source)?;

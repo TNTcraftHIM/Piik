@@ -165,6 +165,7 @@ pub(super) async fn run(
             result => result?,
         };
         let _ = control.codec.set(codec);
+        frames.set_codec(rtp)?;
         let encodings = encodings.insert(Encodings::new(time.clone(), changed.clone(), codec));
         encoding = Some(prepared.encoding);
         let frame = prepared.first;
@@ -185,7 +186,6 @@ pub(super) async fn run(
         };
         let source = Source {
             id: source_id, publication_id, origin: SourceOrigin::Local, kind: MediaKind::Video,
-            codec: rtp,
             layers: layers.clone(),
             feed: SourceFeed::Video(frames.clone()),
         };

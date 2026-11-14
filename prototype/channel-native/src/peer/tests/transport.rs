@@ -10,6 +10,221 @@ mod feedback;
 #[path = "media_reuse.rs"]
 mod media_reuse;
 
+fn h264_profiles(profiles: &[u32]) -> str0m::format::CodecConfig {
+    str0m::format::CodecConfig::new_from_payload_params(
+        crate::media::h264_codecs()
+            .params()
+            .iter()
+            .filter(|p| {
+                p.spec()
+                    .format
+                    .profile_level_id
+                    .is_some_and(|id| profiles.contains(&id))
+            })
+            .copied()
+            .collect(),
+    )
+}
+
+#[test]
+fn transit_without_derivation_advertises_cb_while_local_input_keeps_all_profiles() -> Result<()> {
+    for (local_input, can_derive, expected_profiles) in [
+        (false, false, vec![0x42e01f]),
+        (
+            true,
+            false,
+            vec![0x42001f, 0x42e01f, 0x4d001f, 0x64001f, 0x640c1f],
+        ),
+        (
+            false,
+            true,
+            vec![0x42001f, 0x42e01f, 0x4d001f, 0x64001f, 0x640c1f],
+        ),
+    ] {
+        let mut builder = Rtc::builder().clear_codecs();
+        *builder.codec_config() = transport_codecs(local_input, can_derive);
+        let mut rtc = builder.build(Instant::now());
+        let mut changes = rtc.sdp_api();
+        changes.add_media(MediaKind::Video, Direction::SendOnly, None, None, None);
+        changes.add_media(MediaKind::Audio, Direction::SendOnly, None, None, None);
+        let (offer, _) = changes.apply().context("missing codec offer")?;
+        let mut profiles = Vec::new();
+        let mut vp8 = false;
+        let mut opus = false;
+        for params in offer.media_lines.iter().flat_map(|line| line.rtp_params()) {
+            match params.spec().codec {
+                Codec::H264 => {
+                    ensure!(params.spec().format.packetization_mode == Some(1));
+                    profiles.push(
+                        params
+                            .spec()
+                            .format
+                            .profile_level_id
+                            .context("missing profile")?,
+                    );
+                }
+                Codec::Vp8 => vp8 = true,
+                Codec::Opus => opus = true,
+                _ => {}
+            }
+        }
+        profiles.sort_unstable();
+        ensure!(profiles == expected_profiles);
+        ensure!(vp8 == !local_input && opus);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn negotiated_profiles_map_actual_au_codec_on_one_sender() -> Result<()> {
+    use crate::peer::tests::support::endpoint;
+    let profiles = h264_profiles(&[0x42e01f, 0x64001f]);
+    let baseline = codec(&profiles.params()[0]).rtp_codec;
+    let high = codec(&profiles.params()[1]).rtp_codec;
+    let left = Runtime::new(None).with_codecs(profiles.clone());
+    let right = Runtime::new(None).with_codecs(profiles);
+    let (tx, _) = endpoint(&left, Uuid::new_v4(), None).await?;
+    let (rx, mut events) = endpoint(&right, Uuid::new_v4(), None).await?;
+    let result = async {
+        let id = Uuid::new_v4();
+        let (_, writable, _) = tx
+            .add_output(
+                id,
+                high.clone(),
+                MediaKind::Video,
+                "profiles".into(),
+                vec![],
+            )
+            .await?;
+        tx.offer().await?;
+        let (kind, sdp) = tx.local_description().await?;
+        rx.accept(kind, sdp).await?;
+        let (kind, sdp) = rx.local_description().await?;
+        tx.accept(kind, sdp).await?;
+        let alternatives = tx
+            .confirm(id)
+            .await?
+            .flatten()
+            .context("unconfirmed output")?;
+        ensure!(
+            alternatives.len() == 2,
+            "negotiation lost a profile alternative"
+        );
+        let mut track = None::<Track>;
+        let mut received = Vec::new();
+        // Codec-independent IDR payload exercises RTP mapping; no decoder claim.
+        for (index, actual) in [high, baseline].into_iter().enumerate() {
+            let mut packets = vec![rtp::Packet {
+                header: rtp::header::Header {
+                    version: 2,
+                    marker: true,
+                    timestamp: 90000 + index as u32 * 3000,
+                    ..Default::default()
+                },
+                payload: vec![0x65, 0x88, 0x84].into(),
+            }];
+            tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let ready = writable.notified();
+                    tokio::pin!(ready);
+                    ready.as_mut().enable();
+                    match tx
+                        .write_au(id, String::new(), actual.clone(), packets, Instant::now())
+                        .await?
+                    {
+                        None => break,
+                        Some(pending) => packets = pending,
+                    }
+                    ready.await;
+                }
+                if track.is_none() {
+                    while let Some(event) = events.recv().await {
+                        if let Event::Track(_, incoming) = event {
+                            track = Some(incoming);
+                            break;
+                        }
+                    }
+                }
+                let incoming = track.as_ref().context("missing received track")?;
+                while let Some(event) = incoming.poll().await {
+                    if let TrackEvent::Rtp(packet, _, _, negotiated) = event {
+                        let expected = alternatives
+                            .iter()
+                            .find(|c| crate::media::compatible(&actual, &c.rtp_codec))
+                            .context("missing actual profile")?;
+                        ensure!(packet.header.payload_type == expected.payload_type);
+                        ensure!(crate::media::compatible(&actual, &negotiated));
+                        received.push(packet);
+                        return Ok::<_, anyhow::Error>(());
+                    }
+                }
+                anyhow::bail!("profile switch ended the receive track")
+            })
+            .await??;
+        }
+        ensure!(received[0].header.ssrc == received[1].header.ssrc);
+        ensure!(
+            received[1].header.sequence_number
+                == received[0].header.sequence_number.wrapping_add(1)
+        );
+        ensure!(received[0].header.payload_type != received[1].header.payload_type);
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+    tx.close().await?;
+    rx.close().await?;
+    left.close().await;
+    right.close().await;
+    result
+}
+
+#[tokio::test]
+async fn restricted_profile_confirmation_retains_alternatives_but_rejects_wrong_actual_codec(
+) -> Result<()> {
+    use crate::peer::tests::support::endpoint;
+    let high = codec(&h264_profiles(&[0x64001f]).params()[0]).rtp_codec;
+    let left = Runtime::new(None).with_codecs(transport_codecs(false, true));
+    let right = Runtime::new(None).with_codecs(transport_codecs(false, false));
+    let (tx, _) = endpoint(&left, Uuid::new_v4(), None).await?;
+    let (rx, _) = endpoint(&right, Uuid::new_v4(), None).await?;
+    let result = async {
+        let id = Uuid::new_v4();
+        tx.add_output(
+            id,
+            high.clone(),
+            MediaKind::Video,
+            "restricted".into(),
+            vec![],
+        )
+        .await?;
+        tx.offer().await?;
+        let (kind, sdp) = tx.local_description().await?;
+        rx.accept(kind, sdp).await?;
+        let (kind, sdp) = rx.local_description().await?;
+        tx.accept(kind, sdp).await?;
+        let alternatives = tx
+            .confirm(id)
+            .await?
+            .flatten()
+            .context("baseline alternative was rejected with preferred High")?;
+        ensure!(alternatives.len() == 1);
+        ensure!(!crate::media::compatible(&high, &alternatives[0].rtp_codec));
+        ensure!(
+            tx.write_au(id, String::new(), high, vec![], Instant::now())
+                .await
+                .is_err(),
+            "High AU was labeled with the Baseline payload type"
+        );
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+    tx.close().await?;
+    rx.close().await?;
+    left.close().await;
+    right.close().await;
+    result
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_input_receives_h264_opus_reports_and_pli_then_joins_its_socket() -> Result<()> {
     use crate::peer::tests::support::{endpoint, h264, send, video_payloads};

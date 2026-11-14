@@ -519,11 +519,15 @@ pub(in crate::peer) async fn send_rid(
     at: Instant,
     writable: &Notify,
 ) -> Result<()> {
+    let actual_codec = transport.output_codec(id).await?;
     loop {
         let ready = writable.notified();
         tokio::pin!(ready);
         ready.as_mut().enable();
-        match transport.write_au(id, rid.clone(), packets, at).await? {
+        match transport
+            .write_au(id, rid.clone(), actual_codec.clone(), packets, at)
+            .await?
+        {
             None => return Ok(()),
             Some(pending) => packets = pending,
         }

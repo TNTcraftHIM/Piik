@@ -187,9 +187,10 @@ server addresses. Piik does not depend on the umbrella
 RTC engine; str0m owns negotiation and transport.
 
 The incoming-source adapter owns complete-AU ordering and first-packet metadata.
-Its narrow H264 admission rule accepts equivalent Constrained Baseline formats
-and validates actual SPS separately from advertised decoder levels, as defined
-by the [network design](../../docs/research/channel-network-design.md).
+Actual SPS identifies each H264 representation; the SDK matches negotiated
+profiles and packetization. The [profile compatibility contract](../../docs/research/webrtc-encoder-pool.md#30-h264-profile-compatibility)
+owns compatible derivation and forwarding-only reception within the
+[network design](../../docs/research/channel-network-design.md).
 
 Cargo's patches belong to each workspace root. All three consuming manifests and
 lockfiles carry the same official Git revision. Upstream MIT/Apache-2.0 licensing

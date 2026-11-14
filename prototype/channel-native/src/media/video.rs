@@ -1,11 +1,11 @@
 //! Complete video access units. Each output encoding selects a feed and recovers
 //! independently when its finite queue cannot keep up.
-use super::{clock::SourceTime, Rate};
+use super::{clock::SourceTime, Rate, RtpCodec};
 use crate::EncodedFrame;
 use anyhow::{ensure, Result};
 use std::{
     collections::VecDeque,
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Mutex, OnceLock, Weak},
     time::{Duration, Instant},
 };
 use tokio::sync::{watch, Notify};
@@ -18,6 +18,14 @@ pub(crate) enum EncodingDemand {
     Original,
     Limited(u32),
     Paused,
+}
+
+/// Feed reuse and encoder capacity are separate facts. A receiver may need a
+/// compatible encoding even when the original feed fits its transport grant.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct VideoAllocation {
+    pub forwarding: EncodingDemand,
+    pub encoder_bps: u32,
 }
 
 /// Received representations of one source. The reader owns their SSRCs and
@@ -185,6 +193,7 @@ impl Layers {
 pub(crate) struct Video(Arc<Encoding>);
 struct Encoding {
     time: SourceTime,
+    codec: OnceLock<RtpCodec>,
     requests: watch::Sender<u64>,
     outputs: Mutex<Vec<Weak<Input>>>,
     changed: Arc<Notify>,
@@ -195,11 +204,31 @@ impl Video {
     pub fn new(time: SourceTime, changed: Arc<Notify>) -> Self {
         Self(Arc::new(Encoding {
             time,
+            codec: OnceLock::new(),
             requests: watch::channel(0).0,
             outputs: Mutex::new(Vec::new()),
             changed,
             rate: Mutex::new(Rate::default()),
         }))
+    }
+    pub fn codec(&self) -> Option<&RtpCodec> {
+        self.0.codec.get()
+    }
+    /// The producer admits the actual encoded format before publishing an AU.
+    /// A different profile needs a new feed, so queued frames retain their format.
+    pub fn set_codec(&self, codec: RtpCodec) -> Result<()> {
+        if let Some(current) = self.codec() {
+            ensure!(
+                super::compatible(current, &codec),
+                "encoded video format changed without replacing its feed"
+            );
+        } else {
+            self.0
+                .codec
+                .set(codec)
+                .map_err(|_| anyhow::anyhow!("video format already admitted"))?;
+        }
+        Ok(())
     }
     pub fn bitrate(&self, now: Instant) -> Option<u64> {
         self.rates(now).full

@@ -67,7 +67,7 @@ pub async fn run() -> Result<serde_json::Value> {
     let mut held = vec![packet()];
     for _ in 0..128 {
         held = tx
-            .write_au(id, String::new(), held, Instant::now())
+            .write_au(id, String::new(), format(), held, Instant::now())
             .await?
             .context("unready sender admitted media")?;
     }
@@ -98,6 +98,8 @@ pub async fn run() -> Result<serde_json::Value> {
     let time = SourceTime::local(now, SystemInstant::now(now));
     let q = Video::new(time.clone(), Arc::new(Notify::new()));
     let h = Video::new(time, Arc::new(Notify::new()));
+    q.set_codec(format())?;
+    h.set_codec(format())?;
     let layers = Layers::new(vec!["q".into(), "h".into()]);
     layers.insert("q".into(), q.clone());
     layers.insert("h".into(), h.clone());
@@ -110,7 +112,6 @@ pub async fn run() -> Result<serde_json::Value> {
             stream: "generated-encoded-fixture".into(),
             reader: Uuid::new_v4(),
         },
-        codec: format(),
         kind: MediaKind::Video,
         feed: SourceFeed::Video(h.clone()),
         layers: Some(layers.clone()),
@@ -333,7 +334,7 @@ async fn send(tx: &Transport, id: Uuid, writable: &Notify, timestamp: u32) -> Re
         tokio::pin!(notified);
         notified.as_mut().enable();
         match tx
-            .write_au(id, String::new(), pending, Instant::now())
+            .write_au(id, String::new(), format(), pending, Instant::now())
             .await?
         {
             None => return Ok(()),

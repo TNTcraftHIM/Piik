@@ -21,7 +21,7 @@ pub(crate) use output::Output;
 use rtc_rtp as rtp;
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
     time::{Duration, Instant},
 };
 pub(crate) use str0m::media::MediaKind;
@@ -34,6 +34,19 @@ pub(crate) struct RtpCodec {
     pub clock_rate: u32,
     pub channels: u16,
     pub sdp_fmtp_line: String,
+}
+impl RtpCodec {
+    pub fn h264(profile: [u8; 3]) -> Self {
+        Self {
+            mime_type: "video/H264".into(),
+            clock_rate: 90_000,
+            sdp_fmtp_line: format!(
+                "packetization-mode=1;profile-level-id={:02x}{:02x}{:02x}",
+                profile[0], profile[1], profile[2]
+            ),
+            ..Default::default()
+        }
+    }
 }
 
 pub(crate) fn derived_codec(codec: &RtpCodec) -> Option<crate::capture::VideoCodec> {
@@ -57,6 +70,17 @@ pub(crate) fn derived_codec(codec: &RtpCodec) -> Option<crate::capture::VideoCod
     }
 }
 
+/// The existing encoder adapters produce one format for each supported family.
+pub(crate) fn encoding_codec(codec: &RtpCodec) -> Option<RtpCodec> {
+    if codec.mime_type.eq_ignore_ascii_case("video/H264") {
+        Some(RtpCodec::h264([0x42, 0xe0, 0x1f]))
+    } else if codec.mime_type.eq_ignore_ascii_case("video/VP8") {
+        Some(codec.clone())
+    } else {
+        None
+    }
+}
+
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RtpCodecParameters {
     pub rtp_codec: RtpCodec,
@@ -65,7 +89,7 @@ pub(crate) struct RtpCodecParameters {
 
 #[derive(Debug)]
 pub struct EncodedFrame {
-    /// One complete encoded video frame; its Source owns the codec.
+    /// One complete encoded video frame; its Video owns the encoded format.
     pub bytes: Vec<u8>,
     /// Source presentation time, independent of encoding/delivery delay.
     pub presentation_time: std::time::Instant,
@@ -114,25 +138,69 @@ pub(crate) fn supported(codec: &RtpCodec, kind: MediaKind) -> bool {
         _ => false,
     }
 }
-fn h264_level(codec: &RtpCodec) -> Option<u8> {
+pub(crate) fn h264_codecs() -> &'static str0m::format::CodecConfig {
+    use str0m::format::CodecConfig;
+    static CODECS: OnceLock<CodecConfig> = OnceLock::new();
+    CODECS.get_or_init(|| {
+        let mut defaults = CodecConfig::empty();
+        defaults.enable_h264(true);
+        // The existing AU packetizer uses non-interleaved mode. Keep the SDK's
+        // profile definitions and matching, without advertising single-NAL mode.
+        let mut codecs = CodecConfig::new_from_payload_params(
+            defaults
+                .params()
+                .iter()
+                .filter(|params| params.spec().format.packetization_mode == Some(1))
+                .cloned()
+                .collect(),
+        );
+        // Browser capabilities can expose Constrained High independently of High.
+        codecs.add_h264(112.into(), Some(113.into()), true, 0x640c1f);
+        codecs
+    })
+}
+fn h264_format(codec: &RtpCodec) -> Option<(u32, u32)> {
+    use str0m::{
+        format::{Codec, CodecSpec, FormatParams, PayloadParams},
+        media::Frequency,
+    };
+    if fmtp(codec, "packetization-mode") != Some("1") {
+        return None;
+    }
     let value = fmtp(codec, "profile-level-id").unwrap_or("42e01f");
     if value.len() != 6 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return None;
     }
     let value = u32::from_str_radix(value, 16).ok()?;
-    constrained_baseline_level([(value >> 16) as u8, (value >> 8) as u8, value as u8])
+    if !matches!(value as u8, 10..=13 | 20..=22 | 30..=32 | 40..=42 | 50..=52 | 60..=62) {
+        return None;
+    }
+    let params = PayloadParams::new(
+        0.into(),
+        None,
+        CodecSpec {
+            codec: Codec::H264,
+            clock_rate: Frequency::NINETY_KHZ,
+            channels: None,
+            format: FormatParams {
+                packetization_mode: Some(1),
+                // Match the profile independently of the advertised level. The
+                // SDK's level enum stops at 5.2; a stronger advertisement is not
+                // an invalid profile. Actual SPS admission keeps the real level.
+                profile_level_id: Some((value & 0xffff00) | 0x1f),
+                ..Default::default()
+            },
+        },
+    );
+    let profile = h264_codecs()
+        .match_params(params)?
+        .spec()
+        .format
+        .profile_level_id?;
+    Some((value, profile))
 }
-
-fn constrained_baseline_level([profile, constraints, level]: [u8; 3]) -> Option<u8> {
-    // RFC 6184 section 8.1, Table 5: three encodings of the same sub-profile.
-    let baseline = match profile {
-        0x42 => constraints & 0x4f == 0x40,
-        0x4d => constraints & 0x8f == 0x80,
-        0x58 => constraints & 0xcf == 0xc0,
-        _ => false,
-    };
-    (baseline && matches!(level, 10..=13 | 20..=22 | 30..=32 | 40..=42 | 50..=52 | 60..=62))
-        .then_some(level)
+fn h264_level(codec: &RtpCodec) -> Option<u8> {
+    h264_format(codec).map(|(value, _)| value as u8)
 }
 pub(crate) fn compatible(source: &RtpCodec, negotiated: &RtpCodec) -> bool {
     if !source.mime_type.eq_ignore_ascii_case(&negotiated.mime_type)
@@ -141,7 +209,10 @@ pub(crate) fn compatible(source: &RtpCodec, negotiated: &RtpCodec) -> bool {
         return false;
     }
     if source.mime_type.eq_ignore_ascii_case("video/H264") {
-        return supported(negotiated, MediaKind::Video) && h264_level(source).is_some();
+        return source.clock_rate == 90_000
+            && h264_format(source)
+                .zip(h264_format(negotiated))
+                .is_some_and(|((_, source), (_, negotiated))| source == negotiated);
     }
     true
 }
@@ -185,11 +256,14 @@ impl H264Sps {
         if self.last == Some(bytes) {
             return Ok(());
         }
-        if !constrained_baseline_level(bytes).is_some_and(|level| level <= 52) {
+        if !h264_level(&RtpCodec::h264(bytes)).is_some_and(|level| level <= 52) {
             return Err(UnsupportedH264Format(bytes).into());
         }
         self.last = Some(bytes);
         Ok(())
+    }
+    pub fn codec(&self) -> Option<RtpCodec> {
+        self.last.map(RtpCodec::h264)
     }
 }
 
@@ -207,6 +281,7 @@ pub(crate) enum SourceOrigin {
 #[derive(Clone)]
 pub(crate) enum SourceFeed {
     Rtp {
+        codec: RtpCodec,
         keyframes: watch::Sender<u64>,
         report: SourceReport,
     },
@@ -217,14 +292,19 @@ pub(crate) struct Source {
     pub id: Uuid,
     pub publication_id: Uuid,
     pub origin: SourceOrigin,
-    // Encoded format identity: received media payload or the local encoder's initial SPS.
-    // Producers validate actual SPS separately from each Output's negotiation.
-    pub codec: RtpCodec,
     pub kind: MediaKind,
     pub feed: SourceFeed,
     pub layers: Option<video::Layers>,
 }
 impl Source {
+    pub fn codec(&self) -> &RtpCodec {
+        match &self.feed {
+            SourceFeed::Rtp { codec, .. } => codec,
+            SourceFeed::Video(video) => video
+                .codec()
+                .expect("source admitted without a video format"),
+        }
+    }
     pub fn video(&self) -> Option<&video::Video> {
         match &self.feed {
             SourceFeed::Video(video) => Some(video),
@@ -470,7 +550,14 @@ mod tests {
                 .access_unit(&[0, 0, 1, 0x67, 0x42, 0xc0, level])
                 .is_err());
         }
-        assert!(sps.access_unit(&[0, 0, 1, 0x67, 0x64, 0, 0x28]).is_err());
+        for profile in [[0x4d, 0, 0x1f], [0x64, 0, 0x28], [0x64, 0x0c, 0x28]] {
+            sps.access_unit(&[0, 0, 1, 0x67, profile[0], profile[1], profile[2]])?;
+            let actual = RtpCodec::h264(profile);
+            assert!(supported(&actual, MediaKind::Video));
+            assert!(compatible(&actual, &actual));
+            assert!(!compatible(&actual, &codec("42e01f")));
+        }
+        assert!(sps.access_unit(&[0, 0, 1, 0x67, 0x6e, 0, 0x28]).is_err());
         assert!(sps.access_unit(&[0, 0, 1, 0x67, 0x42, 0xe0, 0]).is_err());
         Ok(())
     }

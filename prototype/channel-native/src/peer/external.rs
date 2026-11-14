@@ -203,9 +203,9 @@ async fn receive_track(
         id,
         publication_id: publication,
         origin: SourceOrigin::Local,
-        codec,
         kind,
         feed: SourceFeed::Rtp {
+            codec: codec.clone(),
             keyframes,
             report: report.clone(),
         },
@@ -237,12 +237,12 @@ async fn receive_track(
                     track.request_keyframe(ssrc).await?;
                 }
             }
-            TrackEvent::Rtp(packet, sequence, time, codec) => {
+            TrackEvent::Rtp(packet, sequence, time, received_codec) => {
                 if packet.header.ssrc != ssrc {
                     continue;
                 }
                 anyhow::ensure!(
-                    crate::media::compatible(&source.codec, &codec),
+                    crate::media::compatible(&codec, &received_codec),
                     "external_codec_changed"
                 );
                 if kind == MediaKind::Video {
@@ -251,7 +251,7 @@ async fn receive_track(
                             continue;
                         };
                         let input = Incoming::with_time(
-                            &source.codec.mime_type,
+                            &codec.mime_type,
                             SourceTime::incoming(at, packet.header.timestamp, report.clone()),
                             changed.clone(),
                         );

@@ -93,7 +93,7 @@ async fn empty_rtp_before_h264_cannot_choose_the_source_codec() -> Result<()> {
         ensure!(set_codec(&f, h264(), "").await? == ssrc);
         f.parents[0].video_codec = h264();
         f.parents[0].video_enabled = true;
-        f.until(|f| source(f, input).is_some_and(|s| s.codec.mime_type == "video/H264"))
+        f.until(|f| source(f, input).is_some_and(|s| s.codec().mime_type == "video/H264"))
             .await
             .context("first media selects H264")?;
         received_h264(&mut f, flow).await
@@ -153,7 +153,7 @@ async fn actual_vp8_then_h264_on_the_same_ssrc_replaces_only_video_format() -> R
         // The q representation switches while h still supplies the old format.
         ensure!(set_codec(&f, h264(), "q").await? == q_ssrc);
         frame(&f, "q", h264()).await?;
-        f.until(|f| source(f, input).is_some_and(|s| s.codec.mime_type == "video/H264"))
+        f.until(|f| source(f, input).is_some_and(|s| s.codec().mime_type == "video/H264"))
             .await
             .context("H264 payload owns the new source format")?;
         let current = source(&f, input).unwrap().clone();

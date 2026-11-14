@@ -3,7 +3,7 @@ use super::{
     packetizer::Packetizer, video, OutputStream, OutputStreams, Source, SourceFeed, SourceOrigin,
     TrackKey, RTP_PACKETS,
 };
-use crate::media::RtpCodecParameters;
+use crate::media::{RtpCodec, RtpCodecParameters};
 use crate::peer::transport::Transport;
 use anyhow::Result;
 use futures_util::{stream::FuturesUnordered, StreamExt};
@@ -30,17 +30,27 @@ struct Encoding {
 }
 
 enum Reader {
-    Rtp(mpsc::Receiver<rtp::Packet>),
+    Rtp(RtpCodec, mpsc::Receiver<rtp::Packet>),
     Video(Arc<video::Input>, Packetizer),
 }
 impl Reader {
-    async fn recv(&mut self) -> Option<Result<Vec<rtp::Packet>>> {
+    async fn recv(&mut self) -> Option<Result<(RtpCodec, Vec<rtp::Packet>)>> {
         match self {
-            Self::Rtp(rx) => rx.recv().await.map(|packet| Ok(vec![packet])),
-            Self::Video(input, packetizer) => input
-                .recv_with_source()
+            Self::Rtp(codec, rx) => rx
+                .recv()
                 .await
-                .map(|(video, frame)| packetizer.packetize_source(&video, &frame)),
+                .map(|packet| Ok((codec.clone(), vec![packet]))),
+            Self::Video(input, packetizer) => {
+                input.recv_with_source().await.map(|(video, frame)| {
+                    let codec = video
+                        .codec()
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("video representation has no encoded format")
+                        })?
+                        .clone();
+                    Ok((codec, packetizer.packetize_source(&video, &frame)?))
+                })
+            }
         }
     }
 }
@@ -69,7 +79,7 @@ async fn write(
     let (transport, output_reports, writable) =
         (&writer.transport, &writer.reports, &writer.writable);
     let writing = async {
-        let packets = packets?;
+        let (codec, packets) = packets?;
         let timestamp = packets.first().map(|p| p.header.timestamp).unwrap_or(0);
         let wallclock = {
             let streams = output_reports.0.lock().unwrap();
@@ -104,7 +114,7 @@ async fn write(
             tokio::pin!(changed);
             changed.as_mut().enable();
             match transport
-                .write_au(id, rid.clone(), pending, wallclock)
+                .write_au(id, rid.clone(), codec.clone(), pending, wallclock)
                 .await?
             {
                 None => break,
@@ -127,7 +137,9 @@ pub(crate) struct Output {
     pub source: Uuid,
     pub stream: String,
 
-    negotiated: watch::Sender<Option<RtpCodecParameters>>,
+    source_codec: RtpCodec,
+    encoder_codec: Option<RtpCodec>,
+    negotiated: watch::Sender<Option<Vec<RtpCodecParameters>>>,
     paused: watch::Sender<bool>,
     encodings: Vec<Encoding>,
     task: JoinHandle<()>,
@@ -146,6 +158,12 @@ impl Output {
         preserve_layers: bool,
         paused: bool,
     ) -> Result<Self> {
+        let adaptive = source.video().is_some()
+            && match &source.origin {
+                #[cfg(any(feature = "capture", test))]
+                SourceOrigin::Local => true,
+                SourceOrigin::Incoming { .. } => super::derived_codec(source.codec()).is_some(),
+            };
         let id = Uuid::new_v4();
         let ssrc = u32::from_be_bytes(id.as_bytes()[..4].try_into().unwrap());
         let supplied = source.layers.as_ref().filter(|_| preserve_layers);
@@ -164,7 +182,7 @@ impl Output {
         let (mut feedback_rx, writable, stream) = pc
             .add_output(
                 id,
-                source.codec.clone(),
+                source.codec().clone(),
                 source.kind,
                 stream.clone(),
                 rids.clone(),
@@ -177,12 +195,16 @@ impl Output {
             let (input, reader, report) = match &source.feed {
                 SourceFeed::Rtp { report, .. } => {
                     let (packets, rx) = mpsc::channel(RTP_PACKETS);
-                    (Input::Rtp(packets), Reader::Rtp(rx), report.clone())
+                    (
+                        Input::Rtp(packets),
+                        Reader::Rtp(source.codec().clone(), rx),
+                        report.clone(),
+                    )
                 }
                 SourceFeed::Video(video) => {
                     let report: super::SourceReport = Default::default();
                     let packetizer = match Packetizer::new(
-                        &source.codec,
+                        source.codec(),
                         0, // The writer applies this sender's negotiated payload type.
                         ssrc,
                         video.time(),
@@ -207,13 +229,6 @@ impl Output {
                     };
                     // Adaptive sources wait for confirmed transport demand. A relay
                     // without a decoder can directly consume its original AU feed.
-                    let adaptive = match &source.origin {
-                        #[cfg(any(feature = "capture", test))]
-                        SourceOrigin::Local => true,
-                        SourceOrigin::Incoming { .. } => {
-                            super::derived_codec(&source.codec).is_some()
-                        }
-                    };
                     input.set_active(!adaptive && !paused);
                     (
                         Input::Video(input.clone()),
@@ -239,7 +254,7 @@ impl Output {
             });
             readers.push((ssrc, rid, reader));
         }
-        let (negotiated, mut format) = watch::channel(None::<RtpCodecParameters>);
+        let (negotiated, mut format) = watch::channel(None::<Vec<RtpCodecParameters>>);
         let source_id = source.id;
         let upstream = source.clone();
         let feedback_inputs = encodings.clone();
@@ -258,7 +273,7 @@ impl Output {
         let writer = Arc::new(Writer {
             transport: pc.clone(),
             reports: reports.clone(),
-            clock_rate: source.codec.clock_rate,
+            clock_rate: source.codec().clock_rate,
             output: id,
             writable,
             paused: pause,
@@ -301,6 +316,10 @@ impl Output {
             id,
             source: source.id,
             stream,
+            source_codec: source.codec().clone(),
+            encoder_codec: adaptive
+                .then(|| super::encoding_codec(source.codec()))
+                .flatten(),
             negotiated,
             paused,
             encodings,
@@ -385,9 +404,32 @@ impl Output {
             layers.supply(&inputs, demand, now)
         }
     }
-    pub fn confirm(&self, codec: Option<RtpCodecParameters>) -> Result<()> {
-        self.negotiated.send_replace(codec);
-        Ok(())
+    pub fn codecs(&self) -> Vec<RtpCodecParameters> {
+        self.negotiated.borrow().clone().unwrap_or_default()
+    }
+    pub fn can_forward(&self, codec: &RtpCodec) -> bool {
+        self.negotiated.borrow().as_ref().is_some_and(|formats| {
+            formats
+                .iter()
+                .any(|format| super::compatible(codec, &format.rtp_codec))
+        })
+    }
+    pub fn confirm(&self, codecs: Option<Vec<RtpCodecParameters>>) -> Result<bool> {
+        let codecs = codecs
+            .map(|mut codecs| {
+                codecs.retain(|codec| {
+                    super::compatible(&self.source_codec, &codec.rtp_codec)
+                        || self
+                            .encoder_codec
+                            .as_ref()
+                            .is_some_and(|encoder| super::compatible(encoder, &codec.rtp_codec))
+                });
+                codecs
+            })
+            .filter(|codecs| !codecs.is_empty());
+        let available = codecs.is_some();
+        self.negotiated.send_replace(codecs);
+        Ok(available)
     }
     pub fn set_paused(&self, paused: bool) {
         if self.paused.send_if_modified(|current| {

@@ -38,6 +38,11 @@ pub(crate) enum Estimate {
     Feedback(f64),
 }
 impl Estimate {
+    pub fn value(self) -> f64 {
+        match self {
+            Self::Startup(value) | Self::Feedback(value) => value,
+        }
+    }
     pub fn feedback(self) -> Option<f64> {
         if let Self::Feedback(v) = self {
             Some(v)
@@ -135,6 +140,8 @@ pub(crate) struct Runtime {
     tx: mpsc::Sender<Command>,
     task: JoinHandle<()>,
     fixed: Option<Arc<ServerUdp>>,
+    #[cfg(test)]
+    test_codecs: Option<str0m::format::CodecConfig>,
 }
 #[derive(Clone)]
 pub(crate) struct Transport {
@@ -159,6 +166,37 @@ impl EventTarget {
     fn local(&self) -> bool {
         matches!(self, Self::Local { .. })
     }
+}
+fn transport_codecs(local_input: bool, can_derive_h264: bool) -> str0m::format::CodecConfig {
+    let mut codecs = crate::media::h264_codecs().clone();
+    if !local_input && !can_derive_h264 {
+        // A transit peer without conversion must receive the common format
+        // before it can forward to a child that only negotiates that format.
+        let baseline = RtpCodec::h264([0x42, 0xe0, 0x1f]);
+        codecs = str0m::format::CodecConfig::new_from_payload_params(
+            codecs
+                .params()
+                .iter()
+                .filter(|params| crate::media::compatible(&baseline, &codec(params).rtp_codec))
+                .copied()
+                .collect(),
+        );
+    }
+    codecs.enable_vp8(!local_input);
+    codecs.add_config(
+        111.into(),
+        None,
+        Codec::Opus,
+        Frequency::FORTY_EIGHT_KHZ,
+        Some(2),
+        FormatParams {
+            min_p_time: Some(10),
+            use_inband_fec: Some(true),
+            stereo: Some(true),
+            ..Default::default()
+        },
+    );
+    codecs
 }
 fn validate_local_offer(offer: &SdpOffer) -> Result<()> {
     ensure!(
@@ -455,7 +493,18 @@ impl Runtime {
                 fixed.leased.store(false, Ordering::Release);
             }
         });
-        Self { tx, task, fixed }
+        Self {
+            tx,
+            task,
+            fixed,
+            #[cfg(test)]
+            test_codecs: None,
+        }
+    }
+    #[cfg(test)]
+    pub fn with_codecs(mut self, codecs: str0m::format::CodecConfig) -> Self {
+        self.test_codecs = Some(codecs);
+        self
     }
     pub async fn add(
         &self,
@@ -590,30 +639,20 @@ impl Runtime {
         ensure!(!sockets.is_empty(), "no UDP socket");
         let mut config = Rtc::builder()
             .clear_codecs()
-            .enable_vp8(!local_input)
             .set_rtp_mode(true)
             .enable_bwe(Some(Bitrate::bps(300_000)))
             // Forwarding awaits a source clock; use video's report cadence for audio too.
             .set_rtcp_report_interval_audio(Duration::from_secs(1))
             .set_stats_interval(Some(Duration::from_millis(500)))
             .set_sctp_max_buffered_amount(2 * 1024 * 1024);
-        // Advertise the same H264 subset admitted by media::supported.
-        config
-            .codec_config()
-            .add_h264(108.into(), Some(109.into()), true, 0x42e01f);
-        config.codec_config().add_config(
-            111.into(),
-            None,
-            Codec::Opus,
-            Frequency::FORTY_EIGHT_KHZ,
-            Some(2),
-            FormatParams {
-                min_p_time: Some(10),
-                use_inband_fec: Some(true),
-                stereo: Some(true),
-                ..Default::default()
-            },
+        *config.codec_config() = transport_codecs(
+            local_input,
+            crate::media::derived_codec(&RtpCodec::h264([0x42, 0xe0, 0x1f])).is_some(),
         );
+        #[cfg(test)]
+        if let Some(codecs) = &self.test_codecs {
+            *config.codec_config() = codecs.clone();
+        }
         let stats_origin = Instant::now();
         let mut rtc = config.build(stats_origin);
         let requested = *demand.borrow_and_update();
@@ -1075,7 +1114,7 @@ impl Transport {
         })
         .await
     }
-    pub async fn confirm(&self, id: Uuid) -> Result<Option<Option<RtpCodecParameters>>> {
+    pub async fn confirm(&self, id: Uuid) -> Result<Option<Option<Vec<RtpCodecParameters>>>> {
         self.call(move |e| {
             let out = e.outputs.get(&id).context("output retired")?;
             let Some(mid) = out.mid else { return Ok(None) };
@@ -1085,17 +1124,28 @@ impl Transport {
             if !media.direction().is_sending() || media.disabled() {
                 return Ok(Some(None));
             }
-            Ok(Some(
-                e.rtc
-                    .codec_config()
-                    .params()
-                    .iter()
-                    .filter(|p| media.remote_pts().contains(&p.pt()))
-                    .map(codec)
-                    .find(|c| crate::media::compatible(&out.codec, &c.rtp_codec)),
-            ))
+            let codecs: Vec<_> = e
+                .rtc
+                .codec_config()
+                .params()
+                .iter()
+                .filter(|p| media.remote_pts().contains(&p.pt()))
+                .map(codec)
+                .filter(|c| {
+                    c.rtp_codec
+                        .mime_type
+                        .eq_ignore_ascii_case(&out.codec.mime_type)
+                        && c.rtp_codec.clock_rate == out.codec.clock_rate
+                })
+                .collect();
+            Ok(Some((!codecs.is_empty()).then_some(codecs)))
         })
         .await
+    }
+    #[cfg(test)]
+    pub async fn output_codec(&self, id: Uuid) -> Result<RtpCodec> {
+        self.call(move |e| Ok(e.outputs.get(&id).context("output retired")?.codec.clone()))
+            .await
     }
     pub async fn retire_output(&self, id: Uuid) -> Result<()> {
         self.call(move |e| {
@@ -1148,6 +1198,7 @@ impl Transport {
         &self,
         id: Uuid,
         rid: String,
+        actual_codec: RtpCodec,
         packets: Vec<rtp::Packet>,
         wallclock: Instant,
     ) -> Result<Option<Vec<rtp::Packet>>> {
@@ -1166,7 +1217,7 @@ impl Transport {
                 .params()
                 .iter()
                 .filter(|p| media.remote_pts().contains(&p.pt()))
-                .find(|p| crate::media::compatible(&out.codec, &codec(p).rtp_codec))
+                .find(|p| crate::media::compatible(&actual_codec, &codec(p).rtp_codec))
                 .context("no compatible negotiated codec")?
                 .pt();
             let mut direct = e.rtc.direct_api();

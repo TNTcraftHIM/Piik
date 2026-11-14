@@ -353,10 +353,10 @@ impl RtpSource {
                 id,
                 publication_id,
                 origin: SourceOrigin::Local,
-                codec,
                 kind,
                 layers: None,
                 feed: SourceFeed::Rtp {
+                    codec,
                     keyframes: watch::channel(0).0,
                     report,
                 },

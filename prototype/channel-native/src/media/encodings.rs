@@ -1,8 +1,8 @@
 //! The actual encoder instances and Input selections for one video source.
 use super::{
     clock::SourceTime,
-    video::{EncodingDemand, Input, Video},
-    H264Sps, Source,
+    video::{EncodingDemand, Input, Video, VideoAllocation},
+    H264Sps, RtpCodecParameters, Source,
 };
 use crate::capture::{Encoding, EncodingControl, VideoCodec};
 use anyhow::Result;
@@ -17,12 +17,19 @@ use std::{
 use tokio::sync::{watch, Notify};
 use uuid::Uuid;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EncodingRequest {
+    Forward,
+    Encode(u32),
+    Paused,
+}
+
 #[derive(Clone)]
 pub(crate) struct VideoDemand {
     pub output: Uuid,
     pub rid: String,
     pub input: Weak<Input>,
-    pub encoding: EncodingDemand,
+    pub encoding: EncodingRequest,
     pub source: Option<Video>,
 }
 impl VideoDemand {
@@ -49,9 +56,17 @@ pub(crate) fn demands(
     source: &Source,
     output: Uuid,
     inputs: Vec<(String, Weak<Input>)>,
-    grant: EncodingDemand,
+    allocation: VideoAllocation,
+    codecs: &[RtpCodecParameters],
     now: Instant,
 ) -> Vec<VideoDemand> {
+    let grant = allocation.forwarding;
+    let accepts = |codec: &super::RtpCodec| {
+        codecs
+            .iter()
+            .any(|negotiated| super::compatible(codec, &negotiated.rtp_codec))
+    };
+    let can_encode = super::encoding_codec(source.codec()).is_some_and(|codec| accepts(&codec));
     let layers = source
         .layers
         .as_ref()
@@ -72,6 +87,7 @@ pub(crate) fn demands(
         EncodingDemand::Limited(bps) => u64::from(bps),
         EncodingDemand::Paused => 0,
     };
+    let mut encoder_remaining = allocation.encoder_bps;
     inputs
         .into_iter()
         .filter(|(_, input)| input.upgrade().is_some_and(|input| !input.is_closed()))
@@ -125,6 +141,29 @@ pub(crate) fn demands(
                     }
                 }
             };
+            let forward = selected
+                .as_ref()
+                .is_some_and(|video| accepts(video.codec().unwrap_or(source.codec())));
+            let encoding = match encoding {
+                EncodingDemand::Paused => EncodingRequest::Paused,
+                EncodingDemand::Original if forward => {
+                    let cost = selected.as_ref().and_then(|video| video.bitrate(now));
+                    encoder_remaining = cost.map_or(0, |cost| {
+                        u64::from(encoder_remaining).saturating_sub(cost) as u32
+                    });
+                    EncodingRequest::Forward
+                }
+                EncodingDemand::Original if can_encode && encoder_remaining > 0 => {
+                    selected = highest.cloned();
+                    remaining = 0;
+                    EncodingRequest::Encode(std::mem::take(&mut encoder_remaining))
+                }
+                EncodingDemand::Limited(bitrate) if can_encode => {
+                    encoder_remaining = encoder_remaining.saturating_sub(bitrate);
+                    EncodingRequest::Encode(bitrate)
+                }
+                _ => EncodingRequest::Paused,
+            };
             VideoDemand {
                 output,
                 rid,
@@ -140,7 +179,7 @@ type Pump = Pin<Box<dyn Future<Output = (Video, Result<()>)> + Send>>;
 struct Entry {
     video: Video,
     control: EncodingControl,
-    encoding: EncodingDemand,
+    encoding: EncodingRequest,
 }
 impl Entry {
     fn retire(self) {
@@ -151,7 +190,7 @@ impl Entry {
 pub(crate) struct Encodings {
     baseline: Option<Entry>,
     supplied: Option<Entry>,
-    limited: HashMap<(Uuid, String), Entry>,
+    derived: HashMap<(Uuid, String), Entry>,
     inputs: HashMap<(Uuid, String), Weak<Input>>,
     pub pumps: FuturesUnordered<Pump>,
     time: SourceTime,
@@ -163,7 +202,7 @@ impl Encodings {
         Self {
             baseline: None,
             supplied: None,
-            limited: HashMap::new(),
+            derived: HashMap::new(),
             inputs: HashMap::new(),
             pumps: FuturesUnordered::new(),
             time,
@@ -175,7 +214,7 @@ impl Encodings {
         &mut self,
         encoding: Encoding,
         video: Video,
-        kind: EncodingDemand,
+        kind: EncodingRequest,
         requests: watch::Receiver<u64>,
         external: Option<Arc<Input>>,
     ) -> Entry {
@@ -194,16 +233,16 @@ impl Encodings {
         }
     }
     pub fn baseline(&mut self, encoding: Encoding, video: Video, requests: watch::Receiver<u64>) {
-        self.baseline = Some(self.entry(encoding, video, EncodingDemand::Original, requests, None));
+        self.baseline = Some(self.entry(encoding, video, EncodingRequest::Forward, requests, None));
     }
     /// A source-supplied representation shares the baseline's reader-driven pump
     /// and warm, bounded queue; it does not allocate per downstream output.
     pub fn supplied(&mut self, encoding: Encoding, video: Video) {
         let requests = video.requests();
-        self.supplied = Some(self.entry(encoding, video, EncodingDemand::Original, requests, None));
+        self.supplied = Some(self.entry(encoding, video, EncodingRequest::Forward, requests, None));
     }
-    /// `external` is the decoder's selected upstream Input. Original demands
-    /// select their supplied feed; only Limited demands allocate an encoder.
+    /// `external` is the decoder's selected upstream Input. Forward demands
+    /// reuse their supplied feed; Encode requests allocate a compatible output.
     /// Only real demand changes call this method. Adoption merely retires unused
     /// entries, so an allocation failure cannot spin into automatic retries.
     pub async fn reconcile(
@@ -227,7 +266,7 @@ impl Encodings {
         let mut failed = Vec::new();
         for demand in next
             .iter()
-            .filter(|d| d.encoding == EncodingDemand::Original)
+            .filter(|d| d.encoding == EncodingRequest::Forward)
         {
             if let Some(video) = &demand.source {
                 select(demand, video, false);
@@ -235,20 +274,20 @@ impl Encodings {
         }
         for demand in next {
             let bitrate = match demand.encoding {
-                EncodingDemand::Original => continue,
-                EncodingDemand::Paused => {
+                EncodingRequest::Forward => continue,
+                EncodingRequest::Paused => {
                     if let Some(input) = demand.input.upgrade() {
                         input.set_active(false);
                     }
                     continue;
                 }
-                EncodingDemand::Limited(bitrate) => bitrate,
+                EncodingRequest::Encode(bitrate) => bitrate,
             };
-            if let Some(entry) = self.limited.get_mut(&demand.key()) {
+            if let Some(entry) = self.derived.get_mut(&demand.key()) {
                 if select(demand, &entry.video, true) && entry.encoding != demand.encoding {
                     if let Err(error) = entry.control.set_bitrate(bitrate) {
                         eprintln!("Native output encoding failed: {error:#}");
-                        let entry = self.limited.remove(&demand.key()).unwrap();
+                        let entry = self.derived.remove(&demand.key()).unwrap();
                         failed.push((entry.video.clone(), Err(error)));
                         entry.retire();
                     } else {
@@ -271,7 +310,7 @@ impl Encodings {
                             requests,
                             external.cloned(),
                         );
-                        self.limited.insert(demand.key(), entry);
+                        self.derived.insert(demand.key(), entry);
                     }
                     Err(error) => {
                         eprintln!("Native output encoding failed: {error:#}");
@@ -290,7 +329,7 @@ impl Encodings {
         while self.pumps.len()
             > usize::from(self.baseline.is_some())
                 + usize::from(self.supplied.is_some())
-                + self.limited.len()
+                + self.derived.len()
         {
             let (video, result) = self.pumps.next().await.unwrap();
             if let Some(result) = self.retired_or_failed(&video, result) {
@@ -308,11 +347,11 @@ impl Encodings {
             true
         } else {
             let id = self
-                .limited
+                .derived
                 .iter()
                 .find(|(_, e)| e.video.same(video))
                 .map(|(id, _)| id.clone());
-            id.is_some_and(|id| self.limited.remove(&id).is_some())
+            id.is_some_and(|id| self.derived.remove(&id).is_some())
         };
         if let Err(error) = &result {
             eprintln!(
@@ -330,25 +369,25 @@ impl Encodings {
             .baseline
             .iter()
             .chain(self.supplied.iter())
-            .chain(self.limited.values())
+            .chain(self.derived.values())
         {
             entry.video.observe_rate(entry.video.needed(), now);
         }
         let retired: Vec<_> = self
-            .limited
+            .derived
             .iter()
             .filter(|(_, e)| !e.video.needed())
             .map(|(id, _)| id.clone())
             .collect();
         for id in retired {
-            self.limited.remove(&id).unwrap().retire();
+            self.derived.remove(&id).unwrap().retire();
         }
     }
-    pub fn has_limited(&self) -> bool {
-        !self.limited.is_empty()
+    pub fn has_derived(&self) -> bool {
+        !self.derived.is_empty()
     }
     pub fn take_failed(&mut self) -> Vec<Video> {
-        self.limited
+        self.derived
             .drain()
             .map(|(_, entry)| {
                 let video = entry.video.clone();
@@ -364,7 +403,7 @@ impl Encodings {
         if let Some(entry) = self.baseline.take() {
             entry.retire();
         }
-        for (_, entry) in self.limited.drain() {
+        for (_, entry) in self.derived.drain() {
             entry.retire();
         }
         while self.pumps.next().await.is_some() {}
@@ -401,7 +440,15 @@ fn pump(
                     frame = encoding.recv(), if video.needed() => match frame {
                         Some(frame) => {
                             let frame = frame?;
-                            if codec == VideoCodec::H264 { sps.access_unit(&frame.bytes)?; }
+                            if codec == VideoCodec::H264 {
+                                sps.access_unit(&frame.bytes)?;
+                                if let Some(codec) = sps.codec() { video.set_codec(codec)?; }
+                            } else if video.codec().is_none() {
+                                video.set_codec(super::RtpCodec {
+                                    mime_type: "video/VP8".into(), clock_rate: 90_000,
+                                    ..Default::default()
+                                })?;
+                            }
                             video.write(frame);
                         }
                         None => break,
@@ -431,6 +478,32 @@ mod tests {
     use rtc_shared::time::SystemInstant;
     use std::time::Duration;
 
+    fn demands(
+        source: &Source,
+        output: Uuid,
+        inputs: Vec<(String, Weak<Input>)>,
+        forwarding: EncodingDemand,
+        now: Instant,
+    ) -> Vec<VideoDemand> {
+        super::demands(
+            source,
+            output,
+            inputs,
+            VideoAllocation {
+                forwarding,
+                encoder_bps: match forwarding {
+                    EncodingDemand::Limited(bps) => bps,
+                    _ => 0,
+                },
+            },
+            &[RtpCodecParameters {
+                rtp_codec: source.codec().clone(),
+                payload_type: 108,
+            }],
+            now,
+        )
+    }
+
     #[test]
     fn sleeping_supply_keeps_observed_cost_and_resumes_without_counting_the_gap() -> Result<()> {
         use crate::media::{MediaKind, RtpCodec, SourceFeed, SourceOrigin};
@@ -439,6 +512,8 @@ mod tests {
         let changed = Arc::new(Notify::new());
         let baseline = Video::new(time.clone(), changed.clone());
         let limited = Video::new(time.clone(), changed.clone());
+        baseline.set_codec(RtpCodec::h264([0x42, 0xe0, 0x1f]))?;
+        limited.set_codec(RtpCodec::h264([0x42, 0xe0, 0x1f]))?;
         let input = Input::new(time, changed);
         let frame = |bytes, n| EncodedFrame {
             bytes: vec![1; bytes],
@@ -454,11 +529,6 @@ mod tests {
             publication_id: Uuid::new_v4(),
             origin: SourceOrigin::Local,
             kind: MediaKind::Video,
-            codec: RtpCodec {
-                mime_type: "video/H264".into(),
-                clock_rate: 90_000,
-                ..Default::default()
-            },
             feed: SourceFeed::Video(baseline.clone()),
             layers: None,
         };
@@ -473,7 +543,7 @@ mod tests {
         };
         let sampled = epoch + Duration::from_secs(2);
         let first = resolve(sampled);
-        assert_eq!(first[0].encoding, EncodingDemand::Limited(100_000));
+        assert_eq!(first[0].encoding, EncodingRequest::Encode(100_000));
         select(&first[0], &limited, true);
         limited.write(frame(12_000, 2));
         assert!(!baseline.needed() && limited.needed());
@@ -481,7 +551,7 @@ mod tests {
         // The encoding owner pauses observation when its last reader moves away.
         baseline.observe_rate(false, sampled);
         let asleep = resolve(sampled + Duration::from_secs(60));
-        assert_eq!(asleep[0].encoding, EncodingDemand::Limited(100_000));
+        assert_eq!(asleep[0].encoding, EncodingRequest::Encode(100_000));
         assert_eq!(baseline.bitrate(sampled + Duration::from_secs(60)), cost);
         assert!(limited.needed());
         // Another real reader can wake this supply without disturbing that output.
@@ -518,7 +588,7 @@ mod tests {
                 output: Uuid::new_v4(),
                 rid: String::new(),
                 input: Arc::downgrade(&input),
-                encoding: EncodingDemand::Limited(200_000),
+                encoding: EncodingRequest::Encode(200_000),
                 source: None,
             }];
             let allocated = Arc::new(AtomicBool::new(false));
@@ -540,6 +610,96 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn profile_conversion_uses_one_grant_while_a_compatible_reader_reuses_the_source() -> Result<()>
+    {
+        use crate::media::{video::Layers, MediaKind, RtpCodec, SourceFeed, SourceOrigin};
+        let epoch = Instant::now();
+        let time = SourceTime::local(epoch, SystemInstant::now(epoch));
+        let changed = Arc::new(Notify::new());
+        let low = Video::new(time.clone(), changed.clone());
+        let high = Video::new(time.clone(), changed.clone());
+        let original_codec = RtpCodec::h264([0x64, 0, 0x1e]);
+        low.set_codec(original_codec.clone())?;
+        high.set_codec(original_codec.clone())?;
+        let layers = Layers::new(vec!["q".into(), "h".into()]);
+        layers.insert("q".into(), low.clone());
+        layers.insert("h".into(), high.clone());
+        let source = Source {
+            id: Uuid::new_v4(),
+            publication_id: Uuid::new_v4(),
+            origin: SourceOrigin::Local,
+            kind: MediaKind::Video,
+            feed: SourceFeed::Video(high.clone()),
+            layers: Some(layers),
+        };
+        let q = Input::new(time.clone(), changed.clone());
+        let h = Input::new(time.clone(), changed.clone());
+        let direct = Input::new(time, changed);
+        let allocation = VideoAllocation {
+            forwarding: EncodingDemand::Original,
+            encoder_bps: 2_500_000,
+        };
+        let converted = super::demands(
+            &source,
+            Uuid::new_v4(),
+            vec![
+                ("q".into(), Arc::downgrade(&q)),
+                ("h".into(), Arc::downgrade(&h)),
+            ],
+            allocation,
+            &[RtpCodecParameters {
+                rtp_codec: RtpCodec::h264([0x42, 0xe0, 0x1f]),
+                payload_type: 108,
+            }],
+            epoch,
+        );
+        assert_eq!(converted[0].encoding, EncodingRequest::Encode(2_500_000));
+        assert_eq!(converted[1].encoding, EncodingRequest::Paused);
+        assert!(converted[0].source.as_ref().unwrap().same(&high));
+        let frame = |size| EncodedFrame {
+            bytes: vec![0; size],
+            presentation_time: epoch,
+            keyframe: true,
+            vp8: None,
+        };
+        low.write(frame(12_000));
+        high.write(frame(120_000));
+        let constrained = super::demands(
+            &source,
+            Uuid::new_v4(),
+            vec![
+                ("q".into(), Arc::downgrade(&q)),
+                ("h".into(), Arc::downgrade(&h)),
+            ],
+            VideoAllocation {
+                forwarding: EncodingDemand::Limited(300_000),
+                encoder_bps: 300_000,
+            },
+            &[RtpCodecParameters {
+                rtp_codec: RtpCodec::h264([0x42, 0xe0, 0x1f]),
+                payload_type: 108,
+            }],
+            epoch + Duration::from_secs(1),
+        );
+        assert_eq!(constrained[0].encoding, EncodingRequest::Encode(300_000));
+        assert_eq!(constrained[1].encoding, EncodingRequest::Paused);
+        let original = super::demands(
+            &source,
+            Uuid::new_v4(),
+            vec![(String::new(), Arc::downgrade(&direct))],
+            allocation,
+            &[RtpCodecParameters {
+                rtp_codec: original_codec,
+                payload_type: 114,
+            }],
+            epoch,
+        );
+        assert_eq!(original[0].encoding, EncodingRequest::Forward);
+        assert!(original[0].source.as_ref().unwrap().same(&high));
+        Ok(())
+    }
+
     #[tokio::test]
     async fn layered_h264_demands_forward_or_derive_per_reader_with_one_grant() -> Result<()> {
         use crate::media::MediaKind;
@@ -550,6 +710,8 @@ mod tests {
         let changed = Arc::new(Notify::new());
         let q = Video::new(time.clone(), changed.clone());
         let h = Video::new(time.clone(), changed.clone());
+        q.set_codec(RtpCodec::h264([0x42, 0xe0, 0x1f]))?;
+        h.set_codec(RtpCodec::h264([0x42, 0xe0, 0x1f]))?;
         let frame = |bytes| EncodedFrame {
             bytes: vec![1; bytes],
             vp8: None,
@@ -573,11 +735,6 @@ mod tests {
                 reader: Uuid::new_v4(),
             },
             kind: MediaKind::Video,
-            codec: RtpCodec {
-                mime_type: "video/H264".into(),
-                clock_rate: 90_000,
-                ..Default::default()
-            },
             // q arrived first: it is an anchor, not the permanent decoding source.
             feed: SourceFeed::Video(q.clone()),
             layers: Some(layers.clone()),
@@ -596,8 +753,8 @@ mod tests {
         };
         let da = resolve(&a, EncodingDemand::Limited(200_000));
         let db = resolve(&b, EncodingDemand::Limited(400_000));
-        assert_eq!(da[0].encoding, EncodingDemand::Limited(200_000));
-        assert_eq!(db[0].encoding, EncodingDemand::Limited(400_000));
+        assert_eq!(da[0].encoding, EncodingRequest::Encode(200_000));
+        assert_eq!(db[0].encoding, EncodingRequest::Encode(400_000));
         assert!(da[0].source.as_ref().unwrap().same(&h));
         assert!(db[0].source.as_ref().unwrap().same(&h));
         let full = resolve(&healthy, EncodingDemand::Original);
@@ -605,7 +762,7 @@ mod tests {
         h.write(frame(20));
         assert!(healthy.recv().await.is_some());
         let fitting = resolve(&a, EncodingDemand::Limited(q_cost + 1));
-        assert_eq!(fitting[0].encoding, EncodingDemand::Original);
+        assert_eq!(fitting[0].encoding, EncodingRequest::Forward);
         assert!(fitting[0].source.as_ref().unwrap().same(&q));
 
         let qi = Input::new(time.clone(), changed.clone());
@@ -623,8 +780,8 @@ mod tests {
             EncodingDemand::Limited(q_cost + 300_000),
             now,
         );
-        assert_eq!(supply[0].encoding, EncodingDemand::Original);
-        assert_eq!(supply[1].encoding, EncodingDemand::Limited(300_000));
+        assert_eq!(supply[0].encoding, EncodingRequest::Forward);
+        assert_eq!(supply[1].encoding, EncodingRequest::Encode(300_000));
         assert_ne!(supply[0].rid, supply[1].rid);
         let limited = demands(
             &source,
@@ -633,12 +790,12 @@ mod tests {
             EncodingDemand::Limited(200_000),
             now,
         );
-        assert_eq!(limited[0].encoding, EncodingDemand::Limited(200_000));
-        assert_eq!(limited[1].encoding, EncodingDemand::Paused);
+        assert_eq!(limited[0].encoding, EncodingRequest::Encode(200_000));
+        assert_eq!(limited[1].encoding, EncodingRequest::Paused);
         assert!(
             demands(&source, Uuid::nil(), readers(), EncodingDemand::Paused, now)
                 .iter()
-                .all(|d| d.encoding == EncodingDemand::Paused)
+                .all(|d| d.encoding == EncodingRequest::Paused)
         );
 
         // A cost change with an unchanged grant must change the resolved demand.
@@ -650,10 +807,11 @@ mod tests {
             EncodingDemand::Limited(200_000),
             now + Duration::from_secs(1),
         );
-        assert_eq!(cheaper[0].encoding, EncodingDemand::Original);
+        assert_eq!(cheaper[0].encoding, EncodingRequest::Forward);
         assert!(da != cheaper);
         // Replacing an SSRC keeps the source clock but changes the real feed identity.
         let successor = Video::new(time, changed);
+        successor.set_codec(RtpCodec::h264([0x42, 0xe0, 0x1f]))?;
         successor.write(frame(500_000));
         layers.insert("large".into(), successor.clone());
         let replaced = demands(
@@ -677,8 +835,8 @@ mod tests {
             EncodingDemand::Limited(1),
             now,
         );
-        assert_eq!(local_low[0].encoding, EncodingDemand::Limited(1));
-        assert_eq!(local_low[1].encoding, EncodingDemand::Paused);
+        assert_eq!(local_low[0].encoding, EncodingRequest::Encode(1));
+        assert_eq!(local_low[1].encoding, EncodingRequest::Paused);
         assert!(local_low[0].source.as_ref().unwrap().same(&successor));
         // Failure of a per-output encoding is not loss of a supplied RID.
         let private = Video::new(successor.time(), successor.changed());

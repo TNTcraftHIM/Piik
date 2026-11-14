@@ -731,10 +731,9 @@ impl Pair {
             let Some(codec) = self.pc.confirm(output.id).await? else {
                 continue;
             };
-            if codec.is_some() {
+            if output.confirm(codec)? {
                 stable.insert(output.id);
             }
-            output.confirm(codec)?;
         }
         self.stable_outputs = Some(stable);
         Ok(())
@@ -2942,9 +2941,9 @@ impl Driver {
                 stream,
                 reader,
             },
-            codec,
             kind,
             feed: SourceFeed::Rtp {
+                codec: codec.clone(),
                 keyframes,
                 report: report.clone(),
             },
@@ -2966,7 +2965,8 @@ impl Driver {
         p.tasks.retain(|_, reader| !reader.task.is_finished());
         let task = tokio::spawn(async move {
             let mut first = true;
-            let framed = crate::media::incoming::Incoming::supports(&source.codec.mime_type);
+            let mut input_codec = codec;
+            let framed = crate::media::incoming::Incoming::supports(&input_codec.mime_type);
             struct Layer {
                 rid: String,
                 codec: RtpCodec,
@@ -3055,12 +3055,12 @@ impl Driver {
                                 }
                                 layer.sequence = layer.sequence.max(sequence);
                             }
-                            if format_changed && !crate::media::compatible(&source.codec, &codec) {
+                            if format_changed && !crate::media::compatible(&input_codec, &codec) {
                                 if !supported(&codec, kind) {
                                     break 'reading;
                                 }
                                 source.id = Uuid::new_v4();
-                                source.codec = codec;
+                                input_codec = codec;
                                 source.layers =
                                     layered.then(|| crate::media::video::Layers::new(rids.clone()));
                                 first = true;
@@ -3071,7 +3071,7 @@ impl Driver {
                                 }
                             }
                             let layer = layers.get_mut(&packet_ssrc).unwrap();
-                            if !crate::media::compatible(&source.codec, &layer.codec) {
+                            if !crate::media::compatible(&input_codec, &layer.codec) {
                                 continue;
                             }
                             if layer.input.is_none() {
@@ -3104,7 +3104,7 @@ impl Driver {
                                     continue;
                                 };
                                 let input = crate::media::incoming::Incoming::with_time(
-                                    &source.codec.mime_type,
+                                    &input_codec.mime_type,
                                     next_time.clone(),
                                     changed.clone(),
                                 );
@@ -3350,7 +3350,7 @@ impl Driver {
                 producer.producer.capture().is_none()
                     && producer.producer.owns(source.id, source.kind)
             }))
-        .then(|| crate::media::derived_codec(&source.codec))
+        .then(|| crate::media::derived_codec(source.codec()))
         .flatten()
         {
             if let SourceFeed::Video(video) = &source.feed {

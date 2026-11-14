@@ -6,6 +6,57 @@ and [compatible output groups](#compatible-output-groups) record the published i
 [ADR-0013](../adr/0013-embedded-node-local-media.md) owns the direct-child/shared-output
 model; [media quality](../standards/media-quality.md) owns current behavior.
 
+## 3.0 H264 Profile Compatibility
+
+The [network model](./channel-network-design.md#implementation-boundary) owns routing,
+source lifetime and automatic adaptation. This section owns the profile and
+representation extension; it does not expand support to other codec families.
+
+OBS initializes its selected encoder before connecting. Its WHIP adapter calls
+`addH264Codec` without the encoder's profile, then applies the SDP answer to its
+transport without reconfiguring that encoder. A Baseline answer therefore cannot
+make an existing High encoder produce Baseline. The complete input SPS supplies
+the actual encoded format. [OBS 33.0.1 source](https://github.com/obsproject/obs-studio/blob/33.0.1/plugins/obs-webrtc/whip-output.cpp)
+owns that upstream behavior.
+
+Each complete-AU representation owns its actual codec/profile. The source exposes
+its original representation; each output retains its negotiated formats and
+payload mappings. Incoming SDP, actual SPS and downstream capabilities remain
+separate facts. Reuse str0m's `CodecConfig::match_params` for H264 profile and
+packetization matching. A matching receiver gets the original bytes; a required
+compatible representation uses the existing decoder and encoder pool. Every
+output sends the payload type matching the representation it actually selected.
+Profile changes never relabel queued frames. Existing keyframe adoption, source
+clocks, failure isolation and joined resource retirement remain the boundary.
+
+This follows [mediasoup's producer/consumer codec matching](https://mediasoup.org/documentation/v3/mediasoup/rtp-parameters-and-capabilities/)
+and [LiveKit's separation of WHIP forwarding and transcoding](https://docs.livekit.io/transport/media/ingress-egress/ingress/transcode/).
+Codec negotiation does not perform conversion. Piik retains its platform encoder
+adapters and actual runtime capability/failure results within the existing
+transport graph.
+
+An ordinary Native peer connection without H264 derivation negotiates the common
+Constrained Baseline representation. A capable upstream App therefore converts
+before the source enters a forwarding-only Server or Native transit node. This
+keeps conversion with a source owner that can provide the compatible output.
+Isolated local OBS input retains the full supported input profiles.
+The current SDK config applies in both directions, so those connections negotiate
+Constrained Baseline for both reception and forwarding.
+
+Forwarding cost, configured quality limits and the encoder's current allocation
+have different owners. Observed input bitrate is the cost of those original
+bytes, not a maximum for a compatible encoding. The publication's explicit
+`VideoSettings` remains the quality authority; absent external settings remain
+absent. Required conversion retains a finite transport allocation even when the
+original's cost would fit. The existing SDK startup value seeds a required
+encoder before feedback and is never reported as measured capacity.
+
+Allocation retains relative weights and selected-before-optional admission. Capped
+relative redistribution follows [libwebrtc's allocator](https://webrtc.googlesource.com/src/+/c8e422dde9fd36e50fd8ca3e4267cf05a2b49852/call/bitrate_allocator.cc):
+ordinary forwarding retains its observed-cost cap; a required conversion uses
+only an explicit configured ceiling, when present, and otherwise the available
+connection allocation.
+
 ## Pinned Baseline
 
 The initial review used Chrome 152.0.7977.82. Its [DEPS][chromium-deps] pins libwebrtc

@@ -807,6 +807,8 @@ SDP profile/packetization and actual SPS remain distinct. The SDK matches H264
 profiles/packetization and the encoded-input boundary checks SPS; [decoder advertisement](https://chromium.googlesource.com/chromium/src/+/c423d38b941d7e282dcfdf1238d942845553b644/third_party/blink/renderer/platform/peerconnection/rtc_video_decoder_factory.cc)
 is neither a forwarding ceiling nor decoded-frame proof. Metadata alone cannot
 retire a working connection or permanently reject its flow.
+H264 representation compatibility and forwarding-only reception follow the
+[encoder contract](./webrtc-encoder-pool.md#30-h264-profile-compatibility).
 
 ### Capture And Platform Lifetimes
 
@@ -835,7 +837,7 @@ Native Auto prefers available VP8 when the selecting Browser cannot receive H264
 Otherwise it tries hardware H264, then available software VP8 after failed or
 timed-out first independent output. Stop the failed encoder before replacement
 on the same capture/clock. Sender capability is not preview support. The admitted
-codec stays fixed for source changes/derived outputs; manual unsupported selection fails
+codec family stays fixed for source changes/derived outputs; manual unsupported selection fails
 before permission. [Fidelity](./media-fidelity.md) owns colour/tone mapping.
 
 macOS maps original ScreenCaptureKit sample time to host time and copies each
