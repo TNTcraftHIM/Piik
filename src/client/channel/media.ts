@@ -171,39 +171,46 @@ export class ChannelMedia {
     for (const plan of state.pairs) {
       let peer = this.peers.get(plan.id);
       if (!peer) {
-        const transport = new ChannelTransport({
-          polite: sessionId.localeCompare(plan.peerId) > 0,
-          iceServers: state.iceServers,
-          canReceiveVideoLayers: plan.canReceiveVideoLayers,
-          videoPool: this.videoPool,
-          send: payload => this.send({ type: "signal", pairId: plan.id, payload }),
-          receive: (flowId, stream) => this.receive(plan.id, flowId, stream),
-          retire: flowId => this.retire(plan.id, flowId),
-          outgoingFailed: flowId => {
-            if (this.peers.get(plan.id)?.plan.outgoing.some(flow => flow.id === flowId)) {
-              this.send({ type: "flow_state", flowId, pairId: plan.id, state: "failed" });
-            }
-          },
-          data: (kind, data) => { if (this.peers.get(plan.id)?.plan.rooms.length) this.data?.(plan.peerId, kind, data); },
-          dataState: ready => this.dataState?.(plan.peerId, ready),
-          bulkClosed: () => this.bulkClosed?.(plan.peerId),
-          input: channel => this.input?.(plan.id, channel),
-          connected: () => {
-            const current = this.peers.get(plan.id);
-            if (current) this.reportConnected(current);
-          },
-          failed: released => {
-            const current = this.peers.get(plan.id);
-            if (current?.transport !== transport) return;
-            this.closePeer(current);
-            this.send({ type: "link_state", pairId: plan.id, state: "failed" });
-            this.refresh(released);
-          },
-          base: ready => {
-            const current = this.peers.get(plan.id);
-            if (current) this.reportBase(current, ready);
-          },
-        });
+        let transport: ChannelTransport;
+        try {
+          transport = new ChannelTransport({
+            polite: sessionId.localeCompare(plan.peerId) > 0,
+            iceServers: state.iceServers,
+            canReceiveVideoLayers: plan.canReceiveVideoLayers,
+            videoPool: this.videoPool,
+            send: payload => this.send({ type: "signal", pairId: plan.id, payload }),
+            receive: (flowId, stream) => this.receive(plan.id, flowId, stream),
+            retire: flowId => this.retire(plan.id, flowId),
+            outgoingFailed: flowId => {
+              if (this.peers.get(plan.id)?.plan.outgoing.some(flow => flow.id === flowId)) {
+                this.send({ type: "flow_state", flowId, pairId: plan.id, state: "failed" });
+              }
+            },
+            data: (kind, data) => { if (this.peers.get(plan.id)?.plan.rooms.length) this.data?.(plan.peerId, kind, data); },
+            dataState: ready => this.dataState?.(plan.peerId, ready),
+            bulkClosed: () => this.bulkClosed?.(plan.peerId),
+            input: channel => this.input?.(plan.id, channel),
+            connected: () => {
+              const current = this.peers.get(plan.id);
+              if (current) this.reportConnected(current);
+            },
+            failed: released => {
+              const current = this.peers.get(plan.id);
+              if (current?.transport !== transport) return;
+              this.closePeer(current);
+              this.send({ type: "link_state", pairId: plan.id, state: "failed" });
+              this.refresh(released);
+            },
+            base: ready => {
+              const current = this.peers.get(plan.id);
+              if (current) this.reportBase(current, ready);
+            },
+          });
+        } catch (error) {
+          console.warn("Channel peer connection could not be created", error);
+          this.send({ type: "link_state", pairId: plan.id, state: "failed" });
+          continue;
+        }
         peer = { plan, transport, inputs: new Map(), baseReady: new Set() };
         this.peers.set(plan.id, peer);
       } else peer.plan = plan;

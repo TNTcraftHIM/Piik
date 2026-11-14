@@ -727,6 +727,53 @@ test("room interactions reuse their original acknowledgement and user identity w
   } finally { session.close(); }
 });
 
+test.each(["unavailable", "rejected"])("%s peer construction keeps the site and conversation connected", async failure => {
+  const { session, socket, peer } = await setup();
+  const error = new DOMException("Peer connection creation is disabled", "NotSupportedError");
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+  RoomPeerConnection.instances = [];
+  let attempts = 0;
+  vi.stubGlobal("RTCPeerConnection", failure === "unavailable" ? undefined : class extends RoomPeerConnection {
+    constructor() {
+      if (++attempts === 1) throw error;
+      super();
+    }
+  });
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.publications = [{ audience: [], id: "screen", roomId: "first", sessionId: "host", userId: "other", kind: "screen",
+      source: { kind: "screen", name: null }, title: null, paused: false }];
+    state.subscriptions = ["screen"];
+    state.pairs = [
+      { id: "failed", peerId: "host", canReceiveVideoLayers: false, rooms: ["first"], incoming: [{ id: "screen-flow", publicationId: "screen", selected: true, inputFlowId: null }], outgoing: [] },
+      { id: "other", peerId: "other", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [] },
+    ];
+    socket.receive({ type: "state", state });
+    expect(socket.readyState).toBe(ChannelSocket.OPEN);
+    expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null });
+    expect(socket.sent).toContainEqual({ type: "link_state", pairId: "failed", state: "failed" });
+    expect(warning).toHaveBeenCalledWith("Channel peer connection could not be created", failure === "rejected" ? error : expect.any(TypeError));
+    expect(RoomPeerConnection.instances).toHaveLength(failure === "rejected" ? 1 : 0);
+    state.pairs = failure === "rejected" ? state.pairs.slice(1) : [];
+    const failures = warning.mock.calls.length;
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "state", state });
+    expect(warning).toHaveBeenCalledTimes(failures);
+
+    const sending = session.sendMessage("first", message(1).text);
+    peer.reply(await peer.next(), { type: "confirmed", message: message(1), inserted: true });
+    await sending;
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([message(1)]);
+
+    vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+    state.pairs = [{ id: "replacement", peerId: "host", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [] }];
+    socket.receive({ type: "state", state });
+    RoomPeerConnection.instances.at(-1)!.connected();
+    expect(socket.sent).toContainEqual({ type: "link_state", pairId: "replacement", state: "connected" });
+    expect(ChannelSocket.current).toBe(socket);
+  } finally { session.close(); }
+});
+
 test("interaction readiness follows Domain read admission without waiting for a peer path", async () => {
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
