@@ -291,10 +291,15 @@ usable media URL or source-issued media grant permits each viewer to fetch from
 the origin; observing a successful request in the sharer's account is not proof
 of that capability. Account sessions remain with their original player context.
 The sharer may explicitly enable forwarding of readable media bytes to Browser
-viewers. This consumes upload capacity, follows the source activity's access and
-retirement, and exposes admitted resources rather than an arbitrary URL proxy.
-Without a shared distributor, each viewer consumes a separate outbound copy.
-Encrypted media still requires the receiving player's valid license.
+viewers. This consumes upload capacity and uses the existing room base paths and
+reliable DataChannels. Only the byte provider and its receivers add peer demand;
+origin playback continues to need only signaling. The activity retains its
+Browser control owner while the selected Native provider owns resource reads.
+Resource access and retirement follow that activity, and expose admitted
+resources rather than an arbitrary URL proxy. This streaming consumer retains
+its own resource semantics; it does not replace attachment hashes or persist
+media in chat history. Encrypted media still requires the receiving player's
+valid license.
 
 ### Screen Demand Uses Reachable Paths
 

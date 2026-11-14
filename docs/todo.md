@@ -141,8 +141,10 @@ the feedback period; they do not delay that delivery.
   into the Native client, targeting the playback coverage of VideoTogether.
   Prefer a Native sharer with Browser viewers: independently usable media URLs
   and media-specific grants permit origin delivery; an explicitly enabled
-  source-byte forwarder uses the sharer's upload capacity. Validate a normal
-  file and HLS through the actual viewer before adding more formats. Original
+  source-byte forwarder uses existing reliable peer paths and the sharer's
+  upload capacity. Validate HLS through a mature player's resource loader and
+  assess ordinary-file Range playback through a narrow Browser adapter; preserve
+  attachment verification and existing room route ownership. Original
   webpage synchronization remains available through Native player connectors
   without separate browser extensions. Retain the
   [shared playback owner](./research/channel-network-design.md#synchronized-video-sources):
