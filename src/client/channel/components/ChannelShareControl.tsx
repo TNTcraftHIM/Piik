@@ -288,7 +288,7 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
     onClose();
   };
   return <ChannelSettingsDialog compact title={t("watch.start")} error={error} onClose={close} closeDisabled={committing}>
-    {page ? <div className="c3-external-input">
+    {page ? <div className="c3-settings-panels c3-external-input">
       <p>{t("watch.chooseVideo")}</p>
       <Btn icon="window" quiet size="compact" title="watch.openedPage" cap="watch.openedPage" onClick={() => { void run(() => channel.focusWatchPage(roomId, activityId)); }} />
       {page.candidates.length ? <div className="lr-source-picker-list">
@@ -297,8 +297,8 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
           onSelect={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, activityId), onClose); }} />)}
       </div> : <div className="lr-source-picker-status" role="status"><BrandLoader /><span>{t("watch.waitForVideo")}</span></div>}
       <Btn icon="x" quiet title="common.cancel" cap="common.cancel" disabled={committing} onClick={close} />
-    </div> : activityId ? <div className="c3-external-input"><p role="status">{busy ? t("watch.openingPage") : t("watch.pageUnavailable")}</p>
-      {busy && <BrandLoader />}<Btn icon="x" quiet title="common.cancel" cap="common.cancel" onClick={close} /></div> : <form className="c3-external-input" onSubmit={event => {
+    </div> : activityId ? <div className="c3-settings-panels c3-external-input"><p role="status">{busy ? t("watch.openingPage") : t("watch.pageUnavailable")}</p>
+      {busy && <BrandLoader />}<Btn icon="x" quiet title="common.cancel" cap="common.cancel" onClick={close} /></div> : <form className="c3-settings-panels c3-external-input" onSubmit={event => {
       event.preventDefault();
       if (!busy) void run(() => channel.pagePlayer ? channel.prepareWatchPage(roomId, url.trim()) : channel.startWatch(roomId, url.trim()), channel.pagePlayer ? undefined : onClose);
     }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}>

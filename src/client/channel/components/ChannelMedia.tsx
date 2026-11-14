@@ -49,9 +49,12 @@ function WatchReceivingSettings({ receiving }: { receiving: WatchReceiving }) {
   return <span ref={trigger}><Btn icon="sliders" quiet title="watch.forward.viewing" popoverTarget={id} />
     <div ref={panel} id={id} popover="auto" role="dialog" className="lr-floating-surface lr-playback-menu c3-watch-receiving" aria-label={t("watch.forward.viewing")}>
       <b>{t("watch.forward.viewing")}</b><p>{t("watch.forward.receiveHelp")}</p>
-      <WatchPeerAction receiving={receiving} />
+      {receiving.peerSupported ? <Btn icon="share" title="watch.forward.peer" cap="watch.forward.peer" size="compact"
+        pressed={receiving.mode === "peer"} disabled={!receiving.peerAvailable || receiving.disabled || receiving.pending
+          || receiving.mode === "peer" && !receiving.failed} busy={receiving.pending} onClick={receiving.onPeer} />
+        : <small>{t("watch.forward.secure")}</small>}
       {receiving.browserSource && <Btn icon="globe" quiet title="watch.forward.direct" cap="watch.forward.direct" pressed={receiving.mode === "direct"}
-        disabled={receiving.disabled || receiving.pending || receiving.mode === "direct"} onClick={receiving.onDirect} />}
+        disabled={receiving.disabled || receiving.pending || receiving.mode === "direct" && !receiving.failed} onClick={receiving.onDirect} />}
     </div>
   </span>;
 }
@@ -103,7 +106,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     return () => { for (const name of events) video.removeEventListener(name, sync); document.removeEventListener("fullscreenchange", sync); };
   }, [player]);
   return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-external={!player.video || undefined} data-failed={!!player.error || undefined}
-    data-standalone={!player.video || !!player.error && player.error !== "watch_update_failed" && player.video.readyState < 2 || undefined} data-thumbnail={presentation === "thumbnail" || undefined}
+    data-standalone={!player.video || !!player.error && player.error !== "watch_update_failed" || undefined} data-thumbnail={presentation === "thumbnail" || undefined}
     data-controls-hidden={visibility.hidden} inert={presentation === "background"}>
     {!player.video && !player.error && <div className="c3-mini-message"><div className="c3-frame-wait c3-watch-result">
       <span>{t("watch.inWindow")}</span><Btn icon="window" title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />
