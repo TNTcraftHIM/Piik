@@ -390,7 +390,7 @@ if (still === "host" || still === "viewer" || still === "picker" || still === "i
   document.documentElement.classList.add("is-still");
   document.documentElement.dataset.theme = params.get("theme") === "dark" ? "dark" : "light";
   initTheme(undefined, false);
-  setCopy({ lang: params.get("lang") === "zh" ? "zh" : "en", vis: false });
+  setCopy({ lang: params.get("lang") === "zh" ? "zh" : "en" });
   flushSync(() => root.render(<Screen shot={still} />));
   const paintStill = () => {
     drawGame?.(17.6);
@@ -454,7 +454,7 @@ window.addEventListener("message", (event) => {
   const key = `${data.lang}:${shot}`;
   if (key !== current) {
     current = key;
-    setCopy({ lang: data.lang === "en" ? "en" : "zh", vis: false });
+    setCopy({ lang: data.lang === "en" ? "en" : "zh" });
     flushSync(() => root.render(<Screen shot={shot} />));
     // A scripted picker must not steal the film's keyboard focus or show its
     // autofocus tooltip. The actual picker retains autofocus in the product.

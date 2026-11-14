@@ -41,7 +41,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
   releaseKey: number; onReleaseKeyChange: (key: number) => void;
   allowText?: boolean;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const id = useId();
   const mac = platform === "darwin";
   const metaKeyTitle = t(mac ? "remote.key.Command" : platform === "windows" ? "remote.key.Windows" : "remote.key.Super");
@@ -140,9 +140,9 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       }
     }} onKeyUp={event => event.stopPropagation()}>
     <div className="lr-remote-panel-header">
-      <strong><Glyph name="keyboard" size={18} />{vis ? null : t("remote.keyboard")}</strong>
+      <strong><Glyph name="keyboard" size={18} />{t("remote.keyboard")}</strong>
       {!panelWindow.detached && <>
-        {panelWindowAPI(window) && <Tooltip kind="hint-window-detach" place="below" text={vis ? undefined : t("floating.detach")}>
+        {panelWindowAPI(window) && <Tooltip kind="hint-window-detach" place="below" text={t("floating.detach")}>
           <button type="button" className="lr-btn is-dense is-quiet lr-popover-close" aria-label={t("floating.detach")} disabled={panelWindow.opening}
             onClick={() => { presses.reset(); setModifiers([]); void panelWindow.open(); }}><Glyph name="pip" size={18} /></button>
         </Tooltip>}
@@ -159,7 +159,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
         aria-label={t(`remote.keys.${value}`)} onClick={() => {
           presses.reset(); setModifiers([]); setPage(value); saveRoomPreferences({ keyboardPage: value });
         }}>
-        {value === "letters" ? "ABC" : value === "symbols" ? "123" : value === "functions" ? "Fn" : vis ? <Glyph name="pencil" size={16} /> : t("remote.keys.text")}
+        {value === "letters" ? "ABC" : value === "symbols" ? "123" : value === "functions" ? "Fn" : t("remote.keys.text")}
       </button>)}
     </div>
     <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${page}`}>
@@ -174,16 +174,16 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
         {modifiersKeys.slice(0, 3).map(modifier)}{key(["␣", "Space"])}{key(["↵", "Enter"])}
       </div>
       {navigation}
-      <Tooltip kind="hint-key-combination" className="lr-remote-combine-hint" text={vis ? undefined : t("remote.combinationHelp")}>
+      <Tooltip kind="hint-key-combination" className="lr-remote-combine-hint" text={t("remote.combinationHelp")}>
       <label className="lr-remote-combine-keys"><input type="checkbox" checked={combineKeys}
         aria-label={t("remote.combinationMode")}
         onChange={event => {
           presses.reset(); setModifiers([]); setCombineKeys(event.target.checked);
           saveRoomPreferences({ combineKeys: event.target.checked });
         }} />
-        {vis ? <span aria-hidden="true"><kbd>⇧</kbd><span>+</span><kbd>…</kbd></span> : t("remote.combinationMode")}</label>
+        {t("remote.combinationMode")}</label>
       </Tooltip>
-      {!vis && <p>{t(combineKeys ? "remote.combinationHelp" : "remote.keyboardHelp")}</p>}
+      <p>{t(combineKeys ? "remote.combinationHelp" : "remote.keyboardHelp")}</p>
     </> : <>
       <form className="lr-remote-text-entry" onSubmit={event => {
         event.preventDefault();
@@ -192,9 +192,9 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       }}>
         <div className="lr-input lr-remote-text-field">
           <textarea ref={editor} rows={4} value={text}
-            aria-label={t("remote.text")} placeholder={vis ? "" : t("remote.text")} autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
+            aria-label={t("remote.text")} placeholder={t("remote.text")} autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
             aria-invalid={textTooLong || undefined}
-            aria-describedby={vis ? undefined : `${id}-text-help`}
+            aria-describedby={`${id}-text-help`}
             enterKeyHint="enter" onChange={event => setText(event.target.value)}
             onCompositionStart={() => { composing.current = true; }}
             onCompositionEnd={() => { composing.current = false; }}
@@ -203,7 +203,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
             <Btn icon="send" cap="remote.typeText" title="remote.sendText" size="compact" hint="hint-remote-keyboard" hintText={allowText ? undefined : "remote.textShared"} tone="primary" type="submit" disabled={!allowText || !text || textTooLong} />
           </div>
         </div>
-        {textTooLong ? <p id={`${id}-text-help`} role="alert">{t("remote.textTooLong")}</p> : !vis && <p id={`${id}-text-help`}>{t(allowText ? "remote.textHelp" : "remote.textShared")}</p>}
+        {textTooLong ? <p id={`${id}-text-help`} role="alert">{t("remote.textTooLong")}</p> : <p id={`${id}-text-help`}>{t(allowText ? "remote.textHelp" : "remote.textShared")}</p>}
       </form>
       {navigation}
       <div className="lr-remote-keys lr-remote-shortcuts">
@@ -214,7 +214,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
     </div>
     <RemoteShortcutSelect value={releaseKey} onChange={onReleaseKeyChange} mac={navigator.platform.startsWith("Mac")} />
     {!panelWindow.detached && mouseControl}
-    {!vis && touch && <p>{t("remote.touchHelp")}</p>}
+    {touch && <p>{t("remote.touchHelp")}</p>}
   </section></SurfaceDocument.Provider>;
   return <span ref={panelWindow.slot} style={{ display: "contents" }}>
     {panelWindow.container && createPortal(keyboard, panelWindow.container)}

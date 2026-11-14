@@ -21,9 +21,9 @@ export interface ConnectionDetail {
 }
 
 export function RouteGlyph({ route }: { route: "p2p" | "sfu" }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const label = t(route === "sfu" ? "state.route.sfu" : "state.route.p2p");
-  return <Tooltip toggleOnClick kind={route === "sfu" ? "hint-route-sfu" : "hint-route-p2p"} text={vis ? undefined : label}>
+  return <Tooltip toggleOnClick kind={route === "sfu" ? "hint-route-sfu" : "hint-route-p2p"} text={label}>
     <button type="button" className="lr-meter-cell" aria-label={label}
       style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start" }}>
       <svg width="36" height="16" viewBox="0 0 36 16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -31,19 +31,18 @@ export function RouteGlyph({ route }: { route: "p2p" | "sfu" }) {
         <circle cx="32" cy="8" r="3" fill="currentColor" stroke="none" />
         {route === "sfu" ? <><rect x="14" y="3" width="8" height="10" rx="2" /><path d="M7 8h7M22 8h7" /></> : <path d="M7 8h22" />}
       </svg>
-      {vis ? <span className="visually-hidden">{label}</span> : <b>{route === "sfu" ? "SFU" : "P2P"}</b>}
+      <b>{route === "sfu" ? "SFU" : "P2P"}</b>
     </button>
   </Tooltip>;
 }
 
 function ConnectionDetailHeading({ media, label, icon, direction, note, routes = [] }: Pick<ConnectionDetail,
   "media" | "label" | "icon" | "direction" | "note"> & { routes?: readonly ("p2p" | "sfu")[] }) {
-  const { vis } = useCopy();
   return <div className="lr-media-detail-head">
     <span className="lr-meter-tag">
       <Glyph name={icon ?? (media === "audio" ? "headphones" : "tv")} size={17} />
       {direction && <span className="lr-media-direction"><Glyph name={direction === "send" ? "arrowUp" : "arrowDown"} size={12} /></span>}
-      <span className={vis ? "visually-hidden" : "lr-cap"}>{label}</span>
+      <span className="lr-cap">{label}</span>
     </span>
     {routes.map(route => <RouteGlyph key={route} route={route} />)}
     {note}

@@ -4,6 +4,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { RoomChatExport } from "../src/client/channel/components/ChannelRoomControls";
 import type { ChannelMessage } from "../src/client/channel/protocol";
 import { downloadBlob } from "../src/client/lib/download";
+import { en } from "../src/client/locales/en";
 
 const actions = vi.hoisted(() => [] as { icon: string; label: string; disabled?: boolean; onClick?: () => void }[]);
 vi.mock("../src/client/channel/components/ChannelAction", () => ({ ChannelAction: (props: typeof actions[number]) => {
@@ -11,7 +12,7 @@ vi.mock("../src/client/channel/components/ChannelAction", () => ({ ChannelAction
   return createElement("button", { disabled: props.disabled }, props.label);
 } }));
 vi.mock("../src/client/ui/copy", () => ({ isCopyKey: () => false,
-  useCopy: () => ({ lang: "en", vis: false, t: (key: string) => key }) }));
+  useCopy: () => ({ lang: "en", t: (key: keyof typeof en) => en[key] }) }));
 vi.mock("../src/client/lib/download", () => ({ downloadBlob: vi.fn() }));
 
 beforeEach(() => { actions.length = 0; vi.clearAllMocks(); });

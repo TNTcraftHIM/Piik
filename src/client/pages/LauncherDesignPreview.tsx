@@ -13,22 +13,21 @@ import { publicSiteOrigin, siteEntryURL } from "../lib/site-address";
 import type { AppMode } from "../lib/app-launch";
 import "./launcher-design-preview.css";
 
-const samples: SiteBookmark[] = [
-  { id: "weekend", name: "周末放映室", origin: "https://weekend.example" },
-  { id: "studio", name: "一起做点东西", origin: "https://studio.example" },
-  { id: "friends", name: "朋友们的客厅", origin: "https://friends.example" },
-];
-const sampleLAN = [
-  { address: "192.168.1.24", name: "Wi-Fi" },
-  { address: "192.168.50.12", name: "Ethernet" },
-];
 type PreviewDestination = SiteBookmark & { invitation?: string };
 
 /** Presentation sandbox: all site, approval and launch state is local to this preview. */
 export function LauncherDesignPreview() {
-  const { lang, t } = useCopy();
-  const en = lang === "en";
-  const say = (zh: string, english: string) => en ? english : zh;
+  const { t } = useCopy();
+  const samples: SiteBookmark[] = [
+    { id: "weekend", name: t("client.launcher.preview.weekend"), origin: "https://weekend.example" },
+    { id: "studio", name: t("client.launcher.preview.studio"), origin: "https://studio.example" },
+    { id: "friends", name: t("client.launcher.preview.friends"), origin: "https://friends.example" },
+  ];
+  const sampleLAN = [
+    { address: "192.168.1.24", name: "Wi-Fi" },
+    { address: "192.168.50.12", name: t("client.launcher.preview.ethernet") },
+  ];
+
   const query = new URLSearchParams(location.search);
   const [sites, setSites] = useState<SiteBookmark[]>(query.get("state") === "empty" ? [] : samples);
   const [ready, setReady] = useState(query.get("state") === "ready");
@@ -44,7 +43,7 @@ export function LauncherDesignPreview() {
   const [publicError, setPublicError] = useState<string>();
   const [notice, setNotice] = useState("");
   function openSite(_site: PreviewDestination) {
-    setNotice(say("已在原型中打开站点。", "Site opened in this preview."));
+    setNotice(t("client.launcher.preview.siteOpened"));
   }
   return <div className="lr-app lr-launcher-page">
     <AppHeader homeHref="/client" appControl={null} diagnosticControl={null} />
@@ -56,10 +55,10 @@ export function LauncherDesignPreview() {
         </form>
         <p id="ld-invite-hint" role={invalid ? "alert" : undefined}>{t(invalid ? "client.bookmarks.invalidAddress" : "client.launcher.invitationHint")}</p>
       </>}
-      localSiteAction={<Btn icon="arrowRight" title={ready ? "client.connect.continue" : "client.launch.go"} cap={ready ? "client.connect.continue" : "client.launch.go"} onClick={() => ready ? openSite({ id: "local", name: say("我的客厅", "My living room"), origin: "https://my-place.example" }) : setDialog("host")} />}
-      footer={<><span>Piik App <small>3.0</small></span><Btn icon="help" quiet size="dense" title={{ text: say("版本与帮助", "Version & help") }} cap={{ text: say("版本与帮助", "Version & help") }} onClick={() => setDialog("about")} /></>}
+      localSiteAction={<Btn icon="arrowRight" title={ready ? "client.connect.continue" : "client.launch.go"} cap={ready ? "client.connect.continue" : "client.launch.go"} onClick={() => ready ? openSite({ id: "local", name: t("client.launcher.preview.myLivingRoom"), origin: "https://my-place.example" }) : setDialog("host")} />}
+      footer={<><span>Piik App <small>3.0</small></span><Btn icon="help" quiet size="dense" title={{ text: t("client.launcher.preview.versionHelp") }} cap={{ text: t("client.launcher.preview.versionHelp") }} onClick={() => setDialog("about")} /></>}
     >{notice && <output aria-live="polite">{notice}</output>}</LauncherWorkspace></main>
-    <details className="ld-preview-tools"><summary>{say("外观原型 · 示例状态", "Design preview · sample states")}</summary><div>{(["empty", "loaded", "ready"] as const).map(state => <Btn key={state} icon={state === "ready" ? "check" : state === "empty" ? "plus" : "star"} quiet size="dense" title={{ text: state }} cap={{ text: state }} onClick={() => { setSites(state === "empty" ? [] : samples); setReady(state === "ready"); setNotice(""); }} />)}</div></details>
+    <details className="ld-preview-tools"><summary>{t("client.launcher.preview.sampleStates")}</summary><div>{(["empty", "loaded", "ready"] as const).map(state => <Btn key={state} icon={state === "ready" ? "check" : state === "empty" ? "plus" : "star"} quiet size="dense" title={{ text: t(`client.launcher.preview.${state}`) }} cap={{ text: t(`client.launcher.preview.${state}`) }} onClick={() => { setSites(state === "empty" ? [] : samples); setReady(state === "ready"); setNotice(""); }} />)}</div></details>
     {dialog === "bookmarks" && <ChannelSettingsDialog title={t("client.sites.title")} onClose={() => setDialog(undefined)}>
       <SiteManagement bookmarks={sites} sites={approved} startupSite={startupSite} ownedSites={[]} localSite={ready ? "http://127.0.0.1:8787" : undefined} busy={false}
         onApprove={async origin => setApproved(items => [...items, origin])}
@@ -71,13 +70,13 @@ export function LauncherDesignPreview() {
       <form className="c3-settings-panels lr-client-launch-panel" onSubmit={event => {
         event.preventDefault();
         if (mode === "link" && publicEntry.existing && !publicSiteOrigin(publicEntry.origin)) { setPublicError(t("client.launch.invalidPublicAddress")); return; }
-        setReady(true); setDialog(undefined); setNotice(say("站点就绪状态已在原型中展示。", "Showing the ready state in this preview."));
+        setReady(true); setDialog(undefined); setNotice(t("client.launcher.preview.siteReady"));
       }}>
         <SiteStartControls mode={mode} onModeChange={setMode} port={{ value: port, onChange: setPort }}
           publicEntry={{ ...publicEntry, localAddress: `http://127.0.0.1:${port}`, error: publicError, onChange: next => { setPublicEntry(next); setPublicError(undefined); } }}
           lan={{ addresses: sampleLAN, selected: lanAddress, onChange: setLanAddress }} />
       </form>
     </ChannelSettingsDialog>}
-    {dialog === "about" && <ChannelSettingsDialog compact title={say("版本与帮助", "Version & help")} onClose={() => setDialog(undefined)}><BrandLockup size={40} /><p>{say("3.0 启动页外观原型", "3.0 launcher design preview")}</p><p>{say("更新、版本和帮助将沿用 App 的共享入口。这里的操作仅改变示例状态。", "Updates, version and help retain the shared App controls. Actions here only change sample state.")}</p></ChannelSettingsDialog>}
+    {dialog === "about" && <ChannelSettingsDialog compact title={t("client.launcher.preview.versionHelp")} onClose={() => setDialog(undefined)}><BrandLockup size={40} /><p>{t("client.launcher.preview.title")}</p><p>{t("client.launcher.preview.description")}</p></ChannelSettingsDialog>}
   </div>;
 }

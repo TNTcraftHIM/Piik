@@ -66,6 +66,9 @@ The full workspace remains the default; an optional screen-centred interface
 keeps the same rooms and activities. A first-use suggestion appears only in an
 empty site without a saved view choice; invitations and existing rooms remain
 direct, and the choice can be changed later from Interface settings.
+The shared UI has Simplified Chinese, English, Traditional Chinese, Japanese and
+Korean catalogs. The third language control opens the additional languages;
+presentation uses the same text, icon and illustration rules across languages.
 Their ownership follows the network and data models above; current platform
 coverage is in [verification status](./verification-status.md).
 Published 2.x interaction behavior remains with the

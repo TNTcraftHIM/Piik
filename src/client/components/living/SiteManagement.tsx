@@ -29,7 +29,7 @@ export interface SiteManagementProps {
 /** One site identity, with independent bookmark, device-consent and startup effects. */
 export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, ownedStartup, ownedSites, localSite,
   busy: ownerBusy, accessError, onSave, onRemove, onApprove, onRevoke, onStartup, onOpen }: SiteManagementProps) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const id = useId();
   const panel = useRef<HTMLElement>(null);
   const focusReturn = useRef<{ origin?: string; index: number } | null>(null);
@@ -76,7 +76,6 @@ export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, o
   }
   // Device-operation failures belong to the caller's accessError.
   const accessAction = (work: Promise<void>) => { void work.catch(() => {}); };
-  const textClass = vis ? "visually-hidden" : undefined;
   return <section ref={panel} className="c3-settings-panels lr-site-management" aria-label={t("client.sites.title")} aria-busy={busy}>
     {detail ? <>
       <div className="lr-site-back"><BackButton onClick={back} disabled={busy} /></div>
@@ -84,36 +83,36 @@ export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, o
         <Glyph name="globe" size={22} /><div><h3>{selected ? selectedBookmark?.name || selected : t("client.bookmarks.add")}</h3>{selected && selectedBookmark?.name && <span dir="ltr">{selected}</span>}</div>
       </div>
       <form className="lr-site-section lr-site-form" onSubmit={event => { event.preventDefault(); void save(); }}>
-        <h4><Glyph name="star" size={18} /><span className={textClass}>{t("client.sites.bookmark")}</span></h4>
-        <label><span className={textClass}>{t("client.bookmarks.name")}</span><span className="lr-input"><Glyph name="pencil" size={18} /><input autoComplete="off" maxLength={40} disabled={busy} value={detail.draft.name} onChange={event => setDetail({ ...detail, draft: { ...detail.draft, name: event.target.value } })} /></span></label>
-        <label><span className={textClass}>{t("client.connect.siteAddress")}</span><span className="lr-input"><Glyph name="globe" size={18} /><input type="url" inputMode="url" autoComplete="url" autoCapitalize="none" spellCheck={false} dir="ltr" required placeholder="https://friends.example" disabled={busy} value={detail.draft.origin} onChange={event => setDetail({ ...detail, draft: { ...detail.draft, origin: event.target.value } })} /></span></label>
-        <p className={textClass}>{t("client.bookmarks.addressHint")}</p>
+        <h4><Glyph name="star" size={18} /><span>{t("client.sites.bookmark")}</span></h4>
+        <label><span>{t("client.bookmarks.name")}</span><span className="lr-input"><Glyph name="pencil" size={18} /><input autoComplete="off" maxLength={40} disabled={busy} value={detail.draft.name} onChange={event => setDetail({ ...detail, draft: { ...detail.draft, name: event.target.value } })} /></span></label>
+        <label><span>{t("client.connect.siteAddress")}</span><span className="lr-input"><Glyph name="globe" size={18} /><input type="url" inputMode="url" autoComplete="url" autoCapitalize="none" spellCheck={false} dir="ltr" required placeholder="https://friends.example" disabled={busy} value={detail.draft.origin} onChange={event => setDetail({ ...detail, draft: { ...detail.draft, origin: event.target.value } })} /></span></label>
+        <p>{t("client.bookmarks.addressHint")}</p>
         {bookmarkError && <Pill icon="alert" tone="bad" comic="signal-failed" alert label={t(bookmarkError)} />}
         <div className="lr-site-form-actions">{detail.draft.id && <Btn icon="linkOff" quiet tone="danger" size="compact" title="client.bookmarks.remove" cap="client.bookmarks.remove" disabled={busy} busy={pending === "remove"} onClick={() => void save(true)} />}<Btn icon="check" type="submit" tone="primary" size="compact" title="client.bookmarks.save" cap="client.bookmarks.save" disabled={busy} busy={pending === "save"} /></div>
       </form>
       {selected && <section className="lr-site-section">
-        <h4><Glyph name="lock" size={18} /><span className={textClass}>{t("client.sites.deviceAccess")}</span></h4>
-        <p className={textClass}>{t(automatic ? "client.sites.automaticHint" : "client.sites.deviceHint")}</p>
-        <div className="lr-site-consent"><span className="lr-site-status"><Glyph name={approved ? "check" : "lock"} size={16} /><span className={textClass}>{t(automatic ? "client.sites.automatic" : approved ? "client.sites.allowed" : "client.sites.notAllowed")}</span></span>
+        <h4><Glyph name="lock" size={18} /><span>{t("client.sites.deviceAccess")}</span></h4>
+        <p>{t(automatic ? "client.sites.automaticHint" : "client.sites.deviceHint")}</p>
+        <div className="lr-site-consent"><span className="lr-site-status"><Glyph name={approved ? "check" : "lock"} size={16} /><span>{t(automatic ? "client.sites.automatic" : approved ? "client.sites.allowed" : "client.sites.notAllowed")}</span></span>
           {!automatic && <Btn icon={approved ? "linkOff" : "check"} quiet={approved} tone={approved ? "danger" : undefined} size="compact" title={approved ? "client.sites.revoke" : "client.sites.allow"} cap={approved ? "client.sites.revoke" : "client.sites.allow"} disabled={busy} onClick={() => accessAction(approved ? onRevoke(selected) : onApprove(selected))} />}</div>
       </section>}
       {approved && selected && <section className="lr-site-section">
-        <h4><Glyph name="play" size={18} /><span className={textClass}>{t("client.sites.startup")}</span></h4>
-        <label className="lr-client-approval-startup"><input type="checkbox" checked={opensOnStart(selected)} disabled={busy} onChange={() => accessAction(onStartup(opensOnStart(selected) ? "" : selected))} /><Glyph name="window" size={18} /><span className={textClass}>{t("client.connect.openOnStart")}</span></label>
+        <h4><Glyph name="play" size={18} /><span>{t("client.sites.startup")}</span></h4>
+        <label className="lr-client-approval-startup"><input type="checkbox" checked={opensOnStart(selected)} disabled={busy} onChange={() => accessAction(onStartup(opensOnStart(selected) ? "" : selected))} /><Glyph name="window" size={18} /><span>{t("client.connect.openOnStart")}</span></label>
       </section>}
     </> : <>
-      <header className="lr-site-list-header"><p className={textClass}>{t("client.sites.hint")}</p><span data-site-add><Btn id={`${id}-add`} icon="plus" size="compact" title="client.bookmarks.add" cap="client.bookmarks.add" disabled={busy} onClick={() => edit()} /></span></header>
+      <header className="lr-site-list-header"><p>{t("client.sites.hint")}</p><span data-site-add><Btn id={`${id}-add`} icon="plus" size="compact" title="client.bookmarks.add" cap="client.bookmarks.add" disabled={busy} onClick={() => edit()} /></span></header>
       {origins.length ? <ul className="lr-site-list">{origins.map((origin, index) => {
         const bookmark = bookmarks.find(site => site.origin === origin);
         return <li key={origin} data-current={origin === currentOrigin || undefined}>
           <div className="lr-site-identity"><strong>{bookmark?.name || origin}</strong>{bookmark?.name && <span dir="ltr">{origin}</span>}
-            <div className="lr-site-statuses">{bookmark && <span className="lr-site-status" title={t("client.sites.saved")}><Glyph name="star" size={14} /><span className={textClass}>{t("client.sites.saved")}</span></span>}{(origin === localSite || sites.includes(origin)) && <span className="lr-site-status" title={t(origin === localSite ? "client.sites.automatic" : "client.sites.allowed")}><Glyph name="lock" size={14} /><span className={textClass}>{t(origin === localSite ? "client.sites.automatic" : "client.sites.allowed")}</span></span>}{opensOnStart(origin) && <span className="lr-site-status" title={t("client.sites.startup")}><Glyph name="play" size={14} /><span className={textClass}>{t("client.sites.startup")}</span></span>}{origin === currentOrigin && <span className="lr-site-status" title={t("client.sites.current")}><Glyph name="window" size={14} /><span className={textClass}>{t("client.sites.current")}</span></span>}</div>
+            <div className="lr-site-statuses">{bookmark && <span className="lr-site-status" title={t("client.sites.saved")}><Glyph name="star" size={14} /><span>{t("client.sites.saved")}</span></span>}{(origin === localSite || sites.includes(origin)) && <span className="lr-site-status" title={t(origin === localSite ? "client.sites.automatic" : "client.sites.allowed")}><Glyph name="lock" size={14} /><span>{t(origin === localSite ? "client.sites.automatic" : "client.sites.allowed")}</span></span>}{opensOnStart(origin) && <span className="lr-site-status" title={t("client.sites.startup")}><Glyph name="play" size={14} /><span>{t("client.sites.startup")}</span></span>}{origin === currentOrigin && <span className="lr-site-status" title={t("client.sites.current")}><Glyph name="window" size={14} /><span>{t("client.sites.current")}</span></span>}</div>
           </div>
           <div className="lr-site-row-actions"><Btn icon="arrowRight" size="compact" title={{ text: `${t("client.bookmarks.open")} ${bookmark?.name || origin}` }} cap="client.bookmarks.open" disabled={busy} onClick={() => onOpen(origin)} /><span data-site-index={index}><Btn icon="sliders" quiet size="compact" title={{ text: `${t("client.sites.manage")} ${bookmark?.name || origin}` }} cap="client.sites.manage" disabled={busy} onClick={() => edit(origin)} /></span></div>
         </li>;
-      })}</ul> : <p className={`lr-site-empty${vis ? " visually-hidden" : ""}`}>{t("client.sites.empty")}</p>}
+      })}</ul> : <p className="lr-site-empty">{t("client.sites.empty")}</p>}
     </>}
-    {ownedStartup && <div className="lr-site-owned-startup lr-site-section"><label className="lr-client-approval-startup"><input type="checkbox" checked disabled={busy} onChange={() => accessAction(onStartup(""))} /><Glyph name="window" size={18} /><span className={textClass}>{t("client.connect.openOwnedOnStart", { mode: t(ownedStartup === "local" ? "client.launch.local" : "client.launch.link") })}</span></label></div>}
+    {ownedStartup && <div className="lr-site-owned-startup lr-site-section"><label className="lr-client-approval-startup"><input type="checkbox" checked disabled={busy} onChange={() => accessAction(onStartup(""))} /><Glyph name="window" size={18} /><span>{t("client.connect.openOwnedOnStart", { mode: t(ownedStartup === "local" ? "client.launch.local" : "client.launch.link") })}</span></label></div>}
     {accessError && <Pill icon="alert" tone="bad" comic="signal-failed" alert label={accessError} />}
   </section>;
 }

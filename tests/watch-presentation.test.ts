@@ -8,7 +8,7 @@ import { setCopy } from "../src/client/ui/copy";
 
 describe("Webpage watch presentation", () => {
   it.each([true, false])("shows the independent webpage's real controls without a fake video (owner: %s)", owned => {
-    setCopy({ lang: "en", vis: false });
+    setCopy({ lang: "en" });
     const player = { video: null, blocked: false, error: null,
       mediaState: { position: 42, duration: 240, paused: true, rate: 1.5, readyState: 4, ended: false } } as unknown as WatchPlayer;
     const html = renderToStaticMarkup(createElement(ChannelWatchVideo, {
@@ -27,7 +27,7 @@ describe("Webpage watch presentation", () => {
   });
 
   it("offers manual App viewing only when the website has no Browser candidate", () => {
-    setCopy({ lang: "en", vis: false });
+    setCopy({ lang: "en" });
     const source: WatchStageSource = { kind: "watch", id: "activity", userId: "friend", name: "Bo", title: "video.example/watch/evening",
       roomName: "Friday", owned: false, subscribed: false, paused: true, website: true, browserSource: false,
       onRoom: vi.fn(), onJoin: vi.fn(), onLeave: vi.fn(), onStop: vi.fn(), onResume: vi.fn(), onPlayback: vi.fn(), onFocusWindow: vi.fn(), onAppWatch: vi.fn() };

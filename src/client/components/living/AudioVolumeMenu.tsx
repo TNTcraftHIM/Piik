@@ -4,11 +4,10 @@ import { HOVER_ENTER_MS, HOVER_EXIT_GRACE_MS, LONG_PRESS_MS } from "./Tooltip";
 import { useAnchoredPopover } from "./use-anchored-popover";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { useCopy, type CopyKey } from "../../ui/copy";
-import type { GlyphName } from "../../ui/icons";
 
 // The icon keeps its direct mute action; its attached slider never reflows the row.
-export function AudioVolumeMenu({ volume, onVolume, label, icon, heading, disabled, children, max }: {
-  volume: number; onVolume: (volume: number) => void; label: CopyKey; icon: GlyphName;
+export function AudioVolumeMenu({ volume, onVolume, label, heading, disabled, children, max }: {
+  volume: number; onVolume: (volume: number) => void; label: CopyKey;
   heading?: string; disabled?: boolean; children: ReactNode;
   max?: number;
 }) {
@@ -93,7 +92,7 @@ export function AudioVolumeMenu({ volume, onVolume, label, icon, heading, disabl
     <div ref={panel} popover="auto" role="dialog" aria-label={heading ?? t(label)}
       className="lr-floating-surface lr-audio-settings lr-audio-volume-popover">
       {heading && <b>{heading}</b>}
-      <AudioVolumeControl volume={volume} onVolume={onVolume} label={label} icon={icon} max={max} />
+      <AudioVolumeControl volume={volume} onVolume={onVolume} label={label} max={max} />
     </div>
   </span>;
 }

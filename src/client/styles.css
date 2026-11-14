@@ -8,8 +8,8 @@
 
 /* Piik living-room UI — the production design system.
    The stage is a TV on the wall, viewers are pawns on the couch, connection
-   state is what the TV shows and what the LEDs say. Control copy lives in tooltips
-   and aria in visual mode; text modes add visible captions.
+   state is what the TV shows and what the LEDs say. Controls pair localized
+   captions and accessible names with meaningful icons and tooltip comics.
    Status and control motion stays distinct from quiet participant gestures;
    all respect prefers-reduced-motion. */
 
@@ -340,7 +340,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 }
 .lr-tv-overlay.is-passive { pointer-events: none; }
 .lr-tv-status-content { display: flex; flex-direction: column; align-items: center; gap: 14px; }
-.lr-tv-progress { display: inline-flex; align-items: center; gap: 6px; }
 .lr-tooltip-preview { max-width: 1440px; }
 .lr-tooltip-preview-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 16px; margin: 8px 0 20px; }
 .lr-tooltip-preview-head h1 { margin: 0; font-size: 1.1rem; }
@@ -597,11 +596,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   font-size: 13px;
 }
 .lr-source-option.is-action .lr-source-option-copy strong { white-space: normal; }
-.lr-source-picker.is-visual .lr-source-option.is-action {
-  min-height: 90px;
-  justify-content: center;
-  padding: 8px;
-}
 .lr-source-picker-status {
   display: flex;
   flex-direction: column;
@@ -967,8 +961,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-help-content header a { text-underline-offset: 3px; }
 .lr-help-content nav { display: grid; gap: 4px; }
 .lr-help-content nav .lr-btn { width: 100%; justify-content: flex-start; }
-.lr-help-content.is-visual nav { display: flex; justify-content: center; gap: 12px; }
-.lr-help-content.is-visual nav .lr-btn { width: var(--control-compact-size); justify-content: center; }
 .lr-cap { font-size: var(--control-label-size); font-weight: 600; color: inherit; white-space: nowrap; }
 
 .lr-chip {
@@ -1115,7 +1107,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-welcome-text { display: block; width: max-content; min-width: 100%; }
 .lr-welcome-text::before { content: "✦"; color: #d7982b; margin-right: 8px; }
 @media (prefers-reduced-motion: no-preference) {
-  .lr-welcome:not(.is-still, .is-cipher) { overflow: clip; }
+  .lr-welcome:not(.is-still) { overflow: clip; }
   .lr-welcome:not(.is-still) .lr-welcome-text { animation: lr-welcome-read 8s linear both; }
   .lr-welcome[data-text-active="false"] .lr-welcome-text { animation-name: none; }
 }
@@ -1127,8 +1119,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   0%, 20% { transform: translateX(0); }
   75%, 100% { transform: translateX(min(0px, calc(100cqw - 100%))); }
 }
-.lr-welcome-cipher { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; opacity: .72; white-space: nowrap; }
-.lr-welcome-cipher i { width: 3px; height: 3px; background: #d7982b; transform: rotate(45deg); }
 .lr-tv-overlay > .lr-welcome { position: absolute; top: clamp(20px, 3vw, 32px); left: 18px; right: 18px; width: auto; font-size: clamp(13px, 1.5vw, 16px); }
 .lr-tv-overlay:has(> .lr-join-panel) > .lr-welcome { display: none; }
 .lr-tv-overlay:has(> .lr-join-panel) { position: relative; grid-template-columns: minmax(0, 1fr); }
@@ -1136,7 +1126,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-welcome-catalog summary { cursor: pointer; width: fit-content; padding-block: 12px; font-weight: 650; }
 .lr-welcome-catalog ol { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 12px 32px; padding-inline-start: 28px; }
 .lr-welcome-catalog li > span:first-child { display: block; }
-.lr-welcome-catalog .lr-welcome-cipher { margin-top: 6px; }
 .lr-input.lr-name-editor {
   flex: 1;
   min-width: 0;
@@ -1842,7 +1831,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   .lr-top .lr-header-options[popover] .lr-btn.is-compact { width: auto; padding-inline: 12px; }
   .lr-top .lr-header-options[popover] .lr-cap { display: inline; }
   .lr-top .lr-header-options[popover] .lr-help-content nav .lr-btn { width: 100%; }
-  .lr-top .lr-header-options[popover] .lr-help-content.is-visual nav .lr-btn { width: var(--control-compact-size); padding: 0; }
 }
 
 @media (orientation: landscape) and (max-height: 500px) {

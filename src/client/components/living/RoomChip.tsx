@@ -24,7 +24,7 @@ export function RoomCodePlaceholder({ onCreate, disabled, busy }: {
   disabled?: boolean;
   busy?: boolean;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const contents = <>
     <LcdDigits code="----" />
     <span className="lr-lcd-action" aria-hidden="true">
@@ -33,7 +33,7 @@ export function RoomCodePlaceholder({ onCreate, disabled, busy }: {
     </span>
   </>;
   if (onCreate) return (
-    <Tooltip kind="hint-create-room" text={vis ? undefined : t("host.createRoomHint")}>
+    <Tooltip kind="hint-create-room" text={t("host.createRoomHint")}>
       <button type="button" className="lr-lcd is-empty is-create"
         aria-label={t("host.createRoom")} aria-busy={busy || undefined} disabled={disabled}
         onClick={event => {
@@ -52,7 +52,7 @@ export function RoomCodePlaceholder({ onCreate, disabled, busy }: {
 }
 
 export function Lcd({ code }: { code: string }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const [copyResult, setCopyResult] = useState<{
     code: string;
     state: "copied" | "failed";
@@ -130,7 +130,7 @@ export function Lcd({ code }: { code: string }) {
       <Tooltip kind={copyState === "failed" ? "copy-failed" : "hint-copy-code"}
         tone={copyState === "copied" ? "live" : copyState === "failed" ? "bad" : "off"}
         motion={copyState === "idle" ? "demo" : "still"}
-        text={vis ? undefined : copyFeedback || t("common.copy")}>
+        text={copyFeedback || t("common.copy")}>
         {copyButton}
       </Tooltip>
       <span className="visually-hidden" role="status" aria-live="polite">
@@ -149,7 +149,6 @@ export function RoomChip({
   onReplace?: () => void | Promise<void>;
   replaceDisabled?: boolean;
 }) {
-  const { vis } = useCopy();
   const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
@@ -192,7 +191,7 @@ export function RoomChip({
           <Btn
             icon="refresh"
             title="host.roomReplace"
-            cap={vis ? undefined : "host.roomReplace"}
+            cap="host.roomReplace"
             hint="hint-shuffle-code"
             disabled={replaceDisabled}
             onClick={() => setConfirming(true)}

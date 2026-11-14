@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { firstUnreadMessageId, roomPeople, roomRealtimePeople, screenTitle } from "../src/client/channel/presentation";
 import { snapshotSchema } from "../src/client/channel/protocol";
+import { t, type CopyKey } from "../src/client/ui/copy";
+
+const english = (key: CopyKey) => t("en", key);
+const chinese = (key: CopyKey) => t("zh", key);
 
 it("starts unread messages at another person without consuming earlier unread history", () => {
   const own = { id: "own", seq: 1, userId: "self" };
@@ -16,20 +20,20 @@ it("starts unread messages at another person without consuming earlier unread hi
 describe("screen titles", () => {
   it("keeps a custom title across source replacement, then clears to the latest source", () => {
     const publication = { source: { kind: "screen" as const, name: "First window" }, title: null as string | null };
-    expect(screenTitle(publication, "en")).toBe("First window");
+    expect(screenTitle(publication, english)).toBe("First window");
     publication.title = "Movie night";
     publication.source.name = "Second window";
-    expect(screenTitle(publication, "en")).toBe("Movie night");
+    expect(screenTitle(publication, english)).toBe("Movie night");
     publication.title = null;
-    expect(screenTitle(publication, "en")).toBe("Second window");
+    expect(screenTitle(publication, english)).toBe("Second window");
   });
 
   it("localizes only missing source names and preserves literal human titles", () => {
-    expect(screenTitle({ source: { kind: "screen", name: null }, title: null }, "zh")).toBe("分享画面");
-    expect(screenTitle({ source: { kind: "screen", name: null }, title: null }, "en")).toBe("Shared screen");
-    expect(screenTitle({ source: { kind: "camera", name: null }, title: null }, "zh")).toBe("摄像头");
-    expect(screenTitle({ source: { kind: "camera", name: null }, title: null }, "en")).toBe("Camera");
-    expect(screenTitle({ source: { kind: "screen", name: "<窗口>" }, title: "<Movie>" }, "en")).toBe("<Movie>");
+    expect(screenTitle({ source: { kind: "screen", name: null }, title: null }, chinese)).toBe("分享画面");
+    expect(screenTitle({ source: { kind: "screen", name: null }, title: null }, english)).toBe("Shared screen");
+    expect(screenTitle({ source: { kind: "camera", name: null }, title: null }, chinese)).toBe("摄像头");
+    expect(screenTitle({ source: { kind: "camera", name: null }, title: null }, english)).toBe("Camera");
+    expect(screenTitle({ source: { kind: "screen", name: "<窗口>" }, title: "<Movie>" }, english)).toBe("<Movie>");
   });
 });
 

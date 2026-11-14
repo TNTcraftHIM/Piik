@@ -11,8 +11,8 @@ and playback. Neither an illustration nor its colour creates product state.
 
 Use one stroke language for single concepts, small panel comics for causes and
 sequences, and literal scene objects for people, rooms and media. Glyphs do not
-form sentences. The same meaning and visual hierarchy must work in Chinese,
-English and pure-visual modes, in both themes and at narrow widths.
+form sentences. The same meaning and visual hierarchy must work in every
+registered language, in both themes and at narrow widths.
 
 Piik's living room uses simple silhouettes, generous space, rounded controls
 and a small responsive bounce. Clear hierarchy and legible interaction keep
@@ -421,10 +421,9 @@ Reuse visibility, placement, dismissal and focus behavior through these existing
 owners; do not give each feature its own window manager. Different layouts are
 justified by task or available space, not by which feature was implemented last.
 
-Keep the application language control's segmented Chinese, English and visual
-shortcuts. When additional catalogs exist, insert one language menu
-after the visual shortcut; all extra languages share that slot. Show the
-selected language's short label there and native names inside the menu. Reuse
+Keep the application language control's segmented Simplified Chinese and English
+shortcuts, followed by one language menu; all extra languages share that third
+slot. Show the selected language's short label there and native names inside the menu. Reuse
 the sliding selection, rounded paper panels and control motion. The native
 popover owns visibility, outside-click dismissal and Escape; the language
 control owns menu navigation, focus and viewport placement. Keep touch rows
@@ -481,9 +480,7 @@ popup. If a status tooltip already wraps the row, add the clipped name there
 rather than nesting another tooltip.
 
 Tooltips, state overlays and entry/error pages reuse the same illustrative scene
-in every mode.
-Chinese and English add a concise caption beneath it; pure-visual mode keeps the
-scene and its playful pictograms as an explicit alternative. Literal names and
+in every language, with a concise localized caption beneath it. Literal names and
 addresses keep their exact text. An invitation explanation retains its link
 scene; simply revealing a clipped name needs only the name.
 Do not substitute an unrelated action just to fill a tooltip. Illustration and caption
@@ -803,15 +800,13 @@ Text-only surfaces retain the same meanings:
 
 | Surface | Standard and owner |
 | --- | --- |
-| Activity in document titles | [Title catalogs](../../src/client/locales/visual.ts): 📺 sharing/viewing, 🛋️ ready room, 💤 idle, ⏳ waiting/starting, ⏸️ paused, ▶️ waiting for playback, ⏹️ ended, ❗ unavailable. Secondary decorations cannot replace this leading meaning or imply new progress. |
+| Activity in document titles | [Registered title catalogs](../../src/client/locales/index.ts) supply localized labels for sharing/viewing, ready, idle, waiting/starting, paused, waiting for playback, ended and unavailable. Secondary decorations cannot replace the literal activity or imply new progress. |
 | A problem beside an activity | [Media status](../../src/client/ui/media-status.ts) supplies ⚠️ from actual facts; [document-title](../../src/client/ui/document-title.ts) only composes and rotates titles. |
 | Default names | The [published 2.x display-name helper](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/src/client/lib/display-name.ts) owns 📺 for the sharing source and 👤 for a Viewer in visual mode. Preserve user-entered emoji names as data; never infer role from their characters. [viewer-presence](../../src/client/lib/viewer-presence.ts) owns duplicate-name suffixes. |
-| Visual-mode shortcut | ✦ in the language control and its documentation; not a success or quality mark. |
 | Input placeholders | Four slots represent the four-digit room code. Password dots mask a field; their illustrated count imposes no password length. Numeric samples reuse the actual field's `--mono` typeface and weight. Real inputs retain localized labels. |
 | Unknown values | `—` means unavailable/unknown, never zero or a healthy result. Keep exact values and units whenever known. |
 | Capability values | `✓` / `✗` answer the adjacent boolean capability, not whether an entire route or share succeeded. |
 | Shortened text | `…` means truncation. Preserve the full nickname/URL for reading and copying; never turn an exact value into a decorative code. |
-| Welcome cipher | The locale entry owns its two meaningful symbols; [WelcomeLine](../../src/client/components/living/WelcomeLine.tsx) renders their pixel words. They are decoration, not hidden connection state. |
 
 ### Feedback Composition
 
@@ -843,8 +838,8 @@ composition. Routine loading does not opt into playful copy automatically.
 Do not infer waiting from a chosen drawing, mascot visibility or animation flag.
 Healthy playback stays visible during control reconnection; this rule does not
 create another overlay. An idle room awaiting a new share differs from a closed
-room. In pure-visual mode keep the same illustration and accessible operation
-name, with no waiting text. Welcome ciphers retain their separate role.
+room. Keep the illustration, localized operation name and secondary caption
+consistent across registered languages.
 At compact player sizes, omit the optional caption before shrinking the comic
 or the actual status into illegibility. The existing visibility policy suspends
 hidden captions; viewport size does not become product state.
@@ -859,9 +854,8 @@ subpanels. Review the whole composition before adding another caption.
 
 Website/App welcomes select one entry immediately and keep it during that visit.
 Tab titles retain one variation per actual activity, without a timer. Ordinary
-rerenders and metric updates do not draw another entry. A welcome's text/visual
-switch preserves its selected entry. Language changes use that language's pool,
-never a cross-language array index.
+rerenders and metric updates do not draw another entry. Language changes use
+that language's pool, never a cross-language array index.
 
 Only App room startup and media waits rotate their secondary caption: show one
 immediately, then change it every fifteen visible seconds. Changes of the literal
@@ -875,9 +869,7 @@ for copy or animation. This cadence is a product choice, not measured progress.
 Each language maintains independent contextual pools without equal counts,
 paired translation keys or a fixed total. Contributors can add a locally natural
 entry without inventing equivalents in other languages. Keep operational labels
-in the ordinary translation contract. Welcome ciphers attach meaningful symbols
-to the selected entry, rather than depending on a global numeric correspondence.
-Pure-visual waiting keeps the shared animated scene.
+in the ordinary translation contract.
 
 Actual status, error reasons, paused/ended states, required actions and slogans
 remain literal. A title retains its primary activity and any applicable warning.
@@ -888,7 +880,7 @@ review; this copy policy does not require a mascot or a new tooltip everywhere.
 
 | Existing surface | Copy coverage |
 | --- | --- |
-| Website welcome, App launcher, sharing entry | One welcome per entry; the App's visual mode renders that entry's cipher. |
+| Website welcome, App launcher, sharing entry | One welcome per entry in the selected language. |
 | App room startup and media waiting | One slowly rotating caption according to [feedback composition](#feedback-composition). Ordinary page loading and access checks use literal status only. |
 | Browser tab | Sharing, watching, starting, ready-to-share, not-started and waiting states may append one stable variation; room identity, literal activity and warnings remain visible. |
 | Error, pause, ended state, required action, tooltip, small control | Keep the existing literal message and contextual graphic; no rotating caption is added. |
@@ -965,8 +957,8 @@ admission; copying writes to the local clipboard and does not send to a friend. 
 establish a locked control or delivery to another device.
 
 Only the result carries the semantic accent; a single panel carries the current
-condition. Tooltip outline and caret use that same tone in Chinese, English and
-visual modes. Neutral uses theme ink, not literal white. Keep paper fills quiet;
+condition. Tooltip outline and caret use that same tone in every registered
+language. Neutral uses theme ink, not literal white. Keep paper fills quiet;
 do not tint the whole scene green/yellow/red.
 Meaning must also survive without colour through objects, symbols and accessible
 localized names. Never show celebration or a completed live path as the verdict
@@ -1104,11 +1096,8 @@ focal elements; small participant gestures follow the quiet cadence above.
 Provide a pause or hide control for automatic loops, and a useful static pose
 for reduced motion. Product-state comics still follow the table above.
 
-Entry screens may carry one quiet, original welcome line in Chinese or English
-text mode. Pure-visual mode pairs familiar pictograms with static pixel
-pseudo-lettering tied to the same line. Hide that visual cipher from assistive
-technology; the ordinary text sentence remains readable. Switching between text
-and visual mode preserves the selected welcome entry; selection follows the
+Entry screens may carry one quiet, original welcome line in the selected
+language. Selection follows the
 [shared lifecycle](#playful-copy-lifecycle). The line never replaces an action,
 error, loading message or connection progress. Keep it on one line, apart from
 the actions; primary controls take precedence when space is tight. A clipped line

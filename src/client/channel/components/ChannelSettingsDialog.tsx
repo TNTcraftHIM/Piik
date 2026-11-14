@@ -19,7 +19,7 @@ export function ChannelSettingsDialog({ title, caption, compact = false, error =
   const dialog = useRef<HTMLDialogElement>(null);
   const backdropPointer = useRef<number | null>(null);
   const titleId = useId();
-  const { lang } = useCopy();
+  const { t } = useCopy();
   const outside = (event: PointerEvent<HTMLDialogElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     return event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom;
@@ -43,7 +43,7 @@ export function ChannelSettingsDialog({ title, caption, compact = false, error =
       {/* Start at the heading so automatic focus does not open an action's tooltip. */}
       <div>{caption && <p>{caption}</p>}<h2 id={titleId} tabIndex={-1}
         ref={element => { element?.setAttribute("autofocus", ""); }}>{title}</h2></div>
-      <ChannelAction icon="x" iconOnly quiet textTooltip disabled={closeDisabled} label={lang === "zh" ? "关闭" : "Close"}
+      <ChannelAction icon="x" iconOnly quiet textTooltip disabled={closeDisabled} label={t("room.action.close")}
         onClick={() => dialog.current?.close()} />
     </header>
     <div className="c3-settings-content">{children}</div>
@@ -55,10 +55,9 @@ export function ChannelSettingsTabs<T extends string>({ id, label, tasks, select
   id: string; label: string; tasks: readonly { value: T; label: string; icon: GlyphName; hint: HintKind }[];
   selected: T; onSelect(value: T): void;
 }) {
-  const { vis } = useCopy();
   return <div className="c3-settings-navigation"><nav className="lr-toggle c3-settings-nav" role="tablist"
     style={{ "--lr-segments": tasks.length } as CSSProperties} aria-label={label} onKeyDown={navigateTabs}>
-    {tasks.map(task => <Tooltip key={task.value} kind={task.hint} text={vis ? undefined : task.label}>
+    {tasks.map(task => <Tooltip key={task.value} kind={task.hint} text={task.label}>
       <button type="button" role="tab" className={selected === task.value ? "is-selected" : undefined}
         id={`${id}-${task.value}-tab`} aria-label={task.label} aria-selected={selected === task.value}
         aria-controls={`${id}-${task.value}`} tabIndex={selected === task.value ? 0 : -1} onClick={() => onSelect(task.value)}>

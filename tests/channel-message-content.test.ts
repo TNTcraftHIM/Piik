@@ -6,7 +6,7 @@ import { setCopy } from "../src/client/ui/copy";
 
 const users = [{ id: "bo", name: "Bo", version: "0".repeat(64) }];
 function render(text: string, mentions: { userId: string; start: number; end: number }[] = []) {
-  setCopy({ lang: "en", vis: false });
+  setCopy({ lang: "en" });
   return renderToStaticMarkup(createElement(ChannelMessageContent, { message: { text, mentions }, users, selfUserId: "bo" }));
 }
 

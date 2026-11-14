@@ -24,21 +24,21 @@ export function ChannelConnectionReport({ state, roomId, sessionId, topology, me
   state: ChannelSnapshot; roomId: string; sessionId: string; topology: ChannelTopology | null;
   metrics: readonly ChannelConnectionSample[];
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const graph = topology ? channelConnectionGraph(state, roomId, sessionId, topology, t) : null;
   const rows = channelConnectionRows(state, sessionId, topology, metrics, t);
   const displayOnly = hasSelectedLocalDisplay(topology, sessionId);
   return <div className="c3-connection-report">
     {graph && <section aria-label={t("host.topology")}><RouteGraph {...graph} emptyLabel={topology?.screen ? t("connection.noScreenPath") : undefined} /></section>}
     {graph && (graph.edges.length > 0 || !topology?.screen) && <p className="c3-connection-note">{t(graph.edges.length ? "connection.pathLegend" : "connection.signalOnly")}</p>}
-    {displayOnly && <p className={vis ? "visually-hidden" : "c3-connection-note"}>{t("connection.localDisplayHint")}</p>}
+    {displayOnly && <p className="c3-connection-note">{t("connection.localDisplayHint")}</p>}
     <ConnectionDetails rows={rows} />
-    {!rows.length && <p className={vis ? "visually-hidden" : "c3-connection-note"}>{t("connection.noMedia")}</p>}
+    {!rows.length && <p className="c3-connection-note">{t("connection.noMedia")}</p>}
   </div>;
 }
 
 function ConnectionBody({ channel, roomId, active }: { channel: ChannelController; roomId: string; active: boolean }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const [publication, setPublication] = useState<string>();
   const [result, setResult] = useState<Observations>();
   const current = useRef(channel);
@@ -80,8 +80,7 @@ function ConnectionBody({ channel, roomId, active }: { channel: ChannelControlle
   }, [active, scope, room?.authorized, room?.available]);
   const observation = result?.scope === scope ? result : null;
   return <>
-    {vis && room && <p className="c3-connection-room">{room.name}</p>}
-    <label className="c3-connection-scope"><span className={vis ? "visually-hidden" : undefined}>{t("connection.scope")}</span>
+    <label className="c3-connection-scope"><span>{t("connection.scope")}</span>
       <select className="lr-select" aria-label={t("connection.scope")} value={selected} onChange={event => setPublication(event.target.value)}>
         <option value="">{t("connection.room")}</option>
         {screens.map(screen => <option key={screen.id} value={screen.id}>
@@ -91,7 +90,7 @@ function ConnectionBody({ channel, roomId, active }: { channel: ChannelControlle
     </label>
     {!room?.available || !room.authorized || !room.delivery || observation?.unavailable
       ? <p className="c3-connection-note" role="status"><Glyph name="alert" size={16} />
-        <span className={vis ? "visually-hidden" : undefined}>{t("connection.unavailable")}</span></p>
+        <span>{t("connection.unavailable")}</span></p>
       : !observation && <LoadingStatus label="connection.loading" />}
     {room?.authorized && room.available && state && sessionId && observation && <ChannelConnectionReport state={state} roomId={roomId} sessionId={sessionId}
       topology={observation.topology} metrics={observation.metrics} />}
@@ -107,7 +106,7 @@ export function ChannelConnections({ channel, roomId }: { channel: ChannelContro
   return <>
     <Btn id={trigger} icon="gauge" quiet size="compact" title={{ text: title }}
       hint="hint-details" expanded={open} controls={id} popoverTarget={id} />
-    <FloatingPanel id={id} trigger={trigger} title={title} icon="network" detachable className="c3-connections"
+    <FloatingPanel id={id} trigger={trigger} title={title} detachable className="c3-connections"
       onOpenChange={setOpen}>
       <ConnectionBody channel={channel} roomId={roomId} active={open} />
     </FloatingPanel>

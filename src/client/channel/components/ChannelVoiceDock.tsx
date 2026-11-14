@@ -16,8 +16,7 @@ import { useVoiceLevels } from "../../room-voice/use-voice-levels";
 export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
   channel: ChannelController; selected: string; onSelect: (id: string) => void; onBrowse: (id: string) => void;
 }) {
-  const { lang } = useCopy();
-  const zh = lang === "zh";
+  const { t } = useCopy();
   const state = channel.state;
   const joined = state?.voice.filter(value => value.sessionId === channel.sessionId) ?? [];
   const activity = joined.find(value => value.roomId === selected) ?? joined[0];
@@ -36,19 +35,19 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
     return appearance ? [{ user: userProfile(state, channel.profiles, user.id)!, ...appearance, level: values.length ? Math.max(...values) : undefined }] : [];
   });
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
-  return <section className="c3-voice-dock" aria-label={zh ? "语音控制" : "Voice controls"}>
+  return <section className="c3-voice-dock" aria-label={t("channel.voiceDock.voiceControls")}>
     <Glyph name="headphones" size={22} />
     <div className="c3-voice-destination">
-      <small>{zh ? "语音已加入" : "Voice joined"}</small>
+      <small>{t("channel.voiceDock.voiceJoined")}</small>
       <Tooltip className="c3-voice-room" overflow={{ text: nameOfRoom(roomId), selector: "button, select" }}>
       {joined.length === 1 ? <button type="button" onClick={() => onBrowse(roomId)}>{nameOfRoom(roomId)}</button>
-        : <select className="lr-select" aria-label={zh ? "选择要控制的语音房间" : "Choose a voice room to control"} value={roomId}
+        : <select className="lr-select" aria-label={t("channel.voiceDock.selectRoom")} value={roomId}
           onChange={event => onSelect(event.target.value)}>
           {joined.map(value => <option key={value.roomId} value={value.roomId}>{nameOfRoom(value.roomId)}</option>)}
         </select>}
       </Tooltip>
     </div>
-    <div className="c3-voice-participants" aria-label={zh ? "当前语音用户" : "Voice participants"}>
+    <div className="c3-voice-participants" aria-label={t("channel.voiceDock.voiceParticipants")}>
       {participants.slice(0, 4).map(({ user, ...voice }) => <Tooltip key={user.id}
         kind={voice.deafened ? "hint-voice-deafen" : voice.microphone ? "hint-voice-microphone-on" : "hint-voice-microphone-off"} text={user.name}>
         <span aria-label={user.name}><PawnSvg color={participantColor(user.id)} identity={user.id} avatar={user.avatar ?? undefined} voice={voice} /></span>
@@ -56,11 +55,11 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
       {participants.length > 4 && <small>+{participants.length - 4}</small>}
     </div>
     <div className="c3-voice-controls">
-      <AudioVolumeMenu volume={channel.voiceInput.volume} onVolume={channel.setInputVolume} label="host.microphone.volume" icon="microphone">
+      <AudioVolumeMenu volume={channel.voiceInput.volume} onVolume={channel.setInputVolume} label="host.microphone.volume">
         <VoiceMicrophoneButton active={!muted} level={levels.get(channel.sessionId ?? "")} disabled={muted && !channel.canUnmute(roomId)} quiet
           onClick={() => run(channel.setMuted(roomId, !muted))} />
       </AudioVolumeMenu>
-      <AudioVolumeMenu volume={channel.listeningVolume} onVolume={channel.setListeningVolume} label="voice.listeningVolume" icon="headphones">
+      <AudioVolumeMenu volume={channel.listeningVolume} onVolume={channel.setListeningVolume} label="voice.listeningVolume">
         <VoiceListeningButton deafened={deafened} quiet
           onClick={() => run(channel.setDeafened(roomId, !deafened))} />
       </AudioVolumeMenu>

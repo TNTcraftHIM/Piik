@@ -33,8 +33,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
   people: readonly ChannelCouchPerson[]; selfUserId: string | null;
   session: RoomInteractionSession | null; className?: string; floating?: boolean;
 }) {
-  const { lang, t, vis } = useCopy();
-  const copy = (chinese: string, english: string) => lang === "zh" ? chinese : english;
+  const { t } = useCopy();
   const state = useSyncExternalStore<ReturnType<RoomInteractionSession["getSnapshot"]> | null>(
     session?.subscribe ?? noSubscription, session?.getSnapshot ?? noSnapshot,
   );
@@ -80,7 +79,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
     </>;
     const pawnClass = `lr-pawn${person.userId === selfUserId ? " is-you" : ""}${session ? "" : " is-static"}`;
     const overflow = { text: person.name, selector: ".lr-pawn-name" };
-    const hint = session ? { kind: "hint-reaction-picker" as const, text: vis ? undefined : action, overflow } : { overflow };
+    const hint = session ? { kind: "hint-reaction-picker" as const, text: action, overflow } : { overflow };
     return <span key={person.userId} className="c3-couch-seat" data-room-peer={person.userId}>
       <Tooltip {...hint} disabled={active}>
         {session ? <button type="button" className={pawnClass} aria-label={action}
@@ -90,7 +89,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
       </Tooltip>
     </span>;
   }
-  return <section className={`c3-couch ${className}`} aria-label={copy("房间里的朋友", "Friends in this room")}
+  return <section className={`c3-couch ${className}`} aria-label={t("channel.couch.friendsInThisRoom")}
     style={{ "--c3-couch-seat": `${seatWidth}px`, "--c3-couch-gutter": `${SEAT_GUTTER}px` } as CSSProperties}>
     <div ref={container} className="c3-couch-width">
       <div ref={area} className="c3-couch-scene" style={{ width }}>
@@ -108,11 +107,11 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
         </div>
         {overflow && <>
           <span className="c3-couch-browse is-previous">
-            <ChannelAction icon="arrowLeft" iconOnly label={copy("向左查看朋友", "See friends to the left")} hint="hint-reaction-picker"
+            <ChannelAction icon="arrowLeft" iconOnly label={t("channel.couch.seeFriendsToTheLeft")} hint="hint-reaction-picker"
               disabled={offset < 1} onClick={() => browse(-1)} />
           </span>
           <span className="c3-couch-browse is-next">
-            <ChannelAction icon="arrowRight" iconOnly label={copy("向右查看朋友", "See friends to the right")} hint="hint-reaction-picker"
+            <ChannelAction icon="arrowRight" iconOnly label={t("channel.couch.seeFriendsToTheRight")} hint="hint-reaction-picker"
               disabled={offset >= others.length * seatWidth - guestWidth - 1} onClick={() => browse(1)} />
           </span>
         </>}

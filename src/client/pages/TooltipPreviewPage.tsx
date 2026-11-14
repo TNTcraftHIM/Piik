@@ -2,7 +2,7 @@ import { useState } from "react";
 import { AppHeader, LedStrip } from "../components/living/Header";
 import { Tooltip } from "../components/living/Tooltip";
 import { ControlsPreview } from "./ControlsPreview";
-import { WelcomeLine, WelcomeCipher } from "../components/living/WelcomeLine";
+import { WelcomeLine } from "../components/living/WelcomeLine";
 import { locales } from "../locales";
 import { HINT_KINDS, HintComic, isHintKind, type HintKind } from "../components/living/hints";
 import { Comic, type ComicKind } from "../components/living/Comic";
@@ -46,11 +46,8 @@ function PreviewCard({ kind, tone, motion, label, text }: {
     <header>
       <code>{label ?? kind}</code>
       <span className="lr-tooltip-preview-actions">
-        {text ? <Tooltip toggleOnClick kind={kind} tone={tone} motion={motion} text={text} place="below">
-          <button type="button" aria-label={`Text ${label ?? kind}`} className="lr-tooltip-preview-trigger">Aa</button>
-        </Tooltip> : null}
-        <Tooltip toggleOnClick kind={kind} tone={tone} motion={motion} place="below">
-          <button type="button" aria-label={`Preview ${label ?? kind}`} className="lr-tooltip-preview-trigger">✦</button>
+        <Tooltip toggleOnClick kind={kind} tone={tone} motion={motion} text={text} place="below">
+          <button type="button" aria-label={`Preview ${label ?? kind}`} className="lr-tooltip-preview-trigger">Aa</button>
         </Tooltip>
       </span>
     </header>
@@ -134,11 +131,11 @@ function TooltipCatalogue() {
         <WelcomeLine still={reducedMotion} />
         <details id="welcome-preview" className="lr-welcome-catalog" open>
           <summary>{locales[lang].playful.welcome.length} {en ? "opening lines" : "句开场白"}</summary>
-          <p>{en ? "One random line per entry, with no automatic rotation. Each language has its own pool. Pure visual mode uses that entry's pictograms and pixel lettering; switching modes keeps the same entry." : "每次进入随机一句，停留时不轮播。各语言独立维护词库；纯视觉模式显示当前语句对应的图形与像素暗号，切换模式仍是同一句。"}</p>
-          <ol>{locales[lang].playful.welcome.map(({ text, symbols }) => <li key={text}><span>{text}</span><WelcomeCipher symbols={symbols} /></li>)}</ol>
+          <p>{en ? "One random line per entry, with no automatic rotation. Each language has its own pool." : "每次进入随机一句，停留时不轮播。各语言独立维护词库。"}</p>
+          <ol>{locales[lang].playful.welcome.map(({ text }) => <li key={text}><span>{text}</span></li>)}</ol>
         </details>
         <h2 id="comic-preview">语义规则 / Semantic grammar</h2>
-        <p>{en ? "Aa pairs the scene with a caption; ✦ shows the pure-visual version." : "Aa 查看图示与文字说明，✦ 查看纯视觉版本。"}</p>
+        <p>{en ? "Open the tooltip to see the scene and its caption." : "打开提示，查看图示与文字说明。"}</p>
         <div className="lr-tooltip-preview-grid">
           {EXAMPLES.map((example) => <PreviewCard key={example.label} {...example} text={t(example.text)} />)}
         </div>

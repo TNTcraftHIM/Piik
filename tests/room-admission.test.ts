@@ -12,7 +12,7 @@ vi.mock("../src/client/components/living/Tooltip", () => ({
     createElement(Fragment, null, children, createElement(HintComic, { kind: kind as HintKind, tone, motion })),
 }));
 
-afterEach(() => setCopy({ lang: "zh", vis: false }));
+afterEach(() => setCopy({ lang: "zh" }));
 
 it.each([
   ["open", false, "currentOpen", true, false, false],
@@ -20,9 +20,8 @@ it.each([
   ["private", true, "currentPassword", true, true, false],
   ["private", false, "currentInvite", false, false, true],
 ] as const)("shows the current admission credential for %s / password=%s", (policy, passwordEnabled, label, code, password, invite) => {
-  for (const mode of ["zh", "en", "vis"] as const) {
-    const lang = mode === "zh" ? "zh" : "en";
-    setCopy({ lang, vis: mode === "vis" });
+  for (const lang of ["zh", "en"] as const) {
+    setCopy({ lang });
     const html = renderToStaticMarkup(createElement(RoomAdmissionBadge, { policy, passwordEnabled }));
     expect(html).toContain(t(lang, `host.policy.${label}`));
     expect(html).toContain('data-comic-tone="off"');

@@ -14,7 +14,7 @@ const copy = (lang: "zh" | "en"): Pick<Copy, "lang" | "t"> => ({
 
 describe("resolveMediaFailure", () => {
   afterEach(() => {
-    setCopy({ lang: "zh", vis: false });
+    setCopy({ lang: "zh" });
   });
 
   it("renders a fact in the copy context language, not the stored locale", () => {

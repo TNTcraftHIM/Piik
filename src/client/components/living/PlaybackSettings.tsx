@@ -68,21 +68,21 @@ export function PlaybackPictureControls({ settings, captions = false }: {
 }
 
 export function RemoteTouchSettings({ mode, onChange }: NonNullable<PlaybackSettingsProps["remoteTouch"]>) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const id = useId();
   const hint = mode === "direct" ? "remote.touchMode.directHint" : "remote.touchMode.trackpadHint";
   return <section aria-label={t("remote.touchMode")}>
     <div className="lr-viewer-settings-heading">
-      <h3><Glyph name="mouse" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("remote.touchMode")}</span></h3>
+      <h3><Glyph name="mouse" size={17} /><span>{t("remote.touchMode")}</span></h3>
     </div>
-    <div className="lr-toggle" role="radiogroup" aria-label={t("remote.touchMode")} aria-describedby={vis ? undefined : `${id}-hint`}>
+    <div className="lr-toggle" role="radiogroup" aria-label={t("remote.touchMode")} aria-describedby={`${id}-hint`}>
       {(["direct", "trackpad"] as const).map(value => <label key={value}>
         <input type="radio" name={id} value={value} checked={mode === value}
           aria-label={t(`remote.touchMode.${value}`)} onChange={() => onChange(value)} />
         <span><Glyph name={value === "direct" ? "tv" : "mouse"} size={17} /><Cap k={`remote.touchMode.${value}`} /></span>
       </label>)}
     </div>
-    {!vis && <p id={`${id}-hint`}>{t(hint)}</p>}
+    <p id={`${id}-hint`}>{t(hint)}</p>
   </section>;
 }
 
@@ -91,7 +91,7 @@ export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVo
   picture?: PlaybackSettingsProps;
   overlaySettings?: ReactNode; reconnect: ReactNode;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const routeHint = route?.rejected ? "playback.routeRejected" : route?.sfuOnly ? "playback.routeSfuOnly"
     : route?.peerOnly ? "playback.routePeerOnly" : !route?.sfuAvailable ? "playback.routeNoSfu"
     : `playback.routeHint.${route.preference}` as const;
@@ -99,44 +99,44 @@ export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVo
   return <div className={`lr-viewer-settings${detailedSections <= 1 ? " is-single" : ""}`}>
     {picture && <section className="lr-playback-compact-picture" aria-label={t("playback.viewControls")}>
       <div className="lr-viewer-settings-heading">
-        <h3><Glyph name="tv" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.viewControls")}</span></h3>
+        <h3><Glyph name="tv" size={17} /><span>{t("playback.viewControls")}</span></h3>
       </div>
       <div className="lr-playback-picture-options"><PlaybackPictureControls settings={picture} captions /></div>
     </section>}
     {preview && <section aria-label={t("host.preview")}>
       <div className="lr-viewer-settings-heading">
-        <h3><Glyph name="tv" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("host.preview")}</span></h3>
+        <h3><Glyph name="tv" size={17} /><span>{t("host.preview")}</span></h3>
       </div>
-      <RowGroup><SwitchItem checked={preview.autoPause} onChange={preview.onChange} icon="pause"
+      <RowGroup><SwitchItem checked={preview.autoPause} onChange={preview.onChange}
         label={t("host.previewAutoPause")} note={t("host.previewAutoPauseHint")} hint="hint-local-pause" /></RowGroup>
-      {!vis && <p>{t("host.previewAutoPauseHint")}</p>}
+      <p>{t("host.previewAutoPauseHint")}</p>
     </section>}
     {buffering && <section aria-label={t("playback.buffering")}>
       <div className="lr-viewer-settings-heading"><h3><Glyph name="clock" size={17} /><Cap k="playback.buffering" /></h3></div>
       <RowGroup><SwitchItem checked={buffering.target === null} onChange={automatic => buffering.onChange(automatic ? null : 300)}
         disabled={buffering.status === "unsupported" && buffering.target === null}
-        icon="sliders" label={t("playback.bufferAutomatic")} hint="hint-metric-video-buffer"
+         label={t("playback.bufferAutomatic")} hint="hint-metric-video-buffer"
         note={`${t("playback.bufferHint")}\n${t("playback.bufferScope")}`} /></RowGroup>
       {buffering.target !== null && <NumberControl value={buffering.target} min={0} max={4000} step={1} unit="ms"
         name="screen-buffer-target" label={t("playback.bufferTarget")} disabled={buffering.status === "unsupported"}
         onChange={buffering.onChange} className="lr-door-group">{input => <div className="lr-quality-heading">
-          {vis ? <Glyph name="clock" size={16} /> : <FieldCap k="playback.bufferTarget" />}
-          <Tooltip kind="hint-metric-video-buffer" text={vis ? undefined : t("playback.bufferHint")}>{input}</Tooltip>
+          <FieldCap k="playback.bufferTarget" />
+          <Tooltip kind="hint-metric-video-buffer" text={t("playback.bufferHint")}>{input}</Tooltip>
         </div>}</NumberControl>}
-      {!vis && <><p>{t("playback.bufferHint")}</p><p>{t("playback.bufferScope")}</p></>}
+      <><p>{t("playback.bufferHint")}</p><p>{t("playback.bufferScope")}</p></>
       {buffering.status === "unsupported" && <Pill icon="alert" label={t("playback.bufferUnsupported")} comic="warning" />}
       {buffering.status === "failed" && <Pill icon="alert" tone="bad" label={t("playback.bufferFailed")} comic="settings-failed" />}
     </section>}
     {remoteTouch && <RemoteTouchSettings {...remoteTouch} />}
     {overlaySettings && <section aria-label={t("playback.overlay")}>
       <div className="lr-viewer-settings-heading">
-        <h3><Glyph name="danmaku" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.overlay")}</span></h3>
+        <h3><Glyph name="danmaku" size={17} /><span>{t("playback.overlay")}</span></h3>
       </div>
       {overlaySettings}
     </section>}
     {(route || relayVolunteer || reconnect) && <section aria-label={t("playback.connection")}>
       <div className="lr-viewer-settings-heading">
-        <h3><Glyph name="branch" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.connection")}</span></h3>
+        <h3><Glyph name="branch" size={17} /><span>{t("playback.connection")}</span></h3>
         {reconnect}
       </div>
       {route && <>
@@ -150,30 +150,27 @@ export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVo
               : preference === "auto" ? "hint-route-auto" : preference === "p2p" ? "hint-route-p2p" : "hint-route-sfu"}
             hintText={t(locked ?? `playback.routeHint.${preference}`)}
             onClick={() => { if (route.preference !== preference) route.onChange(preference); }}>
-            {vis && <Glyph name={preference === "auto" ? "branch" : preference === "p2p" ? "network" : "server"} size={17} />}
             <Cap k={`playback.route.${preference}`} />
           </Chip>;
         })}</RowGroup>
-        {!vis && <p className={route.rejected ? "is-error" : undefined} role={route.rejected ? "status" : undefined}>{t(routeHint)}</p>}
-        {vis && route.rejected && <Pill icon="alert" tone="bad" label={t(routeHint)} comic="settings-failed" />}
+        <p className={route.rejected ? "is-error" : undefined} role={route.rejected ? "status" : undefined}>{t(routeHint)}</p>
       </>}
       {relayVolunteer && <div className="lr-viewer-relay-setting" aria-busy={relayVolunteer.pending}>
         <div className="lr-door-group">
         <RowGroup>
-          {vis && <Glyph name="branch" size={18} />}
           <SwitchItem checked={relayVolunteer.enabled} disabled={relayVolunteer.disabled}
             onChange={relayVolunteer.onChange} label={t("playback.relayVolunteer")}
             note={t(relayVolunteer.available ? "playback.relayVolunteerHint" : "playback.relayUnavailable")} hint="hint-relay-volunteer" />
         </RowGroup>
         {relayVolunteer.enabled && <NumberControl value={relayVolunteer.capacity} min={relayVolunteer.minimum} max={relayVolunteer.maximum}
-          step={1} unit={t(relayVolunteer.capacity === 1 ? "playback.relayPerson" : "playback.relayPeople")} showUnit={!vis} name="relay-capacity" label={t("playback.relayLimit")}
+          step={1} unit={t(relayVolunteer.capacity === 1 ? "playback.relayPerson" : "playback.relayPeople")} name="relay-capacity" label={t("playback.relayLimit")}
           disabled={relayVolunteer.disabled || !relayVolunteer.available} onChange={relayVolunteer.onCapacityChange}
           className="lr-door-group">{input => <div className="lr-quality-heading">
-            {vis ? <Glyph name="branch" size={16} /> : <FieldCap k="playback.relayLimit" />}
+            <FieldCap k="playback.relayLimit" />
             <Tooltip kind="hint-relay-volunteer" text={`${t("playback.relayLimit")}\n${t("playback.relayVolunteerHint")}`}>{input}</Tooltip>
           </div>}</NumberControl>}
         </div>
-        {!vis && <p>{t(relayVolunteer.available ? "playback.relayVolunteerHint" : "playback.relayUnavailable")}</p>}
+        <p>{t(relayVolunteer.available ? "playback.relayVolunteerHint" : "playback.relayUnavailable")}</p>
       </div>}
     </section>}
   </div>;

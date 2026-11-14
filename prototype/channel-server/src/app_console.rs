@@ -9,9 +9,8 @@ pub(super) struct Console {
 impl Console {
     pub fn new(language: Option<&str>) -> Self {
         let language = match language {
-            Some("zh") => Some("zh"),
+            Some("zh" | "zh-Hant") => Some("zh"),
             Some("en") => Some("en"),
-            Some("vis") => Some("vis"),
             _ => None,
         };
         let ansi = match std::env::var("TERM") {
@@ -23,11 +22,10 @@ impl Console {
         Self { language, color }
     }
 
-    fn text(&self, english: &str, chinese: &str, visual: &str) -> String {
+    fn text(&self, english: &str, chinese: &str) -> String {
         match self.language {
             Some("en") => english.into(),
             Some("zh") => chinese.into(),
-            Some("vis") => visual.into(),
             _ => format!("{english} / {chinese}"),
         }
     }
@@ -57,19 +55,19 @@ impl Console {
 
  ------------------------------------
  {}"#,
-            self.paint(32, &self.text("App is ready", "App 已就绪", "+"))
+            self.paint(32, &self.text("App is ready", "App 已就绪"))
         );
         self.launcher(port);
         eprintln!(
             "\n {}\n",
-            self.text("Ctrl+C to quit", "按 Ctrl+C 正常退出", "Ctrl+C")
+            self.text("Ctrl+C to quit", "按 Ctrl+C 正常退出")
         );
     }
 
     fn launcher(&self, port: u16) {
         eprintln!(
             "\n {}\n {}",
-            self.text("App launcher", "App 启动页", "App"),
+            self.text("App launcher", "App 启动页"),
             self.paint(34, &format!("http://127.0.0.1:{port}/client"))
         );
     }
@@ -79,10 +77,9 @@ impl Console {
             self.text(
                 "Starting public invitation...",
                 "正在连接公网邀请…",
-                "... ↗",
             )
         } else {
-            self.text("Starting local network...", "正在启动局域网…", "... LAN")
+            self.text("Starting local network...", "正在启动局域网…")
         };
         eprintln!("\n {}", self.paint(34, &label));
     }
@@ -90,8 +87,8 @@ impl Console {
     pub fn ready(&self, site: &str) {
         eprintln!(
             "\n {}\n {}\n {}",
-            self.paint(32, &self.text("Site ready", "站点已就绪", "+ ↗")),
-            self.text("Site address", "站点地址", "↗"),
+            self.paint(32, &self.text("Site ready", "站点已就绪")),
+            self.text("Site address", "站点地址"),
             self.paint(34, site)
         );
     }
@@ -99,17 +96,16 @@ impl Console {
     pub fn failed(&self, port: u16) {
         eprintln!(
             "\n {}\n {}",
-            self.paint(31, &self.text("Site unavailable", "站点暂不可用", "!")),
+            self.paint(31, &self.text("Site unavailable", "站点暂不可用")),
             self.text(
                 "Open the App launcher to try again.",
                 "请在 App 启动页重试。",
-                "↻ App"
             )
         );
         self.launcher(port);
     }
 
     pub fn stopped(&self) {
-        eprintln!("\n {}", self.text("App stopped", "App 已退出", "-"));
+        eprintln!("\n {}", self.text("App stopped", "App 已退出"));
     }
 }

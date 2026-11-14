@@ -2,8 +2,10 @@
 
 [中文](./translating.zh-CN.md) · [Contributing](../../CONTRIBUTING.md)
 
-Piik includes Simplified Chinese and English. Suggest wording, correct a
-translation or add a language through GitHub issues and pull requests.
+The 3.0 App/Server UI includes Simplified Chinese, English, Traditional Chinese,
+Japanese and Korean. The public website, film and guides maintain separate
+Chinese/English content. Suggest wording, correct a translation or add a language
+through GitHub issues and pull requests.
 
 For a wording suggestion, [open an issue](https://github.com/TNTcraftHIM/Piik/issues/new/choose)
 with the language, page/control, current text, proposed text and reason. Include
@@ -12,7 +14,7 @@ personal content. You can send a suggestion without setting up development tools
 
 ## Make your first correction
 
-1. Try the affected screen and read the nearby controls. Check both existing
+1. Try the affected screen and read the nearby controls. Check existing
    languages when helpful; the [terminology and voice guide](../standards/naming.md#voice-and-terminology)
    owns names and writing style.
 2. Fork Piik and work on a branch from current `main`, following
@@ -36,11 +38,10 @@ personal content. You can send a suggestion without setting up development tools
 
 | Surface | Editable source |
 | --- | --- |
-| App launcher and shared Browser/App UI, including tooltips and accessible labels | [English](../../src/client/locales/en.ts), [Chinese](../../src/client/locales/zh.ts) |
-| Welcome lines, waiting captions and changing browser-tab titles | The `enPlayful` / `zhPlayful` pools and title-frame catalogs in those same files; website welcome lines reuse these pools |
+| App launcher, shared Browser/App UI and 3.0 site/room UI, including tooltips and accessible labels | [Locale registry](../../src/client/locales/index.ts): [English](../../src/client/locales/en.ts), [Simplified Chinese](../../src/client/locales/zh.ts), [Traditional Chinese](../../src/client/locales/zh-Hant.ts), [Japanese](../../src/client/locales/ja.ts), [Korean](../../src/client/locales/ko.ts) |
+| Welcome lines, waiting captions and changing browser-tab titles | Playful pools and title-frame catalogs in each locale file; website welcome lines reuse the English and Simplified Chinese pools |
 | Website | [Page markup](../../site/index.html) and [interactive labels](../../site/main.js); text is paired by `en` and `zh-CN` |
 | Introduction film | [Film sources](../../site/film/README.md); captions, artwork and playback labels have their own bilingual text |
-| 3.0 site/room-specific wording | Paired Chinese/English text in [site and room components](../../src/client/channel/components) and the [room page](../../src/client/pages/ChannelPreviewPage.tsx); shared controls still use the catalogs above |
 | README and entry guides | [README pair](../../README.md), [documentation home](./README.md), [getting started](./getting-started.md), [troubleshooting](./troubleshooting.md) and [self-hosting](../operations/self-hosting.md), each with a `.zh-CN.md` counterpart |
 
 Edit the source, then rebuild the surface that serves it:
@@ -110,19 +111,23 @@ layout questions, so contributors can coordinate work and review.
    Use an ASCII filename/key, the language's native name in `name`, a recognizable
    one-to-three-character button label in `short`, and a matching language tag
    in `tag`. Distinguish coexisting regional/script variants.
-   Extra languages appear in a shared dropdown after visual mode. Check language
+   Extra languages appear in the third, shared dropdown after the Chinese and
+   English shortcuts. Check language
    selection, saved preferences and App handoff against the
    [system-language policy](../standards/presentation-lifecycle.md#visual-language).
 3. Check complete screens and the launch flow, including launcher, room and error
-   states. Paired page-specific text does not automatically inherit a new catalog
-   language; state its coverage in the PR and use the
+   states. The 3.0 site and room use the shared catalog, with complete
+   `Record<CopyKey, string>` coverage and matching placeholders. Use the
    [module map](../standards/engineering.md#module-map).
 4. State coverage in the PR. Website, film and documentation translations can be
    contributed separately; update their language controls when adding a language.
    For right-to-left scripts, implement and check text direction and layout.
 
-Translate visual-mode labels and explanations in the normal catalog; keep that
-presentation option available.
+System tags `zh-CN` and `zh-Hans` select Simplified Chinese; `zh-TW`, `zh-HK` and
+`zh-Hant` select Traditional Chinese. Saved explicit choices take precedence over
+system defaults, and App handoff carries the registered language tag. The native
+console supports Chinese/English with English fallback for other languages;
+native window captions have their own Chinese/English text.
 
 ## Playful copy
 
@@ -133,12 +138,10 @@ omits the decoration; one entry stays static. Operational keys and title labels
 still require complete translations. Errors, pauses, endings, required actions
 and slogans stay fixed.
 
-Welcome entries carry `text` and two `symbols`, chosen from the existing
-[icon vocabulary](../../src/client/ui/icons.tsx) to express that sentence in the
-visual cipher. For example:
+Welcome entries carry `text`. For example:
 
 ```ts
-{ text: "Your seat is right here.", symbols: ["couch", "heart"] },
+{ text: "Your seat is right here." },
 ```
 
 Waiting entries are plain strings such as `"Pull up a comfy chair."`. Keep them
@@ -146,7 +149,7 @@ brief and natural in context. Avoid temporary trends, literal borrowed dialogue
 and statements that invent progress, success or remaining time.
 
 Timing follows the [playful-copy lifecycle](../standards/visual-language.md#playful-copy-lifecycle).
-Preview welcome text and its cipher at
+Preview welcome text at
 `/__tooltip-preview`; use `/__status-preview` for waiting captions and titles.
 Check both narrow windows and language changes. The website's build picks up
 welcome edits automatically; its other copy remains separate.
@@ -171,7 +174,7 @@ in context. Check narrow windows, keyboard focus, tooltips and accessible labels
 With extra languages registered, verify that the dropdown stays usable near
 viewport edges and exposes its expanded/collapsed state to assistive technology.
 For new languages, also check a reload, App launch, switching back to English,
-and the optional visual mode. Keep meaningful phrases together instead of adding
+and the additional-language menu. Keep meaningful phrases together instead of adding
 spaces or hard line breaks to force one desktop layout.
 
 Website and film changes use the [website preview](../operations/website.md#preview).

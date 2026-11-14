@@ -10,7 +10,7 @@ export function StatusIndicator({ status, label, onActivate }: {
   label?: string;
   onActivate?: () => void;
 }) {
-  const { vis, t } = useCopy();
+  const { t } = useCopy();
   const hint = (status.tooltip ?? status.comic)!;
   const text = label ?? t(status.labelKey);
   const description = onActivate ? `${text}\n${t("shareHelp.open")}` : text;
@@ -28,5 +28,5 @@ export function StatusIndicator({ status, label, onActivate }: {
     </button>
   );
   return <Tooltip toggleOnClick={!onActivate} autoOpen={Boolean(onActivate)} kind={hint} tone={status.tone} motion={status.pulse ? "progress" : "still"}
-    text={vis ? undefined : description}>{indicator}</Tooltip>;
+    text={description}>{indicator}</Tooltip>;
 }

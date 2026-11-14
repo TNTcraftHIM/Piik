@@ -12,7 +12,7 @@ import {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
-  setCopy({ lang: "zh", vis: false });
+  setCopy({ lang: "zh" });
 });
 
 describe("browser-local display name", () => {
@@ -229,8 +229,8 @@ describe("App launch handoff", () => {
   });
 
   it.each([
-    { lang: "zh", vis: false, theme: "light" },
-    { lang: "en", vis: true, theme: null },
+    { lang: "zh", theme: "light" },
+    { lang: "en", theme: null },
   ] as const)("carries launcher presentation across origins: %j", (presentation) => {
     const target = new URL(clientLaunchURL(
       "https://site.example/?room=9527#piik-client=1&retained=yes",
@@ -248,10 +248,10 @@ describe("App launch handoff", () => {
   });
 
   it.each([
-    ["piik-lang=zh&piik-mode=text&piik-theme=light", null],
-    ["piik-client=1&piik-lang=other&piik-mode=text&piik-theme=light", { vis: false, theme: "light", explicit: [] }],
-    ["piik-client=1&piik-lang=zh&piik-mode=other&piik-theme=light", { lang: "zh", theme: "light", explicit: [] }],
-    ["piik-client=1&piik-lang=zh&piik-mode=text&piik-theme=other", { lang: "zh", vis: false, explicit: [] }],
+    ["piik-lang=zh&piik-theme=light", null],
+    ["piik-client=1&piik-lang=other&piik-theme=light", { theme: "light", explicit: [] }],
+    ["piik-client=1&piik-lang=zh&piik-theme=light", { lang: "zh", theme: "light", explicit: [] }],
+    ["piik-client=1&piik-lang=zh&piik-theme=other", { lang: "zh", explicit: [] }],
   ])("ignores invalid preference fields: %s", (fragment, presentation) => {
     const replaceState = vi.fn();
     vi.stubGlobal("window", {

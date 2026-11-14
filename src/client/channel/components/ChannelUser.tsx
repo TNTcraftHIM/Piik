@@ -10,21 +10,20 @@ export function ChannelUser({ id, name, avatar, self, owner, online, voice, acti
   voice?: { microphone: boolean; deafened?: boolean }; activity?: string;
   avatar?: string; actions?: ReactNode;
 }) {
-  const { lang } = useCopy();
-  const zh = lang === "zh";
+  const { t } = useCopy();
   const [preview, setPreview] = useState(false);
-  const previewLabel = zh ? `查看 ${name} 的头像` : `View ${name}'s avatar`;
+  const previewLabel = t("channel.user.viewAvatar", { name });
   const pawn = <PawnSvg color={participantColor(id)} identity={id} avatar={avatar} host={owner} voice={voice} />;
   return <div className={`c3-user${online ? "" : " is-offline"}`} data-user-id={id}>
     <div className="c3-person">
       {avatar ? <Tooltip text={previewLabel}><button type="button" className="c3-avatar-preview" aria-haspopup="dialog"
         aria-label={previewLabel} onClick={() => setPreview(true)}>{pawn}</button></Tooltip> : pawn}
       <div className="c3-person-copy">
-        <strong>{name}{self && <span className="c3-you">{zh ? "你" : "you"}</span>}</strong>
-        {(activity || owner) && <small>{activity || (zh ? "房主" : "Room owner")}</small>}
+        <strong>{name}{self && <span className="c3-you">{t("channel.user.you")}</span>}</strong>
+        {(activity || owner) && <small>{activity || t("channel.user.roomOwner")}</small>}
       </div>
       {actions && <div className="c3-person-actions">{actions}</div>}
     </div>
-    {preview && avatar && <ChannelImageDialog src={avatar} name={zh ? `${name} 的头像` : `${name}'s avatar`} onClose={() => setPreview(false)} />}
+    {preview && avatar && <ChannelImageDialog src={avatar} name={t("channel.user.avatar", { name })} onClose={() => setPreview(false)} />}
   </div>;
 }

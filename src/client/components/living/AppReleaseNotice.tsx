@@ -26,7 +26,7 @@ const labels: Record<ReleaseUpdateNotice["kind"], CopyKey> = {
 export function AppReleaseNotice({ update, native, managementURL }: {
   update: ReleaseUpdateNotice; native?: AppUpdateControls; managementURL?: string;
 }) {
-  const { lang, vis, t } = useCopy();
+  const { lang, t } = useCopy();
   const warningId = useId();
   const [viewedRelease, setViewedRelease] = useState<ReleaseUpdateNotice | null>(null);
   const major = update.kind === "major-update";
@@ -39,9 +39,9 @@ export function AppReleaseNotice({ update, native, managementURL }: {
   return <><div className="lr-client-release">
     {major && <button id={warningId} className="lr-client-release-warning" type="button"
       onClick={() => setViewedRelease(update)} aria-haspopup="dialog" aria-label={t("client.update.majorHint")}>
-      {vis ? <Glyph name="alert" size={17} /> : t("client.update.majorHint")}
+      {t("client.update.majorHint")}
     </button>}
-    {headline && !vis && <div className="lr-client-release-headline">
+    {headline && <div className="lr-client-release-headline">
       <strong>{headline.title}</strong>
       {headline.description && <p>{headline.description}</p>}
     </div>}
@@ -52,22 +52,22 @@ export function AppReleaseNotice({ update, native, managementURL }: {
         busy={native.busy} disabled={native.busy} tone="primary"
         onClick={() => native.act({ action: "download", version: update.version, revision: update.revision! })} />
         : managementURL ? <a className="lr-btn" href={managementURL} target="_blank" rel="noopener noreferrer" aria-label={t("client.update.manage")}>
-          <Glyph name="window" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("client.update.manage")}</span>
+          <Glyph name="window" size={17} /><span>{t("client.update.manage")}</span>
         </a>
-        : !active && <Tooltip kind="update-available" text={major ? t("client.update.majorHint") : vis ? update.version : label}>
+        : !active && <Tooltip kind="update-available" text={major ? t("client.update.majorHint") : label}>
         <a className="lr-btn lr-client-update" href={update.url} target="_blank" rel="noopener noreferrer"
           aria-label={label} aria-describedby={major ? warningId : undefined}>
           <Glyph name={major ? "alert" : "arrowUp"} size={17} />
-          <span className={vis ? "visually-hidden" : undefined}>{caption}</span>
-          {vis && <span aria-hidden="true">{update.version}</span>}
+          <span>{caption}</span>
+
         </a>
       </Tooltip>}
     </div>
     {native && <AppUpdateStatus {...native} />}
-    {native?.view.state === "unavailable" && <p className={vis ? "visually-hidden" : "lr-app-update-manual"}>{t("client.update.manualHint")}</p>}
+    {native?.view.state === "unavailable" && <p className="lr-app-update-manual">{t("client.update.manualHint")}</p>}
     <a className="lr-client-release-mirror" href="https://atomgit.com/TNTcraftHIM/Piik/releases"
       target="_blank" rel="noopener noreferrer" aria-label={t("client.update.downloads")}>
-      {vis ? <>AtomGit <Glyph name="arrowDown" size={14} /></> : t("client.update.downloads")}
+      {t("client.update.downloads")}
       <span aria-hidden="true"> ↗</span>
     </a>
   </div>
@@ -76,7 +76,7 @@ export function AppReleaseNotice({ update, native, managementURL }: {
 }
 
 export function AppUpdateStatus({ view, busy, error, act }: AppUpdateControls) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const active = view.operationId && view.state !== "idle" && view.state !== "unavailable";
   const downloading = view.state === "downloading";
   const ready = view.state === "ready";
@@ -87,14 +87,14 @@ export function AppUpdateStatus({ view, busy, error, act }: AppUpdateControls) {
   return <div className="lr-app-update-status">
     {active && <>
       {(downloading || view.state === "installing") ? <LoadingStatus label={status} />
-        : <p role="status"><Glyph name={failed ? "alert" : "check"} size={18} /> <span className={vis ? "visually-hidden" : undefined}>{t(status)}</span></p>}
+        : <p role="status"><Glyph name={failed ? "alert" : "check"} size={18} /> <span>{t(status)}</span></p>}
       <strong>{view.version}</strong>
       {downloading && <>
         <progress aria-label={t(status)} max={view.totalBytes} value={view.totalBytes ? Math.min(received, view.totalBytes) : undefined} />
         <span className="lr-app-update-bytes">{(received / 1048576).toFixed(1)}{view.totalBytes ? ` / ${(view.totalBytes / 1048576).toFixed(1)}` : ""} MiB</span>
       </>}
-      {ready && <p className={vis ? "visually-hidden" : undefined}>{t("client.update.restartHint")}</p>}
-      {downloading && <p className={vis ? "visually-hidden" : undefined}>{t("client.update.continueHint")}</p>}
+      {ready && <p>{t("client.update.restartHint")}</p>}
+      {downloading && <p>{t("client.update.continueHint")}</p>}
       <div className="lr-client-release-actions">
         {ready && <Btn icon="refresh" title="client.update.install" cap="client.update.install" tone="primary" busy={busy} disabled={busy}
           hint="warning" hintText="client.update.restartHint"

@@ -31,7 +31,7 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
   simultaneous?: boolean;
   onSimultaneous?: (enabled: boolean) => Promise<void>;
 }) {
-  const { t, vis, lang } = useCopy();
+  const { t, lang } = useCopy();
   const id = useId();
   const [open, setOpen] = useState(false);
   const gamepadAnchor = lang === "zh" ? "手柄" : "gamepads";
@@ -111,7 +111,7 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
         popoverTarget={detached ? undefined : id} expanded={open} controls={detached ? undefined : id} />
       {pending > 0 && <span className="lr-remote-count" role="status" aria-label={`${t("remote.requests")}: ${pending}`}>{pending}</span>}
     </span>
-    {createPortal(<FloatingPanel id={id} trigger={`${id}-trigger`} title={t("remote.title")} icon="mouse" compact anchorOnOpen detachable
+    {createPortal(<FloatingPanel id={id} trigger={`${id}-trigger`} title={t("remote.title")} compact anchorOnOpen detachable
       className="lr-remote-panel" onOpenChange={(opened, owner) => {
         setOpen(opened);
         setSurfaceDocument(owner);
@@ -122,7 +122,7 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
         }
       }}>
       <div className="lr-floating-scroll lr-remote-panel-body">
-        <SwitchItem checked={mode !== "off"} label={t("remote.title")} icon="mouse" hint="hint-remote-control"
+        <SwitchItem checked={mode !== "off"} label={t("remote.title")} hint="hint-remote-control"
           disabled={mode === "off" && (busy || disabled || shortcutUnavailable)}
           onChange={enabled => {
             // A remembered automatic grant is not consent for this audience.
@@ -130,18 +130,18 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
             else void applyPolicy(enabled ? draft : "off", enabled && draft === "password" ? password : undefined);
           }} />
         {mode !== "off" && onSimultaneous && simultaneous !== undefined && <>
-          <SwitchItem checked={simultaneous} label={t("remote.simultaneous")} icon="users" hint="hint-remote-control"
+          <SwitchItem checked={simultaneous} label={t("remote.simultaneous")} hint="hint-remote-control"
             note={t("remote.simultaneousHelp")} disabled={busy || disabled}
             onChange={enabled => void perform("simultaneous", () => onSimultaneous(enabled))} />
           {failedId === "simultaneous" && <p role="alert"><Glyph name="alert" size={14} />
-            <span className={vis ? "visually-hidden" : undefined}>{t("remote.decisionFailed")}</span></p>}
+            <span>{t("remote.decisionFailed")}</span></p>}
         </>}
         {mode !== "off" && gamepad !== undefined && <p className="lr-remote-note">
             <Glyph name="gamepad" size={14} />{" "}
-            {gamepad && <span className={vis ? "visually-hidden" : undefined}>{t("remote.gamepadHostHelp")} </span>}
-            <Tooltip kind="hint-remote-control" text={vis ? undefined : t("remote.gamepadSetup")}>
+            {gamepad && <span>{t("remote.gamepadHostHelp")} </span>}
+            <Tooltip kind="hint-remote-control" text={t("remote.gamepadSetup")}>
               <a href={gamepadGuide} target="_blank" rel="noopener noreferrer" aria-label={t("remote.gamepadSetup")}>
-                {vis ? <Glyph name="help" size={16} /> : t("remote.gamepadSetup")}
+                {t("remote.gamepadSetup")}
               </a>
             </Tooltip>
         </p>}
@@ -158,29 +158,29 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
               onAllow={() => void perform(request.id, () => onDecide(request.id, true))}
               onDecline={() => void perform(`stop:${request.id}`, () => onDecide(request.id, false))}
               onStop={() => void perform(`stop:${request.id}`, () => onDecide(request.id, false))} />)}
-          {!vis && requests.some(request => request.state === "pending") && <p className="lr-remote-note">{t("remote.consent")}</p>}
+          {requests.some(request => request.state === "pending") && <p className="lr-remote-note">{t("remote.consent")}</p>}
         </div>}
         {(mode !== "off" || preparing) && <form className="lr-remote-settings" onSubmit={event => {
             event.preventDefault();
             void applyPolicy(draft, draft === "password" ? password : undefined);
           }}>
-          {!vis && <span className="lr-remote-field-label">{t("remote.authorization")}</span>}
+          <span className="lr-remote-field-label">{t("remote.authorization")}</span>
           <div className="lr-toggle lr-remote-modes" role="group" aria-label={t("remote.authorization")}
             style={{ "--lr-segments": 3, "--lr-selected-index": ["ask", "room", "password"].indexOf(draft) } as CSSProperties}>
-            {(["ask", "room", "password"] as const).map((value, index) => <Tooltip key={value}
-              kind="hint-remote-control" text={vis ? undefined : t(`remote.help.${value}`)}>
+            {(["ask", "room", "password"] as const).map(value => <Tooltip key={value}
+              kind="hint-remote-control" text={t(`remote.help.${value}`)}>
               <button type="button" className={draft === value ? "is-selected" : undefined} aria-pressed={draft === value}
                 aria-label={t(`remote.mode.${value}`)} disabled={busy || disabled}
                 onClick={() => { setDraft(value); setPassword(""); }}>
-                {vis ? <Glyph name={(["check", "users", "key"] as const)[index]} size={18} /> : t(`remote.mode.${value}`)}
+                {t(`remote.mode.${value}`)}
               </button>
             </Tooltip>)}
           </div>
-          {!vis && <p className="lr-remote-note">{t(`remote.help.${draft}`)}</p>}
+          <p className="lr-remote-note">{t(`remote.help.${draft}`)}</p>
           {draft === "password" && <label className="lr-input">
             <Glyph name="key" size={18} />
             <input type="password" autoComplete="new-password" required maxLength={128} value={password} autoFocus={preparing}
-              aria-label={t("remote.password")} placeholder={vis ? "" : t("remote.password")}
+              aria-label={t("remote.password")} placeholder={t("remote.password")}
               disabled={busy || disabled} onChange={event => setPassword(event.target.value)} />
           </label>}
           {(draft !== mode || draft === "password") && <div className="lr-remote-policy-actions">
@@ -194,8 +194,8 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
           </div>}
         </form>}
         {failedId === "policy" && <p role="alert"><Glyph name="alert" size={14} />
-          <span className={vis ? "visually-hidden" : undefined}>{t(platform === "darwin" && mode === "off" ? "remote.macPermission" : "remote.decisionFailed")}</span></p>}
-        {!vis && <p className="lr-remote-note">{t(platform === "linux" && mode === "off" ? "remote.linuxEnable" : "remote.policyLifetime")}</p>}
+          <span>{t(platform === "darwin" && mode === "off" ? "remote.macPermission" : "remote.decisionFailed")}</span></p>}
+        <p className="lr-remote-note">{t(platform === "linux" && mode === "off" ? "remote.linuxEnable" : "remote.policyLifetime")}</p>
         {onShortcut && shortcut && <>
           <RemoteShortcutSelect host mac={platform === "darwin"} value={shortcut.key} disabled={busy || disabled}
             actualLabel={shortcut.stopShortcutLabel}
@@ -205,11 +205,11 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
               saveRoomPreferences({ remoteStopKey: key });
             })} />
           {((!shortcut.available && shortcut.stopShortcutLabel === undefined) || failedId === "shortcut") && <p role="alert"><Glyph name="alert" size={14} />
-            <span className={vis ? "visually-hidden" : undefined}>{t("remote.shortcutFailed")}</span></p>}
+            <span>{t("remote.shortcutFailed")}</span></p>}
         </>}
         {!onShortcut && (mode === "room" || mode === "password" || requests.some(request => request.state !== "pending")) && <p className="lr-remote-note">
-          {platform === "linux" ? <><Glyph name="mouse" size={14} /> <span className={vis ? "visually-hidden" : undefined}>{t("remote.linuxStop")}</span></>
-            : <>{vis ? <Glyph name="keyboard" size={14} /> : t("remote.shortcut")} <kbd>{platform === "darwin" ? "Ctrl + Option + F10" : "Ctrl + Alt + F10"}</kbd></>}
+          {platform === "linux" ? <><Glyph name="mouse" size={14} /> <span>{t("remote.linuxStop")}</span></>
+            : <>{t("remote.shortcut")} <kbd>{platform === "darwin" ? "Ctrl + Option + F10" : "Ctrl + Alt + F10"}</kbd></>}
         </p>}
       </div>
     </FloatingPanel>, document.body)}

@@ -2,7 +2,6 @@ import { useEffect, useId, useSyncExternalStore, type CSSProperties, type Compon
 import { RoomInteractionSession } from "../../lib/room-interactions";
 import { CHAT_OVERLAY_LIMITS } from "../../lib/room-preferences";
 import { useCopy } from "../../ui/copy";
-import { Glyph } from "../../ui/icons";
 import { Btn, SwitchItem } from "./primitives";
 import { participantColor } from "./participant-color";
 import { Tooltip } from "./Tooltip";
@@ -27,7 +26,7 @@ function ConnectedToggle({ session, ...appearance }: ToggleProps & { session: Ro
 
 export function RoomChatOverlaySettings({ session }: { session: RoomInteractionSession }) {
   const { overlayAppearance } = useSyncExternalStore(session.subscribe, session.getSnapshot);
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const id = useId();
   return <div className="lr-chat-overlay-settings">
     {(["scale", "opacity", "speed"] as const).map(property => {
@@ -35,10 +34,10 @@ export function RoomChatOverlaySettings({ session }: { session: RoomInteractionS
       const label = t(`interaction.overlay.${property}`);
       return <div className="lr-chat-setting" key={property}>
         <label htmlFor={`${id}-${property}`}>
-          {vis ? <Glyph name={property === "scale" ? "textSize" : property === "speed" ? "gauge" : "opacity"} size={18} /> : label}
+          {label}
           <output htmlFor={`${id}-${property}`}>{percent}%</output>
         </label>
-        <Tooltip kind="hint-chat-settings" text={vis ? undefined : property === "speed" ? t("interaction.overlay.speedHint") : label}>
+        <Tooltip kind="hint-chat-settings" text={property === "speed" ? t("interaction.overlay.speedHint") : label}>
           <input id={`${id}-${property}`} type="range" min={CHAT_OVERLAY_LIMITS[property][0] * 100}
             max={CHAT_OVERLAY_LIMITS[property][1] * 100} step={10} value={percent}
             aria-label={label} aria-valuetext={`${percent}%`}
@@ -47,11 +46,11 @@ export function RoomChatOverlaySettings({ session }: { session: RoomInteractionS
       </div>;
     })}
     <div className="lr-chat-color-setting">
-      {vis && <Glyph name="users" size={18} />}
+
       <SwitchItem checked={overlayAppearance.colorBySender} onChange={colorBySender => session.setOverlayAppearance({ colorBySender })}
         label={t("interaction.overlay.colorBySender")} hint="hint-chat-settings" />
     </div>
-    {!vis && <p>{t("interaction.settingsHint")}</p>}
+    <p>{t("interaction.settingsHint")}</p>
   </div>;
 }
 

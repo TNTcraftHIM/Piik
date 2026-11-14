@@ -11,7 +11,7 @@ export function RemoteControlRequestCard({ name, peerId, state,
   failed?: boolean; decisionDisabled?: boolean; stopDisabled?: boolean;
   onAllow: () => void; onDecline: () => void; onStop: () => void;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const pending = state === "pending";
   return <div className={`lr-remote-request${pending ? " is-pending" : ""}`} role="group" aria-label={name}>
     <NameTag name={name} identity={peerId} />
@@ -21,10 +21,10 @@ export function RemoteControlRequestCard({ name, peerId, state,
     <div className="lr-remote-request-info">
       <p className="lr-remote-request-details">
         <Glyph name={pending ? "clock" : state === "suspended" ? "pause" : "mouse"} size={14} />
-        <span className={vis ? "visually-hidden" : undefined}>{t(pending ? "remote.waiting" : state === "suspended" ? "remote.hostFocus" : "remote.controlling")}</span>
+        <span>{t(pending ? "remote.waiting" : state === "suspended" ? "remote.hostFocus" : "remote.controlling")}</span>
       </p>
       {failed && <p role="alert"><Glyph name="alert" size={14} />
-        <span className={vis ? "visually-hidden" : undefined}>{t("remote.decisionFailed")}</span></p>}
+        <span>{t("remote.decisionFailed")}</span></p>}
     </div>
     {pending && <div className="lr-remote-request-actions">
       <Btn icon="x" title="remote.decline" cap="remote.decline" hint="hint-remote-stop" disabled={stopDisabled} onClick={onDecline} />

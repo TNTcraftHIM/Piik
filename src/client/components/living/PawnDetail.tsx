@@ -33,7 +33,7 @@ export function PawnDetail({
   voiceDetails?: readonly ConnectionDetail[];
 }) {
   const copy = useCopy();
-  const { t, vis } = copy;
+  const { t } = copy;
   const errorText = resolveMediaFailure(error, copy);
   return (
     <div className="lr-row is-sub lr-pawn-detail" role="group" aria-label={name}>
@@ -41,7 +41,7 @@ export function PawnDetail({
         <PawnSvg color={participantColor(pawnKey)} identity={pawnKey} />
       </span>
       <span className="lr-pawn-detail-name">{name}</span>
-      <Tooltip kind="hint-close" text={vis ? undefined : t("common.close")}>
+      <Tooltip kind="hint-close" text={t("common.close")}>
         <button
           type="button"
           className="lr-btn is-dense is-quiet"
@@ -61,7 +61,7 @@ export function PawnDetail({
           note: <>{tag ? (
             <span className="lr-meter-cell">
               <Glyph name={tag.icon} size={16} />
-              {vis ? <span className="visually-hidden">{tag.label}</span> : <b>{tag.label}</b>}
+              <b>{tag.label}</b>
             </span>
           ) : null}
           {errorText ? (

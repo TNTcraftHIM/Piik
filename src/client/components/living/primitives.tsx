@@ -1,5 +1,5 @@
 // Living-room control primitives. Every glyph control keeps its copy in
-// tooltip/aria; text modes add a visible caption from the same catalog.
+// tooltip/aria; optional captions come from the same catalog.
 import { useId, type AriaAttributes, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { Tooltip } from "./Tooltip";
 import { participantColor } from "./participant-color";
@@ -33,8 +33,8 @@ function blurAfterPointerClick(event: MouseEvent<HTMLButtonElement>): void {
 type ControlCopy = CopyKey | { text: string };
 
 export function Cap({ k }: { k: ControlCopy }) {
-  const { vis, t } = useCopy();
-  return vis ? null : <span className="lr-cap">{typeof k === "string" ? t(k) : k.text}</span>;
+  const { t } = useCopy();
+  return <span className="lr-cap">{typeof k === "string" ? t(k) : k.text}</span>;
 }
 
 export function BackButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
@@ -83,7 +83,7 @@ export function Btn({
   popoverTarget?: string;
   onClick?: () => void;
   type?: "button" | "submit";
-  /** Shared hint comic; text modes add the localized caption. */
+  /** Shared hint comic with its localized caption. */
   hint?: ComicKind | HintKind;
   /** Use the existing title as a plain text hint, without an illustration. */
   textTooltip?: boolean;
@@ -97,7 +97,7 @@ export function Btn({
   /** Noninteractive artwork that moves with the icon, such as its input meter. */
   iconOverlay?: ReactNode;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const label = typeof title === "string" ? t(title) : title.text;
   const wrapped = Boolean(hint || textTooltip);
   const softDisabled = Boolean(wrapped && disabled);
@@ -140,7 +140,7 @@ export function Btn({
     </button>
   );
   return hint ? (
-    <Tooltip kind={hint} disabled={expanded} tone={hintTone} motion={hintMotion} text={vis ? undefined : hintText ? t(hintText, hintVars) : label}>{button}</Tooltip>
+    <Tooltip kind={hint} disabled={expanded} tone={hintTone} motion={hintMotion} text={hintText ? t(hintText, hintVars) : label}>{button}</Tooltip>
   ) : textTooltip ? <Tooltip text={label} disabled={expanded}>{button}</Tooltip> : (
     button
   );
@@ -161,14 +161,13 @@ export function Chip({
   disabled?: boolean;
   onClick?: () => void;
   title: string;
-  /** Shared hint comic; text modes add the localized caption. */
+  /** Shared hint comic with its localized caption. */
   hint?: HintKind;
   hintText?: string;
   name?: string;
   value?: string;
   children: ReactNode;
 }) {
-  const { vis } = useCopy();
   const wrapped = Boolean(hint);
   const softDisabled = Boolean(wrapped && disabled);
   const chip = (
@@ -197,7 +196,7 @@ export function Chip({
     </button>
   );
   return hint ? (
-    <Tooltip kind={hint} text={vis ? undefined : hintText ?? title}>{chip}</Tooltip>
+    <Tooltip kind={hint} text={hintText ?? title}>{chip}</Tooltip>
   ) : (
     chip
   );
@@ -250,7 +249,6 @@ export function Pill({
   motion?: ComicMotion;
   onDismiss?: () => void;
 }) {
-  const { vis } = useCopy();
   const resolvedTone = tone ?? "warn";
   const body = (
     <button
@@ -258,13 +256,13 @@ export function Pill({
       className="lr-pill"
     >
       <Glyph name={icon} size={16} />
-      {vis ? <span className="visually-hidden">{label}</span> : <span>{label}</span>}
+      <span>{label}</span>
     </button>
   );
   return (
     <span className={`lr-notice is-${resolvedTone === "live" ? "good" : resolvedTone}${onDismiss ? " is-dismissible" : ""}`} role={alert ? "alert" : "status"}>
       <Tooltip toggleOnClick kind={comic} tone={resolvedTone} motion={motion}
-        text={vis ? undefined : label}>{body}</Tooltip>
+        text={label}>{body}</Tooltip>
       {onDismiss && <span className="lr-notice-dismiss"><Btn icon="x" size="dense" quiet
         title="notice.dismiss" hint="hint-close" onClick={onDismiss} /></span>}
     </span>
@@ -279,7 +277,6 @@ export function SwitchItem({
   label,
   note,
   hint,
-  icon,
 }: {
   checked: boolean;
   disabled?: boolean;
@@ -287,14 +284,12 @@ export function SwitchItem({
   locked?: boolean;
   onChange: (checked: boolean) => void;
   label: string;
-  /** Text modes: extra sentence in the tooltip. */
+  /** Extra sentence in the tooltip. */
   note?: string;
   /** Shared hint comic; native title stays off. */
   hint?: HintKind;
-  /** Preserve the control's meaning when its text label is hidden. */
-  icon?: GlyphName;
 }) {
-  const { vis, t } = useCopy();
+  const { t } = useCopy();
   const id = useId();
   const wrapped = Boolean(hint);
   const softDisabled = Boolean(wrapped && disabled);
@@ -322,10 +317,9 @@ export function SwitchItem({
       />
   );
   return <span className="lr-switch-item">
-    {vis && icon ? <Glyph name={icon} size={18} /> : null}
-    {hint ? <Tooltip kind={hint} text={vis ? undefined : tooltipText}>{control}</Tooltip> : control}
+    {hint ? <Tooltip kind={hint} text={tooltipText}>{control}</Tooltip> : control}
     {locked ? <Glyph name="lock" size={12} /> : null}
-    {vis ? null : <label className="lr-cap" htmlFor={id}>{label}</label>}
+    <label className="lr-cap" htmlFor={id}>{label}</label>
   </span>;
 }
 
@@ -344,6 +338,6 @@ export function NameTag({ name, identity }: { name: string; identity: string }) 
 }
 
 export function FieldCap({ k }: { k: CopyKey }) {
-  const { vis, t } = useCopy();
-  return vis ? null : <span className="lr-field-cap">{t(k)}</span>;
+  const { t } = useCopy();
+  return <span className="lr-field-cap">{t(k)}</span>;
 }

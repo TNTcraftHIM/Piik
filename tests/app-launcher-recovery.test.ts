@@ -131,7 +131,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, { debug = false, mode, startup =
     ...setters, z, fetch, window, URLSearchParams, AbortController, downloadBlob: downloads,
     stateChanges: { current: { revision: 0, pending: 0 } },
     siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, openOnApproval: false,
-    mode: initialMode, lang: "en", vis: false, appDebug: debug, lan: saved.lan, sitePort: saved.sitePort, savePreferredAppMode,
+    mode: initialMode, lang: "en", appDebug: debug, lan: saved.lan, sitePort: saved.sitePort, savePreferredAppMode,
     publicEntry: { existing: publicOrigin !== undefined, origin: publicOrigin ?? "" }, publicSiteOrigin,
     consoleLanguage: () => "en", clientLaunchURL, currentThemePreference: () => null, hasCopyPreference: () => false,
     controlPort: undefined, t: (key: string) => key,
@@ -323,7 +323,7 @@ describe("App launcher state recovery", () => {
     fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ target: "https://room.example/#piik-client=1",
       localCertificate: { origin: "https://192.0.2.1:8787", sha256Fingerprint: "A1".repeat(32) } }) });
     await page.launch(event);
-    expect(page.navigate).toHaveBeenCalledWith("https://room.example/#piik-client=1&piik-lang=en&piik-mode=text&piik-theme=system");
+    expect(page.navigate).toHaveBeenCalledWith("https://room.example/#piik-client=1&piik-lang=en&piik-theme=system");
     page.cleanup();
   });
 
@@ -353,7 +353,7 @@ describe("App launcher state recovery", () => {
     const html = renderToStaticMarkup(createElement(SiteStartControls, {
       mode: "local",
       target: "http://127.0.0.1:8787/#piik-client=1",
-      entryURL: target => clientLaunchURL(target, { lang: "en", vis: false, theme: "light", explicit: ["theme"] }, false, 39729),
+      entryURL: target => clientLaunchURL(target, { lang: "en", theme: "light", explicit: ["theme"] }, false, 39729),
       onModeChange() {},
     }));
     const entries = [...html.matchAll(/href="([^"]+)"/g)]

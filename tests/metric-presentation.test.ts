@@ -7,7 +7,7 @@ import { EMPTY_METRICS } from "../src/client/types";
 import { setCopy, t } from "../src/client/ui/copy";
 import { STATUS_CATALOG } from "../src/client/ui/media-status";
 
-beforeEach(() => setCopy({ lang: "en", vis: false }));
+beforeEach(() => setCopy({ lang: "en" }));
 
 describe("observed metric presentation", () => {
   it("reports dropped frames from the current sampling interval, not the connection lifetime", () => {
@@ -31,8 +31,7 @@ describe("observed metric presentation", () => {
     expect(render("future-limit")).not.toContain(t("en", "stats.quality.normal"));
   });
 
-  it("retains overview units in visual mode without inventing values for missing samples", () => {
-    setCopy({ vis: true });
+  it("retains overview units and labels without inventing values for missing samples", () => {
     const html = renderToStaticMarkup(createElement(ViewerOverview, {
       entries: [
         { key: "measured", name: "Friend", status: STATUS_CATALOG.connected, route: "p2p",

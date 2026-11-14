@@ -1,5 +1,5 @@
 // Connection metrics as living-room meter cells: glyph + value, plus the
-// label in text modes. Secondary metrics expand behind a chevron.
+// localized label. Secondary metrics expand behind a chevron.
 import { useId } from "react";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
@@ -17,13 +17,11 @@ interface MetricValue {
   value: string;
   hint?: ComicKind | HintKind;
   tone?: ComicTone;
-  /** Visual mode shows the glyph alone; the value stays in the a11y name. */
-  glyphOnly?: boolean;
 }
 
 interface MetricGroup { label: CopyKey; values: MetricValue[] }
 
-// One display for each observed sender reason. Unknown reasons remain explicit;
+// One value for each observed sender reason. Unknown reasons remain explicit;
 // none describes this field, not a verdict about the whole connection.
 const QUALITY_REASONS = {
   none: { valueKey: "stats.quality.normal", icon: "check", hint: "hint-metric-quality", tone: "off" },
@@ -106,9 +104,6 @@ function secondaryMetrics(
         ...presentation,
         label: "stats.qualityState",
         value: t(valueKey),
-        // A limitation reason is a sentence, not a measured value: visual
-        // mode states it with the glyph and keeps the words for AT.
-        glyphOnly: true,
       });
     }
     const captureParts: string[] = [];
@@ -192,34 +187,24 @@ export function CaptureMetricCells({ resolution, frameRate, codec, hasSourceAudi
     <MetricCell label="stats.fps" value={frameRate ? `${frameRate.toFixed(0)} fps` : t("stats.unknown")} />
     <MetricCell label="stats.codec" value={codec?.toUpperCase() ?? t("stats.unknown")} />
     <MetricCell label="stats.group.sourceAudio" value={t(hasSourceAudio ? "stats.audioPresent" : "stats.audioAbsent")}
-      icon={hasSourceAudio ? "speaker" : "speakerOff"} hint={hasSourceAudio ? "hint-source-audio" : "no-audio"} glyphOnly />
+      icon={hasSourceAudio ? "speaker" : "speakerOff"} hint={hasSourceAudio ? "hint-source-audio" : "no-audio"} />
   </div>;
 }
 
-export function MetricCell({ icon, label, value, glyphOnly, hint, tone = "off" }: MetricValue) {
-  const { t, vis } = useCopy();
+export function MetricCell({ icon, label, value, hint, tone = "off" }: MetricValue) {
+  const { t } = useCopy();
   const presentation = METRIC_PRESENTATION[label];
-  const display = vis && value === t("stats.unknown") ? "—" : value;
   return (
     <Tooltip toggleOnClick kind={hint ?? presentation.hint} tone={tone} motion={tone === "warn" ? "still" : "demo"}
-      text={vis ? undefined : metricHintText(label, t, display)}>
+      text={metricHintText(label, t, value)}>
     <button type="button" className="lr-meter-cell" data-metric={label}
-      data-wrap-value={"wrap" in presentation && presentation.wrap ? "" : undefined} aria-label={`${t(label)} · ${display}`}
+      data-wrap-value={"wrap" in presentation && presentation.wrap ? "" : undefined} aria-label={`${t(label)} · ${value}`}
       style={{ border: 0, color: "inherit", font: "inherit", textAlign: "start" }}>
       <Glyph name={icon ?? presentation.icon} size={16} />
-      {vis ? (
-        <>
-          {glyphOnly ? null : <b>{display}</b>}
-          <span className="visually-hidden">
-            {glyphOnly ? [t(label), display].join(" · ") : t(label)}
-          </span>
-        </>
-      ) : (
-        <span className="lr-meter-text">
-          <b>{display}</b>
-          <small>{t(label)}</small>
-        </span>
-      )}
+      <span className="lr-meter-text">
+        <b>{value}</b>
+        <small>{t(label)}</small>
+      </span>
     </button>
     </Tooltip>
   );
@@ -228,9 +213,9 @@ export function MetricCell({ icon, label, value, glyphOnly, hint, tone = "off" }
 export function MetricDetailsToggle({ expanded, onToggle, controls }: {
   expanded: boolean; onToggle: (expanded: boolean) => void; controls: string;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const moreTitle = t(expanded ? "stats.less" : "stats.more");
-  return <Tooltip kind={expanded ? "hint-collapse" : "hint-more-metrics"} text={vis ? undefined : moreTitle} align="start">
+  return <Tooltip kind={expanded ? "hint-collapse" : "hint-more-metrics"} text={moreTitle} align="start">
     <button
       type="button"
       className={`lr-btn lr-metrics-more${expanded ? " is-open" : ""}`}
@@ -244,7 +229,7 @@ export function MetricDetailsToggle({ expanded, onToggle, controls }: {
       }}
     >
       <Glyph name="chevron" size={15} />
-      {vis ? null : <span className="lr-cap">{t("stats.more")}</span>}
+      <span className="lr-cap">{t("stats.more")}</span>
     </button>
   </Tooltip>;
 }
@@ -264,7 +249,7 @@ export function MetricCells({
   media?: "video" | "audio";
   primary?: boolean;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const primaryValues: MetricValue[] = media === "audio" ? [
     { label: "stats.audio", value: metrics.bitrateKbps === null ? t("stats.unknown") : `${metrics.bitrateKbps.toFixed(0)} kbps` },
     { label: "stats.rtt", value: metrics.rttMs === null ? t("stats.unknown") : `${metrics.rttMs.toFixed(0)} ms` },
@@ -301,7 +286,7 @@ export function MetricCells({
           {expanded ? (
             <div id={secondaryId} className="lr-metric-groups" role="group" aria-label={t("stats.more")}>
               {secondary.map(group => <section className="lr-metric-group" key={group.label} aria-label={t(group.label)}>
-                <h4 className={vis ? "visually-hidden" : "lr-metric-group-label"}>{t(group.label)}</h4>
+                <h4 className="lr-metric-group-label">{t(group.label)}</h4>
                 <div className="lr-meter">{group.values.map(value => <MetricCell key={value.label} {...value} />)}</div>
               </section>)}
             </div>

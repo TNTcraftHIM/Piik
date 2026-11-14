@@ -11,10 +11,10 @@ import { labelParticipantSnapshot } from "../src/client/lib/viewer-presence.ts";
 import { setCopy } from "../src/client/ui/copy.ts";
 import { deriveParticipantStatus } from "../src/client/ui/media-status";
 
-afterEach(() => setCopy({ lang: "zh", vis: false }));
+afterEach(() => setCopy({ lang: "zh" }));
 
 it("keeps participant identity and actual Viewer readiness in their descriptions", () => {
-  setCopy({ lang: "en", vis: true });
+  setCopy({ lang: "en" });
   const render = (view: "host" | "viewer") => renderToStaticMarkup(createElement(Couch, {
     view,
     host: { key: "host", name: "Host name", you: view === "host" },
@@ -31,17 +31,13 @@ it("keeps participant identity and actual Viewer readiness in their descriptions
   expect(viewerView).toContain('aria-label="Viewer name, you, Routing"');
   expect(viewerView).not.toContain('class="lr-pawn-led"');
   expect(viewerView).toContain('is-waiting');
-  setCopy({ vis: false });
-  const textMode = render("viewer");
-  expect(textMode).toContain('aria-label="Host name, Host"');
-  expect(textMode).toContain('aria-label="Viewer name, you, Routing"');
 });
 
 it.each([
   ["zh", "房主", "你"],
   ["en", "Host", "you"],
 ] as const)("does not repeat the default Host name or invent presence in %s", (lang, name, self) => {
-  setCopy({ lang, vis: false });
+  setCopy({ lang });
   const html = renderToStaticMarkup(createElement(Couch, {
     view: "host", host: { key: "host", name, you: true }, entries: [],
   }));
@@ -224,37 +220,6 @@ describe("RouteTree", () => {
     expect(html).toContain(`${longChinese}尾`);
     expect(html).not.toContain("viewer_private_123456");
     expect(html).not.toContain("viewer_private_654321");
-  });
-
-  it("keeps participant data labels visible in visual mode", () => {
-    const { host, viewers } = labelParticipantSnapshot([
-      {
-        role: "host",
-        peerId: "host_abc12345",
-        displayName: "Alice",
-        upstream: { kind: "none" },
-      },
-      {
-        role: "viewer",
-        peerId: "viewer_def67890",
-        displayName: "Bob",
-        upstream: { kind: "peer", peerId: "host_abc12345" },
-        mediaReady: true,
-      },
-    ]);
-    setCopy({ lang: "en", vis: true });
-
-    const html = renderToStaticMarkup(
-      createElement(RouteTree, { pictureActive: true,
-        hostPeerId: host?.peerId ?? null,
-        hostLabel: host?.label ?? "Host",
-        viewers,
-      }),
-    );
-
-    expect(html).toContain(">Alice</span>");
-    expect(html).toContain(">Bob</span>");
-    expect(html).not.toContain("<title");
   });
 
   it("preserves emoji nicknames that resemble a default role label", () => {

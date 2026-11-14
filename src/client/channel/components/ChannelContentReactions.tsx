@@ -20,9 +20,9 @@ export function ChannelContentReactions({ reactions, session, target, disabled =
   effectAnchor?: () => Element | null; effectsEnabled?: boolean;
   actions?: ReactNode;
 }) {
-  const { lang, t } = useCopy(), zh = lang === "zh";
+  const { t } = useCopy();
   const state = useSyncExternalStore(session?.subscribe ?? noSubscription, session?.getSnapshot ?? noSnapshot, noSnapshot);
-  const label = "messageSeq" in target ? (zh ? "回应这条消息" : "React to this message") : (zh ? "回应此画面" : "React to this screen");
+  const label = "messageSeq" in target ? t("channel.contentReactions.reactToThisMessage") : t("channel.contentReactions.reactToThisScreen");
   const trigger = useRef<HTMLButtonElement>(null), menu = useRef<HTMLDivElement>(null), id = useId();
   const [open, setOpen] = useState(false);
   const targetId = "messageSeq" in target ? target.messageSeq : target.publicationId;

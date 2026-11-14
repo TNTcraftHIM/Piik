@@ -13,30 +13,30 @@ export function ChannelSiteEntry({ channel, failure }: {
   channel: Pick<ChannelController, "connection" | "error" | "reconnect" | "joinAsNewIdentity">;
   failure: ChannelErrorPresentation;
 }) {
-  const { lang, vis } = useCopy(), zh = lang === "zh";
+  const { lang, t } = useCopy();
+  const chineseGuide = lang.startsWith("zh");
   const connecting = channel.connection === "connecting" || channel.connection === "reconnecting";
   const identityRejected = channel.error === "invalid_credential";
   const showConnectionHelp = !connecting && failure.connectionHelp;
-  const guide = useProjectLink(`/docs/${zh ? "zh/" : ""}troubleshooting.html#${zh ? "常见问题" : "common-problems"}`,
-    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/troubleshooting${zh ? ".zh-CN" : ""}.md#${zh ? "常见问题" : "common-problems"}`, showConnectionHelp);
-  const helpLabel = zh ? "连接问题排查" : "Connection help";
-  const title = connecting ? (zh ? "正在连接" : "Connecting") : (zh ? "未能连接此站点" : "Could not connect to this site");
+  const guide = useProjectLink(`/docs/${chineseGuide ? "zh/" : ""}troubleshooting.html#${chineseGuide ? "常见问题" : "common-problems"}`,
+    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/troubleshooting${chineseGuide ? ".zh-CN" : ""}.md#${chineseGuide ? "常见问题" : "common-problems"}`, showConnectionHelp);
+  const helpLabel = t("channel.siteEntry.connectionHelp");
+  const title = connecting ? t("channel.siteEntry.connecting") : t("channel.siteEntry.connectionFailed");
   return <main className="c3-locked-room c3-site-entry" aria-labelledby="c3-site-entry-title">
     {connecting ? <BrandLoader /> : <Glyph name="signal" size={46} />}
-    <h1 id="c3-site-entry-title" className={vis ? "visually-hidden" : undefined}>{title}</h1>
+    <h1 id="c3-site-entry-title">{title}</h1>
     <p className="c3-site-entry-address">{location.host}</p>
     {connecting ? <span role="status" className="visually-hidden">{title}</span>
         : <>{failure.message && <p role="alert">{failure.message}</p>}
-          <ChannelAction icon="refresh" label={identityRejected ? (zh ? "重试原身份" : "Retry saved identity") : (zh ? "重新连接" : "Reconnect")} onClick={channel.reconnect} />
+          <ChannelAction icon="refresh" label={identityRejected ? t("channel.siteEntry.retrySavedIdentity") : t("channel.siteEntry.reconnect")} onClick={channel.reconnect} />
           {identityRejected && <>
-            <ChannelAction icon="plus" label={zh ? "使用新身份加入" : "Join with a new identity"} onClick={channel.joinAsNewIdentity} />
-            <p>{zh ? "新身份不会继承原有房间资格。本地房间数据不会删除。"
-              : "A new identity does not inherit room access. Local room data stays saved."}</p>
+            <ChannelAction icon="plus" label={t("channel.siteEntry.joinWithANewIdentity")} onClick={channel.joinAsNewIdentity} />
+            <p>{t("channel.siteEntry.newIdentityNote")}</p>
           </>}
         </>}
-    {showConnectionHelp && <Tooltip kind="hint-help" text={vis ? undefined : helpLabel}>
+    {showConnectionHelp && <Tooltip kind="hint-help" text={helpLabel}>
       <a className="lr-btn is-compact is-quiet" href={guide} target="_blank" rel="noopener noreferrer" aria-label={helpLabel}>
-        <Glyph name="book" size={18} />{!vis && <span className="lr-cap">{helpLabel}</span>}
+        <Glyph name="book" size={18} /><span className="lr-cap">{helpLabel}</span>
       </a>
     </Tooltip>}
   </main>;

@@ -57,7 +57,7 @@ export function Couch({
   participantAction,
   footerAction,
 }: CouchProps) {
-  const { t, vis, lang } = useCopy();
+  const { t, lang } = useCopy();
   const comma = lang === "zh" ? "，" : ", ";
   const [couchRef, containerWidth] = useElementWidth();
   const count = entries.length + (host ? 1 : 0);
@@ -88,7 +88,7 @@ export function Couch({
       : voice ? isHost ? "hint-microphone-off" as const : "hint-voice-microphone-off" as const : undefined;
     const status = [voice && voiceLabel(voice), collaboration && collaborationLabel()].filter(Boolean).join(comma);
     const overflow = { text: name, selector: ".lr-pawn-name" };
-    return kind ? { kind, text: vis ? undefined : [status, participantAction && t("interaction.express")].filter(Boolean).join("\n"), overflow }
+    return kind ? { kind, text: [status, participantAction && t("interaction.express")].filter(Boolean).join("\n"), overflow }
       : { overflow };
   };
 

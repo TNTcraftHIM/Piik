@@ -9,7 +9,7 @@ export function BackupControls({ disabled, busy, onExport, onRestore, replacing 
   run?: SettingsAction; disabled?: boolean; busy: boolean; available?: boolean; onExport?: () => Promise<Blob>;
   onRestore(file: File): Promise<{ cached: boolean } | void>; replacing?: boolean; kind?: "room" | "domain";
 }) {
-  const { lang } = useCopy(), zh = lang === "zh";
+  const { t } = useCopy();
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [message, setMessage] = useState("");
@@ -27,28 +27,28 @@ export function BackupControls({ disabled, busy, onExport, onRestore, replacing 
     }, onSuccess).finally(() => setActive(null));
   };
   if (!available && !file && !message && !local.error) return null;
-  return <section className="c3-backup-controls" aria-label={kind === "domain" ? (zh ? "站点备份" : "Site backup") : (zh ? "房间备份" : "Room backup")}>
-    {kind === "domain" && <p>{zh ? "站点资料与房间目录。房间记录请分别备份。" : "Site data and the room directory. Back up room records separately."}</p>}
+  return <section className="c3-backup-controls" aria-label={kind === "domain" ? t("channel.backupControls.siteBackup") : t("channel.backupControls.roomBackup")}>
+    {kind === "domain" && <p>{t("channel.backupControls.siteScopeNote")}</p>}
     {available && !file && <div className="c3-backup-actions">
-      {onExport && <ChannelAction icon="save" quiet label={kind === "room" ? (zh ? "导出完整备份" : "Export full backup") : (zh ? "导出备份" : "Export backup")} busy={active === "export"} disabled={disabled || busy || !!active}
+      {onExport && <ChannelAction icon="save" quiet label={kind === "room" ? t("channel.backupControls.exportFullBackup") : t("channel.backupControls.exportBackup")} busy={active === "export"} disabled={disabled || busy || !!active}
         onClick={() => { perform("export", async () => {
           downloadBlob(await onExport(), `piik-${kind === "domain" ? "site" : "room"}-backup.zip`);
         }); }} />}
-      <ChannelAction icon="refresh" quiet label={kind === "room" ? (zh ? "恢复完整备份" : "Restore full backup") : (zh ? "从备份恢复" : "Restore backup")}
+      <ChannelAction icon="refresh" quiet label={kind === "room" ? t("channel.backupControls.restoreFullBackup") : t("channel.backupControls.restoreBackup")}
         disabled={disabled || busy || !!active} onClick={() => input.current?.click()} />
     </div>}
     <input ref={input} type="file" accept=".zip,application/zip" hidden onChange={event => {
       setFile(event.target.files?.[0] ?? null); setMessage(""); event.target.value = "";
     }} />
     {file && <div className="c3-backup-confirm"><p>{file.name}</p><p>{kind === "domain"
-      ? (zh ? "恢复会替换当前站点的设置、用户信息和房间目录，并重新连接恢复的站点。房间消息与文件不会随之恢复。" : "Restoring replaces this site’s settings, users and room directory, then reconnects to the restored site. Room messages and files are restored separately.") : replacing
-      ? (zh ? "恢复会替换房间设置与消息。" : "Restoring replaces this room’s settings and messages.")
-      : (zh ? "恢复原房间及其备份账号。若要使用自己的身份创建新房间，请改为载入房间副本。" : "Restore the original room and its saved account. To create a new room with your own identity, load a room copy instead.")}</p>
-      <div className="c3-form-actions"><ChannelAction icon="x" quiet label={zh ? "取消" : "Cancel"} disabled={busy || !!active} onClick={() => setFile(null)} />
-        <ChannelAction icon="check" primary label={zh ? "确认" : "Confirm"} disabled={disabled || busy || !!active} busy={active === "restore"} onClick={() => { perform("restore", () => onRestore(file), result => {
+      ? t("channel.backupControls.confirmSiteRestore") : replacing
+      ? t("channel.backupControls.confirmRoomReplace")
+      : t("channel.backupControls.confirmRoomRestore")}</p>
+      <div className="c3-form-actions"><ChannelAction icon="x" quiet label={t("channel.backupControls.cancel")} disabled={busy || !!active} onClick={() => setFile(null)} />
+        <ChannelAction icon="check" primary label={t("channel.backupControls.confirm")} disabled={disabled || busy || !!active} busy={active === "restore"} onClick={() => { perform("restore", () => onRestore(file), result => {
           setFile(null);
-          setMessage(kind === "domain" ? (zh ? "站点已恢复。" : "Site restored.") : result?.cached ? (zh ? "房间已恢复。" : "Room restored.")
-            : (zh ? "房间已恢复，文件未能缓存。" : "Room restored. Files could not be cached."));
+          setMessage(kind === "domain" ? t("channel.backupControls.siteRestored") : result?.cached ? t("channel.backupControls.roomRestored")
+            : t("channel.backupControls.roomRestoredWithoutFiles"));
         }); }} /></div>
     </div>}
     {message && <p role="status">{message}</p>}

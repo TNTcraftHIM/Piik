@@ -10,7 +10,7 @@ import { ChannelUser } from "./ChannelUser";
 
 /** Real-time participants come from the room, not the browsed conversation. */
 export function ChannelRoomParticipants({ channel, room }: { channel: ChannelController; room: ChannelRoom }) {
-  const { lang } = useCopy(), zh = lang === "zh";
+  const { t } = useCopy();
   const { state } = channel;
   if (!state || !room.authorized) return null;
   const audible = new Set(listeningVoicePublications(state, channel.sessionId, channel.streams)
@@ -19,11 +19,11 @@ export function ChannelRoomParticipants({ channel, room }: { channel: ChannelCon
     const playback = channel.voicePlaybackByUser.get(user.id) ?? { volume: 1, muted: false };
     return <ChannelUser key={user.id} id={user.id} name={user.name} avatar={user.avatar ?? undefined} self={user.id === channel.self?.id}
       owner={false} online voice={user.voice} actions={<>
-        {user.sharing && <Tooltip kind="hint-share-start" text={zh ? "正在分享" : "Sharing"}><span role="img" aria-label={zh ? "正在分享" : "Sharing"}><Glyph name="cast" size={14} /></span></Tooltip>}
-        {user.watching && <Tooltip kind="hint-watch" text={zh ? "正在观看" : "Watching"}><span role="img" aria-label={zh ? "正在观看" : "Watching"}><Glyph name="eye" size={14} /></span></Tooltip>}
+        {user.sharing && <Tooltip kind="hint-share-start" text={t("channel.roomParticipants.sharing")}><span role="img" aria-label={t("channel.roomParticipants.sharing")}><Glyph name="cast" size={14} /></span></Tooltip>}
+        {user.watching && <Tooltip kind="hint-watch" text={t("channel.roomParticipants.watching")}><span role="img" aria-label={t("channel.roomParticipants.watching")}><Glyph name="eye" size={14} /></span></Tooltip>}
         {audible.has(user.id) && user.id !== channel.self?.id &&
         <AudioVolumeMenu volume={playback.volume} onVolume={volume => channel.setVoiceVolume(user.id, volume)}
-          label="voice.personVolume" icon="speaker" heading={user.name}>
+          label="voice.personVolume" heading={user.name}>
           <Btn icon={playback.muted ? "speakerOff" : "speaker"} size="dense" quiet title="voice.listenPerson"
             pressed={!playback.muted} onClick={() => channel.setVoiceMuted(user.id, !playback.muted)} />
         </AudioVolumeMenu>}</>} />;

@@ -36,11 +36,11 @@ const SHARING_FAILURES = [
 ] as const;
 
 function StatusMark({ status }: { status: StatusDescriptor }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   return (
     <span className="sp-status">
       <StatusIndicator status={status} />
-      {vis ? null : <span>{t(status.labelKey)}</span>}
+      <span>{t(status.labelKey)}</span>
     </span>
   );
 }
@@ -53,7 +53,7 @@ export function StatusPreviewPage() {
 
 function StatusCatalog() {
   usePreviewAnchor();
-  const { lang, vis, t, titleFrames } = useCopy();
+  const { lang, t, titleFrames } = useCopy();
   const [selected, setSelected] = useState("playing");
   const [reducedMotion, setReducedMotion] = useState(false);
   usePreviewReducedMotion(reducedMotion);
@@ -73,7 +73,7 @@ function StatusCatalog() {
   const waitingParticipant = deriveParticipantStatus({ upstream: { kind: "none" } }, sourceActive);
   const titleContent = titleFrames(status.titleFrameKey);
   const title = useDocumentTitle(["6020", titleContent.label, status.titleMarker], titleContent.variations,
-    `${lang}:${vis}:${status.titleFrameKey}`);
+    `${lang}:${status.titleFrameKey}`);
   const waitingLines = locales[lang].playful.waiting;
 
   function choose(id: string) {
@@ -239,7 +239,7 @@ function StatusCatalog() {
           })}
         </section>
         <footer className="sp-footnote">
-          <p>这是开发预览：说明固定中文，控件和漫画跟随右上角中 / EN / ✦ 与明暗主题。</p>
+          <p>这是开发预览：说明固定中文，控件和漫画跟随右上角语言与明暗主题。</p>
           <p>Host 人物灯使用已有的新鲜证据，详情仍在观众列表。Viewer 仅使用服务端已确认的媒体就绪事实，不新增全房质量广播。</p>
           <a href="/__tooltip-preview">全部操作漫画与指标</a>
         </footer>

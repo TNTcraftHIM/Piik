@@ -14,7 +14,7 @@ service secret store or an untracked access-restricted environment file.
 - The Host owns share settings and the available per-share route switches in the
   shared Web UI. Server and App use the same controls, order and semantics;
   configuration changes availability, not which controls exist. A fixed switch
-  remains visible and explains the reason in text or its pure-visual hint.
+  remains visible and explains the reason in localized guidance.
 - Protocol versions, queue bounds and routing/adaptation constants stay in code.
   They are not deployment tuning knobs. Debug and report destinations are
   explicit diagnostic options, not normal share settings.

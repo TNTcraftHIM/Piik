@@ -51,7 +51,7 @@ const launcherResultSchema = z.object({ target: z.string().url(), localCertifica
 const launcherErrorSchema = z.object({ reason: z.string().optional(), detail: z.string() });
 
 export function AppLauncherPage() {
-  const { lang, vis, t } = useCopy();
+  const { lang, t } = useCopy();
   // Rendered entry URLs follow theme changes before any browser link action.
   useSyncExternalStore(subscribeTheme, currentThemePreference);
   const [loading, setLoading] = useState(true);
@@ -207,7 +207,7 @@ export function AppLauncherPage() {
   function launchURL(target: string, settings = { debug: appDebug === true, controlPort }): string {
     const theme = currentThemePreference();
     const presentation: ClientLaunchPresentation = {
-      lang, vis, theme,
+      lang, theme,
       explicit: [
         ...(hasCopyPreference() ? ["copy" as const] : []),
         ...(theme !== null ? ["theme" as const] : []),
@@ -239,7 +239,7 @@ export function AppLauncherPage() {
           mode: external ? "external" : mode,
           ...(external ? { publicOrigin } : {}),
           port: sitePort,
-          language: consoleLanguage(lang, vis),
+          language: consoleLanguage(lang),
           ...(mode === "local" && lan ? { lanAddress: lan.selected } : {}),
         }),
       });
@@ -313,8 +313,8 @@ export function AppLauncherPage() {
   const homeReady = home && !loading && error?.kind !== "load";
   const roomError = error?.kind === "launch" ? <>
     <Pill icon="alert" tone="bad" label={t("client.launch.error")} alert comic="signal-failed" />
-    {isCopyKey(errorKey) && <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t(errorKey)}</p>}
-    <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t("client.launch.retryHint")}</p>
+    {isCopyKey(errorKey) && <p className="lr-client-launch-status">{t(errorKey)}</p>}
+    <p className="lr-client-launch-status">{t("client.launch.retryHint")}</p>
     {error.detail && <details className="lr-client-launch-technical">
       <summary>{t("client.launch.errorDetails")}</summary>
       <p className="lr-client-launch-detail">{error.detail}</p>
@@ -323,8 +323,7 @@ export function AppLauncherPage() {
   const footer = <>
     <a className="lr-btn is-dense is-quiet" href="https://github.com/TNTcraftHIM/Piik" target="_blank" rel="noopener noreferrer">GitHub<span aria-hidden="true"> ↗</span></a>
     {version && <p className="lr-client-version">
-      <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.version", { version })}</span>
-      {vis && <span aria-hidden="true">{version}</span>}
+      <span>{t("client.launch.version", { version })}</span>
     </p>}
   </>;
   return (
@@ -365,7 +364,7 @@ export function AppLauncherPage() {
           <section className="lr-client-approval" aria-labelledby="site-approval-title">
             <header className="lr-client-approval-heading">
               {approvalCurrent ? <BrandMark size={48} motion="once" /> : <HintComic kind="hint-client-site" size={230} />}
-              <h1 id="site-approval-title" className={vis ? "visually-hidden" : undefined}>{t(approvalCurrent ? "client.connect.approved" : "client.connect.approveTitle")}</h1>
+              <h1 id="site-approval-title">{t(approvalCurrent ? "client.connect.approved" : "client.connect.approveTitle")}</h1>
             </header>
             <div className="lr-client-approval-site">
               <div className="lr-client-approval-origin">
@@ -373,7 +372,7 @@ export function AppLauncherPage() {
                 <strong>{requestedSite}</strong>
                 {approvalCurrent && <Glyph name="check" size={20} className="lr-client-approval-check" />}
               </div>
-              <p className={vis ? "visually-hidden" : undefined}>{t(approvalCurrent ? "client.connect.return"
+              <p>{t(approvalCurrent ? "client.connect.return"
                 : "client.connect.approveChannelHint")}</p>
             </div>
             {!validSite && <Pill icon="alert" tone="bad" label={t("client.connect.invalid")} comic="signal-failed" />}
@@ -385,7 +384,7 @@ export function AppLauncherPage() {
                   ? void changeSite(event.target.checked ? requestedSite : "", "startup-site")
                   : setOpenOnApproval(event.target.checked)} />
               <Glyph name="star" size={18} />
-              <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.openOnStart")}</span>
+              <span>{t("client.connect.openOnStart")}</span>
             </label>}
             <div className="lr-client-approval-actions">
               <Btn icon="x" title={approvalCurrent ? "client.connect.close" : "common.cancel"} cap={approvalCurrent ? "client.connect.close" : "common.cancel"} hint="hint-close"
@@ -399,14 +398,14 @@ export function AppLauncherPage() {
           onOpenBookmark={navigation.open} onManageBookmarks={navigation.manage}
           ready={!!target} starting={starting} invitationForm={navigation.invitationForm} footer={footer}
           localSiteAction={target ? <a className="lr-btn is-primary" href={launchURL(target)}>
-            <Glyph name="arrowRight" size={19} /><span className={vis ? "visually-hidden" : "lr-cap"}>{t("client.connect.continue")}</span>
+            <Glyph name="arrowRight" size={19} /><span className="lr-cap">{t("client.connect.continue")}</span>
           </a> : <Btn icon="arrowRight" title="client.launch.go" cap="client.launch.go" busy={starting} disabled={starting}
             onClick={() => setPanel("launch")} />}
         >
             {panel !== "launch" && roomError}
             {localCertificate && <LocalConnectionDetails certificate={localCertificate} />}
             {serverState?.publicOrigin && <p className="lr-launcher-public-address">
-              <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.publicAddress")}</span>{" "}
+              <span>{t("client.launch.publicAddress")}</span>{" "}
               <a href={serverState.publicOrigin} target="_blank" rel="noopener noreferrer">{serverState.publicOrigin}</a>
             </p>}
             {update ? <AppReleaseNotice update={update} native={appUpdate.view ? { ...appUpdate, view: appUpdate.view } : undefined} />

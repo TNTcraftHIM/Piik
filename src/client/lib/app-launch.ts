@@ -52,7 +52,6 @@ export function watchClientActivation(changed: () => void): () => void {
 
 export interface ClientLaunchPresentation {
   lang: Lang;
-  vis: boolean;
   theme: "light" | "dark" | null;
   /** Domains explicitly chosen in the launcher, rather than system defaults. */
   explicit?: readonly ("copy" | "theme")[];
@@ -63,7 +62,6 @@ export function clientLaunchURL(target: string, presentation: ClientLaunchPresen
   const params = new URLSearchParams(url.hash.slice(1));
   if (controlPort !== undefined) url.searchParams.set("piik-client-port", String(controlPort));
   params.set("piik-lang", presentation.lang);
-  params.set("piik-mode", presentation.vis ? "vis" : "text");
   params.set("piik-theme", presentation.theme ?? "system");
   url.searchParams.delete("piik-preferences");
   if (presentation.explicit?.length) {
@@ -75,7 +73,7 @@ export function clientLaunchURL(target: string, presentation: ClientLaunchPresen
 
 export function takeClientLaunchBootstrap(): Partial<ClientLaunchPresentation> | null {
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  const keys = ["piik-client", "piik-lang", "piik-mode", "piik-theme"] as const;
+  const keys = ["piik-client", "piik-lang", "piik-theme"] as const;
   const query = new URLSearchParams(window.location.search);
   const present = keys.some((key) => params.has(key)) || query.has("piik-preferences") || query.has("piik-client-port");
   const launchedFromFragment = params.get("piik-client") === "1";
@@ -87,12 +85,10 @@ export function takeClientLaunchBootstrap(): Partial<ClientLaunchPresentation> |
     try { window.localStorage.setItem(CLIENT_LAUNCH_STORAGE_KEY, "1"); } catch { /* Storage is optional. */ }
   }
   const lang = params.get("piik-lang");
-  const mode = params.get("piik-mode");
   const theme = params.get("piik-theme");
   const preferenceFields = query.get("piik-preferences")?.split(",") ?? [];
   const presentation: Partial<ClientLaunchPresentation> = {
     ...(isLang(lang) ? { lang } : {}),
-    ...(mode === "vis" || mode === "text" ? { vis: mode === "vis" } : {}),
     ...(theme === "light" || theme === "dark" || theme === "system"
       ? { theme: theme === "system" ? null : theme } : {}),
   };

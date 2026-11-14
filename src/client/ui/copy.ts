@@ -4,7 +4,6 @@ import {
   locales,
   isLang,
   resolveLang,
-  visualTitleFrames,
   type CopyKey,
   type Lang,
   type TitleFrameKey,
@@ -12,23 +11,18 @@ import {
 } from "../locales";
 
 export type { CopyKey, Lang, TitleFrameKey } from "../locales";
-export type CopyMode = "text" | "vis";
 
 const LANG_STORAGE_KEY = "piik:ui-lang";
-const MODE_STORAGE_KEY = "piik:ui-mode";
 
 interface CopyPrefs {
   lang: Lang;
-  vis: boolean;
 }
 
 function readStored(): Partial<CopyPrefs> {
   try {
     const lang = window.localStorage.getItem(LANG_STORAGE_KEY);
-    const mode = window.localStorage.getItem(MODE_STORAGE_KEY);
     return {
       ...(isLang(lang) ? { lang } : {}),
-      ...(mode === "text" || mode === "vis" ? { vis: mode === "vis" } : {}),
     };
   } catch {
     return {};
@@ -39,7 +33,6 @@ const stored = readStored();
 let explicit = Object.keys(stored).length > 0;
 const state: CopyPrefs = {
   lang: resolveLang(typeof navigator === "undefined" ? undefined : navigator.language),
-  vis: false,
   ...stored,
 };
 
@@ -57,7 +50,6 @@ const listeners = new Set<() => void>();
 // the persisting variant for local user actions.
 function apply(next: Partial<CopyPrefs>): void {
   if (next.lang) state.lang = next.lang;
-  if (next.vis !== undefined) state.vis = next.vis;
   syncDocumentLanguage();
   listeners.forEach((listener) => listener());
 }
@@ -67,7 +59,6 @@ function commit(next: Partial<CopyPrefs>): void {
   apply(next);
   try {
     window.localStorage.setItem(LANG_STORAGE_KEY, state.lang);
-    window.localStorage.setItem(MODE_STORAGE_KEY, state.vis ? "vis" : "text");
   } catch {
     // Restricted storage only disables persistence.
   }
@@ -78,7 +69,7 @@ function commit(next: Partial<CopyPrefs>): void {
 // without re-notify loops.
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (event) => {
-    if (event.key === LANG_STORAGE_KEY || event.key === MODE_STORAGE_KEY) {
+    if (event.key === LANG_STORAGE_KEY) {
       const stored = readStored();
       explicit = Object.keys(stored).length > 0;
       apply(stored);
@@ -105,7 +96,7 @@ export function isCopyKey(value: string): value is CopyKey {
 }
 
 export function t(lang: Lang, key: CopyKey, vars?: Record<string, string>): string {
-  let value = locales[lang].copy[key];
+  let value = locales[lang].copy[key] ?? locales.en.copy[key];
   if (vars) {
     for (const [name, replacement] of Object.entries(vars)) {
       value = value.replace(`{${name}}`, () => replacement);
@@ -116,10 +107,9 @@ export function t(lang: Lang, key: CopyKey, vars?: Record<string, string>): stri
 
 export function getTitleFrames(
   lang: Lang,
-  visual: boolean,
   key: TitleFrameKey,
 ): TitleContent {
-  return visual ? visualTitleFrames[key] : locales[lang].titleFrames[key];
+  return locales[lang].titleFrames[key] ?? locales.en.titleFrames[key];
 }
 
 // Non-hook accessor for transient notices composed outside React render
@@ -136,24 +126,22 @@ export function currentLang(): Lang {
 
 // Locale-aware joins for composed notices.
 export function joinSentences(lang: Lang, parts: string[]): string {
-  return parts.join(lang === "zh" ? "；" : "; ");
+  return parts.join(lang === "zh" || lang === "zh-Hant" ? "；" : "; ");
 }
 export function joinItems(lang: Lang, parts: string[]): string {
-  return parts.join(lang === "zh" ? "、" : ", ");
+  return parts.join(lang === "zh" || lang === "zh-Hant" || lang === "ja" ? "、" : ", ");
 }
 
 export interface Copy {
   lang: Lang;
-  vis: boolean;
   t: (key: CopyKey, vars?: Record<string, string>) => string;
   titleFrames: (key: TitleFrameKey) => TitleContent;
   setLang: (lang: Lang) => void;
-  setVis: (vis: boolean) => void;
 }
 
 export function useCopy(): Copy {
-  const snapshot = () => `${state.lang}:${state.vis}`;
-  const current = useSyncExternalStore(
+  const snapshot = () => state.lang;
+  const lang = useSyncExternalStore(
     (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -161,14 +149,10 @@ export function useCopy(): Copy {
     snapshot,
     snapshot,
   );
-  const [lang, vis] = current.split(":") as [Lang, string];
-  const visual = vis === "true";
   return {
     lang,
-    vis: visual,
     t: (key, vars) => t(lang, key, vars),
-    titleFrames: (key) => getTitleFrames(lang, visual, key),
-    setLang: (next) => commit({ lang: next, vis: false }),
-    setVis: (next) => commit({ vis: next }),
+    titleFrames: (key) => getTitleFrames(lang, key),
+    setLang: (next) => commit({ lang: next }),
   };
 }

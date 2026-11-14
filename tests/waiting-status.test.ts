@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { StageOverlay } from "../src/client/components/living/Stage";
 import { LoadingStatus } from "../src/client/components/living/WaitingStatus";
-import { WelcomeCipher, WelcomeLine } from "../src/client/components/living/WelcomeLine";
+import { WelcomeLine } from "../src/client/components/living/WelcomeLine";
 import { STATUS_SCENARIOS } from "../src/client/pages/status-preview-scenarios";
 import { deriveViewerPresentation } from "../src/client/media/viewer-presentation";
 import { deriveViewerStatus } from "../src/client/ui/media-status";
@@ -11,12 +11,12 @@ import { locales } from "../src/client/locales";
 import { setCopy, t } from "../src/client/ui/copy";
 
 afterEach(() => {
-  setCopy({ lang: "zh", vis: false });
+  setCopy({ lang: "zh" });
   vi.restoreAllMocks();
 });
 
 it.each(["zh", "en"] as const)("keeps %s waiting copy secondary to the actual operation", lang => {
-  setCopy({ lang, vis: false });
+  setCopy({ lang });
   vi.spyOn(Math, "random").mockReturnValue(0);
   const html = renderToStaticMarkup(createElement(LoadingStatus, { label: "client.launch.starting", waitingCaption: true }));
   expect(html).toContain(`aria-label="${t(lang, "client.launch.starting")}"`);
@@ -27,7 +27,7 @@ it.each(["zh", "en"] as const)("keeps %s waiting copy secondary to the actual op
 });
 
 it.each(["common.loading", "gate.checking"] as const)("keeps routine %s feedback literal", label => {
-  setCopy({ lang: "en", vis: false });
+  setCopy({ lang: "en" });
   const html = renderToStaticMarkup(createElement(LoadingStatus, { label }));
   expect(html).toContain('class="lr-brand-loader"');
   expect(html).toContain(t("en", label));
@@ -72,25 +72,6 @@ it("keeps a required action usable even if waiting was requested", () => {
   expect(html).not.toContain('data-comic-motion="progress"');
 });
 
-it("keeps the mascot in visual-mode loading without adding a network claim", () => {
-  setCopy({ vis: true });
-  const html = renderToStaticMarkup(createElement(LoadingStatus, { label: "client.launch.starting", waitingCaption: true }));
-  expect(html).toContain('class="lr-brand-loader"');
-  expect(html).not.toContain("data-comic-motion");
-  expect(html).not.toContain('class="lr-waiting-caption"');
-});
-
-it("keeps a specific visual-mode wait in its comic without a second indicator", () => {
-  setCopy({ vis: true });
-  const html = renderToStaticMarkup(createElement(StageOverlay, {
-    comic: "waiting-for-host", icon: "moon", message: "Waiting for the Host", waiting: true,
-  }));
-  expect(html).toContain('data-comic-motion="progress"');
-  expect(html).not.toContain("lr-brand-loader");
-  expect(html).not.toContain("lr-tv-big");
-  expect(html).not.toContain('class="lr-waiting-caption"');
-});
-
 it("keeps an informative static mascot in the reduced-motion preview", () => {
   const html = renderToStaticMarkup(createElement(LoadingStatus, { label: "common.loading", still: true }));
   expect(html).toContain('class="lr-brand-mark"');
@@ -98,21 +79,19 @@ it("keeps an informative static mascot in the reduced-motion preview", () => {
   expect(html).toContain('aria-label="');
 });
 
-it("uses the selected welcome entry's own symbols in visual mode", () => {
+it.each(["zh", "en"] as const)("shows the selected %s welcome entry as text", lang => {
   vi.spyOn(Math, "random").mockReturnValue(0);
-  setCopy({ lang: "zh", vis: false });
-  const entry = locales.zh.playful.welcome[0]!;
-  expect(renderToStaticMarkup(createElement(WelcomeLine))).toContain(entry.text);
-  setCopy({ vis: true });
-  const cipher = renderToStaticMarkup(createElement(WelcomeCipher, { symbols: entry.symbols }));
-  expect(renderToStaticMarkup(createElement(WelcomeLine))).toContain(cipher);
+  setCopy({ lang });
+  const html = renderToStaticMarkup(createElement(WelcomeLine));
+  expect(html).toContain(locales[lang].playful.welcome[0]!.text);
+  expect(html).toContain('class="lr-welcome-text"');
 });
 
 it("omits an empty language pool without hiding the real status or filling from another language", () => {
   const original = locales.zh.playful;
   locales.zh.playful = { welcome: [], waiting: [] };
   try {
-    setCopy({ lang: "zh", vis: false });
+    setCopy({ lang: "zh" });
     expect(renderToStaticMarkup(createElement(WelcomeLine))).toBe("");
     const loading = renderToStaticMarkup(createElement(LoadingStatus, { label: "common.loading", waitingCaption: true }));
     expect(loading).toContain(t("zh", "common.loading"));

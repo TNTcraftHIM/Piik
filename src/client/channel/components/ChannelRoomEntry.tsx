@@ -9,7 +9,7 @@ import "./channel-room-controls.css";
 function RoomPasswordForm({ channel, roomId, available, hidden = false }: {
   channel: ChannelController; roomId: string; available: boolean; hidden?: boolean;
 }) {
-  const { lang } = useCopy(), zh = lang === "zh";
+  const { t } = useCopy();
   const [password, setPassword] = useState("");
   const pending = channel.pending.has(`enter:${roomId}`);
   return <form hidden={hidden} onSubmit={event => {
@@ -17,17 +17,17 @@ function RoomPasswordForm({ channel, roomId, available, hidden = false }: {
     if (!available || pending || !password) return;
     void channel.enterRoom(roomId, password).then(() => setPassword("")).catch(() => {});
   }}><input className="c3-input" type="password" maxLength={128} value={password} autoComplete="current-password"
-    aria-label={zh ? "房间密码" : "Room password"} disabled={!available || pending} onChange={event => setPassword(event.target.value)} />
-    <ChannelAction icon="door" type="submit" primary label={zh ? "进入房间" : "Enter room"}
+    aria-label={t("room.entry.password")} disabled={!available || pending} onChange={event => setPassword(event.target.value)} />
+    <ChannelAction icon="door" type="submit" primary label={t("room.entry.enter")}
       busy={pending} disabled={!password || !available} /></form>;
 }
 
 export function ChannelRoomEntry({ channel, room }: { channel: ChannelController; room: ChannelRoom }) {
-  const { lang } = useCopy(), zh = lang === "zh";
+  const { t } = useCopy();
   return <section className="c3-locked-room"><Glyph name="lock" size={46} />
-    <h3>{zh ? "这是一间私密房间" : "This room is private"}</h3>
-    <p>{room.hasPassword ? (zh ? "输入房间密码，或使用房间邀请链接。" : "Enter its password or open a room invitation.")
-      : (zh ? "请向房主索取邀请链接。" : "Ask the room owner for an invitation.")}</p>
+    <h3>{t("room.entry.privateTitle")}</h3>
+    <p>{room.hasPassword ? t("room.entry.passwordNote")
+      : t("room.entry.invitationNote")}</p>
     {room.hasPassword && <RoomPasswordForm channel={channel} roomId={room.id} available={channel.connection === "connected" && room.available} />}
   </section>;
 }
@@ -36,13 +36,13 @@ export function ChannelRoomEntry({ channel, room }: { channel: ChannelController
 export function ChannelUnlistedRoomEntry({ channel, roomId, onBack }: {
   channel: ChannelController; roomId: string; onBack(): void;
 }) {
-  const { lang } = useCopy(), zh = lang === "zh";
+  const { t } = useCopy();
   const pending = channel.pending.has(`enter:${roomId}`);
   return <section className="c3-locked-room"><Glyph name="lock" size={46} />
-    <h3>{zh ? "打开房间" : "Open room"}</h3>
-    {pending ? <p role="status">{zh ? "正在打开房间…" : "Opening room…"}</p>
-      : <p>{zh ? "输入房间密码，或向房主索取完整的免密邀请链接。" : "Enter the room password, or ask the owner for a complete password-free invitation."}</p>}
+    <h3>{t("room.entry.open")}</h3>
+    {pending ? <p role="status">{t("room.entry.opening")}</p>
+      : <p>{t("room.entry.unlistedNote")}</p>}
     <RoomPasswordForm channel={channel} roomId={roomId} available={channel.connection === "connected"} hidden={pending} />
-    <ChannelAction icon="arrowLeft" quiet label={zh ? "返回房间总览" : "Back to rooms"} onClick={onBack} />
+    <ChannelAction icon="arrowLeft" quiet label={t("room.entry.back")} onClick={onBack} />
   </section>;
 }

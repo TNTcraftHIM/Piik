@@ -88,7 +88,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       </div>}
       {owned && <span className="lr-viewer-action-separator" aria-hidden="true" />}
       <div className="c3-watch-local" role="group" aria-label={t("watch.localControls")}>
-        {player.video ? <><AudioVolumeMenu volume={media.volume} label="playback.volumeBasic" icon="speaker" max={1} onVolume={volume => { if (player.video) { player.video.volume = volume; player.video.muted = false; } }}>
+        {player.video ? <><AudioVolumeMenu volume={media.volume} label="playback.volumeBasic" max={1} onVolume={volume => { if (player.video) { player.video.volume = volume; player.video.muted = false; } }}>
           <Btn icon={media.muted || !media.volume ? "speakerOff" : "speaker"} quiet size="dense" title={media.muted ? "playback.unmute" : "playback.mute"}
             onClick={() => { const video = player.video; if (!video) return; const silent = video.muted || !video.volume; if (silent && !video.volume) video.volume = 1; video.muted = !silent; }} />
         </AudioVolumeMenu>
@@ -179,7 +179,7 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
   const nativeRequested = useRef(false);
   const current = useRef({ displayed, inputs, onPresentation });
   current.current = { displayed, inputs, onPresentation };
-  const { lang, t } = useCopy();
+  const { t } = useCopy();
   const hasAudio = !localSource && streamHasAudio;
   const silent = audio.muted || audio.level === 0;
   const volumeTitle = !hasAudio ? "playback.noAudio" : audio.boostAvailable ? "playback.volume" : "playback.volumeBasic";
@@ -329,7 +329,7 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
     <RoomChatOverlay session={interaction} visible={interactive && ready && !blocked && !paused} />
     {!ready && !blocked && <div className="c3-mini-message" role="status">
       <span className="c3-frame-wait"><BrandMark size={32} motion="loop" />
-        {lang === "zh" ? "等待画面" : "Waiting for picture"}</span>
+        {t("screen.waitingPicture")}</span>
     </div>}
     {blocked && <div className="c3-mini-message"><Btn icon="play" title="playback.play" cap="playback.play"
       onClick={play} hint="hint-local-play" /></div>}
@@ -387,7 +387,7 @@ export function ChannelAudio({ stream, muted, volume, createContext, label }: {
   const ref = useRef<HTMLAudioElement>(null);
   const output = useRef<ViewerAudio | null>(null);
   const [blocked, setBlocked] = useState(false);
-  const { lang } = useCopy();
+  const { t } = useCopy();
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
@@ -402,6 +402,6 @@ export function ChannelAudio({ stream, muted, volume, createContext, label }: {
   }, [stream, createContext]);
   useEffect(() => { output.current?.setLevel(volume); output.current?.setMuted(muted); }, [stream, volume, muted]);
   return <><audio ref={ref} aria-label={label} onPlay={() => setBlocked(false)} />
-    {blocked && <ChannelAction icon="speaker" label={lang === "zh" ? `播放 ${label}` : `Play ${label}`}
+    {blocked && <ChannelAction icon="speaker" label={t("screen.playNamed", { label })}
       onClick={() => { void ref.current?.play().then(() => setBlocked(false)).catch(() => {}); }} />}</>;
 }

@@ -20,7 +20,7 @@ vi.mock("react", async original => ({ ...await original<typeof import("react")>(
   },
   useEffect: (effect: () => (() => void) | void) => { const cleanup = effect(); if (cleanup) hooks.cleanups.push(cleanup); },
 }));
-vi.mock("../src/client/ui/copy", () => ({ useCopy: () => ({ t: (key: string) => key, vis: false }) }));
+vi.mock("../src/client/ui/copy", () => ({ useCopy: () => ({ t: (key: string) => key }) }));
 
 afterEach(() => {
   hooks.cleanups.splice(0).forEach(cleanup => cleanup());

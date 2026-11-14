@@ -26,7 +26,7 @@ export function ChannelFeedbackSounds({ channel }: { channel: Pick<ChannelContro
     finally { setBusy(null); }
   }
   return <section className="c3-feedback-sounds" aria-label={label}>
-    <SwitchItem checked={enabled} label={label} icon="speaker" onChange={enabled => channel.setFeedbackSound({ enabled })} />
+    <SwitchItem checked={enabled} label={label} onChange={enabled => channel.setFeedbackSound({ enabled })} />
     {enabled && <>
       <p>{t("interaction.feedbackSoundsHint")}</p>
       <label htmlFor={id}><span>{volumeLabel}</span><output htmlFor={id}>{percent}%</output></label>

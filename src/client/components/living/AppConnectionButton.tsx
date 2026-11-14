@@ -34,7 +34,7 @@ interface ConnectionAttempt {
 }
 
 export function AppConnectionButton({ onConnected, discovery = channelAppDiscovery, connected, targetURL }: AppConnectionProps) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const [state, setState] = useState<"idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible">("idle");
   const wakeURL = androidAppIntent("piik://app");
   const [helpOpen, setHelpOpen] = useState(false);
@@ -234,7 +234,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
   const availableUpdate = update?.kind === "update-available" || update?.kind === "major-update";
   const title = availableUpdate ? t("client.connect.update", { current: build!.version, version: update.version }) : label;
   return <><Tooltip kind={availableUpdate ? "update-available" : ready ? "hint-app-ready" : state === "unavailable" ? "signal-failed" : state === "incompatible" ? "warning" : "hint-client-site"}
-    text={vis ? undefined : state === "idle" ? t("client.connect.hint") : title} disabled={helpOpen}
+    text={state === "idle" ? t("client.connect.hint") : title} disabled={helpOpen}
     autoOpen={automaticHint} place="below" align="end">
     <button ref={trigger} type="button" className={`lr-btn is-compact lr-app-connect${ready ? " is-ready is-quiet" : ""}`}
       aria-label={title} aria-busy={busy || undefined} data-update={availableUpdate || undefined}
@@ -248,7 +248,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       }} disabled={busy}>
       <Glyph name={availableUpdate ? "arrowUp" : ready ? "check" : busy ? "loader" : state === "unavailable" || state === "incompatible" ? "alert" : "window"}
         size={16} className={busy ? "lr-spin" : undefined} />
-      {vis ? null : <span className="lr-cap">App</span>}
+      <span className="lr-cap">App</span>
     </button>
   </Tooltip>
     <div ref={help} id={helpId} popover="auto" role="dialog" aria-label={t("client.connect.action")} aria-describedby={`${helpId}-message`}
@@ -267,26 +267,26 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
           <Glyph name="x" size={16} />
         </button>
       </div>
-      <p id={`${helpId}-message`} className={vis ? "visually-hidden" : undefined}>{state === "busy" ? t("client.connect.permissionHint") : label}</p>
+      <p id={`${helpId}-message`}>{state === "busy" ? t("client.connect.permissionHint") : label}</p>
       {state === "ready" && build && <p className="lr-app-connect-version">
-        <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.version", { version: build.version })}</span>
-        {vis && <span aria-hidden="true">{build.version}</span>}
+        <span>{t("client.launch.version", { version: build.version })}</span>
+
       </p>}
       {update && <AppReleaseNotice update={update} managementURL={updateManagementURL} />}
       <div className="lr-app-connect-actions">
         {state !== "busy" && <button type="button" className="lr-btn" aria-label={t(state === "approval" || state === "ready" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")} onClick={() => void connect()}>
-          <Glyph name={state === "approval" || state === "ready" ? "arrowRight" : "refresh"} size={16} /><span className={vis ? "visually-hidden" : undefined}>{t(state === "approval" || state === "ready" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")}</span>
+          <Glyph name={state === "approval" || state === "ready" ? "arrowRight" : "refresh"} size={16} /><span>{t(state === "approval" || state === "ready" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")}</span>
         </button>}
         {failed && wakeURL && <a className="lr-btn" href={wakeURL} onClick={event => { event.preventDefault(); void connect(true); }}>
-          <Glyph name="window" size={16} /><span className={vis ? "visually-hidden" : undefined}>{t("client.connect.wakeApp")}</span>
+          <Glyph name="window" size={16} /><span>{t("client.connect.wakeApp")}</span>
         </a>}
         {failed && <a className="lr-btn" href={downloadURL} target="_blank" rel="noopener noreferrer" aria-label={t("client.connect.download")}>
-          <Glyph name="arrowDown" size={16} /><span className={vis ? "visually-hidden" : undefined}>{t("client.connect.download")}</span>
+          <Glyph name="arrowDown" size={16} /><span>{t("client.connect.download")}</span>
         </a>}
       </div>
       {targetURL && !(typeof window !== "undefined" && window.piikNativeWindow) && <OpenInClient
         discovery={discovery} targetURL={targetURL} active={helpOpen} disabled={busy} downloadURL={downloadURL} />}
-      {state !== "ready" && <p className={vis ? "visually-hidden" : "lr-app-connect-optional"}>{t("client.connect.browserHint")}</p>}
+      {state !== "ready" && <p className="lr-app-connect-optional">{t("client.connect.browserHint")}</p>}
     </div>
   </>;
 }

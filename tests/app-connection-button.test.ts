@@ -25,7 +25,7 @@ describe("shared App connection entry", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("uses one native link to open update management without another discovery click", () => {
-    setCopy({ lang: "en", vis: false });
+    setCopy({ lang: "en" });
     const html = renderToStaticMarkup(createElement(AppReleaseNotice, {
       update: { kind: "update-available", version: "v3.1.0", revision: "b".repeat(40),
         url: "https://github.com/TNTcraftHIM/Piik/releases/tag/v3.1.0",
@@ -37,7 +37,7 @@ describe("shared App connection entry", () => {
   });
 
   it("keeps an unconnected owner discoverable even after App permission is verified", () => {
-    setCopy({ lang: "en", vis: false });
+    setCopy({ lang: "en" });
     const render = (connected?: boolean) => {
       vi.mocked(useState).mockReturnValueOnce(["ready", vi.fn()]);
       return renderToStaticMarkup(createElement(AppConnectionButton, { connected }));
@@ -82,7 +82,7 @@ describe("shared App connection entry", () => {
     { camera: false, display: true },
     { camera: false, display: false },
   ])("keeps watch together available while camera/display sources follow their capabilities ($camera/$display)", entry => {
-    setCopy({ lang: "en", vis: false });
+    setCopy({ lang: "en" });
     vi.stubGlobal("navigator", { mediaDevices: {
       ...(entry.camera ? { getUserMedia: vi.fn() } : {}),
       ...(entry.display ? { getDisplayMedia: vi.fn() } : {}),
@@ -107,7 +107,7 @@ describe("shared App connection entry", () => {
     expect(watch.includes("disabled")).toBe(false);
   });
   it("binds live controls to their owned publication without retargeting a retired source", () => {
-    setCopy({ lang: "en", vis: false });
+    setCopy({ lang: "en" });
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn() } });
     const ownedScreens = new Set(["mine", "voice"]);
     const screenQuality = vi.fn(() => ({ applied: DEFAULT_QUALITY_SETTINGS, requested: DEFAULT_QUALITY_SETTINGS }));
@@ -142,7 +142,7 @@ describe("Native sharing capabilities", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("derives Native availability from retained capabilities and the source's codec mode", () => {
-    setCopy({ lang: "en", vis: false });
+    setCopy({ lang: "en" });
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(), getUserMedia: vi.fn() } });
     const sources = { kind: "ready", codecs: ["h264"], softwareEncodingCodecs: ["h264"], processAudio: false, systemAudio: false,
       sources: [{ kind: "window", sourceId: "1", title: "Owned Native window", pid: 1, creationTime: "1" }] };

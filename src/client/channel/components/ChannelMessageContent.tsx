@@ -12,13 +12,13 @@ const markdown = new MarkdownIt({ html: false, breaks: true, linkify: true, typo
 const tags = new Set(["p", "em", "strong", "s", "ul", "ol", "li", "blockquote"]);
 
 function CodeBlock({ text }: { text: string }) {
-  const { lang } = useCopy(), zh = lang === "zh", clipboard = useClipboardResult(text);
+  const { t } = useCopy(), clipboard = useClipboardResult(text);
   return <div className="c3-code-block">
     <div className="c3-code-actions lr-embedded-actions"><ChannelAction icon={clipboard.status === "copied" ? "check" : "copy"}
-      label={clipboard.status === "copied" ? (zh ? "已复制" : "Copied") : (zh ? "复制代码" : "Copy code")}
+      label={clipboard.status === "copied" ? t("channel.messageContent.copied") : t("channel.messageContent.copyCode")}
       quiet disabled={!text} onClick={clipboard.copy} /></div>
     <pre tabIndex={0}><code>{text}</code></pre>
-    {clipboard.status === "failed" && <small role="status">{zh ? "未能复制，请选择代码后手动复制。" : "Couldn't copy. Select the code and copy it manually."}</small>}
+    {clipboard.status === "failed" && <small role="status">{t("channel.messageContent.copyFailed")}</small>}
   </div>;
 }
 

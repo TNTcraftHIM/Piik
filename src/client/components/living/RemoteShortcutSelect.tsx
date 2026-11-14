@@ -9,12 +9,12 @@ export function RemoteShortcutSelect({ value, onChange, host = false, mac = fals
   actualLabel?: string | null;
   modifierLabel?: string;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const id = useId();
   const label = t(actualLabel !== undefined ? "remote.preferredStopKey" : host ? "remote.hostStopKey" : "remote.releaseKey");
   return <><div className="lr-capture-device lr-remote-shortcut">
-    <Tooltip kind="hint-remote-stop" text={vis ? undefined : t(actualLabel !== undefined ? "remote.preferredStopKeyHelp" : host ? "remote.hostStopKeyHelp" : "remote.releaseKeyHelp")}>
-      <label htmlFor={id}><Glyph name="keyboard" size={16} />{vis ? null : label}</label>
+    <Tooltip kind="hint-remote-stop" text={t(actualLabel !== undefined ? "remote.preferredStopKeyHelp" : host ? "remote.hostStopKeyHelp" : "remote.releaseKeyHelp")}>
+      <label htmlFor={id}><Glyph name="keyboard" size={16} />{label}</label>
     </Tooltip>
     <div className="lr-capture-device-controls">
       <select id={id} aria-label={label} value={value} disabled={disabled} onChange={event => onChange(Number(event.target.value))}>
@@ -23,7 +23,7 @@ export function RemoteShortcutSelect({ value, onChange, host = false, mac = fals
     </div>
   </div>
     {actualLabel !== undefined && <p className="lr-remote-note lr-remote-shortcut-actual" aria-live="polite">
-      <Glyph name="keyboard" size={14} /> <span className={vis ? "visually-hidden" : undefined}>{t("remote.hostStopKey")}</span>{" "}
+      <Glyph name="keyboard" size={14} /> <span>{t("remote.hostStopKey")}</span>{" "}
       {actualLabel ? <kbd>{actualLabel}</kbd> : <span>{t("remote.shortcutUnbound")}</span>}
     </p>}
   </>;

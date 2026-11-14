@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const firstPaint = readFileSync(new URL("../index.html", import.meta.url), "utf8")
   .match(/<script>([\s\S]*?)<\/script>/)![1]!;
-const keys = ["piik:ui-lang", "piik:ui-mode", "piik:ui-theme"];
+const keys = ["piik:ui-lang", "piik:ui-theme"];
 
 afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); });
 
@@ -61,14 +61,14 @@ describe("App presentation handoff authority", () => {
   });
 
   it.each([
-    { name: "default handoff preserves saved choices", saved: ["zh", "vis", "dark"], fields: "", selection: "zh:true", theme: "dark", result: ["zh", "vis", "dark"] },
-    { name: "default handoff supplies only temporary first-use defaults", saved: [], fields: "", selection: "en:false", theme: "light", result: [null, null, null] },
-    { name: "explicit language keeps the destination theme", saved: ["zh", "vis", "dark"], fields: "copy", selection: "en:false", theme: "dark", result: ["en", "text", "dark"] },
-    { name: "explicit theme keeps the destination language and visual mode", saved: ["zh", "vis", "dark"], fields: "theme", selection: "zh:true", theme: "light", result: ["zh", "vis", "light"] },
-    { name: "both explicit domains replace saved choices", saved: ["zh", "vis", "dark"], fields: "copy,theme", selection: "en:false", theme: "light", result: ["en", "text", "light"] },
+    { name: "default handoff preserves saved choices", saved: ["zh", "dark"], fields: "", selection: "zh", theme: "dark", result: ["zh", "dark"] },
+    { name: "default handoff supplies only temporary first-use defaults", saved: [], fields: "", selection: "en", theme: "light", result: [null, null] },
+    { name: "explicit language keeps the destination theme", saved: ["zh", "dark"], fields: "copy", selection: "en", theme: "dark", result: ["en", "dark"] },
+    { name: "explicit theme keeps the destination language", saved: ["zh", "dark"], fields: "theme", selection: "zh", theme: "light", result: ["zh", "light"] },
+    { name: "both explicit domains replace saved choices", saved: ["zh", "dark"], fields: "copy,theme", selection: "en", theme: "light", result: ["en", "light"] },
   ])("$name", async ({ saved, fields, selection, theme, result }) => {
     const env = browser(saved);
-    env.page.location = new URL(`https://site.example/${fields ? `?piik-preferences=${fields}` : ""}#piik-client=1&piik-lang=en&piik-mode=text&piik-theme=light`);
+    env.page.location = new URL(`https://site.example/${fields ? `?piik-preferences=${fields}` : ""}#piik-client=1&piik-lang=en&piik-theme=light`);
     runInNewContext(firstPaint, { ...env.page, document: env.document, URLSearchParams, matchMedia: env.page.matchMedia });
     expect(env.document.documentElement.dataset.theme).toBe(theme);
     const copy = await import("../src/client/ui/copy");
@@ -77,7 +77,7 @@ describe("App presentation handoff authority", () => {
     const presentation = takeClientLaunchBootstrap()!;
     themes.initTheme(presentation.theme, presentation.explicit!.includes("theme"));
     copy.applyLaunchCopy(presentation, presentation.explicit!.includes("copy"));
-    function Selection() { const { lang, vis } = copy.useCopy(); return `${lang}:${vis}`; }
+    function Selection() { const { lang } = copy.useCopy(); return lang; }
     expect(renderToStaticMarkup(createElement(Selection))).toBe(selection);
     expect(env.document.documentElement.dataset.theme).toBe(theme);
     expect(env.saved()).toEqual(result);
@@ -86,10 +86,10 @@ describe("App presentation handoff authority", () => {
   });
 
   it("does not clear a saved dark theme on a default system-theme handoff", async () => {
-    const env = browser(["zh", "vis", "dark"]);
+    const env = browser(["zh", "dark"]);
     const theme = await import("../src/client/ui/theme");
     theme.initTheme(null, false);
-    expect(env.saved()).toEqual(["zh", "vis", "dark"]);
+    expect(env.saved()).toEqual(["zh", "dark"]);
     expect(env.document.documentElement.dataset.theme).toBe("dark");
   });
 
@@ -98,27 +98,27 @@ describe("App presentation handoff authority", () => {
     const copy = await import("../src/client/ui/copy");
     const theme = await import("../src/client/ui/theme");
     theme.initTheme();
-    copy.setCopy({ lang: "zh", vis: true });
+    copy.setCopy({ lang: "zh" });
     theme.applyTheme("dark");
-    copy.applyLaunchCopy({ lang: "en", vis: false }, false);
+    copy.applyLaunchCopy({ lang: "en" }, false);
     theme.initTheme(null, false);
-    function Selection() { const { lang, vis } = copy.useCopy(); return `${lang}:${vis}`; }
-    expect(renderToStaticMarkup(createElement(Selection))).toBe("zh:true");
+    function Selection() { const { lang } = copy.useCopy(); return lang; }
+    expect(renderToStaticMarkup(createElement(Selection))).toBe("zh");
     expect(copy.hasCopyPreference()).toBe(true);
     expect(theme.currentThemePreference()).toBe("dark");
     expect(env.document.documentElement.dataset.theme).toBe("dark");
-    expect(env.saved()).toEqual([null, null, null]);
+    expect(env.saved()).toEqual([null, null]);
   });
 
   it("consumes presentation and runtime port while preserving the destination fragment", async () => {
     const env = browser();
     const { clientLaunchURL, takeClientLaunchBootstrap } = await import("../src/client/lib/app-launch");
     const target = new URL(clientLaunchURL("https://site.example/?debug=1#piik-client=1&owner=room-owner", {
-      lang: "zh", vis: true, theme: "dark", explicit: ["copy", "theme"],
+      lang: "zh", theme: "dark", explicit: ["copy", "theme"],
     }, undefined, 39730));
     const fragment = new URLSearchParams(target.hash.slice(1));
     expect(fragment.get("piik-lang")).toBe("zh");
-    expect(fragment.get("piik-mode")).toBe("vis");
+    expect(fragment.has("piik-mode")).toBe(false);
     expect(fragment.get("piik-theme")).toBe("dark");
     expect(target.searchParams.get("piik-client-port")).toBe("39730");
     env.page.location = target;

@@ -13,7 +13,7 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, busy, onSa
   name: string; avatar: string | null; color: string; disabled: boolean; busy: boolean;
   onSave(profile: { name: string; avatar: string | null }): Promise<void>;
 }) {
-  const { t, lang, vis } = useCopy(), zh = lang === "zh";
+  const { t } = useCopy();
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null), file = useRef<HTMLInputElement>(null), preparation = useRef(0);
   const [open, setOpen] = useState(false), [draft, setDraft] = useState(name), [picture, setPicture] = useState(avatar);
@@ -34,10 +34,10 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, busy, onSa
   const locked = disabled || busy || preparing;
   const { message } = channelErrorPresentation(error, t);
   return <>
-    <span ref={trigger} className="c3-profile-editor"><Btn icon="pencil" title={{ text: zh ? "修改个人资料" : "Edit profile" }}
+    <span ref={trigger} className="c3-profile-editor"><Btn icon="pencil" title={{ text: t("channel.profileEditor.editProfile") }}
       hint="hint-rename" size="dense" quiet disabled={disabled} popoverTarget={id} controls={id} expanded={open} />
     </span>
-    <div ref={panel} id={id} popover="auto" role="dialog" aria-label={zh ? "修改个人资料" : "Edit profile"}
+    <div ref={panel} id={id} popover="auto" role="dialog" aria-label={t("channel.profileEditor.editProfile")}
       className="lr-anchored-card c3-name-popover" onBeforeToggle={event => {
         if (event.target !== event.currentTarget) return;
         if (event.newState === "closed" && event.currentTarget.contains(event.currentTarget.ownerDocument.activeElement))
@@ -49,30 +49,30 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, busy, onSa
         if (opened) { setDraft(name); setPicture(avatar); setImageError(false); input.current?.focus({ preventScroll: true }); }
         else { preparation.current++; setPreparing(false); }
       }}>
-      <h2 className={vis ? "visually-hidden" : undefined}>{zh ? "修改个人资料" : "Edit profile"}</h2>
+      <h2>{t("channel.profileEditor.editProfile")}</h2>
       <form onSubmit={event => {
         event.preventDefault();
         if (!draft.trim() || locked) return;
         void run(() => onSave({ name: draft.trim(), avatar: picture }), close);
       }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}>
         <div className="c3-profile-picture"><PawnSvg color={color} avatar={picture ?? undefined} />
-          <div><Btn icon="arrowUp" size="dense" quiet title={{ text: zh ? "选择头像" : "Choose picture" }} cap={{ text: zh ? "选择头像" : "Choose picture" }}
+          <div><Btn icon="arrowUp" size="dense" quiet title={{ text: t("channel.profileEditor.choosePicture") }} cap={{ text: t("channel.profileEditor.choosePicture") }}
             busy={preparing} disabled={locked} onClick={() => file.current?.click()} />
-            {picture && <Btn icon="x" size="dense" quiet title={{ text: zh ? "移除头像" : "Remove picture" }} disabled={locked} onClick={() => setPicture(null)} />}
+            {picture && <Btn icon="x" size="dense" quiet title={{ text: t("channel.profileEditor.removePicture") }} disabled={locked} onClick={() => setPicture(null)} />}
           </div>
           <input ref={file} type="file" accept="image/*" hidden onChange={event => {
             const value = event.currentTarget.files?.[0]; event.currentTarget.value = "";
             if (value) void selectPicture(value);
           }} />
         </div>
-        <label className={vis ? "visually-hidden" : undefined} htmlFor={`${id}-name`}>{zh ? "昵称" : "Nickname"}</label>
+        <label htmlFor={`${id}-name`}>{t("channel.profileEditor.nickname")}</label>
         <span className="lr-input"><input ref={input} id={`${id}-name`} maxLength={MAX_USER_NAME_UNITS} autoComplete="nickname"
           value={draft} onChange={event => setDraft(event.target.value)} disabled={disabled || busy} /></span>
-        {(imageError || message) && <p className="c3-settings-error" role="alert">{imageError ? (zh ? "这张图片无法打开，请换一张。" : "Couldn't open this image. Try another.") : message}</p>}
+        {(imageError || message) && <p className="c3-settings-error" role="alert">{imageError ? t("channel.profileEditor.imageOpenFailed") : message}</p>}
         <div className="c3-profile-actions">
           <Btn icon="x" size="dense" quiet title="common.cancel" cap="common.cancel" onClick={close} />
-          <Btn icon="check" type="submit" size="dense" tone="primary" title={{ text: zh ? "保存资料" : "Save profile" }}
-            cap={{ text: zh ? "保存资料" : "Save profile" }} busy={busy} disabled={locked || !draft.trim()} />
+          <Btn icon="check" type="submit" size="dense" tone="primary" title={{ text: t("channel.profileEditor.saveProfile") }}
+            cap={{ text: t("channel.profileEditor.saveProfile") }} busy={busy} disabled={locked || !draft.trim()} />
         </div>
       </form>
     </div>

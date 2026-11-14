@@ -25,7 +25,6 @@ export function LedStrip({
   label: string;
   comic: ComicKind;
 }) {
-  const { vis } = useCopy();
   const tone = state === "busy" ? "warn" : state;
   const strip = (
     <button
@@ -35,12 +34,12 @@ export function LedStrip({
       aria-label={label}
     >
       <span className="lr-connection-dots" aria-hidden="true"><i /><i /><i /></span>
-      {vis ? null : <span className="lr-leds-label">{label}</span>}
+      <span className="lr-leds-label">{label}</span>
     </button>
   );
   return (
     <span role="status">
-      <Tooltip toggleOnClick kind={comic} tone={tone} motion={state === "busy" || state === "warn" ? "progress" : "still"} text={vis ? undefined : label} place="below" align="start">
+      <Tooltip toggleOnClick kind={comic} tone={tone} motion={state === "busy" || state === "warn" ? "progress" : "still"} text={label} place="below" align="start">
         {strip}
       </Tooltip>
     </span>
@@ -49,7 +48,7 @@ export function LedStrip({
 
 /** Shared explicit opt-in/export action; starting diagnostics reloads the page. */
 export function BrowserDiagnosticsButton({ quiet, size }: Pick<ComponentProps<typeof Btn>, "quiet" | "size"> = {}) {
-  const { vis, t } = useCopy();
+  const { t } = useCopy();
   const [debugExport, setDebugExport] = useState<"idle" | "busy" | "failed">("idle");
   const title = !browserDebugEnabled ? "debug.startHint" :
     debugExport === "failed" ? "debug.exportFailed" : "debug.exportHint";
@@ -78,7 +77,7 @@ export function BrowserDiagnosticsButton({ quiet, size }: Pick<ComponentProps<ty
   return <Tooltip kind={!browserDebugEnabled ? "debug-start" : debugExport === "failed" ? "debug-export-failed" : "hint-debug-export"}
     tone={debugExport === "failed" ? "bad" : debugExport === "busy" ? "busy" : "off"}
     motion={debugExport === "failed" ? "still" : debugExport === "busy" ? "progress" : "demo"}
-    text={vis ? undefined : debugTitle} place="below" align="end">{debugButton}</Tooltip>;
+    text={debugTitle} place="below" align="end">{debugButton}</Tooltip>;
 }
 
 const webVersion = import.meta.env.VITE_PIIK_VERSION ?? "development";
@@ -86,19 +85,19 @@ const webRelease = /^v\d+\.\d+\.\d+$/.test(webVersion)
   ? `https://github.com/TNTcraftHIM/Piik/releases/tag/${webVersion}` : null;
 
 function BrowserHelpContent({ active, diagnosticControl }: { active: boolean; diagnosticControl?: React.ReactNode }) {
-  const { lang, vis, t } = useCopy();
+  const { lang, t } = useCopy();
   const guide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}troubleshooting.html`,
     `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/troubleshooting${lang === "zh" ? ".zh-CN" : ""}.md`, active);
-  return <div className={`lr-help-content${vis ? " is-visual" : ""}`}>
+  return <div className="lr-help-content">
     <header><strong>Piik Web</strong>
       {webRelease ? <a href={webRelease} target="_blank" rel="noopener noreferrer"
         aria-label={`Piik Web ${webVersion}`}>{webVersion}</a> : <span>{webVersion}</span>}
     </header>
     <nav aria-label={t("help.title")}>
       {active && <>
-        <Tooltip kind="hint-help" text={vis ? undefined : t("shareHelp.guide")} place="below" align="end">
+        <Tooltip kind="hint-help" text={t("shareHelp.guide")} place="below" align="end">
           <a className="lr-btn is-compact is-quiet" href={guide} target="_blank" rel="noopener noreferrer" aria-label={t("shareHelp.guide")}>
-            <Glyph name="book" size={16} />{!vis && <span className="lr-cap">{t("help.troubleshooting")}</span>}
+            <Glyph name="book" size={16} /><span className="lr-cap">{t("help.troubleshooting")}</span>
           </a>
         </Tooltip>
         {diagnosticControl === undefined ? <BrowserDiagnosticsButton size="compact" quiet /> : diagnosticControl}
@@ -108,14 +107,14 @@ function BrowserHelpContent({ active, diagnosticControl }: { active: boolean; di
 }
 
 function BrowserHelpMenu({ diagnosticControl }: { diagnosticControl?: React.ReactNode }) {
-  const { vis, t } = useCopy();
+  const { t } = useCopy();
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   useAnchoredPopover(trigger, panel);
   return <>
-    <Tooltip kind="hint-help" text={vis ? undefined : t("help.hint")} disabled={open} place="below" align="end">
+    <Tooltip kind="hint-help" text={t("help.hint")} disabled={open} place="below" align="end">
       <button ref={trigger} type="button" className="lr-btn is-compact is-quiet"
         popoverTarget={id} aria-haspopup="dialog" aria-expanded={open} aria-label={t("help.title")}>
         <Glyph name="help" />
@@ -131,7 +130,7 @@ function BrowserHelpMenu({ diagnosticControl }: { diagnosticControl?: React.Reac
 }
 
 export function HeaderControls({ diagnosticControl, appControl, personalControls }: { diagnosticControl?: React.ReactNode; appControl?: React.ReactNode; personalControls?: React.ReactNode } = {}) {
-  const { vis, t } = useCopy();
+  const { t } = useCopy();
   const controls = useRef<HTMLDivElement>(null), trigger = useRef<HTMLSpanElement>(null), options = useRef<HTMLDivElement>(null);
   const focusInline = useRef(false);
   const hasPersonalControls = Boolean(personalControls);
@@ -175,11 +174,9 @@ export function HeaderControls({ diagnosticControl, appControl, personalControls
       }}
     >
       <Glyph name={theme === "dark" ? "sun" : "moon"} size={16} draw="theme-toggle" />
-      {vis ? null : (
-        <span className="lr-cap">
+      <span className="lr-cap">
           {t(theme === "dark" ? "theme.light.short" : "theme.dark.short")}
         </span>
-      )}
     </button>
   );
   return (
@@ -195,7 +192,7 @@ export function HeaderControls({ diagnosticControl, appControl, personalControls
         }}>
         <div className="lr-header-settings">
           <LanguageControl />
-          <Tooltip kind={theme === "dark" ? "hint-theme-light" : "hint-theme-dark"} text={vis ? undefined : themeTitle} place="below" align="end">
+          <Tooltip kind={theme === "dark" ? "hint-theme-light" : "hint-theme-dark"} text={themeTitle} place="below" align="end">
             {themeButton}
           </Tooltip>
         </div>

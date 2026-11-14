@@ -41,9 +41,8 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
   interaction: RoomInteractionSession | null;
   onBack?: () => void;
 }) {
-  const { lang } = useCopy();
+  const { lang, t } = useCopy();
   const surfaceDocument = useSurfaceDocument();
-  const zh = lang === "zh";
   const conversationScope = JSON.stringify([domainId, selfUserId, roomId]);
   const displayUsers = [...new Map([...profiles.values(), ...users].map(user => [user.id, user])).values()];
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
@@ -237,11 +236,11 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
   function addFiles(incoming: File[]) {
     if (!attachmentsAvailable || !limits || working || !canSend) return;
     if (files.length + incoming.length > limits.maxAttachmentsPerMessage) {
-      setFileError(zh ? `每条消息最多附带 ${limits.maxAttachmentsPerMessage} 个文件。` : `Add up to ${limits.maxAttachmentsPerMessage} files per message.`);
+      setFileError(t("conversation.attachmentLimit", { max: String(limits.maxAttachmentsPerMessage) }));
       return;
     }
     if (incoming.some(file => file.size > limits.maxFileBytes)) {
-      setFileError(zh ? `单个文件不能超过 ${fileSize(limits.maxFileBytes)}。` : `Each file can be up to ${fileSize(limits.maxFileBytes)}.`);
+      setFileError(t("conversation.attachmentSizeLimit", { size: fileSize(limits.maxFileBytes) }));
       return;
     }
     setFileError("");
@@ -263,7 +262,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
       setDrafts(previous => previous[conversationScope] === draft ? { ...previous, [conversationScope]: emptyDraft } : previous);
       setDraftFiles(previous => ({ ...previous, [conversationScope]: (previous[conversationScope] ?? []).filter(value => !files.some(file => file.id === value.id)) }));
     } catch (error) {
-      if (!request.signal.aborted) setFileError(zh ? "未能发送，内容已保留，请重试。" : "Couldn't send. Your draft is saved here; try again.");
+      if (!request.signal.aborted) setFileError(t("conversation.sendFailed"));
     }
   }
   function removeFile(entry: DraftFile) {
@@ -271,15 +270,15 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
     setFileError("");
     setDraftFiles(previous => ({ ...previous, [conversationScope]: (previous[conversationScope] ?? []).filter(value => value.id !== entry.id) }));
   }
-  return <section id="c3-chat" className="c3-conversation" hidden={hidden} aria-label={zh ? "房间聊天" : "Room chat"}
+  return <section id="c3-chat" className="c3-conversation" hidden={hidden} aria-label={t("conversation.roomChat")}
     onDragOver={event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
     onDrop={event => {
       if (!event.dataTransfer.types.includes("Files")) return;
       event.preventDefault(); addFiles([...event.dataTransfer.files]);
     }}>
-    <div className="c3-chat-heading">{onBack ? <BackButton onClick={onBack} /> : <><Glyph name="chat" size={18} /><strong>{zh ? "聊天" : "Chat"}</strong></>}
+    <div className="c3-chat-heading">{onBack ? <BackButton onClick={onBack} /> : <><Glyph name="chat" size={18} /><strong>{t("conversation.chat")}</strong></>}
       <span>{roomName}</span></div>
-    <div className="c3-message-log" ref={log} role="log" aria-label={zh ? "消息" : "Messages"}
+    <div className="c3-message-log" ref={log} role="log" aria-label={t("conversation.messages")}
       onScroll={event => {
         const node = event.currentTarget, saved = reading.current;
         // Content growth can emit scroll without the reader moving upward.
@@ -288,7 +287,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
         readVisible();
       }}>
       <div className="c3-message-content" ref={content}>
-        {history?.hasMore && <div className="c3-history-more"><ChannelAction icon="arrowUp" quiet label={zh ? "更早的消息" : "Earlier messages"}
+        {history?.hasMore && <div className="c3-history-more"><ChannelAction icon="arrowUp" quiet label={t("conversation.earlier")}
           busy={loadingHistory} disabled={!available} onClick={() => {
             const node = log.current;
             if (node) {
@@ -306,7 +305,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
         {!history?.hasMore && !messages.length && (!roomId || (!!history && !loadingHistory)) &&
           <ChannelRoomStart icon={roomIcon} canSend={canSend} entry={!roomId ? entry ?? { kind: "entry" } : undefined} />}
         {roomId && loadingHistory && !messages.length && <div className="c3-conversation-loading" role="status">
-          <Glyph name="loader" className="lr-spin" size={18} /><span>{zh ? "正在加载消息…" : "Loading messages…"}</span>
+          <Glyph name="loader" className="lr-spin" size={18} /><span>{t("conversation.loading")}</span>
         </div>}
         {messages.map((message, index) => {
           const previous = messages[index - 1];
@@ -318,46 +317,44 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
           const grouped = !!previous && !newDay && !newMessages && !message.reply && previous.userId === message.userId && elapsed >= 0 && elapsed < 120_000;
           if (!grouped) authorMessageId = message.id;
           const author = profiles.get(message.userId), summary = users.find(user => user.id === message.userId);
-          const name = messageAuthorName(message, displayUsers, zh ? "用户" : "User");
+          const name = messageAuthorName(message, displayUsers, t("conversation.user"));
           return <MessageRow key={message.id} roomId={roomId} message={message} grouped={grouped} name={name} authorMessageId={authorMessageId}
             avatar={(!summary || summary.version === author?.version ? author?.avatar : null) ?? undefined}
             users={displayUsers} selfUserId={selfUserId} unread={newMessages} onMessage={loadingHistory ? undefined : seq => { void showMessage(seq); }}
-            onReply={() => { updateDraft(value => ({ ...value, reply: { seq: message.seq, notify: true, name, text: message.text || (zh ? "附件" : "Attachment") } })); input.current?.focus(); }}
+            onReply={() => { updateDraft(value => ({ ...value, reply: { seq: message.seq, notify: true, name, text: message.text || t("conversation.attachment") } })); input.current?.focus(); }}
             onMention={available && mentionLimit !== null && draft.mentions.length < mentionLimit && displayUsers.some(user => user.id === message.userId)
               ? () => selectMention(displayUsers.find(user => user.id === message.userId)!, {
                 start: input.current?.selectionStart ?? draft.text.length, end: input.current?.selectionEnd ?? draft.text.length, query: "",
               }) : undefined}
-            dateLabel={newDay ? date.toLocaleDateString(zh ? "zh-CN" : "en", { dateStyle: "long" }) : undefined}
+            dateLabel={newDay ? date.toLocaleDateString(lang, { dateStyle: "long" }) : undefined}
             attachments={attachments} available={available} interaction={interaction} effectsEnabled={!hidden && !loadingHistory} />;
         })}
       </div>
     </div>
-    {jumpFailed && <p className="c3-file-error" role="status">{zh ? "原消息暂不可用。" : "The original message is unavailable."}</p>}
+    {jumpFailed && <p className="c3-file-error" role="status">{t("conversation.originalUnavailable")}</p>}
     {roomId && (history?.atLatest === false || (!history && (!loadingHistory || messages.length > 0))) && <div className="c3-history-more"><ChannelAction icon={history ? "arrowDown" : "refresh"} quiet
-      label={history ? (zh ? "最新消息" : "Latest messages") : (zh ? "加载消息" : "Load messages")} busy={loadingHistory} disabled={!available} onClick={() => {
+      label={history ? t("conversation.latest") : t("conversation.load")} busy={loadingHistory} disabled={!available} onClick={() => {
         readingAnchor.current = null;
         reading.current.following = true;
         void onLatest(roomId).catch(() => {});
       }} /></div>}
     {files.length > 0 && <div className="c3-draft-files">{files.map(entry => <div key={entry.id}>
       <Glyph name="save" size={15} /><span>{entry.file.name}</span><small>{fileSize(entry.file.size)}</small>
-      <ChannelAction icon="x" iconOnly quiet label={zh ? "移除文件" : "Remove file"} disabled={working} hint="hint-close"
+      <ChannelAction icon="x" iconOnly quiet label={t("conversation.removeFile")} disabled={working} hint="hint-close"
         onClick={() => { void removeFile(entry); }} />
     </div>)}</div>}
     {fileError && <p className="c3-file-error" role="status">{fileError}</p>}
-    {textTooLong && <p id={textErrorId} className="c3-file-error" role="status">{zh
-      ? `消息最多 ${MAX_MESSAGE_CODE_POINTS} 个字符，当前 ${textLength} 个。请缩短后发送。`
-      : `Messages can contain up to ${MAX_MESSAGE_CODE_POINTS} characters (currently ${textLength}). Shorten your draft to send.`}</p>}
-    {limitsFailed && <div className="c3-file-retry"><span>{zh ? "文件处理暂不可用" : "File preparation unavailable"}</span>
-      <ChannelAction icon="refresh" quiet label={zh ? "重试" : "Retry"} onClick={() => setLimitsRetry(value => value + 1)} /></div>}
+    {textTooLong && <p id={textErrorId} className="c3-file-error" role="status">{t("conversation.textTooLong", { max: String(MAX_MESSAGE_CODE_POINTS), count: String(textLength) })}</p>}
+    {limitsFailed && <div className="c3-file-retry"><span>{t("conversation.filesUnavailable")}</span>
+      <ChannelAction icon="refresh" quiet label={t("conversation.retry")} onClick={() => setLimitsRetry(value => value + 1)} /></div>}
     {roomId && <form className="c3-composer" onSubmit={event => { void send(event); }}>
-      {draft.reply && <div className="c3-compose-reply"><span><strong>{zh ? "回复 " : "Replying to "}{draft.reply.name}</strong><small>{draft.reply.text}</small></span>
-        <Tooltip text={draft.reply.notify ? (zh ? "会提醒对方；关闭后只引用原消息" : "Notifies the author; turn off to quote without notifying")
-          : (zh ? "不会提醒对方；开启后发送提醒" : "Doesn't notify the author; turn on to notify")}>
+      {draft.reply && <div className="c3-compose-reply"><span><strong>{t("conversation.replyingTo", { name: draft.reply.name })}</strong><small>{draft.reply.text}</small></span>
+        <Tooltip text={draft.reply.notify ? t("conversation.replyNotifyOn")
+          : t("conversation.replyNotifyOff")}>
           <button type="button" className={`lr-btn is-compact is-quiet c3-reply-notify${draft.reply.notify ? " is-on" : ""}`} aria-pressed={draft.reply.notify}
-            aria-label={zh ? "提醒回复对象" : "Notify reply recipient"} onClick={() => updateDraft(value => ({ ...value, reply: value.reply && { ...value.reply, notify: !value.reply.notify } }))}>@</button>
+            aria-label={t("conversation.replyNotify")} onClick={() => updateDraft(value => ({ ...value, reply: value.reply && { ...value.reply, notify: !value.reply.notify } }))}>@</button>
         </Tooltip>
-        <ChannelAction icon="x" quiet iconOnly textTooltip label={zh ? "取消回复，保留草稿" : "Cancel reply and keep draft"} onClick={() => {
+        <ChannelAction icon="x" quiet iconOnly textTooltip label={t("conversation.cancelReply")} onClick={() => {
           updateDraft(value => ({ ...value, reply: undefined })); input.current?.focus({ preventScroll: true });
         }} />
       </div>}
@@ -368,13 +365,13 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
         }} />}
       <div className="c3-compose-input">
       {attachmentsAvailable && <><input ref={chooser} type="file" multiple hidden onChange={event => { addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ""; }} />
-        <ChannelAction icon="plus" label={zh ? "添加文件" : "Add files"} iconOnly quiet hint="hint-file-add"
+        <ChannelAction icon="plus" label={t("conversation.addFiles")} iconOnly quiet hint="hint-file-add"
           disabled={!canSend || working || !limits} onClick={() => chooser.current?.click()} /></>}
-      <textarea ref={input} rows={1} enterKeyHint="enter" aria-label={zh ? "消息内容" : "Message"} value={draft.text}
+      <textarea ref={input} rows={1} enterKeyHint="enter" aria-label={t("conversation.message")} value={draft.text}
         aria-autocomplete="list" aria-controls={query ? mentionId : undefined}
         aria-activedescendant={query && candidates[activeMention] ? `${mentionId}-${candidates[activeMention].id}` : undefined}
         aria-invalid={textTooLong || undefined} aria-describedby={textTooLong ? textErrorId : undefined}
-        placeholder={zh ? "说点什么…" : "Say something…"} disabled={!roomId}
+        placeholder={t("conversation.placeholder")} disabled={!roomId}
         onPaste={event => { if (attachmentsAvailable && event.clipboardData.files.length) { event.preventDefault(); addFiles([...event.clipboardData.files]); } }}
         onChange={event => { const next = event.target.value; updateDraft(previous => ({ ...previous, text: next, mentions: editMentions(previous.text, next, previous.mentions) })); setMentionIndex(0); setSelection({ start: event.target.selectionStart, end: event.target.selectionEnd }); }}
         onSelect={event => { if (event.currentTarget.ownerDocument.activeElement === event.currentTarget) setSelection({ start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd }); }}
@@ -398,7 +395,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
             event.preventDefault(); event.currentTarget.form?.requestSubmit();
           }
         }} />
-      <ChannelAction icon="send" label={zh ? "发送" : "Send"} type="submit" primary iconOnly
+      <ChannelAction icon="send" label={t("conversation.send")} type="submit" primary iconOnly
         disabled={!canSend || textTooLong || (!text && !files.length)} busy={working} hint="hint-chat-send" />
       </div>
     </form>}
@@ -413,7 +410,7 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
   selfUserId?: string | null;
   onMention?: () => void;
 }) {
-  const { lang } = useCopy();
+  const { lang, t } = useCopy();
   const mentioned = message.mentions?.some(mention => mention.userId === selfUserId)
     || (message.reply?.notify && message.reply.userId === selfUserId);
   const row = useRef<HTMLElement>(null);
@@ -421,24 +418,24 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
     ?.querySelector(`[data-message-id="${CSS.escape(authorMessageId)}"] > .lr-person`) ?? null, [authorMessageId]);
   return <>
     {dateLabel && <div className="c3-message-date"><time dateTime={new Date(message.time).toISOString()}>{dateLabel}</time></div>}
-    {unread && <div className="c3-message-date c3-unread-divider">{lang === "zh" ? "新消息" : "New messages"}</div>}
+    {unread && <div className="c3-message-date c3-unread-divider">{t("conversation.newMessages")}</div>}
     <article ref={row} tabIndex={0} className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}${mentioned ? " is-mentioned" : ""}`} data-message-id={message.id} data-message-seq={message.seq}>
     {!grouped && <PawnSvg color={participantColor(message.userId)} identity={message.userId} avatar={avatar} />}
     <div className="c3-message-body">{!grouped && <div className="c3-message-meta"><strong>{name}</strong>
-      <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
+      <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" })}</time>
     </div>}<div className="c3-message-content-body">
     {message.reply && <button type="button" className="c3-message-reference" disabled={!onMessage} onClick={() => onMessage?.(message.reply!.seq)}>
-      <Glyph name="reply" size={14} /><strong>{message.reply.archivedAuthorName ?? users.find(user => user.id === message.reply!.userId)?.name ?? (lang === "zh" ? "用户" : "User")}</strong>
-      <span>{message.reply.text || (lang === "zh" ? "附件" : "Attachment")}</span></button>}
+      <Glyph name="reply" size={14} /><strong>{message.reply.archivedAuthorName ?? users.find(user => user.id === message.reply!.userId)?.name ?? t("conversation.user")}</strong>
+      <span>{message.reply.text || t("conversation.attachment")}</span></button>}
     {message.text && <ChannelMessageContent message={message} users={users} selfUserId={selfUserId} />}
     {message.attachments.map(file => <ChannelAttachment key={file.id} roomId={roomId} messageSeq={message.seq} file={file} client={attachments}
       inlineImage={message.inlineImages?.[file.id]} />)}
     <ChannelContentReactions reactions={message.reactions} session={interaction} target={{ messageSeq: message.seq }} disabled={!available}
       effectAnchor={effectAnchor} effectsEnabled={effectsEnabled} actions={<>
-      <Tooltip text={lang === "zh" ? `提及 ${name}` : `Mention ${name}`}><button type="button" className="lr-btn is-compact is-quiet c3-mention-author" aria-label={lang === "zh" ? `提及 ${name}` : `Mention ${name}`}
+      <Tooltip text={t("conversation.mention", { name })}><button type="button" className="lr-btn is-compact is-quiet c3-mention-author" aria-label={t("conversation.mention", { name })}
         disabled={!onMention} onClick={onMention}>@</button></Tooltip>
       <ChannelAction icon="reply" iconOnly quiet textTooltip
-      label={!available ? (lang === "zh" ? "房间重新连接后可回复" : "Reply after the room reconnects") : (lang === "zh" ? "回复这条消息" : "Reply to this message")}
+      label={!available ? t("conversation.replyUnavailable") : t("conversation.reply")}
       disabled={!available} onClick={onReply} /></>} />
     </div></div>
     </article>

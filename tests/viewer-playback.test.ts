@@ -93,7 +93,7 @@ describe("Viewer playback binding", () => {
 
 describe("Playback audio controls", () => {
   it("keeps source sound in publishing controls and allows immediate mute while capture is busy", () => {
-    setCopy({ lang: "zh", vis: false });
+    setCopy({ lang: "zh" });
     const stream = { id: "mixed", getAudioTracks: () => [{ kind: "audio", readyState: "live" }] } as unknown as MediaStream;
     const sourceAudio = { hasAudio: false, available: false, level: 1, muted: false, busy: false, canMute: true, onChange: vi.fn() };
     const source = { kind: "screen" as const, id: "screen", userId: "self", name: "Me", roomName: "Room", source: { kind: "screen" as const, name: "Own screen" },
@@ -122,7 +122,7 @@ describe("Playback audio controls", () => {
   });
 
   it("gives the shared volume slider the same no-audio label as its button", () => {
-    setCopy({ lang: "zh", vis: false });
+    setCopy({ lang: "zh" });
     const noop = () => {};
     const html = renderToStaticMarkup(createElement(PlaybackControlsView, {
       audio: { level: 1, muted: false, boostAvailable: true }, paused: false, hasAudio: false, canPlay: true,
@@ -180,7 +180,7 @@ describe("Local source playback", () => {
   });
 
   it("keeps owned=false/localSource=true silent and a remote same-user source unowned", () => {
-    setCopy({ lang: "en", vis: false });
+    setCopy({ lang: "en" });
     const stream = { id: "same-machine", getAudioTracks: () => [{ readyState: "live" }] } as unknown as MediaStream;
     const html = renderToStaticMarkup(createElement(ChannelVideo, {
       stream, owned: false, localSource: true, label: "Local source", theaterMode: false, onToggleTheater: vi.fn(),
@@ -206,7 +206,7 @@ describe("Local source playback", () => {
 
 describe("Screen delivery result", () => {
   it("shows the watch failure without replacing an existing picture or changing its controls", () => {
-    setCopy({ lang: "en", vis: false });
+    setCopy({ lang: "en" });
     const source = { kind: "screen" as const, audience: [], id: "screen", userId: "friend", name: "Friend", roomName: "Room", source: { kind: "screen" as const, name: null }, title: null, owned: false, localSource: false,
       subscribed: true, paused: false, deliveryFailed: true };
     const props: ChannelStageProps = { sources: [source], focusedId: null, canSubscribe: true,
@@ -229,7 +229,7 @@ describe("Screen delivery result", () => {
 
 
 it("shows shared buffer intent on received screens, including limitations, and omits local previews", () => {
-  setCopy({ lang: "en", vis: false });
+  setCopy({ lang: "en" });
   const stream = { id: "buffer-ui", getAudioTracks: () => [] } as unknown as MediaStream;
   const props = { stream, owned: false, localSource: false, label: "Screen", theaterMode: false, onToggleTheater: vi.fn(),
     buffering: { target: 725, status: "unsupported" as const, onChange: vi.fn() } };

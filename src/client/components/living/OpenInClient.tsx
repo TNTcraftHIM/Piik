@@ -10,7 +10,7 @@ interface NavigationAttempt { controller: AbortController; popup: Window }
 export function OpenInClient({ discovery, targetURL, active, disabled, downloadURL }: {
   discovery: AppDiscovery; targetURL: string; active: boolean; disabled: boolean; downloadURL: string;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const [state, setState] = useState<"idle" | "busy" | "unsupported" | "unavailable" | "incompatible">("idle");
   const [managementURL, setManagementURL] = useState<string>();
   const pending = useRef<NavigationAttempt | null>(null);
@@ -51,14 +51,14 @@ export function OpenInClient({ discovery, targetURL, active, disabled, downloadU
   }
 
   const content = <><Glyph name={state === "busy" ? "loader" : "window"} size={16} className={state === "busy" ? "lr-spin" : undefined} />
-    <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.openInClient")}</span></>;
+    <span>{t("client.connect.openInClient")}</span></>;
   const failed = state === "unsupported" || state === "unavailable" || state === "incompatible";
   return <>
     <div className="lr-app-connect-actions">
       {managementURL && !disabled ? <a className="lr-btn" href={clientNavigationURL(managementURL, targetURL)} target="_blank" rel="noopener noreferrer">{content}</a>
         : <button type="button" className="lr-btn" disabled={disabled || state === "busy"} aria-busy={state === "busy" || undefined} onClick={() => void open()}>{content}</button>}
       {failed && <a className="lr-btn" href={downloadURL} target="_blank" rel="noopener noreferrer" aria-label={t("client.connect.download")}>
-        <Glyph name="arrowDown" size={16} /><span className={vis ? "visually-hidden" : undefined}>{t("client.connect.download")}</span>
+        <Glyph name="arrowDown" size={16} /><span>{t("client.connect.download")}</span>
       </a>}
     </div>
     {failed && <p role="status">{t(state === "unsupported" ? "client.connect.navigationUnsupported" : state === "incompatible" ? "native.incompatible" : "client.connect.unavailable")}</p>}

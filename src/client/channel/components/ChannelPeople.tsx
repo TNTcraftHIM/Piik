@@ -8,8 +8,7 @@ import { ChannelUser } from "./ChannelUser";
 import { useEffect, useRef, useState } from "react";
 
 export function ChannelPeople({ channel, roomId, active, onBack }: { channel: ChannelController; roomId: string; active: boolean; onBack(): void }) {
-  const { lang } = useCopy();
-  const zh = lang === "zh";
+  const { t } = useCopy();
   const { state, self } = channel;
   const [directory, setDirectory] = useState<{ ids: string[]; next: string | null }>({ ids: [], next: null });
   const [loading, setLoading] = useState(false), [failed, setFailed] = useState(false), [retry, setRetry] = useState(0);
@@ -36,9 +35,9 @@ export function ChannelPeople({ channel, roomId, active, onBack }: { channel: Ch
   const online = new Set(state?.sessions.filter(session => session.online).map(session => session.userId));
   const inRoom = new Set(state ? roomPeople(state, roomId).map(person => person.userId) : []);
   const groups: { label: string; users: User[] }[] = [
-    { label: zh ? "当前房间" : "This room", users: [] },
-    { label: zh ? "在线" : "Online", users: [] },
-    { label: zh ? "离线" : "Offline", users: [] },
+    { label: t("channel.people.thisRoom"), users: [] },
+    { label: t("channel.people.online"), users: [] },
+    { label: t("channel.people.offline"), users: [] },
   ];
   const ids = new Set([...(state?.users.map(user => user.id) ?? []), ...directory.ids]);
   for (const id of ids) {
@@ -55,14 +54,14 @@ export function ChannelPeople({ channel, roomId, active, onBack }: { channel: Ch
       owner={user.id === state?.channel.rooms.find(room => room.id === roomId)?.creatorId} online={connected}
       voice={voice}
       actions={connected && listeningUsers.has(user.id) && user.id !== self?.id && <AudioVolumeMenu volume={playback.volume}
-        onVolume={volume => channel.setVoiceVolume(user.id, volume)} label="voice.personVolume" icon="speaker" heading={user.name}>
+        onVolume={volume => channel.setVoiceVolume(user.id, volume)} label="voice.personVolume" heading={user.name}>
         <Btn icon={playback.muted ? "speakerOff" : "speaker"} size="dense" quiet title="voice.listenPerson"
           pressed={!playback.muted} onClick={() => channel.setVoiceMuted(user.id, !playback.muted)} />
       </AudioVolumeMenu>}
-      activity={sharing ? (zh ? "正在分享画面" : "Sharing a screen") : undefined} />;
+      activity={sharing ? t("channel.people.sharingAScreen") : undefined} />;
   };
   return <aside id="c3-people" className="c3-people-panel" aria-labelledby="c3-people-heading">
-    <header><h2 id="c3-people-heading" tabIndex={-1}>{zh ? "用户列表" : "Users"}<span>{state?.channel.userCount ?? 0}</span></h2>
+    <header><h2 id="c3-people-heading" tabIndex={-1}>{t("channel.people.users")}<span>{state?.channel.userCount ?? 0}</span></h2>
       <span className="c3-pane-back"><BackButton onClick={onBack} /></span>
     </header>
     <div className="c3-people-body">
@@ -70,11 +69,11 @@ export function ChannelPeople({ channel, roomId, active, onBack }: { channel: Ch
         <h3 className="c3-section-label">{group.label}<span>{group === groups[2] ? Math.max(0, (state?.channel.userCount ?? 0) - new Set([...inRoom, ...online]).size) : group.users.length}</span></h3>
         <div className="c3-users">{group.users.map(row)}</div>
       </section>)}
-      {loading && <p role="status">{zh ? "正在加载用户…" : "Loading people…"}</p>}
-      {failed && <p role="status">{zh ? "未能加载用户，请重试。" : "Couldn't load people. Try again."}</p>}
+      {loading && <p role="status">{t("channel.people.loadingPeople")}</p>}
+      {failed && <p role="status">{t("channel.people.loadFailed")}</p>}
       {(failed || directory.next) && <Btn icon={failed ? "refresh" : "arrowDown"} quiet size="compact" busy={loading}
-        title={{ text: failed ? (zh ? "重试" : "Retry") : (zh ? "更多用户" : "More people") }}
-        cap={{ text: failed ? (zh ? "重试" : "Retry") : (zh ? "更多用户" : "More people") }}
+        title={{ text: failed ? t("channel.people.retry") : t("channel.people.morePeople") }}
+        cap={{ text: failed ? t("channel.people.retry") : t("channel.people.morePeople") }}
         onClick={() => { if (directory.ids.length) void load(directory.next ?? undefined); else setRetry(value => value + 1); }} />}
     </div>
   </aside>;

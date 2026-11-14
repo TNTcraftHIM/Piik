@@ -1,3 +1,4 @@
+import type { Copy } from "../ui/copy";
 import type { ChannelMessage, ChannelPublication, ChannelSnapshot, ChannelUser } from "./protocol";
 
 /** A visit's unread divider starts at another person's message, never our own send. */
@@ -16,10 +17,10 @@ export function userProfile(state: ChannelSnapshot | null, profiles: ReadonlyMap
 }
 
 /** Live metadata owns names; generic source labels belong to the viewer's locale. */
-export function screenTitle(screen: { source: { kind: "screen" | "camera"; name: string | null }; title: string | null }, lang: "zh" | "en"): string {
+export function screenTitle(screen: { source: { kind: "screen" | "camera"; name: string | null }; title: string | null }, t: Copy["t"]): string {
   return screen.title ?? screen.source.name ?? (screen.source.kind === "camera"
-    ? lang === "zh" ? "摄像头" : "Camera"
-    : lang === "zh" ? "分享画面" : "Shared screen");
+    ? t("host.device.camera")
+    : t("channel.screen.shared"));
 }
 
 export interface ScreenAudiencePerson {

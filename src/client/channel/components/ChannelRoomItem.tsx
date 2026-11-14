@@ -14,13 +14,13 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
   sourceCount?: number; settingsOpen?: boolean; unread?: boolean; onSelect(): void; onManage(): void;
   participantDisclosure?: { open: boolean; count: number; controls: string; onToggle(): void };
 }) {
-  const { lang } = useCopy();
+  const { t } = useCopy();
   const unreadId = useId();
-  const settingsLabel = lang === "zh" ? `${room.name}的房间设置` : `Settings for ${room.name}`;
+  const settingsLabel = t("room.item.settings", { name: room.name });
   return <div className="c3-room-item" data-selected={selected || undefined} data-unread={unread || undefined} data-settings-open={settingsOpen || undefined}>
     {participantDisclosure && <span className="c3-room-voice-toggle lr-embedded-actions">
       <Btn icon="chevron" size="dense" quiet hint="hint-collapse"
-        title={{ text: lang === "zh" ? `${participantDisclosure.open ? "收起" : "展开"}参与者（${participantDisclosure.count}人）` : `${participantDisclosure.open ? "Hide" : "Show"} participants (${participantDisclosure.count})` }}
+        title={{ text: t(participantDisclosure.open ? "room.item.hideParticipants" : "room.item.showParticipants", { count: String(participantDisclosure.count) }) }}
         expanded={participantDisclosure.open} controls={participantDisclosure.controls} onClick={participantDisclosure.onToggle} />
     </span>}
     <Tooltip className="c3-room-label" overflow={{ text: room.name, selector: "strong" }}>
@@ -37,7 +37,7 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
         </span>
       </button>
     </Tooltip>
-    {unread && <span id={unreadId} className="c3-room-unread-label">{lang === "zh" ? "有未读消息" : "Unread messages"}</span>}
+    {unread && <span id={unreadId} className="c3-room-unread-label">{t("room.item.unread")}</span>}
     {(room.authorized || room.canManage) && <span className="c3-room-manage">
       <Btn icon="sliders" size="dense" quiet title={{ text: settingsLabel }} hint="hint-advanced"
         expanded={settingsOpen} hasPopup="dialog" tone={settingsOpen ? "on" : undefined} onClick={onManage} />

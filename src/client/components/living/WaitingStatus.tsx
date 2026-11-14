@@ -4,13 +4,11 @@ import { useCopy, type CopyKey } from "../../ui/copy";
 import { useRotatingText } from "../../ui/use-text-rotation";
 import { BrandLoader } from "./BrandMark";
 
-const NO_CAPTIONS: readonly string[] = [];
-
 /** Decoration beside a literal status; it never describes operation progress. */
 export function WaitingCaption({ still = false }: { still?: boolean }) {
-  const { lang, vis } = useCopy();
+  const { lang } = useCopy();
   const captionRef = useRef<HTMLSpanElement>(null);
-  const line = useRotatingText(vis ? NO_CAPTIONS : locales[lang].playful.waiting,
+  const line = useRotatingText<string>(locales[lang].playful.waiting,
     lang, { element: captionRef, still });
   if (!line) return null;
   return <span className="lr-waiting-caption" ref={captionRef} aria-hidden="true">
@@ -21,10 +19,10 @@ export function WaitingCaption({ still = false }: { still?: boolean }) {
 export function LoadingStatus({ label, still = false, waitingCaption = false }: {
   label: CopyKey; still?: boolean; waitingCaption?: boolean;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   return <div className="lr-loading" role="status" aria-label={t(label)}>
     <BrandLoader still={still} />
-    {vis ? null : <span>{t(label)}</span>}
+    <span>{t(label)}</span>
     {waitingCaption && <WaitingCaption still={still} />}
   </div>;
 }

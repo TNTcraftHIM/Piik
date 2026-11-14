@@ -41,7 +41,7 @@ export function ChannelMentionSuggestions({ id, users, activeIndex, onActiveInde
   onActiveIndex(index: number): void; onSelect(user: ChannelUser): void;
   loading?: boolean; error?: boolean; hasMore?: boolean; onMore?(): void;
 }) {
-  const { lang } = useCopy();
+  const { t } = useCopy();
   const list = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const ownerDocument = useSurfaceDocument();
@@ -55,8 +55,8 @@ export function ChannelMentionSuggestions({ id, users, activeIndex, onActiveInde
     list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
   }, [activeIndex, users]);
   return ownerDocument && createPortal(<div ref={panel} popover="manual" className="c3-mention-suggestions">
-    <div className="c3-mention-heading">{lang === "zh" ? "提及用户" : "Mention someone"}</div>
-    <div ref={list} id={id} role="listbox" aria-busy={loading || undefined} aria-label={lang === "zh" ? "用户" : "Users"}>
+    <div className="c3-mention-heading">{t("channel.mentionSuggestions.mentionSomeone")}</div>
+    <div ref={list} id={id} role="listbox" aria-busy={loading || undefined} aria-label={t("channel.mentionSuggestions.users")}>
       {users.map((user, index) => <button type="button" key={user.id} id={`${id}-${user.id}`}
         role="option" aria-selected={index === activeIndex} tabIndex={-1}
         onPointerDown={event => event.preventDefault()} onPointerMove={() => onActiveIndex(index)}
@@ -65,13 +65,13 @@ export function ChannelMentionSuggestions({ id, users, activeIndex, onActiveInde
         <span>{user.name}</span>
       </button>)}
     </div>
-    {!users.length && !loading && !error && <p role="status">{lang === "zh" ? "没有匹配的用户" : "No matching users"}</p>}
+    {!users.length && !loading && !error && <p role="status">{t("channel.mentionSuggestions.noMatchingUsers")}</p>}
     {(loading || error || hasMore) && <div className="c3-mention-more" onPointerDown={event => event.preventDefault()}>
-      {loading && <p role="status">{lang === "zh" ? "正在查找用户…" : "Finding people…"}</p>}
-      {error && <p role="status">{lang === "zh" ? "未能加载用户，请重试。" : "Couldn't load people. Try again."}</p>}
+      {loading && <p role="status">{t("channel.mentionSuggestions.findingPeople")}</p>}
+      {error && <p role="status">{t("channel.mentionSuggestions.loadFailed")}</p>}
       {onMore && !loading && <Btn icon={error ? "refresh" : "arrowDown"} quiet size="compact"
-        title={{ text: error ? (lang === "zh" ? "重试" : "Retry") : (lang === "zh" ? "更多用户" : "More people") }}
-        cap={{ text: error ? (lang === "zh" ? "重试" : "Retry") : (lang === "zh" ? "更多用户" : "More people") }} onClick={onMore} />}
+        title={{ text: error ? t("channel.mentionSuggestions.retry") : t("channel.mentionSuggestions.morePeople") }}
+        cap={{ text: error ? t("channel.mentionSuggestions.retry") : t("channel.mentionSuggestions.morePeople") }} onClick={onMore} />}
     </div>}
   </div>, ownerDocument.body);
 }

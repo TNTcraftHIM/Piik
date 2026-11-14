@@ -37,9 +37,9 @@ export function ViewerOverview({
   voice?: RoomVoiceSnapshot | null;
   voiceMetrics?: readonly VoiceConnectionMetric[];
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const voiceActive = voice?.room?.enabled === true;
-  const unknown = vis ? "—" : t("stats.unknown");
+  const unknown = t("stats.unknown");
   const numberValue = (
     value: number | null | undefined,
     digits: number,
@@ -47,9 +47,9 @@ export function ViewerOverview({
   ): string =>
     finite(value ?? null) ? `${value!.toFixed(digits)}${unit}` : unknown;
   const heading = (key: MetricLabel) => (
-    <Tooltip toggleOnClick kind={METRIC_PRESENTATION[key].hint} text={vis ? undefined : metricHintText(key, t)}>
+    <Tooltip toggleOnClick kind={METRIC_PRESENTATION[key].hint} text={metricHintText(key, t)}>
       <button type="button" aria-label={t(key)} style={{ border: 0, padding: 0, background: "none", color: "inherit", font: "inherit" }}>
-        {vis ? <Glyph name={METRIC_PRESENTATION[key].icon} size={14} /> : t(key)}
+        {t(key)}
       </button>
     </Tooltip>
   );
@@ -62,16 +62,16 @@ export function ViewerOverview({
     >
       <div className="lr-viewer-overview-scroll">
         <div className="lr-viewer-overview-head">
-          <span>{vis ? <Glyph name="users" size={14} /> : t("common.viewers")}</span>
+          <span>{t("common.viewers")}</span>
           {pictureActive && <>
-          <span>{vis ? <Glyph name="tv" size={14} /> : t("host.settings.picture")}</span>
+          <span>{t("host.settings.picture")}</span>
           {heading("stats.resolution")}
           {heading("stats.fps")}
           {heading("stats.bitrate")}
           {heading("stats.loss")}
           {heading("stats.rtt")}
           </>}
-          {voiceActive && <span>{vis ? <Glyph name="headphones" size={14} /> : t(pictureActive ? "voice.details.title" : "voice.details.receive")}</span>}
+          {voiceActive && <span>{t(pictureActive ? "voice.details.title" : "voice.details.receive")}</span>}
           {voiceActive && !pictureActive && <>
             {heading("stats.audio")}{heading("stats.rtt")}{heading("stats.audioLoss")}{heading("stats.audioJitter")}
           </>}
@@ -116,7 +116,7 @@ export function ViewerOverview({
                   </span>
                   <span className="lr-viewer-overview-person-copy">
                     <b>{entry.name}</b>
-                    {vis ? null : <small>{statusLabel}</small>}
+                    <small>{statusLabel}</small>
                   </span>
                 </span>
                 {pictureActive && <><span className={`lr-viewer-overview-route is-${entry.route ?? "pending"}`}>
@@ -130,19 +130,7 @@ export function ViewerOverview({
                     }
                     size={14}
                   />
-                  {vis ? (
-                    <span className="visually-hidden">
-                      {t(
-                        entry.route === "sfu"
-                          ? "state.route.sfu"
-                          : entry.route === "p2p"
-                            ? "state.route.p2p"
-                            : "state.peer.connecting",
-                      )}
-                    </span>
-                  ) : (
-                    <b>{route}</b>
-                  )}
+                  <b>{route}</b>
                 </span>
                 <span>{resolution}</span>
                 <span>{fps}</span>
@@ -152,8 +140,8 @@ export function ViewerOverview({
                 </>}
                 {voiceActive && <span className="lr-viewer-overview-voice" data-tone={voiceDetail?.status.tone ?? "off"}>
                   <Glyph name={voiceDetail?.status.icon ?? "headphonesOff"} size={14} />
-                  <span><b className={!voiceRoute && vis ? "visually-hidden" : undefined}>{voiceRoute ?? voiceLabel}</b>
-                    {voiceRoute && <small className={vis ? "visually-hidden" : undefined}>{voiceLabel}</small>}
+                  <span><b>{voiceRoute ?? voiceLabel}</b>
+                    {voiceRoute && <small>{voiceLabel}</small>}
                   </span>
                 </span>}
                 {voiceActive && !pictureActive && <>
@@ -171,7 +159,7 @@ export function ViewerOverview({
                 kind={hint}
                 tone={entry.status.tone}
                 motion={entry.status.pulse ? "progress" : undefined}
-                text={vis ? undefined : statusLabel}
+                text={statusLabel}
                 overflow={{ text: entry.name, selector: ".lr-viewer-overview-person-copy > b" }}
                 align="start"
               >

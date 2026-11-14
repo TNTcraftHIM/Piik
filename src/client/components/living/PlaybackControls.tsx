@@ -169,7 +169,7 @@ export function PlaybackControlsView({
   settings?: PlaybackSettingsProps;
   sharingAudio?: boolean; audioControlAvailable?: boolean;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const controlsId = useId();
   const localControlsRef = useRef<HTMLDivElement>(null);
   const barRef = controlsRef ?? localControlsRef;
@@ -200,7 +200,7 @@ export function PlaybackControlsView({
             hint={!hasAudio ? "hint-no-audio" : silent ? "hint-unmute" : "hint-mute"} disabled={!hasAudio || !audioControlAvailable}
             onClick={toggleMute} />
           <Tooltip kind={!hasAudio ? "hint-no-audio" : audio.boostAvailable ? "hint-volume" : "hint-volume-basic"}
-            text={vis ? undefined : t(volumeTitle)}
+            text={t(volumeTitle)}
             className="lr-playback-volume">
             <input type="range" min={0} max={audio.boostAvailable ? 200 : 100} step={1}
               value={hasAudio ? percent : 0} disabled={!hasAudio || !audioControlAvailable}

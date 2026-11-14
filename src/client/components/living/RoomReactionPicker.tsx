@@ -32,7 +32,7 @@ export function RoomReactionPicker({ person, selfPeerId, hostPeerId, reactionIds
 export function RoomReactionTarget({ person, selfPeerId, hostPeerId }: {
   person: InteractionParticipant | undefined; selfPeerId: string | null; hostPeerId?: string;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const self = person?.peerId === selfPeerId;
   return <div className="lr-person-menu-target" role="group"
     aria-label={person ? t("interaction.withPerson", { name: person.displayName }) : t("interaction.express")}>
@@ -40,7 +40,7 @@ export function RoomReactionTarget({ person, selfPeerId, hostPeerId }: {
       <span className="lr-person-menu-portrait">{person
         ? <PawnSvg color={participantColor(person.peerId)} host={person.peerId === hostPeerId} />
         : <Glyph name="smile" size={22} />}</span>
-      <span>{!vis && <small>{t(self ? "interaction.express" : "interaction.toPerson")}</small>}
+      <span><small>{t(self ? "interaction.express" : "interaction.toPerson")}</small>
         <Tooltip overflow={{ text: person?.displayName ?? t("interaction.participant"), selector: "b" }}>
           <b>{person?.displayName ?? t("interaction.participant")}</b>
         </Tooltip></span>

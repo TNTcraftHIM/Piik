@@ -25,7 +25,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   pictureRotation?: VideoRotation;
   touchMode?: RoomPreferences["remoteTouchMode"];
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const [state, setState] = useState<RemoteInputState | null>(null);
   const [locked, setLocked] = useState(false);
   const [lockFailed, setLockFailed] = useState(false);
@@ -242,7 +242,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           onClick={() => requestControl()} />
         {feedback && !passwordOpen && <span className="lr-remote-feedback" role="status">
           <Glyph name={statusIcon} size={15} />
-          <span className={vis ? "visually-hidden" : undefined}>{t(feedback)}</span>
+          <span>{t(feedback)}</span>
         </span>}
       </span>
       <Btn icon="keyboard" title={keyboardDetached ? "floating.focus" : "remote.keyboard"} hint={keyboardDetached ? "hint-window-detach" : "hint-remote-keyboard"}
@@ -263,7 +263,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
         }
       }}>
         <div className="lr-remote-panel-header">
-          <strong><Glyph name="key" size={18} />{vis ? null : t("remote.password")}</strong>
+          <strong><Glyph name="key" size={18} />{t("remote.password")}</strong>
           <button type="button" className="lr-btn is-dense is-quiet lr-popover-close" aria-label={t("common.cancel")}
             onClick={() => { setPasswordOpen(false); setPassword(""); release(); }}>
             <Glyph name="x" size={17} />
@@ -278,7 +278,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           <Btn icon="check" title="remote.request" size="compact" hint="hint-remote-control" type="submit" disabled={!password || state.state === "pending"} />
         </div>
         {state.reason && <p role="status" className={state.reason === "password" ? "is-bad" : undefined}><Glyph name={statusIcon} size={16} />
-          <span className={vis ? "visually-hidden" : undefined}>{t(`remote.reason.${state.reason}`)}</span></p>}
+          <span>{t(`remote.reason.${state.reason}`)}</span></p>}
       </form>}
       {controlled && <div ref={surface} className={`lr-remote-input-surface${active ? "" : " is-suspended"}${locked ? " is-locked" : ""}`} tabIndex={0}
         aria-label={t("remote.surface")} role="application"

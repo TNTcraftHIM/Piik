@@ -20,7 +20,7 @@ type BookmarkView = {
 export function AppSiteBookmarks({ windowNavigation, closeOnOpen = false, render, ...access }: {
   windowNavigation: boolean; closeOnOpen?: boolean; render?: (view: BookmarkView) => ReactNode;
 } & Omit<SiteManagementProps, "bookmarks" | "currentOrigin" | "onSave" | "onRemove" | "onOpen">) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const [entry] = useState(() => {
     const hash = new URLSearchParams(location.hash.slice(1));
     return { site: hash.get("site"), open: hash.get("open") };
@@ -88,18 +88,18 @@ export function AppSiteBookmarks({ windowNavigation, closeOnOpen = false, render
       : <p role="status">{t("common.loading")}</p>;
   const invitationForm = <>
     <form className="lr-site-bookmark-open" onSubmit={event => { event.preventDefault(); choose(address); }}>
-      <label><span className={vis ? "visually-hidden" : undefined}>{t("client.bookmarks.openInvitation")}</span>
+      <label><span>{t("client.bookmarks.openInvitation")}</span>
         <span className="lr-input"><Glyph name="link" size={18} /><input type="url" inputMode="url" required pattern="https?://.*" dir="ltr" autoComplete="off" disabled={busy || opening}
           aria-label={t("client.bookmarks.invitationAddress")} placeholder="https://friends.example" value={address} onChange={event => setAddress(event.target.value)} /></span></label>
       <Btn icon="arrowRight" type="submit" size={render ? undefined : "compact"} tone={render ? "primary" : undefined} title="client.connect.openSite" cap="client.bookmarks.open" disabled={busy || opening} />
     </form>
-    {render && <p className={vis ? "visually-hidden" : "lr-launcher-invitation-hint"}>{t("client.launcher.invitationHint")}</p>}
+    {render && <p className="lr-launcher-invitation-hint">{t("client.launcher.invitationHint")}</p>}
     {!pending && openError && <p role="alert">{openError}</p>}
   </>;
   return <>
     {render ? render({ bookmarks, loadError, retry: () => setReload(value => value + 1),
       open: site => choose(site.origin), manage: () => setManaging(true), invitationForm })
-      : <div className="lr-site-bookmark-manager"><h1 className={vis ? "visually-hidden" : undefined}>{t("client.sites.title")}</h1>{editor}{invitationForm}</div>}
+      : <div className="lr-site-bookmark-manager"><h1>{t("client.sites.title")}</h1>{editor}{invitationForm}</div>}
     {render && managing && <ChannelSettingsDialog title={t("client.sites.title")} closeDisabled={busy} onClose={() => setManaging(false)}>{editor}</ChannelSettingsDialog>}
     {pending && <ChannelSettingsDialog compact closeDisabled={opening} title={t(windowNavigation ? "client.bookmarks.switchTitle" : "client.connect.openSite")} onClose={() => setPending(undefined)}>
       <div className="c3-settings-panels lr-site-bookmark-form"><strong className="lr-site-bookmark-target" dir="ltr">{new URL(pending).origin}</strong>

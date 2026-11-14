@@ -177,16 +177,16 @@ describe("opt-in Browser diagnostics", () => {
     const { clientLaunchURL } = await import("../src/client/lib/app-launch");
     const launched = new URL(clientLaunchURL(
       "https://site.example/?existing=1#owner=target-owner&piik-client=1",
-      { lang: "en", vis: false, theme: "light" },
+      { lang: "en", theme: "light" },
     ));
     expect(launched.origin).toBe("https://site.example");
     expect(launched.search).toBe("?existing=1&debug=1");
     expect(new URLSearchParams(launched.hash.slice(1)).get("owner")).toBe("target-owner");
     expect(launched.href).not.toContain("source-secret");
     expect(new URL(clientLaunchURL("https://site.example/",
-      { lang: "en", vis: false, theme: "light" }, false)).search).toBe("");
+      { lang: "en", theme: "light" }, false)).search).toBe("");
     expect(new URL(clientLaunchURL("https://site.example/",
-      { lang: "en", vis: false, theme: "light" }, true)).search).toBe("?debug=1");
+      { lang: "en", theme: "light" }, true)).search).toBe("?debug=1");
     expect(withBrowserDebug("/join")).toBe("https://private.example/join?debug=1");
   });
 

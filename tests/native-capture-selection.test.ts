@@ -29,10 +29,10 @@ function target(
 
 describe("native capture source selection", () => {
   const game = target("My Game", "1");
-  afterEach(() => setCopy({ lang: "en", vis: true }));
+  afterEach(() => setCopy({ lang: "en" }));
 
   it("offers OBS only with input capability and waits for its explicit connect action", () => {
-    setCopy({ lang: "en", vis: false });
+    setCopy({ lang: "en" });
     let preparations = 0;
     const props = {
       nativeSources: { kind: "browser" } as const,
@@ -52,7 +52,7 @@ describe("native capture source selection", () => {
   });
 
   it("shows one system chooser for picker-only Apps instead of duplicate desktop tabs", () => {
-    setCopy({ lang: "en", vis: false });
+    setCopy({ lang: "en" });
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
       nativeSources: { kind: "ready", sources: [{ kind: "picker", sourceId: "1", title: "Choose on device" }], processAudio: false, systemAudio: true },
       onBrowser() {}, onNative() {}, onCamera() {}, onPreview: async () => null, onRefresh() {}, onCancel() {},
@@ -79,7 +79,7 @@ describe("native capture source selection", () => {
   });
 
   it("keeps an explicitly selected system chooser while refreshing without offering stale sources", () => {
-    setCopy({ lang: "en", vis: false });
+    setCopy({ lang: "en" });
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
       nativeSources: { kind: "loading", appDetected: true,
         sources: [{ kind: "picker", sourceId: "1", title: "Choose on device" }] },
@@ -95,7 +95,7 @@ describe("native capture source selection", () => {
   });
 
   it("shows the existing no-source result when neither Browser API nor App capture is available", () => {
-    setCopy({ lang: "en", vis: false });
+    setCopy({ lang: "en" });
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
       nativeSources: { kind: "browser" }, browserSupported: false, cameraSupported: false,
       onBrowser() {}, onNative() {}, onPreview: async () => null, onRefresh() {}, onCancel() {},
@@ -117,9 +117,8 @@ describe("native capture source selection", () => {
       .toContain('disabled=""');
   });
 
-  it.each(["en", "zh", "vis"] as const)("keeps Browser capture reachable with an actionable App mismatch in %s", (mode) => {
-    const lang = mode === "zh" ? "zh" : "en";
-    setCopy({ lang, vis: mode === "vis" });
+  it.each(["en", "zh"] as const)("keeps Browser capture reachable with an actionable App mismatch in %s", (lang) => {
+    setCopy({ lang });
     const props = {
       nativeSources: { kind: "incompatible" },
       onBrowser: () => {}, onNative: () => {}, onPreview: async () => null,
@@ -169,7 +168,7 @@ describe("native capture source selection", () => {
   });
 
   it("keeps a missing exclusion selected and distinguishes a restarted process", () => {
-    setCopy({ lang: "en", vis: false });
+    setCopy({ lang: "en" });
     const restarted = { ...game, creationTime: "654321" };
     const html = renderToStaticMarkup(createElement(AudioExclusionSelect, {
       sources: [restarted, { ...restarted, sourceId: "2" }],
@@ -181,9 +180,8 @@ describe("native capture source selection", () => {
   });
 
   it.each(["unavailable", "unsupported", "failed"] as const)("does not describe %s as an empty list or block Browser capture", (kind) => {
-    for (const mode of ["en", "zh", "vis"] as const) {
-      const lang = mode === "zh" ? "zh" : "en";
-      setCopy({ lang, vis: mode === "vis" });
+    for (const lang of ["en", "zh"] as const) {
+      setCopy({ lang });
       const props = {
         nativeSources: { kind }, onBrowser: () => {}, onNative: () => {},
         onPreview: async () => null, onRefresh: () => {}, onCancel: () => {},
@@ -207,7 +205,7 @@ describe("native capture source selection", () => {
   });
 
   it.each(["browser", "window"] as const)("keeps Browser and Camera reachable during discovery with initial %s preference", initialTab => {
-    setCopy({ lang: "en", vis: false });
+    setCopy({ lang: "en" });
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
       nativeSources: { kind: "loading" }, initialTab,
       onBrowser: () => {}, onNative: () => {}, onPreview: async () => null,
@@ -247,7 +245,7 @@ describe("native capture source selection", () => {
   });
 
   it("offers only Browser and Camera without an App, defaulting to Browser", () => {
-    setCopy({ lang: "en", vis: false });
+    setCopy({ lang: "en" });
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
       nativeSources: { kind: "browser" }, onBrowser: () => {}, onCamera: () => {},
       onNative: () => {}, onPreview: async () => null, onRefresh: () => {}, onCancel: () => {},
@@ -288,7 +286,7 @@ describe("native capture source selection", () => {
   });
 
   it.each(["browser", "window"] as const)("blocks %s confirmation during owning page work while retaining cancel", (initialTab) => {
-    setCopy({ lang: "en", vis: false });
+    setCopy({ lang: "en" });
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
       nativeSources: { kind: "ready", sources: [game], processAudio: false, systemAudio: false },
       initialTab, selectionDisabled: true,
@@ -299,9 +297,8 @@ describe("native capture source selection", () => {
     expect(html).not.toMatch(/class="lr-source-picker-close"[^>]*disabled=""/);
   });
 
-  it.each(["en", "zh", "vis"] as const)("offers the requested border preference only for supported native capture in %s", (mode) => {
-    const lang = mode === "zh" ? "zh" : "en";
-    setCopy({ lang, vis: mode === "vis" });
+  it.each(["en", "zh"] as const)("offers the requested border preference only for supported native capture in %s", (lang) => {
+    setCopy({ lang });
     const render = (supported: boolean | undefined, initialTab: "window" | "display" | "browser", initialShowCaptureBorder?: boolean) =>
       renderToStaticMarkup(createElement(CaptureSourcePicker, {
         nativeSources: { kind: "ready", sources: [game], processAudio: true, systemAudio: true, captureBorderControl: supported },

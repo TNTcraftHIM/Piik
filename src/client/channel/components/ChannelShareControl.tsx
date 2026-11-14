@@ -24,12 +24,12 @@ import { BrandLoader } from "../../components/living/BrandMark";
 function ShareTitleEditor({ sharing, channel, disabled }: {
   sharing: Extract<ChannelPublication, { kind: "screen" }>; channel: ChannelController; disabled: boolean;
 }) {
-  const { t, lang } = useCopy(), zh = lang === "zh";
+  const { t } = useCopy();
   const id = useId(), details = useRef<HTMLDetailsElement>(null);
   const [open, setOpen] = useState(false), [draft, setDraft] = useState("");
   const { error, run } = useSettingsAction(open);
   const pending = channel.pending.has(`title:${sharing.id}`);
-  const automatic = screenTitle({ ...sharing, title: null }, lang);
+  const automatic = screenTitle({ ...sharing, title: null }, t);
   const { message } = channelErrorPresentation(error, t);
   const close = () => { if (details.current) details.current.open = false; };
   return <details ref={details} className="c3-share-title" onToggle={event => {
@@ -37,17 +37,17 @@ function ShareTitleEditor({ sharing, channel, disabled }: {
     setOpen(event.currentTarget.open);
     if (event.currentTarget.open) setDraft(sharing.title ?? "");
   }}>
-    <summary>{zh ? "分享标题" : "Share title"}</summary>
+    <summary>{t("screen.shareTitle")}</summary>
     {open && <form onSubmit={event => {
       event.preventDefault();
       if (!disabled && !pending) void run(() => channel.setScreenTitle(sharing.id, draft.trim() || null), close);
     }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}>
-      <label htmlFor={id}>{zh ? "分享标题" : "Share title"}</label>
+      <label htmlFor={id}>{t("screen.shareTitle")}</label>
       <span className="lr-input"><input id={id} value={draft} maxLength={64} placeholder={automatic}
         autoComplete="off" disabled={disabled || pending} onChange={event => setDraft(event.target.value)} aria-describedby={`${id}-help`} /></span>
-      <p id={`${id}-help`}>{zh ? "留空并保存，使用来源名称。更换来源会保留自定义标题。" : "Save an empty title to use the source name. Custom titles stay when you switch sources."}</p>
+      <p id={`${id}-help`}>{t("screen.shareTitleHelp")}</p>
       <div className="c3-share-title-actions">
-        <Btn icon="check" type="submit" cap={{ text: zh ? "保存" : "Save" }} title={{ text: zh ? "保存标题" : "Save title" }}
+        <Btn icon="check" type="submit" cap={{ text: t("screen.save") }} title={{ text: t("screen.saveTitle") }}
           tone="primary" size="compact" busy={pending} disabled={disabled || pending} />
         <Btn icon="x" cap="common.cancel" title="common.cancel" quiet size="compact" disabled={pending} onClick={close} />
       </div>
@@ -60,8 +60,8 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   channel: ChannelController; roomId: string; publicationId?: string; compact?: boolean; disabled: boolean;
   openRequested?: boolean; onPickerOpened?(): void;
 }) {
-  const { t, vis, lang } = useCopy();
-  const settingsLabel = lang === "zh" ? "分享设置" : "Share settings";
+  const { t } = useCopy();
+  const settingsLabel = t("screen.shareSettings");
   const id = useId();
   const trigger = useRef<HTMLSpanElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -84,7 +84,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const watching = channel.state?.watchActivities.find(activity => activity.roomId === roomId && activity.sessionId === channel.sessionId);
   const roomName = sharing ? channel.state?.channel.rooms.find(room => room.id === roomId)?.name : undefined;
   const settingsTitle = roomName
-    ? lang === "zh" ? `${roomName}的分享设置` : `Share settings in ${roomName}`
+    ? t("screen.shareSettingsInRoom", { room: roomName })
     : settingsLabel;
   const currentCamera = sharing ? channel.streams.get(sharing.id)?.getVideoTracks()
     .find(track => track.readyState === "live")?.getSettings().deviceId : undefined;
@@ -117,7 +117,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const busy = channel.pending.has(`screen:${roomId}`) || !!sharing && channel.pending.has(`source-audio:${sharing.id}`);
   const label = t(sharing || watching ? "host.switchSource" : "host.start");
   const sourceTitle = roomName
-    ? lang === "zh" ? `切换${roomName}的分享源` : `Switch source in ${roomName}`
+    ? t("screen.switchRoomSource", { room: roomName })
     : label;
   // The inner grid scrolls independently, so its clipped outer scrollHeight cannot size placement.
   useAnchoredPopover(trigger, panel, { maxHeight: 560, preferredHeight: 560, minVisibleHeight: 360 });
@@ -151,7 +151,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     void operation().catch(() => {}); // The session owns the operation's error.
   };
   if (publicationId && !sharing) return null;
-  return <><span className="c3-share-actions" role="group" aria-label={lang === "zh" ? "分享画面" : "Screen sharing"}>
+  return <><span className="c3-share-actions" role="group" aria-label={t("screen.screenSharing")}>
     <span ref={trigger} className="c3-share-control">
       {captureRequest ? <>
         <span className="c3-app-confirmation">
@@ -166,20 +166,20 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         controls={id} popoverTarget={id} />}
     </span>
     {(!watching || sharing) && <span ref={settingsTrigger} className="c3-share-control">
-      <Btn icon="sliders" title={{ text: settingsTitle }} cap={vis || compact ? undefined : { text: settingsLabel }} hint="hint-quality" size="compact" quiet
+      <Btn icon="sliders" title={{ text: settingsTitle }} cap={compact ? undefined : { text: settingsLabel }} hint="hint-quality" size="compact" quiet
         disabled={disabled || busy} busy={qualityPending} popoverTarget={`${id}-settings`} controls={`${id}-settings`} expanded={settingsOpen} />
     </span>}
-    {externalInput && <ChannelAction icon="cast" label={externalInput.state === "live" ? "OBS" : (lang === "zh" ? "等待 OBS" : "Waiting for OBS")}
+    {externalInput && <ChannelAction icon="cast" label={externalInput.state === "live" ? "OBS" : t("screen.obsWaiting")}
       quiet onClick={() => setExternalOpen(true)} />}
     </span>
     <div ref={settingsPanel} id={`${id}-settings`} popover="auto" role="dialog" aria-label={settingsTitle} className="lr-anchored-card c3-quality-picker"
       onToggle={event => { if (event.target === event.currentTarget) setSettingsOpen(event.newState === "open"); }}>
-      {(!vis || roomName) && <div className="c3-quality-heading"><h3>{vis ? roomName : settingsLabel}</h3>
-        {!vis && <p>{sharing ? (lang === "zh" ? `调整你在${roomName ?? "当前房间"}中的分享。` : `Changes apply to your share in ${roomName ?? "this room"}.`)
-          : (lang === "zh" ? "用于你接下来开始的分享。" : "Used when you start your next share.")}</p>}</div>}
+      <div className="c3-quality-heading"><h3>{settingsLabel}</h3>
+        <p>{sharing ? t("screen.shareSettingsHelp", { room: roomName ?? t("screen.currentRoom") })
+          : t("screen.shareSettingsNext")}</p></div>
       {settingsOpen && sharing?.kind === "screen" && <ShareTitleEditor key={sharing.id} sharing={sharing} channel={channel} disabled={disabled || busy} />}
-      {externalInput?.state === "live" ? <div className="c3-settings-panels"><p>{lang === "zh" ? "画质和声音在 OBS 中设置，观众的接收画质仍会自动适配。" : "Configure picture and sound in OBS. Delivery still adapts to each viewer."}</p>
-        <ChannelAction icon="cast" label={lang === "zh" ? "OBS 连接设置" : "OBS connection settings"} onClick={() => { close(); setExternalOpen(true); }} /></div>
+      {externalInput?.state === "live" ? <div className="c3-settings-panels"><p>{t("screen.obsQualityHelp")}</p>
+        <ChannelAction icon="cast" label={t("screen.obsSettings")} onClick={() => { close(); setExternalOpen(true); }} /></div>
         : <SharingSettings id={`${id}-quality`} open={settingsOpen} busy={qualityPending || microphonePending}
         presets={<QualityPresets selected={matchingQualityProfileId(quality)} disabled={busy} busy={qualityPending}
           onSelect={preset => setQuality({ ...QUALITY_PROFILES[preset], maxAudioBitrate: quality.maxAudioBitrate })} />}
@@ -268,8 +268,8 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
       <p>{t("watch.chooseVideo")}</p>
       <Btn icon="window" quiet size="compact" title="watch.openedPage" cap="watch.openedPage" onClick={() => { void run(() => channel.focusWatchPage(roomId, activityId)); }} />
       {page.candidates.length ? <div className="lr-source-picker-list">
-        {page.candidates.map((candidate, index) => <CaptureSourceCard key={candidate.id} title={candidate.title || `${t("watch.video")} ${index + 1}`}
-          action={`${t("watch.selectVideo")} ${candidate.title || index + 1}`} icon="play" hint="hint-source-picker" disabled={busy}
+        {page.candidates.map((candidate, index) => <CaptureSourceCard key={candidate.id} title={candidate.title || t("watch.videoNumber", { number: String(index + 1) })}
+          action={t("watch.selectVideoNamed", { name: candidate.title || String(index + 1) })} icon="play" hint="hint-source-picker" disabled={busy}
           onSelect={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, activityId), onClose); }} />)}
       </div> : <div className="lr-source-picker-status" role="status"><BrandLoader /><span>{t("watch.waitForVideo")}</span></div>}
       <Btn icon="x" quiet title="common.cancel" cap="common.cancel" disabled={committing} onClick={close} />

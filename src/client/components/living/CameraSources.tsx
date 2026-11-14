@@ -30,7 +30,7 @@ export function CameraSources({ sources, busy, error, selected, disabled, onSele
   Pick<ReturnType<typeof useCameraSources>, "sources" | "busy" | "error"> & {
     selected: string; disabled: boolean; onSelect: (deviceId: string) => void;
   }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   return <>
     <div className="lr-source-picker-list" aria-busy={busy}>
       {sources.map((source, index) => <CaptureSourceCard key={source.id} cameraKey={source.id}
@@ -40,11 +40,11 @@ export function CameraSources({ sources, busy, error, selected, disabled, onSele
         selected={source.id === selected} disabled={disabled} onSelect={() => onSelect(source.id)} />)}
     </div>
     {busy && <span className="lr-source-picker-status" role="status" aria-label={t("host.sourcePicker.loading")}>
-      <Glyph name="refresh" className="lr-spin" size={18} />{!vis && t("host.sourcePicker.loading")}
+      <Glyph name="refresh" className="lr-spin" size={18} />{t("host.sourcePicker.loading")}
     </span>}
     {error ? <Pill icon="camera" label={t(error)} comic="source-failed" tone="bad" />
       : !busy && !sources.length ? <span className="lr-source-picker-status" role="status" aria-label={t("host.sourcePicker.empty")}>
-        <HintComic kind="hint-no-sources" size={160} />{!vis && t("host.sourcePicker.empty")}
+        <HintComic kind="hint-no-sources" size={160} />{t("host.sourcePicker.empty")}
       </span> : null}
   </>;
 }

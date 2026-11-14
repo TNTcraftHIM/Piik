@@ -8,7 +8,7 @@ vi.mock("react", async importOriginal => ({
 }));
 
 vi.mock("../src/client/ui/copy", () => ({
-  useCopy: () => ({ vis: false, t: (key: string) => key }),
+  useCopy: () => ({ t: (key: string) => key }),
 }));
 
 function button(node: ReactNode): ComponentProps<"button"> | undefined {

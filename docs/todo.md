@@ -99,11 +99,6 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **3.0 language selection.** Remove the pure-visual mode and its separate
-  presentation branches; retain meaningful icons, illustrations and responsive
-  controls. Move room text into the shared catalogs, replace the third language
-  option with a language menu, and add reviewed Traditional Chinese, Japanese
-  and Korean catalogs through the community translation structure.
 - [ ] **App update distribution.** Configure the production signing identity and
   decide the beta-feed policy before distributing updater-capable packages;
   retain manual download. The

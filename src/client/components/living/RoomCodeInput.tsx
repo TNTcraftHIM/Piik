@@ -22,11 +22,11 @@ export function RoomCodeInput({ value, onChange, rejectedAttempt = 0, autoFocus 
 }
 
 export function RoomCodeError({ attempt, theme = "paper" }: { attempt: number; theme?: "paper" | "stage" }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   if (!attempt) return null;
   // The message is inside the live region; another rejection re-announces it.
   return <span key={attempt} role="alert" style={{ display: "grid", justifyItems: "center", gap: 8 }}>
     <Comic kind="room-code-invalid" theme={theme} size={240} />
-    <span className={vis ? "visually-hidden" : "lr-cap"} style={{ color: "var(--danger)" }}>{t("join.invalid")}</span>
+    <span className="lr-cap" style={{ color: "var(--danger)" }}>{t("join.invalid")}</span>
   </span>;
 }

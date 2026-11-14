@@ -29,10 +29,10 @@ const RESOLUTION_HINTS: Partial<Record<keyof typeof QUALITY_RESOLUTIONS, CopyKey
 export function VideoCodecControl({ value, disabled, onChange }: {
   value: BrowserVideoCodecMode; disabled?: boolean; onChange: (mode: BrowserVideoCodecMode) => void;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const id = useId();
   return <div className="lr-door-group">
-    <span className="lr-door-glyph"><Glyph name="puzzle" size={19} />{vis ? null : t("host.advanced.codec")}</span>
+    <span className="lr-door-glyph"><Glyph name="puzzle" size={19} />{t("host.advanced.codec")}</span>
     <div className="lr-row-group" role="group" aria-label={t("host.advanced.codec")}>
       {(["vp8", "auto", "h264"] as const).map(mode => {
         const label = mode === "auto" ? t("host.advanced.codec.auto") : mode.toUpperCase();
@@ -48,10 +48,10 @@ export function VideoCodecControl({ value, disabled, onChange }: {
 export function EncodingExecutionControl({ value, disabled, onChange }: {
   value: EncodingExecution; disabled?: boolean; onChange: (mode: EncodingExecution) => void;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const id = useId();
   return <div className="lr-door-group">
-    <span className="lr-door-glyph"><Glyph name="sliders" size={19} />{vis ? null : t("host.advanced.execution")}</span>
+    <span className="lr-door-glyph"><Glyph name="sliders" size={19} />{t("host.advanced.execution")}</span>
     <div className="lr-row-group" role="group" aria-label={t("host.advanced.execution")}>
       {(["auto", "software"] as const).map(mode => <Chip key={mode} name={`${id}-execution`} value={mode}
         selected={mode === value} disabled={disabled} title={t(`host.advanced.execution.${mode}`)}
@@ -69,19 +69,19 @@ export function QualityPresets({ selected, limits = VIDEO_CAPTURE_LIMITS, disabl
   busy?: boolean;
   onSelect: (id: QualityProfileId) => void;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   return <div className="lr-tiles" aria-busy={busy}>
     {(Object.keys(QUALITY_PROFILES) as QualityProfileId[]).map((id, index) => {
       const profile = QUALITY_PROFILES[id];
       const caption = t(QUALITY_PROFILE_KEYS[id]);
       return <Tooltip key={id} kind="hint-quality" align={index === 0 ? "start" : "center"}
-        text={vis ? undefined : t("host.quality.title", { label: caption, mbps: (profile.maxBitrate / 1_000_000).toFixed(0) })}>
+        text={t("host.quality.title", { label: caption, mbps: (profile.maxBitrate / 1_000_000).toFixed(0) })}>
         <button type="button" className={`lr-tile${selected === id ? " is-selected" : ""}`}
           aria-pressed={selected === id} aria-label={`${t(PRESET_LABELS[id])} · ${caption}`}
           disabled={disabled || !supportsCaptureProfile(profile, limits)} onClick={() => onSelect(id)}>
           <QualityTileGlyph resolution={`${profile.resolution.height}p`} framerate={profile.maxFramerate} />
-          {vis ? null : <strong>{t(PRESET_LABELS[id])}</strong>}
-          <small>{vis ? `${profile.resolution.height} ${profile.maxFramerate}` : caption}</small>
+          <strong>{t(PRESET_LABELS[id])}</strong>
+          <small>{caption}</small>
         </button>
       </Tooltip>;
     })}
@@ -103,7 +103,7 @@ export function ResolutionControl({ value, limits, disabled, onChange }: {
   disabled: boolean;
   onChange: (resolution: QualityResolution) => void;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const controls = useRef<HTMLDivElement>(null);
   const [invalid, setInvalid] = useState(false);
   const errorId = useId();
@@ -142,7 +142,7 @@ export function ResolutionControl({ value, limits, disabled, onChange }: {
     }}>
     <div className="lr-quality-heading">
       <span className="lr-door-glyph"><Glyph name="expand" size={19} /><Cap k="host.advanced.resolution" /></span>
-      <Tooltip kind="hint-quality" text={vis ? undefined : t("host.video.resolutionHint", {
+      <Tooltip kind="hint-quality" text={t("host.video.resolutionHint", {
         width: String(limits.maxVideoResolution.width), height: String(limits.maxVideoResolution.height),
         pixels: limits.maxVideoPixels.toLocaleString("en-US"),
       })}>
@@ -195,7 +195,7 @@ export function VideoRateControls({ value, limits, disabled, onChange }: {
   disabled: boolean;
   onChange: (value: Partial<Pick<QualityProfile, "maxFramerate" | "maxBitrate">>) => void;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const fpsMax = captureFramerateCeiling(value.resolution, limits);
   const controls = [
     { name: "maxFramerate", label: "host.advanced.framerate", icon: "frames", hint: "hint-metric-fps",
@@ -222,7 +222,7 @@ export function VideoRateControls({ value, limits, disabled, onChange }: {
         {(input, select) => <>
           <div className="lr-quality-heading">
             <span className="lr-door-glyph"><Glyph name={control.icon} size={19} /><Cap k={control.label} /></span>
-            <Tooltip kind={control.hint} text={vis ? undefined : t("host.video.inputHint", {
+            <Tooltip kind={control.hint} text={t("host.video.inputHint", {
               min: String(control.min), max: String(control.max), unit: control.unit,
             })}>
               {input}
@@ -231,9 +231,9 @@ export function VideoRateControls({ value, limits, disabled, onChange }: {
           {custom ? <div className="lr-quality-custom">
             <span className="lr-quality-custom-label">
               <Glyph name="pencil" size={16} />
-              <span className={vis ? "visually-hidden" : "lr-cap"}>{t("host.video.custom")}</span>
+              <span className="lr-cap">{t("host.video.custom")}</span>
             </span>
-            {hasCommonRange ? <Tooltip kind={control.hint} text={vis ? undefined : t("host.video.returnCommonHint", {
+            {hasCommonRange ? <Tooltip kind={control.hint} text={t("host.video.returnCommonHint", {
               value: String(commonValue), unit: control.unit,
             })}>
               <button type="button" className="lr-btn is-dense" disabled={disabled}
@@ -272,7 +272,7 @@ export function AudioBitrateControl({ value, max, disabled, onChange, purpose = 
   onChange: (bitrate: number) => void;
   purpose?: "screen" | "voice";
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const title = purpose === "voice" ? "voice.bitrate" : "host.advanced.audio";
   const presets = purpose === "voice" ? { saver: 32_000, music: 64_000, "very-high": 96_000 } : SCREEN_AUDIO_BITRATES;
   const captions = purpose === "voice" ? VOICE_QUALITY_CAPTIONS : AUDIO_QUALITY_CAPTIONS;
@@ -282,7 +282,7 @@ export function AudioBitrateControl({ value, max, disabled, onChange, purpose = 
     {(input, select) => <>
       <div className="lr-quality-heading">
         <span className="lr-door-glyph"><Glyph name={purpose === "voice" ? "microphone" : "speaker"} size={19} /><Cap k={title} /></span>
-        <Tooltip kind="hint-audio-quality" text={vis ? undefined : t(purpose === "voice" ? "voice.bitrateHint" : "host.audio.bitrateHint", {
+        <Tooltip kind="hint-audio-quality" text={t(purpose === "voice" ? "voice.bitrateHint" : "host.audio.bitrateHint", {
           min: String(MIN_AUDIO_BITRATE / 1_000), max: String(max / 1_000),
         })}>{input}</Tooltip>
       </div>

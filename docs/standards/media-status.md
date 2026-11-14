@@ -24,7 +24,7 @@ picture or a healthy sibling unhealthy.
 The shared [visual language](./visual-language.md) owns colours, cast, shapes,
 panel accents and motion. This document owns the evidence and scope that select
 those meanings. Current `StatusDescriptor` tone and progress take precedence
-over a reused comic's default; text and pure-visual tooltips retain that context.
+over a reused comic's default; localized tooltips retain that context.
 
 ## Projection Rules
 

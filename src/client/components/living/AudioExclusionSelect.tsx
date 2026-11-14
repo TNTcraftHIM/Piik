@@ -10,16 +10,16 @@ export function AudioExclusionSelect({ sources, value, onChange, disabled, busy,
   onChange: (target: NativeCaptureTarget | undefined) => void;
   disabled?: boolean; busy?: boolean; failed?: boolean; onRefresh?: () => void; showLabel?: boolean;
 }) {
-  const { t, vis } = useCopy();
+  const { t } = useCopy();
   const id = useId();
   const applications = audioApplications(sources);
   const key = value ? audioApplicationKey(value) : "";
   const missing = !!value && !applications.some(target => audioApplicationKey(target) === key);
   return <div className="lr-capture-device lr-audio-exclusion-select">
-    {showLabel && <Tooltip kind="hint-exclude-audio" text={vis ? undefined : t("host.sourcePicker.excludeAudioHint")}>
+    {showLabel && <Tooltip kind="hint-exclude-audio" text={t("host.sourcePicker.excludeAudioHint")}>
       <label htmlFor={id}>
         <Glyph name="speakerOff" size={16} />
-        {vis ? null : t("host.sourcePicker.excludeAudio")}
+        {t("host.sourcePicker.excludeAudio")}
       </label>
     </Tooltip>}
     <div className="lr-capture-device-controls">
@@ -35,7 +35,7 @@ export function AudioExclusionSelect({ sources, value, onChange, disabled, busy,
         <Glyph name="refresh" size={16} className={busy ? "lr-spin" : undefined} />
       </button>}
     </div>
-    <small id={`${id}-hint`} role={failed ? "status" : undefined} className={vis ? "visually-hidden" : undefined}>
+    <small id={`${id}-hint`} role={failed ? "status" : undefined}>
       {t(failed ? "host.sourcePicker.excludeListFailed" : value ? "host.sourcePicker.excludeAudioLifetime" : "host.sourcePicker.excludeAudioChoose")}
     </small>
   </div>;

@@ -1,20 +1,20 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Chip } from "../../components/living/primitives";
 import { Glyph, type GlyphName } from "../../ui/icons";
-import { useCopy } from "../../ui/copy";
+import { useCopy, type CopyKey } from "../../ui/copy";
 import { isIdentityImage, prepareIdentityImage } from "../identity-image";
 import { ChannelAction } from "./ChannelAction";
 import "./channel-identity.css";
 
-export const CHANNEL_ICON_PRESETS: { icon: GlyphName; name: [string, string] }[] = [
-  { icon: "couch", name: ["客厅", "Lounge"] },
-  { icon: "gamepad", name: ["游戏", "Games"] },
-  { icon: "clapperboard", name: ["电影", "Movies"] },
-  { icon: "popcorn", name: ["爆米花", "Popcorn"] },
-  { icon: "headphones", name: ["音乐", "Music"] },
-  { icon: "book", name: ["阅读", "Reading"] },
-  { icon: "heart", name: ["喜欢", "Heart"] },
-  { icon: "star", name: ["星星", "Star"] },
+export const CHANNEL_ICON_PRESETS: { icon: GlyphName; name: CopyKey }[] = [
+  { icon: "couch", name: "channel.identity.lounge" },
+  { icon: "gamepad", name: "channel.identity.games" },
+  { icon: "clapperboard", name: "channel.identity.movies" },
+  { icon: "popcorn", name: "channel.identity.popcorn" },
+  { icon: "headphones", name: "channel.identity.music" },
+  { icon: "book", name: "channel.identity.reading" },
+  { icon: "heart", name: "channel.identity.heart" },
+  { icon: "star", name: "channel.identity.star" },
 ];
 
 /** Unknown decorative keys stay in the model; only their presentation falls back. */
@@ -29,12 +29,12 @@ export function ChannelIdentityMark({ icon, size = 24 }: { icon: string; size?: 
 export function ChannelIconChoices({ value, onChange, disabled = false }: {
   value: string; onChange(icon: GlyphName): void; disabled?: boolean;
 }) {
-  const { lang, vis } = useCopy();
-  return <div className="c3-identity-options" role="group" aria-label={lang === "zh" ? "图标" : "Icon"}>
+  const { t } = useCopy();
+  return <div className="c3-identity-options" role="group" aria-label={t("channel.identity.icon")}>
     {CHANNEL_ICON_PRESETS.map(preset => {
-      const title = preset.name[lang === "zh" ? 0 : 1];
+      const title = t(preset.name);
       return <Chip key={preset.icon} title={title} selected={value === preset.icon} disabled={disabled}
-        onClick={() => onChange(preset.icon)}><Glyph name={preset.icon} size={21} />{!vis && <span>{title}</span>}</Chip>;
+        onClick={() => onChange(preset.icon)}><Glyph name={preset.icon} size={21} /><span>{title}</span></Chip>;
     })}
   </div>;
 }
@@ -43,8 +43,7 @@ export function ChannelIdentityPicker({ value, onChange, disabled = false, busy,
   value: string; onChange(icon: string): void; disabled?: boolean;
   busy: boolean; onBusyChange(busy: boolean): void;
 }) {
-  const { lang } = useCopy();
-  const zh = lang === "zh";
+  const { t } = useCopy();
   const chooser = useRef<HTMLInputElement>(null);
   const request = useRef(0);
   const [failed, setFailed] = useState(false);
@@ -66,22 +65,22 @@ export function ChannelIdentityPicker({ value, onChange, disabled = false, busy,
   }
   const image = isIdentityImage(value);
   return <fieldset className="c3-identity-picker" disabled={disabled}>
-    <legend>{zh ? "图标或图片" : "Icon or image"}</legend>
+    <legend>{t("channel.identity.iconOrImage")}</legend>
     <ChannelIconChoices value={value} onChange={select} disabled={disabled} />
     <div className="c3-identity-upload">
       {image && <ChannelIdentityMark icon={value} size={36} />}
       <ChannelAction icon="arrowUp" quiet busy={busy} disabled={disabled}
-        label={busy ? (zh ? "正在打开图片…" : "Opening image…")
-          : image ? (zh ? "更换图片" : "Change image") : (zh ? "选择图片" : "Choose image")}
+        label={busy ? t("channel.identity.openingImage")
+          : image ? t("channel.identity.changeImage") : t("channel.identity.chooseImage")}
         onClick={() => chooser.current?.click()} />
       <input ref={chooser} hidden type="file" accept="image/*" onChange={event => {
         const file = event.currentTarget.files?.[0];
         event.currentTarget.value = "";
         if (file) void chooseImage(file);
       }} />
-      {image && <ChannelAction icon="x" quiet disabled={disabled} label={zh ? "移除" : "Remove"} onClick={() => select("couch")} />}
+      {image && <ChannelAction icon="x" quiet disabled={disabled} label={t("channel.identity.remove")} onClick={() => select("couch")} />}
     </div>
-    {failed && <p className="c3-identity-error" role="alert">{zh ? "这张图片无法打开，请换一张。" : "Couldn't open this image. Try another."}</p>}
+    {failed && <p className="c3-identity-error" role="alert">{t("channel.identity.imageOpenFailed")}</p>}
   </fieldset>;
 }
 
@@ -91,14 +90,14 @@ export function ChannelIdentityFields({ name, icon, label, disabled, onName, onI
   imageBusy: boolean; onImageBusyChange(busy: boolean): void;
 }) {
   const id = useId();
-  const { lang } = useCopy();
+  const { t } = useCopy();
   return <>
     <label className="c3-identity-name" htmlFor={id}><span>{label}</span>
       <input id={id} className="c3-input" required maxLength={64} autoComplete="off" value={name}
         disabled={disabled} onChange={event => onName(event.target.value)} />
     </label>
     <details className="c3-identity-appearance">
-      <summary><ChannelIdentityMark icon={icon} size={24} /><span>{lang === "zh" ? "更改图标或图片" : "Change icon or image"}</span></summary>
+      <summary><ChannelIdentityMark icon={icon} size={24} /><span>{t("channel.identity.changeIconOrImage")}</span></summary>
       <ChannelIdentityPicker value={icon} onChange={onIcon} disabled={disabled} busy={imageBusy} onBusyChange={onImageBusyChange} />
     </details>
   </>;

@@ -21,7 +21,7 @@ class InvitationCode extends Component<{ value: string; label: string; failure: 
 export function ChannelInviteQrCode({ url, disabled = false, label, presentation = "popover" }: {
   url: string | null | undefined; disabled?: boolean; label: string; presentation?: "popover" | "inline";
 }) {
-  const { vis, lang } = useCopy(), zh = lang === "zh";
+  const { t } = useCopy();
   const id = useId();
   const anchor = useRef<HTMLSpanElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -57,15 +57,15 @@ export function ChannelInviteQrCode({ url, disabled = false, label, presentation
     } finally { URL.revokeObjectURL(imageURL); setSaving(false); }
   };
   const content = open && url && <>
-    <InvitationCode key={url} value={url} label={label} failure={zh ? "无法生成二维码，请复制邀请链接。" : "Could not create a QR code. Copy the invitation link instead."}>
-      <footer><ChannelAction icon="save" label={zh ? "保存图片" : "Save image"} busy={saving} onClick={() => { void save(); }} /></footer>
+    <InvitationCode key={url} value={url} label={label} failure={t("channel.inviteQrCode.generationFailed")}>
+      <footer><ChannelAction icon="save" label={t("channel.inviteQrCode.saveImage")} busy={saving} onClick={() => { void save(); }} /></footer>
     </InvitationCode>
-    {saveFailed && <p role="alert">{zh ? "图片未能保存，请重试。" : "Could not save the image. Please try again."}</p>}
+    {saveFailed && <p role="alert">{t("channel.inviteQrCode.saveFailed")}</p>}
   </>;
   if (presentation === "inline") return <details className="c3-invite-qr-details" open={open}
     onToggle={event => setOpen(event.currentTarget.open)}>
     <summary aria-label={label} aria-disabled={!url || disabled || undefined}
-      onClick={event => { if (!url || disabled) event.preventDefault(); }}><Glyph name="qr" size={18} />{!vis && <span>{label}</span>}</summary>
+      onClick={event => { if (!url || disabled) event.preventDefault(); }}><Glyph name="qr" size={18} /><span>{label}</span></summary>
     <div ref={panel} className="c3-invite-qr-content">{content}</div>
   </details>;
   return <>
@@ -75,8 +75,8 @@ export function ChannelInviteQrCode({ url, disabled = false, label, presentation
       className="lr-anchored-card c3-invite-qr" onToggle={event => {
         if (event.target === event.currentTarget) setOpen(event.newState === "open");
       }}>
-      <header><strong id={`${id}-title`} className={vis ? "visually-hidden" : undefined}>{label}</strong>
-        <ChannelAction icon="x" iconOnly quiet label={zh ? "关闭" : "Close"} onClick={() => panel.current?.hidePopover()} /></header>
+      <header><strong id={`${id}-title`}>{label}</strong>
+        <ChannelAction icon="x" iconOnly quiet label={t("channel.inviteQrCode.close")} onClick={() => panel.current?.hidePopover()} /></header>
       {content}
     </div>
   </>;

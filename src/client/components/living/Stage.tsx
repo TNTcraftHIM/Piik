@@ -2,7 +2,6 @@
 // (stream binding stays with the page); shared overlays are provided here.
 import type { ReactNode } from "react";
 import { Glyph, type GlyphName } from "../../ui/icons";
-import { useCopy } from "../../ui/copy";
 import { Comic, type ComicKind } from "./Comic";
 import type { ComicTone } from "./comic-presentation";
 import { WaitingCaption } from "./WaitingStatus";
@@ -45,7 +44,6 @@ export function StageOverlay({
   waiting = false,
   comic,
   tone,
-  progress,
   onActivate,
   still,
 }: {
@@ -55,11 +53,9 @@ export function StageOverlay({
   waiting?: boolean;
   comic?: ComicKind;
   tone?: ComicTone;
-  progress?: string;
   onActivate?: () => void;
   still?: boolean;
 }) {
-  const { vis } = useCopy();
   const isWaiting = waiting && !onActivate;
   const content = (
     <>
@@ -71,12 +67,7 @@ export function StageOverlay({
             <Glyph name={icon} size={30} draw="stage-overlay" />
           </span>
         )}
-        {vis ? progress && (
-          <span className="lr-tv-progress" aria-label={progress}>
-            <Glyph name="refresh" size={17} className="lr-spin" />
-            <span className="lr-tv-msg">{progress}</span>
-          </span>
-        ) : <span className="lr-tv-msg">{message}</span>}
+        <span className="lr-tv-msg">{message}</span>
       </span>
       {isWaiting && <WaitingCaption still={still} />}
     </>

@@ -92,7 +92,7 @@ export function CaptureSourcePicker({
   audioLocked?: boolean;
   selectionDisabled?: boolean;
 }) {
-  const { vis, t } = useCopy();
+  const { t } = useCopy();
   const pickerId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -201,7 +201,7 @@ export function CaptureSourcePicker({
   return (
     <div
       ref={panelRef}
-      className={`lr-tv-overlay lr-source-picker${vis ? " is-visual" : ""}`}
+      className="lr-tv-overlay lr-source-picker"
       role="dialog"
       aria-label={t("host.sourcePicker.title")}
       onKeyDown={event => {
@@ -221,18 +221,16 @@ export function CaptureSourcePicker({
           <span className="lr-source-picker-mark" aria-hidden="true">
             <Glyph name="window" size={22} draw="capture-source" />
           </span>
-          {vis ? null : (
             <span className="lr-source-picker-copy">
               <strong>{t("host.sourcePicker.title")}</strong>
             </span>
-          )}
-          {activeTab === "camera" || nativeSources.kind !== "browser" ? <Tooltip kind="hint-refresh-sources" text={vis ? undefined : refreshLabel}
+          {activeTab === "camera" || nativeSources.kind !== "browser" ? <Tooltip kind="hint-refresh-sources" text={refreshLabel}
             tone={refreshing ? "busy" : undefined}
             motion={refreshing ? "progress" : undefined}
             place="below" align="end">
             {refreshButton}
           </Tooltip> : null}
-          <Tooltip kind="hint-close" text={vis ? undefined : t("common.cancel")} place="below" align="end">
+          <Tooltip kind="hint-close" text={t("common.cancel")} place="below" align="end">
             {closeButton}
           </Tooltip>
         </header>
@@ -263,16 +261,14 @@ export function CaptureSourcePicker({
                   size={20}
                   draw={`source-tab-${value}`}
                 />
-                {vis ? null : (
                   <span>{t(`host.sourcePicker.tab.${value}`)}</span>
-                )}
               </button>
             );
             return (
               <Tooltip
                 key={value}
                 kind={value === "external" || value === "picker" ? "hint-source-picker" : `hint-capture-${value}`}
-                text={vis ? undefined : t(value === "browser" ? "host.sourcePicker.browserHint"
+                text={t(value === "browser" ? "host.sourcePicker.browserHint"
                   : value === "camera" ? "host.sourcePicker.cameraHint" : `host.sourcePicker.tab.${value}`)}
                 place="below"
               >
@@ -296,9 +292,9 @@ export function CaptureSourcePicker({
               {supportsCaptureBorder ? (
                 <div className="lr-source-picker-option">
                   <span aria-hidden="true"><Glyph name="window" size={19} /></span>
-                  {vis ? null : <span>{t("host.sourcePicker.showCaptureBorder")}</span>}
+                  <span>{t("host.sourcePicker.showCaptureBorder")}</span>
                   <Tooltip kind={showCaptureBorder ? "hint-hide-capture-border" : "hint-show-capture-border"}
-                    text={vis ? undefined : t("host.sourcePicker.showCaptureBorderHint")} place="below">
+                    text={t("host.sourcePicker.showCaptureBorderHint")} place="below">
                     <button
                       type="button"
                       className="lr-switch"
@@ -316,12 +312,12 @@ export function CaptureSourcePicker({
                   <span aria-hidden="true">
                     <Glyph name="speaker" size={19} />
                   </span>
-                  {vis ? null : <span>{audioLabel}</span>}
+                  <span>{audioLabel}</span>
                   <Tooltip
                     kind={!anyNativeAudio ? "no-audio" : audioLocked
                       ? (shareAudio ? "hint-share-audio-fixed" : "hint-silent-share-fixed")
                       : shareAudio ? "hint-stop-audio" : "hint-share-audio"}
-                    text={vis ? undefined : `${audioAction}\n${t("host.sourcePicker.audioHint")}`}
+                    text={`${audioAction}\n${t("host.sourcePicker.audioHint")}`}
                     place="below"
                   >
                     {audioSwitch}
@@ -332,9 +328,9 @@ export function CaptureSourcePicker({
                 <details className="lr-source-exclusion" onToggle={event => {
                   if (event.currentTarget.open) event.currentTarget.scrollIntoView({ block: "nearest" });
                 }}>
-                  <summary aria-label={vis ? t("host.sourcePicker.excludeAudio") : undefined}>
+                  <summary>
                     <Glyph name="speakerOff" size={18} />
-                    {!vis && <span>{t("host.sourcePicker.excludeAudio")}{excludeAudio ? `: ${excludeAudio.title}` : ""}</span>}
+                    <span>{t("host.sourcePicker.excludeAudio")}{excludeAudio ? `: ${excludeAudio.title}` : ""}</span>
                     <Glyph name="chevron" size={14} />
                   </summary>
                   <AudioExclusionSelect sources={applications} value={excludeAudio}
@@ -361,16 +357,10 @@ export function CaptureSourcePicker({
                 <span className="lr-source-option-icon" aria-hidden="true">
                   <Glyph name={SOURCE_ICONS.browser} size={23} />
                 </span>
-                {vis ? (
-                  <span className="visually-hidden">
-                    {t("host.sourcePicker.tab.browser")}
-                  </span>
-                ) : (
                   <span className="lr-source-option-copy">
                     <strong>{t("host.sourcePicker.browser")}</strong>
                     <small>{t("host.sourcePicker.browserHint")}</small>
                   </span>
-                )}
               </button>
             ) : null}
             {browserCapture && onWatch && <button type="button" className="lr-source-option is-action"
@@ -399,14 +389,14 @@ export function CaptureSourcePicker({
           </>}
 
           {activeTab === "external" && onExternalInput && <div className="lr-source-picker-list"><Tooltip kind="hint-source-picker"
-            text={vis ? undefined : t("host.sourcePicker.externalHint")} className="lr-source-option-hint"><button type="button" className="lr-source-option is-action"
+            text={t("host.sourcePicker.externalHint")} className="lr-source-option-hint"><button type="button" className="lr-source-option is-action"
             aria-label={t("host.sourcePicker.externalAction")} disabled={selectionDisabled} onClick={onExternalInput}>
             <span className="lr-source-option-icon" aria-hidden="true"><Glyph name="cast" size={23} /></span>
-            <span className="lr-source-option-copy"><strong>{vis ? "OBS" : t("host.sourcePicker.externalAction")}</strong>{!vis && <small>{t("host.sourcePicker.externalHint")}</small>}</span>
+            <span className="lr-source-option-copy"><strong>{t("host.sourcePicker.externalAction")}</strong><small>{t("host.sourcePicker.externalHint")}</small></span>
           </button></Tooltip></div>}
           {nativeTab && nativeSources.kind === "loading" ? (
             <span className="lr-source-picker-status" role="status" aria-label={t("host.sourcePicker.loading")}>
-              <Glyph name="refresh" className="lr-spin" size={18} />{!vis && t("host.sourcePicker.loading")}
+              <Glyph name="refresh" className="lr-spin" size={18} />{t("host.sourcePicker.loading")}
             </span>
           ) : issueKey ? (
             <Pill icon="alert" label={t(issueKey)} comic="warning" />
@@ -417,7 +407,7 @@ export function CaptureSourcePicker({
               aria-label={t(activeTab ? "host.sourcePicker.empty" : "host.capture.noSource")}
             >
               <HintComic kind="hint-no-sources" size={240} />
-              {vis ? null : t(activeTab ? "host.sourcePicker.empty" : "host.capture.noSource")}
+              {t(activeTab ? "host.sourcePicker.empty" : "host.capture.noSource")}
             </span>
           ) : null}
         </div>
