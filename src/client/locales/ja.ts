@@ -1,6 +1,20 @@
 import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 export const ja: Record<CopyKey, string> = {
+  "watch.forward.title": "元の動画を転送",
+  "watch.forward.upload": "このデバイスのアップロード帯域を使い、ルームの接続を通して元の動画を送信します。",
+  "watch.forward.active": "転送中です。停止してもウェブページは開いたままです。",
+  "watch.forward.stop": "転送を停止",
+  "watch.forward.prepare": "転送する動画を選択",
+  "watch.forward.choose": "元の動画リソースを選択してください。確認後、アップロード帯域を使用します。",
+  "watch.forward.enableNamed": "「{name}」を転送",
+  "watch.forward.none": "このページでは転送できる動画がまだ見つかりません。",
+  "watch.forward.peer": "共有者から受信",
+  "watch.forward.direct": "サイトから直接再生",
+  "watch.forward.receiveHelp": "利用可能なルームの P2P 接続が必要です。自分の受信方法だけを変更します。",
+  "watch.forward.secure": "共有者からの受信には HTTPS とブラウザーの Service Worker 対応が必要です。",
+  "watch.forward.viewing": "受信方法",
+  "watch.forward.failed": "共有者から動画を受信できませんでした。ルームの接続を確認するか、別の受信方法を選択してください。",
   "floating.openedInPage": "別のウィンドウを開けなかったため、このページ内で開きました。",
   "screen.actionAfterReconnect": "{action}（再接続後に利用可能）",
   "screen.copyField": "{label}をコピー",

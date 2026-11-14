@@ -68,7 +68,7 @@ test("signed conversation uses Domain delivery without peers and still fences si
       voiceBitrate: 64000, relayCapacity: 2, relayOverride: null, authorized: true, canManage: true, available: true,
       reading: true, participantSessionIds: [host, sender], lastMessageSeq: 0, realtimeSessionIds: [], capabilities: { attachments: true },
       delivery: { hostSessionId: host, bindingId: binding, nextHops: {} },
-    }] }, sessions: [], users: [], files: [], publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], failedSubscriptions: [], iceServers: [], pairs: [],
+    }] }, sessions: [], users: [], files: [], publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], iceServers: [], pairs: [],
   } as ChannelSnapshot;
   const requests: SignedConversationPacket[] = [], replies: SignedConversationPacket[] = [], received = vi.fn();
   const dispatchPeer = vi.fn(async (packet: SignedConversationPacket) => {
@@ -99,4 +99,23 @@ test("signed conversation uses Domain delivery without peers and still fences si
     expect(dispatchPeer).toHaveBeenCalledOnce();
     expect(state.pairs).toEqual([]);
   } finally { owner.close(); reader.close(); }
+});
+
+test('typed room controls dispatch watch ranges independently of attachment controls', async () => {
+  vi.spyOn(hosting, 'loadRoomHosting').mockResolvedValue({
+    createSessionSigner: async () => ({ signing_key: () => new Uint8Array(32), free: vi.fn() }),
+    decode_control: (bytes: Uint8Array) => new TextDecoder().decode(bytes),
+  } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const file = vi.fn(), watch = vi.fn();
+  const conversation = new ChannelConversation({ context: () => ({ sessionId: 'local', state: null, connected: true }),
+    host: () => undefined, send: vi.fn(), reply: vi.fn(), file, watch });
+  try {
+    await conversation.initialize();
+    const body = { type: 'pull', requestId: 'request', key: { roomId: 'room', activityId: 'activity', resourceId: 'resource' }, offset: 0, length: 64 };
+    await conversation.receiveControl('peer', JSON.stringify({ kind: 'watch', body }));
+    expect(watch).toHaveBeenCalledWith('peer', JSON.stringify(body));
+    expect(file).not.toHaveBeenCalled();
+    await conversation.receiveControl('peer', JSON.stringify({ kind: 'file', body }));
+    expect(file).toHaveBeenCalledTimes(1);
+  } finally { conversation.close(); }
 });

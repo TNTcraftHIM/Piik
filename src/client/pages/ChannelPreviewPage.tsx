@@ -39,6 +39,7 @@ import { useClientNavigationTarget } from "../channel/client-navigation";
 import { readRoomPreferences, saveRoomPreferences, type InterfaceLayout } from "../lib/room-preferences";
 import { useElementWidth } from "../lib/use-element-width";
 import type { ChannelController } from "../channel/types";
+import { canReadWatchResources } from "../channel/watch-resource";
 import "../channel/bootstrap";
 import "./channel-preview.css";
 
@@ -142,7 +143,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const activeScreens = [...mine, ...watched];
   const watches = state?.watchActivities ?? [];
   const ownsWatch = (id: string) => watches.some(activity => activity.id === id && activity.sessionId === sessionId);
-  const activeWatches = watches.filter(activity => ownsWatch(activity.id) || state?.watchSubscriptions.includes(activity.id));
+  const activeWatches = watches.filter(activity => ownsWatch(activity.id) || state?.watchSubscriptions.some(value => value.id === activity.id));
   const activeSources = [...activeScreens, ...activeWatches];
   const visibleScreens = activeSources.filter(source => source.roomId === roomId && sourceView?.roomId === roomId);
   const otherScreens = activeSources.filter(source => !visibleScreens.includes(source));
@@ -204,7 +205,13 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     browserSource: activity.source.kind === "media" || !!activity.source.mediaUrl,
     onAppWatch: activity.source.kind === "website" && channel.pagePlayer && channel.watchPlayers.get(activity.id)?.video !== null ? () => setAppWatchId(activity.id) : undefined,
     roomName: nameOfRoom(activity.roomId), avatar: userProfile(state, channel.profiles, activity.userId)?.avatar ?? undefined,
-    owned: ownsWatch(activity.id), subscribed: state?.watchSubscriptions.includes(activity.id) ?? false,
+    owned: ownsWatch(activity.id), subscribed: state?.watchSubscriptions.some(value => value.id === activity.id) ?? false,
+    receiving: !ownsWatch(activity.id) ? { peerAvailable: !!activity.byteSource, peerSupported: canReadWatchResources(),
+      failed: !!channel.watchPlayers.get(activity.id)?.error,
+      mode: channel.watchPlayers.get(activity.id)?.mode ?? state?.watchSubscriptions.find(value => value.id === activity.id)?.mode ?? "direct",
+      browserSource: activity.source.kind === "media" || !!activity.source.mediaUrl, pending: busy("watch-video", activity.id), disabled: !connected,
+      onPeer: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id, "peer")); },
+      onDirect: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id, "direct")); } } : undefined,
     shareControls: ownsWatch(activity.id) && <ChannelShareControl channel={channel} roomId={activity.roomId} compact disabled={!connected || !rooms.find(room => room.id === activity.roomId)?.available} />,
     hidden: activity.roomId !== roomId || activeWatches.includes(activity) && !visibleScreens.includes(activity),
     paused: activity.playback.paused, player: channel.watchPlayers.get(activity.id),

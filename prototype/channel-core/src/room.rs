@@ -22,7 +22,7 @@ const REQUIRED_REPAIR_MS: u64 = 5_000;
 #[derive(Clone, Default)]
 struct Activity {
     reading: bool,
-    watch_subscriptions: BTreeSet<Uuid>,
+    watch_subscriptions: BTreeMap<Uuid, crate::wire::WatchMode>,
     watching: BTreeMap<Uuid, Option<Uuid>>,
     voice: Option<VoiceInfo>,
     relay_capacity: Option<u8>,
@@ -47,7 +47,8 @@ pub struct RoomRuntime {
 #[serde(rename_all = "camelCase")]
 pub struct RoomSnapshot {
     pub watch_activities: Vec<crate::wire::WatchActivity>,
-    pub watch_subscriptions: Vec<Uuid>,
+    pub watch_subscriptions: Vec<crate::wire::WatchSubscription>,
+    pub watch_bytes: Vec<crate::watch_delivery::WatchBytePlan>,
     pub files: Vec<crate::file_room::FilePlan>,
     pub room: Room,
     pub publications: Vec<PublicationInfo>,
@@ -59,7 +60,8 @@ pub struct RoomSnapshot {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomRecipient {
-    pub watch_subscriptions: Vec<Uuid>,
+    pub watch_subscriptions: Vec<crate::wire::WatchSubscription>,
+    pub watch_bytes: Vec<crate::watch_delivery::WatchBytePlan>,
     pub authorized: bool,
     pub can_manage: bool,
     pub reading: bool,
@@ -142,8 +144,21 @@ impl RoomRuntime {
                 .activity
                 .get(&session)
                 .filter(|_| room.authorized)
-                .map(|a| a.watch_subscriptions.iter().copied().collect())
+                .map(|a| {
+                    a.watch_subscriptions
+                        .iter()
+                        .map(|(id, mode)| crate::wire::WatchSubscription {
+                            id: *id,
+                            mode: *mode,
+                        })
+                        .collect()
+                })
                 .unwrap_or_default(),
+            watch_bytes: if room.authorized {
+                self.watch_byte_plans(session)
+            } else {
+                vec![]
+            },
             authorized: room.authorized,
             can_manage: room.can_manage,
             members: room.members,
@@ -554,6 +569,7 @@ impl RoomRuntime {
                 session_id: session,
                 source,
                 playback,
+                byte_source: None,
             },
         );
         Ok(())
@@ -577,22 +593,108 @@ impl RoomRuntime {
         activity.playback = playback;
         Ok(())
     }
+    pub(crate) fn set_watch_byte_source(
+        &mut self,
+        member: Member,
+        session: Uuid,
+        id: Uuid,
+        source: Option<crate::wire::WatchByteSource>,
+        endpoints: &BTreeMap<Uuid, Endpoint>,
+    ) -> Result<(), &'static str> {
+        self.authorize(member, RoomPermission::Read)?;
+        let activity = self.watch_activities.get(&id).ok_or("watch_unavailable")?;
+        if activity.session_id != session {
+            return Err("not_watch_owner");
+        }
+        if let Some(source) = &source {
+            let provider = endpoints
+                .get(&source.session_id)
+                .ok_or("watch_provider_unavailable")?;
+            if !provider.connected || provider.member.user_id != member.user_id {
+                return Err("watch_provider_unavailable");
+            }
+            self.authorize(provider.member, RoomPermission::Read)?;
+        }
+        self.watch_activities.get_mut(&id).unwrap().byte_source = source;
+        Ok(())
+    }
+    fn watch_receivers(&self, id: Uuid) -> BTreeSet<Uuid> {
+        self.activity
+            .iter()
+            .filter_map(|(session, activity)| {
+                (activity.watch_subscriptions.get(&id) == Some(&crate::wire::WatchMode::Peer))
+                    .then_some(*session)
+            })
+            .collect()
+    }
+    fn watch_byte_demand(&self) -> BTreeSet<Uuid> {
+        let mut demand = BTreeSet::new();
+        for activity in self.watch_activities.values() {
+            if let Some(source) = &activity.byte_source {
+                let receivers = self.watch_receivers(activity.id);
+                if !receivers.is_empty() {
+                    demand.insert(source.session_id);
+                    demand.extend(receivers);
+                }
+            }
+        }
+        demand
+    }
+    fn watch_byte_plans(&self, session: Uuid) -> Vec<crate::watch_delivery::WatchBytePlan> {
+        let Some(base) = &self.base else {
+            return vec![];
+        };
+        self.watch_activities
+            .values()
+            .filter_map(|activity| {
+                let source = activity.byte_source.as_ref()?;
+                let receivers = self.watch_receivers(activity.id);
+                if receivers.is_empty() {
+                    return None;
+                }
+                let paths = base.project(source.session_id, &receivers);
+                let upstream = paths
+                    .iter()
+                    .find_map(|(parent, child)| (*child == session).then_some(*parent));
+                let downstream: Vec<_> = paths
+                    .iter()
+                    .filter_map(|(parent, child)| (*parent == session).then_some(*child))
+                    .collect();
+                let receiving = receivers.contains(&session);
+                if !receiving
+                    && source.session_id != session
+                    && upstream.is_none()
+                    && downstream.is_empty()
+                {
+                    return None;
+                }
+                Some(crate::watch_delivery::WatchBytePlan {
+                    room_id: self.policy.id.clone(),
+                    activity_id: activity.id,
+                    source: source.clone(),
+                    upstream,
+                    downstream,
+                    receiving,
+                })
+            })
+            .collect()
+    }
     pub(crate) fn join_watch(
         &mut self,
         member: Member,
         session: Uuid,
         id: Uuid,
-        enabled: bool,
+        mode: Option<crate::wire::WatchMode>,
     ) -> Result<(), &'static str> {
         self.authorize(member, RoomPermission::Read)?;
-        if enabled {
+        if let Some(mode) = mode {
             let source = self.watch_activities.get(&id).ok_or("watch_unavailable")?;
             if source.session_id != session {
                 self.activity
                     .entry(session)
                     .or_default()
                     .watch_subscriptions
-                    .insert(id);
+                    .insert(id, mode);
             }
         } else if let Some(activity) = self.activity.get_mut(&session) {
             activity.watch_subscriptions.remove(&id);
@@ -898,11 +1000,20 @@ impl RoomRuntime {
         self.publications
             .retain(|_, publication| publication.info.session_id != session);
         self.watch_activities.retain(|_, a| a.session_id != session);
+        for activity in self.watch_activities.values_mut() {
+            if activity
+                .byte_source
+                .as_ref()
+                .is_some_and(|source| source.session_id == session)
+            {
+                activity.byte_source = None;
+            }
+        }
         self.activity.remove(&session);
         for activity in self.activity.values_mut() {
             activity
                 .watch_subscriptions
-                .retain(|id| self.watch_activities.contains_key(id));
+                .retain(|id, _| self.watch_activities.contains_key(id));
         }
     }
 
@@ -923,6 +1034,16 @@ impl RoomRuntime {
             .collect();
         self.watch_activities
             .retain(|_, a| readable.contains(&a.session_id));
+        for activity in self.watch_activities.values_mut() {
+            if activity.byte_source.as_ref().is_some_and(|source| {
+                !readable.contains(&source.session_id)
+                    || !endpoints
+                        .get(&source.session_id)
+                        .is_some_and(|endpoint| endpoint.connected)
+            }) {
+                activity.byte_source = None;
+            }
+        }
         self.files.reconcile(&readable);
         self.publications
             .retain(|_, publication| readable.contains(&publication.info.session_id));
@@ -931,7 +1052,7 @@ impl RoomRuntime {
         for activity in self.activity.values_mut() {
             activity
                 .watch_subscriptions
-                .retain(|id| self.watch_activities.contains_key(id));
+                .retain(|id, _| self.watch_activities.contains_key(id));
             activity
                 .watching
                 .retain(|id, _| self.publications.contains_key(id));
@@ -953,6 +1074,7 @@ impl RoomRuntime {
             })
             .collect();
         let mut demand = self.media_sessions();
+        demand.extend(self.watch_byte_demand());
         if let Some(base) = &mut self.base {
             demand.extend(self.files.demand());
             if repair_due {
@@ -1023,6 +1145,7 @@ impl RoomRuntime {
             .is_some_and(|base| self.files.select_ready_sources(base))
         {
             demand = self.media_sessions();
+            demand.extend(self.watch_byte_demand());
             demand.extend(self.files.demand());
             self.base
                 .as_mut()
@@ -1182,6 +1305,140 @@ mod tests {
         })
     }
     use super::*;
+    #[test]
+    fn watch_byte_demand_preserves_direct_viewers_and_retires_provider() {
+        use crate::wire::{WatchByteSource, WatchFormat, WatchMode, WatchPlayback, WatchSource};
+        let id = Uuid::from_u128;
+        let mut endpoints: BTreeMap<_, _> = (1..=4)
+            .map(|value| {
+                (
+                    id(value),
+                    Endpoint {
+                        signing_key: [value as u8; 32],
+                        member: Member {
+                            user_id: id(if value == 4 { 1 } else { value }),
+                        },
+                        connected: true,
+                    },
+                )
+            })
+            .collect();
+        let mut room = RoomRuntime::new(
+            RoomState::new(
+                "watch".into(),
+                "Watch".into(),
+                Default::default(),
+                id(1),
+                RoomAccess::Public,
+                false,
+                None,
+            )
+            .unwrap(),
+        );
+        room.set_host_session(id(1));
+        let owner = endpoints[&id(1)].member;
+        room.start_watch(
+            owner,
+            id(1),
+            id(10),
+            WatchSource::Media {
+                url: "https://example.com/movie.mp4".into(),
+            },
+            WatchPlayback {
+                position: 0.,
+                paused: true,
+                rate: 1.,
+                anchor_time: 0,
+            },
+        )
+        .unwrap();
+        room.join_watch(
+            endpoints[&id(2)].member,
+            id(2),
+            id(10),
+            Some(WatchMode::Direct),
+        )
+        .unwrap();
+        let source = WatchByteSource {
+            session_id: id(4),
+            resource_id: id(11),
+            format: WatchFormat::File,
+        };
+        assert_eq!(
+            room.set_watch_byte_source(
+                endpoints[&id(2)].member,
+                id(2),
+                id(10),
+                Some(source.clone()),
+                &endpoints
+            ),
+            Err("not_watch_owner")
+        );
+        let mut foreign = source.clone();
+        foreign.session_id = id(3);
+        assert_eq!(
+            room.set_watch_byte_source(owner, id(1), id(10), Some(foreign), &endpoints),
+            Err("watch_provider_unavailable")
+        );
+        room.set_watch_byte_source(owner, id(1), id(10), Some(source), &endpoints)
+            .unwrap();
+        room.reconcile(&endpoints, 0);
+        assert!(room.watch_byte_demand().is_empty());
+        assert!(room.base_links().next().is_none());
+        room.join_watch(
+            endpoints[&id(3)].member,
+            id(3),
+            id(10),
+            Some(WatchMode::Peer),
+        )
+        .unwrap();
+        room.reconcile(&endpoints, 1);
+        assert_eq!(room.watch_byte_demand(), BTreeSet::from([id(3), id(4)]));
+        for link in room.base_links().collect::<Vec<_>>() {
+            room.base_state(link.parent, link.child, true).unwrap();
+            room.base_state(link.child, link.parent, true).unwrap();
+        }
+        room.reconcile(&endpoints, 2);
+        let source_plan = room.watch_byte_plans(id(4)).pop().unwrap();
+        let transit = room.watch_byte_plans(id(1)).pop().unwrap();
+        let viewer = room.watch_byte_plans(id(3)).pop().unwrap();
+        assert_eq!(source_plan.downstream, vec![id(1)]);
+        assert_eq!(transit.upstream, Some(id(4)));
+        assert_eq!(transit.downstream, vec![id(3)]);
+        assert!(!transit.receiving);
+        assert_eq!(viewer.upstream, Some(id(1)));
+        assert!(viewer.receiving);
+        assert!(room.watch_byte_plans(id(2)).is_empty());
+        room.set_watch_byte_source(owner, id(1), id(10), None, &endpoints)
+            .unwrap();
+        room.reconcile(&endpoints, 3);
+        assert!(room.watch_byte_plans(id(3)).is_empty());
+        assert_eq!(
+            room.activity[&id(2)].watch_subscriptions[&id(10)],
+            WatchMode::Direct
+        );
+        assert_eq!(
+            room.activity[&id(3)].watch_subscriptions[&id(10)],
+            WatchMode::Peer
+        );
+        room.set_watch_byte_source(
+            owner,
+            id(1),
+            id(10),
+            Some(WatchByteSource {
+                session_id: id(4),
+                resource_id: id(12),
+                format: WatchFormat::File,
+            }),
+            &endpoints,
+        )
+        .unwrap();
+        endpoints.get_mut(&id(4)).unwrap().connected = false;
+        room.reconcile(&endpoints, 4);
+        assert!(room.watch_activities[&id(10)].byte_source.is_none());
+        assert!(room.watch_byte_demand().is_empty());
+        assert!(room.watch_activities.contains_key(&id(10)));
+    }
 
     #[test]
     fn assisted_viewing_prepares_native_transit_and_preserves_the_viewer_branch() {

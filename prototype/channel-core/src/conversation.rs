@@ -90,6 +90,7 @@ pub fn verify<T: DeserializeOwned>(
 )]
 pub enum ControlFrame {
     File(FileControl),
+    Watch(crate::watch_delivery::WatchControl),
 }
 pub fn encode_control(frame: &ControlFrame) -> Result<Vec<u8>, &'static str> {
     let bytes = serde_json::to_vec(frame).map_err(|_| "invalid_control_frame")?;

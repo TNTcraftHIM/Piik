@@ -13,6 +13,7 @@ pub mod peer;
 mod portal;
 pub mod session;
 mod shutdown;
+pub mod watch;
 
 pub use shutdown::shutdown_signal;
 

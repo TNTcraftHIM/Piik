@@ -42,6 +42,7 @@ pub(crate) struct Message {
 #[derive(Clone)]
 pub(crate) enum MessageScope {
     File(crate::file::FileScope),
+    Watch(crate::watch::WatchScope),
     Input {
         snapshot: watch::Receiver<Option<Snapshot>>,
         local: Uuid,
@@ -52,6 +53,7 @@ impl MessageScope {
     pub(crate) fn allowed(&self) -> bool {
         match self {
             Self::File(scope) => scope.allowed(),
+            Self::Watch(scope) => scope.allowed(),
             Self::Input {
                 snapshot,
                 local,
@@ -65,6 +67,7 @@ impl MessageScope {
     async fn changed(&mut self) -> bool {
         match self {
             Self::File(scope) => scope.changed().await,
+            Self::Watch(scope) => scope.changed().await,
             Self::Input { snapshot, .. } => snapshot.changed().await.is_ok(),
         }
     }

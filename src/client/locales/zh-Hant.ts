@@ -1,6 +1,20 @@
 import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 export const zhHant: Record<CopyKey, string> = {
+  "watch.forward.title": "轉發原始影片",
+  "watch.forward.upload": "使用本機上傳頻寬，透過房間連線傳送原始影片。",
+  "watch.forward.active": "已開啟轉發。停止轉發會保留網頁播放。",
+  "watch.forward.stop": "停止轉發",
+  "watch.forward.prepare": "選擇要轉發的影片",
+  "watch.forward.choose": "選擇原始影片資源。確認後開始使用本機上傳頻寬。",
+  "watch.forward.enableNamed": "轉發 {name}",
+  "watch.forward.none": "此網頁暫未發現可轉發的影片資源。",
+  "watch.forward.peer": "從分享者接收",
+  "watch.forward.direct": "從網站直接播放",
+  "watch.forward.receiveHelp": "需要可用的房間 P2P 連線。只變更你的接收方式。",
+  "watch.forward.secure": "從分享者接收需要 HTTPS 和瀏覽器的 Service Worker 支援。",
+  "watch.forward.viewing": "接收方式",
+  "watch.forward.failed": "未能從分享者接收影片。請檢查房間連線或選擇其他接收方式。",
   "floating.openedInPage": "無法開啟獨立視窗，已在目前頁面中開啟。",
   "screen.actionAfterReconnect": "{action}（重新連線後可用）",
   "screen.copyField": "複製 {label}",

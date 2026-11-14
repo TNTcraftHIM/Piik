@@ -44,6 +44,8 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     playback: { position: 0, paused: true, rate: 1, anchorTime: 0 },
   }));
   const [watchPlayers, setWatchPlayers] = useState(new Map<string, WatchPlayer>());
+  const [receiveMode, setReceiveMode] = useState<"direct" | "peer">("direct");
+  const [forwarding, setForwarding] = useState(new URLSearchParams(location.search).has("forward"));
   const [pageSample, setPageSample] = useState<ReturnType<ChannelController["watchPage"]>>();
   const optionsId = useId(), optionsTrigger = useRef<HTMLSpanElement>(null), optionsPanel = useRef<HTMLDivElement>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -116,13 +118,14 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       pageState = { ...pageState, ...patch }; for (const listener of listeners) listener("pause");
     }, listen: changed => { listeners.add(changed); return () => listeners.delete(changed); }, focus: async () => {}, close: () => {} });
     const player = new WatchPlayer(watchActivity.roomId, watchMode.includes("owner"), watchMode.startsWith("native") ? page : media, () => setWatchPlayers(previous => new Map(previous)));
+    player.mode = receiveMode;
     void player.ready(new AbortController().signal).catch(() => {});
     player.blocked = watchMode === "blocked";
     if (watchMode === "website-failed") player.error = "watch_media_failed";
     if (!watchMode.startsWith("native") && !player.blocked) void media.video.play().catch(() => {});
     setWatchPlayers(new Map([[watchActivity.id, player]]));
     return () => player.close();
-  }, [watchActivity?.id, watchMode, streams]);
+  }, [watchActivity?.id, watchMode, streams, receiveMode]);
   const state = { ...sample.channel.state!, channel: { ...sample.channel.state!.channel,
     rooms: rooms.map(room => ({ ...room,
       name: longNames && room.id === "friday" ? zh ? "周五一起看电影与交流的朋友们" : "Friday with friends: a shared evening together" : room.name,
@@ -134,8 +137,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     voice: sample.channel.state!.voice.filter(voice => roomIds.has(voice.roomId)),
     users,
     subscriptions,
-    watchActivities: watchActivity ? [watchActivity] : [],
-    watchSubscriptions: watchActivity && watchMode !== "available" ? [watchActivity.id] : [],
+    watchActivities: watchActivity ? [{ ...watchActivity, ...(forwarding ? { byteSource: { sessionId: "sample-ada-session", resourceId: "sample-resource", format: "file" as const } } : {}) }] : [],
+    watchSubscriptions: watchActivity && watchMode !== "available" ? [{ id: watchActivity.id, mode: receiveMode }] : [],
+    watchBytes: [],
   };
   let messagesByRoom = emptyChat ? { ...sample.channel.messagesByRoom,
     friday: sample.channel.messagesByRoom.friday.filter(message => message.seq > 2) } : sample.channel.messagesByRoom;
@@ -149,6 +153,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const profiles = new Map(users.map(user => [user.id, { ...sample.channel.profiles.get(user.id)!, ...user }]));
   const channel = { ...sample.channel, state, self: profiles.get(users[0].id)!, profiles, streams, error: null, siteURL: "https://friends.example/",
     watchPlayers,
+    watchMediaChoices: async () => [{ id: "sample-file", name: "An evening with friends.mp4", displayURL: "https://media.example/evening.mp4", format: "file" as const },
+      ...(new URLSearchParams(location.search).has("many-choices") ? [{ id: "sample-hls", name: "Evening playlist", displayURL: "https://media.example/master.m3u8", format: "hls" as const }] : [])],
+    setWatchByteSource: async (_id, choiceId) => setForwarding(choiceId !== null),
     pagePlayer: new URLSearchParams(location.search).has("page-player"),
     watchPage: (_roomId, activityId) => pageSample?.activityId === activityId ? pageSample : undefined,
     prepareWatchPage: async (_roomId, url, activityId) => setPageSample({ pageId: "sample-page", url, activityId,
@@ -164,7 +171,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       setWatchMode("owner"); setWatchActivity({ id: `sample-watch-${crypto.randomUUID()}`, roomId, source: { kind: "media", url },
         userId: "sample-ada", sessionId: "sample-ada-session", playback: { position: 0, paused: true, rate: 1, anchorTime: 0 } });
     },
-    joinWatch: async () => setWatchMode("viewer"),
+    joinWatch: async (_id, mode = "direct") => { setReceiveMode(mode); setWatchMode("viewer"); },
     leaveWatch: async () => { setWatchMode("available"); setPageSample(undefined); }, stopWatch: async () => setWatchActivity(null),
     resumeWatch: async id => { const player = watchPlayers.get(id); if (player) { player.blocked = false; await player.play(); setWatchPlayers(new Map(watchPlayers)); } },
     setWatchPlayback: async (_id, patch) => {

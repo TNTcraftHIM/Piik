@@ -102,6 +102,7 @@ impl RemoteRoom {
             for view in projection.views.values_mut() {
                 view.subscriptions.clear();
                 view.watch_subscriptions.clear();
+                view.watch_bytes.clear();
                 view.failed_subscriptions.clear();
                 view.files.clear();
                 view.reading = false;
@@ -197,6 +198,7 @@ impl RemoteRoom {
         Some(RoomSnapshot {
             watch_activities: vec![],
             watch_subscriptions: vec![],
+            watch_bytes: vec![],
             room: Room {
                 delivery: None,
                 id: self.summary.id.clone(),

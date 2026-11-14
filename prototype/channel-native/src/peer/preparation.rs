@@ -913,6 +913,7 @@ mod tests {
         );
         driver.retire_pair(pair).await;
         driver.files.close().await;
+        driver.watches.close().await;
         driver.transport.close().await;
         Ok(())
     }

@@ -412,6 +412,84 @@ pub fn attachment_limits() -> Result<String, JsValue> {
 
 #[wasm_bindgen]
 pub struct FileDelivery(piik_channel_core::file_delivery::FileDelivery);
+
+#[wasm_bindgen]
+pub struct WatchDelivery(piik_channel_core::watch_delivery::WatchDelivery);
+#[wasm_bindgen]
+impl WatchDelivery {
+    #[wasm_bindgen(constructor)]
+    pub fn new(session_id: &str) -> Result<Self, JsValue> {
+        Ok(Self(piik_channel_core::watch_delivery::WatchDelivery::new(
+            Uuid::parse_str(session_id).map_err(|_| error("invalid_session"))?,
+        )))
+    }
+    pub fn update(&mut self, plans: &str, room_peers: &str) -> Result<String, JsValue> {
+        encode(&self.0.update(parse(plans)?, parse(room_peers)?))
+    }
+    pub fn read(
+        &mut self,
+        key: &str,
+        request_id: &str,
+        offset: u64,
+        length: usize,
+    ) -> Result<String, JsValue> {
+        encode(&self.0.read(
+            parse(key)?,
+            Uuid::parse_str(request_id).map_err(|_| error("invalid_request"))?,
+            offset,
+            length,
+        ))
+    }
+    pub fn cancel(&mut self, request_id: &str) -> Result<String, JsValue> {
+        encode(
+            &self
+                .0
+                .cancel(Uuid::parse_str(request_id).map_err(|_| error("invalid_request"))?),
+        )
+    }
+    pub fn control(&mut self, peer: &str, control: &str) -> Result<String, JsValue> {
+        encode(&self.0.control(
+            Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?,
+            parse(control)?,
+        ))
+    }
+    pub fn chunk(&mut self, peer: &str, bytes: &[u8]) -> Result<String, JsValue> {
+        encode(
+            &self
+                .0
+                .chunk(
+                    Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?,
+                    bytes,
+                )
+                .map_err(error)?,
+        )
+    }
+    pub fn peer_closed(&mut self, peer: &str) -> Result<String, JsValue> {
+        encode(
+            &self
+                .0
+                .peer_closed(Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?),
+        )
+    }
+    pub fn read_failed(&mut self, request_id: &str, code: &str) -> Result<String, JsValue> {
+        encode(&self.0.read_result(
+            Uuid::parse_str(request_id).map_err(|_| error("invalid_request"))?,
+            Err(code.into()),
+        ))
+    }
+    pub fn read_result(&mut self, request_id: &str, result: &str) -> Result<String, JsValue> {
+        encode(&self.0.read_result(
+            Uuid::parse_str(request_id).map_err(|_| error("invalid_request"))?,
+            Ok(parse(result)?),
+        ))
+    }
+    pub fn request_failed(&mut self, request_id: &str, code: &str) -> Result<String, JsValue> {
+        encode(&self.0.request_failed(
+            Uuid::parse_str(request_id).map_err(|_| error("invalid_request"))?,
+            code,
+        ))
+    }
+}
 #[wasm_bindgen]
 impl FileDelivery {
     #[wasm_bindgen(constructor)]

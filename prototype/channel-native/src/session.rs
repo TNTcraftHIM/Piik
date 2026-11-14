@@ -400,6 +400,14 @@ fn capture_binding(state: &Snapshot, room_id: &str) -> Option<Uuid> {
 }
 
 pub enum HostCommand {
+    RegisterWatchReader {
+        resource_id: Uuid,
+        reader: Arc<dyn crate::watch::Reader>,
+        result: oneshot::Sender<Result<Uuid, String>>,
+    },
+    RevokeWatchReader {
+        resource_id: Uuid,
+    },
     Describe(oneshot::Sender<Result<HostingDescription, String>>),
     ConnectionMetrics {
         room_id: String,
@@ -425,6 +433,10 @@ pub enum HostCommand {
 impl HostCommand {
     fn unavailable(self) {
         match self {
+            Self::RegisterWatchReader { result, .. } => {
+                let _ = result.send(Err("hosting_unavailable".into()));
+            }
+            Self::RevokeWatchReader { .. } => {}
             Self::Describe(result) => {
                 let _ = result.send(Err("hosting_unavailable".into()));
             }
@@ -695,6 +707,15 @@ impl Session {
                             let request = request.ok_or_else(|| anyhow!("hosting_control_closed"))?;
                             if !admitted { request.unavailable(); }
                             else { match request {
+                                HostCommand::RegisterWatchReader { resource_id, reader, result } => {
+                                    let registered = if let Some(live) = &mut self.live {
+                                        await_peer(live.peers.register_watch_reader(resource_id, reader), &mut live.commands, &live.pairs, &mut live.room, &live.peers, socket).await.map(|()| live.session).map_err(|error| error.to_string())
+                                    } else { Err("hosting_unavailable".into()) };
+                                    let _ = result.send(registered);
+                                },
+                                HostCommand::RevokeWatchReader { resource_id } => {
+                                    if let Some(live) = &self.live { live.peers.revoke_watch_reader(resource_id).await?; }
+                                },
                                 HostCommand::Describe(result) => {
                                     let description = self.live.as_ref().map(|live| HostingDescription {
                                         session_id: live.session, room_ids: live.room.rooms.keys().cloned().collect(),
@@ -2107,6 +2128,16 @@ impl Session {
                     .await?;
                 }
             }
+            await_peer(
+                live.peers
+                    .update_watch(state.watch_bytes, state.watch_activities, &state.pairs),
+                &mut live.commands,
+                &live.pairs,
+                &mut live.room,
+                &live.peers,
+                socket,
+            )
+            .await?;
             await_peer(
                 live.peers
                     .update(state.pairs, state.publications, state.files),

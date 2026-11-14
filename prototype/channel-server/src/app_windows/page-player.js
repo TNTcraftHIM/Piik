@@ -1,4 +1,4 @@
-﻿// This bridge observes and controls media only. Website data never carries App authority.
+// This bridge observes and controls media only. Website data never carries App authority.
 (() => {
   const uuid = () => {
     const bytes = crypto.getRandomValues(new Uint8Array(16)); bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128;
@@ -22,6 +22,11 @@
     forward({ ...event.data, ancestors: [frame, ...ancestors] });
   });
   if (window === top) send({ kind: 'document' });
+  const resources = new Set();
+  new PerformanceObserver(list => {
+    for (const entry of list.getEntries()) if (resources.size < 128) resources.add(entry.name);
+    send({ kind: 'resources', urls: [...resources] });
+  }).observe({ type: 'resource', buffered: true });
   const state = video => ({ position: video.currentTime, paused: video.paused, rate: video.playbackRate,
     duration: Number.isFinite(video.duration) ? video.duration : null, readyState: video.readyState, ended: video.ended });
   let timer;

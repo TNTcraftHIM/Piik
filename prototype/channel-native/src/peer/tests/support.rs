@@ -83,6 +83,7 @@ impl Fixture {
             snapshot: watch::channel(None).1,
             relay: Relay::default(),
             files: Files::new(Uuid::nil()),
+            watches: Watches::new(Uuid::nil()),
             inputs: input::Inputs::new(Uuid::nil(), watch::channel(None).1, None),
         };
         let publication = PublicationInfo {
@@ -425,6 +426,7 @@ impl Fixture {
             close_pair(pair).await;
         }
         self.driver.files.close().await;
+        self.driver.watches.close().await;
         self.driver.transport.close().await;
         for runtime in self.runtimes {
             runtime.close().await;

@@ -2,7 +2,7 @@ import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { Glyph } from "../../ui/icons";
 import { useCopy, type Copy } from "../../ui/copy";
-import { ChannelVideo, ChannelWatchVideo } from "./ChannelMedia";
+import { ChannelVideo, ChannelWatchVideo, WatchPeerAction, type WatchReceiving } from "./ChannelMedia";
 import { ChannelAction } from "./ChannelAction";
 import type { ChannelScreenInput, ScreenPresentation } from "../types";
 import "./channel-stage.css";
@@ -90,6 +90,7 @@ export interface WatchStageSource {
   shareControls?: ReactNode;
   player?: import("../watch-playback").WatchPlayer;
   website: boolean; browserSource: boolean; onAppWatch?: () => void; onFocusWindow(): void;
+  receiving?: WatchReceiving;
   onRoom(): void; onJoin(): void; onLeave(): void; onStop(): void; onResume(): void;
   onPlayback(patch: Partial<Pick<import("../protocol").WatchPlayback, "paused" | "position" | "rate">>): void;
 }
@@ -345,6 +346,7 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
             hint="hint-watch"
             disabled={!canSubscribe || source.available === false} busy={source.pending}
             onClick={() => source.kind === "watch" ? source.onJoin() : onWatch(source.id)} />}
+          {source.kind === "watch" && source.receiving && <WatchPeerAction receiving={source.receiving} />}
         </div>)}
       </div>
     </section>}
@@ -356,7 +358,7 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
   onFocus(id: string | null): void; theaterMode: boolean; onToggleTheater(): void;
 }) {
   const { t } = useCopy();
-  return <article hidden={source.hidden} inert={source.hidden} data-publication-id={source.id} data-source-kind="watch" data-focusable={focusable || undefined}
+  return <article hidden={source.hidden} inert={source.hidden} data-publication-id={source.id} data-source-kind="watch" data-watch-mode={source.receiving?.mode} data-focusable={focusable || undefined}
     className={`c3-monitor-tile${focused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
     style={centeredStart ? { gridColumn: `${centeredStart} / span 2` } : undefined}
     aria-label={`${source.title} / ${source.name} / ${source.roomName}`} onClick={event => {
@@ -364,10 +366,12 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
     }}>
     {source.player ? <ChannelWatchVideo player={source.player} owned={source.owned} paused={source.paused} label={source.title}
       website={source.website} onAppWatch={source.onAppWatch} onFocusWindow={source.onFocusWindow}
+      receiving={source.receiving}
       disabled={source.available === false} presentation={source.hidden ? "background" : thumbnail ? "thumbnail" : "full"}
       theaterMode={theaterMode} onToggleTheater={onToggleTheater} onPlayback={source.onPlayback} onResume={source.onResume} />
       : <div className="c3-monitor-wait" role="status">{source.website && !source.pending ? <><Glyph name="globe" size={25} /><span>{t("watch.browserFailed")}</span>
-        {source.onAppWatch ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={source.onAppWatch} /> : <small>{t("watch.connectApp")}</small>}</>
+        {source.onAppWatch ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={source.onAppWatch} /> : <small>{t("watch.connectApp")}</small>}
+        {source.receiving && <WatchPeerAction receiving={source.receiving} />}</>
         : <><BrandLoader /><span>{t("watch.waiting")}</span></>}</div>}
     {thumbnail && <button className="c3-thumbnail-focus" type="button" aria-label={t("screen.focusNamed", { title: source.title })} onClick={() => onFocus(source.id)} />}
     <footer><div className="c3-monitor-source-row">

@@ -48,12 +48,19 @@ fn watch_confirmations_late_join_and_owner_control_do_not_create_media() {
     ready(
         net.command_at(
             owner,
-            json!({"type":"join_watch","roomId":room,"id":id,"enabled":true,"requestId":"join"}),
+            json!({"type":"join_watch","roomId":room,"id":id,"mode":"direct","requestId":"join"}),
             3000,
         ),
         3000,
     );
-    assert_eq!(net.state(owner).watch_subscriptions, vec![id]);
+    assert_eq!(
+        net.state(owner)
+            .watch_subscriptions
+            .iter()
+            .map(|s| s.id)
+            .collect::<Vec<_>>(),
+        vec![id]
+    );
     assert_eq!(net.state(owner).watch_activities[0].playback.position, 12.5);
     for command in [
         json!({"type":"update_watch","roomId":room,"id":id,"playback":playback()}),
@@ -77,7 +84,7 @@ fn watch_confirmations_late_join_and_owner_control_do_not_create_media() {
     }
     net.command(
         owner,
-        json!({"type":"join_watch","roomId":room,"id":id,"enabled":false}),
+        json!({"type":"join_watch","roomId":room,"id":id,"mode":null}),
     );
     assert!(net.state(owner).watch_subscriptions.is_empty());
     net.command(viewer, json!({"type":"stop_watch","roomId":room,"id":id}));
@@ -114,7 +121,7 @@ fn watch_validation_and_source_retirement_are_bounded() {
 
     net.command(
         owner,
-        json!({"type":"join_watch","roomId":room,"id":id,"enabled":true}),
+        json!({"type":"join_watch","roomId":room,"id":id,"mode":"direct"}),
     );
     net.command(viewer, json!({"type":"leave"}));
     assert!(net.state(owner).watch_activities.is_empty());
@@ -149,7 +156,7 @@ fn watch_room_access_revoke_preserves_other_room_media() {
     net.command(viewer, start(&private, id));
     net.command(
         owner,
-        json!({"type":"join_watch","roomId":private,"id":id,"enabled":true}),
+        json!({"type":"join_watch","roomId":private,"id":id,"mode":"direct"}),
     );
     for kind in ["voice", "screen"] {
         if kind == "voice" {
@@ -193,7 +200,7 @@ fn watch_disconnect_recovers_until_session_expiry() {
     net.command(viewer, start(&room, id));
     net.command(
         owner,
-        json!({"type":"join_watch","roomId":room,"id":id,"enabled":true}),
+        json!({"type":"join_watch","roomId":room,"id":id,"mode":"direct"}),
     );
     let effects = net.authority.disconnect(viewer, 1000);
     net.deliver(effects);
@@ -212,13 +219,20 @@ fn replacing_watch_validates_before_retiring_source_and_viewers() {
     net.command(owner, start(&room, old));
     net.command(
         viewer,
-        json!({"type":"join_watch","roomId":room,"id":old,"enabled":true}),
+        json!({"type":"join_watch","roomId":room,"id":old,"mode":"direct"}),
     );
     let mut replacement = start(&room, next);
     replacement["source"] =
         json!({"kind":"website","url":"https://example.com/watch","mediaUrl":"javascript:bad"});
     error(net.command(owner, replacement.clone()), "invalid_watch_url");
-    assert_eq!(net.state(viewer).watch_subscriptions, vec![old]);
+    assert_eq!(
+        net.state(viewer)
+            .watch_subscriptions
+            .iter()
+            .map(|s| s.id)
+            .collect::<Vec<_>>(),
+        vec![old]
+    );
     assert_eq!(net.state(viewer).watch_activities[0].id, old);
     replacement["source"]["mediaUrl"] = json!("https://example.com/next.mp4");
     let expected_source = replacement["source"].clone();
@@ -235,4 +249,68 @@ fn replacing_watch_validates_before_retiring_source_and_viewers() {
     assert_eq!(net.state(viewer).watch_activities[0].id, next);
     net.command(owner, json!({"type":"stop_watch","roomId":room,"id":old}));
     assert_eq!(net.state(viewer).watch_activities[0].id, next);
+}
+
+#[test]
+fn watch_byte_source_and_mode_cross_the_real_room_projection() {
+    let (mut net, owner, viewer, room) = setup();
+    let provider = Uuid::new_v4();
+    let provider_session = net
+        .command(
+            provider,
+            json!({"type":"join","name":"App","ownerKey":"owner"}),
+        )
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::Welcome { session_id, .. } => Some(session_id),
+            _ => None,
+        })
+        .unwrap();
+    let activity = Uuid::new_v4();
+    net.command(owner, start(&room, activity));
+    let set_source = json!({"type":"set_watch_byte_source","roomId":room,"id":activity,"byteSource":{"sessionId":provider_session,"resourceId":Uuid::new_v4(),"format":"file"},"requestId":"source"});
+    error(net.command(viewer, set_source.clone()), "not_watch_owner");
+    net.command(owner, set_source);
+    assert_eq!(
+        net.state(viewer).watch_activities[0]
+            .byte_source
+            .as_ref()
+            .unwrap()
+            .session_id,
+        provider_session
+    );
+    ready(net.command_at(viewer,json!({"type":"join_watch","roomId":room,"id":activity,"mode":"direct","requestId":"join"}),200),200);
+    assert!(net.state(viewer).watch_bytes.is_empty() && net.state(viewer).pairs.is_empty());
+    ready(net.command_at(viewer,json!({"type":"join_watch","roomId":room,"id":activity,"mode":"peer","requestId":"join"}),300),300);
+    for connection in [owner, provider, viewer] {
+        for pair in net.state(connection).pairs.clone() {
+            let effects = net.command(
+                connection,
+                json!({"type":"base_state","roomId":room,"pairId":pair.id,"ready":true}),
+            );
+            assert!(
+                !effects
+                    .events
+                    .iter()
+                    .any(|(_, event)| matches!(event, Event::Error { .. })),
+                "projection must validate established watch paths"
+            );
+        }
+    }
+    assert_eq!(net.state(viewer).watch_bytes.len(), 1);
+    assert!(net.state(viewer).watch_bytes[0].receiving);
+    assert!(net.state(viewer).watch_bytes[0].upstream.is_some());
+    let effects = net.authority.disconnect(provider, 400);
+    net.deliver(effects);
+    assert!(net.state(viewer).watch_activities[0].byte_source.is_none());
+    assert!(net.state(viewer).watch_bytes.is_empty());
+    assert_eq!(
+        net.state(viewer).watch_subscriptions[0].mode,
+        piik_channel_core::wire::WatchMode::Peer
+    );
+    assert!(piik_channel_core::wire::Request::parse(
+        &json!({"type":"join_watch","roomId":room,"id":activity,"enabled":true}).to_string()
+    )
+    .is_err());
 }

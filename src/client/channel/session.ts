@@ -1,7 +1,8 @@
+import { WatchBytes } from "./watch-bytes";
 import { z } from "zod";
 import { WatchPlayer } from "./watch-playback";
-import { HTMLVideoMedia, AppPageMedia, type WatchMedia } from "./watch-media";
-import { watchPlaybackSchema, watchSourceSchema, type WatchPlayback, type WatchSource } from "./protocol";
+import { HTMLVideoMedia, AppPageMedia, createPeerWatchMedia, type WatchMedia } from "./watch-media";
+import { watchPlaybackSchema, watchSourceSchema, type WatchPlayback, type WatchSource, type WatchMode } from "./protocol";
 import { ChannelMedia } from "./media";
 import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
@@ -200,6 +201,7 @@ export class ChannelSession {
       this.write({ type: "conversation", packet, requestId });
     },
     file: (peer, control) => this.attachments.data(peer, "control", control),
+    watch: (peer, control) => this.watchBytes.data(peer, "control", control),
     reply: reply => this.receiveConversation(reply),
   });
   private input = new ChannelInput({
@@ -211,11 +213,16 @@ export class ChannelSession {
   });
   private media = new ChannelMedia(command => this.send(command), (streams, screenInputs) => this.patch({ streams, screenInputs }),
     (peer, kind, data) => {
-      if (kind === "chunk") this.attachments.data(peer, kind, data);
-      else void this.conversation.receiveFile(peer, data as string).catch(() => {});
-    }, (peer, ready) => this.attachments.peerState(peer, ready), peer => this.attachments.bulkClosed(peer),
+      if (kind === "chunk") {
+        const bytes = data as Uint8Array;
+        if (bytes[0] === 0 && bytes[1] === 0) this.watchBytes.data(peer, kind, bytes);
+        else this.attachments.data(peer, kind, data);
+      }
+      else void this.conversation.receiveControl(peer, data as string).catch(() => {});
+    }, (peer, ready) => { this.attachments.peerState(peer, ready); if (!ready) this.watchBytes.peerClosed(peer); }, peer => { this.attachments.bulkClosed(peer); this.watchBytes.peerClosed(peer); },
     (pair, channel) => this.input.setChannel(pair, channel), { target: this.view.screenBufferTargetMs,
       changed: screenBufferStatus => { if (screenBufferStatus !== this.view.screenBufferStatus) this.patch({ screenBufferStatus }); } });
+  private watchBytes = new WatchBytes((peer, kind, data, allowed) => this.media.sendData(peer, kind, data, allowed));
   readonly attachments = new ChannelAttachments(command => this.request(command), async (peer, kind, data, allowed) =>
     this.media.sendData(peer, kind, kind === "control" ? await this.conversation.fileFrame(data as string) : data, allowed));
 
@@ -434,8 +441,8 @@ export class ChannelSession {
       for (const activity of event.state.watchActivities) {
         if (activity.sessionId === event.sessionId && !this.watchPlayers.has(activity.id))
           this.write({ type: "stop_watch", roomId: activity.roomId, id: activity.id });
-        else if (event.state.watchSubscriptions.includes(activity.id) && !this.watchPlayers.has(activity.id))
-          this.write({ type: "join_watch", roomId: activity.roomId, id: activity.id, enabled: false });
+        else if (event.state.watchSubscriptions.some(value => value.id === activity.id) && !this.watchPlayers.has(activity.id))
+          this.write({ type: "join_watch", roomId: activity.roomId, id: activity.id, mode: null });
       }
       this.applyState(event.state, true);
       void this.syncAppWatching(resumed);
@@ -600,7 +607,7 @@ export class ChannelSession {
     }
     for (const [id, player] of this.watchPlayers) {
       const activity = state.watchActivities.find(value => value.id === id);
-      if (!player.owner && !restoring && !state.watchSubscriptions.includes(id) && this.view.state?.watchSubscriptions.includes(id)) this.retireWatchPlayer(id);
+      if (!player.owner && !restoring && !state.watchSubscriptions.some(value => value.id === id) && this.view.state?.watchSubscriptions.some(value => value.id === id)) this.retireWatchPlayer(id);
       else if (activity) player.update(activity.playback);
       else if (this.view.state?.watchActivities.some(value => value.id === id)
         || !this.view.pending.has(`screen:${player.roomId}`) && !this.view.pending.has(`watch-video:${id}`)) this.retireWatchPlayer(id);
@@ -652,6 +659,7 @@ export class ChannelSession {
         this.readingRooms.add(room.id);
       }
     }
+    this.watchBytes.update(sessionId, state.watchBytes, state.pairs);
     this.media.update(sessionId, state);
     this.input.update();
     if (userId) this.attachments.update(sessionId, { domainId: state.channel.id, userId }, state.files, state.channel.rooms, state.pairs);
@@ -1965,7 +1973,7 @@ export class ChannelSession {
   }
   private async sampleWatchClock(id: string, player: WatchPlayer): Promise<void> {
     const start = performance.now();
-    await this.request({ type: "join_watch", roomId: player.roomId, id, enabled: true }, event => {
+    await this.request({ type: "join_watch", roomId: player.roomId, id, mode: player.mode }, event => {
       if (this.watchPlayers.get(id) === player && event.type === "room_reply" && event.result.type === "watch_ready"
         && typeof event.result.serverTime === "number") player.calibrate(event.result.serverTime, start);
     }, player.roomId);
@@ -1975,6 +1983,7 @@ export class ChannelSession {
     await Promise.all([...this.watchPlayers].map(async ([id, player]) => {
       try {
         await this.sampleWatchClock(id, player);
+        if (player.owner && this.watchPlayers.get(id) === player) await this.reconcileWatchBytes(id, player);
         if (player.owner && this.watchPlayers.get(id) === player) await player.publish(true);
       }
       catch { /* Session recovery owns disconnection and authority retirement. */ }
@@ -2049,6 +2058,43 @@ export class ChannelSession {
     const page = this.watchPage(roomId, activityId);
     if (page) await this.app?.page(page.pageId)?.focus();
   };
+  watchMediaChoices = async (id: string) => {
+    const player = this.watchPlayers.get(id), media = player?.media;
+    if (!player?.owner || !(media instanceof AppPageMedia) || !(media.page instanceof AppPage)) throw new Error("watch_page_unavailable");
+    return (await media.page.mediaSources()).choices;
+  };
+  private async reconcileWatchBytes(id: string, player: WatchPlayer): Promise<void> {
+    const declared = this.view.state?.watchActivities.find(activity => activity.id === id)?.byteSource;
+    const media = player.media;
+    if (!declared || !(media instanceof AppPageMedia) || !(media.page instanceof AppPage)) return;
+    const page = media.page, actual = (await page.mediaSources()).byteSource;
+    if (this.watchPlayers.get(id) !== player) return;
+    if (!actual || actual.sessionId !== declared.sessionId || actual.resourceId !== declared.resourceId || actual.format !== declared.format) {
+      await this.request({ type: "set_watch_byte_source", roomId: player.roomId, id, byteSource: null }, undefined, player.roomId);
+      if (actual) await page.stopMedia();
+    }
+  }
+  setWatchByteSource = (id: string, choiceId: string | null): Promise<void> => this.action(`watch-source:${id}`, async () => {
+    const player = this.watchPlayers.get(id), media = player?.media;
+    if (!player?.owner || !(media instanceof AppPageMedia) || !(media.page instanceof AppPage)) throw new Error("watch_page_unavailable");
+    const page = media.page;
+    if (choiceId === null) {
+      try { await this.request({ type: "set_watch_byte_source", roomId: player.roomId, id, byteSource: null }, undefined, player.roomId); }
+      finally { await page.stopMedia(); }
+      return;
+    }
+    if (this.view.state?.watchActivities.find(activity => activity.id === id)?.byteSource) throw new Error("watch_source_already_active");
+    const byteSource = await page.prepareMedia(choiceId);
+    try {
+      if (this.watchPlayers.get(id) !== player) throw new DOMException("Cancelled", "AbortError");
+      await this.request({ type: "set_watch_byte_source", roomId: player.roomId, id, byteSource }, undefined, player.roomId);
+    } catch (error) {
+      await page.stopMedia().catch(() => {});
+      try { await this.request({ type: "set_watch_byte_source", roomId: player.roomId, id, byteSource: null }, undefined, player.roomId); }
+      catch { /* The next welcome reconciles the actual reader with room authority. */ }
+      throw error;
+    }
+  });
   private prepareWatchingPage(id: string): Promise<void> {
     return this.action(`watch-video:${id}`, async () => {
       const activity = this.view.state?.watchActivities.find(value => value.id === id);
@@ -2121,19 +2167,28 @@ export class ChannelSession {
       this.finishSourceSelection(roomId, selection);
     }
   }
-  joinWatch = (id: string): Promise<void> => this.action(`watch-video:${id}`, async () => {
-    if (this.watchPlayers.has(id)) return;
+  joinWatch = (id: string, mode: WatchMode = "direct"): Promise<void> => this.action(`watch-video:${id}`, async () => {
+    const current = this.watchPlayers.get(id);
+    if (current?.mode === mode && !current.error) return;
     const activity = this.view.state?.watchActivities.find(value => value.id === id);
     if (!activity) throw new Error("watch_unavailable");
+    if (mode === "peer") {
+      const source = activity.byteSource;
+      if (!source) throw new Error("watch_source_unavailable");
+      await this.joinWatchMedia(id, createPeerWatchMedia(source, (resourceId, offset, length, signal) =>
+        this.watchBytes.read(activity.roomId, id, source, resourceId, offset, length, signal)), mode);
+      return;
+    }
     const url = activity.source.kind === "media" ? activity.source.url : activity.source.mediaUrl;
     if (!url) throw new Error("watch_page_required");
     await this.joinWatchMedia(id, new HTMLVideoMedia(url));
   });
-  private async joinWatchMedia(id: string, media: WatchMedia): Promise<void> {
+  private async joinWatchMedia(id: string, media: WatchMedia, mode: WatchMode = "direct"): Promise<void> {
     const activity = this.view.state?.watchActivities.find(value => value.id === id);
     if (!activity) { media.close(); throw new Error("watch_unavailable"); }
     this.retireWatchPlayer(id);
     const player = this.makeWatchPlayer(id, activity.roomId, false, media);
+    player.mode = mode;
     this.watchPlayers.set(id, player);
     player.update(activity.playback);
     this.patch({});
@@ -2147,7 +2202,7 @@ export class ChannelSession {
     this.retireWatchPlayer(id);
     this.refreshActivity();
     this.browseRooms();
-    if (this.view.connection === "connected") await this.request({ type: "join_watch", roomId: player.roomId, id, enabled: false }, undefined, player.roomId);
+    if (this.view.connection === "connected") await this.request({ type: "join_watch", roomId: player.roomId, id, mode: null }, undefined, player.roomId);
   };
   stopWatch = async (id: string): Promise<void> => {
     const player = this.watchPlayers.get(id);
@@ -2790,6 +2845,7 @@ export class ChannelSession {
     this.app?.stopCaptures();
     this.input.reset();
     this.attachments.reset();
+    this.watchBytes.reset();
     for (const capture of this.local.values()) capture.audio?.dispose();
     this.media.reset();
     this.local.clear();
@@ -2841,7 +2897,7 @@ export class ChannelSession {
         member.sessionId === sessionId && this.voiceParticipation.has(member.roomId)
           ? { ...member, muted: this.voiceParticipation.get(member.roomId)!.muted, deafened: this.voiceParticipation.get(member.roomId)!.deafened } : member),
       watchActivities: state.watchActivities.filter(activity => activity.sessionId !== sessionId || this.watchPlayers.has(activity.id)),
-      watchSubscriptions: state.watchSubscriptions.filter(id => this.watchPlayers.has(id)),
+      watchSubscriptions: state.watchSubscriptions.filter(value => this.watchPlayers.has(value.id)),
       subscriptions,
       failedSubscriptions: state.failedSubscriptions.filter(id => subscriptions.includes(id)),
     };

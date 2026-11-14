@@ -118,7 +118,7 @@ export function useChannelGuideSample(multiRoom = false) {
       sessionId: "sample-ada-session", userId: "sample-ada", paused: false })),
     voice: [...Object.entries(voiceByRoom).map(([roomId, voice]) => ({ sessionId: "sample-ada-session", roomId, ...voice })),
       { sessionId: "sample-bo-session", roomId: "friday", muted: false, deafened: false }],
-    subscriptions: [], watchActivities: [], watchSubscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
+    subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   } satisfies z.input<typeof snapshotSchema>);
   const channel = {
     inspectRoomCopy: async (file: Blob) => {

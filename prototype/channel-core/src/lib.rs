@@ -27,6 +27,7 @@ mod stored_room;
 pub mod topology;
 mod transport;
 pub mod udp;
+pub mod watch_delivery;
 pub mod wire;
 pub mod wire_images;
 

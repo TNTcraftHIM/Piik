@@ -350,6 +350,7 @@ mod tests {
     }
     fn state() -> Snapshot {
         Snapshot {
+            watch_bytes: vec![],
             watch_activities: vec![],
             watch_subscriptions: vec![],
             files: vec![],

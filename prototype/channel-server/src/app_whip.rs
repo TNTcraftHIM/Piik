@@ -214,7 +214,7 @@ mod tests {
                     "lastMessageSeq":0,"participantSessionIds":[],"realtimeSessionIds":[],"capabilities":{"attachments":true},
                     "delivery":{"hostSessionId":Uuid::new_v4(),"bindingId":binding,"nextHops":{}}}]},
             "files":[],"users":[],"sessions":[],"publications":[],"voice":[],"subscriptions":[],"failedSubscriptions":[],"pairs":[],"iceServers":[],
-            "watchActivities":[],"watchSubscriptions":[]
+            "watchActivities":[],"watchSubscriptions":[],"watchBytes":[]
         })).unwrap();
         let (snapshot, observed) = watch::channel(Some(state.clone()));
         let authority = |publication_id| piik_channel_native::peer::InputAuthority {

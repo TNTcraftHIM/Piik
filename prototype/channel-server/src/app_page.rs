@@ -1,13 +1,40 @@
 //! Page players belong to one approved App WebSocket, never to website messages.
 use anyhow::{anyhow, bail, Result};
+use futures_util::{future::BoxFuture, FutureExt};
+use piik_channel_native::session::HostCommand;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::{collections::BTreeMap, sync::Mutex};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::{mpsc, oneshot, watch};
 use uuid::Uuid;
+#[path = "app_page/reader.rs"]
+mod reader;
+pub use piik_channel_core::wire::WatchFormat as Format;
+pub type Cookies = Arc<dyn Fn(String) -> BoxFuture<'static, Result<Option<String>>> + Send + Sync>;
+pub struct MediaContext {
+    pub url: String,
+    pub format: Format,
+    pub size: Option<u64>,
+    pub retired: watch::Receiver<bool>,
+    pub cookies: Cookies,
+}
 
 pub type Dispatcher = Arc<dyn Fn(Command) -> bool + Send + Sync>;
 pub enum Command {
+    Media {
+        owner: Uuid,
+        page_id: Uuid,
+        choice_id: Uuid,
+        reply: oneshot::Sender<Result<MediaContext, String>>,
+    },
+    Cookies {
+        owner: Uuid,
+        page_id: Uuid,
+        document: Uuid,
+        url: String,
+        reply: oneshot::Sender<Result<Option<String>, String>>,
+    },
     Request {
         owner: Uuid,
         operation: Operation,
@@ -32,6 +59,9 @@ pub enum Operation {
     PagePatch { page_id: Uuid, patch: Patch },
     PageFocus { page_id: Uuid },
     PageClose { page_id: Uuid },
+    PageMediaSources { page_id: Uuid },
+    PageMediaPrepare { page_id: Uuid, choice_id: Uuid },
+    PageMediaStop { page_id: Uuid },
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -103,11 +133,35 @@ impl Events {
         }
     }
 }
+struct Registration {
+    source: Option<piik_channel_core::wire::WatchByteSource>,
+    retired: watch::Receiver<bool>,
+    cancel: watch::Sender<bool>,
+    _task: tokio::task::JoinHandle<()>,
+}
+impl Drop for Registration {
+    fn drop(&mut self) {
+        self.cancel.send_replace(true);
+    }
+}
+#[derive(Default)]
+struct MediaSlot {
+    pending: Option<(Uuid, watch::Sender<bool>)>,
+    active: Option<Registration>,
+}
+impl Drop for MediaSlot {
+    fn drop(&mut self) {
+        if let Some((_, cancel)) = &self.pending {
+            cancel.send_replace(true);
+        }
+    }
+}
 pub struct Connection {
     owner: Uuid,
     dispatch: Option<Dispatcher>,
     events: Events,
     overflow: watch::Receiver<bool>,
+    media: Mutex<BTreeMap<Uuid, MediaSlot>>,
 }
 impl Connection {
     pub fn new(dispatch: Option<Dispatcher>, events: mpsc::Sender<Value>) -> Self {
@@ -120,7 +174,89 @@ impl Connection {
                 overflow,
             },
             overflow: failed,
+            media: Mutex::new(BTreeMap::new()),
         }
+    }
+    pub fn media_source(&self, page: Uuid) -> Option<piik_channel_core::wire::WatchByteSource> {
+        self.media
+            .lock()
+            .unwrap()
+            .get(&page)
+            .and_then(|slot| slot.active.as_ref())
+            .filter(|active| !*active.cancel.borrow() && !*active.retired.borrow())
+            .and_then(|active| active.source.clone())
+    }
+    pub fn stop_media(&self, page: Uuid) {
+        self.media.lock().unwrap().remove(&page);
+    }
+    pub fn prepare_media(
+        self: &Arc<Self>,
+        page: Uuid,
+        choice: Uuid,
+        host: mpsc::Sender<HostCommand>,
+    ) -> Result<BoxFuture<'static, Result<Value>>> {
+        let (cancel, mut cancelled) = watch::channel(false);
+        let generation = Uuid::new_v4();
+        {
+            let mut sources = self.media.lock().unwrap();
+            if sources.len() >= 64 && !sources.contains_key(&page) {
+                bail!("page_player_limit");
+            }
+            let slot = sources.entry(page).or_default();
+            if slot.pending.is_some() || slot.active.is_some() {
+                bail!("watch_source_busy");
+            }
+            slot.pending = Some((generation, cancel.clone()));
+        }
+        let connection = self.clone();
+        Ok(async move {
+            let work = async {
+                let dispatch = connection.dispatch.as_ref().ok_or_else(|| anyhow!("page_player_unavailable"))?;
+                let (reply, result) = oneshot::channel();
+                ensure_dispatch(dispatch(Command::Media { owner: connection.owner, page_id: page, choice_id: choice, reply }))?;
+                let context = result.await?.map_err(anyhow::Error::msg)?;
+                let format = context.format;
+                let retired = context.retired.clone();
+                let mut watching = retired.clone();
+                let reader = reader::OriginReader::prepare(context, cancel.subscribe()).await?;
+                let root = reader.root;
+                let (result, response) = oneshot::channel();
+                let revoke = host.clone();
+                let mut stop = cancel.subscribe();
+                let task = tokio::spawn(async move {
+                    tokio::select! {
+                        _ = watching.wait_for(|value| *value) => {},
+                        _ = stop.wait_for(|value| *value) => {},
+                    }
+                    let _ = revoke.send(HostCommand::RevokeWatchReader { resource_id: root }).await;
+                });
+                let mut registration = Registration { source: None, retired, cancel: cancel.clone(), _task: task };
+                host.send(HostCommand::RegisterWatchReader { resource_id: root, reader, result }).await.map_err(|_| anyhow!("hosting_unavailable"))?;
+                let session_id = response.await?.map_err(anyhow::Error::msg)?;
+                registration.source = Some(piik_channel_core::wire::WatchByteSource { session_id, resource_id: root, format });
+                ensure_not_cancelled(&cancel)?;
+                anyhow::ensure!(!*registration.retired.borrow(), "watch_source_retired");
+                let mut sources = connection.media.lock().unwrap();
+                let slot = sources.get_mut(&page).ok_or_else(|| anyhow!("watch_source_retired"))?;
+                anyhow::ensure!(slot.pending.as_ref().is_some_and(|(id, _)| *id == generation), "watch_source_retired");
+                slot.active = Some(registration);
+                slot.pending = None;
+                Ok(serde_json::json!({"sessionId": session_id, "resourceId": root, "format": format}))
+            };
+            let result = tokio::select! {
+                biased;
+                _ = cancelled.wait_for(|value| *value) => Err(anyhow!("watch_source_retired")),
+                result = work => result,
+            };
+            if result.is_err() {
+                let mut sources = connection.media.lock().unwrap();
+                if let Some(slot) = sources.get_mut(&page) {
+                    if slot.pending.as_ref().is_some_and(|(id, _)| *id == generation) { slot.pending = None; }
+                }
+                sources.retain(|_, slot| slot.pending.is_some() || slot.active.is_some());
+            }
+            result
+        }.boxed())
     }
     pub async fn overflowed(&self) {
         let mut failed = self.overflow.clone();
@@ -156,6 +292,7 @@ impl Connection {
 }
 impl Drop for Connection {
     fn drop(&mut self) {
+        self.media.lock().unwrap().clear();
         if let Some(dispatch) = &self.dispatch {
             dispatch(Command::Retire { owner: self.owner });
         }
@@ -221,4 +358,17 @@ mod tests {
         .validate()
         .is_err());
     }
+}
+
+fn ensure_dispatch(ok: bool) -> Result<()> {
+    if !ok {
+        bail!("page_player_unavailable");
+    }
+    Ok(())
+}
+fn ensure_not_cancelled(cancel: &watch::Sender<bool>) -> Result<()> {
+    if *cancel.borrow() {
+        bail!("watch_source_retired");
+    }
+    Ok(())
 }

@@ -1,12 +1,24 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { ChannelWatchVideo } from "../src/client/channel/components/ChannelMedia";
+import { ChannelWatchVideo, WatchPeerAction } from "../src/client/channel/components/ChannelMedia";
 import { ChannelStage, type WatchStageSource } from "../src/client/channel/components/ChannelStage";
 import type { WatchPlayer } from "../src/client/channel/watch-playback";
 import { setCopy } from "../src/client/ui/copy";
 
 describe("Webpage watch presentation", () => {
+  it("offers peer reception only for an enabled source and a supported browser", () => {
+    setCopy({ lang: "en" });
+    const receiving = { peerAvailable: true, peerSupported: true, mode: "direct" as const, browserSource: true, onPeer: vi.fn(), onDirect: vi.fn() };
+    const render = (patch = {}) => renderToStaticMarkup(createElement(WatchPeerAction, { receiving: { ...receiving, ...patch } }));
+    expect(render()).toContain('aria-label="Receive from sharer"');
+    expect(render({ peerAvailable: false })).toBe("");
+    expect(render({ mode: "peer" })).toBe("");
+    expect(render({ mode: "peer", failed: true })).toContain('aria-label="Receive from sharer"');
+    expect(render({ mode: "peer", failed: true, peerAvailable: false })).toMatch(/<button\b[^>]*disabled/);
+    expect(render({ peerSupported: false })).toContain("requires HTTPS and browser Service Worker support");
+    expect(render({ peerSupported: false })).not.toContain("<button");
+  });
   it.each([true, false])("shows the independent webpage's real controls without a fake video (owner: %s)", owned => {
     setCopy({ lang: "en" });
     const player = { video: null, blocked: false, error: null,

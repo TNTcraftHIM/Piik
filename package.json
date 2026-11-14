@@ -34,6 +34,7 @@
     "@vitejs/plugin-react": "6.0.5",
     "@zip.js/zip.js": "2.24.0",
     "esbuild": "0.28.2",
+    "hls.js": "1.7.4",
     "markdown-it": "15.0.3",
     "qrcode.react": "4.2.0",
     "react": "19.2.8",

@@ -1,5 +1,5 @@
-import { CHANNEL_PROTOCOL, type RoomSummary } from "./protocol";
-import { nativePageEventSchema, nativePageStateSchema, type NativePageCandidate } from "../native/wire";
+import { CHANNEL_PROTOCOL, watchByteSourceSchema, type WatchByteSource, type RoomSummary } from "./protocol";
+import { nativePageEventSchema, nativePageStateSchema, nativePageMediaChoiceSchema, type NativePageCandidate, type NativePageMediaChoice } from "../native/wire";
 import type { AppPagePort, WatchMediaEvent, WatchMediaPatch, WatchMediaState } from "./watch-media";
 import { z } from "zod";
 import { appApprovalURL, appManagementURL, discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
@@ -11,7 +11,7 @@ import { NativeRoomHosting } from "./hosting-api";
 import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 
-export const APP_PROTOCOL = 10;
+export const APP_PROTOCOL = 11;
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), domainProtocol: z.number().int().positive().optional(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), domainProtocol: z.literal(CHANNEL_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
   version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional(), updateSupported: z.boolean().optional(), pagePlayer: z.literal(true).optional() });
@@ -84,6 +84,11 @@ export class AppPage implements AppPagePort {
   async read(): Promise<WatchMediaState> { return nativePageStateSchema.parse(await this.command("page_read")); }
   async patch(patch: WatchMediaPatch): Promise<void> { await this.command("page_patch", { patch }); }
   async focus(): Promise<void> { await this.command("page_focus"); }
+  async mediaSources(): Promise<{ choices: NativePageMediaChoice[]; byteSource: WatchByteSource | null }> {
+    return z.object({ choices: z.array(nativePageMediaChoiceSchema).max(32), byteSource: watchByteSourceSchema.nullable() }).strict().parse(await this.command("page_media_sources"));
+  }
+  async prepareMedia(choiceId: string): Promise<WatchByteSource> { return watchByteSourceSchema.parse(await this.command("page_media_prepare", { choiceId })); }
+  async stopMedia(): Promise<void> { await this.command("page_media_stop"); }
   listen(changed: (event: WatchMediaEvent) => void): () => void { this.listeners.add(changed); return () => this.listeners.delete(changed); }
   receive(event: z.infer<typeof nativePageEventSchema>): void {
     if (event.type === "page_closed") { this.close(); return; }

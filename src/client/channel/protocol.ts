@@ -11,7 +11,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 19;
+export const CHANNEL_PROTOCOL = 20;
 export const CHANNEL_SESSION_LIMIT = 128;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
@@ -88,7 +88,12 @@ export const watchSourceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("website"), url: watchURLSchema, mediaUrl: watchURLSchema.optional() }).strict(),
 ]);
 export type WatchSource = z.infer<typeof watchSourceSchema>;
-export const watchActivitySchema = z.object({ id, roomId: id, userId: id, sessionId: id, source: watchSourceSchema, playback: watchPlaybackSchema }).strict();
+export const watchByteSourceSchema = z.object({ sessionId: z.uuid(), resourceId: z.uuid(), format: z.enum(["file", "hls"]) }).strict();
+export type WatchByteSource = z.infer<typeof watchByteSourceSchema>;
+export type WatchMode = "direct" | "peer";
+export const watchBytePlanSchema = z.object({ roomId: id, activityId: z.uuid(), source: watchByteSourceSchema, upstream: z.uuid().nullable(), downstream: z.array(z.uuid()), receiving: z.boolean() }).strict();
+export type WatchBytePlan = z.infer<typeof watchBytePlanSchema>;
+export const watchActivitySchema = z.object({ id, roomId: id, userId: id, sessionId: id, source: watchSourceSchema, playback: watchPlaybackSchema, byteSource: watchByteSourceSchema.optional() }).strict();
 export type WatchActivity = z.infer<typeof watchActivitySchema>;
 export const snapshotSchema = z.object({
   channel: z.object({
@@ -100,7 +105,8 @@ export const snapshotSchema = z.object({
   voice: z.array(z.object({ sessionId: id, roomId: id, muted: z.boolean(), deafened: z.boolean() })),
   subscriptions: z.array(id),
   watchActivities: z.array(watchActivitySchema),
-  watchSubscriptions: z.array(id),
+  watchSubscriptions: z.array(z.object({ id, mode: z.enum(["direct", "peer"]) }).strict()),
+  watchBytes: z.array(watchBytePlanSchema),
   failedSubscriptions: z.array(id),
   files: z.array(filePlanSchema),
   pairs: z.array(z.object({ id, peerId: id, canReceiveVideoLayers: z.boolean().default(false), rooms: z.array(id), outgoing: z.array(z.object({ id, publicationId: id, selected: z.boolean(), inputFlowId: id.nullable() })), incoming: z.array(z.object({ id, publicationId: id, selected: z.boolean(), inputFlowId: id.nullable() })) })).max(CHANNEL_SESSION_LIMIT - 1),
@@ -220,7 +226,8 @@ export interface RoomSettings extends DomainSettings {
 export type ChannelCommand =
   | { type: "start_watch"; roomId: string; id: string; source: WatchSource; playback: WatchPlayback }
   | { type: "update_watch"; roomId: string; id: string; playback: WatchPlayback }
-  | { type: "join_watch"; roomId: string; id: string; enabled: boolean }
+  | { type: "join_watch"; roomId: string; id: string; mode: WatchMode | null }
+  | { type: "set_watch_byte_source"; roomId: string; id: string; byteSource: WatchByteSource | null }
   | { type: "stop_watch"; roomId: string; id: string }
   | { type: "join"; protocol: typeof CHANNEL_PROTOCOL; name: string; signingKey: number[]; credential?: string; ownerKey?: string; sessionId?: string }
   | { type: "conversation"; packet: SignedConversationPacket }

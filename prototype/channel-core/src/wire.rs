@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 19;
+pub const CHANNEL_PROTOCOL: u8 = 20;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -137,10 +137,15 @@ pub enum Command {
         id: Uuid,
         playback: WatchPlayback,
     },
+    SetWatchByteSource {
+        room_id: String,
+        id: Uuid,
+        byte_source: Option<WatchByteSource>,
+    },
     JoinWatch {
         room_id: String,
         id: Uuid,
-        enabled: bool,
+        mode: Option<WatchMode>,
     },
     StopWatch {
         room_id: String,
@@ -771,7 +776,8 @@ pub struct ChannelInfo {
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     pub watch_activities: Vec<WatchActivity>,
-    pub watch_subscriptions: Vec<Uuid>,
+    pub watch_subscriptions: Vec<WatchSubscription>,
+    pub watch_bytes: Vec<crate::watch_delivery::WatchBytePlan>,
     pub files: Vec<crate::file_room::FilePlan>,
     pub channel: ChannelInfo,
     pub users: Vec<UserSummary>,
@@ -930,6 +936,33 @@ pub struct WatchActivity {
     pub session_id: Uuid,
     pub source: WatchSource,
     pub playback: WatchPlayback,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub byte_source: Option<WatchByteSource>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WatchMode {
+    Direct,
+    Peer,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WatchSubscription {
+    pub id: Uuid,
+    pub mode: WatchMode,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WatchFormat {
+    File,
+    Hls,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WatchByteSource {
+    pub session_id: Uuid,
+    pub resource_id: Uuid,
+    pub format: WatchFormat,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(

@@ -27,12 +27,41 @@ import type { WatchPlayer } from "../watch-playback";
 import type { WatchPlayback } from "../protocol";
 import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
 
+export interface WatchReceiving {
+  peerAvailable: boolean; peerSupported: boolean; mode: "direct" | "peer"; browserSource: boolean;
+  failed?: boolean;
+  pending?: boolean; disabled?: boolean; onPeer(): void; onDirect(): void;
+}
+
+export function WatchPeerAction({ receiving }: { receiving: WatchReceiving }) {
+  const { t } = useCopy();
+  if (!receiving.peerAvailable && receiving.mode !== "peer" || receiving.mode === "peer" && !receiving.failed) return null;
+  return receiving.peerSupported ? <Btn icon="share" title="watch.forward.peer" cap="watch.forward.peer" size="compact"
+    disabled={!receiving.peerAvailable || receiving.disabled || receiving.pending} busy={receiving.pending} onClick={receiving.onPeer} />
+    : <small>{t("watch.forward.secure")}</small>;
+}
+
+function WatchReceivingSettings({ receiving }: { receiving: WatchReceiving }) {
+  const { t } = useCopy();
+  const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
+  useAnchoredPopover(trigger, panel, { side: "above", align: "end" });
+  return <span ref={trigger}><Btn icon="sliders" quiet title="watch.forward.viewing" popoverTarget={id} />
+    <div ref={panel} id={id} popover="auto" role="dialog" className="lr-floating-surface lr-playback-menu c3-external-input" aria-label={t("watch.forward.viewing")}>
+      <b>{t("watch.forward.viewing")}</b><p>{t("watch.forward.receiveHelp")}</p>
+      <WatchPeerAction receiving={receiving} />
+      {receiving.browserSource && <Btn icon="globe" quiet title="watch.forward.direct" cap="watch.forward.direct" pressed={receiving.mode === "direct"}
+        disabled={receiving.disabled || receiving.pending || receiving.mode === "direct"} onClick={receiving.onDirect} />}
+    </div>
+  </span>;
+}
+
 /** The session owns loading and playback; presentation only mounts its existing element. */
-export function ChannelWatchVideo({ player, owned, paused, label, presentation, theaterMode, onToggleTheater, onPlayback, onResume, disabled, website, onAppWatch, onFocusWindow }: {
+export function ChannelWatchVideo({ player, owned, paused, label, presentation, theaterMode, onToggleTheater, onPlayback, onResume, disabled, website, onAppWatch, onFocusWindow, receiving }: {
   player: WatchPlayer; owned: boolean; paused: boolean; label: string; presentation: "full" | "thumbnail" | "background";
   theaterMode: boolean; onToggleTheater(): void; disabled: boolean;
   onPlayback(patch: Partial<Pick<WatchPlayback, "paused" | "position" | "rate">>): void; onResume(): void;
   website: boolean; onAppWatch?: () => void; onFocusWindow(): void;
+  receiving?: WatchReceiving;
 }) {
   const { t } = useCopy();
   const slot = useRef<HTMLDivElement>(null), controls = useRef<HTMLDivElement>(null);
@@ -70,8 +99,9 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-external={!player.video || undefined} data-failed={!!player.error || undefined} data-thumbnail={presentation === "thumbnail" || undefined}
     data-controls-hidden={visibility.hidden} inert={presentation === "background"}>
     {!player.video && !player.error && <div className="c3-mini-message"><span className="c3-frame-wait">{t("watch.inWindow")}</span></div>}
-    {player.error ? <div className="c3-mini-message" role="alert"><div className="c3-frame-wait c3-watch-result"><span>{t(player.error === "watch_update_failed" ? "watch.updateFailed" : website && player.video ? "watch.browserFailed" : "watch.failed")}</span>
+    {player.error ? <div className="c3-mini-message" role="alert"><div className="c3-frame-wait c3-watch-result"><span>{t(player.error === "watch_update_failed" ? "watch.updateFailed" : receiving?.mode === "peer" ? "watch.forward.failed" : website && player.video ? "watch.browserFailed" : "watch.failed")}</span>
       {website && player.video && (onAppWatch ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={onAppWatch} /> : <small>{t("watch.connectApp")}</small>)}
+      {receiving && <WatchPeerAction receiving={receiving} />}
     </div></div>
       : player.blocked && <div className="c3-mini-message"><Btn icon="play" title="watch.resume" cap="watch.resume" onClick={onResume} /></div>}
     <div ref={controls} id={controlsId} className="c3-mini-controls lr-media-toolbar lr-media-controls" role="group" aria-label={t("playback.controls")}>
@@ -88,6 +118,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       </div>}
       {owned && <span className="lr-viewer-action-separator" aria-hidden="true" />}
       <div className="c3-watch-local" role="group" aria-label={t("watch.localControls")}>
+        {receiving && (receiving.peerAvailable || receiving.mode === "peer") && <WatchReceivingSettings receiving={receiving} />}
         {player.video ? <><AudioVolumeMenu volume={media.volume} label="playback.volumeBasic" max={1} onVolume={volume => { if (player.video) { player.video.volume = volume; player.video.muted = false; } }}>
           <Btn icon={media.muted || !media.volume ? "speakerOff" : "speaker"} quiet size="dense" title={media.muted ? "playback.unmute" : "playback.mute"}
             onClick={() => { const video = player.video; if (!video) return; const silent = video.muted || !video.volume; if (silent && !video.volume) video.volume = 1; video.muted = !silent; }} />

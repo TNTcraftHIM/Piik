@@ -303,8 +303,17 @@ opens the original webpage for that viewer to select its player. This requires a
 supported App but no browser extension. Website login state stays in its separate
 App browsing profile; Piik does not send the sharer's cookies to viewers.
 
-Playback state travels through the room's signaling connection, without a peer
-media path. The current connector does not forward the website's media bytes.
+Playback state travels through the room's signaling connection. Direct viewing
+does not need a peer media path. The sharer can also choose **Share settings →
+Forward original video**, select a readable file or HLS source, and explicitly
+enable upload. Viewers then choose **Receive from sharer** to use the room's
+existing peer paths. This requires HTTPS or loopback HTTP for the Browser media
+adapter and consumes the sharer's upload capacity. Stopping forwarding leaves
+the webpage and synchronized viewing activity open.
+
+Forwarding currently supports finite media files with byte ranges and standard
+HLS VOD playlists, including variants, separate audio and initialization segments.
+Live/low-latency playlists and DRM playback are outside that forwarding support.
 Closing the sharer's source window, changing its selected media, or ending the
 share ends the activity; closing a viewer's window only ends that viewer's watch.
 

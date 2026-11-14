@@ -39,6 +39,7 @@ interface RoomHosting {
   decode_control(bytes: Uint8Array): string;
   initializeRuntime(): Promise<void>;
   FileDelivery: new (sessionId: string) => FileDelivery;
+  WatchDelivery: new (sessionId: string) => WatchDelivery;
   AttachmentHash: new () => AttachmentHash;
   attachment_media_type(bytes: Uint8Array): string;
   attachment_limits(): string;
@@ -80,6 +81,19 @@ export interface FileDelivery {
   peer_failed(key: string, peer: string, requestId: string, code: string): string;
   start(key: string): string;
   cancel(key: string): string;
+  free(): void;
+}
+
+export interface WatchDelivery {
+  update(plans: string, roomPeers: string): string;
+  read(key: string, requestId: string, offset: bigint, length: number): string;
+  cancel(requestId: string): string;
+  control(peer: string, control: string): string;
+  chunk(peer: string, frame: Uint8Array): string;
+  peer_closed(peer: string): string;
+  read_failed(requestId: string, code: string): string;
+  read_result(requestId: string, result: string): string;
+  request_failed(requestId: string, code: string): string;
   free(): void;
 }
 

@@ -1,4 +1,6 @@
-//! UI-thread ownership for website windows. Only the App connection supplies commands.
+#[path = "page_media.rs"]
+mod media;
+// UI-thread ownership for website windows. Only the App connection supplies commands.
 use super::ServiceEvent;
 use crate::app::page::{self, Command, MediaState, Operation};
 use anyhow::{anyhow, bail, Result};
@@ -36,6 +38,9 @@ struct Message {
 #[serde(tag = "kind", rename_all = "lowercase")]
 enum PageEvent {
     Document,
+    Resources {
+        urls: Vec<String>,
+    },
     Removed {
         removed: Uuid,
     },
@@ -100,6 +105,7 @@ struct Page {
     document: Option<Uuid>,
     candidates: BTreeMap<Uuid, Candidate>,
     selected: Option<Uuid>,
+    media: Rc<RefCell<media::Media>>,
     pending: BTreeMap<Uuid, Pending>,
 }
 impl Page {
@@ -147,6 +153,7 @@ impl Page {
 }
 impl Drop for Page {
     fn drop(&mut self) {
+        self.media.borrow().retired.send_replace(true);
         for (_, pending) in std::mem::take(&mut self.pending) {
             let _ = pending.reply.send(Err("page_player_closed".into()));
         }
@@ -194,12 +201,108 @@ impl Pages {
         {
             self.pages.remove(&key);
         } else if let Some(page) = self.pages.get_mut(&key) {
+            page.media.borrow_mut().reset();
             page.document = None;
             page.candidates.clear();
             page.candidates();
         }
     }
     pub fn command(
+        &mut self,
+        command: Command,
+        target: &EventLoopWindowTarget<ServiceEvent>,
+        events: EventLoopProxy<ServiceEvent>,
+    ) {
+        match command {
+            Command::Media {
+                owner,
+                page_id,
+                choice_id,
+                reply,
+            } => {
+                let result = (|| -> Result<page::MediaContext> {
+                    let page = self
+                        .pages
+                        .values()
+                        .find(|p| p.owner == owner && p.id == page_id)
+                        .ok_or_else(|| anyhow!("page_player_closed"))?;
+                    let selected = page
+                        .selected
+                        .and_then(|id| page.candidates.get(&id))
+                        .ok_or_else(|| anyhow!("page_candidate_unavailable"))?;
+                    page.media
+                        .borrow_mut()
+                        .sources(selected.frame, &selected.source.resource);
+                    let choice = page
+                        .media
+                        .borrow()
+                        .choice(choice_id)
+                        .ok_or_else(|| anyhow!("watch_resource_unavailable"))?;
+                    let document = page.document.ok_or_else(|| anyhow!("page_player_closed"))?;
+                    let events = events.clone();
+                    let cookies: page::Cookies = std::sync::Arc::new(move |url| {
+                        let events = events.clone();
+                        Box::pin(async move {
+                            let (reply, result) = oneshot::channel();
+                            events
+                                .send_event(ServiceEvent::PageCommand(std::sync::Arc::new(
+                                    std::sync::Mutex::new(Some(Command::Cookies {
+                                        owner,
+                                        page_id,
+                                        document,
+                                        url,
+                                        reply,
+                                    })),
+                                )))
+                                .map_err(|_| anyhow!("page_player_closed"))?;
+                            result.await?.map_err(anyhow::Error::msg)
+                        })
+                    });
+                    Ok(page::MediaContext {
+                        url: choice.url,
+                        format: choice.format,
+                        size: choice.size,
+                        retired: page.media.borrow().retired.subscribe(),
+                        cookies,
+                    })
+                })();
+                let _ = reply.send(result.map_err(|e| e.to_string()));
+                return;
+            }
+            Command::Cookies {
+                owner,
+                page_id,
+                document,
+                url,
+                reply,
+            } => {
+                if let Some(page) = self
+                    .pages
+                    .values()
+                    .find(|p| p.owner == owner && p.id == page_id && p.document == Some(document))
+                {
+                    if page::valid_url(&url) {
+                        let _ = media::cookies(
+                            &page.view,
+                            url,
+                            page.media.borrow().retired.subscribe(),
+                            reply,
+                        );
+                    } else {
+                        let _ = reply.send(Err("invalid_watch_url".into()));
+                    }
+                } else {
+                    let _ = reply.send(Err("page_player_closed".into()));
+                }
+                return;
+            }
+            command => {
+                self.operation(command, target, events);
+                return;
+            }
+        }
+    }
+    fn operation(
         &mut self,
         command: Command,
         target: &EventLoopWindowTarget<ServiceEvent>,
@@ -234,7 +337,8 @@ impl Pages {
             | Operation::PageRead { page_id }
             | Operation::PagePatch { page_id, .. }
             | Operation::PageFocus { page_id }
-            | Operation::PageClose { page_id } => *page_id,
+            | Operation::PageClose { page_id }
+            | Operation::PageMediaSources { page_id } => *page_id,
             _ => unreachable!(),
         };
         let key = self
@@ -254,10 +358,21 @@ impl Pages {
             return;
         };
         match operation {
+            Operation::PageMediaSources { .. } => {
+                let result = page
+                    .selected
+                    .and_then(|id| page.candidates.get(&id))
+                    .map(|c| page.media.borrow_mut().sources(c.frame, &c.source.resource))
+                    .ok_or_else(|| "page_candidate_unavailable".into());
+                let _ = reply.send(result);
+            }
             Operation::PageSelect { candidate_id, .. } => {
                 if !page.candidates.contains_key(&candidate_id) {
                     let _ = reply.send(Err("page_candidate_unavailable".into()));
                     return;
+                }
+                if page.selected.is_some_and(|id| id != candidate_id) {
+                    page.media.borrow_mut().reset();
                 }
                 page.selected = Some(candidate_id);
                 page.candidates();
@@ -307,8 +422,9 @@ impl Pages {
         let popup_children = children.clone();
         let popup_target = target.clone();
         let popup_events = events.clone();
+        let media = Rc::new(RefCell::new(media::Media::default()));
         let view = WebViewBuilder::new_with_web_context(&mut self.context)
-            .with_url(url)
+            .with_url("about:blank")
             .with_initialization_script_for_main_only(include_str!("page-player.js"), false)
             .with_ipc_handler(move |request| {
                 if request.body().len() <= 65536 {
@@ -358,6 +474,8 @@ impl Pages {
                 create().unwrap_or(NewWindowResponse::Deny)
             })
             .build(&window)?;
+        media::observe(&view, media.clone())?;
+        view.load_url(&url)?;
         let closed = events;
         let window_id = window.id();
         // Website browsing never inherits Piik's camera/microphone or App device grants.
@@ -383,6 +501,7 @@ impl Pages {
                 document: None,
                 candidates: BTreeMap::new(),
                 selected: None,
+                media,
                 pending: BTreeMap::new(),
             },
         );
@@ -408,6 +527,9 @@ impl Pages {
             return;
         }
         match message.event {
+            PageEvent::Resources { urls } => {
+                page.media.borrow_mut().frame(message.frame, urls);
+            }
             PageEvent::Removed { removed } => {
                 page.candidates.retain(|_, candidate| {
                     candidate.frame != removed && !candidate.ancestors.contains(&removed)

@@ -19,6 +19,7 @@ required-features = ["capture"]
 capture = ["piik-channel-native/capture", "dep:wry", "dep:tao", "dep:webview2-com", "dep:windows-core"]
 
 [dependencies]
+m3u8-rs = "=6.0.1"
 piik-channel-core = { path = "../channel-core", features = ["sqlite"] }
 piik-channel-native = { path = "../channel-native", default-features = false }
 rtc-stun = "=0.21.1"

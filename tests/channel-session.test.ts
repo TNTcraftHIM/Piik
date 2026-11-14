@@ -141,7 +141,7 @@ async function setup(window = 1000, read = true, hash = "room=first", readyInter
         available: true, reading: id === "first", capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } } })) },
     users: [{ id: "self", name: "Me", version: profileVersion }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
-    publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
+    publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   } });
   if (read) {
     const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
@@ -8108,7 +8108,7 @@ test('watch short recovery keeps its player, samples domain time again, and resp
   vi.stubGlobal('document', { createElement: () => video });
   const activity = { id: 'watch-one', roomId: 'first', sessionId: 'other', userId: 'other', source: { kind: 'media' as const, url: 'https://media.test/one.mp4' },
     playback: { position: 10, paused: true, rate: 1, anchorTime: 1000 } };
-  let state = { ...session.getSnapshot().state!, watchActivities: [activity], watchSubscriptions: [activity.id] };
+  let state = { ...session.getSnapshot().state!, watchActivities: [activity], watchSubscriptions: [{ id: activity.id, mode: 'direct' as const }] };
   try {
     socket.receive({ type: 'state', state });
     const joining = session.joinWatch(activity.id);
@@ -8120,7 +8120,7 @@ test('watch short recovery keeps its player, samples domain time again, and resp
     state = { ...state, watchActivities: [{ ...activity, playback: { ...activity.playback, position: 24 } }] };
     resumed.receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'credential', sessionId: 'endpoint', state });
     const rejoin = resumed.sent.findLast(command => command.type === 'join_watch')!;
-    expect(rejoin).toMatchObject({ id: activity.id, enabled: true });
+    expect(rejoin).toMatchObject({ id: activity.id, mode: 'direct' });
     resumed.receive({ type: 'room_reply', roomId: 'first', requestId: rejoin.requestId, result: { type: 'watch_ready', serverTime: 2000 } });
     expect(session.getSnapshot().watchPlayers.get(activity.id)?.video).toBe(video);
     await vi.waitFor(() => expect(video.currentTime).toBe(24));
@@ -8129,7 +8129,7 @@ test('watch short recovery keeps its player, samples domain time again, and resp
     session.reconnect();
     const returned = ChannelSocket.current; await returned.onopen?.();
     returned.receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'credential', sessionId: 'endpoint', state });
-    expect(returned.sent).toContainEqual({ type: 'join_watch', roomId: 'first', id: activity.id, enabled: false });
+    expect(returned.sent).toContainEqual({ type: 'join_watch', roomId: 'first', id: activity.id, mode: null });
     expect(session.getSnapshot().watchPlayers.size).toBe(0);
     expect(video.src).toBe('');
   } finally { session.close(); }
@@ -8147,7 +8147,7 @@ test.each(['activity', 'subscription'] as const)('watch authority %s removal ret
     const join = socket.sent.findLast(command => command.type === 'join_watch')!;
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: join.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
     await joining;
-    const state = { ...session.getSnapshot().state!, watchSubscriptions: [activity.id] };
+    const state = { ...session.getSnapshot().state!, watchSubscriptions: [{ id: activity.id, mode: 'direct' as const }] };
     socket.receive({ type: 'state', state });
     const opening = session.startWatch('first', 'https://media.test/new.mp4');
     const cancelled = expect(opening).rejects.toMatchObject({ name: 'AbortError' });
@@ -8261,5 +8261,29 @@ test('webpage sharing commits the current top-level URL delivered before selecti
     await selecting;
     expect(commit.mock.calls[0]?.[1]).toEqual({ kind: 'website', url: 'https://video.test/film?chosen=1', mediaUrl: 'https://media.test/film.mp4' });
     expect(session.watchPage('first')?.url).toBe('https://video.test/film?chosen=1');
+  } finally { session.close(); }
+});
+
+test('an explicit same-mode retry replaces a failed watch player without changing room playback', async () => {
+  const { session, socket } = await setup(1000, false);
+  const first = new WatchTestVideo(), replacement = new WatchTestVideo();
+  vi.stubGlobal('document', { createElement: vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(replacement) });
+  const activity = { id: 'watch-retry', roomId: 'first', sessionId: 'other', userId: 'other', source: { kind: 'media' as const, url: 'https://media.test/video.mp4' },
+    playback: { position: 10, paused: true, rate: 1, anchorTime: 1000 } };
+  try {
+    socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [activity] } });
+    const initial = session.joinWatch(activity.id);
+    let join = socket.sent.findLast(command => command.type === 'join_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: join.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
+    await initial;
+    session.getSnapshot().watchPlayers.get(activity.id)!.error = 'watch_media_failed';
+    const retry = session.joinWatch(activity.id);
+    join = socket.sent.findLast(command => command.type === 'join_watch')!;
+    expect(socket.sent.filter(command => command.type === 'join_watch')).toHaveLength(2);
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: join.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
+    await retry;
+    expect(session.getSnapshot().watchPlayers.get(activity.id)?.video).toBe(replacement);
+    expect(first.src).toBe('');
+    expect(socket.sent.some(command => command.type === 'update_watch')).toBe(false);
   } finally { session.close(); }
 });

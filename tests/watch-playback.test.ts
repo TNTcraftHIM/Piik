@@ -20,7 +20,7 @@ test("late metadata and manual autoplay retry use the latest domain anchor; soun
   vi.spyOn(performance, "now").mockImplementation(() => now);
   const video = new Video();
   vi.stubGlobal("document", { createElement: () => video });
-  const player = new WatchPlayer("room", false, new HTMLVideoMedia("https://media.test/video.mp4"), vi.fn());
+  const player = new WatchPlayer("room", false, new HTMLVideoMedia("https://media.test/video.mp4", "file"), vi.fn());
   try {
     player.calibrate(5100, 80, 120);
     player.update({ position: 10, anchorTime: 5100, paused: false, rate: 2 });
@@ -52,7 +52,7 @@ test("admitted creator native playback events are serialized and use integer dom
   vi.spyOn(performance, "now").mockReturnValue(100.75);
   const video = new Video(); video.readyState = 2;
   vi.stubGlobal("document", { createElement: () => video });
-  const player = new WatchPlayer("room", true, new HTMLVideoMedia("https://media.test/video.mp4"), vi.fn());
+  const player = new WatchPlayer("room", true, new HTMLVideoMedia("https://media.test/video.mp4", "file"), vi.fn());
   const send = vi.fn(async (_playback: unknown) => {});
   try {
     video.dispatchEvent(new Event("pause"));
@@ -79,7 +79,7 @@ test("creator acknowledgements never seek; retiring suppresses queued sends", as
   vi.useFakeTimers();
   const video = new Video(); video.readyState = 2; video.currentTime = 25;
   vi.stubGlobal("document", { createElement: () => video });
-  const player = new WatchPlayer("room", true, new HTMLVideoMedia("https://media.test/video.mp4"), vi.fn());
+  const player = new WatchPlayer("room", true, new HTMLVideoMedia("https://media.test/video.mp4", "file"), vi.fn());
   player.calibrate(5000, 0, 0);
   player.update({ position: 2, anchorTime: 5000, paused: true, rate: 1 });
   expect(video.currentTime).toBe(25);
@@ -94,7 +94,7 @@ test("candidate cancellation releases its load listeners and deadline", async ()
   vi.useFakeTimers();
   const video = new Video();
   vi.stubGlobal("document", { createElement: () => video });
-  const player = new WatchPlayer("room", true, new HTMLVideoMedia("https://media.test/video.mp4"), vi.fn());
+  const player = new WatchPlayer("room", true, new HTMLVideoMedia("https://media.test/video.mp4", "file"), vi.fn());
   const cancel = new AbortController();
   const pending = player.ready(cancel.signal);
   cancel.abort();
@@ -108,7 +108,7 @@ test("creator playing reanchors initial start and buffer recovery even at the sa
   const clock = vi.spyOn(performance, "now").mockReturnValue(100);
   const video = new Video(); video.readyState = 2; video.currentTime = 20; video.paused = false;
   vi.stubGlobal("document", { createElement: () => video });
-  const player = new WatchPlayer("room", true, new HTMLVideoMedia("https://media.test/video.mp4"), vi.fn());
+  const player = new WatchPlayer("room", true, new HTMLVideoMedia("https://media.test/video.mp4", "file"), vi.fn());
   const send = vi.fn(async (_playback: unknown) => {});
   try {
     player.calibrate(5000, 100, 100);

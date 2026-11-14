@@ -20,6 +20,7 @@ import { MAX_WATCH_URL_LENGTH, type ChannelPublication } from "../protocol";
 import "./channel-share-control.css";
 import { CaptureSourceCard } from "../../components/living/CaptureSourceCard";
 import { BrandLoader } from "../../components/living/BrandMark";
+import type { NativePageMediaChoice } from "../../native/wire";
 
 function ShareTitleEditor({ sharing, channel, disabled }: {
   sharing: Extract<ChannelPublication, { kind: "screen" }>; channel: ChannelController; disabled: boolean;
@@ -82,6 +83,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const sharing = channel.state?.publications.find(publication => publication.kind === "screen" &&
     (!publicationId || publication.id === publicationId) && publication.roomId === roomId && channel.ownedScreens.has(publication.id));
   const watching = channel.state?.watchActivities.find(activity => activity.roomId === roomId && activity.sessionId === channel.sessionId);
+  const nativeWatch = watching && channel.watchPlayers.get(watching.id)?.video === null;
   const roomName = sharing ? channel.state?.channel.rooms.find(room => room.id === roomId)?.name : undefined;
   const settingsTitle = roomName
     ? t("screen.shareSettingsInRoom", { room: roomName })
@@ -165,7 +167,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         disabled={disabled || busy || qualityPending || microphonePending} busy={busy || qualityPending} expanded={open}
         controls={id} popoverTarget={id} />}
     </span>
-    {(!watching || sharing) && <span ref={settingsTrigger} className="c3-share-control">
+    {(!watching || sharing || nativeWatch) && <span ref={settingsTrigger} className="c3-share-control">
       <Btn icon="sliders" title={{ text: settingsTitle }} cap={compact ? undefined : { text: settingsLabel }} hint="hint-quality" size="compact" quiet
         disabled={disabled || busy} busy={qualityPending} popoverTarget={`${id}-settings`} controls={`${id}-settings`} expanded={settingsOpen} />
     </span>}
@@ -174,6 +176,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     </span>
     <div ref={settingsPanel} id={`${id}-settings`} popover="auto" role="dialog" aria-label={settingsTitle} className="lr-anchored-card c3-quality-picker"
       onToggle={event => { if (event.target === event.currentTarget) setSettingsOpen(event.newState === "open"); }}>
+      {watching ? settingsOpen && <WatchForwardSettings channel={channel} activityId={watching.id} disabled={disabled} /> : <>
       <div className="c3-quality-heading"><h3>{settingsLabel}</h3>
         <p>{sharing ? t("screen.shareSettingsHelp", { room: roomName ?? t("screen.currentRoom") })
           : t("screen.shareSettingsNext")}</p></div>
@@ -220,7 +223,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
           onChange={bitrate => {
             if (sharing) void channel.setSourceAudio(sharing.id, { bitrate }).catch(() => {});
             else setQuality({ ...quality, maxAudioBitrate: bitrate });
-          }} /></>} />}
+          }} /></>} />}</>}
     </div>
     <div ref={panel} id={id} popover="auto" className="lr-anchored-card c3-share-picker"
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
@@ -245,6 +248,27 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
       onStop={() => { void channel.stopScreen(externalInput.publicationId).then(() => setExternalOpen(false)).catch(() => {}); }} onClose={() => setExternalOpen(false)} />}
     {watchOpen && <WatchSourceDialog channel={channel} roomId={roomId} onClose={() => setWatchOpen(false)} />}
   </>;
+}
+
+function WatchForwardSettings({ channel, activityId, disabled }: { channel: ChannelController; activityId: string; disabled: boolean }) {
+  const { t } = useCopy();
+  const [choices, setChoices] = useState<NativePageMediaChoice[] | null>(null);
+  const { error, run } = useSettingsAction();
+  const activity = channel.state?.watchActivities.find(value => value.id === activityId);
+  const busy = channel.pending.has(`watch-source:${activityId}`);
+  return <div className="c3-watch-forward-settings c3-external-input">
+    <h3>{t("watch.forward.title")}</h3><p>{t("watch.forward.upload")}</p>
+    {activity?.byteSource ? <><p role="status">{t("watch.forward.active")}</p>
+      <Btn icon="stop" title="watch.forward.stop" cap="watch.forward.stop" disabled={disabled || busy} busy={busy}
+        onClick={() => { void run(() => channel.setWatchByteSource(activityId, null), () => setChoices(null)); }} /></>
+      : choices === null ? <Btn icon="share" title="watch.forward.prepare" cap="watch.forward.prepare" disabled={disabled || busy}
+        onClick={() => { void run(() => channel.watchMediaChoices(activityId), setChoices); }} />
+      : choices.length ? <><p>{t("watch.forward.choose")}</p><div className="lr-source-picker-list">
+        {choices.map(choice => <CaptureSourceCard key={choice.id} title={choice.name || new URL(choice.displayURL).hostname} action={t("watch.forward.enableNamed", { name: choice.name || new URL(choice.displayURL).hostname })}
+          icon="play" hint="hint-source-picker" disabled={disabled || busy} onSelect={() => { void run(() => channel.setWatchByteSource(activityId, choice.id)); }} />)}
+      </div></> : <p role="status">{t("watch.forward.none")}</p>}
+    {error && <p className="c3-settings-error" role="alert">{channelErrorPresentation(error, t).message}</p>}
+  </div>;
 }
 
 export function WatchSourceDialog({ channel, roomId, activityId, initialURL = "", onClose }: { channel: ChannelController; roomId: string; activityId?: string; initialURL?: string; onClose(): void }) {

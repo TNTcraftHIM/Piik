@@ -9,6 +9,7 @@ interface ConversationOptions {
   host(roomId: string): HostedRoom | undefined;
   send(packet: SignedConversationPacket, requestId: string): void;
   file(peer: string, control: string): void;
+  watch?(peer: string, control: string): void;
   reply(reply: ConversationReply): void;
 }
 
@@ -52,10 +53,11 @@ export class ChannelConversation {
     this.options.send(packet, requestId);
   }
 
-  async receiveFile(peer: string, frame: string): Promise<void> {
+  async receiveControl(peer: string, frame: string): Promise<void> {
     const { runtime } = await this.ready();
-    const control = JSON.parse(runtime.decode_control(new TextEncoder().encode(frame))) as { kind: "file"; body: unknown };
+    const control = JSON.parse(runtime.decode_control(new TextEncoder().encode(frame))) as { kind: "file" | "watch"; body: unknown };
     if (control.kind === "file") this.options.file(peer, JSON.stringify(control.body));
+    else if (control.kind === "watch") this.options.watch?.(peer, JSON.stringify(control.body));
   }
 
   async receive(packet: SignedConversationPacket): Promise<void> {

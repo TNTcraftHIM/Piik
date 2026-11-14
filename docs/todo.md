@@ -137,16 +137,11 @@ the feedback period; they do not delay that delivery.
   interoperability correction. Keep transport consent and Piik route recovery
   with their existing owners; validate the SDK driving contract before relying
   on an isolated timeout reproduction.
-- [ ] **Shared-link website connectors.** Build the webpage-player connector
-  into the Native client, targeting the playback coverage of VideoTogether.
-  Prefer a Native sharer with Browser viewers: independently usable media URLs
-  and media-specific grants permit origin delivery; an explicitly enabled
-  source-byte forwarder uses existing reliable peer paths and the sharer's
-  upload capacity. Validate HLS through a mature player's resource loader and
-  assess ordinary-file Range playback through a narrow Browser adapter; preserve
-  attachment verification and existing room route ownership. Original
-  webpage synchronization remains available through Native player connectors
-  without separate browser extensions. Retain the
+- [ ] **Shared-link website coverage.** Extend the implemented webpage player
+  and original-media forwarding toward VideoTogether's playback coverage.
+  Validate actual supported websites, source-issued media grants, live playlist
+  lifecycle and target Browser behavior; keep each viewer's account access in
+  its original player. Retain the
   [shared playback owner](./research/channel-network-design.md#synchronized-video-sources):
   the sharer controls common playback; viewers own sound, participation and
   access through their own platform accounts. Complete matching-package and

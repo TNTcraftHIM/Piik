@@ -1,4 +1,4 @@
-import type { WatchPlayback } from "./protocol";
+import type { WatchPlayback, WatchMode } from "./protocol";
 import { HTMLVideoMedia, type WatchMedia, type WatchMediaPatch, type WatchMediaState } from "./watch-media";
 
 export function watchPosition(playback: WatchPlayback, now: number): number {
@@ -8,6 +8,7 @@ export function watchPosition(playback: WatchPlayback, now: number): number {
 /** One activity owns its local player, domain clock and operation queue. */
 export class WatchPlayer {
   get video(): HTMLVideoElement | null { return this.media instanceof HTMLVideoMedia ? this.media.video : null; }
+  mode: WatchMode = "direct";
   blocked = false;
   error: string | null = null;
   private localState: WatchMediaState | null = null;

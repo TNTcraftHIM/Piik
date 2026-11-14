@@ -408,6 +408,7 @@ pub(super) fn driver() -> (
             snapshot: watch::channel(None).1,
             relay: Relay::default(),
             files: Files::new(Uuid::nil()),
+            watches: Watches::new(Uuid::nil()),
             inputs: input::Inputs::new(Uuid::nil(), watch::channel(None).1, None),
         },
         input,
@@ -475,6 +476,7 @@ async fn pending_udp_preparation_keeps_the_latest_plan_and_retires_with_its_leas
         );
     }
     d.files.close().await;
+    d.watches.close().await;
     d.transport.close().await;
     Ok(())
 }
@@ -503,3 +505,5 @@ async fn close_cancels_a_full_command_output() -> Result<()> {
     tokio::time::timeout(Duration::from_secs(3), native.close()).await??;
     Ok(())
 }
+#[path = "tests/watch.rs"]
+mod watch_bytes;

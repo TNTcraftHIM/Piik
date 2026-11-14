@@ -6,6 +6,7 @@ use crate::{
         supported, MediaKind, Output, OutputStreams, Relay, RtpCodec, Source, SourceFeed,
         SourceOrigin, TrackKey,
     },
+    watch::Watches,
 };
 use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
@@ -531,6 +532,18 @@ impl Drop for CaptureLease {
     }
 }
 enum Input {
+    WatchPlans(
+        Vec<piik_channel_core::watch_delivery::WatchBytePlan>,
+        Vec<piik_channel_core::wire::WatchActivity>,
+        Vec<(Uuid, Vec<String>)>,
+        oneshot::Sender<()>,
+    ),
+    RegisterWatchReader(
+        Uuid,
+        Arc<dyn crate::watch::Reader>,
+        oneshot::Sender<Result<()>>,
+    ),
+    RevokeWatchReader(Uuid),
     Registrations(Vec<piik_channel_core::input::InputRegistration>),
     Update(
         Vec<PairInfo>,
@@ -768,6 +781,7 @@ struct Driver {
     derived: HashMap<Uuid, crate::media::derived::Producer>,
     relay: Relay,
     files: Files,
+    watches: Watches,
     inputs: input::Inputs,
 }
 pub(crate) async fn can_prepare_udp() -> bool {
@@ -833,6 +847,7 @@ impl NativePeers {
                 snapshot: snapshot.clone(),
                 relay: Relay::default(),
                 files: Files::new(session_id),
+                watches: Watches::new(session_id),
                 inputs: input::Inputs::new(session_id, snapshot, desktop),
             };
             let mut tick = tokio::time::interval(Duration::from_secs(1));
@@ -874,6 +889,16 @@ impl NativePeers {
                             if let Some(outgoing) = d.inputs.reply(video, reply) {
                                 d.send_input(outgoing).await;
                             }
+                        }
+                        Turn::Input(Input::RegisterWatchReader(resource, reader, done)) => {
+                            let _ = done.send(d.watches.register(resource, reader).await);
+                        }
+                        Turn::Input(Input::WatchPlans(plans, activities, room_peers, done)) => {
+                            d.watches.update(plans, activities, room_peers).await;
+                            let _ = done.send(());
+                        }
+                        Turn::Input(Input::RevokeWatchReader(resource)) => {
+                            d.watches.revoke(resource).await;
                         }
                         Turn::Input(Input::Registrations(registrations)) => {
                             for outgoing in d.inputs.registrations(registrations) {
@@ -1034,6 +1059,7 @@ impl NativePeers {
                 close_pair(pair).await;
             }
             d.files.close().await;
+            d.watches.close().await;
             d.transport.close().await;
         });
         Self {
@@ -1053,6 +1079,42 @@ impl NativePeers {
             .send(Input::Update(pairs, publications, files, tx))
             .await?;
         rx.await?
+    }
+    pub async fn update_watch(
+        &self,
+        plans: Vec<piik_channel_core::watch_delivery::WatchBytePlan>,
+        activities: Vec<piik_channel_core::wire::WatchActivity>,
+        pairs: &[PairInfo],
+    ) -> Result<()> {
+        let (done, completed) = oneshot::channel();
+        self.input
+            .send(Input::WatchPlans(
+                plans,
+                activities,
+                pairs
+                    .iter()
+                    .map(|pair| (pair.peer_id, pair.rooms.clone()))
+                    .collect(),
+                done,
+            ))
+            .await?;
+        completed.await?;
+        Ok(())
+    }
+    pub async fn register_watch_reader(
+        &self,
+        resource: Uuid,
+        reader: Arc<dyn crate::watch::Reader>,
+    ) -> Result<()> {
+        let (done, completed) = oneshot::channel();
+        self.input
+            .send(Input::RegisterWatchReader(resource, reader, done))
+            .await?;
+        completed.await?
+    }
+    pub async fn revoke_watch_reader(&self, resource: Uuid) -> Result<()> {
+        self.input.send(Input::RevokeWatchReader(resource)).await?;
+        Ok(())
     }
     pub async fn input_registrations(
         &self,
@@ -2028,6 +2090,9 @@ impl Driver {
         self.files
             .attach(plan.peer_id, self.pairs[&plan.id].data.senders())
             .await;
+        self.watches
+            .attach(plan.peer_id, self.pairs[&plan.id].data.senders())
+            .await;
         Ok(())
     }
     async fn apply_pair(&mut self, plan: PairInfo) -> Result<()> {
@@ -2438,6 +2503,7 @@ impl Driver {
         let ready = p.data.bind(lane, token, dc.clone());
         let events = self.events.clone();
         let files = self.files.receiver();
+        let watches = self.watches.receiver();
         let peer = p.plan.peer_id;
         let state = p.state.clone();
         let channel = dc.clone();
@@ -2458,10 +2524,20 @@ impl Driver {
                                 Some(ControlFrame::File(control)) => {
                                     files.control(peer, token, control).await
                                 }
+                                Some(ControlFrame::Watch(control)) => {
+                                    watches.control(peer, token, control).await
+                                }
                                 None => {}
                             }
                         }
-                        Lane::Bulk => files.chunk(peer, token, message.as_slice()).await,
+                        Lane::Bulk => {
+                            if piik_channel_core::watch_delivery::is_watch_frame(message.as_slice())
+                            {
+                                watches.chunk(peer, token, message.as_slice()).await;
+                            } else {
+                                files.chunk(peer, token, message.as_slice()).await;
+                            }
+                        }
                         Lane::Input => {
                             if !ready.open() || message.len() > 8192 {
                                 continue;
@@ -2480,6 +2556,7 @@ impl Driver {
                     ChannelEvent::Close => {
                         if ready.set(false) {
                             if lane != Lane::Input {
+                                watches.closed(peer, lane, token).await;
                                 files
                                     .closed(
                                         peer,
@@ -2553,6 +2630,7 @@ impl Driver {
         p.reported.clear();
         let rooms = p.plan.rooms.clone();
         self.files.unavailable(p.plan.peer_id).await;
+        self.watches.unavailable(p.plan.peer_id).await;
         p.data.unbind(Lane::Control);
         p.data.unbind(Lane::Bulk);
         for (_, dc, task) in [p.dc.take(), p.bulk.take()].into_iter().flatten() {
@@ -2585,6 +2663,7 @@ impl Driver {
         self.relay.retain(&self.sources.keys().copied().collect());
         let released = !pair.outputs.is_empty();
         self.files.detach(pair.plan.peer_id).await;
+        self.watches.detach(pair.plan.peer_id).await;
         close_pair(pair).await;
         released
     }
@@ -2737,6 +2816,10 @@ impl Driver {
                     return Ok(());
                 }
                 if let Some(p) = self.pairs.get(&pair) {
+                    self.watches
+                        .receiver()
+                        .closed(p.plan.peer_id, lane, token)
+                        .await;
                     self.files
                         .receiver()
                         .closed(p.plan.peer_id, lane, token, temporary)

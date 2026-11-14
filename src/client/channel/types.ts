@@ -1,6 +1,6 @@
-import type { NativePageCandidate } from "../native/wire";
+import type { NativePageCandidate, NativePageMediaChoice } from "../native/wire";
 import type { WatchPlayer } from "./watch-playback";
-import type { WatchPlayback } from "./protocol";
+import type { WatchPlayback, WatchMode } from "./protocol";
 import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomInvitationState, RoomSettings, PublicationReactionSnapshot, ChatOptions, ProfilePage } from "./protocol";
 export type { ChatOptions } from "./protocol";
 import type { ChannelAttachments, DraftFile } from "./attachments";
@@ -93,7 +93,9 @@ export interface ChannelActions {
   selectWatchPage(roomId: string, candidateId: string, activityId?: string): Promise<void>;
   focusWatch(id: string): Promise<void>;
   focusWatchPage(roomId: string, activityId?: string): Promise<void>;
-  joinWatch(id: string): Promise<void>;
+  joinWatch(id: string, mode?: WatchMode): Promise<void>;
+  watchMediaChoices(id: string): Promise<NativePageMediaChoice[]>;
+  setWatchByteSource(id: string, choiceId: string | null): Promise<void>;
   leaveWatch(id: string): Promise<void>;
   stopWatch(id: string): Promise<void>;
   setWatchPlayback(id: string, patch: Partial<Pick<WatchPlayback, "paused" | "position" | "rate">>): Promise<void>;

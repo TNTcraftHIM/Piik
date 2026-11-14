@@ -44,6 +44,13 @@ shutdown also pass. Native module controls cover nested frames, player removal,
 navigation, non-secure HTTP and a persistent website profile separated from Piik.
 These fixtures do not establish compatibility with every commercial website,
 DRM platform or media manifest format.
+Original-media forwarding passes the normal Windows App and Browser flow for
+MP4 and HLS VOD with separate audio, initialization segments and byte ranges.
+A late Browser viewer received a complete range through another Browser relay;
+the received and forwarded byte digests matched across that path. Leaving
+cancelled an in-flight source read, while disabling forwarding retained the
+original webpage's playback. These are controlled local sources and development
+artifacts, not independent Internet or whole-website compatibility evidence.
 
 The first internal test targets matched Windows and Android packages with the
 shared Browser UI. Normal packaged flows have verified room creation and

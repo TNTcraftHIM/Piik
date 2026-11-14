@@ -2,6 +2,20 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // Community translations are data-only and type-checked against zh.
 export const en: Record<CopyKey, string> = {
+  "watch.forward.title": "Forward original video",
+  "watch.forward.upload": "Use this device’s upload bandwidth to send original video through room connections.",
+  "watch.forward.active": "Forwarding is on. Stopping it keeps the webpage open.",
+  "watch.forward.stop": "Stop forwarding",
+  "watch.forward.prepare": "Choose video to forward",
+  "watch.forward.choose": "Choose the original video resource. Confirming starts using this device’s upload bandwidth.",
+  "watch.forward.enableNamed": "Forward {name}",
+  "watch.forward.none": "No video resource is available to forward on this webpage yet.",
+  "watch.forward.peer": "Receive from sharer",
+  "watch.forward.direct": "Play directly from website",
+  "watch.forward.receiveHelp": "Requires an available room P2P connection. Changes only how you receive this video.",
+  "watch.forward.secure": "Receiving from the sharer requires HTTPS and browser Service Worker support.",
+  "watch.forward.viewing": "Receiving method",
+  "watch.forward.failed": "Could not receive video from the sharer. Check the room connection or choose another receiving method.",
   "floating.openedInPage": "Could not open a separate window. Opened in this page instead.",
   "screen.actionAfterReconnect": "{action} (available after reconnecting)",
   "screen.copyField": "Copy {label}",

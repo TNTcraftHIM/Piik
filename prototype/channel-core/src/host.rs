@@ -187,6 +187,14 @@ impl RoomProjection {
             sessions.extend([link.parent, link.child]);
         }
         for (session, view) in &self.views {
+            for plan in &view.watch_bytes {
+                if plan.receiving || plan.upstream.is_some() || !plan.downstream.is_empty() {
+                    sessions.insert(*session);
+                    sessions.insert(plan.source.session_id);
+                    sessions.extend(plan.upstream);
+                    sessions.extend(&plan.downstream);
+                }
+            }
             for file in &view.files {
                 if file.receiving || file.upstream.is_some() || !file.downstream.is_empty() {
                     sessions.insert(*session);
@@ -209,6 +217,7 @@ impl RoomProjection {
                 vec![]
             },
             watch_subscriptions: view.watch_subscriptions.clone(),
+            watch_bytes: view.watch_bytes.clone(),
             room: Room {
                 last_message_seq: if view.authorized {
                     self.last_message_seq
@@ -379,9 +388,10 @@ impl RoomRuntime {
             Command::UpdateWatch { id, playback, .. } => {
                 self.update_watch(member, session, id, playback)?
             }
-            Command::JoinWatch { id, enabled, .. } => {
-                self.join_watch(member, session, id, enabled)?
-            }
+            Command::SetWatchByteSource {
+                id, byte_source, ..
+            } => self.set_watch_byte_source(member, session, id, byte_source, endpoints)?,
+            Command::JoinWatch { id, mode, .. } => self.join_watch(member, session, id, mode)?,
             Command::StopWatch { id, .. } => self.stop_watch(member, session, id)?,
             Command::Publish { publication } => self.publish(
                 member,
@@ -1199,7 +1209,7 @@ impl RoomHost {
                     return Ok(
                         if matches!(
                             command,
-                            Command::StartWatch { .. } | Command::JoinWatch { enabled: true, .. }
+                            Command::StartWatch { .. } | Command::JoinWatch { mode: Some(_), .. }
                         ) {
                             RoomResult::WatchReady {
                                 server_time: context.now,

@@ -274,6 +274,16 @@ impl Channel {
                 projection
                     .watch_activities
                     .retain(|a| readable_sessions.contains(&a.session_id));
+                for activity in &mut projection.watch_activities {
+                    if activity.byte_source.as_ref().is_some_and(|source| {
+                        !readable_sessions.contains(&source.session_id)
+                            || !endpoints
+                                .get(&source.session_id)
+                                .is_some_and(|endpoint| endpoint.connected)
+                    }) {
+                        activity.byte_source = None;
+                    }
+                }
                 for publication in &mut projection.publications {
                     publication
                         .audience
@@ -286,6 +296,25 @@ impl Channel {
                     .participant_session_ids
                     .retain(|session| readable_sessions.contains(session));
                 for view in projection.views.values_mut() {
+                    view.watch_bytes.retain_mut(|plan| {
+                        if !view.authorized
+                            || !projection.watch_activities.iter().any(|activity| {
+                                activity.id == plan.activity_id
+                                    && activity.byte_source.as_ref() == Some(&plan.source)
+                            })
+                        {
+                            return false;
+                        }
+                        if plan
+                            .upstream
+                            .is_some_and(|peer| !readable_sessions.contains(&peer))
+                        {
+                            plan.upstream = None;
+                        }
+                        plan.downstream
+                            .retain(|peer| readable_sessions.contains(peer));
+                        true
+                    });
                     for file in &mut view.files {
                         if file
                             .source_id
@@ -304,8 +333,12 @@ impl Channel {
                         file.downstream
                             .retain(|peer| readable_sessions.contains(peer));
                     }
-                    view.watch_subscriptions.retain(|id| {
-                        view.authorized && projection.watch_activities.iter().any(|a| a.id == *id)
+                    view.watch_subscriptions.retain(|subscription| {
+                        view.authorized
+                            && projection
+                                .watch_activities
+                                .iter()
+                                .any(|a| a.id == subscription.id)
                     });
                     view.subscriptions
                         .retain(|id| projection.publications.iter().any(|p| p.id == *id));
@@ -449,6 +482,7 @@ impl Channel {
     pub(crate) fn command_room(&self, command: &Command) -> Option<String> {
         match command {
             Command::StartWatch { room_id, .. }
+            | Command::SetWatchByteSource { room_id, .. }
             | Command::UpdateWatch { room_id, .. }
             | Command::JoinWatch { room_id, .. }
             | Command::StopWatch { room_id, .. }
@@ -1027,6 +1061,17 @@ impl Channel {
             {
                 return Err("invalid_room_projection");
             }
+            if let Some(source) = &activity.byte_source {
+                if !endpoints.get(&source.session_id).is_some_and(|endpoint| {
+                    endpoint.connected && endpoint.member.user_id == activity.user_id
+                }) || !projection
+                    .views
+                    .get(&source.session_id)
+                    .is_some_and(|view| view.authorized)
+                {
+                    return Err("invalid_room_projection");
+                }
+            }
         }
         for (recipient, view) in &projection.views {
             if !endpoints.contains_key(recipient)
@@ -1039,7 +1084,15 @@ impl Channel {
                 || view
                     .watch_subscriptions
                     .iter()
-                    .any(|id| !watch_ids.contains(id))
+                    .map(|s| s.id)
+                    .collect::<BTreeSet<_>>()
+                    .len()
+                    != view.watch_subscriptions.len()
+                || view.watch_bytes.len() > MAX_SESSIONS
+                || view
+                    .watch_subscriptions
+                    .iter()
+                    .any(|subscription| !watch_ids.contains(&subscription.id))
                 || view.subscriptions.len() > MAX_PUBLICATIONS
                 || view.failed_subscriptions.len() > MAX_PUBLICATIONS
                 || view.failed_subscriptions.iter().any(|id| {
@@ -1052,11 +1105,46 @@ impl Channel {
                 || (!view.authorized
                     && (view.reading
                         || !view.watch_subscriptions.is_empty()
+                        || !view.watch_bytes.is_empty()
                         || !view.subscriptions.is_empty()
                         || !view.failed_subscriptions.is_empty()
                         || !view.files.is_empty()))
             {
                 return Err("invalid_room_projection");
+            }
+            let mut planned = BTreeSet::new();
+            for plan in &view.watch_bytes {
+                let neighbor = |peer: Uuid| {
+                    peer != *recipient
+                        && projection
+                            .base_links
+                            .iter()
+                            .filter(|link| link.selected && link.ready)
+                            .any(|link| {
+                                (link.parent == *recipient && link.child == peer)
+                                    || (link.child == *recipient && link.parent == peer)
+                            })
+                };
+                if !planned.insert(plan.activity_id)
+                    || plan.room_id != id
+                    || !projection.watch_activities.iter().any(|a| {
+                        a.id == plan.activity_id && a.byte_source.as_ref() == Some(&plan.source)
+                    })
+                    || plan.receiving
+                        != view.watch_subscriptions.iter().any(|s| {
+                            s.id == plan.activity_id && s.mode == crate::wire::WatchMode::Peer
+                        })
+                    || (plan.source.session_id == *recipient && plan.upstream.is_some())
+                    || plan
+                        .upstream
+                        .is_some_and(|peer| !neighbor(peer) || plan.downstream.contains(&peer))
+                    || plan.downstream.len() > MAX_TREE_EDGES
+                    || plan.downstream.iter().collect::<BTreeSet<_>>().len()
+                        != plan.downstream.len()
+                    || plan.downstream.iter().any(|peer| !neighbor(*peer))
+                {
+                    return Err("invalid_room_projection");
+                }
             }
             for file in &view.files {
                 let neighbor = |peer: Uuid| {
@@ -1475,6 +1563,7 @@ impl Channel {
         let mut rooms = Vec::new();
         let mut publications = Vec::new();
         let mut watch_activities = Vec::new();
+        let mut watch_bytes = Vec::new();
         let mut watch_subscriptions = BTreeSet::new();
         let mut voice = Vec::new();
         let mut files = Vec::new();
@@ -1499,6 +1588,7 @@ impl Channel {
                     rooms.push(snapshot.room);
                     publications.extend(snapshot.publications);
                     watch_activities.extend(snapshot.watch_activities);
+                    watch_bytes.extend(snapshot.watch_bytes);
                     watch_subscriptions.extend(snapshot.watch_subscriptions);
                     voice.extend(snapshot.voice);
                     files.extend(snapshot.files);
@@ -1517,6 +1607,7 @@ impl Channel {
             .collect();
         Snapshot {
             watch_activities,
+            watch_bytes,
             watch_subscriptions: watch_subscriptions.into_iter().collect(),
             files,
             channel: ChannelInfo {

@@ -7,6 +7,8 @@ export const nativePageStateSchema = z.object({
 const nativePageURLSchema = z.string().url().max(4096).refine(value => /^https?:\/\//.test(value));
 export const nativePageCandidateSchema = z.object({ id: z.uuid(), title: z.string().max(512).refine(value => [...value].length <= 256), url: nativePageURLSchema.nullable(), duration: z.number().finite().nonnegative().nullable() }).strict();
 export type NativePageCandidate = z.infer<typeof nativePageCandidateSchema>;
+export const nativePageMediaChoiceSchema = z.object({ id: z.uuid(), displayURL: nativePageURLSchema, name: z.string().max(512).refine(value => [...value].length <= 256), format: z.enum(["file", "hls"]) }).strict();
+export type NativePageMediaChoice = z.infer<typeof nativePageMediaChoiceSchema>;
 export const nativePageEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("page_candidates"), pageId: z.uuid(), url: nativePageURLSchema, candidates: z.array(nativePageCandidateSchema).max(64) }).strict(),
   z.object({ type: z.literal("page_sample"), pageId: z.uuid(), event: z.enum(["loadedmetadata", "loadeddata", "play", "playing", "pause", "seeked", "ratechange", "ended", "waiting", "error"]) }).strict(),

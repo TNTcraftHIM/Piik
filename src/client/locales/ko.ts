@@ -2,6 +2,20 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // Community translations are data-only and type-checked against zh.
 export const ko: Record<CopyKey, string> = {
+  "watch.forward.title": "원본 동영상 전달",
+  "watch.forward.upload": "이 기기의 업로드 대역폭을 사용해 방 연결로 원본 동영상을 보내요.",
+  "watch.forward.active": "전달 중이에요. 중지해도 웹페이지는 유지돼요.",
+  "watch.forward.stop": "전달 중지",
+  "watch.forward.prepare": "전달할 동영상 선택",
+  "watch.forward.choose": "원본 동영상 리소스를 선택하세요. 확인하면 업로드 대역폭을 사용해요.",
+  "watch.forward.enableNamed": "{name} 전달",
+  "watch.forward.none": "이 페이지에서 전달할 동영상 리소스를 아직 찾지 못했어요.",
+  "watch.forward.peer": "공유자에게서 받기",
+  "watch.forward.direct": "웹사이트에서 직접 재생",
+  "watch.forward.receiveHelp": "사용 가능한 방 P2P 연결이 필요해요. 내 수신 방식만 바꿔요.",
+  "watch.forward.secure": "공유자에게서 받으려면 HTTPS와 브라우저의 Service Worker 지원이 필요해요.",
+  "watch.forward.viewing": "수신 방식",
+  "watch.forward.failed": "공유자에게서 동영상을 받지 못했어요. 방 연결을 확인하거나 다른 수신 방식을 선택하세요.",
   "floating.openedInPage": "별도 창을 열 수 없어 현재 페이지에서 열었습니다.",
   "screen.actionAfterReconnect": "{action} (재연결 후 사용 가능)",
   "screen.copyField": "{label} 복사",

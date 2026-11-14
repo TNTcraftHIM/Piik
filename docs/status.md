@@ -101,9 +101,10 @@ has passed the normal sharing, viewing, bitrate-change and shutdown flow.
 The current source supports synchronized viewing through the Browser source
 picker. Windows App can select a webpage player in an independent window; Browser
 viewers try its independently usable media URL, or explicitly use their own App
-window. Playback control uses room commands without peer media. Source-byte
-forwarding, broader website compatibility and matching-package acceptance remain
-in TODO.
+window. Playback control uses room commands without peer media. Explicit original
+media forwarding now uses the existing room peer paths and a Browser media
+adapter for files and HLS VOD. Broader website compatibility and matching-package
+acceptance remain in TODO.
 
 ## Deployment
 

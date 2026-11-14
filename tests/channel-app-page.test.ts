@@ -63,3 +63,26 @@ test("cancelling prepare retires the page and ignores its late confirmation", as
     expect((app as unknown as { requests: Map<string, unknown> }).requests.size).toBe(0);
   } finally { app.close(); }
 });
+
+test('watch byte source registration retains the original webpage and stop retires only its reader', async () => {
+  const { app, socket } = await setup();
+  try {
+    const opening = app.preparePage('https://video.test/page', vi.fn(), new AbortController().signal);
+    const pageId = socket.sent.at(-1)!.pageId as string; socket.reply({ pageId });
+    const page = await opening;
+    const choiceId = crypto.randomUUID();
+    const choices = page.mediaSources();
+    expect(socket.sent.at(-1)).toMatchObject({ type: 'page_media_sources', pageId });
+    socket.reply({ choices: [{ id: choiceId, displayURL: 'https://media.test/movie.m3u8', name: 'Movie', format: 'hls' }], byteSource: null });
+    expect((await choices).choices).toHaveLength(1);
+    const preparing = page.prepareMedia(choiceId);
+    expect(socket.sent.at(-1)).toMatchObject({ type: 'page_media_prepare', pageId, choiceId });
+    const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' };
+    socket.reply(source); await expect(preparing).resolves.toEqual(source);
+    const stopping = page.stopMedia();
+    expect(socket.sent.at(-1)).toMatchObject({ type: 'page_media_stop', pageId });
+    socket.reply(null); await stopping;
+    expect(app.page(pageId)).toBe(page);
+    expect(socket.sent.some(command => command.type === 'page_close')).toBe(false);
+  } finally { app.close(); }
+});

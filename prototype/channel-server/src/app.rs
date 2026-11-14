@@ -65,7 +65,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 10;
+const PROTOCOL: u8 = 11;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -1235,7 +1235,10 @@ async fn connection(
         };
         let processing = async {
             let (page_events, mut page_queue) = mpsc::channel(64);
-            let pages = page::Connection::new(app.config.page_player.clone(), page_events);
+            let pages = Arc::new(page::Connection::new(
+                app.config.page_player.clone(),
+                page_events,
+            ));
             let mut host: Option<mpsc::Sender<HostCommand>> = None;
             let mut captures: BTreeMap<Uuid, Capture> = BTreeMap::new();
             let mut capture_starts: FuturesUnordered<
@@ -1289,6 +1292,7 @@ async fn connection(
                 let message = tokio::select! {
                     _ = pages.overflowed() => return Err(anyhow!("page_player_event_queue_full")),
                     Some(event) = page_queue.recv() => {
+                        if event["type"] == "page_closed" { if let Some(id)=event["pageId"].as_str().and_then(|id|Uuid::parse_str(id).ok()){pages.stop_media(id);} }
                         timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                         continue;
                     }
@@ -1664,11 +1668,46 @@ async fn connection(
                                     }
                                 }
                             }
+                            Operation::Page(page::Operation::PageMediaPrepare {
+                                page_id,
+                                choice_id,
+                            }) => {
+                                if let Some(host) = &host {
+                                    match pages.prepare_media(page_id, choice_id, host.clone()) {
+                                        Ok(work) => {
+                                            operations.push(async move {match work.await {Ok(value)=>json!({"id":request.id,"result":value}),Err(error)=>json!({"id":request.id,"error":error.to_string()})}}.boxed());
+                                            continue;
+                                        }
+                                        Err(error) => Err(error),
+                                    }
+                                } else {
+                                    Err(anyhow!("hello_required"))
+                                }
+                            }
+                            Operation::Page(page::Operation::PageMediaStop { page_id }) => {
+                                pages.stop_media(page_id);
+                                Ok(Value::Null)
+                            }
                             Operation::Page(operation) => {
                                 if host.is_none() {
                                     Err(anyhow!("hello_required"))
                                 } else {
-                                    let result = pages.request(operation).await;
+                                    if let page::Operation::PageClose { page_id } = &operation {
+                                        pages.stop_media(*page_id);
+                                    }
+                                    let source_page =
+                                        if let page::Operation::PageMediaSources { page_id } =
+                                            &operation
+                                        {
+                                            Some(*page_id)
+                                        } else {
+                                            None
+                                        };
+                                    let mut result = pages.request(operation).await;
+                                    if let (Some(page), Ok(value)) = (source_page, &mut result) {
+                                        value["byteSource"] =
+                                            serde_json::to_value(pages.media_source(page))?;
+                                    }
                                     // Selection facts (including the current top-level URL) precede confirmation.
                                     for _ in 0..page_queue.len() {
                                         let Ok(event) = page_queue.try_recv() else {
