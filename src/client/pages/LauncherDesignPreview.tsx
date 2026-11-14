@@ -8,7 +8,7 @@ import { SiteBookmarks, type SiteBookmark } from "../components/living/SiteBookm
 import { ChannelSettingsDialog } from "../channel/components/ChannelSettingsDialog";
 import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
-import { siteEntryURL } from "../lib/site-address";
+import { publicSiteOrigin, siteEntryURL } from "../lib/site-address";
 import type { AppMode } from "../lib/app-launch";
 import "./launcher-design-preview.css";
 
@@ -37,6 +37,8 @@ export function LauncherDesignPreview() {
   const [mode, setMode] = useState<AppMode>("link");
   const [lanAddress, setLanAddress] = useState(sampleLAN[0]!.address);
   const [port, setPort] = useState(8787);
+  const [publicEntry, setPublicEntry] = useState({ existing: false, origin: "https://piik.example" });
+  const [publicError, setPublicError] = useState<string>();
   const [notice, setNotice] = useState("");
   function openSite(_site: PreviewDestination) {
     setNotice(say("已在原型中打开站点。", "Site opened in this preview."));
@@ -60,8 +62,13 @@ export function LauncherDesignPreview() {
       <SiteBookmarks bookmarks={sites} embedded onSave={async draft => { setSites(items => draft.id ? items.map(item => item.id === draft.id ? { ...draft, id: draft.id! } : item) : [...items, { ...draft, id: crypto.randomUUID() }]); }} onRemove={async id => setSites(items => items.filter(item => item.id !== id))} onOpen={site => { setDialog(undefined); openSite(site); }} />
     </ChannelSettingsDialog>}
     {dialog === "host" && <ChannelSettingsDialog compact title={t("client.launch.room")} onClose={() => setDialog(undefined)}>
-      <form className="c3-settings-panels lr-client-launch-panel" onSubmit={event => { event.preventDefault(); setReady(true); setDialog(undefined); setNotice(say("站点就绪状态已在原型中展示。", "Showing the ready state in this preview.")); }}>
+      <form className="c3-settings-panels lr-client-launch-panel" onSubmit={event => {
+        event.preventDefault();
+        if (mode === "link" && publicEntry.existing && !publicSiteOrigin(publicEntry.origin)) { setPublicError(t("client.launch.invalidPublicAddress")); return; }
+        setReady(true); setDialog(undefined); setNotice(say("站点就绪状态已在原型中展示。", "Showing the ready state in this preview."));
+      }}>
         <SiteStartControls mode={mode} onModeChange={setMode} port={{ value: port, onChange: setPort }}
+          publicEntry={{ ...publicEntry, localAddress: `http://127.0.0.1:${port}`, error: publicError, onChange: next => { setPublicEntry(next); setPublicError(undefined); } }}
           lan={{ addresses: sampleLAN, selected: lanAddress, onChange: setLanAddress }} />
       </form>
     </ChannelSettingsDialog>}

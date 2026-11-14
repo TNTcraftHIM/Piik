@@ -44,6 +44,7 @@
 .lr-launcher-host p { font-size: 11px; line-height: 1.7; margin: 0; color: var(--muted); }
 .lr-launcher-host .lr-btn { flex-shrink: 0; }
 .lr-launcher-results { display: block; min-height: 40px; padding-top: 15px; font-size: 11px; color: var(--muted); }
+.lr-launcher-public-address a { overflow-wrap: anywhere; }
 .lr-launcher-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-top: 20px; color: var(--muted); font-size: 11px; }
 .lr-launcher-footer small { margin-left: 6px; }
 .lr-launcher-empty { padding: 24px 8px 40px; color: var(--muted); font-size: 12px; line-height: 1.8; }

@@ -176,7 +176,22 @@ temporary certificate on the selected IPv4 address, including a virtual-LAN
 adapter; its fingerprint is printed locally. Follow the existing
 [LAN HTTPS instructions](../../docs/guide/troubleshooting.md#local-https-certificate-warning) before
 accepting that certificate on another device. Public invite uses Cloudflare Quick
-Tunnel. The development command explicitly selects `cloudflared` from PATH;
+Tunnel by default. **Public invite → Use an existing address** accepts an HTTPS
+site origin for an already configured reverse proxy, such as frp. Forward that
+proxy's HTTP and WebSocket traffic to the displayed **Local forwarding target**,
+not the separate App management port. The address must be a site origin without
+a path, query or invitation fragment. TLS and the proxy remain operator-owned;
+frp's [HTTPS-to-HTTP example](https://gofrp.org/en/docs/examples/https2http/) describes
+that proxy side. No frp process or credentials are managed by Piik.
+
+The local owner entry stays on loopback; the configured origin becomes the room
+invitation entry and exact WebSocket origin. It does not automatically receive
+device approval. The launcher reports local startup, not public reachability.
+Automatic startup saves the chosen public origin alongside its existing mode;
+changing a running entry requires exiting and restarting the App. This HTTP/WSS
+entry does not provide a media relay or change peer connectivity.
+
+The development command explicitly selects `cloudflared` from PATH;
 `PIIK_CHANNEL_CLOUDFLARED` can instead name an installed executable.
 
 Portable App resources have one root: the directory containing the executable,

@@ -587,12 +587,21 @@ fn launcher_state(registry: &Registry, port: u16) -> Result<Value> {
         sites::StartupIntent::Owned(request) => Some(&request.mode),
         _ => None,
     };
-    Ok(
-        json!({"sites":registry.approvals.keys().collect::<Vec<_>>(),"startupSite":site,"startupMode":mode,
+    let public_origin = match registry.local.as_ref().map(|local| &local.request) {
+        Some(request) => request.public_origin.as_deref(),
+        None => match &startup {
+            sites::StartupIntent::Owned(request) => request.public_origin.as_deref(),
+            _ => None,
+        },
+    };
+    let mut state = json!({"sites":registry.approvals.keys().collect::<Vec<_>>(),"startupSite":site,"startupMode":mode,
         "ownedSites":registry.local.as_ref().map(|local| vec![&local.origin,&local.invitation]).unwrap_or_default(),
         "version":BUILD_VERSION,"revision":BUILD_REVISION,
-        "packageTarget":PACKAGE_TARGET,"controlPort":port,"debug":piik_channel_native::diagnostics::enabled()}),
-    )
+        "packageTarget":PACKAGE_TARGET,"controlPort":port,"debug":piik_channel_native::diagnostics::enabled()});
+    if let Some(origin) = public_origin {
+        state["publicOrigin"] = json!(origin);
+    }
+    Ok(state)
 }
 type ApiResult = std::result::Result<Json<Value>, (StatusCode, Json<Value>)>;
 fn operation_failure(error: anyhow::Error) -> (StatusCode, Json<Value>) {

@@ -12,3 +12,9 @@ export function siteEntryURL(value: string): URL | null {
 export function siteEntryOrigin(value: string): string | null {
   return siteEntryURL(value)?.origin ?? null;
 }
+
+/** A configured public entry is a complete HTTPS site, not an invitation or subpath. */
+export function publicSiteOrigin(value: string): string | null {
+  const url = siteEntryURL(value);
+  return url?.protocol === "https:" && url.pathname === "/" && !url.search && !url.hash ? url.origin : null;
+}

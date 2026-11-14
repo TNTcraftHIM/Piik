@@ -2107,3 +2107,212 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
     drop(retired_stun);
     std::fs::remove_dir_all(folder).unwrap();
 }
+
+#[tokio::test]
+async fn app_external_origin_is_exact_and_owned_startup_restores_it() {
+    use piik_channel_core::conversation::SessionSigner;
+    use piik_channel_prototype::app;
+    use tokio_tungstenite::{connect_async, tungstenite::client::IntoClientRequest};
+    let directory = tempfile::tempdir().unwrap();
+    let assets = directory.path().join("web");
+    std::fs::create_dir(&assets).unwrap();
+    std::fs::write(
+        assets.join("index.html"),
+        "<!doctype html><title>External App</title>",
+    )
+    .unwrap();
+    let reservation = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let site_address = reservation.local_addr().unwrap();
+    drop(reservation);
+    let public = "https://owned.example:8443";
+    let mut identity = None;
+    for restart in [false, true] {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let local = format!("http://{address}");
+        let (stop, stopped) = oneshot::channel();
+        let (entry_ready, entry) = oneshot::channel();
+        let service = tokio::spawn(app::serve(
+            listener,
+            app::Config {
+                data_root: directory.path().into(),
+                assets: assets.clone(),
+                open_browser: false,
+                window_navigation: None,
+                cloudflared: directory.path().join("not-installed"),
+                ice_servers: vec![],
+                update: Default::default(),
+            },
+            async {
+                let _ = stopped.await;
+            },
+            Some(entry_ready),
+        ));
+        entry.await.unwrap();
+        if !restart {
+            for request in [
+                json!({"mode":"external"}),
+                json!({"mode":"external","publicOrigin":"http://owned.example"}),
+                json!({"mode":"external","publicOrigin":"https://owned.example/"}),
+                json!({"mode":"external","publicOrigin":"https://user:secret@owned.example"}),
+                json!({"mode":"external","publicOrigin":"https://owned.example/path"}),
+                json!({"mode":"external","publicOrigin":"https://owned.example?query"}),
+                json!({"mode":"external","publicOrigin":"https://owned.example#owner=secret"}),
+                json!({"mode":"local","publicOrigin":public}),
+                json!({"mode":"link","publicOrigin":public}),
+            ] {
+                assert_eq!(
+                    app_http(
+                        address,
+                        "POST",
+                        "/api/client-launcher/launch",
+                        Some(&local),
+                        Some(request)
+                    )
+                    .await
+                    .0,
+                    400
+                );
+            }
+            let (_, before) = app_http(address, "GET", "/api/client-launcher", None, None).await;
+            assert!(before.get("target").is_none());
+            assert_eq!(before["siteAddress"], "http://127.0.0.1:8787");
+            let (status, launched) = app_http(
+                address,
+                "POST",
+                "/api/client-launcher/launch",
+                Some(&local),
+                Some(json!({"mode":"external","publicOrigin":public,"port":site_address.port()})),
+            )
+            .await;
+            assert_eq!(status, 200);
+            assert!(launched.get("localCertificate").is_none());
+        }
+        let state = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let (_, state) = app_http(address, "GET", "/api/client-launcher", None, None).await;
+                if state.get("target").is_some() {
+                    break state;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(state["publicOrigin"], public);
+        assert_eq!(state["siteAddress"], format!("http://{site_address}"));
+        let target = url::Url::parse(state["target"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            target.origin().ascii_serialization(),
+            format!("http://{site_address}")
+        );
+        assert!(target.fragment().unwrap().contains("owner="));
+        assert_eq!(app_http(site_address, "GET", "/", None, None).await.0, 200);
+        assert_eq!(
+            app_http(site_address, "GET", "/api/client-launcher", None, None)
+                .await
+                .0,
+            404
+        );
+        assert_eq!(
+            app_http(address, "GET", "/health", Some(public), None)
+                .await
+                .0,
+            if restart { 200 } else { 403 }
+        );
+        assert_eq!(
+            app_http(
+                address,
+                "POST",
+                "/api/client-launcher/launch",
+                Some(public),
+                Some(json!({"mode":"external","publicOrigin":public}))
+            )
+            .await
+            .0,
+            403
+        );
+        for origin in ["https://other.example", "https://owned.example:8443/"] {
+            let mut request = format!("ws://{site_address}/prototype/channel")
+                .into_client_request()
+                .unwrap();
+            request
+                .headers_mut()
+                .insert("Origin", origin.parse().unwrap());
+            let error = connect_async(request).await.unwrap_err();
+            assert!(
+                matches!(error,tokio_tungstenite::tungstenite::Error::Http(response) if response.status()==403)
+            );
+        }
+        let mut request = format!("ws://{site_address}/prototype/channel")
+            .into_client_request()
+            .unwrap();
+        request
+            .headers_mut()
+            .insert("Origin", public.parse().unwrap());
+        let (mut viewer, _) = connect_async(request).await.unwrap();
+        viewer.send(Message::Text(json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"name":"External viewer","signingKey":SessionSigner::from_seed([54;32]).signing_key()}).to_string().into())).await.unwrap();
+        let welcome: Value =
+            serde_json::from_str(&viewer.next().await.unwrap().unwrap().into_text().unwrap())
+                .unwrap();
+        assert_eq!(welcome["type"], "welcome");
+        assert_eq!(welcome["invitationOrigin"], public);
+        if let Some(previous) = &identity {
+            assert_eq!(&welcome["state"]["channel"]["id"], previous);
+        } else {
+            identity = Some(welcome["state"]["channel"]["id"].clone());
+        }
+        if !restart {
+            assert_eq!(
+                app_http(
+                    address,
+                    "POST",
+                    "/api/client-launcher/site",
+                    Some(&local),
+                    Some(json!({"site":public,"allowed":true}))
+                )
+                .await
+                .0,
+                200
+            );
+            let (status, saved) = app_http(
+                address,
+                "POST",
+                "/api/client-launcher/startup-site",
+                Some(&local),
+                Some(json!({"site":public})),
+            )
+            .await;
+            assert_eq!(status, 200);
+            assert_eq!(saved["startupMode"], "external");
+            let db = rusqlite::Connection::open(directory.path().join("app.sqlite")).unwrap();
+            let saved: String = db
+                .query_row(
+                    "SELECT value FROM app_setting WHERE key='startup'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            let saved: Value = serde_json::from_str(&saved).unwrap();
+            assert_eq!(saved["value"]["publicOrigin"], public);
+            assert!(saved["value"].get("port").is_none());
+        }
+        stop.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), service)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while let Some(frame) = viewer.next().await {
+                if matches!(frame.unwrap(), Message::Close(_)) {
+                    break;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        drop(TcpListener::bind(site_address).await.unwrap());
+        drop(TcpListener::bind(address).await.unwrap());
+    }
+}

@@ -93,14 +93,10 @@ export function DeviceSiteApprovals({
     (next ?? section.querySelector("summary"))?.focus();
   }, [sites, siteBusy, accessHintId]);
   return <>
-      <section ref={standbyRef} className="lr-client-standby" aria-label={t("client.connect.standby")}>
+      <section ref={standbyRef} className="lr-client-standby lr-client-device-access" aria-label={t("client.launcher.deviceAccess")}>
         <div className="lr-client-standby-heading">
-          <details className="lr-client-connect-guide">
+          <details className="lr-client-connect-guide" open={sites.length === 0 || undefined}>
             <summary>
-              <span className="lr-client-standby-state">
-                <Glyph name="check" size={18} />
-                <strong className={vis ? "visually-hidden" : undefined}>{t("client.connect.standby")}</strong>
-              </span>
               <span className="lr-client-connect-toggle">
                 {vis && <Glyph name="window" size={17} />}
                 <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.guide")}</span>
@@ -114,13 +110,13 @@ export function DeviceSiteApprovals({
           </details>
         {onSelectSite && <SiteAddressEntry initialAddress={siteAddress} onSelect={onSelectSite} />}
         </div>
-        {siteError && <p role="alert">{siteError}</p>}
+        {siteError && <Pill icon="alert" tone="bad" comic="signal-failed" alert label={siteError} />}
         {sites.length > 0 && <div className="lr-client-approved-sites" role="list">{sites.map((site, index) => <div key={site} className="lr-client-approved-site" role="listitem">
           <a href={entryURL(`${site}/#piik-client=1`)} target="_blank" rel="noopener noreferrer" onClick={onOpen}>{site}<span aria-hidden="true">&nbsp;↗</span></a>
           <div className="lr-client-site-actions">
             <Btn icon="star" title="client.connect.openOnStart" size="dense" pressed={startupSite === site || Boolean(ownedStartup && ownedSites.includes(site))}
               hint="hint-client-site" disabled={siteBusy} onClick={() => onToggleStartupSite(site)} />
-            <Btn id={`${accessHintId}-remove-${index}`} icon="x" title="client.connect.remove" size="dense" hint="hint-close" disabled={siteBusy} onClick={() => {
+            <Btn id={`${accessHintId}-remove-${index}`} icon="linkOff" tone="danger" title="client.connect.remove" size="dense" textTooltip disabled={siteBusy} onClick={() => {
               const button = standbyRef.current?.ownerDocument.activeElement;
               removalFocus.current = button?.id === `${accessHintId}-remove-${index}` ? { site, index } : null;
               onRemoveSite(site);
@@ -141,6 +137,13 @@ export interface SiteStartControlsProps {
   mode: AppMode;
   onModeChange: (mode: AppMode) => void;
   port?: { value: number; onChange(value: number): void };
+  publicEntry?: {
+    existing: boolean;
+    origin: string;
+    localAddress: string;
+    error?: string;
+    onChange(next: { existing: boolean; origin: string }): void;
+  };
   target?: string;
   localCertificate?: LocalCertificate;
   onOpen?: (event: MouseEvent<HTMLAnchorElement>) => void;
@@ -155,12 +158,14 @@ export interface SiteStartControlsProps {
 
 // The caller owns submission; controls work in the launcher and its startup dialog.
 export function SiteStartControls({
-  mode, onModeChange, port, target, localCertificate, onOpen,
+  mode, onModeChange, port, publicEntry, target, localCertificate, onOpen,
   entryURL = target => target, lan, roomError,
 }: SiteStartControlsProps) {
   const { vis, t } = useCopy();
   const chooseLAN = mode === "local" && lan && (lan.addresses.length !== 1 || !lan.selected);
   const accessHintId = useId();
+  const clipboard = useClipboardResult(publicEntry?.localAddress);
+  const copyLabel = clipboard.status === "copied" ? "common.copied" : clipboard.status === "failed" ? "common.copyFailed" : "common.copy";
   const AddressLabel = chooseLAN ? "label" : "div";
   return <>
       {roomError}
@@ -215,6 +220,30 @@ export function SiteStartControls({
         })}
       </div>
 
+      {mode === "link" && publicEntry && <div className="lr-client-public-entry">
+        <fieldset className="lr-toggle lr-client-public-source">
+          <legend className="visually-hidden">{t("client.launch.publicAddress")}</legend>
+          {[false, true].map(existing => <label key={String(existing)}>
+            <input type="radio" name={`${accessHintId}-public-source`} checked={publicEntry.existing === existing}
+              onChange={() => publicEntry.onChange({ existing, origin: publicEntry.origin })} />
+            <span><Glyph name={existing ? "link" : "globe"} size={18} /><span className={vis ? "visually-hidden" : undefined}>{t(existing ? "client.launch.existingAddress" : "client.launch.automaticAddress")}</span></span>
+          </label>)}
+        </fieldset>
+        {publicEntry.existing ? <>
+          <label className="lr-client-public-origin"><span className={vis ? "visually-hidden" : undefined}>{t("client.launch.publicAddress")}</span>
+            <span className="lr-input"><Glyph name="link" size={18} /><input type="url" inputMode="url" required pattern="https://.*" dir="ltr"
+              autoComplete="url" autoCapitalize="none" spellCheck={false} placeholder="https://piik.example" value={publicEntry.origin}
+              aria-label={t("client.launch.publicAddress")} aria-invalid={Boolean(publicEntry.error)} aria-describedby={publicEntry.error ? `${accessHintId}-public-error` : undefined}
+              onChange={event => publicEntry.onChange({ existing: true, origin: event.target.value })} /></span>
+          </label>
+          {publicEntry.error && <p id={`${accessHintId}-public-error`} role="alert">{publicEntry.error}</p>}
+          <div className="lr-client-forward-target"><span className={vis ? "visually-hidden" : undefined}>{t("client.launch.forwardTarget")}</span>
+            <div><code dir="ltr">{publicEntry.localAddress}</code><Btn icon={clipboard.status === "copied" ? "check" : "copy"} size="dense" quiet title={copyLabel} cap={copyLabel} onClick={clipboard.copy} /></div>
+          </div>
+          <p className={vis ? "visually-hidden" : undefined}>{t("client.launch.existingAddressHint")}</p>
+        </> : <p className={vis ? "visually-hidden" : undefined}>{t("client.launch.automaticAddressHint")}</p>}
+      </div>}
+
       {mode === "local" && lan && <div className="lr-client-room-settings">
           {lan.addresses.length === 0 ? (
             <Pill icon="wifiOff" tone="warn" comic="signal-offline" label={t("client.launch.lanUnavailable")} />
@@ -244,7 +273,7 @@ export function SiteStartControls({
           name="site-port" label={t("client.launch.sitePort")} disabled={false} onChange={port.onChange} className="lr-client-port">
           {input => <label><span className={vis ? "visually-hidden" : undefined}>{t("client.launch.sitePort")}</span>{input}</label>}
         </NumberControl>
-        <p className={vis ? "visually-hidden" : "lr-client-access-hint"}>{t("client.launch.sitePortHint")}</p>
+        <p className={vis ? "visually-hidden" : "lr-client-access-hint"}>{t(mode === "link" && publicEntry?.existing ? "client.launch.forwardPortHint" : "client.launch.sitePortHint")}</p>
       </details>}
       <Btn
         icon={roomError ? "refresh" : "arrowRight"}
@@ -283,7 +312,7 @@ export function LauncherForm({ children, onSubmit, ...props }: LauncherFormProps
         onOpen={props.onOpen} entryURL={props.entryURL} />
       {!props.target && <p className={vis ? "visually-hidden" : "lr-client-launch-section"}>{t("client.launch.room")}</p>}
       <SiteStartControls
-        mode={props.mode} onModeChange={props.onModeChange} port={props.port} target={props.target}
+        mode={props.mode} onModeChange={props.onModeChange} port={props.port} publicEntry={props.publicEntry} target={props.target}
         localCertificate={props.localCertificate} onOpen={props.onOpen} entryURL={props.entryURL}
         lan={props.lan} roomError={props.roomError} />
     </form>

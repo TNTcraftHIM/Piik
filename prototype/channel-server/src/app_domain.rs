@@ -90,6 +90,7 @@ impl Launch {
 pub(super) enum Mode {
     Local,
     Link,
+    External,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -100,16 +101,37 @@ pub(super) struct Request {
     port: Option<NonZeroU16>,
     lan_address: Option<String>,
     language: Option<String>,
+    pub public_origin: Option<String>,
+}
+
+impl Request {
+    fn validate(&self) -> anyhow::Result<()> {
+        match (&self.mode, &self.public_origin) {
+            (Mode::External, Some(origin)) => {
+                web::origin(origin)?;
+                anyhow::ensure!(
+                    origin.starts_with("https://"),
+                    "public_origin_requires_https"
+                );
+            }
+            (Mode::External, None) => anyhow::bail!("public_origin_required"),
+            (_, Some(_)) => anyhow::bail!("public_origin_requires_external_mode"),
+            _ => {}
+        }
+        Ok(())
+    }
 }
 
 pub(super) async fn describe(app: &App, state: &mut Value) -> anyhow::Result<()> {
-    state["sitePort"] = json!(app
+    let port = app
         .registry
         .lock()
         .await
         .sites
         .domain_port()?
-        .map_or(DEFAULT_SITE_PORT, NonZeroU16::get));
+        .map_or(DEFAULT_SITE_PORT, NonZeroU16::get);
+    state["sitePort"] = json!(port);
+    state["siteAddress"] = json!(format!("http://127.0.0.1:{port}"));
     let addresses = web::lan_addresses()?;
     let selected = addresses
         .first()
@@ -148,6 +170,12 @@ pub(super) async fn begin(
     app: &Arc<App>,
     request: Request,
 ) -> Result<watch::Receiver<Progress>, (StatusCode, Json<Value>)> {
+    request.validate().map_err(|error| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"reason":"configuration", "detail":error.to_string()})),
+        )
+    })?;
     let mut current = app.launch.lock().await;
     if *app.closing.borrow() {
         return Err(Failure::new("local-server", "Piik App is closing").response());
@@ -163,7 +191,7 @@ pub(super) async fn begin(
         let owner = app.clone();
         let task = tokio::spawn(async move {
             let console = Console::new(request.language.as_deref());
-            console.starting(matches!(request.mode, Mode::Link));
+            console.starting(!matches!(request.mode, Mode::Local));
             let port = owner.port;
             if let Err(failure) = run(owner, request, stopped, &progress, &console).await {
                 eprintln!("App startup {}: {}", failure.reason, failure.detail);
@@ -260,9 +288,10 @@ async fn run(
     } else {
         None
     };
-    let invitation = match (&https, &tunnel) {
-        (Some(https), _) => https.origin(),
-        (_, Some(tunnel)) => tunnel.origin(),
+    let invitation = match (&https, &tunnel, &request.public_origin) {
+        (Some(https), _, _) => https.origin(),
+        (_, Some(tunnel), _) => tunnel.origin(),
+        (_, _, Some(origin)) => origin,
         _ => unreachable!(),
     }
     .to_owned();
@@ -318,7 +347,11 @@ async fn run(
             let _ = domain_stopped.changed().await;
         },
     ));
-    console.ready(&invitation);
+    console.ready(if matches!(request.mode, Mode::External) {
+        &origin
+    } else {
+        &invitation
+    });
     progress.send_replace(Progress::Ready(ready.clone()));
     let (result, finished_service) = loop {
         tokio::select! {

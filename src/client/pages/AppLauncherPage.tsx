@@ -19,13 +19,15 @@ import { clientLaunchURL, readPreferredAppMode, savePreferredAppMode, type AppMo
 import { useReleaseUpdate } from "../lib/use-release-update";
 import { AppSiteBookmarks } from "./AppSiteBookmarks";
 import { downloadBlob } from "../lib/download";
+import { publicSiteOrigin } from "../lib/site-address";
 
 const localCertificateSchema = z.object({ origin: z.string().url(), sha256Fingerprint: z.string().regex(/^[A-Fa-f0-9]{64}$/) });
 const launcherStateSchema = z.object({
   sites: z.array(z.string()),
   startupSite: z.string(),
   ownedSites: z.array(z.string()).default([]),
-  startupMode: z.enum(["local", "link", ""]).nullish(),
+  startupMode: z.enum(["local", "link", "external", ""]).nullish(),
+  publicOrigin: z.string().url().optional(),
   target: z.string().optional(),
   localCertificate: localCertificateSchema.optional(),
   starting: z.boolean().optional(),
@@ -36,6 +38,7 @@ const launcherStateSchema = z.object({
   packageTarget: z.string().optional(),
   controlPort: z.number().int().optional(),
   sitePort: z.number().int().min(1).max(65535),
+  siteAddress: z.string().url(),
   windowNavigation: z.boolean().default(false),
   debug: z.boolean().optional(),
   lan: z.object({
@@ -56,7 +59,7 @@ export function AppLauncherPage() {
   const [serverState, setServerState] = useState<z.infer<typeof launcherStateSchema>>();
   const { sites = [], startupSite = "", ownedSites = [], target, localCertificate,
     controlPort, windowNavigation = false, debug: appDebug } = serverState ?? {};
-  const startupMode = serverState?.startupMode || undefined;
+  const startupMode = serverState?.startupMode === "external" ? "link" : serverState?.startupMode || undefined;
   const [openOnApproval, setOpenOnApproval] = useState(false);
   const [error, setError] = useState<{ kind: "load" | "launch"; reason?: string; detail?: string } | null>(null);
   const starting = error?.kind !== "load" && (launching || serverState?.starting === true);
@@ -67,6 +70,13 @@ export function AppLauncherPage() {
   const lan = serverState?.lan && { ...serverState.lan, selected: lanAddress ?? serverState.lan.selected };
   const [portDraft, setPortDraft] = useState<number>();
   const sitePort = portDraft ?? serverState?.sitePort;
+  const [publicEntry, setPublicEntry] = useState({ existing: false, origin: "" });
+  const [publicEntryError, setPublicEntryError] = useState(false);
+  const localAddress = serverState && (() => {
+    const address = new URL(serverState.siteAddress);
+    address.port = String(sitePort);
+    return address.origin;
+  })();
   const build = serverState;
   const appUpdate = useAppUpdate();
   const operation = appUpdate.view?.operationId && appUpdate.view.version && appUpdate.view.revision
@@ -126,7 +136,8 @@ export function AppLauncherPage() {
         if (!fresh()) return;
         if (!restoredSettings) {
           setLanAddress(state.lan?.selected);
-          if (state.startupMode) setMode(state.startupMode);
+          if (state.startupMode) setMode(state.startupMode === "external" ? "link" : state.startupMode);
+          setPublicEntry({ existing: !!state.publicOrigin, origin: state.publicOrigin ?? "" });
           restoredSettings = true;
         }
         setServerState(state);
@@ -216,6 +227,9 @@ export function AppLauncherPage() {
     event.preventDefault();
     if (starting ||
       (mode === "local" && lan !== undefined && !lan.selected)) return;
+    const external = mode === "link" && publicEntry.existing;
+    const publicOrigin = external ? publicSiteOrigin(publicEntry.origin) : null;
+    if (external && !publicOrigin) { setPublicEntryError(true); return; }
     const finish = beginStateChange();
     setLaunching(true);
     setError(null);
@@ -224,7 +238,8 @@ export function AppLauncherPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode,
+          mode: external ? "external" : mode,
+          ...(external ? { publicOrigin } : {}),
           port: sitePort,
           language: consoleLanguage(lang, vis),
           ...(mode === "local" && lan ? { lanAddress: lan.selected } : {}),
@@ -397,6 +412,10 @@ export function AppLauncherPage() {
         >
             {panel !== "launch" && roomError}
             {localCertificate && <LocalConnectionDetails certificate={localCertificate} />}
+            {serverState?.publicOrigin && <p className="lr-launcher-public-address">
+              <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.publicAddress")}</span>{" "}
+              <a href={serverState.publicOrigin} target="_blank" rel="noopener noreferrer">{serverState.publicOrigin}</a>
+            </p>}
             {update ? <AppReleaseNotice update={update} native={appUpdate.view ? { ...appUpdate, view: appUpdate.view } : undefined} />
               : appUpdate.view && (appUpdate.view.operationId || appUpdate.error) && <AppUpdateStatus {...appUpdate} view={appUpdate.view} />}
         </LauncherWorkspace>} />}
@@ -407,6 +426,9 @@ export function AppLauncherPage() {
           <SiteStartControls mode={mode} onModeChange={changeMode} roomError={roomError}
             target={target} localCertificate={localCertificate} entryURL={launchURL}
             port={sitePort === undefined ? undefined : { value: sitePort, onChange: setPortDraft }}
+            publicEntry={localAddress ? { ...publicEntry, localAddress,
+              error: publicEntryError ? t("client.launch.invalidPublicAddress") : undefined,
+              onChange: value => { setPublicEntry(value); setPublicEntryError(false); } } : undefined}
             lan={lan && { ...lan, onChange: setLanAddress }} />
         </form>}
       </ChannelSettingsDialog>}

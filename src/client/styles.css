@@ -1506,6 +1506,8 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-client-launch-title { font-size: 36px; line-height: 1.1; letter-spacing: -.04em; }
 .lr-client-launch-title small { margin-left: 6px; color: var(--muted); font-size: 15px; letter-spacing: 0; font-weight: 650; }
 .lr-client-standby { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; width: 100%; padding: 12px 20px 16px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface-glaze) var(--paper); box-shadow: var(--control-shadow); }
+.c3-settings-panels > .lr-client-device-access { padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.c3-settings-panels > .lr-client-device-access .lr-client-connect-toggle { margin-inline-start: 0; }
 .lr-client-standby-state { display: inline-flex; align-items: center; gap: 9px; }
 .lr-client-standby-heading { display: flex; align-items: start; gap: 12px; min-width: 0; }
 .lr-client-standby-heading > details { flex: 1; min-width: 0; }
@@ -1645,6 +1647,17 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 }
 .lr-client-mode strong { font-size: 14px; }
 .lr-client-mode small { font-size: 11px; opacity: .7; }
+.lr-client-public-entry { display: grid; gap: 14px; width: min(460px, 100%); min-width: 0; }
+.lr-client-public-source { width: 100%; min-width: 0; margin: 0; }
+.lr-client-public-origin { display: grid; gap: 8px; min-width: 0; font-size: 12px; color: var(--muted); }
+.lr-client-public-origin .lr-input { width: 100%; min-width: 0; }
+.lr-client-public-origin input { width: 100%; min-width: 0; font-size: 13px; }
+.lr-client-public-entry > p { margin: 0; font-size: 12px; line-height: 1.65; color: var(--muted); }
+.lr-client-public-entry > p[role="alert"] { color: var(--danger); overflow-wrap: anywhere; }
+.lr-client-forward-target { display: grid; gap: 6px; min-width: 0; font-size: 12px; color: var(--muted); }
+.lr-client-forward-target > div { display: flex; align-items: center; gap: 10px; }
+.lr-client-forward-target code { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--ink); font: 12px/1.6 var(--mono); user-select: text; }
+.lr-client-forward-target .lr-btn { flex: none; }
 .lr-client-room-settings { display: grid; width: min(460px, 100%); grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); align-items: start; gap: 12px; }
 .lr-client-room-settings .lr-client-lan { padding: 0; }
 .lr-client-room-settings .lr-client-lan select { min-height: 48px; }

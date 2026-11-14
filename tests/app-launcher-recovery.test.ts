@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { LauncherForm, type LocalCertificate } from "../src/client/components/living/LauncherForm";
 import { Btn } from "../src/client/components/living/primitives";
-import { siteEntryOrigin, siteEntryURL } from "../src/client/lib/site-address";
+import { publicSiteOrigin, siteEntryOrigin, siteEntryURL } from "../src/client/lib/site-address";
 import { clientLaunchURL, readPreferredAppMode, savePreferredAppMode, type AppMode } from "../src/client/lib/app-launch";
 import { appUpdateSchema } from "../src/client/lib/use-app-update";
 
@@ -92,12 +92,12 @@ const executable = ts.transpileModule(`${declarations.join("\n")}\n({cleanup: ($
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const saved = {
   sites: ["https://site.example"], startupSite: "",
-  revision: "test", version: "development", debug: false, sitePort: 8787,
+  revision: "test", version: "development", debug: false, sitePort: 8787, siteAddress: "http://127.0.0.1:8787",
   lan: { addresses: [{ address: "192.0.2.1", name: "LAN" }], selected: "192.0.2.1" },
 };
-const response = (state: typeof saved & { detail?: string; target?: string; localCertificate?: LocalCertificate } = saved) => ({ ok: true, status: 200, json: async () => state });
+const response = (state: typeof saved & { detail?: string; target?: string; localCertificate?: LocalCertificate; startupMode?: "local" | "link" | "external"; publicOrigin?: string } = saved) => ({ ok: true, status: 200, json: async () => state });
 
-function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = false, mode, startup = false }: { debug?: boolean; mode?: AppMode; startup?: boolean } = {}) {
+function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = false, mode, startup = false, publicOrigin }: { debug?: boolean; mode?: AppMode; startup?: boolean; publicOrigin?: string } = {}) {
   const downloads = vi.fn();
   const initialMode = mode ?? runInNewContext(`(${modeInitializer})()`, { readPreferredAppMode }) as AppMode;
   const state: Record<string, unknown> = { Mode: initialMode };
@@ -118,7 +118,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = fa
   Object.defineProperty(state, "Starting", { get: () => (state.Error as { kind?: string } | null)?.kind !== "load"
     && (state.Launching === true || (state.ServerState as { starting?: boolean } | undefined)?.starting === true) });
   const setters = Object.fromEntries([
-    "Mode", "LanAddress", "ServerState", "Launching", "Error", "Loading",
+    "Mode", "LanAddress", "ServerState", "Launching", "Error", "Loading", "PublicEntry", "PublicEntryError",
     "SiteBusy", "SiteError", "DebugBusy", "DebugError", "Reload",
   ].map(name => [`set${name}`, vi.fn((value: unknown) => {
     state[name] = typeof value === "function" ? value(state[name]) : value;
@@ -131,6 +131,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = fa
     stateChanges: { current: { revision: 0, pending: 0 } },
     siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, manualSite, openOnApproval: false,
     mode: initialMode, lang: "en", vis: false, appDebug: debug, lan: saved.lan, sitePort: saved.sitePort, savePreferredAppMode,
+    publicEntry: { existing: publicOrigin !== undefined, origin: publicOrigin ?? "" }, publicSiteOrigin,
     consoleLanguage: () => "en", clientLaunchURL, currentThemePreference: () => null, hasCopyPreference: () => false,
     controlPort: undefined, t: (key: string) => key,
     setTimeout: (callback: () => void, delay: number) => {
@@ -158,6 +159,42 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = fa
 }
 
 describe("App launcher state recovery", () => {
+  it("restores an owned external entry within the public launch choice", async () => {
+    const fetch = vi.fn(async () => response({ ...saved, startupMode: "external", publicOrigin: "https://piik.example" }));
+    const page = mount(fetch);
+    try {
+      await settle();
+      expect(page.state.Mode).toBe("link");
+      expect(page.state.PublicEntry).toEqual({ existing: true, origin: "https://piik.example" });
+      expect(page.navigate).not.toHaveBeenCalled();
+    } finally { page.cleanup(); }
+  });
+
+  it("uses the configured HTTPS origin without changing the local owner entry", async () => {
+    const target = "http://127.0.0.1:8787/#owner=local-fixture";
+    const fetch = vi.fn().mockResolvedValueOnce(response(saved))
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ target }) });
+    const page = mount(fetch, false, { mode: "link", publicOrigin: "https://PIIK.example:443/" });
+    try {
+      await settle(); await page.launch({ preventDefault() {} });
+      expect(JSON.parse(fetch.mock.calls[1]![1].body)).toEqual({
+        mode: "external", publicOrigin: "https://piik.example", port: 8787, language: "en",
+      });
+      expect(page.navigate).toHaveBeenCalledWith(expect.stringMatching(/^http:\/\/127\.0\.0\.1:8787\//));
+    } finally { page.cleanup(); }
+  });
+
+  it("keeps an invalid public-address draft out of startup", async () => {
+    const fetch = vi.fn(async () => response(saved));
+    const page = mount(fetch, false, { mode: "link", publicOrigin: "https://piik.example/room#invite=key" });
+    try {
+      await settle(); await page.launch({ preventDefault() {} });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(page.state.PublicEntryError).toBe(true);
+      expect(page.navigate).not.toHaveBeenCalled();
+    } finally { page.cleanup(); }
+  });
+
   it("replaces a failed launch response with the running App's state on return", async () => {
     const fetch = vi.fn().mockResolvedValueOnce(response(saved))
       .mockRejectedValueOnce(new Error("Startup response disconnected"));
