@@ -55,13 +55,14 @@ With 100 ms source response delay, an approximately 8 Mbps MP4 passes a real
 Native-to-Browser-to-Browser path after initial buffering; correction stays
 inside received ranges instead of repeatedly seeking beyond them. This is a
 short controlled run, not an Internet capacity or endurance guarantee.
-HLS reception also passes the App's self-signed local HTTPS entry using the
-Browser reader adapter without a Service Worker, including ordinary segments,
-byte ranges, common controls and cancellation. Forwarded MP4 still requires
-Service Worker registration, which the self-signed LAN entry does not permit.
-The official hls.js demo also passes
-Native webpage discovery, controls and peer forwarding; broader website coverage
-remains open.
+MP4 and HLS reception pass the App's self-signed local HTTPS entry without a
+Service Worker. The MP4 checks include H264/AAC, a trailing file index,
+progressive first picture, forward/backward seeking, and old-buffer removal
+after input EOF. Ordinary HLS segments, byte ranges, common controls and
+cancellation also pass. Other native-playable containers still need an origin
+that permits Service Workers. These adapter checks cover Chrome; broader
+Browser and website coverage remains open. The official hls.js demo also passes
+Native webpage discovery, controls and peer forwarding.
 
 The first internal test targets matched Windows and Android packages with the
 shared Browser UI. Normal packaged flows have verified room creation and

@@ -36,6 +36,7 @@
     "esbuild": "0.28.2",
     "hls.js": "1.7.4",
     "markdown-it": "15.0.3",
+    "mp4box": "2.5.0",
     "qrcode.react": "4.2.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",

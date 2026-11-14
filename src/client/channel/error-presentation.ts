@@ -46,7 +46,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey)
     return display("channel.error.externalVideoFormatUnsupported");
   if (error === "external_input_failed")
     return display("channel.error.externalInputFailed");
-  if (/^watch_(?:live_hls_unsupported|media_(?:encryption_unsupported|encoding_unsupported|range_unsupported|size_unavailable)|manifest_extension_unsupported|manifest_limit|resource_limit)$/.test(error))
+  if (/^watch_(?:live_hls_unsupported|media_(?:encryption_unsupported|encoding_unsupported|range_unsupported|size_unavailable)|manifest_extension_unsupported|manifest_limit|resource_limit|mp4_parse_failed)$/.test(error))
     return display("watch.forward.unsupported");
   if (/^(?:watch_(?:invalid_manifest|media_(?:unavailable|credentials_unavailable|changed|truncated)|resource_unavailable|source_(?:unavailable|failed|changed|retired))|invalid_watch_range_response)$/.test(error))
     return display("watch.forward.sourceUnavailable");

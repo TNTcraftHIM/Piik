@@ -307,9 +307,11 @@ Playback state travels through the room's signaling connection. Direct viewing
 does not need a peer media path. The sharer can also choose **Share settings →
 Forward original video**, select a readable file or HLS source, and explicitly
 enable upload. Viewers then choose **Receive from sharer** to use the room's
-existing peer paths. This requires HTTPS or loopback HTTP for the Browser media
-adapter and consumes the sharer's upload capacity. Stopping forwarding leaves
-the webpage and synchronized viewing activity open.
+existing peer paths and consume the sharer's upload capacity. Compatible MP4
+and HLS sources use the Browser's Media Source Extensions, including on the
+App's local HTTPS entry. Other native-playable files require an origin where
+the Browser permits Service Workers. Stopping forwarding leaves the webpage
+and synchronized viewing activity open.
 
 Forwarding currently supports finite media files with byte ranges and standard
 HLS VOD playlists, including variants, separate audio and initialization segments.

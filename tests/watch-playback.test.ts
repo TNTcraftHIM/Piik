@@ -1,4 +1,4 @@
-import { HTMLVideoMedia, AppPageMedia, type AppPagePort } from "../src/client/channel/watch-media";
+import { HTMLVideoMedia, AppPageMedia, type AppPagePort, type WatchMediaEvent } from "../src/client/channel/watch-media";
 import { afterEach, expect, test, vi } from "vitest";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
 
@@ -247,4 +247,41 @@ test("periodic correction waits for its target to be buffered; explicit host see
     expect(video.paused).toBe(true);
     expect(video.playbackRate).toBe(0.5);
   } finally { player.close(); }
+});
+
+test("media parse errors survive readiness and late error events, while retirement ignores late failures", async () => {
+  vi.useFakeTimers();
+  const video = new Video();
+  vi.stubGlobal("document", { createElement: () => video });
+  const media = new HTMLVideoMedia(() => Promise.reject(new Error("watch_mp4_parse_failed")), "file");
+  const player = new WatchPlayer("room", false, media, vi.fn());
+  await expect(player.ready()).rejects.toThrow("watch_mp4_parse_failed");
+  expect(player.error).toBe("watch_mp4_parse_failed");
+  const changed = vi.fn();
+  let emit!: (event: WatchMediaEvent) => void;
+  const state = { position: 0, paused: true, rate: 1, duration: 20, readyState: 4, ended: false, buffered: [[0, 20]] as [number, number][] };
+  const port = {
+    read: vi.fn(async () => state), patch: vi.fn(async () => {}), focus: vi.fn(async () => {}),
+    listen: (listener: (event: WatchMediaEvent) => void) => { emit = listener; return () => {}; }, close: vi.fn(),
+  };
+  const latePlayer = new WatchPlayer("room", false, new AppPageMedia(port), changed);
+  await latePlayer.ready();
+  emit("error");
+  await vi.advanceTimersByTimeAsync(0);
+  expect(latePlayer.error).toBe("watch_media_failed");
+  port.read.mockRejectedValueOnce(new Error("watch_mp4_parse_failed"));
+  emit("error");
+  await vi.advanceTimersByTimeAsync(0);
+  expect(latePlayer.error).toBe("watch_mp4_parse_failed");
+  let rejectRead!: (error: Error) => void;
+  port.read.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRead = reject; }));
+  emit("error");
+  await vi.advanceTimersByTimeAsync(0);
+  latePlayer.close();
+  changed.mockClear();
+  rejectRead(new Error("watch_source_failed"));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(changed).not.toHaveBeenCalled();
+  expect(latePlayer.error).toBe("watch_mp4_parse_failed");
+  player.close();
 });

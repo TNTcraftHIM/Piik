@@ -1,5 +1,6 @@
 import type { HlsConfig, Loader, LoaderCallbacks, LoaderConfiguration, LoaderContext, LoaderStats } from "hls.js";
 import { limitWatchReads, type WatchByteReader } from "./watch-resource";
+import { readWatchWindows } from "./watch-read-windows";
 
 // hls.js resolves rewritten UUID basenames here; these URLs never enter fetch().
 const resourceOrigin = "https://watch-media.invalid";
@@ -77,27 +78,8 @@ export function createWatchHlsLoader(sourceRead: WatchByteReader, lifetime: Abor
       if (end > size || start > end) throw new Error("watch_media_truncated");
       const bytes = new Uint8Array(end - start);
       this.stats.total = bytes.length;
-      let position = start, written = 0;
-      const windows: Promise<Uint8Array>[] = [];
-      const fill = () => {
-        while (!signal.aborted && windows.length < 4 && position < end) {
-          const offset = position, length = Math.min(65536, end - offset);
-          const pending = read(id, offset, length, signal).then(result => {
-            signal.throwIfAborted();
-            if (result.totalSize !== size || result.bytes.byteLength !== length) throw new Error("watch_media_truncated");
-            this.stats.loaded += length;
-            return result.bytes;
-          });
-          // A prefetched window can reject before the ordered consumer reaches it.
-          void pending.catch(() => {});
-          windows.push(pending); position += length;
-        }
-      };
-      fill();
-      while (windows.length) {
-        const chunk = await windows.shift()!;
-        signal.throwIfAborted(); bytes.set(chunk, written); written += chunk.length; fill();
-      }
+      for await (const window of readWatchWindows(read, id, { start, end, size }, signal, length => { this.stats.loaded += length; }))
+        bytes.set(window.bytes, window.offset - start);
       return context.responseType === "arraybuffer" ? bytes.buffer : new TextDecoder().decode(bytes);
     }
 

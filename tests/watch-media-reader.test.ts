@@ -1,6 +1,6 @@
 ﻿import Hls from "hls.js";
 import { afterEach, expect, test, vi } from "vitest";
-import { canReceivePeerWatch, createPeerWatchMedia, HTMLVideoMedia } from "../src/client/channel/watch-media";
+import { AppPageMedia, canReceivePeerWatch, createPeerWatchMedia, HTMLVideoMedia, type WatchMediaEvent, type WatchMediaState } from "../src/client/channel/watch-media";
 
 function video() {
   return Object.assign(new EventTarget(), { src: "", readyState: 0, buffered: { length: 0, start: vi.fn(), end: vi.fn() }, error: null,
@@ -44,4 +44,23 @@ test("HLS can receive through the Reader when Service Workers are unavailable", 
   const v = video(); vi.stubGlobal("document", { createElement: () => v });
   const media = createPeerWatchMedia({ resourceId: "11111111-1111-4111-8111-111111111111", format: "hls" }, vi.fn());
   await expect(media.ready(new AbortController().signal)).rejects.toThrow("watch_peer_requires_secure_context"); media.close();
+});
+
+test("App error during readiness rejects immediately even when its pending state read succeeds", async () => {
+  vi.useFakeTimers();
+  let emit!: (event: WatchMediaEvent) => void, resolveRead!: (state: WatchMediaState) => void;
+  const media = new AppPageMedia({
+    read: () => new Promise(resolve => { resolveRead = resolve; }), patch: async () => {}, focus: async () => {}, close() {},
+    listen(listener) { emit = listener; return () => {}; },
+  });
+  try {
+    await media.opening;
+    const waiting = media.ready(new AbortController().signal);
+    const rejected = expect(waiting).rejects.toThrow("watch_media_failed");
+    await vi.advanceTimersByTimeAsync(0);
+    emit("error");
+    resolveRead({ position: 0, paused: true, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] });
+    await rejected;
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { media.close(); }
 });

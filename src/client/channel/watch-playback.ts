@@ -1,6 +1,8 @@
 import type { WatchPlayback, WatchMode } from "./protocol";
 import { HTMLVideoMedia, type WatchMedia, type WatchMediaPatch, type WatchMediaState } from "./watch-media";
 
+const mediaFailure = (error?: unknown): string => error instanceof Error && error.message ? error.message : "watch_media_failed";
+
 export function watchPosition(playback: WatchPlayback, now: number): number {
   return playback.position + (playback.paused ? 0 : Math.max(0, now - playback.anchorTime) / 1000 * playback.rate);
 }
@@ -29,7 +31,7 @@ export class WatchPlayer {
     private changed: () => void, private closed: () => void = () => {}) {
     this.unlisten = media.listen(event => {
       if (event === "closed") { this.close(); this.closed(); return; }
-      if (event === "error") { this.error = "watch_media_failed"; this.changed(); }
+      if (event === "error") void this.mediaError();
       if (event === "blocked") { this.blocked = true; this.changed(); }
       if (event === "loadedmetadata") void this.align(true);
       if (owner && ["play", "playing", "pause", "seeked", "ratechange", "ended"].includes(event))
@@ -44,6 +46,15 @@ export class WatchPlayer {
     if (this.retired) throw new DOMException("Cancelled", "AbortError");
     this.prepared = true;
     await this.align(true);
+  }
+  private async mediaError(): Promise<void> {
+    if (this.retired) return;
+    await this.media.read().then(() => this.failMedia(), error => this.failMedia(error));
+  }
+  private failMedia(error?: unknown): void {
+    if (this.retired) return;
+    this.error = mediaFailure(error);
+    this.changed();
   }
   calibrate(serverTime: number, start: number, end = performance.now()): void {
     this.offset = serverTime - (start + end) / 2;
@@ -99,7 +110,7 @@ export class WatchPlayer {
       if (playback.paused && !state.paused) patch.paused = true;
       else if (!playback.paused && state.paused && !this.blocked && !state.ended) patch.paused = false;
       await this.apply(patch);
-    }).catch(() => { if (!this.retired) { this.error = "watch_media_failed"; this.changed(); } });
+    }).catch(error => this.failMedia(error));
     this.alignment = operation;
     void operation.finally(() => { if (this.alignment === operation) this.alignment = null; });
     return operation;
@@ -111,7 +122,7 @@ export class WatchPlayer {
     } catch (error) {
       if (!this.retired) {
         if (error instanceof Error && (error.name === "NotAllowedError" || error.message === "watch_autoplay_blocked")) this.blocked = true;
-        else this.error = "watch_media_failed";
+        else { this.failMedia(error); return; }
       }
     }
     if (!this.retired) this.changed();
