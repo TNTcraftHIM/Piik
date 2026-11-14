@@ -61,7 +61,7 @@ export function ChannelSiteSettings({ channel }: { channel: ChannelController })
           </section>
           <section id={`${id}-backup`} role="tabpanel" aria-labelledby={`${id}-backup-tab`} hidden={task !== "backup"}>
             <h3>{zh ? "站点备份" : "Site backup"}</h3>
-            <BackupControls kind="domain" busy={backupBusy} disabled={unavailable || busy}
+            <BackupControls run={run} kind="domain" busy={backupBusy} disabled={unavailable || busy}
               onExport={channel.exportDomainBackup} onRestore={async file => {
                 try { resetDraft(await channel.restoreDomainBackup(file)); }
                 catch (error) {

@@ -2,59 +2,56 @@ import { useRef, useState } from "react";
 import { downloadBlob } from "../../lib/download";
 import { useCopy } from "../../ui/copy";
 import { ChannelAction } from "./ChannelAction";
+import { ChannelSettingsError, useSettingsAction, type SettingsAction } from "./ChannelSettingsDialog";
 
 /** File selection and confirmation are shared by backup consumers; the caller owns storage. */
-export function BackupControls({ disabled, busy, onExport, onRestore, replacing = true, available = true, kind = "room" }: {
-  disabled?: boolean; busy: boolean; available?: boolean; onExport?: () => Promise<Blob>;
+export function BackupControls({ disabled, busy, onExport, onRestore, replacing = true, available = true, kind = "room", run: dialogRun }: {
+  run?: SettingsAction; disabled?: boolean; busy: boolean; available?: boolean; onExport?: () => Promise<Blob>;
   onRestore(file: File): Promise<{ cached: boolean } | void>; replacing?: boolean; kind?: "room" | "domain";
 }) {
   const { lang } = useCopy(), zh = lang === "zh";
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [message, setMessage] = useState("");
-  const [failed, setFailed] = useState(false);
-  const run = async (work: () => Promise<void>) => {
-    setMessage(""); setFailed(false);
-    try { await work(); }
-    catch (error) {
-      setFailed(true);
-      const code = error instanceof Error ? error.message : typeof error === "string" ? error : "";
-      if (code === "domain_restored_connection_failed" || code === "room_restored_connection_failed") setFile(null);
-      setMessage(code === "room_host_conflict" || code === "room_host_unavailable" || code === "stale_backup"
-        ? (zh ? "房间的托管者已改变，请重新打开房间设置。" : "The room host changed. Reopen room settings.")
-        : code === "domain_restored_connection_failed" ? (zh ? "站点已恢复，但未能重新连接。请重新连接或打开恢复后的站点地址，无需再次恢复备份。" : "The site was restored, but reconnection failed. Reconnect or open the restored site's address. You do not need to restore the backup again.")
-        : code === "room_restored_connection_failed" ? (zh ? "房间数据已恢复，但未能重新连接。请重新连接，无需再次恢复备份。" : "Room data was restored, but reconnection failed. Reconnect without restoring the backup again.")
-        : code === "backup_identity_required" ? (zh ? "无法使用备份中的账号，请确认这是你在此站点的备份。" : "The backup account could not be verified on this site.")
-        : code === "backup_room_mismatch" ? (zh ? "请选择此站点、此房间的备份。" : "Choose a backup for this site and room.")
-        : code === "unsupported_backup_version" ? (zh ? "此备份格式不受当前版本支持，请使用导出它的版本读取。" : "This backup format is not supported. Open it with the version that exported it.")
-        : (zh ? "备份操作未完成，请检查文件后重试。" : "The backup operation could not finish. Check the file and try again."));
-    }
+  const local = useSettingsAction(!dialogRun);
+  const run = dialogRun ?? local.run;
+  const [active, setActive] = useState<"export" | "restore" | null>(null);
+  const perform = <T,>(operation: "export" | "restore", work: () => Promise<T>, onSuccess?: (result: T) => void) => {
+    setMessage(""); setActive(operation);
+    void run(async () => {
+      try { return await work(); }
+      catch (error) {
+        if (error instanceof Error && (error.message === "domain_restored_connection_failed" || error.message === "room_restored_connection_failed")) setFile(null);
+        throw error;
+      }
+    }, onSuccess).finally(() => setActive(null));
   };
-  if (!available && !file && !message) return null;
+  if (!available && !file && !message && !local.error) return null;
   return <section className="c3-backup-controls" aria-label={kind === "domain" ? (zh ? "站点备份" : "Site backup") : (zh ? "房间备份" : "Room backup")}>
     {kind === "domain" && <p>{zh ? "站点资料与房间目录。房间记录请分别备份。" : "Site data and the room directory. Back up room records separately."}</p>}
     {available && !file && <div className="c3-backup-actions">
-      {onExport && <ChannelAction icon="save" quiet label={kind === "room" ? (zh ? "导出完整备份" : "Export full backup") : (zh ? "导出备份" : "Export backup")} busy={busy} disabled={disabled}
-        onClick={() => { void run(async () => {
+      {onExport && <ChannelAction icon="save" quiet label={kind === "room" ? (zh ? "导出完整备份" : "Export full backup") : (zh ? "导出备份" : "Export backup")} busy={active === "export"} disabled={disabled || busy || !!active}
+        onClick={() => { perform("export", async () => {
           downloadBlob(await onExport(), `piik-${kind === "domain" ? "site" : "room"}-backup.zip`);
         }); }} />}
       <ChannelAction icon="refresh" quiet label={kind === "room" ? (zh ? "恢复完整备份" : "Restore full backup") : (zh ? "从备份恢复" : "Restore backup")}
-        disabled={disabled || busy} onClick={() => input.current?.click()} />
+        disabled={disabled || busy || !!active} onClick={() => input.current?.click()} />
     </div>}
     <input ref={input} type="file" accept=".zip,application/zip" hidden onChange={event => {
-      setFile(event.target.files?.[0] ?? null); setMessage(""); setFailed(false); event.target.value = "";
+      setFile(event.target.files?.[0] ?? null); setMessage(""); event.target.value = "";
     }} />
     {file && <div className="c3-backup-confirm"><p>{file.name}</p><p>{kind === "domain"
       ? (zh ? "恢复会替换当前站点的设置、用户信息和房间目录，并重新连接恢复的站点。房间消息与文件不会随之恢复。" : "Restoring replaces this site’s settings, users and room directory, then reconnects to the restored site. Room messages and files are restored separately.") : replacing
       ? (zh ? "恢复会替换房间设置与消息。" : "Restoring replaces this room’s settings and messages.")
       : (zh ? "恢复原房间及其备份账号。若要使用自己的身份创建新房间，请改为载入房间副本。" : "Restore the original room and its saved account. To create a new room with your own identity, load a room copy instead.")}</p>
-      <div className="c3-form-actions"><ChannelAction icon="x" quiet label={zh ? "取消" : "Cancel"} disabled={busy} onClick={() => setFile(null)} />
-        <ChannelAction icon="check" primary label={zh ? "确认" : "Confirm"} disabled={disabled} busy={busy} onClick={() => { void run(async () => {
-          const result = await onRestore(file); setFile(null);
+      <div className="c3-form-actions"><ChannelAction icon="x" quiet label={zh ? "取消" : "Cancel"} disabled={busy || !!active} onClick={() => setFile(null)} />
+        <ChannelAction icon="check" primary label={zh ? "确认" : "Confirm"} disabled={disabled || busy || !!active} busy={active === "restore"} onClick={() => { perform("restore", () => onRestore(file), result => {
+          setFile(null);
           setMessage(kind === "domain" ? (zh ? "站点已恢复。" : "Site restored.") : result?.cached ? (zh ? "房间已恢复。" : "Room restored.")
             : (zh ? "房间已恢复，文件未能缓存。" : "Room restored. Files could not be cached."));
         }); }} /></div>
     </div>}
-    {message && <p className={failed ? "c3-backup-error" : undefined} role={failed ? "alert" : "status"}>{message}</p>}
+    {message && <p role="status">{message}</p>}
+    {!dialogRun && <ChannelSettingsError error={local.error} />}
   </section>;
 }

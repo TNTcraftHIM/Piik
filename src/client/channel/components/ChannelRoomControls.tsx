@@ -134,7 +134,8 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", onCreated, 
   const [draft, setDraft] = useState<RoomDraft>(() => ({ ...roomDraft(), name: initialName }));
   const input = useRef<HTMLInputElement>(null);
   const [copy, setCopy] = useState<File | null>(null), [inspecting, setInspecting] = useState(false);
-  const [completed, setCompleted] = useState<"uncached" | "reconnect" | null>(null);
+  const [completed, setCompleted] = useState<"uncached" | "restored-uncached" | "reconnect" | null>(null);
+  const [creating, setCreating] = useState(false);
   const connected = channel.connection === "connected";
   const busy = channel.pending.has("create-room");
   const backupBusy = channel.pending.has("room-backup");
@@ -143,6 +144,8 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", onCreated, 
       <div className="c3-settings-panels">
         {completed ? <div className="c3-backup-confirm"><p role="status">{completed === "reconnect"
           ? (zh ? "房间已创建，请重新连接，无需再次导入。" : "The room was created. Reconnect without importing it again.")
+          : completed === "restored-uncached"
+          ? (zh ? "房间已恢复，文件未能缓存。无需再次恢复。" : "The room was restored. Files could not be cached. Do not restore it again.")
           : (zh ? "新房间已创建，文件未能缓存。无需再次导入。" : "The new room was created. Files could not be cached. Do not import it again.")}</p>
           <ChannelAction icon="check" primary label={zh ? "完成" : "Done"} onClick={onClose} /></div> : <>
         <section className="c3-room-copy-load">
@@ -160,9 +163,9 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", onCreated, 
             : "Messages, reaction counts and available files will be copied into a new room. Choose new access settings; accounts and entry credentials are not imported."}</p>
             <ChannelAction icon="x" quiet label={zh ? "移除副本" : "Remove copy"} disabled={busy || backupBusy} onClick={() => setCopy(null)} /></>}
         </section>
-        <RoomForm value={draft} onChange={fields => setDraft(previous => ({ ...previous, ...fields }))} appHosted={channel.appConnected} disabled={!connected || busy || backupBusy || inspecting} busy={busy || backupBusy}
+        <RoomForm value={draft} onChange={fields => setDraft(previous => ({ ...previous, ...fields }))} appHosted={channel.appConnected} disabled={!connected || busy || backupBusy || inspecting} busy={creating}
           createLabel={copy ? (zh ? "创建副本房间" : "Create copied room") : undefined}
-          onCancel={onClose} onSave={settings => run(async () => {
+          onCancel={onClose} onSave={settings => { setCreating(true); return run(async () => {
             if (copy) {
               try { return await channel.importRoomCopy(copy, settings); }
               catch (error) {
@@ -171,12 +174,13 @@ export function ChannelRoomCreateDialog({ channel, initialName = "", onCreated, 
               }
             }
             return { roomId: await channel.createRoom(settings, false), cached: true };
-          }, result => { if (result) { onCreated(result.roomId); if (result.cached) onClose(); else setCompleted("uncached"); } })} />
+          }, result => { if (result) { onCreated(result.roomId); if (result.cached) onClose(); else setCompleted("uncached"); } }).finally(() => setCreating(false)); }} />
         <details className="c3-settings-details"><summary>{zh ? "从完整备份恢复房间" : "Restore a full room backup"}</summary>
-          <BackupControls disabled={!connected || busy} busy={backupBusy} replacing={false}
+          <BackupControls run={run} disabled={!connected || busy} busy={backupBusy} replacing={false}
             onRestore={async file => {
               const result = await channel.restoreRoomBackup(file);
-              onCreated(result.roomId); onClose();
+              onCreated(result.roomId);
+              if (result.cached) onClose(); else setCompleted("restored-uncached");
               return result;
             }} />
         </details>
@@ -198,6 +202,7 @@ function RoomCopyExport({ channel, roomId, disabled, busy, run }: {
 }) {
   const { lang } = useCopy(), zh = lang === "zh";
   const [includeRoomInfo, setIncludeRoomInfo] = useState(true);
+  const [exporting, setExporting] = useState(false);
   return <section className="c3-backup-controls">
     <h3>{zh ? "复制为新房间" : "Copy into a new room"}</h3>
     <p>{zh ? "导出消息、表情次数和可用附件，不包含账号、原邀请、密码或授权。"
@@ -205,8 +210,9 @@ function RoomCopyExport({ channel, roomId, disabled, busy, run }: {
     <label className="c3-check"><input type="checkbox" checked={includeRoomInfo} disabled={disabled || busy}
       onChange={event => setIncludeRoomInfo(event.target.checked)} />
       {zh ? "附带房间名称、图标、连接与语音设置" : "Include the room name, icon, connection and voice settings"}</label>
-    <ChannelAction icon="save" quiet label={zh ? "导出房间副本" : "Export room copy"} disabled={disabled} busy={busy}
-      onClick={() => { void run(async () => downloadBlob(await channel.exportRoomCopy(roomId, includeRoomInfo), "piik-room-copy.zip")); }} />
+    <ChannelAction icon="save" quiet label={zh ? "导出房间副本" : "Export room copy"} disabled={disabled || busy} busy={exporting}
+      onClick={() => { setExporting(true); void run(async () => downloadBlob(await channel.exportRoomCopy(roomId, includeRoomInfo), "piik-room-copy.zip"))
+        .finally(() => setExporting(false)); }} />
   </section>;
 }
 
@@ -286,7 +292,7 @@ function RoomSettings({ channel, room, onClose }: {
           {room.canManage && backupAvailable && <RoomCopyExport channel={channel} roomId={room.id} run={run}
             disabled={!available || busy || removing} busy={backupBusy} />}
           {room.canManage && backupAvailable && <h3>{zh ? "房间完整备份" : "Full room backup"}</h3>}
-          {room.canManage && <BackupControls available={backupAvailable} disabled={!available || busy || removing || !backupAvailable}
+          {room.canManage && <BackupControls run={run} available={backupAvailable} disabled={!available || busy || removing || !backupAvailable}
             busy={backupBusy} onExport={() => channel.exportRoomBackup(room.id)} onRestore={async file => {
               try {
                 const result = await channel.restoreRoomBackup(file, room.id);

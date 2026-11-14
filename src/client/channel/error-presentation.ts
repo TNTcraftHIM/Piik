@@ -21,6 +21,18 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey)
     return display("channel.error.channelFull");
   if (error === "directory_storage_failed")
     return display("channel.error.directoryStorageFailed");
+  if (error === "domain_restored_connection_failed")
+    return display("channel.error.domainRestoredConnectionFailed", true);
+  if (error === "room_restored_connection_failed")
+    return display("channel.error.roomRestoredConnectionFailed", true);
+  if (error === "room_host_unavailable" || error === "stale_backup")
+    return display("channel.error.backupStateUnavailable");
+  if (error === "backup_identity_required")
+    return display("channel.error.backupIdentityRequired");
+  if (error === "backup_room_mismatch")
+    return display("channel.error.backupRoomMismatch");
+  if (error === "unsupported_backup_version")
+    return display("channel.error.unsupportedBackupVersion");
   if (error === "expected_room_copy")
     return display("channel.error.expectedRoomCopy");
   if (error === "invalid_room_copy")
