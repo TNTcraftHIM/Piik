@@ -212,6 +212,25 @@ media and clean teardown. Exact source closures and failed controls remain in th
 [Native evidence index](../../prototype/channel-native/README.md#rtc-dependency).
 The older Go runners below require their matching snapshot.
 
+### Playable Route Improvement
+
+On 2026-11-14, a controlled trial reused the `64e6281e` screen-routing
+implementation, unchanged in `27bb5840`. A Browser supplied a roughly 210 kbps
+low layer and a 5 Mbps high layer. Under a 1.467 Mbps A-to-Viewer limit, the old
+route continued at 160 × 90 and 13.66 fps. An explicit research request used the
+existing Switch and quality proof to select B, which already held an authorized
+physical connection to that Viewer. Commit was observed after 7.45 seconds;
+the subsequent picture delivered 640 × 360 at 29.70 fps.
+
+The old picture lease retired while base duties, room voice and the second
+room's connection remained. Complete phase traffic capture confirmed the media
+edges; the runner's original final assertion retained a failure because its
+startup capture had reached its packet limit. Static and low-cadence source
+controls preserved their supplied cadence. This establishes the benefit and
+lifecycle of one explicit switch, not an automatic trigger or general Internet
+performance. Production alternative-parent selection remains in
+[TODO](../todo.md#next).
+
 ### Duplicate NACK Feedback
 
 A controlled Windows UDP comparison uses Piik's `Transport.write_au`, real
