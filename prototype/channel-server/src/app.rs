@@ -601,6 +601,9 @@ fn launcher_state(registry: &Registry, port: u16) -> Result<Value> {
     if let Some(origin) = public_origin {
         state["publicOrigin"] = json!(origin);
     }
+    if let Some(local) = &registry.local {
+        state["localSite"] = json!(local.origin);
+    }
     Ok(state)
 }
 type ApiResult = std::result::Result<Json<Value>, (StatusCode, Json<Value>)>;
@@ -757,11 +760,21 @@ async fn approve(State(app): State<Arc<App>>, Json(change): Json<Approval>) -> A
         )
     })?;
     let mut registry = app.registry.lock().await;
+    if registry
+        .local
+        .as_ref()
+        .is_some_and(|local| local.origin == site)
+    {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(launcher_state(&registry, app.port).map_err(operation_failure)?),
+        ));
+    }
     if !change.allowed
         && registry
             .local
             .as_ref()
-            .is_some_and(|local| local.origin == site || local.invitation == site)
+            .is_some_and(|local| local.invitation == site)
         && matches!(
             registry.sites.startup().map_err(operation_failure)?,
             sites::StartupIntent::Owned(_)
@@ -809,7 +822,7 @@ struct Startup {
 }
 async fn startup(State(app): State<Arc<App>>, Json(change): Json<Startup>) -> ApiResult {
     let registry = app.registry.lock().await;
-    if !change.site.is_empty() && !registry.approvals.contains_key(&change.site) {
+    if !change.site.is_empty() && registry.permission(&change.site).is_none() {
         return Err((
             StatusCode::CONFLICT,
             Json(launcher_state(&registry, app.port).map_err(operation_failure)?),
@@ -2617,6 +2630,179 @@ mod lifecycle_tests {
         drop(registry);
         server.abort();
         let _ = server.await;
+    }
+
+    #[tokio::test]
+    async fn local_site_permission_follows_the_domain_without_a_saved_approval() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("index.html"), "Piik").unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let control = format!("http://{address}");
+        let invitation = "https://invitation.example";
+        let remote = "https://friend.example";
+        let app = Arc::new(App {
+            config: Config {
+                data_root: directory.path().into(),
+                assets: directory.path().into(),
+                open_browser: false,
+                window_navigation: None,
+                cloudflared: PathBuf::new(),
+                ice_servers: vec![],
+                update: Default::default(),
+            },
+            port: address.port(),
+            token: "test".into(),
+            registry: Mutex::new(Registry {
+                sites: sites::Sites::open(directory.path()).unwrap(),
+                approvals: BTreeMap::new(),
+                hosts: BTreeMap::new(),
+                local: None,
+            }),
+            closing: watch::channel(false).0,
+            launch: Mutex::new(None),
+            desktop: Desktop::new().unwrap(),
+            external_inputs: whip::Inputs::default(),
+            update: update::Owner::disabled(),
+        });
+        let router = Router::new()
+            .route("/api/client-launcher", get(launcher))
+            .route("/api/client-launcher/launch", post(hosted::launch))
+            .route("/api/client-launcher/site", post(approve))
+            .route("/api/client-launcher/startup-site", post(startup))
+            .route("/health", get(health))
+            .layer(middleware::from_fn_with_state(app.clone(), access))
+            .with_state(app.clone());
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let client = reqwest::Client::builder()
+            .timeout(IO_TIMEOUT)
+            .build()
+            .unwrap();
+        let post = async |path: &str, body: Value| {
+            client
+                .post(format!("{control}/api/client-launcher/{path}"))
+                .header("Origin", &control)
+                .header("Content-Type", "application/json")
+                .body(body.to_string())
+                .send()
+                .await
+                .unwrap()
+        };
+        let state = async || -> Value {
+            serde_json::from_slice(
+                &client
+                    .get(format!("{control}/api/client-launcher"))
+                    .send()
+                    .await
+                    .unwrap()
+                    .bytes()
+                    .await
+                    .unwrap(),
+            )
+            .unwrap()
+        };
+        let access_status = async |site: &str| {
+            client
+                .get(format!("{control}/health"))
+                .header("Origin", site)
+                .send()
+                .await
+                .unwrap()
+                .status()
+        };
+        let checks = std::panic::AssertUnwindSafe(async {
+            let first = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = first.local_addr().unwrap().port();
+            drop(first);
+            let response = post(
+                "launch",
+                json!({"mode":"external", "publicOrigin":invitation, "port":port}),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::OK);
+            let current = state().await;
+            let local = format!("http://127.0.0.1:{port}");
+            assert_eq!(current["localSite"], local);
+            assert_eq!(current["sites"], json!([]));
+            let response = post("startup-site", json!({"site":local})).await;
+            assert_eq!(response.status(), StatusCode::OK);
+            let current: Value = serde_json::from_slice(&response.bytes().await.unwrap()).unwrap();
+            assert_eq!(current["startupMode"], "external");
+            assert_eq!(current["localSite"], local);
+            for site in [invitation, remote] {
+                assert_eq!(access_status(site).await, StatusCode::FORBIDDEN);
+                assert_eq!(
+                    post("startup-site", json!({"site":site})).await.status(),
+                    StatusCode::CONFLICT
+                );
+            }
+            // Keep a host execution boundary alive while exercising the real
+            // approval handler. An ineffective revoke must not retire it.
+            let (stop, mut stopped) = watch::channel(false);
+            let (commands, _receiver) = mpsc::channel(1);
+            let key = (local.clone(), Uuid::new_v4(), Uuid::new_v4());
+            let permission = {
+                let mut registry = app.registry.lock().await;
+                registry.hosts.insert(
+                    key.clone(),
+                    Host {
+                        credential: "test".into(),
+                        commands,
+                        ready: watch::channel(Some(Ok(()))).1,
+                        stop: stop.clone(),
+                        task: tokio::spawn(async move {
+                            let _ = stopped.changed().await;
+                            Ok(())
+                        }),
+                    },
+                );
+                registry.permission(&local).unwrap().clone()
+            };
+            for allowed in [true, false] {
+                let response = post("site", json!({"site":local, "allowed":allowed})).await;
+                assert_eq!(response.status(), StatusCode::CONFLICT);
+                let current: Value =
+                    serde_json::from_slice(&response.bytes().await.unwrap()).unwrap();
+                assert_eq!(current["localSite"], local);
+                assert_eq!(current["startupMode"], "external");
+                assert!(!*stop.borrow());
+                assert!(!*permission.revoked.borrow());
+            }
+            {
+                let registry = app.registry.lock().await;
+                assert!(registry.sites.approved().unwrap().is_empty());
+                assert!(registry.approvals.is_empty());
+                assert!(registry.hosts.contains_key(&key));
+            }
+            assert_eq!(access_status(&local).await, StatusCode::OK);
+            // External approvals remain independent of the owned site's lifetime.
+            assert_eq!(
+                post("site", json!({"site":remote,"allowed":true}))
+                    .await
+                    .status(),
+                StatusCode::OK
+            );
+            app.launch.lock().await.take().unwrap().close().await;
+            assert!(*permission.revoked.borrow());
+            assert_eq!(access_status(&local).await, StatusCode::FORBIDDEN);
+            let current = state().await;
+            assert!(current.get("localSite").is_none());
+            assert_eq!(access_status(remote).await, StatusCode::OK);
+            assert_eq!(
+                post("site", json!({"site":remote,"allowed":false}))
+                    .await
+                    .status(),
+                StatusCode::OK
+            );
+            assert_eq!(access_status(remote).await, StatusCode::FORBIDDEN);
+        })
+        .catch_unwind()
+        .await;
+        timeout(IO_TIMEOUT, app.shutdown()).await.unwrap();
+        server.abort();
+        let _ = server.await;
+        checks.unwrap_or_else(|panic| std::panic::resume_unwind(panic));
     }
 
     #[tokio::test]

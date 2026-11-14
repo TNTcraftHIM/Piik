@@ -15,6 +15,7 @@ export interface SiteManagementProps {
   startupSite: string;
   ownedStartup?: AppMode;
   ownedSites: readonly string[];
+  localSite?: string;
   busy: boolean;
   accessError?: string;
   onSave(draft: BookmarkDraft): Promise<void>;
@@ -26,7 +27,7 @@ export interface SiteManagementProps {
 }
 
 /** One site identity, with independent bookmark, device-consent and startup effects. */
-export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, ownedStartup, ownedSites,
+export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, ownedStartup, ownedSites, localSite,
   busy: ownerBusy, accessError, onSave, onRemove, onApprove, onRevoke, onStartup, onOpen }: SiteManagementProps) {
   const { t, vis } = useCopy();
   const id = useId();
@@ -36,10 +37,11 @@ export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, o
   const [pending, setPending] = useState<"save" | "remove">();
   const [bookmarkError, setBookmarkError] = useState<CopyKey>();
   const busy = ownerBusy || pending !== undefined;
-  const origins = [...new Set([...bookmarks.map(site => site.origin), ...sites])];
+  const origins = [...new Set([...bookmarks.map(site => site.origin), ...sites, ...(localSite ? [localSite] : [])])];
   const selected = detail?.origin;
   const selectedBookmark = bookmarks.find(site => site.origin === selected);
-  const approved = Boolean(selected && sites.includes(selected));
+  const automatic = Boolean(selected && selected === localSite);
+  const approved = automatic || Boolean(selected && sites.includes(selected));
   const opensOnStart = (origin: string) => startupSite === origin || Boolean(ownedStartup && ownedSites.includes(origin));
   useLayoutEffect(() => {
     if (detail) {
@@ -91,9 +93,9 @@ export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, o
       </form>
       {selected && <section className="lr-site-section">
         <h4><Glyph name="lock" size={18} /><span className={textClass}>{t("client.sites.deviceAccess")}</span></h4>
-        <p className={textClass}>{t("client.sites.deviceHint")}</p>
-        <div className="lr-site-consent"><span className="lr-site-status"><Glyph name={approved ? "check" : "lock"} size={16} /><span className={textClass}>{t(approved ? "client.sites.allowed" : "client.sites.notAllowed")}</span></span>
-          <Btn icon={approved ? "linkOff" : "check"} quiet={approved} tone={approved ? "danger" : undefined} size="compact" title={approved ? "client.sites.revoke" : "client.sites.allow"} cap={approved ? "client.sites.revoke" : "client.sites.allow"} disabled={busy} onClick={() => accessAction(approved ? onRevoke(selected) : onApprove(selected))} /></div>
+        <p className={textClass}>{t(automatic ? "client.sites.automaticHint" : "client.sites.deviceHint")}</p>
+        <div className="lr-site-consent"><span className="lr-site-status"><Glyph name={approved ? "check" : "lock"} size={16} /><span className={textClass}>{t(automatic ? "client.sites.automatic" : approved ? "client.sites.allowed" : "client.sites.notAllowed")}</span></span>
+          {!automatic && <Btn icon={approved ? "linkOff" : "check"} quiet={approved} tone={approved ? "danger" : undefined} size="compact" title={approved ? "client.sites.revoke" : "client.sites.allow"} cap={approved ? "client.sites.revoke" : "client.sites.allow"} disabled={busy} onClick={() => accessAction(approved ? onRevoke(selected) : onApprove(selected))} />}</div>
       </section>}
       {approved && selected && <section className="lr-site-section">
         <h4><Glyph name="play" size={18} /><span className={textClass}>{t("client.sites.startup")}</span></h4>
@@ -105,7 +107,7 @@ export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, o
         const bookmark = bookmarks.find(site => site.origin === origin);
         return <li key={origin} data-current={origin === currentOrigin || undefined}>
           <div className="lr-site-identity"><strong>{bookmark?.name || origin}</strong>{bookmark?.name && <span dir="ltr">{origin}</span>}
-            <div className="lr-site-statuses">{bookmark && <span className="lr-site-status" title={t("client.sites.saved")}><Glyph name="star" size={14} /><span className={textClass}>{t("client.sites.saved")}</span></span>}{sites.includes(origin) && <span className="lr-site-status" title={t("client.sites.allowed")}><Glyph name="lock" size={14} /><span className={textClass}>{t("client.sites.allowed")}</span></span>}{opensOnStart(origin) && <span className="lr-site-status" title={t("client.sites.startup")}><Glyph name="play" size={14} /><span className={textClass}>{t("client.sites.startup")}</span></span>}{origin === currentOrigin && <span className="lr-site-status" title={t("client.sites.current")}><Glyph name="window" size={14} /><span className={textClass}>{t("client.sites.current")}</span></span>}</div>
+            <div className="lr-site-statuses">{bookmark && <span className="lr-site-status" title={t("client.sites.saved")}><Glyph name="star" size={14} /><span className={textClass}>{t("client.sites.saved")}</span></span>}{(origin === localSite || sites.includes(origin)) && <span className="lr-site-status" title={t(origin === localSite ? "client.sites.automatic" : "client.sites.allowed")}><Glyph name="lock" size={14} /><span className={textClass}>{t(origin === localSite ? "client.sites.automatic" : "client.sites.allowed")}</span></span>}{opensOnStart(origin) && <span className="lr-site-status" title={t("client.sites.startup")}><Glyph name="play" size={14} /><span className={textClass}>{t("client.sites.startup")}</span></span>}{origin === currentOrigin && <span className="lr-site-status" title={t("client.sites.current")}><Glyph name="window" size={14} /><span className={textClass}>{t("client.sites.current")}</span></span>}</div>
           </div>
           <div className="lr-site-row-actions"><Btn icon="arrowRight" size="compact" title={{ text: `${t("client.bookmarks.open")} ${bookmark?.name || origin}` }} cap="client.bookmarks.open" disabled={busy} onClick={() => onOpen(origin)} /><span data-site-index={index}><Btn icon="sliders" quiet size="compact" title={{ text: `${t("client.sites.manage")} ${bookmark?.name || origin}` }} cap="client.sites.manage" disabled={busy} onClick={() => edit(origin)} /></span></div>
         </li>;

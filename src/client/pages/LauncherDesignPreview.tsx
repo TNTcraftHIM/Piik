@@ -61,7 +61,7 @@ export function LauncherDesignPreview() {
     >{notice && <output aria-live="polite">{notice}</output>}</LauncherWorkspace></main>
     <details className="ld-preview-tools"><summary>{say("外观原型 · 示例状态", "Design preview · sample states")}</summary><div>{(["empty", "loaded", "ready"] as const).map(state => <Btn key={state} icon={state === "ready" ? "check" : state === "empty" ? "plus" : "star"} quiet size="dense" title={{ text: state }} cap={{ text: state }} onClick={() => { setSites(state === "empty" ? [] : samples); setReady(state === "ready"); setNotice(""); }} />)}</div></details>
     {dialog === "bookmarks" && <ChannelSettingsDialog title={t("client.sites.title")} onClose={() => setDialog(undefined)}>
-      <SiteManagement bookmarks={sites} sites={approved} startupSite={startupSite} ownedSites={[]} busy={false}
+      <SiteManagement bookmarks={sites} sites={approved} startupSite={startupSite} ownedSites={[]} localSite={ready ? "http://127.0.0.1:8787" : undefined} busy={false}
         onApprove={async origin => setApproved(items => [...items, origin])}
         onRevoke={async origin => { setApproved(items => items.filter(item => item !== origin)); if (startupSite === origin) setStartupSite(""); }}
         onStartup={async origin => setStartupSite(origin)}

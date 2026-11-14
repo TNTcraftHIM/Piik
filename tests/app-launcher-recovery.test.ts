@@ -105,7 +105,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, { debug = false, mode, startup =
   // Keep assertions about the rendered facts while the page owns one snapshot.
   for (const [name, field] of Object.entries({ ControlPort: "controlPort", Target: "target",
     LocalCertificate: "localCertificate", Sites: "sites", StartupSite: "startupSite",
-    StartupMode: "startupMode", OwnedSites: "ownedSites", AppDebug: "debug" })) {
+    StartupMode: "startupMode", OwnedSites: "ownedSites", LocalSite: "localSite", AppDebug: "debug" })) {
     Object.defineProperty(state, name, { get: () => {
       const value = (state.ServerState as Record<string, unknown> | undefined)?.[field];
       return name === "StartupMode" ? value || undefined : value;
@@ -618,6 +618,36 @@ it("clears an owned startup from the existing settings operation", async () => {
     expect(page.state.StartupMode).toBeUndefined();
     expect(page.navigate).not.toHaveBeenCalled();
   } finally { page.cleanup(); }
+});
+
+it("replaces automatic local access from mutation snapshots, including its retirement", async () => {
+  const localSite = "http://127.0.0.1:8787";
+  const fetch = vi.fn().mockResolvedValueOnce(response(saved));
+  const page = mount(fetch);
+  try {
+    await settle();
+    fetch.mockResolvedValueOnce(Response.json({ ...saved, localSite, startupMode: "link", ownedSites: [localSite] }));
+    expect(await page.changeSite(localSite, "startup-site")).toBe(true);
+    expect(page.state.LocalSite).toBe(localSite);
+    expect(page.state.Sites).toEqual(saved.sites);
+    fetch.mockResolvedValueOnce(Response.json(saved));
+    expect(await page.changeSite("", "startup-site")).toBe(true);
+    expect(page.state.LocalSite).toBeUndefined();
+  } finally { page.cleanup(); }
+});
+
+it("lists automatic local access independently from persistent approvals and public invitations", () => {
+  const localSite = "http://127.0.0.1:8787";
+  const invitation = "https://public.example";
+  const html = renderToStaticMarkup(createElement(SiteManagement, {
+    bookmarks: [{ id: "public", name: "Public", origin: invitation }], sites: saved.sites,
+    startupSite: "", ownedSites: [localSite, invitation], localSite, busy: false,
+    async onSave() {}, async onRemove() {}, async onApprove() {}, async onRevoke() {}, async onStartup() {}, onOpen() {},
+  }));
+  expect(html).toContain(localSite);
+  expect(html).toMatch(/Automatic device access|自动获得设备授权/);
+  const publicRow = html.slice(html.indexOf('<strong>Public</strong>'), html.indexOf('</li>'));
+  expect(publicRow).not.toMatch(/Automatic device access|自动获得设备授权|Device access allowed|已获设备授权/);
 });
 
 

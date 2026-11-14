@@ -333,6 +333,8 @@ export const zh = {
   "client.sites.deviceAccess": "设备授权",
   "client.sites.deviceHint": "允许这个确切的站点地址使用这台设备的 Piik App 能力。收藏或打开站点不会授予设备权限。",
   "client.sites.allowed": "已获设备授权",
+  "client.sites.automatic": "自动获得设备授权",
+  "client.sites.automaticHint": "这个站点由当前 App 创建，运行期间自动获得设备授权。",
   "client.sites.notAllowed": "未获设备授权",
   "client.sites.allow": "允许设备访问",
   "client.sites.revoke": "撤销设备授权",

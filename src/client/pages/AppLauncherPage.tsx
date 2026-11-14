@@ -26,6 +26,7 @@ const launcherStateSchema = z.object({
   sites: z.array(z.string()),
   startupSite: z.string(),
   ownedSites: z.array(z.string()).default([]),
+  localSite: z.string().url().optional(),
   startupMode: z.enum(["local", "link", "external", ""]).nullish(),
   publicOrigin: z.string().url().optional(),
   target: z.string().optional(),
@@ -57,7 +58,7 @@ export function AppLauncherPage() {
   const [launching, setLaunching] = useState(false);
   const [mode, setMode] = useState<AppMode>(readPreferredAppMode);
   const [serverState, setServerState] = useState<z.infer<typeof launcherStateSchema>>();
-  const { sites = [], startupSite = "", ownedSites = [], target, localCertificate,
+  const { sites = [], startupSite = "", ownedSites = [], localSite, target, localCertificate,
     controlPort, windowNavigation = false, debug: appDebug } = serverState ?? {};
   const startupMode = serverState?.startupMode === "external" ? "link" : serverState?.startupMode || undefined;
   const [openOnApproval, setOpenOnApproval] = useState(false);
@@ -97,7 +98,7 @@ export function AppLauncherPage() {
       return ["http:", "https:"].includes(url.protocol) && url.origin === requestedSite;
     } catch { return false; }
   })();
-  const approvalCurrent = validSite && sites.includes(requestedSite);
+  const approvalCurrent = validSite && (localSite === requestedSite || sites.includes(requestedSite));
   const openSiteOnStart = Boolean(approvalCurrent && (startupSite === requestedSite || startupMode && ownedSites.includes(requestedSite)));
 
   useEffect(() => {
@@ -274,9 +275,9 @@ export function AppLauncherPage() {
         body: JSON.stringify({ site: nextSite, ...(setting === "site" ? { allowed } : {}) }),
         signal: controller.signal,
       });
-      const result = launcherStateSchema.pick({ sites: true, startupSite: true, startupMode: true, ownedSites: true }).safeParse(await response.json().catch(() => null));
+      const result = launcherStateSchema.pick({ sites: true, startupSite: true, startupMode: true, ownedSites: true, localSite: true }).safeParse(await response.json().catch(() => null));
       if (result.success) {
-        setServerState(previous => previous && { ...previous, ...result.data, startupMode: result.data.startupMode });
+        setServerState(previous => previous && { ...previous, ...result.data, startupMode: result.data.startupMode, localSite: result.data.localSite });
       }
       if (response.status === 409 && result.success) {
         setSiteError(t("client.connect.changed"));
@@ -301,7 +302,7 @@ export function AppLauncherPage() {
     if (!await changeSite(site, setting, false, allowed)) throw new Error("Could not save App settings");
   }
   const siteManagement = {
-    sites, startupSite, ownedStartup: startupMode, ownedSites, busy: siteBusy, accessError: siteError,
+    sites, startupSite, ownedStartup: startupMode, ownedSites, localSite, busy: siteBusy, accessError: siteError,
     onApprove: (site: string) => manageSite(site, "site"),
     onRevoke: (site: string) => manageSite(site, "site", false),
     onStartup: (site: string) => manageSite(site, "startup-site"),

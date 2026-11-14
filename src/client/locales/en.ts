@@ -333,6 +333,8 @@ export const en: Record<CopyKey, string> = {
   "client.sites.deviceAccess": "Device access",
   "client.sites.deviceHint": "Allow this exact site address to use this device’s Piik App capabilities. Bookmarking or opening a site does not grant access.",
   "client.sites.allowed": "Device access allowed",
+  "client.sites.automatic": "Automatic device access",
+  "client.sites.automaticHint": "This App’s own site has device access automatically while it is running.",
   "client.sites.notAllowed": "No device access",
   "client.sites.allow": "Allow device access",
   "client.sites.revoke": "Revoke device access",
