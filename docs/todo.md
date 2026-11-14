@@ -122,6 +122,10 @@ the feedback period; they do not delay that delivery.
   network cost. Include compatible H.264 forwarding cost and sustained runtime
   adaptation; keep congestion control with the RTC owner. AV1/HEVC product
   integration remains a separate decision.
+- [ ] **Native IPv6-only connectivity.** Validate a NAT64/DNS64-only endpoint
+  against an IPv4-only peer in the isolated lab. Check mapped-candidate address
+  families and actual socket delivery, then assess system CLAT and upstream
+  support through the existing transport owner.
 - [ ] **Shared-link viewing assessment.** Prototype synchronized video within
   the Browser source choice, alongside screen capture. Define its temporary
   room activity, playback control and late-join snapshot. Cover direct media,

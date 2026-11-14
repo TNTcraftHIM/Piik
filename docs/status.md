@@ -14,7 +14,7 @@ sharing, selective watching, room voice and App control. Normal development and
 distribution use these Rust/Web paths; Go tooling only builds the pinned
 Cloudflared helper. Work stays on `feat/channel-prototype`, separately from 2.x.
 Matched Windows App and Linux x64 Server candidates have been delivered for
-internal testing with the current protocol and shared frontend. Windows includes
+internal testing; their receipts identify the protocol and shared frontend. Windows includes
 the integrated system-WebView window and custom device permission prompts; both
 packages passed their scoped runtime acceptance. Matching-package acceptance on
 Android remains open; the preceding Android package does not match this protocol.
@@ -93,6 +93,8 @@ the shared interface into a system WebView window, retaining an explicit Browser
 entry. The [runtime assessment](./research/cross-platform-client-runtime.md#30-system-webview-client-evaluation)
 separates earlier proof evidence from the integrated package's acceptance;
 other desktop platforms retain their current entry.
+Windows software H264 selection has passed the normal sharing and viewing flow;
+a matched internal package containing this option remains to be delivered.
 
 ## Deployment
 
