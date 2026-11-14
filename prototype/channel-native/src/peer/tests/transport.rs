@@ -1,4 +1,172 @@
 use super::*;
+
+async fn completed_source_check(assigned: bool) -> JoinHandle<bool> {
+    let task = tokio::spawn(async move { assigned });
+    while !task.is_finished() {
+        tokio::task::yield_now().await;
+    }
+    task
+}
+
+#[tokio::test]
+async fn source_checks_preserve_current_paths_and_shared_socket_siblings() -> Result<()> {
+    use crate::peer::tests::support::{endpoint, exchange, open};
+    let fixed = ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
+    let server = Runtime::new(Some(fixed.clone()));
+    let remote = Runtime::new(None);
+    let (first, mut first_events) = endpoint(&server, Uuid::new_v4(), None).await?;
+    let (first_peer, mut first_peer_events) = endpoint(
+        &remote,
+        Uuid::new_v4(),
+        Some(std::net::UdpSocket::bind("127.0.0.1:0")?),
+    )
+    .await?;
+    let (second, _) = endpoint(&server, Uuid::new_v4(), None).await?;
+    let (second_peer, mut second_peer_events) = endpoint(
+        &remote,
+        Uuid::new_v4(),
+        Some(std::net::UdpSocket::bind("127.0.0.1:0")?),
+    )
+    .await?;
+    let (first_send, first_receive) = open(&first, &first_peer, &mut first_peer_events)
+        .await
+        .context("first shared listener peer")?;
+    let (second_send, second_receive) = open(&second, &second_peer, &mut second_peer_events)
+        .await
+        .context("second shared listener peer")?;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !first
+            .call(|engine| Ok(engine.selected_source().is_some()))
+            .await?
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .await
+    .context("selected source observation")??;
+    let present = completed_source_check(true).await;
+    first
+        .call(move |engine| {
+            let source = engine.selected_source().unwrap();
+            let error = std::io::Error::from(std::io::ErrorKind::NetworkUnreachable);
+            let mut probe = source;
+            probe.set_port(source.port().wrapping_add(1));
+            engine.send_failed(probe, &error);
+            ensure!(
+                engine.source_error.is_none(),
+                "unrelated candidate probe became selected-path failure"
+            );
+            engine.send_failed(source, &error);
+            engine.source_check = Some((Some(source), present));
+            engine.check_source();
+            ensure!(
+                engine.source_check.is_none()
+                    && engine.source_error == Some(source)
+                    && engine.rtc.is_alive(),
+                "assigned source was failed or its present result cached"
+            );
+            Ok(())
+        })
+        .await?;
+    exchange(&first_send, &first_receive, "assigned-source-survives").await?;
+    let stale_absent = completed_source_check(false).await;
+    first
+        .call(move |engine| {
+            let source = engine.selected_source().unwrap();
+            ensure!(
+                engine.source_error.is_none(),
+                "successful traffic retained the failure fact"
+            );
+            engine.source_check = Some((Some(source), stale_absent));
+            engine.sent_from(source);
+            engine.send_failed(
+                source,
+                &std::io::Error::from(std::io::ErrorKind::NetworkUnreachable),
+            );
+            engine.check_source();
+            ensure!(
+                engine.rtc.is_alive() && engine.source_check.is_none(),
+                "completed old absent result survived success followed by a new error"
+            );
+            Ok(())
+        })
+        .await?;
+    let absent = completed_source_check(false).await;
+    first
+        .call(move |engine| {
+            let source = engine.selected_source().unwrap();
+            engine.send_failed(
+                source,
+                &std::io::Error::from(std::io::ErrorKind::NetworkUnreachable),
+            );
+            engine.source_check = Some((Some(source), absent));
+            engine.check_source();
+            ensure!(
+                !engine.rtc.is_alive()
+                    && engine.state.load(Ordering::Acquire) == PeerState::Failed as u8,
+                "removed selected source did not retire the SDK through pair failure"
+            );
+            Ok(())
+        })
+        .await?;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(event) = first_events.recv().await {
+            if matches!(event, Event::State(_, PeerState::Failed)) {
+                return Ok::<_, anyhow::Error>(());
+            }
+        }
+        anyhow::bail!("source loss did not enter existing pair failure")
+    })
+    .await??;
+    first.close().await?;
+    exchange(&second_send, &second_receive, "shared-socket-sibling").await?;
+    exchange(&second_receive, &second_send, "shared-socket-return").await?;
+    first_peer.close().await?;
+    second.close().await?;
+    second_peer.close().await?;
+    server.close().await;
+    remote.close().await;
+    ensure!(
+        fixed.sockets[0].local_addr().is_ok(),
+        "pair retirement closed service socket"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn source_check_task_retires_with_its_transport() -> Result<()> {
+    struct Dropped(Arc<AtomicBool>);
+    impl Drop for Dropped {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Release);
+        }
+    }
+    let runtime = Runtime::new(Some(ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?));
+    let (transport, _) =
+        crate::peer::tests::support::endpoint(&runtime, Uuid::new_v4(), None).await?;
+    let dropped = Arc::new(AtomicBool::new(false));
+    let guard = Dropped(dropped.clone());
+    transport
+        .call(move |engine| {
+            engine.source_check = Some((
+                None,
+                tokio::spawn(async move {
+                    let _guard = guard;
+                    std::future::pending::<bool>().await
+                }),
+            ));
+            Ok(())
+        })
+        .await?;
+    transport.close().await?;
+    ensure!(
+        dropped.load(Ordering::Acquire),
+        "retirement did not cancel and join verification"
+    );
+    runtime.close().await;
+    Ok(())
+}
 #[path = "admission.rs"]
 mod admission;
 #[path = "bulk.rs"]

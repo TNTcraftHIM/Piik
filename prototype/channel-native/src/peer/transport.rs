@@ -4,6 +4,7 @@ use super::{server_udp::ServerUdp, Event};
 use crate::media::{MediaKind, RtpCodec, RtpCodecParameters, SourceClockReport};
 use crate::peer::{IceServer, PeerState};
 use anyhow::{anyhow, ensure, Context, Result};
+use futures_util::FutureExt;
 use rtc_rtp as rtp;
 use std::{
     collections::{HashMap, HashSet},
@@ -352,6 +353,8 @@ pub(super) struct TransportMetrics {
     pub streams: Vec<TransportStreamMetric>,
 }
 pub(crate) struct Engine {
+    source_error: Option<SocketAddr>,
+    source_check: Option<(Option<SocketAddr>, JoinHandle<bool>)>,
     stats_origin: Instant,
     peer_stats: Option<PeerStats>,
     ingress_stats: HashMap<(Mid, Option<Rid>), MediaIngressStats>,
@@ -697,6 +700,8 @@ impl Runtime {
         let urls = discovery::urls(ice);
         let (turn_ready, turn_setup) = mpsc::channel(super::MAX_ICE_CANDIDATES);
         let engine = Engine {
+            source_error: None,
+            source_check: None,
             stats_origin,
             peer_stats: None,
             ingress_stats: HashMap::new(),
@@ -1404,6 +1409,10 @@ fn codec(params: &PayloadParams) -> RtpCodecParameters {
 
 impl Engine {
     async fn close(&mut self) {
+        if let Some((_, task)) = self.source_check.take() {
+            task.abort();
+            let _ = task.await;
+        }
         if let Some(task) = self.discovery.take() {
             task.abort();
             let _ = task.await;
@@ -1460,6 +1469,92 @@ impl Engine {
         }
         true
     }
+    fn selected_source(&self) -> Option<SocketAddr> {
+        self.peer_stats
+            .as_ref()?
+            .selected_candidate_pair
+            .as_ref()
+            .map(|pair| pair.local.addr)
+    }
+
+    fn send_failed(&mut self, source: SocketAddr, error: &std::io::Error) {
+        if error.kind() == std::io::ErrorKind::WouldBlock {
+            return;
+        }
+        if self.selected_source() == Some(source) {
+            if self.source_error.replace(source) == Some(source) {
+                return;
+            }
+        }
+        eprintln!("Native str0m UDP send: {error}");
+    }
+
+    fn check_source(&mut self) {
+        if let Some((source, result)) = self
+            .source_check
+            .as_mut()
+            .and_then(|(source, task)| task.now_or_never().map(|result| (*source, result)))
+        {
+            self.source_check.take();
+            if let (Some(source), Ok(false)) = (source, result) {
+                if self.source_error == Some(source)
+                    && self.selected_source() == Some(source)
+                    && self.state.load(Ordering::Acquire) == PeerState::Connected as u8
+                {
+                    self.fail();
+                }
+            }
+            return;
+        }
+        let Some(source) = self
+            .source_error
+            .filter(|source| Some(*source) == self.selected_source())
+        else {
+            return;
+        };
+        if self.source_check.is_some()
+            || self.state.load(Ordering::Acquire) != PeerState::Connected as u8
+        {
+            return;
+        }
+        self.source_check = Some((
+            Some(source),
+            tokio::spawn(async move {
+                let interfaces = netwatch::interfaces::State::new().await;
+                let assigned = interfaces
+                    .interfaces
+                    .values()
+                    .flat_map(|interface| interface.addrs())
+                    .any(|address| address.addr() == source.ip());
+                assigned
+            }),
+        ));
+    }
+
+    fn sent_from(&mut self, source: SocketAddr) {
+        if self.source_error == Some(source) {
+            self.source_error = None;
+        }
+        if let Some((checked_source, task)) = &mut self.source_check {
+            if *checked_source == Some(source) {
+                // Abort alone cannot revoke a result already completed but not yet joined.
+                *checked_source = None;
+                task.abort();
+            }
+        }
+    }
+
+    fn fail(&mut self) {
+        if matches!(self.state.load(Ordering::Acquire), state if state == PeerState::Failed as u8 || state == PeerState::Closed as u8)
+        {
+            return;
+        }
+        self.source_error = None;
+        self.rtc.disconnect();
+        self.state.store(PeerState::Failed as u8, Ordering::Release);
+        self.emit(Event::State(self.handle.pair, PeerState::Failed));
+    }
+
     fn close_turn(&mut self) {
         for endpoint in self.turn.values_mut() {
             endpoint.close();
@@ -1615,17 +1710,16 @@ impl Engine {
                                 src_ip: Some(packet.source.ip()),
                             },
                         ) {
-                            if error.kind() != std::io::ErrorKind::WouldBlock {
-                                eprintln!("Native str0m UDP send: {error}");
-                            }
+                            self.send_failed(packet.source, &error);
+                        } else {
+                            self.sent_from(packet.source);
                         }
                     }
                 }
                 Ok(Output::Event(event)) => self.event(event),
                 Err(error) => {
                     eprintln!("Native str0m output: {error}");
-                    self.state.store(PeerState::Failed as u8, Ordering::Release);
-                    self.emit(Event::State(self.handle.pair, PeerState::Failed));
+                    self.fail();
                     self.deadline = Instant::now() + Duration::from_secs(3600);
                     break;
                 }
@@ -1638,8 +1732,7 @@ impl Engine {
                 if state.is_disconnected() {
                     // str0m has exhausted its current candidate pairs and has no
                     // later Failed state. Reuse the owned pair replacement.
-                    self.state.store(PeerState::Failed as u8, Ordering::Release);
-                    self.emit(Event::State(self.handle.pair, PeerState::Failed));
+                    self.fail();
                 } else if state.is_connected() && self.rtc.is_connected() {
                     self.state
                         .store(PeerState::Connected as u8, Ordering::Release);
@@ -1722,6 +1815,9 @@ impl Engine {
             }
             RtcEvent::PeerStats(stats) => {
                 self.peer_stats = Some(stats.clone());
+                // Recheck continuing selected-path errors on the existing SDK observation.
+                // An address still assigned during a route outage can disappear later.
+                self.check_source();
                 if stats.egress_loss_fraction.is_some() {
                     self.reported = true;
                 }

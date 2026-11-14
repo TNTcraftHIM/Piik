@@ -529,6 +529,10 @@ Ordinary Native peers gather IPv4 and IPv6 through the same RTC transport owner;
 an unavailable address family does not disable the other. Wildcard listeners
 exclude loopback interfaces from ICE/STUN discovery. Explicit loopback listeners
 remain available for a configured local forwarding backend.
+Selected-path send errors trigger an interface check on the existing transport
+observation cycle. A confirmed removed source address retires that physical pair
+through the normal failure path; successful sends cancel the obsolete check.
+Candidate probes and other pairs retain their own lifetimes.
 
 The coordinated UDP candidate keeps preparation inside one authorized physical
 pair attempt. The domain's existing transport book issues its replacement UUID;
