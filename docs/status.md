@@ -93,8 +93,8 @@ the shared interface into a system WebView window, retaining an explicit Browser
 entry. The [runtime assessment](./research/cross-platform-client-runtime.md#30-system-webview-client-evaluation)
 separates earlier proof evidence from the integrated package's acceptance;
 other desktop platforms retain their current entry.
-Windows software H264 selection has passed the normal sharing and viewing flow;
-a matched internal package containing this option remains to be delivered.
+Windows software H264 selection is included in matched internal candidates and
+has passed the normal sharing, viewing, bitrate-change and shutdown flow.
 
 ## Deployment
 

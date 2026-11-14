@@ -115,6 +115,8 @@ the feedback period; they do not delay that delivery.
   Native root. Define evidence, authorization and resource cost before extending
   the current admission/switch owners; 2.x route-policy labels do not directly
   describe these 3.0 paths.
+  Compare an already-connected alternative under an upstream bottleneck and a
+  source-limited control through the existing switch operation.
 - [ ] **Codec capability and efficiency comparison.** Measure actual platform
   encoder/decoder and Browser capabilities, then compare one available codec
   with H.264 using synthetic text and motion. Compare hardware and software
