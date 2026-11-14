@@ -116,7 +116,9 @@ the feedback period; they do not delay that delivery.
   the current admission/switch owners; 2.x route-policy labels do not directly
   describe these 3.0 paths.
   Compare an already-connected alternative under an upstream bottleneck and a
-  source-limited control through the existing switch operation.
+  source-limited control through the existing switch operation. Use an encoder-
+  capable relay or an observed supplied layer that fits the restricted path
+  when evaluating improvement of a picture that remains playable.
 - [ ] **Codec capability and efficiency comparison.** Measure actual platform
   encoder/decoder and Browser capabilities, then compare one available codec
   with H.264 using synthetic text and motion. Compare hardware and software
@@ -124,10 +126,11 @@ the feedback period; they do not delay that delivery.
   network cost. Include compatible H.264 forwarding cost and sustained runtime
   adaptation; keep congestion control with the RTC owner. AV1/HEVC product
   integration remains a separate decision.
-- [ ] **Native IPv6-only connectivity.** Validate a NAT64/DNS64-only endpoint
-  against an IPv4-only peer in the isolated lab. Check mapped-candidate address
-  families and actual socket delivery, then assess system CLAT and upstream
-  support through the existing transport owner.
+- [ ] **Native IPv6-only connectivity.** Complete the prefix lifetime, derived
+  candidate budget and RFC 6052 address restrictions for the
+  [NAT64 adapter candidate](./research/nat-traversal.md#native-nat64-assessment).
+  Integrate through the existing discovery and physical-pair owners, then verify
+  ordinary candidates, failed discovery and pair retirement alongside NAT64.
 - [ ] **Shared-link viewing assessment.** Prototype synchronized video within
   the Browser source choice, alongside screen capture. Define its temporary
   room activity, playback control and late-join snapshot. Cover direct media,

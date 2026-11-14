@@ -401,8 +401,9 @@ reachability. [ICE's peer-reflexive processing](https://www.rfc-editor.org/rfc/r
 can discover an endpoint different from the advertised candidates; it must
 remain the owner of that discovery and nomination. Extending the preflight to
 accept arbitrary authenticated reply ports would also require mutual winner
-selection, duplicating ICE. The current extension keeps one expected peer tuple
-and leaves ordinary ICE usable when the finite preparation fails. It adds no
+selection, duplicating ICE. The current extension checks bounded predicted
+endpoints and fixes one authenticated peer tuple. Ordinary ICE remains usable
+when finite preparation fails. It adds no
 DERP service, media wrapper or new dependency.
 
 [Tailscale magicsock](https://github.com/tailscale/tailscale/blob/main/wgengine/magicsock/magicsock.go)
@@ -431,7 +432,7 @@ Reviewed 2026-11-01. Rust gives the Native adapter direct ownership of the UDP
 socket and its retirement. NAT mapping/filtering and Browser socket access
 remain network/platform properties. The
 [3.0 transport owner](./channel-network-design.md#reachability-and-repair)
-keeps released str0m for ICE/DTLS/SCTP and transfers the actual prepared socket
+keeps str0m for ICE/DTLS/SCTP and transfers the actual prepared socket
 into that transport; it does not wrap WebRTC in a second VPN or QUIC network.
 
 The current Rust ecosystem offers useful methods with different integration costs:
@@ -481,6 +482,21 @@ Native clients and the App/domain HTTP and HTTPS listeners also disable Nagle
 through their existing public socket APIs. TCP-header controls isolated a
 Ping/ACK delay; the matched change removed approximately 0.94 seconds of extra
 probe-start skew while preserving the injected network delay.
+
+### Native NAT64 Assessment
+
+The current adapter rejects a server-reflexive mapping whose address family
+differs from its local socket. An isolated candidate on the current Native/Core
+uses the SDK's public remote-candidate API to add IPv6 aliases for IPv4 peers.
+System DNS resolution of `ipv4only.arpa` identifies the translation prefix using
+[RFC 7050](https://www.rfc-editor.org/rfc/rfc7050.html#section-3); address synthesis
+follows the six layouts in [RFC 6052](https://www.rfc-editor.org/rfc/rfc6052.html#section-2.2).
+With a network-specific `/64` prefix and delayed discovery, real DNS64/NAT64,
+ICE nomination, DataChannels and decoded picture/source audio all completed.
+This is an isolated candidate, with production prefix lifetime, total candidate
+budget and the well-known prefix's non-global-address restriction still to finish.
+The experiment establishes one IPv6-only-to-IPv4 path through public SDK APIs;
+it does not establish physical-network coverage or change the shipped adapter.
 
 ### External Forwarding And Participant Relays
 
