@@ -43,7 +43,7 @@
 .c3-message-content-body > .c3-message-reactions { display: inline; position: static; margin: 0; }
 .c3-message-content-body .c3-content-actions { margin-inline-start: 6px; vertical-align: middle; visibility: hidden; }
 .c3-message:is(:hover, :focus-within, :has([aria-expanded="true"])) .c3-content-actions { visibility: visible; }
-.c3-message .c3-content-actions .lr-btn { --button-size: var(--message-action-size); min-width: var(--message-action-size); height: var(--message-action-size); padding: 2px; }
+.c3-message .c3-content-actions .lr-btn { --button-size: var(--message-action-size); --button-icon-size: 16px; min-width: var(--message-action-size); height: var(--message-action-size); padding: 0 2px; line-height: 1; }
 .c3-message-content-body .c3-message-reaction-counts:not(:empty) { display: inline-flex; flex-wrap: wrap; gap: 5px; margin-inline-start: 6px; vertical-align: middle; }
 .c3-mention-author { font-size: 17px; }
 @media (pointer: coarse) {
