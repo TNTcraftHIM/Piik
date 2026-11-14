@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, type KeyboardEvent } from "react";
-import { locales, type Lang } from "../../locales";
+import { locales, primaryLanguages, extraLanguages } from "../../locales";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { useAnchoredPopover } from "./use-anchored-popover";
@@ -7,12 +7,13 @@ import { useAnchoredPopover } from "./use-anchored-popover";
 // The registry owns languages; the native popover owns visibility and dismissal.
 // This control adds Piik's presentation, viewport placement and menu navigation.
 export function LanguageControl() {
-  const { lang, t, setLang } = useCopy();
+  const { lang, pinnedLanguage, t, setLang } = useCopy();
   const menuId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLSpanElement>(null);
-  const extraLanguages = (Object.keys(locales) as Lang[]).filter((key): boolean => key !== "zh" && key !== "en");
-  const selectedExtra = extraLanguages.includes(lang) ? locales[lang] : null;
+  const pinned = pinnedLanguage ? locales[pinnedLanguage] : null;
+  const selected = lang === pinnedLanguage;
+  const opensMenu = selected || !pinned;
   useAnchoredPopover(triggerRef, menuRef, { maxHeight: 360 });
 
   useEffect(() => {
@@ -58,7 +59,7 @@ export function LanguageControl() {
 
   return <>
     <span className="lr-lang" role="group" aria-label={t("mode.language")}>
-      {(["zh", "en"] as const).map((key) => (
+      {primaryLanguages.map((key) => (
         <button
           key={key} type="button" lang={locales[key].tag}
           className={lang === key ? "is-selected" : ""}
@@ -66,29 +67,33 @@ export function LanguageControl() {
           onClick={() => setLang(key)}
         >{locales[key].short}</button>
       ))}
-      <button
-        ref={triggerRef} type="button" popoverTarget={menuId} aria-haspopup="menu"
-        aria-label={selectedExtra ? `${t("mode.more")}: ${selectedExtra.name}` : t("mode.more")}
-        className={`lr-lang-more${selectedExtra ? " is-selected" : ""}`}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown") {
-            event.preventDefault();
-            event.currentTarget.click();
-          }
-        }}
-      >
-        <span aria-hidden="true" lang={selectedExtra?.tag}>
-          {selectedExtra ? selectedExtra.short : <Glyph name="globe" size={14} />}
-        </span>
-        <Glyph name="chevron" size={10} />
-      </button>
+      <span className="lr-lang-extra">
+        <button type="button" lang={pinned?.tag} className={selected ? "is-selected" : undefined}
+          aria-label={pinned?.name ?? t("mode.more")} aria-pressed={pinned ? selected : undefined}
+          aria-haspopup={opensMenu ? "menu" : undefined} popoverTarget={opensMenu ? menuId : undefined}
+          onClick={event => {
+            if (pinnedLanguage && !selected) { event.preventDefault(); setLang(pinnedLanguage); }
+          }}
+          onKeyDown={event => {
+            if (event.key === "ArrowDown") { event.preventDefault(); triggerRef.current?.click(); }
+          }}>
+          {pinned ? pinned.short : <Glyph name="globe" size={14} />}
+        </button>
+        <button ref={triggerRef} type="button" className="lr-lang-more" popoverTarget={menuId}
+          aria-haspopup="menu" aria-label={t("mode.more")}
+          onKeyDown={event => {
+            if (event.key === "ArrowDown") { event.preventDefault(); event.currentTarget.click(); }
+          }}>
+          <Glyph name="chevron" size={10} />
+        </button>
+      </span>
     </span>
     <span
       ref={menuRef} id={menuId} popover="auto" role="menu"
       aria-label={t("mode.more")} className="lr-language-menu" onKeyDown={navigate}
       onBlur={(event) => {
-        // Returning to the trigger lets its native action close the menu.
-        if (event.relatedTarget !== triggerRef.current &&
+        // Either part of the language shortcut can toggle the native menu.
+        if (!triggerRef.current?.parentElement?.contains(event.relatedTarget as Node | null) &&
             !event.currentTarget.contains(event.relatedTarget as Node | null)) {
           event.currentTarget.hidePopover();
         }

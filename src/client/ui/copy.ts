@@ -4,6 +4,7 @@ import {
   locales,
   isLang,
   resolveLang,
+  extraLanguages,
   type CopyKey,
   type Lang,
   type TitleFrameKey,
@@ -35,6 +36,7 @@ const state: CopyPrefs = {
   lang: resolveLang(typeof navigator === "undefined" ? undefined : navigator.language),
   ...stored,
 };
+let pinnedLanguage: Lang | null = extraLanguages.includes(state.lang) ? state.lang : null;
 
 function syncDocumentLanguage(): void {
   if (typeof document !== "undefined") {
@@ -49,7 +51,10 @@ const listeners = new Set<() => void>();
 // Applies values without persisting (storage-event sync path); commit() is
 // the persisting variant for local user actions.
 function apply(next: Partial<CopyPrefs>): void {
-  if (next.lang) state.lang = next.lang;
+  if (next.lang) {
+    state.lang = next.lang;
+    if (extraLanguages.includes(next.lang)) pinnedLanguage = next.lang;
+  }
   syncDocumentLanguage();
   listeners.forEach((listener) => listener());
 }
@@ -134,6 +139,7 @@ export function joinItems(lang: Lang, parts: string[]): string {
 
 export interface Copy {
   lang: Lang;
+  pinnedLanguage: Lang | null;
   t: (key: CopyKey, vars?: Record<string, string>) => string;
   titleFrames: (key: TitleFrameKey) => TitleContent;
   setLang: (lang: Lang) => void;
@@ -151,6 +157,7 @@ export function useCopy(): Copy {
   );
   return {
     lang,
+    pinnedLanguage,
     t: (key, vars) => t(lang, key, vars),
     titleFrames: (key) => getTitleFrames(lang, key),
     setLang: (next) => commit({ lang: next }),

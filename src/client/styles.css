@@ -170,7 +170,6 @@ ul { margin: 0; padding: 0; list-style: none; }
 @keyframes lr-blink { 50% { opacity: .3; } }
 
 /* Extra locales share one menu after the familiar shortcuts. */
-.lr-lang-more > span { display: inline-flex; align-items: center; justify-content: center; pointer-events: none; }
 .lr-lang-more .lr-glyph:last-child { transition: transform var(--motion-control) var(--spring); }
 .lr-header-controls:has(.lr-language-menu:is(:popover-open, .\:popover-open)) .lr-lang-more .lr-glyph:last-child { transform: rotate(180deg); }
 .lr-language-menu {

@@ -15,6 +15,9 @@ export const locales = {
   ko: { name: "한국어", short: "한", tag: "ko", copy: ko, titleFrames: koTitleFrames, playful: koPlayful },
 };
 export type Lang = keyof typeof locales;
+export const primaryLanguages = ["zh", "en"] as const;
+export const extraLanguages = (Object.keys(locales) as Lang[])
+  .filter(key => !primaryLanguages.some(primary => primary === key));
 
 export function isLang(value: unknown): value is Lang {
   return typeof value === "string" && Object.hasOwn(locales, value);
