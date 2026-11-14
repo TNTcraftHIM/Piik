@@ -1533,6 +1533,10 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-client-approved-site + .lr-client-approved-site { border-top: 1px solid var(--line); padding-top: 8px; }
 .lr-client-site-actions { display: flex; flex: none; align-items: center; gap: 8px; margin-inline-start: auto; }
 .lr-client-launch-section { justify-self: start; margin: 5px 0 -8px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.lr-client-port-options { width: 100%; }
+.lr-client-port-options > .lr-client-port { padding-top: 12px; }
+.lr-client-port > label { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
+.lr-client-port .lr-quality-number input { width: 6ch; }
 .lr-client-approval {
   display: grid; width: min(480px, 100%); min-width: 0; gap: 20px;
   padding: clamp(18px, 5vw, 32px); border: 1px solid var(--line);
@@ -1642,8 +1646,11 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-client-mode strong { font-size: 14px; }
 .lr-client-mode small { font-size: 11px; opacity: .7; }
 .lr-client-room-settings { display: grid; width: min(460px, 100%); grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); align-items: start; gap: 12px; }
-.lr-client-room-settings .lr-client-lan { padding: 8px 0 0; }
+.lr-client-room-settings .lr-client-lan { padding: 0; }
 .lr-client-room-settings .lr-client-lan select { min-height: 48px; }
+.lr-client-lan-label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.lr-client-lan .lr-client-lan-value { display: flex; flex-wrap: wrap; gap: 8px 12px; color: var(--ink); font: 13px/1.6 var(--mono); overflow-wrap: anywhere; }
+.lr-client-lan-value > span { color: var(--muted); font: 12px/1.6 var(--font); }
 .lr-client-access-options { width: 100%; min-width: 0; }
 .lr-client-access-options > summary {
   display: flex; align-items: center; justify-content: center; gap: 8px;

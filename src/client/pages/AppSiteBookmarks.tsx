@@ -83,7 +83,7 @@ export function AppSiteBookmarks({ windowNavigation, closeOnOpen = false, render
           aria-label={t("client.bookmarks.invitationAddress")} placeholder="https://friends.example" value={address} onChange={event => setAddress(event.target.value)} /></span></label>
       <Btn icon="arrowRight" type="submit" size={render ? undefined : "compact"} tone={render ? "primary" : undefined} title="client.connect.openSite" cap="client.bookmarks.open" />
     </form>
-    {render && <p className="lr-launcher-invitation-hint">{t("client.launcher.invitationHint")}</p>}
+    {render && <p className={vis ? "visually-hidden" : "lr-launcher-invitation-hint"}>{t("client.launcher.invitationHint")}</p>}
     {!pending && openError && <p role="alert">{openError}</p>}
   </>;
   return <>

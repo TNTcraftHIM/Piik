@@ -3,6 +3,7 @@ import { BrandLockup } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
 import { WelcomeLine } from "./WelcomeLine";
 import { SiteAddressEntry } from "./SiteAddressEntry";
+import { NumberControl } from "./NumberControl";
 import { Btn, Pill } from "./primitives";
 import { HintComic, type HintKind } from "./hints";
 import { Glyph, type GlyphName } from "../../ui/icons";
@@ -139,6 +140,7 @@ export function DeviceSiteApprovals({
 export interface SiteStartControlsProps {
   mode: AppMode;
   onModeChange: (mode: AppMode) => void;
+  port?: { value: number; onChange(value: number): void };
   target?: string;
   localCertificate?: LocalCertificate;
   onOpen?: (event: MouseEvent<HTMLAnchorElement>) => void;
@@ -153,12 +155,13 @@ export interface SiteStartControlsProps {
 
 // The caller owns submission; controls work in the launcher and its startup dialog.
 export function SiteStartControls({
-  mode, onModeChange, target, localCertificate, onOpen,
+  mode, onModeChange, port, target, localCertificate, onOpen,
   entryURL = target => target, lan, roomError,
 }: SiteStartControlsProps) {
   const { vis, t } = useCopy();
   const chooseLAN = mode === "local" && lan && (lan.addresses.length !== 1 || !lan.selected);
   const accessHintId = useId();
+  const AddressLabel = chooseLAN ? "label" : "div";
   return <>
       {roomError}
       {target ? <><a className="lr-btn is-primary" href={entryURL(target)} onClick={onOpen} aria-label={t("client.launch.go")}>
@@ -204,7 +207,7 @@ export function SiteStartControls({
             <Tooltip
               key={choice.mode}
               kind={choice.comic}
-              text={vis ? undefined : t(choice.hint)}
+              disabled={!vis}
             >
               {button}
             </Tooltip>
@@ -212,38 +215,44 @@ export function SiteStartControls({
         })}
       </div>
 
-      {chooseLAN && lan && <div className="lr-client-room-settings">
-        <details className="lr-client-access-options" open={!lan.selected || undefined}>
-          <summary className="lr-btn">
-            <Glyph name="users" size={17} />
-            <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.lanAddress")}</span>
-            <Glyph name="chevron" size={15} />
-          </summary>
+      {mode === "local" && lan && <div className="lr-client-room-settings">
           {lan.addresses.length === 0 ? (
             <Pill icon="wifiOff" tone="warn" comic="signal-offline" label={t("client.launch.lanUnavailable")} />
           ) : <div className="lr-capture-device lr-client-lan">
-            <select value={lan.selected} aria-label={t("client.launch.lanAddress")}
+            <AddressLabel className="lr-client-lan-label" htmlFor={chooseLAN ? `${accessHintId}-address` : undefined}><Glyph name="users" size={17} />
+              <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.lanAddress")}</span>
+            </AddressLabel>
+            {chooseLAN ? <select id={`${accessHintId}-address`} value={lan.selected} aria-label={t("client.launch.lanAddress")}
               aria-describedby={`${accessHintId}-lan`} onChange={event => lan.onChange(event.target.value)}>
               <option value="" disabled>{t("client.launch.chooseAddress")}</option>
               {lan.addresses.map(({ address, name }) => (
                 <option key={address} value={address}>{address} · {name}</option>
               ))}
-            </select>
-            <small id={`${accessHintId}-lan`} className={vis ? "visually-hidden" : undefined}>{t("client.launch.lanHint")}</small>
+            </select> : <p className="lr-client-lan-value" dir="ltr">{lan.selected}<span>{lan.addresses[0]?.name}</span></p>}
+            {chooseLAN && <small id={`${accessHintId}-lan`} className={vis ? "visually-hidden" : undefined}>{t("client.launch.lanHint")}</small>}
           </div>}
-        </details>
       </div>}
 
       {mode === "local" && <p className={vis ? "visually-hidden" : "lr-client-access-hint"}>
         {t("client.launch.localHTTPS")}
       </p>}
+      {port && <details className="lr-client-access-options lr-client-port-options">
+        <summary className="lr-btn"><Glyph name="sliders" size={17} />
+          <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.sitePort")}</span>
+          <span>{port.value}</span><Glyph name="chevron" size={15} /></summary>
+        <NumberControl value={port.value} min={1} max={65535} step={1} unit="" showUnit={false}
+          name="site-port" label={t("client.launch.sitePort")} disabled={false} onChange={port.onChange} className="lr-client-port">
+          {input => <label><span className={vis ? "visually-hidden" : undefined}>{t("client.launch.sitePort")}</span>{input}</label>}
+        </NumberControl>
+        <p className={vis ? "visually-hidden" : "lr-client-access-hint"}>{t("client.launch.sitePortHint")}</p>
+      </details>}
       <Btn
         icon={roomError ? "refresh" : "arrowRight"}
         title={roomError ? "common.retry" : "client.launch.go"}
         cap={roomError ? "common.retry" : "client.launch.go"}
         tone="primary"
         type="submit"
-        hint={MODES.find((choice) => choice.mode === mode)?.comic}
+        hint={vis ? MODES.find((choice) => choice.mode === mode)?.comic : undefined}
         disabled={mode === "local" && lan !== undefined && !lan.selected}
       />
       </>}
@@ -274,7 +283,7 @@ export function LauncherForm({ children, onSubmit, ...props }: LauncherFormProps
         onOpen={props.onOpen} entryURL={props.entryURL} />
       {!props.target && <p className={vis ? "visually-hidden" : "lr-client-launch-section"}>{t("client.launch.room")}</p>}
       <SiteStartControls
-        mode={props.mode} onModeChange={props.onModeChange} target={props.target}
+        mode={props.mode} onModeChange={props.onModeChange} port={props.port} target={props.target}
         localCertificate={props.localCertificate} onOpen={props.onOpen} entryURL={props.entryURL}
         lan={props.lan} roomError={props.roomError} />
     </form>

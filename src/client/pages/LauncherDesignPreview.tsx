@@ -17,6 +17,10 @@ const samples: SiteBookmark[] = [
   { id: "studio", name: "一起做点东西", origin: "https://studio.example" },
   { id: "friends", name: "朋友们的客厅", origin: "https://friends.example" },
 ];
+const sampleLAN = [
+  { address: "192.168.1.24", name: "Wi-Fi" },
+  { address: "192.168.50.12", name: "Ethernet" },
+];
 type PreviewDestination = SiteBookmark & { invitation?: string };
 
 /** Presentation sandbox: all site, approval and launch state is local to this preview. */
@@ -31,6 +35,8 @@ export function LauncherDesignPreview() {
   const [address, setAddress] = useState("");
   const [invalid, setInvalid] = useState(false);
   const [mode, setMode] = useState<AppMode>("link");
+  const [lanAddress, setLanAddress] = useState(sampleLAN[0]!.address);
+  const [port, setPort] = useState(8787);
   const [notice, setNotice] = useState("");
   function openSite(_site: PreviewDestination) {
     setNotice(say("已在原型中打开站点。", "Site opened in this preview."));
@@ -55,7 +61,8 @@ export function LauncherDesignPreview() {
     </ChannelSettingsDialog>}
     {dialog === "host" && <ChannelSettingsDialog compact title={t("client.launch.room")} onClose={() => setDialog(undefined)}>
       <form className="c3-settings-panels lr-client-launch-panel" onSubmit={event => { event.preventDefault(); setReady(true); setDialog(undefined); setNotice(say("站点就绪状态已在原型中展示。", "Showing the ready state in this preview.")); }}>
-        <SiteStartControls mode={mode} onModeChange={setMode} />
+        <SiteStartControls mode={mode} onModeChange={setMode} port={{ value: port, onChange: setPort }}
+          lan={{ addresses: sampleLAN, selected: lanAddress, onChange: setLanAddress }} />
       </form>
     </ChannelSettingsDialog>}
     {dialog === "devices" && <ChannelSettingsDialog compact title={say("设备授权", "Device access")} onClose={() => setDialog(undefined)}><p>{say("允许指定站点使用这台设备的 App 能力。收藏站点不会授予设备权限。", "Allow a site to use this device’s App capabilities. Saving a bookmark does not grant device access.")}</p><p>{say("此原型没有已授权站点。", "No sites are authorised in this preview.")}</p></ChannelSettingsDialog>}

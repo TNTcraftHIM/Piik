@@ -92,7 +92,7 @@ const executable = ts.transpileModule(`${declarations.join("\n")}\n({cleanup: ($
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const saved = {
   sites: ["https://site.example"], startupSite: "",
-  revision: "test", version: "development", debug: false,
+  revision: "test", version: "development", debug: false, sitePort: 8787,
   lan: { addresses: [{ address: "192.0.2.1", name: "LAN" }], selected: "192.0.2.1" },
 };
 const response = (state: typeof saved & { detail?: string; target?: string; localCertificate?: LocalCertificate } = saved) => ({ ok: true, status: 200, json: async () => state });
@@ -130,7 +130,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = fa
     ...setters, z, fetch, window, URLSearchParams, AbortController, downloadBlob: downloads,
     stateChanges: { current: { revision: 0, pending: 0 } },
     siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, manualSite, openOnApproval: false,
-    mode: initialMode, lang: "en", vis: false, appDebug: debug, lan: saved.lan, savePreferredAppMode,
+    mode: initialMode, lang: "en", vis: false, appDebug: debug, lan: saved.lan, sitePort: saved.sitePort, savePreferredAppMode,
     consoleLanguage: () => "en", clientLaunchURL, currentThemePreference: () => null, hasCopyPreference: () => false,
     controlPort: undefined, t: (key: string) => key,
     setTimeout: (callback: () => void, delay: number) => {
@@ -204,7 +204,7 @@ describe("App launcher state recovery", () => {
       await page.launch({ preventDefault() {} });
       const [path, request] = fetch.mock.calls.at(-1)! as unknown as [string, { body: string }];
       expect(path).toBe("/api/client-launcher/launch");
-      expect(JSON.parse(request.body)).toEqual({ mode: "local", language: "en", lanAddress: saved.lan.selected });
+      expect(JSON.parse(request.body)).toEqual({ mode: "local", port: saved.sitePort, language: "en", lanAddress: saved.lan.selected });
       const destination = new URL(page.navigate.mock.calls[0]![0] as string);
       expect(destination.origin).toBe(new URL(target).origin);
       expect(destination.searchParams.get("debug")).toBe("1");

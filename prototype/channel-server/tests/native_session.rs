@@ -1507,9 +1507,13 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
         .unwrap()
         .map(|port| port.parse().unwrap())
     };
+    let available = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let selected_port = available.local_addr().unwrap().port();
+    drop(available);
+    let mut retained_room = None;
     let mut blocked_http = None;
     let mut retired_stun = Vec::new();
-    for attempt in 0..2 {
+    for attempt in 0..4 {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let local = format!("http://{address}");
@@ -1527,16 +1531,18 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
             entry.await.unwrap(),
             format!(
                 "{local}/client{}",
-                if attempt == 1 { "?start=1" } else { "" }
+                if attempt > 0 { "?start=1" } else { "" }
             )
         );
+        let (_, initial) = app_http(address, "GET", "/api/client-launcher", None, None).await;
+        assert_eq!(initial["sitePort"], json!(saved_port().unwrap_or(8787)));
         if attempt == 0 {
             let (status, failure) = app_http(
                 address,
                 "POST",
                 "/api/client-launcher/launch",
                 Some(&local),
-                Some(json!({"mode":"local","lanAddress":"not-an-interface"})),
+                Some(json!({"mode":"local","lanAddress":"not-an-interface","port":selected_port})),
             )
             .await;
             assert_eq!(status, 503);
@@ -1553,7 +1559,7 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
                 "POST",
                 "/api/client-launcher/launch",
                 Some(&local),
-                Some(json!({"mode":"link"})),
+                Some(json!({"mode":"link","port":selected_port})),
             )
             .await;
             assert_eq!(status, 503);
@@ -1567,7 +1573,7 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
                 "POST",
                 "/api/client-launcher/launch",
                 Some(&local),
-                Some(json!({"mode":"link"})),
+                Some(json!({"mode":"link","port":selected_port})),
             )
             .await;
             assert_eq!(status, 503);
@@ -1587,8 +1593,11 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
                 .unwrap();
             continue;
         };
-        let request = json!({"mode":"local","lanAddress":lan.address});
-        if attempt == 1 {
+        let mut request = json!({"mode":"local","lanAddress":lan.address});
+        if attempt == 0 {
+            request["port"] = json!(selected_port);
+        }
+        if attempt == 1 || attempt == 2 {
             let before = saved_port().unwrap();
             let failure = tokio::time::timeout(Duration::from_secs(5), async {
                 loop {
@@ -1608,7 +1617,57 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
                 .unwrap()
                 .contains(&format!("127.0.0.1:{before}")));
             assert_eq!(saved_port(), Some(before));
-            drop(blocked_http.take());
+            if attempt == 1 {
+                drop(blocked_http.take());
+            }
+        }
+        if attempt == 2 {
+            let available = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            request["port"] = json!(available.local_addr().unwrap().port());
+            let (status, failure) = app_http(
+                address,
+                "POST",
+                "/api/client-launcher/launch",
+                Some(&local),
+                Some(request.clone()),
+            )
+            .await;
+            assert_eq!(status, 503);
+            assert_eq!(failure["reason"], "local-port");
+            assert_eq!(
+                saved_port(),
+                Some(selected_port),
+                "an occupied explicit choice cannot replace the saved port"
+            );
+            drop(available);
+        }
+        let expected_port = request["port"]
+            .as_u64()
+            .map(|port| port as u16)
+            .unwrap_or_else(|| saved_port().unwrap());
+        if attempt == 3 {
+            let automatic = tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let (_, state) =
+                        app_http(address, "GET", "/api/client-launcher", None, None).await;
+                    if state.get("target").is_some() || state.get("detail").is_some() {
+                        break state;
+                    }
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(
+                url::Url::parse(
+                    automatic["target"]
+                        .as_str()
+                        .expect("owned startup uses the changed saved port without a manual retry")
+                )
+                .unwrap()
+                .port(),
+                Some(expected_port)
+            );
         }
         let ((status, launched), (again_status, again)) = tokio::join!(
             app_http(
@@ -1623,7 +1682,7 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
                 "POST",
                 "/api/client-launcher/launch",
                 Some(&local),
-                Some(request)
+                Some(request.clone())
             ),
         );
         assert_eq!(status, 200);
@@ -1635,6 +1694,22 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
         let target = url::Url::parse(launched["target"].as_str().unwrap()).unwrap();
         assert_eq!(target.scheme(), "http");
         assert_eq!(target.host_str(), Some("127.0.0.1"));
+        assert_eq!(target.port().unwrap(), expected_port);
+        let (_, described) = app_http(address, "GET", "/api/client-launcher", None, None).await;
+        assert_eq!(described["sitePort"], json!(target.port().unwrap()));
+        let (status, running) = app_http(
+            address,
+            "POST",
+            "/api/client-launcher/launch",
+            Some(&local),
+            Some(json!({"mode":"local", "lanAddress":lan.address, "port":1})),
+        )
+        .await;
+        assert_eq!(status, 200);
+        assert_eq!(
+            running, launched,
+            "a running domain cannot be moved by a repeated launch request"
+        );
         let identity = saved_identity();
         let metadata: DomainMetadata = serde_json::from_value(
             Storage::open(&folder.join("domain/channel.sqlite"))
@@ -1713,7 +1788,8 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
             app_http(address, "GET", "/health", Some(&invitation), None)
                 .await
                 .0,
-            200
+            if attempt >= 2 { 403 } else { 200 },
+            "a changed invitation origin does not inherit the old origin's device approval"
         );
         assert_eq!(
             app_http(
@@ -1721,7 +1797,7 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
                 "POST",
                 "/api/client-launcher/launch",
                 Some(&invitation),
-                Some(json!({"mode":"link"}))
+                Some(json!({"mode":"link","port":selected_port}))
             )
             .await
             .0,
@@ -1816,11 +1892,19 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
         );
         let domain = welcome["state"]["channel"]["id"].clone();
         if let Some((old_port, old_domain, old_identity)) = &first {
-            assert_eq!(
-                domain_address.port(),
-                *old_port,
-                "retry and restart preserve the Browser origin"
-            );
+            if attempt == 1 {
+                assert_eq!(
+                    domain_address.port(),
+                    *old_port,
+                    "restart preserves the saved port"
+                );
+            } else {
+                assert_ne!(
+                    domain_address.port(),
+                    *old_port,
+                    "explicit choice changes only the address"
+                );
+            }
             assert_eq!(&domain, old_domain);
             assert_eq!(
                 &identity, old_identity,
@@ -1970,6 +2054,7 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
                 url::form_urlencoded::parse(refreshed.fragment().unwrap().as_bytes())
                     .any(|(key, value)| key == "owner" && value == restored_owner)
             );
+            retained_room = Some((room_path, room.to_owned()));
             drop((admin, control, lock));
         }
         stop.send(()).unwrap();
@@ -1988,7 +2073,29 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
         .await
         .expect("App stop retires the local Domain's actual socket");
         assert_eq!(saved_port(), Some(domain_address.port()));
-        if attempt == 0 {
+        let db = rusqlite::Connection::open(folder.join("app.sqlite")).unwrap();
+        let startup: String = db
+            .query_row(
+                "SELECT value FROM app_setting WHERE key='startup'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            serde_json::from_str::<Value>(&startup).unwrap()["value"]
+                .get("port")
+                .is_none(),
+            "owned startup follows the saved port rather than a previous request override"
+        );
+        drop(db);
+        if let Some((path, id)) = &retained_room {
+            assert_eq!(
+                &StoredRoomHost::open(path).unwrap().policy().id,
+                id,
+                "port selection retains the room namespace and data"
+            );
+        }
+        if attempt <= 1 {
             blocked_http = Some(TcpListener::bind(domain_address).await.unwrap());
         } else {
             drop(TcpListener::bind(domain_address).await.unwrap());

@@ -111,9 +111,13 @@ deployed frontend requires no Node runtime.
 
 The `piik-channel-app` entry uses the same App button, local approval page and
 saved-site controls as the shared Web interface.
-Its own local site retains the first successfully bound port across restarts,
-so browser preferences and retained files remain at the same origin. An occupied
-saved port reports a startup error; release the port and retry to use the same address.
+Its own local site defaults to port 8787 and retains the successfully bound port
+across restarts. **Site port** in the startup settings selects another port before
+the site starts. An occupied port reports an error instead of silently choosing
+another. The loopback HTTP entry and Local-network HTTPS entry use this site port;
+the separate App management/discovery listener is not a site-forwarding endpoint.
+Changing the port retains App-hosted rooms but changes the web origin. Browser
+identity, preferences and cached files remain associated with the old address.
 
 Current internal pages require App control protocol 8 and domain signaling
 protocol 17. Build the App, bundled Web files and domain server from the same

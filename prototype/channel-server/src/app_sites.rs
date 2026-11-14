@@ -51,7 +51,8 @@ impl Sites {
     }
     pub fn set_domain_port(&self, port: NonZeroU16) -> Result<()> {
         self.0.execute(
-            "INSERT INTO app_setting(key,value) VALUES('domain_port',?1)",
+            "INSERT INTO app_setting(key,value) VALUES('domain_port',?1)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             [port.to_string()],
         )?;
         Ok(())

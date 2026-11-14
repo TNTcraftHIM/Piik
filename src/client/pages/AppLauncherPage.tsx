@@ -35,6 +35,7 @@ const launcherStateSchema = z.object({
   version: z.string().default("development"),
   packageTarget: z.string().optional(),
   controlPort: z.number().int().optional(),
+  sitePort: z.number().int().min(1).max(65535),
   windowNavigation: z.boolean().default(false),
   debug: z.boolean().optional(),
   lan: z.object({
@@ -64,6 +65,8 @@ export function AppLauncherPage() {
   const [reload, setReload] = useState(0);
   const [lanAddress, setLanAddress] = useState<string>();
   const lan = serverState?.lan && { ...serverState.lan, selected: lanAddress ?? serverState.lan.selected };
+  const [portDraft, setPortDraft] = useState<number>();
+  const sitePort = portDraft ?? serverState?.sitePort;
   const build = serverState;
   const appUpdate = useAppUpdate();
   const operation = appUpdate.view?.operationId && appUpdate.view.version && appUpdate.view.revision
@@ -222,6 +225,7 @@ export function AppLauncherPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode,
+          port: sitePort,
           language: consoleLanguage(lang, vis),
           ...(mode === "local" && lan ? { lanAddress: lan.selected } : {}),
         }),
@@ -402,6 +406,7 @@ export function AppLauncherPage() {
         {starting ? <LoadingStatus label="client.launch.starting" waitingCaption /> : <form className="c3-settings-panels lr-client-launch-panel" onSubmit={launch}>
           <SiteStartControls mode={mode} onModeChange={changeMode} roomError={roomError}
             target={target} localCertificate={localCertificate} entryURL={launchURL}
+            port={sitePort === undefined ? undefined : { value: sitePort, onChange: setPortDraft }}
             lan={lan && { ...lan, onChange: setLanAddress }} />
         </form>}
       </ChannelSettingsDialog>}

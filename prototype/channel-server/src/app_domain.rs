@@ -7,12 +7,14 @@ use crate::{domain::Domain, web};
 use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{future::pending, net::Ipv4Addr, sync::Arc};
+use std::{future::pending, net::Ipv4Addr, num::NonZeroU16, sync::Arc};
 use tokio::{
     net::{TcpListener, UdpSocket},
     sync::{mpsc, watch},
     task::JoinHandle,
 };
+
+const DEFAULT_SITE_PORT: u16 = 8787;
 
 #[derive(Clone)]
 pub(super) struct Failure {
@@ -93,11 +95,21 @@ pub(super) enum Mode {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Request {
     pub mode: Mode,
+    // A launch override; persisted startup follows Sites::domain_port.
+    #[serde(skip_serializing)]
+    port: Option<NonZeroU16>,
     lan_address: Option<String>,
     language: Option<String>,
 }
 
 pub(super) async fn describe(app: &App, state: &mut Value) -> anyhow::Result<()> {
+    state["sitePort"] = json!(app
+        .registry
+        .lock()
+        .await
+        .sites
+        .domain_port()?
+        .map_or(DEFAULT_SITE_PORT, NonZeroU16::get));
     let addresses = web::lan_addresses()?;
     let selected = addresses
         .first()
@@ -192,8 +204,11 @@ async fn run(
         .sites
         .domain_port()
         .map_err(|error| Failure::new("configuration", error))?;
-    let bind_address =
-        std::net::SocketAddrV4::new(Ipv4Addr::LOCALHOST, saved_port.map_or(0, |port| port.get()));
+    let port = request
+        .port
+        .or(saved_port)
+        .map_or(DEFAULT_SITE_PORT, NonZeroU16::get);
+    let bind_address = std::net::SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
     let http = TcpListener::bind(bind_address)
         .await
         .map_err(|error| Failure::new("local-port", format!("{bind_address}: {error}")))?;
@@ -206,7 +221,7 @@ async fn run(
     } else {
         None
     };
-    if saved_port.is_none() {
+    if saved_port.map(NonZeroU16::get) != Some(port) {
         app.registry
             .lock()
             .await
@@ -419,6 +434,25 @@ async fn local_https(selected: Option<&str>, port: u16) -> Result<web::LanHttps,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn startup_request_does_not_freeze_the_http_port_override() {
+        let missing: Request = serde_json::from_value(json!({"mode":"local"})).unwrap();
+        assert!(missing.port.is_none());
+        let request: Request =
+            serde_json::from_value(json!({"mode":"local", "port":8787})).unwrap();
+        assert_eq!(request.port.unwrap().get(), 8787);
+        let saved =
+            serde_json::to_value(super::super::sites::StartupIntent::Owned(request)).unwrap();
+        assert!(saved["value"].get("port").is_none());
+        let restored: Request = serde_json::from_value(saved["value"].clone()).unwrap();
+        assert!(restored.port.is_none());
+        for port in [0, 65536] {
+            assert!(
+                serde_json::from_value::<Request>(json!({"mode":"local", "port":port})).is_err()
+            );
+        }
+    }
 
     #[tokio::test]
     async fn ready_reports_the_current_invitation_certificate_and_preserves_it_on_restore() {
