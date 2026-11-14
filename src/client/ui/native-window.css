@@ -10,6 +10,7 @@ html[data-piik-native-window] :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.i
   background: var(--wall);
 }
 html[data-piik-native-window] .c3-site-bar { height: var(--native-caption-height); }
+html[data-piik-native-window] .lr-app > .lr-top { width: 100%; margin-inline: 0; }
 html[data-piik-native-window] :is(.c3-site-bar, .lr-app > .lr-top, .c3-monitor.is-theater > .c3-monitor-heading)
   :is(button, a, input, select, textarea, [role=button], [popover], .lr-comic-tip-wrap) { app-region: no-drag; }
 html[data-piik-native-window] :is(.c3-site-identity, .c3-global-tools) { min-width: 0; }

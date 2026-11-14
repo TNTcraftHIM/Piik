@@ -88,8 +88,6 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
-- [ ] **3.0 App launcher.** Review the new entry-page prototype, then integrate
-  the accepted layout with the existing launch, device-approval and saved-site owners.
 - [ ] **App update distribution.** Configure the production signing identity and
   decide the beta-feed policy before distributing updater-capable packages;
   retain manual download. The
