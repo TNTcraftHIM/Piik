@@ -291,18 +291,35 @@ impl Survey {
         commands: &mpsc::Sender<NativeEvent>,
         incoming: &mut mpsc::Receiver<UdpSignal>,
     ) -> Result<Prepared> {
-        self.check_target(
-            remote
-                .target()
-                .ok_or_else(|| anyhow::anyhow!("unsupported peer mapping address"))?,
-            commands,
-            incoming,
-        )
-        .await
+        let target = remote
+            .target()
+            .ok_or_else(|| anyhow::anyhow!("unsupported peer mapping address"))?;
+        // Only a retained stable socket searches a finite remote sequential window.
+        let alternate = if self.prediction.step == 0 && remote.step != 0 {
+            u16::try_from(i32::from(target.port()) + 4 * i32::from(remote.step))
+                .ok()
+                .filter(|port| *port >= 1024)
+                .map(|port| SocketAddrV4::new(*target.ip(), port))
+        } else {
+            None
+        };
+        self.check_targets(target, alternate, commands, incoming)
+            .await
     }
+
+    #[cfg(test)]
     async fn check_target(
         self,
         remote: SocketAddrV4,
+        commands: &mpsc::Sender<NativeEvent>,
+        incoming: &mut mpsc::Receiver<UdpSignal>,
+    ) -> Result<Prepared> {
+        self.check_targets(remote, None, commands, incoming).await
+    }
+    async fn check_targets(
+        self,
+        remote: SocketAddrV4,
+        alternate: Option<SocketAddrV4>,
         commands: &mpsc::Sender<NativeEvent>,
         incoming: &mut mpsc::Receiver<UdpSignal>,
     ) -> Result<Prepared> {
@@ -313,6 +330,7 @@ impl Survey {
         } = self;
         let deadline = preparation.expires;
         timeout_at(deadline.into(), async move {
+            let mut selected = alternate.is_none().then_some(remote);
             let mut sockets = Vec::new();
             if let Some(socket) = retained {
                 sockets.push(socket);
@@ -346,8 +364,9 @@ impl Survey {
                 }
                 tokio::select! {
                     _ = sleep_until((start + Duration::from_millis(round * 100)).into()), if round < 7 && requests_left > 0 => {
+                        let destination = selected.unwrap_or_else(|| if round % 2 == 1 { alternate.unwrap() } else { remote });
                         for (socket, request) in sockets.iter().zip(&requests).take(requests_left) {
-                            socket.send_to(&request.raw, remote).await?;
+                            socket.send_to(&request.raw, destination).await?;
                             requests_left -= 1;
                         }
                         round += 1;
@@ -359,19 +378,30 @@ impl Survey {
                     Some(received) = reads.next() => {
                         let (index, bytes, peer) = received?;
                         reads.push(receive(index, &sockets[index]));
-                        if peer != SocketAddr::V4(remote) { continue; }
+                        if selected.map_or_else(
+                            || peer != SocketAddr::V4(remote) && alternate.map(SocketAddr::V4) != Some(peer),
+                            |target| peer != SocketAddr::V4(target),
+                        ) { continue; }
                         let mut message = Message { raw: bytes, ..Default::default() };
                         if message.decode().is_err() || MessageIntegrity::check(&mut message, key.as_bytes(), provider.crypto()).is_err() { continue; }
+                        let valid_response = message.typ == BINDING_SUCCESS && message.transaction_id == requests[index].transaction_id;
+                        if selected.is_none() && (message.typ == BINDING_REQUEST || valid_response) {
+                            let SocketAddr::V4(peer) = peer else { continue; };
+                            // One stable socket pins one authorized tuple before answering it.
+                            // Every other predicted tuple is ignored for the rest of this attempt.
+                            selected = Some(peer);
+                        }
+                        let Some(target) = selected else { continue; };
                         if message.typ == BINDING_REQUEST && replies < CHECK_PACKET_BUDGET {
                             replies += 1;
                             let mut response = Message::new();
                             response.build(&[Box::new(BINDING_SUCCESS), Box::new(message.transaction_id),
-                                Box::new(XorMappedAddress { ip: remote.ip().to_owned().into(), port: remote.port() })])?;
+                                Box::new(XorMappedAddress { ip: target.ip().to_owned().into(), port: target.port() })])?;
                             integrity.add_to(&mut response)?;
                             FINGERPRINT.add_to(&mut response)?;
-                            sockets[index].send_to(&response.raw, remote).await?;
+                            sockets[index].send_to(&response.raw, target).await?;
                             if winner.is_none() && requests_left > 0 {
-                                sockets[index].send_to(&requests[index].raw, remote).await?;
+                                sockets[index].send_to(&requests[index].raw, target).await?;
                                 requests_left -= 1;
                             }
                         } else if message.typ == BINDING_SUCCESS && message.transaction_id == requests[index].transaction_id {
@@ -387,7 +417,7 @@ impl Survey {
             // Every preparation reader retires before the socket moves to ICE.
             drop(reads);
             let socket = sockets.swap_remove(index);
-            Ok(Prepared { pair: preparation.pair, expires: preparation.expires, socket, remote })
+            Ok(Prepared { pair: preparation.pair, expires: preparation.expires, socket, remote: selected.unwrap() })
         }).await?
     }
 }
@@ -655,7 +685,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn late_peer_uses_triggered_check_and_mutual_completion() -> Result<()> {
+    async fn late_neighbor_rejects_unproved_tuples_and_uses_triggered_mutual_completion(
+    ) -> Result<()> {
         let pair = Uuid::new_v4();
         let first = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
         let second = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
@@ -700,9 +731,38 @@ mod tests {
             to.send(UdpSignal::Complete).await?;
             Ok(())
         }
+        let primary = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+        let SocketAddr::V4(primary_address) = primary.local_addr()? else {
+            unreachable!()
+        };
+        let outsider = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+        let provider = rtc_crypto::default_provider()?;
+        let key: String = [51; 32].iter().map(|byte| format!("{byte:02x}")).collect();
+        let integrity =
+            MessageIntegrity::new_short_term_integrity_with_provider(key, provider.crypto());
+        let mut unmatched = Message::new();
+        unmatched.build(&[Box::new(BINDING_SUCCESS), Box::new(TransactionId::new())])?;
+        integrity.add_to(&mut unmatched)?;
+        primary.send_to(&unmatched.raw, first_address).await?;
+        let mut request = Message::new();
+        request.build(&[Box::new(BINDING_REQUEST), Box::new(TransactionId::new())])?;
+        integrity.add_to(&mut request)?;
+        outsider.send_to(&request.raw, first_address).await?;
+        let wrong = MessageIntegrity::new_short_term_integrity_with_provider(
+            "wrong".into(),
+            provider.crypto(),
+        );
+        let mut wrong_request = Message::new();
+        wrong_request.build(&[Box::new(BINDING_REQUEST), Box::new(TransactionId::new())])?;
+        wrong.add_to(&mut wrong_request)?;
+        primary.send_to(&wrong_request.raw, first_address).await?;
         let first_survey = survey(first)?;
-        let first_check =
-            first_survey.check_target(second_address, &first_commands, &mut first_input);
+        let first_check = first_survey.check_targets(
+            primary_address,
+            Some(second_address),
+            &first_commands,
+            &mut first_input,
+        );
         let second_check = async {
             // The first peer's complete initial fanout reaches a closed UDP port.
             tokio::time::sleep(Duration::from_millis(1200)).await;
@@ -712,10 +772,12 @@ mod tests {
                 .await
         };
         let exchange = async {
-            tokio::try_join!(
-                forward_complete(first_events, to_second),
-                forward_complete(second_events, to_first)
-            )?;
+            forward_complete(first_events, to_second).await?;
+            // A second eligible socket authenticates after the first tuple won.
+            // Keep mutual completion pending while its request is processed.
+            primary.send_to(&request.raw, first_address).await?;
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            forward_complete(second_events, to_first).await?;
             Ok::<_, anyhow::Error>(())
         };
         let (first, second, ()) = tokio::try_join!(first_check, second_check, exchange)?;
@@ -729,9 +791,88 @@ mod tests {
             (second.local_addr()?, second_peer),
             (second_address.into(), first_address)
         );
+        let mut bytes = [0; 1024];
+        assert!(
+            matches!(outsider.try_recv_from(&mut bytes), Err(error) if error.kind()==std::io::ErrorKind::WouldBlock)
+        );
+        let mut sent = 0;
+        while let Ok((n, _)) = primary.try_recv_from(&mut bytes) {
+            let mut message = Message {
+                raw: bytes[..n].to_vec(),
+                ..Default::default()
+            };
+            message.decode()?;
+            assert_eq!(
+                message.typ, BINDING_REQUEST,
+                "unproved primary received success"
+            );
+            sent += 1;
+        }
+        assert!(
+            sent > 0 && sent <= 7,
+            "ordinary rounds exceeded their bound"
+        );
+        // Preparation readers retire before the unchanged winning sockets transfer.
+        first.set_nonblocking(true)?;
+        second.set_nonblocking(true)?;
+        let first = UdpSocket::from_std(first)?;
+        let second = UdpSocket::from_std(second)?;
+        first.send_to(b"after-preparation", second_address).await?;
+        let (n, from) =
+            tokio::time::timeout(Duration::from_secs(1), second.recv_from(&mut bytes)).await??;
+        assert_eq!(&bytes[..n], b"after-preparation");
+        assert_eq!(from, first_address.into());
         drop((first, second));
         UdpSocket::bind(first_address).await?;
         UdpSocket::bind(second_address).await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cancelling_neighbor_preparation_releases_its_socket_without_completion() -> Result<()>
+    {
+        let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+        let local = socket.local_addr()?;
+        let first = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+        let second = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+        let (SocketAddr::V4(first_address), SocketAddr::V4(second_address)) =
+            (first.local_addr()?, second.local_addr()?)
+        else {
+            unreachable!()
+        };
+        let (commands, mut events) = mpsc::channel(4);
+        let (_complete, mut incoming) = mpsc::channel(4);
+        let survey = Survey {
+            preparation: Preparation::new(
+                Uuid::new_v4(),
+                [64; 32],
+                Ipv4Addr::LOCALHOST,
+                Instant::now() + Duration::from_secs(5),
+            )?,
+            prediction: Prediction {
+                address: Ipv4Addr::LOCALHOST,
+                port: local.port(),
+                step: 0,
+            },
+            retained: Some(socket),
+        };
+        let mut check = Box::pin(survey.check_targets(
+            first_address,
+            Some(second_address),
+            &commands,
+            &mut incoming,
+        ));
+        let mut bytes = [0; 1024];
+        tokio::select! {
+            result = &mut check => panic!("silent candidate unexpectedly completed: {}", result.is_ok()),
+            result = first.recv_from(&mut bytes) => { result?; }
+        }
+        drop(check);
+        assert!(
+            events.try_recv().is_err(),
+            "cancelled preparation announced completion"
+        );
+        UdpSocket::bind(local).await?;
         Ok(())
     }
 

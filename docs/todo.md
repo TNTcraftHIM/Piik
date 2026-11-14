@@ -115,12 +115,6 @@ the feedback period; they do not delay that delivery.
   Native root. Define evidence, authorization and resource cost before extending
   the current admission/switch owners; 2.x route-policy labels do not directly
   describe these 3.0 paths.
-- [ ] **3.0 NAT prediction controls.** Compare a bounded prediction neighbourhood
-  against the current single anchor in the existing isolated network lab when
-  observed mapping drift defeats it. Match background allocations and signaling
-  delay while retaining the current socket, request and lifetime limits.
-  The [NAT owner](./research/nat-traversal.md) keeps direct connectivity separate
-  from relay coverage.
 - [ ] **Codec capability and efficiency comparison.** Measure actual platform
   encoder/decoder and Browser capabilities, then compare one available codec
   with H.264 using synthetic text and motion. Compare hardware and software

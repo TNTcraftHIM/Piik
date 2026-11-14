@@ -539,6 +539,9 @@ pair attempt. The domain's existing transport book issues its replacement UUID;
 logical room/media leases and operation deadlines stay unchanged. Only currently
 capable Native endpoints participate. The prepared socket transfers to the ordinary
 PC after mutual completion, with no competing reader or separate route graph.
+When the local survey is stable and the remote survey is sequential, the retained
+socket alternates between two predicted targets. Authenticated traffic fixes one
+target before replies; both peers complete within the preparation's shared limits.
 
 Server shares fixed UDP listeners across its peer connections. Piik's
 [socket owner](../../prototype/channel-native/src/peer/transport.rs) dispatches

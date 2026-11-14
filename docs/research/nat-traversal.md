@@ -468,6 +468,15 @@ messages arrive. Initial sends and triggered retries share the existing
 64-request budget, with at most 64 replies and eight sockets, under the same
 five-second deadline. A calibrated one-second signaling delay and a dropped first
 triggered request now complete without a new handshake or SDK patch.
+For a stable local mapping and sequential remote mapping, the same periodic
+rounds alternate between `last + 4*step` and `last + 8*step`. Authentication and
+transaction matching fix one remote tuple; only that tuple receives subsequent
+responses. Triggered checks retain the shared 64-request budget after the initial
+rounds, so a late peer can still complete. In a controlled kernel-NAT comparison,
+four intervening allocations made the single target miss; the bounded alternative
+connected with fewer requests and carried advancing decoded picture and sound.
+This evidence covers one controlled allocation-drift scenario with a stable
+mapping at one endpoint.
 Native clients and the App/domain HTTP and HTTPS listeners also disable Nagle
 through their existing public socket APIs. TCP-header controls isolated a
 Ping/ACK delay; the matched change removed approximately 0.94 seconds of extra
