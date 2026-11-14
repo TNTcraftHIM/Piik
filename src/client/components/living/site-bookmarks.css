@@ -1,5 +1,6 @@
 .lr-site-bookmark-manager { display: grid; gap: 20px; width: 100%; max-width: 620px; margin: 0 auto 32px; }
-.lr-site-bookmarks { width: 100%; max-width: 680px; box-sizing: border-box; margin: 0 auto; padding: 20px; border: 1px solid var(--control-edge); border-radius: 24px; background: var(--paper); }
+.lr-site-bookmarks { width: 100%; max-width: 680px; box-sizing: border-box; margin: 0 auto; border: 1px solid var(--control-edge); border-radius: 24px; background: var(--paper); }
+.lr-site-bookmarks:not(.is-embedded) { padding: 20px; }
 .lr-site-bookmark-open { display: flex; align-items: end; gap: 10px; }
 .lr-site-bookmark-open > label { display: grid; gap: 8px; min-width: 0; flex: 1; font-size: 13px; }
 .lr-site-bookmark-open .lr-input { width: 100%; box-sizing: border-box; }
@@ -12,6 +13,7 @@
 .lr-site-bookmarks h3 { margin: 0; font-size: 16px; }
 .lr-site-bookmarks ul { list-style: none; padding: 0; margin: 18px 0 0; }
 .lr-site-bookmarks li { display: flex; align-items: center; gap: 16px; padding: 18px 0; }
+.lr-site-bookmarks li:first-child { padding-top: 0; }
 .lr-site-bookmarks li + li { border-top: 1px solid var(--control-edge); }
 .lr-site-bookmarks li:last-child { padding-bottom: 0; }
 .lr-site-bookmark-identity { display: grid; gap: 6px; min-width: 0; flex: 1; overflow-wrap: anywhere; }
@@ -26,8 +28,10 @@
 .lr-site-bookmark-form-actions { justify-content: space-between; flex-wrap: wrap; }
 .lr-site-bookmark-form-actions > div { margin-left: auto; }
 @media (max-width: 480px) {
-  .lr-site-bookmarks { padding: 18px; }
+  .lr-site-bookmarks:not(.is-embedded) { padding: 18px; }
   .lr-site-bookmarks li { flex-wrap: wrap; gap: 10px; }
   .lr-site-bookmark-identity { flex-basis: 100%; }
   .lr-site-bookmark-actions { margin-left: auto; }
+  .lr-site-bookmark-form-actions { gap: 16px; }
+  .lr-site-bookmark-form-actions > div { flex-basis: 100%; justify-content: flex-end; }
 }
