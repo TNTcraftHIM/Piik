@@ -5,7 +5,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { LauncherForm, type LocalCertificate } from "../src/client/components/living/LauncherForm";
+import { SiteStartControls, type LocalCertificate } from "../src/client/components/living/LauncherForm";
+import { SiteManagement } from "../src/client/components/living/SiteManagement";
 import { Btn } from "../src/client/components/living/primitives";
 import { publicSiteOrigin, siteEntryOrigin, siteEntryURL } from "../src/client/lib/site-address";
 import { clientLaunchURL, readPreferredAppMode, savePreferredAppMode, type AppMode } from "../src/client/lib/app-launch";
@@ -70,7 +71,7 @@ function collect(node: ts.Node): void {
   if (ts.isVariableDeclaration(node) && /^(?:launcher.*|localCertificate)Schema$/.test(node.name.getText(source))) {
     declarations.push(`const ${node.getText(source)};`);
   }
-  if (ts.isFunctionDeclaration(node) && ["beginStateChange", "changeMode", "changeSite", "approveSite", "enableDebug", "exportDebug", "launchURL", "launch"].includes(node.name?.text ?? "")) {
+  if (ts.isFunctionDeclaration(node) && ["beginStateChange", "changeMode", "changeSite", "manageSite", "approveSite", "enableDebug", "exportDebug", "launchURL", "launch"].includes(node.name?.text ?? "")) {
     declarations.push(node.getText(source));
   }
   if (ts.isCallExpression(node) && node.expression.getText(source) === "useEffect"
@@ -86,7 +87,7 @@ if (!modeInitializer) throw new Error("Missing App launcher mode initializer");
 const diagnosticExecutable = ts.transpileModule(`(${diagnosticControl})`, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React },
 }).outputText;
-const executable = ts.transpileModule(`${declarations.join("\n")}\n({cleanup: (${effect})(), changeMode, changeSite, approveSite, enableDebug, exportDebug, launch});`, {
+const executable = ts.transpileModule(`${declarations.join("\n")}\n({cleanup: (${effect})(), changeMode, changeSite, manageSite, approveSite, enableDebug, exportDebug, launch});`, {
   compilerOptions: { target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -97,7 +98,7 @@ const saved = {
 };
 const response = (state: typeof saved & { detail?: string; target?: string; localCertificate?: LocalCertificate; startupMode?: "local" | "link" | "external"; publicOrigin?: string } = saved) => ({ ok: true, status: 200, json: async () => state });
 
-function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = false, mode, startup = false, publicOrigin }: { debug?: boolean; mode?: AppMode; startup?: boolean; publicOrigin?: string } = {}) {
+function mount(fetch: ReturnType<typeof vi.fn>, { debug = false, mode, startup = false, publicOrigin }: { debug?: boolean; mode?: AppMode; startup?: boolean; publicOrigin?: string } = {}) {
   const downloads = vi.fn();
   const initialMode = mode ?? runInNewContext(`(${modeInitializer})()`, { readPreferredAppMode }) as AppMode;
   const state: Record<string, unknown> = { Mode: initialMode };
@@ -129,7 +130,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = fa
   const actions = runInNewContext(executable, {
     ...setters, z, fetch, window, URLSearchParams, AbortController, downloadBlob: downloads,
     stateChanges: { current: { revision: 0, pending: 0 } },
-    siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, manualSite, openOnApproval: false,
+    siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, openOnApproval: false,
     mode: initialMode, lang: "en", vis: false, appDebug: debug, lan: saved.lan, sitePort: saved.sitePort, savePreferredAppMode,
     publicEntry: { existing: publicOrigin !== undefined, origin: publicOrigin ?? "" }, publicSiteOrigin,
     consoleLanguage: () => "en", clientLaunchURL, currentThemePreference: () => null, hasCopyPreference: () => false,
@@ -139,7 +140,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false, { debug = fa
       return nextTimer;
     },
     clearTimeout: (id: number) => timers.delete(id),
-  }) as { cleanup(): void; changeMode(mode: AppMode): void; changeSite(site: string, setting?: "site" | "startup-site", starAfterApproval?: boolean, allowed?: boolean): Promise<boolean>; approveSite(site: string): Promise<void>; enableDebug(): Promise<void>; exportDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
+  }) as { cleanup(): void; changeMode(mode: AppMode): void; changeSite(site: string, setting?: "site" | "startup-site", starAfterApproval?: boolean, allowed?: boolean): Promise<boolean>; manageSite(site: string, setting: "site" | "startup-site", allowed?: boolean): Promise<void>; approveSite(site: string): Promise<void>; enableDebug(): Promise<void>; exportDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
   return { state, setters, ...actions, downloads, navigate: window.location.replace, focus: () => window.dispatchEvent(new Event("focus")),
     retry: () => {
       const entry = [...timers].find(([, timer]) => timer.delay === 750);
@@ -174,7 +175,7 @@ describe("App launcher state recovery", () => {
     const target = "http://127.0.0.1:8787/#owner=local-fixture";
     const fetch = vi.fn().mockResolvedValueOnce(response(saved))
       .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ target }) });
-    const page = mount(fetch, false, { mode: "link", publicOrigin: "https://PIIK.example:443/" });
+    const page = mount(fetch, { mode: "link", publicOrigin: "https://PIIK.example:443/" });
     try {
       await settle(); await page.launch({ preventDefault() {} });
       expect(JSON.parse(fetch.mock.calls[1]![1].body)).toEqual({
@@ -186,7 +187,7 @@ describe("App launcher state recovery", () => {
 
   it("keeps an invalid public-address draft out of startup", async () => {
     const fetch = vi.fn(async () => response(saved));
-    const page = mount(fetch, false, { mode: "link", publicOrigin: "https://piik.example/room#invite=key" });
+    const page = mount(fetch, { mode: "link", publicOrigin: "https://piik.example/room#invite=key" });
     try {
       await settle(); await page.launch({ preventDefault() {} });
       expect(fetch).toHaveBeenCalledTimes(1);
@@ -232,7 +233,7 @@ describe("App launcher state recovery", () => {
   it("launches with diagnostics enabled without sending its process flag to the room command", async () => {
     const target = "http://127.0.0.1:41234/#piik-client=1";
     const fetch = vi.fn(async () => response({ ...saved, debug: true }));
-    const page = mount(fetch, false, { debug: true, mode: "local" });
+    const page = mount(fetch, { debug: true, mode: "local" });
     vi.stubGlobal("window", { location: { href: "http://127.0.0.1:39722/client" } });
     try {
       await settle();
@@ -327,39 +328,37 @@ describe("App launcher state recovery", () => {
   });
 
   it("keeps mode choices and the submit action available after a failed room start", () => {
-    const html = renderToStaticMarkup(createElement(LauncherForm, {
-      mode: "link", sites: saved.sites, startupSite: "",
-      onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onSelectSite() {}, onSubmit() {},
+    const html = renderToStaticMarkup(createElement(SiteStartControls, {
+      mode: "link",
+      onModeChange() {},
       roomError: createElement("p", { role: "alert" }, "Connection timed out"),
     }));
     expect(html).toContain("Connection timed out");
     expect(html).toContain('role="radiogroup"');
     expect(html).not.toContain('type="password"');
     expect(html).toMatch(/type="submit"[^>]*aria-label="(?:Retry|重试)"/);
-    expect(html).toContain(saved.sites[0]);
-    expect(html).toContain('aria-pressed="false"');
   });
 
   it("reopens a healthy room without offering another mode or password", () => {
-    const html = renderToStaticMarkup(createElement(LauncherForm, {
-      mode: "local", sites: [], startupSite: "", target: "http://127.0.0.1:8787/#piik-client=1",
-      onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onSubmit() {},
+    const html = renderToStaticMarkup(createElement(SiteStartControls, {
+      mode: "local", target: "http://127.0.0.1:8787/#piik-client=1",
+      onModeChange() {},
     }));
     expect(html).toContain('href="http://127.0.0.1:8787/#piik-client=1"');
     expect(html).not.toContain('role="radiogroup"');
     expect(html).not.toContain('type="password"');
   });
 
-  it("renders complete App entries for saved sites and the existing room before any click", () => {
-    const html = renderToStaticMarkup(createElement(LauncherForm, {
-      mode: "local", sites: saved.sites, startupSite: saved.sites[0]!,
+  it("renders the complete App entry for the existing room before any click", () => {
+    const html = renderToStaticMarkup(createElement(SiteStartControls, {
+      mode: "local",
       target: "http://127.0.0.1:8787/#piik-client=1",
       entryURL: target => clientLaunchURL(target, { lang: "en", vis: false, theme: "light", explicit: ["theme"] }, false, 39729),
-      onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onSubmit() {},
+      onModeChange() {},
     }));
     const entries = [...html.matchAll(/href="([^"]+)"/g)]
       .map(match => new URL(match[1]!.replaceAll("&amp;", "&")));
-    expect(entries).toHaveLength(2);
+    expect(entries).toHaveLength(1);
     for (const entry of entries) {
       expect(entry.searchParams.get("piik-client-port")).toBe("39729");
       expect(entry.searchParams.get("piik-preferences")).toBe("theme");
@@ -368,7 +367,7 @@ describe("App launcher state recovery", () => {
       expect(fragment.get("piik-lang")).toBe("en");
       expect(fragment.get("piik-theme")).toBe("light");
     }
-    expect(entries.map(entry => entry.origin)).toEqual([saved.sites[0], "http://127.0.0.1:8787"]);
+    expect(entries.map(entry => entry.origin)).toEqual(["http://127.0.0.1:8787"]);
   });
 
   it("selects only an HTTP(S) origin for explicit approval, including pasted full URLs", () => {
@@ -385,9 +384,9 @@ describe("App launcher state recovery", () => {
     }
   });
 
-  it.each([true, false])("opens a manually entered Site only after explicit approval succeeds (manual: %s)", async manual => {
+  it("saves exact-origin approval separately from navigation and preserves failures", async () => {
     const fetch = vi.fn(async () => response());
-    const page = mount(fetch, manual);
+    const page = mount(fetch);
     await settle();
     fetch.mockResolvedValueOnce({ ...response(), ok: false, status: 503 });
     await page.approveSite("https://next.example");
@@ -395,8 +394,7 @@ describe("App launcher state recovery", () => {
     expect(page.state.SiteError).toBe("client.connect.saveFailed");
     fetch.mockResolvedValueOnce(response({ ...saved, sites: [...saved.sites, "https://next.example"] }));
     await page.approveSite("https://next.example");
-    if (manual) expect(page.navigate).toHaveBeenCalledWith("https://next.example/#piik-client=1&piik-lang=en&piik-mode=text&piik-theme=system");
-    else expect(page.navigate).not.toHaveBeenCalled();
+    expect(page.navigate).not.toHaveBeenCalled();
     expect(fetch.mock.calls[1]).toEqual(["/api/client-launcher/site", expect.objectContaining({
       body: JSON.stringify({ site: "https://next.example", allowed: true }),
     })]);
@@ -532,7 +530,7 @@ it("releases the approval page when saving a site never responds", async () => {
       });
       return response();
     });
-    const page = mount(fetch, true);
+    const page = mount(fetch);
     await settle();
     const approval = page.approveSite("https://next.example");
     await settle();
@@ -543,7 +541,7 @@ it("releases the approval page when saving a site never responds", async () => {
     expect(page.navigate).not.toHaveBeenCalled();
     fetch.mockResolvedValueOnce(response({ ...saved, sites: [...saved.sites, "https://next.example"] }));
     await page.approveSite("https://next.example");
-    expect(page.navigate).toHaveBeenCalledWith("https://next.example/#piik-client=1&piik-lang=en&piik-mode=text&piik-theme=system");
+    expect(page.navigate).not.toHaveBeenCalled();
     expect(page.state.SiteBusy).toBe(false);
     page.cleanup();
   });
@@ -557,7 +555,7 @@ it("keeps committed approval when the startup preference body stalls", async () 
       }) };
       return response(options?.method === "POST" ? approved : saved);
     });
-    const page = mount(fetch, true);
+    const page = mount(fetch);
     await settle();
     const approval = page.changeSite(nextSite, "site", true);
     await settle();
@@ -571,7 +569,7 @@ it("keeps committed approval when the startup preference body stalls", async () 
 it("enters the fresh App-owned startup result once with its current debug setting and port", async () => {
   vi.stubGlobal("window", { location: { href: "http://127.0.0.1:39731/client?start=1" } });
   const fetch = vi.fn().mockResolvedValueOnce(response({ ...saved, starting: true } as typeof saved));
-  const page = mount(fetch, false, { startup: true });
+  const page = mount(fetch, { startup: true });
   try {
     await settle();
     expect(page.navigate).not.toHaveBeenCalled();
@@ -595,7 +593,7 @@ it("enters the fresh App-owned startup result once with its current debug settin
 
 it("leaves a failed owned startup available for manual retry", async () => {
   const fetch = vi.fn().mockResolvedValueOnce(response({ ...saved, detail: "tunnel failed" }));
-  const page = mount(fetch, false, { startup: true });
+  const page = mount(fetch, { startup: true });
   try {
     await settle();
     expect(page.state.Starting).toBe(false);
@@ -624,11 +622,28 @@ it("clears an owned startup from the existing settings operation", async () => {
 
 
 it.each(["local", "link"] as const)("names the owned startup site and saved %s mode", mode => {
-  const html = renderToStaticMarkup(createElement(LauncherForm, {
-    mode, sites: saved.sites, startupSite: "", ownedStartup: mode,
-    onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onSubmit() {},
+  const html = renderToStaticMarkup(createElement(SiteManagement, {
+    bookmarks: [], sites: saved.sites, startupSite: "", ownedStartup: mode, ownedSites: [], busy: false,
+    async onSave() {}, async onRemove() {}, async onApprove() {}, async onRevoke() {}, async onStartup() {}, onOpen() {},
   }));
   expect(html).toMatch(/my site|我的站点/);
   expect(html).toMatch(mode === "local" ? /Local network|局域网使用/ : /Public invite|公网邀请/);
   expect(html).toMatch(/type="checkbox"[^>]*checked/);
+});
+
+it("surfaces manager save failures and revokes only the selected origin", async () => {
+  const fetch = vi.fn(async () => response());
+  const page = mount(fetch);
+  try {
+    await settle();
+    fetch.mockResolvedValueOnce({ ...response(), ok: false, status: 503 });
+    await expect(page.manageSite("https://next.example", "site")).rejects.toThrow();
+    expect(page.state.SiteError).toBe("client.connect.saveFailed");
+    fetch.mockResolvedValueOnce(response({ ...saved, sites: [] }));
+    await page.manageSite(saved.sites[0]!, "site", false);
+    expect(fetch).toHaveBeenLastCalledWith("/api/client-launcher/site", expect.objectContaining({
+      body: JSON.stringify({ site: saved.sites[0], allowed: false }),
+    }));
+    expect(page.navigate).not.toHaveBeenCalled();
+  } finally { page.cleanup(); }
 });

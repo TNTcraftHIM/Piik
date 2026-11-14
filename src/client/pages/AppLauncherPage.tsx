@@ -7,7 +7,7 @@ import { LoadingStatus } from "../components/living/WaitingStatus";
 import { AppReleaseNotice, AppUpdateStatus } from "../components/living/AppReleaseNotice";
 import { useAppUpdate } from "../lib/use-app-update";
 import { AppHeader } from "../components/living/Header";
-import { DeviceSiteApprovals, LocalConnectionDetails, SiteStartControls } from "../components/living/LauncherForm";
+import { LocalConnectionDetails, SiteStartControls } from "../components/living/LauncherForm";
 import { LauncherWorkspace } from "../components/living/LauncherWorkspace";
 import { ChannelSettingsDialog } from "../channel/components/ChannelSettingsDialog";
 import { Btn, Pill } from "../components/living/primitives";
@@ -87,13 +87,10 @@ export function AppLauncherPage() {
   const [bookmarksOnly] = useState(() => new URLSearchParams(location.search).has("bookmarks") || new URLSearchParams(location.hash.slice(1)).has("open"));
   const [siteBusy, setSiteBusy] = useState(false);
   const [siteError, setSiteError] = useState<string>();
-  const [siteEntry, setSiteEntry] = useState({ origin: "", confirming: false });
-  const [panel, setPanel] = useState<"launch" | "devices">();
+  const [panel, setPanel] = useState<"launch">();
   // Background reads cannot replace a newer command's result or optimistic state.
   const stateChanges = useRef({ revision: 0, pending: 0 });
-  const externalSite = new URLSearchParams(window.location.search).get("site");
-  const manualSite = externalSite === null && siteEntry.confirming;
-  const requestedSite = externalSite ?? (manualSite ? siteEntry.origin : null);
+  const requestedSite = new URLSearchParams(window.location.search).get("site");
   const validSite = requestedSite && (() => {
     try {
       const url = new URL(requestedSite);
@@ -108,8 +105,8 @@ export function AppLauncherPage() {
     // The requesting page still verifies authorized health before using App.
     // The opener closes this page. Finish an explicitly selected startup
     // preference first, and leave a failed save visible for correction.
-    if (!manualSite && approvalCurrent && !siteBusy && !siteError) window.opener?.postMessage({ type: "piik-app-approved", site: requestedSite }, requestedSite);
-  }, [manualSite, approvalCurrent, requestedSite, siteBusy, siteError]);
+    if (approvalCurrent && !siteBusy && !siteError) window.opener?.postMessage({ type: "piik-app-approved", site: requestedSite }, requestedSite);
+  }, [approvalCurrent, requestedSite, siteBusy, siteError]);
 
   useEffect(() => {
     let current = true;
@@ -297,10 +294,18 @@ export function AppLauncherPage() {
   }
 
   async function approveSite(site: string): Promise<void> {
-    if (await changeSite(site, "site", openOnApproval) && manualSite) {
-      window.location.replace(launchURL(`${site}/#piik-client=1`));
-    }
+    await changeSite(site, "site", openOnApproval);
   }
+
+  async function manageSite(site: string, setting: "site" | "startup-site", allowed = true): Promise<void> {
+    if (!await changeSite(site, setting, false, allowed)) throw new Error("Could not save App settings");
+  }
+  const siteManagement = {
+    sites, startupSite, ownedStartup: startupMode, ownedSites, busy: siteBusy, accessError: siteError,
+    onApprove: (site: string) => manageSite(site, "site"),
+    onRevoke: (site: string) => manageSite(site, "site", false),
+    onStartup: (site: string) => manageSite(site, "startup-site"),
+  };
 
   const errorKey = `client.launch.failure.${error?.reason}`;
   const home = !requestedSite && !bookmarksOnly;
@@ -354,7 +359,7 @@ export function AppLauncherPage() {
             />
           </div>
         ) : bookmarksOnly ? (
-          <AppSiteBookmarks windowNavigation={windowNavigation} closeOnOpen />
+          <AppSiteBookmarks windowNavigation={windowNavigation} closeOnOpen {...siteManagement} />
         ) : requestedSite ? (
           <section className="lr-client-approval" aria-labelledby="site-approval-title">
             <header className="lr-client-approval-heading">
@@ -382,29 +387,16 @@ export function AppLauncherPage() {
               <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.openOnStart")}</span>
             </label>}
             <div className="lr-client-approval-actions">
-              <Btn icon="x" title={!manualSite && approvalCurrent ? "client.connect.close" : "common.cancel"} cap={!manualSite && approvalCurrent ? "client.connect.close" : "common.cancel"} hint="hint-close"
-                disabled={manualSite && siteBusy} onClick={() => {
-                  if (manualSite) {
-                    setSiteEntry(entry => ({ ...entry, confirming: false }));
-                    setSiteError(undefined);
-                    setOpenOnApproval(false);
-                  } else window.close();
-                }} />
-              {(!approvalCurrent || (manualSite && siteBusy)) && <Btn icon="check" title={manualSite ? "client.connect.approveAndOpen" : "client.connect.approve"}
-                cap={manualSite ? "client.connect.approveAndOpen" : "client.connect.approve"} tone="primary"
+              <Btn icon="x" title={approvalCurrent ? "client.connect.close" : "common.cancel"} cap={approvalCurrent ? "client.connect.close" : "common.cancel"} hint="hint-close"
+                disabled={siteBusy} onClick={() => window.close()} />
+              {!approvalCurrent && <Btn icon="check" title="client.connect.approve" cap="client.connect.approve" tone="primary"
                 hint="hint-client-site" busy={siteBusy} disabled={!validSite || siteBusy} onClick={() => void approveSite(requestedSite)} />}
-              {manualSite && approvalCurrent && !siteBusy && <a className="lr-btn is-primary" href={launchURL(`${requestedSite}/#piik-client=1`)}>
-                <Glyph name="arrowRight" size={19} />
-                <span className={vis ? "visually-hidden" : "lr-cap"}>{t("client.connect.openSite")}</span>
-              </a>}
             </div>
           </section>
-        ) : <AppSiteBookmarks windowNavigation={windowNavigation} render={navigation => <LauncherWorkspace
+        ) : <AppSiteBookmarks windowNavigation={windowNavigation} {...siteManagement} render={navigation => <LauncherWorkspace
           bookmarks={navigation.bookmarks} bookmarksError={navigation.loadError} onRetryBookmarks={navigation.retry}
           onOpenBookmark={navigation.open} onManageBookmarks={navigation.manage}
           ready={!!target} starting={starting} invitationForm={navigation.invitationForm} footer={footer}
-          deviceActions={<Btn icon="lock" quiet size="dense" title="client.launcher.deviceAccess" cap="client.launcher.deviceAccess"
-            expanded={panel === "devices"} onClick={() => setPanel("devices")} />}
           localSiteAction={target ? <a className="lr-btn is-primary" href={launchURL(target)}>
             <Glyph name="arrowRight" size={19} /><span className={vis ? "visually-hidden" : "lr-cap"}>{t("client.connect.continue")}</span>
           </a> : <Btn icon="arrowRight" title="client.launch.go" cap="client.launch.go" busy={starting} disabled={starting}
@@ -431,15 +423,6 @@ export function AppLauncherPage() {
               onChange: value => { setPublicEntry(value); setPublicEntryError(false); } } : undefined}
             lan={lan && { ...lan, onChange: setLanAddress }} />
         </form>}
-      </ChannelSettingsDialog>}
-      {homeReady && panel === "devices" && <ChannelSettingsDialog title={t("client.launcher.deviceAccess")} closeDisabled={siteBusy} onClose={() => setPanel(undefined)}>
-        <div className="c3-settings-panels">
-          <DeviceSiteApprovals sites={sites} siteAddress={siteEntry.origin}
-            onSelectSite={origin => { setSiteEntry({ origin, confirming: true }); setSiteError(undefined); }}
-            startupSite={startupSite} ownedStartup={startupMode} ownedSites={ownedSites}
-            onToggleStartupSite={site => void changeSite(startupSite === site || startupMode && ownedSites.includes(site) ? "" : site, "startup-site")}
-            onRemoveSite={site => void changeSite(site, "site", false, false)} siteBusy={siteBusy} siteError={siteError} entryURL={launchURL} />
-        </div>
       </ChannelSettingsDialog>}
     </div>
   );

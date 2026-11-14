@@ -10,7 +10,7 @@
   },
   "labels": {
     "en": {
-      "bookmarks": "Saved sites",
+      "bookmarks": "Manage sites",
       "minimize": "Minimize",
       "maximize": "Maximize",
       "restore": "Restore",
@@ -23,7 +23,7 @@
       "startupFailed": "Piik could not start. See the terminal for details."
     },
     "zh": {
-      "bookmarks": "收藏的站点",
+      "bookmarks": "站点管理",
       "minimize": "最小化",
       "maximize": "最大化",
       "restore": "还原",

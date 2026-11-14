@@ -37,8 +37,8 @@ export function Cap({ k }: { k: ControlCopy }) {
   return vis ? null : <span className="lr-cap">{typeof k === "string" ? t(k) : k.text}</span>;
 }
 
-export function BackButton({ onClick }: { onClick: () => void }) {
-  return <Btn icon="arrowLeft" title="common.back" cap="common.back" size="dense" quiet hint="hint-collapse" onClick={onClick} />;
+export function BackButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
+  return <Btn icon="arrowLeft" title="common.back" cap="common.back" size="dense" quiet hint="hint-collapse" disabled={disabled} onClick={onClick} />;
 }
 
 export function Btn({

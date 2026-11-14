@@ -144,8 +144,10 @@ The launcher and saved startup choice work in either interface.
 Windows microphone and camera requests use a Piik permission window naming the
 requesting site. Allow applies to that request; rejecting, closing or pressing Esc
 denies it. Closing the requesting window cancels its pending requests.
-The window's star opens saved sites without leaving the current page. Bookmarks
-store a site address and optional name separately from device approval. Editing or
+The window's star opens site management without leaving the current page. One
+list combines saved destinations and approved exact origins; each site's details
+separate its bookmark, device consent and startup preference. Bookmarks store a
+site address and optional name separately from device approval. Editing or
 removing a bookmark does not grant or revoke access. A changed invitation address
 can be updated manually; saved bookmarks contain no room invitation key.
 

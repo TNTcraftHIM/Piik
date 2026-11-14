@@ -22,7 +22,6 @@
 .lr-launcher-local small { font-size: 11px; color: var(--muted); margin-top: 5px; }
 .lr-launcher-local-icon { color: var(--muted); }
 .lr-launcher-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--live); margin-left: auto; }
-.lr-launcher-device-actions { display: flex; flex-wrap: wrap; gap: 8px; align-self: flex-start; }
 .lr-launcher-main { padding: 42px 50px 22px; min-width: 0; }
 .lr-launcher-welcome { position: relative; padding: 10px 0 26px; }
 .lr-launcher-eyebrow { color: var(--action-text); font-size: 12px; font-weight: 650; margin: 0 0 20px; }
@@ -76,7 +75,6 @@
   .lr-launcher-saved-heading { order: 2; padding: 20px 24px 8px; border-top: 1px solid var(--line); background: var(--wall); }
   .lr-launcher-sites { order: 3; padding: 0 16px 20px; background: var(--wall); }
   .lr-launcher-local { order: 4; margin: 0; padding: 18px 24px; background: var(--wall); }
-  .lr-launcher-device-actions { order: 5; margin: 0 20px 20px; }
   .lr-launcher-site > .lr-glyph { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) { .lr-launcher-site { transition: none; } .lr-launcher-site:hover { transform: none; } }

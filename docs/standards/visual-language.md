@@ -49,7 +49,7 @@ For 3.0, use this responsibility map:
 | Responsibility | Target and effect | Group and boundary |
 | --- | --- | --- |
 | App and site utilities | App connection, presentation preferences, help and the current site's identity | Stable shell area; site maintenance attaches to site identity, separate from personal settings |
-| App entry and management | Saved destinations, exact-origin device approval, local hosting and updates | Distinct launcher tasks; opening or bookmarking a site is not approval, and the page does not own the hosted runtime or update operation |
+| App entry and management | Saved destinations, exact-origin device approval, local hosting and updates | One site-management list and detail surface separates bookmarks, device consent and startup preference; invitation entry and local hosting stay distinct, and the page does not own the hosted runtime or update operation |
 | Room navigation and management | The named room's conversation, invitation, access and room settings | Room identity, directory and room tools; browsing a room is separate from joining an activity |
 | Personal voice | This user's voice participation, microphone and listening | Stable personal activity area identifying the actual voice room; device-wide settings retain their wider scope |
 | Publishing and source | A particular share and what its recipients receive: source selection, broadcast pause/stop, source sound and input permission | Controls attached to that share; starting a share names its destination room |

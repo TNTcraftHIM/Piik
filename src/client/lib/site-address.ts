@@ -1,3 +1,5 @@
+export type SiteBookmark = { id: string; name: string; origin: string };
+
 /** Explicit HTTP(S) entries may include an invitation path, query and fragment. */
 export function siteEntryURL(value: string): URL | null {
   try {

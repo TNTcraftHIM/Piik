@@ -3,14 +3,14 @@ import { BrandLockup, BrandMark } from "./BrandMark";
 import { Btn, Pill } from "./primitives";
 import { LoadingStatus } from "./WaitingStatus";
 import { WelcomeLine } from "./WelcomeLine";
-import type { SiteBookmark } from "./SiteBookmarks";
+import type { SiteBookmark } from "../../lib/site-address";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import "./launcher-workspace.css";
 
 /** Composition only: the launcher retains all navigation, approval and start owners. */
 export function LauncherWorkspace({ bookmarks, bookmarksError, onRetryBookmarks, onOpenBookmark, onManageBookmarks,
-  ready, starting = false, invitationForm, localSiteAction, deviceActions, footer, children }: {
+  ready, starting = false, invitationForm, localSiteAction, footer, children }: {
   bookmarks?: readonly SiteBookmark[];
   bookmarksError?: boolean;
   onRetryBookmarks(): void;
@@ -20,7 +20,6 @@ export function LauncherWorkspace({ bookmarks, bookmarksError, onRetryBookmarks,
   starting?: boolean;
   invitationForm: ReactNode;
   localSiteAction: ReactNode;
-  deviceActions: ReactNode;
   footer?: ReactNode;
   children?: ReactNode;
 }) {
@@ -30,7 +29,7 @@ export function LauncherWorkspace({ bookmarks, bookmarksError, onRetryBookmarks,
       <BrandLockup size={44} motion="once" className="lr-launcher-brand" suffix={<small>App</small>} />
       <div className="lr-launcher-saved-heading"><h2 className={vis ? "visually-hidden" : undefined}>{t("client.bookmarks.title")}</h2>
         {vis && <Glyph name="star" size={20} />}
-        <Btn icon="pencil" quiet size="compact" title="client.launcher.manageBookmarks" textTooltip onClick={onManageBookmarks} />
+        <Btn icon="pencil" quiet size="compact" title="client.launcher.manageSites" textTooltip onClick={onManageBookmarks} />
       </div>
       <nav className="lr-launcher-sites" aria-label={t("client.bookmarks.title")}>
         {bookmarksError ? <div className="lr-launcher-empty">{vis
@@ -50,7 +49,6 @@ export function LauncherWorkspace({ bookmarks, bookmarksError, onRetryBookmarks,
           {vis && starting ? <LoadingStatus label="client.launch.starting" /> : <small className={vis ? "visually-hidden" : undefined} role={starting ? "status" : undefined}>{t(starting ? "client.launch.starting" : ready ? "client.launcher.running" : "client.launcher.ready")}</small>}</div>
         {ready && <span className="lr-launcher-live-dot" aria-hidden="true" />}
       </div>
-      <div className="lr-launcher-device-actions">{deviceActions}</div>
     </aside>
     <div className="lr-launcher-main">
       <header className="lr-launcher-welcome">

@@ -17,7 +17,8 @@ import { ShareMicrophoneSettings } from "../components/living/ShareMicrophoneSet
 import { HostShareControls } from "../components/living/HostShareControls";
 import { HostRemoteControl } from "../components/living/HostRemoteControl";
 import type { RemoteControlMode } from "../remote-control/protocol";
-import { LauncherForm } from "../components/living/LauncherForm";
+import { SiteStartControls } from "../components/living/LauncherForm";
+import { SiteManagement } from "../components/living/SiteManagement";
 import { BookmarkPreview } from "./BookmarkPreview";
 import type { AppMode } from "../lib/app-launch";
 import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
@@ -352,17 +353,21 @@ export function ControlsPreview() {
             onClick={() => setAppUpdateState(state)}>{state}</button>)}
       </div>
       <div className="lr-client-launch">
-        <LauncherForm mode={launchMode} onModeChange={setLaunchMode}
+        <SiteManagement bookmarks={[]} sites={launchSites} startupSite={startupSite} ownedSites={[]} busy={false}
+          onSave={async () => notify()} onRemove={async () => notify()} onOpen={notify}
+          onApprove={async site => setLaunchSites(sites => [...sites, site])}
+          onRevoke={async site => { setLaunchSites(sites => sites.filter(value => value !== site)); if (startupSite === site) setStartupSite(""); }}
+          onStartup={async site => setStartupSite(site)} />
+        <form className="lr-client-launch-panel" onSubmit={event => { event.preventDefault(); if (launchMode === "local") setLaunchReady(true); }}>
+          <SiteStartControls mode={launchMode} onModeChange={setLaunchMode}
           target={launchReady ? "http://127.0.0.1:8787/" : undefined}
           localCertificate={launchReady ? { origin: "https://192.0.2.10:8787", sha256Fingerprint: "A7C4308D16B2F99045E82C7B3F015E62D89F22C47A192601CE883AB5D0F749B6" } : undefined}
-          startupSite={startupSite} onToggleStartupSite={site => setStartupSite(value => value === site ? "" : site)}
-          sites={launchSites} onSelectSite={notify} onOpen={event => { event.preventDefault(); notify(); }}
-          onRemoveSite={site => { setLaunchSites(sites => sites.filter(value => value !== site)); if (startupSite === site) setStartupSite(""); }}
+          onOpen={event => { event.preventDefault(); notify(); }}
           lan={{ selected: launchLan, onChange: setLaunchLan, addresses: [
             { address: "192.0.2.10", name: "Wi-Fi" },
             { address: "192.0.2.20", name: "vEthernet (Example Virtual Network Adapter with a Long Name)" },
           ] }}
-          onSubmit={event => { event.preventDefault(); if (launchMode === "local") setLaunchReady(true); }}>
+          />
           <AppReleaseNotice update={{ kind: majorUpdate ? "major-update" : "update-available",
             version: releaseVersion, revision: "b".repeat(40),
             body: releaseNotes ? previewRelease.body : undefined,
@@ -379,7 +384,7 @@ export function ControlsPreview() {
                 } : {}) }, busy: false, error: false,
               act: command => setAppUpdateState(command.action === "download" ? "downloading" : command.action === "install" ? "installing" : "idle"),
             }} />
-        </LauncherForm>
+        </form>
       </div>
     </section>
     <BookmarkPreview />

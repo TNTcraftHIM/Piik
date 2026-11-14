@@ -1,11 +1,8 @@
-import { Fragment, useId, useLayoutEffect, useRef, type FormEvent, type MouseEvent, type ReactNode } from "react";
-import { BrandLockup } from "./BrandMark";
+import { Fragment, useId, type MouseEvent, type ReactNode } from "react";
 import { Tooltip } from "./Tooltip";
-import { WelcomeLine } from "./WelcomeLine";
-import { SiteAddressEntry } from "./SiteAddressEntry";
 import { NumberControl } from "./NumberControl";
 import { Btn, Pill } from "./primitives";
-import { HintComic, type HintKind } from "./hints";
+import type { HintKind } from "./hints";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import type { AppMode } from "../../lib/app-launch";
@@ -53,85 +50,6 @@ const MODES: Array<{
     comic: "hint-client-local",
   },
 ];
-
-export interface DeviceSiteApprovalsProps {
-  sites: readonly string[];
-  startupSite: string;
-  ownedStartup?: AppMode;
-  ownedSites?: readonly string[];
-  onToggleStartupSite: (site: string) => void;
-  onRemoveSite: (site: string) => void;
-  onSelectSite?: (site: string) => void;
-  siteAddress?: string;
-  siteBusy?: boolean;
-  siteError?: string;
-  onOpen?: (event: MouseEvent<HTMLAnchorElement>) => void;
-  entryURL?: (target: string) => string;
-}
-
-export function DeviceSiteApprovals({
-  sites, startupSite, ownedStartup, ownedSites = [], onToggleStartupSite,
-  onRemoveSite, onSelectSite, siteAddress, siteBusy, siteError, onOpen,
-  entryURL = target => target,
-}: DeviceSiteApprovalsProps) {
-  const { vis, t } = useCopy();
-  const accessHintId = useId();
-  const standbyRef = useRef<HTMLElement>(null);
-  const removalFocus = useRef<{ site: string; index: number } | null>(null);
-  useLayoutEffect(() => {
-    const pending = removalFocus.current;
-    if (!pending) return;
-    if (sites.includes(pending.site)) {
-      if (!siteBusy) removalFocus.current = null;
-      return;
-    }
-    removalFocus.current = null;
-    const section = standbyRef.current;
-    if (!section || section.ownerDocument.activeElement !== section.ownerDocument.body) return;
-    // Wait for confirmed removal, then keep keyboard users beside the next action.
-    const next = section.ownerDocument.getElementById(`${accessHintId}-remove-${Math.min(pending.index, sites.length - 1)}`);
-    (next ?? section.querySelector("summary"))?.focus();
-  }, [sites, siteBusy, accessHintId]);
-  return <>
-      <section ref={standbyRef} className="lr-client-standby lr-client-device-access" aria-label={t("client.launcher.deviceAccess")}>
-        <div className="lr-client-standby-heading">
-          <details className="lr-client-connect-guide" open={sites.length === 0 || undefined}>
-            <summary>
-              <span className="lr-client-connect-toggle">
-                {vis && <Glyph name="window" size={17} />}
-                <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.guide")}</span>
-                <Glyph name="chevron" size={14} />
-              </span>
-            </summary>
-            <div className="lr-client-connect-steps">
-              {vis && <HintComic kind="hint-client-site" />}
-              <p className={vis ? "visually-hidden" : undefined}>{t("client.connect.standbyHint")}</p>
-            </div>
-          </details>
-        {onSelectSite && <SiteAddressEntry initialAddress={siteAddress} onSelect={onSelectSite} />}
-        </div>
-        {siteError && <Pill icon="alert" tone="bad" comic="signal-failed" alert label={siteError} />}
-        {sites.length > 0 && <div className="lr-client-approved-sites" role="list">{sites.map((site, index) => <div key={site} className="lr-client-approved-site" role="listitem">
-          <a href={entryURL(`${site}/#piik-client=1`)} target="_blank" rel="noopener noreferrer" onClick={onOpen}>{site}<span aria-hidden="true">&nbsp;↗</span></a>
-          <div className="lr-client-site-actions">
-            <Btn icon="star" title="client.connect.openOnStart" size="dense" pressed={startupSite === site || Boolean(ownedStartup && ownedSites.includes(site))}
-              hint="hint-client-site" disabled={siteBusy} onClick={() => onToggleStartupSite(site)} />
-            <Btn id={`${accessHintId}-remove-${index}`} icon="linkOff" tone="danger" title="client.connect.remove" size="dense" textTooltip disabled={siteBusy} onClick={() => {
-              const button = standbyRef.current?.ownerDocument.activeElement;
-              removalFocus.current = button?.id === `${accessHintId}-remove-${index}` ? { site, index } : null;
-              onRemoveSite(site);
-            }} />
-          </div>
-        </div>)}</div>}
-      </section>
-
-      {ownedStartup && <label className="lr-client-approval-startup">
-        <input type="checkbox" checked disabled={siteBusy} onChange={() => onToggleStartupSite("")} />
-        <Glyph name="star" size={18} />
-        <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.openOwnedOnStart", { mode: t(ownedStartup === "local" ? "client.launch.local" : "client.launch.link") })}</span>
-      </label>}
-  </>;
-}
 
 export interface SiteStartControlsProps {
   mode: AppMode;
@@ -286,35 +204,4 @@ export function SiteStartControls({
       />
       </>}
   </>;
-}
-
-interface LauncherFormProps extends SiteStartControlsProps, DeviceSiteApprovalsProps {
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  children?: ReactNode;
-}
-
-// The product preview and film compose the same controls as the App launcher.
-export function LauncherForm({ children, onSubmit, ...props }: LauncherFormProps) {
-  const { vis, t } = useCopy();
-  return (
-    <form className="lr-client-launch-panel" onSubmit={onSubmit}>
-      <header className="lr-client-launch-heading">
-        <BrandLockup size={52} motion="once" className="lr-client-launch-brand"
-          heading titleClassName="lr-client-launch-title" suffix={<> <small>App</small></>} />
-        <WelcomeLine />
-      </header>
-      {children}
-      <DeviceSiteApprovals
-        sites={props.sites} startupSite={props.startupSite} ownedStartup={props.ownedStartup}
-        ownedSites={props.ownedSites} onToggleStartupSite={props.onToggleStartupSite}
-        onRemoveSite={props.onRemoveSite} onSelectSite={props.onSelectSite}
-        siteAddress={props.siteAddress} siteBusy={props.siteBusy} siteError={props.siteError}
-        onOpen={props.onOpen} entryURL={props.entryURL} />
-      {!props.target && <p className={vis ? "visually-hidden" : "lr-client-launch-section"}>{t("client.launch.room")}</p>}
-      <SiteStartControls
-        mode={props.mode} onModeChange={props.onModeChange} port={props.port} publicEntry={props.publicEntry} target={props.target}
-        localCertificate={props.localCertificate} onOpen={props.onOpen} entryURL={props.entryURL}
-        lan={props.lan} roomError={props.roomError} />
-    </form>
-  );
 }

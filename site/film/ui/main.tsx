@@ -7,7 +7,9 @@ import {
   AppHeader,
   LedStrip,
 } from "../../../src/client/components/living/Header";
-import { LauncherForm } from "../../../src/client/components/living/LauncherForm";
+import { SiteStartControls } from "../../../src/client/components/living/LauncherForm";
+import { BrandLockup } from "../../../src/client/components/living/BrandMark";
+import { WelcomeLine } from "../../../src/client/components/living/WelcomeLine";
 import {
   StageTv,
   StaticNoise,
@@ -206,15 +208,11 @@ function Screen({ shot }: { shot: Shot }) {
       />
       {launcher ? (
         <main className="lr-client-launch">
-          <LauncherForm
-            startupSite="" onToggleStartupSite={() => {}}
-            mode={shot}
-            onModeChange={noop}
-            sites={[]}
-            onRemoveSite={noop}
-            onSelectSite={noop}
-            onSubmit={(event) => event.preventDefault()}
-          />
+          <form className="lr-client-launch-panel" onSubmit={event => event.preventDefault()}>
+            <BrandLockup size={52} heading suffix={<small>App</small>} />
+            <WelcomeLine />
+            <SiteStartControls mode={shot} onModeChange={noop} />
+          </form>
         </main>
       ) : (
         <main className="lr-room">
