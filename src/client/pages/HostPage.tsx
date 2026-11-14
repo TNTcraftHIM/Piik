@@ -234,7 +234,12 @@ type NoticeValue = (
 };
 
 type StatusNoticeMessage = string | { key: CopyKey; vars?: Record<string, string>; failureCode?: string };
-type SourceSwitch = { replacingVideo?: MediaStreamTrack; audioOnly?: boolean; nativePending?: boolean };
+type SourceSwitch = {
+  replacingVideo?: MediaStreamTrack;
+  audioOnly?: boolean;
+  nativePending?: boolean;
+  retireNative?: () => void;
+};
 
 type ViewerQualityEvidence = Extract<
   ServerMessage,
@@ -1064,6 +1069,12 @@ export function HostPage({
     setPhase("ended");
   }
 
+  function endNativeSharing(message: StatusNoticeMessage, comic: ComicKind, tone: ComicTone): void {
+    const replacement = sourceSwitchRef.current?.retireNative;
+    if (replacement) replacement();
+    else endSharing(message, true, comic, tone);
+  }
+
   function endRoomSession(
     message: StatusNoticeMessage,
     comic: ComicKind,
@@ -1414,9 +1425,8 @@ export function HostPage({
             bridge?.dispose();
             return;
           }
-          endSharing(
+          endNativeSharing(
             event.failed ? { key: "host.shareEnded", failureCode: "app/capture/failed" } : { key: "host.stopNotice" },
-            true,
             event.failed ? "source-failed" : "share-ended",
             event.failed ? "bad" : "off",
           );
@@ -1521,7 +1531,7 @@ export function HostPage({
     if (nativeMediaIngressRef.current) {
       recoverBrowserFanout(nativeMediaIngressRef.current);
     } else if (nativeModeRef.current && activeGenerationRef.current !== null) {
-      endSharing({ key: "native.fail.controlDisconnected", failureCode: "app/control/disconnected" }, true, "route-failed", "bad");
+      endNativeSharing({ key: "native.fail.controlDisconnected", failureCode: "app/control/disconnected" }, "route-failed", "bad");
     }
     updateHostRelayCapacity();
   }
@@ -3327,8 +3337,25 @@ export function HostPage({
     }
     // Some browsers retire the old camera while opening the new one. That
     // transition belongs to this replacement, not the share-ended observer.
-    const token = { replacingVideo: source === "camera" && hostAudioRef.current?.sourceKind === "camera"
+    const wasNative = nativeModeRef.current;
+    const reboundPeerIds: string[] = [];
+    let nativeRetirement: Promise<boolean> | null = null;
+    const token: SourceSwitch = { replacingVideo: source === "camera" && hostAudioRef.current?.sourceKind === "camera"
       ? streamRef.current?.getVideoTracks()[0] : undefined };
+    if (wasNative) token.retireNative = () => {
+      // The old producer can end while independent Browser permission waits.
+      // Retire its resources without retiring this source-selection operation.
+      delete token.retireNative;
+      reboundPeerIds.push(...retireNativeSenderPeers());
+      disposeNativeShare();
+      streamRef.current?.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+      setStream(null);
+      setDetails(null);
+      audioAvailableRef.current = false;
+      signalRef.current?.setAudioAvailable(false);
+      nativeRetirement = hostSfuRouteRef.current?.replaceStream(null, true) ?? Promise.resolve(true);
+    };
     sourceSwitchRef.current = token;
     closeCaptureSourcePicker();
     setSourceSwitch(token);
@@ -3343,7 +3370,9 @@ export function HostPage({
         isCurrentGeneration(generation) &&
         sourceSwitchRef.current === token
       ) {
-        if (token.replacingVideo?.readyState === "ended") {
+        if (!streamRef.current && isCapturePermissionFailure(error, "source")) {
+          endSharing({ key: "host.stopNotice" });
+        } else if (!streamRef.current || token.replacingVideo?.readyState === "ended") {
           endSharing({ key: "host.shareEnded" }, true, "source-failed", "bad");
         } else {
           setCaptureError(error, source, "source");
@@ -3363,13 +3392,12 @@ export function HostPage({
 
     try {
       if (source === "camera") setCameraDevice(deviceId);
-      const reboundPeerIds: string[] = [];
-      const wasNative = nativeModeRef.current;
       if (wasNative) {
         const shareGeneration = shareGenerationRef.current!;
         const audio = createBrowserAudio(captured, source, generation, shareGeneration);
         try {
           captured = await audio.start();
+          await nativeRetirement;
           if (!isCurrentShare(generation, shareGeneration) || sourceSwitchRef.current !== token) {
             captured.getTracks().forEach(track => track.stop());
             audio.dispose();
@@ -3384,6 +3412,7 @@ export function HostPage({
         }
         // Permission and audio setup succeeded; only now retire the old source.
         token.replacingVideo = streamRef.current?.getVideoTracks()[0];
+        delete token.retireNative;
         reboundPeerIds.push(...retireNativeSenderPeers());
         disposeNativeShare();
         hostAudioRef.current = audio;
@@ -3399,7 +3428,10 @@ export function HostPage({
       }
     } catch (error) {
       if (captured !== streamRef.current) captured.getVideoTracks().forEach(track => track.stop());
-      if (isCurrentGeneration(generation)) setNoticeError(error, "source");
+      if (isCurrentGeneration(generation)) {
+        if (!streamRef.current) endSharing({ key: "host.shareEnded" }, true, "source-failed", "bad");
+        else setNoticeError(error, "source");
+      }
     } finally {
       finishSourceSwitch(token);
     }

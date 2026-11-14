@@ -39,7 +39,7 @@ const owners = new Set(["changeQuality", "commitQuality", "rememberQuality", "lo
   "openCaptureSourcePicker", "startBrowserShareFromPicker", "startNativeShareFromPicker",
   "startSharing", "connectRoomSignal", "createReplacementRoom", "beginRoomMutation", "finishRoomMutation", "setCaptureError", "toggleSharingPause",
   "startPeer", "reconcileHostChildren", "setNotice", "setNoticeKey", "setStatusNotice", "setNoticeError", "setNoticeErrorKey", "endSharing", "disposeResources", "hostTerminationKey", "copyRoomLink", "isCurrentRoomAuthority",
-  "handleRoomAccessFailure", "replaceCurrentRoom", "forgetRoom", "endRoomSession", "readableError", "confirmNativePermission", "updateHostRelayCapacity"]);
+  "handleRoomAccessFailure", "replaceCurrentRoom", "forgetRoom", "endRoomSession", "endNativeSharing", "readableError", "confirmNativePermission", "updateHostRelayCapacity"]);
 
 const functions: string[] = [];
 let noticeRendering = "";
@@ -175,7 +175,7 @@ function fixture(launchedByClient = true, nativeConnected = true) {
   context.openCaptureSourcePicker = state.openCaptureSourcePicker;
   context.disposeResources = state.disposeResources;
   return { ...state, peer, client, route, track, bridge, physical: () => physical,
-    context, startChild, dispose, openPicker: openPicker as () => Promise<void>,
+    context, startChild, dispose, endShare: context.endSharing, openPicker: openPicker as () => Promise<void>,
     closePicker: context.closeCaptureSourcePicker as () => void,
     releaseUnused: context.releaseUnusedNativeClient as () => void,
     disposeNative: context.disposeNativeShare as (expectedShare?: string) => void,
@@ -337,6 +337,89 @@ describe("Camera replacement ownership", () => {
     Object.assign(current.client.health, { activationURL: "piik://media" });
     return { ...current, nativeControl, remoteSnapshot, picture, previous, camera, nativeStream, oldBridge, peer, nativePeer, startedPeerStreams, replacePublication };
   }
+
+  it.each([["capture", "browser"], ["control", "camera"]])("keeps a pending Browser source when Native %s ends: %s", async (reason, source) => {
+    const current = sourceFixture(true);
+    current.generationRef.current = 1;
+    current.context.endSharing = current.endShare;
+    await current.startNative();
+    const permission = deferred<typeof current.camera>();
+    current.context.captureBrowserSource.mockReturnValue(permission.promise);
+    const switching = current.context.switchSource(source, "front");
+    const token = current.sourceSwitchRef.current;
+    if (reason === "control") current.client.onClose.mock.calls[0]![0]();
+    else current.client.onEvent.mock.calls[0]![0]({ type: "share-ended", shareId: "share", failed: true });
+    expect(current.activeGenerationRef.current).toBe(1);
+    expect(current.sourceSwitchRef.current).toBe(token);
+    expect(current.nativeModeRef.current).toBe(false);
+    expect(current.nativeMediaBridgeRef.current).toBeNull();
+    expect(current.nativePeer.dispose).toHaveBeenCalledOnce();
+    expect(current.context.streamRef.current).toBeNull();
+    expect(current.previous.video.stop).toHaveBeenCalled();
+    expect(current.replacePublication).toHaveBeenCalledWith(null, true);
+    permission.resolve(current.camera);
+    await switching;
+    expect(current.context.streamRef.current).toBe(current.camera);
+    expect(current.camera.video.stop).not.toHaveBeenCalled();
+    expect(current.startedPeerStreams).toEqual([current.camera]);
+    expect(current.replacePublication).toHaveBeenLastCalledWith(current.camera, true);
+    expect(current.sourceSwitchRef.current).toBeNull();
+  });
+
+  it.each(["cancel", "failure", "stop"])("finishes pending Browser intent after Native retirement: %s", async outcome => {
+    const current = sourceFixture(true);
+    useRealResourceDisposal(current);
+    current.context.endSharing = current.endShare;
+    current.generationRef.current = 1;
+    const publication = { replaceStream: current.replacePublication, disconnect: vi.fn(async () => {}) };
+    Object.assign(current.context.hostSfuRouteRef, { current: publication });
+    Object.assign(current.signalRef.current, { stop: vi.fn() });
+    await current.startNative();
+    const permission = deferred<typeof current.camera>();
+    current.context.captureBrowserSource.mockReturnValue(permission.promise);
+    const switching = current.context.switchSource("camera", "front");
+    current.client.onEvent.mock.calls[0]![0]({ type: "share-ended", shareId: "share", failed: true });
+    if (outcome === "stop") {
+      current.context.endSharing({ key: "host.stopNotice" });
+      permission.resolve(current.camera);
+    } else permission.reject(new DOMException("capture did not start", outcome === "cancel" ? "NotAllowedError" : "NotReadableError"));
+    await switching;
+    expect(current.activeGenerationRef.current).toBeNull();
+    expect(current.sourceSwitchRef.current).toBeNull();
+    expect(current.context.streamRef.current).toBeNull();
+    expect(current.nativeModeRef.current).toBe(false);
+    expect(current.setPhase).toHaveBeenLastCalledWith("ended");
+    if (outcome !== "stop") expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({
+      key: outcome === "cancel" ? "host.stopNotice" : "host.shareEnded", tone: outcome === "cancel" ? "off" : "bad",
+    }));
+    expect(publication.disconnect).toHaveBeenCalled();
+    expect(current.replacePublication).not.toHaveBeenCalledWith(current.camera, true);
+    if (outcome === "stop") expect(current.camera.video.stop).toHaveBeenCalled();
+  });
+
+  it("settles Native retirement before publishing Browser audio that was still preparing", async () => {
+    const current = sourceFixture(true);
+    current.context.endSharing = current.endShare;
+    current.generationRef.current = 1;
+    await current.startNative();
+    const preparation = deferred<typeof current.camera>();
+    const retirement = deferred<boolean>();
+    const audio = { start: vi.fn(() => preparation.promise), dispose: vi.fn(), audioAvailable: false };
+    current.context.createBrowserAudio = () => audio;
+    current.replacePublication.mockReturnValueOnce(retirement.promise);
+    const switching = current.context.switchSource("camera");
+    await vi.waitFor(() => expect(audio.start).toHaveBeenCalledOnce());
+    current.client.onEvent.mock.calls[0]![0]({ type: "share-ended", shareId: "share", failed: true });
+    preparation.resolve(current.camera);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(current.replacePublication).toHaveBeenCalledExactlyOnceWith(null, true);
+    expect(current.context.streamRef.current).toBeNull();
+    retirement.resolve(true);
+    await switching;
+    expect(current.replacePublication).toHaveBeenLastCalledWith(current.camera, true);
+    expect(current.context.streamRef.current).toBe(current.camera);
+    expect(current.camera.video.stop).not.toHaveBeenCalled();
+  });
 
   it("releases pending Browser commentary when Native handoff retires its audio owner", async () => {
     const current = sourceFixture(false);
