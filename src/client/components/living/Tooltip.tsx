@@ -174,8 +174,8 @@ export function Tooltip({
   };
 
   // Re-pick alignment from the trigger's live geometry. The configured align
-  // wins whenever it fits; otherwise the first alignment that keeps the whole
-  // panel inside the viewport, then whichever clips least (panel wider than
+  // wins when it fits and clears neighbouring controls; otherwise prefer
+  // viewport fit and the least overlap (panel wider than
   // the viewport is impossible — CSS caps it — but stay total).
   const pickAlign = () => {
     const wrap = wrapRef.current;
@@ -198,7 +198,7 @@ export function Tooltip({
     const surface = wrap.closest<HTMLElement>("[popover], :fullscreen");
     const insideSurface = (element: HTMLElement | null) => element && (!surface || surface.contains(element)) ? element : null;
     // A wrapped control row remains one working area, including on narrow screens.
-    const controlBar = insideSurface(wrap.closest<HTMLElement>(".lr-playback, .lr-source-picker-options, .lr-host-share-controls"));
+    const controlBar = insideSurface(wrap.closest<HTMLElement>(".lr-media-toolbar, .lr-source-picker-options"));
     const playback = Boolean(controlBar?.closest(".lr-playback"));
     const avoid = controlBar?.getBoundingClientRect() ?? rect;
     const screen = insideSurface(wrap.closest<HTMLElement>(".lr-tv-screen"));
@@ -255,11 +255,40 @@ export function Tooltip({
       align,
       ...(["center", "start", "end"] as Align[]).filter((a) => a !== align),
     ];
-    const fits = order.find((a) => clipped(boxes[a]) === 0);
-    const selected = fits ?? order.reduce((a, b) => (clipped(boxes[a]) <= clipped(boxes[b]) ? a : b));
-    let left = Math.max(x + EDGE_MARGIN, Math.min(boxes[selected].left, right - width - EDGE_MARGIN));
     let top = livePlace === "below" ? below + EDGE_MARGIN : avoid.top - panelHeight - EDGE_MARGIN;
     top = Math.max(y + EDGE_MARGIN, Math.min(top, bottom - panelHeight - EDGE_MARGIN));
+    // Viewport fit comes first; within it, keep guidance off neighbouring
+    // media controls. Reserve auto-hidden bars too: entering the player can
+    // reveal them while this guidance is still open.
+    const controls = [...(surface ?? wrap.ownerDocument).querySelectorAll<HTMLElement>(".lr-media-toolbar")]
+      .filter(element => !element.contains(wrap) && element.getClientRects().length)
+      .map(element => element.getBoundingClientRect());
+    const boundedLeft = (left: number) => Math.max(x + EDGE_MARGIN, Math.min(left, right - width - EDGE_MARGIN));
+    const overlap = (left: number) => controls.reduce((area, control) => area
+      + Math.max(0, Math.min(left + width, control.right) - Math.max(left, control.left))
+      * Math.max(0, Math.min(top + panelHeight + EDGE_MARGIN, control.bottom) - Math.max(top - EDGE_MARGIN, control.top)), 0);
+    const leastClipped = Math.min(...order.map(a => clipped(boxes[a])));
+    const candidates = order.filter(a => clipped(boxes[a]) === leastClipped);
+    const selected = candidates.reduce((a, b) => overlap(boundedLeft(boxes[a].left)) <= overlap(boundedLeft(boxes[b].left)) ? a : b);
+    let left = boundedLeft(boxes[selected].left);
+    const preferredLeft = left;
+    // A wide neighbouring bar can cover all trigger alignments. Use its
+    // nearest clear edge when that position still fits the viewport.
+    for (const control of controls) {
+      for (const candidate of [control.left - width - EDGE_MARGIN, control.right + EDGE_MARGIN]) {
+        if (candidate === boundedLeft(candidate) && (overlap(candidate) < overlap(left)
+          || overlap(candidate) === overlap(left) && Math.abs(candidate - preferredLeft) < Math.abs(left - preferredLeft))) left = candidate;
+      }
+    }
+    // At phone widths there may be no clear side. Keep the panel above its
+    // complete control bar when the preferred lower space covers another bar.
+    const above = avoid.top - panelHeight - EDGE_MARGIN;
+    if (livePlace === "below" && overlap(left) > 0 && above >= y + EDGE_MARGIN) {
+      const previousTop = top, previousOverlap = overlap(left);
+      top = above;
+      if (overlap(left) < previousOverlap) livePlace = "above";
+      else top = previousTop;
+    }
     let caret = Math.max(14, Math.min(center - left, width - 14));
     if (livePlace === "left") {
       left = (player ?? avoid).left - width - EDGE_MARGIN;
