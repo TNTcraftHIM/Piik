@@ -3,7 +3,7 @@ use super::{
     frames::RawFrame,
     gpu,
     worker::{self, Command, Reply},
-    CaptureClock, FrameTiming, Settings, VideoCodec,
+    CaptureClock, EncodingExecution, FrameTiming, Settings, VideoCodec,
 };
 use crate::EncodedFrame;
 use anyhow::{anyhow, ensure, Context, Result};
@@ -160,6 +160,7 @@ impl Encoding {
     pub(super) fn start(
         settings: Settings,
         codec: VideoCodec,
+        execution: EncodingExecution,
         clock: CaptureClock,
         timing: FrameTiming,
         latest: Option<RawFrame>,
@@ -189,6 +190,7 @@ impl Encoding {
                         timing,
                         settings,
                         codec,
+                        execution,
                     ))
                 })();
                 worker.finish(&result);
@@ -268,6 +270,7 @@ async fn supervise(
     timing: FrameTiming,
     settings: Settings,
     codec: VideoCodec,
+    execution: EncodingExecution,
 ) -> Result<()> {
     let mut recovering = None;
     loop {
@@ -282,6 +285,7 @@ async fn supervise(
             timing,
             settings,
             codec,
+            execution,
         )
         .await;
         if shared.stopped() {
@@ -330,6 +334,7 @@ async fn child(
     timing: FrameTiming,
     mut settings: Settings,
     codec: VideoCodec,
+    execution: EncodingExecution,
 ) -> Result<()> {
     let job = super::job::Job::new()?;
     let mut child = tokio::process::Command::new(std::env::current_exe()?)
@@ -367,6 +372,7 @@ async fn child(
                     settings,
                     timing,
                     codec,
+                    execution,
                 },
             )
             .await?;

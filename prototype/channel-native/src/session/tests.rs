@@ -639,6 +639,7 @@ fn projection_capture(result: oneshot::Sender<Result<CaptureLease, String>>) -> 
             bitrate: 1_000_000,
         },
         codec_mode: crate::capture::VideoCodecMode::Vp8,
+        encoding_execution: crate::capture::EncodingExecution::Auto,
         audio: false,
         show_capture_border: false,
         exclude_audio: None,

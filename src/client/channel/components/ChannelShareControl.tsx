@@ -5,7 +5,7 @@ import { LiveAudioExclusion } from "../../components/living/AudioExclusionSelect
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useCopy } from "../../ui/copy";
 import { SharingSettings } from "../../components/living/SharingSettings";
-import { AudioBitrateControl, QualityPresets, PicturePreferenceControl, PictureSettingsSummary, ResolutionControl, VideoRateControls, VideoCodecControl } from "../../components/living/QualityPresets";
+import { AudioBitrateControl, QualityPresets, PicturePreferenceControl, PictureSettingsSummary, ResolutionControl, VideoRateControls, VideoCodecControl, EncodingExecutionControl } from "../../components/living/QualityPresets";
 import { ShareMicrophoneSettings } from "../../components/living/ShareMicrophoneSettings";
 import { MAX_AUDIO_SEND_BITRATE, QUALITY_PROFILES, VIDEO_CAPTURE_LIMITS, captureFramerateCeiling, matchingQualityProfileId, type QualityProfile } from "../../media/quality";
 import { activateNativePicker } from "../../native/activation";
@@ -87,6 +87,10 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const currentCamera = sharing ? channel.streams.get(sharing.id)?.getVideoTracks()
     .find(track => track.readyState === "live")?.getSettings().deviceId : undefined;
   const codecMode = (sharing ? channel.screenCodecMode(sharing.id) : undefined) ?? channel.videoCodecMode;
+  const encodingExecution = (sharing ? channel.screenEncodingExecution(sharing.id) : undefined) ?? channel.encodingExecution;
+  const canChooseExecution = sources.kind === "ready" && sources.softwareEncodingCodecs.includes("h264")
+    && (codecMode === "auto" || codecMode === "h264")
+    && (sharing ? !!selectedNative?.current && !externalInput : sources.sources.length > 0 && !externalInput);
   const pickerSources: NativeSourceList = sources.kind === "ready" &&
     !(codecMode === "auto" ? sources.codecs.length > 0 : sources.codecs.includes(codecMode))
     ? { kind: "unsupported" } : sources;
@@ -187,7 +191,9 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
           <VideoRateControls value={quality} limits={VIDEO_CAPTURE_LIMITS} disabled={busy}
             onChange={next => setQuality({ ...quality, ...next })} />
           <VideoCodecControl value={codecMode}
-            disabled={disabled || busy || !!sharing || !!captureRequest} onChange={channel.setVideoCodecMode} /></>}
+            disabled={disabled || busy || !!sharing || !!captureRequest} onChange={channel.setVideoCodecMode} />
+          {canChooseExecution && <EncodingExecutionControl value={encodingExecution}
+            disabled={disabled || busy || !!sharing || !!captureRequest} onChange={channel.setEncodingExecution} />}</>}
         audio={<>
           {sharing && selectedNative?.current && selectedNative.target.kind === "display" && sources.kind === "ready" && sources.systemAudio && sources.processAudioExclusion &&
             <div className="lr-door-group lr-source-audio-settings">

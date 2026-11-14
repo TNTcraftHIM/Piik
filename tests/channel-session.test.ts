@@ -1844,7 +1844,7 @@ test.each([
     const target = { kind: "display" as const, sourceId: "1", title: "Owned fixture" };
     const listing = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
-    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs, videoAdaptation: true, externalInput: false, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false } });
+    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs, softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, externalInput: false, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false } });
     await listing;
     const selecting = session.startNativeScreen("first", target).catch(error => error);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
@@ -2183,6 +2183,8 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
     coreReply(); await initial;
     let state = { ...session.getSnapshot().state!, publications: [{ audience: [], title: null, ...publication, paused: false, sessionId: "endpoint", userId: "self" }] };
     socket.receive({ type: "state", state });
+    session.setEncodingExecution("software");
+    expect(session.screenEncodingExecution(publication.id)).toBe("auto");
     const cancelled = session.startNativeScreen("first", target);
     const cancelledResult = expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
     const prepare = await appCommand("prepare_capture");
@@ -2195,7 +2197,7 @@ test.each(["live", "metadata-rejected", "native-stop-rejected", "stop-before-rep
 
     const native = session.startNativeScreen("first", target, true);
     const nativePrepare = await appCommand("prepare_capture");
-    expect(nativePrepare).toMatchObject({ publicationId: publication.id, roomId: "first", target, audio: true });
+    expect(nativePrepare).toMatchObject({ publicationId: publication.id, roomId: "first", target, audio: true, encodingExecution: "auto" });
     expect(app.sent.at(-1)?.codecMode).toBe("vp8");
     if (outcome === "mute-during-native-prepare" || outcome === "mute-rejected-during-native-prepare") {
       const muting = session.setSourceAudio(publication.id, { muted: true });
@@ -2636,9 +2638,16 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
     const activationURL = "intent://media#Intent;scheme=piik;package=tv.piik.android.test;end";
     const excluded = { kind: "window" as const, sourceId: "2", title: "Room voice browser", pid: 42, creationTime: "1234" };
-    const sources = { sources: [target, excluded], codecs: ["h264", "vp8"], videoAdaptation: true, externalInput: false, processAudio: true, processAudioExclusion: true, systemAudio: true, captureBorderControl: true, activationURL };
+    const missingCapability = expect(listing).rejects.toThrow();
+    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs: ["h264"], videoAdaptation: true,
+      externalInput: false, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false } });
+    await missingCapability;
+    const previousTargetsId = app.sent.at(-1)!.id;
+    const currentListing = session.nativeSources();
+    await vi.waitFor(() => expect(app.sent.at(-1)?.id).not.toBe(previousTargetsId));
+    const sources = { sources: [target, excluded], codecs: ["h264", "vp8"], softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, externalInput: false, processAudio: true, processAudioExclusion: true, systemAudio: true, captureBorderControl: true, activationURL };
     app.receive({ id: app.sent.at(-1)!.id, result: sources });
-    await expect(listing).resolves.toEqual(sources);
+    await expect(currentListing).resolves.toEqual(sources);
     const abort = new AbortController();
     const cancelledPreview = session.nativePreview(target, abort.signal);
     const nextPreview = session.nativePreview(target);
@@ -2649,10 +2658,11 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await Promise.resolve();
     expect(app.sent.filter(command => command.type === "preview")).toHaveLength(1);
+    session.setEncodingExecution("software");
     const starting = session.startNativeScreen("first", target, true, excluded, true);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const publicationId = app.sent.at(-1)!.publicationId as string;
-    expect(app.sent.at(-1)).toMatchObject({ type: "prepare_capture", publicationId, roomId: "first", target, audio: true, excludeAudio: excluded, showCaptureBorder: true });
+    expect(app.sent.at(-1)).toMatchObject({ type: "prepare_capture", publicationId, roomId: "first", target, audio: true, excludeAudio: excluded, showCaptureBorder: true, encodingExecution: "software" });
     expect(session.nativeCaptureSelection("first")).toBeUndefined();
     expect(session.nativeCaptureRequest("first")).toEqual({ publicationId, activationURL });
     const captureId = crypto.randomUUID(), nativeSessionId = crypto.randomUUID();
@@ -2851,6 +2861,8 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     const volumeChange = session.setSourceAudio(publicationId, { level: .7, bitrate: 96_000 });
     app.receive({ id: app.sent.at(-1)!.id, result: null }); await volumeChange;
     const audioTokens = new Set<string>();
+    session.setEncodingExecution("auto"); // A changed draft applies only to the next share.
+    expect(session.screenEncodingExecution(publicationId)).toBe("software");
     // A selected source keeps its codec when the preview would now prefer VP8.
     vi.stubGlobal("RTCRtpReceiver", { getCapabilities: () => ({ codecs: [{ mimeType: "video/VP8", clockRate: 90000 }] }) });
     for (const { audio, exclusion } of [{ audio: false, exclusion: excluded }, { audio: true, exclusion: undefined },
@@ -2861,6 +2873,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
       expect(app.sent.at(-1)).toMatchObject({ publicationId, audio, target, showCaptureBorder: true,
         audioSettings: { bitrate: 96_000, gain: .7 } });
       expect(app.sent.at(-1)?.codecMode).toBe("h264");
+      expect(app.sent.at(-1)?.encodingExecution).toBe("software");
       if (audio && exclusion) expect(app.sent.at(-1)?.excludeAudio).toEqual(exclusion);
       else expect(app.sent.at(-1)).not.toHaveProperty("excludeAudio");
       expect(session.nativeCaptureSelection("first")).toEqual(previous);
@@ -2978,7 +2991,7 @@ test.each([
     const target = { kind: "picker" as const, sourceId: "1", title: "System picker" };
     const sources = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
-    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs: ["h264"], videoAdaptation: true, externalInput: false, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false, activationURL: "piik://media" } });
+    app.receive({ id: app.sent.at(-1)!.id, result: { sources: [target], codecs: ["h264"], softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, externalInput: false, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false, activationURL: "piik://media" } });
     await sources;
     const nativeSessionId = crypto.randomUUID(), oldCaptureId = crypto.randomUUID(), captureId = crypto.randomUUID();
     const starting = session.startNativeScreen("first", target);
@@ -3074,7 +3087,7 @@ test("pending Native capture stays page-owned through same-page stop and close",
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
     const target = { kind: "display" as const, sourceId: "1", title: "Test display" };
     const activationURL = "intent://media#Intent;scheme=piik;package=tv.piik.android.test;end";
-    const sources = { sources: [target], codecs: ["h264", "vp8"], videoAdaptation: true, externalInput: false, processAudio: false, processAudioExclusion: false, systemAudio: true, captureBorderControl: false, activationURL };
+    const sources = { sources: [target], codecs: ["h264", "vp8"], softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, externalInput: false, processAudio: false, processAudioExclusion: false, systemAudio: true, captureBorderControl: false, activationURL };
     const capabilities = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
     app.receive({ id: app.sent.at(-1)!.id, result: sources });

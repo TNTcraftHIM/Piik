@@ -1,5 +1,5 @@
 //! One same-build child owns one encoding worker. No WGC or output map.
-use super::{gpu, output, CaptureClock, FrameTiming, Settings, VideoCodec};
+use super::{gpu, output, CaptureClock, EncodingExecution, FrameTiming, Settings, VideoCodec};
 use anyhow::{anyhow, bail, ensure, Result};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
@@ -17,6 +17,7 @@ pub(super) enum Command {
         settings: Settings,
         timing: FrameTiming,
         codec: VideoCodec,
+        execution: EncodingExecution,
     },
     Frame {
         frame: gpu::Frame,
@@ -125,19 +126,21 @@ async fn encode(
     receiver: &mut mpsc::Receiver<Command>,
     stdout: &mut tokio::io::Stdout,
 ) -> Result<()> {
-    let (settings, timing, codec) = match receiver.recv().await {
+    let (settings, timing, codec, execution) = match receiver.recv().await {
         Some(Command::Start {
             settings,
             timing,
             codec,
-        }) => (settings, timing, codec),
+            execution,
+        }) => (settings, timing, codec, execution),
         Some(Command::Stop) | None => return Ok(()),
         _ => bail!("expected encoding Start"),
     };
     settings.validate()?;
     let clock = CaptureClock::new()?;
     let (requests, mut frames) = mpsc::channel(1);
-    let mut encoding = output::Encoding::start(settings, codec, clock, timing, requests)?;
+    let mut encoding =
+        output::Encoding::start(settings, codec, execution, clock, timing, requests)?;
     let control = encoding.control();
     let mut gpu = None;
     let mut read = false;

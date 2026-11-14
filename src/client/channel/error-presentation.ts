@@ -53,6 +53,8 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey)
     return display("channel.error.captureAudioFailed");
   if (error === "voice_microphone_permission_denied")
     return display("voice.error.microphoneDenied");
+  if (error === "unsupported_encoding_execution")
+    return display("channel.error.captureEncodingUnsupported");
   if (error === "capture_codec_unsupported")
     return display("channel.error.captureCodecUnsupported");
   if (error === "video_codec_unsupported")

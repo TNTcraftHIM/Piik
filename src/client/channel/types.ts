@@ -3,7 +3,7 @@ export type { ChatOptions } from "./protocol";
 import type { ChannelAttachments, DraftFile } from "./attachments";
 import type { FeedbackCue } from "./feedback-audio";
 import type { RoomCopyInfo } from "./backup-archive";
-import type { NativeCaptureTarget } from "../native/wire";
+import type { NativeCaptureTarget, EncodingExecution } from "../native/wire";
 import type { NativeCaptureRequest, NativeCaptureSources, NativeExternalInput, ChannelRemoteControlState, NativeConnectionMetrics } from "./app-link";
 import type { RemoteStopShortcut } from "../native/wire";
 import type { InputTransport } from "../remote-control/input-route";
@@ -54,6 +54,7 @@ export interface ChannelView {
   feedbackSound: RoomPreferences["feedbackSound"];
   quality: QualityProfile;
   videoCodecMode: BrowserVideoCodecMode;
+  encodingExecution: EncodingExecution;
   interactionsByRoom: ReadonlyMap<string, RoomInteractionSession>;
   publicationReactions: ReadonlyMap<string, PublicationReactionSnapshot>;
   voiceInput: RoomPreferences["voiceInput"];
@@ -89,6 +90,8 @@ export interface ChannelActions {
   setFeedbackClip(cue: FeedbackCue, file: File | null): Promise<void>;
   setQuality(profile: QualityProfile): void;
   setVideoCodecMode(mode: BrowserVideoCodecMode): void;
+  setEncodingExecution(mode: EncodingExecution): void;
+  screenEncodingExecution(publicationId: string): EncodingExecution | undefined;
   screenQuality(publicationId: string): { applied: QualityProfile; requested: QualityProfile } | undefined;
   screenCodecMode(publicationId: string): BrowserVideoCodecMode | undefined;
   setScreenQuality(publicationId: string, profile: QualityProfile): Promise<void>;

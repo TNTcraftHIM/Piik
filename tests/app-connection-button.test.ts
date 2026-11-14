@@ -100,7 +100,7 @@ describe("shared App connection entry", () => {
     const ownedScreens = new Set(["mine", "voice"]);
     const screenQuality = vi.fn(() => ({ applied: DEFAULT_QUALITY_SETTINGS, requested: DEFAULT_QUALITY_SETTINGS }));
     const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined,
-      screenQuality, screenCodecMode: () => undefined,
+      screenQuality, screenCodecMode: () => undefined, screenEncodingExecution: () => undefined,
       sourceAudio: () => undefined, sourceMicrophone: () => undefined,
       ownedScreens, streams: new Map(), state: { channel: { rooms: [{ id: "room", name: "Friday" }] }, publications: [
         { id: "other-endpoint", roomId: "room", kind: "screen", userId: "self" },
@@ -132,10 +132,12 @@ describe("Native sharing capabilities", () => {
   it("derives Native availability from retained capabilities and the source's codec mode", () => {
     setCopy({ lang: "en", vis: false });
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(), getUserMedia: vi.fn() } });
-    const sources = { kind: "ready", codecs: ["h264"], processAudio: false, systemAudio: false,
+    const sources = { kind: "ready", codecs: ["h264"], softwareEncodingCodecs: ["h264"], processAudio: false, systemAudio: false,
       sources: [{ kind: "window", sourceId: "1", title: "Owned Native window", pid: 1, creationTime: "1" }] };
     const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: true, pending: new Set(),
-      videoCodecMode: "vp8", nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined,
+      videoCodecMode: "vp8", encodingExecution: "software", screenEncodingExecution: () => "software", nativeCaptureRequest: () => undefined,
+      nativeCaptureSelection: (): ReturnType<ChannelController["nativeCaptureSelection"]> => undefined,
+      externalInput: (): ReturnType<ChannelController["externalInput"]> => undefined,
       screenQuality: () => undefined, screenCodecMode: () => "h264", sourceAudio: () => undefined, sourceMicrophone: () => undefined,
       ownedScreens: new Set<string>(), streams: new Map(), state: { channel: { rooms: [{ id: "room", name: "Friday" }] }, publications: [] as { id: string; roomId: string; kind: "screen"; source: { kind: "screen" } }[], voice: [] },
     };
@@ -147,6 +149,14 @@ describe("Native sharing capabilities", () => {
       return renderToStaticMarkup(createElement(ChannelShareControl, { channel: channel as unknown as ChannelController,
         roomId: "room", publicationId: channel.ownedScreens.has("mine") ? "mine" : undefined, disabled: false }));
     };
+    expect(render(true)).not.toContain('aria-label="Encoding method"');
+    channel.videoCodecMode = "auto";
+    expect(render(true)).toContain('aria-label="Encoding method"');
+    expect(render(true)).toContain('value="software" aria-pressed="true"');
+    sources.softwareEncodingCodecs = ["vp8"];
+    expect(render(true)).not.toContain('aria-label="Encoding method"');
+    sources.softwareEncodingCodecs = ["h264"];
+    channel.videoCodecMode = "vp8";
     const unsupported = render();
     expect(unsupported.replaceAll("&#x27;", "'")).toContain(t("en", "host.sourcePicker.unsupported"));
     expect(unsupported).not.toContain("data-native-source=");
@@ -165,6 +175,14 @@ describe("Native sharing capabilities", () => {
     channel.ownedScreens.add("mine");
     channel.videoCodecMode = "vp8";
     const sharing = render(true);
+    expect(sharing).not.toContain('aria-label="Encoding method"'); // Current Browser source ignores Native preferences.
+    channel.nativeCaptureSelection = () => ({ current: true, target: { kind: "display", sourceId: "1", title: "Display" }, audio: false, showCaptureBorder: false });
+    const nativeSettings = render(true);
+    expect(nativeSettings).toContain('aria-label="Encoding method"');
+    expect(nativeSettings.match(/<button[^>]*value="software"[^>]*>/)?.[0]).toContain('aria-disabled="true"');
+    channel.externalInput = () => ({ state: "waiting", publicationId: "mine", endpoint: "http://localhost", token: "preview" });
+    expect(render(true)).not.toContain('aria-label="Encoding method"');
+    channel.externalInput = () => undefined;
     expect(sharing).toContain('value="h264" aria-pressed="true"');
     for (const mode of ["auto", "h264", "vp8"]) expect(sharing).toContain(`value="${mode}"`);
     expect(render()).toContain("data-native-source=");

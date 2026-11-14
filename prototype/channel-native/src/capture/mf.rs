@@ -5,6 +5,7 @@ use super::{
     converter::Converter,
     frame_dropper::FrameDropper,
     frames::RawFrame,
+    mf_common::{media_type, normalize_level_1b, Com},
     output::Shared,
     qp, CaptureClock, FrameTiming, Settings, VideoCodec,
 };
@@ -20,10 +21,7 @@ use windows::{
             Dxgi::IDXGIDevice,
         },
         Media::MediaFoundation::*,
-        System::{
-            Com::{CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_MULTITHREADED},
-            Variant::VARIANT,
-        },
+        System::{Com::CoTaskMemFree, Variant::VARIANT},
     },
 };
 #[implement(IMFAsyncCallback)]
@@ -47,27 +45,6 @@ impl IMFAsyncCallback_Impl for Events_Impl {
         Ok(())
     }
 }
-struct Com;
-impl Com {
-    fn start() -> Result<Self> {
-        unsafe {
-            CoInitializeEx(None, COINIT_MULTITHREADED).ok()?;
-            if let Err(error) = MFStartup(MF_VERSION, MFSTARTUP_FULL) {
-                CoUninitialize();
-                return Err(error.into());
-            }
-        }
-        Ok(Self)
-    }
-}
-impl Drop for Com {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = MFShutdown();
-            CoUninitialize();
-        }
-    }
-}
 pub(super) struct Encoder {
     activate: IMFActivate,
     transform: IMFTransform,
@@ -86,26 +63,6 @@ impl Drop for Encoder {
         }
     }
 }
-fn media_type(subtype: &windows::core::GUID, settings: Settings) -> Result<IMFMediaType> {
-    unsafe {
-        let media = MFCreateMediaType()?;
-        media.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)?;
-        media.SetGUID(&MF_MT_SUBTYPE, subtype)?;
-        media.SetUINT64(
-            &MF_MT_FRAME_SIZE,
-            ((settings.width as u64) << 32) | settings.height as u64,
-        )?;
-        media.SetUINT64(&MF_MT_FRAME_RATE, ((settings.fps as u64) << 32) | 1)?;
-        media.SetUINT64(&MF_MT_PIXEL_ASPECT_RATIO, (1u64 << 32) | 1)?;
-        media.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)?;
-        media.SetUINT32(&MF_MT_VIDEO_PRIMARIES, MFVideoPrimaries_SMPTE170M.0 as u32)?;
-        media.SetUINT32(&MF_MT_TRANSFER_FUNCTION, MFVideoTransFunc_709.0 as u32)?;
-        media.SetUINT32(&MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT601.0 as u32)?;
-        media.SetUINT32(&MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235.0 as u32)?;
-        Ok(media)
-    }
-}
-
 fn set_format(transform: &IMFTransform, settings: Settings) -> Result<MFT_OUTPUT_STREAM_INFO> {
     unsafe {
         let output = media_type(&MFVideoFormat_H264, settings)?;
@@ -117,19 +74,6 @@ fn set_format(transform: &IMFTransform, settings: Settings) -> Result<MFT_OUTPUT
         transform.SetOutputType(0, &output, 0)?;
         transform.SetInputType(0, &media_type(&MFVideoFormat_NV12, settings)?, 0)?;
         Ok(transform.GetOutputStreamInfo(0)?)
-    }
-}
-
-fn normalize_level_1b(bytes: &mut [u8]) {
-    // Some MFTs use level_idc 9 for Baseline Level 1b. RFC 6184 requires
-    // constraint_set3_flag and level_idc 11; MF decoding otherwise yields no frames.
-    for index in 0..bytes.len().saturating_sub(6) {
-        let prefix = &mut bytes[index..index + 7];
-        if prefix[..3] == [0, 0, 1] && prefix[3] & 0x1f == 7 && prefix[4] == 0x42 && prefix[6] == 9
-        {
-            prefix[5] |= 0x10;
-            prefix[6] = 11;
-        }
     }
 }
 

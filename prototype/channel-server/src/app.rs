@@ -36,7 +36,7 @@ use futures_util::{
 };
 use piik_channel_core::RoomState;
 use piik_channel_native::{
-    capture::{Settings, Target, VideoCodec, VideoCodecMode},
+    capture::{EncodingExecution, Settings, Target, VideoCodec, VideoCodecMode},
     input::{Desktop, Mode, SourceView},
     peer::{
         CaptureAudio, CaptureLease, ExternalLease, SourceAudioSettings, SourceAudioState,
@@ -62,7 +62,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 8;
+const PROTOCOL: u8 = 9;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -927,6 +927,7 @@ enum Operation {
         target: Target,
         settings: Settings,
         codec_mode: VideoCodecMode,
+        encoding_execution: EncodingExecution,
         #[serde(default)]
         audio_settings: SourceAudioSettings,
         #[serde(default)]
@@ -1749,6 +1750,7 @@ async fn connection(
                                 target,
                                 settings,
                                 codec_mode,
+                                encoding_execution,
                                 audio_settings,
                                 audio,
                                 exclude_audio,
@@ -1772,6 +1774,7 @@ async fn connection(
                                                             target,
                                                             settings,
                                                             codec_mode,
+                                                            encoding_execution,
                                                             audio,
                                                             exclude_audio,
                                                             show_capture_border,
@@ -2186,7 +2189,7 @@ async fn capture_targets() -> Result<Value> {
                 piik_channel_native::capture::targets()?
             };
             let audio = piik_channel_native::capture::audio_capabilities();
-            let mut result = json!({"externalInput": piik_channel_native::peer::supports_external_input(), "sources": sources, "codecs": codecs, "processAudio": audio.process_audio, "processAudioExclusion": audio.process_audio_exclusion, "systemAudio": audio.system_audio, "captureBorderControl": piik_channel_native::capture::capture_border_control(), "videoAdaptation": piik_channel_native::capture::supports_video_adaptation()});
+            let mut result = json!({"externalInput": piik_channel_native::peer::supports_external_input(), "sources": sources, "codecs": codecs, "softwareEncodingCodecs": piik_channel_native::capture::software_video_codecs()?, "processAudio": audio.process_audio, "processAudioExclusion": audio.process_audio_exclusion, "systemAudio": audio.system_audio, "captureBorderControl": piik_channel_native::capture::capture_border_control(), "videoAdaptation": piik_channel_native::capture::supports_video_adaptation()});
             if let Some(activation) = piik_channel_native::capture::activation_url()? {
                 result["activationURL"] = json!(activation);
             }
@@ -2196,7 +2199,7 @@ async fn capture_targets() -> Result<Value> {
     #[cfg(not(feature = "capture"))]
     {
         Ok(
-            json!({"externalInput": false, "sources": [], "codecs": [], "processAudio": false, "processAudioExclusion": false, "systemAudio": false, "captureBorderControl": false, "videoAdaptation": false}),
+            json!({"externalInput": false, "sources": [], "codecs": [], "softwareEncodingCodecs": [], "processAudio": false, "processAudioExclusion": false, "systemAudio": false, "captureBorderControl": false, "videoAdaptation": false}),
         )
     }
 }
@@ -2208,6 +2211,7 @@ async fn prepare_capture(
     target: Target,
     settings: Settings,
     codec_mode: VideoCodecMode,
+    encoding_execution: EncodingExecution,
     audio: bool,
     exclude_audio: Option<Target>,
     show_capture_border: bool,
@@ -2225,6 +2229,7 @@ async fn prepare_capture(
             target,
             settings,
             codec_mode,
+            encoding_execution,
             audio,
             exclude_audio,
             show_capture_border,
@@ -3267,7 +3272,7 @@ mod tests {
     async fn selected_capture_settings_reach_the_host_command() {
         let mut wire = json!({
             "id": "selected-profile", "type": "prepare_capture", "roomId": "room",
-            "publicationId": Uuid::new_v4(), "codecMode": "vp8",
+            "publicationId": Uuid::new_v4(), "codecMode": "vp8", "encodingExecution": "software",
             "target": {"kind": "display", "sourceId": "1", "title": "Test display"},
             "settings": {"width": 1280, "height": 720, "fps": 24, "bitrate": 2_500_000,"degradationPreference":"balanced"},
             "audioSettings": {"bitrate":192000,"gain":0.5},
@@ -3282,6 +3287,7 @@ mod tests {
             target,
             settings,
             codec_mode,
+            encoding_execution,
             audio_settings,
             audio,
             exclude_audio,
@@ -3306,6 +3312,7 @@ mod tests {
             target.clone(),
             settings,
             codec_mode,
+            encoding_execution,
             audio,
             exclude_audio,
             show_capture_border,
@@ -3320,6 +3327,7 @@ mod tests {
             assert!(request.audio);
             assert!(request.show_capture_border);
             assert_eq!(request.codec_mode, VideoCodecMode::Vp8);
+            assert_eq!(request.encoding_execution, EncodingExecution::Software);
             assert_eq!(
                 serde_json::to_value(request.exclude_audio).unwrap(),
                 wire["excludeAudio"]
@@ -3345,6 +3353,7 @@ mod tests {
             target,
             invalid,
             VideoCodecMode::H264,
+            EncodingExecution::Auto,
             false,
             None,
             false,
@@ -3360,6 +3369,15 @@ mod tests {
             received.try_recv(),
             Err(mpsc::error::TryRecvError::Empty)
         ));
+        let mut missing_execution = wire.clone();
+        missing_execution
+            .as_object_mut()
+            .unwrap()
+            .remove("encodingExecution");
+        assert!(serde_json::from_value::<Request>(missing_execution).is_err());
+        wire["encodingExecution"] = json!("hardware");
+        assert!(serde_json::from_value::<Request>(wire.clone()).is_err());
+        wire["encodingExecution"] = json!("software");
         wire.as_object_mut().unwrap().remove("settings");
         assert!(serde_json::from_value::<Request>(wire).is_err());
 

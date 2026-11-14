@@ -553,6 +553,7 @@ enum Input {
         crate::capture::Target,
         crate::capture::Settings,
         crate::capture::VideoCodecMode,
+        crate::capture::EncodingExecution,
         bool,
         Option<crate::capture::Target>,
         bool,
@@ -915,6 +916,7 @@ impl NativePeers {
                             target,
                             settings,
                             mode,
+                            execution,
                             audio,
                             exclude_audio,
                             show_capture_border,
@@ -927,6 +929,7 @@ impl NativePeers {
                                     target,
                                     settings,
                                     mode,
+                                    execution,
                                     audio,
                                     exclude_audio,
                                     show_capture_border,
@@ -1075,10 +1078,12 @@ impl NativePeers {
         target: crate::capture::Target,
         settings: crate::capture::Settings,
         mode: crate::capture::VideoCodecMode,
+        execution: crate::capture::EncodingExecution,
         audio: bool,
         exclude_audio: Option<crate::capture::Target>,
         show_capture_border: bool,
     ) -> Result<CaptureLease> {
+        execution.validate()?;
         #[cfg(feature = "capture")]
         {
             let (tx, rx) = oneshot::channel();
@@ -1089,6 +1094,7 @@ impl NativePeers {
                     target,
                     settings,
                     mode,
+                    execution,
                     audio,
                     exclude_audio,
                     show_capture_border,
@@ -1105,6 +1111,7 @@ impl NativePeers {
                 target,
                 settings,
                 mode,
+                execution,
                 audio,
                 exclude_audio,
                 show_capture_border,
@@ -1415,6 +1422,7 @@ impl Driver {
         target: crate::capture::Target,
         settings: crate::capture::Settings,
         mode: crate::capture::VideoCodecMode,
+        execution: crate::capture::EncodingExecution,
         audio: bool,
         exclude_audio: Option<crate::capture::Target>,
         show_capture_border: bool,
@@ -1468,6 +1476,7 @@ impl Driver {
                     && capture.selected
                     && details.target.same_source(&target)
                     && details.show_capture_border == show_capture_border
+                    && details.producer.execution == execution
                     && details.producer.settings() == settings
                     && details.producer.control.codec.get().is_some_and(|codec| {
                         mode == crate::capture::VideoCodecMode::Auto || *codec == mode.initial()
@@ -1515,6 +1524,7 @@ impl Driver {
             target.clone(),
             settings,
             mode,
+            execution,
             mixer.clone(),
             audio,
             exclude_audio,

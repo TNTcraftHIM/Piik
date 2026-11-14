@@ -47,6 +47,8 @@ export const remoteStopShortcutSchema = z.object({ key: remoteShortcutKeySchema,
 
 export type RemoteStopShortcut = z.infer<typeof remoteStopShortcutSchema>;
 
+export type EncodingExecution = "auto" | "software";
+
 export const nativeVideoCodecSchema = z.enum(["h264", "vp8"]);
 
 const remoteControlRequestSchema = z.object({

@@ -259,6 +259,7 @@ pub struct PrepareCapture {
     pub target: Target,
     pub settings: Settings,
     pub codec_mode: crate::capture::VideoCodecMode,
+    pub encoding_execution: crate::capture::EncodingExecution,
     pub audio: bool,
     pub show_capture_border: bool,
     pub exclude_audio: Option<Target>,
@@ -1320,6 +1321,10 @@ impl Session {
         if request.result.is_closed() {
             return Ok(());
         }
+        if let Err(error) = request.encoding_execution.validate() {
+            let _ = request.result.send(Err(error.to_string()));
+            return Ok(());
+        }
         if !cfg!(feature = "capture") {
             let _ = request.result.send(Err("capture_unavailable".into()));
             return Ok(());
@@ -1465,6 +1470,7 @@ impl Session {
                 request.target,
                 request.settings,
                 request.codec_mode,
+                request.encoding_execution,
                 request.audio,
                 request.exclude_audio,
                 request.show_capture_border,

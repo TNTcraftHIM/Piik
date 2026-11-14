@@ -9,7 +9,7 @@ import type { ChannelView, ChatOptions, ScreenPresentation, SourceMicrophoneConf
 import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryImport, type BackupHistoryRow } from "./hosting";
 import { ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics, type NativeExternalInputState } from "./app-link";
 import { isClientActivated } from "../lib/app-launch";
-import type { NativeCaptureTarget } from "../native/wire";
+import type { NativeCaptureTarget, EncodingExecution } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 import { MicrophoneInput } from "../media/microphone-input";
@@ -66,6 +66,7 @@ interface ScreenShare {
   paused?: boolean;
   profile: QualityProfile;
   codecMode: BrowserVideoCodecMode;
+  encodingExecution: EncodingExecution;
   codec?: BrowserVideoCodecPreference;
   volume: { level: number; muted: boolean };
   microphone: CommentaryInput;
@@ -129,6 +130,7 @@ export class ChannelSession {
     screenBufferStatus: null,
     quality: readPreferredQuality(),
     videoCodecMode: "auto",
+    encodingExecution: "auto",
     interactionsByRoom: new Map(),
     publicationReactions: new Map(),
     voiceInput: readRoomPreferences().voiceInput,
@@ -274,6 +276,8 @@ export class ChannelSession {
     savePreferredQuality(profile);
     this.patch({ quality: profile });
   };
+  setEncodingExecution = (encodingExecution: EncodingExecution): void => { this.patch({ encodingExecution }); };
+
   setVideoCodecMode = (videoCodecMode: BrowserVideoCodecMode): void => {
     this.patch({ videoCodecMode });
   };
@@ -1771,7 +1775,7 @@ export class ChannelSession {
     if (!share) {
       const local = [...this.local].find(([, capture]) => capture.kind === "screen" && capture.roomId === roomId);
       share = { id: local?.[0] ?? crypto.randomUUID(), profile: local?.[1].profile ?? this.view.quality,
-        codecMode: this.view.videoCodecMode,
+        codecMode: this.view.videoCodecMode, encodingExecution: this.view.encodingExecution,
         volume: { level: 1, muted: false }, microphone: { deviceId: "", volume: 1, voiceProcessing: true } };
       this.screenShares.set(roomId, share);
     }
@@ -2034,6 +2038,8 @@ export class ChannelSession {
     return share.microphoneChange;
   };
 
+  screenEncodingExecution = (publicationId: string) => [...this.screenShares.values()].find(share => share.id === publicationId)?.encodingExecution;
+
   screenCodecMode = (publicationId: string) => [...this.screenShares.values()].find(share => share.id === publicationId)?.codecMode;
 
   screenQuality = (publicationId: string) => {
@@ -2168,7 +2174,7 @@ export class ChannelSession {
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       const codecMode = share.codec?.primary ?? (share.codecMode === "auto"
         && app.supportsCaptureCodec("vp8") && !supportsH264Receive() ? "vp8" : share.codecMode);
-      const preparing = app.prepareCapture(share.id, roomId, target, audio, share.profile, codecMode,
+      const preparing = app.prepareCapture(share.id, roomId, target, audio, share.profile, codecMode, share.encodingExecution,
         audio ? native.excludeAudio : undefined, share.volume.muted ? 0 : share.volume.level, showCaptureBorder);
       this.patch({});
       const prepared = await preparing;

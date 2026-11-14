@@ -51,6 +51,10 @@ mod macos;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod mf;
 #[cfg(all(feature = "capture", target_os = "windows"))]
+mod mf_common;
+#[cfg(all(feature = "capture", target_os = "windows"))]
+mod mf_software;
+#[cfg(all(feature = "capture", target_os = "windows"))]
 mod output;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod process;
@@ -58,6 +62,8 @@ mod process;
 mod qp;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod sdr;
+#[cfg(all(feature = "capture", target_os = "windows"))]
+mod software;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod vp8;
 #[cfg(all(feature = "capture", target_os = "windows"))]
@@ -285,6 +291,39 @@ pub enum VideoCodecMode {
     Auto,
     H264,
     Vp8,
+}
+
+/// Local execution intent, fixed for one capture and independent of its codec.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EncodingExecution {
+    #[default]
+    Auto,
+    Software,
+}
+
+impl EncodingExecution {
+    pub fn validate(self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self == Self::Auto || cfg!(all(feature = "capture", target_os = "windows")),
+            "unsupported_encoding_execution"
+        );
+        Ok(())
+    }
+}
+
+/// Optional software execution choices, established from actual local components.
+pub fn software_video_codecs() -> anyhow::Result<Vec<VideoCodec>> {
+    #[cfg(all(feature = "capture", target_os = "windows"))]
+    {
+        let mut codecs = vec![VideoCodec::Vp8];
+        if mf_software::available()? {
+            codecs.insert(0, VideoCodec::H264);
+        }
+        return Ok(codecs);
+    }
+    #[cfg(not(all(feature = "capture", target_os = "windows")))]
+    Ok(Vec::new())
 }
 impl VideoCodecMode {
     #[cfg(feature = "capture")]

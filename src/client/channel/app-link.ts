@@ -1,7 +1,7 @@
 import { CHANNEL_PROTOCOL, type RoomSummary } from "./protocol";
 import { z } from "zod";
 import { appApprovalURL, appManagementURL, discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
-import { nativeCaptureTargetSchema, nativeVideoCodecSchema, remoteControlStateSchema, remoteStopShortcutSchema, type NativeCaptureTarget } from "../native/wire";
+import { nativeCaptureTargetSchema, nativeVideoCodecSchema, remoteControlStateSchema, remoteStopShortcutSchema, type NativeCaptureTarget, type EncodingExecution } from "../native/wire";
 import { remoteShortcutKeySchema, type RemoteControlMode } from "../remote-control/protocol";
 import type { QualityProfile } from "../media/quality";
 import { activateNativePicker } from "../native/activation";
@@ -9,7 +9,7 @@ import { NativeRoomHosting } from "./hosting-api";
 import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 
-export const APP_PROTOCOL = 8;
+export const APP_PROTOCOL = 9;
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), domainProtocol: z.number().int().positive().optional(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), domainProtocol: z.literal(CHANNEL_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
   version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional(), updateSupported: z.boolean().optional() });
@@ -33,6 +33,7 @@ export const nativeConnectionMetricsSchema = z.object({
 export type NativeConnectionMetrics = z.infer<typeof nativeConnectionMetricsSchema>;
 const captureSourcesSchema = z.object({ sources: z.array(nativeCaptureTargetSchema),
   codecs: z.array(nativeVideoCodecSchema),
+  softwareEncodingCodecs: z.array(nativeVideoCodecSchema),
   videoAdaptation: z.boolean(),
   externalInput: z.boolean(),
   processAudio: z.boolean(), processAudioExclusion: z.boolean(), systemAudio: z.boolean(), captureBorderControl: z.boolean(), activationURL: z.string().url().max(512).optional() }).strict();
@@ -269,14 +270,14 @@ export class ChannelApp {
     return preview;
   }
 
-  async prepareCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio: boolean, profile: QualityProfile, codecMode: BrowserVideoCodecMode, excludeAudio?: NativeCaptureTarget, gain = 1, showCaptureBorder = false): Promise<PreparedNativeCapture> {
+  async prepareCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio: boolean, profile: QualityProfile, codecMode: BrowserVideoCodecMode, encodingExecution: EncodingExecution, excludeAudio?: NativeCaptureTarget, gain = 1, showCaptureBorder = false): Promise<PreparedNativeCapture> {
     const settings = { width: profile.resolution.width, height: profile.resolution.height,
       fps: profile.maxFramerate, bitrate: profile.maxBitrate, degradationPreference: profile.degradationPreference };
     if (!this.connected) throw new Error("app_disconnected");
     if (excludeAudio && (!audio || target.kind !== "display" || excludeAudio.kind !== "window" || !this.processAudioExclusion)) throw new Error("audio exclusion unavailable");
     this.prepared.add(publicationId);
     try {
-      const pending = this.request({ type: "prepare_capture", publicationId, roomId, target, audio, settings, codecMode, showCaptureBorder,
+      const pending = this.request({ type: "prepare_capture", publicationId, roomId, target, audio, settings, codecMode, encodingExecution, showCaptureBorder,
         audioSettings: { bitrate: profile.maxAudioBitrate ?? 128_000, gain }, ...(excludeAudio ? { excludeAudio } : {}) });
       activateNativePicker(this.activationURL);
       const capture = preparedCaptureSchema.parse(await pending);

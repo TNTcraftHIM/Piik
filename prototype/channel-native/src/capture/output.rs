@@ -1,5 +1,8 @@
 //! One encoder worker and its ordered access units, independent of other outputs.
-use super::{frames::RawFrame, mf, vp8, CaptureClock, FrameTiming, Settings, VideoCodec};
+use super::{
+    frames::RawFrame, mf, software, CaptureClock, EncodingExecution, FrameTiming, Settings,
+    VideoCodec,
+};
 use crate::EncodedFrame;
 use anyhow::{anyhow, ensure, Result};
 use std::{
@@ -134,6 +137,7 @@ impl Encoding {
     pub(super) fn start(
         settings: Settings,
         codec: VideoCodec,
+        execution: EncodingExecution,
         clock: CaptureClock,
         timing: FrameTiming,
         requests: tokio::sync::mpsc::Sender<Option<i64>>,
@@ -148,9 +152,11 @@ impl Encoding {
         let thread = thread::Builder::new()
             .name("piik-encoder".into())
             .spawn(move || {
-                let result = match codec {
-                    VideoCodec::H264 => mf::Encoder::run(&worker, settings, clock, timing),
-                    VideoCodec::Vp8 => vp8::run(&worker, settings, clock, timing),
+                let result = match (codec, execution) {
+                    (VideoCodec::H264, EncodingExecution::Auto) => {
+                        mf::Encoder::run(&worker, settings, clock, timing)
+                    }
+                    _ => software::run(&worker, settings, codec, clock, timing),
                 };
                 let mut state = worker.state.lock().unwrap();
                 if let Err(error) = &result {

@@ -25,7 +25,7 @@ import "./channel-guide-preview.css";
 const invitation = "https://friends.example/#room=friday&invite=sample";
 const pending = new Set<string>();
 const roomBackupAvailable = async () => false;
-const sources: NativeCaptureSources = { ...SOURCES, codecs: ["h264", "vp8"], videoAdaptation: true, externalInput: false,
+const sources: NativeCaptureSources = { ...SOURCES, codecs: ["h264", "vp8"], softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, externalInput: false,
   sources: SOURCES.sources.filter(source => source.kind === "display" || source.sourceId === "101" || source.sourceId === "102") };
 
 /** Local samples have identities, but no measured or simulated network paths. */
@@ -44,6 +44,7 @@ export function useChannelGuideSample(multiRoom = false) {
   const settings = settingsByRoom.friday ?? {};
   const roomName = settings.name ?? (zh ? "周五小聚" : "Friday with friends");
   const [quality, setQuality] = useState<QualityProfile>(QUALITY_PROFILES["1080p30"]);
+  const [encodingExecution, setEncodingExecution] = useState<ChannelController["encodingExecution"]>("auto");
   const [codec, setCodec] = useState<BrowserVideoCodecMode>("auto");
   const [feedbackSound, setFeedbackSound] = useState<ChannelController["feedbackSound"]>({ enabled: false, volume: 1 });
   const feedbackCurrent = useRef(feedbackSound), feedbackImport = useRef(0);
@@ -147,7 +148,7 @@ export function useChannelGuideSample(multiRoom = false) {
     },
     sessionId: "sample-ada-session", connection: "connected", appConnected: true, pending, attachments, sendMessage: onSend,
     readByRoom: {}, markRead: () => {}, loadMessage: async () => {},
-    quality, setQuality, videoCodecMode: codec, setVideoCodecMode: setCodec, ownedScreens: new Set<string>(), localScreens: new Set<string>(), streams: new Map<string, MediaStream>(),
+    quality, setQuality, encodingExecution, setEncodingExecution, screenEncodingExecution: () => undefined, videoCodecMode: codec, setVideoCodecMode: setCodec, ownedScreens: new Set<string>(), localScreens: new Set<string>(), streams: new Map<string, MediaStream>(),
     messagesByRoom: { ...messagesByRoom, friday: sampleMessages.map(message => ({ ...message, reactions: messageReactions[message.seq] })) },
     interactionsByRoom: new Map(interaction ? [["friday", interaction]] : []), publicationReactions, roomBackupAvailable,
     getRoomInvite: async (roomId: string) => ({ state: "available" as const, url: invites[roomId] ?? `https://friends.example/#room=${roomId}&invite=sample` }),

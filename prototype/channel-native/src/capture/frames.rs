@@ -1,7 +1,7 @@
 //! One source clock and latest GPU frame shared by WGC or a decoder.
 use super::{
     process::{self, Encoding},
-    CaptureClock, FrameTiming, Settings, VideoCodec,
+    CaptureClock, EncodingExecution, FrameTiming, Settings, VideoCodec,
 };
 use anyhow::{anyhow, ensure, Result};
 use std::{
@@ -152,6 +152,14 @@ impl Frames {
     }
     /// Allocate one independent encoder. Initialization failures arrive through recv().
     pub fn encode(&self, settings: Settings, codec: VideoCodec) -> Result<Encoding> {
+        self.encode_with_execution(settings, codec, EncodingExecution::Auto)
+    }
+    pub(crate) fn encode_with_execution(
+        &self,
+        settings: Settings,
+        codec: VideoCodec,
+        execution: EncodingExecution,
+    ) -> Result<Encoding> {
         settings.validate()?;
         let mut state = self.shared.state.lock().unwrap();
         ensure!(!state.stop, "capture stopped");
@@ -161,6 +169,7 @@ impl Frames {
         let encoding = Encoding::start(
             settings,
             codec,
+            execution,
             self.clock,
             self.timing,
             state.latest.clone(),

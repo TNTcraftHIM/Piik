@@ -351,10 +351,10 @@ describe("current App discovery", () => {
       { ...health, service: "another-service" },
       { ...health, service: "piik-client", protocol: "10" },
       { ...health, service: "piik-client", protocol: 10, port: NATIVE_CLIENT_PORT_END },
-      { ...health, protocol: "8" },
+      { ...health, protocol: String(APP_PROTOCOL) },
       { ...health, token: 42 },
       { ...health, token: undefined },
-      { ...health, protocol: 8, port: NATIVE_CLIENT_PORT_END },
+      { ...health, protocol: APP_PROTOCOL, port: NATIVE_CLIENT_PORT_END },
     ];
     let responseIndex = 0;
     vi.stubGlobal("fetch", vi.fn(async () => {

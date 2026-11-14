@@ -20,7 +20,16 @@ from the Browser's personal activities. The App reuses the product's site approv
 and saved-site interface, and starts its own domain through the shared
 Local/public-invitation launcher. Windows WGC captures each source once in the
 parent; each encoding owns a separate same-executable child for D3D11 conversion,
-hardware H264 or software VP8, bitrate, keyframe requests and ordered output.
+hardware or software H264, software VP8, bitrate, keyframe requests and ordered output.
+Before a Windows Native share starts, its encoding method can be Automatic or
+Software. Automatic uses the existing hardware H264 path; Software uses the
+system CPU H264 encoder. With Auto codec selection, a failed H264 startup can
+try software VP8. An explicit H264 selection reports its own startup failure.
+Software availability is advertised from the local component; actual startup
+still requires an independent encoded frame. This choice belongs to the capture
+and all its encodings, including child-process replacement. Remote forwarding
+uses the receiving device's own encoding policy. Software H264 and VP8 share
+one synchronous scheduling, adaptation and NV12 readback owner.
 Demand-driven GPU handoff preserves the source's presentation clock and copies the texture into
 the child's private resource before encoding. An unread encoding rests on its
 bounded output queue without continuing GPU transfers. The Encoding owner stops

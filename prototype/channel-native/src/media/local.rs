@@ -8,7 +8,10 @@ use crate::capture::AudioCapture;
 use crate::media::MediaKind;
 use crate::media::RtpCodec;
 use crate::{
-    capture::{Capture, Control as VideoControl, Settings, Target, VideoCodec, VideoCodecMode},
+    capture::{
+        Capture, Control as VideoControl, EncodingExecution, Settings, Target, VideoCodec,
+        VideoCodecMode,
+    },
     peer::{Event, InitialMedia, SourceReady},
 };
 use anyhow::{anyhow, Result};
@@ -135,6 +138,8 @@ impl AudioProducer {
 
 pub(crate) struct Producer {
     pub video: Uuid,
+    #[cfg(target_os = "windows")]
+    pub execution: EncodingExecution,
     pub control: Control,
     task: Option<JoinHandle<Option<String>>>,
     demands: watch::Sender<Vec<VideoDemand>>,
@@ -158,6 +163,7 @@ impl Producer {
         target: Target,
         settings: Settings,
         mode: VideoCodecMode,
+        execution: EncodingExecution,
         audio_control: AudioControl,
         audio: bool,
         exclude_audio: Option<Target>,
@@ -177,10 +183,16 @@ impl Producer {
         let clock = SystemInstant::now(now);
         anyhow::ensure!(mode.initial().supported(), "capture_codec_unsupported");
         #[cfg(target_os = "windows")]
-        let capture = Capture::start(target.clone(), settings.fps, audio, show_capture_border);
+        let capture = Capture::start(
+            target.clone(),
+            settings.fps,
+            audio,
+            show_capture_border,
+            execution,
+        );
         #[cfg(not(target_os = "windows"))]
         let capture = {
-            let _ = show_capture_border;
+            let _ = (show_capture_border, execution);
             Capture::start(target.clone(), settings.fps, audio)
         };
         let capture = capture.inspect_err(|error| {
@@ -246,6 +258,8 @@ impl Producer {
         Ok((
             Self {
                 video,
+                #[cfg(target_os = "windows")]
+                execution,
                 control,
                 task: Some(task),
                 demands,

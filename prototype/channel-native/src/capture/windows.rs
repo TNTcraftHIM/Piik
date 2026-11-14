@@ -5,7 +5,7 @@ use super::{
     gpu,
     process::Encoding,
     sdr::{Color, DisplayColor, Sdr},
-    Control, FrameTiming, Frames, Settings, Target, TargetKind, VideoCodec,
+    Control, EncodingExecution, FrameTiming, Frames, Settings, Target, TargetKind, VideoCodec,
 };
 use anyhow::{anyhow, ensure, Context as _, Result};
 use std::{
@@ -47,6 +47,7 @@ use windows_capture::{
 
 pub struct Capture {
     frames: Frames,
+    execution: EncodingExecution,
     fps: Arc<AtomicU32>,
     thread: Option<thread::JoinHandle<Result<()>>>,
 }
@@ -60,6 +61,7 @@ impl Capture {
         fps: u32,
         _audio: bool,
         show_capture_border: bool,
+        execution: EncodingExecution,
     ) -> Result<Self> {
         ensure!(fps > 0, "capture fps must be positive");
         let frames = Frames::new(FrameTiming::Capture)?;
@@ -76,12 +78,14 @@ impl Capture {
             })?;
         Ok(Self {
             frames,
+            execution,
             fps,
             thread: Some(thread),
         })
     }
     pub fn encode(&self, settings: Settings, codec: VideoCodec) -> Result<Encoding> {
-        self.frames.encode(settings, codec)
+        self.frames
+            .encode_with_execution(settings, codec, self.execution)
     }
     pub fn control(&self) -> Control {
         self.frames.control()

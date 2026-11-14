@@ -13,6 +13,7 @@ import { QualityTileGlyph } from "./QualityTileGlyph";
 import { NumberControl } from "./NumberControl";
 import { Tooltip } from "./Tooltip";
 import type { BrowserVideoCodecMode } from "../../webrtc/video-codec";
+import type { EncodingExecution } from "../../native/wire";
 
 const PRESET_LABELS: Record<QualityProfileId, CopyKey> = {
   "720p30": "host.quality.light",
@@ -40,6 +41,23 @@ export function VideoCodecControl({ value, disabled, onChange }: {
           {label}
         </Chip>;
       })}
+    </div>
+  </div>;
+}
+
+export function EncodingExecutionControl({ value, disabled, onChange }: {
+  value: EncodingExecution; disabled?: boolean; onChange: (mode: EncodingExecution) => void;
+}) {
+  const { t, vis } = useCopy();
+  const id = useId();
+  return <div className="lr-door-group">
+    <span className="lr-door-glyph"><Glyph name="sliders" size={19} />{vis ? null : t("host.advanced.execution")}</span>
+    <div className="lr-row-group" role="group" aria-label={t("host.advanced.execution")}>
+      {(["auto", "software"] as const).map(mode => <Chip key={mode} name={`${id}-execution`} value={mode}
+        selected={mode === value} disabled={disabled} title={t(`host.advanced.execution.${mode}`)}
+        hint="hint-codec" hintText={t(`host.advanced.execution.${mode}Hint`)} onClick={() => onChange(mode)}>
+        {t(`host.advanced.execution.${mode}`)}
+      </Chip>)}
     </div>
   </div>;
 }
