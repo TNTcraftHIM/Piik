@@ -13,7 +13,7 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, busy, onSa
   name: string; avatar: string | null; color: string; disabled: boolean; busy: boolean;
   onSave(profile: { name: string; avatar: string | null }): Promise<void>;
 }) {
-  const { t, lang } = useCopy(), zh = lang === "zh";
+  const { t, lang, vis } = useCopy(), zh = lang === "zh";
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null), file = useRef<HTMLInputElement>(null), preparation = useRef(0);
   const [open, setOpen] = useState(false), [draft, setDraft] = useState(name), [picture, setPicture] = useState(avatar);
@@ -38,13 +38,18 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, busy, onSa
       hint="hint-rename" size="dense" quiet disabled={disabled} popoverTarget={id} controls={id} expanded={open} />
     </span>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={zh ? "修改个人资料" : "Edit profile"}
-      className="lr-anchored-card c3-name-popover" onToggle={event => {
+      className="lr-anchored-card c3-name-popover" onBeforeToggle={event => {
+        if (event.target !== event.currentTarget) return;
+        if (event.newState === "closed" && event.currentTarget.contains(event.currentTarget.ownerDocument.activeElement))
+          trigger.current?.querySelector("button")?.focus({ preventScroll: true });
+      }} onToggle={event => {
         if (event.target !== event.currentTarget) return;
         const opened = event.newState === "open";
         setOpen(opened);
         if (opened) { setDraft(name); setPicture(avatar); setImageError(false); input.current?.focus({ preventScroll: true }); }
         else { preparation.current++; setPreparing(false); }
       }}>
+      <h2 className={vis ? "visually-hidden" : undefined}>{zh ? "修改个人资料" : "Edit profile"}</h2>
       <form onSubmit={event => {
         event.preventDefault();
         if (!draft.trim() || locked) return;
@@ -60,13 +65,15 @@ export function ChannelProfileEditor({ name, avatar, color, disabled, busy, onSa
             if (value) void selectPicture(value);
           }} />
         </div>
-        <label htmlFor={`${id}-name`}>{zh ? "昵称" : "Nickname"}</label>
-        <div className="c3-name-entry"><span className="lr-input"><input ref={input} id={`${id}-name`} maxLength={MAX_USER_NAME_UNITS} autoComplete="nickname"
+        <label className={vis ? "visually-hidden" : undefined} htmlFor={`${id}-name`}>{zh ? "昵称" : "Nickname"}</label>
+        <span className="lr-input"><input ref={input} id={`${id}-name`} maxLength={MAX_USER_NAME_UNITS} autoComplete="nickname"
           value={draft} onChange={event => setDraft(event.target.value)} disabled={disabled || busy} /></span>
-          <Btn icon="check" type="submit" size="dense" tone="primary" title={{ text: zh ? "保存资料" : "Save profile" }} busy={busy} disabled={locked || !draft.trim()} />
-          <Btn icon="x" size="dense" quiet title="common.cancel" onClick={close} />
-        </div>
         {(imageError || message) && <p className="c3-settings-error" role="alert">{imageError ? (zh ? "这张图片无法打开，请换一张。" : "Couldn't open this image. Try another.") : message}</p>}
+        <div className="c3-profile-actions">
+          <Btn icon="x" size="dense" quiet title="common.cancel" cap="common.cancel" onClick={close} />
+          <Btn icon="check" type="submit" size="dense" tone="primary" title={{ text: zh ? "保存资料" : "Save profile" }}
+            cap={{ text: zh ? "保存资料" : "Save profile" }} busy={busy} disabled={locked || !draft.trim()} />
+        </div>
       </form>
     </div>
   </>;
