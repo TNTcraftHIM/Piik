@@ -1,5 +1,6 @@
 import { loadRoomHosting, type WatchDelivery } from "./hosting";
 import type { WatchBytePlan, WatchByteSource, ChannelPair } from "./protocol";
+import type { WatchByteResult } from "./watch-resource";
 
 interface Key { roomId: string; activityId: string; resourceId: string }
 interface Result { mimeType: string; totalSize: number | null; bytes: number[]; eof: boolean }
@@ -9,7 +10,6 @@ type Effect =
   | { type: "received"; requestId: string; result: Result }
   | { type: "failed"; requestId: string; code: string }
   | { type: "read" | "cancel_read"; requestId: string };
-export interface WatchByteResult { mimeType: string; totalSize: number | null; bytes: Uint8Array; eof: boolean }
 interface Pending {
   key: Key; source: WatchByteSource; offset: number; length: number; started: boolean;
   resolve(value: WatchByteResult): void; reject(error: Error): void; cleanup(): void;
