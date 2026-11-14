@@ -115,6 +115,21 @@ the feedback period; they do not delay that delivery.
   Native root. Define evidence, authorization and resource cost before extending
   the current admission/switch owners; 2.x route-policy labels do not directly
   describe these 3.0 paths.
+- [ ] **3.0 NAT recovery and prediction controls.** Use the existing isolated
+  network lab to measure recovery after an interface or gateway mapping changes.
+  Compare a bounded prediction neighbourhood against the current single anchor
+  only when observed mapping drift defeats it; retain the current socket,
+  request and lifetime limits. The [NAT owner](./research/nat-traversal.md) keeps
+  direct connectivity separate from relay coverage.
+- [ ] **Codec capability and efficiency comparison.** Measure actual platform
+  encoder/decoder and Browser capabilities, then compare one available codec
+  with H.264 using synthetic text and motion. Include compatible H.264 forwarding
+  cost; keep congestion control with the RTC owner. AV1/HEVC product integration
+  remains a separate decision.
+- [ ] **Shared-link viewing assessment.** Define a temporary room activity for
+  a shared media URL, playback control and late joins. Validate with an owned
+  seekable video before platform-specific adapters; keep account access,
+  source playback and realtime screen routing distinct.
 - [ ] **3.0 Native platform acceptance.** Build, install and validate the matching
   Android candidate. Complete physical microphone/camera acceptance for the
   Windows WebView entry; controlled runtime fallback, device
