@@ -79,8 +79,8 @@ export function LanguageControl() {
       >
         <span aria-hidden="true" lang={selectedExtra?.tag}>
           {selectedExtra ? selectedExtra.short : <Glyph name="globe" size={14} />}
-          <Glyph name="chevron" size={10} />
         </span>
+        <Glyph name="chevron" size={10} />
       </button>
     </span>
     <span

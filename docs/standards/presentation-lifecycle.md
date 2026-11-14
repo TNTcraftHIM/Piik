@@ -172,8 +172,8 @@ Explicit launcher choices apply only to the presentation domains the user chose.
 Older launchers cannot distinguish defaults from explicit choices; updated Sites
 preserve their saved preferences when receiving those unmarked hints.
 The App console supports Chinese and English: both Chinese catalogs use Chinese,
-and other UI languages fall back to English. Native window captions have their
-own Chinese/English presentation. The public website, film and documentation
+and other UI languages fall back to English. Windows window controls and
+permission prompts use the shared UI's five languages. The public website, film and documentation
 maintain independent Chinese/English content. All UI languages use concise copy.
 
 The [visual language](./visual-language.md) is the single owner of

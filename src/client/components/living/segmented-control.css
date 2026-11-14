@@ -17,7 +17,7 @@
 .lr-lang {
   --lr-segments: 3;
   --selection-item-size: calc(var(--control-compact-size) - 12px);
-  grid-auto-columns: var(--selection-item-size);
+  grid-template-columns: repeat(2, var(--selection-item-size)) calc(var(--selection-item-size) + 12px);
 }
 :is(.lr-toggle, .lr-lang)::before {
   content: "";
@@ -31,6 +31,7 @@
   transition: transform var(--motion-control) ease-out;
   pointer-events: none;
 }
+.lr-lang::before { width: var(--selection-item-size); }
 .lr-toggle.is-wrapping {
   display: grid;
   grid-auto-flow: row;
@@ -69,6 +70,7 @@
   transition: color var(--motion-feedback) ease, background-color var(--motion-feedback) ease, var(--control-motion);
 }
 .lr-lang > button { min-width: 0; padding: 0; }
+.lr-lang > .lr-lang-more { display: grid; grid-template-columns: var(--selection-item-size) 12px; gap: 0; }
 .lr-toggle button, .lr-lang > button { cursor: pointer; }
 .lr-toggle button:disabled, .lr-lang > button:disabled { cursor: default; }
 .lr-toggle > label { position: relative; min-width: 0; }

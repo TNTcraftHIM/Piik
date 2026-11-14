@@ -1,4 +1,5 @@
 import controls from "./window-controls.json";
+import { resolveLang } from "../locales";
 import "./native-window.css";
 
 declare global {
@@ -25,7 +26,7 @@ if (window.piikNativeWindow && window.ipc) {
     scheduled = false;
     const appearance = JSON.stringify({ kind: "appearance",
       theme: root.dataset.theme === "dark" ? "dark" : "light",
-      language: root.lang.startsWith("zh") ? "zh" : "en" });
+      language: resolveLang(root.lang) });
     if (appearance !== previousAppearance) {
       ipc.postMessage(appearance);
       previousAppearance = appearance;

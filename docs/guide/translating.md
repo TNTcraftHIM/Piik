@@ -125,9 +125,10 @@ layout questions, so contributors can coordinate work and review.
 
 System tags `zh-CN` and `zh-Hans` select Simplified Chinese; `zh-TW`, `zh-HK` and
 `zh-Hant` select Traditional Chinese. Saved explicit choices take precedence over
-system defaults, and App handoff carries the registered language tag. The native
-console supports Chinese/English with English fallback for other languages;
-native window captions have their own Chinese/English text.
+system defaults, and App handoff carries the registered locale. The native
+console supports Chinese/English with English fallback for other languages.
+Windows window controls and permission prompts use the same five languages;
+their shared labels live in [window-controls.json](../../src/client/ui/window-controls.json).
 
 ## Playful copy
 

@@ -19,7 +19,7 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 <div class="controls"></div>
 <script>
 const controls = __PIIK_WINDOW_CONTROLS__;
-let language = navigator.language.startsWith('zh') ? 'zh' : 'en';
+let language = 'en';
 let maximized = false;
 for (const action of ['bookmarks', 'minimize', 'maximize', 'close']) {
   const button = document.createElement('button');

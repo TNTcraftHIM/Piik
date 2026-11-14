@@ -53,12 +53,19 @@ extern "system" {
 enum Language {
     En,
     Zh,
+    #[serde(rename = "zh-Hant")]
+    ZhHant,
+    Ja,
+    Ko,
 }
 impl Language {
     fn code(self) -> &'static str {
         match self {
             Self::En => "en",
             Self::Zh => "zh",
+            Self::ZhHant => "zh-Hant",
+            Self::Ja => "ja",
+            Self::Ko => "ko",
         }
     }
 }
@@ -119,6 +126,10 @@ struct WindowControls {
 struct Labels {
     en: WindowCopy,
     zh: WindowCopy,
+    #[serde(rename = "zh-Hant")]
+    zh_hant: WindowCopy,
+    ja: WindowCopy,
+    ko: WindowCopy,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -133,6 +144,9 @@ impl WindowControls {
         match language {
             Language::En => &self.labels.en,
             Language::Zh => &self.labels.zh,
+            Language::ZhHant => &self.labels.zh_hant,
+            Language::Ja => &self.labels.ja,
+            Language::Ko => &self.labels.ko,
         }
     }
 }
@@ -515,6 +529,11 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                             } else if let Some(launcher) = &launcher_url {
                                 let mut url = url::Url::parse(launcher).expect("Local App entry");
                                 url.query_pairs_mut().append_pair("bookmarks", "1");
+                                let mut fragment =
+                                    url::form_urlencoded::Serializer::new(String::new());
+                                fragment
+                                    .append_pair("piik-client", "1")
+                                    .append_pair("piik-lang", language.code());
                                 if let Some(current) = main
                                     .content
                                     .url()
@@ -524,16 +543,13 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                                     if matches!(current.scheme(), "http" | "https")
                                         && current.origin() != url.origin()
                                     {
-                                        let fragment =
-                                            url::form_urlencoded::Serializer::new(String::new())
-                                                .append_pair(
-                                                    "site",
-                                                    &current.origin().ascii_serialization(),
-                                                )
-                                                .finish();
-                                        url.set_fragment(Some(&fragment));
+                                        fragment.append_pair(
+                                            "site",
+                                            &current.origin().ascii_serialization(),
+                                        );
                                     }
                                 }
+                                url.set_fragment(Some(&fragment.finish()));
                                 match BookmarksWindow::new(
                                     target,
                                     &mut context,
