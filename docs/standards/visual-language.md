@@ -1,7 +1,9 @@
 # Visual Language
 
-This is the single design requirement for Piik's shared Web/App interface:
-control/surface selection, illustration, semantic colour, motion and guidance.
+This is the single design handbook for Piik's shared Web/App interface:
+action ownership, grouping, layout, control/surface selection, illustration,
+semantic colour, motion and guidance. Start with [action ownership](#action-ownership-and-grouping),
+then choose the [control](#control-selection) and [surface](#surface-selection).
 New UI work follows this file and the local `/__tooltip-preview` catalogue.
 [Media status](./media-status.md) owns which facts justify each status;
 [presentation lifecycle](./presentation-lifecycle.md) owns interaction
@@ -34,6 +36,64 @@ ownership; do not reduce distinct situations to one layout with a swapped symbol
 
 ## Layout And Input
 
+### Action Ownership And Grouping
+
+Determine an action's **target, effect scope, authority and lifetime before its
+frequency, emphasis and position**. The product models own these facts; layout
+only expresses them. A gear, speaker or pause icon does not establish scope.
+Common rules apply to every surface; version-specific composition below does
+not transfer one version's roles or lifecycle to another.
+
+For 3.0, use this responsibility map:
+
+| Responsibility | Target and effect | Group and boundary |
+| --- | --- | --- |
+| App and site utilities | App connection, presentation preferences, help and the current site's identity | Stable shell area; site maintenance attaches to site identity, separate from personal settings |
+| App entry and management | Saved destinations, exact-origin device approval, local hosting and updates | Distinct launcher tasks; opening or bookmarking a site is not approval, and the page does not own the hosted runtime or update operation |
+| Room navigation and management | The named room's conversation, invitation, access and room settings | Room identity, directory and room tools; browsing a room is separate from joining an activity |
+| Personal voice | This user's voice participation, microphone and listening | Stable personal activity area identifying the actual voice room; device-wide settings retain their wider scope |
+| Publishing and source | A particular share and what its recipients receive: source selection, broadcast pause/stop, source sound and input permission | Controls attached to that share; starting a share names its destination room |
+| Local viewing | This user's playback/preview, listening, picture fit and playback preferences | The corresponding player; publishing controls remain a separate group even for one's own picture |
+| Layout and window | Focus/grid, fullscreen and detached presentation | A distinct viewing group; changing presentation preserves the existing media/session owner |
+| Participation | Reactions, counts and who watches a particular share | Beside that share's identity; room-wide presence and personal voice do not become per-picture settings |
+| Message and draft | A particular message's reaction/reply/mention, or the current composed message | Actions beside the message or composer; history retention belongs to conversation settings |
+
+Apply these rules in order:
+
+1. **Establish the target.** Name the affected object and who experiences the
+   result. Persistent activity controls continue to name their actual target
+   after navigation; the currently browsed room does not silently retarget them.
+2. **Group by effect and task.** Actions with the same target, effect scope and
+   subtask belong together. Distinguish publishing from local playback, and
+   navigation from activity commands, even when their icons look alike.
+3. **Order by the user's work.** Identify/select, act, adjust, then inspect.
+   Keep high-frequency actions directly reachable and the current task's main
+   progression clear. Direct access does not require every action to be bright,
+   permanently visible or equally prominent.
+4. **Separate consequences.** Stop or remove remains attached to its object,
+   with spacing and the shared danger treatment where appropriate. Closing a
+   panel, stopping one's viewing and ending a broadcast must remain distinguishable.
+5. **Add boundaries for a reason.** Use proximity, alignment and a heading
+   before a border. A separate object, task or blocking stage can justify a
+   separate surface; embedded contents reuse the host's title, frame and status.
+6. **Disclose a named task.** Detailed sharing, playback or connection options
+   use their existing settings entry. Do not create a generic overflow menu to
+   conceal an unresolved group or fill an empty corner. Follow the shared
+   [space priorities](#space-priority) before moving an action.
+
+These Piik choices apply public guidance reviewed on 2026-11-13:
+[Fluent toolbars](https://fluent2.microsoft.design/components/web/react/core/toolbar/usage)
+group related tasks, [Apple toolbars](https://developer.apple.com/design/human-interface-guidelines/toolbars)
+distinguish functions and important actions, and
+[context menus](https://developer.apple.com/design/human-interface-guidelines/context-menus)
+remain related to their target.
+[Discord's screen-sharing guide](https://support.discord.com/hc/en-us/articles/360040816151-Go-Live-and-Screen-Share)
+distinguishes sharing, listening, viewing and window controls; Piik retains its
+own independent voice/share lifetimes. These sources do not prescribe Piik's
+pixel geometry, room model or exact control placement.
+
+### Alignment And Input
+
 Use spacing, alignment and type hierarchy to group UI facts. Write explanations
 as normal localized sentences; keep names, device labels, status and actions in
 their existing visual groups rather than joining them into dotted strings.
@@ -41,11 +101,9 @@ A middle dot is reserved for short, genuinely peer metadata such as compact
 measurements or version details. It is not the default separator for headings,
 instructions, accessible descriptions or a label followed by an explanation.
 
-Group actions by the object or activity they affect before choosing a corner.
-Keep contextual actions near their named target and persistent personal controls
-in a stable activity area. Preserve those groups when the viewport changes.
-Use spacing first and light separators between different tasks; menus contain
-useful actions, not extra features added for visual balance. These choices follow
+Keep contextual groups near their named target and personal activity groups
+stable as the viewport changes. Light separators distinguish tasks without
+turning every region into a card. These choices follow
 [proximity](https://www.nngroup.com/articles/gestalt-proximity/) and
 [visual hierarchy](https://www.nngroup.com/articles/principles-visual-design/).
 
@@ -76,14 +134,22 @@ do not move unrelated controls into that space to fill an empty state.
 
 ### Space Priority
 
-Allocate space by the task, not by equally shrinking every child. A name or
-selected object gets space before its supporting edit action. Familiar auxiliary
-captions may collapse while retaining the icon, accessible name, guidance and
-shared control size. Primary, destructive and unfamiliar actions keep enough
-visible identity to distinguish their scope; retain wording when an icon would
-be ambiguous. Reflow related groups before squeezing text
-into narrow columns; exact values, units and usable input widths stay intact.
-Keep circular controls square rather than compressing one axis.
+Allocate space by task rather than shrinking every child equally. Preserve
+content, target identity, necessary state and required actions. First remove
+repeated explanations and secondary metadata; then condense familiar auxiliary
+captions while retaining their icons and accessible names; then reflow complete
+groups. Detailed adjustments can use their existing named settings surface.
+A name gets space before its supporting edit action. Preserve essential values,
+units and usable input widths. Primary, destructive and unfamiliar actions need
+enough visible identity to distinguish their effect; keep wording where an icon
+would be ambiguous. A circular control remains square.
+
+Use the shared size variants or the existing embedded-action family's density.
+Its owner supplies dimensions, icon alignment and feedback in every caller;
+a single card or preview must not invent another size, palette or motion rule.
+If required controls and a recognisable target cannot fit, increase the surface's
+minimum size or use bounded scrolling instead of deleting the functionality.
+Do not move action targets when a count, label or hover state changes.
 
 Room layout follows the available container width and height. Pictures, messages
 and the composer get space before decorative scenery. A compact presence strip
@@ -99,7 +165,7 @@ editing and active playback: a page without horizontal overflow can still hide
 its useful content. [W3C reflow guidance](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html)
 permits reorganizing panels while preserving access to their content and actions.
 
-### 3.0 Channel Workspace
+### 3.0 Room Workspace
 
 Keep room navigation and administration together in the room list. The name
 selects a room; its adjacent settings action manages that room without changing
@@ -131,20 +197,16 @@ The couch anchors the bottom of the central body, aligned with the personal area
 top edge; it does not span either sidebar. Sidebars can collapse independently.
 Narrow layouts use temporary drawers without replacing those desktop preferences.
 
-The workspace shell owns its outer corners. Attached site bars, sidebars, main
-content and presence regions meet along straight shared edges; do not round
-each colour region into a separate island. An inset card or floating tool keeps
-its own corners when spacing separates its whole perimeter from neighbouring
-regions. Source cards retain their media boundary inside the stage.
-
 Let the media stage use the available workspace. Grid gives watched pictures
 equal weight; focus gives one picture the main area and keeps the others in a
 thumbnail strip. All pictures share the same source-information overlay and
-action order. Thumbnail density retains the title and direct stop watching or
-stop sharing action. Its shared playback controls keep play/pause, sound and
-playback settings available; selecting the picture promotes it to the full
-controls without remounting its player. The bar follows playback-control visibility. Playback,
-volume, focus, source selection and share settings stay directly available.
+action order. Thumbnail density retains the title, reactions, watcher count/list
+and direct stop watching or stop sharing action. Its shared playback controls
+keep play/pause, sound and playback settings available; selecting the picture
+promotes it to the full controls without remounting its player. The
+[responsibility map](#action-ownership-and-grouping) still separates publishing,
+participation and local viewing. Information bars follow playback-control visibility.
+Source selection and sharing settings remain directly available on the active share.
 Narrow cards condense captions before wrapping; use a second compact overlay row
 only when the direct controls otherwise cannot fit, without an extra menu.
 Counts yield space before primary actions, and
@@ -252,6 +314,9 @@ of a circle. Header utilities share compact alignment and icon scale with the
 language track. Low-frequency help stays unframed and quiet; it need not carry
 the outline or shadow of direct settings. Narrow layouts shorten captions or
 spacing before changing that hierarchy.
+Each reusable component loads the styles required for its own appearance and
+state layers. A meter or badge must not alter a control's grid merely because a
+sibling panel was not loaded. Check the actual product entry as well as the catalogue.
 Keep desktop App, language, theme and help together on the right. Narrow headers
 retain one row with the brand/back action, signaling dots, App and More; language,
 theme and help share that attached disclosure without duplicating their controls.
@@ -287,6 +352,20 @@ that every popup should acquire.
 | Choose a source inside the television | TV-local nonmodal dialog; keep its own Tab loop, inner guidance before Escape cancellation, and return focus to the current share action on close. Surrounding room controls remain available to the pointer |
 | Keep a room tool available while watching or working | `FloatingPanel`, as used for interactions and Host remote permissions; retain its position without reflowing the room |
 | Use a tool outside the page | Optional `usePanelWindow` on capable browsers; reuse the same content/session, as with interactions, remote permissions and the docked remote keyboard |
+
+An immediate command menu is not an editing form. Inputs, preview and submission
+belong to a named task surface, with one title and a clear return path. Keep long
+contents scrollable inside that surface, preserve access to its primary action,
+and return focus to the invoking object or its surviving neighbour. The actual
+operation owns pending feedback: saving and removing must not animate each
+other's buttons. Cancelling presentation does not undo a committed operation or
+retire an unrelated room activity.
+
+Visual groups retain matching accessible names and meaningful keyboard order,
+following [WCAG relationships](https://www.w3.org/WAI/WCAG22/Understanding/info-and-relationships.html)
+and [focus order](https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html).
+Use `role="toolbar"` only with its [toolbar keyboard behavior](https://www.w3.org/WAI/ARIA/apg/patterns/toolbar/);
+ordinary button groups need not acquire that role for appearance alone.
 
 Show an operation's failure in the surface where it was requested. A settings
 dialog must keep that feedback visible when changing tasks, while preserving
@@ -418,11 +497,11 @@ symbols; related time measurements keep a clock with a scene identifying the
 measured stage. Illustrations explain a metric, never invent its current value,
 threshold or quality verdict.
 
-### Sharing And Playback
+### Shared Control Feedback
 
 Shared buttons and chips use pill shapes and a quiet lower edge.
-Standalone buttons, chips and option tiles lift 2 px on hover or keyboard focus, sink 2 px
-on press, and spring back over 260 ms on release. Selected and unselected states
+Standalone buttons, chips and option tiles use the shared hover/press transforms
+and [motion roles](#motion-grammar) in `button.css`. Selected and unselected states
 use the same motion; selection changes only their colour and outline.
 Embedded row actions follow [the content-row rule](#content-rows-and-embedded-actions)
 so their movement does not cross neighbouring content or clipping boundaries.
@@ -445,6 +524,19 @@ to show them. Neutral panel borders stay quieter
 than the controls inside them; nested diagnostic panels retain their softer fill.
 Keep room identity, invitation and admission controls ahead of expanded topology
 and connection details, so inspecting a route does not displace room actions.
+
+### Sharing And Playback
+
+Publishing and local playback have different effects. Broadcast pause and source
+sound affect recipients; local pause, preview and listening affect this user.
+Keep those groups and their labels distinct even when both are available to the
+same person. Reusing a playback component does not permit its volume control to
+silently become a broadcast-level control for a different role.
+
+The following Host-dock and single-room-voice composition describes **published
+2.x**. The [3.0 workspace](#30-room-workspace) and
+[quick-sharing view](#30-quick-sharing) retain their own spatial mapping and
+independent activity lifetimes.
 
 Sharing and local playback controls use the same quiet, compact button treatment.
 The Host's persistent dock stays below the picture; the Viewer's playback bar
@@ -487,13 +579,15 @@ joining. Use the shared media-control styling for both states. Missing browser
 microphone capability disables capture with a contextual explanation, without
 disabling listening.
 
-Playback follows the [shared playback owner](./presentation-lifecycle.md#playback-ownership).
+The following viewing rules apply to both versions; published 2.x playback
+lifecycle follows its [playback owner](./presentation-lifecycle.md#playback-ownership).
 Keep related controls together at the picture's lower edge: local playback and
 sound, remote input, viewing options, then window modes with fullscreen last.
 Common actions remain directly available; detailed preferences use an anchored
-popover. A narrow player keeps one compact row, including sound, remote input
-and window actions. Picture fit and rotation move to the same attached settings
-at that width, reusing their controls rather than duplicating visible actions.
+popover. Apply [space priority](#space-priority) to narrow full-size players;
+thumbnail presentation follows the [3.0 workspace contract](#30-room-workspace).
+Picture fit and rotation belong to the existing viewing settings, reusing their
+controls rather than duplicating visible actions.
 The playback surface is lightly translucent over the picture. One visibility
 owner hides the complete surface. Grants, pause and source changes do not move
 the bar or resize the picture. Remote input retains its local bezel pull.

@@ -21,7 +21,7 @@ visual language and delivery rules apply to both lines.
 | Published 2.x capture, encoders, media adaptation and audio | [Media quality](./media-quality.md) |
 | Published 2.x workflow, playback and Browser/App lifecycle | [Presentation and lifecycle](./presentation-lifecycle.md) |
 | Evidence behind each status, indicator, overlay and notice | [Media status](./media-status.md) |
-| Cast, symbols, colour, animation, tooltips and playful copy | [Visual language](./visual-language.md) |
+| Action ownership, grouping, layout, controls, cast, colour and motion | [Interface design and visual language](./visual-language.md#action-ownership-and-grouping) |
 | Website, README and introduction-film composition | [Public introduction](./public-introduction.md) |
 | Runtime settings, defaults, bounds and diagnostics | [Configuration](./configuration.md) |
 | Compatibility, build identity, publication and release notes | [Versioning](./versioning.md) |

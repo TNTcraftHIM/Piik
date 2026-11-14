@@ -16,7 +16,7 @@ verification procedures stay in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 | Module boundaries, interface discipline and ablation | [Engineering](./engineering.md) | Module, contract, lifecycle and source navigation; shared coding rules |
 | Names, terminology and voice | [Naming and copy](./naming.md) | Product/tool names, role labels and Chinese/English writing conventions |
 | Translation contributions | [Translation guide](../guide/translating.md) and its Chinese counterpart | Catalog editing, new-language registration and translation review |
-| Illustration, palette, motion and accessible layout | [Visual language](./visual-language.md) | Shared Browser/App design grammar |
+| Action grouping, surfaces, accessible layout, illustration, palette and motion | [Visual language](./visual-language.md) | Shared Browser/App design grammar |
 | Status projection | [Media status](./media-status.md) | Which facts each display surface may express |
 | Release identity and compatibility | [Versioning](./versioning.md) | Version roles, protected interfaces and public-readiness boundary |
 | Published 2.x behavior | [Rooms](./rooms-access.md), [routing](./routing-transport.md), [media](./media-quality.md), [lifecycle](./presentation-lifecycle.md) | One owner per domain; promises, boundaries and non-obvious invariants |
