@@ -266,6 +266,8 @@ Join confirmations provide domain-time samples for each viewer's local clock
 mapping. A late join or restored viewer applies the latest anchor after its media
 and clock are ready; autoplay refusal remains a local request to start playback.
 Actual playback start and recovery from buffering renew the sharer's anchor.
+Automatic drift correction waits until its target is locally buffered and the
+player can continue playback. An explicit sharer seek may select a new range.
 
 Preparing another source preserves the current one. Cancellation during
 preparation releases only the candidate; submitting the prepared source commits

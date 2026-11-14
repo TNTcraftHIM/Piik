@@ -112,7 +112,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     // The real player and controls consume a synthetic picture; no media URL is fetched.
     const media = new HTMLVideoMedia("data:video/webm;base64,");
     media.video.removeAttribute("src"); media.video.srcObject = stream;
-    let pageState = { position: 42, paused: true, rate: 1, duration: 240, readyState: 4, ended: false };
+    let pageState = { position: 42, paused: true, rate: 1, duration: 240, readyState: 4, ended: false, buffered: [[0, 60]] as [number, number][] };
     const listeners = new Set<(event: WatchMediaEvent) => void>();
     const page = new AppPageMedia({ read: async () => pageState, patch: async patch => {
       pageState = { ...pageState, ...patch }; for (const listener of listeners) listener("pause");

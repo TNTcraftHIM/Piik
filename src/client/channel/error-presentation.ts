@@ -6,7 +6,8 @@ export interface ChannelErrorPresentation {
 }
 
 /** Copy and recovery guidance describe the same current failure, without owning recovery. */
-export function channelErrorPresentation(error: string | null, t: (key: CopyKey) => string): ChannelErrorPresentation {
+export function channelErrorPresentation(error: string | null, t: (key: CopyKey) => string,
+  fallback: CopyKey = "channel.error.actionFailed"): ChannelErrorPresentation {
   const display = (key: CopyKey, connectionHelp = false): ChannelErrorPresentation => ({ message: t(key), connectionHelp });
   if (!error) return { message: null, connectionHelp: true };
   if (error === "preview_only")
@@ -53,8 +54,10 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey)
     return display("watch.forward.busy");
   if (error === "watch_source_already_active")
     return display("watch.forward.active");
-  if (error === "watch_peer_requires_secure_context")
+  if (error === "watch_peer_requires_secure_context" || error === "watch_peer_unavailable")
     return display("watch.forward.secure");
+  if (error === "watch_update_failed")
+    return display("watch.updateFailed");
   if (error === "watch_path_unavailable")
     return display("channel.error.roomCommunicationFailed", true);
   if (error === "invalid_title")
@@ -107,5 +110,5 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey)
     return display("channel.error.deviceUnavailable");
   if (/disconnect|closed|offline/i.test(error))
     return display("channel.error.disconnected", true);
-  return display("channel.error.actionFailed");
+  return display(fallback);
 }

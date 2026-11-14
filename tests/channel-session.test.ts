@@ -8040,6 +8040,7 @@ test("optional screen buffering reports unsupported and rejected assignments wit
 class WatchTestVideo extends EventTarget {
   currentTime = 0; duration = 120; playbackRate = 1; paused = true; ended = false; readyState = 2;
   src = ''; error = null;
+  buffered = { length: 1, start: () => 0, end: () => 120 };
   play = vi.fn(async () => { this.paused = false; this.dispatchEvent(new Event('play')); });
   pause() { this.paused = true; }
   removeAttribute() { this.src = ''; }
@@ -8257,7 +8258,7 @@ test('webpage sharing commits the current top-level URL delivered before selecti
     page.receive({ type: 'page_candidates', pageId, url: 'https://video.test/film?chosen=1', candidates: [
       { id: candidateId, title: 'Film', url: 'https://media.test/film.mp4', duration: 60 },
     ] });
-    confirm({ position: 0, paused: true, rate: 1, duration: 60, readyState: 4, ended: false });
+    confirm({ position: 0, paused: true, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] as [number, number][] });
     await selecting;
     expect(commit.mock.calls[0]?.[1]).toEqual({ kind: 'website', url: 'https://video.test/film?chosen=1', mediaUrl: 'https://media.test/film.mp4' });
     expect(session.watchPage('first')?.url).toBe('https://video.test/film?chosen=1');

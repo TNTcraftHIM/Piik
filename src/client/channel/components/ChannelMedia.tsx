@@ -26,6 +26,7 @@ import "./channel-media.css";
 import type { WatchPlayer } from "../watch-playback";
 import type { WatchPlayback } from "../protocol";
 import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
+import { channelErrorPresentation } from "../error-presentation";
 
 export interface WatchReceiving {
   peerAvailable: boolean; peerSupported: boolean; mode: "direct" | "peer"; browserSource: boolean;
@@ -76,6 +77,8 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const receivingSettings = receiving && (receiving.peerAvailable || receiving.mode === "peer") ? receiving : undefined;
   const localControls = !!player.video || !!receivingSettings;
   const hasControls = owned || localControls;
+  const failure = channelErrorPresentation(player.error, t,
+    receiving?.mode === "peer" ? "watch.forward.failed" : website && player.video ? "watch.browserFailed" : "watch.failed").message;
   const picture = usePictureInPicture(videoRef);
   const visibility = usePlaybackControlsVisibility(videoRef, controls, paused || player.blocked || !!player.error);
   useLayoutEffect(() => {
@@ -105,7 +108,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     {!player.video && !player.error && <div className="c3-mini-message"><div className="c3-frame-wait c3-watch-result">
       <span>{t("watch.inWindow")}</span><Btn icon="window" title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />
     </div></div>}
-    {player.error ? <div className="c3-mini-message" role="alert"><div className="c3-frame-wait c3-watch-result"><span>{t(player.error === "watch_update_failed" ? "watch.updateFailed" : receiving?.mode === "peer" ? "watch.forward.failed" : website && player.video ? "watch.browserFailed" : "watch.failed")}</span>
+    {player.error ? <div className="c3-mini-message" role="alert"><div className="c3-frame-wait c3-watch-result"><span>{failure}</span>
       {website && player.video && (onAppWatch ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={onAppWatch} /> : <small>{t("watch.connectApp")}</small>)}
       {receiving && <WatchPeerAction receiving={receiving} />}
     </div></div>

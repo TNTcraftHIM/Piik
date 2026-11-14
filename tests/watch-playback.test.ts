@@ -4,6 +4,8 @@ import { WatchPlayer } from "../src/client/channel/watch-playback";
 
 class Video extends EventTarget {
   currentTime = 0; duration = 120; playbackRate = 1; paused = true; ended = false; readyState = 0;
+  ranges: [number, number][] = [[0, 120]];
+  get buffered() { return { length: this.ranges.length, start: (index: number) => this.ranges[index][0], end: (index: number) => this.ranges[index][1] }; }
   src = ""; error = null; volume = 1; muted = false;
   denied = false;
   play = vi.fn(async () => { if (this.denied) throw new DOMException("Playback denied", "NotAllowedError"); this.paused = false; });
@@ -131,7 +133,7 @@ test('App player samples asynchronous reads in the local monotonic domain and re
   vi.useFakeTimers();
   let now = 100;
   vi.spyOn(performance, 'now').mockImplementation(() => now);
-  let complete!: (value: { position: number; paused: boolean; rate: number; duration: number; readyState: number; ended: boolean }) => void;
+  let complete!: (value: { position: number; paused: boolean; rate: number; duration: number; readyState: number; ended: boolean; buffered: [number, number][] }) => void;
   const port: AppPagePort = { read: () => new Promise(resolve => { complete = resolve; }), patch: vi.fn(async () => {}),
     listen: () => () => {}, focus: vi.fn(async () => {}), close: vi.fn() };
   const media = new AppPageMedia(port);
@@ -142,7 +144,7 @@ test('App player samples asynchronous reads in the local monotonic domain and re
     const sampling = player.sample();
     await Promise.resolve();
     now = 300;
-    complete({ position: 12, paused: false, rate: 1, duration: 60, readyState: 4, ended: false });
+    complete({ position: 12, paused: false, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] as [number, number][] });
     await expect(sampling).resolves.toMatchObject({ position: 12, anchorTime: 5100 });
   } finally { player.close(); }
   expect(port.close).toHaveBeenCalledTimes(1);
@@ -159,17 +161,90 @@ test('App player samples asynchronous reads in the local monotonic domain and re
 
 test('native owner progress reuses the observation tick without publishing playback', async () => {
   vi.useFakeTimers();
-  let position = 12;
-  const port: AppPagePort = { read: async () => ({ position, paused: false, rate: 1, duration: 60, readyState: 4, ended: false }),
+  let position = 12, paused = true, bufferEnd = 60;
+  const port: AppPagePort = { read: async () => ({ position, paused, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, bufferEnd]] as [number, number][] }),
     patch: vi.fn(async () => {}), listen: () => () => {}, focus: vi.fn(async () => {}), close: vi.fn() };
-  const player = new WatchPlayer('room', true, new AppPageMedia(port), vi.fn());
+  const changed = vi.fn();
+  const player = new WatchPlayer('room', true, new AppPageMedia(port), changed);
   const send = vi.fn(async () => {});
   try {
     await player.ready(); player.calibrate(5000, 100, 100); player.activate(send);
+    await player.serialize(async () => {});
     expect(player.mediaState?.position).toBe(12);
-    position = 13;
+    changed.mockClear();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(changed).not.toHaveBeenCalled();
+    position = 13; paused = false;
     await vi.advanceTimersByTimeAsync(1000);
     expect(player.mediaState?.position).toBe(13);
+    expect(changed).toHaveBeenCalledTimes(1);
+    bufferEnd = 70;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(changed).toHaveBeenCalledTimes(2);
     expect(send).not.toHaveBeenCalled();
+  } finally { player.close(); }
+});
+
+test.each([1, 2])("buffering at readyState %s suspends periodic seeks while explicit controls and recovery still work", async readyState => {
+  vi.useFakeTimers();
+  let now = 100;
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  const video = new Video(); video.readyState = 2;
+  vi.stubGlobal("document", { createElement: () => video });
+  const player = new WatchPlayer("room", false, new HTMLVideoMedia("https://media.test/video.mp4", "file"), vi.fn());
+  try {
+    player.calibrate(5100, 100, 100);
+    player.update({ position: 10, paused: false, rate: 1, anchorTime: 5100 });
+    await player.ready();
+    expect(video.currentTime).toBe(10);
+    video.readyState = readyState;
+    for (let tick = 0; tick < 3; tick++) {
+      now += 1000;
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(video.currentTime).toBe(10);
+    }
+    player.update({ position: 30, paused: true, rate: 0.5, anchorTime: now + 5000 });
+    await player.serialize(async () => {});
+    expect(video.currentTime).toBe(30);
+    expect(video.paused).toBe(true);
+    expect(video.playbackRate).toBe(0.5);
+    video.currentTime = 29; video.paused = false; video.playbackRate = 1;
+    now += 1000;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(video.currentTime).toBe(29);
+    expect(video.paused).toBe(true);
+    expect(video.playbackRate).toBe(0.5);
+    video.readyState = 3;
+    now += 1000;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(video.currentTime).toBe(30);
+  } finally { player.close(); }
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test("periodic correction waits for its target to be buffered; explicit host seeking can leave that range", async () => {
+  vi.useFakeTimers();
+  let now = 100;
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  const video = new Video(); video.readyState = 4; video.ranges = [[0, 11]];
+  vi.stubGlobal("document", { createElement: () => video });
+  const player = new WatchPlayer("room", false, new HTMLVideoMedia("https://media.test/video.mp4", "file"), vi.fn());
+  try {
+    player.calibrate(5100, 100, 100);
+    player.update({ position: 10, paused: false, rate: 1, anchorTime: 5100 });
+    await player.ready();
+    for (let tick = 0; tick < 3; tick++) {
+      now += 1000; await vi.advanceTimersByTimeAsync(1000);
+      expect(video.currentTime).toBe(10);
+    }
+    expect(player.mediaState?.buffered).toEqual([[0, 11]]);
+    video.ranges = [[0, 11], [13, 15]];
+    now += 1000; await vi.advanceTimersByTimeAsync(1000);
+    expect(video.currentTime).toBe(14);
+    player.update({ position: 90, paused: true, rate: 0.5, anchorTime: now + 5000 });
+    await player.serialize(async () => {});
+    expect(video.currentTime).toBe(90);
+    expect(video.paused).toBe(true);
+    expect(video.playbackRate).toBe(0.5);
   } finally { player.close(); }
 });

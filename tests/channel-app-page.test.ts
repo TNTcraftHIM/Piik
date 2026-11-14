@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { APP_PROTOCOL, ChannelApp } from "../src/client/channel/app-link";
 import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
+import { nativePageStateSchema } from "../src/client/native/wire";
 
 class Socket {
   static OPEN = 1;
@@ -25,7 +26,13 @@ async function setup() {
   socket.onopen?.(); socket.reply(null); await app.ready;
   return { app, socket };
 }
-const state = { position: 12, paused: false, rate: 1, duration: null, readyState: 4, ended: false };
+const state = { position: 12, paused: false, rate: 1, duration: null, readyState: 4, ended: false, buffered: [[0, 60]] as [number, number][] };
+test("App playback samples require actual valid buffered ranges", () => {
+  expect(nativePageStateSchema.parse({ ...state, buffered: [[0, 11], [13, 15]] }).buffered).toEqual([[0, 11], [13, 15]]);
+  const { buffered: _buffered, ...obsolete } = state;
+  expect(nativePageStateSchema.safeParse(obsolete).success).toBe(false);
+  expect(nativePageStateSchema.safeParse({ ...state, buffered: [[15, 13]] }).success).toBe(false);
+});
 test("App webpage selection has its own candidates and closes pending reads with the window", async () => {
   const { app, socket } = await setup();
   try {

@@ -12,7 +12,7 @@ export const ja: Record<CopyKey, string> = {
   "watch.forward.peer": "共有者から受信",
   "watch.forward.direct": "サイトから直接再生",
   "watch.forward.receiveHelp": "利用可能なルームの P2P 接続が必要です。自分の受信方法だけを変更します。",
-  "watch.forward.secure": "共有者からの受信には HTTPS とブラウザーの Service Worker 対応が必要です。",
+  "watch.forward.secure": "このページでは、このブラウザーで動画を受信できません。App で視聴するか、信頼できる HTTPS アドレスでサイトを開いてください。",
   "watch.forward.viewing": "受信方法",
   "watch.forward.failed": "共有者から動画を受信できませんでした。ルームの接続を確認するか、別の受信方法を選択してください。",
   "watch.forward.unsupported": "この動画ソースの転送にはまだ対応していません。各自で App の元のウェブページを開いて視聴できます。",

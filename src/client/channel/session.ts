@@ -2192,7 +2192,12 @@ export class ChannelSession {
     this.watchPlayers.set(id, player);
     player.update(activity.playback);
     this.patch({});
-    void player.ready().catch(() => { if (this.watchPlayers.get(id) === player) { player.error = "watch_media_failed"; this.patch({}); } });
+    void player.ready().catch(error => {
+      if (this.watchPlayers.get(id) === player) {
+        player.error = error instanceof Error ? error.message : "watch_media_failed";
+        this.patch({});
+      }
+    });
     try { await this.sampleWatchClock(id, player); this.browseRooms(); }
     catch (error) { if (this.watchPlayers.get(id) === player) this.retireWatchPlayer(id); this.patch({}); throw error; }
   }

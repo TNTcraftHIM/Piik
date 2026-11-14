@@ -3,6 +3,7 @@ import { z } from "zod";
 export const nativePageStateSchema = z.object({
   position: z.number().finite().nonnegative(), paused: z.boolean(), rate: z.number().positive().max(16),
   duration: z.number().finite().nonnegative().nullable(), readyState: z.number().int().min(0).max(4), ended: z.boolean(),
+  buffered: z.array(z.tuple([z.number().finite().nonnegative(), z.number().finite().nonnegative()]).refine(([start, end]) => end >= start)),
 }).strict();
 const nativePageURLSchema = z.string().url().max(4096).refine(value => /^https?:\/\//.test(value));
 export const nativePageCandidateSchema = z.object({ id: z.uuid(), title: z.string().max(512).refine(value => [...value].length <= 256), url: nativePageURLSchema.nullable(), duration: z.number().finite().nonnegative().nullable() }).strict();

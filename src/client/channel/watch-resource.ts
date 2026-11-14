@@ -7,6 +7,27 @@ export interface WatchByteResult {
 export type WatchByteReader = (resourceId: string, offset: number, length: number, signal: AbortSignal) => Promise<WatchByteResult>;
 export interface WatchResourceLease { url: string; close(): void }
 
+/** All media requests in one player share four source reads. */
+export function limitWatchReads(read: WatchByteReader): WatchByteReader {
+  let active = 0;
+  const waiting = new Set<() => void>();
+  return async (resourceId, offset, length, signal) => {
+    await new Promise<void>((resolve, reject) => {
+      const start = () => { signal.removeEventListener("abort", abort); active++; resolve(); };
+      const abort = () => { waiting.delete(start); reject(signal.reason); };
+      if (signal.aborted) { reject(signal.reason); return; }
+      if (active < 4) start();
+      else { waiting.add(start); signal.addEventListener("abort", abort, { once: true }); }
+    });
+    try { signal.throwIfAborted(); return await read(resourceId, offset, length, signal); }
+    finally {
+      active--;
+      const next = waiting.values().next().value;
+      if (next) { waiting.delete(next); next(); }
+    }
+  };
+}
+
 export function canReadWatchResources(): boolean {
   return globalThis.isSecureContext === true && "serviceWorker" in navigator && typeof MessageChannel !== "undefined" && typeof ReadableStream !== "undefined";
 }
@@ -19,7 +40,8 @@ export async function openWatchResource(resourceId: string, read: WatchByteReade
   signal.throwIfAborted();
   if (!canReadWatchResources()) throw new Error("watch_peer_requires_secure_context");
   if (!resourceIdPattern.test(resourceId)) throw new Error("watch_media_failed");
-  await navigator.serviceWorker.register(workerPath, { scope: "/" });
+  try { await navigator.serviceWorker.register(workerPath, { scope: "/" }); }
+  catch { signal.throwIfAborted(); throw new Error("watch_peer_unavailable"); }
   signal.throwIfAborted();
   await new Promise<void>((resolve, reject) => {
     const finish = (error?: unknown) => {
@@ -31,25 +53,29 @@ export async function openWatchResource(resourceId: string, read: WatchByteReade
     const check = () => {
       if (navigator.serviceWorker.controller?.scriptURL === new URL(workerPath, location.origin).href) finish();
     };
-    const timer = setTimeout(() => finish(new Error("watch_media_failed")), 10000);
+    const timer = setTimeout(() => finish(new Error("watch_peer_unavailable")), 10000);
     signal.addEventListener("abort", abort, { once: true });
     navigator.serviceWorker.addEventListener("controllerchange", check);
     if (signal.aborted) abort(); else check();
   });
   signal.throwIfAborted();
   const leaseId = crypto.randomUUID(), requests = new Set<AbortController>();
-  let closed = false, activeReads = 0;
+  let closed = false;
+  const readBounded = limitWatchReads(read);
   const message = (event: MessageEvent) => {
     if (event.source !== navigator.serviceWorker.controller || event.data?.type !== "watch_resource_open" || event.data.leaseId !== leaseId) return;
     const port = event.ports[0], id: unknown = event.data.resourceId;
     if (!port) return;
+    // Four fetches can each hold four 64 KiB windows (1 MiB); source reads share four slots.
+    if (requests.size >= 4) { port.postMessage({ error: "watch_media_failed" }); port.close(); return; }
     const request = new AbortController();
     requests.add(request);
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let reading = false;
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+    let pendingReads = 0;
     const close = () => request.abort();
     request.signal.addEventListener("abort", () => {
-      clearTimeout(timer); requests.delete(request);
+      for (const timer of timers) clearTimeout(timer);
+      requests.delete(request);
       port.postMessage({ error: "watch_media_failed" }); port.close();
     }, { once: true });
     port.onmessage = async ({ data }) => {
@@ -57,18 +83,19 @@ export async function openWatchResource(resourceId: string, read: WatchByteReade
       if (closed || typeof id !== "string" || !resourceIdPattern.test(id)) { close(); return; }
       const offset = data?.type === "stat" ? 0 : data?.offset;
       const length = data?.type === "stat" ? 1 : data?.length;
-      if (reading || !["stat", "read"].includes(data?.type) || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length < 1 || length > 65536 || activeReads >= 4) { close(); return; }
-      reading = true; activeReads++; timer = setTimeout(close, 20500);
+      if (pendingReads >= 4 || !Number.isSafeInteger(data?.id) || !["stat", "read"].includes(data?.type) || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length < 1 || length > 65536) { close(); return; }
+      pendingReads++;
+      const timer = setTimeout(close, 20500); timers.add(timer);
       try {
-        const result = await read(id, offset, length, request.signal);
+        const result = await readBounded(id, offset, length, request.signal);
         request.signal.throwIfAborted();
         if (result.bytes.byteLength > length || (result.totalSize !== null && (!Number.isSafeInteger(result.totalSize) || result.totalSize < 0))) throw new Error("watch_media_failed");
-        if (data.type === "stat") port.postMessage({ size: result.totalSize, mimeType: result.mimeType });
+        if (data.type === "stat") port.postMessage({ id: data.id, size: result.totalSize, mimeType: result.mimeType });
         else {
           const bytes = new Uint8Array(result.bytes).buffer;
-          port.postMessage({ bytes }, [bytes]);
+          port.postMessage({ id: data.id, bytes }, [bytes]);
         }
-      } catch { close(); } finally { clearTimeout(timer); reading = false; activeReads--; }
+      } catch { close(); } finally { clearTimeout(timer); timers.delete(timer); pendingReads--; }
     };
   };
   navigator.serviceWorker.addEventListener("message", message);

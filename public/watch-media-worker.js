@@ -15,22 +15,27 @@ async function serve(event, url) {
   const client = await self.clients.get(event.clientId);
   if (!client || new URL(client.url).origin !== self.location.origin) return new Response(null, { status: 403 });
   const { port1: port, port2 } = new MessageChannel();
-  let pending, closed = false;
+  const pending = new Map();
+  let sequence = 0, closed = false;
   const close = () => {
     if (closed) return;
     closed = true; port.postMessage({ type: "cancel" }); port.close();
-    if (pending) { clearTimeout(pending.timer); pending.reject(new Error("watch_media_failed")); pending = null; }
+    for (const current of pending.values()) { clearTimeout(current.timer); current.reject(new Error("watch_media_failed")); }
+    pending.clear();
     event.request.signal.removeEventListener("abort", close);
   };
   const rpc = data => new Promise((resolve, reject) => {
     if (closed) { reject(new Error("watch_media_failed")); return; }
-    pending = { resolve, reject, timer: setTimeout(close, 20000) };
-    port.postMessage(data);
+    const id = ++sequence;
+    pending.set(id, { resolve, reject, timer: setTimeout(close, 20000) });
+    port.postMessage({ ...data, id });
   });
   port.onmessage = ({ data }) => {
-    if (!pending) return;
-    const current = pending; pending = null; clearTimeout(current.timer);
-    data.error ? current.reject(new Error(data.error)) : current.resolve(data);
+    if (data.error) { close(); return; }
+    const current = pending.get(data.id);
+    if (!current) return;
+    pending.delete(data.id); clearTimeout(current.timer);
+    current.resolve(data);
   };
   event.request.signal.addEventListener("abort", close, { once: true });
   client.postMessage({ type: "watch_resource_open", leaseId: parts[0], resourceId: parts[1] }, [port2]);
@@ -51,14 +56,26 @@ async function serve(event, url) {
     headers["Content-Length"] = String(end - start + 1);
     if (event.request.method === "HEAD" || size === 0) { close(); return new Response(null, { status: 200, headers }); }
     let position = start;
+    const windows = [];
+    const fill = () => {
+      while (!closed && windows.length < 4 && position <= end) {
+        const length = Math.min(65536, end - position + 1);
+        const reading = rpc({ type: "read", offset: position, length }).then(({ bytes }) => {
+          if (!(bytes instanceof ArrayBuffer) || bytes.byteLength !== length) throw new Error("watch_media_failed");
+          return new Uint8Array(bytes);
+        });
+        // A later window may fail before the consumer reaches it.
+        void reading.catch(() => {});
+        windows.push(reading); position += length;
+      }
+    };
     const body = new ReadableStream({
       async pull(controller) {
         try {
-          const length = Math.min(65536, end - position + 1);
-          const { bytes } = await rpc({ type: "read", offset: position, length });
-          if (!(bytes instanceof ArrayBuffer) || bytes.byteLength !== length) throw new Error("watch_media_failed");
-          position += length; controller.enqueue(new Uint8Array(bytes));
-          if (position > end) { controller.close(); close(); }
+          fill();
+          const bytes = await windows[0]; windows.shift();
+          controller.enqueue(bytes);
+          if (!windows.length && position > end) { controller.close(); close(); }
         } catch (error) { controller.error(error); close(); }
       },
       cancel() { close(); },

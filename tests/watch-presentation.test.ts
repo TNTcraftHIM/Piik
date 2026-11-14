@@ -15,7 +15,7 @@ describe("Webpage watch presentation", () => {
     [["watch_invalid_manifest", "watch_media_credentials_unavailable", "watch_media_unavailable", "watch_media_changed", "watch_media_truncated", "invalid_watch_range_response", "watch_resource_unavailable", "watch_source_unavailable", "watch_source_failed", "watch_source_changed", "watch_source_retired"], "watch.forward.sourceUnavailable", false],
     [["watch_source_busy", "watch_read_busy"], "watch.forward.busy", false],
     [["watch_source_already_active"], "watch.forward.active", false],
-    [["watch_peer_requires_secure_context"], "watch.forward.secure", false],
+    [["watch_peer_requires_secure_context", "watch_peer_unavailable"], "watch.forward.secure", false],
     [["watch_path_unavailable"], "channel.error.roomCommunicationFailed", true],
   ] as const)("presents %j with actionable copy from %s", (errors, key, connectionHelp) => {
     for (const locale of Object.values(locales)) {
@@ -42,13 +42,13 @@ describe("Webpage watch presentation", () => {
     expect(render({ mode: "peer" })).toBe("");
     expect(render({ mode: "peer", failed: true })).toContain('aria-label="Receive from sharer"');
     expect(render({ mode: "peer", failed: true, peerAvailable: false })).toMatch(/<button\b[^>]*disabled/);
-    expect(render({ peerSupported: false })).toContain("requires HTTPS and browser Service Worker support");
+    expect(render({ peerSupported: false })).toContain("trusted HTTPS address");
     expect(render({ peerSupported: false })).not.toContain("<button");
   });
   it.each([true, false])("shows the independent webpage's real controls without a fake video (owner: %s)", owned => {
     setCopy({ lang: "en" });
     const player = { video: null, blocked: false, error: null,
-      mediaState: { position: 42, duration: 240, paused: true, rate: 1.5, readyState: 4, ended: false } } as unknown as WatchPlayer;
+      mediaState: { position: 42, duration: 240, paused: true, rate: 1.5, readyState: 4, ended: false, buffered: [[0, 60]] } } as unknown as WatchPlayer;
     const html = renderToStaticMarkup(createElement(ChannelWatchVideo, {
       player, owned, paused: true, label: "video.example/watch/evening", presentation: "full", disabled: false,
       website: true, theaterMode: false, onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),

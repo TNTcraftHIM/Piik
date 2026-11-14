@@ -94,6 +94,7 @@ pub struct MediaState {
     pub duration: Option<f64>,
     pub ready_state: u8,
     pub ended: bool,
+    pub buffered: Vec<(f64, f64)>,
 }
 impl MediaState {
     pub fn validate(&self) -> Result<()> {
@@ -104,6 +105,11 @@ impl MediaState {
         }
         .validate()?;
         if self.ready_state > 4 || self.duration.is_some_and(|v| !v.is_finite() || v < 0.) {
+            bail!("invalid_watch_playback");
+        }
+        if self.buffered.iter().any(|(start, end)| {
+            !start.is_finite() || !end.is_finite() || *start < 0. || end < start
+        }) {
             bail!("invalid_watch_playback");
         }
         Ok(())

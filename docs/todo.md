@@ -12,6 +12,11 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **Forwarded files on Local HTTPS.** Complete ordinary Browser reception
+  of forwarded MP4 on the App's local HTTPS entry. Accepting its self-signed
+  page certificate does not permit Service Worker registration. HLS has a
+  reader adapter; forwarded files still require Service Worker registration.
+  Evaluate a mature media adapter without adding a central byte relay.
 - [ ] **Host UDP errors and blurry viewing.** A reported beta.25 Host repeatedly
   prints Windows network-unreachable error 10051 while a friend can view a blurry
   picture. Identify whether the errors affect the selected media path or other

@@ -11,7 +11,7 @@ export const zh = {
   "watch.forward.peer": "从分享者接收",
   "watch.forward.direct": "从网站直接播放",
   "watch.forward.receiveHelp": "需要可用的房间 P2P 连接。只更改你的接收方式。",
-  "watch.forward.secure": "从分享者接收需要 HTTPS 和浏览器的 Service Worker 支持。",
+  "watch.forward.secure": "当前浏览器无法在此页面接收这种视频。请在 App 中观看，或通过受信任的 HTTPS 地址打开站点。",
   "watch.forward.viewing": "接收方式",
   "watch.forward.failed": "未能从分享者接收视频。请检查房间连接或选择其他接收方式。",
   "watch.forward.unsupported": "当前不支持转发此视频源。大家可以各自在 App 中观看原网页。",

@@ -28,7 +28,8 @@
     send({ kind: 'resources', urls: [...resources] });
   }).observe({ type: 'resource', buffered: true });
   const state = video => ({ position: video.currentTime, paused: video.paused, rate: video.playbackRate,
-    duration: Number.isFinite(video.duration) ? video.duration : null, readyState: video.readyState, ended: video.ended });
+    duration: Number.isFinite(video.duration) ? video.duration : null, readyState: video.readyState, ended: video.ended,
+    buffered: Array.from({ length: video.buffered.length }, (_, index) => [video.buffered.start(index), video.buffered.end(index)]) });
   let timer;
   const report = () => {
     clearTimeout(timer);

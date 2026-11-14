@@ -1,6 +1,7 @@
 //! One pair owns its reliable channel writers. Consumers own queued-work validity.
 use crate::peer::{transport::Channel, PeerState};
 use piik_channel_core::file_delivery::{FILE_MAX_PENDING_RANGES, FILE_MAX_RANGE_FRAMES};
+use piik_channel_core::watch_delivery::{WATCH_MAX_PENDING, WATCH_MAX_RANGE_FRAMES};
 use piik_channel_core::{
     conversation::{self, ControlFrame},
     wire::Snapshot,
@@ -15,8 +16,17 @@ use tokio::{
 };
 use uuid::Uuid;
 
-pub(crate) const BULK_QUEUE: usize = FILE_MAX_PENDING_RANGES * FILE_MAX_RANGE_FRAMES;
+pub(crate) const BULK_QUEUE: usize = {
+    let file = FILE_MAX_PENDING_RANGES * FILE_MAX_RANGE_FRAMES;
+    let watch = WATCH_MAX_PENDING * WATCH_MAX_RANGE_FRAMES;
+    if file > watch {
+        file
+    } else {
+        watch
+    }
+};
 pub(crate) const CONTROL_QUEUE: usize = FILE_MAX_PENDING_RANGES * 4;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Lane {
     Control,
@@ -346,5 +356,82 @@ fn writer(
         binding,
         cancel,
         task,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bulk_queue_holds_a_full_watch_window_from_an_aggregating_relay() {
+        use piik_channel_core::{
+            watch_delivery::{
+                WatchBytePlan, WatchControl, WatchDelivery, WatchEffect, WatchKey, WatchReadResult,
+                WATCH_WINDOW_BYTES,
+            },
+            wire::{WatchByteSource, WatchFormat},
+        };
+        let session = Uuid::new_v4();
+        let peer = Uuid::new_v4();
+        let key = WatchKey {
+            room_id: "watch".into(),
+            activity_id: Uuid::new_v4(),
+            resource_id: Uuid::new_v4(),
+        };
+        let mut source = WatchDelivery::new(session);
+        source.update(
+            vec![WatchBytePlan {
+                room_id: key.room_id.clone(),
+                activity_id: key.activity_id,
+                source: WatchByteSource {
+                    session_id: session,
+                    resource_id: key.resource_id,
+                    format: WatchFormat::File,
+                },
+                upstream: None,
+                downstream: vec![peer],
+                receiving: false,
+            }],
+            vec![(peer, vec![key.room_id.clone()])],
+        );
+        let requests: Vec<_> = (0..WATCH_MAX_PENDING).map(|_| Uuid::new_v4()).collect();
+        for request_id in &requests {
+            assert!(matches!(
+                source
+                    .control(
+                        peer,
+                        WatchControl::Pull {
+                            key: key.clone(),
+                            request_id: *request_id,
+                            offset: 0,
+                            length: WATCH_WINDOW_BYTES,
+                        }
+                    )
+                    .as_slice(),
+                [WatchEffect::Read { .. }]
+            ));
+        }
+        let (queue, mut incoming) = mpsc::channel(BULK_QUEUE);
+        for request in requests {
+            for effect in source.read_result(
+                request,
+                Ok(WatchReadResult {
+                    mime_type: "\"".repeat(128),
+                    total_size: Some(u64::MAX),
+                    bytes: vec![7; WATCH_WINDOW_BYTES],
+                    eof: false,
+                }),
+            ) {
+                let WatchEffect::SendChunk { frame, .. } = effect else {
+                    panic!("expected frame")
+                };
+                queue
+                    .try_send(frame)
+                    .expect("legal Watch burst fits without draining the writer");
+            }
+        }
+        assert_eq!(incoming.len(), WATCH_MAX_PENDING * WATCH_MAX_RANGE_FRAMES);
+        while incoming.try_recv().is_ok() {}
     }
 }

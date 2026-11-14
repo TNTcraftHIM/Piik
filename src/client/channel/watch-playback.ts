@@ -58,7 +58,11 @@ export class WatchPlayer {
   }
   private observe(state: WatchMediaState): void {
     if (this.retired) return;
-    const changed = !this.localState || Object.entries(state).some(([key, value]) => this.localState![key as keyof WatchMediaState] !== value);
+    const previous = this.localState;
+    const changed = !previous
+      || Object.entries(state).some(([key, value]) => key !== "buffered" && previous[key as keyof WatchMediaState] !== value)
+      || state.buffered.length !== previous.buffered.length
+      || state.buffered.some(([start, end], index) => start !== previous.buffered[index][0] || end !== previous.buffered[index][1]);
     this.localState = state;
     if (changed) this.changed();
   }
@@ -89,7 +93,8 @@ export class WatchPlayer {
       const playback = this.playback;
       const target = Math.min(watchPosition(playback, performance.now() + this.offset), state.duration ?? Infinity);
       const patch: WatchMediaPatch = {};
-      if (Math.abs(state.position - target) > (force ? 0.12 : 0.35)) patch.position = target;
+      const buffered = state.buffered.some(([start, end]) => start <= target && target < end);
+      if ((force || state.readyState >= 3 && buffered) && Math.abs(state.position - target) > (force ? 0.12 : 0.35)) patch.position = target;
       if (state.rate !== playback.rate) patch.rate = playback.rate;
       if (playback.paused && !state.paused) patch.paused = true;
       else if (!playback.paused && state.paused && !this.blocked && !state.ended) patch.paused = false;

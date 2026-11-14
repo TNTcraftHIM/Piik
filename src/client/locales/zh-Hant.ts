@@ -12,7 +12,7 @@ export const zhHant: Record<CopyKey, string> = {
   "watch.forward.peer": "從分享者接收",
   "watch.forward.direct": "從網站直接播放",
   "watch.forward.receiveHelp": "需要可用的房間 P2P 連線。只變更你的接收方式。",
-  "watch.forward.secure": "從分享者接收需要 HTTPS 和瀏覽器的 Service Worker 支援。",
+  "watch.forward.secure": "目前的瀏覽器無法在此頁面接收這種影片。請在 App 中觀看，或透過受信任的 HTTPS 位址開啟站點。",
   "watch.forward.viewing": "接收方式",
   "watch.forward.failed": "未能從分享者接收影片。請檢查房間連線或選擇其他接收方式。",
   "watch.forward.unsupported": "目前不支援轉發此影片來源。大家可以各自在 App 中觀看原網頁。",

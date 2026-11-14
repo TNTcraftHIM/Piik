@@ -5,9 +5,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
 pub const WATCH_FRAME_BYTES: usize = crate::file_delivery::FILE_FRAME_BYTES;
-// One read holds at most 64 KiB; 32 reads bound aggregate response storage to 2 MiB.
+// Twenty receivers share at most four reads each: 5 MiB of response storage.
 pub const WATCH_WINDOW_BYTES: usize = 64 * 1024;
-pub const WATCH_MAX_PENDING: usize = 32;
+pub const WATCH_MAX_PENDING: usize = 20 * 4;
+// Header's bounded printable MIME (128 bytes, at most doubled by JSON), UUID,
+// two u64 values and fixed fields fit in 512 bytes. Include the four-byte prefix.
+pub const WATCH_MAX_RANGE_FRAMES: usize = WATCH_WINDOW_BYTES.div_ceil(WATCH_FRAME_BYTES - 4 - 512);
 // File frames start with their nonzero two-byte JSON header length. This reserved
 // zero prefix distinguishes Watch frames before either payload decoder is called.
 const PREFIX: [u8; 2] = [0, 0];
@@ -638,6 +641,58 @@ mod tests {
         (1..=3)
             .map(|peer| (id(peer), vec!["room".into()]))
             .collect()
+    }
+    #[test]
+    fn twenty_receivers_can_pipeline_four_reads_with_bounded_encoded_frames() {
+        let viewers: Vec<_> = (100..120).map(id).collect();
+        let mut source = WatchDelivery::new(id(1));
+        source.update(
+            vec![plan(None, viewers.clone(), false)],
+            viewers
+                .iter()
+                .map(|peer| (*peer, vec!["room".into()]))
+                .collect(),
+        );
+        let offset = u64::MAX - WATCH_WINDOW_BYTES as u64 - 1;
+        let mut requests = Vec::new();
+        for peer in viewers {
+            for slot in 0..4 {
+                let request_id = id(peer.as_u128() * 4 + slot);
+                let effects = source.control(
+                    peer,
+                    WatchControl::Pull {
+                        key: key(),
+                        request_id,
+                        offset,
+                        length: WATCH_WINDOW_BYTES,
+                    },
+                );
+                assert!(matches!(effects.as_slice(), [WatchEffect::Read { .. }]));
+                requests.push(request_id);
+            }
+        }
+        assert_eq!(source.pending.len(), 80);
+        for request in requests {
+            let frames = source.read_result(
+                request,
+                Ok(WatchReadResult {
+                    // Printable quotes require the largest permitted JSON escaping.
+                    mime_type: "\"".repeat(128),
+                    total_size: Some(u64::MAX),
+                    bytes: vec![7; WATCH_WINDOW_BYTES],
+                    eof: false,
+                }),
+            );
+            assert_eq!(frames.len(), WATCH_MAX_RANGE_FRAMES);
+            for frame in frames {
+                let WatchEffect::SendChunk { frame, .. } = frame else {
+                    panic!("expected frame")
+                };
+                assert!(frame.len() <= WATCH_FRAME_BYTES);
+                assert!(u16::from_be_bytes([frame[2], frame[3]]) <= 512);
+            }
+        }
+        assert!(source.pending.is_empty());
     }
     fn key() -> WatchKey {
         WatchKey {

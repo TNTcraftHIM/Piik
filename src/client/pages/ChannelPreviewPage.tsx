@@ -39,7 +39,7 @@ import { useClientNavigationTarget } from "../channel/client-navigation";
 import { readRoomPreferences, saveRoomPreferences, type InterfaceLayout } from "../lib/room-preferences";
 import { useElementWidth } from "../lib/use-element-width";
 import type { ChannelController } from "../channel/types";
-import { canReadWatchResources } from "../channel/watch-resource";
+import { canReceivePeerWatch } from "../channel/watch-media";
 import "../channel/bootstrap";
 import "./channel-preview.css";
 
@@ -206,7 +206,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     onAppWatch: activity.source.kind === "website" && channel.pagePlayer && channel.watchPlayers.get(activity.id)?.video !== null ? () => setAppWatchId(activity.id) : undefined,
     roomName: nameOfRoom(activity.roomId), avatar: userProfile(state, channel.profiles, activity.userId)?.avatar ?? undefined,
     owned: ownsWatch(activity.id), subscribed: state?.watchSubscriptions.some(value => value.id === activity.id) ?? false,
-    receiving: !ownsWatch(activity.id) ? { peerAvailable: !!activity.byteSource, peerSupported: canReadWatchResources(),
+    receiving: !ownsWatch(activity.id) ? { peerAvailable: !!activity.byteSource, peerSupported: canReceivePeerWatch(activity.byteSource?.format),
       failed: !!channel.watchPlayers.get(activity.id)?.error,
       mode: channel.watchPlayers.get(activity.id)?.mode ?? state?.watchSubscriptions.find(value => value.id === activity.id)?.mode ?? "direct",
       browserSource: activity.source.kind === "media" || !!activity.source.mediaUrl, pending: busy("watch-video", activity.id), disabled: !connected,

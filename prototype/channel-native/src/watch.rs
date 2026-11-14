@@ -4,7 +4,6 @@ use piik_channel_core::{
     conversation::{encode_control, ControlFrame},
     watch_delivery::{
         WatchBytePlan, WatchControl, WatchDelivery, WatchEffect, WatchKey, WATCH_FRAME_BYTES,
-        WATCH_MAX_PENDING,
     },
     wire::{WatchActivity, WatchByteSource},
 };
@@ -175,9 +174,7 @@ impl Watches {
                         effects
                     }
                     Input::Register(resource, reader, done) => {
-                        let result = if readers.len() >= WATCH_MAX_PENDING
-                            || readers.contains_key(&resource)
-                        {
+                        let result = if readers.len() >= 32 || readers.contains_key(&resource) {
                             Err(anyhow::anyhow!("watch_source_busy"))
                         } else {
                             readers.insert(

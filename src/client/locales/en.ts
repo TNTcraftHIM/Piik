@@ -13,7 +13,7 @@ export const en: Record<CopyKey, string> = {
   "watch.forward.peer": "Receive from sharer",
   "watch.forward.direct": "Play directly from website",
   "watch.forward.receiveHelp": "Requires an available room P2P connection. Changes only how you receive this video.",
-  "watch.forward.secure": "Receiving from the sharer requires HTTPS and browser Service Worker support.",
+  "watch.forward.secure": "This browser cannot receive this video on this page. Watch in the App, or open the site at a trusted HTTPS address.",
   "watch.forward.viewing": "Receiving method",
   "watch.forward.failed": "Could not receive video from the sharer. Check the room connection or choose another receiving method.",
   "watch.forward.unsupported": "This video source cannot be forwarded yet. Each person can watch the original webpage in the App.",

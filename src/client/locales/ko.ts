@@ -13,7 +13,7 @@ export const ko: Record<CopyKey, string> = {
   "watch.forward.peer": "공유자에게서 받기",
   "watch.forward.direct": "웹사이트에서 직접 재생",
   "watch.forward.receiveHelp": "사용 가능한 방 P2P 연결이 필요해요. 내 수신 방식만 바꿔요.",
-  "watch.forward.secure": "공유자에게서 받으려면 HTTPS와 브라우저의 Service Worker 지원이 필요해요.",
+  "watch.forward.secure": "이 브라우저에서는 이 페이지의 영상을 받을 수 없어요. App에서 시청하거나 신뢰할 수 있는 HTTPS 주소로 사이트를 열어 주세요.",
   "watch.forward.viewing": "수신 방식",
   "watch.forward.failed": "공유자에게서 동영상을 받지 못했어요. 방 연결을 확인하거나 다른 수신 방식을 선택하세요.",
   "watch.forward.unsupported": "이 동영상 소스는 아직 전달할 수 없어요. 각자 App에서 원래 웹페이지를 열어 시청할 수 있어요.",
