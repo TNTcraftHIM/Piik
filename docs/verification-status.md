@@ -274,7 +274,10 @@ Virtual-LAN loading reports retain their own investigation in [TODO](./todo.md#n
 
 Browser WebRTC and the Native RTC SDK own congestion control and transport
 adaptation. Current controls establish constrained-output recovery, healthy
-sibling isolation and retained source clocks. Measurements and superseded SDK
+sibling isolation and retained source clocks. A current
+[desired-capacity control](./research/network-lab.md#native-desired-capacity)
+also verifies the source-intent input through restricted and restored media.
+Measurements and superseded SDK
 experiments stay in the [network laboratory](./research/network-lab.md),
 [encoder assessment](./research/webrtc-encoder-pool.md) and
 [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency).

@@ -231,6 +231,20 @@ lifecycle of one explicit switch, not an automatic trigger or general Internet
 performance. Production alternative-parent selection remains in
 [TODO](../todo.md#next).
 
+### Native Desired Capacity
+
+A `dc15472f` control on 2026-11-14 exercised the current Native demand calculation
+through real media and SDK inputs. Once source observations were available, the
+desired target equalled preferred original video plus both audio flows, about
+5.1 Mbps; unknown startup retained its existing behavior. The target remained
+separate from the restricted output allocation and publication ceiling.
+
+Under the fixed 1.467 Mbps limit, the supplied low layer continued decoding.
+Removing the limit restored 640-pixel-wide output after 3.12 seconds; the final
+window delivered about 30 fps. The source track and healthy sibling retained
+their behavior. This verifies that control's delivery and recovery, without a
+route switch; it is not a comparative Internet performance or NAT-success result.
+
 ### Duplicate NACK Feedback
 
 A controlled Windows UDP comparison uses Piik's `Transport.write_au`, real
