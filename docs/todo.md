@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-13
+Last reviewed: 2026-11-14
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -12,6 +12,11 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **beta.25 mobile reconnect report.** Identify the actual Browser RTC setup
+  error or socket-close cause on the reporting phone. The supplied recording
+  shows site reconnection while waiting for a shared picture. A reproduced RTC
+  constructor failure is now isolated from the site socket; confirm the reporting
+  device's cause before treating this boundary repair as resolution of that report.
 - [ ] **3.0 Windows shared-sound noise.** The reporter confirms electrical or
   crackling sound in beta9/10 as well as beta2, while 2.x sounds normal. Excluding
   the window titled Piik removes it; excluding a silent unrelated window does
@@ -162,6 +167,8 @@ the feedback period; they do not delay that delivery.
 - **NDI and additional codecs (#535, #530).** Assess NDI through the existing
   OBS/DistroAV-to-WHIP input before considering another native dependency.
   VP9/AV1/SVC support needs a concrete interoperability and resource decision.
+  AV1 and H.265 implementation is deferred by the owner; compare hardware
+  efficiency, frame delivery and compatible fallback before proposing adoption.
   Transport feedback and retransmission remain with the existing RTC owner;
   investigate a demonstrated defect there separately from codec expansion.
 - **Native H264 scene-change latency.** Revisit when a concrete encoder or SDK
