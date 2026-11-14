@@ -1165,7 +1165,10 @@ fn external_input_event(
         event["codec"] = json!("h264");
     }
     if let Some(error) = error {
-        event["error"] = json!(error);
+        event["error"] = json!(match error {
+            "room_unavailable" | "external_video_format_unsupported" => error,
+            _ => "external_input_failed",
+        });
     }
     event
 }
@@ -1383,7 +1386,7 @@ async fn connection(
                                 let retired = result.as_ref().err().is_some_and(|error| error.to_string() == "room_unavailable");
                                 capture.pending = None;
                                 if retired { external_page.remove(publication_id); }
-                                capture.external_event(publication_id, false, retired, Some(if retired {"room_unavailable"} else {"external_input_failed"}))
+                                capture.external_event(publication_id, false, retired, Some(result.as_ref().err().map(|error| error.to_string()).as_deref().unwrap_or("external_input_failed")))
                             }
                         };
                         timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
@@ -3007,6 +3010,17 @@ mod tests {
             external_input_event(publication, None, None, false, None)["state"],
             "waiting"
         );
+        for (reason, expected) in [
+            (
+                "external_video_format_unsupported",
+                "external_video_format_unsupported",
+            ),
+            ("private decoder detail", "external_input_failed"),
+        ] {
+            let failed = external_input_event(publication, None, None, false, Some(reason));
+            assert_eq!(failed["state"], "error");
+            assert_eq!(failed["error"], expected);
+        }
         let closed = external_input_event(publication, Some(active), None, true, None);
         assert_eq!(closed["state"], "closed");
         assert!(closed.get("captureId").is_none());

@@ -155,7 +155,10 @@ async fn run(
     let closed = input.transport.close().await;
     drop(readers);
     control.stop();
-    let error = result.and(closed).err().map(|error| error.to_string());
+    let error = result.and(closed).err().map(|error| {
+        eprintln!("Native external input ended: {error:#}");
+        failure_reason(&error).to_owned()
+    });
     if let Some(ready) = ready {
         let _ = ready.send(Err(anyhow!(error
             .clone()
@@ -171,6 +174,16 @@ async fn run(
     error
 }
 
+fn failure_reason(error: &anyhow::Error) -> &'static str {
+    if error.is::<crate::media::UnsupportedH264Format>() {
+        "external_video_format_unsupported"
+    } else if error.to_string() == "room_unavailable" {
+        "room_unavailable"
+    } else {
+        "external_input_failed"
+    }
+}
+
 async fn receive_track(
     track: Track,
     publication: Uuid,
@@ -179,6 +192,7 @@ async fn receive_track(
     relay: Relay,
     mut ready: Option<oneshot::Sender<Result<()>>>,
 ) -> Result<()> {
+    let result = async {
     let kind = track.kind;
     let ssrc = track.first_ssrc;
     let codec = track.first_codec.rtp_codec.clone();
@@ -286,6 +300,17 @@ async fn receive_track(
         }
     }
     Ok(())
+    }.await;
+    // Both completion paths describe the same producer failure, whichever the page polls first.
+    if let Some(ready) = ready.take() {
+        let reason = result
+            .as_ref()
+            .err()
+            .map(failure_reason)
+            .unwrap_or("external_input_failed");
+        let _ = ready.send(Err(anyhow!(reason)));
+    }
+    result
 }
 
 #[cfg(test)]

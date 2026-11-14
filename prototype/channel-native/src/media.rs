@@ -146,6 +146,19 @@ pub(crate) fn compatible(source: &RtpCodec, negotiated: &RtpCodec) -> bool {
     true
 }
 
+#[derive(Debug)]
+pub(crate) struct UnsupportedH264Format(pub [u8; 3]);
+impl std::fmt::Display for UnsupportedH264Format {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let [profile, constraints, level] = self.0;
+        write!(
+            formatter,
+            "unsupported H264 SPS profile/level {profile:02x}{constraints:02x}{level:02x}"
+        )
+    }
+}
+impl std::error::Error for UnsupportedH264Format {}
+
 // Only SPS carries the encoded profile/level. SDP describes the negotiated
 // format, and common browser receive levels are not measured decoder limits.
 // Keep three SPS octets, never an access unit or a history of parameter sets.
@@ -172,13 +185,9 @@ impl H264Sps {
         if self.last == Some(bytes) {
             return Ok(());
         }
-        anyhow::ensure!(
-            constrained_baseline_level(bytes).is_some_and(|level| level <= 52),
-            "unsupported H264 SPS profile/level {:02x}{:02x}{:02x}",
-            bytes[0],
-            bytes[1],
-            bytes[2]
-        );
+        if !constrained_baseline_level(bytes).is_some_and(|level| level <= 52) {
+            return Err(UnsupportedH264Format(bytes).into());
+        }
         self.last = Some(bytes);
         Ok(())
     }
