@@ -89,6 +89,8 @@ fn host_candidates(
 
 #[path = "discovery.rs"]
 mod discovery;
+#[path = "nat64.rs"]
+mod nat64;
 #[cfg(test)]
 #[path = "tests/transport.rs"]
 mod tests;
@@ -363,6 +365,7 @@ pub(crate) struct Engine {
     handle: Transport,
     sockets: Vec<Arc<UdpIo>>,
     discovery: Option<JoinHandle<()>>,
+    nat64: Option<nat64::Bootstrap>,
     discovery_routes: HashMap<rtc_stun::message::TransactionId, discovery::Route>,
     turn: HashMap<usize, turn::Endpoint>,
     turn_setup: mpsc::Receiver<turn::Endpoint>,
@@ -710,6 +713,11 @@ impl Runtime {
             handle: handle.clone(),
             sockets,
             discovery: None,
+            nat64: (!local_input
+                && bases
+                    .iter()
+                    .any(|base| base.local.is_ipv6() && !base.local.ip().is_loopback()))
+            .then(nat64::Bootstrap::default),
             discovery_routes: HashMap::new(),
             turn: HashMap::new(),
             turn_setup,
@@ -945,6 +953,17 @@ impl Transport {
                     .sdp_api()
                     .accept_answer(pending, SdpAnswer::from_sdp_string(&sdp)?)?;
             }
+            if !e.events.local() {
+                for line in sdp
+                    .lines()
+                    .filter_map(|line| line.strip_prefix("a=candidate:"))
+                {
+                    if let Ok(candidate) = Candidate::from_sdp_string(&format!("candidate:{line}"))
+                    {
+                        e.nat64_candidate(candidate);
+                    }
+                }
+            }
             let replaced = e
                 .tracks
                 .iter()
@@ -1019,8 +1038,9 @@ impl Transport {
     pub async fn add_candidate(&self, candidate: String) -> Result<()> {
         self.call(move |e| {
             ensure!(!e.events.local(), "local input does not trickle ICE");
-            e.rtc
-                .add_remote_candidate(Candidate::from_sdp_string(&candidate)?);
+            let candidate = Candidate::from_sdp_string(&candidate)?;
+            e.rtc.add_remote_candidate(candidate.clone());
+            e.nat64_candidate(candidate);
             Ok(())
         })
         .await
@@ -1408,7 +1428,20 @@ fn codec(params: &PayloadParams) -> RtpCodecParameters {
 }
 
 impl Engine {
+    fn nat64_candidate(&mut self, candidate: Candidate) {
+        let Some(bootstrap) = &mut self.nat64 else {
+            return;
+        };
+        let (start, aliases) = bootstrap.candidate(candidate);
+        for alias in aliases {
+            self.rtc.add_remote_candidate(alias);
+        }
+        if start {
+            bootstrap.task = Some(tokio::spawn(discovery::nat64(self.handle.clone())));
+        }
+    }
     async fn close(&mut self) {
+        self.nat64.take();
         if let Some((_, task)) = self.source_check.take() {
             task.abort();
             let _ = task.await;
@@ -1545,6 +1578,7 @@ impl Engine {
     }
 
     fn fail(&mut self) {
+        self.nat64.take();
         if matches!(self.state.load(Ordering::Acquire), state if state == PeerState::Failed as u8 || state == PeerState::Closed as u8)
         {
             return;
@@ -1734,17 +1768,20 @@ impl Engine {
                     // later Failed state. Reuse the owned pair replacement.
                     self.fail();
                 } else if state.is_connected() && self.rtc.is_connected() {
+                    self.nat64.take();
                     self.state
                         .store(PeerState::Connected as u8, Ordering::Release);
                     self.emit(Event::State(self.handle.pair, PeerState::Connected));
                 }
             }
             RtcEvent::Connected => {
+                self.nat64.take();
                 self.state
                     .store(PeerState::Connected as u8, Ordering::Release);
                 self.emit(Event::State(self.handle.pair, PeerState::Connected));
             }
             RtcEvent::Closed => {
+                self.nat64.take();
                 self.state.store(PeerState::Closed as u8, Ordering::Release);
                 self.emit(Event::State(self.handle.pair, PeerState::Closed));
             }

@@ -195,6 +195,39 @@ pub(super) async fn gather(handle: Transport, config: Config) {
     }
 }
 
+/// One system-resolver lookup on demand, scoped to the pair's initial ICE.
+pub(super) async fn nat64(handle: Transport) {
+    let prefixes = tokio::time::timeout(
+        Duration::from_secs(5),
+        tokio::net::lookup_host(("ipv4only.arpa.", 0)),
+    )
+    .await
+    .ok()
+    .and_then(Result::ok)
+    .map(|addresses| {
+        super::nat64::discover(
+            addresses
+                .filter_map(|address| match address.ip() {
+                    std::net::IpAddr::V6(ip) => Some(ip),
+                    _ => None,
+                })
+                .take(super::nat64::PREFIX_LIMIT * 2),
+            super::nat64::PREFIX_LIMIT,
+        )
+    })
+    .unwrap_or_default();
+    let _ = handle
+        .call(move |engine| {
+            if let Some(bootstrap) = &mut engine.nat64 {
+                for alias in bootstrap.resolved(prefixes) {
+                    engine.rtc.add_remote_candidate(alias);
+                }
+            }
+            Ok(())
+        })
+        .await;
+}
+
 async fn binding(handle: Transport, base: Base, server: SocketAddr) -> Result<()> {
     let local = base.local;
     let mut request = Message::new();

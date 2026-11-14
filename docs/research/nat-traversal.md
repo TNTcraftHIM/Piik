@@ -485,18 +485,27 @@ probe-start skew while preserving the injected network delay.
 
 ### Native NAT64 Assessment
 
-The current adapter rejects a server-reflexive mapping whose address family
-differs from its local socket. An isolated candidate on the current Native/Core
-uses the SDK's public remote-candidate API to add IPv6 aliases for IPv4 peers.
-System DNS resolution of `ipv4only.arpa` identifies the translation prefix using
-[RFC 7050](https://www.rfc-editor.org/rfc/rfc7050.html#section-3); address synthesis
-follows the six layouts in [RFC 6052](https://www.rfc-editor.org/rfc/rfc6052.html#section-2.2).
-With a network-specific `/64` prefix and delayed discovery, real DNS64/NAT64,
-ICE nomination, DataChannels and decoded picture/source audio all completed.
-This is an isolated candidate, with production prefix lifetime, total candidate
-budget and the well-known prefix's non-global-address restriction still to finish.
-The experiment establishes one IPv6-only-to-IPv4 path through public SDK APIs;
-it does not establish physical-network coverage or change the shipped adapter.
+The Native adapter supplements numeric IPv4 UDP candidates with IPv6 aliases
+through the SDK's public candidate API. It starts one system-resolver lookup of
+`ipv4only.arpa` when initial ICE has a non-loopback IPv6 base and an IPv4 peer.
+[RFC 7050](https://www.rfc-editor.org/rfc/rfc7050.html#section-3) identifies the
+prefix; synthesis follows the six layouts in
+[RFC 6052](https://www.rfc-editor.org/rfc/rfc6052.html#section-2.2).
+The physical connection owns lookup cancellation and bounded pending/derived
+work. Connected or retired engines release the bootstrap state. Original
+candidates retain their ordinary path when discovery fails or aliases exhaust
+their budget; there is no long-lived prefix cache or SDK fork. The well-known
+prefix accepts globally reachable unicast IPv4 destinations; network-specific
+prefixes retain private-address support.
+
+The integrated source passed an isolated network-specific `/64` control with
+delayed DNS64 discovery and real NAT64 translation. Ordinary ICE nominated the
+path; room/file/input DataChannels opened, and Browser picture and sound
+advanced through the IPv6-only Native relay to another Browser. Failed discovery,
+alias exhaustion and explicit loopback controls preserve ordinary ICE. Other
+prefix lengths have RFC-vector coverage; physical networks, multiple translators
+and interface changes remain outside this evidence. This source change is not
+yet part of the previously delivered internal package.
 
 ### External Forwarding And Participant Relays
 
