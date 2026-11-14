@@ -286,6 +286,16 @@ existing room authority carries playback state. The
 [implementation ledger](../todo.md) distinguishes direct-media delivery from
 website-connector work.
 
+Prefer Native source discovery with ordinary Browser viewing. An independently
+usable media URL or source-issued media grant permits each viewer to fetch from
+the origin; observing a successful request in the sharer's account is not proof
+of that capability. Account sessions remain with their original player context.
+The sharer may explicitly enable forwarding of readable media bytes to Browser
+viewers. This consumes upload capacity, follows the source activity's access and
+retirement, and exposes admitted resources rather than an arbitrary URL proxy.
+Without a shared distributor, each viewer consumes a separate outbound copy.
+Encrypted media still requires the receiving player's valid license.
+
 ### Screen Demand Uses Reachable Paths
 
 Viewers are a publication's destinations, not the complete set of eligible relays.

@@ -23,7 +23,7 @@ fn playback() -> Value {
     json!({"position":12.5,"paused":false,"rate":1.5,"anchorTime":1000})
 }
 fn start(room: &str, id: Uuid) -> Value {
-    json!({"type":"start_watch","roomId":room,"id":id,"url":"https://example.com/movie.mp4","playback":playback(),"requestId":"start"})
+    json!({"type":"start_watch","roomId":room,"id":id,"source":{"kind":"media","url":"https://example.com/movie.mp4"},"playback":playback(),"requestId":"start"})
 }
 fn ready(effects: piik_channel_core::Effects, time: u64) {
     assert!(effects.events.iter().any(|(_,e)|matches!(e,Event::RoomReply{result:RoomResult::WatchReady{server_time},..} if *server_time==time)));
@@ -37,6 +37,10 @@ fn watch_confirmations_late_join_and_owner_control_do_not_create_media() {
     let id = Uuid::new_v4();
     // The sharer is a reader, not the room manager.
     ready(net.command_at(viewer, start(&room, id), 2000), 2000);
+    assert_eq!(
+        serde_json::to_value(&net.state(owner).watch_activities[0].source).unwrap(),
+        start(&room, id)["source"]
+    );
     assert_eq!(
         net.state(owner).watch_activities[0].playback.anchor_time,
         1000
@@ -89,9 +93,20 @@ fn watch_validation_and_source_retirement_are_bounded() {
         "https://user:password@example.com/a",
     ] {
         let mut value = start(&room, id);
-        value["url"] = json!(url);
+        value["source"]["url"] = json!(url);
         error(net.command(owner, value), "invalid_watch_url");
     }
+    let mut legacy = start(&room, id);
+    legacy.as_object_mut().unwrap().remove("source");
+    legacy["url"] = json!("https://example.com/movie.mp4");
+    assert!(piik_channel_core::wire::Request::parse(&legacy.to_string()).is_err());
+    let mut invalid_kind = start(&room, id);
+    invalid_kind["source"]["mediaUrl"] = json!("https://example.com/other.mp4");
+    assert!(piik_channel_core::wire::Request::parse(&invalid_kind.to_string()).is_err());
+    let webpage = json!({"kind":"website","url":"https://example.com/watch"});
+    let source: piik_channel_core::wire::WatchSource =
+        serde_json::from_value(webpage.clone()).unwrap();
+    assert_eq!(serde_json::to_value(source).unwrap(), webpage);
     let mut value = start(&room, id);
     value["playback"]["rate"] = json!(0);
     error(net.command(owner, value), "invalid_watch_playback");
@@ -200,15 +215,21 @@ fn replacing_watch_validates_before_retiring_source_and_viewers() {
         json!({"type":"join_watch","roomId":room,"id":old,"enabled":true}),
     );
     let mut replacement = start(&room, next);
-    replacement["url"] = json!("javascript:bad");
+    replacement["source"] =
+        json!({"kind":"website","url":"https://example.com/watch","mediaUrl":"javascript:bad"});
     error(net.command(owner, replacement.clone()), "invalid_watch_url");
     assert_eq!(net.state(viewer).watch_subscriptions, vec![old]);
     assert_eq!(net.state(viewer).watch_activities[0].id, old);
-    replacement["url"] = json!("https://example.com/next.mp4");
+    replacement["source"]["mediaUrl"] = json!("https://example.com/next.mp4");
+    let expected_source = replacement["source"].clone();
     let mut conflict = replacement.clone();
     conflict["id"] = json!(old);
     error(net.command(owner, conflict), "watch_identity_conflict");
     ready(net.command_at(owner, replacement, 6000), 6000);
+    assert_eq!(
+        serde_json::to_value(&net.state(viewer).watch_activities[0].source).unwrap(),
+        expected_source
+    );
     assert!(net.state(viewer).watch_subscriptions.is_empty());
     assert_eq!(net.state(viewer).watch_activities.len(), 1);
     assert_eq!(net.state(viewer).watch_activities[0].id, next);

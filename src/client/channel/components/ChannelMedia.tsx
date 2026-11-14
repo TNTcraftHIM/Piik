@@ -28,29 +28,35 @@ import type { WatchPlayback } from "../protocol";
 import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
 
 /** The session owns loading and playback; presentation only mounts its existing element. */
-export function ChannelWatchVideo({ player, owned, paused, label, presentation, theaterMode, onToggleTheater, onPlayback, onResume, disabled }: {
+export function ChannelWatchVideo({ player, owned, paused, label, presentation, theaterMode, onToggleTheater, onPlayback, onResume, disabled, website, onAppWatch, onFocusWindow }: {
   player: WatchPlayer; owned: boolean; paused: boolean; label: string; presentation: "full" | "thumbnail" | "background";
   theaterMode: boolean; onToggleTheater(): void; disabled: boolean;
   onPlayback(patch: Partial<Pick<WatchPlayback, "paused" | "position" | "rate">>): void; onResume(): void;
+  website: boolean; onAppWatch?: () => void; onFocusWindow(): void;
 }) {
   const { t } = useCopy();
   const slot = useRef<HTMLDivElement>(null), controls = useRef<HTMLDivElement>(null);
   const videoRef = useMemo(() => ({ current: player.video }), [player]);
   const controlsId = useId();
-  const [media, setMedia] = useState({ position: 0, duration: 0, volume: 1, muted: false, rate: 1 });
-  const [fullscreen, setFullscreen] = useState(() => videoFullscreenState(player.video));
+  const [htmlMedia, setMedia] = useState({ position: 0, duration: 0, volume: 1, muted: false, rate: 1 });
+  const media = player.video ? htmlMedia : { position: player.mediaState?.position ?? 0, duration: player.mediaState?.duration ?? 0,
+    rate: player.mediaState?.rate ?? 1, volume: 1, muted: false };
+  const [fullscreen, setFullscreen] = useState(() => player.video ? videoFullscreenState(player.video)
+    : { supported: false, ready: false, active: false, nativeActive: false });
   const [fullscreenFailed, setFullscreenFailed] = useState(false);
   const picture = usePictureInPicture(videoRef);
   const visibility = usePlaybackControlsVisibility(videoRef, controls, paused || player.blocked || !!player.error);
   useLayoutEffect(() => {
     const video = player.video;
+    if (!video) return;
     slot.current?.prepend(video);
     video.setAttribute("aria-label", label); video.dataset.selected = "true"; video.tabIndex = -1;
     return () => { video.remove(); };
   }, [player]);
-  useEffect(() => { player.video.setAttribute("aria-label", label); }, [player, label]);
+  useEffect(() => { player.video?.setAttribute("aria-label", label); }, [player, label]);
   useEffect(() => {
     const video = player.video;
+    if (!video) return;
     const sync = () => {
       setMedia({ position: video.currentTime, duration: Number.isFinite(video.duration) ? video.duration : 0,
         volume: video.volume, muted: video.muted, rate: video.playbackRate });
@@ -61,9 +67,12 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     document.addEventListener("fullscreenchange", sync); sync();
     return () => { for (const name of events) video.removeEventListener(name, sync); document.removeEventListener("fullscreenchange", sync); };
   }, [player]);
-  return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-thumbnail={presentation === "thumbnail" || undefined}
+  return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-external={!player.video || undefined} data-failed={!!player.error || undefined} data-thumbnail={presentation === "thumbnail" || undefined}
     data-controls-hidden={visibility.hidden} inert={presentation === "background"}>
-    {player.error ? <div className="c3-mini-message" role="alert"><span className="c3-frame-wait">{t(player.error === "watch_update_failed" ? "watch.updateFailed" : "watch.failed")}</span></div>
+    {!player.video && !player.error && <div className="c3-mini-message"><span className="c3-frame-wait">{t("watch.inWindow")}</span></div>}
+    {player.error ? <div className="c3-mini-message" role="alert"><div className="c3-frame-wait c3-watch-result"><span>{t(player.error === "watch_update_failed" ? "watch.updateFailed" : website && player.video ? "watch.browserFailed" : "watch.failed")}</span>
+      {website && player.video && (onAppWatch ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={onAppWatch} /> : <small>{t("watch.connectApp")}</small>)}
+    </div></div>
       : player.blocked && <div className="c3-mini-message"><Btn icon="play" title="watch.resume" cap="watch.resume" onClick={onResume} /></div>}
     <div ref={controls} id={controlsId} className="c3-mini-controls lr-media-toolbar lr-media-controls" role="group" aria-label={t("playback.controls")}>
       {owned && <div className="c3-watch-shared" role="group" aria-label={t("watch.sharedControls")}>
@@ -79,14 +88,14 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       </div>}
       {owned && <span className="lr-viewer-action-separator" aria-hidden="true" />}
       <div className="c3-watch-local" role="group" aria-label={t("watch.localControls")}>
-        <AudioVolumeMenu volume={media.volume} label="playback.volumeBasic" icon="speaker" max={1} onVolume={volume => { player.video.volume = volume; player.video.muted = false; }}>
+        {player.video ? <><AudioVolumeMenu volume={media.volume} label="playback.volumeBasic" icon="speaker" max={1} onVolume={volume => { if (player.video) { player.video.volume = volume; player.video.muted = false; } }}>
           <Btn icon={media.muted || !media.volume ? "speakerOff" : "speaker"} quiet size="dense" title={media.muted ? "playback.unmute" : "playback.mute"}
-            onClick={() => { const silent = player.video.muted || !player.video.volume; if (silent && !player.video.volume) player.video.volume = 1; player.video.muted = !silent; }} />
+            onClick={() => { const video = player.video; if (!video) return; const silent = video.muted || !video.volume; if (silent && !video.volume) video.volume = 1; video.muted = !silent; }} />
         </AudioVolumeMenu>
         <PlaybackWindowControls picture={picture} canPlay={player.video.readyState >= 2} quiet theaterMode={theaterMode} onToggleTheater={onToggleTheater}
           fullscreen={fullscreen} fullscreenFailed={fullscreenFailed} toggleFullscreen={() => {
-            setFullscreenFailed(false); void toggleVideoFullscreen(player.video).catch(() => setFullscreenFailed(true));
-          }} />
+            if (player.video) { setFullscreenFailed(false); void toggleVideoFullscreen(player.video).catch(() => setFullscreenFailed(true)); }
+          }} /></> : <Btn icon="window" quiet size="dense" title="watch.focusWindow" onClick={onFocusWindow} />}
       </div>
     </div>
     <PlaybackControlsReveal controls={controls} controlsId={controlsId} hidden={visibility.hidden} />

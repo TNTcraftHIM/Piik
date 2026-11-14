@@ -95,9 +95,12 @@ separates earlier proof evidence from the integrated package's acceptance;
 other desktop platforms retain their current entry.
 Windows software H264 selection is included in matched internal candidates and
 has passed the normal sharing, viewing, bitrate-change and shutdown flow.
-The current source also supports synchronized direct-media viewing through the
-Browser source picker. Playback control uses room commands without peer media;
-website connectors and matching-package acceptance remain in TODO.
+The current source supports synchronized viewing through the Browser source
+picker. Windows App can select a webpage player in an independent window; Browser
+viewers try its independently usable media URL, or explicitly use their own App
+window. Playback control uses room commands without peer media. Source-byte
+forwarding, broader website compatibility and matching-package acceptance remain
+in TODO.
 
 ## Deployment
 

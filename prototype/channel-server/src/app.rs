@@ -16,6 +16,9 @@ pub mod update;
 #[path = "app_whip.rs"]
 mod whip;
 
+#[path = "app_page.rs"]
+pub mod page;
+
 use crate::web;
 use anyhow::{anyhow, bail, Result};
 use axum::{
@@ -62,7 +65,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 9;
+const PROTOCOL: u8 = 10;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -80,6 +83,7 @@ pub struct Config {
     pub data_root: PathBuf,
     pub assets: PathBuf,
     pub open_browser: bool,
+    pub page_player: Option<page::Dispatcher>,
     pub window_navigation: Option<Arc<dyn Fn(String) -> bool + Send + Sync>>,
     pub cloudflared: PathBuf,
     pub ice_servers: Vec<Value>,
@@ -566,12 +570,15 @@ async fn discovery(State(app): State<Arc<App>>) -> Json<Value> {
     )
 }
 async fn health(State(app): State<Arc<App>>) -> Json<Value> {
-    Json(
-        json!({"service":SERVICE,"protocol":PROTOCOL,"domainProtocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"port":app.port,"token":app.token,
+    let mut state = json!({"service":SERVICE,"protocol":PROTOCOL,"domainProtocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"port":app.port,"token":app.token,
         "version":BUILD_VERSION,"revision":BUILD_REVISION,"packageTarget":PACKAGE_TARGET,
-        "windowNavigation":app.config.window_navigation.is_some(),"updateSupported":app.update.supported()}),
-    )
+        "windowNavigation":app.config.window_navigation.is_some(),"updateSupported":app.update.supported()});
+    if app.config.page_player.is_some() {
+        state["pagePlayer"] = json!(true);
+    }
+    Json(state)
 }
+
 fn launcher_state(registry: &Registry, port: u16) -> Result<Value> {
     let startup = registry.sites.startup()?;
     let site = match &startup {
@@ -994,6 +1001,8 @@ enum Operation {
         publication_id: Uuid,
         key: u8,
     },
+    #[serde(untagged)]
+    Page(page::Operation),
 }
 
 #[derive(Default)]
@@ -1225,6 +1234,8 @@ async fn connection(
             }
         };
         let processing = async {
+            let (page_events, mut page_queue) = mpsc::channel(64);
+            let pages = page::Connection::new(app.config.page_player.clone(), page_events);
             let mut host: Option<mpsc::Sender<HostCommand>> = None;
             let mut captures: BTreeMap<Uuid, Capture> = BTreeMap::new();
             let mut capture_starts: FuturesUnordered<
@@ -1276,6 +1287,11 @@ async fn connection(
             loop {
                 captures.retain(|_, capture| capture.pending.is_some() || capture.active.is_some());
                 let message = tokio::select! {
+                    _ = pages.overflowed() => return Err(anyhow!("page_player_event_queue_full")),
+                    Some(event) = page_queue.recv() => {
+                        timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                        continue;
+                    }
                     Some((id, publication_id, room_id, cancel, authority)) = external_authorizations.next(), if !external_authorizations.is_empty() => {
                         let cancelled = cancel.is_aborted();
                         if !cancelled { if let Some(capture) = captures.get_mut(&publication_id) { capture.pending = None; } }
@@ -1646,6 +1662,25 @@ async fn connection(
                                             continue;
                                         }
                                     }
+                                }
+                            }
+                            Operation::Page(operation) => {
+                                if host.is_none() {
+                                    Err(anyhow!("hello_required"))
+                                } else {
+                                    let result = pages.request(operation).await;
+                                    // Selection facts (including the current top-level URL) precede confirmation.
+                                    for _ in 0..page_queue.len() {
+                                        let Ok(event) = page_queue.try_recv() else {
+                                            break;
+                                        };
+                                        timeout(
+                                            IO_TIMEOUT,
+                                            writer.send(Message::Text(event.to_string().into())),
+                                        )
+                                        .await??;
+                                    }
+                                    result
                                 }
                             }
                             Operation::Hello {
@@ -2407,6 +2442,7 @@ mod lifecycle_tests {
                 data_root: directory.path().into(),
                 assets: directory.path().into(),
                 open_browser: false,
+                page_player: None,
                 window_navigation: Some(Arc::new({
                     let navigations = navigations.clone();
                     let available = available.clone();
@@ -2652,6 +2688,7 @@ mod lifecycle_tests {
                 data_root: directory.path().into(),
                 assets: directory.path().into(),
                 open_browser: false,
+                page_player: None,
                 window_navigation: None,
                 cloudflared: PathBuf::new(),
                 ice_servers: vec![],
@@ -2827,6 +2864,7 @@ mod lifecycle_tests {
                     data_root: directory.path().into(),
                     assets: directory.path().into(),
                     open_browser: false,
+                    page_player: None,
                     window_navigation: None,
                     cloudflared: PathBuf::new(),
                     ice_servers: vec![],
@@ -3024,6 +3062,7 @@ mod lifecycle_tests {
                 data_root: directory.path().into(),
                 assets: directory.path().into(),
                 open_browser: false,
+                page_player: None,
                 window_navigation: None,
                 cloudflared: PathBuf::new(),
                 ice_servers: vec![],
@@ -3443,5 +3482,18 @@ mod tests {
                 acknowledgement
             );
         }
+    }
+}
+#[cfg(test)]
+mod page_contract_tests {
+    use super::*;
+    #[test]
+    fn page_commands_share_the_authorized_app_envelope() {
+        let id = Uuid::new_v4();
+        let request:Request=serde_json::from_value(json!({"id":"request","type":"page_prepare","pageId":id,"url":"https://example.com/watch"})).unwrap();
+        assert!(
+            matches!(request.operation,Operation::Page(page::Operation::PagePrepare{page_id,..}) if page_id==id)
+        );
+        assert!(serde_json::from_value::<Request>(json!({"id":"request","type":"page_patch","pageId":id,"patch":{"position":1,"cookie":"secret"}})).is_err());
     }
 }

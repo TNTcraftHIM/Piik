@@ -37,6 +37,7 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
     };
   }, [session]);
   return { ...view,
+    prepareWatchPage: session.prepareWatchPage, watchPage: session.watchPage, selectWatchPage: session.selectWatchPage, focusWatch: session.focusWatch, focusWatchPage: session.focusWatchPage,
     startWatch: session.startWatch, joinWatch: session.joinWatch, leaveWatch: session.leaveWatch,
     stopWatch: session.stopWatch, setWatchPlayback: session.setWatchPlayback, resumeWatch: session.resumeWatch,
     setScreenBufferTarget: session.setScreenBufferTarget,

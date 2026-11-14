@@ -1,100 +1,120 @@
 import type { WatchPlayback } from "./protocol";
+import { HTMLVideoMedia, type WatchMedia, type WatchMediaPatch, type WatchMediaState } from "./watch-media";
 
 export function watchPosition(playback: WatchPlayback, now: number): number {
   return playback.position + (playback.paused ? 0 : Math.max(0, now - playback.anchorTime) / 1000 * playback.rate);
 }
 
-/** One activity owns this element through preparation, mounting and recovery. */
+/** One activity owns its local player, domain clock and operation queue. */
 export class WatchPlayer {
-  readonly video = document.createElement("video");
+  get video(): HTMLVideoElement | null { return this.media instanceof HTMLVideoMedia ? this.media.video : null; }
   blocked = false;
   error: string | null = null;
+  private localState: WatchMediaState | null = null;
+  get mediaState(): Readonly<WatchMediaState> | null { return this.localState; }
   private offset: number | null = null;
   private playback: WatchPlayback | null = null;
   private retired = false;
-  private timer: ReturnType<typeof setInterval>;
+  private prepared = false;
   private lifetime = new AbortController();
+  private timer: ReturnType<typeof setInterval>;
+  private unlisten: () => void;
   private operations = Promise.resolve();
+  private alignment: Promise<void> | null = null;
   private publishPlayback: ((playback: WatchPlayback) => Promise<void>) | null = null;
   private lastPublished: WatchPlayback | null = null;
 
-  constructor(readonly roomId: string, readonly owner: boolean, url: string, private changed: () => void) {
-    this.video.playsInline = true;
-    this.video.preload = "auto";
-    this.video.src = url;
-    this.video.addEventListener("loadedmetadata", () => this.align(true), { signal: this.lifetime.signal });
-    this.video.addEventListener("error", () => { this.error = "watch_media_failed"; this.changed(); }, { signal: this.lifetime.signal });
-    if (owner) for (const type of ["play", "playing", "pause", "seeked", "ratechange", "ended"]) {
-      this.video.addEventListener(type, () => { void this.publish(type === "playing").catch(() => {
-        if (!this.retired) { this.error = "watch_update_failed"; this.changed(); }
-      }); }, { signal: this.lifetime.signal });
-    }
-    this.timer = setInterval(() => this.align(), 1000);
-  }
-
-  ready(signal: AbortSignal): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const finish = (error?: Error) => {
-        clearTimeout(timer);
-        this.video.removeEventListener("loadeddata", loaded);
-        this.video.removeEventListener("error", failed);
-        signal.removeEventListener("abort", cancelled);
-        error ? reject(error) : resolve();
-      };
-      const loaded = () => finish();
-      const failed = () => finish(new Error("watch_media_failed"));
-      const cancelled = () => finish(new DOMException("Cancelled", "AbortError"));
-      const timer = setTimeout(failed, 20000);
-      this.video.addEventListener("loadeddata", loaded);
-      this.video.addEventListener("error", failed);
-      signal.addEventListener("abort", cancelled, { once: true });
-      if (signal.aborted) cancelled();
-      else if (this.video.readyState >= 2) loaded();
-      else if (this.video.error) failed();
+  constructor(readonly roomId: string, readonly owner: boolean, readonly media: WatchMedia,
+    private changed: () => void, private closed: () => void = () => {}) {
+    this.unlisten = media.listen(event => {
+      if (event === "closed") { this.close(); this.closed(); return; }
+      if (event === "error") { this.error = "watch_media_failed"; this.changed(); }
+      if (event === "blocked") { this.blocked = true; this.changed(); }
+      if (event === "loadedmetadata") void this.align(true);
+      if (owner && ["play", "playing", "pause", "seeked", "ratechange", "ended"].includes(event))
+        void this.publish(event === "playing").catch(() => {
+          if (!this.retired) { this.error = "watch_update_failed"; this.changed(); }
+        });
     });
+    this.timer = setInterval(() => { void this.align(); }, 1000);
   }
-
+  async ready(signal: AbortSignal = this.lifetime.signal): Promise<void> {
+    await this.media.ready(signal);
+    if (this.retired) throw new DOMException("Cancelled", "AbortError");
+    this.prepared = true;
+    await this.align(true);
+  }
   calibrate(serverTime: number, start: number, end = performance.now()): void {
     this.offset = serverTime - (start + end) / 2;
-    this.align(true);
+    void this.align(true);
   }
-  sample(): WatchPlayback {
+  async sample(): Promise<WatchPlayback> {
     if (this.offset === null) throw new Error("watch_clock_unavailable");
-    return { position: this.video.currentTime, paused: this.video.paused, rate: this.video.playbackRate, anchorTime: Math.round(performance.now() + this.offset) };
+    const start = performance.now(), state = await this.media.read(), end = performance.now();
+    if (this.retired) throw new Error("watch_retired");
+    this.observe(state);
+    return { position: state.position, paused: state.paused, rate: state.rate, anchorTime: Math.round((start + end) / 2 + this.offset) };
+  }
+  private observe(state: WatchMediaState): void {
+    if (this.retired) return;
+    const changed = !this.localState || Object.entries(state).some(([key, value]) => this.localState![key as keyof WatchMediaState] !== value);
+    this.localState = state;
+    if (changed) this.changed();
   }
   update(playback: WatchPlayback): void {
     const changed = !this.playback || Object.entries(playback).some(([key, value]) => this.playback![key as keyof WatchPlayback] !== value);
     this.playback = playback;
-    if (!this.owner && changed) this.align(true);
+    if (!this.owner && changed) void this.align(true);
   }
   activate(publish: (playback: WatchPlayback) => Promise<void>): void { this.publishPlayback = publish; }
   publish(force = false): Promise<void> {
-    if (!this.publishPlayback) return Promise.resolve();
-    const playback = this.sample(), previous = this.lastPublished;
-    if (!force && previous && previous.position === playback.position && previous.paused === playback.paused && previous.rate === playback.rate) return Promise.resolve();
-    this.lastPublished = playback;
     return this.serialize(async () => {
+      if (!this.publishPlayback) return;
+      const playback = await this.sample(), previous = this.lastPublished;
+      if (!force && previous && previous.position === playback.position && previous.paused === playback.paused && previous.rate === playback.rate) return;
+      this.lastPublished = playback;
       await this.publishPlayback?.(playback);
       if (!this.retired && this.error === "watch_update_failed") { this.error = null; this.changed(); }
     });
   }
-  private align(force = false): void {
-    if (this.retired || this.owner || !this.playback || this.offset === null || this.video.readyState < 1) return;
-    const target = Math.min(watchPosition(this.playback, performance.now() + this.offset), Number.isFinite(this.video.duration) ? this.video.duration : Infinity);
-    if (Math.abs(this.video.currentTime - target) > (force ? 0.12 : 0.35)) this.video.currentTime = target;
-    this.video.playbackRate = this.playback.rate;
-    if (this.playback.paused) this.video.pause();
-    else if (this.video.paused && !this.blocked && !this.video.ended) void this.play();
+  private align(force = false): Promise<void> {
+    if (this.retired || !this.prepared || !this.owner && (!this.playback || this.offset === null)) return Promise.resolve();
+    if (this.alignment) return this.alignment;
+    const operation = this.serialize(async () => {
+      const state = await this.media.read();
+      this.observe(state);
+      if (this.owner) return;
+      if (this.retired || state.readyState < 1 || !this.playback || this.offset === null) return;
+      const playback = this.playback;
+      const target = Math.min(watchPosition(playback, performance.now() + this.offset), state.duration ?? Infinity);
+      const patch: WatchMediaPatch = {};
+      if (Math.abs(state.position - target) > (force ? 0.12 : 0.35)) patch.position = target;
+      if (state.rate !== playback.rate) patch.rate = playback.rate;
+      if (playback.paused && !state.paused) patch.paused = true;
+      else if (!playback.paused && state.paused && !this.blocked && !state.ended) patch.paused = false;
+      await this.apply(patch);
+    }).catch(() => { if (!this.retired) { this.error = "watch_media_failed"; this.changed(); } });
+    this.alignment = operation;
+    void operation.finally(() => { if (this.alignment === operation) this.alignment = null; });
+    return operation;
   }
-  async play(): Promise<void> {
-    if (this.retired) return;
-    try { await this.video.play(); this.blocked = false; }
-    catch { if (!this.retired) this.blocked = true; }
+  private async apply(patch: WatchMediaPatch): Promise<void> {
+    try {
+      await this.media.patch(patch);
+      if (patch.paused === false && !this.retired) this.blocked = false;
+    } catch (error) {
+      if (!this.retired) {
+        if (error instanceof Error && (error.name === "NotAllowedError" || error.message === "watch_autoplay_blocked")) this.blocked = true;
+        else this.error = "watch_media_failed";
+      }
+    }
     if (!this.retired) this.changed();
   }
-  resume(): Promise<void> {
-    this.align(true);
-    return !this.owner && this.playback?.paused ? Promise.resolve() : this.play();
+  patch(value: WatchMediaPatch): Promise<void> { return this.serialize(() => this.apply(value)); }
+  play(): Promise<void> { return this.patch({ paused: false }); }
+  async resume(): Promise<void> {
+    await this.align(true);
+    if (this.owner || !this.playback?.paused) await this.play();
   }
   serialize(operation: () => Promise<void>): Promise<void> {
     const result = this.operations.then(() => { if (!this.retired) return operation(); });
@@ -102,13 +122,12 @@ export class WatchPlayer {
     return result;
   }
   close(): void {
+    if (this.retired) return;
     this.retired = true;
+    this.lifetime.abort();
     this.publishPlayback = null;
     clearInterval(this.timer);
-    this.lifetime.abort();
-    this.video.pause();
-    this.video.removeAttribute("src");
-    this.video.load();
-    this.video.remove();
+    this.unlisten();
+    this.media.close();
   }
 }

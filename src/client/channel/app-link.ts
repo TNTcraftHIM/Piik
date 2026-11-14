@@ -1,4 +1,6 @@
 import { CHANNEL_PROTOCOL, type RoomSummary } from "./protocol";
+import { nativePageEventSchema, nativePageStateSchema, type NativePageCandidate } from "../native/wire";
+import type { AppPagePort, WatchMediaEvent, WatchMediaPatch, WatchMediaState } from "./watch-media";
 import { z } from "zod";
 import { appApprovalURL, appManagementURL, discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
 import { nativeCaptureTargetSchema, nativeVideoCodecSchema, remoteControlStateSchema, remoteStopShortcutSchema, type NativeCaptureTarget, type EncodingExecution } from "../native/wire";
@@ -9,10 +11,10 @@ import { NativeRoomHosting } from "./hosting-api";
 import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 
-export const APP_PROTOCOL = 9;
+export const APP_PROTOCOL = 10;
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), domainProtocol: z.number().int().positive().optional(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), domainProtocol: z.literal(CHANNEL_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
-  version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional(), updateSupported: z.boolean().optional() });
+  version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional(), updateSupported: z.boolean().optional(), pagePlayer: z.literal(true).optional() });
 type AppHealth = z.infer<typeof healthSchema>;
 const measured = z.number().finite().nonnegative();
 const nativeStreamMetricSchema = z.object({
@@ -68,6 +70,36 @@ const inputStateSchema = z.object({ type: z.literal("input_state"), publicationI
 class AppCompatibilityError extends Error {}
 type AppCommand = { type: string; publicationId?: string; roomId?: string; [key: string]: unknown };
 
+export class AppPage implements AppPagePort {
+  candidates: readonly NativePageCandidate[] = [];
+  private lifetime = new AbortController();
+  private listeners = new Set<(event: WatchMediaEvent) => void>();
+  constructor(readonly id: string, public url: string, private request: (command: AppCommand, signal: AbortSignal) => Promise<unknown>,
+    private dispose: () => void, private changed: () => void) {}
+  private command(type: string, values: Record<string, unknown> = {}): Promise<unknown> {
+    return this.request({ type, pageId: this.id, ...values }, this.lifetime.signal);
+  }
+  async prepare(): Promise<void> { z.object({ pageId: z.literal(this.id) }).strict().parse(await this.command("page_prepare", { url: this.url })); }
+  async select(candidateId: string): Promise<void> { nativePageStateSchema.parse(await this.command("page_select", { candidateId })); }
+  async read(): Promise<WatchMediaState> { return nativePageStateSchema.parse(await this.command("page_read")); }
+  async patch(patch: WatchMediaPatch): Promise<void> { await this.command("page_patch", { patch }); }
+  async focus(): Promise<void> { await this.command("page_focus"); }
+  listen(changed: (event: WatchMediaEvent) => void): () => void { this.listeners.add(changed); return () => this.listeners.delete(changed); }
+  receive(event: z.infer<typeof nativePageEventSchema>): void {
+    if (event.type === "page_closed") { this.close(); return; }
+    if (event.type === "page_candidates") { this.url = event.url; this.candidates = event.candidates; this.changed(); return; }
+    for (const listener of this.listeners) listener(event.type === "page_blocked" ? "blocked" : event.event);
+  }
+  close(): void {
+    if (this.lifetime.signal.aborted) return;
+    this.lifetime.abort(new Error("watch_page_closed"));
+    this.dispose();
+    for (const listener of this.listeners) listener("closed");
+    this.listeners.clear();
+    this.changed();
+  }
+}
+
 function identity(body: unknown, port: number): void {
   const value = identitySchema.extend({ service: z.enum(["piik-channel-app", "piik-client"]) }).parse(body);
   if (value.port !== port) throw new Error("invalid_app_response");
@@ -116,6 +148,8 @@ export class ChannelApp {
   private captureCodecs: NativeCaptureSources["codecs"] = [];
   private previewTail: Promise<unknown> = Promise.resolve();
   private readonly roomHosting: NativeRoomHosting;
+  private pages = new Map<string, AppPage>();
+  readonly pagePlayer: boolean;
 
   get connected(): boolean { return this.authenticated && this.socket.readyState === WebSocket.OPEN; }
   get screens(): ReadonlySet<string> { return new Set([...this.captures.keys(), ...this.externalInputs.keys()]); }
@@ -139,6 +173,7 @@ export class ChannelApp {
     onInputState: (publicationId: string, state: ChannelRemoteControlState) => void = () => {},
     private readonly onAudioState: (publicationId: string) => void = () => {},
     onExternalInput: (event: NativeExternalInputState) => void = () => {}) {
+    this.pagePlayer = health.pagePlayer === true;
     this.roomHosting = new NativeRoomHosting(`http://127.0.0.1:${health.port}/rooms/${channelId}/${userId}`,
       { Authorization: `Bearer ${health.token}`, "X-Piik-Credential": credential });
     const socket = this.socket = new WebSocket(`ws://127.0.0.1:${health.port}/rooms`, `piik-channel-rooms.${health.token}`);
@@ -157,6 +192,11 @@ export class ChannelApp {
     socket.onmessage = ({ data }) => {
       try {
         const reply = JSON.parse(String(data)) as { type?: string; id: string; result?: unknown; error?: string };
+        if (reply.type?.startsWith("page_")) {
+          const event = nativePageEventSchema.parse(reply);
+          this.pages.get(event.pageId)?.receive(event);
+          return;
+        }
         if (reply.type === "input_state") {
           const event = inputStateSchema.parse(reply);
           if (this.captures.has(event.publicationId) || this.prepared.has(event.publicationId)) onInputState(event.publicationId, event.state);
@@ -224,6 +264,26 @@ export class ChannelApp {
       this.socket.send(JSON.stringify({ ...command, id }));
     }).finally(() => { signal?.removeEventListener("abort", abort); });
   }
+
+  async preparePage(url: string, changed: () => void, signal: AbortSignal): Promise<AppPage> {
+    signal.throwIfAborted();
+    if (!this.pagePlayer) throw new Error("watch_page_unavailable");
+    const pageId = crypto.randomUUID();
+    const page = new AppPage(pageId, url, (command, lifetime) => this.request(command, undefined, lifetime), () => {
+      this.pages.delete(pageId);
+      void this.request({ type: "page_close", pageId }).catch(() => {});
+    }, changed);
+    this.pages.set(pageId, page);
+    const cancel = () => page.close();
+    signal.addEventListener("abort", cancel, { once: true });
+    try {
+      await page.prepare();
+      signal.throwIfAborted();
+      return page;
+    } catch (error) { page.close(); throw error; }
+    finally { signal.removeEventListener("abort", cancel); }
+  }
+  page(pageId: string): AppPage | undefined { return this.pages.get(pageId); }
 
   async connectionMetrics(roomId: string, publicationId?: string, signal?: AbortSignal): Promise<NativeConnectionMetrics> {
     signal?.throwIfAborted();
@@ -419,6 +479,7 @@ export class ChannelApp {
     clearTimeout(this.timer);
     this.socket.onclose = null;
     this.socket.close();
+    for (const page of this.pages.values()) page.close();
     const error = new Error("app_disconnected");
     this.rejectReady(error);
     for (const request of this.requests.values()) request.reject(error);

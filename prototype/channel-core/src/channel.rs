@@ -1016,7 +1016,7 @@ impl Channel {
                 || !watch_owners.insert(activity.session_id)
                 || activity.room_id != id
                 || activity.playback.validate().is_err()
-                || crate::wire::validate_watch_url(&activity.url).is_err()
+                || activity.source.validate().is_err()
                 || !projection
                     .views
                     .get(&activity.session_id)

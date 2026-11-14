@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 18;
+pub const CHANNEL_PROTOCOL: u8 = 19;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -129,7 +129,7 @@ pub enum Command {
     StartWatch {
         room_id: String,
         id: Uuid,
-        url: String,
+        source: WatchSource,
         playback: WatchPlayback,
     },
     UpdateWatch {
@@ -928,10 +928,41 @@ pub struct WatchActivity {
     pub room_id: String,
     pub user_id: Uuid,
     pub session_id: Uuid,
-    pub url: String,
+    pub source: WatchSource,
     pub playback: WatchPlayback,
 }
-pub(crate) fn validate_watch_url(value: &str) -> Result<(), &'static str> {
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum WatchSource {
+    Media {
+        url: String,
+    },
+    Website {
+        url: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        media_url: Option<String>,
+    },
+}
+impl WatchSource {
+    pub(crate) fn validate(&self) -> Result<(), &'static str> {
+        match self {
+            Self::Media { url } => validate_watch_url(url),
+            Self::Website { url, media_url } => {
+                validate_watch_url(url)?;
+                if let Some(media_url) = media_url {
+                    validate_watch_url(media_url)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+fn validate_watch_url(value: &str) -> Result<(), &'static str> {
     if value.len() > 4096 || value.trim() != value {
         return Err("invalid_watch_url");
     }

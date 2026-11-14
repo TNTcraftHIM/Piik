@@ -12,6 +12,12 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **Host UDP errors and blurry viewing.** A reported beta.25 Host repeatedly
+  prints Windows network-unreachable error 10051 while a friend can view a blurry
+  picture. Identify whether the errors affect the selected media path or other
+  ICE candidates, and correlate receive resolution with network and encoder
+  budgets. The old console line lacks that association; do not treat the newer
+  removed-local-address repair as resolution without a matching control.
 - [ ] **beta.25 mobile reconnect report.** Identify the actual Browser RTC setup
   error or socket-close cause on the reporting phone. The supplied recording
   shows site reconnection while waiting for a shared picture. A reproduced RTC
@@ -93,6 +99,11 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **3.0 language selection.** Remove the pure-visual mode and its separate
+  presentation branches; retain meaningful icons, illustrations and responsive
+  controls. Move room text into the shared catalogs, replace the third language
+  option with a language menu, and add reviewed Traditional Chinese, Japanese
+  and Korean catalogs through the community translation structure.
 - [ ] **App update distribution.** Configure the production signing identity and
   decide the beta-feed policy before distributing updater-capable packages;
   retain manual download. The
@@ -126,20 +137,19 @@ the feedback period; they do not delay that delivery.
   network cost. Include compatible H.264 forwarding cost and sustained runtime
   adaptation; keep congestion control with the RTC owner. AV1/HEVC product
   integration remains a separate decision.
-- [ ] **Native IPv6-only connectivity.** Complete the prefix lifetime, derived
-  candidate budget and RFC 6052 address restrictions for the
-  [NAT64 adapter candidate](./research/nat-traversal.md#native-nat64-assessment).
-  Integrate through the existing discovery and physical-pair owners, then verify
-  ordinary candidates, failed discovery and pair retirement alongside NAT64.
 - [ ] **Native send-consent lifetime.** Review the RTC owner's response-based
   expiry against RFC 7675, including delayed processing and its existing Chrome
   interoperability correction. Keep transport consent and Piik route recovery
   with their existing owners; validate the SDK driving contract before relying
   on an isolated timeout reproduction.
 - [ ] **Shared-link website connectors.** Build the webpage-player connector
-  into the Native client so participants need no separate browser extension,
-  targeting the playback coverage of VideoTogether. Browser-only use retains
-  direct media and documented embedded-player APIs. Retain the
+  into the Native client, targeting the playback coverage of VideoTogether.
+  Prefer a Native sharer with Browser viewers: independently usable media URLs
+  and media-specific grants permit origin delivery; an explicitly enabled
+  source-byte forwarder uses the sharer's upload capacity. Validate a normal
+  file and HLS through the actual viewer before adding more formats. Original
+  webpage synchronization remains available through Native player connectors
+  without separate browser extensions. Retain the
   [shared playback owner](./research/channel-network-design.md#synchronized-video-sources):
   the sharer controls common playback; viewers own sound, participation and
   access through their own platform accounts. Complete matching-package and

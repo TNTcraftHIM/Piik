@@ -1,4 +1,18 @@
 import { z } from "zod";
+
+export const nativePageStateSchema = z.object({
+  position: z.number().finite().nonnegative(), paused: z.boolean(), rate: z.number().positive().max(16),
+  duration: z.number().finite().nonnegative().nullable(), readyState: z.number().int().min(0).max(4), ended: z.boolean(),
+}).strict();
+const nativePageURLSchema = z.string().url().max(4096).refine(value => /^https?:\/\//.test(value));
+export const nativePageCandidateSchema = z.object({ id: z.uuid(), title: z.string().max(512).refine(value => [...value].length <= 256), url: nativePageURLSchema.nullable(), duration: z.number().finite().nonnegative().nullable() }).strict();
+export type NativePageCandidate = z.infer<typeof nativePageCandidateSchema>;
+export const nativePageEventSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("page_candidates"), pageId: z.uuid(), url: nativePageURLSchema, candidates: z.array(nativePageCandidateSchema).max(64) }).strict(),
+  z.object({ type: z.literal("page_sample"), pageId: z.uuid(), event: z.enum(["loadedmetadata", "loadeddata", "play", "playing", "pause", "seeked", "ratechange", "ended", "waiting", "error"]) }).strict(),
+  z.object({ type: z.literal("page_closed"), pageId: z.uuid() }).strict(),
+  z.object({ type: z.literal("page_blocked"), pageId: z.uuid() }).strict(),
+]);
 import { remoteControlModeSchema, remoteInputPlatformSchema, remoteShortcutKeySchema } from "../remote-control/protocol";
 
 const decimalIdentifierSchema = z.string().regex(/^[1-9]\d{0,19}$/);

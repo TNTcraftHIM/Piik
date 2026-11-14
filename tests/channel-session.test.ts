@@ -8057,7 +8057,7 @@ test('watch creator uses domain confirmation, keeps its element and retires with
     const start = socket.sent.findLast(command => command.type === 'start_watch')!;
     expect(start.playback).toMatchObject({ paused: true, position: 0 });
     socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [{
-      id: start.id, roomId: 'first', sessionId: 'endpoint', userId: 'self', url: start.url, playback: start.playback,
+      id: start.id, roomId: 'first', sessionId: 'endpoint', userId: 'self', source: start.source, playback: start.playback,
     }] } });
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 100000 } });
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'update_watch')).toBe(true));
@@ -8083,7 +8083,7 @@ test('watch candidate cancellation preserves an existing activity and creates no
   const { session, socket } = await setup(1000, false);
   const first = new WatchTestVideo(), candidate = new WatchTestVideo(); candidate.readyState = 0;
   vi.stubGlobal('document', { createElement: vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(candidate) });
-  const activity = { id: 'watch-one', roomId: 'first', sessionId: 'other', userId: 'other', url: 'https://media.test/one.mp4',
+  const activity = { id: 'watch-one', roomId: 'first', sessionId: 'other', userId: 'other', source: { kind: 'media' as const, url: 'https://media.test/one.mp4' },
     playback: { position: 10, paused: true, rate: 1, anchorTime: 1000 } };
   try {
     socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [activity] } });
@@ -8106,7 +8106,7 @@ test('watch short recovery keeps its player, samples domain time again, and resp
   const { session, socket } = await setup(1000, false);
   const video = new WatchTestVideo();
   vi.stubGlobal('document', { createElement: () => video });
-  const activity = { id: 'watch-one', roomId: 'first', sessionId: 'other', userId: 'other', url: 'https://media.test/one.mp4',
+  const activity = { id: 'watch-one', roomId: 'first', sessionId: 'other', userId: 'other', source: { kind: 'media' as const, url: 'https://media.test/one.mp4' },
     playback: { position: 10, paused: true, rate: 1, anchorTime: 1000 } };
   let state = { ...session.getSnapshot().state!, watchActivities: [activity], watchSubscriptions: [activity.id] };
   try {
@@ -8123,7 +8123,7 @@ test('watch short recovery keeps its player, samples domain time again, and resp
     expect(rejoin).toMatchObject({ id: activity.id, enabled: true });
     resumed.receive({ type: 'room_reply', roomId: 'first', requestId: rejoin.requestId, result: { type: 'watch_ready', serverTime: 2000 } });
     expect(session.getSnapshot().watchPlayers.get(activity.id)?.video).toBe(video);
-    expect(video.currentTime).toBe(24);
+    await vi.waitFor(() => expect(video.currentTime).toBe(24));
     resumed.close();
     await session.leaveWatch(activity.id);
     session.reconnect();
@@ -8139,7 +8139,7 @@ test.each(['activity', 'subscription'] as const)('watch authority %s removal ret
   const { session, socket } = await setup(1000, false);
   const video = new WatchTestVideo(), candidate = new WatchTestVideo(); candidate.readyState = 0;
   vi.stubGlobal('document', { createElement: vi.fn().mockReturnValueOnce(video).mockReturnValueOnce(candidate) });
-  const activity = { id: 'watch-one', roomId: 'first', sessionId: 'other', userId: 'other', url: 'https://media.test/one.mp4',
+  const activity = { id: 'watch-one', roomId: 'first', sessionId: 'other', userId: 'other', source: { kind: 'media' as const, url: 'https://media.test/one.mp4' },
     playback: { position: 10, paused: true, rate: 1, anchorTime: 1000 } };
   try {
     socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [activity] } });
@@ -8165,7 +8165,7 @@ test.each(['cancel', 'stop'] as const)('watch replacement commit ignores %s canc
   const acknowledge = (command: Record<string, unknown>, result = { type: 'done' } as Record<string, unknown>) =>
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: command.requestId, result });
   const authority = (command: Record<string, unknown>) => socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [{
-    id: command.id, roomId: 'first', sessionId: 'endpoint', userId: 'self', url: command.url, playback: command.playback,
+    id: command.id, roomId: 'first', sessionId: 'endpoint', userId: 'self', source: command.source, playback: command.playback,
   }] } });
   try {
     const initial = session.startWatch('first', 'https://media.test/first.mp4');
@@ -8200,5 +8200,66 @@ test.each(['cancel', 'stop'] as const)('watch replacement commit ignores %s canc
       expect(socket.sent.some(command => command.type === 'stop_watch' && command.id === b.id)).toBe(false);
     }
     expect(session.sourceSelectionCommitting('first')).toBe(false);
+  } finally { session.close(); }
+});
+
+test('App viewer preparation has an independent lifetime from the same room share candidate', async () => {
+  const { session, socket } = await setup(1000, false);
+  const video = new WatchTestVideo(); video.readyState = 0;
+  vi.stubGlobal('document', { createElement: () => video });
+  const activity = { id: 'website-one', roomId: 'first', sessionId: 'other', userId: 'other',
+    source: { kind: 'website' as const, url: 'https://website.test/episode' },
+    playback: { position: 12, paused: false, rate: 1, anchorTime: 1000 } };
+  let connected!: (value: appLink.ChannelApp) => void;
+  const preparePage = vi.fn();
+  vi.spyOn(session as unknown as { connectApp(): Promise<appLink.ChannelApp> }, 'connectApp').mockImplementation(() => new Promise(resolve => { connected = resolve; }));
+  try {
+    socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [activity] } });
+    const source = session.startWatch('first', 'https://media.test/new.mp4');
+    const sourceCancelled = expect(source).rejects.toMatchObject({ name: 'AbortError' });
+    const viewing = session.prepareWatchPage('first', activity.source.url, activity.id);
+    const viewerCancelled = expect(viewing).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.waitFor(() => expect(connected).toBeDefined());
+    expect(session.getSnapshot().watchPlayers.has(activity.id)).toBe(true);
+    const leaving = session.leaveWatch(activity.id);
+    const leave = socket.sent.findLast(command => command.type === 'join_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: leave.requestId, result: { type: 'done' } });
+    await leaving;
+    expect(session.getSnapshot().pending.has('screen:first')).toBe(true);
+    expect(video.src).toBe('https://media.test/new.mp4');
+    connected({ preparePage } as unknown as appLink.ChannelApp);
+    await viewerCancelled;
+    expect(preparePage).not.toHaveBeenCalled();
+    await session.cancelScreenSelection('first'); await sourceCancelled;
+    expect(session.getSnapshot().watchPlayers.size).toBe(0);
+  } finally { session.close(); }
+});
+
+test('webpage sharing commits the current top-level URL delivered before selection confirmation', async () => {
+  const { session } = await setup(1000, false);
+  const pageId = crypto.randomUUID(), candidateId = crypto.randomUUID();
+  let confirm!: (state: unknown) => void;
+  const page = new appLink.AppPage(pageId, 'https://video.test/landing', command => {
+    if (command.type === 'page_select') return new Promise(resolve => { confirm = resolve; });
+    return Promise.resolve(null);
+  }, () => {}, () => {});
+  const app = { preparePage: vi.fn(async () => page), page: () => page, stopCaptures: vi.fn(), close: () => page.close() } as unknown as appLink.ChannelApp;
+  vi.spyOn(session as unknown as { connectApp(): Promise<appLink.ChannelApp> }, 'connectApp').mockResolvedValue(app);
+  (session as unknown as { app: appLink.ChannelApp }).app = app;
+  const commit = vi.spyOn(session as unknown as { commitWatch(roomId: string, source: unknown, media: unknown, selection: unknown): Promise<void> }, 'commitWatch').mockResolvedValue();
+  try {
+    await session.prepareWatchPage('first', 'https://video.test/landing');
+    page.receive({ type: 'page_candidates', pageId, url: 'https://video.test/film', candidates: [
+      { id: candidateId, title: 'Film', url: null, duration: 60 },
+    ] });
+    const selecting = session.selectWatchPage('first', candidateId);
+    expect(confirm).toBeDefined();
+    page.receive({ type: 'page_candidates', pageId, url: 'https://video.test/film?chosen=1', candidates: [
+      { id: candidateId, title: 'Film', url: 'https://media.test/film.mp4', duration: 60 },
+    ] });
+    confirm({ position: 0, paused: true, rate: 1, duration: 60, readyState: 4, ended: false });
+    await selecting;
+    expect(commit.mock.calls[0]?.[1]).toEqual({ kind: 'website', url: 'https://video.test/film?chosen=1', mediaUrl: 'https://media.test/film.mp4' });
+    expect(session.watchPage('first')?.url).toBe('https://video.test/film?chosen=1');
   } finally { session.close(); }
 });

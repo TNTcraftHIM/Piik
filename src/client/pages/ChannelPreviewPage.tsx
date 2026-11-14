@@ -13,7 +13,7 @@ import { channelErrorPresentation } from "../channel/error-presentation";
 import { rememberRoom, selectedRoom } from "../channel/navigation";
 import { ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelStage, type WatchStageSource } from "../channel/components/ChannelStage";
-import { ChannelShareControl } from "../channel/components/ChannelShareControl";
+import { ChannelShareControl, WatchSourceDialog } from "../channel/components/ChannelShareControl";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
 import { ChannelJoinVoice } from "../channel/components/ChannelJoinVoice";
 import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
@@ -67,6 +67,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const zh = lang === "zh";
   const copy = (cn: string, en: string) => zh ? cn : en;
   const [pickerRoom, setPickerRoom] = useState<string | null>(null);
+  const [appWatchId, setAppWatchId] = useState<string | null>(null);
   const preparingShare = useRef<object | null>(null);
   const [mobilePane, setMobilePane] = useState<"room" | "rooms" | "people" | "chat">("room");
   const selectRoom = useCallback((id: string) => {
@@ -200,13 +201,16 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
   const watchTitle = (url: string) => { const source = new URL(url); return source.host + source.pathname; };
   const watchSources: WatchStageSource[] = watches.filter(activity => activeWatches.includes(activity) || activity.roomId === roomId).map(activity => ({
-    kind: "watch", id: activity.id, userId: activity.userId, name: nameOfUser(activity.userId), title: watchTitle(activity.url),
+    kind: "watch", id: activity.id, userId: activity.userId, name: nameOfUser(activity.userId), title: watchTitle(activity.source.url),
+    website: activity.source.kind === "website", onFocusWindow: () => run(channel.focusWatch(activity.id)),
+    browserSource: activity.source.kind === "media" || !!activity.source.mediaUrl,
+    onAppWatch: activity.source.kind === "website" && channel.pagePlayer && channel.watchPlayers.get(activity.id)?.video !== null ? () => setAppWatchId(activity.id) : undefined,
     roomName: nameOfRoom(activity.roomId), avatar: userProfile(state, channel.profiles, activity.userId)?.avatar ?? undefined,
     owned: ownsWatch(activity.id), subscribed: state?.watchSubscriptions.includes(activity.id) ?? false,
     shareControls: ownsWatch(activity.id) && <ChannelShareControl channel={channel} roomId={activity.roomId} compact disabled={!connected || !rooms.find(room => room.id === activity.roomId)?.available} />,
     hidden: activity.roomId !== roomId || activeWatches.includes(activity) && !visibleScreens.includes(activity),
     paused: activity.playback.paused, player: channel.watchPlayers.get(activity.id),
-    pending: busy("watch", activity.id) || busy("stop", activity.id), available: connected && !!rooms.find(room => room.id === activity.roomId)?.available,
+    pending: busy("watch", activity.id) || busy("watch-video", activity.id) || busy("stop", activity.id), available: connected && !!rooms.find(room => room.id === activity.roomId)?.available,
     onRoom: () => selectRoom(activity.roomId), onJoin: () => { showSource(activity.roomId, activity.id); run(channel.joinWatch(activity.id)); },
     onLeave: () => run(channel.leaveWatch(activity.id)), onStop: () => run(channel.stopWatch(activity.id)),
     onResume: () => run(channel.resumeWatch(activity.id)), onPlayback: patch => run(channel.setWatchPlayback(activity.id, patch)),
@@ -215,6 +219,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     ? copy("正在连接", "Connecting") : connection === "reconnecting" ? copy("正在重连", "Reconnecting") : copy("连接已断开", "Disconnected");
 
   return <div className={`lr-app c3-app${vis ? " c3-visual" : ""}`}>
+    {watches.filter(activity => activity.id === appWatchId).map(activity => <WatchSourceDialog key={activity.id} channel={channel}
+      roomId={activity.roomId} activityId={activity.id} initialURL={activity.source.url} onClose={() => setAppWatchId(null)} />)}
     {state && failure.message && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span className="c3-notice-message">{failure.message}</span>
       <Btn icon="x" title="notice.dismiss" hint="hint-close" size="compact" quiet onClick={channel.clearError} />
     </div>}
@@ -305,8 +311,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
           <span className="c3-notice-message">{copy("房间暂不可用，请等待恢复托管。", "This room is unavailable. Wait for hosting to resume.")}</span></div>}
         {otherScreens.length > 0 && <div className="c3-other-activities" aria-label={copy("进行中的画面", "Ongoing screens")}>
           {otherScreens.map(source => {
-            const watch = "url" in source;
-            const owned = watch ? ownsWatch(source.id) : channel.ownedScreens.has(source.id), title = watch ? watchTitle(source.url) : screenTitle(source, lang);
+            const watch = "playback" in source;
+            const owned = watch ? ownsWatch(source.id) : channel.ownedScreens.has(source.id), title = watch ? watchTitle(source.source.url) : screenTitle(source, lang);
             return <div key={source.id} className="c3-other-activity"><Glyph name={owned ? "cast" : "eye"} size={17} />
               <span><small>{owned ? copy("仍在分享", "Still sharing") : copy("仍在观看", "Still watching")}</small>
                 <strong>{title}</strong><span className="c3-activity-room">{nameOfRoom(source.roomId)}</span></span>

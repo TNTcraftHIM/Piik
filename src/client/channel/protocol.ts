@@ -11,7 +11,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 18;
+export const CHANNEL_PROTOCOL = 19;
 export const CHANNEL_SESSION_LIMIT = 128;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
@@ -76,7 +76,19 @@ export const messageSchema = z.object({
 export const MAX_WATCH_URL_LENGTH = 4096;
 export const watchPlaybackSchema = z.object({ position: z.number().nonnegative().finite(), paused: z.boolean(), rate: z.number().positive().max(16), anchorTime: z.number().int().nonnegative().safe() });
 export type WatchPlayback = z.infer<typeof watchPlaybackSchema>;
-export const watchActivitySchema = z.object({ id, roomId: id, userId: id, sessionId: id, url: z.string().url().max(MAX_WATCH_URL_LENGTH), playback: watchPlaybackSchema });
+const watchURLSchema = z.string().url().max(MAX_WATCH_URL_LENGTH).refine(value => {
+  try {
+    const url = new URL(value);
+    return value.trim() === value && new TextEncoder().encode(value).byteLength <= MAX_WATCH_URL_LENGTH
+      && ["http:", "https:"].includes(url.protocol) && !url.username && !url.password;
+  } catch { return false; }
+});
+export const watchSourceSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("media"), url: watchURLSchema }).strict(),
+  z.object({ kind: z.literal("website"), url: watchURLSchema, mediaUrl: watchURLSchema.optional() }).strict(),
+]);
+export type WatchSource = z.infer<typeof watchSourceSchema>;
+export const watchActivitySchema = z.object({ id, roomId: id, userId: id, sessionId: id, source: watchSourceSchema, playback: watchPlaybackSchema }).strict();
 export type WatchActivity = z.infer<typeof watchActivitySchema>;
 export const snapshotSchema = z.object({
   channel: z.object({
@@ -206,7 +218,7 @@ export interface RoomSettings extends DomainSettings {
   relayCapacity?: number;
 }
 export type ChannelCommand =
-  | { type: "start_watch"; roomId: string; id: string; url: string; playback: WatchPlayback }
+  | { type: "start_watch"; roomId: string; id: string; source: WatchSource; playback: WatchPlayback }
   | { type: "update_watch"; roomId: string; id: string; playback: WatchPlayback }
   | { type: "join_watch"; roomId: string; id: string; enabled: boolean }
   | { type: "stop_watch"; roomId: string; id: string }

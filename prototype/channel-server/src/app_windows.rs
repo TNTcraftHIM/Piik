@@ -1,4 +1,5 @@
 //! Windows owns presentation; the existing HTTP App owns all room and capture work.
+mod page;
 mod permission;
 
 use crate::app::{self, Config};
@@ -93,6 +94,9 @@ enum WindowAction {
 }
 #[derive(Clone)]
 enum ServiceEvent {
+    PageCommand(std::sync::Arc<std::sync::Mutex<Option<crate::app::page::Command>>>),
+    PageMessage(uuid::Uuid, String),
+    PageNavigate(uuid::Uuid),
     Ready { entry: String, launcher: String },
     Navigate(String),
     Finished,
@@ -233,7 +237,10 @@ impl BookmarksWindow {
                 &mut Default::default(),
             )?;
         }
-        Ok(Self { _webview: webview, window })
+        Ok(Self {
+            _webview: webview,
+            window,
+        })
     }
 }
 
@@ -423,6 +430,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
     let pending: PendingPermissions = Rc::default();
     let popups: Popups = Rc::default();
     let mut context = WebContext::new(Some(config.data_root.join("webview")));
+    let mut pages = page::Pages::new(config.data_root.join("web-player"));
     let window = match MainWindow::new(
         &events,
         events.create_proxy(),
@@ -439,8 +447,19 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
     };
     let navigation = events.create_proxy();
     config.window_navigation = window.as_ref().map(|_| {
-        std::sync::Arc::new(move |url: String| navigation.send_event(ServiceEvent::Navigate(url)).is_ok())
-            as std::sync::Arc<dyn Fn(String) -> bool + Send + Sync>
+        std::sync::Arc::new(move |url: String| {
+            navigation.send_event(ServiceEvent::Navigate(url)).is_ok()
+        }) as std::sync::Arc<dyn Fn(String) -> bool + Send + Sync>
+    });
+    let page_events = events.create_proxy();
+    config.page_player = window.as_ref().map(|_| {
+        std::sync::Arc::new(move |command| {
+            page_events
+                .send_event(ServiceEvent::PageCommand(std::sync::Arc::new(
+                    std::sync::Mutex::new(Some(command)),
+                )))
+                .is_ok()
+        }) as crate::app::page::Dispatcher
     });
     let mut core = Core::start(config, port, events.create_proxy())?;
     let mut result = Ok(());
@@ -453,6 +472,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
     let mut minimum_scale = window.as_ref().map(|main| main.window.scale_factor());
     let permission_events = events.create_proxy();
     let bookmark_events = events.create_proxy();
+    let page_events = events.create_proxy();
     events.run_return(|event, target, flow| {
         *flow = ControlFlow::Wait;
         match event {
@@ -473,6 +493,13 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                     prompt.update_appearance(&theme, language);
                 }
             }
+            Event::UserEvent(ServiceEvent::PageCommand(command)) => {
+                if let Some(command) = command.lock().unwrap().take() {
+                    pages.command(command, target, page_events.clone());
+                }
+            }
+            Event::UserEvent(ServiceEvent::PageMessage(id, body)) => pages.message(id, &body),
+            Event::UserEvent(ServiceEvent::PageNavigate(id)) => pages.navigate(id),
             Event::UserEvent(ServiceEvent::Content(ContentMessage::Header { slot: next })) => {
                 slot = next;
                 if let Some(main) = &window {
@@ -488,14 +515,31 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                             } else if let Some(launcher) = &launcher_url {
                                 let mut url = url::Url::parse(launcher).expect("Local App entry");
                                 url.query_pairs_mut().append_pair("bookmarks", "1");
-                                if let Some(current) = main.content.url().ok().and_then(|value| url::Url::parse(&value).ok()) {
-                                    if matches!(current.scheme(), "http" | "https") && current.origin() != url.origin() {
-                                        let fragment = url::form_urlencoded::Serializer::new(String::new())
-                                            .append_pair("site", &current.origin().ascii_serialization()).finish();
+                                if let Some(current) = main
+                                    .content
+                                    .url()
+                                    .ok()
+                                    .and_then(|value| url::Url::parse(&value).ok())
+                                {
+                                    if matches!(current.scheme(), "http" | "https")
+                                        && current.origin() != url.origin()
+                                    {
+                                        let fragment =
+                                            url::form_urlencoded::Serializer::new(String::new())
+                                                .append_pair(
+                                                    "site",
+                                                    &current.origin().ascii_serialization(),
+                                                )
+                                                .finish();
                                         url.set_fragment(Some(&fragment));
                                     }
                                 }
-                                match BookmarksWindow::new(target, &mut context, bookmark_events.clone(), url.as_str()) {
+                                match BookmarksWindow::new(
+                                    target,
+                                    &mut context,
+                                    bookmark_events.clone(),
+                                    url.as_str(),
+                                ) {
                                     Ok(created) => bookmarks = Some(created),
                                     Err(error) => eprintln!("Open App bookmarks: {error:#}"),
                                 }
@@ -606,7 +650,11 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                 ..
             }
             | Event::UserEvent(ServiceEvent::PopupClosed(window_id)) => {
-                if bookmarks.as_ref().is_some_and(|panel| panel.window.id() == window_id) {
+                if pages.close_window(window_id) {
+                } else if bookmarks
+                    .as_ref()
+                    .is_some_and(|panel| panel.window.id() == window_id)
+                {
                     bookmarks.take();
                 } else if prompt
                     .as_ref()
@@ -676,6 +724,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             }
         }
     });
+    pages.clear();
     drop(prompt);
     drop(bookmarks);
     pending.borrow_mut().clear();

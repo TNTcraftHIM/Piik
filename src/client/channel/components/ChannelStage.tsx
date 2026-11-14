@@ -89,6 +89,7 @@ export interface WatchStageSource {
   owned: boolean; subscribed: boolean; hidden?: boolean; paused: boolean; pending?: boolean; available?: boolean;
   shareControls?: ReactNode;
   player?: import("../watch-playback").WatchPlayer;
+  website: boolean; browserSource: boolean; onAppWatch?: () => void; onFocusWindow(): void;
   onRoom(): void; onJoin(): void; onLeave(): void; onStop(): void; onResume(): void;
   onPlayback(patch: Partial<Pick<import("../protocol").WatchPlayback, "paused" | "position" | "rate">>): void;
 }
@@ -210,7 +211,7 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
       for (const panel of tile.querySelectorAll<HTMLElement>('[popover]:popover-open')) panel.hidePopover();
     }
   }, [layoutSources, focused?.id]);
-  const hasFocusedMedia = focused?.kind === "watch" ? !!focused.player : !!focused?.stream;
+  const hasFocusedMedia = focused?.kind === "watch" ? !!focused.player?.video : !!focused?.stream;
   useEffect(() => { if (!hasFocusedMedia) setTheater(false); }, [focused?.id, hasFocusedMedia, setTheater]);
   if (!sources.length) return null;
 
@@ -339,10 +340,12 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
           <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
           <div><strong>{stageTitle(source, lang)}</strong><small>{source.name}<span aria-hidden="true"> / </span>{source.onRoom ? <button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button> : source.roomName}{source.paused ? ` / ${t("host.paused")}` : ""}</small></div>
           {source.kind !== "watch" && <SourceAudience people={source.audience} />}
-          <ChannelAction icon="eye" label={copy("观看", "Watch")}
+          {source.kind === "watch" && !source.browserSource ? source.onAppWatch
+            ? <ChannelAction icon="window" label={t("watch.inApp")} disabled={!canSubscribe || source.available === false} busy={source.pending} onClick={source.onAppWatch} />
+            : <small>{t("watch.connectApp")}</small> : <ChannelAction icon="eye" label={copy("观看", "Watch")}
             hint="hint-watch"
             iconOnly={vis} disabled={!canSubscribe || source.available === false} busy={source.pending}
-            onClick={() => source.kind === "watch" ? source.onJoin() : onWatch(source.id)} />
+            onClick={() => source.kind === "watch" ? source.onJoin() : onWatch(source.id)} />}
         </div>)}
       </div>
     </section>}
@@ -361,9 +364,12 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
       if (focusable && !(event.target instanceof Element && event.target.closest("button, input, select, a, [popover]"))) onFocus(source.id);
     }}>
     {source.player ? <ChannelWatchVideo player={source.player} owned={source.owned} paused={source.paused} label={source.title}
+      website={source.website} onAppWatch={source.onAppWatch} onFocusWindow={source.onFocusWindow}
       disabled={source.available === false} presentation={source.hidden ? "background" : thumbnail ? "thumbnail" : "full"}
       theaterMode={theaterMode} onToggleTheater={onToggleTheater} onPlayback={source.onPlayback} onResume={source.onResume} />
-      : <div className="c3-monitor-wait" role="status"><BrandLoader /><span>{t("watch.waiting")}</span></div>}
+      : <div className="c3-monitor-wait" role="status">{source.website && !source.pending ? <><Glyph name="globe" size={25} /><span>{t("watch.browserFailed")}</span>
+        {source.onAppWatch ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={source.onAppWatch} /> : <small>{t("watch.connectApp")}</small>}</>
+        : <><BrandLoader /><span>{t("watch.waiting")}</span></>}</div>}
     {thumbnail && <button className="c3-thumbnail-focus" type="button" aria-label={`${lang === "zh" ? "聚焦" : "Focus"} ${source.title}`} onClick={() => onFocus(source.id)} />}
     <footer><div className="c3-monitor-source-row">
       <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />

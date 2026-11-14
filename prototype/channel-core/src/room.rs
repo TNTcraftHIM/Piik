@@ -525,14 +525,14 @@ impl RoomRuntime {
         member: Member,
         session: Uuid,
         id: Uuid,
-        url: String,
+        source: crate::wire::WatchSource,
         playback: crate::wire::WatchPlayback,
     ) -> Result<(), &'static str> {
         self.authorize(member, RoomPermission::Read)?;
-        crate::wire::validate_watch_url(&url)?;
+        source.validate()?;
         playback.validate()?;
         if let Some(current) = self.watch_activities.get(&id) {
-            if current.session_id != session || current.url != url {
+            if current.session_id != session || current.source != source {
                 return Err("watch_identity_conflict");
             }
             return Ok(());
@@ -552,7 +552,7 @@ impl RoomRuntime {
                 room_id: self.policy.id.clone(),
                 user_id: member.user_id,
                 session_id: session,
-                url,
+                source,
                 playback,
             },
         );

@@ -371,8 +371,11 @@ impl RoomRuntime {
                 };
             }
             Command::StartWatch {
-                id, url, playback, ..
-            } => self.start_watch(member, session, id, url, playback)?,
+                id,
+                source,
+                playback,
+                ..
+            } => self.start_watch(member, session, id, source, playback)?,
             Command::UpdateWatch { id, playback, .. } => {
                 self.update_watch(member, session, id, playback)?
             }

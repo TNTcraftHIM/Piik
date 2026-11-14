@@ -37,4 +37,4 @@
 .c3-share-title form > label { font-size: 11px; color: var(--muted); }
 .c3-share-title .lr-input, .c3-share-title input { width: 100%; min-width: 0; }
 .c3-share-title p { margin: 0; color: var(--muted); line-height: 1.6; }
-.c3-share-title-actions { display: flex; gap: 6px; }
+.c3-share-title-actions { display: flex; flex-wrap: wrap; gap: 6px; }

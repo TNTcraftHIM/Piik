@@ -1,3 +1,4 @@
+import type { NativePageCandidate } from "../native/wire";
 import type { WatchPlayer } from "./watch-playback";
 import type { WatchPlayback } from "./protocol";
 import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomInvitationState, RoomSettings, PublicationReactionSnapshot, ChatOptions, ProfilePage } from "./protocol";
@@ -52,6 +53,7 @@ export type ScreenBufferStatus = "supported" | "unsupported" | "failed" | null;
 
 export interface ChannelView {
   watchPlayers: ReadonlyMap<string, WatchPlayer>;
+  pagePlayer: boolean;
   screenBufferTargetMs: number | null;
   screenBufferStatus: ScreenBufferStatus;
   feedbackSound: RoomPreferences["feedbackSound"];
@@ -86,6 +88,11 @@ export interface ChannelView {
 
 export interface ChannelActions {
   startWatch(roomId: string, url: string): Promise<void>;
+  prepareWatchPage(roomId: string, url: string, activityId?: string): Promise<void>;
+  watchPage(roomId: string, activityId?: string): { pageId: string; url: string; candidates: readonly NativePageCandidate[]; activityId?: string } | undefined;
+  selectWatchPage(roomId: string, candidateId: string, activityId?: string): Promise<void>;
+  focusWatch(id: string): Promise<void>;
+  focusWatchPage(roomId: string, activityId?: string): Promise<void>;
   joinWatch(id: string): Promise<void>;
   leaveWatch(id: string): Promise<void>;
   stopWatch(id: string): Promise<void>;

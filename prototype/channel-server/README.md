@@ -289,6 +289,25 @@ received-video adaptation used by this input and does not expose this choice.
 Windows OBS-to-Browser media and retirement have been exercised; other desktop
 platforms still need their runtime acceptance.
 
+## Watching video together
+
+Choose **Start sharing → Browser → Watch together**. A direct video address plays
+inside Piik. With the Windows App connected, **Open webpage and choose video**
+opens a separate website window; select its player after loading or signing in.
+The sharer controls play, pause, position and speed. Each viewer controls local
+sound and can stop watching independently.
+
+When the selected player exposes an independently usable media address, Browser
+viewers load it directly from the source. If it cannot play there, **Watch in App**
+opens the original webpage for that viewer to select its player. This requires a
+supported App but no browser extension. Website login state stays in its separate
+App browsing profile; Piik does not send the sharer's cookies to viewers.
+
+Playback state travels through the room's signaling connection, without a peer
+media path. The current connector does not forward the website's media bytes.
+Closing the sharer's source window, changing its selected media, or ending the
+share ends the activity; closing a viewer's window only ends that viewer's watch.
+
 ## App diagnostics
 
 On the App's local launcher page, enable **Help → Debug** before reproducing the

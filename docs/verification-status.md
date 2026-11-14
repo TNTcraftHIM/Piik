@@ -35,7 +35,15 @@ Browsers: common playback and late joining, local sound isolation, conversation,
 and activity retirement through Browser and Server room hosts. Watch-only
 participation constructs no peer connections. A separate control verifies real
 autoplay refusal and trusted-click recovery. This is source-level evidence;
-website players, cross-network clock accuracy and matched packages remain open.
+cross-network clock accuracy and matched packages remain open.
+The Windows webpage connector passes normal App/Browser controls with an owned
+cross-origin iframe: a Browser without the sharer's cookies independently loads
+the selected MP4, follows pause/seek, and retires after the source window closes.
+MSE webpage selection, cancellation, independent viewer retirement and source
+shutdown also pass. Native module controls cover nested frames, player removal,
+navigation, non-secure HTTP and a persistent website profile separated from Piik.
+These fixtures do not establish compatibility with every commercial website,
+DRM platform or media manifest format.
 
 The first internal test targets matched Windows and Android packages with the
 shared Browser UI. Normal packaged flows have verified room creation and

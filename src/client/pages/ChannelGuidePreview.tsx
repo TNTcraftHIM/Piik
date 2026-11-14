@@ -163,6 +163,7 @@ export function useChannelGuideSample(multiRoom = false) {
     },
     nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined,
     sourceSelectionCommitting: () => false,
+    pagePlayer: false, watchPage: () => undefined,
     externalInput: () => undefined, startExternalScreen: async () => received(),
     nativeSources: async () => sources, nativePreview: previewSource, cameraPreviews: previewCameras,
     setScreenTitle: async () => received(),
