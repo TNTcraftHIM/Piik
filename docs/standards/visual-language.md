@@ -991,7 +991,8 @@ These assignments are Piik's design choices; one duration does not fit every eff
 | `--motion-surface` | 240ms | Floating-surface entrance, expansion and the complete glyph drawing |
 | `--motion-emphasis` | 400ms | Brief result emphasis, message-location highlight and reaction impact |
 
-Keep the existing shared spring for Piik's control lift; opacity/colour and
+Keep the existing shared spring for Piik's control lift. Selection indicators
+move within their track without overshooting its edges; opacity/colour and
 continuous rotation retain their appropriate standard easing. Dependent visibility
 or unmount timing follows the same role. JavaScript animation consumers read the
 rendered surface's CSS token through `animation.ts`, including reduced motion;

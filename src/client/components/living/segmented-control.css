@@ -29,7 +29,7 @@
   background: var(--control-selected);
   box-shadow: inset 0 0 0 var(--control-border-width) var(--action);
   transform: translateX(calc(var(--lr-selected-index) * 100%));
-  transition: transform var(--motion-control) var(--spring);
+  transition: transform var(--motion-control) ease-out;
   pointer-events: none;
 }
 .lr-toggle.is-wrapping {
@@ -44,7 +44,7 @@
   width: var(--lr-selection-width, 0px);
   height: var(--lr-selection-height, 0px);
   transform: translate(var(--lr-selection-x, 0px), var(--lr-selection-y, 0px));
-  transition: transform var(--motion-control) var(--spring), width var(--motion-control) var(--spring), height var(--motion-control) var(--spring);
+  transition: transform var(--motion-control) ease-out, width var(--motion-control) ease-out, height var(--motion-control) ease-out;
 }
 :is(.lr-toggle, .lr-lang):not(:has(.is-selected, input:checked))::before,
 .lr-toggle:disabled::before { opacity: 0; }
