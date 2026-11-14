@@ -52,12 +52,12 @@ async fn source_checks_preserve_current_paths_and_shared_socket_siblings() -> Re
             let error = std::io::Error::from(std::io::ErrorKind::NetworkUnreachable);
             let mut probe = source;
             probe.set_port(source.port().wrapping_add(1));
-            engine.send_failed(probe, &error);
+            engine.send_failed(probe, source, &error);
             ensure!(
                 engine.source_error.is_none(),
                 "unrelated candidate probe became selected-path failure"
             );
-            engine.send_failed(source, &error);
+            engine.send_failed(source, source, &error);
             engine.source_check = Some((Some(source), present));
             engine.check_source();
             ensure!(
@@ -82,6 +82,7 @@ async fn source_checks_preserve_current_paths_and_shared_socket_siblings() -> Re
             engine.sent_from(source);
             engine.send_failed(
                 source,
+                source,
                 &std::io::Error::from(std::io::ErrorKind::NetworkUnreachable),
             );
             engine.check_source();
@@ -97,6 +98,7 @@ async fn source_checks_preserve_current_paths_and_shared_socket_siblings() -> Re
         .call(move |engine| {
             let source = engine.selected_source().unwrap();
             engine.send_failed(
+                source,
                 source,
                 &std::io::Error::from(std::io::ErrorKind::NetworkUnreachable),
             );

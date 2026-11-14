@@ -96,6 +96,8 @@ mod nat64;
 mod tests;
 #[path = "turn.rs"]
 mod turn;
+#[path = "udp_diagnostics.rs"]
+mod udp_diagnostics;
 
 type Action = Box<dyn FnOnce(&mut Engine) + Send>;
 enum Command {
@@ -355,6 +357,7 @@ pub(super) struct TransportMetrics {
     pub streams: Vec<TransportStreamMetric>,
 }
 pub(crate) struct Engine {
+    udp_send_failures: udp_diagnostics::UdpSendFailures,
     source_error: Option<SocketAddr>,
     source_check: Option<(Option<SocketAddr>, JoinHandle<bool>)>,
     stats_origin: Instant,
@@ -703,6 +706,7 @@ impl Runtime {
         let urls = discovery::urls(ice);
         let (turn_ready, turn_setup) = mpsc::channel(super::MAX_ICE_CANDIDATES);
         let engine = Engine {
+            udp_send_failures: udp_diagnostics::UdpSendFailures::default(),
             source_error: None,
             source_check: None,
             stats_origin,
@@ -1460,6 +1464,7 @@ impl Engine {
         self.discovery_routes.clear();
         self.rtc.disconnect();
         self.drain();
+        self.udp_send_failures.flush();
         self.tracks.clear();
         if let EventTarget::Local { ended, .. } = &self.events {
             let unfinished = ended.borrow().is_none();
@@ -1510,10 +1515,12 @@ impl Engine {
             .map(|pair| pair.local.addr)
     }
 
-    fn send_failed(&mut self, source: SocketAddr, error: &std::io::Error) {
+    fn send_failed(&mut self, source: SocketAddr, destination: SocketAddr, error: &std::io::Error) {
         if error.kind() == std::io::ErrorKind::WouldBlock {
             return;
         }
+        self.udp_send_failures
+            .record(source, destination, error, self.peer_stats.as_ref());
         if self.selected_source() == Some(source) {
             if self.source_error.replace(source) == Some(source) {
                 return;
@@ -1744,7 +1751,7 @@ impl Engine {
                                 src_ip: Some(packet.source.ip()),
                             },
                         ) {
-                            self.send_failed(packet.source, &error);
+                            self.send_failed(packet.source, packet.destination, &error);
                         } else {
                             self.sent_from(packet.source);
                         }
@@ -1851,6 +1858,7 @@ impl Engine {
                 }
             }
             RtcEvent::PeerStats(stats) => {
+                self.udp_send_failures.flush();
                 self.peer_stats = Some(stats.clone());
                 // Recheck continuing selected-path errors on the existing SDK observation.
                 // An address still assigned during a route outage can disappear later.

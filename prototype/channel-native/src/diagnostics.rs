@@ -120,6 +120,7 @@ fn target(value: &str) -> Option<&'static str> {
         "piik.input" => Some("piik.input"),
         "piik.capture" => Some("piik.capture"),
         "piik.encoder" => Some("piik.encoder"),
+        "piik.rtc" => Some("piik.rtc"),
         _ => None,
     }
 }
@@ -302,6 +303,7 @@ mod tests {
             );
         };
         emit("piik.capture", format_args!("off"));
+        emit("piik.rtc", format_args!("off transport"));
         assert!(recorder.0.lock().unwrap().is_none());
         *recorder.0.lock().unwrap() = Some(Buffer::new());
         emit("piik.capture.extra", format_args!("not an accepted target"));
@@ -327,6 +329,7 @@ mod tests {
             emit("piik.input", format_args!("{large}"));
         }
         emit("piik.app", format_args!("App startup tunnel-start: https://synthetic-private.invalid/?invite=synthetic-invite#owner=synthetic-owner credential=synthetic-credential"));
+        emit("piik.rtc", format_args!("UDP send failures: match_order=[selected,other,unknown] ipv4=count:2000 last_os_error:10051"));
         emit(
             "str0m",
             format_args!("synthetic-chat-body synthetic-source-title"),
@@ -365,6 +368,11 @@ mod tests {
         std::io::Read::read_to_string(&mut zip.by_name("events.ndjson").unwrap(), &mut events)
             .unwrap();
         assert!(events.contains("App startup tunnel-start"));
+        assert!(
+            events.contains("piik.rtc")
+                && events.contains("UDP send failures")
+                && events.contains("10051")
+        );
         assert!(events.contains("[URL omitted]"));
         for marker in [
             "synthetic-private",
