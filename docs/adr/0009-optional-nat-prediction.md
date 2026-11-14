@@ -78,10 +78,13 @@ connection acquisition reuses the route controller's existing opportunity ledger
    PeerConnection. It reuses the current peer/session/connection authorization
    and the same share policy; Browser peers decline immediately. Each Engine
    permits one preparation: an ordered three-destination observation, then
-   checks against one bounded peer endpoint. Three equal observations retain
+   checks against a bounded peer endpoint. Three equal observations retain
    that exact socket; a positive sequential observation closes it before opening
    at most eight temporary sockets. These cases can pair in either direction;
-   neither observation establishes a permanent NAT classification. The bound
+   neither observation establishes a permanent NAT classification. A retained
+   stable socket may alternate two predicted sequential peer endpoints within
+   the existing rounds, locking one tuple upon its first authenticated request
+   or matching transaction response. Other tuples are then ignored. The bound
    remains 64 requests and 64 authenticated replies. Survey readers, writers
    and cancellation callbacks retire before socket reuse or transfer. The page
    waits at most 3.5 seconds; the App
