@@ -852,14 +852,12 @@ export class ChannelSession {
         const app = new ChannelApp(health, state.channel.id, self.id, this.credential, self.name, () => {
           if (this.app !== app) return;
           this.app = undefined;
-          for (const [roomId, share] of this.screenShares) if (!this.local.has(share.id)) this.screenShares.delete(roomId);
+          for (const share of this.screenShares.values()) this.forgetInactiveScreen(share.id);
           this.patch({ remoteControls: new Map() });
           void this.syncAppWatching();
         }, (id, error) => {
           if (this.app !== app) return;
-          if (!app.screens.has(id)) for (const [roomId, share] of this.screenShares) {
-            if (share.id === id && !share.selection && !this.local.has(id)) this.screenShares.delete(roomId);
-          }
+          this.forgetInactiveScreen(id);
           this.patch(error ? { error } : {});
         }, (id, state) => {
           if (this.app === app) this.patch({ remoteControls: new Map(this.view.remoteControls).set(id, state) });
@@ -868,9 +866,7 @@ export class ChannelSession {
         }, event => {
           if (this.app !== app) return;
           if (event.state === "prepared") void this.commitExternalScreen(app, event).catch(() => {});
-          if (event.state === "closed" && !app.screens.has(event.publicationId)) {
-            for (const [roomId, share] of this.screenShares) if (share.id === event.publicationId && !this.local.has(share.id)) this.screenShares.delete(roomId);
-          }
+          if (event.state === "closed") this.forgetInactiveScreen(event.publicationId);
           this.patch({});
         });
         this.app = app;
@@ -1789,7 +1785,14 @@ export class ChannelSession {
   private finishScreenSelection(roomId: string, share: ScreenShare): void {
     share.selection?.abort();
     share.selection = undefined;
-    if (!this.local.has(share.id) && !this.app?.screens.has(share.id) && this.screenShares.get(roomId) === share) this.screenShares.delete(roomId);
+    if (this.screenShares.get(roomId) === share) this.forgetInactiveScreen(share.id);
+  }
+
+  private forgetInactiveScreen(publicationId: string): void {
+    if (this.local.has(publicationId) || this.app?.screens.has(publicationId)) return;
+    for (const [roomId, share] of this.screenShares) {
+      if (share.id === publicationId && !share.selection) this.screenShares.delete(roomId);
+    }
   }
 
   private observeScreen(id: string, stream: MediaStream): void {
@@ -1837,7 +1840,7 @@ export class ChannelSession {
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       if (candidate.getVideoTracks()[0]?.readyState !== "live") throw new Error("capture_unavailable");
       const app = this.app;
-      if (previous || app?.screens.has(share.id)) {
+      if (previous || app?.hasCapture(share.id)) {
         const sessionId = this.view.sessionId;
         if (!sessionId) throw new Error("disconnected");
         if (previous) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: sessionId }, undefined, roomId);
@@ -1892,6 +1895,12 @@ export class ChannelSession {
         candidate = undefined; // publish owns failure cleanup from this point.
         const mixer = audio; audio = undefined;
         await this.publish("screen", roomId, stream, { audio: mixer, profile: share.profile, codec, camera: source === "camera", source: metadata, publicationId: share.id });
+      }
+      if (app?.externalInput(share.id)) {
+        const stopping = app.stopCapture(share.id);
+        this.retireWatch(share.id);
+        this.refreshActivity();
+        await stopping;
       }
     } finally {
       audio?.dispose();

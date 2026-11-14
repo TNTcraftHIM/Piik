@@ -3166,6 +3166,125 @@ test("external input keeps its waiting activity while each prepared stream uses 
   } finally { session.close(); }
 });
 
+test.each(["browser", "camera", "native"] as const)("waiting OBS can switch to %s without transferring an absent producer", async source => {
+  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  const { session, socket } = await setup();
+  const app = ChannelSocket.current;
+  const watch = vi.spyOn(session, "watch").mockResolvedValue();
+  const video = remoteTrack("video");
+  const capture = vi.fn(async () => remoteStream("replacement", [video]));
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: capture, getUserMedia: capture } });
+  const command = async (type: string) => {
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe(type));
+    return app.sent.at(-1)!;
+  };
+  try {
+    await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const opening = session.startExternalScreen("first");
+    const request = await command("prepare_external_input"), publicationId = request.publicationId as string;
+    app.receive({ id: request.id, result: { endpoint: "http://127.0.0.1:8793/whip/owned-input", token: "synthetic-input-token" } });
+    await opening;
+    if (source === "camera") {
+      const captureId = crypto.randomUUID(), sessionId = crypto.randomUUID();
+      app.receive({ type: "external_input_state", publicationId, state: "prepared", captureId, sessionId, codec: "h264" });
+      const committing = await command("commit_capture");
+      app.receive({ type: "external_input_state", publicationId, state: "live", captureId, sessionId, codec: "h264" });
+      app.receive({ id: committing.id, result: null });
+      await vi.waitFor(() => expect(session.getSnapshot().pending.has("screen:first")).toBe(false));
+      app.receive({ type: "external_input_state", publicationId, state: "waiting" });
+    }
+    if (source === "native") {
+      const target = { kind: "display" as const, sourceId: "1", title: "Replacement" };
+      const starting = session.startNativeScreen("first", target);
+      const result = starting.catch(error => error);
+      const preparing = await command("prepare_capture");
+      app.receive({ id: preparing.id, result: { captureId: crypto.randomUUID(), sessionId: crypto.randomUUID(), codec: "h264" } });
+      const committing = await command("commit_capture");
+      // Native retires the old OBS permit before replying to the committed capture.
+      app.receive({ type: "external_input_state", publicationId, state: "closed" });
+      app.receive({ id: committing.id, result: null });
+      expect(await result).toBeUndefined();
+      expect(session.nativeCaptureSelection("first")).toMatchObject({ target, current: true });
+      expect(watch).toHaveBeenCalledWith(publicationId, "first", expect.any(AbortSignal));
+    } else {
+      capture.mockRejectedValueOnce(new DOMException("Denied", "NotAllowedError"));
+      await expect(session.startScreen("first", source)).rejects.toMatchObject({ name: "NotAllowedError" });
+      expect(session.externalInput("first")?.state).toBe("waiting");
+      expect(app.sent.some(value => value.type === "stop_capture")).toBe(false);
+      if (source === "browser") {
+        let grant!: (stream: MediaStream) => void;
+        capture.mockImplementationOnce(() => new Promise(resolve => { grant = resolve; }));
+        const cancelled = expect(session.startScreen("first", source)).rejects.toMatchObject({ name: "AbortError" });
+        await session.cancelScreenSelection("first"); await cancelled;
+        const late = remoteTrack("video");
+        grant(remoteStream("cancelled", [late]));
+        await vi.waitFor(() => expect(late.stop).toHaveBeenCalledOnce());
+        expect(session.externalInput("first")?.state).toBe("waiting");
+      }
+      const starting = session.startScreen("first", source);
+      const result = starting.catch(error => error);
+      await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "publish", publication: { id: publicationId } }));
+      socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+      const stopping = await command("stop_capture");
+      app.receive({ type: "external_input_state", publicationId, state: "closed" });
+      app.receive({ id: stopping.id, result: null });
+      expect(await result).toBeUndefined();
+      expect(video.stop).not.toHaveBeenCalled();
+      expect(session.getSnapshot().streams.get(publicationId)?.getVideoTracks()).toEqual([video]);
+    }
+    expect(session.externalInput("first")).toBeUndefined();
+    expect(session.screenQuality(publicationId)).toBeDefined();
+    expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
+    expect([...app.sent, ...socket.sent].some(value => value.type === "transfer_source")).toBe(false);
+    if (source === "browser") {
+      const arming = session.startExternalScreen("first");
+      const preparing = await command("prepare_external_input");
+      app.receive({ id: preparing.id, result: { endpoint: "http://127.0.0.1:8793/whip/owned-input", token: "synthetic-input-token" } });
+      await arming;
+      expect(video.stop).not.toHaveBeenCalled();
+      const captureId = crypto.randomUUID(), sessionId = crypto.randomUUID();
+      app.receive({ type: "external_input_state", publicationId, state: "prepared", captureId, sessionId, codec: "h264" });
+      await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "transfer_source", publicationId, toSessionId: sessionId }));
+      socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+      const committing = await command("commit_capture");
+      app.receive({ type: "external_input_state", publicationId, state: "live", captureId, sessionId, codec: "h264" });
+      app.receive({ id: committing.id, result: null });
+      await vi.waitFor(() => expect(session.getSnapshot().pending.has("screen:first")).toBe(false));
+      expect(video.stop).toHaveBeenCalledOnce();
+      expect(session.externalInput("first")?.state).toBe("live");
+      expect(watch).toHaveBeenCalledWith(publicationId, "first");
+    }
+  } finally { session.close(); }
+});
+
+test("closing the App connection preserves a pending Browser source selection", async () => {
+  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  const { session, socket } = await setup();
+  const app = ChannelSocket.current, video = remoteTrack("video");
+  let grant!: (stream: MediaStream) => void;
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(() => new Promise<MediaStream>(resolve => { grant = resolve; })) } });
+  try {
+    await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const starting = session.startScreen("first").catch(error => error);
+    app.close();
+    expect(session.getSnapshot().appConnected).toBe(false);
+    grant(remoteStream("browser-source", [video]));
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const publicationId = (socket.sent.at(-1)!.publication as { id: string }).id;
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    expect(await starting).toBeUndefined();
+    expect(video.stop).not.toHaveBeenCalled();
+    expect(session.screenQuality(publicationId)).toBeDefined();
+    expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
+  } finally { session.close(); }
+});
+
 test("arming OBS preserves the current capture controls until the external source commits", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,

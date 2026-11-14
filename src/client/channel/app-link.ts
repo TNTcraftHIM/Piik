@@ -118,6 +118,7 @@ export class ChannelApp {
 
   get connected(): boolean { return this.authenticated && this.socket.readyState === WebSocket.OPEN; }
   get screens(): ReadonlySet<string> { return new Set([...this.captures.keys(), ...this.externalInputs.keys()]); }
+  hasCapture(publicationId: string): boolean { return this.captures.has(publicationId); }
   externalInput(publicationId: string): NativeExternalInput | undefined { return this.externalInputs.get(publicationId); }
   supportsCaptureCodec(codec: NativeCaptureSources["codecs"][number]): boolean { return this.captureCodecs.includes(codec); }
 
