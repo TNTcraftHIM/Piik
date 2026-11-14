@@ -25,8 +25,8 @@ type Draft = { text: string; mentions: NonNullable<ChatOptions["mentions"]>; rep
 const emptyDraft: Draft = { text: "", mentions: [] };
 
 /** Browsing owns the conversation; drafts and reading position belong to this pane. */
-export function ChannelConversation({ roomId, roomName, roomIcon, entry, messages, users, profiles, queryProfiles, selfUserId, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, onMessage, unreadAfter, onRead, interaction, onBack }: {
-  roomId: string; roomName: string; roomIcon?: string; messages: ChannelMessage[]; users: ChannelUserSummary[];
+export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entry, messages, users, profiles, queryProfiles, selfUserId, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, onMessage, unreadAfter, onRead, interaction, onBack }: {
+  domainId: string | undefined; roomId: string; roomName: string; roomIcon?: string; messages: ChannelMessage[]; users: ChannelUserSummary[];
   profiles: ReadonlyMap<string, ChannelUser>; queryProfiles: ChannelController["queryProfiles"];
   entry?: ChannelEntry;
   selfUserId?: string | null;
@@ -44,42 +44,43 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   const { lang } = useCopy();
   const surfaceDocument = useSurfaceDocument();
   const zh = lang === "zh";
+  const conversationScope = JSON.stringify([domainId, selfUserId, roomId]);
   const displayUsers = [...new Map([...profiles.values(), ...users].map(user => [user.id, user])).values()];
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const input = useRef<HTMLTextAreaElement>(null);
   const [selection, setSelection] = useState<{ start: number; end: number } | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const mentionId = useId();
-  const [jump, setJump] = useState<{ room: string; seq: number } | null>(null);
+  const [jump, setJump] = useState<{ scope: string; seq: number } | null>(null);
   const jumpRequest = useRef<object | null>(null);
   const [jumpFailed, setJumpFailed] = useState(false);
-  const [unreadBoundary, setUnreadBoundary] = useState({ room: roomId, after: unreadAfter });
-  const unreadMessage = firstUnreadMessageId(messages, unreadBoundary.room === roomId ? unreadBoundary.after : undefined, selfUserId);
+  const [unreadBoundary, setUnreadBoundary] = useState({ scope: conversationScope, after: unreadAfter });
+  const unreadMessage = firstUnreadMessageId(messages, unreadBoundary.scope === conversationScope ? unreadBoundary.after : undefined, selfUserId);
   // Capture a visit's divider before markRead advances the durable personal cursor.
   useLayoutEffect(() => {
-    setUnreadBoundary(previous => previous.room !== roomId
+    setUnreadBoundary(previous => previous.scope !== conversationScope
       || (!hidden && unreadAfter !== undefined && unreadAfter < (messages.at(-1)?.seq ?? 0))
-      ? { room: roomId, after: unreadAfter } : previous);
-  }, [roomId, hidden]);
-  const [filesByRoom, setFilesByRoom] = useState<Record<string, DraftFile[]>>({});
+      ? { scope: conversationScope, after: unreadAfter } : previous);
+  }, [conversationScope, hidden]);
+  const [draftFiles, setDraftFiles] = useState<Record<string, DraftFile[]>>({});
   const [limits, setLimits] = useState<AttachmentLimits | null>(null);
   const [mentionLimit, setMentionLimit] = useState<number | null>(null);
   const [limitsFailed, setLimitsFailed] = useState(false);
   const [limitsRetry, setLimitsRetry] = useState(0);
-  const [fileErrorsByRoom, setFileErrorsByRoom] = useState<Record<string, string>>({});
-  const preparing = useRef<AbortController | null>(null);
+  const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
+  const identityLifetime = useRef<AbortController | null>(null);
   const composing = useRef(false);
   const chooser = useRef<HTMLInputElement>(null);
   const log = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const reading = useRef({ position: 0, following: true });
-  const readingAnchor = useRef<{ room: string; message: string; offset: number } | null>(null);
-  const lastArrival = useRef<{ room: string; seq: number; ready: boolean } | null>(null);
+  const readingAnchor = useRef<{ scope: string; message: string; offset: number } | null>(null);
+  const lastArrival = useRef<{ scope: string; seq: number; ready: boolean } | null>(null);
   useLayoutEffect(() => {
     const previous = lastArrival.current;
     const ready = !hidden && !loadingHistory && history?.atLatest === true;
-    lastArrival.current = { room: roomId, seq: messages.at(-1)?.seq ?? 0, ready };
-    if (!ready || !previous?.ready || previous.room !== roomId || !reading.current.following || !log.current) return;
+    lastArrival.current = { scope: conversationScope, seq: messages.at(-1)?.seq ?? 0, ready };
+    if (!ready || !previous?.ready || previous.scope !== conversationScope || !reading.current.following || !log.current) return;
     const duration = motionDuration(log.current, "surface");
     if (!duration) return;
     for (const row of log.current.querySelectorAll<HTMLElement>("[data-message-seq]")) {
@@ -88,9 +89,9 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
           { duration, easing: "cubic-bezier(.2, 0, 0, 1)" });
       }
     }
-  }, [messages, roomId, hidden, loadingHistory, history?.atLatest]);
+  }, [messages, conversationScope, hidden, loadingHistory, history?.atLatest]);
   let authorMessageId = "";
-  const draft = drafts[roomId] ?? emptyDraft;
+  const draft = drafts[conversationScope] ?? emptyDraft;
   const text = draft.text.trim();
   const query = selection && !composing.current && mentionLimit !== null && draft.mentions.length < mentionLimit
     && !draft.mentions.some(mention => selection.start > mention.start && selection.start <= mention.end)
@@ -124,17 +125,17 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
     setMentionPage({ query: queryText ?? "", ids: [], next: null }); setMentionIndex(0); setMentionFailed(false); setMentionLoading(false);
     if (queryText !== null && available) void loadMentions();
     return () => { mentionRequest.current?.abort(); };
-  }, [queryText, queryProfiles, available, roomId, mentionRetry]);
+  }, [queryText, queryProfiles, available, conversationScope, mentionRetry]);
   const activeMention = Math.min(mentionIndex, candidates.length - 1);
   const textLength = Array.from(text).length;
   const textTooLong = textLength > MAX_MESSAGE_CODE_POINTS;
   const textErrorId = useId();
-  const files = filesByRoom[roomId] ?? [];
-  const fileError = fileErrorsByRoom[roomId] ?? "";
-  const setFileError = (error: string) => setFileErrorsByRoom(previous => ({ ...previous, [roomId]: error }));
+  const files = draftFiles[conversationScope] ?? [];
+  const fileError = draftErrors[conversationScope] ?? "";
+  const setFileError = (error: string) => setDraftErrors(previous => ({ ...previous, [conversationScope]: error }));
   const working = sending;
   function updateDraft(update: (previous: Draft) => Draft) {
-    setDrafts(previous => ({ ...previous, [roomId]: update(previous[roomId] ?? emptyDraft) }));
+    setDrafts(previous => ({ ...previous, [conversationScope]: update(previous[conversationScope] ?? emptyDraft) }));
   }
   function selectMention(user: Pick<ChannelUser, "id" | "name">, range = query) {
     if (!range) return;
@@ -162,9 +163,9 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
     doc?.addEventListener("visibilitychange", readVisible);
     view?.addEventListener("focus", readVisible);
     return () => { if (frame !== undefined) view?.cancelAnimationFrame(frame); doc?.removeEventListener("visibilitychange", readVisible); view?.removeEventListener("focus", readVisible); };
-  }, [roomId, messages, hidden, available, loadingHistory, history?.atLatest, surfaceDocument, onRead]);
+  }, [conversationScope, messages, hidden, available, loadingHistory, history?.atLatest, surfaceDocument, onRead]);
   useLayoutEffect(() => {
-    if (!jump || jump.room !== roomId || loadingHistory) return;
+    if (!jump || jump.scope !== conversationScope || loadingHistory) return;
     const target = log.current?.querySelector<HTMLElement>(`[data-message-seq="${jump.seq}"]`);
     if (target) {
       target.scrollIntoView({ block: "center" }); target.focus({ preventScroll: true });
@@ -173,11 +174,11 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
       }
       reading.current = { position: log.current!.scrollTop, following: false }; setJump(null);
     }
-  }, [jump, roomId, loadingHistory, messages]);
-  useLayoutEffect(() => { setSelection(null); setJump(null); jumpRequest.current = null; setJumpFailed(false); }, [roomId]);
+  }, [jump, conversationScope, loadingHistory, messages]);
+  useLayoutEffect(() => { setSelection(null); setJump(null); jumpRequest.current = null; setJumpFailed(false); composing.current = false; }, [conversationScope]);
   async function showMessage(seq: number) {
     setJumpFailed(false); readingAnchor.current = null; reading.current.following = false;
-    const request = { room: roomId, seq };
+    const request = { scope: conversationScope, seq };
     jumpRequest.current = request; setJump(request);
     if (messages.some(message => message.seq === seq)) return;
     try { if (!onMessage) throw new Error("unavailable"); await onMessage(roomId, seq); }
@@ -195,12 +196,15 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
       .catch(() => { if (!request.signal.aborted) setLimitsFailed(true); });
     return () => { request.abort(); };
   }, [attachments, attachmentsAvailable, limitsRetry]);
-  useEffect(() => () => { preparing.current?.abort(); }, []);
-  useLayoutEffect(() => { readingAnchor.current = null; reading.current = { position: 0, following: true }; }, [roomId]);
+  useLayoutEffect(() => {
+    const request = identityLifetime.current = new AbortController();
+    return () => request.abort();
+  }, [domainId, selfUserId]);
+  useLayoutEffect(() => { readingAnchor.current = null; reading.current = { position: 0, following: true }; }, [conversationScope]);
   useLayoutEffect(() => { if (history?.atLatest) reading.current.following = true; }, [history?.atLatest]);
   useLayoutEffect(() => {
     const anchor = readingAnchor.current;
-    if (anchor?.room === roomId && !loadingHistory && log.current) {
+    if (anchor?.scope === conversationScope && !loadingHistory && log.current) {
       const node = log.current;
       const message = [...node.querySelectorAll<HTMLElement>("[data-message-id]")]
         .find(element => element.dataset.messageId === anchor.message);
@@ -217,7 +221,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
     const view = node.ownerDocument.defaultView;
     const frame = view?.requestAnimationFrame(restore);
     return () => { if (frame !== undefined) view?.cancelAnimationFrame(frame); };
-  }, [roomId, messages.length, hidden, loadingHistory, history?.atLatest, floating, surfaceDocument]);
+  }, [conversationScope, messages.length, hidden, loadingHistory, history?.atLatest, floating, surfaceDocument]);
   useLayoutEffect(() => {
     const node = log.current;
     if (hidden || !node) return;
@@ -229,7 +233,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
     observer.observe(node);
     if (content.current) observer.observe(content.current);
     return () => { observer.disconnect(); };
-  }, [roomId, hidden, floating, surfaceDocument]);
+  }, [conversationScope, hidden, floating, surfaceDocument]);
   function addFiles(incoming: File[]) {
     if (!attachmentsAvailable || !limits || working || !canSend) return;
     if (files.length + incoming.length > limits.maxAttachmentsPerMessage) {
@@ -241,15 +245,14 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
       return;
     }
     setFileError("");
-    setFilesByRoom(previous => ({ ...previous, [roomId]: [...(previous[roomId] ?? []), ...incoming.map(file => ({ id: crypto.randomUUID(), file }))] }));
+    setDraftFiles(previous => ({ ...previous, [conversationScope]: [...(previous[conversationScope] ?? []), ...incoming.map(file => ({ id: crypto.randomUUID(), file }))] }));
   }
   async function send(event: FormEvent) {
     event.preventDefault();
     if ((!text && !files.length) || textTooLong || !canSend || working || composing.current) return;
     input.current?.focus({ preventScroll: true });
     reading.current.following = true;
-    const request = new AbortController();
-    preparing.current = request;
+    const request = identityLifetime.current!;
     setFileError("");
     try {
       const leading = draft.text.length - draft.text.trimStart().length;
@@ -257,16 +260,16 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
         .map(mention => ({ ...mention, start: mention.start - leading, end: mention.end - leading }));
       const reply = draft.reply && { seq: draft.reply.seq, notify: draft.reply.notify };
       await onSend(roomId, text, files, request.signal, { mentions, ...(reply ? { reply } : {}) });
-      setDrafts(previous => previous[roomId] === draft ? { ...previous, [roomId]: emptyDraft } : previous);
-      setFilesByRoom(previous => ({ ...previous, [roomId]: (previous[roomId] ?? []).filter(value => !files.some(file => file.id === value.id)) }));
+      setDrafts(previous => previous[conversationScope] === draft ? { ...previous, [conversationScope]: emptyDraft } : previous);
+      setDraftFiles(previous => ({ ...previous, [conversationScope]: (previous[conversationScope] ?? []).filter(value => !files.some(file => file.id === value.id)) }));
     } catch (error) {
       if (!request.signal.aborted) setFileError(zh ? "未能发送，内容已保留，请重试。" : "Couldn't send. Your draft is saved here; try again.");
-    } finally { if (preparing.current === request) preparing.current = null; }
+    }
   }
   function removeFile(entry: DraftFile) {
     if (working) return;
     setFileError("");
-    setFilesByRoom(previous => ({ ...previous, [roomId]: (previous[roomId] ?? []).filter(value => value.id !== entry.id) }));
+    setDraftFiles(previous => ({ ...previous, [conversationScope]: (previous[conversationScope] ?? []).filter(value => value.id !== entry.id) }));
   }
   return <section id="c3-chat" className="c3-conversation" hidden={hidden} aria-label={zh ? "房间聊天" : "Room chat"}
     onDragOver={event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
@@ -292,7 +295,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
               const top = node.getBoundingClientRect().top;
               const message = [...node.querySelectorAll<HTMLElement>("[data-message-id]")]
                 .find(element => element.getBoundingClientRect().bottom > top);
-              readingAnchor.current = message ? { room: roomId, message: message.dataset.messageId!, offset: message.getBoundingClientRect().top - top } : null;
+              readingAnchor.current = message ? { scope: conversationScope, message: message.dataset.messageId!, offset: message.getBoundingClientRect().top - top } : null;
             }
             const anchor = readingAnchor.current;
             reading.current.following = false;

@@ -206,7 +206,7 @@ export function ChannelGuidePreview() {
         <ChannelRoomInvitation channel={channel} room={state.channel.rooms[0]} />
         </div>
         <ChannelShareControl channel={channel} roomId="friday" disabled={false} /></header>
-      <ChannelConversation roomId="friday" roomName={roomName} messages={channel.messagesByRoom.friday} users={state.users} profiles={channel.profiles} queryProfiles={channel.queryProfiles}
+      <ChannelConversation domainId={state.channel.id} selfUserId={channel.self?.id} roomId="friday" roomName={roomName} messages={channel.messagesByRoom.friday} users={state.users} profiles={channel.profiles} queryProfiles={channel.queryProfiles}
         canSend sending={false} hidden={false} available attachments={channel.attachments} attachmentsAvailable
         history={{ hasMore: false, atLatest: true }} loadingHistory={false} onHistory={async () => {}} onLatest={async () => {}}
         interaction={channel.interactionsByRoom.get("friday") ?? null} onSend={onSend} />
