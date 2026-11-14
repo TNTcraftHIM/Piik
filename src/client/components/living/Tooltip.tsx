@@ -174,8 +174,8 @@ export function Tooltip({
   };
 
   // Re-pick alignment from the trigger's live geometry. The configured align
-  // wins whenever it fits; otherwise the first alignment that keeps the whole
-  // panel inside the viewport, then whichever clips least (panel wider than
+  // wins when it fits and clears neighbouring controls; otherwise prefer
+  // viewport fit and the least overlap (panel wider than
   // the viewport is impossible — CSS caps it — but stay total).
   const pickAlign = () => {
     const wrap = wrapRef.current;
@@ -264,16 +264,32 @@ export function Tooltip({
     const controls = [...(surface ?? wrap.ownerDocument).querySelectorAll<HTMLElement>(".lr-media-toolbar, [data-tooltip-controls]")]
       .filter(element => !element.contains(wrap) && element.getClientRects().length)
       .map(element => element.getBoundingClientRect());
-    const overlap = (alignment: Align) => {
-      const left = Math.max(x + EDGE_MARGIN, Math.min(boxes[alignment].left, right - width - EDGE_MARGIN));
-      return controls.reduce((area, control) => area
-        + Math.max(0, Math.min(left + width, control.right) - Math.max(left, control.left))
-        * Math.max(0, Math.min(top + panelHeight + EDGE_MARGIN, control.bottom) - Math.max(top - EDGE_MARGIN, control.top)), 0);
-    };
+    const boundedLeft = (left: number) => Math.max(x + EDGE_MARGIN, Math.min(left, right - width - EDGE_MARGIN));
+    const overlap = (left: number) => controls.reduce((area, control) => area
+      + Math.max(0, Math.min(left + width, control.right) - Math.max(left, control.left))
+      * Math.max(0, Math.min(top + panelHeight + EDGE_MARGIN, control.bottom) - Math.max(top - EDGE_MARGIN, control.top)), 0);
     const leastClipped = Math.min(...order.map(a => clipped(boxes[a])));
     const candidates = order.filter(a => clipped(boxes[a]) === leastClipped);
-    const selected = candidates.reduce((a, b) => overlap(a) <= overlap(b) ? a : b);
-    let left = Math.max(x + EDGE_MARGIN, Math.min(boxes[selected].left, right - width - EDGE_MARGIN));
+    const selected = candidates.reduce((a, b) => overlap(boundedLeft(boxes[a].left)) <= overlap(boundedLeft(boxes[b].left)) ? a : b);
+    let left = boundedLeft(boxes[selected].left);
+    const preferredLeft = left;
+    // A wide neighbouring bar can cover all trigger alignments. Use its
+    // nearest clear edge when that position still fits the viewport.
+    for (const control of controls) {
+      for (const candidate of [control.left - width - EDGE_MARGIN, control.right + EDGE_MARGIN]) {
+        if (candidate === boundedLeft(candidate) && (overlap(candidate) < overlap(left)
+          || overlap(candidate) === overlap(left) && Math.abs(candidate - preferredLeft) < Math.abs(left - preferredLeft))) left = candidate;
+      }
+    }
+    // With no clear side, prefer available space above the complete control
+    // bar when the lower placement would cover neighbouring controls.
+    const above = avoid.top - panelHeight - EDGE_MARGIN;
+    if (livePlace === "below" && overlap(left) > 0 && above >= y + EDGE_MARGIN) {
+      const previousTop = top, previousOverlap = overlap(left);
+      top = above;
+      if (overlap(left) < previousOverlap) livePlace = "above";
+      else top = previousTop;
+    }
     let caret = Math.max(14, Math.min(center - left, width - 14));
     if (livePlace === "left") {
       left = (player ?? avoid).left - width - EDGE_MARGIN;
