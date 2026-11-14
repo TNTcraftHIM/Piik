@@ -7,7 +7,9 @@ import { LoadingStatus } from "../components/living/WaitingStatus";
 import { AppReleaseNotice, AppUpdateStatus } from "../components/living/AppReleaseNotice";
 import { useAppUpdate } from "../lib/use-app-update";
 import { AppHeader } from "../components/living/Header";
-import { LauncherForm } from "../components/living/LauncherForm";
+import { DeviceSiteApprovals, LocalConnectionDetails, SiteStartControls } from "../components/living/LauncherForm";
+import { LauncherWorkspace } from "../components/living/LauncherWorkspace";
+import { ChannelSettingsDialog } from "../channel/components/ChannelSettingsDialog";
 import { Btn, Pill } from "../components/living/primitives";
 import { hasCopyPreference, isCopyKey, useCopy } from "../ui/copy";
 import { consoleLanguage } from "../locales";
@@ -73,6 +75,7 @@ export function AppLauncherPage() {
   const [siteBusy, setSiteBusy] = useState(false);
   const [siteError, setSiteError] = useState<string>();
   const [siteEntry, setSiteEntry] = useState({ origin: "", confirming: false });
+  const [panel, setPanel] = useState<"launch" | "devices">();
   // Background reads cannot replace a newer command's result or optimistic state.
   const stateChanges = useRef({ revision: 0, pending: 0 });
   const externalSite = new URLSearchParams(window.location.search).get("site");
@@ -281,8 +284,26 @@ export function AppLauncherPage() {
   }
 
   const errorKey = `client.launch.failure.${error?.reason}`;
+  const home = !requestedSite && !bookmarksOnly;
+  const homeReady = home && !loading && error?.kind !== "load";
+  const roomError = error?.kind === "launch" ? <>
+    <Pill icon="alert" tone="bad" label={t("client.launch.error")} alert comic="signal-failed" />
+    {isCopyKey(errorKey) && <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t(errorKey)}</p>}
+    <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t("client.launch.retryHint")}</p>
+    {error.detail && <details className="lr-client-launch-technical">
+      <summary>{t("client.launch.errorDetails")}</summary>
+      <p className="lr-client-launch-detail">{error.detail}</p>
+    </details>}
+  </> : undefined;
+  const footer = <>
+    <a className="lr-btn is-dense is-quiet" href="https://github.com/TNTcraftHIM/Piik" target="_blank" rel="noopener noreferrer">GitHub<span aria-hidden="true"> ↗</span></a>
+    {version && <p className="lr-client-version">
+      <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.version", { version })}</span>
+      {vis && <span aria-hidden="true">{version}</span>}
+    </p>}
+  </>;
   return (
-    <div className="lr-app">
+    <div className={`lr-app${homeReady ? " lr-launcher-page" : ""}`}>
       <AppHeader homeHref="/client" diagnosticControl={appDebug === undefined ? null : (
         <Btn icon={appDebug ? "arrowDown" : "cpu"} size="compact" quiet
           title={appDebug ? "client.launch.debugExportHint" : "client.launch.debugHint"}
@@ -292,9 +313,9 @@ export function AppLauncherPage() {
           disabled={debugBusy || (!appDebug && (loading || error?.kind === "load"))}
           onClick={() => void (appDebug ? exportDebug() : enableDebug())} />
       )} />
-      <main className="lr-client-launch">
+      <main className={homeReady ? undefined : "lr-client-launch"}>
         {debugError && <Pill icon="alert" tone="bad" comic="warning" alert label={t(appDebug ? "client.launch.debugExportFailed" : "client.launch.debugFailed")} />}
-        {loading || (starting && !requestedSite && !bookmarksOnly) ? (
+        {loading ? (
           <LoadingStatus label={starting ? "client.launch.starting" : "common.loading"} waitingCaption={starting} />
         ) : error?.kind === "load" ? (
           <div className="lr-client-launch-panel">
@@ -359,51 +380,40 @@ export function AppLauncherPage() {
               </a>}
             </div>
           </section>
-        ) : (<>
-          <AppSiteBookmarks windowNavigation={windowNavigation} />
-          <LauncherForm
-            roomError={error?.kind === "launch" ? <>
-              <Pill icon="alert" tone="bad" label={t("client.launch.error")} alert comic="signal-failed" />
-              {isCopyKey(errorKey) && <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t(errorKey)}</p>}
-              <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t("client.launch.retryHint")}</p>
-              {error.detail && <details className="lr-client-launch-technical">
-                <summary>{t("client.launch.errorDetails")}</summary>
-                <p className="lr-client-launch-detail">{error.detail}</p>
-              </details>}
-            </> : undefined}
-            mode={mode}
-            sites={sites}
-            siteAddress={siteEntry.origin}
-            onSelectSite={origin => {
-              setSiteEntry({ origin, confirming: true });
-              setSiteError(undefined);
-            }}
-            startupSite={startupSite}
-            ownedStartup={startupMode}
-            ownedSites={ownedSites}
-            onToggleStartupSite={site => void changeSite(startupSite === site || startupMode && ownedSites.includes(site) ? "" : site, "startup-site")}
-            onModeChange={changeMode}
-            onRemoveSite={site => void changeSite(site, "site", false, false)}
-            siteBusy={siteBusy}
-            siteError={siteError}
-            target={target}
-            localCertificate={localCertificate}
-            entryURL={launchURL}
-            lan={lan && { ...lan, onChange: setLanAddress }}
-            onSubmit={launch}
-          >
+        ) : <AppSiteBookmarks windowNavigation={windowNavigation} render={navigation => <LauncherWorkspace
+          bookmarks={navigation.bookmarks} bookmarksError={navigation.loadError} onRetryBookmarks={navigation.retry}
+          onOpenBookmark={navigation.open} onManageBookmarks={navigation.manage}
+          ready={!!target} starting={starting} invitationForm={navigation.invitationForm} footer={footer}
+          deviceActions={<Btn icon="lock" quiet size="dense" title="client.launcher.deviceAccess" cap="client.launcher.deviceAccess"
+            expanded={panel === "devices"} onClick={() => setPanel("devices")} />}
+          localSiteAction={target ? <a className="lr-btn is-primary" href={launchURL(target)}>
+            <Glyph name="arrowRight" size={19} /><span className={vis ? "visually-hidden" : "lr-cap"}>{t("client.connect.continue")}</span>
+          </a> : <Btn icon="arrowRight" title="client.launch.go" cap="client.launch.go" busy={starting} disabled={starting}
+            onClick={() => setPanel("launch")} />}
+        >
+            {panel !== "launch" && roomError}
+            {localCertificate && <LocalConnectionDetails certificate={localCertificate} />}
             {update ? <AppReleaseNotice update={update} native={appUpdate.view ? { ...appUpdate, view: appUpdate.view } : undefined} />
               : appUpdate.view && (appUpdate.view.operationId || appUpdate.error) && <AppUpdateStatus {...appUpdate} view={appUpdate.view} />}
-          </LauncherForm>
-        </>)}
+        </LauncherWorkspace>} />}
       </main>
-      <footer className="lr-client-footer">
-        <a className="lr-btn is-dense is-quiet" href="https://github.com/TNTcraftHIM/Piik" target="_blank" rel="noopener noreferrer">GitHub<span aria-hidden="true"> ↗</span></a>
-        {version && <p className="lr-client-version">
-          <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.version", { version })}</span>
-          {vis && <span aria-hidden="true">{version}</span>}
-        </p>}
-      </footer>
+      {!homeReady && <footer className="lr-client-footer">{footer}</footer>}
+      {homeReady && panel === "launch" && <ChannelSettingsDialog title={t("client.launch.room")} closeDisabled={starting} onClose={() => setPanel(undefined)}>
+        {starting ? <LoadingStatus label="client.launch.starting" waitingCaption /> : <form className="c3-settings-panels lr-client-launch-panel" onSubmit={launch}>
+          <SiteStartControls mode={mode} onModeChange={changeMode} roomError={roomError}
+            target={target} localCertificate={localCertificate} entryURL={launchURL}
+            lan={lan && { ...lan, onChange: setLanAddress }} />
+        </form>}
+      </ChannelSettingsDialog>}
+      {homeReady && panel === "devices" && <ChannelSettingsDialog title={t("client.launcher.deviceAccess")} closeDisabled={siteBusy} onClose={() => setPanel(undefined)}>
+        <div className="c3-settings-panels">
+          <DeviceSiteApprovals sites={sites} siteAddress={siteEntry.origin}
+            onSelectSite={origin => { setSiteEntry({ origin, confirming: true }); setSiteError(undefined); }}
+            startupSite={startupSite} ownedStartup={startupMode} ownedSites={ownedSites}
+            onToggleStartupSite={site => void changeSite(startupSite === site || startupMode && ownedSites.includes(site) ? "" : site, "startup-site")}
+            onRemoveSite={site => void changeSite(site, "site", false, false)} siteBusy={siteBusy} siteError={siteError} entryURL={launchURL} />
+        </div>
+      </ChannelSettingsDialog>}
     </div>
   );
 }

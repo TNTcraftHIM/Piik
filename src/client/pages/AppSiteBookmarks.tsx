@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { z } from "zod";
-import { SiteBookmarks } from "../components/living/SiteBookmarks";
+import { SiteBookmarks, type SiteBookmark } from "../components/living/SiteBookmarks";
 import { Btn } from "../components/living/primitives";
 import { ChannelSettingsDialog } from "../channel/components/ChannelSettingsDialog";
 import { Glyph } from "../ui/icons";
@@ -9,8 +9,15 @@ import { siteEntryURL } from "../lib/site-address";
 
 const bookmarksSchema = z.object({ bookmarks: z.array(z.object({ id: z.string(), origin: z.string().url(), name: z.string() })) });
 
+type BookmarkView = {
+  bookmarks?: SiteBookmark[]; loadError: boolean; retry(): void;
+  open(site: SiteBookmark): void; manage(): void; invitationForm: ReactNode;
+};
+
 /** Only the local launcher owns this directory and explicit main-window requests. */
-export function AppSiteBookmarks({ windowNavigation, closeOnOpen = false }: { windowNavigation: boolean; closeOnOpen?: boolean }) {
+export function AppSiteBookmarks({ windowNavigation, closeOnOpen = false, render }: {
+  windowNavigation: boolean; closeOnOpen?: boolean; render?: (view: BookmarkView) => ReactNode;
+}) {
   const { t, vis } = useCopy();
   const [entry] = useState(() => {
     const hash = new URLSearchParams(location.hash.slice(1));
@@ -23,6 +30,7 @@ export function AppSiteBookmarks({ windowNavigation, closeOnOpen = false }: { wi
   const [pending, setPending] = useState(() => entry.open ? siteEntryURL(entry.open)?.href : undefined);
   const [openError, setOpenError] = useState<string>();
   const [opening, setOpening] = useState(false);
+  const [managing, setManaging] = useState(false);
   useEffect(() => {
     if (entry.site || entry.open) history.replaceState(history.state, "", location.pathname + location.search);
   }, [entry]);
@@ -64,18 +72,25 @@ export function AppSiteBookmarks({ windowNavigation, closeOnOpen = false }: { wi
     } catch { setOpenError(t("client.bookmarks.openFailed")); }
     finally { setOpening(false); }
   }
-  return <div className="lr-site-bookmark-manager">
-    {bookmarks ? <SiteBookmarks bookmarks={bookmarks} initialSite={entry.site ? siteEntryURL(entry.site)?.origin : undefined}
+  const editor = bookmarks ? <SiteBookmarks bookmarks={bookmarks} embedded={!!render} initialSite={entry.site ? siteEntryURL(entry.site)?.origin : undefined}
       onSave={draft => change("POST", draft)} onRemove={id => change("DELETE", undefined, id)} onOpen={site => choose(site.origin)} />
       : loadError ? <div role="alert"><p>{t("client.bookmarks.loadFailed")}</p><Btn icon="refresh" title="common.refresh" cap="common.refresh" onClick={() => setReload(value => value + 1)} /></div>
-      : <p role="status">{t("common.loading")}</p>}
+      : <p role="status">{t("common.loading")}</p>;
+  const invitationForm = <>
     <form className="lr-site-bookmark-open" onSubmit={event => { event.preventDefault(); choose(address); }}>
       <label><span className={vis ? "visually-hidden" : undefined}>{t("client.bookmarks.openInvitation")}</span>
         <span className="lr-input"><Glyph name="link" size={18} /><input type="url" inputMode="url" required pattern="https?://.*" dir="ltr" autoComplete="off"
           aria-label={t("client.bookmarks.invitationAddress")} placeholder="https://friends.example" value={address} onChange={event => setAddress(event.target.value)} /></span></label>
-      <Btn icon="arrowRight" type="submit" size="compact" title="client.connect.openSite" cap="client.bookmarks.open" />
+      <Btn icon="arrowRight" type="submit" size={render ? undefined : "compact"} tone={render ? "primary" : undefined} title="client.connect.openSite" cap="client.bookmarks.open" />
     </form>
+    {render && <p className="lr-launcher-invitation-hint">{t("client.launcher.invitationHint")}</p>}
     {!pending && openError && <p role="alert">{openError}</p>}
+  </>;
+  return <>
+    {render ? render({ bookmarks, loadError, retry: () => setReload(value => value + 1),
+      open: site => choose(site.origin), manage: () => setManaging(true), invitationForm })
+      : <div className="lr-site-bookmark-manager">{editor}{invitationForm}</div>}
+    {render && managing && <ChannelSettingsDialog title={t("client.bookmarks.title")} onClose={() => setManaging(false)}>{editor}</ChannelSettingsDialog>}
     {pending && <ChannelSettingsDialog compact closeDisabled={opening} title={t(windowNavigation ? "client.bookmarks.switchTitle" : "client.connect.openSite")} onClose={() => setPending(undefined)}>
       <div className="c3-settings-panels lr-site-bookmark-form"><strong className="lr-site-bookmark-target" dir="ltr">{new URL(pending).origin}</strong>
         {windowNavigation && <p>{t("client.bookmarks.switchHint")}</p>}
@@ -87,5 +102,5 @@ export function AppSiteBookmarks({ windowNavigation, closeOnOpen = false }: { wi
         </div></div>
       </div>
     </ChannelSettingsDialog>}
-  </div>;
+  </>;
 }

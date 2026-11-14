@@ -1783,7 +1783,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 @media (max-width: 640px) {
   .lr-client-launch { padding: 16px 14px 48px; }
   .lr-client-launch-panel { gap: 16px; }
-  .lr-client-modes { gap: 8px; }
+  .lr-client-modes { grid-template-columns: 1fr; gap: 8px; }
   .lr-client-mode {
     min-height: 58px;
     grid-template-columns: 34px 1fr;
@@ -2000,7 +2000,6 @@ details[open] > summary > .lr-sharing-chevron { transform: rotate(180deg); }
    Missing pictures and required playback actions retain their stage overlay. */
 .lr-room.is-theater .lr-stage-notices { display: none; }
 @media (max-width: 360px) {
-  .lr-client-modes { grid-template-columns: 1fr; }
   .lr-lcd { gap: 4px; padding-inline: 6px; font-size: 18px; }
   .lr-top { column-gap: 4px; padding-inline: 10px; }
   .lr-top-right { gap: 4px; }

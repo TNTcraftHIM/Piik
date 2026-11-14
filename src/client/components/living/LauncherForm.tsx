@@ -12,7 +12,7 @@ import { useClipboardResult } from "../../ui/use-clipboard-result";
 
 export interface LocalCertificate { origin: string; sha256Fingerprint: string }
 
-function LocalConnectionDetails({ certificate }: { certificate: LocalCertificate }) {
+export function LocalConnectionDetails({ certificate }: { certificate: LocalCertificate }) {
   const { t, vis } = useCopy();
   const fingerprint = certificate.sha256Fingerprint.replace(/(..)(?=.)/g, "$1:");
   const bytes = fingerprint.split(":");
@@ -53,31 +53,7 @@ const MODES: Array<{
   },
 ];
 
-// The product and film share this form; requests and navigation stay in the page.
-export function LauncherForm({
-  mode,
-  onModeChange,
-  sites,
-  startupSite,
-  ownedStartup,
-  ownedSites = [],
-  onToggleStartupSite,
-  onRemoveSite,
-  onSelectSite,
-  siteAddress,
-  siteBusy,
-  siteError,
-  target,
-  localCertificate,
-  onOpen,
-  entryURL = target => target,
-  lan,
-  onSubmit,
-  children,
-  roomError,
-}: {
-  mode: AppMode;
-  onModeChange: (mode: AppMode) => void;
+export interface DeviceSiteApprovalsProps {
   sites: readonly string[];
   startupSite: string;
   ownedStartup?: AppMode;
@@ -88,21 +64,16 @@ export function LauncherForm({
   siteAddress?: string;
   siteBusy?: boolean;
   siteError?: string;
-  target?: string;
-  localCertificate?: LocalCertificate;
   onOpen?: (event: MouseEvent<HTMLAnchorElement>) => void;
   entryURL?: (target: string) => string;
-  lan?: {
-    addresses: readonly { address: string; name: string }[];
-    selected: string;
-    onChange: (address: string) => void;
-  };
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  children?: ReactNode;
-  roomError?: ReactNode;
-}) {
+}
+
+export function DeviceSiteApprovals({
+  sites, startupSite, ownedStartup, ownedSites = [], onToggleStartupSite,
+  onRemoveSite, onSelectSite, siteAddress, siteBusy, siteError, onOpen,
+  entryURL = target => target,
+}: DeviceSiteApprovalsProps) {
   const { vis, t } = useCopy();
-  const chooseLAN = mode === "local" && lan && (lan.addresses.length !== 1 || !lan.selected);
   const accessHintId = useId();
   const standbyRef = useRef<HTMLElement>(null);
   const removalFocus = useRef<{ site: string; index: number } | null>(null);
@@ -120,16 +91,7 @@ export function LauncherForm({
     const next = section.ownerDocument.getElementById(`${accessHintId}-remove-${Math.min(pending.index, sites.length - 1)}`);
     (next ?? section.querySelector("summary"))?.focus();
   }, [sites, siteBusy, accessHintId]);
-  return (
-    <form className="lr-client-launch-panel" onSubmit={onSubmit}>
-      <header className="lr-client-launch-heading">
-        <BrandLockup size={52} motion="once" className="lr-client-launch-brand"
-          heading titleClassName="lr-client-launch-title" suffix={<> <small>App</small></>} />
-        <WelcomeLine />
-      </header>
-
-      {children}
-
+  return <>
       <section ref={standbyRef} className="lr-client-standby" aria-label={t("client.connect.standby")}>
         <div className="lr-client-standby-heading">
           <details className="lr-client-connect-guide">
@@ -171,11 +133,37 @@ export function LauncherForm({
         <Glyph name="star" size={18} />
         <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.openOwnedOnStart", { mode: t(ownedStartup === "local" ? "client.launch.local" : "client.launch.link") })}</span>
       </label>}
+  </>;
+}
+
+export interface SiteStartControlsProps {
+  mode: AppMode;
+  onModeChange: (mode: AppMode) => void;
+  target?: string;
+  localCertificate?: LocalCertificate;
+  onOpen?: (event: MouseEvent<HTMLAnchorElement>) => void;
+  entryURL?: (target: string) => string;
+  lan?: {
+    addresses: readonly { address: string; name: string }[];
+    selected: string;
+    onChange: (address: string) => void;
+  };
+  roomError?: ReactNode;
+}
+
+// The caller owns submission; controls work in the launcher and its startup dialog.
+export function SiteStartControls({
+  mode, onModeChange, target, localCertificate, onOpen,
+  entryURL = target => target, lan, roomError,
+}: SiteStartControlsProps) {
+  const { vis, t } = useCopy();
+  const chooseLAN = mode === "local" && lan && (lan.addresses.length !== 1 || !lan.selected);
+  const accessHintId = useId();
+  return <>
       {roomError}
       {target ? <><a className="lr-btn is-primary" href={entryURL(target)} onClick={onOpen} aria-label={t("client.launch.go")}>
         <Glyph name="arrowRight" size={19} />{vis ? null : <span className="lr-cap">{t("client.launch.go")}</span>}
       </a>{localCertificate && <LocalConnectionDetails certificate={localCertificate} />}</> : <>
-      <p className={vis ? "visually-hidden" : "lr-client-launch-section"}>{t("client.launch.room")}</p>
       <div
         className="lr-client-modes"
         role="radiogroup"
@@ -259,6 +247,36 @@ export function LauncherForm({
         disabled={mode === "local" && lan !== undefined && !lan.selected}
       />
       </>}
+  </>;
+}
+
+interface LauncherFormProps extends SiteStartControlsProps, DeviceSiteApprovalsProps {
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  children?: ReactNode;
+}
+
+// The product preview and film compose the same controls as the App launcher.
+export function LauncherForm({ children, onSubmit, ...props }: LauncherFormProps) {
+  const { vis, t } = useCopy();
+  return (
+    <form className="lr-client-launch-panel" onSubmit={onSubmit}>
+      <header className="lr-client-launch-heading">
+        <BrandLockup size={52} motion="once" className="lr-client-launch-brand"
+          heading titleClassName="lr-client-launch-title" suffix={<> <small>App</small></>} />
+        <WelcomeLine />
+      </header>
+      {children}
+      <DeviceSiteApprovals
+        sites={props.sites} startupSite={props.startupSite} ownedStartup={props.ownedStartup}
+        ownedSites={props.ownedSites} onToggleStartupSite={props.onToggleStartupSite}
+        onRemoveSite={props.onRemoveSite} onSelectSite={props.onSelectSite}
+        siteAddress={props.siteAddress} siteBusy={props.siteBusy} siteError={props.siteError}
+        onOpen={props.onOpen} entryURL={props.entryURL} />
+      {!props.target && <p className={vis ? "visually-hidden" : "lr-client-launch-section"}>{t("client.launch.room")}</p>}
+      <SiteStartControls
+        mode={props.mode} onModeChange={props.onModeChange} target={props.target}
+        localCertificate={props.localCertificate} onOpen={props.onOpen} entryURL={props.entryURL}
+        lan={props.lan} roomError={props.roomError} />
     </form>
   );
 }

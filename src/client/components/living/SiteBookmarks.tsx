@@ -9,8 +9,8 @@ import "./site-bookmarks.css";
 export type SiteBookmark = { id: string; name: string; origin: string };
 type BookmarkDraft = Omit<SiteBookmark, "id"> & { id?: string };
 
-export function SiteBookmarks({ bookmarks, initialSite, onSave, onRemove, onOpen }: {
-  bookmarks: SiteBookmark[]; initialSite?: string;
+export function SiteBookmarks({ bookmarks, initialSite, embedded = false, onSave, onRemove, onOpen }: {
+  bookmarks: SiteBookmark[]; initialSite?: string; embedded?: boolean;
   onSave(draft: BookmarkDraft): Promise<void>; onRemove(id: string): Promise<void>; onOpen(site: SiteBookmark): void;
 }) {
   const { t, vis } = useCopy();
@@ -32,8 +32,8 @@ export function SiteBookmarks({ bookmarks, initialSite, onSave, onRemove, onOpen
     finally { setBusy(false); }
   }
   return <>
-    <section className="lr-site-bookmarks" aria-labelledby={heading}>
-      <header><h3 id={heading}><Glyph name="star" size={20} /><span className={vis ? "visually-hidden" : undefined}>{t("client.bookmarks.title")}</span></h3>
+    <section className={`lr-site-bookmarks${embedded ? " is-embedded" : ""}`} aria-labelledby={heading}>
+      <header><h3 id={heading} className={embedded ? "visually-hidden" : undefined}><Glyph name="star" size={20} /><span className={vis ? "visually-hidden" : undefined}>{t("client.bookmarks.title")}</span></h3>
         <Btn icon="plus" size="compact" title="client.bookmarks.add" cap="client.bookmarks.add" textTooltip disabled={busy} onClick={() => edit({ name: "", origin: initialSite ?? "" })} />
       </header>
       {bookmarks.length ? <ul>{bookmarks.map(site => <li key={site.id}>

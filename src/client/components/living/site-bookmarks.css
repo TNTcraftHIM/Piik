@@ -7,6 +7,8 @@
 .lr-site-bookmark-target { overflow-wrap: anywhere; }
 .lr-site-bookmarks > header, .lr-site-bookmarks h3, .lr-site-bookmark-actions, .lr-site-bookmark-form-actions, .lr-site-bookmark-form-actions > div { display: flex; align-items: center; gap: 8px; }
 .lr-site-bookmarks > header { justify-content: space-between; gap: 16px; }
+.lr-site-bookmarks.is-embedded { max-width: none; border: 0; border-radius: 0; background: transparent; }
+.lr-site-bookmarks.is-embedded > header { justify-content: flex-end; }
 .lr-site-bookmarks h3 { margin: 0; font-size: 16px; }
 .lr-site-bookmarks ul { list-style: none; padding: 0; margin: 18px 0 0; }
 .lr-site-bookmarks li { display: flex; align-items: center; gap: 16px; padding: 18px 0; }
