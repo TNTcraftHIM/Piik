@@ -380,12 +380,16 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
         <small>{source.name}<span aria-hidden="true"> / </span><button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button></small>
       </div>
       <div className="c3-monitor-tile-actions">
-        {source.shareControls}
         {(focusable || focused) && <Btn icon={focused ? "screenGrid" : "screenFocus"} quiet size="dense" title={{ text: t("screen.changeLayout") }}
           onClick={() => onFocus(focused ? null : source.id)} />}
-        <span className="c3-monitor-close"><Btn icon={source.owned ? "stop" : "x"} tone={source.owned ? "danger" : undefined} quiet={!source.owned} size="dense"
-          title={source.owned ? "watch.stop" : "watch.leave"} busy={source.pending} disabled={source.pending || source.available === false}
-          onClick={source.owned ? source.onStop : source.onLeave} /></span>
+        {source.owned ? <div className="c3-monitor-publishing" role="group" aria-label={t("screen.sharingControls", { title: source.title })}>
+          {source.shareControls}
+          <span className="c3-monitor-close"><Btn icon="stop" tone="danger" size="dense"
+            title="watch.stop" busy={source.pending} disabled={source.pending || source.available === false} onClick={source.onStop} /></span>
+        </div> :
+        <span className="c3-monitor-close"><Btn icon="x" quiet size="dense"
+          title="watch.leave" busy={source.pending} disabled={source.pending || source.available === false}
+          onClick={source.onLeave} /></span>}
       </div>
     </div></footer>
   </article>;

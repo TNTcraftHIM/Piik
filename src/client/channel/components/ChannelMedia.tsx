@@ -46,7 +46,7 @@ function WatchReceivingSettings({ receiving }: { receiving: WatchReceiving }) {
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
   useAnchoredPopover(trigger, panel, { side: "above", align: "end" });
   return <span ref={trigger}><Btn icon="sliders" quiet title="watch.forward.viewing" popoverTarget={id} />
-    <div ref={panel} id={id} popover="auto" role="dialog" className="lr-floating-surface lr-playback-menu c3-external-input" aria-label={t("watch.forward.viewing")}>
+    <div ref={panel} id={id} popover="auto" role="dialog" className="lr-floating-surface lr-playback-menu c3-watch-receiving" aria-label={t("watch.forward.viewing")}>
       <b>{t("watch.forward.viewing")}</b><p>{t("watch.forward.receiveHelp")}</p>
       <WatchPeerAction receiving={receiving} />
       {receiving.browserSource && <Btn icon="globe" quiet title="watch.forward.direct" cap="watch.forward.direct" pressed={receiving.mode === "direct"}
@@ -73,6 +73,9 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const [fullscreen, setFullscreen] = useState(() => player.video ? videoFullscreenState(player.video)
     : { supported: false, ready: false, active: false, nativeActive: false });
   const [fullscreenFailed, setFullscreenFailed] = useState(false);
+  const receivingSettings = receiving && (receiving.peerAvailable || receiving.mode === "peer") ? receiving : undefined;
+  const localControls = !!player.video || !!receivingSettings;
+  const hasControls = owned || localControls;
   const picture = usePictureInPicture(videoRef);
   const visibility = usePlaybackControlsVisibility(videoRef, controls, paused || player.blocked || !!player.error);
   useLayoutEffect(() => {
@@ -96,15 +99,18 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     document.addEventListener("fullscreenchange", sync); sync();
     return () => { for (const name of events) video.removeEventListener(name, sync); document.removeEventListener("fullscreenchange", sync); };
   }, [player]);
-  return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-external={!player.video || undefined} data-failed={!!player.error || undefined} data-thumbnail={presentation === "thumbnail" || undefined}
+  return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-external={!player.video || undefined} data-failed={!!player.error || undefined}
+    data-standalone={!player.video || !!player.error && player.error !== "watch_update_failed" && player.video.readyState < 2 || undefined} data-thumbnail={presentation === "thumbnail" || undefined}
     data-controls-hidden={visibility.hidden} inert={presentation === "background"}>
-    {!player.video && !player.error && <div className="c3-mini-message"><span className="c3-frame-wait">{t("watch.inWindow")}</span></div>}
+    {!player.video && !player.error && <div className="c3-mini-message"><div className="c3-frame-wait c3-watch-result">
+      <span>{t("watch.inWindow")}</span><Btn icon="window" title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />
+    </div></div>}
     {player.error ? <div className="c3-mini-message" role="alert"><div className="c3-frame-wait c3-watch-result"><span>{t(player.error === "watch_update_failed" ? "watch.updateFailed" : receiving?.mode === "peer" ? "watch.forward.failed" : website && player.video ? "watch.browserFailed" : "watch.failed")}</span>
       {website && player.video && (onAppWatch ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={onAppWatch} /> : <small>{t("watch.connectApp")}</small>)}
       {receiving && <WatchPeerAction receiving={receiving} />}
     </div></div>
       : player.blocked && <div className="c3-mini-message"><Btn icon="play" title="watch.resume" cap="watch.resume" onClick={onResume} /></div>}
-    <div ref={controls} id={controlsId} className="c3-mini-controls lr-media-toolbar lr-media-controls" role="group" aria-label={t("playback.controls")}>
+    {hasControls && <div ref={controls} id={controlsId} className="c3-mini-controls lr-media-toolbar lr-media-controls" role="group" aria-label={t("playback.controls")}>
       {owned && <div className="c3-watch-shared" role="group" aria-label={t("watch.sharedControls")}>
         <Btn icon={paused ? "play" : "pause"} quiet size="dense"
           title={paused ? "watch.play" : "watch.pause"} disabled={disabled} onClick={() => onPlayback({ paused: !paused })} />
@@ -116,9 +122,9 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
           {[0.5, 0.75, 1, 1.25, 1.5, 2].map(rate => <option key={rate} value={rate}>{rate}×</option>)}
         </select>
       </div>}
-      {owned && <span className="lr-viewer-action-separator" aria-hidden="true" />}
-      <div className="c3-watch-local" role="group" aria-label={t("watch.localControls")}>
-        {receiving && (receiving.peerAvailable || receiving.mode === "peer") && <WatchReceivingSettings receiving={receiving} />}
+      {owned && localControls && <span className="lr-viewer-action-separator" aria-hidden="true" />}
+      {localControls && <div className="c3-watch-local" role="group" aria-label={t("watch.localControls")}>
+        {receivingSettings && <WatchReceivingSettings receiving={receivingSettings} />}
         {player.video ? <><AudioVolumeMenu volume={media.volume} label="playback.volumeBasic" max={1} onVolume={volume => { if (player.video) { player.video.volume = volume; player.video.muted = false; } }}>
           <Btn icon={media.muted || !media.volume ? "speakerOff" : "speaker"} quiet size="dense" title={media.muted ? "playback.unmute" : "playback.mute"}
             onClick={() => { const video = player.video; if (!video) return; const silent = video.muted || !video.volume; if (silent && !video.volume) video.volume = 1; video.muted = !silent; }} />
@@ -126,10 +132,10 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
         <PlaybackWindowControls picture={picture} canPlay={player.video.readyState >= 2} quiet theaterMode={theaterMode} onToggleTheater={onToggleTheater}
           fullscreen={fullscreen} fullscreenFailed={fullscreenFailed} toggleFullscreen={() => {
             if (player.video) { setFullscreenFailed(false); void toggleVideoFullscreen(player.video).catch(() => setFullscreenFailed(true)); }
-          }} /></> : <Btn icon="window" quiet size="dense" title="watch.focusWindow" onClick={onFocusWindow} />}
-      </div>
-    </div>
-    <PlaybackControlsReveal controls={controls} controlsId={controlsId} hidden={visibility.hidden} />
+          }} /></> : null}
+      </div>}
+    </div>}
+    {hasControls && <PlaybackControlsReveal controls={controls} controlsId={controlsId} hidden={visibility.hidden} />}
   </div>;
 }
 
