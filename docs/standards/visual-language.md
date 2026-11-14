@@ -141,8 +141,9 @@ Let the media stage use the available workspace. Grid gives watched pictures
 equal weight; focus gives one picture the main area and keeps the others in a
 thumbnail strip. All pictures share the same source-information overlay and
 action order. Thumbnail density retains the title and direct stop watching or
-stop sharing action; selecting the picture promotes it to the full controls
-without remounting its player. The bar follows playback-control visibility. Playback,
+stop sharing action. Its shared playback controls keep play/pause, sound and
+playback settings available; selecting the picture promotes it to the full
+controls without remounting its player. The bar follows playback-control visibility. Playback,
 volume, focus, source selection and share settings stay directly available.
 Narrow cards condense captions before wrapping; use a second compact overlay row
 only when the direct controls otherwise cannot fit, without an extra menu.

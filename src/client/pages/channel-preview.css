@@ -275,7 +275,7 @@
 .c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-grid { flex: none; min-height: 0; grid-auto-rows: auto; }
 .c3-shell[data-layout="quick"] { --quick-tv-screen-height: max(160px, 100svh - 300px); }
 .c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) { width: 100%; max-width: calc(var(--quick-tv-screen-height) * 16 / 9 + 2 * (var(--tv-frame-inset) + var(--tv-frame-border))); justify-self: center; border: 0; background: transparent; box-shadow: none; }
-.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile.is-focused { width: 100cqi; }
+.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile.is-focused { width: 100cqi; justify-self: start; }
 .c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) > :is(.c3-video:not(:fullscreen), .c3-monitor-wait) { box-sizing: content-box; flex: none; padding: var(--tv-frame-inset) var(--tv-frame-inset) var(--tv-frame-chin); min-height: 160px; aspect-ratio: 16 / 9; width: calc(100% - 2 * (var(--tv-frame-inset) + var(--tv-frame-border))); margin: 0; border: var(--tv-frame-border) solid var(--frame); border-radius: var(--tv-frame-radius); background: var(--tv-frame-background); box-shadow: var(--tv-frame-shadow); }
 /* The frame's padding stays outside the screen. A shared grid area positions
    video, remote input and picture overlays against exactly the same rectangle. */

@@ -24,8 +24,8 @@ import type { InputTransport } from "../../remote-control/input-route";
 import { ChannelAction } from "./ChannelAction";
 import "./channel-media.css";
 
-function ChannelVideoInput({ input, visible, label, fit, register, frame, issue, playing, fullscreen }: {
-  input: ChannelScreenInput; visible: boolean; label: string; fit: VideoFit;
+function ChannelVideoInput({ input, visible, interactive, label, fit, register, frame, issue, playing, fullscreen }: {
+  input: ChannelScreenInput; visible: boolean; interactive: boolean; label: string; fit: VideoFit;
   register(input: ChannelScreenInput, element: HTMLVideoElement | null): void;
   frame(input: ChannelScreenInput, element: HTMLVideoElement): void;
   issue(input: ChannelScreenInput, element: HTMLVideoElement, error: unknown): void;
@@ -49,7 +49,7 @@ function ChannelVideoInput({ input, visible, label, fit, register, frame, issue,
     void element.play().catch(error => { if (active) issue(input, element, error); });
     return () => { active = false; stop(); element.muted = true; element.pause(); element.srcObject = null; };
   }, [input.flowId, input.stream, frame, issue]);
-  return <video ref={attach} playsInline muted style={{ objectFit: fit }} aria-label={visible ? label : undefined} aria-hidden={!visible}
+  return <video ref={attach} playsInline muted inert={!interactive} style={{ objectFit: fit }} aria-label={visible ? label : undefined} aria-hidden={!visible}
     data-flow-id={input.flowId} data-selected={visible} data-composited={composited} data-switch-ready={input.switchReady}
     tabIndex={visible ? 0 : -1} onPlay={() => playing(input, false)} onPause={() => playing(input, true)}
     onEnded={() => playing(input, true)} onError={event => issue(input, event.currentTarget, event.currentTarget.error)}
@@ -123,7 +123,7 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
   const previewPlayback = useHostPreviewPlayback(playbackRef, owned ? displayed.stream : null, previewAutoPause);
   useVideoRotation(playbackRef, pictureFit, pictureRotation);
   useAnchoredPopover(pictureTrigger, picturePanel, { side: "above", align: "center" });
-  useLayoutEffect(() => { if (!interactive) picturePanel.current?.hidePopover(); }, [interactive]);
+  useLayoutEffect(() => { if (presentation === "background") picturePanel.current?.hidePopover(); }, [presentation]);
   const visibility = usePlaybackControlsVisibility(playbackRef, controls, paused || blocked || !ready);
   const register = useCallback((input: ChannelScreenInput, element: HTMLVideoElement | null) => {
     if (element) consumers.current.set(input.stream, { element, composited: false });
@@ -258,9 +258,9 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
   }, [inputs, onPresentation, consumerVersion, fullscreen.nativeActive, picture.active]);
   const nativeEntryBlocked = inputs?.some(input => !input.selected && input.switchReady)
     && !fullscreen.active && !(document.fullscreenEnabled && activeVideo?.parentElement?.requestFullscreen);
-  return <div className="c3-video c3-mini-player" data-controls-hidden={visibility.hidden} data-thumbnail={thumbnail || undefined} inert={!interactive}>
+  return <div className="c3-video c3-mini-player" data-controls-hidden={visibility.hidden} data-thumbnail={thumbnail || undefined} inert={presentation === "background"}>
     {rendered.map(input => <ChannelVideoInput key={`${input.flowId}:${input.stream.id}`} input={input} visible={input.flowId === displayed.flowId && input.stream === displayed.stream}
-      label={label} fit={pictureFit} register={register} frame={frame} issue={issue} playing={playing} fullscreen={fullscreenToggle} />)}
+      interactive={interactive} label={label} fit={pictureFit} register={register} frame={frame} issue={issue} playing={playing} fullscreen={fullscreenToggle} />)}
     <RoomChatOverlay session={interaction} visible={interactive && ready && !blocked && !paused} />
     {!ready && !blocked && <div className="c3-mini-message" role="status">
       <span className="c3-frame-wait"><BrandMark size={32} motion="loop" />
