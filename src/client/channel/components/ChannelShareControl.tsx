@@ -296,6 +296,9 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
         : <p>{t("watch.chooseVideo")}</p>}
       <Btn icon="window" quiet size="compact" title="watch.openedPage" cap="watch.openedPage" onClick={() => { void run(() => channel.focusWatchPage(roomId, activityId)); }} />
       {browserSources ? <>
+        {busy && !error && browserSources.choices.length === 0 && <div className="lr-source-picker-status" role="status">
+          <BrandLoader /><span>{t("common.loading")}</span>
+        </div>}
         {browserSources.choices.length > 0 && <div className="lr-source-picker-list" data-text-list>
           {browserSources.choices.map(choice => {
             const source = new URL(choice.displayURL), name = choice.name || source.host;

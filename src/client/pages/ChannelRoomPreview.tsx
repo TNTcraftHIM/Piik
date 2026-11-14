@@ -47,6 +47,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const [receiveMode, setReceiveMode] = useState<"direct" | "peer">("direct");
   const [forwarding, setForwarding] = useState(new URLSearchParams(location.search).has("forward"));
   const [pageSample, setPageSample] = useState<ReturnType<ChannelController["watchPage"]>>();
+  const [browserSourcePending, setBrowserSourcePending] = useState<string | null>(null);
   const optionsId = useId(), optionsTrigger = useRef<HTMLSpanElement>(null), optionsPanel = useRef<HTMLDivElement>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   useAnchoredPopover(optionsTrigger, optionsPanel);
@@ -155,12 +156,21 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     { id: "sample-hls", name: "Evening playlist", displayURL: "https://video-cdn.media.example/films/evening-with-friends/alternate-audio/master.m3u8?private=not-in-title", format: "hls" as const },
     { id: "sample-file", name: "An evening with friends.mp4", displayURL: "https://media.example/films/evening/video.mp4?private=not-in-title", format: "file" as const },
   ];
+  useEffect(() => {
+    if (!browserSourcePending) return;
+    const timer = window.setTimeout(() => {
+      setPageSample(page => page && ({ ...page, browserSource: { choices: browserSourceChoices } }));
+      setBrowserSourcePending(null);
+    }, 3500);
+    return () => window.clearTimeout(timer);
+  }, [browserSourcePending]);
   const commitPageSelection = (roomId: string, activityId?: string, mediaUrl?: string) => {
     if (!activityId) setWatchActivity({ id: `sample-watch-${crypto.randomUUID()}`, roomId, source: { kind: "website", url: pageSample!.url, ...(mediaUrl ? { mediaUrl } : {}) },
       userId: "sample-ada", sessionId: "sample-ada-session", playback: { position: 42, paused: true, rate: 1, anchorTime: 0 } });
     setWatchMode(activityId ? "native-viewer" : "native-owner"); setPageSample(undefined);
   };
   const channel = { ...sample.channel, state, self: profiles.get(users[0].id)!, profiles, streams, error: null, siteURL: "https://friends.example/",
+    pending: browserSourcePending ? new Set([...sample.channel.pending, `screen:${browserSourcePending}`]) : sample.channel.pending,
     watchPlayers,
     watchMediaChoices: async () => [{ id: "sample-file", name: "An evening with friends.mp4", displayURL: "https://media.example/evening.mp4", format: "file" as const },
       ...(new URLSearchParams(location.search).has("many-choices") ? [{ id: "sample-hls", name: "Evening playlist", displayURL: "https://media.example/master.m3u8", format: "hls" as const }] : [])],
@@ -170,10 +180,15 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     prepareWatchPage: async (_roomId, url, activityId) => setPageSample({ pageId: "sample-page", url, activityId,
       candidates: new URLSearchParams(location.search).has("empty-candidates") ? [] : [{ id: "sample-video", title: "An evening with friends", url: null, duration: 240 }] }),
     focusWatchPage: async () => sample.received(), focusWatch: async () => sample.received(),
-    cancelScreenSelection: async () => setPageSample(undefined),
+    cancelScreenSelection: async () => { setBrowserSourcePending(null); setPageSample(undefined); },
     selectWatchPage: async (roomId, _candidateId, activityId) => {
       const query = new URLSearchParams(location.search);
       if (!activityId && query.has("browser-source")) {
+        if (query.has("browser-source-pending")) {
+          setPageSample({ ...pageSample!, browserSource: { choices: [] } });
+          setBrowserSourcePending(roomId);
+          return false;
+        }
         if (query.has("browser-source-failed")) {
           setPageSample({ ...pageSample!, browserSource: { choices: [] } });
           throw new Error("watch_source_unavailable");
