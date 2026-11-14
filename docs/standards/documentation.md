@@ -52,9 +52,14 @@ Introductions and the general guide link to those procedures rather than duplica
 
 ## Updating A Rule
 
-1. Trace the current product contract, actual callers and relevant evidence.
-   Search hits are leads, not proof of a defect. Separate an implementation
-   mismatch from a historical decision or a still-unaccepted proposal.
+1. Locate the current rule's owner, then trace the product contract, actual
+   callers and relevant evidence. For a material design change, state the
+   concrete problem, rationale and supporting public references at that owner
+   before changing controls, code or copy. Distinguish the user's accepted
+   choices, verified observations and proposed inferences; neither existing
+   code nor another product's layout alone establishes Piik's rule. Search hits
+   are leads, not proof of a defect. Routine repairs can cite the existing rule
+   in their change description without creating a separate design document.
 2. Update the existing owner first. Add a new owner only for a distinct topic
    with real consumers; give it an entry in the documentation map. Delete
    replaced normative text elsewhere and link to the owner.
