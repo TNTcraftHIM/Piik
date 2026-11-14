@@ -12,11 +12,6 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **3.0 publishing and local playback groups.** Apply the
-  [action ownership rules](./standards/visual-language.md#action-ownership-and-grouping)
-  to source sound and local preview controls. The current owned-picture volume
-  changes broadcast sound inside a local playback group; move it to the publishing
-  scope while retaining the source's mute and level controls.
 - [ ] **3.0 Windows shared-sound noise.** The reporter confirms electrical or
   crackling sound in beta9/10 as well as beta2, while 2.x sounds normal. Excluding
   the window titled Piik removes it; excluding a silent unrelated window does

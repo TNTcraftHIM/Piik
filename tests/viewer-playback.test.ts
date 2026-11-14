@@ -77,25 +77,33 @@ describe("Viewer playback binding", () => {
 });
 
 describe("Playback audio controls", () => {
-  it("uses source audio presence despite the stable mixed output track", () => {
+  it("keeps source sound in publishing controls and allows immediate mute while capture is busy", () => {
     setCopy({ lang: "zh", vis: false });
     const stream = { id: "mixed", getAudioTracks: () => [{ kind: "audio", readyState: "live" }] } as unknown as MediaStream;
-    const sourceAudio = { hasAudio: false, available: false, level: 1, muted: false, busy: false, onChange: vi.fn() };
-    const windowModes = { theaterMode: false, onToggleTheater: vi.fn() };
-    const html = renderToStaticMarkup(createElement(ChannelVideo, { stream, owned: true, localSource: true, label: "Own screen", sourceAudio, ...windowModes }));
-    const range = html.match(/<input\b[^>]*type="range"[^>]*>/)![0];
-    expect(range).toContain('aria-label="分享源没有音频"');
-    expect(range).toContain('aria-valuetext="分享源没有音频"');
-    expect(range).toContain('value="0"');
-    expect(range).toContain("disabled");
+    const sourceAudio = { hasAudio: false, available: false, level: 1, muted: false, busy: false, canMute: true, onChange: vi.fn() };
+    const source = { id: "screen", userId: "self", name: "Me", roomName: "Room", source: { kind: "screen" as const, name: "Own screen" },
+      title: null, owned: true, localSource: true, audience: [], subscribed: true, paused: false, stream };
+    const render = (sound = sourceAudio) => renderToStaticMarkup(createElement(ChannelStage, {
+      sources: [{ ...source, sourceAudio: sound }], focusedId: null, canSubscribe: true,
+      onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),
+      onInputPolicy: vi.fn(), onInputDecide: vi.fn(), onInputSimultaneous: vi.fn(), onInputShortcut: vi.fn(),
+    }));
+    const html = render();
+    expect(html).toContain('aria-label="Own screen的分享控制"');
+    expect(html.split("<footer>")[0]).not.toContain("所有观众");
+    expect(html).not.toContain('class="c3-mini-volume"');
     expect(html.match(/<button\b[^>]*aria-label="分享源没有音频"[^>]*>/)?.[0]).toContain("disabled");
 
-    const silent = renderToStaticMarkup(createElement(ChannelVideo, { stream, owned: true, localSource: true, label: "Own screen", ...windowModes,
-      sourceAudio: { ...sourceAudio, hasAudio: true, available: true, muted: true, level: 0 } }));
+    const live = { ...sourceAudio, hasAudio: true, available: true };
+    const silent = render({ ...live, muted: true, level: 0 });
     const silentRange = silent.match(/<input\b[^>]*type="range"[^>]*>/)![0];
     expect(silentRange).not.toContain("disabled");
     expect(silentRange).toContain('aria-valuetext="0%"');
     expect(silent).toContain('aria-label="恢复所有观众的分享声音"');
+    const busy = render({ ...live, busy: true });
+    expect(busy.match(/<button\b[^>]*aria-label="关闭所有观众的分享声音"[^>]*>/)?.[0]).not.toContain("disabled");
+    const pendingUnmute = render({ ...live, busy: true, muted: true });
+    expect(pendingUnmute.match(/<button\b[^>]*aria-label="恢复所有观众的分享声音"[^>]*>/)?.[0]).toContain("disabled");
   });
 
   it("gives the shared volume slider the same no-audio label as its button", () => {

@@ -49,6 +49,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const [stopped, setStopped] = useState(new Set<string>());
   const [mixed, setMixed] = useState(false);
   const [titles, setTitles] = useState<Record<string, string | null>>({});
+  const [sourceSounds, setSourceSounds] = useState<Partial<Record<string, { level: number; muted: boolean; bitrate?: number }>>>({});
   const canvases = useRef<HTMLCanvasElement[]>([]);
   const rooms = [...sample.channel.state!.channel.rooms.slice(0, roomCount),
     ...createdRooms.map(room => ({ ...room, ...sample.settingsByRoom[room.id] }))];
@@ -69,6 +70,8 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   useEffect(() => {
     if (!needsSamples) { setStreams(new Map()); return; }
     const palette = getComputedStyle(document.documentElement);
+    const audio = new AudioContext();
+    const silentTrack = audio.createMediaStreamDestination().stream.getAudioTracks()[0];
     const captures = screenUsers.map((user, index) => {
       const canvas = document.createElement("canvas");
       canvas.width = mixed && index % 2 === 0 ? 540 : 960; canvas.height = mixed && index % 2 === 0 ? 960 : 540;
@@ -77,11 +80,15 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       const paint = () => { context.fillStyle = palette.getPropertyValue("--paper").trim(); context.fillRect(0, 0, canvas.width, canvas.height);
         context.fillStyle = palette.getPropertyValue("--ink").trim(); context.font = "32px sans-serif"; context.fillText(user.name, 44, 64);
         context.fillStyle = participantColor(user.id); context.beginPath(); context.arc(canvas.width * .7, canvas.height / 2, Math.min(canvas.width, canvas.height) / 4, 0, Math.PI * 2); context.fill(); };
-      paint(); return { stream: canvas.captureStream(4), timer: setInterval(paint, 250) };
+      paint();
+      const stream = canvas.captureStream(4);
+      stream.addTrack(silentTrack);
+      return { stream, timer: setInterval(paint, 250) };
     });
     setStreams(new Map(captures.map((capture, index) => [`sample-screen-${index}`, capture.stream])));
     return () => {
       for (const capture of captures) { clearInterval(capture.timer); capture.stream.getTracks().forEach(track => track.stop()); }
+      void audio.close();
       canvases.current = [];
     };
   }, [needsSamples]);
@@ -123,8 +130,13 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     historyByRoom: Object.fromEntries(state.channel.rooms.map(room => [room.id, { hasMore: false, atLatest: true }])),
     roomTopology: async (roomId, publicationId) => sampleRoomTopology(state, roomId, publicationId),
     screenQuality: () => ({ requested: sample.channel.quality, applied: sample.channel.quality }), screenCodecMode: () => sample.channel.videoCodecMode,
-    sourceAudio: () => undefined, sourceMicrophone: () => undefined,
-    setSourceAudio: async () => sample.received(),
+    sourceAudio: id => ownedScreens.has(id) ? { level: 1, muted: false, bitrate: sample.channel.quality.maxAudioBitrate ?? 128_000,
+      ...sourceSounds[id], hasAudio: true, available: true, canMute: true } : undefined,
+    sourceMicrophone: () => undefined,
+    setSourceAudio: async (id, settings) => {
+      setSourceSounds(previous => ({ ...previous, [id]: { level: 1, muted: false, ...previous[id], ...settings } }));
+      sample.received();
+    },
     setScreenQuality: async (_id, profile) => sample.channel.setQuality(profile),
     watch: async id => setUnwatched(previous => { const next = new Set(previous); next.delete(id); return next; }),
     unwatch: async id => setUnwatched(previous => new Set(previous).add(id)), stopScreen: async id => { setStopped(previous => new Set(previous).add(id)); setTitles(previous => { const next = { ...previous }; delete next[id]; return next; }); sample.received(); },

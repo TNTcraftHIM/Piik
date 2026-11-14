@@ -17,7 +17,7 @@
 .c3-theater-source { display: none; align-items: center; gap: 8px; min-width: 0; font-size: 12px; }
 .c3-theater-source select { width: 100%; max-width: min(260px, 40cqi); }
 .c3-monitor-grid { --stage-tile-min: 280px; display: grid; flex: 1; min-height: min-content; grid-template-columns: repeat(calc(var(--stage-columns, 1) * 2), minmax(0, 1fr)); grid-auto-rows: minmax(160px, 1fr); gap: 14px; }
-.c3-monitor-grid.is-focused { min-height: 0; grid-template-columns: repeat(var(--stage-thumbnails), clamp(224px, 24cqi, 280px)); grid-template-rows: minmax(min-content, 1fr); overflow: auto; overscroll-behavior: contain; justify-content: start; }
+.c3-monitor-grid.is-focused { min-height: 0; grid-template-columns: repeat(var(--stage-thumbnails), clamp(280px, 24cqi, 320px)); grid-template-rows: minmax(min-content, 1fr); overflow: auto; overscroll-behavior: contain; justify-content: start; }
 .c3-monitor-grid.is-focused:has(> .is-thumbnail) { grid-template-rows: minmax(min-content, 1fr) auto; }
 .c3-monitor-grid:has(.lr-remote-keyboard, .lr-remote-password) { grid-auto-rows: minmax(min-content, 1fr); }
 .c3-monitor-tile { position: relative; display: flex; flex-direction: column; grid-column: span 2; min-width: 0; min-height: 0; background: var(--wall); border: 1px solid var(--line); border-radius: var(--c3-surface-radius); container-type: inline-size; }
@@ -25,12 +25,12 @@
 .c3-monitor-tile.is-focused { grid-column: 1 / -1; grid-row: 1; order: -1; position: sticky; left: 0; width: 100cqi; justify-self: start; border-color: var(--action); box-shadow: 0 0 0 1px var(--action); }
 .c3-monitor-tile.is-thumbnail { grid-column: auto; grid-row: 2; width: 100%; height: max-content; min-height: 0; }
 .c3-monitor-tile.is-thumbnail > :is(.c3-video, .c3-monitor-wait) { flex: none; min-height: 90px; aspect-ratio: 16 / 9; }
-.c3-monitor-tile.is-thumbnail .c3-monitor-source-row { grid-template-columns: minmax(0, 1fr) auto; gap: 4px; padding: 0 4px; }
+.c3-monitor-tile.is-thumbnail .c3-monitor-source-row { grid-template-columns: minmax(56px, 1fr) minmax(74px, auto) auto; gap: 2px; padding: 0 4px; }
 .c3-monitor-tile.is-thumbnail .c3-monitor-source-row > svg,
 .c3-monitor-tile.is-thumbnail .c3-monitor-source > .lr-comic-tip-wrap:last-child { display: none; }
 /* Keep source drafts and detached panels mounted; only their tile invokers hide. */
-.c3-monitor-tile.is-thumbnail .c3-monitor-social,
-.c3-monitor-tile.is-thumbnail .c3-monitor-tile-actions > :not(.c3-monitor-close) { display: none; }
+.c3-monitor-tile.is-thumbnail .c3-monitor-tile-actions > :not(.c3-monitor-close, .c3-monitor-publishing),
+.c3-monitor-tile.is-thumbnail .c3-monitor-publishing > :not(.c3-monitor-close, .c3-source-audio) { display: none; }
 .c3-monitor-close { display: inline-flex; }
 .c3-thumbnail-focus { position: absolute; inset: 0; z-index: 4; border: 0; border-radius: inherit; background: transparent; padding: 0; pointer-events: none; }
 .c3-thumbnail-focus:is(:hover, :focus-visible) { outline: 2px solid var(--action); outline-offset: -2px; }
@@ -45,7 +45,9 @@
 .c3-monitor-source small { margin-top: 0; }
 .c3-monitor-source small > svg { vertical-align: -2px; margin-inline-end: 4px; }
 .c3-monitor-source :is(strong, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.c3-monitor-tile-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 2px; min-width: 0; margin-inline-start: auto; }
+.c3-monitor-tile-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; min-width: 0; margin-inline-start: auto; }
+.c3-monitor-publishing { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 2px; min-width: 0; }
+.c3-source-audio { display: inline-flex; flex: none; }
 .c3-monitor-tile-actions > .c3-message-reactions { min-width: 0; max-width: 100%; }
 .c3-screen-audience { display: inline-flex; flex: none; }
 .c3-screen-audience-panel { width: 280px; padding: 12px; overflow-y: auto; }

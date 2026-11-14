@@ -2,7 +2,7 @@ import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
-import { ChannelVideo, type SourceAudioControl } from "./ChannelMedia";
+import { ChannelVideo } from "./ChannelMedia";
 import { ChannelAction } from "./ChannelAction";
 import type { ChannelScreenInput, ScreenPresentation } from "../types";
 import "./channel-stage.css";
@@ -23,6 +23,30 @@ import { screenTitle, type ScreenAudiencePerson } from "../presentation";
 import type { MessageReactions } from "../protocol";
 import { ChannelContentReactions } from "./ChannelContentReactions";
 import { BrandLoader } from "../../components/living/BrandMark";
+import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
+
+interface SourceAudioControl {
+  level: number; muted: boolean; hasAudio: boolean; available: boolean; busy: boolean;
+  canMute?: boolean;
+  onChange(settings: { level?: number; muted?: boolean }): void;
+}
+
+function SourceSound({ sound, title }: { sound: SourceAudioControl; title: string }) {
+  const { lang } = useCopy();
+  const silent = sound.muted || sound.level === 0;
+  const available = sound.hasAudio && sound.available;
+  return <span className="c3-source-audio">
+    <AudioVolumeMenu volume={sound.level} onVolume={level => sound.onChange({ level, muted: false })}
+      label="host.shareVolume" icon="speaker" heading={lang === "zh" ? `${title}的分享声音` : `Shared sound: ${title}`}
+      disabled={!available || sound.busy}>
+      <Btn icon={!sound.hasAudio || silent ? "speakerOff" : "speaker"} quiet size="dense"
+        title={!sound.hasAudio ? "playback.noAudio" : !sound.available ? "host.shareVolume.unavailable"
+          : silent ? "host.shareVolume.unmute" : "host.shareVolume.mute"}
+        disabled={!available || sound.busy && !(sound.canMute && !silent)} pressed={silent}
+        onClick={() => sound.onChange({ level: sound.level || 1, muted: !silent })} />
+    </AudioVolumeMenu>
+  </span>;
+}
 
 export interface ChannelStageSource {
   id: string;
@@ -224,7 +248,7 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
             }}>
             {source.stream ? <ChannelVideo buffering={buffering} stream={source.stream} owned={source.owned} localSource={source.localSource}
               presentation={source.hidden ? "background" : thumbnail ? "thumbnail" : "full"} inputs={source.inputs} onPresentation={onPresentation} input={source.input}
-              sourceAudio={source.sourceAudio} interaction={source.interaction}
+              interaction={source.interaction}
               theaterMode={theater && isFocused} onToggleTheater={() => {
                 onFocus(source.id); setTheater(!theater);
               }}
@@ -253,29 +277,34 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
                   <SourceAudience people={source.audience} />
                 </div>
                 <div className="c3-monitor-tile-actions">
-                  {source.owned && source.shareControls}
                   {active.length > 1 && <Btn icon={isFocused ? "screenGrid" : "screenFocus"} quiet size="dense"
                       title={{ text: isFocused ? copy("返回平铺", "Return to grid") : copy(`聚焦 ${title}`, `Focus ${title}`) }}
                       hint={isFocused ? "hint-screen-grid" : "hint-screen-focus"}
                       pressed={isFocused} onClick={() => onFocus(isFocused ? null : source.id)} />}
-                  {source.owned && microphone && <VoiceMicrophoneButton active={microphone.enabled}
-                    quiet busy={microphone.busy && !(microphone.enabled && microphone.canDisable)}
-                    disabled={(microphone.disabled || microphone.busy) && !(microphone.enabled && microphone.canDisable)}
-                    hint={microphone.enabled ? "hint-microphone-off" : "hint-microphone-on"}
-                    onClick={() => microphone.onEnabled(!microphone.enabled)} />}
-                  {source.owned && <Btn icon={source.paused ? "play" : "pause"} quiet size="dense"
-                    title={{ text: t(source.paused ? "host.resume" : "host.pause") + (source.pauseAvailable === false
-                      ? copy("（重新连接后可用）", " (available after reconnecting)") : "") }} pressed={source.paused}
-                    disabled={source.pauseAvailable === false || source.pausePending}
-                    hint={source.paused ? "hint-resume" : "hint-pause"} busy={source.pausePending}
-                    onClick={() => onPause(source.id, !source.paused)} />}
-                  {source.owned && source.remoteControl && <SourceControl source={{ ...source, remoteControl: source.remoteControl }}
-                    onInputPolicy={onInputPolicy} onInputDecide={onInputDecide} onInputSimultaneous={onInputSimultaneous} onInputShortcut={onInputShortcut} />}
-                  <span className="c3-monitor-close"><Btn icon={source.owned ? "stop" : "x"} tone={source.owned ? "danger" : undefined} quiet={!source.owned} size="dense"
-                    title={{ text: source.owned ? copy(`停止分享 ${title}`, `Stop sharing ${title}`)
-                      : copy(`停止观看 ${title}`, `Stop watching ${title}`) }}
-                    hint={source.owned ? "hint-share-stop" : "hint-close"} busy={source.pending} disabled={source.pending}
-                    onClick={() => source.owned ? onStop(source.id) : onUnwatch(source.id)} /></span>
+                  {source.owned && <div className="c3-monitor-publishing" role="group"
+                    aria-label={copy(`${title}的分享控制`, `Sharing controls: ${title}`)}>
+                    {source.shareControls}
+                    {source.sourceAudio && <SourceSound sound={source.sourceAudio} title={title} />}
+                    {microphone && <VoiceMicrophoneButton active={microphone.enabled}
+                      quiet busy={microphone.busy && !(microphone.enabled && microphone.canDisable)}
+                      disabled={(microphone.disabled || microphone.busy) && !(microphone.enabled && microphone.canDisable)}
+                      hint={microphone.enabled ? "hint-microphone-off" : "hint-microphone-on"}
+                      onClick={() => microphone.onEnabled(!microphone.enabled)} />}
+                    <Btn icon={source.paused ? "play" : "pause"} quiet size="dense"
+                      title={{ text: t(source.paused ? "host.resume" : "host.pause") + (source.pauseAvailable === false
+                        ? copy("（重新连接后可用）", " (available after reconnecting)") : "") }} pressed={source.paused}
+                      disabled={source.pauseAvailable === false || source.pausePending}
+                      hint={source.paused ? "hint-resume" : "hint-pause"} busy={source.pausePending}
+                      onClick={() => onPause(source.id, !source.paused)} />
+                    {source.remoteControl && <SourceControl source={{ ...source, remoteControl: source.remoteControl }}
+                      onInputPolicy={onInputPolicy} onInputDecide={onInputDecide} onInputSimultaneous={onInputSimultaneous} onInputShortcut={onInputShortcut} />}
+                    <span className="c3-monitor-close"><Btn icon="stop" tone="danger" size="dense"
+                      title={{ text: copy(`停止分享 ${title}`, `Stop sharing ${title}`) }}
+                      hint="hint-share-stop" busy={source.pending} disabled={source.pending} onClick={() => onStop(source.id)} /></span>
+                  </div>}
+                  {!source.owned && <span className="c3-monitor-close"><Btn icon="x" quiet size="dense"
+                    title={{ text: copy(`停止观看 ${title}`, `Stop watching ${title}`) }}
+                    hint="hint-close" busy={source.pending} disabled={source.pending} onClick={() => onUnwatch(source.id)} /></span>}
                 </div>
               </div>
             </footer>

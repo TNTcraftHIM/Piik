@@ -63,17 +63,10 @@ function ChannelVideoInput({ input, visible, interactive, label, fit, register, 
     }} />;
 }
 
-export interface SourceAudioControl {
-  level: number; muted: boolean; hasAudio: boolean; available: boolean; busy: boolean;
-  canMute?: boolean;
-  onChange(settings: { level?: number; muted?: boolean }): void;
-}
-
-export function ChannelVideo({ stream, owned, localSource, label, presentation = "full", inputs, onPresentation, input, sourceAudio, interaction = null, buffering, theaterMode, onToggleTheater }: {
+export function ChannelVideo({ stream, owned, localSource, label, presentation = "full", inputs, onPresentation, input, interaction = null, buffering, theaterMode, onToggleTheater }: {
   stream: MediaStream; owned: boolean; localSource: boolean; label: string; inputs?: readonly ChannelScreenInput[];
   presentation?: "full" | "thumbnail" | "background";
   input?: InputTransport;
-  sourceAudio?: SourceAudioControl;
   buffering?: PlaybackSettingsProps["buffering"];
   interaction?: RoomInteractionSession | null;
   theaterMode: boolean; onToggleTheater(): void;
@@ -109,15 +102,9 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
   const current = useRef({ displayed, inputs, onPresentation });
   current.current = { displayed, inputs, onPresentation };
   const { lang, t } = useCopy();
-  const sound = owned && sourceAudio ? sourceAudio : audio;
-  const hasAudio = owned ? !!sourceAudio?.hasAudio : !localSource && streamHasAudio;
-  const silent = sound.muted || sound.level === 0;
-  const soundAvailable = hasAudio && (!owned || !!sourceAudio?.available);
-  const soundDisabled = !soundAvailable || owned && !!sourceAudio?.busy;
-  const muteDisabled = !soundAvailable || owned && !!sourceAudio?.busy && !(sourceAudio.canMute && !silent);
-  const volumeTitle = !hasAudio ? "playback.noAudio" : owned
-    ? !sourceAudio?.available ? "host.shareVolume.unavailable" : "host.shareVolume"
-    : audio.boostAvailable ? "playback.volume" : "playback.volumeBasic";
+  const hasAudio = !localSource && streamHasAudio;
+  const silent = audio.muted || audio.level === 0;
+  const volumeTitle = !hasAudio ? "playback.noAudio" : audio.boostAvailable ? "playback.volume" : "playback.volumeBasic";
   const playbackRef = useMemo(() => ({ current: activeVideo }), [activeVideo]);
   const picture = usePictureInPicture(playbackRef);
   const previewPlayback = useHostPreviewPlayback(playbackRef, owned ? displayed.stream : null, previewAutoPause);
@@ -271,26 +258,20 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
     <div id={controlsId} ref={controls} className="c3-mini-controls lr-media-toolbar lr-media-controls" role="group" aria-label={t("playback.controls")}>
       <Btn icon={paused ? "play" : "pause"} title={paused ? "playback.play" : "playback.pause"} quiet
         hint={paused ? "hint-local-play" : "hint-local-pause"} onClick={() => { if (ref.current?.paused) play(); else ref.current?.pause(); }} />
-      {(owned ? !!sourceAudio : !localSource) && <>
+      {!localSource && <>
         <Btn icon={!hasAudio || silent ? "speakerOff" : "speaker"} quiet
-          title={!hasAudio ? "playback.noAudio" : owned
-            ? !sourceAudio?.available ? "host.shareVolume.unavailable" : silent ? "host.shareVolume.unmute" : "host.shareVolume.mute"
-            : silent ? "playback.unmute" : "playback.mute"}
+          title={!hasAudio ? "playback.noAudio" : silent ? "playback.unmute" : "playback.mute"}
           hint={!hasAudio ? "hint-no-audio" : silent ? "hint-unmute" : "hint-mute"}
-          disabled={muteDisabled} pressed={silent}
+          disabled={!hasAudio} pressed={silent}
           onClick={() => {
-            if (owned) sourceAudio?.onChange({ level: sound.level || 1, muted: !silent });
-            else {
-              if (sound.level === 0) output.current?.setLevel(1);
-              output.current?.setMuted(!silent);
-            }
+            if (audio.level === 0) output.current?.setLevel(1);
+            output.current?.setMuted(!silent);
           }} />
-        <input className="c3-mini-volume" type="range" min="0" max={owned || audio.boostAvailable ? 2 : 1} step="0.05" value={hasAudio ? sound.level : 0}
-          disabled={soundDisabled} aria-label={t(volumeTitle)} aria-valuetext={hasAudio ? `${Math.round(sound.level * 100)}%` : t("playback.noAudio")}
+        <input className="c3-mini-volume" type="range" min="0" max={audio.boostAvailable ? 2 : 1} step="0.05" value={hasAudio ? audio.level : 0}
+          disabled={!hasAudio} aria-label={t(volumeTitle)} aria-valuetext={hasAudio ? `${Math.round(audio.level * 100)}%` : t("playback.noAudio")}
           onChange={event => {
             const level = Number(event.currentTarget.value);
-            if (owned) sourceAudio?.onChange({ level, muted: false });
-            else { output.current?.setLevel(level); output.current?.setMuted(false); }
+            output.current?.setLevel(level); output.current?.setMuted(false);
           }} />
       </>}
       <span className="c3-mini-space" />
