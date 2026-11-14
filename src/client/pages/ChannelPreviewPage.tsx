@@ -283,7 +283,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
         </div>}
       </div>
       <section className="c3-main" aria-label={room?.name ?? t("channel.previewPage.room")}>
-        <header className="c3-room-heading">
+        <header className="c3-room-heading" data-tooltip-controls>
           <div className="c3-room-name">{layout !== "quick" && <span className="c3-pane-navigation"><Btn id="c3-rooms-trigger" icon="sidebar" quiet size="compact"
             title={{ text: t("channel.previewPage.roomList") }} hint="hint-room-list" controls="c3-room-list" expanded={mobilePane === "rooms"}
             onClick={showRooms} /></span>}<ChannelIdentityMark icon={room?.icon ?? "couch"} size={25} />

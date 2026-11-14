@@ -198,7 +198,7 @@ export function Tooltip({
     const surface = wrap.closest<HTMLElement>("[popover], :fullscreen");
     const insideSurface = (element: HTMLElement | null) => element && (!surface || surface.contains(element)) ? element : null;
     // A wrapped control row remains one working area, including on narrow screens.
-    const controlBar = insideSurface(wrap.closest<HTMLElement>(".lr-playback, .lr-source-picker-options, .lr-host-share-controls"));
+    const controlBar = insideSurface(wrap.closest<HTMLElement>(".lr-media-toolbar, .lr-source-picker-options, [data-tooltip-controls]"));
     const playback = Boolean(controlBar?.closest(".lr-playback"));
     const avoid = controlBar?.getBoundingClientRect() ?? rect;
     const screen = insideSurface(wrap.closest<HTMLElement>(".lr-tv-screen"));
@@ -255,11 +255,25 @@ export function Tooltip({
       align,
       ...(["center", "start", "end"] as Align[]).filter((a) => a !== align),
     ];
-    const fits = order.find((a) => clipped(boxes[a]) === 0);
-    const selected = fits ?? order.reduce((a, b) => (clipped(boxes[a]) <= clipped(boxes[b]) ? a : b));
-    let left = Math.max(x + EDGE_MARGIN, Math.min(boxes[selected].left, right - width - EDGE_MARGIN));
     let top = livePlace === "below" ? below + EDGE_MARGIN : avoid.top - panelHeight - EDGE_MARGIN;
     top = Math.max(y + EDGE_MARGIN, Math.min(top, bottom - panelHeight - EDGE_MARGIN));
+    // Viewport fit comes first; within it, keep guidance off neighbouring
+    // control groups. Both media generations share the toolbar boundary;
+    // other owners mark their control group without supplying geometry.
+    // Reserve auto-hidden controls too: entering the player can reveal them.
+    const controls = [...(surface ?? wrap.ownerDocument).querySelectorAll<HTMLElement>(".lr-media-toolbar, [data-tooltip-controls]")]
+      .filter(element => !element.contains(wrap) && element.getClientRects().length)
+      .map(element => element.getBoundingClientRect());
+    const overlap = (alignment: Align) => {
+      const left = Math.max(x + EDGE_MARGIN, Math.min(boxes[alignment].left, right - width - EDGE_MARGIN));
+      return controls.reduce((area, control) => area
+        + Math.max(0, Math.min(left + width, control.right) - Math.max(left, control.left))
+        * Math.max(0, Math.min(top + panelHeight + EDGE_MARGIN, control.bottom) - Math.max(top - EDGE_MARGIN, control.top)), 0);
+    };
+    const leastClipped = Math.min(...order.map(a => clipped(boxes[a])));
+    const candidates = order.filter(a => clipped(boxes[a]) === leastClipped);
+    const selected = candidates.reduce((a, b) => overlap(a) <= overlap(b) ? a : b);
+    let left = Math.max(x + EDGE_MARGIN, Math.min(boxes[selected].left, right - width - EDGE_MARGIN));
     let caret = Math.max(14, Math.min(center - left, width - 14));
     if (livePlace === "left") {
       left = (player ?? avoid).left - width - EDGE_MARGIN;

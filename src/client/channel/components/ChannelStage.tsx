@@ -278,7 +278,7 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
             {thumbnail && <button className="c3-thumbnail-focus" type="button" aria-label={t("screen.focusNamed", { title })}
               onClick={() => onFocus(source.id)} />}
             <footer>
-              <div className="c3-monitor-source-row">
+              <div className="c3-monitor-source-row" data-tooltip-controls>
                 <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
                 <div className="c3-monitor-source">
                   <Tooltip overflow={{ text: title, selector: "strong" }}><strong>{title}</strong></Tooltip>
@@ -374,7 +374,7 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
         {source.receiving && <WatchPeerAction receiving={source.receiving} />}</>
         : <><BrandLoader /><span>{t("watch.waiting")}</span></>}</div>}
     {thumbnail && <button className="c3-thumbnail-focus" type="button" aria-label={t("screen.focusNamed", { title: source.title })} onClick={() => onFocus(source.id)} />}
-    <footer><div className="c3-monitor-source-row">
+    <footer><div className="c3-monitor-source-row" data-tooltip-controls>
       <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
       <div className="c3-monitor-source"><Tooltip overflow={{ text: source.title, selector: "strong" }}><strong>{source.title}</strong></Tooltip>
         <small>{source.name}<span aria-hidden="true"> / </span><button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button></small>
