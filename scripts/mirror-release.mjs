@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { openAsBlob } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import { readReleaseArtifacts } from "./release-artifacts.mjs";
+import { prepareMirrorRelease, mirrorReleaseBody } from "./release-mirror-prepare.mjs";
 
 const [directory, version, revision, option] = process.argv.slice(2);
 if (option && option !== "--dry-run") {
@@ -11,7 +12,6 @@ if (option && option !== "--dry-run") {
 const { files } = readReleaseArtifacts(directory, version, revision);
 const repository = "TNTcraftHIM/Piik";
 const api = `https://api.atomgit.com/api/v5/repos/${repository}`;
-const marker = `<!-- piik-source: ${revision} -->`;
 const token = process.env.ATOMGIT_TOKEN?.trim();
 
 function requireLatestSource() {
@@ -108,22 +108,10 @@ if (option === "--dry-run") {
       throw new Error(`GitHub attachment checksum mismatch or unavailable: ${file.name}`);
     }
   }
-  let release = await request(`/releases/tags/${version}`);
-  if (release && (release.tag_name !== version ||
-      (release.prerelease !== false && release.prerelease !== true) ||
-      !release.body?.split(/\r?\n/).includes(marker))) {
-    throw new Error("Existing mirror release belongs to a different or unknown source revision");
-  }
-  const body = `${source.body ?? ""}\n\n此镜像分发 GitHub 的原始安装包；源码以 GitHub 为准。 / This mirror distributes the original GitHub packages; GitHub owns their source.\n\nSource: https://github.com/${repository}/commit/${revision}\n\n${marker}\n`;
-  if (!release || release.prerelease) requireLatestSource();
-  if (!release) {
-    const repo = await request("");
-    if (!repo || repo.private || !repo.default_branch) throw new Error("A public initialized AtomGit mirror is required");
-    release = await request("/releases", "POST", {
-      tag_name: version, name: source.name || `Piik ${version}`, body, release_status: "pre",
-      target_commitish: repo.default_branch,
-    });
-  }
+  const existing = await request(`/releases/tags/${encodeURIComponent(version)}`);
+  if (!existing || existing.prerelease) requireLatestSource();
+  let release = await prepareMirrorRelease(source, request, existing);
+  const body = mirrorReleaseBody(source);
   const attachments = release.assets;
   if (!Array.isArray(attachments)) throw new Error("Unexpected mirror attachment list");
   for (const file of files) {

@@ -1,5 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { mirrorReadiness, readMirror } from "../scripts/release-mirror-ready.mjs";
+import { prepareMirror, prepareMirrorRelease } from "../scripts/release-mirror-prepare.mjs";
 
 const revision = "a".repeat(40), version = "v2.6.1";
 const asset = { name: "piik-app-fixture.zip", state: "uploaded", size: 1024, digest: `sha256:${"b".repeat(64)}` };
@@ -14,13 +15,72 @@ test("a completed stable mirror needs only its metadata and no source search or 
   expect(read.mock.calls).toEqual([[`/releases/tags/${version}`]]);
 });
 
-test.each([null, { ...mirror, prerelease: true, assets: [] }])("a missing or pending mirror is ready without querying mirrored commits or tags", async pending => {
-  const read = vi.fn(async (path: string) => {
-    if (path !== `/releases/tags/${version}`) throw new Error("Mirrored source is irrelevant to release distribution");
-    return pending;
-  });
+test("a pending mirror resumes without querying mirrored commits or tags", async () => {
+  const read = vi.fn(async () => ({ ...mirror, prerelease: true, assets: [] }));
   expect(await mirrorReadiness(source, read)).toEqual({ status: "ready", version, revision });
   expect(read.mock.calls).toEqual([[`/releases/tags/${version}`]]);
+});
+
+test("read-only readiness never creates a missing release", async () => {
+  const read = vi.fn(async () => null);
+  expect(await mirrorReadiness(source, read)).toEqual({ status: "ready", version, revision });
+  expect(read.mock.calls).toEqual([[`/releases/tags/${version}`]]);
+});
+
+test("publication preparation uses the mirror branch and preserves the independent GitHub source marker", async () => {
+  const read = vi.fn(async (path: string, method?: string, body?: Record<string, unknown>) => {
+    if (path === `/releases/tags/${version}`) return null;
+    if (path === "") return { private: false, default_branch: "main" };
+    expect(path).toBe("/releases");
+    expect(method).toBe("POST");
+    expect(body).toMatchObject({ tag_name: version, target_commitish: "main", release_status: "pre" });
+    expect(body!.body).toContain(`<!-- piik-source: ${revision} -->`);
+    expect(body!.body).toContain(`https://github.com/TNTcraftHIM/Piik/commit/${revision}`);
+    return { ...mirror, prerelease: true, body: body!.body, assets: [] };
+  });
+  expect(await prepareMirror(source, read)).toEqual({ status: "ready", version, revision });
+  expect(read).toHaveBeenCalledTimes(4);
+});
+
+test("a platform tag rejection fails readiness before artifact downloads", async () => {
+  const read = vi.fn(async (_path: string, method?: string) => {
+    if (method === "POST") throw new Error("image repository");
+    if (_path === "") return { private: false, default_branch: "main" };
+    return null;
+  });
+  await expect(prepareMirror(source, read)).rejects.toThrow("image repository");
+  expect(read).toHaveBeenCalledTimes(4);
+});
+
+test.each([mirror, { ...mirror, prerelease: true, assets: [] }])("preparation reuses existing releases without writes", async existing => {
+  const request = vi.fn(async (_path: string, _method?: string) => existing);
+  await prepareMirror(source, request);
+  expect(request.mock.calls.every(call => call.length === 1)).toBe(true);
+});
+
+test("preparation rejects an unknown source and an unexpected create result", async () => {
+  const request = vi.fn(async (path: string) => path === "" ? { private: false, default_branch: "main" } : null);
+  await expect(prepareMirrorRelease({ ...source, target_commitish: "main" }, request)).rejects.toThrow("full source SHA");
+  expect(request).not.toHaveBeenCalled();
+  await expect(prepareMirrorRelease(source, request)).rejects.toThrow("did not confirm the prepared prerelease");
+});
+
+test("preparation reports the platform rejection without logging its token or retrying the write", async () => {
+  vi.stubEnv("ATOMGIT_TOKEN", "fixture-private-token");
+  const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options?.method === "POST") return Response.json({ message: "image repository fixture-private-token" }, { status: 400 });
+    if (url.endsWith(`/releases/tags/${version}`)) return new Response(null, { status: 404 });
+    return Response.json({ private: false, default_branch: "main" });
+  });
+  vi.stubGlobal("fetch", fetch);
+  try {
+    await expect(prepareMirror(source)).rejects.toThrow("image repository [redacted]");
+    const writes = fetch.mock.calls.filter(([, options]) => options?.method === "POST");
+    expect(writes).toHaveLength(1);
+    const body = JSON.parse(writes[0][1]!.body as string);
+    expect(body).toMatchObject({ target_commitish: "main", release_status: "pre" });
+    expect(body.body).toContain(`<!-- piik-source: ${revision} -->`);
+  } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
 });
 
 test("a missing attachment or conflicting source marker fails rather than claiming a completed mirror", async () => {
