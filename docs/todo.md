@@ -116,7 +116,7 @@ the feedback period; they do not delay that delivery.
   the current admission/switch owners; 2.x route-policy labels do not directly
   describe these 3.0 paths.
 - [ ] **3.0 NAT recovery and prediction controls.** Use the existing isolated
-  network lab to measure recovery after an interface or gateway mapping changes.
+  network lab to measure recovery after an endpoint interface changes.
   Compare a bounded prediction neighbourhood against the current single anchor
   only when observed mapping drift defeats it; retain the current socket,
   request and lifetime limits. The [NAT owner](./research/nat-traversal.md) keeps
@@ -126,10 +126,11 @@ the feedback period; they do not delay that delivery.
   with H.264 using synthetic text and motion. Include compatible H.264 forwarding
   cost; keep congestion control with the RTC owner. AV1/HEVC product integration
   remains a separate decision.
-- [ ] **Shared-link viewing assessment.** Define a temporary room activity for
-  a shared media URL, playback control and late joins. Validate with an owned
-  seekable video before platform-specific adapters; keep account access,
-  source playback and realtime screen routing distinct.
+- [ ] **Shared-link viewing assessment.** Prototype synchronized video within
+  the Browser source choice, alongside screen capture. Define its temporary
+  room activity, playback control and late-join snapshot. Cover direct media,
+  controllable embeds and website players through an authorized page connector.
+  Keep account access, source playback and realtime screen routing distinct.
 - [ ] **3.0 Native platform acceptance.** Build, install and validate the matching
   Android candidate. Complete physical microphone/camera acceptance for the
   Windows WebView entry; controlled runtime fallback, device
