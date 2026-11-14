@@ -47,11 +47,12 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - name: Check mirror readiness without build dependencies
+      - name: Prepare mirror before downloading original artifacts
         id: readiness
-        run: node scripts/release-mirror-ready.mjs
+        run: node scripts/release-mirror-prepare.mjs
         env:
           GH_TOKEN: ${{ github.token }}
+          ATOMGIT_TOKEN: ${{ secrets.ATOMGIT_TOKEN }}
       - run: npm ci --ignore-scripts
         if: steps.readiness.outputs.status == 'ready'
       - name: Resolve the published source

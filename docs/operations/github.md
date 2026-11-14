@@ -119,10 +119,13 @@ signing identity before distributing a package that promises automatic updates.
 [AtomGit TNTcraftHIM/Piik](https://atomgit.com/TNTcraftHIM/Piik) is the public
 download mirror. GitHub owns development, issues, source identity and original packages.
 The **AtomGit mirror** GitHub workflow copies published binary assets. Repository
-synchronization is optional and must not gate package distribution. A mirror's
+synchronization is intended to remain independent of package distribution; the
+Pull-mirror tag restriction below remains an unresolved platform dependency. A mirror's
 local Release tag only locates attachments; the GitHub source marker and verified
-original package digests establish their identity. Release creation uses the
-mirror's initialized default branch when the local tag does not exist.
+original package digests establish their identity. Before downloading original
+artifacts, publication prepares the prerelease using the mirror's initialized
+default branch when the local tag does not exist. A rejected missing tag fails
+this step. Pure readiness checks remain read-only.
 Its repository Actions secret is `ATOMGIT_TOKEN`. Never put this token in source,
 a remote URL or a distributed package. GitHub publication keeps its scoped token.
 
