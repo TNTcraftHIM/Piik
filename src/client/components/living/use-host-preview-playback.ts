@@ -15,9 +15,21 @@ export function useHostPreviewPlayback(
   videoRef: RefObject<HTMLVideoElement | null>,
   stream: MediaStream | null,
   autoPause: boolean,
+  localSource = stream !== null,
 ) {
   const [suspended, setSuspended] = useState(false);
   const pausedByUser = useRef(false);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !localSource) return;
+    // Native sound controls must not monitor a local capture, including one
+    // watched from another page that does not own its sharing controls.
+    const keepMuted = () => { video.muted = true; };
+    keepMuted();
+    video.addEventListener("volumechange", keepMuted);
+    return () => video.removeEventListener("volumechange", keepMuted);
+  }, [videoRef, localSource]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -30,11 +42,6 @@ export function useHostPreviewPlayback(
     const view = ownerDocument.defaultView;
     if (!view) return;
     let policyPause = false;
-    // Native PiP/fullscreen sound controls must not turn shared audio into
-    // local monitoring. The Host's volume control owns outgoing sound.
-    const keepMuted = () => { video.muted = true; };
-    keepMuted();
-    video.addEventListener("volumechange", keepMuted);
     const syncPlayback = () => {
       const shouldPause = shouldPauseLocalPreview(ownerDocument.visibilityState, ownerDocument.hasFocus(), isPictureInPicture(video), autoPause);
       setSuspended(shouldPause);
@@ -65,7 +72,6 @@ export function useHostPreviewPlayback(
     pictureEvents.forEach(event => video.addEventListener(event, syncPlayback));
     syncPlayback();
     return () => {
-      video.removeEventListener("volumechange", keepMuted);
       video.removeEventListener("pause", paused);
       video.removeEventListener("play", played);
       ownerDocument.removeEventListener("visibilitychange", syncPlayback);

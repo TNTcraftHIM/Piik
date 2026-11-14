@@ -7,6 +7,21 @@ import { ChannelVideo } from "../src/client/channel/components/ChannelMedia";
 import { ChannelStage, type ChannelStageProps } from "../src/client/channel/components/ChannelStage";
 import { PlaybackControlsView } from "../src/client/components/living/PlaybackControls";
 import { setCopy } from "../src/client/ui/copy";
+import { useHostPreviewPlayback } from "../src/client/components/living/use-host-preview-playback";
+
+const previewHooks = vi.hoisted(() => ({ active: false, cleanup: [] as (() => void)[] }));
+vi.mock("react", async importOriginal => {
+  const react = await importOriginal<typeof import("react")>();
+  return { ...react,
+    useRef: (value: unknown) => previewHooks.active ? { current: value } : react.useRef(value),
+    useState: (value: unknown) => previewHooks.active ? [value, () => {}] : react.useState(value),
+    useEffect: (effect: () => void | (() => void), deps: readonly unknown[]) => {
+      if (!previewHooks.active) return react.useEffect(effect, deps);
+      const cleanup = effect();
+      if (cleanup) previewHooks.cleanup.push(cleanup);
+    },
+  };
+});
 
 describe("Viewer playback binding", () => {
   it("distinguishes canceled playback from autoplay denial and actual failures", () => {
@@ -124,6 +139,46 @@ describe("Playback audio controls", () => {
 });
 
 describe("Local source playback", () => {
+  it.each([
+    { owned: false, localSource: true },
+    { owned: true, localSource: true },
+    { owned: false, localSource: false },
+  ])("keeps native sound controls scoped to local capture ($owned/$localSource)", ({ owned, localSource }) => {
+    const view = new EventTarget();
+    const owner = Object.assign(new EventTarget(), {
+      defaultView: view, visibilityState: "hidden", hasFocus: () => false,
+      pictureInPictureElement: null as unknown,
+    });
+    const video = Object.assign(new EventTarget(), {
+      ownerDocument: owner, muted: false, paused: false,
+      pause: vi.fn(() => { video.paused = true; video.dispatchEvent(new Event("pause")); }),
+      play: vi.fn(async () => { video.paused = false; video.dispatchEvent(new Event("play")); }),
+    });
+    previewHooks.active = true;
+    try {
+      useHostPreviewPlayback({ current: video as unknown as HTMLVideoElement }, owned ? {} as MediaStream : null, true, localSource);
+      video.muted = false;
+      video.dispatchEvent(new Event("volumechange"));
+      expect(video.muted).toBe(localSource);
+      expect(video.pause).toHaveBeenCalledTimes(owned ? 1 : 0);
+
+      // Native PiP keeps an owned preview playing while its page is hidden.
+      owner.pictureInPictureElement = video;
+      video.dispatchEvent(new Event("enterpictureinpicture"));
+      expect(video.play).toHaveBeenCalledTimes(owned ? 1 : 0);
+      video.muted = false;
+      video.dispatchEvent(new Event("volumechange"));
+      expect(video.muted).toBe(localSource);
+    } finally {
+      for (const cleanup of previewHooks.cleanup.splice(0).reverse()) cleanup();
+      previewHooks.active = false;
+    }
+    // A retired element must not keep the local-source sound restriction.
+    video.muted = false;
+    video.dispatchEvent(new Event("volumechange"));
+    expect(video.muted).toBe(false);
+  });
+
   it("keeps owned=false/localSource=true silent and a remote same-user source unowned", () => {
     setCopy({ lang: "en", vis: false });
     const stream = { id: "same-machine", getAudioTracks: () => [{ readyState: "live" }] } as unknown as MediaStream;
