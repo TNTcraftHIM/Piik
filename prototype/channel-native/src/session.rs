@@ -43,6 +43,8 @@ type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 const SIGNALING_IDLE_TIMEOUT: Duration = Duration::from_secs(20);
 
+#[cfg(test)]
+mod connection_tests;
 #[cfg(all(test, feature = "capture"))]
 mod tests;
 
@@ -499,7 +501,7 @@ pub async fn run_host(
         pending_captures: BTreeMap::new(),
     };
     let mut stop = std::pin::pin!(stop);
-    let result = session.drive(&mut stop).await;
+    let result = session.drive(&mut stop, crate::peer::can_prepare_udp).await;
     session.fail_captures("hosting_stopped");
     let closed = session.release().await;
     let error = result
@@ -552,7 +554,11 @@ impl Session {
         closed
     }
 
-    async fn drive(&mut self, stop: &mut (impl Future<Output = ()> + Unpin)) -> Result<()> {
+    async fn drive<F: Future<Output = bool>>(
+        &mut self,
+        stop: &mut (impl Future<Output = ()> + Unpin),
+        can_prepare_udp: impl Fn() -> F,
+    ) -> Result<()> {
         loop {
             let mut request = self.config.url.as_str().into_client_request()?;
             request
@@ -576,10 +582,19 @@ impl Session {
             };
             #[cfg(not(target_os = "android"))]
             let connector = None;
-            let connecting = time::timeout(
-                Duration::from_secs(5),
-                connect_async_tls_with_config(request, Some(limits), true, connector),
-            );
+            let prepare_udp = self.config.server_udp.is_none();
+            let connecting = async {
+                let Ok(Ok((socket, _))) = time::timeout(
+                    Duration::from_secs(5),
+                    connect_async_tls_with_config(request, Some(limits), true, connector),
+                )
+                .await
+                else {
+                    return None;
+                };
+                let can_prepare_udp = prepare_udp && can_prepare_udp().await;
+                Some((socket, can_prepare_udp))
+            };
             tokio::pin!(connecting);
             let connection = loop {
                 tokio::select! {
@@ -591,11 +606,10 @@ impl Session {
                     result = &mut connecting => break result,
                 }
             };
-            if let Ok(Ok((mut socket, _))) = connection {
+            if let Some((mut socket, can_prepare_udp)) = connection {
                 let join = Command::Join {
                     protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
-                    can_prepare_udp: self.config.server_udp.is_none()
-                        && crate::peer::can_prepare_udp().await,
+                    can_prepare_udp,
                     can_receive_video_layers: true,
                     name: self.config.name.clone(),
                     credential: self.config.credential.clone(),
