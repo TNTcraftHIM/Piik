@@ -126,6 +126,8 @@ the feedback period; they do not delay that delivery.
   the Browser source choice, alongside screen capture. Define its temporary
   room activity, playback control and late-join snapshot. Cover direct media,
   controllable embeds and website players through an authorized page connector.
+  The sharer controls common playback, pause, seeking and speed; viewers control
+  their own sound and viewing participation.
   Keep account access, source playback and realtime screen routing distinct.
 - [ ] **3.0 Native platform acceptance.** Build, install and validate the matching
   Android candidate. Complete physical microphone/camera acceptance for the
