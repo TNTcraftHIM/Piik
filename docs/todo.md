@@ -12,11 +12,6 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **Native device permission acceptance.** Verify that an explicitly allowed
-  origin/kind is remembered when the microphone changes, with the shared Piik
-  prompt retaining correct keyboard, rejection and owner-retirement behavior.
-  Use isolated fake devices for the permission control; physical capture remains
-  a separate platform check.
 - [ ] **App connection during webpage selection.** Capture the first control
   connection failure during the reported intermittent App disconnection. Use the
   opt-in control-close diagnostic to distinguish transport closure, handshake,

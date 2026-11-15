@@ -31,6 +31,8 @@ use wry::{WebContext, WebView, WebViewBuilder, WebViewBuilderExtWindows, WebView
 
 type Views = Rc<RefCell<BTreeMap<Uuid, PageView>>>;
 type Reply = oneshot::Sender<Result<Value, String>>;
+const MAX_PAGE_VIEWS: usize = 64;
+const MAX_PENDING_POPUPS: usize = 64;
 #[derive(Deserialize)]
 struct Message {
     document: Uuid,
@@ -282,7 +284,7 @@ impl Pages {
             return;
         };
         let create = || -> Result<()> {
-            anyhow::ensure!(page.views.borrow().len() < 64, "page_player_limit");
+            anyhow::ensure!(page.views.borrow().len() < MAX_PAGE_VIEWS, "page_player_limit");
             let key = Uuid::new_v4();
             let child = page_view(
                 WebViewBuilder::new().with_environment(popup.environment.clone()),
@@ -799,7 +801,7 @@ fn page_view(
                 let mut uri = PWSTR::null();
                 args.Uri(&mut uri)?;
                 let uri = webview2_com::take_pwstr(uri);
-                if !page::valid_url(&uri) || pending.borrow().len() >= 64 {
+                if !page::valid_url(&uri) || pending.borrow().len() >= MAX_PENDING_POPUPS {
                     return Ok(());
                 }
                 let environment = sender.cast::<ICoreWebView2_2>()?.Environment()?;
