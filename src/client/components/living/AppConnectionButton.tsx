@@ -62,10 +62,10 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
           rememberBuild(health);
           setState(health ? "ready" : "idle");
         }
-      } catch (error) {
+      } catch {
         if (!current.signal.aborted && !pending.current) {
           rememberBuild(null);
-          setState(error instanceof native.NativeCompatibilityError ? "incompatible" : "idle");
+          setState("idle");
         }
       }
     };
@@ -160,7 +160,7 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
       try {
         native = await import("../../native/client");
         if (signal.aborted) return;
-        const url = await native.discoverNativeConnect(signal);
+        const url = await native.discoverNativeConnect({ signal, waitForPermission: !attempt.automatic });
         if (signal.aborted) return;
         if (!url) { finish("unavailable"); return; }
         const health = await native.discoverNativeHealth({ signal, waitForPermission: false });

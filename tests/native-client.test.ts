@@ -115,6 +115,20 @@ describe("native App private wire", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it.each(["prompt", "denied"])("passive approval discovery does not request local access when permission is %s", async state => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    const permission = Object.assign(new EventTarget(), { state });
+    vi.stubGlobal("navigator", { permissions: { query: vi.fn().mockResolvedValue(permission) } });
+    const fetcher = vi.fn(async () => Response.json({ ...health, connectURL: "http://127.0.0.1:54321/client" }));
+    vi.stubGlobal("fetch", fetcher);
+    await expect(discoverNativeConnect({ waitForPermission: false })).resolves.toBeNull();
+    expect(fetcher).not.toHaveBeenCalled();
+    if (state === "prompt") {
+      await expect(discoverNativeConnect({ waitForPermission: true })).resolves.toContain("127.0.0.1:54321/client?");
+      expect(fetcher).toHaveBeenCalled();
+    }
+  });
+
   it("discovers only a local approval page without opening native control", async () => {
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/r/9527") });
     const socket = vi.fn();
@@ -151,7 +165,7 @@ describe("native App private wire", () => {
       signal.addEventListener("abort", () => reject(signal.reason), { once: true });
     })));
     const controller = new AbortController();
-    const result = discoverNativeConnect(controller.signal);
+    const result = discoverNativeConnect({ signal: controller.signal });
     await vi.waitFor(() => expect(signals).toHaveLength(NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1));
     controller.abort();
     await expect(result).resolves.toBeNull();

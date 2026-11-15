@@ -66,7 +66,7 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   const window = Object.assign(new EventTarget(), { open: vi.fn((): typeof popup | null => popup), location: { origin: site, assign: vi.fn() } });
   const document = Object.assign(new EventTarget(), { visibilityState: "visible" });
   const native = {
-    discoverNativeConnect: vi.fn(async (_signal: AbortSignal): Promise<string | null> => approval),
+    discoverNativeConnect: vi.fn(async (_options: { signal: AbortSignal; waitForPermission?: boolean }): Promise<string | null> => approval),
     discoverNativeHealth: vi.fn(async (options: { signal: AbortSignal; waitForPermission?: boolean }): Promise<object | null> =>
       options.waitForPermission === false && !activated ? null : {}),
     NativeCompatibilityError: class extends Error {},
@@ -290,7 +290,7 @@ describe("App connection approval", () => {
     expect(page.setState).toHaveBeenLastCalledWith("ready");
     expect(page.popup.closed).toBe(true);
     expect(page.pending.current).toBeNull();
-    expect(page.native.discoverNativeConnect.mock.calls[0]![0].aborted).toBe(true);
+    expect(page.native.discoverNativeConnect.mock.calls[0]![0].signal.aborted).toBe(true);
     page.message();
     expect(page.native.discoverNativeHealth).toHaveBeenCalledOnce();
   });
@@ -422,6 +422,34 @@ describe("App connection approval", () => {
 
 
 describe("initial App discovery", () => {
+  it("keeps automatic permission passive and waits only for an explicit connection", async () => {
+    const page = mount(false, "idle", false, true);
+    page.native.discoverNativeConnect.mockResolvedValue(null);
+    try {
+      await settle();
+      expect(page.native.discoverNativeConnect).toHaveBeenLastCalledWith(expect.objectContaining({ waitForPermission: false }));
+      await page.connect();
+      expect(page.native.discoverNativeConnect).toHaveBeenLastCalledWith(expect.objectContaining({ waitForPermission: true }));
+    } finally { page.cleanup(); }
+  });
+
+  it("keeps passive focus incompatibility idle while explicit connection shows recovery", async () => {
+    const page = mount(true);
+    const incompatible = new page.native.NativeCompatibilityError("incompatible");
+    page.native.discoverNativeHealth.mockRejectedValue(incompatible);
+    page.native.discoverNativeConnect.mockRejectedValue(incompatible);
+    try {
+      await settle();
+      page.window.dispatchEvent(new Event("focus"));
+      await settle();
+      expect(page.setState).toHaveBeenLastCalledWith("idle");
+      expect(page.showHelp).not.toHaveBeenCalled();
+      await page.connect();
+      expect(page.setState).toHaveBeenLastCalledWith("incompatible");
+      expect(page.showHelp).toHaveBeenCalled();
+    } finally { page.cleanup(); }
+  });
+
   it("automatically verifies an approved App without opening another page", async () => {
     const page = mount(true, "idle", false, true);
     await settle();
@@ -455,7 +483,7 @@ describe("initial App discovery", () => {
     expect(page.native.discoverNativeHealth).not.toHaveBeenCalled();
     let signal: AbortSignal | undefined;
     page.native.discoverNativeConnect.mockImplementationOnce(value => {
-      signal = value;
+      signal = value.signal;
       return new Promise(() => {});
     });
     void page.connect();

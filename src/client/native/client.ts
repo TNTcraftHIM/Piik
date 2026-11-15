@@ -130,7 +130,7 @@ export async function discoverNativeHealth(
 }
 
 /** A local approval address is not permission to use native media. */
-export async function discoverNativeConnect(signal?: AbortSignal): Promise<string | null> {
+export async function discoverNativeConnect(options: NativeDiscoveryOptions = {}): Promise<string | null> {
   return discoverNative("connect-discovery", body => {
     const { connectURL } = nativeConnectSchema.parse(body);
     const url = new URL(connectURL);
@@ -140,7 +140,7 @@ export async function discoverNativeConnect(signal?: AbortSignal): Promise<strin
     }
     url.searchParams.set("site", window.location.origin);
     return url.toString();
-  }, { signal });
+  }, options);
 }
 
 async function discoverNative<T>(
