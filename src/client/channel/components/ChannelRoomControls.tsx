@@ -257,7 +257,7 @@ function RoomSettings({ channel, room, onClose }: {
         {room.canManage && <section id={`${id}-room`} role="tabpanel" aria-labelledby={`${id}-room-tab`} hidden={selected !== "room"}>
           <RoomForm room={room} value={draft ?? roomDraft(room)} onChange={fields => setDraft(previous => ({ ...(previous ?? roomDraft(room)), ...fields }))} appHosted={channel.appConnected} disabled={!available || working} busy={busy}
             onCancel={onClose} onSave={settings => run(() => channel.updateRoom(room.id, settings, false), onClose)} />
-          {members.length > 0 && <details className="c3-room-members">
+          {room.access === "private" && members.length > 0 && <details className="c3-room-members">
             <summary>{t("room.settings.members")}</summary>
             {members.map(userId =>
               <div key={userId}><span>{userProfile(channel.state, channel.profiles, userId)?.name ?? t("room.common.user")}</span>

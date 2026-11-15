@@ -1306,17 +1306,17 @@ async function roomsAndFiles() {
   await roomInvitation(0, room.id);
   const invitationState = await until("room invitation controls finish loading", () => evaluate(0, `(() => {
     const panel = document.querySelector('.c3-room-invitation:popover-open');
-    const generate = panel?.querySelector('button[aria-label="Generate new invitation"]');
+    const generate = panel?.querySelector('button[aria-label="Generate password-free invitation"]');
     return { url: panel?.querySelector('.c3-invitation-link input')?.value,
       canGenerate: !!generate?.checkVisibility() && !generate.disabled && generate.getAttribute('aria-disabled') !== 'true' };
   })()`), value => value.url || value.canGenerate);
   if (!invitationState.url) {
-    await browser(0, "find", "role", "button", "click", "--name", "Generate new invitation", "--exact");
+    await browser(0, "find", "role", "button", "click", "--name", "Generate password-free invitation", "--exact");
   }
   const previousInvite = await until("current room invitation is loaded", () => evaluate(0,
     "document.querySelector('.c3-room-invitation:popover-open .c3-invitation-link input')?.value"), Boolean);
   await browser(0, "click", ".c3-room-invitation:popover-open > details.c3-settings-details > summary");
-  await browser(0, "find", "role", "button", "click", "--name", "Generate new invitation", "--exact");
+  await browser(0, "find", "role", "button", "click", "--name", "Confirm invitation reset", "--exact");
   const invite = await until("replacement room invitation is ready", () => evaluate(0,
     "document.querySelector('.c3-room-invitation:popover-open .c3-invitation-link input')?.value"), value => !!value && value !== previousInvite);
   await browser(0, "click", ".c3-room-invitation:popover-open .c3-invite-qr-details > summary");
@@ -1331,7 +1331,8 @@ async function roomsAndFiles() {
   await until("open page enters hidden room from room invitation", () => view(2), value => value.connection === "connected" && value.state.channel.rooms.some(value => value.id === room.id && value.authorized));
   assert.equal((await view(2)).sessionId, invitedSession, "invitation navigation must retain the live endpoint");
   await evaluate(2, "localStorage.removeItem('piik.channel.prototype.credential')");
-  await browser(2, "reload");
+  await browser(2, "open", "about:blank");
+  await browser(2, "open", invite);
   await until("fresh user enters hidden room from room invitation", () => view(2), value => value.connection === "connected" && value.state.channel.rooms.some(value => value.id === room.id && value.authorized));
   await capturedScreen(1, room.id);
   const memberName = (await view(1)).self.name;
