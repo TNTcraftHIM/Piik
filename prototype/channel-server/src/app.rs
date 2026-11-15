@@ -79,11 +79,15 @@ const PACKAGE_TARGET: &str = match option_env!("PIIK_BUILD_TARGET") {
     None => "",
 };
 
+pub type WebsitePermissionReset =
+    Arc<dyn Fn(String, oneshot::Sender<std::result::Result<(), String>>) -> bool + Send + Sync>;
+
 pub struct Config {
     pub data_root: PathBuf,
     pub assets: PathBuf,
     pub open_browser: bool,
     pub page_player: Option<page::Dispatcher>,
+    pub website_permission_reset: Option<WebsitePermissionReset>,
     pub window_navigation: Option<Arc<dyn Fn(String) -> bool + Send + Sync>>,
     pub cloudflared: PathBuf,
     pub ice_servers: Vec<Value>,
@@ -398,6 +402,7 @@ pub async fn serve(
             axum::routing::delete(delete_bookmark),
         )
         .route("/api/client-launcher/open", post(open_window))
+        .route("/api/client-launcher/website-permissions", post(reset_website_permissions))
         .route(
             "/api/client-launcher/update",
             get(update_state).post(update_request),
@@ -627,6 +632,7 @@ async fn launcher(State(app): State<Arc<App>>) -> ApiResult {
         launcher_state(&registry, app.port).map_err(operation_failure)?
     };
     state["windowNavigation"] = json!(app.config.window_navigation.is_some());
+    state["websitePermissionReset"] = json!(app.config.website_permission_reset.is_some());
     hosted::describe(&app, &mut state)
         .await
         .map_err(operation_failure)?;
@@ -730,6 +736,34 @@ async fn open_window(State(app): State<Arc<App>>, Json(request): Json<OpenWindow
         ));
     }
     Ok(Json(json!({"opened":true})))
+}
+async fn reset_website_permissions(
+    State(app): State<Arc<App>>,
+    Json(request): Json<Startup>,
+) -> ApiResult {
+    let site = web::origin(&request.site).map_err(|_| invalid_request("Invalid site origin"))?;
+    let Some(reset) = &app.config.website_permission_reset else {
+        return Err((
+            StatusCode::NOT_IMPLEMENTED,
+            Json(json!({"detail":"Website permission reset is unavailable"})),
+        ));
+    };
+    let (reply, completed) = oneshot::channel();
+    if !reset(site, reply) {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"detail":"Window unavailable"})),
+        ));
+    }
+    timeout(IO_TIMEOUT, completed)
+        .await
+        .map_err(|_| operation_failure(anyhow!("Website permission reset timed out")))?
+        .map_err(|_| operation_failure(anyhow!("Window unavailable")))?
+        .map_err(|error| operation_failure(anyhow!(error)))?;
+    let registry = app.registry.lock().await;
+    launcher_state(&registry, app.port)
+        .map(Json)
+        .map_err(operation_failure)
 }
 async fn update_state(State(app): State<Arc<App>>) -> Json<update::View> {
     Json(app.update.view())
@@ -2617,6 +2651,7 @@ mod lifecycle_tests {
                 assets: dir.path().into(),
                 open_browser: false,
                 page_player: Some(dispatch),
+                website_permission_reset: None,
                 window_navigation: None,
                 cloudflared: PathBuf::new(),
                 ice_servers: vec![],
@@ -2786,6 +2821,7 @@ mod lifecycle_tests {
                 assets: directory.path().into(),
                 open_browser: false,
                 page_player: None,
+                website_permission_reset: None,
                 window_navigation: Some(Arc::new({
                     let navigations = navigations.clone();
                     let available = available.clone();
@@ -3032,6 +3068,7 @@ mod lifecycle_tests {
                 assets: directory.path().into(),
                 open_browser: false,
                 page_player: None,
+                website_permission_reset: None,
                 window_navigation: None,
                 cloudflared: PathBuf::new(),
                 ice_servers: vec![],
@@ -3208,6 +3245,7 @@ mod lifecycle_tests {
                     assets: directory.path().into(),
                     open_browser: false,
                     page_player: None,
+                    website_permission_reset: None,
                     window_navigation: None,
                     cloudflared: PathBuf::new(),
                     ice_servers: vec![],
@@ -3406,6 +3444,7 @@ mod lifecycle_tests {
                 assets: directory.path().into(),
                 open_browser: false,
                 page_player: None,
+                website_permission_reset: None,
                 window_navigation: None,
                 cloudflared: PathBuf::new(),
                 ice_servers: vec![],

@@ -12,16 +12,17 @@ use tao::{
     platform::windows::{WindowBuilderExtWindows, WindowExtWindows},
     window::{Window, WindowId},
 };
+use tokio::sync::oneshot;
 use webview2_com::{
     Microsoft::Web::WebView2::Win32::{
-        ICoreWebView2Deferral, ICoreWebView2PermissionRequestedEventArgs3,
-        COREWEBVIEW2_PERMISSION_KIND_CAMERA, COREWEBVIEW2_PERMISSION_KIND_MICROPHONE,
-        COREWEBVIEW2_PERMISSION_STATE_ALLOW, COREWEBVIEW2_PERMISSION_STATE_DEFAULT,
-        COREWEBVIEW2_PERMISSION_STATE_DENY,
+        ICoreWebView2Deferral, ICoreWebView2PermissionRequestedEventArgs3, ICoreWebView2Profile4,
+        ICoreWebView2_13, COREWEBVIEW2_PERMISSION_KIND_CAMERA,
+        COREWEBVIEW2_PERMISSION_KIND_MICROPHONE, COREWEBVIEW2_PERMISSION_STATE_ALLOW,
+        COREWEBVIEW2_PERMISSION_STATE_DEFAULT, COREWEBVIEW2_PERMISSION_STATE_DENY,
     },
-    PermissionRequestedEventHandler,
+    PermissionRequestedEventHandler, SetPermissionStateCompletedHandler,
 };
-use windows_core::Interface;
+use windows_core::{Interface, PCWSTR};
 use wry::{
     NewWindowResponse, WebContext, WebView, WebViewBuilder, WebViewBuilderExtWindows,
     WebViewExtWindows,
@@ -32,6 +33,62 @@ const BRAND_MARK: &str = include_str!("../../../../public/favicon.svg");
 const BUTTONS: &str = include_str!("../../../../src/client/components/living/button.css");
 const PANEL: &str =
     include_str!("../../../../src/client/channel/components/channel-settings-dialog.css");
+
+// The platform profile is the only saved website-grant store.
+pub(super) fn profile(view: &WebView) -> Result<ICoreWebView2Profile4> {
+    unsafe {
+        Ok(view
+            .webview()
+            .cast::<ICoreWebView2_13>()?
+            .Profile()?
+            .cast()?)
+    }
+}
+
+pub(super) fn reset(
+    profile: &ICoreWebView2Profile4,
+    origin: &str,
+    reply: oneshot::Sender<std::result::Result<(), String>>,
+) {
+    let kinds = [
+        COREWEBVIEW2_PERMISSION_KIND_MICROPHONE,
+        COREWEBVIEW2_PERMISSION_KIND_CAMERA,
+    ];
+    let remaining = Rc::new(Cell::new(kinds.len()));
+    let result = Rc::new(RefCell::new((None::<String>, Some(reply))));
+    let complete = Rc::new(move |error: Option<String>| {
+        let mut result = result.borrow_mut();
+        if result.0.is_none() {
+            result.0 = error;
+        }
+        remaining.set(remaining.get() - 1);
+        if remaining.get() == 0 {
+            let value = result.0.take().map_or(Ok(()), Err);
+            if let Some(reply) = result.1.take() {
+                let _ = reply.send(value);
+            }
+        }
+    });
+    let origin: Vec<u16> = origin.encode_utf16().chain(Some(0)).collect();
+    for kind in kinds {
+        let completed = complete.clone();
+        let handler = SetPermissionStateCompletedHandler::create(Box::new(move |status| {
+            completed(status.err().map(|error| error.to_string()));
+            Ok(())
+        }));
+        let started = unsafe {
+            profile.SetPermissionState(
+                kind,
+                PCWSTR(origin.as_ptr()),
+                COREWEBVIEW2_PERMISSION_STATE_DEFAULT,
+                &handler,
+            )
+        };
+        if let Err(error) = started {
+            complete(Some(error.to_string()));
+        }
+    }
+}
 
 pub(super) struct Permission {
     pub(super) owner: WindowId,

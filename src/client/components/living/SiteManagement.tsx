@@ -23,12 +23,13 @@ export interface SiteManagementProps {
   onApprove(origin: string): Promise<void>;
   onRevoke(origin: string): Promise<void>;
   onStartup(origin: string): Promise<void>;
+  onResetWebsitePermissions?(origin: string): Promise<void>;
   onOpen(origin: string): void;
 }
 
 /** One site identity, with independent bookmark, device-consent and startup effects. */
 export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, ownedStartup, ownedSites, localSite,
-  busy: ownerBusy, accessError, onSave, onRemove, onApprove, onRevoke, onStartup, onOpen }: SiteManagementProps) {
+  busy: ownerBusy, accessError, onSave, onRemove, onApprove, onRevoke, onStartup, onResetWebsitePermissions, onOpen }: SiteManagementProps) {
   const { t } = useCopy();
   const id = useId();
   const panel = useRef<HTMLElement>(null);
@@ -99,6 +100,12 @@ export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, o
         <p>{t(automatic ? "client.sites.automaticHint" : "client.sites.appHint")}</p>
         <div className="lr-site-consent"><span className="lr-site-status"><Glyph name={approved ? "check" : "lock"} size={16} /><span>{t(automatic ? "client.sites.automatic" : approved ? "client.sites.allowed" : "client.sites.notAllowed")}</span></span>
           {!automatic && <Btn icon={approved ? "linkOff" : "check"} quiet={approved} tone={approved ? "danger" : undefined} size="compact" title={approved ? "client.sites.revoke" : "client.sites.allow"} cap={approved ? "client.sites.revoke" : "client.sites.allow"} disabled={busy} onClick={() => accessAction(approved ? onRevoke(selected) : onApprove(selected))} />}</div>
+      </section>}
+      {selected && onResetWebsitePermissions && <section className="lr-site-section">
+        <h4><Glyph name="microphone" size={18} /><span>{t("client.sites.websitePermissions")}</span></h4>
+        <p>{t("client.sites.websitePermissionsHint")}</p>
+        <Btn icon="refresh" size="compact" title="client.sites.resetWebsitePermissions" cap="client.sites.resetWebsitePermissions"
+          disabled={busy} onClick={() => accessAction(onResetWebsitePermissions(selected))} />
       </section>}
       {approved && selected && <section className="lr-site-section">
         <h4><Glyph name="play" size={18} /><span>{t("client.sites.startup")}</span></h4>

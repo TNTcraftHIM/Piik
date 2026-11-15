@@ -124,10 +124,9 @@ the feedback period; they do not delay that delivery.
   retain manual download. The
   [delivery proposal](./research/cross-platform-client-runtime.md#30-app-update-delivery)
   keeps authority, active sessions and data outside the download operation.
-- [ ] **Native website permission reset.** Assess a small reset action in the
-  existing site details for the system WebView's saved microphone/camera grants.
-  Keep those grants distinct from App control approval and use the platform
-  permission store without introducing a second registry.
+- [ ] **Native website permission reset.** Complete matching-package acceptance
+  of the site-details action: the selected website asks for microphone/camera
+  access again, while other websites retain their saved choices.
 - [ ] **Managed one-click deployment.** Validate an ordinary Piik room and data
   recovery on a persistent hosting target. The
   [deployment assessment](./deployment.md#managed-one-click-hosting) distinguishes

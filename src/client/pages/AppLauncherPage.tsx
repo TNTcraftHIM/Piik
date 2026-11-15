@@ -42,6 +42,7 @@ const launcherStateSchema = z.object({
   sitePort: z.number().int().min(1).max(65535),
   siteAddress: z.string().url(),
   windowNavigation: z.boolean().default(false),
+  websitePermissionReset: z.boolean().default(false),
   debug: z.boolean().optional(),
   lan: z.object({
     addresses: z.array(z.object({ address: z.string(), name: z.string() })),
@@ -263,7 +264,7 @@ export function AppLauncherPage() {
     } finally { finish(); }
   }
 
-  async function changeSite(nextSite: string, setting: "site" | "startup-site" = "site", starAfterApproval = false, allowed = true): Promise<boolean> {
+  async function changeSite(nextSite: string, setting: "site" | "startup-site" | "website-permissions" = "site", starAfterApproval = false, allowed = true): Promise<boolean> {
     if (siteBusy) return false;
     const errorSite = nextSite || startupSite || null;
     const finish = beginStateChange();
@@ -271,7 +272,7 @@ export function AppLauncherPage() {
     setSiteError(undefined);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8_000);
-    async function save(setting: "site" | "startup-site"): Promise<boolean> {
+    async function save(setting: "site" | "startup-site" | "website-permissions"): Promise<boolean> {
       const response = await fetch(`/api/client-launcher/${setting}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ site: nextSite, ...(setting === "site" ? { allowed } : {}) }),
@@ -300,7 +301,7 @@ export function AppLauncherPage() {
     await changeSite(site, "site", openOnApproval);
   }
 
-  async function manageSite(site: string, setting: "site" | "startup-site", allowed = true): Promise<void> {
+  async function manageSite(site: string, setting: "site" | "startup-site" | "website-permissions", allowed = true): Promise<void> {
     if (!await changeSite(site, setting, false, allowed)) throw new Error("Could not save App settings");
   }
   const siteManagement = {
@@ -308,6 +309,7 @@ export function AppLauncherPage() {
     onApprove: (site: string) => manageSite(site, "site"),
     onRevoke: (site: string) => manageSite(site, "site", false),
     onStartup: (site: string) => manageSite(site, "startup-site"),
+    onResetWebsitePermissions: serverState?.websitePermissionReset ? (site: string) => manageSite(site, "website-permissions") : undefined,
   };
 
   const errorKey = `client.launch.failure.${error?.reason}`;

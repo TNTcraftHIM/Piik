@@ -134,11 +134,18 @@ enum WindowAction {
 }
 #[derive(Clone)]
 enum ServiceEvent {
+    ResetWebsitePermissions(
+        std::sync::Arc<
+            std::sync::Mutex<Option<(String, oneshot::Sender<std::result::Result<(), String>>)>>,
+        >,
+    ),
     PageCommand(std::sync::Arc<std::sync::Mutex<Option<crate::app::page::Command>>>),
     PageMessage(uuid::Uuid, String),
     PageNavigate(uuid::Uuid),
     PagePopup(uuid::Uuid),
-    Ready { entry: String },
+    Ready {
+        entry: String,
+    },
     Navigate(String),
     Finished,
     PopupClosed(WindowId),
@@ -454,6 +461,19 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             None
         }
     };
+    let permission_profile = window
+        .as_ref()
+        .and_then(|main| permission::profile(&main.content).ok());
+    let permission_reset_events = events.create_proxy();
+    config.website_permission_reset = permission_profile.as_ref().map(|_| {
+        std::sync::Arc::new(move |site, reply| {
+            permission_reset_events
+                .send_event(ServiceEvent::ResetWebsitePermissions(std::sync::Arc::new(
+                    std::sync::Mutex::new(Some((site, reply))),
+                )))
+                .is_ok()
+        }) as app::WebsitePermissionReset
+    });
     let navigation = events.create_proxy();
     config.window_navigation = window.as_ref().map(|_| {
         std::sync::Arc::new(move |url: String| {
@@ -497,6 +517,15 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                 }
                 if let Some(prompt) = &prompt {
                     prompt.update_appearance(&theme, language);
+                }
+            }
+            Event::UserEvent(ServiceEvent::ResetWebsitePermissions(command)) => {
+                if let Some((site, reply)) = command.lock().unwrap().take() {
+                    if let Some(profile) = &permission_profile {
+                        permission::reset(profile, &site, reply);
+                    } else {
+                        let _ = reply.send(Err("Website permission reset is unavailable".into()));
+                    }
                 }
             }
             Event::UserEvent(ServiceEvent::PageCommand(command)) => {

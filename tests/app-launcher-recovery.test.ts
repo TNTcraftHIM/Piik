@@ -146,7 +146,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, { debug = false, mode, startup =
       return nextTimer;
     },
     clearTimeout: (id: number) => timers.delete(id),
-  }) as { cleanup(): void; changeMode(mode: AppMode): void; changeSite(site: string, setting?: "site" | "startup-site", starAfterApproval?: boolean, allowed?: boolean): Promise<boolean>; manageSite(site: string, setting: "site" | "startup-site", allowed?: boolean): Promise<void>; approveSite(site: string): Promise<void>; enableDebug(): Promise<void>; exportDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
+  }) as { cleanup(): void; changeMode(mode: AppMode): void; changeSite(site: string, setting?: "site" | "startup-site" | "website-permissions", starAfterApproval?: boolean, allowed?: boolean): Promise<boolean>; manageSite(site: string, setting: "site" | "startup-site" | "website-permissions", allowed?: boolean): Promise<void>; approveSite(site: string): Promise<void>; enableDebug(): Promise<void>; exportDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
   return { state, setters, ...actions, downloads, navigate: window.location.replace, focus: () => window.dispatchEvent(new Event("focus")),
     retry: () => {
       const entry = [...timers].find(([, timer]) => timer.delay === 750);
@@ -711,4 +711,47 @@ it("keeps an asynchronous site A failure with A while other details and the list
     expect(renderSelected()).not.toContain("client.connect.saveFailed");
     expect(renderSelected(siteA)).toContain("client.connect.saveFailed");
   } finally { page.cleanup(); vi.mocked(useState).mockClear(); }
+});
+
+
+it("resets only the selected website's saved grants and retains launcher capabilities", async () => {
+  const fetcher = vi.fn(async () => Response.json({
+    ...saved, websitePermissionReset: true, windowNavigation: true,
+  }));
+  const page = mount(fetcher);
+  const site = saved.sites[0]!;
+  try {
+    await settle();
+    expect(page.state.ServerState).toMatchObject({ websitePermissionReset: true, windowNavigation: true });
+    // Mutation replies contain the shared registry snapshot, not runtime capabilities.
+    fetcher.mockResolvedValueOnce(Response.json(saved));
+    await page.manageSite(site, "website-permissions");
+    expect(fetcher).toHaveBeenLastCalledWith("/api/client-launcher/website-permissions", expect.objectContaining({
+      body: JSON.stringify({ site }),
+    }));
+    expect(page.state.ServerState).toMatchObject({ websitePermissionReset: true, windowNavigation: true });
+    expect(page.state.Sites).toEqual(saved.sites);
+    expect(page.state.StartupSite).toBe("");
+    expect(page.navigate).not.toHaveBeenCalled();
+
+    fetcher.mockRejectedValueOnce(new Error("Reset failed"));
+    await expect(page.manageSite(site, "website-permissions")).rejects.toThrow();
+    expect(page.state.SiteError).toEqual({ site, message: "client.connect.saveFailed" });
+    expect(page.state.ServerState).toMatchObject({ websitePermissionReset: true, windowNavigation: true });
+  } finally { page.cleanup(); }
+});
+
+it("offers website reset independently of App approval only when the Native capability exists", () => {
+  const site = "https://website.example";
+  const props = {
+    bookmarks: [{ id: "one", origin: site, name: "Website" }], sites: [], startupSite: "", ownedSites: [], busy: false,
+    async onSave() {}, async onRemove() {}, async onApprove() {}, async onRevoke() {}, async onStartup() {}, onOpen() {},
+  };
+  const render = (reset?: (origin: string) => Promise<void>) => {
+    vi.mocked(useState).mockReturnValueOnce([{ origin: site, draft: { origin: site, name: "Website" } }, vi.fn()]);
+    return renderToStaticMarkup(createElement(SiteManagement, { ...props, onResetWebsitePermissions: reset }));
+  };
+  const resetLabel = /Reset website permissions|\u91cd\u7f6e\u7f51\u9875\u6743\u9650/;
+  expect(render()).not.toMatch(resetLabel);
+  expect(render(async () => {})).toMatch(resetLabel);
 });

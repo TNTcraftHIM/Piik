@@ -67,6 +67,7 @@ pub fn nativeStart<'local>(
                     assets: PathBuf::from(assets.mutf8_chars(env)?.to_string()),
                     cloudflared: PathBuf::from(helper.mutf8_chars(env)?.to_string()),
                     open_browser: false,
+                    website_permission_reset: None,
                     window_navigation: None,
                     page_player: None,
                     ice_servers: piik_channel_prototype::ice_servers_from_environment()?,
