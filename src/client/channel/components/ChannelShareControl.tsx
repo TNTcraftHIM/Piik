@@ -1,3 +1,6 @@
+import { WatchIndexedTrackPicker } from "./WatchIndexedTrackPicker";
+import { indexedMediaSelection } from "../watch-indexed-source";
+import type { NativePageIndexedSelection } from "../../native/wire";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { CaptureSourcePicker, type NativeSourceList } from "../../components/living/CaptureSourcePicker";
 import { Btn, SwitchItem } from "../../components/living/primitives";
@@ -10,7 +13,7 @@ import { ShareMicrophoneSettings } from "../../components/living/ShareMicrophone
 import { MAX_AUDIO_SEND_BITRATE, QUALITY_PROFILES, VIDEO_CAPTURE_LIMITS, captureFramerateCeiling, matchingQualityProfileId, type QualityProfile } from "../../media/quality";
 import { activateNativePicker } from "../../native/activation";
 import type { NativeCaptureSources } from "../app-link";
-import type { ChannelController } from "../types";
+import type { ChannelController, WatchMediaSources } from "../types";
 import { screenTitle } from "../presentation";
 import { channelErrorPresentation } from "../error-presentation";
 import { ChannelSettingsDialog, useSettingsAction } from "./ChannelSettingsDialog";
@@ -20,7 +23,6 @@ import { MAX_WATCH_URL_LENGTH, type ChannelPublication } from "../protocol";
 import "./channel-share-control.css";
 import { CaptureSourceCard } from "../../components/living/CaptureSourceCard";
 import { BrandLoader } from "../../components/living/BrandMark";
-import type { NativePageMediaChoice } from "../../native/wire";
 
 function ShareTitleEditor({ sharing, channel, disabled }: {
   sharing: Extract<ChannelPublication, { kind: "screen" }>; channel: ChannelController; disabled: boolean;
@@ -199,15 +201,15 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
           {canChooseExecution && <EncodingExecutionControl value={encodingExecution}
             disabled={disabled || busy || !!sharing || !!captureRequest} onChange={channel.setEncodingExecution} />}</>}
         audio={<>
-          {sharing && selectedNative?.current && selectedNative.target.kind === "display" && sources.kind === "ready" && sources.systemAudio && sources.processAudioExclusion &&
+          {sharing && selectedNative?.current && selectedNative.target.kind === "display" && sources.kind === "ready" && sources.systemAudio &&
             <div className="lr-door-group lr-source-audio-settings">
               <SwitchItem checked={selectedNative.audio} label={t("host.sourcePicker.systemAudio")}
                 hint={selectedNative.audio ? "hint-stop-audio" : "hint-share-audio"}
                 disabled={disabled || busy || qualityPending || microphonePending || sharing.paused}
                 onChange={audio => { void startNativeScreen(roomId, selectedNative.target, audio, selectedNative.excludeAudio, selectedNative.showCaptureBorder).catch(() => {}); }} />
-              <LiveAudioExclusion load={loadAudioApplications} value={selectedNative.excludeAudio}
+              {sources.processAudioExclusion && <LiveAudioExclusion load={loadAudioApplications} value={selectedNative.excludeAudio}
                 disabled={!selectedNative.audio || disabled || busy || qualityPending || microphonePending || sharing.paused}
-                onChange={excludeAudio => { void startNativeScreen(roomId, selectedNative.target, true, excludeAudio, selectedNative.showCaptureBorder).catch(() => {}); }} />
+                onChange={excludeAudio => { void startNativeScreen(roomId, selectedNative.target, true, excludeAudio, selectedNative.showCaptureBorder).catch(() => {}); }} />}
             </div>}
           {sharing && microphone && microphoneSettings && <ShareMicrophoneSettings available={microphone.available}
             canDisable={microphone.canDisable}
@@ -252,22 +254,46 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
 
 function WatchForwardSettings({ channel, activityId, disabled }: { channel: ChannelController; activityId: string; disabled: boolean }) {
   const { t } = useCopy();
-  const [choices, setChoices] = useState<NativePageMediaChoice[] | null>(null);
+  const [sources, setSources] = useState<WatchMediaSources | null>(null);
+  const discovery = useRef<AbortController | null>(null);
+  useEffect(() => () => discovery.current?.abort(), [activityId]);
+  const cancel = () => { discovery.current?.abort(); discovery.current = null; setSources(null); };
   const { error, run } = useSettingsAction();
   const activity = channel.state?.watchActivities.find(value => value.id === activityId);
   const busy = channel.pending.has(`watch-source:${activityId}`);
+  const failure = error ?? sources?.error;
+  const forward = (choice: string | NativePageIndexedSelection) => {
+    discovery.current?.abort();
+    const controller = discovery.current = new AbortController();
+    void run(() => channel.setWatchByteSource(activityId, choice, controller.signal));
+  };
   return <div className="c3-watch-forward-settings c3-external-input">
     <h3>{t("watch.forward.title")}</h3><p>{t("watch.forward.upload")}</p>
     {activity?.byteSource ? <><p role="status">{t("watch.forward.active")}</p>
       <Btn icon="stop" title="watch.forward.stop" cap="watch.forward.stop" disabled={disabled || busy} busy={busy}
-        onClick={() => { void run(() => channel.setWatchByteSource(activityId, null), () => setChoices(null)); }} /></>
-      : choices === null ? <Btn icon="share" title="watch.forward.prepare" cap="watch.forward.prepare" disabled={disabled || busy}
-        onClick={() => { void run(() => channel.watchMediaChoices(activityId), setChoices); }} />
-      : choices.length ? <><p>{t("watch.forward.choose")}</p><div className="lr-source-picker-list">
-        {choices.map(choice => <CaptureSourceCard key={choice.id} title={choice.name || new URL(choice.displayURL).hostname} action={t("watch.forward.enableNamed", { name: choice.name || new URL(choice.displayURL).hostname })}
-          icon="play" hint="hint-source-picker" disabled={disabled || busy} onSelect={() => { void run(() => channel.setWatchByteSource(activityId, choice.id)); }} />)}
-      </div></> : <p role="status">{t("watch.forward.none")}</p>}
-    {error && <p className="c3-settings-error" role="alert">{channelErrorPresentation(error, t).message}</p>}
+        onClick={() => { void run(() => channel.setWatchByteSource(activityId, null), cancel); }} /></>
+      : sources === null ? <>
+        {busy ? <div className="lr-source-picker-status" role="status"><BrandLoader /><span>{t("common.loading")}</span></div>
+          : <Btn icon="share" title="watch.forward.prepare" cap="watch.forward.prepare" disabled={disabled}
+            onClick={() => { discovery.current?.abort(); const controller = discovery.current = new AbortController();
+              const publish = (value: WatchMediaSources) => { if (!controller.signal.aborted) setSources(value); };
+              void run(() => channel.watchMediaChoices(activityId, controller.signal, publish), publish); }} />}
+        {busy && <Btn icon="x" quiet title="common.cancel" cap="common.cancel" onClick={cancel} />}
+      </> : <>
+        {sources.choices.length > 0 && <><p>{t("watch.forward.choose")}</p><div className="lr-source-picker-list" data-text-list>
+          {sources.choices.map(choice => <CaptureSourceCard key={choice.id} title={choice.name || new URL(choice.displayURL).hostname} action={t("watch.forward.enableNamed", { name: choice.name || new URL(choice.displayURL).hostname })}
+            icon="play" hint="hint-source-picker" disabled={disabled || busy} onSelect={() => forward(choice.id)} />)}
+        </div></>}
+        {sources.indexed.length > 0 && <WatchIndexedTrackPicker choices={sources.indexed} disabled={disabled} busy={busy}
+          onConfirm={(videoId, audioId) => {
+            const video = sources.indexed.find(value => value.candidate.id === videoId)?.inspection;
+            const audio = audioId ? sources.indexed.find(value => value.candidate.id === audioId)?.inspection : undefined;
+            if (video) forward(indexedMediaSelection(video, audio));
+          }} />}
+        {!sources.choices.length && !sources.indexed.length && <p role="status">{t("watch.forward.none")}</p>}
+        <Btn icon="x" quiet title="common.cancel" cap="common.cancel" disabled={busy} onClick={cancel} />
+      </>}
+    {failure && <p className="c3-settings-error" role="alert">{channelErrorPresentation(failure, t).message}</p>}
   </div>;
 }
 
@@ -276,9 +302,9 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
   const [url, setURL] = useState(initialURL);
   const { error, run } = useSettingsAction();
   const page = channel.watchPage(roomId, activityId);
-  const browserSources = !activityId ? page?.browserSource : undefined;
-  const browserHeading = useRef<HTMLHeadingElement>(null);
-  useLayoutEffect(() => { if (browserSources) browserHeading.current?.focus(); }, [!!browserSources]);
+  const pageSources = !activityId ? page?.watchSources : undefined;
+  const pageSourcesHeading = useRef<HTMLHeadingElement>(null);
+  useLayoutEffect(() => { if (pageSources) pageSourcesHeading.current?.focus(); }, [!!pageSources]);
   const committing = !activityId && channel.sourceSelectionCommitting(roomId);
   const busy = committing || channel.pending.has(activityId ? `watch-video:${activityId}` : `screen:${roomId}`);
   useEffect(() => {
@@ -290,23 +316,26 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
     else if (busy || page) void channel.cancelScreenSelection(roomId).catch(() => {});
     onClose();
   };
-  return <ChannelSettingsDialog compact title={t("watch.start")} error={error} onClose={close} closeDisabled={committing}>
+  return <ChannelSettingsDialog compact title={t("watch.start")} error={error ?? pageSources?.error ?? null} onClose={close} closeDisabled={committing}>
     {page ? <div className="c3-settings-panels c3-external-input">
-      {browserSources ? <><h3 ref={browserHeading} tabIndex={-1}>{t("watch.browserSource.title")}</h3><p>{t("watch.browserSource.help")}</p></>
+      {pageSources ? <><h3 ref={pageSourcesHeading} tabIndex={-1}>{t(pageSources.indexed.length ? "watch.forward.title" : "watch.browserSource.title")}</h3>{pageSources.choices.length > 0 && <p>{t("watch.browserSource.help")}</p>}</>
         : <p>{t("watch.chooseVideo")}</p>}
       <Btn icon="window" quiet size="compact" title="watch.openedPage" cap="watch.openedPage" onClick={() => { void run(() => channel.focusWatchPage(roomId, activityId)); }} />
-      {browserSources ? <>
-        {busy && !error && browserSources.choices.length === 0 && <div className="lr-source-picker-status" role="status">
+      {pageSources ? <>
+        {busy && !error && pageSources.choices.length === 0 && pageSources.indexed.length === 0 && <div className="lr-source-picker-status" role="status">
           <BrandLoader /><span>{t("common.loading")}</span>
         </div>}
-        {browserSources.choices.length > 0 && <div className="lr-source-picker-list" data-text-list>
-          {browserSources.choices.map(choice => {
+        {!busy && !pageSources.error && pageSources.choices.length === 0 && pageSources.indexed.length === 0 && <p role="status">{t("watch.waitForVideo")}</p>}
+        {pageSources.choices.length > 0 && <div className="lr-source-picker-list" data-text-list>
+          {pageSources.choices.map(choice => {
             const source = new URL(choice.displayURL), name = choice.name || source.host;
             return <CaptureSourceCard key={choice.id} title={name} description={source.host + source.pathname}
               action={t("watch.browserSource.selectNamed", { name })} icon="play" hint="hint-source-picker" disabled={busy}
               onSelect={() => { void run(() => channel.selectWatchBrowserSource(roomId, choice.id), onClose); }} />;
           })}
         </div>}
+        {pageSources.indexed.length > 0 && <WatchIndexedTrackPicker choices={pageSources.indexed} busy={busy}
+          onConfirm={(videoId, audioId) => { void run(() => channel.selectWatchIndexedSource(roomId, videoId, audioId), onClose); }} />}
         <Btn icon="globe" quiet title="watch.browserSource.skip" cap="watch.browserSource.skip" disabled={busy}
           onClick={() => { void run(() => channel.selectWatchBrowserSource(roomId, null), onClose); }} />
       </> : page.candidates.length ? <div className="lr-source-picker-list">

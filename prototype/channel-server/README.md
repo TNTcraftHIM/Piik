@@ -297,6 +297,10 @@ opens a separate website window; select its player after loading or signing in.
 If the player uses a media buffer, Piik offers the video addresses discovered in
 that page. Choose one for Browser viewers to try, or share the original webpage
 only. Selecting an address does not enable uploading.
+The list updates as the page discovers media. For indexed sources, choose a
+video track and optional audio track, then explicitly confirm forwarding.
+The App sends the original encoded bytes through the room's peer paths;
+the [website verification record](../../docs/verification-status.md) records current limits.
 The sharer controls play, pause, position and speed. Each viewer controls local
 sound and can stop watching independently.
 

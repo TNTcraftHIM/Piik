@@ -7,9 +7,24 @@
   };
   const frame = uuid(), elements = new Map(), ids = new WeakMap();
   const children = new Map();
+  const encoder = new TextEncoder();
   const forward = message => {
-    if (window === top) window.chrome.webview.postMessage(JSON.stringify({ ...message, document: frame }));
-    else parent.postMessage(message, '*');
+    if (window !== top) { parent.postMessage(message, '*'); return; }
+    const envelope = { ...message, document: frame };
+    const post = value => window.chrome.webview.postMessage(JSON.stringify(value));
+    if (message.kind !== 'resources') { post(envelope); return; }
+    // Native caps the complete UTF-8 IPC body at 64 KiB, including frame ancestry.
+    const base = encoder.encode(JSON.stringify({ ...envelope, urls: [] })).length;
+    let urls = [], bytes = base;
+    for (const url of message.urls) {
+      const length = encoder.encode(JSON.stringify(url)).length;
+      if (urls.length && (urls.length === 128 || bytes + 1 + length > 65536)) {
+        post({ ...envelope, urls }); urls = []; bytes = base;
+      }
+      if (base + length > 65536) continue;
+      bytes += length + (urls.length ? 1 : 0); urls.push(url);
+    }
+    if (urls.length) post({ ...envelope, urls });
   };
   const send = payload => forward({ bridge: 'piik-page-player', frame, ancestors: [], ...payload });
   addEventListener('message', event => {
@@ -18,15 +33,22 @@
     if (!element || children.size >= 64 && !children.has(event.source)) return;
     const ancestors = event.data.ancestors;
     if (!Array.isArray(ancestors) || ancestors.length >= 32) return;
-    children.set(event.source, { element, frame: ancestors[0] || event.data.frame });
+    const childFrame = ancestors[0] || event.data.frame, previous = children.get(event.source);
+    if (previous && previous.frame !== childFrame) send({ kind: 'removed', removed: previous.frame });
+    children.set(event.source, { element, frame: childFrame });
     forward({ ...event.data, ancestors: [frame, ...ancestors] });
   });
   if (window === top) send({ kind: 'document' });
-  const resources = new Set();
-  new PerformanceObserver(list => {
-    for (const entry of list.getEntries()) if (resources.size < 128) resources.add(entry.name);
-    send({ kind: 'resources', urls: [...resources] });
-  }).observe({ type: 'resource', buffered: true });
+  const resources = new PerformanceObserver(list => {
+    let urls = [];
+    for (const entry of list.getEntries()) {
+      if (entry.name.length > 4096 || !/^https?:\/\//.test(entry.name)) continue;
+      urls.push(entry.name);
+      if (urls.length === 128) { send({ kind: 'resources', urls }); urls = []; }
+    }
+    if (urls.length) send({ kind: 'resources', urls });
+  });
+  resources.observe({ type: 'resource', buffered: true });
   const state = video => ({ position: video.currentTime, paused: video.paused, rate: video.playbackRate,
     duration: Number.isFinite(video.duration) ? video.duration : null, readyState: video.readyState, ended: video.ended,
     buffered: Array.from({ length: video.buffered.length }, (_, index) => [video.buffered.start(index), video.buffered.end(index)]) });
@@ -57,7 +79,7 @@
   };
   new MutationObserver(discover).observe(document, { childList: true, subtree: true });
   addEventListener('DOMContentLoaded', discover, { once: true });
-  addEventListener('pagehide', () => send({ kind: 'candidates', candidates: [] }));
+  addEventListener('pagehide', () => send({ kind: 'removed', removed: frame }));
   addEventListener('message', async event => {
     const command = event.data;
     if (command?.bridge !== 'piik-page-command') return;

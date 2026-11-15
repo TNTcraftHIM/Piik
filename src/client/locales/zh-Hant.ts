@@ -1,6 +1,13 @@
 import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 export const zhHant: Record<CopyKey, string> = {
+  "watch.forward.tracksHelp": "分別選擇畫面及可選的聲音。確認後開始使用本機上傳頻寬。",
+  "watch.forward.noVideoTrack": "沒有可轉發的影片軌道。你仍可在原網頁中觀看。",
+  "watch.forward.videoOnly": "僅畫面，不帶聲音",
+  "watch.forward.trackUnavailable": "部分來源無法讀取或目前不支援。可以選擇其餘軌道。",
+  "watch.forward.selected": "將轉發：{video} + {audio}",
+  "watch.forward.confirmTracks": "確認並開始轉發",
+  "watch.forward.channels": "{count} 聲道",
   "watch.viewersCount": "已加入觀看：{count} 人",
   "watch.joined": "已加入觀看",
   "watch.noViewers": "還沒有其他人加入觀看。",
@@ -21,7 +28,9 @@ export const zhHant: Record<CopyKey, string> = {
   "watch.forward.receiveHelp": "需要可用的房間 P2P 連線。只變更你的接收方式。",
   "watch.forward.secure": "目前的瀏覽器無法在此頁面接收這種影片。請在 App 中觀看，或透過受信任的 HTTPS 位址開啟站點。",
   "watch.forward.viewing": "接收方式",
-  "watch.forward.failed": "未能從分享者接收影片。請檢查房間連線或選擇其他接收方式。",
+  "watch.decodeFailed": "瀏覽器無法解碼此影片。請嘗試其他瀏覽器，或在 App 中觀看原網頁。",
+  "watch.playbackUnsupported": "此瀏覽器不支援該媒體格式或編碼。請在 App 中觀看原網頁。",
+  "watch.forward.failed": "影片播放失敗。請重試或選擇其他接收方式。",
   "watch.forward.unsupported": "目前不支援轉發此影片來源。大家可以各自在 App 中觀看原網頁。",
   "watch.forward.sourceUnavailable": "未能讀取來源網站的影片。請在 App 原網頁中確認登入和播放狀態，再重新選擇影片。",
   "watch.forward.busy": "影片轉發正忙，請稍後重試。",

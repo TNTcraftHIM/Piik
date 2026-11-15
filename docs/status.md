@@ -16,8 +16,9 @@ Cloudflared helper. Work stays on `feat/channel-prototype`, separately from 2.x.
 Matched Windows App and Linux x64 Server candidates have been delivered for
 internal testing; their receipts identify the protocol and shared frontend. Windows includes
 the integrated system-WebView window and custom device permission prompts; both
-packages passed their scoped runtime acceptance. Matching-package acceptance on
-Android remains open; the preceding Android package does not match this protocol.
+packages passed their scoped runtime acceptance. A matching Android development
+package passes signing, architecture and shared-Web checks; runtime acceptance
+remains open.
 Exact revisions and receipts stay with the immutable packages, and
 [verification status](./verification-status.md) records their tested scope.
 

@@ -2,6 +2,7 @@ import Hls from "hls.js";
 import { canReadWatchResources, limitWatchReads, openWatchResource, type WatchByteReader, type WatchResourceLease } from "./watch-resource";
 import { createWatchHlsLoader, watchHlsUrl } from "./watch-hls-loader";
 import { canReadWatchMp4, isWatchMp4, WatchMp4Media } from "./watch-mp4-media";
+import { watchElementFailure, watchHlsFailure } from "./watch-media-failure";
 
 export interface WatchMediaState {
   position: number;
@@ -113,7 +114,7 @@ export class HTMLVideoMedia implements WatchMedia {
         ...(peerRead && { loader: createWatchHlsLoader(peerRead, this.lifetime.signal) }) });
       hls.on(Hls.Events.ERROR, (_event, error) => {
         if (!error.fatal || this.lifetime.signal.aborted) return;
-        this.failure = new Error("watch_media_failed"); this.video.dispatchEvent(new Event("error"));
+        this.failure = new Error(watchElementFailure(this.video.error) ?? watchHlsFailure(error)); this.video.dispatchEvent(new Event("error"));
       });
       hls.loadSource(url); hls.attachMedia(this.video);
     } else this.video.src = url;
@@ -121,8 +122,9 @@ export class HTMLVideoMedia implements WatchMedia {
   async read(): Promise<WatchMediaState> {
     await this.setup;
     const video = this.video;
+    const elementFailure = watchElementFailure(video.error);
+    if (elementFailure) throw new Error(elementFailure);
     if (this.failure) throw this.failure;
-    if (video.error) throw new Error("watch_media_failed");
     return { position: video.currentTime, paused: video.paused, rate: video.playbackRate,
       duration: Number.isFinite(video.duration) ? video.duration : null, readyState: video.readyState,
       buffered: Array.from({ length: video.buffered.length }, (_, i): [number, number] => [video.buffered.start(i), video.buffered.end(i)]), ended: video.ended };

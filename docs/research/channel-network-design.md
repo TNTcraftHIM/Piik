@@ -300,6 +300,9 @@ viewers. This consumes upload capacity and uses the existing room base paths and
 reliable DataChannels. Only the byte provider and its receivers add peer demand;
 origin playback continues to need only signaling. The activity retains its
 Browser control owner while the selected Native provider owns resource reads.
+Reads of observed webpage resources retain the successful request's final URL,
+Referer and User-Agent within that origin. A subsequent redirect to another
+origin makes that resource unavailable.
 Resource access and retirement follow that activity, and expose admitted
 resources rather than an arbitrary URL proxy. This streaming consumer retains
 its own resource semantics; it does not replace attachment hashes or persist

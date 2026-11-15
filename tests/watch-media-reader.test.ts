@@ -1,12 +1,34 @@
 ﻿import Hls from "hls.js";
 import { afterEach, expect, test, vi } from "vitest";
 import { AppPageMedia, canReceivePeerWatch, createPeerWatchMedia, HTMLVideoMedia, type WatchMediaEvent, type WatchMediaState } from "../src/client/channel/watch-media";
+import { watchHlsFailure } from "../src/client/channel/watch-media-failure";
+import { WatchPlayer } from "../src/client/channel/watch-playback";
 
 function video() {
   return Object.assign(new EventTarget(), { src: "", readyState: 0, buffered: { length: 0, start: vi.fn(), end: vi.fn() }, error: null,
     pause: vi.fn(), load: vi.fn(), remove: vi.fn(), removeAttribute: vi.fn() });
 }
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+test.each([[2, "watch_media_unavailable"], [3, "watch_media_decode_failed"], [4, "watch_media_unsupported"]])(
+  "MediaError code %s reaches the player as %s without exposing the platform message", async (code, expected) => {
+    const v = video(); vi.stubGlobal("document", { createElement: () => v });
+    const media = new HTMLVideoMedia("https://media.test/private?grant=secret", "file");
+    const player = new WatchPlayer("room", false, media, vi.fn());
+    Object.defineProperty(v, "error", { value: { code, message: "https://media.test/private?grant=secret" } });
+    try {
+      v.dispatchEvent(new Event("error"));
+      await vi.waitFor(() => expect(player.error).toBe(expected));
+      await expect(media.ready(new AbortController().signal)).rejects.toThrow(expected);
+    } finally { player.close(); }
+  });
+
+test("fatal HLS facts distinguish codec support and input loading without guessing decode", () => {
+  expect(watchHlsFailure({ type: Hls.ErrorTypes.MEDIA_ERROR, details: Hls.ErrorDetails.BUFFER_INCOMPATIBLE_CODECS_ERROR })).toBe("watch_media_unsupported");
+  expect(watchHlsFailure({ type: Hls.ErrorTypes.NETWORK_ERROR, details: Hls.ErrorDetails.FRAG_LOAD_TIMEOUT })).toBe("watch_media_unavailable");
+  expect(watchHlsFailure({ type: Hls.ErrorTypes.NETWORK_ERROR, details: Hls.ErrorDetails.MANIFEST_PARSING_ERROR })).toBe("watch_invalid_manifest");
+  expect(watchHlsFailure({ type: Hls.ErrorTypes.MEDIA_ERROR, details: Hls.ErrorDetails.BUFFER_APPEND_ERROR })).toBe("watch_media_failed");
+});
 
 test("a browser registration refusal reaches readiness as a page capability failure", async () => {
   const v = video(); vi.stubGlobal("document", { createElement: () => v });

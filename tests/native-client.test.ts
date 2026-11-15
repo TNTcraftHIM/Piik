@@ -116,7 +116,7 @@ describe("current App discovery", () => {
       signal.addEventListener("abort", () => reject(signal.reason), { once: true });
     })));
     const controller = new AbortController();
-    const result = channelAppDiscovery.connect(controller.signal);
+    const result = channelAppDiscovery.connect({ signal: controller.signal });
     await vi.waitFor(() => expect(signals).toHaveLength(NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1));
     controller.abort();
     await expect(result).resolves.toBeNull();

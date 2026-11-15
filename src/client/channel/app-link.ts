@@ -1,5 +1,7 @@
 import { CHANNEL_PROTOCOL, watchByteSourceSchema, type WatchByteSource, type RoomSummary } from "./protocol";
-import { nativePageEventSchema, nativePageStateSchema, nativePageMediaChoiceSchema, type NativePageCandidate, type NativePageMediaChoice } from "../native/wire";
+import { nativePageEventSchema, nativePageStateSchema, nativePageMediaChoiceSchema, nativePageIndexedCandidateSchema,
+  nativePageMetadataReadSchema, nativePageMetadataResultSchema, nativePageIndexedSelectionSchema,
+  type NativePageCandidate, type NativePageMediaChoice, type NativePageIndexedCandidate, type NativePageIndexedSelection } from "../native/wire";
 import type { AppPagePort, WatchMediaEvent, WatchMediaPatch, WatchMediaState } from "./watch-media";
 import { z } from "zod";
 import { appApprovalURL, appManagementURL, discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
@@ -11,7 +13,8 @@ import { NativeRoomHosting } from "./hosting-api";
 import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 
-export const APP_PROTOCOL = 12;
+export const APP_PROTOCOL = 13;
+const APP_REQUEST_BYTES = 256 * 1024;
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), domainProtocol: z.number().int().positive().optional(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), domainProtocol: z.literal(CHANNEL_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
   version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional(), updateSupported: z.boolean().optional(), pagePlayer: z.literal(true).optional() });
@@ -74,6 +77,7 @@ export class AppPage implements AppPagePort {
   candidates: readonly NativePageCandidate[] = [];
   private lifetime = new AbortController();
   private listeners = new Set<(event: WatchMediaEvent) => void>();
+  private sourceListeners = new Set<() => void>();
   constructor(readonly id: string, public url: string, private request: (command: AppCommand, signal: AbortSignal) => Promise<unknown>,
     private dispose: () => void, private changed: () => void) {}
   private command(type: string, values: Record<string, unknown> = {}): Promise<unknown> {
@@ -84,14 +88,39 @@ export class AppPage implements AppPagePort {
   async read(): Promise<WatchMediaState> { return nativePageStateSchema.parse(await this.command("page_read")); }
   async patch(patch: WatchMediaPatch): Promise<void> { await this.command("page_patch", { patch }); }
   async focus(): Promise<void> { await this.command("page_focus"); }
-  async mediaSources(): Promise<{ choices: NativePageMediaChoice[]; byteSource: WatchByteSource | null }> {
-    return z.object({ choices: z.array(nativePageMediaChoiceSchema).max(32), byteSource: watchByteSourceSchema.nullable() }).strict().parse(await this.command("page_media_sources"));
+  async mediaSources(): Promise<{ choices: NativePageMediaChoice[]; indexedCandidates: NativePageIndexedCandidate[]; byteSource: WatchByteSource | null }> {
+    return z.object({ choices: z.array(nativePageMediaChoiceSchema).max(32), indexedCandidates: z.array(nativePageIndexedCandidateSchema).max(32),
+      byteSource: watchByteSourceSchema.nullable() }).strict().parse(await this.command("page_media_sources"));
+  }
+  async readMediaMetadata(choiceId: string, offset: number, length: number, signal: AbortSignal): Promise<{ mimeType: string; totalSize: number; bytes: Uint8Array }> {
+    const reading = AbortSignal.any([this.lifetime.signal, signal]);
+    reading.throwIfAborted();
+    const range = nativePageMetadataReadSchema.parse({ choiceId, offset, length });
+    const value = await this.request({ type: "page_media_read_metadata", pageId: this.id, ...range }, reading);
+    reading.throwIfAborted();
+    const result = nativePageMetadataResultSchema.parse(value);
+    const bytes = Uint8Array.from(atob(result.bytesBase64), value => value.charCodeAt(0));
+    if (bytes.length !== Math.min(length, Math.max(0, result.totalSize - offset))) throw new Error("invalid_app_response");
+    return { mimeType: result.mimeType, totalSize: result.totalSize, bytes };
   }
   async prepareMedia(choiceId: string): Promise<WatchByteSource> { return watchByteSourceSchema.parse(await this.command("page_media_prepare", { choiceId })); }
+  async prepareIndexedMedia(selection: NativePageIndexedSelection, signal: AbortSignal): Promise<WatchByteSource> {
+    const preparing = AbortSignal.any([this.lifetime.signal, signal]);
+    preparing.throwIfAborted();
+    const command = { type: "page_media_prepare_indexed", pageId: this.id, ...nativePageIndexedSelectionSchema.parse(selection) };
+    // AppLink appends a UUID request id; measure that complete envelope before sending.
+    const bytes = new TextEncoder().encode(JSON.stringify({ ...command, id: "00000000-0000-4000-8000-000000000000" })).byteLength;
+    if (bytes > APP_REQUEST_BYTES) throw new Error("watch_resource_limit");
+    const value = await this.request(command, preparing);
+    preparing.throwIfAborted();
+    return watchByteSourceSchema.extend({ format: z.literal("hls") }).parse(value);
+  }
   async stopMedia(): Promise<void> { await this.command("page_media_stop"); }
   listen(changed: (event: WatchMediaEvent) => void): () => void { this.listeners.add(changed); return () => this.listeners.delete(changed); }
+  listenMediaSources(changed: () => void): () => void { this.sourceListeners.add(changed); return () => this.sourceListeners.delete(changed); }
   receive(event: z.infer<typeof nativePageEventSchema>): void {
     if (event.type === "page_closed") { this.close(); return; }
+    if (event.type === "page_media_changed") { for (const listener of this.sourceListeners) listener(); return; }
     if (event.type === "page_candidates") { this.url = event.url; this.candidates = event.candidates; this.changed(); return; }
     for (const listener of this.listeners) listener(event.type === "page_blocked" ? "blocked" : event.event);
   }
@@ -101,6 +130,7 @@ export class AppPage implements AppPagePort {
     this.dispose();
     for (const listener of this.listeners) listener("closed");
     this.listeners.clear();
+    this.sourceListeners.clear();
     this.changed();
   }
 }
@@ -128,10 +158,10 @@ export const channelAppDiscovery: AppDiscovery = {
     if (Number(url.port) !== port) throw new Error("invalid_app_response");
     return { url: url.href, windowNavigation: result.windowNavigation };
   }, { signal }, error => error instanceof AppCompatibilityError),
-  connect: signal => discoverLocalApp("connect-discovery", (body, port) => {
+  connect: (options = {}) => discoverLocalApp("connect-discovery", (body, port) => {
     identity(body, port);
     return appApprovalURL(identitySchema.extend({ connectURL: z.string().url().max(256) }).parse(body).connectURL);
-  }, { signal }, error => error instanceof AppCompatibilityError),
+  }, options, error => error instanceof AppCompatibilityError),
   isIncompatible: error => error instanceof AppCompatibilityError,
 };
 
@@ -147,7 +177,7 @@ export class ChannelApp {
   private captures = new Map<string, { id: string; kind: "capture" | "external" }>();
   private externalInputs = new Map<string, NativeExternalInput>();
   private audioStates = new Map<string, z.infer<typeof audioStateSchema>>();
-  private prepared = new Set<string>();
+  private prepared = new Map<string, "capture" | "external">();
   private activationURL?: string;
   private processAudioExclusion = false;
   private captureCodecs: NativeCaptureSources["codecs"] = [];
@@ -233,6 +263,8 @@ export class ChannelApp {
           const event = externalInputStateSchema.parse(reply);
           const input = this.externalInputs.get(event.publicationId);
           if (!input) return;
+          if ((event.state === "waiting" || event.state === "closed" || event.state === "error")
+              && this.prepared.get(event.publicationId) === "external") this.prepared.delete(event.publicationId);
           if (event.state === "closed") {
             this.externalInputs.delete(event.publicationId);
             if (this.captures.get(event.publicationId)?.id === input.captureId) this.captures.delete(event.publicationId);
@@ -241,7 +273,7 @@ export class ChannelApp {
             this.externalInputs.set(event.publicationId, { ...input, state: event.state,
               captureId: "captureId" in event ? event.captureId : undefined, error: "error" in event ? event.error : undefined });
             if (event.state === "live") this.captures.set(event.publicationId, { id: event.captureId, kind: "external" });
-            else if (event.state === "prepared") this.prepared.add(event.publicationId);
+            else if (event.state === "prepared") this.prepared.set(event.publicationId, "external");
             else if (this.captures.get(event.publicationId)?.id === input.captureId) this.captures.delete(event.publicationId);
           }
           onExternalInput(event);
@@ -339,7 +371,7 @@ export class ChannelApp {
       fps: profile.maxFramerate, bitrate: profile.maxBitrate, degradationPreference: profile.degradationPreference };
     if (!this.connected) throw new Error("app_disconnected");
     if (excludeAudio && (!audio || target.kind !== "display" || excludeAudio.kind !== "window" || !this.processAudioExclusion)) throw new Error("audio exclusion unavailable");
-    this.prepared.add(publicationId);
+    this.prepared.set(publicationId, "capture");
     try {
       const pending = this.request({ type: "prepare_capture", publicationId, roomId, target, audio, settings, codecMode, encodingExecution, showCaptureBorder,
         audioSettings: { bitrate: profile.maxAudioBitrate ?? 128_000, gain }, ...(excludeAudio ? { excludeAudio } : {}) });
@@ -354,7 +386,7 @@ export class ChannelApp {
   }
 
   async prepareExternalInput(publicationId: string, roomId: string): Promise<void> {
-    this.prepared.add(publicationId);
+    this.prepared.set(publicationId, "external");
     try {
       const input = externalInputSchema.parse(await this.request({ type: "prepare_external_input", publicationId, roomId }));
       if (!this.prepared.delete(publicationId)) throw new DOMException("Input cancelled", "AbortError");
@@ -369,7 +401,8 @@ export class ChannelApp {
   }
 
   hasSourceAudioControl(publicationId: string): boolean {
-    return this.connected && this.captures.get(publicationId)?.kind !== "external" && (this.captures.has(publicationId) || this.prepared.has(publicationId));
+    return this.connected && this.captures.get(publicationId)?.kind !== "external"
+      && (this.captures.has(publicationId) || this.prepared.get(publicationId) === "capture");
   }
 
   sourceMicrophone(publicationId: string): NativeSourceMicrophone | undefined {
@@ -470,7 +503,7 @@ export class ChannelApp {
   }
 
   stopCaptures(): void {
-    for (const id of new Set([...this.screens, ...this.prepared])) void this.stopCapture(id).catch(() => {});
+    for (const id of new Set([...this.screens, ...this.prepared.keys()])) void this.stopCapture(id).catch(() => {});
   }
 
   close(): void {

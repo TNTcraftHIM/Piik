@@ -217,6 +217,19 @@ describe("native capture source selection", () => {
     expect(html).not.toMatch(/class="lr-source-picker-close"[^>]*disabled=""/);
   });
 
+  it.each([false, true])("keeps system audio independent of application exclusion (%s)", processAudioExclusion => {
+    setCopy({ lang: "en" });
+    const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      nativeSources: { kind: "ready", sources: [{ kind: "display", sourceId: "2", title: "Display 1" }],
+        processAudio: false, systemAudio: true, processAudioExclusion },
+      initialTab: "display", initialAudio: true, onBrowser: () => {}, onNative: () => {},
+      onPreview: async () => null, onRefresh: () => {}, onCancel: () => {},
+    }));
+    expect(html).toContain('role="switch"');
+    expect(html).toContain('aria-checked="true"');
+    expect(html.includes("lr-source-exclusion")).toBe(processAudioExclusion);
+  });
+
   it("separates windows from displays while keeping Browser and Camera switching available", () => {
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
       nativeSources: {

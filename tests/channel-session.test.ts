@@ -9,6 +9,7 @@ import * as hosting from "../src/client/channel/hosting";
 import { listeningVoicePublications } from "../src/client/channel/presentation";
 import * as backupArchive from "../src/client/channel/backup-archive";
 import * as appLink from "../src/client/channel/app-link";
+import * as indexedSource from "../src/client/channel/watch-indexed-source";
 import * as nativeActivation from "../src/client/native/activation";
 import * as launchSession from "../src/client/lib/app-launch";
 import * as cameraPreviews from "../src/client/media/camera-previews";
@@ -8057,6 +8058,7 @@ test('watch creator uses domain confirmation, keeps its element and retires with
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
     const start = socket.sent.findLast(command => command.type === 'start_watch')!;
     expect(start.playback).toMatchObject({ paused: true, position: 0 });
+    expect(start).not.toHaveProperty('byteSource');
     socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [{
       id: start.id, roomId: 'first', viewerSessionIds: [], sessionId: 'endpoint', userId: 'self', source: start.source, playback: start.playback,
     }] } });
@@ -8284,8 +8286,186 @@ async function websiteSourceSelection(discover: () => Promise<unknown>) {
   return { ...setupResult, page, candidateId, commit, request, dispose };
 }
 
+function indexedInspection(kind: "video" | "audio"): indexedSource.IndexedTrackInspection {
+  const id = crypto.randomUUID(), codec = kind === "video" ? "avc1.640028" : "mp4a.40.2";
+  return { candidate: { id, name: kind, hostname: "media.test", mimeType: `${kind}/mp4`, totalSize: 100 },
+    metadata: { kind, codec, duration: kind === "video" ? 60 : 61, firstPTS: 0, timescale: 1000, language: "und",
+      ...(kind === "video" ? { width: 1920, height: 1080 } : { channels: 2, sampleRate: 48000 }) },
+    recipe: { choiceId: id, totalSize: 100, codec, timescale: 1000, mediaOffset: 40, initBase64: "aW5pdA==", segments: [[60, 1000]] } };
+}
+
+test('late clear tracks update the current selection and settings without rechecking unchanged tracks or changing the published graph', async () => {
+  const video = indexedInspection('video'), audio = indexedInspection('audio');
+  const protectedAudio = { ...audio.candidate, id: crypto.randomUUID(), name: 'Protected audio' };
+  let candidates: indexedSource.IndexedTrackInspection['candidate'][] = [protectedAudio];
+  const inspect = vi.spyOn(indexedSource, 'inspectIndexedTrack').mockImplementation(async candidate => {
+    if (candidate.id === protectedAudio.id) throw new Error('watch_media_encryption_unsupported');
+    return candidate.id === video.candidate.id ? video : audio;
+  });
+  const discover = vi.fn(async () => ({ choices: [], indexedCandidates: candidates, byteSource: null }));
+  const { session, page, socket, candidateId, commit } = await websiteSourceSelection(discover);
+  commit.mockRestore();
+  const byteSource = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' as const };
+  const prepare = vi.spyOn(page, 'prepareIndexedMedia').mockImplementation(async () => {
+    page.receive({ type: 'page_media_changed', pageId: page.id });
+    return byteSource;
+  });
+  const settings = new AbortController();
+  try {
+    await expect(session.selectWatchPage('first', candidateId)).resolves.toBe(false);
+    expect(session.watchPage('first')?.watchSources?.indexed).toEqual([{ candidate: protectedAudio, error: 'watch_media_encryption_unsupported' }]);
+    expect(prepare).not.toHaveBeenCalled();
+    candidates = [protectedAudio, video.candidate, audio.candidate];
+    page.receive({ type: 'page_media_changed', pageId: page.id });
+    await vi.waitFor(() => expect(session.watchPage('first')?.watchSources?.indexed).toHaveLength(3));
+    expect(inspect).toHaveBeenCalledTimes(3);
+    expect(discover).toHaveBeenCalledTimes(2);
+    const confirming = session.selectWatchIndexedSource('first', video.candidate.id, audio.candidate.id);
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(discover).toHaveBeenCalledTimes(2); // Confirmation retired selection discovery before Native preparation.
+    const start = socket.sent.findLast(command => command.type === 'start_watch')!;
+    expect(start.byteSource).toEqual(byteSource);
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'update_watch')).toBe(true));
+    const update = socket.sent.findLast(command => command.type === 'update_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: update.requestId, result: { type: 'done' } });
+    await confirming;
+    const changes = vi.fn();
+    await session.watchMediaChoices(start.id as string, settings.signal, changes);
+    const inspectionsAfterSettingsOpened = inspect.mock.calls.length;
+    candidates = [video.candidate, audio.candidate];
+    page.receive({ type: 'page_media_changed', pageId: page.id });
+    await vi.waitFor(() => expect(changes.mock.lastCall?.[0].indexed).toHaveLength(2));
+    expect(inspect).toHaveBeenCalledTimes(inspectionsAfterSettingsOpened);
+    const readsBeforeClose = discover.mock.calls.length;
+    settings.abort();
+    page.receive({ type: 'page_media_changed', pageId: page.id });
+    expect(discover).toHaveBeenCalledTimes(readsBeforeClose);
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(socket.sent.filter(command => command.type === 'start_watch')).toHaveLength(1);
+    expect(socket.sent.some(command => command.type === 'set_watch_byte_source')).toBe(false);
+  } finally { settings.abort(); session.close(); }
+});
+
+test('source notifications during the first read coalesce into one follow-up read', async () => {
+  const video = indexedInspection('video'), audio = indexedInspection('audio');
+  vi.spyOn(indexedSource, 'inspectIndexedTrack').mockImplementation(async candidate => candidate.id === video.candidate.id ? video : audio);
+  let release!: (value: { choices: []; indexedCandidates: []; byteSource: null }) => void;
+  let active = 0, maximum = 0;
+  const discover = vi.fn(async () => {
+    active++; maximum = Math.max(maximum, active);
+    try {
+      return discover.mock.calls.length === 1 ? await new Promise<{ choices: []; indexedCandidates: []; byteSource: null }>(resolve => { release = resolve; })
+        : { choices: [], indexedCandidates: [video.candidate, audio.candidate], byteSource: null };
+    } finally { active--; }
+  });
+  const { session, page, candidateId, commit } = await websiteSourceSelection(discover);
+  try {
+    const selecting = session.selectWatchPage('first', candidateId);
+    await vi.waitFor(() => expect(discover).toHaveBeenCalledOnce());
+    for (let i = 0; i < 3; i++) page.receive({ type: 'page_media_changed', pageId: page.id });
+    expect(discover).toHaveBeenCalledOnce();
+    release({ choices: [], indexedCandidates: [], byteSource: null });
+    await expect(selecting).resolves.toBe(false);
+    expect(discover).toHaveBeenCalledTimes(2);
+    expect(maximum).toBe(1);
+    expect(session.watchPage('first')?.watchSources?.indexed).toHaveLength(2);
+    expect(commit).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
+test('an empty first source list stays open for later sources or an explicit original-page share', async () => {
+  const { session, candidateId, commit } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
+  try {
+    await expect(session.selectWatchPage('first', candidateId)).resolves.toBe(false);
+    expect(commit).not.toHaveBeenCalled();
+    expect(session.watchPage('first')?.watchSources).toEqual({ candidateId, choices: [], indexed: [] });
+    await session.selectWatchBrowserSource('first', null);
+    expect(commit).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+test.each([false, true])('indexed sharing explicitly prepares video with optional audio=%s and publishes it atomically', async audioSelected => {
+  const video = indexedInspection('video'), audio = indexedInspection('audio');
+  vi.spyOn(indexedSource, 'inspectIndexedTrack').mockImplementation(async candidate => candidate.id === video.candidate.id ? video : audio);
+  const { session, page, socket, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({
+    choices: [], indexedCandidates: [video.candidate, audio.candidate], byteSource: null,
+  }));
+  commit.mockRestore();
+  const byteSource = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' as const };
+  const prepare = vi.spyOn(page, 'prepareIndexedMedia').mockResolvedValue(byteSource);
+  try {
+    await expect(session.selectWatchPage('first', candidateId)).resolves.toBe(false);
+    expect(prepare).not.toHaveBeenCalled();
+    expect(socket.sent.some(command => command.type === 'start_watch')).toBe(false);
+    const confirming = session.selectWatchIndexedSource('first', video.candidate.id, audioSelected ? audio.candidate.id : undefined);
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
+    expect(prepare.mock.calls[0]?.[0]).toEqual({ video: video.recipe, ...(audioSelected ? { audio: audio.recipe } : {}) });
+    const start = socket.sent.findLast(command => command.type === 'start_watch')!;
+    expect(start.source).toEqual({ kind: 'website', url: page.url });
+    expect(start.byteSource).toEqual(byteSource);
+    expect(socket.sent.filter(command => command.type === 'start_watch')).toHaveLength(1);
+    expect(socket.sent.some(command => command.type === 'set_watch_byte_source')).toBe(false);
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'update_watch')).toBe(true));
+    const update = socket.sent.findLast(command => command.type === 'update_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: update.requestId, result: { type: 'done' } });
+    await confirming;
+    expect(socket.sent.some(command => command.type === 'set_watch_byte_source')).toBe(false);
+    expect(session.watchPage('first')).toBeUndefined();
+    expect(session.getSnapshot().watchPlayers.has(start.id as string)).toBe(true);
+    expect(dispose).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
+test('rejected indexed start retires its prepared page without a separate attachment', async () => {
+  const video = indexedInspection('video');
+  vi.spyOn(indexedSource, 'inspectIndexedTrack').mockResolvedValue(video);
+  const { session, page, socket, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [video.candidate], byteSource: null }));
+  commit.mockRestore();
+  vi.spyOn(page, 'prepareIndexedMedia').mockResolvedValue({ sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' });
+  try {
+    await session.selectWatchPage('first', candidateId);
+    const confirming = session.selectWatchIndexedSource('first', video.candidate.id);
+    const rejected = expect(confirming).rejects.toThrow('watch_source_unavailable');
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
+    const start = socket.sent.findLast(command => command.type === 'start_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'error', code: 'watch_source_unavailable' } });
+    await rejected;
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().watchPlayers.size).toBe(0);
+    expect(session.watchPage('first')).toBeUndefined();
+    expect(socket.sent.some(command => command.type === 'stop_watch' && command.id === start.id)).toBe(true);
+    expect(socket.sent.some(command => command.type === 'update_watch')).toBe(false);
+    expect(socket.sent.some(command => command.type === 'set_watch_byte_source')).toBe(false);
+  } finally { session.close(); }
+});
+
+test('cancelling indexed preparation closes its page and prevents late preparation from publishing', async () => {
+  const video = indexedInspection('video');
+  vi.spyOn(indexedSource, 'inspectIndexedTrack').mockResolvedValue(video);
+  const { session, page, socket, candidateId, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [video.candidate], byteSource: null }));
+  let answer!: (value: { sessionId: string; resourceId: string; format: 'hls' }) => void;
+  const prepare = vi.spyOn(page, 'prepareIndexedMedia').mockImplementation(() => new Promise(resolve => { answer = resolve; }));
+  try {
+    await session.selectWatchPage('first', candidateId);
+    const confirming = session.selectWatchIndexedSource('first', video.candidate.id);
+    const rejected = expect(confirming).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce());
+    await session.cancelScreenSelection('first');
+    expect(prepare.mock.calls[0]?.[1].aborted).toBe(true);
+    answer({ sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' });
+    await rejected;
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(session.watchPage('first')).toBeUndefined();
+    expect(session.getSnapshot().watchPlayers.size).toBe(0);
+    expect(socket.sent.some(command => command.type === 'start_watch' || command.type === 'set_watch_byte_source')).toBe(false);
+  } finally { session.close(); }
+});
+
 test.each(['creator', 'viewer'] as const)('the %s focuses and retires its acquired webpage after the App reference changes', async role => {
-  const { session, socket, page, request, dispose } = await websiteSourceSelection(async () => ({ choices: [], byteSource: null }));
+  const { session, socket, page, request, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
   const activityId = role === 'viewer' ? 'website-viewer' : undefined;
   try {
     if (activityId) {
@@ -8316,9 +8496,11 @@ test.each(['creator', 'viewer'] as const)('the %s focuses and retires its acquir
 });
 
 test('committing a webpage transfers its lifetime from selection to the watch player', async () => {
-  const { session, socket, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({ choices: [], byteSource: null }));
+  const { session, page, socket, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
   commit.mockRestore();
   try {
+    page.receive({ type: 'page_candidates', pageId: page.id, url: page.url,
+      candidates: [{ id: candidateId, title: 'Film', url: 'https://media.test/film.mp4', duration: 60 }] });
     const selecting = session.selectWatchPage('first', candidateId);
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'start_watch')).toBe(true));
     const start = socket.sent.findLast(command => command.type === 'start_watch')!;
@@ -8340,13 +8522,15 @@ test('webpage discovery requires an explicit browser source choice without prepa
     { id: crypto.randomUUID(), displayURL: 'https://media.test/master.m3u8?grant=fixture', name: 'Master', format: 'hls' as const },
     { id: crypto.randomUUID(), displayURL: 'https://media.test/other.m3u8', name: 'Other', format: 'hls' as const },
   ];
-  const { session, candidateId, commit, request, socket } = await websiteSourceSelection(async () => ({ choices, byteSource: null }));
+  const indexed = { id: crypto.randomUUID(), name: 'Observed track', hostname: 'media.test', mimeType: 'video/mp4', totalSize: 1000000 };
+  const { session, candidateId, commit, request, socket } = await websiteSourceSelection(async () => ({ choices, indexedCandidates: [indexed], byteSource: null }));
   try {
     await expect(session.selectWatchPage('first', candidateId)).resolves.toBe(false);
-    expect(session.watchPage('first')?.browserSource?.choices).toEqual(choices);
+    expect(session.watchPage('first')?.watchSources?.choices).toEqual(choices);
     expect(session.getSnapshot().watchPlayers.size).toBe(0);
     expect(commit).not.toHaveBeenCalled();
     await expect(session.selectWatchBrowserSource('first', crypto.randomUUID())).rejects.toThrow('watch_page_unavailable');
+    await expect(session.selectWatchBrowserSource('first', indexed.id)).rejects.toThrow('watch_page_unavailable');
     expect(commit).not.toHaveBeenCalled();
     await session.selectWatchBrowserSource('first', choices[0].id);
     expect(commit.mock.calls[0]?.[1]).toEqual({ kind: 'website', url: 'https://video.test/film', mediaUrl: choices[0].displayURL });
@@ -8358,8 +8542,8 @@ test('webpage discovery requires an explicit browser source choice without prepa
 test('failed webpage discovery keeps its selected page for an explicit original-page share', async () => {
   const { session, candidateId, commit, dispose } = await websiteSourceSelection(async () => { throw new Error('page_player_timeout'); });
   try {
-    await expect(session.selectWatchPage('first', candidateId)).rejects.toThrow('page_player_timeout');
-    expect(session.watchPage('first')?.browserSource).toEqual({ candidateId, choices: [] });
+    await expect(session.selectWatchPage('first', candidateId)).resolves.toBe(false);
+    expect(session.watchPage('first')?.watchSources).toEqual({ candidateId, choices: [], indexed: [], error: 'page_player_timeout' });
     expect(dispose).not.toHaveBeenCalled();
     expect(commit).not.toHaveBeenCalled();
     await session.selectWatchBrowserSource('first', null);
@@ -8369,7 +8553,7 @@ test('failed webpage discovery keeps its selected page for an explicit original-
 
 test('webpage source discovery waits for loaded media and cancellation releases that wait', async () => {
   const choices = [{ id: crypto.randomUUID(), displayURL: 'https://media.test/delayed.m3u8', name: 'Film', format: 'hls' as const }];
-  const discover = vi.fn(async () => ({ choices, byteSource: null }));
+  const discover = vi.fn(async () => ({ choices, indexedCandidates: [], byteSource: null }));
   const { session, page, candidateId, commit, dispose } = await websiteSourceSelection(discover);
   let readyState = 0;
   const read = vi.spyOn(page, 'read').mockImplementation(async () => ({ position: 0, paused: true, rate: 1, duration: 60,
@@ -8383,7 +8567,7 @@ test('webpage source discovery waits for loaded media and cancellation releases 
     page.receive({ type: 'page_sample', pageId: page.id, event: 'loadeddata' });
     await expect(selecting).resolves.toBe(false);
     expect(discover).toHaveBeenCalledOnce();
-    expect(session.watchPage('first')?.browserSource?.choices).toEqual(choices);
+    expect(session.watchPage('first')?.watchSources?.choices).toEqual(choices);
     expect(session.getSnapshot().watchPlayers.size).toBe(0);
 
     readyState = 0; read.mockClear(); discover.mockClear();
@@ -8419,9 +8603,9 @@ test('cancelled source discovery cannot restore the candidate or retire an exist
     const selecting = session.selectWatchPage('first', candidateId);
     const cancelled = expect(selecting).rejects.toMatchObject({ name: 'AbortError' });
     await vi.waitFor(() => expect(answer).toBeDefined());
-    expect(session.watchPage('first')?.browserSource).toBeDefined();
+    expect(session.watchPage('first')?.watchSources).toBeDefined();
     await session.cancelScreenSelection('first');
-    answer({ choices: [{ id: crypto.randomUUID(), displayURL: 'https://media.test/late.m3u8', name: 'Late', format: 'hls' }], byteSource: null });
+    answer({ choices: [{ id: crypto.randomUUID(), displayURL: 'https://media.test/late.m3u8', name: 'Late', format: 'hls' }], indexedCandidates: [], byteSource: null });
     await cancelled;
     expect(session.watchPage('first')).toBeUndefined();
     expect(commit).not.toHaveBeenCalled();

@@ -2,6 +2,7 @@ import Hls from "hls.js";
 import { createFile, MP4BoxBuffer, type ISOFile, type Movie, type Track } from "mp4box";
 import { readWatchWindows, WATCH_READ_AHEAD, WATCH_READ_SIZE } from "./watch-read-windows";
 import type { WatchByteReader, WatchByteResult } from "./watch-resource";
+import { watchElementFailure } from "./watch-media-failure";
 
 export function canReadWatchMp4(): boolean {
   return typeof MediaSource !== "undefined" && typeof MediaSource.isTypeSupported === "function";
@@ -57,7 +58,7 @@ export class WatchMp4Media {
       if (time >= this.video.buffered.start(i) && time <= this.video.buffered.end(i)) return;
     if (this.buffer) this.start(time);
   };
-  private mediaError = () => this.fail(new Error("watch_media_failed"));
+  private mediaError = () => this.fail(new Error(watchElementFailure(this.video.error) ?? "watch_media_failed"));
   private retire = () => this.close();
 
   constructor(private video: HTMLVideoElement, private resourceId: string, private read: WatchByteReader,

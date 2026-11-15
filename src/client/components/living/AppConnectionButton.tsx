@@ -80,7 +80,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       } catch (error) {
         if (!current.signal.aborted && !pending.current) {
           rememberBuild(null);
-          if (!connected) setState(native.isIncompatible(error) ? "incompatible" : "idle");
+          if (!connected) setState("idle");
         }
       }
     };
@@ -170,7 +170,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       try {
         native = discovery;
         if (signal.aborted) return;
-        const url = await native.connect(signal);
+        const url = await native.connect({ signal, waitForPermission: !attempt.automatic });
         if (signal.aborted) return;
         if (!url) { finish("unavailable"); return; }
         // A compatible App was found; health may only see an older, approved App.

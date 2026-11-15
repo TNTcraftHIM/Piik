@@ -11,8 +11,10 @@ import { locales } from "../src/client/locales";
 
 describe("Webpage watch presentation", () => {
   it.each([
-    [["watch_live_hls_unsupported", "watch_media_encryption_unsupported", "watch_media_encoding_unsupported", "watch_media_range_unsupported", "watch_media_size_unavailable", "watch_manifest_extension_unsupported", "watch_manifest_limit", "watch_resource_limit", "watch_mp4_parse_failed"], "watch.forward.unsupported", false],
-    [["watch_invalid_manifest", "watch_media_credentials_unavailable", "watch_media_unavailable", "watch_media_changed", "watch_media_truncated", "invalid_watch_range_response", "watch_resource_unavailable", "watch_source_unavailable", "watch_source_failed", "watch_source_changed", "watch_source_retired"], "watch.forward.sourceUnavailable", false],
+    [["watch_live_hls_unsupported", "watch_media_encryption_unsupported", "watch_media_encoding_unsupported", "watch_media_range_unsupported", "watch_media_size_unavailable", "watch_manifest_extension_unsupported", "watch_manifest_limit", "watch_resource_limit", "watch_mp4_parse_failed", "watch_indexed_unsupported", "invalid_watch_index"], "watch.forward.unsupported", false],
+    [["watch_media_decode_failed"], "watch.decodeFailed", false],
+    [["watch_media_unsupported", "watch_mp4_mse_unavailable"], "watch.playbackUnsupported", false],
+    [["watch_invalid_manifest", "watch_media_credentials_unavailable", "watch_media_unavailable", "watch_media_timeout", "watch_media_changed", "watch_media_truncated", "invalid_watch_range_response", "watch_resource_unavailable", "watch_source_unavailable", "watch_source_failed", "watch_source_changed", "watch_source_retired"], "watch.forward.sourceUnavailable", false],
     [["watch_source_busy", "watch_read_busy"], "watch.forward.busy", false],
     [["watch_source_already_active"], "watch.forward.active", false],
     [["watch_peer_requires_secure_context", "watch_peer_unavailable"], "watch.forward.secure", false],
@@ -33,6 +35,19 @@ describe("Webpage watch presentation", () => {
     expect(html).not.toContain("identity");
   });
 
+  it("explains a peer decoder failure without suggesting a room connection fault", () => {
+    setCopy({ lang: "en" });
+    const player = { video: null,
+      blocked: false, error: "watch_media_decode_failed", mediaState: null } as unknown as WatchPlayer;
+    const html = renderToStaticMarkup(createElement(ChannelWatchVideo, {
+      player, owned: false, paused: true, label: "Video", presentation: "full", disabled: false, website: true,
+      theaterMode: false, onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
+      receiving: { peerAvailable: true, peerSupported: true, mode: "peer", browserSource: true, onPeer: vi.fn(), onDirect: vi.fn() },
+    }));
+    expect(html).toContain("could not decode"); expect(html).not.toContain("Check the room connection");
+    expect(channelErrorPresentation("https://media.test/private?grant=secret", key => locales.en.copy[key]).message).not.toContain("secret");
+  });
+
   it("offers peer reception only for an enabled source and a supported browser", () => {
     setCopy({ lang: "en" });
     const receiving = { peerAvailable: true, peerSupported: true, mode: "direct" as const, browserSource: true, onPeer: vi.fn(), onDirect: vi.fn() };
@@ -45,6 +60,24 @@ describe("Webpage watch presentation", () => {
     expect(render({ peerSupported: false })).toContain("trusted HTTPS address");
     expect(render({ peerSupported: false })).not.toContain("<button");
   });
+  it("shows preparation until the playback owner has a sample without covering blocked or failed playback", () => {
+    setCopy({ lang: "en" });
+    vi.stubGlobal("document", { fullscreenEnabled: false });
+    try {
+      const render = (patch = {}) => renderToStaticMarkup(createElement(ChannelWatchVideo, {
+        player: { video: { readyState: 0, parentElement: null }, mediaState: null, blocked: false, error: null, ...patch } as unknown as WatchPlayer,
+        owned: false, paused: true, label: "Preparing", presentation: "full", disabled: false,
+        website: false, theaterMode: false, onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
+      }));
+      expect(render()).toContain('role="status"');
+      expect(render()).toContain("Preparing video");
+      expect(render({ mediaState: { readyState: 4 } })).not.toContain("Preparing video");
+      expect(render({ video: { readyState: 4, parentElement: null } })).not.toContain("Preparing video");
+      expect(render({ blocked: true })).not.toContain("Preparing video");
+      expect(render({ error: "watch_media_failed" })).not.toContain("Preparing video");
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it.each([true, false])("shows the independent webpage's real controls without a fake video (owner: %s)", owned => {
     setCopy({ lang: "en" });
     const player = { video: null, blocked: false, error: null,

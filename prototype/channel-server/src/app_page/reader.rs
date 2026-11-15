@@ -8,6 +8,28 @@ use uuid::Uuid;
 
 const MAX_MANIFEST: usize = 1024 * 1024;
 const MAX_RESOURCES: usize = 32768;
+
+fn request_failure(error: reqwest::Error) -> anyhow::Error {
+    let code = if error.is_timeout() {
+        "watch_media_timeout"
+    } else {
+        "watch_media_unavailable"
+    };
+    // The opt-in App recorder receives derived transport facts, never the source URL or text.
+    let mut source: Option<&(dyn std::error::Error + 'static)> = Some(&error);
+    let mut io_kind = None;
+    for _ in 0..8 {
+        let Some(current) = source else { break };
+        if let Some(io) = current.downcast_ref::<std::io::Error>() {
+            io_kind = Some(io.kind());
+            break;
+        }
+        source = current.source();
+    }
+    log::warn!(target: "piik.app", "Media request failed: timeout={} connect={} request={} redirect={} io_kind={io_kind:?}",
+        error.is_timeout(), error.is_connect(), error.is_request(), error.is_redirect());
+    anyhow::Error::new(error.without_url()).context(code)
+}
 #[derive(Clone)]
 enum Resource {
     File {
@@ -24,34 +46,31 @@ pub struct OriginReader {
     context: MediaContext,
     stopped: watch::Receiver<bool>,
     client: reqwest::Client,
+    context_client: Option<reqwest::Client>,
     resources: Mutex<BTreeMap<Uuid, Resource>>,
 }
 impl OriginReader {
+    pub async fn read_metadata(
+        context: MediaContext,
+        stopped: watch::Receiver<bool>,
+        offset: u64,
+        length: u32,
+    ) -> Result<ReadResult> {
+        ensure!(context.format == Format::File, "watch_resource_unavailable");
+        ensure!(
+            context.size.is_some_and(|size| offset < size),
+            "invalid_watch_range"
+        );
+        let reader = Self::new(context, stopped)?;
+        reader.read(reader.root, offset, length).await
+    }
+
     pub async fn prepare(
         context: MediaContext,
         stopped: watch::Receiver<bool>,
     ) -> Result<Arc<Self>> {
-        let root = Uuid::new_v4();
-        let url = url::Url::parse(&context.url)?;
-        let resource = match context.format {
-            Format::File => Resource::File {
-                url,
-                size: context.size,
-            },
-            Format::Hls => Resource::Playlist { url, bytes: None },
-        };
-        let reader = Arc::new(Self {
-            root,
-            context,
-            stopped,
-            // reqwest removes sensitive headers across origins; source URLs may contain grants.
-            client: reqwest::Client::builder()
-                .redirect(reqwest::redirect::Policy::limited(10))
-                .referer(false)
-                .timeout(std::time::Duration::from_secs(15))
-                .build()?,
-            resources: Mutex::new(BTreeMap::from([(root, resource)])),
-        });
+        let reader = Self::new(context, stopped)?;
+        let root = reader.root;
         // Prove the root before replacing an active source lease.
         reader.read(root, 0, 1).await?;
         if reader.context.format == Format::File {
@@ -65,14 +84,66 @@ impl OriginReader {
         }
         Ok(reader)
     }
+    fn new(context: MediaContext, stopped: watch::Receiver<bool>) -> Result<Arc<Self>> {
+        let root = Uuid::new_v4();
+        let url = url::Url::parse(&context.url)?;
+        let resource = match context.format {
+            Format::File => Resource::File {
+                url,
+                size: context.size,
+            },
+            Format::Hls => Resource::Playlist { url, bytes: None },
+        };
+        let client = |policy| {
+            reqwest::Client::builder()
+                .redirect(policy)
+                .referer(false)
+                .timeout(std::time::Duration::from_secs(15))
+                .build()
+        };
+        let context_client = context
+            .request
+            .as_ref()
+            .map(|request| {
+                let origin = request.url.origin();
+                let limited = reqwest::redirect::Policy::limited(10);
+                client(reqwest::redirect::Policy::custom(move |attempt| {
+                    if attempt.url().origin() != origin {
+                        attempt.stop()
+                    } else {
+                        limited.redirect(attempt)
+                    }
+                }))
+            })
+            .transpose()?;
+        let reader = Arc::new(Self {
+            root,
+            context,
+            stopped,
+            // reqwest removes sensitive headers across origins; source URLs may contain grants.
+            client: client(reqwest::redirect::Policy::limited(10))?,
+            context_client,
+            resources: Mutex::new(BTreeMap::from([(root, resource)])),
+        });
+        Ok(reader)
+    }
     async fn response(
         &self,
         url: &url::Url,
         offset: u64,
         length: Option<u32>,
     ) -> Result<reqwest::Response> {
-        let mut request = self
-            .client
+        let observed = self
+            .context
+            .request
+            .as_ref()
+            .filter(|request| url.origin() == request.url.origin());
+        let client = if observed.is_some() {
+            self.context_client.as_ref().unwrap()
+        } else {
+            &self.client
+        };
+        let mut request = client
             .get(url.clone())
             .header(reqwest::header::ACCEPT_ENCODING, "identity");
         if let Some(length) = length {
@@ -91,7 +162,22 @@ impl OriginReader {
                 request = request.header(reqwest::header::COOKIE, cookie);
             }
         }
-        let response = request.send().await?;
+        if let Some(observed) = observed {
+            if let Some(value) = &observed.referer {
+                request = request.header(reqwest::header::REFERER, value);
+            }
+            if let Some(value) = &observed.user_agent {
+                request = request.header(reqwest::header::USER_AGENT, value);
+            }
+        }
+        let response = request.send().await.map_err(request_failure)?;
+        ensure!(
+            response.status().is_success() || response.status().as_u16() == 416,
+            "watch_media_unavailable"
+        );
+        if response.status().as_u16() == 416 {
+            return Ok(response);
+        }
         ensure!(
             response
                 .headers()
@@ -160,6 +246,7 @@ impl OriginReader {
                         eof: true,
                     });
                 }
+                ensure!(matches!(status, 200 | 206), "watch_media_unavailable");
                 let (available, total) = if status == 206 {
                     let (start, end, total) =
                         parse_range(range.ok_or_else(|| anyhow!("invalid_watch_range_response"))?)?;
@@ -199,7 +286,8 @@ impl OriginReader {
                 while bytes.len() < available as usize {
                     let chunk = response
                         .chunk()
-                        .await?
+                        .await
+                        .map_err(reqwest::Error::without_url)?
                         .ok_or_else(|| anyhow!("watch_media_truncated"))?;
                     if status == 206 {
                         ensure!(
@@ -212,7 +300,11 @@ impl OriginReader {
                 }
                 if status == 206 {
                     ensure!(
-                        response.chunk().await?.is_none(),
+                        response
+                            .chunk()
+                            .await
+                            .map_err(reqwest::Error::without_url)?
+                            .is_none(),
                         "invalid_watch_range_response"
                     );
                 }
@@ -248,7 +340,11 @@ impl OriginReader {
         );
         let resolved_url = response.url().clone();
         let mut bytes = vec![];
-        while let Some(chunk) = response.chunk().await? {
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(reqwest::Error::without_url)?
+        {
             ensure!(
                 bytes.len() + chunk.len() <= MAX_MANIFEST,
                 "watch_manifest_limit"
@@ -477,6 +573,13 @@ mod tests {
     use axum::{body::Body, extract::Request, http::Response, routing::get, Router};
     async fn origin(request: Request) -> Response<Body> {
         let path = request.uri().path();
+        if path == "/denied" {
+            return Response::builder()
+                .status(403)
+                .header("content-encoding", "gzip")
+                .body(Body::empty())
+                .unwrap();
+        }
         if path == "/master.m3u8" {
             return Response::builder()
                 .header("content-type", "application/vnd.apple.mpegurl")
@@ -564,6 +667,7 @@ mod tests {
         (
             MediaContext {
                 url,
+                request: None,
                 format,
                 size,
                 retired,
@@ -572,6 +676,120 @@ mod tests {
             page,
             stop,
         )
+    }
+    #[tokio::test]
+    async fn metadata_http_failure_is_distinct_from_an_ignored_successful_range() {
+        let (base, server) = fixture().await;
+        let (_stop, stopped) = watch::channel(false);
+        for (path, error) in [
+            ("denied", "watch_media_unavailable"),
+            ("ignore", "watch_media_range_unsupported"),
+        ] {
+            let (ctx, _page, _) = context(format!("{base}/{path}"), Format::File, Some(128));
+            assert_eq!(
+                OriginReader::read_metadata(ctx, stopped.clone(), 10, 16)
+                    .await
+                    .unwrap_err()
+                    .to_string(),
+                error
+            );
+        }
+        server.abort();
+    }
+    #[tokio::test]
+    async fn failed_metadata_http_does_not_disclose_a_source_grant() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!(
+            "http://{}/media?grant=private",
+            listener.local_addr().unwrap()
+        );
+        drop(listener);
+        let (ctx, _page, _) = context(url.clone(), Format::File, Some(1000));
+        let (_stop, stopped) = watch::channel(false);
+        let error = OriginReader::read_metadata(ctx, stopped, 0, 16)
+            .await
+            .unwrap_err();
+        assert_eq!(error.to_string(), "watch_media_unavailable");
+        assert!(error.downcast_ref::<reqwest::Error>().unwrap().is_connect());
+        assert!(!format!("{error:?}").contains(&url));
+        assert!(!format!("{error:?}").contains("grant=private"));
+    }
+    #[tokio::test]
+    async fn request_failures_retain_timeout_and_redirect_causes_without_source_urls() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener,
+                Router::new()
+                    .route(
+                        "/slow",
+                        get(|| async { std::future::pending::<String>().await }),
+                    )
+                    .route(
+                        "/redirect",
+                        get(|| async {
+                            Response::builder()
+                                .status(302)
+                                .header("location", "/redirect?grant=private")
+                                .body(Body::empty())
+                                .unwrap()
+                        }),
+                    ),
+            )
+            .await
+            .unwrap();
+        });
+        for (path, code) in [
+            ("slow", "watch_media_timeout"),
+            ("redirect", "watch_media_unavailable"),
+        ] {
+            let url = format!("{base}/{path}?grant=private");
+            let error = reqwest::Client::builder()
+                .no_proxy()
+                .timeout(std::time::Duration::from_millis(50))
+                .redirect(reqwest::redirect::Policy::limited(1))
+                .build()
+                .unwrap()
+                .get(&url)
+                .send()
+                .await
+                .unwrap_err();
+            let expected_timeout = error.is_timeout();
+            let expected_redirect = error.is_redirect();
+            let failure = request_failure(error);
+            assert_eq!(failure.to_string(), code);
+            let source = failure.downcast_ref::<reqwest::Error>().unwrap();
+            assert_eq!(source.is_timeout(), expected_timeout);
+            assert_eq!(source.is_redirect(), expected_redirect);
+            assert!(source.url().is_none());
+            assert!(!format!("{failure:?}").contains("grant=private"));
+            if path == "slow" {
+                assert!(source.is_timeout());
+            } else {
+                assert!(source.is_redirect());
+            }
+        }
+        server.abort();
+    }
+    #[tokio::test]
+    async fn metadata_reads_the_selected_origin_at_a_nonzero_range_without_registration() {
+        let (base, server) = fixture().await;
+        let (ctx, _page, _) = context(format!("{base}/big"), Format::File, Some(200 * 1024 * 1024));
+        let (_stop, stopped) = watch::channel(false);
+        let result = OriginReader::read_metadata(ctx, stopped, 65536, 65536)
+            .await
+            .unwrap();
+        assert_eq!(result.total_size, Some(200 * 1024 * 1024));
+        assert_eq!(result.bytes.len(), 65536);
+        assert!(result
+            .bytes
+            .iter()
+            .enumerate()
+            .all(|(i, b)| *b == ((65536 + i) % 251) as u8));
+        server.abort();
     }
     #[tokio::test]
     async fn file_ranges_validate_real_http_and_source_cancellation() {
@@ -666,6 +884,106 @@ mod tests {
         }
         assert!(reader.read(Uuid::new_v4(), 0, 64).await.is_err());
         server.abort();
+    }
+    #[tokio::test]
+    async fn observed_context_follows_same_origin_and_never_crosses_an_origin_boundary() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let foreign = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let foreign_url = format!("http://{}", foreign.local_addr().unwrap());
+        let seen = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let observed = seen.clone();
+        let foreign_task = tokio::spawn(async move {
+            axum::serve(
+                foreign,
+                Router::new().route(
+                    "/file",
+                    get(move |request: Request| {
+                        let seen = observed.clone();
+                        async move {
+                            assert!(request.headers().get("referer").is_none());
+                            assert!(request.headers().get("user-agent").is_none());
+                            seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            origin(request).await
+                        }
+                    }),
+                ),
+            )
+            .await
+            .unwrap();
+        });
+        let source = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let source_url = format!("http://{}", source.local_addr().unwrap());
+        let target = foreign_url.clone();
+        let source_task = tokio::spawn(async move {
+            axum::serve(
+                source,
+                Router::new().route(
+                    "/{*path}",
+                    get(move |request: Request| {
+                        let target = target.clone();
+                        async move {
+                            assert_eq!(
+                                request.headers().get("referer").unwrap(),
+                                "https://page.test/"
+                            );
+                            assert_eq!(
+                                request.headers().get("user-agent").unwrap(),
+                                "Owned browser"
+                            );
+                            assert_eq!(request.headers().get("range").unwrap(), "bytes=0-15");
+                            if request.uri().path() == "/same" || request.uri().path() == "/cross" {
+                                let location = if request.uri().path() == "/same" {
+                                    "/file".into()
+                                } else {
+                                    format!("{target}/file")
+                                };
+                                return Response::builder()
+                                    .status(302)
+                                    .header("location", location)
+                                    .body(Body::empty())
+                                    .unwrap();
+                            }
+                            origin(request).await
+                        }
+                    }),
+                ),
+            )
+            .await
+            .unwrap();
+        });
+        for (path, succeeds) in [("same", true), ("cross", false)] {
+            let url = format!("{source_url}/{path}");
+            let (mut ctx, _page, _) = context(url.clone(), Format::File, Some(128));
+            ctx.request = Some(Arc::new(super::super::ObservedRequestContext {
+                url: url::Url::parse(&url).unwrap(),
+                referer: Some("https://page.test/".parse().unwrap()),
+                user_agent: Some("Owned browser".parse().unwrap()),
+            }));
+            let (_stop, stopped) = watch::channel(false);
+            let reader = OriginReader::new(ctx, stopped).unwrap();
+            let result = reader.read(reader.root, 0, 16).await;
+            if succeeds {
+                assert_eq!(result.unwrap().bytes, (0..16).collect::<Vec<_>>());
+            } else {
+                assert_eq!(result.unwrap_err().to_string(), "watch_media_unavailable");
+            }
+            assert_eq!(seen.load(std::sync::atomic::Ordering::SeqCst), 0);
+            let child = Uuid::new_v4();
+            reader.resources.lock().await.insert(
+                child,
+                Resource::File {
+                    url: url::Url::parse(&format!("{foreign_url}/file")).unwrap(),
+                    size: Some(128),
+                },
+            );
+            assert_eq!(
+                reader.read(child, 0, 16).await.unwrap().bytes,
+                (0..16).collect::<Vec<_>>()
+            );
+            seen.store(0, std::sync::atomic::Ordering::SeqCst);
+        }
+        source_task.abort();
+        foreign_task.abort();
     }
     #[tokio::test]
     async fn redirects_keep_ranges_strip_credentials_and_resolve_hls_at_final_url() {

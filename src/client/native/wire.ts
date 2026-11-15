@@ -10,7 +10,44 @@ export const nativePageCandidateSchema = z.object({ id: z.uuid(), title: z.strin
 export type NativePageCandidate = z.infer<typeof nativePageCandidateSchema>;
 export const nativePageMediaChoiceSchema = z.object({ id: z.uuid(), displayURL: nativePageURLSchema, name: z.string().max(512).refine(value => [...value].length <= 256), format: z.enum(["file", "hls"]) }).strict();
 export type NativePageMediaChoice = z.infer<typeof nativePageMediaChoiceSchema>;
+export const NATIVE_PAGE_METADATA_READ_BYTES = 65536;
+export const NATIVE_PAGE_METADATA_PREFIX_BYTES = 1024 * 1024;
+export const nativePageIndexedCandidateSchema = z.object({
+  id: z.uuid(), name: z.string().max(512).refine(value => [...value].length <= 256), hostname: z.string().min(1).max(253).regex(/^[A-Za-z0-9.:[\]-]+$/),
+  mimeType: z.string().max(256), totalSize: z.number().int().positive().safe(),
+}).strict();
+export type NativePageIndexedCandidate = z.infer<typeof nativePageIndexedCandidateSchema>;
+export const nativePageMetadataReadSchema = z.object({
+  choiceId: z.uuid(), offset: z.number().int().nonnegative().safe(),
+  length: z.number().int().positive().max(NATIVE_PAGE_METADATA_READ_BYTES),
+}).strict().refine(value => value.offset + value.length <= NATIVE_PAGE_METADATA_PREFIX_BYTES);
+const nativePageBase64Schema = z.string().regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
+export const nativePageMetadataResultSchema = z.object({
+  mimeType: z.string().max(256), totalSize: z.number().int().positive().safe(),
+  bytesBase64: nativePageBase64Schema.max(4 * Math.ceil(NATIVE_PAGE_METADATA_READ_BYTES / 3)),
+}).strict();
+export const nativePageIndexedTrackRecipeSchema = z.object({
+  choiceId: z.uuid(), totalSize: z.number().int().positive().safe(),
+  codec: z.string().min(1).max(128).regex(/^[!#$%&'*+\-.^_`{|}~0-9A-Za-z]+$/),
+  timescale: z.number().int().positive().max(0xffffffff), mediaOffset: z.number().int().nonnegative().safe(),
+  initBase64: nativePageBase64Schema.min(4).max(4 * Math.ceil(NATIVE_PAGE_METADATA_PREFIX_BYTES / 3)),
+  // SIDX uses u16 reference_count, u31 referenced_size and u32 subsegment_duration.
+  segments: z.array(z.tuple([z.number().int().positive().max(0x7fffffff), z.number().int().positive().max(0xffffffff)])).min(1).max(0xffff),
+}).strict().refine(value => {
+  let end = value.mediaOffset, ticks = 0;
+  for (const [length, duration] of value.segments) {
+    end += length; ticks += duration;
+    if (!Number.isSafeInteger(end) || end > value.totalSize || !Number.isSafeInteger(ticks)) return false;
+  }
+  return true;
+});
+export type NativePageIndexedTrackRecipe = z.infer<typeof nativePageIndexedTrackRecipeSchema>;
+export const nativePageIndexedSelectionSchema = z.object({
+  video: nativePageIndexedTrackRecipeSchema, audio: nativePageIndexedTrackRecipeSchema.optional(),
+}).strict().refine(value => value.video.choiceId !== value.audio?.choiceId);
+export type NativePageIndexedSelection = z.infer<typeof nativePageIndexedSelectionSchema>;
 export const nativePageEventSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("page_media_changed"), pageId: z.uuid() }).strict(),
   z.object({ type: z.literal("page_candidates"), pageId: z.uuid(), url: nativePageURLSchema, candidates: z.array(nativePageCandidateSchema).max(64) }).strict(),
   z.object({ type: z.literal("page_sample"), pageId: z.uuid(), event: z.enum(["loadedmetadata", "loadeddata", "play", "playing", "pause", "seeked", "ratechange", "ended", "waiting", "error"]) }).strict(),
   z.object({ type: z.literal("page_closed"), pageId: z.uuid() }).strict(),

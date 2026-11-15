@@ -3867,6 +3867,7 @@ dependencies = [
  "anyhow",
  "axum",
  "axum-server",
+ "base64ct",
  "block2",
  "dirs 6.0.0",
  "futures-util",

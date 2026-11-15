@@ -23,6 +23,11 @@ the feedback period; they do not delay that delivery.
   shows site reconnection while waiting for a shared picture. A reproduced RTC
   constructor failure is now isolated from the site socket; confirm the reporting
   device's cause before treating this boundary repair as resolution of that report.
+- [ ] **3.0 viewing remains at 60 fps above the requested setting.** Collect the
+  actual capture source, applied resolution/frame rate and receiver counters for
+  the reported path. Compare capture, encoded, received and decoded cadence;
+  identify the displayed statistic. Controlled worker measurements stay in the
+  [encoder assessment](./research/webrtc-encoder-pool.md#rust-worker-cadence-control).
 - [ ] **3.0 Windows shared-sound noise.** The reporter confirms electrical or
   crackling sound in beta9/10 as well as beta2, while 2.x sounds normal. Excluding
   the window titled Piik removes it; excluding a silent unrelated window does
@@ -146,7 +151,9 @@ the feedback period; they do not delay that delivery.
   and original-media forwarding toward VideoTogether's playback coverage.
   Validate actual supported websites, source-issued media grants, live playlist
   lifecycle and target Browser behavior. Complete Bilibili ordinary/member
-  Browser viewing for segmented media, YouTube Browser-only viewing, and the
+  Browser viewing for segmented media: identify the audio-source request failure
+  and transient empty-source report, and verify broader source availability.
+  Complete YouTube Browser-only viewing and the
   supplied girigirilove page when its original player is accessible. Keep each
   viewer's account access in its original player. Retain the
   [shared playback owner](./research/channel-network-design.md#synchronized-video-sources):

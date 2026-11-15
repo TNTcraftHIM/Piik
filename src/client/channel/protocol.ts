@@ -11,7 +11,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 22;
+export const CHANNEL_PROTOCOL = 23;
 export const CHANNEL_SESSION_LIMIT = 128;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
@@ -246,7 +246,7 @@ export interface RoomSettings extends DomainSettings {
   relayCapacity?: number;
 }
 export type ChannelCommand =
-  | { type: "start_watch"; roomId: string; id: string; source: WatchSource; playback: WatchPlayback }
+  | { type: "start_watch"; roomId: string; id: string; source: WatchSource; playback: WatchPlayback; byteSource?: WatchByteSource }
   | { type: "update_watch"; roomId: string; id: string; playback: WatchPlayback }
   | { type: "join_watch"; roomId: string; id: string; mode: WatchMode | null }
   | { type: "set_watch_byte_source"; roomId: string; id: string; byteSource: WatchByteSource | null }

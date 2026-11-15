@@ -11,6 +11,7 @@ import { CaptureSourcePicker } from "../src/client/components/living/CaptureSour
 import { ChannelShareControl } from "../src/client/channel/components/ChannelShareControl";
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 import type { ChannelController } from "../src/client/channel/types";
+import type { AppDiscoveryOptions } from "../src/client/native/discovery";
 import { setCopy, t } from "../src/client/ui/copy";
 import { APP_PROTOCOL, channelAppDiscovery } from "../src/client/channel/app-link";
 import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
@@ -235,7 +236,7 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   const window = Object.assign(new EventTarget(), { open: vi.fn((): typeof popup | null => popup), location: { origin: site, assign: vi.fn() } });
   const document = Object.assign(new EventTarget(), { visibilityState: "visible" });
   const native = {
-    discoverNativeConnect: vi.fn(async (_signal: AbortSignal): Promise<string | null> => approval),
+    discoverNativeConnect: vi.fn(async (_options: AppDiscoveryOptions): Promise<string | null> => approval),
     discoverNativeHealth: vi.fn(async (options: { signal: AbortSignal; waitForPermission?: boolean }): Promise<object | null> =>
       options.waitForPermission === false && !activated ? null : {}),
     NativeCompatibilityError: class extends Error {},
@@ -482,7 +483,7 @@ describe("App connection approval", () => {
     expect(page.setState).toHaveBeenLastCalledWith("ready");
     expect(page.popup.closed).toBe(true);
     expect(page.pending.current).toBeNull();
-    expect(page.native.discoverNativeConnect.mock.calls[0]![0].aborted).toBe(true);
+    expect(page.native.discoverNativeConnect.mock.calls[0]![0].signal?.aborted).toBe(true);
     page.message();
     expect(page.native.discoverNativeHealth).toHaveBeenCalledOnce();
   });
@@ -641,6 +642,47 @@ describe("App connection approval", () => {
 });
 
 describe("initial App discovery", () => {
+  it("leaves local permission untouched on mount and requests it only for an explicit connection", async () => {
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL(`${site}/`) });
+    const permission = Object.assign(new EventTarget(), { state: "prompt" });
+    vi.stubGlobal("navigator", { permissions: { query: vi.fn(async () => permission) } });
+    const fetcher = vi.fn(async (input: string) => {
+      const port = Number(new URL(input).port);
+      return Response.json({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
+        port, connectURL: `http://127.0.0.1:${port}/client` });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const page = mount(false, "idle", false, false, channelAppDiscovery, true);
+    try {
+      await settle();
+      expect(fetcher).not.toHaveBeenCalled();
+      expect(page.setState).toHaveBeenLastCalledWith("idle");
+      expect(page.showHelp).not.toHaveBeenCalled();
+      await page.connect();
+      expect(fetcher).toHaveBeenCalled();
+      expect(page.setState).toHaveBeenLastCalledWith("approval");
+      expect(page.window.open).not.toHaveBeenCalled();
+    } finally { page.cleanup(); vi.unstubAllGlobals(); }
+  });
+
+  it.each([false, true])("passive incompatibility stays quiet and preserves the live owner's connected fact (%s)", async connected => {
+    const incompatible = new Error("incompatible");
+    const discovery = { connect: vi.fn(async (): Promise<string | null> => { throw incompatible; }),
+      health: vi.fn(async (): Promise<null> => { throw incompatible; }), isIncompatible: (error: unknown) => error === incompatible };
+    const page = mount(true, "idle", false, connected, discovery);
+    try {
+      await settle();
+      expect(page.setState).toHaveBeenLastCalledWith(connected ? "ready" : "idle");
+      expect(page.showHelp).not.toHaveBeenCalled();
+      expect(page.window.open).not.toHaveBeenCalled();
+      if (!connected) {
+        await page.connect();
+        expect(page.setState).toHaveBeenLastCalledWith("incompatible");
+        expect(page.showHelp).toHaveBeenCalled();
+      }
+    } finally { page.cleanup(); }
+  });
+
   it("late automatic App readiness preserves a failed site's WebAssembly guidance", async () => {
     const pageSource = ts.createSourceFile("ChannelPreviewPage.tsx", readFileSync("src/client/pages/ChannelPreviewPage.tsx", "utf8"),
       ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -708,7 +750,7 @@ describe("initial App discovery", () => {
     await page.connect(); expect(page.window.open).toHaveBeenCalledOnce(); page.cleanup();
   });
   it("stops failed discovery across focus, permits manual retry, and aborts on unmount", async () => {
-    const discovery = { connect: vi.fn(async (_signal?: AbortSignal): Promise<string | null> => null), health: vi.fn(async () => ({})), isIncompatible: () => false };
+    const discovery = { connect: vi.fn(async (_options?: AppDiscoveryOptions): Promise<string | null> => null), health: vi.fn(async () => ({})), isIncompatible: () => false };
     const page = mount(true, "idle", false, false, discovery, true);
     await settle();
     expect(page.setState).toHaveBeenLastCalledWith("idle");
@@ -716,7 +758,7 @@ describe("initial App discovery", () => {
     page.window.dispatchEvent(new Event("focus")); page.activateElsewhere(); await settle();
     expect(discovery.connect).toHaveBeenCalledOnce(); expect(discovery.health).not.toHaveBeenCalled();
     let signal: AbortSignal | undefined;
-    discovery.connect.mockImplementationOnce(value => { signal = value; return new Promise(() => {}); });
+    discovery.connect.mockImplementationOnce(value => { signal = value?.signal; return new Promise(() => {}); });
     void page.connect(); expect(discovery.connect).toHaveBeenCalledTimes(2);
     page.cleanup(); expect(signal?.aborted).toBe(true);
   });

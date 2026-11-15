@@ -6,7 +6,7 @@ import { participantColor } from "../components/living/participant-color";
 import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
 import { screenVideoSettings } from "../media/quality";
-import type { ChannelController } from "../channel/types";
+import type { ChannelController, WatchIndexedChoice } from "../channel/types";
 import type { ChannelRoom, WatchActivity } from "../channel/protocol";
 import { WatchPlayer } from "../channel/watch-playback";
 import { HTMLVideoMedia, AppPageMedia, type WatchMediaEvent } from "../channel/watch-media";
@@ -40,7 +40,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const watchOnly = new URLSearchParams(location.search).has("watch-only");
   const [watchActivity, setWatchActivity] = useState<WatchActivity | null>(() => watchMode === "off" ? null : ({
     id: "sample-watch", roomId: "friday", viewerSessionIds: [], userId: watchMode.includes("owner") ? "sample-ada" : "sample-bo",
-    sessionId: watchMode.includes("owner") ? "sample-ada-session" : "sample-bo-session", source: watchMode === "native-owner" || watchMode === "website-failed"
+    sessionId: watchMode.includes("owner") ? "sample-ada-session" : "sample-bo-session", source: watchMode === "native-owner" || watchMode === "website-failed" || new URLSearchParams(location.search).has("website-source")
       ? { kind: "website", url: "https://video.example/watch/evening?private=not-in-title" } : { kind: "media", url: "https://media.example/evening.mp4?private=not-in-title" },
     playback: { position: 0, paused: true, rate: 1, anchorTime: 0 },
   }));
@@ -161,10 +161,22 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     { id: "sample-hls", name: "Evening playlist", displayURL: "https://video-cdn.media.example/films/evening-with-friends/alternate-audio/master.m3u8?private=not-in-title", format: "hls" as const },
     { id: "sample-file", name: "An evening with friends.mp4", displayURL: "https://media.example/films/evening/video.mp4?private=not-in-title", format: "file" as const },
   ];
+  const indexedTracks: WatchIndexedChoice[] = ([
+    { id: "00000000-0000-4000-8000-000000000001", name: "Video 1080p", hostname: "cdn-one.example", kind: "video", codec: "av01.0.08M.08", duration: 60, width: 1920, height: 1080 },
+    { id: "00000000-0000-4000-8000-000000000002", name: "Video 1080p", hostname: "cdn-two.example", kind: "video", codec: "av01.0.08M.08", duration: 60, width: 1920, height: 1080 },
+    { id: "00000000-0000-4000-8000-000000000003", name: "Audio", hostname: "audio.example", kind: "audio", codec: "mp4a.40.2", duration: 61, channels: 2 },
+  ] as const).map(track => {
+    const candidate = { id: track.id, name: track.name, hostname: track.hostname, mimeType: `${track.kind}/mp4`, totalSize: 100 };
+    if (new URLSearchParams(location.search).has("indexed-track-failed") && track.kind === "audio") return { candidate, error: "watch_indexed_unsupported" };
+    return { candidate, inspection: { candidate,
+      metadata: { ...track, firstPTS: 0, timescale: 1000, language: "und" },
+      recipe: { choiceId: candidate.id, totalSize: 100, codec: track.codec, timescale: 1000, mediaOffset: 40, initBase64: "aW5pdA==", segments: [[60, 1000]] },
+    } };
+  });
   useEffect(() => {
     if (!browserSourcePending) return;
     const timer = window.setTimeout(() => {
-      setPageSample(page => page && ({ ...page, browserSource: { choices: browserSourceChoices } }));
+      setPageSample(page => page && ({ ...page, watchSources: { choices: browserSourceChoices, indexed: [] } }));
       setBrowserSourcePending(null);
     }, 3500);
     return () => window.clearTimeout(timer);
@@ -177,8 +189,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const channel = { ...sample.channel, state, self: profiles.get(users[0].id)!, profiles, streams, error: null, siteURL: "https://friends.example/",
     pending: browserSourcePending ? new Set([...sample.channel.pending, `screen:${browserSourcePending}`]) : sample.channel.pending,
     watchPlayers,
-    watchMediaChoices: async () => [{ id: "sample-file", name: "An evening with friends.mp4", displayURL: "https://media.example/evening.mp4", format: "file" as const },
-      ...(new URLSearchParams(location.search).has("many-choices") ? [{ id: "sample-hls", name: "Evening playlist", displayURL: "https://media.example/master.m3u8", format: "hls" as const }] : [])],
+    watchMediaChoices: async () => new URLSearchParams(location.search).has("indexed-tracks") ? { choices: [], indexed: indexedTracks }
+      : { choices: [{ id: "sample-file", name: "An evening with friends.mp4", displayURL: "https://media.example/evening.mp4", format: "file" as const },
+        ...(new URLSearchParams(location.search).has("many-choices") ? [{ id: "sample-hls", name: "Evening playlist", displayURL: "https://media.example/master.m3u8", format: "hls" as const }] : [])], indexed: [] },
     setWatchByteSource: async (_id, choiceId) => setForwarding(choiceId !== null),
     pagePlayer: new URLSearchParams(location.search).has("page-player"),
     watchPage: (_roomId, activityId) => pageSample?.activityId === activityId ? pageSample : undefined,
@@ -188,24 +201,31 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     cancelScreenSelection: async () => { setBrowserSourcePending(null); setPageSample(undefined); },
     selectWatchPage: async (roomId, _candidateId, activityId) => {
       const query = new URLSearchParams(location.search);
-      if (!activityId && query.has("browser-source")) {
+      if (!activityId && (query.has("browser-source") || query.has("indexed-tracks"))) {
+        if (query.has("indexed-tracks")) {
+          setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: indexedTracks } });
+          return false;
+        }
         if (query.has("browser-source-pending")) {
-          setPageSample({ ...pageSample!, browserSource: { choices: [] } });
+          setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: [] } });
           setBrowserSourcePending(roomId);
           return false;
         }
         if (query.has("browser-source-failed")) {
-          setPageSample({ ...pageSample!, browserSource: { choices: [] } });
-          throw new Error("watch_source_unavailable");
-        }
-        if (!query.has("empty-browser-sources")) {
-          setPageSample({ ...pageSample!, browserSource: { choices: browserSourceChoices } });
+          setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: [], error: "watch_source_unavailable" } });
           return false;
         }
+        if (!query.has("empty-browser-sources")) {
+          setPageSample({ ...pageSample!, watchSources: { choices: browserSourceChoices, indexed: [] } });
+          return false;
+        }
+        setPageSample({ ...pageSample!, watchSources: { choices: [], indexed: [] } });
+        return false;
       }
       commitPageSelection(roomId, activityId);
       return true;
     },
+    selectWatchIndexedSource: async roomId => { setForwarding(true); commitPageSelection(roomId); },
     selectWatchBrowserSource: async (roomId, choiceId) => {
       commitPageSelection(roomId, undefined, browserSourceChoices.find(choice => choice.id === choiceId)?.displayURL);
     },

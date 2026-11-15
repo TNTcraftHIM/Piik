@@ -65,7 +65,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 12;
+const PROTOCOL: u8 = 13;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -1682,6 +1682,28 @@ async fn connection(
                                     }
                                 } else {
                                     Err(anyhow!("hello_required"))
+                                }
+                            }
+                            Operation::Page(page::Operation::PageMediaPrepareIndexed { page_id, video, audio }) => {
+                                if let Some(host) = &host {
+                                    match pages.prepare_indexed_media(page_id, video, audio, host.clone()) {
+                                        Ok(work) => {
+                                            operations.push(async move {match work.await {Ok(value)=>json!({"id":request.id,"result":value}),Err(error)=>json!({"id":request.id,"error":error.to_string()})}}.boxed());
+                                            continue;
+                                        }
+                                        Err(error) => Err(error),
+                                    }
+                                } else { Err(anyhow!("hello_required")) }
+                            }
+                            Operation::Page(page::Operation::PageMediaReadMetadata { page_id, choice_id, offset, length }) => {
+                                if host.is_none() { Err(anyhow!("hello_required")) }
+                                else {
+                                    let pages = pages.clone();
+                                    operations.push(async move { match pages.read_metadata(page_id, choice_id, offset, length).await {
+                                        Ok(result) => json!({"id":request.id,"result":result}),
+                                        Err(error) => json!({"id":request.id,"error":error.to_string()}),
+                                    }}.boxed());
+                                    continue;
                                 }
                             }
                             Operation::Page(page::Operation::PageMediaStop { page_id }) => {

@@ -218,6 +218,7 @@ impl Pages {
                 owner,
                 page_id,
                 choice_id,
+                indexed,
                 reply,
             } => {
                 let result = (|| -> Result<page::MediaContext> {
@@ -236,7 +237,7 @@ impl Pages {
                     let choice = page
                         .media
                         .borrow()
-                        .choice(choice_id)
+                        .choice(choice_id, indexed)
                         .ok_or_else(|| anyhow!("watch_resource_unavailable"))?;
                     let document = page.document.ok_or_else(|| anyhow!("page_player_closed"))?;
                     let events = events.clone();
@@ -259,7 +260,8 @@ impl Pages {
                         })
                     });
                     Ok(page::MediaContext {
-                        url: choice.url,
+                        url: choice.source_url().to_owned(),
+                        request: choice.request,
                         format: choice.format,
                         size: choice.size,
                         retired: page.media.borrow().retired.subscribe(),
@@ -474,7 +476,7 @@ impl Pages {
                 create().unwrap_or(NewWindowResponse::Deny)
             })
             .build(&window)?;
-        media::observe(&view, media.clone())?;
+        media::observe(&view, media.clone(), id, outgoing.clone())?;
         view.load_url(&url)?;
         let closed = events;
         let window_id = window.id();
@@ -528,9 +530,16 @@ impl Pages {
         }
         match message.event {
             PageEvent::Resources { urls } => {
-                page.media.borrow_mut().frame(message.frame, urls);
+                let changed = page
+                    .media
+                    .borrow_mut()
+                    .frame(message.frame, message.ancestors, urls);
+                if changed {
+                    page.emit(json!({"type":"page_media_changed","pageId":page.id}));
+                }
             }
             PageEvent::Removed { removed } => {
+                page.media.borrow_mut().remove_frame(removed);
                 page.candidates.retain(|_, candidate| {
                     candidate.frame != removed && !candidate.ancestors.contains(&removed)
                 });

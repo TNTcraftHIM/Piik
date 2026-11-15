@@ -100,7 +100,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
         volume: video.volume, muted: video.muted, rate: video.playbackRate });
       setFullscreen(videoFullscreenState(video));
     };
-    const events = ["timeupdate", "durationchange", "volumechange", "ratechange", "loadedmetadata", "webkitbeginfullscreen", "webkitendfullscreen"];
+    const events = ["timeupdate", "durationchange", "volumechange", "ratechange", "loadedmetadata", "loadeddata", "webkitbeginfullscreen", "webkitendfullscreen"];
     for (const name of events) video.addEventListener(name, sync);
     document.addEventListener("fullscreenchange", sync); sync();
     return () => { for (const name of events) video.removeEventListener(name, sync); document.removeEventListener("fullscreenchange", sync); };
@@ -108,6 +108,9 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-external={!player.video || undefined} data-failed={!!player.error || undefined}
     data-standalone={!player.video || !!player.error && player.error !== "watch_update_failed" || undefined} data-thumbnail={presentation === "thumbnail" || undefined}
     data-controls-hidden={visibility.hidden} inert={presentation === "background"}>
+    {player.video && player.video.readyState < 2 && !player.mediaState && !player.error && !player.blocked && <div className="c3-mini-message" role="status">
+      <span className="c3-frame-wait"><BrandMark size={32} motion="loop" />{t("watch.waiting")}</span>
+    </div>}
     {!player.video && !player.error && <div className="c3-mini-message"><div className="c3-frame-wait c3-watch-result">
       <span>{t("watch.inWindow")}</span><Btn icon="window" title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />
     </div></div>}

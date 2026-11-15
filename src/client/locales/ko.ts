@@ -2,6 +2,13 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // Community translations are data-only and type-checked against zh.
 export const ko: Record<CopyKey, string> = {
+  "watch.forward.tracksHelp": "영상과 선택할 음성을 따로 고르세요. 확인하면 이 기기의 업로드 대역폭을 사용해 전송합니다.",
+  "watch.forward.noVideoTrack": "전송할 수 있는 영상 트랙이 없습니다. 원래 웹페이지에서 계속 시청할 수 있습니다.",
+  "watch.forward.videoOnly": "영상만, 소리 없이",
+  "watch.forward.trackUnavailable": "일부 소스를 읽을 수 없거나 아직 지원하지 않습니다. 나머지 트랙을 선택할 수 있습니다.",
+  "watch.forward.selected": "전송할 내용: {video} + {audio}",
+  "watch.forward.confirmTracks": "확인하고 전송 시작",
+  "watch.forward.channels": "{count}채널",
   "watch.viewersCount": "시청 참여: {count}명",
   "watch.joined": "시청 참여 중",
   "watch.noViewers": "아직 다른 시청 참여자가 없습니다.",
@@ -22,7 +29,9 @@ export const ko: Record<CopyKey, string> = {
   "watch.forward.receiveHelp": "사용 가능한 방 P2P 연결이 필요해요. 내 수신 방식만 바꿔요.",
   "watch.forward.secure": "이 브라우저에서는 이 페이지의 영상을 받을 수 없어요. App에서 시청하거나 신뢰할 수 있는 HTTPS 주소로 사이트를 열어 주세요.",
   "watch.forward.viewing": "수신 방식",
-  "watch.forward.failed": "공유자에게서 동영상을 받지 못했어요. 방 연결을 확인하거나 다른 수신 방식을 선택하세요.",
+  "watch.decodeFailed": "이 브라우저에서 동영상을 디코딩하지 못했어요. 다른 브라우저를 사용하거나 App에서 원래 웹페이지를 열어 시청하세요.",
+  "watch.playbackUnsupported": "이 브라우저는 이 미디어 형식이나 코덱을 지원하지 않아요. App에서 원래 웹페이지를 열어 시청하세요.",
+  "watch.forward.failed": "동영상 재생에 실패했어요. 다시 시도하거나 다른 수신 방법을 선택하세요.",
   "watch.forward.unsupported": "이 동영상 소스는 아직 전달할 수 없어요. 각자 App에서 원래 웹페이지를 열어 시청할 수 있어요.",
   "watch.forward.sourceUnavailable": "웹사이트에서 동영상을 읽지 못했어요. App의 원래 웹페이지에서 로그인과 재생 상태를 확인한 뒤 동영상을 다시 선택하세요.",
   "watch.forward.busy": "동영상 전달을 처리 중이에요. 잠시 후 다시 시도해 주세요.",

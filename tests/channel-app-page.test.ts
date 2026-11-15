@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { APP_PROTOCOL, ChannelApp } from "../src/client/channel/app-link";
 import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
-import { nativePageStateSchema } from "../src/client/native/wire";
+import { NATIVE_PAGE_METADATA_PREFIX_BYTES, NATIVE_PAGE_METADATA_READ_BYTES, nativePageStateSchema } from "../src/client/native/wire";
 
 class Socket {
   static OPEN = 1;
@@ -26,7 +26,32 @@ async function setup() {
   socket.onopen?.(); socket.reply(null); await app.ready;
   return { app, socket };
 }
+async function openPage(app: ChannelApp, socket: Socket) {
+  const opening = app.preparePage("https://video.test/page", vi.fn(), new AbortController().signal);
+  socket.reply({ pageId: socket.sent.at(-1)!.pageId });
+  return opening;
+}
 const state = { position: 12, paused: false, rate: 1, duration: null, readyState: 4, ended: false, buffered: [[0, 60]] as [number, number][] };
+
+test("source invalidation has its own listener lifetime and never becomes a playback event", async () => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket);
+    const changed = vi.fn(), playback = vi.fn(), afterClose = vi.fn();
+    const unlisten = page.listenMediaSources(changed);
+    page.listen(playback);
+    socket.receive({ type: "page_media_changed", pageId: page.id });
+    expect(changed).toHaveBeenCalledOnce();
+    expect(playback).not.toHaveBeenCalled();
+    unlisten();
+    socket.receive({ type: "page_media_changed", pageId: page.id });
+    expect(changed).toHaveBeenCalledOnce();
+    page.listenMediaSources(afterClose);
+    page.close();
+    page.receive({ type: "page_media_changed", pageId: page.id });
+    expect(afterClose).not.toHaveBeenCalled();
+  } finally { app.close(); }
+});
 test("App playback samples require actual valid buffered ranges", () => {
   expect(nativePageStateSchema.parse({ ...state, buffered: [[0, 11], [13, 15]] }).buffered).toEqual([[0, 11], [13, 15]]);
   const { buffered: _buffered, ...obsolete } = state;
@@ -78,7 +103,7 @@ test('watch byte source registration retains the original webpage and stop retir
     const choiceId = crypto.randomUUID();
     const choices = page.mediaSources();
     expect(socket.sent.at(-1)).toMatchObject({ type: 'page_media_sources', pageId });
-    socket.reply({ choices: [{ id: choiceId, displayURL: 'https://media.test/movie.m3u8', name: 'Movie', format: 'hls' }], byteSource: null });
+    socket.reply({ choices: [{ id: choiceId, displayURL: 'https://media.test/movie.m3u8', name: 'Movie', format: 'hls' }], indexedCandidates: [], byteSource: null });
     expect((await choices).choices).toHaveLength(1);
     const preparing = page.prepareMedia(choiceId);
     expect(socket.sent.at(-1)).toMatchObject({ type: 'page_media_prepare', pageId, choiceId });
@@ -90,5 +115,122 @@ test('watch byte source registration retains the original webpage and stop retir
     const reading = page.read(); socket.reply(state);
     await expect(reading).resolves.toEqual(state);
     expect(socket.sent.some(command => command.type === 'page_close')).toBe(false);
+  } finally { app.close(); }
+});
+
+test("App 13 keeps indexed resource candidates separate from direct media choices", async () => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket);
+    const candidate = { id: crypto.randomUUID(), name: "Observed track", hostname: "media.test", mimeType: "video/mp4", totalSize: 1000000 };
+    const direct = { id: crypto.randomUUID(), displayURL: "https://media.test/movie.m3u8", name: "Movie", format: "hls" };
+    const sources = page.mediaSources();
+    socket.reply({ choices: [direct], indexedCandidates: [candidate], byteSource: null });
+    await expect(sources).resolves.toEqual({ choices: [direct], indexedCandidates: [candidate], byteSource: null });
+    const missingHost = page.mediaSources();
+    const { hostname: _hostname, ...oldCandidate } = candidate;
+    socket.reply({ choices: [], indexedCandidates: [oldCandidate], byteSource: null });
+    await expect(missingHost).rejects.toThrow();
+    const privateHost = page.mediaSources();
+    socket.reply({ choices: [], indexedCandidates: [{ ...candidate, hostname: "media.test?private=grant" }], byteSource: null });
+    await expect(privateHost).rejects.toThrow();
+    const obsolete = page.mediaSources();
+    socket.reply({ choices: [direct], byteSource: null });
+    await expect(obsolete).rejects.toThrow();
+    const leaked = page.mediaSources();
+    socket.reply({ choices: [direct], indexedCandidates: [{ ...candidate, url: "https://media.test/private-track" }], byteSource: null });
+    await expect(leaked).rejects.toThrow();
+  } finally { app.close(); }
+});
+
+test("selected-page metadata reads use opaque IDs and enforce both byte-window bounds before sending", async () => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket), choiceId = crypto.randomUUID(), signal = new AbortController().signal;
+    const offset = NATIVE_PAGE_METADATA_PREFIX_BYTES - 3;
+    const reading = page.readMediaMetadata(choiceId, offset, 3, signal);
+    expect(socket.sent.at(-1)).toEqual({ id: expect.any(String), type: "page_media_read_metadata", pageId: page.id, choiceId, offset, length: 3 });
+    socket.reply({ mimeType: "video/mp4", totalSize: 2000000, bytesBase64: "AP8q" });
+    await expect(reading).resolves.toEqual({ mimeType: "video/mp4", totalSize: 2000000, bytes: Uint8Array.of(0, 255, 42) });
+    const sent = socket.sent.length;
+    await expect(page.readMediaMetadata(choiceId, 0, NATIVE_PAGE_METADATA_READ_BYTES + 1, signal)).rejects.toThrow();
+    await expect(page.readMediaMetadata(choiceId, NATIVE_PAGE_METADATA_PREFIX_BYTES - 1, 2, signal)).rejects.toThrow();
+    expect(socket.sent).toHaveLength(sent);
+  } finally { app.close(); }
+});
+
+test("metadata response validation catches oversized decoded bytes and malformed or truncated replies", async () => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket), choiceId = crypto.randomUUID(), signal = new AbortController().signal;
+    // 65536 and 65537 bytes have the same padded Base64 string length: decoded size needs checking.
+    const oversized = page.readMediaMetadata(choiceId, 0, NATIVE_PAGE_METADATA_READ_BYTES, signal);
+    socket.reply({ mimeType: "video/mp4", totalSize: 1000000, bytesBase64: btoa("x".repeat(NATIVE_PAGE_METADATA_READ_BYTES + 1)) });
+    await expect(oversized).rejects.toThrow("invalid_app_response");
+    const malformed = page.readMediaMetadata(choiceId, 0, 3, signal);
+    socket.reply({ mimeType: "video/mp4", totalSize: 1000000, bytesBase64: "A===" });
+    await expect(malformed).rejects.toThrow();
+    const truncated = page.readMediaMetadata(choiceId, 0, 3, signal);
+    socket.reply({ mimeType: "video/mp4", totalSize: 1000000, bytesBase64: "AA==" });
+    await expect(truncated).rejects.toThrow("invalid_app_response");
+    const playback = page.read(); socket.reply(state);
+    await expect(playback).resolves.toEqual(state);
+  } finally { app.close(); }
+});
+
+test.each(["caller", "page"] as const)("%s retirement cancels metadata reads and discards their late replies", async owner => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket), cancel = new AbortController();
+    const reading = page.readMediaMetadata(crypto.randomUUID(), 0, 3, cancel.signal);
+    const command = socket.sent.at(-1)!;
+    const rejected = owner === "caller" ? expect(reading).rejects.toMatchObject({ name: "AbortError" })
+      : expect(reading).rejects.toThrow("watch_page_closed");
+    if (owner === "caller") cancel.abort(); else page.close();
+    await rejected;
+    socket.receive({ id: command.id, result: { mimeType: "video/mp4", totalSize: 1000000, bytesBase64: "AP8q" } });
+    if (owner === "caller") {
+      expect(socket.sent.some(value => value.type === "page_close")).toBe(false);
+      const playback = page.read(); socket.reply(state);
+      await expect(playback).resolves.toEqual(state);
+    } else socket.reply(null);
+    expect((app as unknown as { requests: Map<string, unknown> }).requests.size).toBe(0);
+  } finally { app.close(); }
+});
+
+test("indexed preparation keeps the page owner and returns only an HLS byte source", async () => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket), signal = new AbortController().signal;
+    const video = { choiceId: crypto.randomUUID(), totalSize: 1000, codec: "av01.0.08M.08", timescale: 16000,
+      mediaOffset: 100, initBase64: "AAAA", segments: [[900, 80000] as [number, number]] };
+    const preparing = page.prepareIndexedMedia({ video }, signal);
+    expect(socket.sent.at(-1)).toEqual({ id: expect.any(String), type: "page_media_prepare_indexed", pageId: page.id, video });
+    const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "hls" };
+    socket.reply(source); await expect(preparing).resolves.toEqual(source);
+    const invalid = page.prepareIndexedMedia({ video }, signal);
+    socket.reply({ ...source, format: "file" }); await expect(invalid).rejects.toThrow();
+    const playback = page.read(); socket.reply(state); await expect(playback).resolves.toEqual(state);
+  } finally { app.close(); }
+});
+
+test("indexed preparation measures the whole App request before sending and discards late cancelled replies", async () => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket), signal = new AbortController().signal;
+    const video = { choiceId: crypto.randomUUID(), totalSize: 1000, codec: "av01.0.08M.08", timescale: 16000,
+      mediaOffset: 100, initBase64: btoa("x".repeat(100000)), segments: [[900, 80000] as [number, number]] };
+    const audio = { ...video, choiceId: crypto.randomUUID(), codec: "mp4a.40.2" }, sent = socket.sent.length;
+    await expect(page.prepareIndexedMedia({ video, audio }, signal)).rejects.toThrow("watch_resource_limit");
+    expect(socket.sent).toHaveLength(sent);
+    const cancel = new AbortController();
+    const preparing = page.prepareIndexedMedia({ video: { ...video, initBase64: "AAAA" } }, cancel.signal);
+    const command = socket.sent.at(-1)!, rejected = expect(preparing).rejects.toMatchObject({ name: "AbortError" });
+    cancel.abort(); await rejected;
+    socket.receive({ id: command.id, result: { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "hls" } });
+    // Native cleanup remains the explicit page operation owned by the cancelling selection.
+    const stopped = page.stopMedia(); socket.reply(null); await stopped;
+    const playback = page.read(); socket.reply(state); await expect(playback).resolves.toEqual(state);
+    expect(socket.sent.some(value => value.type === "page_close")).toBe(false);
   } finally { app.close(); }
 });

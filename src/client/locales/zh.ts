@@ -1,5 +1,12 @@
 // Canonical catalog: add keys here first; every other locale must match it.
 export const zh = {
+  "watch.forward.tracksHelp": "分别选择一段画面和可选的声音。确认后开始使用本机上传带宽。",
+  "watch.forward.noVideoTrack": "没有可转发的视频轨道。你仍可在原网页中观看。",
+  "watch.forward.videoOnly": "仅画面，不带声音",
+  "watch.forward.trackUnavailable": "部分来源未能读取或当前不支持。可以选择其余轨道。",
+  "watch.forward.selected": "将转发：{video} + {audio}",
+  "watch.forward.confirmTracks": "确认并开始转发",
+  "watch.forward.channels": "{count} 声道",
   "watch.viewersCount": "已加入观看：{count} 人",
   "watch.joined": "已加入观看",
   "watch.noViewers": "还没有其他人加入观看。",
@@ -20,7 +27,9 @@ export const zh = {
   "watch.forward.receiveHelp": "需要可用的房间 P2P 连接。只更改你的接收方式。",
   "watch.forward.secure": "当前浏览器无法在此页面接收这种视频。请在 App 中观看，或通过受信任的 HTTPS 地址打开站点。",
   "watch.forward.viewing": "接收方式",
-  "watch.forward.failed": "未能从分享者接收视频。请检查房间连接或选择其他接收方式。",
+  "watch.decodeFailed": "浏览器无法解码此视频。请尝试其他浏览器，或在 App 中观看原网页。",
+  "watch.playbackUnsupported": "此浏览器不支持该媒体格式或编码。请在 App 中观看原网页。",
+  "watch.forward.failed": "视频播放失败。请重试或选择其他接收方式。",
   "watch.forward.unsupported": "当前不支持转发此视频源。大家可以各自在 App 中观看原网页。",
   "watch.forward.sourceUnavailable": "未能读取源网站的视频。请在 App 原网页中检查登录和播放，再重新选择视频。",
   "watch.forward.busy": "视频转发正忙，请稍后重试。",

@@ -574,6 +574,8 @@ impl RoomRuntime {
         id: Uuid,
         source: crate::wire::WatchSource,
         playback: crate::wire::WatchPlayback,
+        byte_source: Option<crate::wire::WatchByteSource>,
+        endpoints: &BTreeMap<Uuid, Endpoint>,
     ) -> Result<(), &'static str> {
         self.authorize(member, RoomPermission::Read)?;
         source.validate()?;
@@ -582,8 +584,10 @@ impl RoomRuntime {
             if current.session_id != session || current.source != source {
                 return Err("watch_identity_conflict");
             }
+            // A start retry must preserve later playback and forwarding settings.
             return Ok(());
         }
+        self.validate_watch_byte_source(member, byte_source.as_ref(), endpoints)?;
         if let Some(previous) = self
             .watch_activities
             .iter()
@@ -598,7 +602,7 @@ impl RoomRuntime {
                 session_id: session,
                 source,
                 playback,
-                byte_source: None,
+                byte_source,
             },
         );
         Ok(())
@@ -635,7 +639,17 @@ impl RoomRuntime {
         if activity.session_id != session {
             return Err("not_watch_owner");
         }
-        if let Some(source) = &source {
+        self.validate_watch_byte_source(member, source.as_ref(), endpoints)?;
+        self.watch_activities.get_mut(&id).unwrap().byte_source = source;
+        Ok(())
+    }
+    fn validate_watch_byte_source(
+        &self,
+        member: Member,
+        source: Option<&crate::wire::WatchByteSource>,
+        endpoints: &BTreeMap<Uuid, Endpoint>,
+    ) -> Result<(), &'static str> {
+        if let Some(source) = source {
             let provider = endpoints
                 .get(&source.session_id)
                 .ok_or("watch_provider_unavailable")?;
@@ -644,7 +658,6 @@ impl RoomRuntime {
             }
             self.authorize(provider.member, RoomPermission::Read)?;
         }
-        self.watch_activities.get_mut(&id).unwrap().byte_source = source;
         Ok(())
     }
     fn watch_receivers(&self, id: Uuid) -> BTreeSet<Uuid> {
@@ -1379,6 +1392,8 @@ mod tests {
                 rate: 1.,
                 anchor_time: 0,
             },
+            None,
+            &endpoints,
         )
         .unwrap();
         room.join_watch(

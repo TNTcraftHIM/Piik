@@ -77,7 +77,8 @@ Actual website controls have narrower evidence than the local fixtures:
 
 | Source | Observed behavior | Remaining scope |
 | --- | --- | --- |
-| Bilibili ordinary and authorized member video | Native original-page playback, pause and seek pass; the member case reaches beyond the preview interval. | The observed segmented sources are not yet available to Browser-only viewers. Independent App-viewer synchronization remains unverified. |
+| Bilibili ordinary video | A Browser without site login receives AV1 video and AAC audio, follows pause and an unbuffered backward seek, and retires on stop. Same-named upstream resources were found to contain different bytes; the passing source was verified by its received digest. | One separately selected audio source failed during the Native request. Source availability and broader catalogue coverage remain open. |
+| Bilibili authorized member video | Live discovery exposes clear AV1 video and AAC audio. A Browser without site login receives 1080p video and audio, follows pause and an unbuffered forward seek beyond the preview interval. Protected tracks remain excluded. | Backward seeking, cross-network delivery and broader catalogue coverage remain unverified. |
 | YouTube public sample | Host and independent App-owned viewer windows synchronize playback, pause, seek and rate. | Browser-only reception, advertisements and cross-device behavior remain unverified. |
 | Supplied girigirilove page | The original site redirects to a region-unavailable page in the test environment. | No player was accessible; Piik compatibility cannot be concluded. |
 

@@ -263,6 +263,116 @@ fn replacing_watch_validates_before_retiring_source_and_viewers() {
 }
 
 #[test]
+fn initial_watch_bytes_validate_before_replacing_the_activity_and_subscriptions() {
+    let (mut net, owner, viewer, room) = setup();
+    let old = Uuid::new_v4();
+    let next = Uuid::new_v4();
+    net.command(owner, start(&room, old));
+    net.command(
+        viewer,
+        json!({"type":"join_watch","roomId":room,"id":old,"mode":"direct"}),
+    );
+    let provider = Uuid::new_v4();
+    let provider_session = net
+        .command(
+            provider,
+            json!({"type":"join","name":"App","ownerKey":"owner"}),
+        )
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::Welcome { session_id, .. } => Some(session_id),
+            _ => None,
+        })
+        .unwrap();
+    let effects = net.authority.disconnect(provider, 1000);
+    net.deliver(effects);
+    let before = net.state(viewer);
+    let owner_session = before.watch_activities[0].session_id;
+    let foreign_session = before.watch_activities[0].viewer_session_ids[0];
+    let activities = serde_json::to_value(&before.watch_activities).unwrap();
+    let subscriptions = before.watch_subscriptions.clone();
+    let mut replacement = start(&room, next);
+    replacement["source"] = json!({"kind":"website","url":"https://example.com/watch"});
+    replacement["byteSource"] =
+        json!({"sessionId":provider_session,"resourceId":Uuid::new_v4(),"format":"hls"});
+    for unavailable in [provider_session, foreign_session, Uuid::new_v4()] {
+        replacement["byteSource"]["sessionId"] = json!(unavailable);
+        error(
+            net.command(owner, replacement.clone()),
+            "watch_provider_unavailable",
+        );
+        assert_eq!(
+            serde_json::to_value(&net.state(viewer).watch_activities).unwrap(),
+            activities
+        );
+        assert_eq!(net.state(viewer).watch_subscriptions, subscriptions);
+    }
+    replacement["byteSource"]["sessionId"] = json!(owner_session);
+    let initial_bytes = replacement["byteSource"].clone();
+    ready(net.command_at(owner, replacement, 2000), 2000);
+    for connection in [owner, viewer] {
+        let state = net.state(connection);
+        assert_eq!(state.watch_activities.len(), 1);
+        assert_eq!(state.watch_activities[0].id, next);
+        assert_eq!(
+            serde_json::to_value(&state.watch_activities[0].byte_source).unwrap(),
+            initial_bytes
+        );
+        assert!(state.watch_subscriptions.is_empty());
+        assert!(state.watch_activities[0].viewer_session_ids.is_empty());
+    }
+}
+
+#[test]
+fn start_retry_preserves_later_forwarding_settings_after_initial_provider_retires() {
+    let (mut net, owner, viewer, room) = setup();
+    let provider = Uuid::new_v4();
+    let provider_session = net
+        .command(
+            provider,
+            json!({"type":"join","name":"App","ownerKey":"owner"}),
+        )
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::Welcome { session_id, .. } => Some(session_id),
+            _ => None,
+        })
+        .unwrap();
+    let activity = Uuid::new_v4();
+    let mut initial = start(&room, activity);
+    initial["byteSource"] =
+        json!({"sessionId":provider_session,"resourceId":Uuid::new_v4(),"format":"hls"});
+    ready(net.command_at(owner, initial.clone(), 2000), 2000);
+    net.command(
+        viewer,
+        json!({"type":"join_watch","roomId":room,"id":activity,"mode":"direct"}),
+    );
+    let updated_bytes =
+        json!({"sessionId":provider_session,"resourceId":Uuid::new_v4(),"format":"file"});
+    net.command(owner, json!({"type":"set_watch_byte_source","roomId":room,"id":activity,"byteSource":updated_bytes}));
+    net.command(owner, json!({"type":"update_watch","roomId":room,"id":activity,"playback":{"position":30,"paused":true,"rate":1,"anchorTime":3000}}));
+    ready(net.command_at(owner, initial.clone(), 4000), 4000);
+    assert_eq!(
+        serde_json::to_value(&net.state(viewer).watch_activities[0].byte_source).unwrap(),
+        updated_bytes
+    );
+    net.command(
+        owner,
+        json!({"type":"set_watch_byte_source","roomId":room,"id":activity,"byteSource":null}),
+    );
+    let effects = net.authority.disconnect(provider, 5000);
+    net.deliver(effects);
+    ready(net.command_at(owner, initial, 6000), 6000);
+    let state = net.state(viewer);
+    assert_eq!(state.watch_activities.len(), 1);
+    assert!(state.watch_activities[0].byte_source.is_none());
+    assert_eq!(state.watch_activities[0].playback.position, 30.0);
+    assert_eq!(state.watch_subscriptions[0].id, activity);
+}
+
+#[test]
 fn watch_byte_source_and_mode_cross_the_real_room_projection() {
     let (mut net, owner, viewer, room) = setup();
     let provider = Uuid::new_v4();

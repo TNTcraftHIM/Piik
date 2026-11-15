@@ -1,6 +1,13 @@
 import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 export const ja: Record<CopyKey, string> = {
+  "watch.forward.tracksHelp": "映像と必要な音声を個別に選んでください。確認すると、この端末のアップロード帯域を使って転送を開始します。",
+  "watch.forward.noVideoTrack": "転送できる映像トラックがありません。元のウェブページでは引き続き視聴できます。",
+  "watch.forward.videoOnly": "映像のみ、音声なし",
+  "watch.forward.trackUnavailable": "一部のソースを読み込めないか、まだ対応していません。ほかのトラックを選べます。",
+  "watch.forward.selected": "転送する内容：{video} + {audio}",
+  "watch.forward.confirmTracks": "確認して転送を開始",
+  "watch.forward.channels": "{count} チャンネル",
   "watch.viewersCount": "視聴に参加：{count} 人",
   "watch.joined": "視聴に参加中",
   "watch.noViewers": "ほかの人はまだ視聴に参加していません。",
@@ -21,7 +28,9 @@ export const ja: Record<CopyKey, string> = {
   "watch.forward.receiveHelp": "利用可能なルームの P2P 接続が必要です。自分の受信方法だけを変更します。",
   "watch.forward.secure": "このページでは、このブラウザーで動画を受信できません。App で視聴するか、信頼できる HTTPS アドレスでサイトを開いてください。",
   "watch.forward.viewing": "受信方法",
-  "watch.forward.failed": "共有者から動画を受信できませんでした。ルームの接続を確認するか、別の受信方法を選択してください。",
+  "watch.decodeFailed": "このブラウザーでは動画をデコードできませんでした。別のブラウザーを試すか、App で元のウェブページをご覧ください。",
+  "watch.playbackUnsupported": "このブラウザーは、このメディア形式またはコーデックに対応していません。App で元のウェブページをご覧ください。",
+  "watch.forward.failed": "動画の再生に失敗しました。再試行するか、別の受信方法を選んでください。",
   "watch.forward.unsupported": "この動画ソースの転送にはまだ対応していません。各自で App の元のウェブページを開いて視聴できます。",
   "watch.forward.sourceUnavailable": "サイトから動画を読み取れませんでした。App の元のウェブページでログインと再生を確認し、動画を選び直してください。",
   "watch.forward.busy": "動画の転送処理中です。少し待ってからもう一度お試しください。",

@@ -1,4 +1,5 @@
-import type { NativePageCandidate, NativePageMediaChoice } from "../native/wire";
+import type { IndexedTrackInspection } from "./watch-indexed-source";
+import type { NativePageCandidate, NativePageMediaChoice, NativePageIndexedCandidate, NativePageIndexedSelection } from "../native/wire";
 import type { WatchPlayer } from "./watch-playback";
 import type { WatchPlayback, WatchMode } from "./protocol";
 import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomInvitationState, RoomSettings, PublicationReactionSnapshot, ChatOptions, ProfilePage } from "./protocol";
@@ -20,6 +21,9 @@ import type { loadCameraPreviews } from "../media/camera-previews";
 import type { CommentaryInput } from "../media/host-audio";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 import type { ConnectionMetrics } from "../types";
+
+export interface WatchIndexedChoice { candidate: NativePageIndexedCandidate; inspection?: IndexedTrackInspection; error?: string }
+export interface WatchMediaSources { choices: readonly NativePageMediaChoice[]; indexed: readonly WatchIndexedChoice[]; error?: string }
 
 export interface ChannelMediaMetric {
   pairId: string;
@@ -89,14 +93,15 @@ export interface ChannelView {
 export interface ChannelActions {
   startWatch(roomId: string, url: string): Promise<void>;
   prepareWatchPage(roomId: string, url: string, activityId?: string): Promise<void>;
-  watchPage(roomId: string, activityId?: string): { url: string; candidates: readonly NativePageCandidate[]; activityId?: string; browserSource?: { choices: readonly NativePageMediaChoice[] } } | undefined;
+  watchPage(roomId: string, activityId?: string): { url: string; candidates: readonly NativePageCandidate[]; activityId?: string; watchSources?: WatchMediaSources } | undefined;
   selectWatchPage(roomId: string, candidateId: string, activityId?: string): Promise<boolean>;
   selectWatchBrowserSource(roomId: string, choiceId: string | null): Promise<void>;
   focusWatch(id: string): Promise<void>;
   focusWatchPage(roomId: string, activityId?: string): Promise<void>;
   joinWatch(id: string, mode?: WatchMode): Promise<void>;
-  watchMediaChoices(id: string): Promise<NativePageMediaChoice[]>;
-  setWatchByteSource(id: string, choiceId: string | null): Promise<void>;
+  watchMediaChoices(id: string, signal: AbortSignal, onChange?: (sources: WatchMediaSources) => void): Promise<WatchMediaSources>;
+  selectWatchIndexedSource(roomId: string, videoId: string, audioId?: string): Promise<void>;
+  setWatchByteSource(id: string, choice: string | NativePageIndexedSelection | null, signal?: AbortSignal): Promise<void>;
   leaveWatch(id: string): Promise<void>;
   stopWatch(id: string): Promise<void>;
   setWatchPlayback(id: string, patch: Partial<Pick<WatchPlayback, "paused" | "position" | "rate">>): Promise<void>;

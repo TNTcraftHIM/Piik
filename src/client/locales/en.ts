@@ -2,6 +2,13 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // Community translations are data-only and type-checked against zh.
 export const en: Record<CopyKey, string> = {
+  "watch.forward.tracksHelp": "Choose a video track and optional audio separately. Confirmation starts using this device’s upload bandwidth.",
+  "watch.forward.noVideoTrack": "No video track is available to forward. You can still watch the original webpage.",
+  "watch.forward.videoOnly": "Video only, without audio",
+  "watch.forward.trackUnavailable": "Some sources could not be read or are not supported yet. You can select the remaining tracks.",
+  "watch.forward.selected": "Will forward: {video} + {audio}",
+  "watch.forward.confirmTracks": "Confirm and start forwarding",
+  "watch.forward.channels": "{count} channels",
   "watch.viewersCount": "Joined this watch: {count}",
   "watch.joined": "Joined this watch",
   "watch.noViewers": "No one else has joined this watch yet.",
@@ -22,7 +29,9 @@ export const en: Record<CopyKey, string> = {
   "watch.forward.receiveHelp": "Requires an available room P2P connection. Changes only how you receive this video.",
   "watch.forward.secure": "This browser cannot receive this video on this page. Watch in the App, or open the site at a trusted HTTPS address.",
   "watch.forward.viewing": "Receiving method",
-  "watch.forward.failed": "Could not receive video from the sharer. Check the room connection or choose another receiving method.",
+  "watch.decodeFailed": "This browser could not decode the video. Try another browser or watch the original webpage in the App.",
+  "watch.playbackUnsupported": "This browser does not support this media format or codec. Watch the original webpage in the App.",
+  "watch.forward.failed": "Video playback failed. Try again or choose another receiving method.",
   "watch.forward.unsupported": "This video source cannot be forwarded yet. Each person can watch the original webpage in the App.",
   "watch.forward.sourceUnavailable": "Could not read the video from its website. Check sign-in and playback on the original webpage in the App, then select the video again.",
   "watch.forward.busy": "Video forwarding is busy. Try again shortly.",
