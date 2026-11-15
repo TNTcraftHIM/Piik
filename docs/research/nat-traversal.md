@@ -539,8 +539,17 @@ These are mechanism controls, not population success rates. The idealized
 intersection model assumes valid, live mappings and
 compatible filtering; two independently random endpoint-dependent NATs do not
 automatically satisfy it. The [original traversal explanation](https://tailscale.com/blog/how-nat-traversal-works)
-describes that distinction. Physical-network measurements and a separate
-Native-to-Browser standard-ICE control remain in [TODO](../todo.md#next).
+describes that distinction.
+
+A 2026-11-15 Native-to-Browser kernel control compared one and eight real Native
+UDP sockets with the same ordinary ICE strategy. The Browser had stable mapping
+and address-and-port-dependent filtering; Native mappings were destination-dependent
+and random across ports 1024–65535. Neither attempt connected at five or ten seconds.
+The Browser sent checks to all eight STUN-observed server-reflexive endpoints,
+but Native's mappings toward the Browser differed from those observed by STUN.
+No peer check succeeded. This establishes a mapping/filtering boundary, not a
+pool benefit or a success rate. Physical-network measurements and a Native-to-Browser
+mapping strategy verified through standard ICE remain in [TODO](../todo.md#next).
 
 ### External Forwarding And Participant Relays
 

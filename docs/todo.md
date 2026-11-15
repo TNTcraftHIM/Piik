@@ -128,8 +128,8 @@ the feedback period; they do not delay that delivery.
   physical connections; keep that fact with the transport owner.
 - [ ] **Random-mapping NAT field coverage.** The bounded Native implementation
   has kernel-NAT media and resource-lifetime evidence. Measure difficult physical
-  networks and sustained concurrent use. A Native-to-Browser extension needs a
-  separate standard-ICE control; two Native participants do not establish it.
+  networks and sustained concurrent use. A Native-to-Browser extension still
+  needs a mapping strategy verified through standard ICE.
 - [ ] **Codec capability and efficiency comparison.** Measure actual platform
   encoder/decoder and Browser capabilities, then compare one available codec
   with H.264 using synthetic text and motion. Compare hardware and software
