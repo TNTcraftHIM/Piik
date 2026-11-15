@@ -305,9 +305,10 @@ limits. Full HDR and surround sound are outside this phase.
 
 Synthetic sources verify decoded audio delivery. Microphone acoustics remain
 device acceptance work. Native system-output capture can recapture Browser room voice;
-automatic voice exclusion remains deferred. Platform-specific source-audio
-exclusion follows the [audio assessment](./research/native-client-media.md#windows-audio-exclusion)
-and the [playback/AEC boundary](./research/channel-network-design.md#implementation-boundary).
+automatic voice exclusion remains deferred. Current source-audio exclusion follows
+the [playback/AEC boundary](./research/channel-network-design.md#input-and-sound-boundaries).
+The [2.x Windows audio measurements](./research/native-client-media.md#windows-audio-exclusion)
+are historical evidence, not 3.0 runtime acceptance.
 
 ## Interpretation
 
