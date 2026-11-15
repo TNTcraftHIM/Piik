@@ -291,7 +291,7 @@ async function main(): Promise<void> {
   participant.on('live', (message: ChannelMessage) => {
     print(message);
     // Business behavior belongs here, not in the verified transport receiver.
-    if (message.userId !== participant.summary().userId && message.text === '!ping')
+    if (values.message === undefined && message.userId !== participant.summary().userId && message.text === '!ping')
       void participant.chat('pong').catch(error => console.error(error.message));
   });
   try {

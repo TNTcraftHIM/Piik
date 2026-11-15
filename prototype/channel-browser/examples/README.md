@@ -23,8 +23,8 @@ node --import tsx prototype/channel-browser/examples/text-participant.ts \
 `--origin` must be an origin allowed by that site. Use `wss://` for a TLS site.
 Add `--name "Build notices"` to name this independent participant. Add
 `--message "Build finished"` to send one notification, wait for its Host
-confirmation, then leave. Otherwise stdin sends text; `/reconnect` explicitly
-reopens the socket with the same in-memory identity, and `/quit`, EOF or Ctrl+C
+confirmation, then leave without answering `!ping`. Otherwise stdin sends text;
+`/reconnect` explicitly reopens the socket with the same in-memory identity, and `/quit`, EOF or Ctrl+C
 leaves. `/reconnect` also works after a lost connection. A failed interactive
 command prints its error and keeps the prompt open for another command. There
 is no background daemon, automatic reconnect or replay outbox.
