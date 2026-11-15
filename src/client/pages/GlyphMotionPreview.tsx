@@ -10,6 +10,8 @@ import "./glyph-motion-preview.css";
 
 const examples: { icon: GlyphName; zh: string; en: string }[] = [
   { icon: "check", zh: "勾选：左侧起笔，一笔向右完成", en: "Check: one pen stroke from left to right" },
+  { icon: "microphone", zh: "麦克风：拾音头，然后支架", en: "Microphone: capsule, then stand" },
+  { icon: "microphoneOff", zh: "麦克风关闭：麦克风之后画关闭斜线", en: "Muted: microphone, then the slash" },
   { icon: "headphones", zh: "耳机：头梁，然后两侧耳罩", en: "Headphones: band, then both ear cups" },
   { icon: "headphonesOff", zh: "停止收听：耳机之后画关闭斜线", en: "Deafened: headphones, then the slash" },
   { icon: "key", zh: "钥匙：钥匙环、杆、齿", en: "Key: ring, shaft, then teeth" },
