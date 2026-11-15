@@ -104,7 +104,12 @@ impl Pending {
                 // the local error notification, so refusal never echoes back.
                 self.task.abort();
             } else {
-                self.input.try_send(message)?;
+                // A finished task may still await its Driver turn. Its result
+                // owns the ordinary fallback; late UDP signaling cannot retire it.
+                match self.input.try_send(message) {
+                    Ok(()) | Err(mpsc::error::TrySendError::Closed(_)) => {}
+                    Err(error) => return Err(error.into()),
+                }
             }
         } else {
             // The peer may finish preparation first and immediately start ICE.
@@ -1013,9 +1018,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn failed_survey_enters_ordinary_transport_and_retires_the_owned_socket() -> Result<()> {
+    async fn finished_preparation_keeps_ordinary_fallback_when_peer_signal_arrives() -> Result<()> {
         use super::super::*;
-        let (mut driver, _events, _commands, _stop) = tests::driver();
+        let (mut driver, _events, mut commands, _stop) = tests::driver();
+        driver.session = Uuid::from_u128(u128::MAX);
         let pair = Uuid::new_v4();
         let plan = PairInfo {
             id: pair,
@@ -1026,27 +1032,63 @@ mod tests {
             incoming: vec![],
             outgoing: vec![],
         };
-        let (commands, mut notifications) = mpsc::channel(4);
+        let sibling = PairInfo {
+            id: Uuid::new_v4(),
+            peer_id: Uuid::new_v4(),
+            udp_preparation: None,
+            rooms: vec![],
+            ..plan.clone()
+        };
+        driver.create_pair(&sibling, None).await?;
+        let sibling_instance = driver.pairs[&sibling.id]
+            .pc
+            .connection_metrics()
+            .await?
+            .connection_id;
+        let (preparation_commands, mut notifications) = mpsc::channel(4);
         driver.preparings.insert(
             pair,
-            Pending::start(Uuid::nil(), plan.clone(), vec![], commands),
+            Pending::start(driver.session, plan.clone(), vec![], preparation_commands),
         );
-        let mut pending = driver.preparings.remove(&pair).unwrap();
-        let result = (&mut pending.task).await;
         assert!(matches!(
-            notifications.try_recv()?,
-            NativeEvent::Command(Command::Signal {
+            tokio::time::timeout(Duration::from_secs(3), notifications.recv()).await?,
+            Some(NativeEvent::Command(Command::Signal {
                 payload: Signal {
                     udp: Some(UdpSignal::Unavailable {}),
                     ..
                 },
                 ..
-            })
+            }))
         ));
+        assert!(driver.preparings[&pair].task.is_finished());
         assert!(
             notifications.try_recv().is_err(),
             "failure notification repeated"
         );
+        // The responder can fail before the peer's already-sent Offer arrives.
+        // Input and completed preparation are independent Driver select branches.
+        let NativeEvent::Command(Command::Signal { payload, .. }) = signal(
+            pair,
+            UdpSignal::Offer {
+                secret: [73; 32],
+                observation: Observation::Stable {
+                    address: "203.0.113.1".parse()?,
+                    port: 42000,
+                },
+            },
+        ) else {
+            unreachable!()
+        };
+        if driver.signal(pair, payload).await.is_err() {
+            driver.fail(pair).await;
+        }
+        ensure!(
+            driver.preparings.contains_key(&pair),
+            "late preparation signal retired the pair before its ordinary fallback"
+        );
+        let (finished, result) = next(&mut driver.preparings).await.unwrap();
+        assert_eq!(finished, pair);
+        let pending = driver.preparings.remove(&pair).unwrap();
         driver.prepared(pending, result).await;
         anyhow::ensure!(
             driver.preparings.is_empty() && driver.pairs.contains_key(&pair),
@@ -1056,7 +1098,29 @@ mod tests {
             driver.pairs[&pair].plan.udp_preparation == plan.udp_preparation,
             "fallback changed its authorized pair lease"
         );
+        assert_eq!(
+            driver.pairs[&sibling.id]
+                .pc
+                .connection_metrics()
+                .await?
+                .connection_id,
+            sibling_instance,
+            "preparation completion replaced an unrelated pair"
+        );
+        while let Ok(event) = commands.try_recv() {
+            ensure!(
+                !matches!(
+                    event,
+                    NativeEvent::Command(Command::LinkState {
+                        state: LinkState::Failed,
+                        ..
+                    })
+                ),
+                "late preparation signal reported a physical pair failure"
+            );
+        }
         driver.retire_pair(pair).await;
+        driver.retire_pair(sibling.id).await;
         driver.files.close().await;
         driver.watches.close().await;
         driver.transport.close().await;
