@@ -264,7 +264,12 @@ func (server *Server) Close() error {
 	server.closeOnce.Do(server.cancel)
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
-	return server.httpServer.Shutdown(ctx)
+	err := server.httpServer.Shutdown(ctx)
+	if err != nil {
+		// Shutdown leaves accepted connections open when its drain deadline expires.
+		err = errors.Join(err, server.httpServer.Close())
+	}
+	return err
 }
 
 func (server *Server) serve() {

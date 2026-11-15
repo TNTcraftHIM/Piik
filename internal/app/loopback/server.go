@@ -287,6 +287,10 @@ func (server *Server) Close() error {
 			_ = connection.CloseNow()
 		}
 		server.closeErr = server.httpServer.Shutdown(ctx)
+		if server.closeErr != nil {
+			// Control sockets retire separately; reap remaining ordinary HTTP connections.
+			server.closeErr = errors.Join(server.closeErr, server.httpServer.Close())
+		}
 		retired := make(chan struct{})
 		go func() {
 			server.controls.Wait()
