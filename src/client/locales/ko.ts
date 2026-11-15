@@ -2,6 +2,9 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // Community translations are data-only and type-checked against zh.
 export const ko: Record<CopyKey, string> = {
+  "watch.viewersCount": "시청 참여: {count}명",
+  "watch.joined": "시청 참여 중",
+  "watch.noViewers": "아직 다른 시청 참여자가 없습니다.",
   "watch.browserSource.title": "브라우저 재생 소스 선택",
   "watch.browserSource.help": "브라우저에서 재생을 시도할 동영상 링크를 선택하세요. 내 재생은 원래 웹페이지에서 계속됩니다.",
   "watch.browserSource.skip": "원래 웹페이지만 공유",
@@ -296,7 +299,6 @@ export const ko: Record<CopyKey, string> = {
   "channel.people.thisRoom": "이 방",
   "channel.people.online": "온라인",
   "channel.people.offline": "오프라인",
-  "channel.people.sharingAScreen": "화면 공유 중",
   "channel.people.users": "사용자",
   "channel.people.loadingPeople": "사용자 불러오는 중…",
   "channel.people.loadFailed": "사용자를 불러오지 못했어요. 다시 시도해 주세요.",

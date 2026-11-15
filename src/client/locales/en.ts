@@ -2,6 +2,9 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // Community translations are data-only and type-checked against zh.
 export const en: Record<CopyKey, string> = {
+  "watch.viewersCount": "Joined this watch: {count}",
+  "watch.joined": "Joined this watch",
+  "watch.noViewers": "No one else has joined this watch yet.",
   "watch.browserSource.title": "Choose browser playback source",
   "watch.browserSource.help": "Choose a video link for browser viewers to try. Your playback stays in the original webpage.",
   "watch.browserSource.skip": "Share original webpage only",
@@ -296,7 +299,6 @@ export const en: Record<CopyKey, string> = {
   "channel.people.thisRoom": "This room",
   "channel.people.online": "Online",
   "channel.people.offline": "Offline",
-  "channel.people.sharingAScreen": "Sharing a screen",
   "channel.people.users": "Users",
   "channel.people.loadingPeople": "Loading people…",
   "channel.people.loadFailed": "Couldn't load people. Try again.",

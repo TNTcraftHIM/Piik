@@ -79,7 +79,11 @@ fn watch_confirmations_late_join_and_owner_control_do_not_create_media() {
         let state = net.state(c);
         assert!(state.pairs.is_empty());
         assert!(state.publications.is_empty());
-        assert!(state.channel.rooms[0].realtime_session_ids.is_empty());
+        assert_eq!(state.channel.rooms[0].realtime_session_ids.len(), 2);
+        assert_eq!(state.watch_activities[0].viewer_session_ids.len(), 1);
+        assert!(!state.watch_activities[0]
+            .viewer_session_ids
+            .contains(&state.watch_activities[0].session_id));
         assert_eq!(state.channel.rooms[0].participant_session_ids.len(), 2);
     }
     net.command(
@@ -87,6 +91,13 @@ fn watch_confirmations_late_join_and_owner_control_do_not_create_media() {
         json!({"type":"join_watch","roomId":room,"id":id,"mode":null}),
     );
     assert!(net.state(owner).watch_subscriptions.is_empty());
+    assert!(net.state(owner).watch_activities[0]
+        .viewer_session_ids
+        .is_empty());
+    assert_eq!(
+        net.state(owner).channel.rooms[0].realtime_session_ids.len(),
+        1
+    );
     net.command(viewer, json!({"type":"stop_watch","roomId":room,"id":id}));
     assert!(net.state(owner).watch_activities.is_empty());
 }
@@ -313,4 +324,150 @@ fn watch_byte_source_and_mode_cross_the_real_room_projection() {
         &json!({"type":"join_watch","roomId":room,"id":activity,"enabled":true}).to_string()
     )
     .is_err());
+}
+
+#[test]
+fn watch_audience_projects_all_modes_and_sessions_without_peer_demand() {
+    let (mut net, owner, viewer, room) = setup();
+    let other = Uuid::new_v4();
+    let other_page = Uuid::new_v4();
+    let (other_session, credential) = net
+        .command(other, json!({"type":"join","name":"Other"}))
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::Welcome {
+                session_id,
+                credential,
+                ..
+            } => Some((session_id, credential)),
+            _ => None,
+        })
+        .unwrap();
+    let other_page_session = net
+        .command(
+            other_page,
+            json!({"type":"join","name":"Other page","credential":credential}),
+        )
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::Welcome { session_id, .. } => Some(session_id),
+            _ => None,
+        })
+        .unwrap();
+    let activity = Uuid::new_v4();
+    let mut website = start(&room, activity);
+    website["source"] = json!({"kind":"website","url":"https://example.com/watch"});
+    net.command(owner, website);
+    for (connection, mode) in [(viewer, "direct"), (other, "peer"), (other_page, "direct")] {
+        net.command(
+            connection,
+            json!({"type":"join_watch","roomId":room,"id":activity,"mode":mode}),
+        );
+    }
+    for connection in [owner, viewer, other, other_page] {
+        let state = net.state(connection);
+        let audience = &state.watch_activities[0].viewer_session_ids;
+        assert_eq!(audience.len(), 3);
+        assert!(
+            audience.contains(&other_session) && audience.contains(&other_page_session),
+            "same user's endpoints remain separate wire facts"
+        );
+        assert_eq!(state.channel.rooms[0].realtime_session_ids.len(), 4);
+        assert!(
+            state.pairs.is_empty() && state.watch_bytes.is_empty() && state.publications.is_empty()
+        );
+    }
+    net.command(
+        other,
+        json!({"type":"join_watch","roomId":room,"id":activity,"mode":"direct"}),
+    );
+    assert_eq!(
+        net.state(owner).watch_activities[0]
+            .viewer_session_ids
+            .len(),
+        3,
+        "mode changes do not duplicate participation"
+    );
+    let effects = net.authority.disconnect(other, 1000);
+    net.deliver(effects);
+    assert!(
+        net.state(owner).watch_activities[0]
+            .viewer_session_ids
+            .contains(&other_session),
+        "temporary signaling loss keeps existing participation"
+    );
+    let effects = net.authority.expire(30_000);
+    net.deliver(effects);
+    assert!(!net.state(owner).watch_activities[0]
+        .viewer_session_ids
+        .contains(&other_session));
+    assert!(net.state(owner).watch_activities[0]
+        .viewer_session_ids
+        .contains(&other_page_session));
+    net.command(
+        other_page,
+        json!({"type":"join_watch","roomId":room,"id":activity,"mode":null}),
+    );
+    assert_eq!(
+        net.state(owner).watch_activities[0]
+            .viewer_session_ids
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn watch_audience_is_room_private_and_revoke_removes_viewer_only() {
+    let (mut net, owner, viewer, _) = setup();
+    let private = net.create(owner, RoomAccess::Private, false);
+    net.command(owner,json!({"type":"update_room","roomId":private,"name":"Private","icon":"couch","access":"private","hidden":false,"password":"secret"}));
+    let activity = Uuid::new_v4();
+    net.command(owner, start(&private, activity));
+    assert!(net.state(viewer).watch_activities.is_empty());
+    assert!(net
+        .state(viewer)
+        .channel
+        .rooms
+        .iter()
+        .find(|r| r.id == private)
+        .unwrap()
+        .realtime_session_ids
+        .is_empty());
+    net.command(
+        viewer,
+        json!({"type":"enter_room","roomId":private,"password":"secret"}),
+    );
+    net.command(
+        viewer,
+        json!({"type":"join_watch","roomId":private,"id":activity,"mode":"direct"}),
+    );
+    let viewer_session = net.state(owner).watch_activities[0].viewer_session_ids[0];
+    let viewer_user = net
+        .state(owner)
+        .sessions
+        .iter()
+        .find(|session| session.id == viewer_session)
+        .unwrap()
+        .user_id;
+    net.command(
+        owner,
+        json!({"type":"revoke_room_access","roomId":private,"userId":viewer_user}),
+    );
+    assert!(net.state(viewer).watch_activities.is_empty());
+    assert!(net.state(owner).watch_activities[0]
+        .viewer_session_ids
+        .is_empty());
+    assert_eq!(net.state(owner).watch_activities[0].id, activity);
+    assert_eq!(
+        net.state(owner)
+            .channel
+            .rooms
+            .iter()
+            .find(|r| r.id == private)
+            .unwrap()
+            .realtime_session_ids,
+        vec![net.state(owner).watch_activities[0].session_id]
+    );
 }

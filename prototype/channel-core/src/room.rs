@@ -29,6 +29,15 @@ struct Activity {
     next_interaction_at: u64,
 }
 
+#[derive(Clone)]
+struct Watch {
+    user_id: Uuid,
+    session_id: Uuid,
+    source: crate::wire::WatchSource,
+    playback: crate::wire::WatchPlayback,
+    byte_source: Option<crate::wire::WatchByteSource>,
+}
+
 /// One room owns its policy, activities and logical flows. It neither owns
 /// domain identities nor creates physical peer connections.
 #[derive(Clone)]
@@ -37,7 +46,7 @@ pub struct RoomRuntime {
     policy: RoomState,
     activity: BTreeMap<Uuid, Activity>,
     publications: BTreeMap<Uuid, Publication>,
-    watch_activities: BTreeMap<Uuid, crate::wire::WatchActivity>,
+    watch_activities: BTreeMap<Uuid, Watch>,
     base: Option<BaseTree>,
     repair_at: Option<u64>,
     files: crate::file_room::FileRoom,
@@ -190,7 +199,30 @@ impl RoomRuntime {
 
     fn project(&self, views: BTreeMap<Uuid, RoomRecipient>) -> crate::host::RoomProjection {
         crate::host::RoomProjection {
-            watch_activities: self.watch_activities.values().cloned().collect(),
+            watch_activities: self
+                .watch_activities
+                .iter()
+                .map(|(id, activity)| crate::wire::WatchActivity {
+                    id: *id,
+                    room_id: self.policy.id.clone(),
+                    user_id: activity.user_id,
+                    session_id: activity.session_id,
+                    source: activity.source.clone(),
+                    playback: activity.playback.clone(),
+                    byte_source: activity.byte_source.clone(),
+                    viewer_session_ids: views
+                        .iter()
+                        .filter_map(|(session, view)| {
+                            (view.authorized
+                                && view
+                                    .watch_subscriptions
+                                    .iter()
+                                    .any(|subscription| subscription.id == *id))
+                            .then_some(*session)
+                        })
+                        .collect(),
+                })
+                .collect(),
             last_message_seq: self.last_message_seq,
             summary: crate::host::RoomSummary::from_policy(&self.policy),
             capabilities: crate::wire::RoomCapabilities {
@@ -554,17 +586,14 @@ impl RoomRuntime {
         }
         if let Some(previous) = self
             .watch_activities
-            .values()
-            .find(|a| a.session_id == session)
-            .map(|a| a.id)
+            .iter()
+            .find_map(|(id, activity)| (activity.session_id == session).then_some(*id))
         {
             self.stop_watch(member, session, previous)?;
         }
         self.watch_activities.insert(
             id,
-            crate::wire::WatchActivity {
-                id,
-                room_id: self.policy.id.clone(),
+            Watch {
                 user_id: member.user_id,
                 session_id: session,
                 source,
@@ -629,9 +658,9 @@ impl RoomRuntime {
     }
     fn watch_byte_demand(&self) -> BTreeSet<Uuid> {
         let mut demand = BTreeSet::new();
-        for activity in self.watch_activities.values() {
+        for (id, activity) in &self.watch_activities {
             if let Some(source) = &activity.byte_source {
-                let receivers = self.watch_receivers(activity.id);
+                let receivers = self.watch_receivers(*id);
                 if !receivers.is_empty() {
                     demand.insert(source.session_id);
                     demand.extend(receivers);
@@ -645,10 +674,10 @@ impl RoomRuntime {
             return vec![];
         };
         self.watch_activities
-            .values()
-            .filter_map(|activity| {
+            .iter()
+            .filter_map(|(id, activity)| {
                 let source = activity.byte_source.as_ref()?;
-                let receivers = self.watch_receivers(activity.id);
+                let receivers = self.watch_receivers(*id);
                 if receivers.is_empty() {
                     return None;
                 }
@@ -670,7 +699,7 @@ impl RoomRuntime {
                 }
                 Some(crate::watch_delivery::WatchBytePlan {
                     room_id: self.policy.id.clone(),
-                    activity_id: activity.id,
+                    activity_id: *id,
                     source: source.clone(),
                     upstream,
                     downstream,

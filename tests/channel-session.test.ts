@@ -8058,7 +8058,7 @@ test('watch creator uses domain confirmation, keeps its element and retires with
     const start = socket.sent.findLast(command => command.type === 'start_watch')!;
     expect(start.playback).toMatchObject({ paused: true, position: 0 });
     socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [{
-      id: start.id, roomId: 'first', sessionId: 'endpoint', userId: 'self', source: start.source, playback: start.playback,
+      id: start.id, roomId: 'first', viewerSessionIds: [], sessionId: 'endpoint', userId: 'self', source: start.source, playback: start.playback,
     }] } });
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: start.requestId, result: { type: 'watch_ready', serverTime: 100000 } });
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === 'update_watch')).toBe(true));
@@ -8084,7 +8084,7 @@ test('watch candidate cancellation preserves an existing activity and creates no
   const { session, socket } = await setup(1000, false);
   const first = new WatchTestVideo(), candidate = new WatchTestVideo(); candidate.readyState = 0;
   vi.stubGlobal('document', { createElement: vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(candidate) });
-  const activity = { id: 'watch-one', roomId: 'first', sessionId: 'other', userId: 'other', source: { kind: 'media' as const, url: 'https://media.test/one.mp4' },
+  const activity = { id: 'watch-one', roomId: 'first', viewerSessionIds: [], sessionId: 'other', userId: 'other', source: { kind: 'media' as const, url: 'https://media.test/one.mp4' },
     playback: { position: 10, paused: true, rate: 1, anchorTime: 1000 } };
   try {
     socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [activity] } });
@@ -8107,7 +8107,7 @@ test('watch short recovery keeps its player, samples domain time again, and resp
   const { session, socket } = await setup(1000, false);
   const video = new WatchTestVideo();
   vi.stubGlobal('document', { createElement: () => video });
-  const activity = { id: 'watch-one', roomId: 'first', sessionId: 'other', userId: 'other', source: { kind: 'media' as const, url: 'https://media.test/one.mp4' },
+  const activity = { id: 'watch-one', roomId: 'first', viewerSessionIds: [], sessionId: 'other', userId: 'other', source: { kind: 'media' as const, url: 'https://media.test/one.mp4' },
     playback: { position: 10, paused: true, rate: 1, anchorTime: 1000 } };
   let state = { ...session.getSnapshot().state!, watchActivities: [activity], watchSubscriptions: [{ id: activity.id, mode: 'direct' as const }] };
   try {
@@ -8140,7 +8140,7 @@ test.each(['activity', 'subscription'] as const)('watch authority %s removal ret
   const { session, socket } = await setup(1000, false);
   const video = new WatchTestVideo(), candidate = new WatchTestVideo(); candidate.readyState = 0;
   vi.stubGlobal('document', { createElement: vi.fn().mockReturnValueOnce(video).mockReturnValueOnce(candidate) });
-  const activity = { id: 'watch-one', roomId: 'first', sessionId: 'other', userId: 'other', source: { kind: 'media' as const, url: 'https://media.test/one.mp4' },
+  const activity = { id: 'watch-one', roomId: 'first', viewerSessionIds: [], sessionId: 'other', userId: 'other', source: { kind: 'media' as const, url: 'https://media.test/one.mp4' },
     playback: { position: 10, paused: true, rate: 1, anchorTime: 1000 } };
   try {
     socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [activity] } });
@@ -8166,7 +8166,7 @@ test.each(['cancel', 'stop'] as const)('watch replacement commit ignores %s canc
   const acknowledge = (command: Record<string, unknown>, result = { type: 'done' } as Record<string, unknown>) =>
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: command.requestId, result });
   const authority = (command: Record<string, unknown>) => socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [{
-    id: command.id, roomId: 'first', sessionId: 'endpoint', userId: 'self', source: command.source, playback: command.playback,
+    id: command.id, roomId: 'first', viewerSessionIds: [], sessionId: 'endpoint', userId: 'self', source: command.source, playback: command.playback,
   }] } });
   try {
     const initial = session.startWatch('first', 'https://media.test/first.mp4');
@@ -8208,7 +8208,7 @@ test('App viewer preparation has an independent lifetime from the same room shar
   const { session, socket } = await setup(1000, false);
   const video = new WatchTestVideo(); video.readyState = 0;
   vi.stubGlobal('document', { createElement: () => video });
-  const activity = { id: 'website-one', roomId: 'first', sessionId: 'other', userId: 'other',
+  const activity = { id: 'website-one', roomId: 'first', viewerSessionIds: [], sessionId: 'other', userId: 'other',
     source: { kind: 'website' as const, url: 'https://website.test/episode' },
     playback: { position: 12, paused: false, rate: 1, anchorTime: 1000 } };
   let connected!: (value: appLink.ChannelApp) => void;
@@ -8296,7 +8296,7 @@ test.each(['creator', 'viewer'] as const)('the %s focuses and retires its acquir
       } as unknown as appLink.ChannelApp);
       dispose.mockClear();
       socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [{
-        id: activityId, roomId: 'first', sessionId: 'other', userId: 'other', source: { kind: 'website', url: page.url },
+        id: activityId, roomId: 'first', viewerSessionIds: [], sessionId: 'other', userId: 'other', source: { kind: 'website', url: page.url },
         playback: { position: 0, paused: true, rate: 1, anchorTime: 1000 },
       }] } });
       await session.prepareWatchPage('first', page.url, activityId);
@@ -8407,7 +8407,7 @@ test('cancelled source discovery cannot restore the candidate or retire an exist
   const { session, socket, candidateId, commit, dispose } = await websiteSourceSelection(() => new Promise(resolve => { answer = resolve; }));
   const video = new WatchTestVideo();
   vi.stubGlobal('document', { createElement: () => video });
-  const activity = { id: 'existing-watch', roomId: 'first', sessionId: 'other', userId: 'other', source: { kind: 'media' as const, url: 'https://media.test/existing.mp4' },
+  const activity = { id: 'existing-watch', roomId: 'first', viewerSessionIds: [], sessionId: 'other', userId: 'other', source: { kind: 'media' as const, url: 'https://media.test/existing.mp4' },
     playback: { position: 10, paused: true, rate: 1, anchorTime: 1000 } };
   try {
     socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [activity] } });
@@ -8434,7 +8434,7 @@ test('an explicit same-mode retry replaces a failed watch player without changin
   const { session, socket } = await setup(1000, false);
   const first = new WatchTestVideo(), replacement = new WatchTestVideo();
   vi.stubGlobal('document', { createElement: vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(replacement) });
-  const activity = { id: 'watch-retry', roomId: 'first', sessionId: 'other', userId: 'other', source: { kind: 'media' as const, url: 'https://media.test/video.mp4' },
+  const activity = { id: 'watch-retry', roomId: 'first', viewerSessionIds: [], sessionId: 'other', userId: 'other', source: { kind: 'media' as const, url: 'https://media.test/video.mp4' },
     playback: { position: 10, paused: true, rate: 1, anchorTime: 1000 } };
   try {
     socket.receive({ type: 'state', state: { ...session.getSnapshot().state!, watchActivities: [activity] } });

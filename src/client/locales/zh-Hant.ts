@@ -1,6 +1,9 @@
 import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 export const zhHant: Record<CopyKey, string> = {
+  "watch.viewersCount": "已加入觀看：{count} 人",
+  "watch.joined": "已加入觀看",
+  "watch.noViewers": "還沒有其他人加入觀看。",
   "watch.browserSource.title": "選擇瀏覽器播放來源",
   "watch.browserSource.help": "選擇影片網址供瀏覽器嘗試播放。你的播放仍在原網頁中。",
   "watch.browserSource.skip": "僅分享原網頁",
@@ -295,7 +298,6 @@ export const zhHant: Record<CopyKey, string> = {
   "channel.people.thisRoom": "目前房間",
   "channel.people.online": "在線",
   "channel.people.offline": "離線",
-  "channel.people.sharingAScreen": "正在分享畫面",
   "channel.people.users": "使用者清單",
   "channel.people.loadingPeople": "正在載入使用者…",
   "channel.people.loadFailed": "未能載入使用者，請重試。",

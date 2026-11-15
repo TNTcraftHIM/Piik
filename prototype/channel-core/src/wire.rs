@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 20;
+pub const CHANNEL_PROTOCOL: u8 = 21;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -936,6 +936,8 @@ pub struct WatchActivity {
     pub session_id: Uuid,
     pub source: WatchSource,
     pub playback: WatchPlayback,
+    /// Joined viewing intent across delivery modes, not decoded/playback readiness.
+    pub viewer_session_ids: Vec<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub byte_source: Option<WatchByteSource>,
 }

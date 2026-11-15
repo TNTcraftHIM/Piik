@@ -1,5 +1,5 @@
 import type { Copy } from "../ui/copy";
-import type { ChannelMessage, ChannelPublication, ChannelSnapshot, ChannelUser } from "./protocol";
+import type { ChannelMessage, ChannelPublication, ChannelSnapshot, ChannelUser, WatchActivity } from "./protocol";
 
 /** A visit's unread divider starts at another person's message, never our own send. */
 export function firstUnreadMessageId(messages: readonly Pick<ChannelMessage, "id" | "seq" | "userId">[], after: number | undefined, selfUserId?: string | null): string | undefined {
@@ -23,11 +23,22 @@ export function screenTitle(screen: { source: { kind: "screen" | "camera"; name:
     : t("channel.screen.shared"));
 }
 
-export interface ScreenAudiencePerson {
+export interface AudiencePerson {
   userId: string;
   name: string;
   avatar?: string;
-  state: "preparing" | "active" | "failed";
+}
+export interface ScreenAudiencePerson extends AudiencePerson { state: "preparing" | "active" | "failed" }
+
+/** Joining a watch is a room fact; it does not assert local video readiness. */
+export function watchAudience(state: ChannelSnapshot, activity: WatchActivity, profiles: ReadonlyMap<string, ChannelUser> = new Map()): AudiencePerson[] {
+  const people = new Map<string, AudiencePerson>();
+  for (const sessionId of activity.viewerSessionIds) {
+    const endpoint = state.sessions.find(session => session.id === sessionId);
+    const user = userProfile(state, profiles, endpoint?.userId ?? "");
+    if (user && user.id !== activity.userId) people.set(user.id, { userId: user.id, name: user.name, avatar: user.avatar ?? undefined });
+  }
+  return [...people.values()];
 }
 
 /** The room owns watch/delivery facts; Browser and App endpoints draw one person. */
@@ -79,9 +90,11 @@ export function roomRealtimePeople(state: ChannelSnapshot, roomId: string, profi
   const endpoints = new Set(state.channel.rooms.find(room => room.id === roomId)?.realtimeSessionIds ?? []);
   const users = new Set(state.sessions.filter(session => endpoints.has(session.id)).map(session => session.userId));
   const screens = state.publications.filter(publication => publication.kind === "screen" && publication.roomId === roomId);
+  const watches = state.watchActivities.filter(activity => activity.roomId === roomId);
   return state.users.filter(user => users.has(user.id)).map(user => ({ ...user, avatar: userProfile(state, profiles, user.id)?.avatar,
     voice: voiceAppearance(state, user.id, roomId),
-    sharing: screens.some(publication => publication.userId === user.id),
-    watching: screens.some(publication => publication.audience.some(viewer => state.sessions.some(session => session.id === viewer.sessionId && session.userId === user.id))),
+    sharing: screens.some(publication => publication.userId === user.id) || watches.some(activity => activity.userId === user.id),
+    watching: screens.some(publication => publication.audience.some(viewer => state.sessions.some(session => session.id === viewer.sessionId && session.userId === user.id)))
+      || watches.some(activity => activity.viewerSessionIds.some(id => state.sessions.some(session => session.id === id && session.userId === user.id))),
   }));
 }

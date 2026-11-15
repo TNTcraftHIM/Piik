@@ -32,7 +32,7 @@ import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
 import { ChannelCouch } from "../channel/components/ChannelCouch";
 import { ChannelRoomTool, type RoomToolSurface } from "../channel/components/ChannelRoomTool";
 import { ChannelConnections } from "../channel/components/ChannelConnections";
-import { listeningVoicePublications, roomPeople, screenAudience, screenTitle, userProfile } from "../channel/presentation";
+import { listeningVoicePublications, roomPeople, screenAudience, screenTitle, userProfile, watchAudience } from "../channel/presentation";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { channelAppDiscovery } from "../channel/app-link";
 import { useClientNavigationTarget } from "../channel/client-navigation";
@@ -206,6 +206,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     onAppWatch: activity.source.kind === "website" && channel.pagePlayer && channel.watchPlayers.get(activity.id)?.video !== null ? () => setAppWatchId(activity.id) : undefined,
     roomName: nameOfRoom(activity.roomId), avatar: userProfile(state, channel.profiles, activity.userId)?.avatar ?? undefined,
     owned: ownsWatch(activity.id), subscribed: state?.watchSubscriptions.some(value => value.id === activity.id) ?? false,
+    audience: state ? watchAudience(state, activity, channel.profiles) : [],
     receiving: !ownsWatch(activity.id) ? { peerAvailable: !!activity.byteSource, peerSupported: canReceivePeerWatch(activity.byteSource?.format),
       failed: !!channel.watchPlayers.get(activity.id)?.error,
       mode: channel.watchPlayers.get(activity.id)?.mode ?? state?.watchSubscriptions.find(value => value.id === activity.id)?.mode ?? "direct",

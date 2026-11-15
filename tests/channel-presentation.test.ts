@@ -1,10 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { firstUnreadMessageId, roomPeople, roomRealtimePeople, screenTitle } from "../src/client/channel/presentation";
-import { snapshotSchema } from "../src/client/channel/protocol";
+import { firstUnreadMessageId, roomPeople, roomRealtimePeople, screenTitle, watchAudience } from "../src/client/channel/presentation";
+import { snapshotSchema, watchActivitySchema } from "../src/client/channel/protocol";
 import { t, type CopyKey } from "../src/client/ui/copy";
 
 const english = (key: CopyKey) => t("en", key);
 const chinese = (key: CopyKey) => t("zh", key);
+
+it("projects joined watch people independently of transport and deduplicates their endpoints", () => {
+  const sessions = [["owner-page", "owner"], ["owner-app", "owner"], ["viewer-web", "viewer"], ["viewer-app", "viewer"], ["direct-web", "direct"], ["relay-endpoint", "relay"]];
+  const activity = watchActivitySchema.parse({ id: "watch", roomId: "room", sessionId: "owner-page", userId: "owner",
+    source: { kind: "website", url: "https://video.test/watch" }, playback: { position: 0, paused: true, rate: 1, anchorTime: 0 },
+    viewerSessionIds: ["owner-app", "viewer-web", "viewer-app", "direct-web", "retired"] });
+  const state = snapshotSchema.parse({ channel: { id: "site", name: "Site", icon: "couch", ownerId: "owner", historyWindow: 1000, userCount: 4, rooms: [{
+    id: "room", name: "Room", icon: "couch", creatorId: "owner", access: "public", hidden: false, hasPassword: false,
+    authorized: true, canManage: true, available: true, reading: true, participantSessionIds: sessions.map(([id]) => id),
+    lastMessageSeq: 0, realtimeSessionIds: sessions.map(([id]) => id), capabilities: { attachments: true },
+  }] }, users: ["owner", "viewer", "direct", "relay"].map(id => ({ id, name: id, version: "a".repeat(64) })),
+    sessions: sessions.map(([id, userId]) => ({ id, userId, online: true, signingKey: Array(32).fill(0) })),
+    publications: [], voice: [], subscriptions: [], watchActivities: [activity], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
+  });
+  expect(watchAudience(state, activity)).toEqual([{ userId: "viewer", name: "viewer", avatar: undefined }, { userId: "direct", name: "direct", avatar: undefined }]);
+  expect(roomRealtimePeople(state, "room").map(({ id, sharing, watching }) => ({ id, sharing, watching }))).toEqual([
+    { id: "owner", sharing: true, watching: true }, { id: "viewer", sharing: false, watching: true },
+    { id: "direct", sharing: false, watching: true }, { id: "relay", sharing: false, watching: false },
+  ]);
+  expect(roomPeople(state, "room")).toHaveLength(4);
+  const { viewerSessionIds: _viewers, ...oldActivity } = activity;
+  expect(watchActivitySchema.safeParse(oldActivity).success).toBe(false);
+  expect(watchAudience(state, { ...activity, viewerSessionIds: [] })).toEqual([]);
+});
 
 it("starts unread messages at another person without consuming earlier unread history", () => {
   const own = { id: "own", seq: 1, userId: "self" };

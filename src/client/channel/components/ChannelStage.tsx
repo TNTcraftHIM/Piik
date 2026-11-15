@@ -19,7 +19,7 @@ import { Btn, Cap } from "../../components/living/primitives";
 import { Tooltip } from "../../components/living/Tooltip";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { ChannelUser } from "./ChannelUser";
-import { screenTitle, type ScreenAudiencePerson } from "../presentation";
+import { screenTitle, type ScreenAudiencePerson, type AudiencePerson } from "../presentation";
 import type { MessageReactions } from "../protocol";
 import { ChannelContentReactions } from "./ChannelContentReactions";
 import { BrandLoader } from "../../components/living/BrandMark";
@@ -91,30 +91,31 @@ export interface WatchStageSource {
   player?: import("../watch-playback").WatchPlayer;
   website: boolean; browserSource: boolean; onAppWatch?: () => void; onFocusWindow(): void;
   receiving?: WatchReceiving;
+  audience: readonly AudiencePerson[];
   onRoom(): void; onJoin(): void; onLeave(): void; onStop(): void; onResume(): void;
   onPlayback(patch: Partial<Pick<import("../protocol").WatchPlayback, "paused" | "position" | "rate">>): void;
 }
 export type ChannelStageSource = ScreenStageSource | WatchStageSource;
 const stageTitle = (source: ChannelStageSource, t: Copy["t"]) => source.kind === "watch" ? source.title : screenTitle(source, t);
 
-export function SourceAudience({ people }: { people: readonly ScreenAudiencePerson[] }) {
+export function SourceAudience({ people, joined = false }: { people: readonly ScreenAudiencePerson[]; joined?: false } | { people: readonly AudiencePerson[]; joined: true }) {
   const { t } = useCopy();
   const id = useId(), trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   useAnchoredPopover(trigger, panel, { side: "above", align: "end", maxHeight: 360 });
-  const count = people.filter(person => person.state === "active").length;
+  const count = joined ? people.length : people.filter(person => "state" in person && person.state === "active").length;
   return <span ref={trigger} className="c3-screen-audience">
     <Btn icon="eye" iconOverlay={<span aria-hidden="true">{count}</span>} quiet size="dense" expanded={open} controls={id} popoverTarget={id}
-      title={{ text: t("screen.viewersCount", { count: String(count) }) }} />
-    <div id={id} ref={panel} popover="auto" role="dialog" aria-label={t("screen.viewers")}
+      title={{ text: t(joined ? "watch.viewersCount" : "screen.viewersCount", { count: String(count) }) }} />
+    <div id={id} ref={panel} popover="auto" role="dialog" aria-label={t(joined ? "watch.joined" : "screen.viewers")}
       className="lr-anchored-card c3-screen-audience-panel" onToggle={event => {
         if (event.target === event.currentTarget) setOpen(event.newState === "open");
       }}>
-      <h3>{t("screen.viewers")}</h3>
+      <h3>{t(joined ? "watch.joined" : "screen.viewers")}</h3>
       {people.length ? people.map(person => <ChannelUser key={person.userId} id={person.userId} name={person.name} avatar={person.avatar}
-        self={false} owner={false} online activity={person.state === "active" ? t("screen.watching")
-          : person.state === "preparing" ? t("screen.connecting") : t("screen.retrying")} />)
-        : <p>{t("screen.noViewers")}</p>}
+        self={false} owner={false} online activity={joined ? t("watch.joined") : "state" in person
+          ? person.state === "active" ? t("screen.watching") : person.state === "preparing" ? t("screen.connecting") : t("screen.retrying") : undefined} />)
+        : <p>{t(joined ? "watch.noViewers" : "screen.noViewers")}</p>}
     </div>
   </span>;
 }
@@ -339,7 +340,7 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
           role="group" aria-label={`${stageTitle(source, t)} / ${source.name} / ${source.roomName}`}>
           <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
           <div><strong>{stageTitle(source, t)}</strong><small>{source.name}<span aria-hidden="true"> / </span>{source.onRoom ? <button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button> : source.roomName}{source.paused ? ` / ${t("host.paused")}` : ""}</small></div>
-          {source.kind !== "watch" && <SourceAudience people={source.audience} />}
+          {source.kind === "watch" ? <SourceAudience people={source.audience} joined /> : <SourceAudience people={source.audience} />}
           {source.kind === "watch" && !source.browserSource ? source.onAppWatch
             ? <ChannelAction icon="window" label={t("watch.inApp")} disabled={!canSubscribe || source.available === false} busy={source.pending} onClick={source.onAppWatch} />
             : <small>{t("watch.connectApp")}</small> : <ChannelAction icon="eye" label={t("screen.watch")}
@@ -380,6 +381,7 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
         <small>{source.name}<span aria-hidden="true"> / </span><button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button></small>
       </div>
       <div className="c3-monitor-tile-actions">
+        <SourceAudience people={source.audience} joined />
         {(focusable || focused) && <Btn icon={focused ? "screenGrid" : "screenFocus"} quiet size="dense" title={{ text: t("screen.changeLayout") }}
           onClick={() => onFocus(focused ? null : source.id)} />}
         {source.owned ? <div className="c3-monitor-publishing" role="group" aria-label={t("screen.sharingControls", { title: source.title })}>

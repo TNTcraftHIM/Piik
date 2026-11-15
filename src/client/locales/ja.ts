@@ -1,6 +1,9 @@
 import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 export const ja: Record<CopyKey, string> = {
+  "watch.viewersCount": "視聴に参加：{count} 人",
+  "watch.joined": "視聴に参加中",
+  "watch.noViewers": "ほかの人はまだ視聴に参加していません。",
   "watch.browserSource.title": "ブラウザー用の再生元を選択",
   "watch.browserSource.help": "ブラウザーで再生を試す動画リンクを選んでください。あなたの再生は元のウェブページで続きます。",
   "watch.browserSource.skip": "元のウェブページのみ共有",
@@ -295,7 +298,6 @@ export const ja: Record<CopyKey, string> = {
   "channel.people.thisRoom": "このルーム",
   "channel.people.online": "オンライン",
   "channel.people.offline": "オフライン",
-  "channel.people.sharingAScreen": "画面を共有中",
   "channel.people.users": "ユーザー",
   "channel.people.loadingPeople": "ユーザーを読み込み中…",
   "channel.people.loadFailed": "ユーザーを読み込めませんでした。再試行してください。",

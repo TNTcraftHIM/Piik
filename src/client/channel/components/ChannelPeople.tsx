@@ -3,7 +3,8 @@ import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
 import { useCopy } from "../../ui/copy";
 import type { ChannelController } from "../types";
 import type { ChannelUser as User } from "../protocol";
-import { listeningVoicePublications, roomPeople, voiceAppearance, userProfile } from "../presentation";
+import { listeningVoicePublications, roomPeople, roomRealtimePeople, voiceAppearance, userProfile } from "../presentation";
+import { ChannelActivityIndicators } from "./ChannelRoomParticipants";
 import { ChannelUser } from "./ChannelUser";
 import { useEffect, useRef, useState } from "react";
 
@@ -45,20 +46,21 @@ export function ChannelPeople({ channel, roomId, active, onBack }: { channel: Ch
     if (user) groups[inRoom.has(id) ? 0 : online.has(id) ? 1 : 2].users.push(user);
   }
   const listeningUsers = new Set(listeningVoicePublications(state, channel.sessionId, channel.streams).map(publication => publication.userId));
+  const activities = new Map(state ? roomRealtimePeople(state, roomId, channel.profiles).map(user => [user.id, user]) : []);
   const row = (user: User) => {
     const connected = online.has(user.id);
-    const sharing = connected && inRoom.has(user.id) && state?.publications.some(publication => publication.userId === user.id && publication.kind === "screen" && publication.roomId === roomId);
+    const activity = connected ? activities.get(user.id) : undefined;
     const voice = state && inRoom.has(user.id) ? voiceAppearance(state, user.id, roomId) : undefined;
     const playback = channel.voicePlaybackByUser.get(user.id) ?? { volume: 1, muted: false };
     return <ChannelUser key={user.id} id={user.id} name={user.name} avatar={user.avatar ?? undefined} self={user.id === self?.id}
       owner={user.id === state?.channel.rooms.find(room => room.id === roomId)?.creatorId} online={connected}
       voice={voice}
-      actions={connected && listeningUsers.has(user.id) && user.id !== self?.id && <AudioVolumeMenu volume={playback.volume}
+      actions={<><ChannelActivityIndicators sharing={activity?.sharing} watching={activity?.watching} />
+        {connected && listeningUsers.has(user.id) && user.id !== self?.id && <AudioVolumeMenu volume={playback.volume}
         onVolume={volume => channel.setVoiceVolume(user.id, volume)} label="voice.personVolume" heading={user.name}>
         <Btn icon={playback.muted ? "speakerOff" : "speaker"} size="dense" quiet title="voice.listenPerson"
           pressed={!playback.muted} onClick={() => channel.setVoiceMuted(user.id, !playback.muted)} />
-      </AudioVolumeMenu>}
-      activity={sharing ? t("channel.people.sharingAScreen") : undefined} />;
+      </AudioVolumeMenu>}</>} />;
   };
   return <aside id="c3-people" className="c3-people-panel" aria-labelledby="c3-people-heading">
     <header><h2 id="c3-people-heading" tabIndex={-1}>{t("channel.people.users")}<span>{state?.channel.userCount ?? 0}</span></h2>

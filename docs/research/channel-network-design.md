@@ -260,6 +260,9 @@ existing room-command and snapshot path. It creates no media flow or encoder.
 Only the sharer changes common play, pause, position and speed. Viewers own their
 local sound and viewing participation. Room access and session retirement govern
 the activity, and room history does not persist live playback.
+The room derives the audience from joined watch subscriptions across all delivery
+modes. Participant lists and audience counts express that intent, independently
+of peer paths or decoded-frame readiness; multiple endpoints display one person.
 
 Playback anchors use domain time, sampled alongside the sharer's media position.
 Join confirmations provide domain-time samples for each viewer's local clock

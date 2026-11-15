@@ -1,5 +1,8 @@
 // Canonical catalog: add keys here first; every other locale must match it.
 export const zh = {
+  "watch.viewersCount": "已加入观看：{count} 人",
+  "watch.joined": "已加入观看",
+  "watch.noViewers": "还没有其他人加入观看。",
   "watch.browserSource.title": "选择浏览器播放来源",
   "watch.browserSource.help": "选择一个视频地址供浏览器尝试播放。你的播放仍在原网页中。",
   "watch.browserSource.skip": "仅分享原网页",
@@ -294,7 +297,6 @@ export const zh = {
   "channel.people.thisRoom": "当前房间",
   "channel.people.online": "在线",
   "channel.people.offline": "离线",
-  "channel.people.sharingAScreen": "正在分享画面",
   "channel.people.users": "用户列表",
   "channel.people.loadingPeople": "正在加载用户…",
   "channel.people.loadFailed": "未能加载用户，请重试。",

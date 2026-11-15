@@ -11,7 +11,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 20;
+export const CHANNEL_PROTOCOL = 21;
 export const CHANNEL_SESSION_LIMIT = 128;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
@@ -93,7 +93,7 @@ export type WatchByteSource = z.infer<typeof watchByteSourceSchema>;
 export type WatchMode = "direct" | "peer";
 export const watchBytePlanSchema = z.object({ roomId: id, activityId: z.uuid(), source: watchByteSourceSchema, upstream: z.uuid().nullable(), downstream: z.array(z.uuid()), receiving: z.boolean() }).strict();
 export type WatchBytePlan = z.infer<typeof watchBytePlanSchema>;
-export const watchActivitySchema = z.object({ id, roomId: id, userId: id, sessionId: id, source: watchSourceSchema, playback: watchPlaybackSchema, byteSource: watchByteSourceSchema.optional() }).strict();
+export const watchActivitySchema = z.object({ id, roomId: id, userId: id, sessionId: id, source: watchSourceSchema, playback: watchPlaybackSchema, viewerSessionIds: z.array(id).max(CHANNEL_SESSION_LIMIT), byteSource: watchByteSourceSchema.optional() }).strict();
 export type WatchActivity = z.infer<typeof watchActivitySchema>;
 export const snapshotSchema = z.object({
   channel: z.object({

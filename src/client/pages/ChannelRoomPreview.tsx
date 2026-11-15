@@ -37,8 +37,9 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const [createdRooms, setCreatedRooms] = useState<ChannelRoom[]>([]);
   const [sharingRoom, setSharingRoom] = useState<string | null>(null);
   const [watchMode, setWatchMode] = useState(new URLSearchParams(location.search).get("watch") ?? "off");
+  const watchOnly = new URLSearchParams(location.search).has("watch-only");
   const [watchActivity, setWatchActivity] = useState<WatchActivity | null>(() => watchMode === "off" ? null : ({
-    id: "sample-watch", roomId: "friday", userId: watchMode.includes("owner") ? "sample-ada" : "sample-bo",
+    id: "sample-watch", roomId: "friday", viewerSessionIds: [], userId: watchMode.includes("owner") ? "sample-ada" : "sample-bo",
     sessionId: watchMode.includes("owner") ? "sample-ada-session" : "sample-bo-session", source: watchMode === "native-owner" || watchMode === "website-failed"
       ? { kind: "website", url: "https://video.example/watch/evening?private=not-in-title" } : { kind: "media", url: "https://media.example/evening.mp4?private=not-in-title" },
     playback: { position: 0, paused: true, rate: 1, anchorTime: 0 },
@@ -127,18 +128,22 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     setWatchPlayers(new Map([[watchActivity.id, player]]));
     return () => player.close();
   }, [watchActivity?.id, watchMode, streams, receiveMode]);
+  const watchViewerSessionIds = watchActivity ? users.filter(user => user.id !== watchActivity.userId
+    && (audienceSample || user.id === (watchActivity.userId === "sample-ada" ? "sample-bo" : "sample-ada") && watchMode !== "available"))
+    .map(user => `${user.id}-session`) : [];
+  const watchSessions = watchActivity ? [watchActivity.sessionId, ...watchViewerSessionIds] : [];
   const state = { ...sample.channel.state!, channel: { ...sample.channel.state!.channel,
     rooms: rooms.map(room => ({ ...room,
       name: longNames && room.id === "friday" ? zh ? "周五一起看电影与交流的朋友们" : "Friday with friends: a shared evening together" : room.name,
-      realtimeSessionIds: [...new Set([...room.realtimeSessionIds, ...publications.filter(publication => publication.roomId === room.id).flatMap(publication => [publication.sessionId, ...publication.audience.map(viewer => viewer.sessionId)])])],
+      realtimeSessionIds: [...new Set([...(watchOnly ? [] : room.realtimeSessionIds), ...publications.filter(publication => publication.roomId === room.id).flatMap(publication => [publication.sessionId, ...publication.audience.map(viewer => viewer.sessionId)]), ...(watchActivity?.roomId === room.id ? watchSessions : [])])],
       participantSessionIds: [...new Set([
-      ...room.participantSessionIds, ...publications.filter(publication => publication.roomId === room.id).map(publication => publication.sessionId),
+      ...room.participantSessionIds, ...publications.filter(publication => publication.roomId === room.id).map(publication => publication.sessionId), ...(watchActivity?.roomId === room.id ? watchSessions : []),
     ])] })),
-  }, publications: [...sample.channel.state!.publications.filter(publication => roomIds.has(publication.roomId)), ...publications],
-    voice: sample.channel.state!.voice.filter(voice => roomIds.has(voice.roomId)),
+  }, publications: [...sample.channel.state!.publications.filter(publication => roomIds.has(publication.roomId) && (!watchOnly || publication.kind !== "voice")), ...publications],
+    voice: sample.channel.state!.voice.filter(voice => !watchOnly && roomIds.has(voice.roomId)),
     users,
     subscriptions,
-    watchActivities: watchActivity ? [{ ...watchActivity, ...(forwarding ? { byteSource: { sessionId: "sample-ada-session", resourceId: "sample-resource", format: "file" as const } } : {}) }] : [],
+    watchActivities: watchActivity ? [{ ...watchActivity, viewerSessionIds: watchViewerSessionIds, ...(forwarding ? { byteSource: { sessionId: "sample-ada-session", resourceId: "sample-resource", format: "file" as const } } : {}) }] : [],
     watchSubscriptions: watchActivity && watchMode !== "available" ? [{ id: watchActivity.id, mode: receiveMode }] : [],
     watchBytes: [],
   };
@@ -165,7 +170,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     return () => window.clearTimeout(timer);
   }, [browserSourcePending]);
   const commitPageSelection = (roomId: string, activityId?: string, mediaUrl?: string) => {
-    if (!activityId) setWatchActivity({ id: `sample-watch-${crypto.randomUUID()}`, roomId, source: { kind: "website", url: pageSample!.url, ...(mediaUrl ? { mediaUrl } : {}) },
+    if (!activityId) setWatchActivity({ id: `sample-watch-${crypto.randomUUID()}`, roomId, viewerSessionIds: [], source: { kind: "website", url: pageSample!.url, ...(mediaUrl ? { mediaUrl } : {}) },
       userId: "sample-ada", sessionId: "sample-ada-session", playback: { position: 42, paused: true, rate: 1, anchorTime: 0 } });
     setWatchMode(activityId ? "native-viewer" : "native-owner"); setPageSample(undefined);
   };
@@ -205,7 +210,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       commitPageSelection(roomId, undefined, browserSourceChoices.find(choice => choice.id === choiceId)?.displayURL);
     },
     startWatch: async (roomId, url) => {
-      setWatchMode("owner"); setWatchActivity({ id: `sample-watch-${crypto.randomUUID()}`, roomId, source: { kind: "media", url },
+      setWatchMode("owner"); setWatchActivity({ id: `sample-watch-${crypto.randomUUID()}`, roomId, viewerSessionIds: [], source: { kind: "media", url },
         userId: "sample-ada", sessionId: "sample-ada-session", playback: { position: 0, paused: true, rate: 1, anchorTime: 0 } });
     },
     joinWatch: async (_id, mode = "direct") => { setReceiveMode(mode); setWatchMode("viewer"); },
@@ -286,7 +291,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
             {["off", "owner", "viewer", "available", "blocked", "native-owner", "website-failed"].map((mode, index) => <Chip key={mode}
               title={zh ? ["关闭", "分享者", "观看者", "尚未加入", "等待手动播放", "网页窗口", "浏览器播放失败"][index] : ["Off", "Sharer", "Viewer", "Available", "Playback blocked", "Webpage window", "Browser playback failed"][index]}
               selected={watchMode === mode} onClick={() => {
-                setWatchMode(mode); setWatchActivity(mode === "off" ? null : { id: "sample-watch", roomId: "friday",
+                setWatchMode(mode); setWatchActivity(mode === "off" ? null : { id: "sample-watch", roomId: "friday", viewerSessionIds: [],
                   userId: mode.includes("owner") ? "sample-ada" : "sample-bo", sessionId: mode.includes("owner") ? "sample-ada-session" : "sample-bo-session",
                   source: mode === "native-owner" || mode === "website-failed" ? { kind: "website", url: "https://video.example/watch/evening" } : { kind: "media", url: "https://media.example/evening.mp4" }, playback: { position: 0, paused: true, rate: 1, anchorTime: 0 } });
               }}>{zh ? ["关闭", "分享者", "观看者", "尚未加入", "等待手动播放", "网页窗口", "浏览器播放失败"][index] : ["Off", "Sharer", "Viewer", "Available", "Playback blocked", "Webpage window", "Browser playback failed"][index]}</Chip>)}

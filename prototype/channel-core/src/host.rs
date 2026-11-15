@@ -175,6 +175,10 @@ pub struct RoomProjection {
 impl RoomProjection {
     fn realtime_sessions(&self) -> Vec<Uuid> {
         let mut sessions = BTreeSet::new();
+        for activity in &self.watch_activities {
+            sessions.insert(activity.session_id);
+            sessions.extend(&activity.viewer_session_ids);
+        }
         for publication in &self.publications {
             sessions.insert(publication.session_id);
             sessions.extend(publication.audience.iter().map(|viewer| viewer.session_id));

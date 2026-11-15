@@ -68,6 +68,18 @@ Browser source selection: a delayed manifest is discovered after media readiness
 and the viewer directly loads and synchronizes it without App access, uploaded
 bytes or added peer demand. Cancelling preparation preserves the existing share;
 private-source refusal retains the App and explicit-forwarding choices.
+Watch audience checks cover direct, peer and Native webpage viewing with the
+same participant identities. Both sides show the shared count and names; joining
+direct viewing still creates no peer connection. Leave, preparation cancellation
+and activity retirement remove only their corresponding audience entries.
+
+Actual website controls have narrower evidence than the local fixtures:
+
+| Source | Observed behavior | Remaining scope |
+| --- | --- | --- |
+| Bilibili ordinary and authorized member video | Native original-page playback, pause and seek pass; the member case reaches beyond the preview interval. | The observed segmented sources are not yet available to Browser-only viewers. Independent App-viewer synchronization remains unverified. |
+| YouTube public sample | Host and independent App-owned viewer windows synchronize playback, pause, seek and rate. | Browser-only reception, advertisements and cross-device behavior remain unverified. |
+| Supplied girigirilove page | The original site redirects to a region-unavailable page in the test environment. | No player was accessible; Piik compatibility cannot be concluded. |
 
 The first internal test targets matched Windows and Android packages with the
 shared Browser UI. Normal packaged flows have verified room creation and

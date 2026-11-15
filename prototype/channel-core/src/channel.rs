@@ -275,6 +275,13 @@ impl Channel {
                     .watch_activities
                     .retain(|a| readable_sessions.contains(&a.session_id));
                 for activity in &mut projection.watch_activities {
+                    activity.viewer_session_ids.retain(|session| {
+                        readable_sessions.contains(session)
+                            && projection.views[session]
+                                .watch_subscriptions
+                                .iter()
+                                .any(|subscription| subscription.id == activity.id)
+                    });
                     if activity.byte_source.as_ref().is_some_and(|source| {
                         !readable_sessions.contains(&source.session_id)
                             || !endpoints
@@ -1046,11 +1053,28 @@ impl Channel {
             return Err("invalid_room_projection");
         }
         for activity in &projection.watch_activities {
+            let viewers: BTreeSet<_> = activity.viewer_session_ids.iter().copied().collect();
+            let subscribed: BTreeSet<_> = projection
+                .views
+                .iter()
+                .filter_map(|(session, view)| {
+                    (view.authorized
+                        && view
+                            .watch_subscriptions
+                            .iter()
+                            .any(|subscription| subscription.id == activity.id))
+                    .then_some(*session)
+                })
+                .collect();
             if !watch_ids.insert(activity.id)
                 || !watch_owners.insert(activity.session_id)
                 || activity.room_id != id
                 || activity.playback.validate().is_err()
                 || activity.source.validate().is_err()
+                || activity.viewer_session_ids.len() > MAX_SESSIONS
+                || viewers.len() != activity.viewer_session_ids.len()
+                || viewers.contains(&activity.session_id)
+                || viewers != subscribed
                 || !projection
                     .views
                     .get(&activity.session_id)

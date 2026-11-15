@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { ChannelWatchVideo, WatchPeerAction } from "../src/client/channel/components/ChannelMedia";
-import { ChannelStage, type WatchStageSource } from "../src/client/channel/components/ChannelStage";
+import { ChannelStage, SourceAudience, type WatchStageSource } from "../src/client/channel/components/ChannelStage";
 import type { WatchPlayer } from "../src/client/channel/watch-playback";
 import { setCopy } from "../src/client/ui/copy";
 import { ChannelSettingsError } from "../src/client/channel/components/ChannelSettingsDialog";
@@ -67,7 +67,7 @@ describe("Webpage watch presentation", () => {
   it("offers manual App viewing only when the website has no Browser candidate", () => {
     setCopy({ lang: "en" });
     const source: WatchStageSource = { kind: "watch", id: "activity", userId: "friend", name: "Bo", title: "video.example/watch/evening",
-      roomName: "Friday", owned: false, subscribed: false, paused: true, website: true, browserSource: false,
+      roomName: "Friday", audience: [], owned: false, subscribed: false, paused: true, website: true, browserSource: false,
       onRoom: vi.fn(), onJoin: vi.fn(), onLeave: vi.fn(), onStop: vi.fn(), onResume: vi.fn(), onPlayback: vi.fn(), onFocusWindow: vi.fn(), onAppWatch: vi.fn() };
     const render = (value: WatchStageSource) => renderToStaticMarkup(createElement(ChannelStage, { sources: [value], focusedId: null, canSubscribe: true,
       onFocus: vi.fn(), onWatch: vi.fn(), onUnwatch: vi.fn(), onPause: vi.fn(), onStop: vi.fn(),
@@ -80,4 +80,15 @@ describe("Webpage watch presentation", () => {
     expect(disconnected).toContain("Connect Piik App");
     expect(disconnected).not.toContain('aria-label="Watch in App"');
   });
+});
+
+it("counts watch joins without claiming screen delivery readiness", () => {
+  setCopy({ lang: "en" });
+  const person = { userId: "friend", name: "Bo" };
+  const joined = renderToStaticMarkup(createElement(SourceAudience, { people: [person], joined: true }));
+  expect(joined).toContain('aria-label="Joined this watch: 1"');
+  expect(joined).toContain("Joined this watch");
+  expect(joined).not.toContain("Connecting");
+  const preparing = renderToStaticMarkup(createElement(SourceAudience, { people: [{ ...person, state: "preparing" }] }));
+  expect(preparing).toContain('aria-label="Viewers: 0 watching"');
 });
