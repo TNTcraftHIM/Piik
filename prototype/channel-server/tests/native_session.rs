@@ -703,6 +703,7 @@ async fn app_diagnostics_are_local_opt_in_and_survive_service_restart() {
         assets: assets.clone(),
         open_browser: false,
         window_navigation: None,
+        website_permission_reset: None,
         page_player: None,
         cloudflared: "cloudflared".into(),
         ice_servers: vec![],
@@ -871,6 +872,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         assets: assets.clone(),
         open_browser: false,
         window_navigation: None,
+        website_permission_reset: None,
         page_player: None,
         cloudflared: "cloudflared".into(),
         ice_servers: vec![],
@@ -1480,6 +1482,7 @@ async fn app_launch_retries_owns_one_domain_and_preserves_its_origin() {
         assets: assets.clone(),
         open_browser: false,
         window_navigation: None,
+        website_permission_reset: None,
         page_player: None,
         cloudflared: folder.join("missing-cloudflared"),
         ice_servers: vec![json!({"urls": ["stun:public-discovery.invalid:3478"]})],
@@ -2142,6 +2145,7 @@ async fn app_external_origin_is_exact_and_owned_startup_restores_it() {
                 assets: assets.clone(),
                 open_browser: false,
                 window_navigation: None,
+                website_permission_reset: None,
                 page_player: None,
                 cloudflared: directory.path().join("not-installed"),
                 ice_servers: vec![],
@@ -2319,4 +2323,226 @@ async fn app_external_origin_is_exact_and_owned_startup_restores_it() {
         drop(TcpListener::bind(site_address).await.unwrap());
         drop(TcpListener::bind(address).await.unwrap());
     }
+}
+
+#[tokio::test]
+async fn app_relay_capacity_confirms_the_native_endpoint_without_changing_the_browser() {
+    use piik_channel_core::{conversation::SessionSigner, wire::RoomAccess, RoomState};
+    use piik_channel_prototype::app;
+    use tokio_tungstenite::{connect_async, tungstenite::client::IntoClientRequest};
+    async fn reply(
+        domain: &mut Domain,
+        page: &mut WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
+    ) -> Value {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop { tokio::select! {
+                message=page.next()=>return serde_json::from_str(&message.unwrap().unwrap().into_text().unwrap()).unwrap(),
+                _=domain.step()=>{},
+            }}
+        }).await.expect("App response follows the actual room turn")
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let mut authority = Authority::new("owner".into(), vec![]).unwrap();
+    let (channel, user) = authority.identity();
+    let browser = Uuid::new_v4();
+    let admitted=authority.handle(browser,Request::parse(&json!({"type":"join","protocol":piik_channel_core::wire::CHANNEL_PROTOCOL,"ownerKey":"owner","name":"Owner","signingKey":SessionSigner::from_seed([1;32]).signing_key()}).to_string()).unwrap(),100);
+    let (credential, browser_session) = admitted
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::Welcome {
+                credential,
+                session_id,
+                ..
+            } => Some((credential, session_id)),
+            _ => None,
+        })
+        .unwrap();
+    let assets = directory.path().join("web");
+    std::fs::create_dir_all(&assets).unwrap();
+    std::fs::write(
+        assets.join("index.html"),
+        "<!doctype html><title>Owned</title>",
+    )
+    .unwrap();
+    let app_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = app_listener.local_addr().unwrap();
+    let config = app::Config {
+        data_root: directory.path().into(),
+        assets,
+        open_browser: false,
+        window_navigation: None,
+        website_permission_reset: None,
+        page_player: None,
+        cloudflared: "unused".into(),
+        ice_servers: vec![],
+        update: Default::default(),
+    };
+    let (stop, stopped) = oneshot::channel();
+    let service = tokio::spawn(app::serve(
+        app_listener,
+        config,
+        async {
+            let _ = stopped.await;
+        },
+        None,
+    ));
+    let local = format!("http://{address}");
+    assert_eq!(
+        app_http(
+            address,
+            "POST",
+            "/api/client-launcher/site",
+            Some(&local),
+            Some(json!({"site":origin,"allowed":true}))
+        )
+        .await
+        .0,
+        200
+    );
+    let (status, health) = app_http(address, "GET", "/health", Some(&origin), None).await;
+    assert_eq!(status, 200);
+    let upgrade = || {
+        let mut request = format!("ws://{address}/rooms")
+            .into_client_request()
+            .unwrap();
+        request
+            .headers_mut()
+            .insert("Origin", origin.parse().unwrap());
+        request.headers_mut().insert(
+            "sec-websocket-protocol",
+            format!("piik-channel-rooms.{}", health["token"].as_str().unwrap())
+                .parse()
+                .unwrap(),
+        );
+        request
+    };
+    let hello = json!({"id":"hello","type":"hello","channelId":channel,"userId":user,"credential":credential,"name":"Owner"});
+    let (mut page, _) = connect_async(upgrade()).await.unwrap();
+    page.send(Message::Text(hello.to_string().into()))
+        .await
+        .unwrap();
+    let mut domain = Domain::accept(&listener).await;
+    domain.authority = authority;
+    let Event::Welcome {
+        session_id: native, ..
+    } = domain
+        .until(|_, event| matches!(event, Event::Welcome { .. }))
+        .await
+    else {
+        unreachable!()
+    };
+    assert_ne!(native, browser_session);
+    assert!(reply(&mut domain, &mut page).await["result"].is_null());
+    let mut policy = RoomState::new(
+        "new".into(),
+        "Relay control".into(),
+        Default::default(),
+        user,
+        RoomAccess::Public,
+        false,
+        None,
+    )
+    .unwrap();
+    domain.command(browser,json!({"type":"create_room","room":piik_channel_core::host::RoomSummary::from_policy(&policy),"requestId":"create"})).await;
+    policy.id = domain
+        .events
+        .iter()
+        .find_map(|(connection, event)| match event {
+            Event::RoomCreated {
+                room,
+                request_id: Some(id),
+            } if *connection == browser && id == "create" => Some(room.id.clone()),
+            _ => None,
+        })
+        .unwrap();
+    let room = policy.id.clone();
+    page.send(Message::Text(
+        json!({"id":"open","type":"open","policy":serde_json::to_string(&policy).unwrap()})
+            .to_string()
+            .into(),
+    ))
+    .await
+    .unwrap();
+    let binding = domain.bound(&room).await;
+    assert_eq!(reply(&mut domain, &mut page).await["result"]["id"], room);
+    domain
+        .command(
+            browser,
+            json!({"type":"relay_capacity","roomId":room,"capacity":7,"requestId":"browser-limit"}),
+        )
+        .await;
+    domain.until(|connection,event|connection==browser && matches!(event,Event::RoomReply{request_id:Some(id),result:piik_channel_core::host::RoomResult::Done,..} if id=="browser-limit")).await;
+    let read = json!({"id":"read","type":"relay_capacity","action":"read","roomId":room});
+    page.send(Message::Text(read.to_string().into()))
+        .await
+        .unwrap();
+    let current = reply(&mut domain, &mut page).await;
+    assert_eq!(current["result"]["sessionId"], native.to_string());
+    assert_eq!(current["result"]["bindingId"], binding.to_string());
+    assert!(current["result"]["relayOverride"].is_null());
+    for capacity in [1, 3] {
+        let start = domain.events.len();
+        page.send(Message::Text(json!({"id":"set","type":"relay_capacity","action":"set","roomId":room,"sessionId":native,"bindingId":binding,"capacity":capacity}).to_string().into())).await.unwrap();
+        let accepted = reply(&mut domain, &mut page).await;
+        assert_eq!(accepted["result"]["relayOverride"], capacity, "{accepted}");
+        let events = &domain.events[start..];
+        let projected=events.iter().position(|(connection,event)|*connection==domain.connection && matches!(event,Event::State{state} if state.channel.rooms.iter().any(|value|value.id==room && value.relay_override==Some(capacity)))).unwrap();
+        let confirmed = events
+            .iter()
+            .position(|(connection, event)| {
+                *connection == domain.connection
+                    && matches!(
+                        event,
+                        Event::RoomReply {
+                            result: piik_channel_core::host::RoomResult::Done,
+                            ..
+                        }
+                    )
+            })
+            .unwrap();
+        assert!(projected < confirmed);
+        let browser_override = events
+            .iter()
+            .rev()
+            .find_map(|(connection, event)| match event {
+                Event::State { state } if *connection == browser => state
+                    .channel
+                    .rooms
+                    .iter()
+                    .find(|value| value.id == room)
+                    .map(|value| value.relay_override),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(browser_override, Some(7));
+    }
+    page.close(None).await.unwrap();
+    let (mut page, _) = connect_async(upgrade()).await.unwrap();
+    page.send(Message::Text(hello.to_string().into()))
+        .await
+        .unwrap();
+    assert!(reply(&mut domain, &mut page).await["error"].is_null());
+    page.send(Message::Text(read.to_string().into()))
+        .await
+        .unwrap();
+    let retained = reply(&mut domain, &mut page).await;
+    assert_eq!(retained["result"]["sessionId"], native.to_string());
+    assert_eq!(retained["result"]["relayOverride"], 3);
+    page.send(Message::Text(json!({"id":"follow","type":"relay_capacity","action":"set","roomId":room,"sessionId":native,"bindingId":binding,"capacity":null}).to_string().into())).await.unwrap();
+    let followed = reply(&mut domain, &mut page).await;
+    assert!(followed["error"].is_null());
+    assert!(followed["result"]["relayOverride"].is_null());
+    page.close(None).await.unwrap();
+    stop.send(()).unwrap();
+    domain
+        .until(|_, event| matches!(event,Event::Ack{request_id} if request_id=="native-leave"))
+        .await;
+    tokio::time::timeout(Duration::from_secs(5), service)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
 }

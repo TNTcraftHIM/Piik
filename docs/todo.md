@@ -12,12 +12,11 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **Personal forwarding limit on App-hosted sharing.** With room default 1,
-  raising the webpage's personal limit does not raise its linked App source's
-  limit: the request targets the Browser endpoint, and host/source planning
-  still uses the room default. Align the existing connection settings with the
-  actual endpoint and its effective limit. Preserve the accepted zero meaning
-  (no forwarding for others, sharing still available) and healthy-route stability.
+- [ ] **Native forwarding controls in the next package.** Accept the separate
+  webpage/App controls on a matching build: with room default 1, the App's
+  positive override must affect new source branches while the webpage keeps its
+  own value. The implementation and existing preview follow the
+  [endpoint policy](./research/channel-network-design.md#start-on-existing-paths-then-converge).
 - [ ] **App connection during webpage selection.** Capture the first control
   connection failure during the reported intermittent App disconnection. Use the
   opt-in control-close diagnostic to distinguish transport closure, handshake,

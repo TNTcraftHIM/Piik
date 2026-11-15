@@ -6811,6 +6811,54 @@ test("relay overrides persist per room only after acceptance and accompany read 
   } finally { session.close(); }
 });
 
+test("App relay settings target the actual endpoint, preserve webpage settings and reject retired room results", async () => {
+  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  const { session, socket } = await setup();
+  const app = ChannelSocket.current;
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const setting = { roomId: "first", sessionId: crypto.randomUUID(), bindingId: crypto.randomUUID(), relayCapacity: 1, relayOverride: null };
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.rooms[0].delivery!.bindingId = setting.bindingId;
+    state.channel.rooms[0].relayOverride = 4;
+    socket.receive({ type: "state", state });
+
+    const read = session.appRelayCapacity("first");
+    expect(app.sent.at(-1)).toMatchObject({ type: "relay_capacity", action: "read", roomId: "first" });
+    app.receive({ id: app.sent.at(-1)!.id, result: setting });
+    expect(await read).toEqual(setting);
+
+    const write = session.setAppRelayOverride(setting, 3, false);
+    expect(app.sent.at(-1)).toMatchObject({ type: "relay_capacity", action: "set", roomId: "first",
+      sessionId: setting.sessionId, bindingId: setting.bindingId, capacity: 3 });
+    app.receive({ id: app.sent.at(-1)!.id, result: { ...setting, relayOverride: 3 } });
+    expect(await write).toEqual({ ...setting, relayOverride: 3 });
+    expect(session.getSnapshot().state!.channel.rooms[0].relayOverride).toBe(4);
+    expect(socket.sent.some(command => command.type === "relay_capacity")).toBe(false);
+
+    const wrongEndpoint = session.setAppRelayOverride(setting, 2, false);
+    const rejectedEndpoint = expect(wrongEndpoint).rejects.toThrow("room_context_changed");
+    app.receive({ id: app.sent.at(-1)!.id, result: { ...setting, sessionId: crypto.randomUUID(), relayOverride: 2 } });
+    await rejectedEndpoint;
+
+    const late = session.setAppRelayOverride(setting, null, false);
+    const rejectedLate = expect(late).rejects.toThrow("room_context_changed");
+    const request = app.sent.at(-1)!;
+    state.channel.rooms[0].delivery!.bindingId = crypto.randomUUID();
+    socket.receive({ type: "state", state });
+    app.receive({ id: request.id, result: setting });
+    await rejectedLate;
+    const before = app.sent.length;
+    await expect(session.setAppRelayOverride(setting, 2, false)).rejects.toThrow("room_context_changed");
+    expect(app.sent).toHaveLength(before);
+    expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
 test("live chat overlays follow each watched room and never replay loaded history", async () => {
   const { session, socket, peer } = await setup();
   try {

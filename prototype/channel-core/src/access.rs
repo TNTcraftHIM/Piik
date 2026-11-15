@@ -38,6 +38,8 @@ pub(crate) fn default_voice_bitrate() -> u32 {
     64_000
 }
 
+pub const MAX_RELAY_CAPACITY: u8 = 20;
+
 pub(crate) fn default_relay_capacity() -> u8 {
     2
 }
@@ -71,7 +73,7 @@ impl RoomState {
     /// Validate retained policy without changing its password or invitation.
     pub fn validate(&self) -> Result<(), &'static str> {
         if !crate::wire::valid_id(&self.id)
-            || !(1..=20).contains(&self.relay_capacity)
+            || !(1..=MAX_RELAY_CAPACITY).contains(&self.relay_capacity)
             || !valid_audio_bitrate(self.voice_bitrate)
             || self.creator_id.is_nil()
             || crate::wire::title(&self.name).as_deref() != Some(self.name.as_str())

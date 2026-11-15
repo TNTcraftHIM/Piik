@@ -20,13 +20,10 @@ impl Default for RelayLimits {
 }
 impl RelayLimits {
     pub fn get(&self, endpoint: Uuid, source: Uuid) -> usize {
-        if endpoint == source || endpoint == self.host {
-            self.default
-        } else {
-            self.overrides
-                .get(&endpoint)
-                .copied()
-                .unwrap_or(self.default)
+        match self.overrides.get(&endpoint).copied() {
+            Some(0) if endpoint == source || endpoint == self.host => self.default,
+            Some(capacity) => capacity,
+            None => self.default,
         }
     }
 }
@@ -912,6 +909,54 @@ impl BaseTree {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn positive_endpoint_limits_apply_to_host_and_source_without_changing_zero_roots() {
+        let id = Uuid::from_u128;
+        let mut limits = RelayLimits {
+            default: 2,
+            host: id(1),
+            overrides: [(id(1), 1), (id(2), 4), (id(3), 3)].into(),
+        };
+        assert_eq!(limits.get(id(1), id(2)), 1);
+        assert_eq!(limits.get(id(2), id(2)), 4);
+        assert_eq!(limits.get(id(3), id(2)), 3);
+        for endpoint in [id(1), id(2), id(3)] {
+            limits.overrides.insert(endpoint, 0);
+        }
+        assert_eq!(limits.get(id(1), id(2)), 2);
+        assert_eq!(limits.get(id(2), id(2)), 2);
+        assert_eq!(limits.get(id(3), id(2)), 0);
+    }
+    #[test]
+    fn host_override_reduction_prepares_migration_and_increase_keeps_healthy_tree() {
+        let id = Uuid::from_u128;
+        let online = [1, 2, 3, 4].into_iter().map(id).collect();
+        let mut tree = BaseTree::new(id(1));
+        tree.plan.parents = [(id(2), id(1)), (id(3), id(1)), (id(4), id(2))].into();
+        for (child, parent) in tree.plan.parents.clone() {
+            tree.plan.mark_ready(child, parent, Readiness::Forwardable);
+        }
+        let original = tree.plan.parents.clone();
+        let mut limits = RelayLimits {
+            default: 2,
+            host: id(1),
+            overrides: [(id(1), 3)].into(),
+        };
+        tree.reconcile(&online, &online, &online, &limits, 0);
+        assert_eq!(tree.plan.parents, original);
+        assert!(tree.candidate_links().is_empty());
+        limits.overrides.insert(id(1), 1);
+        tree.reconcile(&online, &online, &online, &limits, 10);
+        assert_eq!(tree.plan.parents, original);
+        assert_eq!(tree.candidate_links().len(), 1);
+        let deadline = tree.deadline();
+        tree.reconcile(&online, &online, &online, &limits, 11);
+        assert_eq!(tree.deadline(), deadline);
+        limits.overrides.insert(id(1), 3);
+        tree.reconcile(&online, &online, &online, &limits, 12);
+        assert_eq!(tree.plan.parents, original);
+        assert!(tree.candidate_links().is_empty());
+    }
 
     #[test]
     fn capacity_candidate_losing_its_root_path_keeps_the_old_branch_and_deadline() {

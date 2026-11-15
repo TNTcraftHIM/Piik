@@ -184,6 +184,7 @@ struct Session {
     hosting: Option<Hosting>,
     opening: BTreeMap<String, OpeningRoom>,
     pending_captures: BTreeMap<String, PendingCapture>,
+    pending_relay: BTreeMap<String, PendingRelay>,
 }
 
 pub struct OpenRoom {
@@ -399,7 +400,44 @@ fn capture_binding(state: &Snapshot, room_id: &str) -> Option<Uuid> {
         .map(|delivery| delivery.binding_id)
 }
 
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(
+    tag = "action",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum RelayCapacityRequest {
+    Read {
+        room_id: String,
+    },
+    Set {
+        room_id: String,
+        session_id: Uuid,
+        binding_id: Uuid,
+        capacity: Option<u8>,
+    },
+}
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayCapacityState {
+    pub room_id: String,
+    pub session_id: Uuid,
+    pub binding_id: Uuid,
+    pub relay_capacity: u8,
+    pub relay_override: Option<u8>,
+}
+struct PendingRelay {
+    room_id: String,
+    session_id: Uuid,
+    binding_id: Uuid,
+    result: oneshot::Sender<Result<RelayCapacityState, String>>,
+}
 pub enum HostCommand {
+    RelayCapacity {
+        request: RelayCapacityRequest,
+        result: oneshot::Sender<Result<RelayCapacityState, String>>,
+    },
     RegisterWatchReader {
         resource_id: Uuid,
         reader: Arc<dyn crate::watch::Reader>,
@@ -433,6 +471,9 @@ pub enum HostCommand {
 impl HostCommand {
     fn unavailable(self) {
         match self {
+            Self::RelayCapacity { result, .. } => {
+                let _ = result.send(Err("hosting_unavailable".into()));
+            }
             Self::RegisterWatchReader { result, .. } => {
                 let _ = result.send(Err("hosting_unavailable".into()));
             }
@@ -512,10 +553,11 @@ pub async fn run_host(
         hosting,
         opening: BTreeMap::new(),
         pending_captures: BTreeMap::new(),
+        pending_relay: BTreeMap::new(),
     };
     let mut stop = std::pin::pin!(stop);
     let result = session.drive(&mut stop, crate::peer::can_prepare_udp).await;
-    session.fail_captures("hosting_stopped");
+    session.fail_pending_requests("hosting_stopped");
     let closed = session.release().await;
     let error = result
         .as_ref()
@@ -534,14 +576,17 @@ pub async fn run_host(
 }
 
 impl Session {
-    fn fail_captures(&mut self, code: &str) {
+    fn fail_pending_requests(&mut self, code: &str) {
+        for pending in std::mem::take(&mut self.pending_relay).into_values() {
+            let _ = pending.result.send(Err(code.into()));
+        }
         for request in std::mem::take(&mut self.pending_captures).into_values() {
             request.fail(code.into());
         }
     }
 
     async fn release(&mut self) -> Result<()> {
-        self.fail_captures("hosting_unavailable");
+        self.fail_pending_requests("hosting_unavailable");
         let restoring: Vec<_> = self
             .opening
             .iter()
@@ -631,7 +676,7 @@ impl Session {
                     signing_key: self.signer.signing_key(),
                 };
                 let result = self.connected(&mut socket, join, stop).await;
-                self.fail_captures("disconnected");
+                self.fail_pending_requests("disconnected");
                 if let Some(live) = &mut self.live {
                     live.room.disconnected();
                 }
@@ -707,6 +752,7 @@ impl Session {
                             let request = request.ok_or_else(|| anyhow!("hosting_control_closed"))?;
                             if !admitted { request.unavailable(); }
                             else { match request {
+                                HostCommand::RelayCapacity { request, result } => self.relay_capacity(request, result, socket).await?,
                                 HostCommand::RegisterWatchReader { resource_id, reader, result } => {
                                     let registered = if let Some(live) = &mut self.live {
                                         await_peer(live.peers.register_watch_reader(resource_id, reader), &mut live.commands, &live.pairs, &mut live.room, &live.peers, socket).await.map(|()| live.session).map_err(|error| error.to_string())
@@ -795,6 +841,115 @@ impl Session {
         }
     }
 
+    fn relay_capacity_state(&self, room_id: &str) -> Result<RelayCapacityState> {
+        let live = self
+            .live
+            .as_ref()
+            .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+        let snapshot = live.room.snapshot.borrow();
+        let room = snapshot
+            .as_ref()
+            .and_then(|s| {
+                s.channel
+                    .rooms
+                    .iter()
+                    .find(|r| r.id == room_id && r.authorized && r.available)
+            })
+            .ok_or_else(|| anyhow!("room_unavailable"))?;
+        let binding = room
+            .delivery
+            .as_ref()
+            .ok_or_else(|| anyhow!("room_unavailable"))?;
+        Ok(RelayCapacityState {
+            room_id: room_id.into(),
+            session_id: live.session,
+            binding_id: binding.binding_id,
+            relay_capacity: room.relay_capacity,
+            relay_override: room.relay_override,
+        })
+    }
+    async fn relay_capacity(
+        &mut self,
+        request: RelayCapacityRequest,
+        result: oneshot::Sender<Result<RelayCapacityState, String>>,
+        socket: &mut Socket,
+    ) -> Result<()> {
+        if result.is_closed() {
+            return Ok(());
+        }
+        self.retire_relay_requests();
+        let RelayCapacityRequest::Set {
+            room_id,
+            session_id,
+            binding_id,
+            capacity,
+        } = request
+        else {
+            let RelayCapacityRequest::Read { room_id } = request else {
+                unreachable!()
+            };
+            let _ = result.send(
+                self.relay_capacity_state(&room_id)
+                    .map_err(|e| e.to_string()),
+            );
+            return Ok(());
+        };
+        let validation = (|| -> Result<()> {
+            let current = self.relay_capacity_state(&room_id)?;
+            anyhow::ensure!(
+                current.session_id == session_id && current.binding_id == binding_id,
+                "room_context_changed"
+            );
+            anyhow::ensure!(
+                capacity.is_none_or(|capacity| capacity <= piik_channel_core::MAX_RELAY_CAPACITY),
+                "invalid_relay_capacity"
+            );
+            anyhow::ensure!(
+                !self.pending_relay.values().any(|p| p.room_id == room_id),
+                "relay_capacity_pending"
+            );
+            Ok(())
+        })();
+        if let Err(error) = validation {
+            let _ = result.send(Err(error.to_string()));
+            return Ok(());
+        }
+        let id = Uuid::new_v4().to_string();
+        self.pending_relay.insert(
+            id.clone(),
+            PendingRelay {
+                room_id: room_id.clone(),
+                session_id,
+                binding_id,
+                result,
+            },
+        );
+        write(
+            socket,
+            &Command::RelayCapacity { room_id, capacity },
+            Some(&id),
+        )
+        .await
+    }
+    fn retire_relay_requests(&mut self) {
+        let retired: Vec<_> = self
+            .pending_relay
+            .iter()
+            .filter_map(|(id, p)| {
+                let current = self.relay_capacity_state(&p.room_id);
+                (p.result.is_closed()
+                    || current.as_ref().is_err()
+                    || current.is_ok_and(|state| {
+                        state.session_id != p.session_id || state.binding_id != p.binding_id
+                    }))
+                .then_some(id.clone())
+            })
+            .collect();
+        for id in retired {
+            let pending = self.pending_relay.remove(&id).unwrap();
+            let _ = pending.result.send(Err("room_context_changed".into()));
+        }
+    }
     async fn connection_metrics(
         &mut self,
         room_id: &str,
@@ -1226,6 +1381,40 @@ impl Session {
                 result,
             } => {
                 if self
+                    .pending_relay
+                    .get(&id)
+                    .is_some_and(|p| p.room_id == room_id)
+                {
+                    match result {
+                        RoomResult::Done => {
+                            let pending = self.pending_relay.remove(&id).unwrap();
+                            let current = self
+                                .relay_capacity_state(&room_id)
+                                .and_then(|state| {
+                                    anyhow::ensure!(
+                                        state.session_id == pending.session_id
+                                            && state.binding_id == pending.binding_id,
+                                        "room_context_changed"
+                                    );
+                                    Ok(state)
+                                })
+                                .map_err(|error| error.to_string());
+                            let _ = pending.result.send(current);
+                        }
+                        RoomResult::Error { code } => {
+                            let pending = self.pending_relay.remove(&id).unwrap();
+                            let _ = pending.result.send(Err(code));
+                        }
+                        _ => {
+                            let pending = self.pending_relay.remove(&id).unwrap();
+                            let _ = pending
+                                .result
+                                .send(Err("invalid_relay_capacity_reply".into()));
+                        }
+                    }
+                    return Ok(());
+                }
+                if self
                     .pending_captures
                     .get(&id)
                     .is_some_and(|pending| pending.room_id() == room_id)
@@ -1287,6 +1476,13 @@ impl Session {
                 }
             }
             Event::Error { code, request_id } => {
+                if let Some(pending) = request_id
+                    .as_ref()
+                    .and_then(|id| self.pending_relay.remove(id))
+                {
+                    let _ = pending.result.send(Err(code));
+                    return Ok(());
+                }
                 if let Some(room) = self.opening.iter().find_map(|(room, opening)| {
                     (!matches!(opening.work, OpeningWork::Register { .. })
                         && request_id.as_ref() == Some(&opening.request_id))
@@ -2129,8 +2325,7 @@ impl Session {
                 }
             }
             await_peer(
-                live.peers
-                    .update_watch(state.watch_bytes, &state.pairs),
+                live.peers.update_watch(state.watch_bytes, &state.pairs),
                 &mut live.commands,
                 &live.pairs,
                 &mut live.room,
@@ -2149,6 +2344,7 @@ impl Session {
             )
             .await?;
         }
+        self.retire_relay_requests();
         Ok(())
     }
 

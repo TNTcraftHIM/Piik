@@ -65,7 +65,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 14;
+const PROTOCOL: u8 = 15;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -946,6 +946,7 @@ enum Operation {
     Open {
         policy: String,
     },
+    RelayCapacity(piik_channel_native::session::RelayCapacityRequest),
     ConnectionMetrics {
         room_id: String,
         publication_id: Option<Uuid>,
@@ -1845,6 +1846,32 @@ async fn connection(
                             }
                             Operation::Open { policy } => match &host {
                                 Some(commands) => open(commands, &policy).await,
+                                None => Err(anyhow!("hello_required")),
+                            },
+                            Operation::RelayCapacity(relay) => match &host {
+                                Some(commands) => {
+                                    let (result, response) = oneshot::channel();
+                                    let commands = commands.clone();
+                                    let request_id = request.id.clone();
+                                    operations.push(async move {
+                                        let work = async {
+                                            commands
+                                                .send(HostCommand::RelayCapacity { request: relay, result })
+                                                .await
+                                                .map_err(|_| anyhow!("hosting_unavailable"))?;
+                                            let result = timeout(IO_TIMEOUT, response)
+                                                .await
+                                                .map_err(|_| anyhow!("request_timeout"))??
+                                                .map_err(anyhow::Error::msg)?;
+                                            serde_json::to_value(result).map_err(anyhow::Error::from)
+                                        }.await;
+                                        match work {
+                                            Ok(result) => json!({"id": request_id, "result": result}),
+                                            Err(error) => json!({"id": request_id, "error": error.to_string()}),
+                                        }
+                                    }.boxed());
+                                    continue;
+                                }
                                 None => Err(anyhow!("hello_required")),
                             },
                             Operation::ConnectionMetrics {
@@ -3869,6 +3896,23 @@ mod tests {
 #[cfg(test)]
 mod page_contract_tests {
     use super::*;
+    #[test]
+    fn relay_capacity_app_operation_keeps_read_and_set_scopes_explicit() {
+        let read: Request = serde_json::from_value(
+            json!({"id":"read","type":"relay_capacity","action":"read","roomId":"owned"}),
+        )
+        .unwrap();
+        assert!(matches!(
+            read.operation,
+            Operation::RelayCapacity(
+                piik_channel_native::session::RelayCapacityRequest::Read { .. }
+            )
+        ));
+        let mut set = json!({"id":"set","type":"relay_capacity","action":"set","roomId":"owned","sessionId":Uuid::new_v4(),"bindingId":Uuid::new_v4(),"capacity":null});
+        assert!(serde_json::from_value::<Request>(set.clone()).is_ok());
+        set.as_object_mut().unwrap().remove("bindingId");
+        assert!(serde_json::from_value::<Request>(set).is_err());
+    }
     #[test]
     fn page_commands_share_the_authorized_app_envelope() {
         let id = Uuid::new_v4();

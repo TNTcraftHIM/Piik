@@ -31,7 +31,7 @@ pub mod watch_delivery;
 pub mod wire;
 pub mod wire_images;
 
-pub use access::{RoomPermission, RoomState};
+pub use access::{RoomPermission, RoomState, MAX_RELAY_CAPACITY};
 pub use attachment::{AttachmentDescriptor, AttachmentLimits, ATTACHMENT_LIMITS};
 pub use channel::{DomainStateHeader, DurableState};
 pub use identity::{Endpoint, Member, User, MAX_SESSIONS, PROFILE_PAGE_SIZE, RECOVERY_MS};

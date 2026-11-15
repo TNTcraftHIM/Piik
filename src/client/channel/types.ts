@@ -9,7 +9,7 @@ import type { ChannelAttachments, DraftFile } from "./attachments";
 import type { FeedbackCue } from "./feedback-audio";
 import type { RoomCopyInfo } from "./backup-archive";
 import type { NativeCaptureTarget, EncodingExecution } from "../native/wire";
-import type { NativeCaptureRequest, NativeCaptureSources, NativeExternalInput, ChannelRemoteControlState, NativeConnectionMetrics } from "./app-link";
+import type { NativeCaptureRequest, NativeCaptureSources, NativeExternalInput, ChannelRemoteControlState, NativeConnectionMetrics, NativeRelayCapacity } from "./app-link";
 import type { RemoteStopShortcut } from "../native/wire";
 import type { InputTransport } from "../remote-control/input-route";
 import type { RemoteControlMode } from "../remote-control/protocol";
@@ -150,6 +150,8 @@ export interface ChannelActions {
   deleteRoom(roomId: string, deleteData: boolean, reportError?: boolean): Promise<{ dataRemoved: boolean }>;
   setRoomVoiceBitrate(roomId: string, bitrate: number): Promise<void>;
   setRelayOverride(roomId: string, capacity: number | null, reportError?: boolean): Promise<void>;
+  appRelayCapacity(roomId: string, signal?: AbortSignal): Promise<NativeRelayCapacity>;
+  setAppRelayOverride(current: NativeRelayCapacity, capacity: number | null, reportError?: boolean): Promise<NativeRelayCapacity>;
   roomBackupAvailable(roomId: string): Promise<boolean>;
   exportRoomBackup(roomId: string): Promise<Blob>;
   exportRoomCopy(roomId: string, includeRoomInfo: boolean): Promise<Blob>;

@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Tooltip } from "../../components/living/Tooltip";
 import { Btn, SwitchItem } from "../../components/living/primitives";
 import { NumberControl } from "../../components/living/NumberControl";
 import { Glyph } from "../../ui/icons";
@@ -9,6 +8,7 @@ import { formatChatTranscript } from "../../lib/room-chat-export";
 import type { ChannelMessage, ChannelUser, ChannelRoom, RoomSettings } from "../protocol";
 import { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../protocol";
 import type { ChannelController } from "../types";
+import type { NativeRelayCapacity } from "../app-link";
 import { ChannelAction } from "./ChannelAction";
 import { ChannelSettingsDialog, ChannelSettingsTabs, useSettingsAction, type SettingsAction } from "./ChannelSettingsDialog";
 import { ChannelIdentityFields } from "./ChannelIdentity";
@@ -35,34 +35,75 @@ export function RoomChatExport({ messages, users }: { messages: readonly Channel
   </section>;
 }
 
-function RelayLimit({ value, min, label, note, disabled, onChange }: {
-  value: number; min: number; label: string; note: string; disabled: boolean; onChange(value: number): void;
+function RelayLimit({ value, min, label, caption = label, note, disabled, onChange }: {
+  value: number; min: number; label: string; caption?: string; note: string; disabled: boolean; onChange(value: number): void;
 }) {
   const { t } = useCopy();
   return <NumberControl value={value} min={min} max={MAX_RELAY_CAPACITY} step={1} unit={t(value === 1 ? "playback.relayPerson" : "playback.relayPeople")}
     name="relay-capacity" label={label} disabled={disabled} onChange={onChange} className="lr-door-group c3-relay-limit">
     {input => <><div className="lr-quality-heading"><span className="lr-door-glyph"><Glyph name="branch" size={18} />
-      <span>{label}</span></span><Tooltip kind="hint-relay-volunteer" text={`${label}\n${note}`}>{input}</Tooltip></div>
+      <span>{caption}</span></span>{input}</div>
       <p>{note}</p></>}
   </NumberControl>;
 }
 
+function EndpointRelay({ title, capacity, override, busy, disabled, host, change }: {
+  title: string; capacity: number; override: number | null; busy: boolean; disabled: boolean; host: boolean;
+  change(value: number | null): void;
+}) {
+  const { t } = useCopy();
+  const following = override === null || host && override === 0;
+  const label = t("room.relay.endpointLimit", { endpoint: title });
+  const note = t(host ? "room.relay.endpointHostNote" : "room.relay.endpointNote");
+  return <section className="c3-room-relay" aria-label={title} aria-busy={busy}>
+    <h4 className="c3-relay-endpoint-title">{title}</h4>
+    <SwitchItem checked={following} disabled={disabled || busy} hint="hint-relay-volunteer"
+      label={t("room.relay.followDefault")}
+      onChange={follow => change(follow ? null : capacity)} />
+    <RelayLimit value={following ? capacity : override!} min={host ? 1 : 0} label={label} caption={t("room.relay.limit")} note={note}
+      disabled={disabled || busy || following} onChange={change} />
+  </section>;
+}
+
+function AppRelay({ channel, room, disabled, run }: { channel: ChannelController; room: ChannelRoom; disabled: boolean; run: SettingsAction }) {
+  const { t } = useCopy();
+  const [value, setValue] = useState<NativeRelayCapacity | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [reload, setReload] = useState(0);
+  const read = channel.appRelayCapacity;
+  const retained = !value || !!channel.state?.sessions.some(session => session.id === value.sessionId);
+  useEffect(() => {
+    if (disabled) return;
+    const lifetime = new AbortController();
+    setLoading(true); setFailed(false);
+    void read(room.id, lifetime.signal).then(result => {
+      if (!lifetime.signal.aborted) { setValue(result); setLoading(false); }
+    }, () => { if (!lifetime.signal.aborted) { setFailed(true); setLoading(false); } });
+    return () => lifetime.abort();
+  }, [read, room.id, room.delivery?.bindingId, room.relayCapacity, channel.sessionId, disabled, retained, reload]);
+  const title = t("room.relay.app");
+  if (!value || !retained || loading || failed) return <section className="c3-room-relay" aria-label={title} aria-busy={loading && !disabled}>
+    <h4 className="c3-relay-endpoint-title">{title}</h4>
+    <p role="status">{t(failed || disabled ? "room.relay.appUnavailable" : "common.loading")}</p>
+    {failed && <Btn quiet size="dense" icon="refresh" title="common.retry" cap="common.retry" onClick={() => setReload(value => value + 1)} />}
+  </section>;
+  return <EndpointRelay title={title} capacity={value.relayCapacity} override={value.relayOverride}
+    busy={channel.pending.has(`app-relay:${room.id}`)} disabled={disabled}
+    host={room.delivery?.hostSessionId === value.sessionId}
+    change={capacity => { void run(() => channel.setAppRelayOverride(value, capacity, false), setValue); }} />;
+}
+
 export function PersonalRelay({ channel, room, disabled, run }: { channel: ChannelController; room: ChannelRoom; disabled: boolean; run: SettingsAction }) {
   const { t } = useCopy();
-  const host = room.delivery?.hostSessionId === channel.sessionId;
-  const following = room.relayOverride === null;
-  const busy = channel.pending.has(`relay:${room.id}`);
-  const change = (value: number | null) => { void run(() => channel.setRelayOverride(room.id, value, false)); };
-  const label = t("room.relay.personalLimit");
-  const note = host ? t("room.relay.hostNote")
-    : t("room.relay.personalNote");
-  return <section className="c3-room-relay" aria-label={label} aria-busy={busy}>
-    <SwitchItem checked={host || following} disabled={disabled || busy || host} hint="hint-relay-volunteer"
-      label={t("room.relay.followDefault")} note={note}
-      onChange={follow => change(follow ? null : room.relayCapacity)} />
-    <RelayLimit value={host || following ? room.relayCapacity : room.relayOverride!} min={0} label={label} note={note}
-      disabled={disabled || busy || host || following} onChange={change} />
-  </section>;
+  return <div className="c3-relay-endpoints">
+    <EndpointRelay title={t("room.relay.webpage")} capacity={room.relayCapacity} override={room.relayOverride}
+      busy={channel.pending.has(`relay:${room.id}`)} disabled={disabled}
+      host={room.delivery?.hostSessionId === channel.sessionId}
+      change={capacity => { void run(() => channel.setRelayOverride(room.id, capacity, false)); }} />
+    {channel.appConnected && <AppRelay key={`${room.id}/${room.delivery?.bindingId}/${channel.sessionId}`}
+      channel={channel} room={room} disabled={disabled} run={run} />}
+  </div>;
 }
 
 export type RoomDraft = Pick<RoomSettings, "name" | "icon" | "access" | "hidden" | "voiceBitrate"> & { password: string; removePassword: boolean; relayCapacity: number };

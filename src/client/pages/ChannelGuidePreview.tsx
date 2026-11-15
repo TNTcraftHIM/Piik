@@ -7,7 +7,7 @@ import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
 import { ChannelRoomInvitation } from "../channel/components/ChannelRoomInvitation";
 import { ChannelShareControl, WatchSourceDialog } from "../channel/components/ChannelShareControl";
 import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
-import { snapshotSchema, type ChannelMessage, type ChannelRoom, type ChannelSnapshot, type ChannelTopology, type RoomSettings } from "../channel/protocol";
+import { DEFAULT_RELAY_CAPACITY, snapshotSchema, type ChannelMessage, type ChannelRoom, type ChannelSnapshot, type ChannelTopology, type RoomSettings } from "../channel/protocol";
 import type { ChannelController } from "../channel/types";
 import { ChannelAttachments } from "../channel/attachments";
 import { readBackup } from "../channel/backup-archive";
@@ -25,6 +25,7 @@ import "./channel-guide-preview.css";
 const invitation = "https://friends.example/#room=friday&invite=sample";
 const pending = new Set<string>();
 const roomBackupAvailable = async () => false;
+const appSessionId = "sample-ada-app-session";
 const sources: NativeCaptureSources = { ...SOURCES, codecs: ["h264", "vp8"], softwareEncodingCodecs: ["h264", "vp8"], videoAdaptation: true, externalInput: false,
   sources: SOURCES.sources.filter(source => source.kind === "display" || source.sourceId === "101" || source.sourceId === "102") };
 
@@ -40,6 +41,14 @@ export function sampleRoomTopology(state: ChannelSnapshot, roomId: string, publi
 export function useChannelGuideSample(multiRoom = false) {
   const { lang } = useCopy(), zh = lang === "zh";
   const [settingsByRoom, setSettingsByRoom] = useState<Record<string, Partial<RoomSettings & Pick<ChannelRoom, "relayOverride">>>>({});
+  const [appRelayByRoom, setAppRelayByRoom] = useState<Record<string, number | null>>({});
+  const appRelayCapacity = useCallback<ChannelController["appRelayCapacity"]>(async (roomId, signal) => {
+    signal?.throwIfAborted();
+    if (roomId !== "friday" && (!multiRoom || roomId !== "studio")) throw new Error("room_unavailable");
+    return { roomId, sessionId: appSessionId, bindingId: `sample-binding-${roomId}`,
+      relayCapacity: settingsByRoom[roomId]?.relayCapacity ?? DEFAULT_RELAY_CAPACITY,
+      relayOverride: appRelayByRoom[roomId] ?? null };
+  }, [multiRoom, settingsByRoom, appRelayByRoom]);
   const [profile, setProfile] = useState<{ name: string; avatar: string | null }>({ name: "Ada", avatar: null });
   const settings = settingsByRoom.friday ?? {};
   const roomName = settings.name ?? (zh ? "周五小聚" : "Friday with friends");
@@ -107,13 +116,14 @@ export function useChannelGuideSample(multiRoom = false) {
     ...(multiRoom ? [{ id: "studio", name: zh ? "创作小屋" : "Creative studio", icon: "star" }] : [])]
     .map(room => ({ creatorId: "sample-ada", access: "private" as const, hidden: false, hasPassword: false,
       authorized: true, canManage: true, available: true, reading: true, lastMessageSeq: room.id === "friday" ? sampleMessages.at(-1)?.seq ?? 0 : messagesByRoom[room.id]?.at(-1)?.seq ?? 0,
-      delivery: { hostSessionId: "sample-ada-session", bindingId: `sample-binding-${room.id}`, nextHops: {} },
+      delivery: { hostSessionId: appSessionId, bindingId: `sample-binding-${room.id}`, nextHops: {} },
       realtimeSessionIds: room.id === "studio" ? (voiceByRoom.studio ? ["sample-ada-session"] : []) : ["sample-bo-session", ...(voiceByRoom.friday ? ["sample-ada-session"] : [])],
       participantSessionIds: room.id === "studio" ? ["sample-coco-session", ...(voiceByRoom.studio ? ["sample-ada-session"] : [])] : ["sample-ada-session", "sample-bo-session"], capabilities: { attachments: true },
       ...room, ...settingsByRoom[room.id] }));
   const state = snapshotSchema.parse({ channel: { id: "sample", name: "Friends", icon: "couch", ownerId: "sample-ada", historyWindow: 1000, userCount: users.length,
     rooms }, users: users.map(({ avatar: _avatar, ...user }) => user),
-    sessions: users.map(user => ({ id: `${user.id}-session`, userId: user.id, online: user.id !== "sample-iris", signingKey: Array(32).fill(0) })),
+    sessions: [...users.map(user => ({ id: `${user.id}-session`, userId: user.id, online: user.id !== "sample-iris", signingKey: Array(32).fill(0) })),
+      { id: appSessionId, userId: "sample-ada", online: true, signingKey: Array(32).fill(0) }],
     publications: Object.keys(voiceByRoom).map(roomId => ({ audience: [], id: `voice-${roomId}`, kind: "voice", roomId,
       sessionId: "sample-ada-session", userId: "sample-ada", paused: false })),
     voice: [...Object.entries(voiceByRoom).map(([roomId, voice]) => ({ sessionId: "sample-ada-session", roomId, ...voice })),
@@ -161,6 +171,13 @@ export function useChannelGuideSample(multiRoom = false) {
     setRelayOverride: async (roomId: string, relayOverride: number | null) => {
       setSettingsByRoom(previous => ({ ...previous, [roomId]: { ...previous[roomId], relayOverride } })); received();
     },
+    appRelayCapacity,
+    setAppRelayOverride: async (previous, capacity) => {
+      const current = await appRelayCapacity(previous.roomId);
+      if (previous.sessionId !== current.sessionId || previous.bindingId !== current.bindingId) throw new Error("room_context_changed");
+      setAppRelayByRoom(values => ({ ...values, [current.roomId]: capacity })); received();
+      return { ...current, relayOverride: capacity };
+    },
     nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined,
     sourceSelectionCommitting: () => false,
     pagePlayer: false, watchPage: () => undefined, watchEmbed: () => undefined,
@@ -173,7 +190,7 @@ export function useChannelGuideSample(multiRoom = false) {
     voiceInput, listeningVolume, voiceActivity,
     roomTopology: async (roomId: string, publicationId?: string) => sampleRoomTopology(state, roomId, publicationId),
     connectionMetrics: async () => [],
-    appConnectionMetrics: async () => { throw new Error("No native room in this preview"); },
+    appConnectionMetrics: async roomId => { const { sessionId, bindingId } = await appRelayCapacity(roomId); return { sessionId, bindingId, connections: [] }; },
     canUnmute: () => true,
     setMuted: async (roomId: string, muted: boolean) => setVoiceByRoom(previous => previous[roomId]
       ? { ...previous, [roomId]: { ...previous[roomId], muted } } : previous),

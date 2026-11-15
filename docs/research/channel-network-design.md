@@ -423,14 +423,21 @@ PeerConnection or change of room owner is needed merely to reverse flow directio
 Renaming the root cannot shorten the tree's unique paths. A shorter path requires
 different, actually usable edges. Reverse flow may use all neighbors of an
 internal base node. The room's default fanout starts at two and can be set from
-one to twenty by its managers. Other endpoints follow that default or choose
-their own relay limit from zero to twenty. The room host and each publication's
-source use the room default for their root branches. Zero declines forwarding
-for others; it does not stop originating voice, pictures or files through the
+one to twenty by its managers. Each endpoint can override it with a positive
+limit, including the room host and publication source. Zero declines forwarding
+for others while retaining the room default for its own source and required
+hosting branches; it does not stop originating voice, pictures or files through
 existing base paths. Necessary reverse-base neighbors and a helper's local display
 link remain distinct from new forwarding branches. This is a room-local topology
 policy, not a total upload-copy or device-capacity promise, and does not divide a
 domain-wide resource budget among rooms.
+
+Connection settings name the webpage and its connected App separately. The
+Browser retains its per-room preference; the App changes its actual Native
+endpoint through the existing room confirmation. That setting lasts with the
+Native session and survives closing its control page. A new Native session
+follows the room default. Raising a limit preserves healthy branches and makes
+the added capacity available to subsequent planning.
 
 Reducing a limit stops new excess branches and moves affected children through
 one bounded transition at that tree's existing owner. Choose a feasible necessary

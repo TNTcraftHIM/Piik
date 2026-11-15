@@ -16,7 +16,7 @@ import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventD
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelActions, ChannelView, ChatOptions, ScreenPresentation, SourceMicrophoneConfiguration, SourceMicrophoneSettings, WatchMediaSources } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryImport, type BackupHistoryRow } from "./hosting";
-import { AppPage, ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics, type NativeExternalInputState } from "./app-link";
+import { AppPage, ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics, type NativeExternalInputState, type NativeRelayCapacity } from "./app-link";
 import { isClientActivated } from "../lib/app-launch";
 import type { NativeCaptureTarget, EncodingExecution, NativePageIndexedSelection } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
@@ -1696,6 +1696,28 @@ export class ChannelSession {
     else relayCapacityByRoom[key] = capacity;
     saveRoomPreferences({ relayCapacityByRoom });
   }, reportError);
+  appRelayCapacity = async (roomId: string, signal?: AbortSignal): Promise<NativeRelayCapacity> => {
+    signal?.throwIfAborted();
+    const current = this.sessionContext(), context = this.connectionContext(roomId), app = this.app;
+    if (!app?.connected) throw new Error("app_disconnected");
+    const result = await app.relayCapacity(roomId, signal);
+    current(); context.current(); signal?.throwIfAborted();
+    if (this.app !== app || !app.connected) throw new Error("room_context_changed");
+    if (result.roomId !== roomId || result.bindingId !== context.bindingId) throw new Error("invalid_response");
+    return result;
+  };
+  setAppRelayOverride = (previous: NativeRelayCapacity, capacity: number | null, reportError = true): Promise<NativeRelayCapacity> =>
+    this.action(`app-relay:${previous.roomId}`, async () => {
+      const current = this.sessionContext(), context = this.connectionContext(previous.roomId), app = this.app;
+      if (!app?.connected) throw new Error("app_disconnected");
+      if (previous.bindingId !== context.bindingId) throw new Error("room_context_changed");
+      const result = await app.setRelayCapacity(previous, capacity);
+      current(); context.current();
+      if (this.app !== app || !app.connected) throw new Error("room_context_changed");
+      if (result.roomId !== previous.roomId || result.bindingId !== previous.bindingId || result.sessionId !== previous.sessionId)
+        throw new Error("room_context_changed");
+      return result;
+    }, reportError);
   deleteRoom = (roomId: string, deleteData: boolean, reportError = true): Promise<{ dataRemoved: boolean }> => this.action(`delete:${roomId}`, async () => {
     let dataRemoved: boolean | undefined;
     await this.request({ type: "delete_room", roomId, deleteData }, event => {

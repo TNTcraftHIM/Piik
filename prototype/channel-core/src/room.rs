@@ -286,7 +286,7 @@ impl RoomRuntime {
         capacity: Option<u8>,
     ) -> Result<(), &'static str> {
         self.authorize(member, RoomPermission::Read)?;
-        if capacity.is_some_and(|capacity| capacity > 20) {
+        if capacity.is_some_and(|capacity| capacity > crate::MAX_RELAY_CAPACITY) {
             return Err("invalid_relay_capacity");
         }
         self.activity.entry(session).or_default().relay_capacity = capacity;

@@ -39,7 +39,7 @@ impl RoomSummary {
         if !crate::access::valid_audio_bitrate(self.voice_bitrate) {
             return Err("invalid_audio_bitrate");
         }
-        if !(1..=20).contains(&self.relay_capacity) {
+        if !(1..=crate::MAX_RELAY_CAPACITY).contains(&self.relay_capacity) {
             return Err("invalid_relay_capacity");
         }
         Ok(())
@@ -351,7 +351,9 @@ impl RoomRuntime {
                 relay_capacity,
                 ..
             } => {
-                if relay_capacity.is_some_and(|capacity| !(1..=20).contains(&capacity)) {
+                if relay_capacity
+                    .is_some_and(|capacity| !(1..=crate::MAX_RELAY_CAPACITY).contains(&capacity))
+                {
                     return Err("invalid_relay_capacity");
                 }
                 self.update(member, name, icon, access, hidden, password, voice_bitrate)?;

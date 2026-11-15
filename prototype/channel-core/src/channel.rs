@@ -1106,7 +1106,9 @@ impl Channel {
                     && (!view.authorized
                         || endpoints[recipient].member.user_id != projection.summary.creator_id)
                 || view.members.is_some() && !view.can_manage
-                || view.relay_override.is_some_and(|capacity| capacity > 20)
+                || view
+                    .relay_override
+                    .is_some_and(|capacity| capacity > crate::MAX_RELAY_CAPACITY)
                 || view.watch_subscriptions.len() > MAX_SESSIONS
                 || view
                     .watch_subscriptions
