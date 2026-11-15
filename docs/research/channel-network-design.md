@@ -291,6 +291,15 @@ existing room authority carries playback state. The
 [implementation ledger](../todo.md) distinguishes direct-media delivery from
 website-connector work.
 
+Supported YouTube video links can use the official embedded player in the shared
+Web UI. A visible candidate must play before the sharer confirms it; its existing
+player then moves into the stage. Room authority confirms the activity before
+presentation completes, so a later display failure does not restore an earlier
+activity. Personal volume and source access remain with each player's platform
+controls. Unknown buffering stays unknown; explicit playback anchors and local
+resumption use the shared clock owner. Hidden players pause locally, and Stage
+focus selects the single eligible embedded player for scripted playback.
+
 Prefer Native source discovery with ordinary Browser viewing. An independently
 usable media URL or source-issued media grant permits each viewer to fetch from
 the origin; observing a successful request in the sharer's account is not proof

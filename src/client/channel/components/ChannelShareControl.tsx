@@ -1,3 +1,5 @@
+import { WatchEmbedPreview } from "./WatchEmbedPreview";
+import { canUseYouTubePlayer, youtubeVideoId } from "../watch-youtube-source";
 import { WatchIndexedTrackPicker } from "./WatchIndexedTrackPicker";
 import { indexedMediaSelection } from "../watch-indexed-source";
 import type { NativePageIndexedSelection } from "../../native/wire";
@@ -59,9 +61,9 @@ function ShareTitleEditor({ sharing, channel, disabled }: {
   </details>;
 }
 
-export function ChannelShareControl({ channel, roomId, publicationId, compact = false, disabled, openRequested, onPickerOpened }: {
+export function ChannelShareControl({ channel, roomId, publicationId, compact = false, disabled, openRequested, onPickerOpened, onWatch }: {
   channel: ChannelController; roomId: string; publicationId?: string; compact?: boolean; disabled: boolean;
-  openRequested?: boolean; onPickerOpened?(): void;
+  openRequested?: boolean; onPickerOpened?(): void; onWatch(): void;
 }) {
   const { t } = useCopy();
   const settingsLabel = t("screen.shareSettings");
@@ -74,7 +76,6 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const [open, setOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [externalOpen, setExternalOpen] = useState(false);
-  const [watchOpen, setWatchOpen] = useState(false);
   const [sources, setSources] = useState<Exclude<NativeSourceList, { kind: "ready" }> | ({ kind: "ready" } & NativeCaptureSources)>({ kind: "browser" });
   const { appConnected, nativeSources, startNativeScreen, startScreen } = channel;
   const browserSupported = typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getDisplayMedia === "function";
@@ -144,7 +145,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     return () => { request.current = null; };
   }, [open, settingsOpen, refresh]);
   useLayoutEffect(() => { close(); }, [roomId, publicationId, disabled, close]);
-  useEffect(() => { setExternalOpen(false); setWatchOpen(false); }, [roomId]);
+  useEffect(() => { setExternalOpen(false); }, [roomId]);
   useEffect(() => {
     if (!openRequested || disabled || !panel.current) return;
     panel.current.showPopover();
@@ -234,7 +235,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         initialTab="window" selectionDisabled={disabled || busy || qualityPending || microphonePending}
         initialAudio={selectedNative?.audio} initialExcludeAudio={selectedNative?.excludeAudio} initialShowCaptureBorder={selectedNative?.showCaptureBorder}
         onBrowser={() => start(() => startScreen(roomId))}
-        onWatch={() => { close(); setWatchOpen(true); }}
+        onWatch={() => { close(); onWatch(); }}
         onCamera={deviceId => start(() => startScreen(roomId, "camera", deviceId))}
         onExternalInput={(sources.kind === "ready" || sources.kind === "loading") && sources.externalInput ? () => {
           close();
@@ -248,7 +249,6 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
     </div>
     {externalOpen && externalInput && <ChannelExternalInput input={externalInput} busy={channel.pending.has(`stop:${externalInput.publicationId}`)}
       onStop={() => { void channel.stopScreen(externalInput.publicationId).then(() => setExternalOpen(false)).catch(() => {}); }} onClose={() => setExternalOpen(false)} />}
-    {watchOpen && <WatchSourceDialog channel={channel} roomId={roomId} onClose={() => setWatchOpen(false)} />}
   </>;
 }
 
@@ -302,6 +302,8 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
   const [url, setURL] = useState(initialURL);
   const { error, run } = useSettingsAction();
   const page = channel.watchPage(roomId, activityId);
+  const embed = !activityId ? channel.watchEmbed(roomId) : undefined;
+  const youtube = canUseYouTubePlayer() && !!youtubeVideoId(url.trim());
   const pageSources = !activityId ? page?.watchSources : undefined;
   const pageSourcesHeading = useRef<HTMLHeadingElement>(null);
   useLayoutEffect(() => { if (pageSources) pageSourcesHeading.current?.focus(); }, [!!pageSources]);
@@ -313,11 +315,15 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
   const close = () => {
     if (!activityId && channel.sourceSelectionCommitting(roomId)) return;
     if (activityId) void channel.leaveWatch(activityId).catch(() => {});
-    else if (busy || page) void channel.cancelScreenSelection(roomId).catch(() => {});
+    else if (busy || page || embed) void channel.cancelScreenSelection(roomId).catch(() => {});
     onClose();
   };
   return <ChannelSettingsDialog compact title={t("watch.start")} error={error ?? pageSources?.error ?? null} onClose={close} closeDisabled={committing}>
-    {page ? <div className="c3-settings-panels c3-external-input">
+    {embed ? <WatchEmbedPreview media={embed} busy={busy}
+      onConfirm={() => { void run(() => channel.confirmWatchEmbed(roomId), onClose); }} onCancel={close}
+      onOriginalPage={channel.pagePlayer ? () => { void run(async () => {
+        await channel.cancelScreenSelection(roomId); await channel.prepareWatchPage(roomId, url.trim());
+      }); } : undefined} /> : page ? <div className="c3-settings-panels c3-external-input">
       {pageSources ? <><h3 ref={pageSourcesHeading} tabIndex={-1}>{t(pageSources.indexed.length ? "watch.forward.title" : "watch.browserSource.title")}</h3>{pageSources.choices.length > 0 && <p>{t("watch.browserSource.help")}</p>}</>
         : <p>{t("watch.chooseVideo")}</p>}
       <Btn icon="window" quiet size="compact" title="watch.openedPage" cap="watch.openedPage" onClick={() => { void run(() => channel.focusWatchPage(roomId, activityId)); }} />
@@ -347,16 +353,17 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
     </div> : activityId ? <div className="c3-settings-panels c3-external-input"><p role="status">{busy ? t("watch.openingPage") : t("watch.pageUnavailable")}</p>
       {busy && <BrandLoader />}<Btn icon="x" quiet title="common.cancel" cap="common.cancel" onClick={close} /></div> : <form className="c3-settings-panels c3-external-input" onSubmit={event => {
       event.preventDefault();
-      if (!busy) void run(() => channel.pagePlayer ? channel.prepareWatchPage(roomId, url.trim()) : channel.startWatch(roomId, url.trim()), channel.pagePlayer ? undefined : onClose);
+      if (!busy) void run(() => youtube ? channel.prepareWatchEmbed(roomId, url.trim())
+        : channel.pagePlayer ? channel.prepareWatchPage(roomId, url.trim()) : channel.startWatch(roomId, url.trim()), youtube || channel.pagePlayer ? undefined : onClose);
     }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}>
-      <p>{t(channel.pagePlayer ? "watch.pageHelp" : "watch.urlHelp")}</p>
+      <p>{t(youtube ? "watch.embedHelp" : channel.pagePlayer ? "watch.pageHelp" : "watch.urlHelp")}</p>
       <label className="c3-external-input-field">{t("watch.url")}<span className="lr-input">
         <input type="url" required maxLength={MAX_WATCH_URL_LENGTH} value={url} placeholder="https://example.com/video.mp4" disabled={busy}
           onChange={event => setURL(event.target.value)} autoComplete="off" />
       </span></label>
-      {!channel.pagePlayer && <p>{t("watch.connectApp")}</p>}
-      <div className="c3-share-title-actions"><Btn type="submit" icon={channel.pagePlayer ? "globe" : "play"} tone="primary" title={channel.pagePlayer ? "watch.openPage" : "watch.directStart"} cap={channel.pagePlayer ? "watch.openPage" : "watch.directStart"} busy={busy} disabled={busy || !url.trim()} />
-        {channel.pagePlayer && <Btn icon="play" quiet title="watch.directStart" cap="watch.directStart" disabled={busy || !url.trim()}
+      {!channel.pagePlayer && !youtube && <p>{t("watch.connectApp")}</p>}
+      <div className="c3-share-title-actions"><Btn type="submit" icon={youtube ? "play" : channel.pagePlayer ? "globe" : "play"} tone="primary" title={youtube ? "watch.start" : channel.pagePlayer ? "watch.openPage" : "watch.directStart"} cap={youtube ? "watch.start" : channel.pagePlayer ? "watch.openPage" : "watch.directStart"} busy={busy} disabled={busy || !url.trim()} />
+        {channel.pagePlayer && !youtube && <Btn icon="play" quiet title="watch.directStart" cap="watch.directStart" disabled={busy || !url.trim()}
           onClick={() => { void run(() => channel.startWatch(roomId, url.trim()), onClose); }} />}
         <Btn icon="x" quiet title="common.cancel" cap="common.cancel" disabled={committing} onClick={close} /></div>
     </form>}

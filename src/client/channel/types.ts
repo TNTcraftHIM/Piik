@@ -1,5 +1,6 @@
 import type { IndexedTrackInspection } from "./watch-indexed-source";
 import type { NativePageCandidate, NativePageMediaChoice, NativePageIndexedCandidate, NativePageIndexedSelection } from "../native/wire";
+import type { WatchMedia } from "./watch-media";
 import type { WatchPlayer } from "./watch-playback";
 import type { WatchPlayback, WatchMode } from "./protocol";
 import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomInvitationState, RoomSettings, PublicationReactionSnapshot, ChatOptions, ProfilePage } from "./protocol";
@@ -92,6 +93,9 @@ export interface ChannelView {
 
 export interface ChannelActions {
   startWatch(roomId: string, url: string): Promise<void>;
+  prepareWatchEmbed(roomId: string, url: string): Promise<void>;
+  confirmWatchEmbed(roomId: string): Promise<void>;
+  watchEmbed(roomId: string): WatchMedia | undefined;
   prepareWatchPage(roomId: string, url: string, activityId?: string): Promise<void>;
   watchPage(roomId: string, activityId?: string): { url: string; candidates: readonly NativePageCandidate[]; activityId?: string; watchSources?: WatchMediaSources } | undefined;
   selectWatchPage(roomId: string, candidateId: string, activityId?: string): Promise<boolean>;

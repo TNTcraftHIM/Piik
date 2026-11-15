@@ -60,17 +60,19 @@ function WatchReceivingSettings({ receiving }: { receiving: WatchReceiving }) {
 }
 
 /** The session owns loading and playback; presentation only mounts its existing element. */
-export function ChannelWatchVideo({ player, owned, paused, label, presentation, theaterMode, onToggleTheater, onPlayback, onResume, disabled, website, onAppWatch, onFocusWindow, receiving }: {
+export function ChannelWatchVideo({ player, owned, paused, label, presentation, theaterMode, onToggleTheater, onPlayback, onResume, disabled, website, onAppWatch, onFocusWindow, receiving, automaticPlayback = true }: {
   player: WatchPlayer; owned: boolean; paused: boolean; label: string; presentation: "full" | "thumbnail" | "background";
   theaterMode: boolean; onToggleTheater(): void; disabled: boolean;
   onPlayback(patch: Partial<Pick<WatchPlayback, "paused" | "position" | "rate">>): void; onResume(): void;
   website: boolean; onAppWatch?: () => void; onFocusWindow(): void;
   receiving?: WatchReceiving;
+  automaticPlayback?: boolean;
 }) {
   const { t } = useCopy();
   const slot = useRef<HTMLDivElement>(null), controls = useRef<HTMLDivElement>(null);
   const videoRef = useMemo(() => ({ current: player.video }), [player]);
   const controlsId = useId();
+  const surface = player.presentation, embedded = surface.kind === "embed";
   const [htmlMedia, setMedia] = useState({ position: 0, duration: 0, volume: 1, muted: false, rate: 1 });
   const media = player.video ? htmlMedia : { position: player.mediaState?.position ?? 0, duration: player.mediaState?.duration ?? 0,
     rate: player.mediaState?.rate ?? 1, volume: 1, muted: false };
@@ -79,18 +81,45 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const [fullscreenFailed, setFullscreenFailed] = useState(false);
   const receivingSettings = receiving && (receiving.peerAvailable || receiving.mode === "peer") ? receiving : undefined;
   const localControls = !!player.video || !!receivingSettings;
-  const hasControls = owned || localControls;
+  const hasControls = owned && !embedded || localControls;
   const failure = channelErrorPresentation(player.error, t,
     receiving?.mode === "peer" ? "watch.forward.failed" : website && player.video ? "watch.browserFailed" : "watch.failed").message;
   const picture = usePictureInPicture(videoRef);
   const visibility = usePlaybackControlsVisibility(videoRef, controls, paused || player.blocked || !!player.error);
   useLayoutEffect(() => {
-    const video = player.video;
-    if (!video) return;
-    slot.current?.prepend(video);
-    video.setAttribute("aria-label", label); video.dataset.selected = "true"; video.tabIndex = -1;
-    return () => { video.remove(); };
+    if (surface.kind === "external") return;
+    const element = surface.element, target = slot.current;
+    element.dataset.watchSurface = "true";
+    if (target && element.parentNode !== target) {
+      if (surface.kind === "embed" && element.isConnected) target.moveBefore(element, null);
+      else target.prepend(element);
+    }
+    if (surface.kind === "embed" && element.parentNode === target) surface.mounted();
+    if (surface.kind === "embed") surface.setVisible(presentation !== "background" && element.ownerDocument.visibilityState === "visible", automaticPlayback);
+    if (surface.kind === "video") {
+      element.setAttribute("aria-label", label); element.dataset.selected = "true"; element.tabIndex = -1;
+    }
+    return () => {
+      if (element.parentNode === target) {
+        if (surface.kind === "embed") surface.setVisible(false);
+        else element.remove();
+      }
+    };
   }, [player]);
+  useEffect(() => {
+    if (surface.kind !== "embed") return;
+    const ownerDocument = surface.element.ownerDocument;
+    let visible = false;
+    const sync = () => surface.setVisible(presentation !== "background" && ownerDocument.visibilityState === "visible", automaticPlayback && visible);
+    const observer = new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting && entry.intersectionRatio > 0.5;
+      sync();
+    }, { threshold: [0, 0.5, 1] });
+    observer.observe(surface.element);
+    ownerDocument.addEventListener("visibilitychange", sync);
+    sync();
+    return () => { observer.disconnect(); ownerDocument.removeEventListener("visibilitychange", sync); if (surface.element.parentNode === slot.current) surface.setVisible(false); };
+  }, [player, presentation, automaticPlayback]);
   useEffect(() => { player.video?.setAttribute("aria-label", label); }, [player, label]);
   useEffect(() => {
     const video = player.video;
@@ -105,22 +134,22 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     document.addEventListener("fullscreenchange", sync); sync();
     return () => { for (const name of events) video.removeEventListener(name, sync); document.removeEventListener("fullscreenchange", sync); };
   }, [player]);
-  return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-external={!player.video || undefined} data-failed={!!player.error || undefined}
-    data-standalone={!player.video || !!player.error && player.error !== "watch_update_failed" || undefined} data-thumbnail={presentation === "thumbnail" || undefined}
-    data-controls-hidden={visibility.hidden} inert={presentation === "background"}>
+  return <div ref={slot} className="c3-video c3-mini-player c3-watch-player" data-external={surface.kind === "external" || undefined} data-embed={embedded || undefined} data-failed={!!player.error || undefined}
+    data-standalone={!embedded && (!player.video || !!player.error && player.error !== "watch_update_failed") || undefined} data-thumbnail={!embedded && presentation === "thumbnail" || undefined}
+    data-controls-hidden={!embedded && visibility.hidden} inert={presentation === "background"}>
     {player.video && player.video.readyState < 2 && !player.mediaState && !player.error && !player.blocked && <div className="c3-mini-message" role="status">
       <span className="c3-frame-wait"><BrandMark size={32} motion="loop" />{t("watch.waiting")}</span>
     </div>}
-    {!player.video && !player.error && <div className="c3-mini-message"><div className="c3-frame-wait c3-watch-result">
+    {surface.kind === "external" && !player.error && <div className="c3-mini-message"><div className="c3-frame-wait c3-watch-result">
       <span>{t("watch.inWindow")}</span><Btn icon="window" title="watch.focusWindow" cap="watch.focusWindow" onClick={onFocusWindow} />
     </div></div>}
     {player.error ? <div className="c3-mini-message" role="alert"><div className="c3-frame-wait c3-watch-result"><span>{failure}</span>
-      {website && player.video && (onAppWatch ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={onAppWatch} /> : <small>{t("watch.connectApp")}</small>)}
+      {website && surface.kind !== "external" && (onAppWatch ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={onAppWatch} /> : <small>{t("watch.connectApp")}</small>)}
       {receiving && <WatchPeerAction receiving={receiving} />}
     </div></div>
       : player.blocked && <div className="c3-mini-message"><Btn icon="play" title="watch.resume" cap="watch.resume" onClick={onResume} /></div>}
     {hasControls && <div ref={controls} id={controlsId} className="c3-mini-controls lr-media-toolbar lr-media-controls" role="group" aria-label={t("playback.controls")}>
-      {owned && <div className="c3-watch-shared" role="group" aria-label={t("watch.sharedControls")}>
+      {owned && !embedded && <div className="c3-watch-shared" role="group" aria-label={t("watch.sharedControls")}>
         <Btn icon={paused ? "play" : "pause"} quiet size="dense"
           title={paused ? "watch.play" : "watch.pause"} disabled={disabled} onClick={() => onPlayback({ paused: !paused })} />
         <input type="range" min="0" max={media.duration || 1} step="0.1" value={Math.min(media.position, media.duration || 1)}
@@ -128,7 +157,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
           onChange={event => onPlayback({ position: Number(event.target.value) })} />
         <select className="lr-select" aria-label={t("watch.rate")} value={media.rate} disabled={disabled}
           onChange={event => onPlayback({ rate: Number(event.target.value) })}>
-          {[0.5, 0.75, 1, 1.25, 1.5, 2].map(rate => <option key={rate} value={rate}>{rate}×</option>)}
+          {(player.media.playbackRates?.() ?? [0.5, 0.75, 1, 1.25, 1.5, 2]).map(rate => <option key={rate} value={rate}>{rate}×</option>)}
         </select>
       </div>}
       {owned && localControls && <span className="lr-viewer-action-separator" aria-hidden="true" />}
@@ -144,7 +173,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
           }} /></> : null}
       </div>}
     </div>}
-    {hasControls && <PlaybackControlsReveal controls={controls} controlsId={controlsId} hidden={visibility.hidden} />}
+    {hasControls && !embedded && <PlaybackControlsReveal controls={controls} controlsId={controlsId} hidden={visibility.hidden} />}
   </div>;
 }
 

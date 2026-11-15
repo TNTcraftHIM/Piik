@@ -394,6 +394,7 @@ export const zh = {
   "channel.previewPage.friendsInThisRoom": "房间里的朋友",
   "channel.previewPage.voiceInThisRoom": "当前房间语音",
   "channel.previewPage.currentRoom": "当前房间",
+  "watch.embedHelp": "先在预览中播放视频，再确认分享。确认之前，当前分享保持不变。",
   "watch.start": "同步观看",
   "watch.sourceHint": "使用视频直链或在 App 打开网页选视频，进度由分享者控制。",
   "watch.url": "视频或网页地址",

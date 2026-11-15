@@ -37,7 +37,7 @@ describe("Webpage watch presentation", () => {
 
   it("explains a peer decoder failure without suggesting a room connection fault", () => {
     setCopy({ lang: "en" });
-    const player = { video: null,
+    const player = { video: null, presentation: { kind: "external" }, media: {},
       blocked: false, error: "watch_media_decode_failed", mediaState: null } as unknown as WatchPlayer;
     const html = renderToStaticMarkup(createElement(ChannelWatchVideo, {
       player, owned: false, paused: true, label: "Video", presentation: "full", disabled: false, website: true,
@@ -64,11 +64,14 @@ describe("Webpage watch presentation", () => {
     setCopy({ lang: "en" });
     vi.stubGlobal("document", { fullscreenEnabled: false });
     try {
-      const render = (patch = {}) => renderToStaticMarkup(createElement(ChannelWatchVideo, {
-        player: { video: { readyState: 0, parentElement: null }, mediaState: null, blocked: false, error: null, ...patch } as unknown as WatchPlayer,
-        owned: false, paused: true, label: "Preparing", presentation: "full", disabled: false,
-        website: false, theaterMode: false, onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
-      }));
+      const render = (patch = {}) => {
+        const player = { video: { readyState: 0, parentElement: null }, media: {}, mediaState: null, blocked: false, error: null, ...patch };
+        return renderToStaticMarkup(createElement(ChannelWatchVideo, {
+          player: { ...player, presentation: { kind: "video", element: player.video } } as unknown as WatchPlayer,
+          owned: false, paused: true, label: "Preparing", presentation: "full", disabled: false,
+          website: false, theaterMode: false, onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
+        }));
+      };
       expect(render()).toContain('role="status"');
       expect(render()).toContain("Preparing video");
       expect(render({ mediaState: { readyState: 4 } })).not.toContain("Preparing video");
@@ -80,7 +83,7 @@ describe("Webpage watch presentation", () => {
 
   it.each([true, false])("shows the independent webpage's real controls without a fake video (owner: %s)", owned => {
     setCopy({ lang: "en" });
-    const player = { video: null, blocked: false, error: null,
+    const player = { video: null, presentation: { kind: "external" }, media: {}, blocked: false, error: null,
       mediaState: { position: 42, duration: 240, paused: true, rate: 1.5, readyState: 4, ended: false, buffered: [[0, 60]] } } as unknown as WatchPlayer;
     const html = renderToStaticMarkup(createElement(ChannelWatchVideo, {
       player, owned, paused: true, label: "video.example/watch/evening", presentation: "full", disabled: false,

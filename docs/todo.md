@@ -153,8 +153,8 @@ the feedback period; they do not delay that delivery.
   lifecycle and target Browser behavior. Complete Bilibili ordinary/member
   Browser viewing for segmented media: identify the audio-source request failure
   and transient empty-source report, and verify broader source availability.
-  Complete YouTube Browser-only viewing and the
-  supplied girigirilove page when its original player is accessible. Keep each
+  Extend the official embedded-player coverage and verify the supplied
+  girigirilove page when its original player is accessible. Keep each
   viewer's account access in its original player. Retain the
   [shared playback owner](./research/channel-network-design.md#synchronized-video-sources):
   the sharer controls common playback; viewers own sound, participation and

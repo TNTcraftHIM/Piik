@@ -395,6 +395,7 @@ export const ja: Record<CopyKey, string> = {
   "channel.previewPage.friendsInThisRoom": "このルームの友だち",
   "channel.previewPage.voiceInThisRoom": "このルームの通話",
   "channel.previewPage.currentRoom": "現在のルーム",
+  "watch.embedHelp": "プレビューで動画を再生してから共有を確定してください。確定するまで現在の共有は続きます。",
   "watch.start": "一緒に見る",
   "watch.sourceHint": "動画の直接リンクを使うか、App でウェブページの動画を選びます。再生位置は共有者が操作します。",
   "watch.url": "動画またはウェブページの URL",

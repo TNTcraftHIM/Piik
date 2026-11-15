@@ -292,7 +292,13 @@ platforms still need their runtime acceptance.
 ## Watching video together
 
 Choose **Start sharing → Browser → Watch together**. A direct video address plays
-inside Piik. With the Windows App connected, **Open webpage and choose video**
+inside Piik. A supported YouTube video link opens its official player: play the
+preview, then confirm sharing. Browser viewers can watch without an App or
+extension. If preparing an embedded player is unavailable, the explicit App
+webpage entry remains available. A hidden embedded player pauses locally;
+**Start local playback** returns it to the shared position.
+
+With the Windows App connected, **Open webpage and choose video**
 opens a separate website window; select its player after loading or signing in.
 If the player uses a media buffer, Piik offers the video addresses discovered in
 that page. Choose one for Browser viewers to try, or share the original webpage

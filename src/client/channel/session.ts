@@ -1,3 +1,5 @@
+import { YouTubeMedia } from "./watch-youtube-media";
+import { canUseYouTubePlayer, youtubeVideoId, youtubeSourceId, originalWatchURL } from "./watch-youtube-source";
 import { inspectIndexedTrack, indexedMediaSelection } from "./watch-indexed-source";
 import { limitWatchReads } from "./watch-resource";
 import { WatchBytes } from "./watch-bytes";
@@ -71,6 +73,7 @@ interface SourceSelection {
   controller: AbortController;
   committing: boolean;
   page?: AppPage;
+  embed?: YouTubeMedia;
   watchSources?: { candidateId: string } & WatchMediaSources;
   discovery?: AbortController;
 }
@@ -1822,7 +1825,7 @@ export class ChannelSession {
     selection.controller.abort();
     if (this.sourceSelections.get(roomId) === selection) {
       this.sourceSelections.delete(roomId);
-      if (!selection.committing) selection.page?.close();
+      if (!selection.committing) { selection.page?.close(); selection.embed?.close(); }
       const share = this.screenShares.get(roomId);
       if (share) this.forgetInactiveScreen(share.id);
     }
@@ -1999,6 +2002,22 @@ export class ChannelSession {
     });
     return player;
   }
+  watchEmbed = (roomId: string): WatchMedia | undefined => this.sourceSelections.get(roomId)?.embed;
+  prepareWatchEmbed = (roomId: string, rawURL: string): Promise<void> => this.action(`screen:${roomId}`, async () => {
+    if (!canUseYouTubePlayer()) throw new Error("watch_media_unsupported");
+    const id = youtubeVideoId(rawURL);
+    if (!id) throw new Error("invalid_watch_url");
+    const selection = this.selectSource(roomId);
+    selection.embed = new YouTubeMedia(id);
+    this.patch({});
+  });
+  confirmWatchEmbed = (roomId: string): Promise<void> => this.action(`screen:${roomId}`, async () => {
+    const selection = this.sourceSelections.get(roomId), media = selection?.embed;
+    if (!selection || !media) throw new Error("watch_source_unavailable");
+    await media.ready(selection.controller.signal);
+    await media.patch({ paused: true });
+    await this.commitWatch(roomId, { kind: "website", url: media.sourceURL }, media, selection);
+  });
   startWatch = (roomId: string, rawURL: string): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const source = this.watchSource(rawURL);
     const selection = this.selectSource(roomId);
@@ -2197,7 +2216,7 @@ export class ChannelSession {
       const media = new AppPageMedia(async signal => {
         const app = await this.connectApp();
         signal.throwIfAborted();
-        return app.preparePage(activity.source.url, () => this.patch({}), signal);
+        return app.preparePage(originalWatchURL(activity.source), () => this.patch({}), signal);
       });
       this.retireWatchPlayer(id);
       const player = this.makeWatchPlayer(id, activity.roomId, false, media);
@@ -2253,6 +2272,13 @@ export class ChannelSession {
       if (media instanceof HTMLVideoMedia) await player.play();
       else await player.publish(true);
       this.browseRooms();
+      try { await media.waitForPresentation?.(selection.controller.signal); }
+      catch {
+        if (this.watchPlayers.get(id) === player) {
+          player.error = "watch_media_failed";
+          this.patch({});
+        }
+      }
     } finally {
       if (!committed) {
         if (this.watchPlayers.get(id) === player) this.retireWatchPlayer(id);
@@ -2274,9 +2300,10 @@ export class ChannelSession {
         this.watchBytes.read(activity.roomId, id, source, resourceId, offset, length, signal)), mode);
       return;
     }
+    const embed = youtubeSourceId(activity.source);
     const url = activity.source.kind === "media" ? activity.source.url : activity.source.mediaUrl;
-    if (!url) throw new Error("watch_page_required");
-    await this.joinWatchMedia(id, new HTMLVideoMedia(url));
+    if (!url && !embed) throw new Error("watch_page_required");
+    await this.joinWatchMedia(id, embed ? new YouTubeMedia(embed) : new HTMLVideoMedia(url!));
   });
   private async joinWatchMedia(id: string, media: WatchMedia, mode: WatchMode = "direct"): Promise<void> {
     const activity = this.view.state?.watchActivities.find(value => value.id === id);

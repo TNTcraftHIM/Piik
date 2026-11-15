@@ -5,7 +5,7 @@ import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
 import { ChannelRoomSettingsDialog } from "../channel/components/ChannelRoomControls";
 import { ChannelRoomItem } from "../channel/components/ChannelRoomItem";
 import { ChannelRoomInvitation } from "../channel/components/ChannelRoomInvitation";
-import { ChannelShareControl } from "../channel/components/ChannelShareControl";
+import { ChannelShareControl, WatchSourceDialog } from "../channel/components/ChannelShareControl";
 import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
 import { snapshotSchema, type ChannelMessage, type ChannelRoom, type ChannelSnapshot, type ChannelTopology, type RoomSettings } from "../channel/protocol";
 import type { ChannelController } from "../channel/types";
@@ -163,7 +163,9 @@ export function useChannelGuideSample(multiRoom = false) {
     },
     nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined,
     sourceSelectionCommitting: () => false,
-    pagePlayer: false, watchPage: () => undefined,
+    pagePlayer: false, watchPage: () => undefined, watchEmbed: () => undefined,
+    prepareWatchEmbed: async () => { throw new Error("watch_media_unsupported"); },
+    confirmWatchEmbed: async () => { throw new Error("watch_source_unavailable"); },
     externalInput: () => undefined, startExternalScreen: async () => received(),
     nativeSources: async () => sources, nativePreview: previewSource, cameraPreviews: previewCameras,
     setScreenTitle: async () => received(),
@@ -194,6 +196,7 @@ export function ChannelGuidePreview() {
   const { lang } = useCopy(), zh = lang === "zh";
   const { channel, roomName, notice, received, onSend } = useChannelGuideSample();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [watchOpen, setWatchOpen] = useState(false);
   const state = channel.state!;
   return <section id="channel-guide-preview" className="cp-card">
     <header><h2>{zh ? "3.0 房间与分享" : "3.0 rooms and sharing"}</h2></header>
@@ -208,7 +211,7 @@ export function ChannelGuidePreview() {
       <header className="c3-guide-heading"><div className="c3-guide-title"><ChannelIdentityMark icon="couch" /><strong>{roomName}</strong>
         <ChannelRoomInvitation channel={channel} room={state.channel.rooms[0]} />
         </div>
-        <ChannelShareControl channel={channel} roomId="friday" disabled={false} /></header>
+        <ChannelShareControl channel={channel} roomId="friday" disabled={false} onWatch={() => setWatchOpen(true)} /></header>
       <ChannelConversation domainId={state.channel.id} selfUserId={channel.self?.id} roomId="friday" roomName={roomName} messages={channel.messagesByRoom.friday} users={state.users} profiles={channel.profiles} queryProfiles={channel.queryProfiles}
         canSend sending={false} hidden={false} available attachments={channel.attachments} attachmentsAvailable
         history={{ hasMore: false, atLatest: true }} loadingHistory={false} onHistory={async () => {}} onLatest={async () => {}}
@@ -217,6 +220,7 @@ export function ChannelGuidePreview() {
       </div>
     </div>
     {settingsOpen && <ChannelRoomSettingsDialog channel={channel} room={state.channel.rooms[0]} onClose={() => setSettingsOpen(false)} />}
+    {watchOpen && <WatchSourceDialog channel={channel} roomId="friday" onClose={() => setWatchOpen(false)} />}
     <p role="status">{notice}</p>
   </section>;
 }

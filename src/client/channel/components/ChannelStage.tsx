@@ -156,6 +156,8 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
   const active = retained.filter(source => !source.hidden);
   const available = sources.filter(source => !source.hidden && !source.owned && !source.subscribed);
   const focused = active.find(source => source.id === focusedId);
+  const automaticEmbed = (focused?.kind === "watch" && focused.player?.presentation.kind === "embed" ? focused
+    : active.find(source => source.kind === "watch" && source.player?.presentation.kind === "embed"))?.id;
   const layoutSources = JSON.stringify([active.map(source => source.id), available.map(source => source.id)]);
   const [theater, setTheater] = useTheaterMode();
   const stage = useRef<HTMLElement>(null), grid = useRef<HTMLDivElement>(null);
@@ -250,7 +252,7 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
           const focusable = active.length > 1 && !isFocused;
           const remainder = active.length % (columns ?? 1);
           const centeredStart = !source.hidden && !focused && remainder && index === active.length - remainder ? (columns ?? 1) - remainder + 1 : undefined;
-          if (source.kind === "watch") return <WatchStageTile key={source.id} source={source} thumbnail={thumbnail} focused={isFocused}
+          if (source.kind === "watch") return <WatchStageTile key={source.id} source={source} thumbnail={thumbnail} focused={isFocused} automaticPlayback={source.id === automaticEmbed}
             focusable={focusable} centeredStart={centeredStart} onFocus={onFocus} theaterMode={theater && isFocused}
             onToggleTheater={() => { onFocus(source.id); setTheater(!theater); }} />;
           const microphone = source.sourceMicrophone;
@@ -356,12 +358,14 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
   </section>;
 }
 
-function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, onFocus, theaterMode, onToggleTheater }: {
+function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, onFocus, theaterMode, onToggleTheater, automaticPlayback }: {
   source: WatchStageSource; thumbnail: boolean; focused: boolean; focusable: boolean; centeredStart?: number;
   onFocus(id: string | null): void; theaterMode: boolean; onToggleTheater(): void;
+  automaticPlayback: boolean;
 }) {
   const { t } = useCopy();
-  return <article hidden={source.hidden} inert={source.hidden} data-publication-id={source.id} data-source-kind="watch" data-watch-mode={source.receiving?.mode} data-focusable={focusable || undefined}
+  const embedded = source.player?.presentation.kind === "embed";
+  return <article hidden={source.hidden} inert={source.hidden} data-embed={source.player?.presentation.kind === "embed" || undefined} data-publication-id={source.id} data-source-kind="watch" data-watch-mode={source.receiving?.mode} data-focusable={focusable || undefined}
     className={`c3-monitor-tile${focused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
     style={centeredStart ? { gridColumn: `${centeredStart} / span 2` } : undefined}
     aria-label={`${source.title} / ${source.name} / ${source.roomName}`} onClick={event => {
@@ -369,9 +373,17 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
     }}>
     {source.player ? <ChannelWatchVideo player={source.player} owned={source.owned} paused={source.paused} label={source.title}
       website={source.website} onAppWatch={source.onAppWatch} onFocusWindow={source.onFocusWindow}
-      receiving={source.receiving}
+      receiving={source.receiving} automaticPlayback={automaticPlayback}
       disabled={source.available === false} presentation={source.hidden ? "background" : thumbnail ? "thumbnail" : "full"}
-      theaterMode={theaterMode} onToggleTheater={onToggleTheater} onPlayback={source.onPlayback} onResume={source.onResume} />
+      theaterMode={theaterMode} onToggleTheater={onToggleTheater}
+      onPlayback={patch => { if (embedded && patch.paused === false) onFocus(source.id); source.onPlayback(patch); }}
+      onResume={() => {
+        if (embedded) {
+          onFocus(source.id);
+          if (source.player?.presentation.kind === "embed") source.player.presentation.element.scrollIntoView({ block: "nearest" });
+        }
+        source.onResume();
+      }} />
       : <div className="c3-monitor-wait" role="status">{source.website && !source.pending ? <><Glyph name="globe" size={25} /><span>{t("watch.browserFailed")}</span>
         {source.onAppWatch ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={source.onAppWatch} /> : <small>{t("watch.connectApp")}</small>}
         {source.receiving && <WatchPeerAction receiving={source.receiving} />}</>

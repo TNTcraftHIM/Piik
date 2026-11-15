@@ -10,14 +10,24 @@ export interface WatchMediaState {
   rate: number;
   duration: number | null;
   readyState: number;
-  buffered: [number, number][];
+  buffered: [number, number][] | null;
   ended: boolean;
 }
 export type WatchMediaPatch = Partial<Pick<WatchMediaState, "position" | "paused" | "rate">>;
 export type WatchMediaEvent = "loadedmetadata" | "loadeddata" | "play" | "playing" | "pause" | "seeked" | "ratechange" | "ended" | "waiting" | "error" | "blocked" | "closed";
 
 /** Local player access only. Domain clocks and shared playback belong to WatchPlayer. */
+export type WatchPresentation = { kind: "video"; element: HTMLVideoElement }
+  | { kind: "embed"; element: HTMLElement; setVisible(visible: boolean, automaticPlayback?: boolean): void; mounted(): void }
+  | { kind: "external" };
+
 export interface WatchMedia {
+  readonly presentation?: WatchPresentation;
+  readonly seekTolerance?: number;
+  readonly seekEvents?: boolean;
+  playbackAvailable?(): boolean;
+  playbackRates?(): readonly number[];
+  waitForPresentation?(signal: AbortSignal): Promise<void>;
   read(): Promise<WatchMediaState>;
   patch(value: WatchMediaPatch): Promise<void>;
   ready(signal: AbortSignal): Promise<void>;
@@ -60,6 +70,7 @@ export function waitForWatchMedia(media: Pick<WatchMedia, "read" | "listen">, si
 
 export class HTMLVideoMedia implements WatchMedia {
   readonly video = document.createElement("video");
+  readonly presentation = { kind: "video" as const, element: this.video };
   private lifetime = new AbortController();
   private setup: Promise<void>;
   private hls?: Hls;
@@ -192,6 +203,7 @@ export interface AppPagePort {
   close(): void;
 }
 export class AppPageMedia implements WatchMedia {
+  readonly presentation = { kind: "external" as const };
   page: AppPagePort | null = null;
   readonly opening: Promise<AppPagePort>;
   private lifetime = new AbortController();

@@ -1,4 +1,4 @@
-import { HTMLVideoMedia, AppPageMedia, type AppPagePort, type WatchMediaEvent } from "../src/client/channel/watch-media";
+import { HTMLVideoMedia, AppPageMedia, type AppPagePort, type WatchMediaEvent, type WatchMedia, type WatchMediaState } from "../src/client/channel/watch-media";
 import { afterEach, expect, test, vi } from "vitest";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
 
@@ -15,6 +15,64 @@ class Video extends EventTarget {
   remove = vi.fn();
 }
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+test("unknown iframe buffering applies explicit updates without inventing periodic safe ranges", async () => {
+  vi.useFakeTimers();
+  const state: WatchMediaState = { position: 0, paused: true, rate: 1, duration: 120, readyState: 3, ended: false, buffered: null };
+  const patch = vi.fn(async (value: object) => { Object.assign(state, value); });
+  const media: WatchMedia = { read: async () => ({ ...state }), patch, ready: async () => {}, listen: () => () => {}, close() {}, seekTolerance: 2, playbackRates: () => [1, 1.5] };
+  const player = new WatchPlayer("room", false, media, vi.fn());
+  try {
+    player.calibrate(5000, performance.now()); player.update({ position: 60, paused: true, rate: 1, anchorTime: 5000 }); await player.ready();
+    expect(state.position).toBe(60); patch.mockClear(); state.position = 20;
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(patch.mock.calls.every(([value]) => !("position" in value))).toBe(true);
+    player.update({ position: 10, paused: true, rate: 1.25, anchorTime: 8000 }); await player.serialize(async () => {});
+    expect(player.error).toBe("watch_media_unsupported");
+    expect(patch.mock.calls.every(([value]) => !("rate" in value))).toBe(true);
+  } finally { player.close(); }
+});
+
+test("a player without seek events publishes an observed paused scrub on the existing tick", async () => {
+  vi.useFakeTimers();
+  const state: WatchMediaState = { position: 10, paused: true, rate: 1, duration: 120, readyState: 2, ended: false, buffered: null };
+  const media: WatchMedia = { read: async () => ({ ...state }), patch: async () => {}, ready: async () => {}, listen: () => () => {}, close() {}, seekEvents: false, seekTolerance: 2 };
+  const player = new WatchPlayer("room", true, media, vi.fn()), publish = vi.fn(async () => {});
+  try {
+    player.calibrate(5000, performance.now()); await player.ready(); player.activate(publish);
+    state.position = 40; await vi.advanceTimersByTimeAsync(1000);
+    expect(publish).toHaveBeenCalledOnce();
+    expect(publish).toHaveBeenCalledWith(expect.objectContaining({ position: 40, paused: true }));
+  } finally { player.close(); }
+});
+
+test("an embedded viewer resumes at the current host anchor after a hidden interval", async () => {
+  vi.useFakeTimers();let now=0;vi.spyOn(performance,'now').mockImplementation(()=>now);
+  const state:WatchMediaState={position:10,paused:false,rate:1,duration:120,readyState:3,buffered:null,ended:false};
+  let notify:(event:WatchMediaEvent)=>void=()=>{},visible=true;
+  const media:WatchMedia={read:async()=>({...state}),patch:async value=>{Object.assign(state,value);},ready:async()=>{},
+    listen:fn=>{notify=fn;return()=>{};},close(){},playbackAvailable:()=>visible};
+  const player=new WatchPlayer('room',false,media,vi.fn());
+  try{
+    player.calibrate(5000,0,0);player.update({position:10,paused:false,rate:1,anchorTime:5000});await player.ready();
+    visible=false;state.paused=true;notify('blocked');now=10000;await vi.advanceTimersByTimeAsync(1000);
+    visible=true;await vi.advanceTimersByTimeAsync(1000);expect(state.position).toBe(10);expect(state.paused).toBe(true);
+    await player.resume();expect(state.position).toBe(20);expect(state.paused).toBe(false);
+  }finally{player.close();}
+});
+
+test("a local iframe scrub offers explicit resynchronization without periodic seek fights", async () => {
+  vi.useFakeTimers();let now=0;vi.spyOn(performance,'now').mockImplementation(()=>now);
+  const state:WatchMediaState={position:10,paused:true,rate:1,duration:120,readyState:2,buffered:null,ended:false};
+  const media:WatchMedia={read:async()=>({...state}),patch:async value=>{Object.assign(state,value);},ready:async()=>{},listen:()=>()=>{},close(){},seekEvents:false,seekTolerance:2};
+  const player=new WatchPlayer('room',false,media,vi.fn());
+  try{
+    player.calibrate(5000,0,0);player.update({position:10,paused:true,rate:1,anchorTime:5000});await player.ready();
+    state.position=60;now=1000;await vi.advanceTimersByTimeAsync(1000);
+    expect(player.blocked).toBe(true);expect(state.position).toBe(60);
+    await player.resume();expect(state.position).toBe(10);
+  }finally{player.close();}
+});
 
 test("late metadata and manual autoplay retry use the latest domain anchor; sound remains local", async () => {
   vi.useFakeTimers();

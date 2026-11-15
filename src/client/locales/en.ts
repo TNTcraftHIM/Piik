@@ -396,6 +396,7 @@ export const en: Record<CopyKey, string> = {
   "channel.previewPage.friendsInThisRoom": "Friends in this room",
   "channel.previewPage.voiceInThisRoom": "Voice in this room",
   "channel.previewPage.currentRoom": "Current room",
+  "watch.embedHelp": "Play the video in the preview, then confirm to share it. Your current share stays active until confirmation.",
   "watch.start": "Watch together",
   "watch.sourceHint": "Use a direct video link or select a webpage video in the App. The sharer controls progress.",
   "watch.url": "Video or webpage URL",

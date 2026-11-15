@@ -113,3 +113,44 @@
 @media (prefers-reduced-motion: reduce) {
   .c3-mini-controls { transition: none; }
 }
+
+/* Embedded platform controls stay visible; Piik actions occupy their own row. */
+.c3-monitor-tile > .c3-video.c3-watch-player[data-embed], .c3-watch-player[data-embed] {
+  display: flex;
+  flex-direction: column;
+  aspect-ratio: auto;
+  min-width: 200px;
+  min-height: 200px;
+  overflow: visible;
+}
+.c3-watch-player[data-embed] > [data-watch-surface] {
+  order: -1;
+  flex: 1 0 200px;
+  min-width: 200px;
+  min-height: 200px;
+  aspect-ratio: 16 / 9;
+}
+.c3-watch-player[data-embed] iframe { display: block; width: 100%; height: 100%; min-height: 200px; border: 0; }
+.c3-watch-player[data-embed] > .c3-mini-message {
+  position: static;
+  inset: auto;
+  padding: 12px;
+  pointer-events: auto;
+}
+.c3-watch-player[data-embed] > .c3-mini-controls {
+  position: static;
+  inset: auto;
+  flex-wrap: wrap;
+  flex: none;
+  margin: 8px auto;
+}
+
+.c3-shell[data-layout="quick"] .c3-monitor:not(.is-theater) .c3-monitor-tile:not(.is-thumbnail) > .c3-video[data-embed]:not(:fullscreen) {
+  display: flex;
+  aspect-ratio: auto;
+  min-height: 200px;
+  > .c3-mini-message { position: static; }
+}
+
+.c3-watch-embed-preview { min-width: 200px; min-height: 200px; aspect-ratio: 16 / 9; }
+.c3-watch-embed-preview > *, .c3-watch-embed-preview iframe { display: block; width: 100%; height: 100%; min-height: 200px; border: 0; }

@@ -395,6 +395,7 @@ export const zhHant: Record<CopyKey, string> = {
   "channel.previewPage.friendsInThisRoom": "房間裡的朋友",
   "channel.previewPage.voiceInThisRoom": "目前房間語音",
   "channel.previewPage.currentRoom": "目前房間",
+  "watch.embedHelp": "先在預覽中播放影片，再確認分享。確認之前，目前分享保持不變。",
   "watch.start": "同步觀看",
   "watch.sourceHint": "使用影片直連網址，或在 App 開啟網頁選取影片。播放進度由分享者控制。",
   "watch.url": "影片或網頁網址",
