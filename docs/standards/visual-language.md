@@ -190,8 +190,8 @@ Native caption controls only minimize, maximize/restore and close the window.
 Site navigation and management remain in the shared application interface;
 opening management preserves the current page until an explicit site switch.
 Saved-site rows navigate, Add opens creation, and Manage edits an existing site
-or its App access. Language, theme and help share the same preferences menu in
-the launcher and room workspace.
+or its App access. Language, theme and help share the same More options menu in
+the launcher and room workspace, identified by the ellipsis rather than a settings icon.
 
 Keep the room invitation beside the upper room title, and group Share with its
 parameters on the opposite side. Personal voice and identity stay lower left.
@@ -789,7 +789,8 @@ type checking rather than silently render a warning triangle.
 | Credential / 凭证 | `key`, password dots | Site passphrase or room password, identified by the field label. Room-code admission with a password shows both fields. |
 | Restriction / 受限 | `lock` | Restricted entry, concealed password or a setting fixed by availability; show the affected object. A lock never promises anonymity or secure media. |
 | Site and public entry / 站点与公开入口 | `globe` | Browser/Site entry or code-based public entry. It does not claim internet reachability. |
-| Preferred destination / 默认去处 | `star` | A user-selected default, such as the App's startup Site. It is a preference, not authorization or connection health. |
+| Saved destination / 收藏 | `star` | A saved site destination; saving does not grant device access or select the startup site. |
+| Startup selection | `play` | Open the named site when the App starts; visible copy distinguishes this preference from media playback. |
 | Connections / 连接 | `network`, `branch`, `signal`, `wifiOff`, `server` | Topology, branching, signaling, disconnected signaling and the named server. The header's three equal circles show only signaling state: three steady green for connected, two animated yellow for connecting/recovering, one red for a failed connection, all grey for offline. Active dots have equal brightness; this is neither a signal-strength measurement nor a media-quality claim. The television lamp owns sharing/viewing state. A server on a media path means forwarding; a Site backend or control-link server alone does not imply SFU. An invitation chain does not represent signaling. |
 | Playback / 播放 | `play`, `pause`, `stop` | Play/resume, pause, end. The control label states whether it affects local viewing or the Host's share. Stop is distinct from a paused or idle room. |
 | Audio / 声音 | `speaker`, `speakerOff` | Audio and mute/no audio, qualified by the source or local playback label. A source track's presence does not establish delivered sound. |

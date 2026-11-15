@@ -27,7 +27,7 @@ export function LauncherWorkspace({ bookmarks, bookmarksError, onRetryBookmarks,
     <aside className="lr-launcher-sidebar">
       <BrandLockup size={44} motion="once" className="lr-launcher-brand" suffix={<small>App</small>} />
       <div className="lr-launcher-saved-heading"><h2>{t("client.bookmarks.title")}</h2>
-        <Btn icon="sliders" quiet size="compact" title="client.launcher.manageSites" cap="client.sites.manage" onClick={onManageBookmarks} />
+        <Btn icon="star" quiet size="compact" title="client.launcher.manageSites" cap="client.launcher.manageSites" onClick={onManageBookmarks} />
       </div>
       <nav className="lr-launcher-sites" aria-label={t("client.bookmarks.title")}>
         {bookmarksError ? <div className="lr-launcher-empty"><p role="alert">{t("client.bookmarks.loadFailed")}</p><Btn icon="refresh" quiet cap="common.refresh" title="common.refresh" onClick={onRetryBookmarks} /></div>

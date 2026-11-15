@@ -2,6 +2,8 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { AppPageMedia, canReceivePeerWatch, createPeerWatchMedia, HTMLVideoMedia, type WatchMediaEvent, type WatchMediaState } from "../src/client/channel/watch-media";
 import { watchHlsFailure } from "../src/client/channel/watch-media-failure";
+import { channelErrorPresentation } from "../src/client/channel/error-presentation";
+import { t } from "../src/client/ui/copy";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
 
 function video() {
@@ -20,6 +22,13 @@ test.each([[2, "watch_media_unavailable"], [3, "watch_media_decode_failed"], [4,
       v.dispatchEvent(new Event("error"));
       await vi.waitFor(() => expect(player.error).toBe(expected));
       await expect(media.ready(new AbortController().signal)).rejects.toThrow(expected);
+      if (code === 4) {
+        for (const lang of ["en", "zh", "zh-Hant", "ja", "ko"] as const) {
+          const failure = channelErrorPresentation(player.error, key => t(lang, key));
+          expect(failure.message).toBe(t(lang, "watch.playbackUnsupported"));
+          expect(failure.connectionHelp).toBe(false);
+        }
+      }
     } finally { player.close(); }
   });
 

@@ -16,7 +16,6 @@ import { setCopy, t } from "../src/client/ui/copy";
 import { APP_PROTOCOL, channelAppDiscovery } from "../src/client/channel/app-link";
 import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
 import { NATIVE_CLIENT_PORT_START } from "../src/client/native/discovery-ports";
-import { clientLaunchURL } from "../src/client/lib/app-launch";
 
 vi.mock("react", async importOriginal => {
   const actual = await importOriginal<typeof import("react")>();
@@ -52,6 +51,28 @@ describe("shared App connection entry", () => {
       expect(ready).toContain("lr-app-connect is-ready is-quiet");
       expect(ready).toContain(`aria-label="${t("en", "client.connect.manage")}"`);
     }
+  });
+
+  it("offers bookmarks directly from verified management without update support or another connection click", () => {
+    setCopy({ lang: "en" });
+    vi.stubGlobal("window", { location: { origin: "https://site.example" } });
+    vi.mocked(useState).mockReturnValueOnce(["ready", vi.fn()])
+      .mockReturnValueOnce([false, vi.fn()]).mockReturnValueOnce([false, vi.fn()])
+      .mockReturnValueOnce([false, vi.fn()])
+      .mockReturnValueOnce([undefined, vi.fn()])
+      .mockReturnValueOnce([{ url: "http://127.0.0.1:39721/client", updateSupported: false }, vi.fn()]);
+    const html = renderToStaticMarkup(createElement(AppConnectionButton, { connected: true }));
+    expect(html).toContain('target="_blank" rel="noopener noreferrer" aria-label="Bookmarks"');
+    expect(html).toContain("bookmarks=1");
+    expect(html).toContain("piik-lang=en");
+    expect(html.match(/aria-label="Bookmarks"/g)).toHaveLength(1);
+    expect(html).toContain('class="lr-btn is-compact lr-app-connect is-ready is-quiet"');
+    const url = new URL(html.match(/href="([^"]+)" target="_blank" rel="noopener noreferrer" aria-label="Bookmarks"/)![1].replaceAll("&amp;", "&"));
+    expect(url.origin + url.pathname).toBe("http://127.0.0.1:39721/client");
+    expect(url.searchParams.get("bookmarks")).toBe("1");
+    expect(url.searchParams.has("site")).toBe(false);
+    expect(url.searchParams.get("piik-preferences")).toBe("copy,theme");
+    expect(Object.fromEntries(new URLSearchParams(url.hash.slice(1)))).toMatchObject({ site: "https://site.example", "piik-client": "1", "piik-lang": "en" });
   });
 
   it.each([
@@ -247,11 +268,11 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   const showHelp = vi.fn();
   const setState = vi.fn();
   const setBuild = vi.fn();
+  const setManagement = vi.fn();
   const activateClient = vi.fn();
   const onConnected = vi.fn();
   const operation = runInNewContext(executable, {
-    automatic, automaticFailed: { current: false }, window, document, pending, healthCheck, help, showHelp, setState, setAutomaticHint: vi.fn(), setUpdateManagementURL: vi.fn(), setBuild, activateClient, onConnected, AbortController, URL, URLSearchParams,
-    lang: "en", currentTheme: () => "light", clientLaunchURL,
+    automatic, automaticFailed: { current: false }, window, document, pending, healthCheck, help, showHelp, setState, setAutomaticHint: vi.fn(), setManagement, setBuild, activateClient, onConnected, AbortController, URL, URLSearchParams,
     wakeURL: android ? "intent://app#Intent;scheme=piik;package=tv.piik.android;end" : null,
     state, connected, isClientActivated: () => activated,
     discovery: discovery ?? { health: native.discoverNativeHealth, connect: native.discoverNativeConnect,
@@ -268,11 +289,24 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   }
   const activateElsewhere = () => { activated = true; window.dispatchEvent(new Event("activation")); };
   const openApproval = async () => { await operation.connect(); await operation.connect(); };
-  return { ...operation, openApproval, popup, window, document, native, pending, help, showHelp, setState, setBuild, activateClient, activateElsewhere, onConnected, message };
+  return { ...operation, openApproval, popup, window, document, native, pending, help, showHelp, setState, setBuild, setManagement, activateClient, activateElsewhere, onConnected, message };
 }
 
 describe("App connection approval", () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it("retires the verified management destination when health no longer confirms App", async () => {
+    const page = mount(true, "ready");
+    page.native.discoverNativeHealth.mockResolvedValue({ managementURL: "http://127.0.0.1:39721/client" });
+    page.window.dispatchEvent(new Event("focus"));
+    await settle();
+    expect(page.setManagement).toHaveBeenLastCalledWith({ url: "http://127.0.0.1:39721/client", updateSupported: false });
+    page.native.discoverNativeHealth.mockResolvedValue(null);
+    page.window.dispatchEvent(new Event("focus"));
+    await settle();
+    expect(page.setManagement).toHaveBeenLastCalledWith(undefined);
+    page.cleanup();
+  });
 
   it.each([
     [false, false, "incompatible"],
@@ -407,30 +441,6 @@ describe("App connection approval", () => {
     await page.connect();
     expect(page.window.open).toHaveBeenCalledOnce();
     page.cleanup();
-  });
-
-  it("opens site management with current presentation without changing approval or the active Site", async () => {
-    const page = mount(true, "ready");
-    await page.connect();
-    expect(page.setState).toHaveBeenLastCalledWith("ready");
-    expect(page.setState).not.toHaveBeenCalledWith("approval");
-    await page.connect();
-    expect(page.window.open).toHaveBeenCalledOnce();
-    const [destination, target] = page.window.open.mock.calls[0] as unknown as [string, string];
-    const url = new URL(destination);
-    expect(url.origin + url.pathname).toBe("http://127.0.0.1:39721/client");
-    expect(url.searchParams.get("bookmarks")).toBe("1");
-    expect(url.searchParams.has("site")).toBe(false);
-    expect(url.searchParams.get("piik-preferences")).toBe("copy,theme");
-    expect(Object.fromEntries(new URLSearchParams(url.hash.slice(1)))).toEqual({ site, "piik-client": "1", "piik-lang": "en", "piik-theme": "light" });
-    expect(target).toBe("_blank");
-    expect(page.window.location.assign).not.toHaveBeenCalled();
-    expect(page.setState).toHaveBeenLastCalledWith("ready");
-    expect(page.pending.current).toBeNull();
-    expect(page.activateClient).not.toHaveBeenCalled();
-    expect(page.onConnected).not.toHaveBeenCalled();
-    page.cleanup();
-    expect(page.popup.closed).toBe(false);
   });
 
   it("reconnects an explicitly disconnected owner even while App health is ready", async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { activateClient, clientLaunchURL, isClientActivated, watchClientActivation } from "../../lib/app-launch";
 import { useProjectLink } from "../../lib/use-project-link";
 import { useCopy } from "../../ui/copy";
@@ -15,8 +15,7 @@ import { useReleaseUpdate } from "../../lib/use-release-update";
 import { AppReleaseNotice } from "./AppReleaseNotice";
 import { channelAppDiscovery } from "../../channel/app-link";
 import { OpenInClient } from "./OpenInClient";
-import { Btn } from "./primitives";
-import { currentTheme } from "../../ui/theme";
+import { currentTheme, subscribeTheme } from "../../ui/theme";
 import type {} from "../../ui/native-window";
 
 interface AppConnectionProps {
@@ -37,6 +36,7 @@ interface ConnectionAttempt {
 
 export function AppConnectionButton({ onConnected, discovery = channelAppDiscovery, connected, targetURL }: AppConnectionProps) {
   const { lang, t } = useCopy();
+  const theme = useSyncExternalStore(subscribeTheme, currentTheme, currentTheme);
   const [state, setState] = useState<"idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible">("idle");
   const wakeURL = androidAppIntent("piik://app");
   const [helpOpen, setHelpOpen] = useState(false);
@@ -50,10 +50,10 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
   const automaticFailed = useRef(false);
   const [automaticHint, setAutomaticHint] = useState(false);
   const [build, setBuild] = useState<AppReleaseIdentity>();
-  const [updateManagementURL, setUpdateManagementURL] = useState<string>();
+  const [management, setManagement] = useState<{ url: string; updateSupported: boolean }>();
   const { update: release, refresh: checkRelease } = useReleaseUpdate(build);
   function rememberBuild(health: (Partial<AppReleaseIdentity> & { updateSupported?: boolean; managementURL?: string }) | null) {
-    setUpdateManagementURL(health?.updateSupported === true ? health.managementURL : undefined);
+    setManagement(health?.managementURL ? { url: health.managementURL, updateSupported: health.updateSupported === true } : undefined);
     setBuild(health?.version && health.revision
       ? { version: health.version, revision: health.revision, packageTarget: health.packageTarget } : undefined);
   }
@@ -99,13 +99,20 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
     if (trigger.current) help.current?.showPopover({ source: trigger.current });
   }
 
+  function bookmarksURL(value: string): string {
+    const destination = new URL(value);
+    destination.searchParams.delete("site");
+    destination.searchParams.set("bookmarks", "1");
+    destination.hash = new URLSearchParams({ site: window.location.origin, "piik-client": "1" }).toString();
+    return clientLaunchURL(destination.href, { lang, theme, explicit: ["copy", "theme"] });
+  }
+
   async function connect(wake = false, automatic = false): Promise<void> {
     if (!automatic) setAutomaticHint(false);
     if (pending.current) {
       if (!automatic) pending.current.automatic = false;
       pending.current.open?.(); return;
     }
-    let manage = state === "ready" && connected !== false;
     healthCheck.current?.abort();
     // Discovery and its browser permission prompt stay in the current tab.
     // A fresh click opens the real approval page without reserving a blank tab.
@@ -137,12 +144,12 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       void verifyApproval(true);
     };
     let approvalOrigin = "";
-    const finish = (result: typeof state, keepPage = false) => {
+    const finish = (result: typeof state) => {
       window.removeEventListener("message", onMessage);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible);
       attempt.controller.abort();
-      if (!keepPage) attempt.popup?.close();
+      attempt.popup?.close();
       if (pending.current === attempt) {
         pending.current = null;
         automaticFailed.current = result !== "ready";
@@ -153,7 +160,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         else help.current?.hidePopover();
       }
     };
-    attempt.cancel = () => finish(manage ? "ready" : "idle");
+    attempt.cancel = () => finish("idle");
     const onFocus = () => {
       if (waking) { attempt.open?.(); return; }
       if (attempt.popup) void verifyApproval();
@@ -182,8 +189,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         });
         if (signal.aborted) return;
         rememberBuild(health);
-        manage = manage && health !== null;
-        if (health && !manage) {
+        if (health) {
           finish("ready");
           activateClient();
           onConnected?.();
@@ -192,21 +198,13 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         approvalOrigin = new URL(url).origin;
         attempt.open = () => {
           if (signal.aborted || attempt.popup) return;
-          const destination = new URL(url);
-          if (manage) {
-            destination.searchParams.delete("site");
-            destination.searchParams.set("bookmarks", "1");
-            destination.hash = new URLSearchParams({ site: window.location.origin, "piik-client": "1" }).toString();
-          }
-          attempt.popup = window.open(manage ? clientLaunchURL(destination.href,
-            { lang, theme: currentTheme(), explicit: ["copy", "theme"] }) : destination.href, "_blank");
+          attempt.popup = window.open(url, "_blank");
           if (!attempt.popup) { finish("unavailable"); return; }
           attempt.open = undefined;
-          if (manage) finish("ready", true);
-          else { setState("approving"); help.current?.hidePopover(); }
+          setState("approving"); help.current?.hidePopover();
         };
-        setAutomaticHint(automatic && !manage);
-        setState(manage ? "ready" : "approval");
+        setAutomaticHint(automatic);
+        setState("approval");
       } catch (error) {
         if (!signal.aborted) finish(native?.isIncompatible(error) ? "incompatible" : "unavailable");
       }
@@ -245,8 +243,8 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
     autoOpen={automaticHint} place="below" align="end">
     <button ref={trigger} type="button" className={`lr-btn is-compact lr-app-connect${ready ? " is-ready is-quiet" : ""}`}
       aria-label={title} aria-busy={busy || undefined} data-update={availableUpdate || undefined}
-      popoverTarget={failed || state === "approval" ? helpId : undefined} aria-haspopup="dialog"
-      onClick={failed || state === "approval" ? undefined : event => {
+      popoverTarget={ready || failed || state === "approval" ? helpId : undefined} aria-haspopup="dialog"
+      onClick={ready || failed || state === "approval" ? undefined : event => {
         // Failure may attach popoverTarget during this click; do not toggle the
         // recovery card closed immediately after opening it.
         event.preventDefault();
@@ -258,11 +256,16 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       <span className="lr-cap">App</span>
     </button>
   </Tooltip>
+    {ready && management && <a className="lr-btn is-compact is-quiet" href={bookmarksURL(management.url)}
+      target="_blank" rel="noopener noreferrer" aria-label={t("client.launcher.manageSites")}>
+      <Glyph name="star" size={16} /><span className="lr-cap">{t("client.launcher.manageSites")}</span>
+    </a>}
     <div ref={help} id={helpId} popover="auto" role="dialog" aria-label={t("client.connect.action")} aria-describedby={`${helpId}-message`}
       className="lr-anchored-card lr-app-connect-help" onToggle={event => {
         setHelpOpen(event.newState === "open");
         if (event.newState === "closed" && !pending.current?.popup) pending.current?.cancel?.();
         if (event.newState !== "open" || !trigger.current) return;
+        if (ready) checkRelease();
         event.currentTarget.querySelector<HTMLButtonElement>("button")?.focus();
       }}>
       <div className="lr-app-connect-head">
@@ -279,10 +282,10 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         <span>{t("client.launch.version", { version: build.version })}</span>
 
       </p>}
-      {update && <AppReleaseNotice update={update} managementURL={updateManagementURL} />}
+      {update && <AppReleaseNotice update={update} managementURL={management?.updateSupported ? management.url : undefined} />}
       <div className="lr-app-connect-actions">
-        {ready ? <Btn icon="globe" size="compact" title="client.launcher.manageSites" cap="client.launcher.manageSites" onClick={() => void connect()} /> : state !== "busy" && <button type="button" className="lr-btn" aria-label={t(state === "approval" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")} onClick={() => void connect()}>
-          <Glyph name={state === "approval" || state === "ready" ? "arrowRight" : "refresh"} size={16} /><span>{t(state === "approval" || state === "ready" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")}</span>
+        {!ready && state !== "busy" && <button type="button" className="lr-btn" aria-label={t(state === "approval" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")} onClick={() => void connect()}>
+          <Glyph name={state === "approval" ? "arrowRight" : "refresh"} size={16} /><span>{t(state === "approval" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")}</span>
         </button>}
         {failed && wakeURL && <a className="lr-btn" href={wakeURL} onClick={event => { event.preventDefault(); void connect(true); }}>
           <Glyph name="window" size={16} /><span>{t("client.connect.wakeApp")}</span>

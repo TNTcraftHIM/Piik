@@ -70,7 +70,7 @@
   transition: color var(--motion-feedback) ease, background-color var(--motion-feedback) ease, var(--control-motion);
 }
 .lr-lang button { min-width: 0; padding: 0; }
-.lr-lang-extra { display: grid; grid-template-columns: var(--selection-item-size) var(--control-dense-size); }
+.lr-lang-extra { display: grid; grid-template-columns: var(--selection-item-size) 24px; gap: 0; }
 .lr-toggle button, .lr-lang button { cursor: pointer; }
 .lr-toggle button:disabled, .lr-lang button:disabled { cursor: default; }
 .lr-toggle > label { position: relative; min-width: 0; }

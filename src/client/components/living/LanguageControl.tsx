@@ -68,7 +68,7 @@ export function LanguageControl() {
         >{locales[key].short}</button>
       ))}
       <span className="lr-lang-extra">
-        <button type="button" lang={pinned?.tag} className={selected ? "is-selected" : undefined}
+        <button type="button" lang={pinned?.tag} className={`lr-lang-marker${selected ? " is-selected" : ""}`}
           aria-label={pinned?.name ?? t("mode.more")} aria-pressed={pinned ? selected : undefined}
           aria-haspopup={opensMenu ? "menu" : undefined} popoverTarget={opensMenu ? menuId : undefined}
           onClick={event => {

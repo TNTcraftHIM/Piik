@@ -12,10 +12,6 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **Native site-management integration.** Verify that the shared App menu
-  opens independent management with current presentation and preserves ongoing
-  activities until explicit navigation. Accept the reduced native caption and
-  unified preferences menu in a matching App build.
 - [ ] **App connection during webpage selection.** Capture the first control
   connection failure during the reported intermittent App disconnection. Use the
   opt-in control-close diagnostic to distinguish transport closure, handshake,
