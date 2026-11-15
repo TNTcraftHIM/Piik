@@ -276,8 +276,6 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
                 <span>{source.paused ? t("host.pauseNotice") : source.deliveryFailed
                   ? t("screen.deliveryRetry")
                   : t("screen.connectingPicture")}</span></div>}
-            {thumbnail && <button className="c3-thumbnail-focus" type="button" aria-label={t("screen.focusNamed", { title })}
-              onClick={() => onFocus(source.id)} />}
             <footer>
               <div className="c3-monitor-source-row" data-tooltip-controls>
                 <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
@@ -295,10 +293,10 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
                   <SourceAudience people={source.audience} />
                 </div>
                 <div className="c3-monitor-tile-actions">
-                  {active.length > 1 && <Btn icon={isFocused ? "screenGrid" : "screenFocus"} quiet size="dense"
+                  {active.length > 1 && <Tooltip className="c3-monitor-layout-action" kind={isFocused ? "hint-screen-grid" : "hint-screen-focus"}
+                    text={isFocused ? t("screen.returnToGrid") : t("screen.focusNamed", { title })}><Btn icon={isFocused ? "screenGrid" : "screenFocus"} quiet size="dense"
                       title={{ text: isFocused ? t("screen.returnToGrid") : t("screen.focusNamed", { title }) }}
-                      hint={isFocused ? "hint-screen-grid" : "hint-screen-focus"}
-                      pressed={isFocused} onClick={() => onFocus(isFocused ? null : source.id)} />}
+                      pressed={isFocused} onClick={() => onFocus(isFocused ? null : source.id)} /></Tooltip>}
                   {source.owned && <div className="c3-monitor-publishing" role="group"
                     aria-label={t("screen.sharingControls", { title })}>
                     {source.shareControls}
@@ -374,7 +372,6 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
         {source.onAppWatch ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={source.onAppWatch} /> : <small>{t("watch.connectApp")}</small>}
         {source.receiving && <WatchPeerAction receiving={source.receiving} />}</>
         : <><BrandLoader /><span>{t("watch.waiting")}</span></>}</div>}
-    {thumbnail && <button className="c3-thumbnail-focus" type="button" aria-label={t("screen.focusNamed", { title: source.title })} onClick={() => onFocus(source.id)} />}
     <footer><div className="c3-monitor-source-row" data-tooltip-controls>
       <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
       <div className="c3-monitor-source"><Tooltip overflow={{ text: source.title, selector: "strong" }}><strong>{source.title}</strong></Tooltip>
@@ -382,8 +379,10 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
       </div>
       <div className="c3-monitor-tile-actions">
         <SourceAudience people={source.audience} joined />
-        {(focusable || focused) && <Btn icon={focused ? "screenGrid" : "screenFocus"} quiet size="dense" title={{ text: t("screen.changeLayout") }}
-          onClick={() => onFocus(focused ? null : source.id)} />}
+        {(focusable || focused) && <Tooltip className="c3-monitor-layout-action" kind={focused ? "hint-screen-grid" : "hint-screen-focus"}
+          text={focused ? t("screen.returnToGrid") : t("screen.focusNamed", { title: source.title })}><Btn icon={focused ? "screenGrid" : "screenFocus"} quiet size="dense"
+          title={{ text: focused ? t("screen.returnToGrid") : t("screen.focusNamed", { title: source.title }) }}
+          onClick={() => onFocus(focused ? null : source.id)} /></Tooltip>}
         {source.owned ? <div className="c3-monitor-publishing" role="group" aria-label={t("screen.sharingControls", { title: source.title })}>
           {source.shareControls}
           <span className="c3-monitor-close"><Btn icon="stop" tone="danger" size="dense"
