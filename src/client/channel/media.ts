@@ -643,7 +643,7 @@ export class ChannelMedia {
           if (!input || !track) return [];
           return collectTrackConnectionMetrics(report, "receive", input.metrics ??= new Map(), {
             kind, trackIdentifier: track.id, audioTrackIdentifier: input.stream.getAudioTracks()[0]?.id ?? null,
-          }).map(metrics => sample(flow.id, "receive", metrics));
+          }, peer.transport.pc).map(metrics => sample(flow.id, "receive", metrics));
         }),
         ...peer.transport.outgoingMetrics(report, new Set(outgoing.map(flow => flow.id)))
           .map(({ flowId, metrics }) => sample(flowId, "send", metrics)),

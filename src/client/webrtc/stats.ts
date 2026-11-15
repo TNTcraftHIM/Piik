@@ -4,8 +4,7 @@ import {
 } from "../types";
 import { packetLossPercentFromDeltas } from "../../shared/packet-loss";
 import { deriveVideoCodecEvidence } from "../../shared/video-codec-evidence";
-import { isPredictedCandidateFoundation } from "../../shared/nat-candidate";
-import { debugRtcFailure, debugRtcStats } from "../lib/debug-webrtc";
+import { debugRtcFailure, debugRtcStats, remoteCandidateTraversalPath } from "../lib/debug-webrtc";
 import { senderCaptureTrack } from "../media/sender-video-track";
 
 type StatsRecord = Record<string, unknown> & {
@@ -555,7 +554,7 @@ export async function collectConnectionMetrics(
   try {
     const report = await connection.getStats();
     debugRtcStats(connection, report);
-    return collectConnectionMetricsFromReport(report, direction, previous, selector);
+    return collectConnectionMetricsFromReport(report, direction, previous, selector, connection);
   } catch (error) {
     debugRtcFailure(connection, error);
     throw error;
@@ -568,6 +567,7 @@ export function collectTrackConnectionMetrics(
   direction: "send" | "receive",
   previous: Map<string, StatsAccumulator>,
   selector: StatsMediaSelector,
+  connection?: RTCPeerConnection,
 ): ConnectionMetrics[] {
   const records = mediaRecords(report, direction, selector, selector.kind ?? "video");
   const current = new Set(records.map(record => record.id));
@@ -579,7 +579,7 @@ export function collectTrackConnectionMetrics(
       ...selector, rtpStatsId: record.id,
       // Source sound belongs to the publication, not separately to every RID.
       audioTrackIdentifier: index === 0 ? selector.audioTrackIdentifier ?? null : null,
-    });
+    }, connection);
   });
 }
 
@@ -588,6 +588,7 @@ export function collectConnectionMetricsFromReport(
   direction: "send" | "receive",
   previous: StatsAccumulator,
   selector: StatsMediaSelector | null = null,
+  connection?: RTCPeerConnection,
 ): ConnectionMetrics {
   const kind = selector?.kind ?? "video";
   const media = mediaRecord(report, direction, selector, kind);
@@ -611,13 +612,7 @@ export function collectConnectionMetricsFromReport(
   }
   const localType = stringValue(localCandidate, "candidateType");
   const remoteType = stringValue(remoteCandidate, "candidateType");
-  const remoteFoundation = stringValue(remoteCandidate, "foundation");
-  const natTraversalPath =
-    remoteFoundation === null
-      ? "unknown"
-      : isPredictedCandidateFoundation(remoteFoundation)
-        ? "predicted"
-        : "ordinary";
+  const natTraversalPath = remoteCandidateTraversalPath(connection, remoteCandidate);
   const path =
     localType === "relay" || remoteType === "relay"
       ? "unknown"

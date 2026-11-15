@@ -1,7 +1,30 @@
+import { currentCandidateGeneration, linearCandidateTuple } from "../webrtc/linear-ice-candidate";
+import type { NatTraversalPath } from "../../shared/nat-candidate";
 import { browserDebugEnabled, debugError, debugEvent, registerDebugCollector } from "./debug";
 import { isPredictedCandidateFoundation } from "../../shared/nat-candidate";
 
 const connections = new WeakMap<RTCPeerConnection, object>();
+const linearCandidates = new WeakMap<RTCPeerConnection, RTCIceCandidateInit[]>();
+
+export function recordLinearCandidate(connection: RTCPeerConnection, candidate: RTCIceCandidateInit): void {
+  const known = linearCandidates.get(connection) ?? [];
+  if (known.length < 16) { known.push(candidate); linearCandidates.set(connection, known); }
+}
+
+/** Match actual selected stats to admitted hypotheses, never rewrite ICE foundations. */
+export function remoteCandidateTraversalPath(connection: RTCPeerConnection | undefined,
+  remote: Record<string, unknown> | null | undefined): NatTraversalPath {
+  const known = connection && linearCandidates.get(connection);
+  if (known?.length) {
+    const address = remote?.address ?? remote?.ip;
+    if (typeof address !== "string" || typeof remote?.port !== "number" || typeof remote.protocol !== "string") return "unknown";
+    const tuple = JSON.stringify([remote.protocol.toLowerCase(), address, remote.port]);
+    const matching = known.filter(candidate => linearCandidateTuple(candidate) === tuple);
+    if (matching.length) return matching.some(candidate => currentCandidateGeneration(connection!, candidate)
+      && (remote.usernameFragment == null || remote.usernameFragment === candidate.usernameFragment)) ? "predicted" : "unknown";
+  }
+  return typeof remote?.foundation !== "string" ? "unknown" : isPredictedCandidateFoundation(remote.foundation) ? "predicted" : "ordinary";
+}
 const statsTypes = new Set([
   "codec", "inbound-rtp", "outbound-rtp", "remote-inbound-rtp", "remote-outbound-rtp",
   "media-source", "transport", "candidate-pair", "local-candidate", "remote-candidate",
@@ -10,7 +33,7 @@ const statsTypes = new Set([
 // Observe existing connection owners and their existing statistics samples.
 // These listeners add no polling or transport actions.
 export function observeDebugConnection(connection: RTCPeerConnection, identity: object): () => void {
-  if (!browserDebugEnabled) return () => {};
+  if (!browserDebugEnabled) return () => { linearCandidates.delete(connection); };
   connections.set(connection, identity);
   const live = () => connection.connectionState !== "closed";
   const release = registerDebugCollector("webrtc", async () => {
@@ -42,7 +65,7 @@ export function observeDebugConnection(connection: RTCPeerConnection, identity: 
       errorCode: event.errorCode, errorText: event.errorText, address: event.address, port: event.port, url: event.url });
   });
   snapshot("created");
-  return release;
+  return () => { linearCandidates.delete(connection); connections.delete(connection); release(); };
 }
 
 export function observeDebugPlayback(video: HTMLVideoElement, identity: object): () => void {
@@ -81,8 +104,7 @@ export function debugRtcStats(connection: RTCPeerConnection, report: RTCStatsRep
       state: pair.state ?? null, dtlsState: record.dtlsState ?? null,
       localType: local?.candidateType ?? null, remoteType: remote?.candidateType ?? null,
       protocol: local?.protocol ?? null,
-      natTraversalPath: typeof remote?.foundation !== "string" ? "unknown"
-        : isPredictedCandidateFoundation(remote.foundation) ? "predicted" : "ordinary",
+      natTraversalPath: remoteCandidateTraversalPath(connection, remote),
       requestsSent: pair.requestsSent ?? null, responsesReceived: pair.responsesReceived ?? null,
       currentRoundTripTime: pair.currentRoundTripTime ?? null,
     });

@@ -593,6 +593,15 @@ observation cycle. A confirmed removed source address retires that physical pair
 through the normal failure path; successful sends cancel the obsolete check.
 Candidate probes and other pairs retain their own lifetimes.
 
+An ordinary Native connection with exclusive sockets may send Browser peers one
+batch of at most 16 typed linear candidate hypotheses from three existing STUN
+observations on the same IPv4 base. Discovery stays concurrent; no socket or
+probe is added. Native emission and Browser admission stop after their initial
+five-second window or connection, and retain the current ICE generation. Ordinary
+candidates and IPv6 continue through the SDK. Native receivers ignore these
+hypotheses; fixed Server listeners and coordinated Native preparation do not
+generate them. The limit bounds added targets, not the SDK's connectivity checks.
+
 The coordinated UDP candidate keeps preparation inside one authorized physical
 pair attempt. The domain's existing transport book issues its replacement UUID;
 logical room/media leases and operation deadlines stay unchanged. Only currently

@@ -287,6 +287,11 @@ Random-port preparation also has [kernel-NAT and socket-retirement controls](./r
 including matched production signaling, DataChannels and decoded media. These
 cover two capable Native endpoints; they do not establish Browser-only or
 single-App random-port coverage.
+The single-App linear extension also has matched production forwarding evidence:
+decoded video/audio and reverse RTCP on the selected original socket, followed
+by target retirement when its Browser closes. Its
+[linear-mapping control](./research/nat-traversal.md#random-mapping-collision-control)
+retains the experiment's assertion failures and the independent evidence checks.
 Virtual-LAN loading reports retain their own investigation in [TODO](./todo.md#now).
 
 Browser WebRTC and the Native RTC SDK own congestion control and transport

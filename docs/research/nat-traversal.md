@@ -558,7 +558,19 @@ were experimental hypotheses, not observed peer mappings. The same Native Engine
 released seven unselected sockets at five seconds; Browser ICE continued naturally
 until the ten-second observation ended. This proves scoped connection benefit,
 not media delivery, reverse RTCP, random-mapping coverage or a success rate.
-Product integration and physical-network validation remain in [TODO](../todo.md#next).
+The production extension retains one existing socket and derives the bounded
+window from its original concurrent STUN transactions. A matched Core24 control
+used real Domain signaling, Native forwarding and Browser candidate admission.
+Suppressing the generated hypotheses left the target disconnected; accepting
+them delivered decoded moving video and Opus audio, with reverse RTCP on the
+selected original socket. Closing the Browser retired that target while the
+Native process and domain subsequently shut down normally.
+The test runner retained two overbroad assertion failures: it expected media
+without viewer demand in the negative control, and mistook an unselected source
+convergence pair for a retry of the Native target. Independent checks of the
+saved pair identities, decoding counters and packet capture establish the media
+result. This does not establish field success rates or all cancellation paths;
+physical-network validation remains in [TODO](../todo.md#next).
 
 ### External Forwarding And Participant Relays
 

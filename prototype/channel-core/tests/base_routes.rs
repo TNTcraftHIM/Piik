@@ -3805,6 +3805,40 @@ fn coordinated_udp_signals_use_only_the_required_pair_and_fixed_endpoint_roles()
 }
 
 #[test]
+fn linear_ice_candidate_provenance_requires_its_generation() {
+    use piik_channel_core::wire::Signal;
+    let candidate = "candidate:real 1 udp 123 203.0.113.1 41000 typ srflx";
+    for (value, valid) in [
+        (json!({"candidate":{"candidate":candidate}}), true),
+        (
+            json!({"candidate":{"candidate":candidate,"origin":"linear","usernameFragment":"current"}}),
+            true,
+        ),
+        (
+            json!({"candidate":{"candidate":candidate,"origin":"linear"}}),
+            false,
+        ),
+        (
+            json!({"candidate":{"candidate":candidate,"origin":"linear","usernameFragment":" "}}),
+            false,
+        ),
+        (
+            json!({"candidate":{"candidate":"","origin":"linear","usernameFragment":"current"}}),
+            false,
+        ),
+    ] {
+        assert_eq!(
+            serde_json::from_value::<Signal>(value).unwrap().valid(),
+            valid
+        );
+    }
+    assert!(serde_json::from_value::<Signal>(json!({"candidate":{
+        "candidate":candidate,"origin":"observed","usernameFragment":"current"
+    }}))
+    .is_err());
+}
+
+#[test]
 #[ignore = "capacity acceptance: run explicitly in release mode with 81 endpoints"]
 fn two_twenty_person_rooms_share_site_capacity_with_browser_app_and_bounded_profiles() {
     use base64ct::{Base64, Encoding};

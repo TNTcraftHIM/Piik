@@ -131,10 +131,10 @@ the feedback period; they do not delay that delivery.
   trigger, bounded candidate attempts and strict-benefit proof before enabling
   automatic alternative-parent trials. Online sessions do not prove reusable
   physical connections; keep that fact with the transport owner.
-- [ ] **Random-mapping NAT field coverage.** The bounded Native implementation
-  has kernel-NAT media and resource-lifetime evidence. Measure difficult physical
-  networks and sustained concurrent use. A Native-to-Browser extension still
-  needs a mapping strategy verified through standard ICE.
+- [ ] **NAT field coverage.** The bounded random-mapping Native implementation
+  and ordinary Native-to-Browser linear extension have controlled media and
+  retirement evidence. Measure difficult physical networks and sustained
+  concurrent use; these controls do not establish population success rates.
 - [ ] **Codec capability and efficiency comparison.** Measure actual platform
   encoder/decoder and Browser capabilities, then compare one available codec
   with H.264 using synthetic text and motion. Compare hardware and software

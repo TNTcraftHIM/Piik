@@ -234,7 +234,7 @@ mod tests {
             updates.send(Some(SocketAddrV4::new("203.0.113.5".parse()?, port)))?;
             let candidate = tokio::time::timeout(Duration::from_secs(2), async {
                 loop {
-                    if let Some(Event::Candidate(id, candidate)) = received.recv().await {
+                    if let Some(Event::Candidate(id, candidate, None)) = received.recv().await {
                         if candidate.kind() == CandidateKind::ServerReflexive {
                             ensure!(id == pair);
                             return Ok::<_, anyhow::Error>(candidate);

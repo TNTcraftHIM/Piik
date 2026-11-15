@@ -10,6 +10,9 @@ use rtc_stun::{
 };
 use sansio::Protocol as _;
 
+#[path = "linear.rs"]
+mod linear;
+
 #[derive(Clone)]
 pub(super) struct Base {
     pub socket: Arc<UdpIo>,
@@ -78,12 +81,14 @@ impl IceServerUrl {
 pub(super) struct Config {
     bases: Vec<Base>,
     urls: Vec<IceServerUrl>,
+    linear: Option<Mutex<linear::Linear>>,
 }
 impl Config {
-    pub fn new(bases: Vec<Base>, urls: &[IceServerUrl]) -> Self {
+    pub fn new(bases: Vec<Base>, urls: &[IceServerUrl], linear: Option<Candidate>) -> Self {
         Self {
             bases,
             urls: urls.iter().filter(|url| !url.is_turn).cloned().collect(),
+            linear: linear.map(|base| Mutex::new(linear::Linear::new(base))),
         }
     }
 }
@@ -184,7 +189,8 @@ pub(super) async fn gather(handle: Transport, config: Config) {
                     for base in &config.bases {
                         if attempted.len() >= super::super::MAX_ICE_CANDIDATES { break; }
                         if base.local.is_ipv4() != server.is_ipv4() || !attempted.insert((base.local,server)) { continue; }
-                        probes.push(binding(handle.clone(),base.clone(),server));
+                        let linear = config.linear.as_ref().filter(|state| state.lock().unwrap().local() == base.local);
+                        probes.push(binding(handle.clone(),base.clone(),server,linear));
                     }
                 }
             }
@@ -228,7 +234,12 @@ pub(super) async fn nat64(handle: Transport) {
         .await;
 }
 
-async fn binding(handle: Transport, base: Base, server: SocketAddr) -> Result<()> {
+async fn binding(
+    handle: Transport,
+    base: Base,
+    server: SocketAddr,
+    linear: Option<&Mutex<linear::Linear>>,
+) -> Result<()> {
     let local = base.local;
     let mut request = Message::new();
     request.build(&[Box::new(BINDING_REQUEST), Box::new(TransactionId::new())])?;
@@ -250,8 +261,20 @@ async fn binding(handle: Transport, base: Base, server: SocketAddr) -> Result<()
             Ok(())
         })
         .await?;
-    let result = observe(&base, server, request, incoming).await;
+    let mut slot = None;
+    let result = observe(&base, server, request, incoming, || {
+        slot = linear.and_then(|state| state.lock().unwrap().sent(server));
+    })
+    .await;
     let mapped = result.as_ref().ok().copied();
+    // The actor callback must own its input. The observation owner stays inside
+    // this gather future and supplies only a bounded result to that callback.
+    let (generation, targets) = linear
+        .map(|state| {
+            let mut state = state.lock().unwrap();
+            (state.ufrag().to_owned(), state.resolved(slot, mapped))
+        })
+        .unwrap_or_default();
     handle
         .call(move |e| {
             e.discovery_routes.remove(&transaction);
@@ -261,7 +284,17 @@ async fn binding(handle: Transport, base: Base, server: SocketAddr) -> Result<()
                     .add_local_candidate(Candidate::server_reflexive(mapped, local, "udp")?)
                     .cloned()
                 {
-                    e.emit(Event::Candidate(e.handle.pair, candidate));
+                    e.emit(Event::Candidate(e.handle.pair, candidate.clone(), None));
+                    if !targets.is_empty() && e.linear_current(&generation) {
+                        for target in targets {
+                            let candidate = linear::hypothesis(&candidate, target)?;
+                            e.emit(Event::Candidate(
+                                e.handle.pair,
+                                candidate,
+                                Some(piik_channel_core::wire::CandidateOrigin::Linear),
+                            ));
+                        }
+                    }
                 }
             }
             Ok(())
@@ -275,7 +308,9 @@ async fn observe(
     server: SocketAddr,
     request: Message,
     mut incoming: mpsc::Receiver<TaggedBytesMut>,
+    first_send: impl FnOnce(),
 ) -> Result<SocketAddr> {
+    let mut first_send = Some(first_send);
     let local = base.local;
     let mut client =
         ClientBuilder::new().build(Instant::now(), local, server, TransportProtocol::UDP)?;
@@ -316,6 +351,8 @@ async fn observe(
                 if error.kind() != std::io::ErrorKind::WouldBlock {
                     return Err(error.into());
                 }
+            } else if let Some(sent) = first_send.take() {
+                sent();
             }
         }
         let deadline = client.poll_timeout().context("binding transaction ended")?;
@@ -329,6 +366,137 @@ async fn observe(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn ordinary_transactions_emit_one_linear_batch_without_registering_fake_local_mappings(
+    ) -> Result<()> {
+        use crate::peer::{server_udp::ServerUdp, tests::support::endpoint};
+        // An explicitly bound loopback socket exercises the same pump and
+        // transaction routes without involving any external STUN destination.
+        let fixed = ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
+        let runtime = Runtime::new(Some(fixed));
+        let (peer, mut events) = endpoint(&runtime, Uuid::new_v4(), None).await?;
+        let Some(Event::Candidate(_, seed, None)) = events.recv().await else {
+            anyhow::bail!("ordinary base missing")
+        };
+        let base = peer
+            .call(|engine| {
+                // Production selects only exclusive ordinary bases. This fixture
+                // supplies loopback explicitly and enables only that eligibility.
+                engine.linear_enabled = true;
+                let socket = engine.sockets[0].clone();
+                Ok(Base {
+                    local: socket.local_addr()?,
+                    socket,
+                })
+            })
+            .await?;
+        let local = base.local;
+        let generation = seed.ufrag().unwrap().to_owned();
+        let linear = Mutex::new(linear::Linear::new(seed));
+        let mut servers = Vec::new();
+        for _ in 0..3 {
+            servers.push(UdpSocket::bind("127.0.0.1:0").await?);
+        }
+        let mut bindings = Vec::new();
+        let mut requests = Vec::new();
+        for server in &servers {
+            let mut binding = Box::pin(binding(
+                peer.clone(),
+                base.clone(),
+                server.local_addr()?,
+                Some(&linear),
+            ));
+            let mut bytes = [0; 1024];
+            let (n, from) = tokio::select! {
+                result = &mut binding => anyhow::bail!("binding ended before its response: {}",result.is_ok()),
+                received = server.recv_from(&mut bytes) => received?,
+            };
+            let mut request = Message {
+                raw: bytes[..n].to_vec(),
+                ..Default::default()
+            };
+            request.decode()?;
+            requests.push((request.transaction_id, from));
+            bindings.push(binding);
+        }
+        // Deliberately reverse completion; only original sends define the order.
+        for index in (0..3).rev() {
+            let (transaction, from) = requests[index];
+            let mut response = Message::new();
+            response.build(&[
+                Box::new(BINDING_SUCCESS),
+                Box::new(transaction),
+                Box::new(XorMappedAddress {
+                    ip: "203.0.113.1".parse()?,
+                    port: 40000 + index as u16,
+                }),
+            ])?;
+            servers[index].send_to(&response.raw, from).await?;
+        }
+        for result in futures_util::future::join_all(bindings).await {
+            result?;
+        }
+        let emitted: Vec<_> = std::iter::from_fn(|| events.try_recv().ok())
+            .filter_map(|event| match event {
+                Event::Candidate(_, candidate, origin) => Some((candidate, origin)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            emitted
+                .iter()
+                .filter(|(_, origin)| origin.is_none())
+                .count(),
+            3
+        );
+        assert_eq!(
+            emitted
+                .iter()
+                .filter(|(_, origin)| origin.is_some())
+                .count(),
+            16
+        );
+        assert!(emitted
+            .iter()
+            .all(|(candidate, _)| candidate.ufrag() == Some(generation.as_str())));
+        for (candidate, origin) in emitted.iter().filter(|(_, origin)| origin.is_some()) {
+            let signaled = crate::peer::signal_candidate(candidate.clone(), *origin);
+            assert!(signaled.sdp_mid.is_none());
+            assert_eq!(signaled.sdp_m_line_index, Some(0));
+            assert_eq!(
+                signaled.username_fragment.as_deref(),
+                Some(generation.as_str())
+            );
+        }
+        assert!(peer.can_signal_linear(generation.clone()).await);
+        assert!(!peer.can_signal_linear("stale".into()).await);
+        peer.create_channel("ordinary-owner").await?;
+        peer.offer().await?;
+        let (_, sdp) = peer.local_description().await?;
+        let mappings: Vec<_> = sdp
+            .lines()
+            .filter_map(|line| line.strip_prefix("a=candidate:"))
+            .map(|line| Candidate::from_sdp_string(&format!("candidate:{line}")))
+            .collect::<std::result::Result<_, _>>()?;
+        let ports: HashSet<_> = mappings
+            .iter()
+            .filter(|candidate| candidate.kind() == str0m::CandidateKind::ServerReflexive)
+            .map(|candidate| candidate.addr().port())
+            .collect();
+        assert_eq!(ports, HashSet::from([40000, 40001, 40002]));
+        peer.call(|engine| {
+            engine.stats_origin = Instant::now() - Duration::from_secs(5);
+            Ok(())
+        })
+        .await?;
+        assert!(!peer.can_signal_linear(generation).await);
+        peer.close().await?;
+        runtime.close().await;
+        drop(base);
+        UdpSocket::bind(local).await?;
+        Ok(())
+    }
 
     #[test]
     fn udp_ice_urls_keep_endpoints_and_configured_credentials() -> Result<()> {
@@ -380,7 +548,7 @@ mod tests {
             assert_eq!(result.password, "configured-password");
             parsed.push(result.clone());
         }
-        let stun = Config::new(Vec::new(), &parsed);
+        let stun = Config::new(Vec::new(), &parsed, None);
         assert_eq!(stun.urls.len(), 9);
         assert!(stun.urls.iter().all(|url| !url.is_turn));
         Ok(())

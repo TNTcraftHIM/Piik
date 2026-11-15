@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 23;
+pub const CHANNEL_PROTOCOL: u8 = 24;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -530,6 +530,15 @@ impl Signal {
                         .username_fragment
                         .as_ref()
                         .is_none_or(|value| value.len() <= 256)
+                    && (candidate.origin.is_none()
+                        || (candidate
+                            .candidate
+                            .as_ref()
+                            .is_some_and(|value| !value.trim().is_empty())
+                            && candidate
+                                .username_fragment
+                                .as_ref()
+                                .is_some_and(|value| !value.trim().is_empty())))
             })
             && self
                 .tracks
@@ -632,6 +641,8 @@ pub struct Description {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Candidate {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin: Option<CandidateOrigin>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub candidate: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sdp_mid: Option<String>,
@@ -639,6 +650,12 @@ pub struct Candidate {
     pub sdp_m_line_index: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub username_fragment: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CandidateOrigin {
+    Linear,
 }
 
 #[derive(Clone, Deserialize, Serialize)]

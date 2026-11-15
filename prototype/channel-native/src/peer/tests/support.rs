@@ -204,6 +204,7 @@ impl Fixture {
             .add(
                 pair,
                 None,
+                false,
                 self.remote_sender.clone(),
                 Arc::new(AtomicBool::new(false)),
                 Arc::new(AtomicU8::new(0)),
@@ -619,6 +620,7 @@ pub(in crate::peer) async fn endpoint(
         .add(
             pair,
             prepared,
+            false,
             events,
             Arc::new(AtomicBool::new(false)),
             Arc::new(AtomicU8::new(0)),

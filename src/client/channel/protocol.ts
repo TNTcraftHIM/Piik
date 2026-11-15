@@ -11,7 +11,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 23;
+export const CHANNEL_PROTOCOL = 24;
 export const CHANNEL_SESSION_LIMIT = 128;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
@@ -136,7 +136,8 @@ export const signalSchema = z.object({
   resync: z.boolean().optional(),
   exchangeId: z.string().uuid().optional(),
   description: z.object({ type: z.enum(["offer", "answer"]), sdp: z.string().max(150000).optional() }).optional(),
-  candidate: z.object({ candidate: z.string().max(4096).optional(), sdpMid: z.string().nullable().optional(), sdpMLineIndex: z.number().nullable().optional(), usernameFragment: z.string().nullable().optional() }).optional(),
+  candidate: z.object({ candidate: z.string().max(4096).optional(), sdpMid: z.string().nullable().optional(), sdpMLineIndex: z.number().nullable().optional(), usernameFragment: z.string().nullable().optional(), origin: z.literal("linear").optional() })
+    .refine(value => value.origin !== "linear" || !!value.candidate?.trim() && !!value.usernameFragment?.trim()).optional(),
   tracks: z.array(z.object({ flowId: id, streamId: id })).optional(),
 }).refine(signal => signal.udp
   ? [signal.resync, signal.exchangeId, signal.description, signal.candidate, signal.tracks].every(value => value === undefined)

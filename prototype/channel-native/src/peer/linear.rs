@@ -1,0 +1,148 @@
+//! One batch of hypotheses from the existing discovery work on one real base.
+use std::net::{SocketAddr, SocketAddrV4};
+use str0m::Candidate;
+
+struct Sample {
+    server: SocketAddr,
+    mapped: Option<SocketAddr>,
+}
+
+pub(super) struct Linear {
+    base: Candidate,
+    samples: Option<Vec<Sample>>,
+}
+
+impl Linear {
+    pub fn new(base: Candidate) -> Self {
+        Self {
+            base,
+            samples: Some(Vec::with_capacity(3)),
+        }
+    }
+
+    pub fn local(&self) -> SocketAddr {
+        self.base.local()
+    }
+
+    pub fn ufrag(&self) -> &str {
+        self.base.ufrag().unwrap_or_default()
+    }
+
+    // Called once per original transaction, immediately after its first
+    // successful UDP send. Completion order cannot replace this cohort.
+    pub fn sent(&mut self, server: SocketAddr) -> Option<usize> {
+        let samples = self.samples.as_mut()?;
+        if samples.len() == 3 || samples.iter().any(|sample| sample.server == server) {
+            return None;
+        }
+        let slot = samples.len();
+        samples.push(Sample {
+            server,
+            mapped: None,
+        });
+        Some(slot)
+    }
+
+    pub fn resolved(
+        &mut self,
+        slot: Option<usize>,
+        mapped: Option<SocketAddr>,
+    ) -> Vec<SocketAddrV4> {
+        let Some(slot) = slot else {
+            return vec![];
+        };
+        let Some(mapped) = mapped else {
+            self.samples = None;
+            return vec![];
+        };
+        let Some(samples) = self.samples.as_mut() else {
+            return vec![];
+        };
+        samples[slot].mapped = Some(mapped);
+        if samples.len() != 3 || samples.iter().any(|sample| sample.mapped.is_none()) {
+            return vec![];
+        }
+        let samples = self.samples.take().unwrap();
+        let addresses: Vec<_> = samples
+            .into_iter()
+            .map(|sample| sample.mapped.unwrap())
+            .collect();
+        let [SocketAddr::V4(first), SocketAddr::V4(middle), SocketAddr::V4(last)] =
+            addresses.as_slice()
+        else {
+            return vec![];
+        };
+        let step = i32::from(middle.port()) - i32::from(first.port());
+        let observation = piik_channel_core::wire::UdpObservation::Irregular {
+            address: *first.ip(),
+        };
+        if !observation.valid()
+            || first.ip() != middle.ip()
+            || middle.ip() != last.ip()
+            || step == 0
+            || !(-16..=16).contains(&step)
+            || i32::from(last.port()) - i32::from(middle.port()) != step
+        {
+            return vec![];
+        }
+        (1..=8)
+            .map(|n| i32::from(first.port()) - n * step)
+            .chain((1..=8).map(|n| i32::from(last.port()) + n * step))
+            .filter_map(|port| u16::try_from(port).ok().filter(|port| *port >= 1024))
+            .map(|port| SocketAddrV4::new(*first.ip(), port))
+            .collect()
+    }
+}
+
+// This value is only signaled to the peer. It is never registered as a real
+// local mapping in the sending RTC. Foundation, priority and ufrag stay intact.
+pub(super) fn hypothesis(template: &Candidate, target: SocketAddrV4) -> anyhow::Result<Candidate> {
+    let sdp = template.to_sdp_string();
+    let mut fields: Vec<_> = sdp.split_whitespace().map(str::to_owned).collect();
+    fields[5] = target.port().to_string();
+    if let Some(index) = fields.iter().position(|field| field == "raddr") {
+        fields[index + 1] = "0.0.0.0".into();
+    }
+    if let Some(index) = fields.iter().position(|field| field == "rport") {
+        fields[index + 1] = "0".into();
+    }
+    Ok(Candidate::from_sdp_string(&fields.join(" "))?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fixed_sent_cohort_keeps_response_order_and_one_batch() {
+        let mut base = Candidate::host("192.0.2.1:41000".parse().unwrap(), "udp").unwrap();
+        base.set_ufrag("current");
+        let mut linear = Linear::new(base.clone());
+        assert_eq!(linear.ufrag(), "current");
+        let servers: Vec<SocketAddr> = (1..=4)
+            .map(|port| SocketAddr::from(([192, 0, 2, 2], port)))
+            .collect();
+        let slots: Vec<_> = servers.iter().map(|server| linear.sent(*server)).collect();
+        assert_eq!(slots, [Some(0), Some(1), Some(2), None]);
+        let address = |port| Some(SocketAddr::from(([203, 0, 113, 1], port)));
+        assert!(linear.resolved(slots[3], address(40003)).is_empty());
+        assert!(linear.resolved(slots[2], address(40002)).is_empty());
+        assert!(linear.resolved(slots[1], address(40001)).is_empty());
+        let targets = linear.resolved(slots[0], address(40000));
+        assert_eq!(
+            targets.iter().map(|a| a.port()).collect::<Vec<_>>(),
+            (39992..40000)
+                .rev()
+                .chain(40003..=40010)
+                .collect::<Vec<_>>()
+        );
+        assert!(linear.resolved(slots[0], address(40000)).is_empty());
+        let mut failed = Linear::new(base);
+        for server in &servers[..3] {
+            failed.sent(*server);
+        }
+        assert!(failed.resolved(Some(0), None).is_empty());
+        assert!(failed.resolved(Some(1), address(40001)).is_empty());
+        assert!(failed.resolved(Some(2), address(40002)).is_empty());
+    }
+}

@@ -586,7 +586,11 @@ pub(crate) enum Event {
     InputMessage(Uuid, Uuid, piik_channel_core::input::InputFrame),
     InputClosed(Uuid, Uuid),
     Negotiate(Uuid),
-    Candidate(Uuid, IceCandidate),
+    Candidate(
+        Uuid,
+        IceCandidate,
+        Option<piik_channel_core::wire::CandidateOrigin>,
+    ),
     State(Uuid, PeerState),
     Track(Uuid, Track),
     Channel(Uuid, Arc<Channel>),
@@ -995,7 +999,7 @@ impl NativePeers {
                                 Event::SourceEnded { pair, .. } => Some(*pair),
                                 Event::DataWriteFailed { pair, .. } => Some(*pair),
                                 Event::Negotiate(id)
-                                | Event::Candidate(id, _)
+                                | Event::Candidate(id, _, _)
                                 | Event::State(id, _)
                                 | Event::Track(id, _)
                                 | Event::Channel(id, _)
@@ -2035,6 +2039,7 @@ impl Driver {
         let (pc, bandwidth) = Box::pin(self.transport.add(
             plan.id,
             prepared.map(|(socket, _)| socket),
+            plan.udp_preparation.is_none(),
             self.events.clone(),
             overflow.clone(),
             state.clone(),
@@ -2446,7 +2451,7 @@ impl Driver {
             p.pc.accept(description.kind, description.sdp.unwrap_or_default())
                 .await?;
             for c in p.candidates.drain(..) {
-                let _ = p.pc.add_candidate(c.candidate.unwrap_or_default()).await;
+                let _ = p.pc.add_signaled_candidate(c).await;
             }
             if offer {
                 let answer = self.local_signal(id, exchange).await?;
@@ -2467,7 +2472,7 @@ impl Driver {
         } else if let Some(c) = signal.candidate {
             if !p.ignore_offer {
                 if p.pc.remote_description().await {
-                    let _ = p.pc.add_candidate(c.candidate.unwrap_or_default()).await;
+                    let _ = p.pc.add_signaled_candidate(c).await;
                 } else if p.candidates.len() < MAX_ICE_CANDIDATES {
                     p.candidates.push(c);
                 }
@@ -2882,14 +2887,23 @@ impl Driver {
                     self.offer(id).await?;
                 }
             }
-            Event::Candidate(id, candidate) => {
+            Event::Candidate(id, candidate, origin) => {
                 if let Some(p) = self.pairs.get_mut(&id) {
-                    let mapped = if let Some(udp) = &self.server_udp {
-                        udp.mapped_candidate(&candidate)?
-                    } else {
-                        None
-                    };
-                    if self.server_udp.is_none() {
+                    if origin.is_some()
+                        && !p
+                            .pc
+                            .can_signal_linear(candidate.ufrag().unwrap_or_default().to_owned())
+                            .await
+                    {
+                        return Ok(());
+                    }
+                    let mapped =
+                        if let Some(udp) = self.server_udp.as_ref().filter(|_| origin.is_none()) {
+                            udp.mapped_candidate(&candidate)?
+                        } else {
+                            None
+                        };
+                    if self.server_udp.is_none() && origin.is_none() {
                         if let Some(mapping) = &p.mapping {
                             mapping.observe(&candidate);
                         } else {
@@ -2897,7 +2911,7 @@ impl Driver {
                         }
                     }
                     for candidate in std::iter::once(candidate).chain(mapped) {
-                        let candidate = signal_candidate(candidate);
+                        let candidate = signal_candidate(candidate, origin);
                         self.send(Command::Signal {
                             pair_id: id,
                             payload: Signal {
@@ -3656,17 +3670,23 @@ impl Driver {
         Ok(released)
     }
 }
-fn signal_candidate(c: IceCandidate) -> Candidate {
+fn signal_candidate(
+    c: IceCandidate,
+    origin: Option<piik_channel_core::wire::CandidateOrigin>,
+) -> Candidate {
     Candidate {
+        origin,
+        username_fragment: c.ufrag().map(str::to_owned),
         candidate: Some(c.to_sdp_string()),
-        sdp_mid: Some(String::new()),
+        // Hypotheses are trickled outside SDP; the SDK's actual BUNDLE mid is
+        // not an empty string. Use the standard first m-line index instead.
+        sdp_mid: origin.is_none().then(String::new),
         sdp_m_line_index: Some(0),
-        username_fragment: None,
     }
 }
 fn prepared_candidate(remote: std::net::SocketAddrV4) -> Result<Candidate> {
     let candidate = IceCandidate::host(remote.into(), "udp")?;
-    Ok(signal_candidate(candidate))
+    Ok(signal_candidate(candidate, None))
 }
 async fn close_pair(mut pair: Pair) {
     pair.state.store(PeerState::Closed as u8, Ordering::Release);

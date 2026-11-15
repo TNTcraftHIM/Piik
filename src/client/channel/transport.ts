@@ -1,3 +1,4 @@
+import { LinearCandidateAdmission } from "../webrtc/linear-ice-candidate";
 import { addRemoteIceCandidate } from "../webrtc/remote-ice-candidate";
 import { collectTrackConnectionMetrics, decodedVideoFrameSamples, type StatsAccumulator } from "../webrtc/stats";
 import { debugTrack, observeDebugConnection } from "../lib/debug-webrtc";
@@ -95,7 +96,8 @@ export class ChannelTransport {
   private pendingOffer: { payload: ChannelSignal; senders: Map<RTCRtpSender, MediaStreamTrack | null> } | null = null;
   private localOfferFailed = false;
   private answer: ChannelSignal | null = null;
-  private candidates: RTCIceCandidateInit[] = [];
+  private candidates: NonNullable<ChannelSignal["candidate"]>[] = [];
+  private readonly linearCandidates = new LinearCandidateAdmission();
   private operations: Promise<void> = Promise.resolve();
   private deadline: ReturnType<typeof setTimeout> | null;
   private closed = false;
@@ -124,7 +126,7 @@ export class ChannelTransport {
       return collectTrackConnectionMetrics(report, "send", binding.metrics ??= new Map(), {
         kind: binding.kind === "screen" ? "video" : "audio", trackIdentifier: track.id,
         audioTrackIdentifier: audio?.id ?? null,
-      }).map(metrics => ({ flowId, metrics: video?.pooled?.metrics(metrics) ?? metrics }));
+      }, this.pc).map(metrics => ({ flowId, metrics: video?.pooled?.metrics(metrics) ?? metrics }));
     });
   }
 
@@ -868,7 +870,7 @@ export class ChannelTransport {
         for (const id of new Set(previousIds.values())) {
           if (!flows.has(id)) this.options.retire?.(id);
         }
-        for (const candidate of this.candidates.splice(0)) await addRemoteIceCandidate(this.pc, { ...candidate, candidate: candidate.candidate ?? "" });
+        for (const candidate of this.candidates.splice(0)) await this.addCandidate(candidate);
         if (description.type === "offer") {
           const senders = new Map([...this.sending.values()].flatMap(output => output.senders.map(({ sender }) => [sender, sender.track] as const)));
           const tracks = this.outgoingTracks();
@@ -877,10 +879,16 @@ export class ChannelTransport {
           this.offerChangedTracks(tracks);
         } else this.offerChangedTracks(offered!.payload.tracks!);
       } else if (payload.candidate && !this.ignoreOffer) {
-        if (this.pc.remoteDescription) await addRemoteIceCandidate(this.pc, { ...payload.candidate, candidate: payload.candidate.candidate ?? "" });
+        if (this.pc.remoteDescription) await this.addCandidate(payload.candidate);
         else if (this.candidates.length < 128) this.candidates.push(payload.candidate);
       }
     });
+  }
+
+  private async addCandidate(candidate: NonNullable<ChannelSignal["candidate"]>): Promise<void> {
+    if (this.closed || candidate.origin === "linear" && !this.linearCandidates.admit(this.pc, candidate)) return;
+    const { origin, ...ice } = candidate;
+    await addRemoteIceCandidate(this.pc, { ...ice, candidate: ice.candidate ?? "" }, origin);
   }
 
   resync(): void {

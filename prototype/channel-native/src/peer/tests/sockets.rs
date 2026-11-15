@@ -68,7 +68,7 @@ async fn fixed_and_prepared_udp_keep_pair_ownership_and_ipv6() -> Result<()> {
     let (remote4, mut events4) = add(&client4, pair4, Some((prepared, target))).await?;
     let announced: Vec<_> = std::iter::from_fn(|| events4.try_recv().ok())
         .filter_map(|event| match event {
-            Event::Candidate(_, candidate) => Some(candidate),
+            Event::Candidate(_, candidate, None) => Some(candidate),
             _ => None,
         })
         .collect();
@@ -88,7 +88,7 @@ async fn fixed_and_prepared_udp_keep_pair_ownership_and_ipv6() -> Result<()> {
                 candidate.ufrag().is_some()
                     && addresses.iter().any(|registered| {
                         registered.to_sdp_string()
-                            == crate::peer::signal_candidate(candidate.clone())
+                            == crate::peer::signal_candidate(candidate.clone(), None)
                                 .candidate
                                 .unwrap()
                     })
@@ -200,6 +200,14 @@ async fn invalid_candidates_do_not_retire_an_established_channel() -> Result<()>
     let (b, mut events) = endpoint(&right, Uuid::new_v4(), None).await?;
     let (sent, received) = open(&a, &b, &mut events).await?;
     ensure!(a.add_candidate("not-a-candidate".into()).await.is_err());
+    a.add_signaled_candidate(piik_channel_core::wire::Candidate {
+        candidate: Some("unsupported linear hint".into()),
+        origin: Some(piik_channel_core::wire::CandidateOrigin::Linear),
+        username_fragment: Some("old-generation".into()),
+        sdp_mid: None,
+        sdp_m_line_index: Some(0),
+    })
+    .await?;
     exchange(&sent, &received, "after-rejected-candidate").await?;
     exchange(&received, &sent, "reverse-after-rejected-candidate").await?;
     a.close().await?;

@@ -389,6 +389,7 @@ pub(crate) struct Engine {
     remote: bool,
     remote_media: HashMap<Mid, (String, String)>,
     negotiated: bool,
+    linear_enabled: bool,
     bandwidth: watch::Sender<Estimate>,
     demand: watch::Receiver<BandwidthDemand>,
     bandwidth_changed: Arc<Notify>,
@@ -520,6 +521,7 @@ impl Runtime {
         &self,
         pair: Uuid,
         prepared: Option<std::net::UdpSocket>,
+        linear: bool,
         events: mpsc::Sender<Event>,
         overflow: Arc<AtomicBool>,
         state: Arc<AtomicU8>,
@@ -530,6 +532,7 @@ impl Runtime {
         self.add_engine(
             pair,
             prepared,
+            linear,
             EventTarget::Peer(events),
             overflow,
             state,
@@ -556,6 +559,7 @@ impl Runtime {
             .add_engine(
                 Uuid::new_v4(),
                 None,
+                false,
                 EventTarget::Local { tracks, ended },
                 Arc::new(AtomicBool::new(false)),
                 Arc::new(AtomicU8::new(PeerState::New as u8)),
@@ -607,6 +611,7 @@ impl Runtime {
         &self,
         pair: Uuid,
         prepared: Option<std::net::UdpSocket>,
+        linear: bool,
         events: EventTarget,
         overflow: Arc<AtomicBool>,
         state: Arc<AtomicU8>,
@@ -614,7 +619,9 @@ impl Runtime {
         changed: Arc<Notify>,
         ice: &[IceServer],
     ) -> Result<(Transport, watch::Receiver<Estimate>)> {
+        let stats_origin = Instant::now();
         let local_input = events.local();
+        let linear = linear && !local_input && self.fixed.is_none() && prepared.is_none();
         let handle = Transport {
             pair,
             instance: Uuid::new_v4(),
@@ -663,7 +670,6 @@ impl Runtime {
         if let Some(codecs) = &self.test_codecs {
             *config.codec_config() = codecs.clone();
         }
-        let stats_origin = Instant::now();
         let mut rtc = config.build(stats_origin);
         let requested = *demand.borrow_and_update();
         rtc.bwe().set_bitrate(
@@ -675,7 +681,19 @@ impl Runtime {
         } else {
             Some(netwatch::interfaces::State::new().await)
         };
+        // Reuse this snapshot's route fact; no extra interface probe is needed.
+        // Platforms without it keep the first ordinary IPv4 base as fallback.
+        let default_ipv4 = interfaces.as_ref().and_then(|state| {
+            let interface = state
+                .interfaces
+                .get(state.default_route_interface.as_ref()?)?;
+            interface
+                .addrs()
+                .map(|address| address.addr())
+                .find(|address| address.is_ipv4())
+        });
         let mut bases = Vec::new();
+        let mut linear_base = None;
         for socket in &sockets {
             let local = socket.local_addr()?;
             let candidates = host_candidates(
@@ -692,6 +710,12 @@ impl Runtime {
                 let Some(candidate) = rtc.add_local_candidate(candidate).cloned() else {
                     continue;
                 };
+                if linear
+                    && address.is_ipv4()
+                    && (linear_base.is_none() || Some(address.ip()) == default_ipv4)
+                {
+                    linear_base = Some(candidate.clone());
+                }
                 if bases.len() < super::MAX_ICE_CANDIDATES {
                     bases.push(discovery::Base {
                         socket: socket.clone(),
@@ -699,7 +723,7 @@ impl Runtime {
                     });
                 }
                 if let EventTarget::Peer(events) = &events {
-                    let _ = events.try_send(Event::Candidate(pair, candidate));
+                    let _ = events.try_send(Event::Candidate(pair, candidate, None));
                 }
             }
         }
@@ -742,6 +766,7 @@ impl Runtime {
             remote: false,
             remote_media: HashMap::new(),
             negotiated: false,
+            linear_enabled: linear,
             bandwidth,
             demand,
             bandwidth_changed: changed,
@@ -756,7 +781,7 @@ impl Runtime {
                 Box::new(engine),
                 (!local_input).then(|| {
                     (
-                        discovery::Config::new(bases, &urls),
+                        discovery::Config::new(bases, &urls, linear_base),
                         turn::Setup {
                             urls,
                             ready: turn_ready,
@@ -1034,21 +1059,47 @@ impl Transport {
     pub(super) async fn add_local_candidate(&self, candidate: Candidate) -> Result<()> {
         self.call(move |e| {
             if let Some(candidate) = e.rtc.add_local_candidate(candidate).cloned() {
-                e.emit(Event::Candidate(e.handle.pair, candidate));
+                e.emit(Event::Candidate(e.handle.pair, candidate, None));
             }
             Ok(())
         })
         .await
     }
+    #[cfg(test)]
     pub async fn add_candidate(&self, candidate: String) -> Result<()> {
+        self.add_signaled_candidate(piik_channel_core::wire::Candidate {
+            candidate: Some(candidate),
+            origin: None,
+            sdp_mid: None,
+            sdp_m_line_index: None,
+            username_fragment: None,
+        })
+        .await
+    }
+    pub async fn add_signaled_candidate(
+        &self,
+        signal: piik_channel_core::wire::Candidate,
+    ) -> Result<()> {
+        // This extension targets Browser receivers. Native keeps ordinary ICE;
+        // it does not invent a second remote-generation/budget owner for hints.
+        if signal.origin.is_some() {
+            return Ok(());
+        }
         self.call(move |e| {
             ensure!(!e.events.local(), "local input does not trickle ICE");
-            let candidate = Candidate::from_sdp_string(&candidate)?;
+            let candidate =
+                Candidate::from_sdp_string(signal.candidate.as_deref().unwrap_or_default())?;
             e.rtc.add_remote_candidate(candidate.clone());
             e.nat64_candidate(candidate);
             Ok(())
         })
         .await
+    }
+
+    pub(super) async fn can_signal_linear(&self, ufrag: String) -> bool {
+        self.call(move |e| Ok(e.linear_current(&ufrag)))
+            .await
+            .unwrap_or(false)
     }
     pub async fn create_channel(&self, label: &str) -> Result<Arc<Channel>> {
         let token = Uuid::new_v4();
@@ -1433,6 +1484,12 @@ fn codec(params: &PayloadParams) -> RtpCodecParameters {
 }
 
 impl Engine {
+    fn linear_current(&mut self, ufrag: &str) -> bool {
+        self.linear_enabled
+            && Instant::now() < self.stats_origin + Duration::from_secs(5)
+            && !self.rtc.is_connected()
+            && self.rtc.direct_api().local_ice_credentials().ufrag == ufrag
+    }
     fn nat64_candidate(&mut self, candidate: Candidate) {
         let Some(bootstrap) = &mut self.nat64 else {
             return;
@@ -1611,7 +1668,7 @@ impl Engine {
                 match change {
                     turn::Change::Ready(candidate) => {
                         if let Some(candidate) = self.rtc.add_local_candidate(candidate).cloned() {
-                            self.emit(Event::Candidate(self.handle.pair, candidate));
+                            self.emit(Event::Candidate(self.handle.pair, candidate, None));
                         }
                     }
                     turn::Change::Receive(source, destination, bytes, at) => {
