@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <iostream>
 #include <limits>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,44 @@ using Microsoft::WRL::ClassicCom;
 
 namespace piik::capture {
 namespace {
+// Opt-in observation only; capture and delivery retain their existing owners.
+struct AudioCaptureCounts {
+  AudioCaptureCounts(const char* capture_mode, const HRESULT& capture_result)
+      : mode(capture_mode), result(capture_result) {
+    wchar_t value[2]{};
+    enabled = GetEnvironmentVariableW(L"PIIK_CAPTURE_DEBUG", value, 2) == 1 && value[0] == L'1';
+  }
+  ~AudioCaptureCounts() {
+    if (!enabled) return;
+    std::ostringstream line;
+    line << "wasapi-capture-summary mode=" << mode
+              << " started=" << started << " result=" << static_cast<std::uint32_t>(result)
+              << " packets=" << packets << " input_frames=" << input_frames
+              << " silent_packets=" << silent_packets
+              << " discontinuity_packets=" << discontinuity_packets
+              << " timestamp_error_packets=" << timestamp_error_packets
+              << " assembled_chunks=" << assembled_chunks
+              << " written_chunks=" << written_chunks << " primed=" << primed << '\n';
+    std::cerr << line.str();
+  }
+  void Packet(UINT32 frames, DWORD flags) {
+    if (!enabled) return;
+    ++packets;
+    input_frames += frames;
+    silent_packets += (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0;
+    discontinuity_packets += (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) != 0;
+    timestamp_error_packets += (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) != 0;
+  }
+  void Assembled() { if (enabled) ++assembled_chunks; }
+  void Delivered(HRESULT delivery) { if (enabled && SUCCEEDED(delivery)) ++written_chunks; }
+  const char* mode;
+  const HRESULT& result;
+  bool enabled = false, started = false, primed = false;
+  std::uint64_t packets = 0, input_frames = 0, silent_packets = 0;
+  std::uint64_t discontinuity_packets = 0, timestamp_error_packets = 0;
+  std::uint64_t assembled_chunks = 0, written_chunks = 0;
+};
+
 class ActivationHandler final : public RuntimeClass<
     RuntimeClassFlags<ClassicCom>, FtmBase, IActivateAudioInterfaceCompletionHandler> {
  public:
@@ -107,6 +146,7 @@ HRESULT ActivateEndpoint(ComPtr<IAudioClient>* client, bool microphone = false, 
 }
 
 HRESULT CaptureAudioFrames(ComPtr<IAudioClient> client, HANDLE process, bool loopback,
+                             AudioCaptureCounts& counts,
                              HANDLE stop_event, const StopProbe& stop_probe,
                              const ReadyWriter& ready_writer,
                              const PCMWriter& writer) {
@@ -143,12 +183,16 @@ HRESULT CaptureAudioFrames(ComPtr<IAudioClient> client, HANDLE process, bool loo
   }
   if (SUCCEEDED(result)) result = client->GetService(IID_PPV_ARGS(&capture));
   if (SUCCEEDED(result)) result = client->SetEventHandle(sampleReady);
-  if (SUCCEEDED(result)) result = client->Start();
+  if (SUCCEEDED(result)) {
+    result = client->Start();
+    if (counts.enabled) counts.started = SUCCEEDED(result);
+  }
   if (SUCCEEDED(result)) result = processAlive();
   if (SUCCEEDED(result)) result = ready_writer();
   if (SUCCEEDED(result)) {
     std::array<BYTE, kAudioBytesPerChunk> silence{};
     result = writer(0, silence.data(), static_cast<DWORD>(silence.size()));
+    if (counts.enabled) counts.primed = SUCCEEDED(result);
   }
 
   std::vector<BYTE> pending;
@@ -192,6 +236,7 @@ HRESULT CaptureAudioFrames(ComPtr<IAudioClient> client, HANDLE process, bool loo
       UINT64 qpcPosition = 0;
       result = capture->GetBuffer(&data, &frames, &flags, &devicePosition, &qpcPosition);
       if (FAILED(result)) break;
+      counts.Packet(frames, flags);
       const size_t bytes = static_cast<size_t>(frames) * format.nBlockAlign;
       if ((flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) != 0) {
         capture->ReleaseBuffer(frames);
@@ -214,8 +259,10 @@ HRESULT CaptureAudioFrames(ComPtr<IAudioClient> client, HANDLE process, bool loo
       capture->ReleaseBuffer(frames);
       while (pending.size() - consumed >= kAudioBytesPerChunk) {
         if (FAILED(result = processAlive())) break;
+        counts.Assembled();
         result = writer(nextTimestamp, pending.data() + consumed,
                         kAudioBytesPerChunk);
+        counts.Delivered(result);
         if (FAILED(result)) break;
         consumed += kAudioBytesPerChunk;
         nextTimestamp += kAudioChunkDuration100ns;
@@ -250,18 +297,19 @@ HRESULT CaptureProcessAudio(DWORD pid, UINT64 expectedCreationTime, bool exclude
                             HANDLE stop_event, const StopProbe& stop_probe,
                             const ReadyWriter& ready_writer,
                             const PCMWriter& writer) {
-  HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-  if (FAILED(com_result)) return com_result;
+  HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  AudioCaptureCounts counts(exclude ? "process-exclude" : "process-include", result);
+  if (FAILED(result)) return result;
   // Validate and watch the same handle so PID reuse cannot change the target.
   HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, pid);
-  HRESULT result = process ? ValidateProcessTarget(process, expectedCreationTime)
+  result = process ? ValidateProcessTarget(process, expectedCreationTime)
                            : HRESULT_FROM_WIN32(GetLastError());
   ComPtr<IAudioClient> client;
   if (SUCCEEDED(result)) {
     result = ActivateProcessLoopback(pid, exclude, &client);
   }
   if (SUCCEEDED(result)) {
-    result = CaptureAudioFrames(client, process, true, stop_event, stop_probe,
+    result = CaptureAudioFrames(client, process, true, counts, stop_event, stop_probe,
                                   ready_writer, writer);
   }
   if (process != nullptr) CloseHandle(process);
@@ -273,12 +321,13 @@ HRESULT CaptureProcessAudio(DWORD pid, UINT64 expectedCreationTime, bool exclude
 HRESULT CaptureSystemAudio(HANDLE stop_event, const StopProbe& stop_probe,
                            const ReadyWriter& ready_writer,
                            const PCMWriter& writer) {
-  HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-  if (FAILED(com_result)) return com_result;
+  HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  AudioCaptureCounts counts("default-endpoint", result);
+  if (FAILED(result)) return result;
   ComPtr<IAudioClient> client;
-  HRESULT result = ActivateEndpoint(&client);
+  result = ActivateEndpoint(&client);
   if (SUCCEEDED(result)) {
-    result = CaptureAudioFrames(client, nullptr, true, stop_event, stop_probe,
+    result = CaptureAudioFrames(client, nullptr, true, counts, stop_event, stop_probe,
                                   ready_writer, writer);
   }
   client.Reset();
@@ -289,11 +338,12 @@ HRESULT CaptureSystemAudio(HANDLE stop_event, const StopProbe& stop_probe,
 HRESULT CaptureMicrophone(const std::wstring& device_id, HANDLE stop_event, const StopProbe& stop_probe,
                            const ReadyWriter& ready_writer, const PCMWriter& writer) {
   HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  AudioCaptureCounts counts("microphone", result);
   if (FAILED(result)) return result;
   ComPtr<IAudioClient> client;
   result = ActivateEndpoint(&client, true, device_id);
   if (SUCCEEDED(result)) {
-    result = CaptureAudioFrames(client, nullptr, false, stop_event, stop_probe, ready_writer, writer);
+    result = CaptureAudioFrames(client, nullptr, false, counts, stop_event, stop_probe, ready_writer, writer);
   }
   client.Reset();
   CoUninitialize();
