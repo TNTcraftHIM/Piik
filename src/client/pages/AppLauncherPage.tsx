@@ -18,6 +18,7 @@ import { currentThemePreference, subscribeTheme } from "../ui/theme";
 import { clientLaunchURL, readPreferredAppMode, savePreferredAppMode, type AppMode, type ClientLaunchPresentation } from "../lib/app-launch";
 import { useReleaseUpdate } from "../lib/use-release-update";
 import { AppSiteBookmarks } from "./AppSiteBookmarks";
+import type { SiteManagementProps } from "../components/living/SiteManagement";
 import { downloadBlob } from "../lib/download";
 import { publicSiteOrigin } from "../lib/site-address";
 
@@ -87,7 +88,7 @@ export function AppLauncherPage() {
     ? `${build.version} (${build.revision.slice(0, 7)})` : build?.version;
   const [bookmarksOnly] = useState(() => new URLSearchParams(location.search).has("bookmarks") || new URLSearchParams(location.hash.slice(1)).has("open"));
   const [siteBusy, setSiteBusy] = useState(false);
-  const [siteError, setSiteError] = useState<string>();
+  const [siteError, setSiteError] = useState<SiteManagementProps["accessError"]>();
   const [panel, setPanel] = useState<"launch">();
   // Background reads cannot replace a newer command's result or optimistic state.
   const stateChanges = useRef({ revision: 0, pending: 0 });
@@ -264,6 +265,7 @@ export function AppLauncherPage() {
 
   async function changeSite(nextSite: string, setting: "site" | "startup-site" = "site", starAfterApproval = false, allowed = true): Promise<boolean> {
     if (siteBusy) return false;
+    const errorSite = nextSite || startupSite || null;
     const finish = beginStateChange();
     setSiteBusy(true);
     setSiteError(undefined);
@@ -280,7 +282,7 @@ export function AppLauncherPage() {
         setServerState(previous => previous && { ...previous, ...result.data, startupMode: result.data.startupMode, localSite: result.data.localSite });
       }
       if (response.status === 409 && result.success) {
-        setSiteError(t("client.connect.changed"));
+        setSiteError({ site: errorSite, message: t("client.connect.changed") });
         return false;
       }
       if (!response.ok || !result.success) throw new Error("Could not save App settings");
@@ -289,7 +291,7 @@ export function AppLauncherPage() {
     try {
       return await save(setting) && (!starAfterApproval || await save("startup-site"));
     } catch {
-      setSiteError(t("client.connect.saveFailed"));
+      setSiteError({ site: errorSite, message: t("client.connect.saveFailed") });
       return false;
     } finally { clearTimeout(timer); finish(); setSiteBusy(false); }
   }
@@ -376,7 +378,7 @@ export function AppLauncherPage() {
                 : "client.connect.approveChannelHint")}</p>
             </div>
             {!validSite && <Pill icon="alert" tone="bad" label={t("client.connect.invalid")} comic="signal-failed" />}
-            {siteError && <p role="alert">{siteError}</p>}
+            {siteError?.site === requestedSite && <p role="alert">{siteError.message}</p>}
             {validSite && <label className="lr-client-approval-startup">
               <input type="checkbox" disabled={siteBusy}
                 checked={approvalCurrent ? openSiteOnStart : openOnApproval}

@@ -1,9 +1,14 @@
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
-import { createElement, type ReactElement } from "react";
+import { createElement, useState, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("react", async original => {
+  const actual = await original<typeof import("react")>();
+  return { ...actual, useState: vi.fn(actual.useState) };
+});
 import { z } from "zod";
 import { SiteStartControls, type LocalCertificate } from "../src/client/components/living/LauncherForm";
 import { SiteManagement } from "../src/client/components/living/SiteManagement";
@@ -130,7 +135,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, { debug = false, mode, startup =
   const actions = runInNewContext(executable, {
     ...setters, z, fetch, window, URLSearchParams, AbortController, downloadBlob: downloads,
     stateChanges: { current: { revision: 0, pending: 0 } },
-    siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, openOnApproval: false,
+    siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, startupSite: saved.startupSite, openOnApproval: false,
     mode: initialMode, lang: "en", appDebug: debug, lan: saved.lan, sitePort: saved.sitePort, savePreferredAppMode,
     publicEntry: { existing: publicOrigin !== undefined, origin: publicOrigin ?? "" }, publicSiteOrigin,
     consoleLanguage: () => "en", clientLaunchURL, currentThemePreference: () => null, hasCopyPreference: () => false,
@@ -391,7 +396,7 @@ describe("App launcher state recovery", () => {
     fetch.mockResolvedValueOnce({ ...response(), ok: false, status: 503 });
     await page.approveSite("https://next.example");
     expect(page.navigate).not.toHaveBeenCalled();
-    expect(page.state.SiteError).toBe("client.connect.saveFailed");
+    expect(page.state.SiteError).toMatchObject({ message: "client.connect.saveFailed" });
     fetch.mockResolvedValueOnce(response({ ...saved, sites: [...saved.sites, "https://next.example"] }));
     await page.approveSite("https://next.example");
     expect(page.navigate).not.toHaveBeenCalled();
@@ -419,7 +424,7 @@ describe("App launcher state recovery", () => {
       ok: savedStartup, status: savedStartup ? 200 : 503 });
     await approval;
     expect(page.state).toMatchObject({ Sites: [...saved.sites, nextSite], SiteBusy: false,
-      StartupSite: savedStartup ? nextSite : "", SiteError: savedStartup ? undefined : "client.connect.saveFailed" });
+      StartupSite: savedStartup ? nextSite : "", SiteError: savedStartup ? undefined : { site: nextSite, message: "client.connect.saveFailed" } });
     page.cleanup();
   });
 
@@ -537,7 +542,7 @@ it("releases the approval page when saving a site never responds", async () => {
     expect(page.state.SiteBusy).toBe(true);
     page.expireRequest();
     await approval;
-    expect(page.state).toMatchObject({ SiteBusy: false, SiteError: "client.connect.saveFailed" });
+    expect(page.state).toMatchObject({ SiteBusy: false, SiteError: { site: "https://next.example", message: "client.connect.saveFailed" } });
     expect(page.navigate).not.toHaveBeenCalled();
     fetch.mockResolvedValueOnce(response({ ...saved, sites: [...saved.sites, "https://next.example"] }));
     await page.approveSite("https://next.example");
@@ -562,7 +567,7 @@ it("keeps committed approval when the startup preference body stalls", async () 
     expect(page.state).toMatchObject({ Sites: approved.sites, StartupSite: "", SiteBusy: true });
     page.expireRequest();
     await expect(approval).resolves.toBe(false);
-    expect(page.state).toMatchObject({ Sites: approved.sites, StartupSite: "", SiteBusy: false, SiteError: "client.connect.saveFailed" });
+    expect(page.state).toMatchObject({ Sites: approved.sites, StartupSite: "", SiteBusy: false, SiteError: { site: "https://next.example", message: "client.connect.saveFailed" } });
     page.cleanup();
   });
 
@@ -668,7 +673,7 @@ it("surfaces manager save failures and revokes only the selected origin", async 
     await settle();
     fetch.mockResolvedValueOnce({ ...response(), ok: false, status: 503 });
     await expect(page.manageSite("https://next.example", "site")).rejects.toThrow();
-    expect(page.state.SiteError).toBe("client.connect.saveFailed");
+    expect(page.state.SiteError).toMatchObject({ message: "client.connect.saveFailed" });
     fetch.mockResolvedValueOnce(response({ ...saved, sites: [] }));
     await page.manageSite(saved.sites[0]!, "site", false);
     expect(fetch).toHaveBeenLastCalledWith("/api/client-launcher/site", expect.objectContaining({
@@ -676,4 +681,32 @@ it("surfaces manager save failures and revokes only the selected origin", async 
     }));
     expect(page.navigate).not.toHaveBeenCalled();
   } finally { page.cleanup(); }
+});
+
+
+it("keeps an asynchronous site A failure with A while other details and the list stay clean", async () => {
+  const siteA = "https://a.example", siteB = "https://b.example";
+  const fetcher = vi.fn(async () => response());
+  const page = mount(fetcher);
+  let rejectOperation!: (error: Error) => void;
+  try {
+    await settle();
+    fetcher.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectOperation = reject; }));
+    const operation = page.changeSite(siteA);
+    const renderSelected = (site?: string) => {
+      vi.mocked(useState).mockReturnValueOnce([site ? { origin: site, draft: { name: site, origin: site } } : undefined, vi.fn()]);
+      return renderToStaticMarkup(createElement(SiteManagement, {
+        bookmarks: [], sites: [siteA, siteB], startupSite: "", ownedSites: [], busy: false,
+        accessError: page.state.SiteError as { site: string | null; message: string } | undefined,
+        async onSave() {}, async onRemove() {}, async onApprove() {}, async onRevoke() {}, async onStartup() {}, onOpen() {},
+      }));
+    };
+    expect(renderSelected(siteB)).not.toContain("client.connect.saveFailed");
+    rejectOperation(new Error("App unavailable"));
+    expect(await operation).toBe(false);
+    expect(page.state.SiteError).toEqual({ site: siteA, message: "client.connect.saveFailed" });
+    expect(renderSelected(siteB)).not.toContain("client.connect.saveFailed");
+    expect(renderSelected()).not.toContain("client.connect.saveFailed");
+    expect(renderSelected(siteA)).toContain("client.connect.saveFailed");
+  } finally { page.cleanup(); vi.mocked(useState).mockClear(); }
 });

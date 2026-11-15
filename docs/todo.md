@@ -14,7 +14,8 @@ the feedback period; they do not delay that delivery.
 
 - [ ] **Native page chrome.** Make launcher and saved-site pages use the shared
   Native window edge and header layout, while Browser pages retain their outer
-  frame. Keep content panels independent of that presentation choice.
+  frame. Keep content panels independent of that presentation choice. Align the
+  separate trusted caption's modal shading with the shared page backdrop.
 - [ ] **App connection during webpage selection.** Capture the first control
   connection failure during the reported intermittent App disconnection. Use the
   opt-in control-close diagnostic to distinguish transport closure, handshake,
@@ -116,6 +117,12 @@ the feedback period; they do not delay that delivery.
 
 ## Next
 
+- [ ] **Public 3.0 interface baseline.** Design same-major evolution around
+  stable existing actions and concrete optional capabilities, keeping permission
+  independent of advertised support. Apply the
+  [versioning contract](./standards/versioning.md#public-compatibility-promise)
+  to future API/plugin boundaries; introduce storage conversion only for a real
+  representation change, without retaining obsolete private-beta interfaces.
 - [ ] **App update distribution.** Configure the production signing identity and
   decide the beta-feed policy before distributing updater-capable packages;
   retain manual download. The
@@ -168,7 +175,9 @@ the feedback period; they do not delay that delivery.
   Validate actual supported websites, source-issued media grants, live playlist
   lifecycle and target Browser behavior. Complete Bilibili ordinary/member
   Browser viewing for segmented media: identify the audio-source request failure
-  and transient empty-source report, and verify broader source availability.
+  and empty-source reports, including a video opened from the homepage in a new
+  window. Trace observed responses through frame association before extending
+  source discovery, and verify broader source availability.
   Extend the official embedded-player coverage and verify the supplied
   girigirilove page when its original player is accessible. Keep each
   viewer's account access in its original player. Retain the
