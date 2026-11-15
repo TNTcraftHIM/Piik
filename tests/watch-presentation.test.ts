@@ -79,6 +79,14 @@ describe("Webpage watch presentation", () => {
     const disconnected = render({ ...source, onAppWatch: undefined });
     expect(disconnected).toContain("Connect Piik App");
     expect(disconnected).not.toContain('aria-label="Watch in App"');
+    const receiving = { peerAvailable: true, peerSupported: true, mode: "direct" as const, browserSource: false, onPeer: vi.fn(), onDirect: vi.fn() };
+    const forwarded = render({ ...source, onAppWatch: undefined, receiving });
+    expect(forwarded).toContain('aria-label="Receive from sharer"');
+    expect(forwarded).not.toContain("Connect Piik App");
+    expect(forwarded).not.toContain('aria-label="Watch in App"');
+    const directAndForwarded = render({ ...source, browserSource: true, receiving: { ...receiving, browserSource: true } });
+    expect(directAndForwarded).toContain('aria-label="Watch"');
+    expect(directAndForwarded).toContain('aria-label="Receive from sharer"');
   });
 });
 

@@ -336,16 +336,20 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
       <div className="c3-monitor-offers">
         {available.map(source => <div key={source.id} className="c3-monitor-offer" data-source-id={source.id}
           role="group" aria-label={`${stageTitle(source, t)} / ${source.name} / ${source.roomName}`}>
-          <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
-          <div><strong>{stageTitle(source, t)}</strong><small>{source.name}<span aria-hidden="true"> / </span>{source.onRoom ? <button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button> : source.roomName}{source.paused ? ` / ${t("host.paused")}` : ""}</small></div>
+          <div className="c3-monitor-offer-identity">
+            <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
+            <div><strong>{stageTitle(source, t)}</strong><small>{source.name}<span aria-hidden="true"> / </span>{source.onRoom ? <button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button> : source.roomName}{source.paused ? ` / ${t("host.paused")}` : ""}</small></div>
+          </div>
           {source.kind === "watch" ? <SourceAudience people={source.audience} joined /> : <SourceAudience people={source.audience} />}
-          {source.kind === "watch" && !source.browserSource ? source.onAppWatch
-            ? <ChannelAction icon="window" label={t("watch.inApp")} disabled={!canSubscribe || source.available === false} busy={source.pending} onClick={source.onAppWatch} />
-            : <small>{t("watch.connectApp")}</small> : <ChannelAction icon="eye" label={t("screen.watch")}
-            hint="hint-watch"
-            disabled={!canSubscribe || source.available === false} busy={source.pending}
-            onClick={() => source.kind === "watch" ? source.onJoin() : onWatch(source.id)} />}
-          {source.kind === "watch" && source.receiving && <WatchPeerAction receiving={source.receiving} />}
+          <div className="c3-monitor-offer-actions">
+            {source.kind === "watch" && !source.browserSource ? source.receiving?.peerAvailable && source.receiving.peerSupported ? null : source.onAppWatch
+              ? <ChannelAction icon="window" label={t("watch.inApp")} disabled={!canSubscribe || source.available === false} busy={source.pending} onClick={source.onAppWatch} />
+              : <small>{t("watch.connectApp")}</small> : <ChannelAction icon="eye" label={t("screen.watch")}
+              hint="hint-watch"
+              disabled={!canSubscribe || source.available === false} busy={source.pending}
+              onClick={() => source.kind === "watch" ? source.onJoin() : onWatch(source.id)} />}
+            {source.kind === "watch" && source.receiving && <WatchPeerAction receiving={source.receiving} />}
+          </div>
         </div>)}
       </div>
     </section>}
