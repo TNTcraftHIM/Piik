@@ -18,10 +18,12 @@ import { messageAuthorName, userProfile } from "../presentation";
 
 export function RoomChatExport({ messages, users }: { messages: readonly ChannelMessage[]; users: readonly Pick<ChannelUser, "id" | "name">[] }) {
   const { t } = useCopy();
+  const hasText = messages.some(message => message.text);
   return <section className="c3-room-transcript" aria-label={t("room.chat.title")}>
     <p>{t("room.chat.exportNote")}</p>
-    <ChannelAction icon="save" quiet hint="hint-chat-export" label={t("room.chat.export")}
-      disabled={!messages.some(message => message.text)} onClick={() => {
+    {messages.length === 0 && <p role="status">{t("channel.roomStart.noMessagesYet")}</p>}
+    <ChannelAction icon="save" quiet label={t("room.chat.export")}
+      disabled={!hasText} onClick={() => {
         const text = formatChatTranscript(messages.filter(message => message.text).map(message => ({
           occurredAt: message.time,
           sender: { displayName: messageAuthorName(message, users, t("room.common.user")) },
@@ -241,9 +243,9 @@ function RoomSettings({ channel, room, onClose }: {
     return () => { current = false; };
   }, [room.id, room.members, room.canManage, channel.loadProfiles, channel.connection]);
   const tasks = [
-    ...(room.canManage ? [{ value: "room", label: t("room.settings.roomTab"), icon: "couch", hint: "hint-advanced" } as const] : []),
-    ...(room.authorized ? [{ value: "relay", label: t("room.settings.connectionTab"), icon: "branch", hint: "hint-relay-volunteer" } as const] : []),
-    ...(room.authorized || room.canManage ? [{ value: "data", label: t("room.settings.recordsTab"), icon: "save", hint: "hint-chat-export" } as const] : []),
+    ...(room.canManage ? [{ value: "room", label: t("room.settings.roomTab"), icon: "couch" } as const] : []),
+    ...(room.authorized ? [{ value: "relay", label: t("room.settings.connectionTab"), icon: "branch" } as const] : []),
+    ...(room.authorized || room.canManage ? [{ value: "data", label: t("room.settings.recordsTab"), icon: "save" } as const] : []),
   ];
   const selected = tasks.some(value => value.value === task) ? task : tasks[0]?.value;
   return <ChannelSettingsDialog title={room.name} caption={t("room.settings.title")} error={error} onClose={onClose}>

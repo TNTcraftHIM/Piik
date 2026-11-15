@@ -52,18 +52,19 @@ export function ChannelSettingsDialog({ title, caption, compact = false, error =
 }
 
 export function ChannelSettingsTabs<T extends string>({ id, label, tasks, selected, onSelect }: {
-  id: string; label: string; tasks: readonly { value: T; label: string; icon: GlyphName; hint: HintKind }[];
+  id: string; label: string; tasks: readonly { value: T; label: string; icon: GlyphName; hint?: HintKind }[];
   selected: T; onSelect(value: T): void;
 }) {
   return <div className="c3-settings-navigation"><nav className="lr-toggle c3-settings-nav" role="tablist"
     style={{ "--lr-segments": tasks.length } as CSSProperties} aria-label={label} onKeyDown={navigateTabs}>
-    {tasks.map(task => <Tooltip key={task.value} kind={task.hint} text={task.label}>
-      <button type="button" role="tab" className={selected === task.value ? "is-selected" : undefined}
+    {tasks.map(task => {
+      const button = <button key={task.value} type="button" role="tab" className={selected === task.value ? "is-selected" : undefined}
         id={`${id}-${task.value}-tab`} aria-label={task.label} aria-selected={selected === task.value}
         aria-controls={`${id}-${task.value}`} tabIndex={selected === task.value ? 0 : -1} onClick={() => onSelect(task.value)}>
         <Glyph name={task.icon} size={18} /><Cap k={{ text: task.label }} />
-      </button>
-    </Tooltip>)}
+      </button>;
+      return task.hint ? <Tooltip key={task.value} kind={task.hint} text={task.label}>{button}</Tooltip> : button;
+    })}
   </nav></div>;
 }
 
