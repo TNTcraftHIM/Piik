@@ -548,8 +548,17 @@ and random across ports 1024–65535. Neither attempt connected at five or ten s
 The Browser sent checks to all eight STUN-observed server-reflexive endpoints,
 but Native's mappings toward the Browser differed from those observed by STUN.
 No peer check succeeded. This establishes a mapping/filtering boundary, not a
-pool benefit or a success rate. Physical-network measurements and a Native-to-Browser
-mapping strategy verified through standard ICE remain in [TODO](../todo.md#next).
+pool benefit or a success rate.
+
+A subsequent linear-mapping control kept eight real Native sockets in both arms.
+Ordinary ICE did not connect; adding 16 targets derived from three consecutive
+STUN mapping observations across those sockets delivered SCTP data after 1.49
+seconds through standard ICE/DTLS on the original selected socket. The targets
+were experimental hypotheses, not observed peer mappings. The same Native Engine
+released seven unselected sockets at five seconds; Browser ICE continued naturally
+until the ten-second observation ended. This proves scoped connection benefit,
+not media delivery, reverse RTCP, random-mapping coverage or a success rate.
+Product integration and physical-network validation remain in [TODO](../todo.md#next).
 
 ### External Forwarding And Participant Relays
 
