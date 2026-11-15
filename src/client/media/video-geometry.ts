@@ -62,6 +62,10 @@ export function pictureRect(video: HTMLVideoElement): { left: number; top: numbe
 }
 
 export function picturePoint(video: HTMLVideoElement, clientX: number, clientY: number): PicturePoint | null {
+  // Cover can project source pixels beyond the video box, which clips them even after zoom/pan.
+  const bounds = video.getBoundingClientRect();
+  if (clientX < bounds.left || clientX > bounds.left + bounds.width
+    || clientY < bounds.top || clientY > bounds.top + bounds.height) return null;
   const rect = pictureRect(video);
   if (!rect) return null;
   const x = (clientX - rect.left) / rect.width, y = (clientY - rect.top) / rect.height;
