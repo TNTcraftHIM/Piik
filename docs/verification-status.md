@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-14
+Last updated: 2026-11-15
 
 This page summarizes the current 3.0 evidence and limits that affect product
 claims. [Status](./status.md#isolated-30-prototype) owns delivery readiness;
@@ -77,8 +77,8 @@ Actual website controls have narrower evidence than the local fixtures:
 
 | Source | Observed behavior | Remaining scope |
 | --- | --- | --- |
-| Bilibili ordinary video | A Browser without site login receives AV1 video and AAC audio, follows pause and an unbuffered backward seek, and retires on stop. Same-named upstream resources were found to contain different bytes; the passing source was verified by its received digest. | One separately selected audio source failed during the Native request. Source availability and broader catalogue coverage remain open. |
-| Bilibili authorized member video | Live discovery exposes clear AV1 video and AAC audio. A Browser without site login receives 1080p video and audio, follows pause and an unbuffered forward seek beyond the preview interval. Protected tracks remain excluded. | Backward seeking, cross-network delivery and broader catalogue coverage remain unverified. |
+| Bilibili ordinary video | A matched Windows package decodes 1080p AV1/AAC in the sharer's main player and an unlinked Browser without site login. Pause, an unbuffered backward seek and forwarding off/on pass; local playback survives forwarding changes. Closing the provider retires both players while site connections remain. | One ordinary sample; cached Viewer playback may continue after forwarding is disabled. Live sources, cross-network delivery and broader catalogue coverage remain open. |
+| Bilibili authorized member video | The same matched package passes advancing 1080p AV1/AAC playback beyond the preview interval in the sharer's main player and an unlinked Browser without site login. Pause and an unbuffered forward seek have separate evidence from an earlier candidate. Protected tracks remain excluded. | Playback-control acceptance on the current package, backward seeking, cross-network delivery and broader catalogue coverage remain open. |
 | YouTube public sample | The official embedded player passes a real Browser-hosted room with an independent Browser viewer: playback, pause, seek, source transfer without reload, and retirement. Separate controls cover hidden-view resumption, failed replacement and submission during navigation. | Advertisements, account/region restrictions, live sources and physical mobile-device behavior remain unverified. |
 | Supplied girigirilove page | The original site redirects to a region-unavailable page in the test environment. | No player was accessible; Piik compatibility cannot be concluded. |
 
@@ -181,6 +181,13 @@ owns adaptation behavior and recovery measurements.
 
 ### Windows And Android
 
+The packaged endpoint-setting flow retains independent webpage and Native App
+overrides after reopening settings. With room default 1, webpage override 0 and
+Native host override 3, three synthetic voice participants established three ready
+direct base branches from that Native host. Leaving voice released their tracks
+and connections. This proves the positive App override for new base demand;
+screen-source fanout and media quality were not exercised.
+
 Windows has normal App window-capture, Browser viewing and attended input
 execution evidence. OS permission, protected/admin application and game
 compatibility remain bounded by the
@@ -197,6 +204,15 @@ left no App/WebView processes or TCP/UDP resources. A controlled unavailable-run
 check used the documented per-process WebView2 runtime override. The delivered
 App opened the default Browser, retained Native room/history access and message
 submission, then closed normally through the terminal without remaining listeners.
+
+Matching Windows permission checks with fake devices verify saved Allow across
+default and explicit microphone selection and same-process reload. Camera and a
+different origin receive separate prompts; Deny and closing the prompt do not
+persist a refusal. Resetting one site's microphone/camera choices through its
+details makes both ask again while another site's microphone grant remains.
+The reset preserves the current document, bookmark and App-access state. Physical
+devices, reset persistence across process restart and active-capture interruption
+remain outside this evidence.
 
 Saved-site and Browser-to-client navigation checks exercised the actual Windows
 caption, local confirmation page and SQLite persistence. Viewing the list and

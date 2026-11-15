@@ -12,11 +12,6 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **Native forwarding controls in the next package.** Accept the separate
-  webpage/App controls on a matching build: with room default 1, the App's
-  positive override must affect new source branches while the webpage keeps its
-  own value. The implementation and existing preview follow the
-  [endpoint policy](./research/channel-network-design.md#start-on-existing-paths-then-converge).
 - [ ] **App connection during webpage selection.** Capture the first control
   connection failure during the reported intermittent App disconnection. Use the
   opt-in control-close diagnostic to distinguish transport closure, handshake,
@@ -129,9 +124,6 @@ the feedback period; they do not delay that delivery.
   retain manual download. The
   [delivery proposal](./research/cross-platform-client-runtime.md#30-app-update-delivery)
   keeps authority, active sessions and data outside the download operation.
-- [ ] **Native website permission reset.** Complete matching-package acceptance
-  of the site-details action: the selected website asks for microphone/camera
-  access again, while other websites retain their saved choices.
 - [ ] **Managed one-click deployment.** Validate an ordinary Piik room and data
   recovery on a persistent hosting target. The
   [deployment assessment](./deployment.md#managed-one-click-hosting) distinguishes
@@ -175,21 +167,21 @@ the feedback period; they do not delay that delivery.
 - [ ] **Shared-link website coverage.** Extend the implemented webpage player
   and original-media forwarding toward VideoTogether's playback coverage.
   Validate actual supported websites, source-issued media grants, live playlist
-  lifecycle and target Browser behavior. Complete matched-package Bilibili
-  viewing with the sharer's main player: pause, seek, stop/resume forwarding and
-  provider retirement. Existing ordinary/member segmented-media evidence stays
-  with its tested packages. Trace observed responses through frame association
-  before extending source discovery.
-  Extend the official embedded-player coverage and verify the supplied
-  girigirilove page when its original player is accessible. Keep each
-  viewer's account access in its original player. Retain the
+  lifecycle, target Browser behavior and cross-network delivery. The
+  [verification record](./verification-status.md#current-evidence) separates the
+  matched ordinary Bilibili main-player lifecycle from member startup coverage;
+  member playback controls still need matching-package acceptance. Trace observed
+  responses through frame association before extending source discovery.
+  Extend the official embedded-player coverage. Keep each viewer's account
+  access in its original player. Retain the
   [shared playback owner](./research/channel-network-design.md#synchronized-video-sources):
   the sharer controls common playback; viewers own sound, participation and
-  access through their own platform accounts. Complete matching-package and
-  cross-network acceptance separately from the local direct-media controls.
-  Review the host's forced separate-window experience: prefer direct/official
-  playback in the room when available, give original-page mode a trusted source
-  identity, and retain necessary popup/login behavior without building a browser.
+  access through their own platform accounts. The supplied girigirilove player
+  remains blocked by the original site's regional access restriction; retry its
+  compatibility check when the original player is accessible. Broader platform
+  acceptance remains separate from the local direct-media controls. Retain
+  trusted source identity and necessary original-page popup/login behavior
+  without building a browser.
   Explain the complete trusted-site scope and local website-login behavior before
   use; media capability still does not grant room access or arbitrary native control.
 - [ ] **3.0 Native platform acceptance.** Build, install and validate the matching

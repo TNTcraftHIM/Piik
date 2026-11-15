@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-11-14
+Last updated: 2026-11-15
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -105,8 +105,10 @@ Windows App can select another webpage player in an independent window; Browser
 viewers try its independently usable media URL, or explicitly use their own App
 window. Playback control uses room commands without peer media. Explicit original
 media forwarding now uses the existing room peer paths and a Browser media
-adapter for files and HLS VOD. Broader website compatibility and matching-package
-acceptance remain in TODO.
+adapter for files and HLS VOD. Matched Windows checks cover ordinary Bilibili
+main-player controls, member startup, Native relay overrides and website permission
+reset. [Verification status](./verification-status.md) owns their limits; broader
+website, live-source, cross-network and platform acceptance remain in TODO.
 
 ## Deployment
 
