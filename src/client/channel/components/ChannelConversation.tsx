@@ -91,7 +91,8 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
   }, [messages, conversationScope, hidden, loadingHistory, history?.atLatest]);
   let authorMessageId = "";
   const draft = drafts[conversationScope] ?? emptyDraft;
-  const text = draft.text.trim();
+  const text = draft.text;
+  const hasText = text.trim().length > 0;
   const query = selection && !composing.current && mentionLimit !== null && draft.mentions.length < mentionLimit
     && !draft.mentions.some(mention => selection.start > mention.start && selection.start <= mention.end)
     ? mentionQuery(draft.text, selection.start, selection.end) : null;
@@ -248,15 +249,13 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
   }
   async function send(event: FormEvent) {
     event.preventDefault();
-    if ((!text && !files.length) || textTooLong || !canSend || working || composing.current) return;
+    if ((!hasText && !files.length) || textTooLong || !canSend || working || composing.current) return;
     input.current?.focus({ preventScroll: true });
     reading.current.following = true;
     const request = identityLifetime.current!;
     setFileError("");
     try {
-      const leading = draft.text.length - draft.text.trimStart().length;
-      const mentions = draft.mentions.filter(mention => mention.start >= leading && mention.end <= leading + text.length)
-        .map(mention => ({ ...mention, start: mention.start - leading, end: mention.end - leading }));
+      const mentions = draft.mentions;
       const reply = draft.reply && { seq: draft.reply.seq, notify: draft.reply.notify };
       await onSend(roomId, text, files, request.signal, { mentions, ...(reply ? { reply } : {}) });
       setDrafts(previous => previous[conversationScope] === draft ? { ...previous, [conversationScope]: emptyDraft } : previous);
@@ -396,7 +395,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
           }
         }} />
       <ChannelAction icon="send" label={t("conversation.send")} type="submit" primary iconOnly
-        disabled={!canSend || textTooLong || (!text && !files.length)} busy={working} hint="hint-chat-send" />
+        disabled={!canSend || textTooLong || (!hasText && !files.length)} busy={working} hint="hint-chat-send" />
       </div>
     </form>}
   </section>;

@@ -25,7 +25,7 @@ export function ChannelRoomParticipants({ channel, room }: { channel: ChannelCon
   return <div className="c3-room-participants">{roomRealtimePeople(state, room.id, channel.profiles).map(user => {
     const playback = channel.voicePlaybackByUser.get(user.id) ?? { volume: 1, muted: false };
     return <ChannelUser key={user.id} id={user.id} name={user.name} avatar={user.avatar ?? undefined} self={user.id === channel.self?.id}
-      owner={false} online voice={user.voice} actions={<>
+      owner={false} online={state.sessions.some(session => session.userId === user.id && session.online)} voice={user.voice} actions={<>
         <ChannelActivityIndicators sharing={user.sharing} watching={user.watching} />
         {audible.has(user.id) && user.id !== channel.self?.id &&
         <AudioVolumeMenu volume={playback.volume} onVolume={volume => channel.setVoiceVolume(user.id, volume)}

@@ -65,3 +65,14 @@ test("Markdown entity decoding cannot forge mention markers in text or destinati
   expect(html).toContain("<code>&amp;#xE000;0&amp;#57344;</code>");
   expect(html).toContain("<code>&amp;#xE000;0&amp;#57344;\n</code>");
 });
+
+test("leading blank lines and indented code preserve literal mentions and invitation URLs", () => {
+  const code = 'const name = "@Bo";  \nhttps://example.test/#room=abc&invite=fixture\n';
+  const text = '\n' + code.split('\n').slice(0, -1).map(line => '    ' + line).join('\n') + '\n\n';
+  const start = text.indexOf('@Bo');
+  const html = render(text, [{ userId: 'bo', start, end: start + 3 }]);
+  expect(html).toContain('Copy code');
+  expect(html).toContain('<code>const name = &quot;@Bo&quot;;  \nhttps://example.test/#room=abc&amp;invite=fixture\n</code>');
+  expect(html).not.toContain('<mark');
+  expect(html).not.toContain('<a ');
+});

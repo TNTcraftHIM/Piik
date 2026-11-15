@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ChannelRoomParticipants } from "../src/client/channel/components/ChannelRoomParticipants";
+import { ChannelPeople } from "../src/client/channel/components/ChannelPeople";
+import type { ChannelController } from "../src/client/channel/types";
 import { firstUnreadMessageId, roomPeople, roomRealtimePeople, screenTitle, watchAudience } from "../src/client/channel/presentation";
 import { snapshotSchema, watchActivitySchema } from "../src/client/channel/protocol";
 import { t, type CopyKey } from "../src/client/ui/copy";
@@ -81,4 +86,17 @@ it("merges a user's real-time endpoints without treating chat-only presence as p
     { id: "self", voice: { microphone: false, deafened: true }, sharing: true, watching: true },
     { id: "route", voice: undefined, sharing: false, watching: false },
   ]);
+  const channel = { state, profiles: new Map(), streams: new Map(), voicePlaybackByUser: new Map(), sessionId: "self-page", self: null } as unknown as ChannelController;
+  const render = () => renderToStaticMarkup(createElement(ChannelRoomParticipants, { channel, room: state.channel.rooms[0] }));
+  const renderPeople = () => renderToStaticMarkup(createElement(ChannelPeople, { channel, roomId: "room", active: true, onBack() {} }));
+  state.sessions.find(session => session.id === "self-helper")!.online = false;
+  state.sessions.find(session => session.id === "route-peer")!.online = false;
+  expect(render()).toContain('class="c3-user" data-user-id="self"');
+  expect(renderPeople()).toContain('class="c3-user" data-user-id="self"');
+  expect(render()).toContain('class="c3-user is-offline" data-user-id="route"');
+  expect(renderPeople()).toContain('class="c3-user is-offline" data-user-id="route"');
+  state.sessions.find(session => session.id === "self-page")!.online = false;
+  expect(render()).toContain('class="c3-user is-offline" data-user-id="self"');
+  expect(renderPeople()).toContain('class="c3-user is-offline" data-user-id="self"');
+  expect(roomRealtimePeople(state, "room").map(user => user.id)).toEqual(["self", "route"]);
 });

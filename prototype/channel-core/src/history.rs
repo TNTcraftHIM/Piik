@@ -146,7 +146,7 @@ impl MessageDraft {
         reply: Option<ReplyTarget>,
         time: u64,
     ) -> Result<Self, &'static str> {
-        validate_mentions(text.trim(), &mentions)?;
+        validate_mentions(&text, &mentions)?;
         if reply
             .as_ref()
             .is_some_and(|reply| reply.seq == 0 || reply.seq > i64::MAX as u64)
@@ -206,7 +206,7 @@ impl MessageDraft {
             reply,
             user_id,
             nonce,
-            text: text.trim().to_owned(),
+            text,
             attachments,
             inline_images,
             time,
@@ -616,6 +616,45 @@ mod inline_tests {
 #[cfg(test)]
 mod reference_tests {
     use super::*;
+    #[test]
+    fn message_whitespace_and_mentions_share_the_original_text() {
+        let user = Uuid::new_v4();
+        let text =
+            "\n    const name = \"@Zo\";  \n    https://example.test/#room=abc&invite=fixture\n\n";
+        let make = |text: &str, mentions| {
+            MessageDraft::new(
+                user,
+                "spaces".into(),
+                text.into(),
+                vec![],
+                BTreeMap::new(),
+                mentions,
+                None,
+                1,
+            )
+        };
+        let start = text[..text.find("@Zo").unwrap()].encode_utf16().count();
+        let mention = Mention {
+            user_id: user,
+            start,
+            end: start + 3,
+        };
+        let draft = make(text, vec![mention.clone()]).unwrap();
+        assert_eq!(draft.text, text);
+        assert_eq!(draft.mentions[0].start, start);
+        assert_eq!(draft.mentions[0].end, start + 3);
+        assert!(make(" \n\t ", vec![]).is_err());
+        assert!(make(
+            text,
+            vec![Mention {
+                start: start - 1,
+                end: start + 2,
+                ..mention
+            }]
+        )
+        .is_err());
+    }
+
     #[test]
     fn mentions_follow_final_utf16_text_and_replies_use_committed_rows() {
         let user = Uuid::new_v4();
