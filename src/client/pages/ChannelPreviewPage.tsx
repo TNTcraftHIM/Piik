@@ -163,6 +163,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     ? companionOpen[companionKind]
     : mobilePane === "people" || mobilePane === "chat");
   const inlineChatOpen = companionVisible && companionPane === "chat";
+  const conversationHidden = room?.authorized === false || (!toolSurface.open && (layout === "quick"
+    || (visibleScreens.length > 0 ? !inlineChatOpen : !sidebarsInline && mobilePane !== "room")));
   const mainConversationHome = useCallback((node: HTMLDivElement | null) => { if (!visibleScreens.length) conversationSlot.current = node; }, [!!visibleScreens.length]);
   const sideConversationHome = useCallback((node: HTMLDivElement | null) => { if (visibleScreens.length) conversationSlot.current = node; }, [!!visibleScreens.length]);
   const availableScreens = screens.filter(value => value.roomId === roomId && !activeScreens.includes(value));
@@ -426,7 +428,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
             onMessage={channel.loadMessage} onRead={channel.markRead} unreadAfter={channel.readByRoom[roomId]} selfUserId={self?.id}
             onBack={!toolSurface.open && !sidebarsInline && visibleScreens.length > 0 ? () => setMobilePane("room") : undefined}
             interaction={channel.interactionsByRoom.get(roomId) ?? null}
-            onSend={channel.sendMessage} floating={toolSurface.open} hidden={room?.authorized === false || (!toolSurface.open && visibleScreens.length > 0 && !inlineChatOpen)} /></>}
+            onSend={channel.sendMessage} floating={toolSurface.open} hidden={conversationHidden} /></>}
           voice={<><section className="c3-voice-entry" aria-label={t("channel.previewPage.voiceInThisRoom")}>
             {(layout !== "quick" || toolSurface.open) && joinVoice && <><div><small>{t("channel.previewPage.currentRoom")}</small><strong>{room?.name}</strong></div>{joinVoice}</>}
           </section><ChannelVoiceDock channel={channel} selected={voiceFocus} onSelect={setVoiceFocus} onBrowse={selectRoom} /></>} />
