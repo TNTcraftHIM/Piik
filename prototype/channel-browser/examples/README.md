@@ -5,6 +5,24 @@ reads a configured room's confirmed history, sends text and replies to new live
 `!ping` messages. It demonstrates the existing signed conversation API in a
 separate process. It uses the same participant authority as the room UI.
 
+This development example uses the generated WASM and site from the same source
+revision. The [versioning contract](../../../docs/standards/versioning.md#public-compatibility-promise)
+defines the future public API promise.
+
+The example supports these operations:
+
+| Consumer action | Existing owner and result |
+| --- | --- |
+| Join or reconnect with this process's own identity | Site admission issues/restores its credential; a new process uses a fresh session/signing key. |
+| Enter a private room and subscribe | Existing invitation/password admission followed by `browse`; room rules decide access. |
+| Read recent confirmed text | Signed `history` with no `before` cursor reads the latest bounded page, currently up to 50 messages / 256 KiB. It is not a complete room export. |
+| Send a notification or conversational response | Signed `chat` with a fresh nonce and no attachments; success waits for the room Host's stored confirmation. |
+| Receive new messages and leave | Verified `live_message` events feed the CLI behavior; `leave` and socket retirement close the participant. |
+
+The interactive `!ping` command sends plain-text `pong`; it does not create a
+quoted reply. Typing `@name` is ordinary text here; structured replies, mentions
+and reactions require Core's corresponding commands.
+
 Use only a site and room you own or have explicit permission to test. The room
 parameter selects what this process does; the room's access rules determine
 what its user can read or send. Never substitute another person's credential.
@@ -47,7 +65,8 @@ On a later process run, the saved credential restores the same user and room
 grants; the new process creates a fresh session and signing key. No password,
 invitation key, session ID or signing key is saved in that file.
 
-`TextParticipant` can also be imported. It exposes `connect`, `chat`, `history`,
+For local customization, `TextParticipant` can also be imported from the example
+source. Its current methods are `connect`, `chat`, `history`,
 `reconnect`, `stop`, and verified `live`/`confirmed` events; the example's `!ping`
 behavior lives only in `main`. A fresh Host binding requires reissuing the existing
 Browse reading intent. Host-offline sends fail rather than fabricate confirmation.

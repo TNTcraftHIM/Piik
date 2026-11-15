@@ -169,9 +169,8 @@ the feedback period; they do not delay that delivery.
   Validate actual supported websites, source-issued media grants, live playlist
   lifecycle, target Browser behavior and cross-network delivery. The
   [verification record](./verification-status.md#current-evidence) separates the
-  matched ordinary Bilibili main-player lifecycle from member startup coverage;
-  member playback controls still need matching-package acceptance. Trace observed
-  responses through frame association before extending source discovery.
+  matched Bilibili main-player controls from broader website coverage. Trace
+  observed responses through frame association before extending source discovery.
   Extend the official embedded-player coverage. Keep each viewer's account
   access in its original player. Retain the
   [shared playback owner](./research/channel-network-design.md#synchronized-video-sources):
