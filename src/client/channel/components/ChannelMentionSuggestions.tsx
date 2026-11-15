@@ -9,12 +9,16 @@ import { useAnchoredPopover } from "../../components/living/use-anchored-popover
 import { Btn } from "../../components/living/primitives";
 import "./channel-mention-suggestions.css";
 
-export function editMentions<T extends { start: number; end: number }>(before: string, after: string, mentions: readonly T[]): T[] {
-  let start = 0, suffix = 0;
-  while (start < before.length && start < after.length && before[start] === after[start]) start++;
-  while (suffix < before.length - start && suffix < after.length - start
-    && before[before.length - suffix - 1] === after[after.length - suffix - 1]) suffix++;
-  const end = before.length - suffix, delta = after.length - before.length;
+export function editMentions<T extends { start: number; end: number }>(before: string, after: string, mentions: readonly T[], replacement?: { start: number; end: number }): T[] {
+  let start = replacement?.start ?? 0, end = replacement?.end ?? before.length;
+  if (!replacement) {
+    let suffix = 0;
+    while (start < before.length && start < after.length && before[start] === after[start]) start++;
+    while (suffix < before.length - start && suffix < after.length - start
+      && before[before.length - suffix - 1] === after[after.length - suffix - 1]) suffix++;
+    end -= suffix;
+  }
+  const delta = after.length - before.length;
   return mentions.flatMap(mention => start === end && mention.end === start && /^[\p{L}\p{N}_]/u.test(after.slice(start)) ? []
     : mention.end <= start ? [mention]
     : mention.start >= end ? [{ ...mention, start: mention.start + delta, end: mention.end + delta }] : []);

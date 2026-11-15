@@ -32,4 +32,11 @@ describe("textarea mention references", () => {
       { userId: "ada", start: 0, end: 4 }, { userId: "bo", start: 10, end: 13 },
     ]);
   });
+  it("retires an explicitly replaced mention even when the new user has the same display name", () => {
+    const before = "@Bo and @Ada", after = "@Bo  and @Ada";
+    const references = [{ userId: "old-bo", start: 0, end: 3 }, { userId: "ada", start: 8, end: 12 }];
+    expect(editMentions(before, after, references, { start: 0, end: 3 })).toEqual([{ userId: "ada", start: 9, end: 13 }]);
+    // Including the existing trailing space makes the text identical; the identity still changes.
+    expect(editMentions(before, before, references, { start: 0, end: 4 })).toEqual([references[1]]);
+  });
 });

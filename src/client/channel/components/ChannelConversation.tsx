@@ -142,7 +142,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
     const inserted = `${prefix}@${user.name} `;
     const next = draft.text.slice(0, range.start) + inserted + draft.text.slice(range.end);
     updateDraft(previous => ({ ...previous, text: next,
-      mentions: [...editMentions(previous.text, next, previous.mentions), { userId: user.id, start: range.start + prefix.length, end: range.start + inserted.length - 1 }].sort((a, b) => a.start - b.start) }));
+      mentions: [...editMentions(previous.text, next, previous.mentions, range), { userId: user.id, start: range.start + prefix.length, end: range.start + inserted.length - 1 }].sort((a, b) => a.start - b.start) }));
     const caret = range.start + inserted.length;
     setSelection(null);
     input.current?.focus();
