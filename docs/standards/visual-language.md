@@ -433,9 +433,34 @@ name in the menu, following [W3C language-navigation guidance](https://www.w3.or
 
 ### Guidance
 
+The 3.0 interface uses visible localized labels where people need them to choose
+an action. Accessible names identify every control independently of guidance.
+Choose supplementary help by the task and what the surrounding interface already
+explains; neither an icon nor a shared control requires a tooltip by default.
+
+| Context | Guidance choice |
+| --- | --- |
+| Clear visible action label | Keep the label; omit a tooltip that repeats it. An additional consequence may need a short explanation. |
+| Ambiguous icon-only action | Prefer a visible label for important or unfamiliar actions. Use a brief text tooltip when compact placement needs identification; familiar symbols with clear surrounding context can stand alone. |
+| Disabled action | Explain an unexpected prerequisite or how to enable the action. Keep a blocking requirement visible beside the task; use a tooltip only for supplementary detail, without repeating a reason already shown. |
+| Clipped name or value | Reveal the complete literal value only when it is actually truncated. Use the shared overflow tooltip, without a comic. |
+| Complex operation or consequential choice | Put instructions, permission scope and essential consequences in the relevant form, settings or help surface. A tooltip may identify its entrance; it does not carry the procedure. |
+| Cause, interaction or activity boundary worth explaining | Use a concise explanatory comic when its scene clarifies how sharing, invitation, voice, viewing or permissions work. Place it in contextual help, an empty/result state or a contextual tooltip according to the task. |
+
+Comics and purposeful motion are part of Piik's explanation language. Give them
+room where a small visual sequence teaches more clearly than another sentence;
+an enlarged action symbol adds little. Keep the caption, cause and outcome
+consistent, and follow the shared [motion grammar](#motion-grammar).
+Required instructions, current state and operation failures remain visible in
+their own surface. If a control already opens a relevant menu or panel on hover,
+focus or touch hold, use that surface's explanation rather than a second popup.
+These choices follow [Apple's contextual help guidance](https://developer.apple.com/design/human-interface-guidelines/offering-help)
+and [Fluent's tooltip guidance](https://fluent2.microsoft.design/components/web/react/core/tooltip/usage).
+
+Where guidance is provided, use the shared interaction below.
 Help-only indicators toggle their guidance on click or tap and dismiss on a
 second activation, outside tap, Escape or focus leaving. Touch long-press opens
-guidance after a 500 ms hold on both help indicators and action controls,
+guidance after a 500 ms hold on its help indicators and action controls,
 without triggering the action on release. Action controls keep their direct
 short-tap action. `Tooltip` owns these interactions; pages do not add their own
 open state or timers.
@@ -459,20 +484,12 @@ hover timing belong to the shared component.
 Constrain oversized hints to the visible viewport and let their content scroll
 without dismissing the panel or clipping its caret.
 
-Use tooltips for icon-only actions, clipped values and non-obvious consequences;
-omit a popup that only repeats a clear visible button label. Use a brief text
-hint for identification; a comic is useful when it explains a cause or interaction,
-not as decoration on every control. A disabled action explains what enables it.
-Keep required instructions, current state and operation failures visible in their
-own surface; a tooltip is supplementary. Touch keeps the direct action and shared
-hold-to-explain behavior, without making hover the only route to useful information.
-These choices follow [Apple's contextual help guidance](https://developer.apple.com/design/human-interface-guidelines/offering-help)
-and [Fluent's tooltip guidance](https://fluent2.microsoft.design/components/web/react/core/tooltip/usage).
+Touch keeps the direct action and shared hold-to-explain behavior, without making hover the only route to useful information.
 Keep participant details on their existing click action and state explanations on
 the dedicated status indicator.
 
 When a nickname is clipped, the shared tooltip reveals its complete literal
-text in every language mode, without a comic or repeated role/status labels.
+text in every language, without a comic or repeated role/status labels.
 Show this only after detecting actual truncation; resize and name changes must
 recheck it. Preserve hover, keyboard and touch-hold access, and the participant's
 existing click action. A complete or wrapping name needs no extra focus stop or
@@ -664,7 +681,7 @@ changing the badge does not restyle the UI, wordmark or illustrations.
 | A captured window or display | Window title bar or display stand, with the shared media metaphor kept distinct |
 | A camera source | `camera` identifies the alternative picture source. Source/playback sound retains the speaker metaphor. |
 | Room text and reactions | `chat` opens the conversation, `danmaku` controls its optional picture overlay, `smile` identifies reactions and `send` submits the chosen content. These do not represent media transport or voice. |
-| Room voice | `microphone` / `microphoneOff` identify input state; `headphones` / `headphonesOff` pause or resume room-voice listening, while `speaker` / `speakerOff` mute one person locally. Input, playback and forwarding remain independent. Toggle names stay fixed. The microphone's green fill shows measured input after gain, not the configured gain percentage. Participant rows keep avatar, name and microphone aligned; the status symbol has an accessible name and shared tooltip instead of a repeated on/off sentence. Measured speech fills that symbol and colours its outline green, without adding a connection-like dot. An enabled input alone is not speaking evidence. Opening the channel and opening a microphone stay separate actions. The Host has labelled open/close-room actions, with `stop` and danger styling for closing everyone's voice; a Viewer's `door` leaves only their own voice participation. Joined membership does not use a network-strength symbol. |
+| Room voice | `microphone` / `microphoneOff` identify input state; `headphones` / `headphonesOff` pause or resume room-voice listening, while `speaker` / `speakerOff` mute one person locally. Input, playback and forwarding remain independent. Toggle names stay fixed. The microphone's green fill shows measured input after gain, not the configured gain percentage. Participant rows keep avatar, name and microphone aligned; the status symbol keeps an accessible name rather than a repeated on/off sentence. Choose supplementary explanation under [Guidance](#guidance). Measured speech fills that symbol and colours its outline green, without adding a connection-like dot. An enabled input alone is not speaking evidence. Opening the channel and opening a microphone stay separate actions. The Host has labelled open/close-room actions, with `stop` and danger styling for closing everyone's voice; a Viewer's `door` leaves only their own voice participation. Joined membership does not use a network-strength symbol. |
 | Attended desktop control | `mouse` identifies keyboard/mouse control, distinct from sharing or playback. Permission copy stays literal; an active control marker describes the grant, not media connectivity. |
 | Floating utility placement | `grip` marks a draggable title bar; corner handles resize the window. Closing a panel hides its presentation, not its room session. |
 | Server forwarding media | A server on the media path; opening a Site alone does not imply SFU |
