@@ -106,9 +106,9 @@ export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVo
     </section>}
     {buffering && <section aria-label={t("playback.buffering")}>
       <div className="lr-viewer-settings-heading"><h3><Glyph name="clock" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.buffering")}</span></h3></div>
-      <RowGroup><SwitchItem checked={buffering.target === null} onChange={automatic => buffering.onChange(automatic ? null : INITIAL_MANUAL_BUFFER_TARGET_MS)}
+      <RowGroup><SwitchItem checked={buffering.target !== null} onChange={enabled => buffering.onChange(enabled ? INITIAL_MANUAL_BUFFER_TARGET_MS : null)}
         disabled={buffering.status === "unsupported" && buffering.target === null}
-        label={t("playback.bufferAutomatic")} icon="clock" /></RowGroup>
+        label={t("playback.increaseBuffer")} icon="clock" /></RowGroup>
       {buffering.target !== null && <NumberControl value={buffering.target} min={0} max={MAX_PLAYBACK_BUFFER_TARGET_MS} step={1} unit="ms"
         name="screen-buffer-target" label={t("playback.bufferTarget")} disabled={buffering.status === "unsupported"}
         onChange={buffering.onChange} className="lr-door-group">{input => <div className="lr-quality-heading">
