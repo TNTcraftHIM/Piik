@@ -12,6 +12,13 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **2.x periodic brief picture stalls.** With a particular Host or Viewer,
+  normally clear playback pauses for less than half a second every few seconds
+  or tens of seconds, skips several frames and sometimes briefly blurs. A roughly
+  2% loss observation is not yet correlated with the stall. Compare existing
+  sender, relay and receiver timing, frame dimensions and repair counters before
+  attributing this to loss, codec adaptation or changing sender latency. Keep
+  optional receive buffering separate from identifying this report's cause.
 - [ ] **App connection during webpage selection.** Capture the first control
   connection failure during the reported intermittent App disconnection. Use the
   opt-in control-close diagnostic to distinguish transport closure, handshake,

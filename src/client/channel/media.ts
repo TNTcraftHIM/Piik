@@ -53,7 +53,7 @@ export class ChannelMedia {
     private dataState?: (peer: string, ready: boolean) => void,
     private bulkClosed?: (peer: string) => void,
     private input?: (pairId: string, channel: RTCDataChannel | null) => void,
-    private buffering?: { target: number | null; changed(status: ScreenBufferStatus): void }) {
+    private buffering?: { target: number | null; isLocalScreen?(publicationId: string): boolean; changed(status: ScreenBufferStatus): void }) {
     this.screenBufferTargetMs = buffering?.target ?? null;
   }
 
@@ -66,21 +66,22 @@ export class ChannelMedia {
     let status: ScreenBufferStatus = null;
     for (const peer of this.peers.values()) for (const [id, input] of peer.inputs) {
       const publicationId = peer.plan.incoming.find(flow => flow.id === id)?.publicationId;
-      const kind = this.publications.find(publication => publication.id === publicationId)?.kind;
-      if (!kind) continue;
+      const publication = this.publications.find(publication => publication.id === publicationId);
+      if (!publication) continue;
+      const viewerScreen = publication.kind === "screen" && !this.buffering?.isLocalScreen?.(publication.id);
       for (const receiver of peer.transport.pc.getReceivers()) {
         if (!input.stream.getTracks().includes(receiver.track)) continue;
         if (!("jitterBufferTarget" in receiver)) {
-          if (kind === "screen" && status !== "failed") status = "unsupported";
+          if (viewerScreen && status !== "failed") status = "unsupported";
           continue;
         }
         try {
           const buffered = receiver as RTCRtpReceiver & { jitterBufferTarget: number | null };
           // Native forwarding may reuse an audio MID from a screen for room voice.
-          const target = kind === "screen" ? this.screenBufferTargetMs : null;
+          const target = viewerScreen ? this.screenBufferTargetMs : null;
           if (buffered.jitterBufferTarget !== target) buffered.jitterBufferTarget = target;
-          if (kind === "screen") status ??= "supported";
-        } catch { if (kind === "screen") status = "failed"; }
+          if (viewerScreen) status ??= "supported";
+        } catch { if (viewerScreen) status = "failed"; }
       }
     }
     this.buffering?.changed(status);

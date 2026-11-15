@@ -9,6 +9,9 @@ import { NumberControl } from "./NumberControl";
 import { Tooltip } from "./Tooltip";
 import "./playback-controls.css";
 
+// Editable starting target; the browser owns actual playout delay.
+const INITIAL_PLAYBACK_BUFFER_TARGET_MS = 300;
+
 export interface PlaybackSettingsProps {
   pictureFit: VideoFit;
   setPictureFit: (fit: VideoFit) => void;
@@ -113,17 +116,16 @@ export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVo
     </section>}
     {buffering && <section aria-label={t("playback.buffering")}>
       <div className="lr-viewer-settings-heading"><h3><Glyph name="clock" size={17} /><Cap k="playback.buffering" /></h3></div>
-      <RowGroup><SwitchItem checked={buffering.target === null} onChange={automatic => buffering.onChange(automatic ? null : 300)}
+      <RowGroup><SwitchItem checked={buffering.target !== null} onChange={enabled => buffering.onChange(enabled ? INITIAL_PLAYBACK_BUFFER_TARGET_MS : null)}
         disabled={buffering.status === "unsupported" && buffering.target === null}
-         label={t("playback.bufferAutomatic")} hint="hint-metric-video-buffer"
-        note={`${t("playback.bufferHint")}\n${t("playback.bufferScope")}`} /></RowGroup>
+         label={t("playback.increaseBuffer")} /></RowGroup>
       {buffering.target !== null && <NumberControl value={buffering.target} min={0} max={4000} step={1} unit="ms"
         name="screen-buffer-target" label={t("playback.bufferTarget")} disabled={buffering.status === "unsupported"}
         onChange={buffering.onChange} className="lr-door-group">{input => <div className="lr-quality-heading">
           <FieldCap k="playback.bufferTarget" />
           <Tooltip kind="hint-metric-video-buffer" text={t("playback.bufferHint")}>{input}</Tooltip>
         </div>}</NumberControl>}
-      <><p>{t("playback.bufferHint")}</p><p>{t("playback.bufferScope")}</p></>
+      <p>{t("playback.bufferHint")}</p>
       {buffering.status === "unsupported" && <Pill icon="alert" label={t("playback.bufferUnsupported")} comic="warning" />}
       {buffering.status === "failed" && <Pill icon="alert" tone="bad" label={t("playback.bufferFailed")} comic="settings-failed" />}
     </section>}

@@ -229,6 +229,7 @@ export class ChannelSession {
       else void this.conversation.receiveControl(peer, data as string).catch(() => {});
     }, (peer, ready) => { this.attachments.peerState(peer, ready); if (!ready) this.watchBytes.peerClosed(peer); }, peer => { this.attachments.bulkClosed(peer); this.watchBytes.peerClosed(peer); },
     (pair, channel) => this.input.setChannel(pair, channel), { target: this.view.screenBufferTargetMs,
+      isLocalScreen: id => this.view.localScreens.has(id),
       changed: screenBufferStatus => { if (screenBufferStatus !== this.view.screenBufferStatus) this.patch({ screenBufferStatus }); } });
   private watchBytes = new WatchBytes((peer, kind, data, allowed) => this.media.sendData(peer, kind, data, allowed));
   readonly attachments = new ChannelAttachments(command => this.request(command), async (peer, kind, data, allowed) =>
@@ -941,6 +942,7 @@ export class ChannelSession {
     // capture can outlive our App control socket; only endpoint retirement clears it.
     this.localNativeEndpoints.add(sessionId);
     this.patch({});
+    this.media.setScreenBufferTarget(this.view.screenBufferTargetMs);
   }
 
   private async syncAppWatching(resync = false): Promise<void> {

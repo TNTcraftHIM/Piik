@@ -1079,10 +1079,12 @@ test("App rewatch admits its current helper in the first subscription without a 
 
 test.each([false, true])("local Native playback provenance follows endpoint lifetime, without ownership or user inference (description rejected: %s)", async rejected => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  const applyBufferTarget = vi.spyOn(ChannelMedia.prototype, "setScreenBufferTarget");
   const native = crypto.randomUUID(), remote = crypto.randomUUID();
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: native, roomIds: [] });
   if (rejected) description.mockRejectedValue(new Error("hosting_unavailable"));
   const { session, socket } = await setup();
+  session.setScreenBufferTarget(725); applyBufferTarget.mockClear();
   const original = session.getSnapshot().state!, userId = session.getSnapshot().self!.id;
   const publications = [native, remote].map((sessionId, index) => ({ audience: [], id: `screen-${index}`, roomId: "first", sessionId, userId,
     kind: "screen" as const, source: { kind: "screen" as const, name: null }, title: null,
@@ -1100,6 +1102,7 @@ test.each([false, true])("local Native playback provenance follows endpoint life
     // The listening decision is known before subscription can deliver sound.
     expect(description).toHaveBeenCalled();
     expect([...session.getSnapshot().localScreens]).toEqual(rejected ? [] : ["screen-0"]);
+    expect(applyBufferTarget.mock.calls).toEqual(rejected ? [] : [[725]]);
     expect(session.getSnapshot().ownedScreens.size).toBe(0);
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await watching;
     if (rejected) { expect(session.getSnapshot().error).toBeNull(); return; }
@@ -8050,6 +8053,35 @@ test("screen buffering follows current and replaced receivers, late source audio
     expect(replacement.jitterBufferTarget).toBe(300);
     media.setScreenBufferTarget(null);
     expect(replacement.jitterBufferTarget).toBeNull();
+    expect(status).toHaveBeenLastCalledWith("supported");
+  } finally { media.reset(); session.close(); }
+});
+
+test("screen buffering excludes a local Native preview but keeps the same user's remote screen", async () => {
+  const status = vi.fn();
+  let localPreview = false;
+  const fixture = await screenFixture({ target: 300, changed: status, isLocalScreen: id => localPreview && id === "screen" });
+  const { media, pc, state, session } = fixture;
+  state.publications[0] = { ...state.publications[0], userId: "self", sessionId: "native-endpoint" };
+  media.update("a", state);
+  const video = remoteTrack("video"), audio = remoteTrack("audio");
+  const receivers = [video, audio].map(track => ({ track, jitterBufferTarget: null as number | null, getStats: async () => decodedReport(0) }));
+  pc.receivers = receivers as unknown as RTCRtpReceiver[];
+  try {
+    await receiveScreen(fixture, remoteStream("native-preview", [video, audio]));
+    expect(receivers.map(receiver => receiver.jitterBufferTarget)).toEqual([300, 300]);
+    // The source-location fact arrives after receivers, independently of its user identity.
+    localPreview = true; media.setScreenBufferTarget(300);
+    expect(receivers.map(receiver => receiver.jitterBufferTarget)).toEqual([null, null]);
+    expect(status).toHaveBeenLastCalledWith(null);
+    delete (receivers[0] as { jitterBufferTarget?: number | null }).jitterBufferTarget;
+    media.setScreenBufferTarget(725);
+    expect(status).toHaveBeenLastCalledWith(null);
+    Object.assign(receivers[0], { jitterBufferTarget: null });
+    localPreview = false;
+    state.publications[0] = { ...state.publications[0], sessionId: "remote-endpoint" };
+    media.update("a", state);
+    expect(receivers.map(receiver => receiver.jitterBufferTarget)).toEqual([725, 725]);
     expect(status).toHaveBeenLastCalledWith("supported");
   } finally { media.reset(); session.close(); }
 });

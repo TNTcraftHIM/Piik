@@ -437,7 +437,7 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
         className="lr-floating-surface lr-playback-menu lr-playback-settings" onToggle={event => {
           if (event.target === event.currentTarget) setPictureOpen(event.newState === "open");
         }}>
-        <PlaybackSettings buffering={!localSource ? buffering : undefined} picture={{ pictureFit, pictureRotation,
+        <PlaybackSettings buffering={!owned && !localSource ? buffering : undefined} picture={{ pictureFit, pictureRotation,
           setPictureFit: (fit: VideoFit) => { setPictureFit(fit); saveRoomPreferences({ pictureFit: fit }); },
           setPictureRotation: (rotation: VideoRotation) => { setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation }); },
         }} preview={owned ? { autoPause: previewAutoPause, onChange: autoPause => {

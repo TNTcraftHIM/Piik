@@ -239,7 +239,13 @@ it("shows shared buffer intent on received screens, including limitations, and o
   expect(remote).toContain('max="4000"');
   expect(remote).toContain('value="725"');
   expect(remote).toContain("This browser cannot set the playback buffer target.");
-  expect(remote).toContain("viewers downstream");
+  expect(remote).toContain('aria-label="Increase playback buffering"');
+  expect(remote).toContain("Total buffer target");
+  expect(remote).toContain("receiver aims to wait for data");
+  const automatic = renderToStaticMarkup(createElement(ChannelVideo, { ...props, buffering: { ...props.buffering, target: null } }));
+  expect(automatic).not.toContain('name="screen-buffer-target"');
   const preview = renderToStaticMarkup(createElement(ChannelVideo, { ...props, localSource: true }));
   expect(preview).not.toContain('aria-label="Playback buffering"');
+  const host = renderToStaticMarkup(createElement(ChannelVideo, { ...props, owned: true }));
+  expect(host).not.toContain('aria-label="Playback buffering"');
 });
