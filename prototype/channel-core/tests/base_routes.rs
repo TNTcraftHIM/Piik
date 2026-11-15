@@ -3711,8 +3711,8 @@ fn coordinated_udp_signals_use_only_the_required_pair_and_fixed_endpoint_roles()
     let room = network.create(host, RoomAccess::Public, false);
     join_base(&mut network, viewer, &room);
     let original = pair(&network, viewer, host_session, &room);
-    let prediction = json!({"address":"203.0.113.5","port":42000,"step":2});
-    let offer = json!({"udp":{"type":"offer","secret":vec![7u8;32],"prediction":prediction}});
+    let observation = json!({"kind":"sequential","address":"203.0.113.5","port":42000,"step":2});
+    let offer = json!({"udp":{"type":"offer","secret":vec![7u8;32],"observation":observation}});
     let rejected = network.command(
         initiator,
         json!({"type":"signal","pairId":original.id,"payload":offer}),
@@ -3727,7 +3727,7 @@ fn coordinated_udp_signals_use_only_the_required_pair_and_fixed_endpoint_roles()
         json!({"type":"link_state","pairId":original.id,"state":"failed"}),
     );
     let prepared = pair(&network, viewer, host_session, &room);
-    let answer = json!({"udp":{"type":"answer","prediction":prediction}});
+    let answer = json!({"udp":{"type":"answer","observation":observation}});
     for (from, payload, accepted) in [
         (initiator, offer.clone(), true),
         (responder, offer, false),
@@ -3735,19 +3735,38 @@ fn coordinated_udp_signals_use_only_the_required_pair_and_fixed_endpoint_roles()
         (initiator, answer, false),
         (
             responder,
-            json!({"udp":{"type":"answer","prediction":{"address":"203.0.113.5","port":42000,"step":-2}}}),
+            json!({"udp":{"type":"answer","observation":{"kind":"sequential","address":"203.0.113.5","port":42000,"step":-2}}}),
             true,
         ),
         (
             responder,
-            json!({"udp":{"type":"answer","prediction":{"address":"203.0.113.5","port":1024,"step":-1}}}),
+            json!({"udp":{"type":"answer","observation":{"kind":"sequential","address":"203.0.113.5","port":1024,"step":-1}}}),
             false,
         ),
         (
             responder,
-            json!({"udp":{"type":"answer","prediction":{"address":"203.0.113.5","port":42000,"step":-17}}}),
+            json!({"udp":{"type":"answer","observation":{"kind":"sequential","address":"203.0.113.5","port":42000,"step":-17}}}),
             false,
         ),
+        (
+            responder,
+            json!({"udp":{"type":"answer","observation":{"kind":"stable","address":"203.0.113.5","port":42000}}}),
+            true,
+        ),
+        (
+            responder,
+            json!({"udp":{"type":"answer","observation":{"kind":"irregular","address":"203.0.113.5"}}}),
+            true,
+        ),
+        (
+            responder,
+            json!({"udp":{"type":"answer","observation":{"kind":"sequential","address":"203.0.113.5","port":42000,"step":0}}}),
+            false,
+        ),
+        (initiator, json!({"udp":{"type":"ready"}}), true),
+        (responder, json!({"udp":{"type":"ready"}}), true),
+        (initiator, json!({"udp":{"type":"unavailable"}}), true),
+        (responder, json!({"udp":{"type":"unavailable"}}), true),
         (initiator, json!({"udp":{"type":"complete"}}), true),
         (responder, json!({"udp":{"type":"complete"}}), true),
         (
@@ -3757,12 +3776,12 @@ fn coordinated_udp_signals_use_only_the_required_pair_and_fixed_endpoint_roles()
         ),
         (
             responder,
-            json!({"udp":{"type":"answer","prediction":{"address":"127.0.0.1","port":42000,"step":0}}}),
+            json!({"udp":{"type":"answer","observation":{"kind":"sequential","address":"127.0.0.1","port":42000,"step":0}}}),
             false,
         ),
         (
             responder,
-            json!({"udp":{"type":"answer","prediction":{"address":"203.0.113.5","port":65530,"step":2}}}),
+            json!({"udp":{"type":"answer","observation":{"kind":"sequential","address":"203.0.113.5","port":65530,"step":2}}}),
             false,
         ),
     ] {
@@ -4000,8 +4019,8 @@ fn two_twenty_person_rooms_share_site_capacity_with_browser_app_and_bounded_prof
 }
 
 #[test]
-fn udp_prediction_preserves_port_bounds_in_both_directions() {
-    use piik_channel_core::wire::UdpPrediction;
+fn udp_observation_preserves_port_bounds_in_both_directions() {
+    use piik_channel_core::wire::UdpObservation;
     for (port, step, target) in [
         (1088, -16, Some(1024)),
         (1087, -16, None),
@@ -4009,13 +4028,60 @@ fn udp_prediction_preserves_port_bounds_in_both_directions() {
         (65472, 16, None),
         (42000, 17, None),
         (42000, -17, None),
-        (1024, 0, Some(1024)),
+        (1024, 0, None),
     ] {
-        let prediction = UdpPrediction {
+        let observation = UdpObservation::Sequential {
             address: "203.0.113.5".parse().unwrap(),
             port,
             step,
         };
-        assert_eq!(prediction.target().map(|address| address.port()), target);
+        assert_eq!(observation.target().map(|address| address.port()), target);
+    }
+    let address = "203.0.113.5".parse().unwrap();
+    assert_eq!(
+        UdpObservation::Stable {
+            address,
+            port: 1024
+        }
+        .target()
+        .unwrap()
+        .port(),
+        1024
+    );
+    assert!(!UdpObservation::Stable {
+        address,
+        port: 1023
+    }
+    .valid());
+    assert!(UdpObservation::Irregular { address }.valid());
+    assert!(UdpObservation::Irregular { address }.target().is_none());
+    for address in [
+        "0.0.0.0",
+        "10.0.0.1",
+        "127.0.0.1",
+        "169.254.1.1",
+        "172.16.0.1",
+        "192.168.1.1",
+        "224.0.0.1",
+        "255.255.255.255",
+    ] {
+        assert!(!UdpObservation::Irregular {
+            address: address.parse().unwrap()
+        }
+        .valid());
+    }
+    for observation in [
+        json!({"address":"203.0.113.5","port":42000,"step":2}),
+        json!({"kind":"irregular","address":"203.0.113.5","port":42000}),
+        json!({"kind":"stable","address":"203.0.113.5","port":42000,"step":0}),
+    ] {
+        assert!(serde_json::from_value::<UdpObservation>(observation).is_err());
+    }
+    for signal in [
+        json!({"type":"unavailable","reason":"private source details"}),
+        json!({"type":"ready","strategy":"birthday"}),
+        json!({"type":"answer","prediction":{"address":"203.0.113.5","port":42000,"step":2}}),
+    ] {
+        assert!(serde_json::from_value::<piik_channel_core::wire::UdpSignal>(signal).is_err());
     }
 }

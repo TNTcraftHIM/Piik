@@ -282,6 +282,10 @@ signed room history, confirmed chat and decoded H264 across independent public
 UDP egresses. An earlier same-egress control received STUN replies but no peer
 datagrams; that packet-loss point remains unresolved. Population NAT success
 rates have not been measured.
+Random-port preparation also has [kernel-NAT and socket-retirement controls](./research/nat-traversal.md#random-mapping-collision-control),
+including matched production signaling, DataChannels and decoded media. These
+cover two capable Native endpoints; they do not establish Browser-only or
+single-App random-port coverage.
 Virtual-LAN loading reports retain their own investigation in [TODO](./todo.md#now).
 
 Browser WebRTC and the Native RTC SDK own congestion control and transport

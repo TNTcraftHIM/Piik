@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 21;
+pub const CHANNEL_PROTOCOL: u8 = 22;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -501,10 +501,10 @@ impl Signal {
                 && self.candidate.is_none()
                 && self.tracks.is_none()
                 && match udp {
-                    UdpSignal::Offer { prediction, .. } | UdpSignal::Answer { prediction } => {
-                        prediction.target().is_some()
+                    UdpSignal::Offer { observation, .. } | UdpSignal::Answer { observation } => {
+                        observation.valid()
                     }
-                    UdpSignal::Complete => true,
+                    UdpSignal::Ready {} | UdpSignal::Unavailable {} | UdpSignal::Complete => true,
                 };
         }
         self.description.is_some() == self.exchange_id.is_some()
@@ -548,38 +548,72 @@ pub enum UdpPreparation {
 pub enum UdpSignal {
     Offer {
         secret: [u8; 32],
-        prediction: UdpPrediction,
+        observation: UdpObservation,
     },
     Answer {
-        prediction: UdpPrediction,
+        observation: UdpObservation,
     },
+    Ready {},
+    Unavailable {},
     Complete,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct UdpPrediction {
-    pub address: std::net::Ipv4Addr,
-    pub port: u16,
-    pub step: i16,
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum UdpObservation {
+    Stable {
+        address: std::net::Ipv4Addr,
+        port: u16,
+    },
+    Sequential {
+        address: std::net::Ipv4Addr,
+        port: u16,
+        step: i16,
+    },
+    Irregular {
+        address: std::net::Ipv4Addr,
+    },
 }
-impl UdpPrediction {
-    pub fn target(&self) -> Option<std::net::SocketAddrV4> {
-        let address = self.address;
+impl UdpObservation {
+    pub fn address(&self) -> std::net::Ipv4Addr {
+        match *self {
+            Self::Stable { address, .. }
+            | Self::Sequential { address, .. }
+            | Self::Irregular { address } => address,
+        }
+    }
+    pub fn valid(&self) -> bool {
+        let address = self.address();
         if address.is_private()
             || address.is_loopback()
             || address.is_link_local()
             || address.is_unspecified()
             || address.is_multicast()
             || address.is_broadcast()
-            || self.port < 1024
-            || !(-16..=16).contains(&self.step)
         {
+            return false;
+        }
+        match *self {
+            Self::Stable { port, .. } => port >= 1024,
+            Self::Sequential { port, step, .. } => {
+                port >= 1024
+                    && step != 0
+                    && (-16..=16).contains(&step)
+                    && (1024..=65535).contains(&(i32::from(port) + 4 * i32::from(step)))
+            }
+            Self::Irregular { .. } => true,
+        }
+    }
+    pub fn target(&self) -> Option<std::net::SocketAddrV4> {
+        if !self.valid() {
             return None;
         }
-        let port = i32::from(self.port).checked_add(4 * i32::from(self.step))?;
-        let port = u16::try_from(port).ok().filter(|port| *port >= 1024)?;
-        Some(std::net::SocketAddrV4::new(address, port))
+        let port = match *self {
+            Self::Stable { port, .. } => port,
+            Self::Sequential { port, step, .. } => (i32::from(port) + 4 * i32::from(step)) as u16,
+            Self::Irregular { .. } => return None,
+        };
+        Some(std::net::SocketAddrV4::new(self.address(), port))
     }
 }
 

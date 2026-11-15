@@ -126,11 +126,10 @@ the feedback period; they do not delay that delivery.
   trigger, bounded candidate attempts and strict-benefit proof before enabling
   automatic alternative-parent trials. Online sessions do not prove reusable
   physical connections; keep that fact with the transport owner.
-- [ ] **Random-mapping NAT preparation.** Evaluate the isolated birthday
-  collision experiment against ordinary ICE, including actual media, cancellation
-  and concurrent-pair resource cost. Product preparation currently supports
-  stable/sequential observations. A Native-to-Browser extension needs a separate
-  standard-ICE control; two Native participants do not establish that coverage.
+- [ ] **Random-mapping NAT field coverage.** The bounded Native implementation
+  has kernel-NAT media and resource-lifetime evidence. Measure difficult physical
+  networks and sustained concurrent use. A Native-to-Browser extension needs a
+  separate standard-ICE control; two Native participants do not establish it.
 - [ ] **Codec capability and efficiency comparison.** Measure actual platform
   encoder/decoder and Browser capabilities, then compare one available codec
   with H.264 using synthetic text and motion. Compare hardware and software

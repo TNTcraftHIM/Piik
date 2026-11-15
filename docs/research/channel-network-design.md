@@ -598,6 +598,16 @@ PC after mutual completion, with no competing reader or separate route graph.
 When the local survey is stable and the remote survey is sequential, the retained
 socket alternates between two predicted targets. Authenticated traffic fixes one
 target before replies; both peers complete within the preparation's shared limits.
+One stable and one irregular observation can instead use random-port preparation:
+the irregular side opens 256 sockets toward the stable side's retained tuple;
+the stable side checks 256 distinct ports on the authorized peer address. Both
+passes reuse that set. Each endpoint permits at most 520 requests and 16 replies,
+with at least 2 ms between sends, within the same five-second preparation lifetime.
+At most two random preparations run per process across all sites and Drivers.
+Capacity refusal does not queue work or extend the deadline; a pair-scoped refusal
+ends the other endpoint's preparation and both continue ordinary ICE. Other
+irregular combinations retain ordinary ICE. Observations are sampling facts, not
+guarantees about all destinations or a claimed NAT classification.
 
 Server shares fixed UDP listeners across its peer connections. Piik's
 [socket owner](../../prototype/channel-native/src/peer/transport.rs) dispatches

@@ -11,7 +11,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 21;
+export const CHANNEL_PROTOCOL = 22;
 export const CHANNEL_SESSION_LIMIT = 128;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
@@ -112,13 +112,35 @@ export const snapshotSchema = z.object({
   pairs: z.array(z.object({ id, peerId: id, canReceiveVideoLayers: z.boolean().default(false), rooms: z.array(id), outgoing: z.array(z.object({ id, publicationId: id, selected: z.boolean(), inputFlowId: id.nullable() })), incoming: z.array(z.object({ id, publicationId: id, selected: z.boolean(), inputFlowId: id.nullable() })) })).max(CHANNEL_SESSION_LIMIT - 1),
   iceServers: z.array(z.object({ urls: z.union([z.string(), z.array(z.string())]), username: z.string().optional(), credential: z.string().optional() })),
 });
+const udpAddressSchema = z.ipv4().refine(address => {
+  const [a, b] = address.split(".").map(Number);
+  return address !== "0.0.0.0" && address !== "255.255.255.255" && a !== 10 && a !== 127
+    && !(a === 169 && b === 254) && !(a === 172 && b >= 16 && b <= 31) && !(a === 192 && b === 168)
+    && !(a >= 224 && a <= 239);
+});
+export const udpObservationSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("stable"), address: udpAddressSchema, port: z.number().int().min(1024).max(65535) }).strict(),
+  z.object({ kind: z.literal("sequential"), address: udpAddressSchema, port: z.number().int().min(1024).max(65535), step: z.number().int().min(-16).max(16) }).strict()
+    .refine(value => value.step !== 0 && value.port + 4 * value.step >= 1024 && value.port + 4 * value.step <= 65535),
+  z.object({ kind: z.literal("irregular"), address: udpAddressSchema }).strict(),
+]);
+export const udpSignalSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("offer"), secret: signingKey, observation: udpObservationSchema }).strict(),
+  z.object({ type: z.literal("answer"), observation: udpObservationSchema }).strict(),
+  z.object({ type: z.literal("ready") }).strict(),
+  z.object({ type: z.literal("unavailable") }).strict(),
+  z.object({ type: z.literal("complete") }).strict(),
+]);
 export const signalSchema = z.object({
+  udp: udpSignalSchema.optional(),
   resync: z.boolean().optional(),
   exchangeId: z.string().uuid().optional(),
   description: z.object({ type: z.enum(["offer", "answer"]), sdp: z.string().max(150000).optional() }).optional(),
   candidate: z.object({ candidate: z.string().max(4096).optional(), sdpMid: z.string().nullable().optional(), sdpMLineIndex: z.number().nullable().optional(), usernameFragment: z.string().nullable().optional() }).optional(),
   tracks: z.array(z.object({ flowId: id, streamId: id })).optional(),
-}).refine(signal => Boolean(signal.description) === Boolean(signal.exchangeId), { message: "SDP requires an exchange", path: ["exchangeId"] });
+}).refine(signal => signal.udp
+  ? [signal.resync, signal.exchangeId, signal.description, signal.candidate, signal.tracks].every(value => value === undefined)
+  : Boolean(signal.description) === Boolean(signal.exchangeId), { message: "UDP preparation is exclusive; SDP requires an exchange", path: ["exchangeId"] });
 export const channelTopologySchema = z.object({
   bindingId: id,
   base: z.object({ rootSessionId: id, edges: z.array(z.object({ sender: id, receiver: id, ready: z.boolean() }).strict()) }).strict(),

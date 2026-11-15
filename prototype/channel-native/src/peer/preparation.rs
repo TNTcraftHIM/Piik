@@ -2,7 +2,7 @@
 use super::NativeEvent;
 use anyhow::{bail, ensure, Result};
 use futures_util::{stream::FuturesUnordered, StreamExt};
-use piik_channel_core::wire::UdpPrediction as Prediction;
+use piik_channel_core::wire::UdpObservation as Observation;
 use piik_channel_core::{
     udp::StunServer,
     wire::{Command, PairInfo, Signal, UdpSignal},
@@ -18,18 +18,26 @@ use rtc_stun::{
 };
 use sansio::Protocol;
 use std::{
+    collections::{HashSet, VecDeque},
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     time::{Duration, Instant},
 };
 use tokio::{
     net::UdpSocket,
-    sync::mpsc,
+    sync::{mpsc, Semaphore},
     task::JoinHandle,
     time::{sleep_until, timeout_at},
 };
 use uuid::Uuid;
 
 const CHECK_PACKET_BUDGET: usize = 64;
+const RANDOM_PORTS: usize = 256;
+const RANDOM_REQUEST_BUDGET: usize = RANDOM_PORTS * 2 + 8;
+const RANDOM_REPLY_BUDGET: usize = 16;
+const RANDOM_PACKET_INTERVAL: Duration = Duration::from_millis(2);
+// Shared across every site and Driver in this process. Busy peers fall back;
+// they do not queue another pool behind the current pair's deadline.
+static RANDOM_PREPARATIONS: Semaphore = Semaphore::const_new(2);
 
 pub(super) async fn local_ipv4() -> Option<Ipv4Addr> {
     let router = tokio::task::spawn_blocking(netwatch::interfaces::HomeRouter::new)
@@ -61,11 +69,25 @@ impl Pending {
         let initiator = local < plan.peer_id;
         let deadline = Instant::now() + Duration::from_secs(5);
         let task = tokio::spawn(async move {
-            timeout_at(
+            let result = timeout_at(
                 deadline.into(),
-                negotiate(pair, initiator, servers, commands, incoming, deadline),
+                negotiate(
+                    pair,
+                    initiator,
+                    servers,
+                    commands.clone(),
+                    incoming,
+                    deadline,
+                ),
             )
-            .await?
+            .await
+            .map_err(anyhow::Error::from)
+            .and_then(|result| result);
+            if result.is_err() {
+                // Failure notification must not extend the preparation deadline.
+                let _ = commands.try_send(signal(pair, UdpSignal::Unavailable {}));
+            }
+            result
         });
         Self {
             plan,
@@ -77,7 +99,13 @@ impl Pending {
 
     pub fn signal(&mut self, signal: Signal) -> Result<()> {
         if let Some(message) = signal.udp {
-            self.input.try_send(message)?;
+            if matches!(message, UdpSignal::Unavailable {}) {
+                // This also cancels DNS, survey and pool priming. Aborting skips
+                // the local error notification, so refusal never echoes back.
+                self.task.abort();
+            } else {
+                self.input.try_send(message)?;
+            }
         } else {
             // The peer may finish preparation first and immediately start ICE.
             ensure!(self.signals.len() < 128, "preparation signaling queue full");
@@ -130,16 +158,20 @@ async fn negotiate(
             pair,
             UdpSignal::Offer {
                 secret,
-                prediction: survey.prediction,
+                observation: survey.observation,
             },
         )
         .await?;
-        let Some(UdpSignal::Answer { prediction }) = incoming.recv().await else {
+        let Some(UdpSignal::Answer { observation }) = incoming.recv().await else {
             bail!("expected UDP preparation answer");
         };
-        (survey, prediction)
+        (survey, observation)
     } else {
-        let Some(UdpSignal::Offer { secret, prediction }) = incoming.recv().await else {
+        let Some(UdpSignal::Offer {
+            secret,
+            observation,
+        }) = incoming.recv().await
+        else {
             bail!("expected UDP preparation offer");
         };
         let survey = Preparation::new(pair, secret, local, deadline)?
@@ -149,30 +181,34 @@ async fn negotiate(
             &commands,
             pair,
             UdpSignal::Answer {
-                prediction: survey.prediction,
+                observation: survey.observation,
             },
         )
         .await?;
-        (survey, prediction)
+        (survey, observation)
     };
     survey.check(remote, &commands, &mut incoming).await
 }
 
 async fn send(commands: &mpsc::Sender<NativeEvent>, pair: Uuid, udp: UdpSignal) -> Result<()> {
     commands
-        .send(NativeEvent::Command(Command::Signal {
-            pair_id: pair,
-            payload: Signal {
-                udp: Some(udp),
-                description: None,
-                exchange_id: None,
-                candidate: None,
-                tracks: None,
-                resync: None,
-            },
-        }))
+        .send(signal(pair, udp))
         .await
         .map_err(anyhow::Error::from)
+}
+
+fn signal(pair: Uuid, udp: UdpSignal) -> NativeEvent {
+    NativeEvent::Command(Command::Signal {
+        pair_id: pair,
+        payload: Signal {
+            udp: Some(udp),
+            description: None,
+            exchange_id: None,
+            candidate: None,
+            tracks: None,
+            resync: None,
+        },
+    })
 }
 
 async fn resolve_servers<F, A>(
@@ -222,7 +258,7 @@ pub struct Preparation {
 }
 pub struct Survey {
     preparation: Preparation,
-    pub prediction: Prediction,
+    pub observation: Observation,
     retained: Option<UdpSocket>,
 }
 pub struct Prepared {
@@ -263,48 +299,115 @@ impl Preparation {
             };
             let step = i32::from(c.port()) - i32::from(b.port());
             ensure!(
-                a.ip() == b.ip()
-                    && b.ip() == c.ip()
-                    && (-16..=16).contains(&step)
-                    && i32::from(b.port()) - i32::from(a.port()) == step,
-                "no usable ordered mapping observation"
+                a.ip() == b.ip() && b.ip() == c.ip(),
+                "mapping addresses differ"
             );
-            let prediction = Prediction {
-                address: *c.ip(),
-                port: c.port(),
-                step: step as i16,
+            let observation = if a == b && b == c {
+                Observation::Stable {
+                    address: *c.ip(),
+                    port: c.port(),
+                }
+            } else if step != 0
+                && (-16..=16).contains(&step)
+                && i32::from(b.port()) - i32::from(a.port()) == step
+            {
+                Observation::Sequential {
+                    address: *c.ip(),
+                    port: c.port(),
+                    step: step as i16,
+                }
+            } else {
+                Observation::Irregular { address: *c.ip() }
             };
             // The public peer target is checked when supplied by signaling.
             Ok(Survey {
                 preparation: self,
-                prediction,
-                retained: (step == 0).then_some(socket),
+                observation,
+                retained: matches!(observation, Observation::Stable { .. }).then_some(socket),
             })
         })
         .await?
     }
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RandomRole {
+    Pool,
+    Search,
+}
+
+struct ProbePlan {
+    targets: Vec<SocketAddrV4>,
+    random: Option<RandomRole>,
+}
+impl ProbePlan {
+    fn new(local: Observation, remote: Observation) -> Result<Self> {
+        ensure!(remote.valid(), "unsupported peer mapping address");
+        match (local, remote) {
+            (Observation::Stable { .. }, Observation::Irregular { address }) => Ok(Self {
+                targets: random_targets(address)?,
+                random: Some(RandomRole::Search),
+            }),
+            (Observation::Irregular { .. }, Observation::Stable { .. }) => Ok(Self {
+                targets: vec![remote.target().unwrap()],
+                random: Some(RandomRole::Pool),
+            }),
+            (Observation::Irregular { .. }, _) | (_, Observation::Irregular { .. }) => {
+                bail!("unsupported mapping observations")
+            }
+            _ => {
+                let target = remote
+                    .target()
+                    .ok_or_else(|| anyhow::anyhow!("invalid prediction"))?;
+                let alternate =
+                    if let (Observation::Stable { .. }, Observation::Sequential { step, .. }) =
+                        (local, remote)
+                    {
+                        u16::try_from(i32::from(target.port()) + 4 * i32::from(step))
+                            .ok()
+                            .filter(|port| *port >= 1024)
+                            .map(|port| SocketAddrV4::new(*target.ip(), port))
+                    } else {
+                        None
+                    };
+                Ok(Self {
+                    targets: std::iter::once(target).chain(alternate).collect(),
+                    random: None,
+                })
+            }
+        }
+    }
+}
+
+fn random_targets(address: Ipv4Addr) -> Result<Vec<SocketAddrV4>> {
+    let mut seen = HashSet::with_capacity(RANDOM_PORTS);
+    let mut targets = Vec::with_capacity(RANDOM_PORTS);
+    while targets.len() < RANDOM_PORTS {
+        let mut bytes = [0; RANDOM_PORTS * 2];
+        getrandom::fill(&mut bytes)
+            .map_err(|error| anyhow::anyhow!("preparation ports: {error}"))?;
+        for value in bytes.chunks_exact(2) {
+            let port = u16::from_ne_bytes([value[0], value[1]]);
+            // Rejection preserves uniform choice over the allowed port range.
+            if port >= 1024 && seen.insert(port) {
+                targets.push(SocketAddrV4::new(address, port));
+                if targets.len() == RANDOM_PORTS {
+                    break;
+                }
+            }
+        }
+    }
+    Ok(targets)
+}
+
 impl Survey {
     pub async fn check(
         self,
-        remote: Prediction,
+        remote: Observation,
         commands: &mpsc::Sender<NativeEvent>,
         incoming: &mut mpsc::Receiver<UdpSignal>,
     ) -> Result<Prepared> {
-        let target = remote
-            .target()
-            .ok_or_else(|| anyhow::anyhow!("unsupported peer mapping address"))?;
-        // Only a retained stable socket searches a finite remote sequential window.
-        let alternate = if self.prediction.step == 0 && remote.step != 0 {
-            u16::try_from(i32::from(target.port()) + 4 * i32::from(remote.step))
-                .ok()
-                .filter(|port| *port >= 1024)
-                .map(|port| SocketAddrV4::new(*target.ip(), port))
-        } else {
-            None
-        };
-        self.check_targets(target, alternate, commands, incoming)
-            .await
+        let plan = ProbePlan::new(self.observation, remote)?;
+        self.check_plan(plan, commands, incoming).await
     }
 
     #[cfg(test)]
@@ -316,10 +419,28 @@ impl Survey {
     ) -> Result<Prepared> {
         self.check_targets(remote, None, commands, incoming).await
     }
+    #[cfg(test)]
     async fn check_targets(
         self,
         remote: SocketAddrV4,
         alternate: Option<SocketAddrV4>,
+        commands: &mpsc::Sender<NativeEvent>,
+        incoming: &mut mpsc::Receiver<UdpSignal>,
+    ) -> Result<Prepared> {
+        self.check_plan(
+            ProbePlan {
+                targets: std::iter::once(remote).chain(alternate).collect(),
+                random: None,
+            },
+            commands,
+            incoming,
+        )
+        .await
+    }
+
+    async fn check_plan(
+        self,
+        plan: ProbePlan,
         commands: &mpsc::Sender<NativeEvent>,
         incoming: &mut mpsc::Receiver<UdpSignal>,
     ) -> Result<Prepared> {
@@ -330,46 +451,72 @@ impl Survey {
         } = self;
         let deadline = preparation.expires;
         timeout_at(deadline.into(), async move {
-            let mut selected = alternate.is_none().then_some(remote);
+            // Declared before sockets/readers: release capacity only after their
+            // retirement, including cancellation of this entire future.
+            let _permit = plan.random.map(|_| RANDOM_PREPARATIONS.try_acquire()).transpose()
+                .map_err(|_| anyhow::anyhow!("random preparation busy"))?;
+            let random = plan.random.is_some();
+            let mut selected = (plan.targets.len() == 1).then_some(plan.targets[0]);
             let mut sockets = Vec::new();
-            if let Some(socket) = retained {
-                sockets.push(socket);
-            } else {
-                for _ in 0..8 { sockets.push(UdpSocket::bind((preparation.local, 0)).await?); }
-            }
+            if let Some(socket) = retained { sockets.push(socket); }
+            else { for _ in 0..if random { RANDOM_PORTS } else { 8 } { sockets.push(UdpSocket::bind((preparation.local, 0)).await?); } }
             let provider = rtc_crypto::default_provider()?;
-            // Preserve 2.x short-term STUN integrity: lowercase hex of the pair secret.
             let key: String = preparation.secret.iter().map(|byte| format!("{byte:02x}")).collect();
-            let integrity = MessageIntegrity::new_short_term_integrity_with_provider(
-                key.clone(), provider.crypto());
+            let integrity = MessageIntegrity::new_short_term_integrity_with_provider(key.clone(), provider.crypto());
             let mut requests = Vec::new();
             for _ in &sockets {
                 let mut request = Message::new();
                 request.build(&[Box::new(BINDING_REQUEST), Box::new(TransactionId::new())])?;
-                integrity.add_to(&mut request)?;
-                FINGERPRINT.add_to(&mut request)?;
+                integrity.add_to(&mut request)?; FINGERPRINT.add_to(&mut request)?;
                 requests.push(request);
+            }
+            let mut requests_left = if random { RANDOM_REQUEST_BUDGET } else { CHECK_PACKET_BUDGET };
+            let mut next_send = Instant::now();
+            if plan.random == Some(RandomRole::Pool) {
+                // M mappings share one stable remote tuple before its N guesses.
+                for (socket, request) in sockets.iter().zip(&requests) {
+                    sleep_until(next_send.into()).await;
+                    socket.send_to(&request.raw, plan.targets[0]).await?;
+                    requests_left -= 1;
+                    next_send = Instant::now() + RANDOM_PACKET_INTERVAL;
+                }
+                send(commands, preparation.pair, UdpSignal::Ready {}).await?;
+            } else if plan.random == Some(RandomRole::Search) {
+                ensure!(matches!(incoming.recv().await, Some(UdpSignal::Ready {})), "expected peer pool readiness");
             }
             let mut reads: FuturesUnordered<_> = sockets.iter().enumerate().map(|(i,s)| receive(i,s)).collect();
             let start = Instant::now();
             let mut round = 0;
-            let mut replies = 0;
+            let mut probe = 0;
+            let probe_limit = if plan.random == Some(RandomRole::Search) { RANDOM_PORTS * 2 } else { RANDOM_PORTS };
+            let mut replies_left = if random { RANDOM_REPLY_BUDGET } else { CHECK_PACKET_BUDGET };
+            let mut triggered_left = if random { 8 } else { CHECK_PACKET_BUDGET };
+            let mut outgoing: VecDeque<(usize, SocketAddrV4, Vec<u8>)> = VecDeque::new();
             let mut winner = None;
             let mut peer_complete = false;
-            // Initial fanout and authenticated triggered retries share one budget.
-            let mut requests_left = CHECK_PACKET_BUDGET;
             let index = loop {
-                if peer_complete {
-                    if let Some(index) = winner { break index; }
-                }
+                if peer_complete { if let Some(index) = winner { break index; } }
+                let random_probe = random && winner.is_none() && probe < probe_limit && requests_left > 0
+                    && (plan.random == Some(RandomRole::Pool) || selected.is_none());
                 tokio::select! {
-                    _ = sleep_until((start + Duration::from_millis(round * 100)).into()), if round < 7 && requests_left > 0 => {
-                        let destination = selected.unwrap_or_else(|| if round % 2 == 1 { alternate.unwrap() } else { remote });
-                        for (socket, request) in sockets.iter().zip(&requests).take(requests_left) {
-                            socket.send_to(&request.raw, destination).await?;
+                    _ = sleep_until((start + Duration::from_millis(round * 100)).into()), if !random && round < 7 && requests_left > 0 => {
+                        let target = selected.unwrap_or(plan.targets[round as usize % plan.targets.len()]);
+                        for (index, request) in requests.iter().enumerate().take(requests_left) {
+                            outgoing.push_back((index, target, request.raw.clone()));
                             requests_left -= 1;
                         }
                         round += 1;
+                    },
+                    _ = sleep_until(next_send.into()), if !outgoing.is_empty() || random_probe => {
+                        let (index, target, bytes) = if let Some(packet) = outgoing.pop_front() { packet }
+                        else {
+                            let index = if plan.random == Some(RandomRole::Pool) { probe } else { 0 };
+                            let target = plan.targets[probe % plan.targets.len()];
+                            probe += 1; requests_left -= 1;
+                            (index, target, requests[index].raw.clone())
+                        };
+                        sockets[index].send_to(&bytes, target).await?;
+                        next_send = Instant::now() + if random { RANDOM_PACKET_INTERVAL } else { Duration::ZERO };
                     },
                     message = incoming.recv(), if !peer_complete => {
                         ensure!(matches!(message, Some(UdpSignal::Complete)), "expected peer preparation completion");
@@ -378,45 +525,37 @@ impl Survey {
                     Some(received) = reads.next() => {
                         let (index, bytes, peer) = received?;
                         reads.push(receive(index, &sockets[index]));
-                        if selected.map_or_else(
-                            || peer != SocketAddr::V4(remote) && alternate.map(SocketAddr::V4) != Some(peer),
-                            |target| peer != SocketAddr::V4(target),
-                        ) { continue; }
+                        let SocketAddr::V4(peer) = peer else { continue; };
+                        if selected.map_or_else(|| !plan.targets.contains(&peer), |target| peer != target) { continue; }
                         let mut message = Message { raw: bytes, ..Default::default() };
                         if message.decode().is_err() || MessageIntegrity::check(&mut message, key.as_bytes(), provider.crypto()).is_err() { continue; }
                         let valid_response = message.typ == BINDING_SUCCESS && message.transaction_id == requests[index].transaction_id;
                         if selected.is_none() && (message.typ == BINDING_REQUEST || valid_response) {
-                            let SocketAddr::V4(peer) = peer else { continue; };
-                            // One stable socket pins one authorized tuple before answering it.
-                            // Every other predicted tuple is ignored for the rest of this attempt.
                             selected = Some(peer);
+                            outgoing.retain(|(_, target, _)| *target == peer);
                         }
-                        let Some(target) = selected else { continue; };
-                        if message.typ == BINDING_REQUEST && replies < CHECK_PACKET_BUDGET {
-                            replies += 1;
+                        if selected.is_none() { continue; }
+                        if message.typ == BINDING_REQUEST && replies_left > 0 {
+                            replies_left -= 1;
                             let mut response = Message::new();
                             response.build(&[Box::new(BINDING_SUCCESS), Box::new(message.transaction_id),
-                                Box::new(XorMappedAddress { ip: target.ip().to_owned().into(), port: target.port() })])?;
-                            integrity.add_to(&mut response)?;
-                            FINGERPRINT.add_to(&mut response)?;
-                            sockets[index].send_to(&response.raw, target).await?;
-                            if winner.is_none() && requests_left > 0 {
-                                sockets[index].send_to(&requests[index].raw, target).await?;
-                                requests_left -= 1;
+                                Box::new(XorMappedAddress { ip: (*peer.ip()).into(), port: peer.port() })])?;
+                            integrity.add_to(&mut response)?; FINGERPRINT.add_to(&mut response)?;
+                            outgoing.push_back((index, peer, response.raw));
+                            if winner.is_none() && requests_left > 0 && triggered_left > 0 {
+                                requests_left -= 1; triggered_left -= 1;
+                                outgoing.push_back((index, peer, requests[index].raw.clone()));
                             }
-                        } else if message.typ == BINDING_SUCCESS && message.transaction_id == requests[index].transaction_id {
-                            if winner.is_none() {
-                                winner = Some(index);
-                                send(commands, preparation.pair, UdpSignal::Complete).await?;
-                            }
+                        } else if valid_response && winner.is_none() {
+                            winner = Some(index);
+                            send(commands, preparation.pair, UdpSignal::Complete).await?;
                         }
                     }
                 }
             };
-            // The same owner answers until both peers have proved their tuple.
-            // Every preparation reader retires before the socket moves to ICE.
             drop(reads);
             let socket = sockets.swap_remove(index);
+            drop(sockets);
             Ok(Prepared { pair: preparation.pair, expires: preparation.expires, socket, remote: selected.unwrap() })
         }).await?
     }
@@ -654,10 +793,9 @@ mod tests {
                 Ipv4Addr::LOCALHOST,
                 Instant::now() + Duration::from_secs(5),
             )?,
-            prediction: Prediction {
+            observation: Observation::Stable {
                 address: Ipv4Addr::LOCALHOST,
                 port: local.port(),
-                step: 0,
             },
             retained: Some(socket),
         };
@@ -701,10 +839,9 @@ mod tests {
         let survey = |socket: UdpSocket| -> Result<Survey> {
             Ok(Survey {
                 preparation: Preparation::new(pair, [51; 32], Ipv4Addr::LOCALHOST, expires)?,
-                prediction: Prediction {
+                observation: Observation::Stable {
                     address: Ipv4Addr::LOCALHOST,
                     port: socket.local_addr()?.port(),
-                    step: 0,
                 },
                 retained: Some(socket),
             })
@@ -849,10 +986,9 @@ mod tests {
                 Ipv4Addr::LOCALHOST,
                 Instant::now() + Duration::from_secs(5),
             )?,
-            prediction: Prediction {
+            observation: Observation::Stable {
                 address: Ipv4Addr::LOCALHOST,
                 port: local.port(),
-                step: 0,
             },
             retained: Some(socket),
         };
@@ -890,18 +1026,27 @@ mod tests {
             incoming: vec![],
             outgoing: vec![],
         };
-        let (input, _) = mpsc::channel(4);
+        let (commands, mut notifications) = mpsc::channel(4);
         driver.preparings.insert(
             pair,
-            Pending {
-                plan: plan.clone(),
-                signals: vec![],
-                input,
-                task: tokio::spawn(async { Err(anyhow::anyhow!("owned fixture survey failed")) }),
-            },
+            Pending::start(Uuid::nil(), plan.clone(), vec![], commands),
         );
         let mut pending = driver.preparings.remove(&pair).unwrap();
         let result = (&mut pending.task).await;
+        assert!(matches!(
+            notifications.try_recv()?,
+            NativeEvent::Command(Command::Signal {
+                payload: Signal {
+                    udp: Some(UdpSignal::Unavailable {}),
+                    ..
+                },
+                ..
+            })
+        ));
+        assert!(
+            notifications.try_recv().is_err(),
+            "failure notification repeated"
+        );
         driver.prepared(pending, result).await;
         anyhow::ensure!(
             driver.preparings.is_empty() && driver.pairs.contains_key(&pair),
@@ -917,8 +1062,229 @@ mod tests {
         driver.transport.close().await;
         Ok(())
     }
+
     #[tokio::test]
-    async fn ordered_mapping_surveys_accept_both_directions_and_reject_irregular_ports(
+    async fn random_pool_shares_capacity_adopts_one_socket_and_retires_on_peer_refusal(
+    ) -> Result<()> {
+        let stable = Observation::Stable {
+            address: "203.0.113.1".parse()?,
+            port: 42000,
+        };
+        let irregular = Observation::Irregular {
+            address: "203.0.113.2".parse()?,
+        };
+        let generated = ProbePlan::new(stable, irregular)?;
+        assert_eq!(generated.targets.len(), RANDOM_PORTS);
+        assert_eq!(
+            generated.targets.iter().collect::<HashSet<_>>().len(),
+            RANDOM_PORTS
+        );
+        assert!(generated
+            .targets
+            .iter()
+            .all(|target| *target.ip() == irregular.address() && target.port() >= 1024));
+        assert!(
+            ProbePlan::new(irregular, irregular).is_err(),
+            "two irregular mappings cannot select birthday search"
+        );
+        let pair = Uuid::new_v4();
+        let expires = Instant::now() + Duration::from_secs(5);
+        let easy_socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+        let SocketAddr::V4(easy_address) = easy_socket.local_addr()? else {
+            unreachable!()
+        };
+        let (hard_commands, mut hard_events) = mpsc::channel(4);
+        let (to_hard, mut hard_input) = mpsc::channel(4);
+        let occupied = RANDOM_PREPARATIONS.try_acquire()?;
+        let hard = tokio::spawn(async move {
+            Survey {
+                preparation: Preparation::new(pair, [73; 32], Ipv4Addr::LOCALHOST, expires)?,
+                observation: Observation::Irregular {
+                    address: Ipv4Addr::LOCALHOST,
+                },
+                retained: None,
+            }
+            .check_plan(
+                ProbePlan {
+                    targets: vec![easy_address],
+                    random: Some(RandomRole::Pool),
+                },
+                &hard_commands,
+                &mut hard_input,
+            )
+            .await
+        });
+        // Observe the real source sockets through their finite priming traffic.
+        // The forced loopback intersection is a lifecycle control, not a probability trial.
+        let mut sources = HashSet::new();
+        let mut bytes = [0; 1024];
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while sources.len() < RANDOM_PORTS {
+                let (_, peer) = easy_socket.recv_from(&mut bytes).await?;
+                let SocketAddr::V4(peer) = peer else {
+                    unreachable!()
+                };
+                sources.insert(peer);
+            }
+            Ok::<_, anyhow::Error>(())
+        })
+        .await??;
+        assert_eq!(RANDOM_PREPARATIONS.available_permits(), 0);
+        let (_to_busy, mut busy_input) = mpsc::channel(4);
+        let (busy_commands, _busy_events) = mpsc::channel(4);
+        let busy = Survey {
+            preparation: Preparation::new(Uuid::new_v4(), [74; 32], Ipv4Addr::LOCALHOST, expires)?,
+            observation: Observation::Irregular {
+                address: Ipv4Addr::LOCALHOST,
+            },
+            retained: None,
+        }
+        .check_plan(
+            ProbePlan {
+                targets: vec![easy_address],
+                random: Some(RandomRole::Pool),
+            },
+            &busy_commands,
+            &mut busy_input,
+        )
+        .await;
+        assert!(busy.is_err(), "a third process-wide pool queued or started");
+        drop(occupied);
+        let Some(NativeEvent::Command(Command::Signal {
+            payload:
+                Signal {
+                    udp: Some(UdpSignal::Ready {}),
+                    ..
+                },
+            ..
+        })) = hard_events.recv().await
+        else {
+            bail!("pool readiness missing");
+        };
+        let (easy_commands, mut easy_events) = mpsc::channel(4);
+        let (to_easy, mut easy_input) = mpsc::channel(4);
+        to_easy.send(UdpSignal::Ready {}).await?;
+        let targets: Vec<_> = sources.iter().copied().collect();
+        let easy = tokio::spawn(async move {
+            Survey {
+                preparation: Preparation::new(pair, [73; 32], Ipv4Addr::LOCALHOST, expires)?,
+                observation: Observation::Stable {
+                    address: Ipv4Addr::LOCALHOST,
+                    port: easy_address.port(),
+                },
+                retained: Some(easy_socket),
+            }
+            .check_plan(
+                ProbePlan {
+                    targets,
+                    random: Some(RandomRole::Search),
+                },
+                &easy_commands,
+                &mut easy_input,
+            )
+            .await
+        });
+        for (events, peer) in [(&mut easy_events, &to_hard), (&mut hard_events, &to_easy)] {
+            let Some(NativeEvent::Command(Command::Signal {
+                payload:
+                    Signal {
+                        udp: Some(UdpSignal::Complete),
+                        ..
+                    },
+                ..
+            })) = events.recv().await
+            else {
+                bail!("authenticated tuple proof missing");
+            };
+            peer.send(UdpSignal::Complete).await?;
+        }
+        let (easy, _) = easy.await??.commit(pair)?;
+        let (hard, target) = hard.await??.commit(pair)?;
+        assert_eq!(target, easy_address);
+        assert_eq!(easy.local_addr()?, SocketAddr::V4(easy_address));
+        let hard_address = hard.local_addr()?;
+        assert!(sources.contains(&match hard_address {
+            SocketAddr::V4(v) => v,
+            _ => unreachable!(),
+        }));
+        for address in sources {
+            if SocketAddr::V4(address) != hard_address {
+                UdpSocket::bind(address).await?;
+            }
+        }
+        assert_eq!(RANDOM_PREPARATIONS.available_permits(), 2);
+        drop((easy, hard));
+        UdpSocket::bind(easy_address).await?;
+        UdpSocket::bind(hard_address).await?;
+
+        // A peer refusal cancels even a Search blocked before Ready, joining the
+        // same Pending task and releasing its socket and global permit.
+        let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+        let address = socket.local_addr()?;
+        let (commands, mut events) = mpsc::channel(4);
+        let (input, mut incoming) = mpsc::channel(4);
+        let started = std::sync::Arc::new(tokio::sync::Notify::new());
+        let notify = started.clone();
+        let task = tokio::spawn(async move {
+            let mut check = Box::pin(
+                Survey {
+                    preparation: Preparation::new(
+                        pair,
+                        [75; 32],
+                        Ipv4Addr::LOCALHOST,
+                        Instant::now() + Duration::from_secs(5),
+                    )?,
+                    observation: Observation::Stable {
+                        address: Ipv4Addr::LOCALHOST,
+                        port: address.port(),
+                    },
+                    retained: Some(socket),
+                }
+                .check_plan(
+                    ProbePlan {
+                        targets: vec![easy_address; RANDOM_PORTS],
+                        random: Some(RandomRole::Search),
+                    },
+                    &commands,
+                    &mut incoming,
+                ),
+            );
+            assert!(futures_util::poll!(check.as_mut()).is_pending());
+            notify.notify_one();
+            check.await
+        });
+        started.notified().await;
+        let mut pending = Pending {
+            plan: PairInfo {
+                id: pair,
+                peer_id: Uuid::new_v4(),
+                udp_preparation: Some(piik_channel_core::wire::UdpPreparation::Required),
+                can_receive_video_layers: false,
+                rooms: vec![],
+                incoming: vec![],
+                outgoing: vec![],
+            },
+            signals: vec![],
+            input,
+            task,
+        };
+        let NativeEvent::Command(Command::Signal { payload, .. }) =
+            signal(pair, UdpSignal::Unavailable {})
+        else {
+            unreachable!()
+        };
+        pending.signal(payload)?;
+        assert!(matches!((&mut pending.task).await, Err(error) if error.is_cancelled()));
+        assert_eq!(RANDOM_PREPARATIONS.available_permits(), 2);
+        UdpSocket::bind(address).await?;
+        assert!(
+            events.try_recv().is_err(),
+            "peer refusal echoed a refusal or completed"
+        );
+        Ok(())
+    }
+    #[tokio::test]
+    async fn mapping_surveys_keep_stable_sequential_and_irregular_observations_distinct(
     ) -> Result<()> {
         for (name, ports) in [
             ("increasing", [42000u16, 42002, 42004]),
@@ -961,18 +1327,15 @@ mod tests {
             )?
             .survey(addresses.try_into().unwrap())
             .await;
-            if name == "irregular" {
-                assert!(result.is_err());
-            } else {
-                let survey = result?;
-                let expected = match name {
-                    "increasing" => 2,
-                    "decreasing" => -2,
-                    _ => 0,
-                };
-                assert_eq!(survey.prediction.step, expected);
-                assert_eq!(survey.retained.is_some(), expected == 0);
+            let survey = result?;
+            match (name, survey.observation) {
+                ("increasing", Observation::Sequential { step: 2, .. })
+                | ("decreasing", Observation::Sequential { step: -2, .. })
+                | ("stable", Observation::Stable { .. })
+                | ("irregular", Observation::Irregular { .. }) => {}
+                _ => panic!("observation changed meaning"),
             }
+            assert_eq!(survey.retained.is_some(), name == "stable");
             for task in tasks {
                 task.await??;
             }

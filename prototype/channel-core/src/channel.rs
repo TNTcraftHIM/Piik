@@ -133,10 +133,13 @@ impl Channel {
                 let peer = self.peer(session_id, pair_id).ok_or("unassigned_pair")?;
                 if let Some(udp) = &payload.udp {
                     if !self.transports.prepared(pair_id)
+                        || !self.can_prepare_udp(session_id, peer)
                         || !match udp {
                             UdpSignal::Offer { .. } => session_id < peer,
                             UdpSignal::Answer { .. } => session_id > peer,
-                            UdpSignal::Complete => true,
+                            UdpSignal::Ready {}
+                            | UdpSignal::Unavailable {}
+                            | UdpSignal::Complete => true,
                         }
                     {
                         return Err("invalid_signal");

@@ -509,11 +509,11 @@ yet part of the previously delivered internal package.
 
 ### Random-Mapping Collision Control
 
-Product preparation still accepts stable or sequential observations; irregular
-observations continue ordinary ICE. It does not implement random-port birthday
-search. That mechanism needs independent hard-side mappings toward one stable
-peer tuple and a distinct target set from the stable peer, not more retransmits
-of the current prediction.
+The current Native preparation supports a stable/irregular pair through bounded
+random-port collision search. The [network owner](./channel-network-design.md#reachability-and-repair)
+defines its admission and resource limits. This requires independent mappings
+toward one stable peer tuple and a distinct target set from that peer; additional
+retransmits of a fixed prediction do not create the same search space.
 
 On 2026-11-14, an isolated Native experiment used 256 hard-side sockets and 256
 pre-frozen target ports in a Linux kernel NAT fixture. Mapping and filtering were
@@ -527,12 +527,20 @@ stopped at 582 and 308. Every attempt retained its five-second preparation budge
 Successful admission-to-DataChannel times were 8.51 and 8.11 seconds, including
 the preceding ordinary attempt.
 
-These are mechanism controls, not population success rates or accepted product
-defaults. The idealized intersection model assumes valid, live mappings and
+The production implementation was then tested in three fresh kernel-NAT trials
+using its own random generator and matched Core 22. Two established DataChannels;
+the first carried decoded video and audio on the original winning socket with
+SDK-selected tuple evidence. One had no match and reached its deadline.
+Separate resource controls observed 255 losing sockets released, the winning
+socket retained without rebinding, and all owned sockets released after pair
+withdrawal while the participant and signaling connection stayed alive.
+
+These are mechanism controls, not population success rates. The idealized
+intersection model assumes valid, live mappings and
 compatible filtering; two independently random endpoint-dependent NATs do not
 automatically satisfy it. The [original traversal explanation](https://tailscale.com/blog/how-nat-traversal-works)
-describes that distinction. Production integration, concurrent-pair cost and a
-separate Native-to-Browser standard-ICE control remain in [TODO](../todo.md#next).
+describes that distinction. Physical-network measurements and a separate
+Native-to-Browser standard-ICE control remain in [TODO](../todo.md#next).
 
 ### External Forwarding And Participant Relays
 

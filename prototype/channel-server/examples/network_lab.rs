@@ -140,7 +140,7 @@ async fn participant() -> Result<()> {
                     if value["type"] == "signal" {
                         let signal = &value["payload"];
                         emit(json!({"type":"native-signal", "pairId":value["pairId"],
-                            "udp":signal["udp"]["type"], "prediction":signal["udp"]["prediction"],
+                            "udp":signal["udp"]["type"], "observation":signal["udp"]["observation"],
                             "description":signal["description"]["type"], "candidate":signal.get("candidate").is_some()}));
                     } else { emit(json!({"type":"native-command", "command":value})); }
                     send(&mut socket, command).await?;
