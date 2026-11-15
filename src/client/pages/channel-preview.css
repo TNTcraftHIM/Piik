@@ -301,7 +301,7 @@
 .c3-shell[data-layout="quick"] > .c3-personal { display: contents; }
 .c3-shell[data-layout="quick"] .c3-personal > .c3-room-slot { flex: 1; min-width: 0; }
 .c3-shell[data-layout="quick"] .c3-personal .c3-voice-entry { display: none; }
-.c3-shell[data-layout="quick"] .c3-personal .c3-voice-dock { order: 4; position: sticky; bottom: 8px; z-index: 9; align-self: center; display: flex; align-items: center; width: min(100%, 990px); padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--c3-inset-radius); background: var(--paper); box-shadow: var(--control-shadow); }
+.c3-shell[data-layout="quick"] .c3-personal .c3-voice-dock { order: 4; position: sticky; top: 8px; z-index: 9; align-self: center; display: flex; align-items: center; width: min(100%, 990px); padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--c3-inset-radius); background: var(--paper); box-shadow: var(--control-shadow); }
 .c3-shell[data-layout="quick"] .c3-personal .c3-voice-destination { flex-basis: auto; }
 .c3-shell[data-layout="quick"] .c3-personal .c3-voice-controls { width: auto; }
 .c3-shell[data-layout="quick"] .c3-personal > .c3-identity { order: 5; align-self: center; display: flex; width: min(100%, 990px); padding: 8px; }
