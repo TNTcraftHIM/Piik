@@ -2,6 +2,328 @@
 use super::*;
 use crate::peer::tests::support::{endpoint, h264, send, vp8, Fixture};
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn polite_collision_reoffers_a_reused_sender_without_losing_its_live_connection() -> Result<()>
+{
+    use crate::media::{Output, Source, SourceFeed, SourceOrigin};
+    use crate::peer::tests::support::{exchange, open};
+    use crate::peer::{Description, Driver, NativeEvent, PairInfo, Signal};
+    use piik_channel_core::wire::{FlowBinding, Kind, PublicationInfo};
+
+    fn description(kind: String, sdp: String, exchange: Uuid) -> Signal {
+        Signal {
+            udp: None,
+            description: Some(Description {
+                kind,
+                sdp: Some(sdp),
+            }),
+            exchange_id: Some(exchange),
+            candidate: None,
+            tracks: Some(vec![]),
+            resync: None,
+        }
+    }
+    async fn answer(driver: &mut Driver, pair: Uuid, remote: &Transport) -> Result<()> {
+        let signal = driver.pairs[&pair]
+            .pending_offer
+            .as_ref()
+            .context("missing Driver offer")?
+            .signal
+            .clone();
+        let offer = signal.description.unwrap();
+        remote.accept(offer.kind, offer.sdp.unwrap()).await?;
+        let (kind, sdp) = remote.local_description().await?;
+        driver
+            .signal(pair, description(kind, sdp, signal.exchange_id.unwrap()))
+            .await
+    }
+
+    let (mut driver, mut events, mut commands, _stop) = crate::peer::tests::driver();
+    let fixed = crate::peer::server_udp::ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
+    let original = std::mem::replace(&mut driver.transport, Runtime::new(Some(fixed.clone())));
+    original.close().await;
+    driver.server_udp = Some(fixed);
+    driver.session = Uuid::from_u128(2);
+    let fixed = crate::peer::server_udp::ServerUdp::bind(&[("127.0.0.1:0".parse()?, None)])?;
+    let other = Runtime::new(Some(fixed));
+    let pair = Uuid::new_v4();
+    let first_flow = Uuid::new_v4();
+    let publication = PublicationInfo {
+        id: Uuid::new_v4(),
+        room_id: "glare".into(),
+        session_id: driver.session,
+        user_id: Uuid::new_v4(),
+        kind: Kind::Voice,
+        screen: None,
+        paused: false,
+        audience: vec![],
+        video_settings: None,
+    };
+    let source = Source {
+        id: Uuid::new_v4(),
+        publication_id: publication.id,
+        origin: SourceOrigin::Local,
+        kind: MediaKind::Audio,
+        feed: SourceFeed::Rtp {
+            codec: crate::peer::codec(),
+            keyframes: watch::channel(0).0,
+            report: Default::default(),
+        },
+        layers: None,
+    };
+    driver
+        .publications
+        .insert(publication.id, publication.clone());
+    driver.sources.insert(source.id, source.clone());
+    let binding = |id| FlowBinding {
+        id,
+        publication_id: publication.id,
+        input_flow_id: None,
+        selected: true,
+    };
+    let plan = PairInfo {
+        id: pair,
+        peer_id: Uuid::from_u128(1),
+        udp_preparation: None,
+        can_receive_video_layers: false,
+        rooms: vec![],
+        incoming: vec![],
+        outgoing: vec![binding(first_flow)],
+    };
+    driver.create_pair(&plan, None).await?;
+    let pc = driver.pairs[&pair].pc.clone();
+    let (remote, mut remote_events) = endpoint(&other, pair, None).await?;
+    let result = async {
+        let (forward, reverse) = open(&pc, &remote, &mut remote_events).await?;
+        let instance = pc.connection_metrics().await?.connection_id;
+        let output = Output::new(
+            &pc,
+            &source,
+            "microphone".into(),
+            pair,
+            (first_flow, MediaKind::Audio),
+            driver.events.clone(),
+            driver.pairs[&pair].reports.clone(),
+            false,
+            false,
+        )
+        .await?;
+        let first = output.id;
+        let stream = output.stream.clone();
+        driver
+            .pairs
+            .get_mut(&pair)
+            .unwrap()
+            .outputs
+            .insert((first_flow, MediaKind::Audio), output);
+        driver.offer(pair).await?;
+        answer(&mut driver, pair, &remote).await?;
+        let mid = pc.call(move |e| Ok(e.outputs[&first].mid.unwrap())).await?;
+        driver.pairs.get_mut(&pair).unwrap().plan.outgoing.clear();
+        driver
+            .pairs
+            .get_mut(&pair)
+            .unwrap()
+            .outputs
+            .remove(&(first_flow, MediaKind::Audio))
+            .unwrap()
+            .close(&pc)
+            .await;
+        driver.offer(pair).await?;
+        answer(&mut driver, pair, &remote).await?;
+        pc.call(move |e| {
+            ensure!(
+                e.outputs[&first].reusable
+                    && e.rtc.media(mid).unwrap().direction() == Direction::Inactive
+            );
+            Ok(())
+        })
+        .await?;
+
+        let next_flow = Uuid::new_v4();
+        driver
+            .pairs
+            .get_mut(&pair)
+            .unwrap()
+            .plan
+            .outgoing
+            .push(binding(next_flow));
+        let output = Output::new(
+            &pc,
+            &source,
+            "replacement-flow".into(),
+            pair,
+            (next_flow, MediaKind::Audio),
+            driver.events.clone(),
+            driver.pairs[&pair].reports.clone(),
+            false,
+            false,
+        )
+        .await?;
+        let next = output.id;
+        ensure!(
+            output.stream == stream,
+            "fixture must reuse the original negotiated carrier"
+        );
+        driver
+            .pairs
+            .get_mut(&pair)
+            .unwrap()
+            .outputs
+            .insert((next_flow, MediaKind::Audio), output);
+        driver.offer(pair).await?;
+        let abandoned = driver.pairs[&pair]
+            .pending_offer
+            .as_ref()
+            .unwrap()
+            .signal
+            .exchange_id
+            .unwrap();
+        pc.call(move |e| {
+            ensure!(
+                e.outputs[&next].mid == Some(mid)
+                    && e.rtc.media(mid).unwrap().direction() == Direction::SendOnly
+            );
+            Ok(())
+        })
+        .await?;
+        while events.try_recv().is_ok() {}
+        while commands.try_recv().is_ok() {}
+
+        // Ordinary remote source addition races the reused local sending half.
+        remote
+            .add_output(
+                Uuid::new_v4(),
+                vp8(),
+                MediaKind::Video,
+                "remote-new-source".into(),
+                vec![String::new()],
+            )
+            .await?;
+        ensure!(remote.offer().await?);
+        let (kind, offer) = remote.local_description().await?;
+        let competing = Uuid::new_v4();
+        driver
+            .signal(pair, description(kind, offer, competing))
+            .await?;
+        let replacement = driver.pairs[&pair]
+            .pending_offer
+            .as_ref()
+            .context("polite collision lost the desired reused sender")?
+            .signal
+            .clone();
+        ensure!(replacement.exchange_id != Some(abandoned));
+        let sent: Vec<_> = std::iter::from_fn(|| commands.try_recv().ok())
+            .filter_map(|event| match event {
+                NativeEvent::Command(crate::peer::Command::Signal { payload, .. }) => Some(payload),
+                _ => None,
+            })
+            .collect();
+        let answer_signal = sent
+            .iter()
+            .find(|s| s.exchange_id == Some(competing))
+            .context("competing offer was not answered")?;
+        let offer_signal = sent
+            .iter()
+            .position(|s| s.exchange_id == replacement.exchange_id)
+            .context("replacement offer was not sent")?;
+        ensure!(
+            sent.iter()
+                .position(|s| s.exchange_id == Some(competing))
+                .unwrap()
+                < offer_signal,
+            "answer must precede replacement offer"
+        );
+        let value = answer_signal.description.as_ref().unwrap();
+        remote
+            .accept(value.kind.clone(), value.sdp.clone().unwrap())
+            .await?;
+        // An old answer cannot consume the new pending exchange, even if delayed
+        // until after the polite side completed the competing offer.
+        driver
+            .signal(
+                pair,
+                description(
+                    "answer".into(),
+                    "old answer must not be parsed".into(),
+                    abandoned,
+                ),
+            )
+            .await?;
+        ensure!(
+            driver.pairs[&pair]
+                .pending_offer
+                .as_ref()
+                .unwrap()
+                .signal
+                .exchange_id
+                == replacement.exchange_id
+        );
+        answer(&mut driver, pair, &remote).await?;
+        ensure!(driver.pairs[&pair]
+            .stable_outputs
+            .as_ref()
+            .is_some_and(|outputs| outputs.contains(&next)));
+        ensure!(pc.connection_metrics().await?.connection_id == instance);
+        pc.call(move |e| {
+            ensure!(
+                e.outputs[&next].mid == Some(mid)
+                    && e.rtc.media(mid).unwrap().direction().is_sending()
+            );
+            Ok(())
+        })
+        .await?;
+        while let Ok(event) = events.try_recv() {
+            ensure!(
+                !matches!(event,Event::OutputFailed{output,..}if output==next),
+                "rolled-back output was misreported as failed"
+            );
+        }
+        driver.pairs[&pair].outputs[&(next_flow,MediaKind::Audio)].rtp_sink().context("negotiated audio sink")?
+            .send(rtc_rtp::Packet {
+                header: rtc_rtp::header::Header {
+                    version: 2,
+                    marker: true,
+                    sequence_number: 1,
+                    timestamp: 960,
+                    ..Default::default()
+                },
+                payload: vec![0xf8, 0xff, 0xfe].into(),
+            })
+            .await?;
+        let track = tokio::time::timeout(Duration::from_secs(5), async {
+            while let Some(event) = remote_events.recv().await {
+                if let Event::Track(_, track) = event {
+                    return Ok::<_, anyhow::Error>(track);
+                }
+            }
+            anyhow::bail!("reused sender did not deliver audio")
+        })
+        .await??;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while let Some(event) = track.poll().await {
+                if let TrackEvent::Rtp(packet, ..) = event {
+                    ensure!(packet.payload.as_ref() == [0xf8, 0xff, 0xfe]);
+                    return Ok::<_, anyhow::Error>(());
+                }
+            }
+            anyhow::bail!("audio track retired")
+        })
+        .await??;
+        exchange(&forward, &reverse, "after-collision").await?;
+        exchange(&reverse, &forward, "reverse-after-collision").await?;
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+    driver.retire_pair(pair).await;
+    driver.files.close().await;
+    driver.watches.close().await;
+    driver.transport.close().await;
+    remote.close().await?;
+    other.close().await;
+    result
+}
+
 #[tokio::test]
 async fn a_reused_sender_preserves_the_remote_sending_half_of_its_media() -> Result<()> {
     let runtime = Runtime::new(None);

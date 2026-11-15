@@ -2440,6 +2440,9 @@ impl Driver {
             if collision {
                 p.pc.rollback().await?;
                 p.pending_offer = None;
+                // The incoming offer replaces protocol state, not our desired
+                // outputs. Existing MID direction changes need a fresh offer too.
+                p.negotiate = true;
             }
             p.remote = signal
                 .tracks
@@ -2456,16 +2459,21 @@ impl Driver {
             if offer {
                 let answer = self.local_signal(id, exchange).await?;
                 let p = self.pairs.get_mut(&id).unwrap();
-                p.confirm_outputs(p.output_ids()).await?;
+                let confirmed = if collision {
+                    p.stable_outputs.clone().unwrap_or_default()
+                } else {
+                    p.output_ids()
+                };
+                p.confirm_outputs(confirmed).await?;
                 p.answer = Some(answer.clone());
                 self.send_signal(id, answer).await;
             } else {
                 let offered = p.pending_offer.take().unwrap().outputs;
                 p.answer = None;
                 p.confirm_outputs(offered).await?;
-                if p.negotiate {
-                    self.offer(id).await?;
-                }
+            }
+            if self.pairs[&id].negotiate {
+                self.offer(id).await?;
             }
             self.reconcile_receivers(id).await?;
             self.refresh_media(false).await?;
