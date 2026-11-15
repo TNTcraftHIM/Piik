@@ -101,12 +101,15 @@ describe("Numeric quality editing group", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("preserves a draft through group navigation or cancelled selection, then commits on leaving", () => {
+  it("preserves a draft through group navigation, then submits without claiming acceptance", () => {
     const current = editor();
     current.input.value = "256";
     current.blur(current.inside);
     expect(current.onChange).not.toHaveBeenCalled();
     expect(current.input.value).toBe("256");
+    current.blur();
+    expect(current.onChange.mock.calls).toEqual([[256]]);
+    expect(current.input.value).toBe("128");
     current.blur();
     expect(current.onChange.mock.calls).toEqual([[256]]);
   });
