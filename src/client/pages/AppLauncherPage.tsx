@@ -387,10 +387,10 @@ export function AppLauncherPage() {
               <span>{t("client.connect.openOnStart")}</span>
             </label>}
             <div className="lr-client-approval-actions">
-              <Btn icon="x" title={approvalCurrent ? "client.connect.close" : "common.cancel"} cap={approvalCurrent ? "client.connect.close" : "common.cancel"} hint="hint-close"
+              <Btn icon="x" title={approvalCurrent ? "client.connect.close" : "common.cancel"} cap={approvalCurrent ? "client.connect.close" : "common.cancel"}
                 disabled={siteBusy} onClick={() => window.close()} />
               {!approvalCurrent && <Btn icon="check" title="client.connect.approve" cap="client.connect.approve" tone="primary"
-                hint="hint-client-site" busy={siteBusy} disabled={!validSite || siteBusy} onClick={() => void approveSite(requestedSite)} />}
+                busy={siteBusy} disabled={!validSite || siteBusy} onClick={() => void approveSite(requestedSite)} />}
             </div>
           </section>
         ) : <AppSiteBookmarks windowNavigation={windowNavigation} {...siteManagement} render={navigation => <LauncherWorkspace

@@ -2063,10 +2063,8 @@ export class ChannelSession {
       const candidate = page?.candidates.find(value => value.id === candidateId);
       if (!selection || !page || !candidate) throw new Error("watch_page_unavailable");
       selection.discovery?.abort();
-      try {
-        await page.select(candidateId);
-        selection.controller.signal.throwIfAborted();
-      } catch (error) { page.close(); this.finishSourceSelection(roomId, selection); throw error; }
+      await page.select(candidateId);
+      selection.controller.signal.throwIfAborted();
       const selected = page.candidates.find(value => value.id === candidateId);
       if (!selected) throw new Error("watch_page_unavailable");
       if (!selected.url) {

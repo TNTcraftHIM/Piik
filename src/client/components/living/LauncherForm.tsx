@@ -115,6 +115,7 @@ export function SiteStartControls({
               aria-checked={mode === choice.mode}
               tabIndex={mode === choice.mode ? 0 : -1}
               aria-label={t(choice.label)}
+              aria-describedby={`${accessHintId}-${choice.mode}`}
               onClick={() => {
                 onModeChange(choice.mode);
               }}
@@ -122,7 +123,7 @@ export function SiteStartControls({
               <Glyph name={choice.icon} size={27} />
               <span>
                 <strong>{t(choice.label)}</strong>
-                <small>{t(choice.hint)}</small>
+                <small id={`${accessHintId}-${choice.mode}`}>{t(choice.hint)}</small>
               </span>
             </button>
           );

@@ -36,6 +36,23 @@ const CAPTION: &str = include_str!("../../../src/client/ui/native-window-caption
 const PALETTE: &str = include_str!("../../../src/client/ui/palette.css");
 const CAPABILITY: &str = "Object.defineProperty(window, 'piikNativeWindow', { value: true });";
 
+thread_local! {
+    static APP_ICON: RefCell<Option<Icon>> = const { RefCell::new(None) };
+}
+
+pub(super) fn window_builder() -> Result<WindowBuilder> {
+    APP_ICON.with(|cached| {
+        let mut cached = cached.borrow_mut();
+        if cached.is_none() {
+            *cached = Some(Icon::from_resource(1, None)?);
+        }
+        let icon = cached.as_ref().expect("App icon loaded").clone();
+        Ok(WindowBuilder::new()
+            .with_window_icon(Some(icon.clone()))
+            .with_taskbar_icon(Some(icon)))
+    })
+}
+
 #[link(name = "user32")]
 extern "system" {
     fn MessageBoxW(owner: isize, text: *const u16, caption: *const u16, flags: u32) -> i32;
@@ -233,7 +250,7 @@ impl BookmarksWindow {
         url: &str,
     ) -> Result<Self> {
         let window = Rc::new(
-            WindowBuilder::new()
+            window_builder()?
                 .with_title("Piik")
                 .with_inner_size(LogicalSize::new(640.0, 720.0))
                 .build(target)?,
@@ -273,14 +290,11 @@ impl MainWindow {
         popups: Popups,
         controls: &WindowControls,
     ) -> Result<Self> {
-        let icon = Icon::from_resource(1, None)?;
         let window = Rc::new(
-            WindowBuilder::new()
+            window_builder()?
                 .with_title("Piik")
                 .with_decorations(false)
                 .with_undecorated_shadow(true)
-                .with_window_icon(Some(icon.clone()))
-                .with_taskbar_icon(Some(icon))
                 .with_inner_size(LogicalSize::new(1120.0, 760.0))
                 .with_visible(false)
                 .build(target)?,
@@ -300,7 +314,7 @@ impl MainWindow {
             })
             .with_new_window_req_handler(move |_, features| {
                 let create = || -> Result<NewWindowResponse> {
-                    let window = Rc::new(WindowBuilder::new().with_title("Piik")
+                    let window = Rc::new(window_builder()?.with_title("Piik")
                         .with_inner_size(LogicalSize::new(720.0, 760.0)).build(&popup_target)?);
                     let webview = WebViewBuilder::new().with_environment(features.opener.environment).build(window.as_ref())?;
                     let id = window.id();
@@ -528,12 +542,15 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                                 bookmarks.window.set_focus();
                             } else if let Some(launcher) = &launcher_url {
                                 let mut url = url::Url::parse(launcher).expect("Local App entry");
-                                url.query_pairs_mut().append_pair("bookmarks", "1");
+                                url.query_pairs_mut()
+                                    .append_pair("bookmarks", "1")
+                                    .append_pair("piik-preferences", "theme");
                                 let mut fragment =
                                     url::form_urlencoded::Serializer::new(String::new());
                                 fragment
                                     .append_pair("piik-client", "1")
-                                    .append_pair("piik-lang", language.code());
+                                    .append_pair("piik-lang", language.code())
+                                    .append_pair("piik-theme", theme.code());
                                 if let Some(current) = main
                                     .content
                                     .url()

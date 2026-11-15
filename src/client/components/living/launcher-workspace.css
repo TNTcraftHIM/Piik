@@ -1,7 +1,7 @@
 .lr-launcher-page { min-height: 100dvh; }
 .lr-launcher-page > .lr-top { flex: none; width: min(1060px, calc(100% - 32px)); margin-inline: auto; }
-.lr-launcher-page > main { flex: 1; min-height: 0; display: flex; }
-.lr-launcher-shell { align-self: flex-start; width: min(1060px, calc(100% - 32px)); margin: 12px auto 20px; display: grid; grid-template-columns: 248px minmax(0, 1fr); background: var(--paper); border: 1px solid var(--line); border-radius: var(--c3-shell-radius); box-shadow: var(--panel-shadow); overflow: clip; }
+.lr-launcher-page > main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.lr-launcher-shell { flex: 1 0 auto; align-self: center; width: min(1060px, calc(100% - 32px)); margin: 12px auto 20px; display: grid; grid-template-columns: 248px minmax(0, 1fr); background: var(--paper); border: 1px solid var(--line); border-radius: var(--c3-shell-radius); box-shadow: var(--panel-shadow); overflow: clip; }
 .lr-launcher-sidebar { display: flex; flex-direction: column; min-height: 0; padding: clamp(16px, 4vh, 30px) 18px 16px; background: var(--wall); border-right: 1px solid var(--line); }
 .lr-launcher-brand { flex: none; margin: 0 8px clamp(16px, 5vh, 40px); gap: 12px; }
 .lr-launcher-brand strong { font-size: 30px; letter-spacing: -1px; }
@@ -23,7 +23,8 @@
 .lr-launcher-local small { font-size: 11px; color: var(--muted); margin-top: 5px; }
 .lr-launcher-local-icon { color: var(--muted); }
 .lr-launcher-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--live); margin-left: auto; }
-.lr-launcher-main { padding: clamp(16px, 4vh, 32px) clamp(24px, 4vw, 44px) 16px; min-width: 0; }
+.lr-launcher-main { display: flex; flex-direction: column; padding: clamp(16px, 4vh, 32px) clamp(24px, 4vw, 44px) 16px; min-width: 0; }
+.lr-launcher-main > * { flex: none; }
 .lr-launcher-welcome { position: relative; padding: 0 0 clamp(8px, 2vh, 18px); }
 .lr-launcher-eyebrow { color: var(--action-text); font-size: 12px; font-weight: 650; margin: 0 0 12px; }
 .lr-launcher-welcome h1 { font-size: clamp(30px, 3.5vw, 42px); line-height: 1.2; letter-spacing: -.045em; font-weight: 750; margin: 0 0 12px; }
@@ -46,7 +47,7 @@
 .lr-launcher-results { display: block; padding-top: 12px; font-size: 11px; color: var(--muted); }
 .lr-launcher-results:empty { display: none; }
 .lr-launcher-public-address a { overflow-wrap: anywhere; }
-.lr-launcher-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; padding-top: 12px; color: var(--muted); font-size: 11px; }
+.lr-launcher-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; margin-top: auto; padding-top: 12px; color: var(--muted); font-size: 11px; }
 .lr-launcher-footer .lr-client-version { margin: 0; }
 .lr-launcher-footer small { margin-left: 6px; }
 .lr-launcher-empty { padding: 24px 8px 40px; color: var(--muted); font-size: 12px; line-height: 1.8; }
@@ -58,7 +59,7 @@
   .lr-launcher-host > .lr-btn { margin-left: 42px; }
 }
 @media (max-width: 600px) {
-  .lr-launcher-shell { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(5, auto); margin-block: 8px 16px; }
+  .lr-launcher-shell { flex: none; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(5, auto); margin-block: 8px 16px; }
   .lr-launcher-sidebar { display: contents; }
   .lr-launcher-brand { order: 0; margin: 14px 18px 0; }
   .lr-launcher-main { order: 1; padding: 14px 18px 12px; }

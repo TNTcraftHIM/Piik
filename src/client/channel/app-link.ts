@@ -12,6 +12,7 @@ import { activateNativePicker } from "../native/activation";
 import { NativeRoomHosting } from "./hosting-api";
 import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
+import { debugEvent } from "../lib/debug";
 
 export const APP_PROTOCOL = 13;
 const APP_REQUEST_BYTES = 256 * 1024;
@@ -212,8 +213,13 @@ export class ChannelApp {
     this.roomHosting = new NativeRoomHosting(`http://127.0.0.1:${health.port}/rooms/${channelId}/${userId}`,
       { Authorization: `Bearer ${health.token}`, "X-Piik-Credential": credential });
     const socket = this.socket = new WebSocket(`ws://127.0.0.1:${health.port}/rooms`, `piik-channel-rooms.${health.token}`);
-    const lost = () => { this.close(); onClose(); };
-    this.timer = setTimeout(lost, 10000);
+    const lost = (reason: "socketclose" | "hello" | "schema" | "consumer", close?: CloseEvent, timedOut = false) => {
+      if (!this.lifetime.signal.aborted) debugEvent("native", "control-closed", {
+        reason, ...(close && { code: close.code, wasClean: close.wasClean }), ...(reason === "hello" && { timedOut }),
+      });
+      this.close(); onClose();
+    };
+    this.timer = setTimeout(() => lost("hello", undefined, true), 10000);
     this.ready = new Promise((resolve, reject) => {
       this.rejectReady = reject;
       socket.onopen = () => {
@@ -221,29 +227,34 @@ export class ChannelApp {
           clearTimeout(this.timer);
           this.authenticated = true;
           resolve();
-        }, error => { reject(error); lost(); });
+        }, error => { reject(error); lost("hello"); });
       };
     });
     socket.onmessage = ({ data }) => {
+      let failure: "schema" | "consumer" = "schema";
       try {
         const reply = JSON.parse(String(data)) as { type?: string; id: string; result?: unknown; error?: string };
         if (reply.type?.startsWith("page_")) {
           const event = nativePageEventSchema.parse(reply);
+          failure = "consumer";
           this.pages.get(event.pageId)?.receive(event);
           return;
         }
         if (reply.type === "input_state") {
           const event = inputStateSchema.parse(reply);
+          failure = "consumer";
           if (this.captures.has(event.publicationId) || this.prepared.has(event.publicationId)) onInputState(event.publicationId, event.state);
           return;
         }
         if (reply.type === "capture_audio_failed") {
           const { publicationId } = captureAudioFailureSchema.parse(reply);
+          failure = "consumer";
           if (this.captures.has(publicationId) || this.prepared.has(publicationId)) onCaptureState(publicationId, "capture_audio_failed");
           return;
         }
         if (reply.type === "capture_ended") {
           const { publicationId, captureId, failed } = captureEndedSchema.parse(reply);
+          failure = "consumer";
           if (this.captures.get(publicationId)?.id === captureId) {
             this.captures.delete(publicationId);
             this.audioStates.delete(publicationId);
@@ -253,6 +264,7 @@ export class ChannelApp {
         }
         if (reply.type === "capture_audio_state") {
           const { publicationId, state } = captureAudioStateSchema.parse(reply);
+          failure = "consumer";
           if (this.captures.has(publicationId) || this.prepared.has(publicationId)) {
             this.audioStates.set(publicationId, state);
             onAudioState(publicationId);
@@ -261,6 +273,7 @@ export class ChannelApp {
         }
         if (reply.type === "external_input_state") {
           const event = externalInputStateSchema.parse(reply);
+          failure = "consumer";
           const input = this.externalInputs.get(event.publicationId);
           if (!input) return;
           if ((event.state === "waiting" || event.state === "closed" || event.state === "error")
@@ -282,12 +295,13 @@ export class ChannelApp {
         const request = this.requests.get(reply.id);
         if (!request) return;
         this.requests.delete(reply.id);
+        failure = "consumer";
         if (reply.error) request.reject(reply.error === "input_authorization_cancelled" || reply.error === "capture_cancelled"
           ? new DOMException(reply.error, "AbortError") : new Error(reply.error));
         else request.resolve(reply.result);
-      } catch { lost(); }
+      } catch { lost(failure); }
     };
-    socket.onclose = lost;
+    socket.onclose = event => lost("socketclose", event);
     socket.onerror = () => { /* Close retires the connection and its requests. */ };
   }
 

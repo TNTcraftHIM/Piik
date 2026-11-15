@@ -10,7 +10,7 @@ use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 use tao::{
     dpi::LogicalSize,
     event_loop::{EventLoopProxy, EventLoopWindowTarget},
-    window::{Window, WindowBuilder, WindowId},
+    window::{Window, WindowId},
 };
 use tokio::sync::oneshot;
 use uuid::Uuid;
@@ -23,7 +23,7 @@ use wry::{
     WebViewExtWindows,
 };
 
-type Children = Rc<RefCell<Vec<(WebView, Window)>>>;
+type Views = Rc<RefCell<BTreeMap<Uuid, PageView>>>;
 type Reply = oneshot::Sender<Result<Value, String>>;
 #[derive(Deserialize)]
 struct Message {
@@ -84,36 +84,56 @@ enum MediaEvent {
     Error,
 }
 struct Candidate {
+    view: Uuid,
     frame: Uuid,
     ancestors: Vec<Uuid>,
     source: ReportedCandidate,
 }
 struct Pending {
+    view: Uuid,
     reply: Reply,
     frame: Uuid,
     selecting: bool,
     patch: bool,
 }
-struct Page {
-    // WebView drops before the native window.
-    children: Children,
+struct PageView {
+    // WebView drops before its native window.
     view: WebView,
     window: Window,
+    document: Option<Uuid>,
+    media: Rc<RefCell<media::Media>>,
+}
+impl Drop for PageView {
+    fn drop(&mut self) {
+        self.media.borrow().retired.send_replace(true);
+    }
+}
+struct Page {
+    root: Uuid,
+    views: Views,
     owner: Uuid,
     id: Uuid,
     events: page::Events,
-    document: Option<Uuid>,
     candidates: BTreeMap<Uuid, Candidate>,
     selected: Option<Uuid>,
-    media: Rc<RefCell<media::Media>>,
     pending: BTreeMap<Uuid, Pending>,
 }
 impl Page {
+    fn selected_view(&self) -> Uuid {
+        self.selected
+            .and_then(|id| self.candidates.get(&id))
+            .map_or(self.root, |c| c.view)
+    }
     fn emit(&self, value: Value) {
         self.events.send(value);
     }
     fn candidates(&self) {
-        let Some(url) = self.view.url().ok().filter(|url| page::valid_url(url)) else {
+        let views = self.views.borrow();
+        let Some(url) = views
+            .get(&self.selected_view())
+            .and_then(|view| view.view.url().ok())
+            .filter(|url| page::valid_url(url))
+        else {
             return;
         };
         self.emit(json!({"type":"page_candidates","pageId":self.id,"url":url,"candidates":self.candidates.iter().map(|(id,c)|json!({"id":id,"title":c.source.title,"url":c.source.url,"duration":c.source.duration})).collect::<Vec<_>>()}));
@@ -131,6 +151,10 @@ impl Page {
         let request = Uuid::new_v4();
         let command = json!({"bridge":"piik-page-command","kind":if patch.is_some(){"patch"}else{"read"},"frame":candidate.frame,"media":candidate.source.media,"request":request,"patch":patch});
         match self
+            .views
+            .borrow()
+            .get(&candidate.view)
+            .unwrap()
             .view
             .evaluate_script(&format!("window.postMessage({command}, '*')"))
         {
@@ -138,6 +162,7 @@ impl Page {
                 self.pending.insert(
                     request,
                     Pending {
+                        view: candidate.view,
                         reply,
                         frame: candidate.frame,
                         selecting,
@@ -153,7 +178,8 @@ impl Page {
 }
 impl Drop for Page {
     fn drop(&mut self) {
-        self.media.borrow().retired.send_replace(true);
+        let views = std::mem::take(&mut *self.views.borrow_mut());
+        drop(views);
         for (_, pending) in std::mem::take(&mut self.pending) {
             let _ = pending.reply.send(Err("page_player_closed".into()));
         }
@@ -175,35 +201,46 @@ impl Pages {
         self.pages.clear();
     }
     pub fn close_window(&mut self, id: WindowId) -> bool {
-        let key = self
+        let found = self.pages.iter().find_map(|(key, page)| {
+            page.views
+                .borrow()
+                .iter()
+                .find_map(|(view, value)| (value.window.id() == id).then_some((*key, *view)))
+        });
+        let Some((key, view)) = found else {
+            return false;
+        };
+        let page = self.pages.get_mut(&key).unwrap();
+        if view == page.root || page.selected_view() == view {
+            self.pages.remove(&key);
+        } else {
+            page.candidates
+                .retain(|_, candidate| candidate.view != view);
+            let removed = page.views.borrow_mut().remove(&view);
+            drop(removed);
+            page.candidates();
+        }
+        true
+    }
+    pub fn navigate(&mut self, view: Uuid) {
+        let Some(key) = self
             .pages
             .iter()
-            .find(|(_, page)| page.window.id() == id)
-            .map(|(key, _)| *key);
-        if let Some(key) = key {
+            .find_map(|(key, page)| page.views.borrow().contains_key(&view).then_some(*key))
+        else {
+            return;
+        };
+        let page = self.pages.get_mut(&key).unwrap();
+        if page.selected.is_some() && page.selected_view() == view {
             self.pages.remove(&key);
-            return true;
-        }
-        for page in self.pages.values() {
-            let mut children = page.children.borrow_mut();
-            if let Some(index) = children.iter().position(|(_, window)| window.id() == id) {
-                children.remove(index);
-                return true;
-            }
-        }
-        false
-    }
-    pub fn navigate(&mut self, key: Uuid) {
-        if self
-            .pages
-            .get(&key)
-            .is_some_and(|page| page.selected.is_some())
-        {
-            self.pages.remove(&key);
-        } else if let Some(page) = self.pages.get_mut(&key) {
-            page.media.borrow_mut().reset();
-            page.document = None;
-            page.candidates.clear();
+        } else {
+            let mut views = page.views.borrow_mut();
+            let current = views.get_mut(&view).unwrap();
+            current.media.borrow_mut().reset();
+            current.document = None;
+            page.candidates
+                .retain(|_, candidate| candidate.view != view);
+            drop(views);
             page.candidates();
         }
     }
@@ -231,15 +268,19 @@ impl Pages {
                         .selected
                         .and_then(|id| page.candidates.get(&id))
                         .ok_or_else(|| anyhow!("page_candidate_unavailable"))?;
-                    page.media
+                    let views = page.views.borrow();
+                    let view = views
+                        .get(&selected.view)
+                        .ok_or_else(|| anyhow!("page_player_closed"))?;
+                    view.media
                         .borrow_mut()
                         .sources(selected.frame, &selected.source.resource);
-                    let choice = page
+                    let choice = view
                         .media
                         .borrow()
                         .choice(choice_id, indexed)
                         .ok_or_else(|| anyhow!("watch_resource_unavailable"))?;
-                    let document = page.document.ok_or_else(|| anyhow!("page_player_closed"))?;
+                    let document = view.document.ok_or_else(|| anyhow!("page_player_closed"))?;
                     let events = events.clone();
                     let cookies: page::Cookies = std::sync::Arc::new(move |url| {
                         let events = events.clone();
@@ -259,12 +300,13 @@ impl Pages {
                             result.await?.map_err(anyhow::Error::msg)
                         })
                     });
+                    let retired = view.media.borrow().retired.subscribe();
                     Ok(page::MediaContext {
                         url: choice.source_url().to_owned(),
                         request: choice.request,
                         format: choice.format,
                         size: choice.size,
-                        retired: page.media.borrow().retired.subscribe(),
+                        retired,
                         cookies,
                     })
                 })();
@@ -278,16 +320,20 @@ impl Pages {
                 url,
                 reply,
             } => {
-                if let Some(page) = self
+                let page = self
                     .pages
                     .values()
-                    .find(|p| p.owner == owner && p.id == page_id && p.document == Some(document))
+                    .find(|p| p.owner == owner && p.id == page_id);
+                let views = page.map(|page| page.views.borrow());
+                if let Some(view) = views
+                    .as_ref()
+                    .and_then(|views| views.values().find(|view| view.document == Some(document)))
                 {
                     if page::valid_url(&url) {
                         let _ = media::cookies(
-                            &page.view,
+                            &view.view,
                             url,
-                            page.media.borrow().retired.subscribe(),
+                            view.media.borrow().retired.subscribe(),
                             reply,
                         );
                     } else {
@@ -364,7 +410,12 @@ impl Pages {
                 let result = page
                     .selected
                     .and_then(|id| page.candidates.get(&id))
-                    .map(|c| page.media.borrow_mut().sources(c.frame, &c.source.resource))
+                    .map(|c| {
+                        page.views.borrow()[&c.view]
+                            .media
+                            .borrow_mut()
+                            .sources(c.frame, &c.source.resource)
+                    })
                     .ok_or_else(|| "page_candidate_unavailable".into());
                 let _ = reply.send(result);
             }
@@ -374,7 +425,10 @@ impl Pages {
                     return;
                 }
                 if page.selected.is_some_and(|id| id != candidate_id) {
-                    page.media.borrow_mut().reset();
+                    page.views.borrow()[&page.selected_view()]
+                        .media
+                        .borrow_mut()
+                        .reset();
                 }
                 page.selected = Some(candidate_id);
                 page.candidates();
@@ -383,9 +437,11 @@ impl Pages {
             Operation::PageRead { .. } => page.request(false, None, reply),
             Operation::PagePatch { patch, .. } => page.request(false, Some(patch), reply),
             Operation::PageFocus { .. } => {
-                page.window.set_minimized(false);
-                page.window.set_focus();
-                let _ = page.view.focus();
+                let views = page.views.borrow();
+                let view = &views[&page.selected_view()];
+                view.window.set_minimized(false);
+                view.window.set_focus();
+                let _ = view.view.focus();
                 let _ = reply.send(Ok(Value::Null));
             }
             _ => unreachable!(),
@@ -414,124 +470,65 @@ impl Pages {
             bail!("page_player_limit");
         }
         let key = Uuid::new_v4();
-        let window = WindowBuilder::new()
-            .with_title("Piik · Video")
-            .with_inner_size(LogicalSize::new(1000., 720.))
-            .build(target)?;
-        let messages = events.clone();
-        let navigating = events.clone();
-        let children: Children = Rc::default();
-        let popup_children = children.clone();
-        let popup_target = target.clone();
-        let popup_events = events.clone();
-        let media = Rc::new(RefCell::new(media::Media::default()));
-        let view = WebViewBuilder::new_with_web_context(&mut self.context)
-            .with_url("about:blank")
-            .with_initialization_script_for_main_only(include_str!("page-player.js"), false)
-            .with_ipc_handler(move |request| {
-                if request.body().len() <= 65536 {
-                    let _ =
-                        messages.send_event(ServiceEvent::PageMessage(key, request.into_body()));
-                }
-            })
-            .with_navigation_handler(move |url| {
-                if !page::valid_url(&url) {
-                    return false;
-                }
-                let _ = navigating.send_event(ServiceEvent::PageNavigate(key));
-                true
-            })
-            .with_new_window_req_handler(move |url, features| {
-                if !page::valid_url(&url) {
-                    return NewWindowResponse::Deny;
-                }
-                let create = || -> Result<NewWindowResponse> {
-                    let window = WindowBuilder::new()
-                        .with_title("Piik ? Sign in")
-                        .with_inner_size(LogicalSize::new(720., 760.))
-                        .build(&popup_target)?;
-                    let view = WebViewBuilder::new()
-                        .with_environment(features.opener.environment)
-                        .with_navigation_handler(|url| page::valid_url(&url))
-                        .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)
-                        .build(&window)?;
-                    website_permissions(&view)?;
-                    let events = popup_events.clone();
-                    let id = window.id();
-                    unsafe {
-                        view.webview().add_WindowCloseRequested(
-                            &WindowCloseRequestedEventHandler::create(Box::new(move |_, _| {
-                                let _ = events.send_event(ServiceEvent::PopupClosed(id));
-                                Ok(())
-                            })),
-                            &mut Default::default(),
-                        )?;
-                    }
-                    let response = NewWindowResponse::Create {
-                        webview: view.webview(),
-                    };
-                    popup_children.borrow_mut().push((view, window));
-                    Ok(response)
-                };
-                create().unwrap_or(NewWindowResponse::Deny)
-            })
-            .build(&window)?;
-        media::observe(&view, media.clone(), id, outgoing.clone())?;
-        view.load_url(&url)?;
-        let closed = events;
-        let window_id = window.id();
-        // Website browsing never inherits Piik's camera/microphone or App device grants.
-        unsafe {
-            website_permissions(&view)?;
-            view.webview().add_WindowCloseRequested(
-                &WindowCloseRequestedEventHandler::create(Box::new(move |_, _| {
-                    let _ = closed.send_event(ServiceEvent::PopupClosed(window_id));
-                    Ok(())
-                })),
-                &mut Default::default(),
-            )?;
-        }
+        let views: Views = Rc::default();
+        let view = page_view(
+            WebViewBuilder::new_with_web_context(&mut self.context).with_url("about:blank"),
+            key,
+            id,
+            &views,
+            outgoing.clone(),
+            target,
+            events,
+        )?;
+        view.view.load_url(&url)?;
+        views.borrow_mut().insert(key, view);
         self.pages.insert(
             key,
             Page {
-                children,
-                view,
-                window,
+                root: key,
+                views,
                 owner,
                 id,
                 events: outgoing,
-                document: None,
                 candidates: BTreeMap::new(),
                 selected: None,
-                media,
                 pending: BTreeMap::new(),
             },
         );
         Ok(())
     }
-    pub fn message(&mut self, key: Uuid, body: &str) {
+    pub fn message(&mut self, view_key: Uuid, body: &str) {
         let Ok(message) = serde_json::from_str::<Message>(body) else {
             return;
         };
         if message.ancestors.len() > 32 {
             return;
         }
-        let Some(page) = self.pages.get_mut(&key) else {
+        let Some(key) = self
+            .pages
+            .iter()
+            .find_map(|(key, page)| page.views.borrow().contains_key(&view_key).then_some(*key))
+        else {
             return;
         };
-        if matches!(message.event, PageEvent::Document) {
-            if message.document == message.frame && page.document.is_none() {
-                page.document = Some(message.document);
+        let page = self.pages.get_mut(&key).unwrap();
+        let media = {
+            let mut views = page.views.borrow_mut();
+            let view = views.get_mut(&view_key).unwrap();
+            if matches!(message.event, PageEvent::Document) {
+                if message.document == message.frame && view.document.is_none() {
+                    view.document = Some(message.document);
+                }
+                return;
             }
-            return;
-        }
-        if page.document != Some(message.document) {
-            return;
-        }
+            if view.document != Some(message.document) {
+                return;
+            }
+            view.media.clone()
+        };
         match message.event {
             PageEvent::Resources { urls } => {
-                let changed = page
-                    .media
+                let changed = media
                     .borrow_mut()
                     .frame(message.frame, message.ancestors, urls);
                 if changed {
@@ -539,9 +536,10 @@ impl Pages {
                 }
             }
             PageEvent::Removed { removed } => {
-                page.media.borrow_mut().remove_frame(removed);
+                media.borrow_mut().remove_frame(removed);
                 page.candidates.retain(|_, candidate| {
-                    candidate.frame != removed && !candidate.ancestors.contains(&removed)
+                    candidate.view != view_key
+                        || (candidate.frame != removed && !candidate.ancestors.contains(&removed))
                 });
                 if page
                     .selected
@@ -559,7 +557,7 @@ impl Pages {
                 let existing = std::mem::take(&mut page.candidates);
                 let mut previous = BTreeMap::new();
                 for (id, candidate) in existing {
-                    if candidate.frame == message.frame {
+                    if candidate.view == view_key && candidate.frame == message.frame {
                         previous.insert(candidate.source.media, (id, candidate));
                     } else {
                         page.candidates.insert(id, candidate);
@@ -589,6 +587,7 @@ impl Pages {
                     page.candidates.insert(
                         id,
                         Candidate {
+                            view: view_key,
                             frame: message.frame,
                             ancestors: message.ancestors.clone(),
                             source,
@@ -613,7 +612,8 @@ impl Pages {
                     .selected
                     .and_then(|id| page.candidates.get(&id))
                     .is_some_and(|c| {
-                        c.frame == message.frame
+                        c.view == view_key
+                            && c.frame == message.frame
                             && c.source.media == media
                             && !c.source.resource.is_empty()
                             && c.source.resource != resource
@@ -625,7 +625,9 @@ impl Pages {
                 if page
                     .selected
                     .and_then(|id| page.candidates.get(&id))
-                    .is_some_and(|c| c.frame == message.frame && c.source.media == media)
+                    .is_some_and(|c| {
+                        c.view == view_key && c.frame == message.frame && c.source.media == media
+                    })
                 {
                     page.emit(json!({"type":"page_sample","pageId":page.id,"event":event}));
                 }
@@ -634,7 +636,9 @@ impl Pages {
                 if page
                     .selected
                     .and_then(|id| page.candidates.get(&id))
-                    .is_some_and(|c| c.frame == message.frame && c.source.media == media)
+                    .is_some_and(|c| {
+                        c.view == view_key && c.frame == message.frame && c.source.media == media
+                    })
                 {
                     page.emit(json!({"type":"page_blocked","pageId":page.id}));
                 }
@@ -644,11 +648,9 @@ impl Pages {
                 state,
                 error,
             } => {
-                if !page
-                    .pending
-                    .get(&request)
-                    .is_some_and(|pending| pending.frame == message.frame)
-                {
+                if !page.pending.get(&request).is_some_and(|pending| {
+                    pending.view == view_key && pending.frame == message.frame
+                }) {
                     return;
                 }
                 let pending = page.pending.remove(&request).unwrap();
@@ -680,6 +682,88 @@ impl Pages {
             PageEvent::Document => {}
         }
     }
+}
+
+fn page_view(
+    builder: WebViewBuilder<'_>,
+    key: Uuid,
+    page_id: Uuid,
+    views: &Views,
+    outgoing: page::Events,
+    target: &EventLoopWindowTarget<ServiceEvent>,
+    events: EventLoopProxy<ServiceEvent>,
+) -> Result<PageView> {
+    let window = super::window_builder()?
+        .with_title("Piik · Video")
+        .with_inner_size(LogicalSize::new(1000., 720.))
+        .build(target)?;
+    let messages = events.clone();
+    let navigating = events.clone();
+    let popup_target = target.clone();
+    let popup_events = events.clone();
+    let popup_outgoing = outgoing.clone();
+    let weak_views = Rc::downgrade(views);
+    let media = Rc::new(RefCell::new(media::Media::default()));
+    let view = builder
+        .with_initialization_script_for_main_only(include_str!("page-player.js"), false)
+        .with_ipc_handler(move |request| {
+            if request.body().len() <= 65536 {
+                let _ = messages.send_event(ServiceEvent::PageMessage(key, request.into_body()));
+            }
+        })
+        .with_navigation_handler(move |url| {
+            if !page::valid_url(&url) {
+                return false;
+            }
+            let _ = navigating.send_event(ServiceEvent::PageNavigate(key));
+            true
+        })
+        .with_new_window_req_handler(move |url, features| {
+            if !page::valid_url(&url) {
+                return NewWindowResponse::Deny;
+            }
+            let create = || -> Result<NewWindowResponse> {
+                let views = weak_views
+                    .upgrade()
+                    .ok_or_else(|| anyhow!("page_player_closed"))?;
+                anyhow::ensure!(views.borrow().len() < 64, "page_player_limit");
+                let key = Uuid::new_v4();
+                let child = page_view(
+                    WebViewBuilder::new().with_environment(features.opener.environment),
+                    key,
+                    page_id,
+                    &views,
+                    popup_outgoing.clone(),
+                    &popup_target,
+                    popup_events.clone(),
+                )?;
+                let response = NewWindowResponse::Create {
+                    webview: child.view.webview(),
+                };
+                views.borrow_mut().insert(key, child);
+                Ok(response)
+            };
+            create().unwrap_or(NewWindowResponse::Deny)
+        })
+        .build(&window)?;
+    media::observe(&view, media.clone(), page_id, outgoing)?;
+    let window_id = window.id();
+    unsafe {
+        website_permissions(&view)?;
+        view.webview().add_WindowCloseRequested(
+            &WindowCloseRequestedEventHandler::create(Box::new(move |_, _| {
+                let _ = events.send_event(ServiceEvent::PopupClosed(window_id));
+                Ok(())
+            })),
+            &mut Default::default(),
+        )?;
+    }
+    Ok(PageView {
+        view,
+        window,
+        document: None,
+        media,
+    })
 }
 
 fn website_permissions(view: &WebView) -> Result<()> {

@@ -222,9 +222,16 @@ pub(crate) struct UnsupportedH264Format(pub [u8; 3]);
 impl std::fmt::Display for UnsupportedH264Format {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let [profile, constraints, level] = self.0;
+        let reason = match profile {
+            110 => "High 10 profile requires an unsupported high-bit-depth decoder",
+            122 => "High 4:2:2 profile requires an unsupported chroma format",
+            244 => "High 4:4:4 profile requires an unsupported chroma format",
+            _ if level > 52 => "level exceeds the supported 5.2 input limit",
+            _ => "profile or level is not supported",
+        };
         write!(
             formatter,
-            "unsupported H264 SPS profile/level {profile:02x}{constraints:02x}{level:02x}"
+            "unsupported H264 SPS profile/level {profile:02x}{constraints:02x}{level:02x}: {reason}; use 8-bit 4:2:0 H264 Baseline, Main or High"
         )
     }
 }
@@ -557,7 +564,17 @@ mod tests {
             assert!(compatible(&actual, &actual));
             assert!(!compatible(&actual, &codec("42e01f")));
         }
-        assert!(sps.access_unit(&[0, 0, 1, 0x67, 0x6e, 0, 0x28]).is_err());
+        let accepted = sps.codec().unwrap();
+        let error = sps
+            .access_unit(&[0, 0, 1, 0x67, 0x6e, 0, 0x34])
+            .unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<UnsupportedH264Format>().unwrap().0,
+            [0x6e, 0, 0x34]
+        );
+        assert!(error.to_string().contains("High 10 profile"));
+        assert!(error.to_string().contains("8-bit 4:2:0"));
+        assert_eq!(sps.codec().unwrap(), accepted);
         assert!(sps.access_unit(&[0, 0, 1, 0x67, 0x42, 0xe0, 0]).is_err());
         Ok(())
     }

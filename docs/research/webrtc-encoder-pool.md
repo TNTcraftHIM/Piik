@@ -19,6 +19,15 @@ make an existing High encoder produce Baseline. The complete input SPS supplies
 the actual encoded format. [OBS 33.0.1 source](https://github.com/obsproject/obs-studio/blob/33.0.1/plugins/obs-webrtc/whip-output.cpp)
 owns that upstream behavior.
 
+Current local input accepts 8-bit 4:2:0 H264 Baseline, Main and High, not
+High 10. Windows uses the [Media Foundation H264 decoder](https://learn.microsoft.com/en-us/windows/win32/medfound/h-264-video-decoder)
+with NV12 output; its supported profiles do not include High 10. OBS NVENC can
+[force High 10 for P010 input](https://github.com/obsproject/obs-studio/blob/33.0.1/plugins/obs-nvenc/nvenc.c#L458),
+even when another profile was selected. Stop streaming, select NV12 (8-bit 4:2:0)
+in OBS Advanced video settings and H264 Baseline, Main or High in streaming output,
+then restart. Automatic compatibility covers supported 8-bit profiles; the WHIP
+answer cannot downgrade a running High 10 encoder.
+
 Each complete-AU representation owns its actual codec/profile. The source exposes
 its original representation; each output retains its negotiated formats and
 payload mappings. Incoming SDP, actual SPS and downstream capabilities remain

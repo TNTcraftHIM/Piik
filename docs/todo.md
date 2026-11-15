@@ -12,6 +12,10 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **App connection during webpage selection.** Capture the first control
+  connection failure during the reported intermittent App disconnection. Use the
+  opt-in control-close diagnostic to distinguish transport closure, handshake,
+  invalid events and consumer failures before changing recovery behavior.
 - [ ] **Host UDP errors and blurry viewing.** A reported beta.25 Host repeatedly
   prints Windows network-unreachable error 10051 while a friend can view a blurry
   picture. Identify whether the errors affect the selected media path or other

@@ -1,5 +1,5 @@
 //! A trusted, owner-bound prompt holds each deferred camera or microphone request.
-use super::{Language, ServiceEvent, Theme, CONTROLS, PALETTE};
+use super::{window_builder, Language, ServiceEvent, Theme, CONTROLS, PALETTE};
 use anyhow::Result;
 use std::{
     cell::{Cell, RefCell},
@@ -10,7 +10,7 @@ use tao::{
     dpi::{LogicalSize, PhysicalPosition},
     event_loop::{EventLoopProxy, EventLoopWindowTarget},
     platform::windows::{WindowBuilderExtWindows, WindowExtWindows},
-    window::{Window, WindowBuilder, WindowId},
+    window::{Window, WindowId},
 };
 use webview2_com::{
     Microsoft::Web::WebView2::Win32::{
@@ -128,7 +128,7 @@ impl Prompt {
         let physical = size.to_physical::<i32>(owner.scale_factor());
         let position = owner.outer_position()?;
         let parent_size = owner.outer_size();
-        let window = WindowBuilder::new()
+        let window = window_builder()?
             .with_title("Piik")
             .with_owner_window(owner.hwnd())
             .with_skip_taskbar(true)

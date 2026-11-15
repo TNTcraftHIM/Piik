@@ -8267,6 +8267,37 @@ test('webpage sharing commits the current top-level URL delivered before selecti
   } finally { session.close(); }
 });
 
+test('selecting a child webpage keeps its updated URL through empty source discovery and explicit confirmation', async () => {
+  const { session } = await setup(1000, false);
+  const pageId = crypto.randomUUID(), candidateId = crypto.randomUUID();
+  let confirm!: (state: unknown) => void;
+  const ready = { position: 12, paused: false, rate: 1, duration: 60, readyState: 4, ended: false, buffered: [[0, 60]] };
+  const dispose = vi.fn();
+  const page = new appLink.AppPage(pageId, 'https://video.test/', command => {
+    if (command.type === 'page_select') return new Promise(resolve => { confirm = resolve; });
+    if (command.type === 'page_media_sources') return Promise.resolve({ choices: [], indexedCandidates: [], byteSource: null });
+    return Promise.resolve(ready);
+  }, dispose, () => {});
+  const app = { preparePage: vi.fn(async () => page), stopCaptures: vi.fn(), close: () => page.close() } as unknown as appLink.ChannelApp;
+  vi.spyOn(session as unknown as { connectApp(): Promise<appLink.ChannelApp> }, 'connectApp').mockResolvedValue(app);
+  (session as unknown as { app: appLink.ChannelApp }).app = app;
+  const commit = vi.spyOn(session as unknown as { commitWatch(roomId: string, source: unknown, media: unknown, selection: unknown): Promise<void> }, 'commitWatch').mockResolvedValue();
+  try {
+    await session.prepareWatchPage('first', page.url);
+    page.receive({ type: 'page_candidates', pageId, url: page.url, candidates: [{ id: candidateId, title: 'Child video', url: null, duration: 60 }] });
+    const selecting = session.selectWatchPage('first', candidateId);
+    // Native resolves the selected view before confirming page_select; the homepage stays open.
+    page.receive({ type: 'page_candidates', pageId, url: 'https://video.test/video/child', candidates: [{ id: candidateId, title: 'Child video', url: null, duration: 60 }] });
+    confirm(ready);
+    await expect(selecting).resolves.toBe(false);
+    expect(session.watchPage('first')).toMatchObject({ url: 'https://video.test/video/child', watchSources: { candidateId, choices: [], indexed: [] } });
+    expect(commit).not.toHaveBeenCalled();
+    expect(dispose).not.toHaveBeenCalled();
+    await session.selectWatchBrowserSource('first', null);
+    expect(commit.mock.calls[0]?.[1]).toEqual({ kind: 'website', url: 'https://video.test/video/child' });
+  } finally { session.close(); }
+});
+
 async function websiteSourceSelection(discover: () => Promise<unknown>) {
   const setupResult = await setup(1000, false);
   const { session } = setupResult;
@@ -8285,6 +8316,49 @@ async function websiteSourceSelection(discover: () => Promise<unknown>) {
   page.receive({ type: 'page_candidates', pageId, url: page.url, candidates: [{ id: candidateId, title: 'Film', url: null, duration: 60 }] });
   return { ...setupResult, page, candidateId, commit, request, dispose };
 }
+
+test('a rejected webpage candidate keeps the live page for another selection and Cancel', async () => {
+  const { session, page, candidateId, commit, dispose, request } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
+  const secondId = crypto.randomUUID();
+  page.receive({ type: 'page_candidates', pageId: page.id, url: page.url, candidates: [
+    { id: candidateId, title: 'Unavailable preview', url: null, duration: 60 },
+    { id: secondId, title: 'Child video', url: null, duration: 60 },
+  ] });
+  const select = vi.spyOn(page, 'select').mockRejectedValueOnce(new Error('page_candidate_unavailable'));
+  try {
+    await expect(session.selectWatchPage('first', candidateId)).rejects.toThrow('page_candidate_unavailable');
+    expect(session.watchPage('first')?.candidates).toHaveLength(2);
+    expect(session.getSnapshot().error).toBe('page_candidate_unavailable');
+    expect(dispose).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+    expect(request.mock.calls.some(([command]) => command.type === 'page_media_sources')).toBe(false);
+
+    await expect(session.selectWatchPage('first', secondId)).resolves.toBe(false);
+    expect(select).toHaveBeenLastCalledWith(secondId);
+    expect(session.getSnapshot().error).toBeNull();
+    expect(session.watchPage('first')?.watchSources).toMatchObject({ candidateId: secondId, choices: [], indexed: [] });
+    expect(dispose).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+
+    await session.cancelScreenSelection('first');
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(session.watchPage('first')).toBeUndefined();
+  } finally { session.close(); }
+});
+
+test('an actual page closure during rejected selection still retires its source owner', async () => {
+  const { session, page, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
+  vi.spyOn(page, 'select').mockImplementationOnce(async () => {
+    page.receive({ type: 'page_closed', pageId: page.id });
+    throw new Error('watch_page_closed');
+  });
+  try {
+    await expect(session.selectWatchPage('first', candidateId)).rejects.toThrow('watch_page_closed');
+    expect(session.watchPage('first')).toBeUndefined();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(commit).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
 
 function indexedInspection(kind: "video" | "audio"): indexedSource.IndexedTrackInspection {
   const id = crypto.randomUUID(), codec = kind === "video" ? "avc1.640028" : "mp4a.40.2";

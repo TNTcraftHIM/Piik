@@ -318,6 +318,14 @@ mod tests {
     use super::*;
     use crate::peer::tests::support::{endpoint, h264, send, video_payloads};
 
+    #[test]
+    fn unsupported_obs_high10_retains_the_actionable_format_error() {
+        let error = anyhow::Error::new(crate::media::UnsupportedH264Format([0x6e, 0, 0x34]))
+            .context("external input first complete access unit");
+        assert_eq!(failure_reason(&error), "external_video_format_unsupported");
+        assert!(format!("{error:#}").contains("High 10 profile"));
+    }
+
     #[tokio::test]
     async fn cancelled_external_preparation_joins_without_stopping_its_successor() -> Result<()> {
         let (mut driver, mut events, mut commands, _stop) = crate::peer::tests::driver();
