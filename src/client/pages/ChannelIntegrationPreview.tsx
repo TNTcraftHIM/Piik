@@ -29,8 +29,9 @@ function ExampleValue({ label, value }: { label: string; value: string }) {
 export function ChannelIntegrationPreview() {
   const { lang } = useCopy(), zh = lang === "zh";
   const copy = (cn: string, en: string) => zh ? cn : en;
-  const [panel, setPanel] = useState<"bot" | "obs" | null>(null);
-  const [input, setInput] = useState<"idle" | "waiting" | "live" | "stopped" | "revoked">("idle");
+  const obsError = new URLSearchParams(location.search).get("obs-error");
+  const [panel, setPanel] = useState<"bot" | "obs" | null>(obsError ? "obs" : null);
+  const [input, setInput] = useState<"idle" | "waiting" | "live" | "stopped" | "revoked">(obsError ? "waiting" : "idle");
   const close = () => setPanel(null);
   const permitted = input === "waiting" || input === "live" || input === "stopped";
   const inputLabel = input === "live" ? copy("正在接收示例画面", "Receiving sample picture")
@@ -80,7 +81,7 @@ export function ChannelIntegrationPreview() {
         <a href={textExample} target="_blank" rel="noopener noreferrer">{copy("查看示例与完整接入说明", "Read the example and setup instructions")}</a>
       </div>
     </ChannelSettingsDialog>}
-    {panel === "obs" && permitted && <ChannelExternalInput input={{ endpoint: obsEndpoint, token: obsKey, state: input === "live" ? "live" : "waiting" }} busy={false}
+    {panel === "obs" && permitted && <ChannelExternalInput input={{ endpoint: obsEndpoint, token: obsKey, state: obsError ? "error" : input === "live" ? "live" : "waiting", error: obsError ?? undefined }} busy={false}
       onClose={close} onStop={() => { setInput("revoked"); close(); }} />}
   </div>;
 }

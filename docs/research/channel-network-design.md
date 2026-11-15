@@ -784,9 +784,14 @@ Platform FFI stays narrow: a Rust wrapper does not make foreign code memory-safe
 matched-protocol guidance, separately from replacing private test contracts.
 
 App control authenticates the Browser account against domain admission before
-opening its Native room data. Approval grants one exact Web origin its own
-namespace; revocation stops that site's hosting without deleting data or affecting
-other sites. A replacement external origin needs approval and does not inherit
+opening its Native room data. Approval trusts that exact Site's code to use App
+features, including controlling webpage players and reading or forwarding media
+available to their signed-in accounts. Player choices are actions in the Site's
+UI, not a separate per-page Native permission. The local approval and webpage
+entry explain this scope; bookmarking or opening a Site does not grant it.
+Approval grants one exact Web origin its own namespace; revocation stops that
+site's hosting without deleting data or affecting other sites. A replacement
+external origin needs approval and does not inherit
 the previous origin's data. The App's own domain keeps its identity and namespace
 across port or invitation-address changes. URLs provide discovery, never App
 permission. Browser activities and existing hosted rooms retain their own endpoints

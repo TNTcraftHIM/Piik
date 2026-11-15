@@ -14,6 +14,7 @@ describe("Webpage watch presentation", () => {
     [["watch_live_hls_unsupported", "watch_media_encryption_unsupported", "watch_media_encoding_unsupported", "watch_media_range_unsupported", "watch_media_size_unavailable", "watch_manifest_extension_unsupported", "watch_manifest_limit", "watch_resource_limit", "watch_mp4_parse_failed", "watch_indexed_unsupported", "invalid_watch_index"], "watch.forward.unsupported", false],
     [["watch_media_decode_failed"], "watch.decodeFailed", false],
     [["watch_media_unsupported", "watch_mp4_mse_unavailable"], "watch.playbackUnsupported", false],
+    [["watch_page_unavailable"], "watch.forward.sourceUnavailable", false],
     [["watch_invalid_manifest", "watch_media_credentials_unavailable", "watch_media_unavailable", "watch_media_timeout", "watch_media_changed", "watch_media_truncated", "invalid_watch_range_response", "watch_resource_unavailable", "watch_source_unavailable", "watch_source_failed", "watch_source_changed", "watch_source_retired"], "watch.forward.sourceUnavailable", false],
     [["watch_source_busy", "watch_read_busy"], "watch.forward.busy", false],
     [["watch_source_already_active"], "watch.forward.active", false],

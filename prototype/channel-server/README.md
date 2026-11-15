@@ -142,11 +142,13 @@ windows. Pass `--browser` to use the system Browser instead; this is also the fa
 when the system WebView cannot be created. Other desktop platforms use the Browser.
 The launcher and saved startup choice work in either interface.
 Windows microphone and camera requests use a Piik permission window naming the
-requesting site. Allow applies to that request; rejecting, closing or pressing Esc
-denies it. Closing the requesting window cancels its pending requests.
+requesting site. Allow is remembered by the system WebView profile for that exact
+origin and permission kind, including microphone changes and later visits.
+Rejecting, closing or pressing Esc denies only the current request. Closing the
+requesting window cancels its pending requests without saving a denial.
 The window's star opens site management without leaving the current page. One
 list combines saved destinations and approved exact origins; each site's details
-separate its bookmark, device consent and startup preference. Bookmarks store a
+separate its bookmark, App consent and startup preference. Bookmarks store a
 site address and optional name separately from device approval. Editing or
 removing a bookmark does not grant or revoke access. A changed invitation address
 can be updated manually; saved bookmarks contain no room invitation key.

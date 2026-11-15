@@ -95,8 +95,8 @@ export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, o
         <div className="lr-site-form-actions">{detail.draft.id && <Btn icon="linkOff" quiet tone="danger" size="compact" title="client.bookmarks.remove" cap="client.bookmarks.remove" disabled={busy} busy={pending === "remove"} onClick={() => void save(true)} />}<Btn icon="check" type="submit" tone="primary" size="compact" title="client.bookmarks.save" cap="client.bookmarks.save" disabled={busy} busy={pending === "save"} /></div>
       </form>
       {selected && <section className="lr-site-section">
-        <h4><Glyph name="lock" size={18} /><span>{t("client.sites.deviceAccess")}</span></h4>
-        <p>{t(automatic ? "client.sites.automaticHint" : "client.sites.deviceHint")}</p>
+        <h4><Glyph name="lock" size={18} /><span>{t("client.sites.appAccess")}</span></h4>
+        <p>{t(automatic ? "client.sites.automaticHint" : "client.sites.appHint")}</p>
         <div className="lr-site-consent"><span className="lr-site-status"><Glyph name={approved ? "check" : "lock"} size={16} /><span>{t(automatic ? "client.sites.automatic" : approved ? "client.sites.allowed" : "client.sites.notAllowed")}</span></span>
           {!automatic && <Btn icon={approved ? "linkOff" : "check"} quiet={approved} tone={approved ? "danger" : undefined} size="compact" title={approved ? "client.sites.revoke" : "client.sites.allow"} cap={approved ? "client.sites.revoke" : "client.sites.allow"} disabled={busy} onClick={() => accessAction(approved ? onRevoke(selected) : onApprove(selected))} />}</div>
       </section>}

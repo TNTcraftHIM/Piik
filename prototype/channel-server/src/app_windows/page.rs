@@ -579,6 +579,17 @@ impl Pages {
             if matches!(message.event, PageEvent::Document) {
                 if message.document == message.frame && view.document.is_none() {
                     view.document = Some(message.document);
+                    let origin = view
+                        .view
+                        .url()
+                        .ok()
+                        .and_then(|value| url::Url::parse(&value).ok())
+                        .filter(|url| matches!(url.scheme(), "http" | "https"))
+                        .map(|url| url.origin().ascii_serialization());
+                    view.window.set_title(&origin.map_or_else(
+                        || "Piik · Video".into(),
+                        |origin| format!("Piik · Video — {origin}"),
+                    ));
                 }
                 return;
             }

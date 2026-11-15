@@ -25,10 +25,11 @@ export function ChannelExternalInput({ input, busy, onStop, onClose }: {
   const state = input.state === "live" ? t("screen.obsLive")
     : input.state === "prepared" ? t("screen.obsConnecting")
       : t("screen.obsWaitingToStart");
-  const { message } = channelErrorPresentation(input.error ?? null, t);
+  const { message } = channelErrorPresentation(input.error ?? (input.state === "error" ? "external_input_failed" : null), t,
+    "channel.error.externalInputFailed");
   return <ChannelSettingsDialog title="OBS / WHIP" compact onClose={onClose}>
     <div className="c3-settings-panels c3-external-input">
-      <p role="status">{state}</p>
+      {!message && <p role="status">{state}</p>}
       <p>{t("screen.obsInstructions")}</p>
       <ConnectionField label="Server" value={input.endpoint} />
       <ConnectionField label="Bearer Token" value={input.token} />

@@ -16,6 +16,7 @@ import { Btn } from "../src/client/components/living/primitives";
 import { publicSiteOrigin, siteEntryOrigin, siteEntryURL } from "../src/client/lib/site-address";
 import { clientLaunchURL, readPreferredAppMode, savePreferredAppMode, type AppMode } from "../src/client/lib/app-launch";
 import { appUpdateSchema } from "../src/client/lib/use-app-update";
+import { currentLang, t } from "../src/client/ui/copy";
 
 it("reloads the installed UI once after observed installation hands over, while failures and outages preserve the page", async () => {
   const updateSource = ts.createSourceFile("use-app-update.ts", readFileSync(
@@ -650,9 +651,10 @@ it("lists automatic local access independently from persistent approvals and pub
     async onSave() {}, async onRemove() {}, async onApprove() {}, async onRevoke() {}, async onStartup() {}, onOpen() {},
   }));
   expect(html).toContain(localSite);
-  expect(html).toMatch(/Automatic device access|自动获得设备授权/);
+  expect(html).toContain(t(currentLang(), "client.sites.automatic"));
   const publicRow = html.slice(html.indexOf('<strong>Public</strong>'), html.indexOf('</li>'));
-  expect(publicRow).not.toMatch(/Automatic device access|自动获得设备授权|Device access allowed|已获设备授权/);
+  expect(publicRow).not.toContain(t(currentLang(), "client.sites.automatic"));
+  expect(publicRow).not.toContain(t(currentLang(), "client.sites.allowed"));
 });
 
 

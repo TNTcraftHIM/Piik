@@ -14,9 +14,9 @@ use tao::{
 };
 use webview2_com::{
     Microsoft::Web::WebView2::Win32::{
-        ICoreWebView2Deferral, ICoreWebView2PermissionRequestedEventArgs,
-        ICoreWebView2PermissionRequestedEventArgs3, COREWEBVIEW2_PERMISSION_KIND_CAMERA,
-        COREWEBVIEW2_PERMISSION_KIND_MICROPHONE, COREWEBVIEW2_PERMISSION_STATE_ALLOW,
+        ICoreWebView2Deferral, ICoreWebView2PermissionRequestedEventArgs3,
+        COREWEBVIEW2_PERMISSION_KIND_CAMERA, COREWEBVIEW2_PERMISSION_KIND_MICROPHONE,
+        COREWEBVIEW2_PERMISSION_STATE_ALLOW, COREWEBVIEW2_PERMISSION_STATE_DEFAULT,
         COREWEBVIEW2_PERMISSION_STATE_DENY,
     },
     PermissionRequestedEventHandler,
@@ -28,13 +28,14 @@ use wry::{
 };
 
 const DOCUMENT: &str = include_str!("../../../../src/client/ui/native-permission.html");
+const BRAND_MARK: &str = include_str!("../../../../public/favicon.svg");
 const BUTTONS: &str = include_str!("../../../../src/client/components/living/button.css");
 const PANEL: &str =
     include_str!("../../../../src/client/channel/components/channel-settings-dialog.css");
 
 pub(super) struct Permission {
     pub(super) owner: WindowId,
-    args: ICoreWebView2PermissionRequestedEventArgs,
+    args: ICoreWebView2PermissionRequestedEventArgs3,
     deferral: Option<ICoreWebView2Deferral>,
     origin: String,
     camera: bool,
@@ -44,6 +45,9 @@ impl Permission {
         if let Some(deferral) = self.deferral.take() {
             // SAFETY: Requests and decisions remain on the WebView UI thread.
             unsafe {
+                // Only an explicit Allow becomes an origin/kind grant. Cancellation and
+                // owner retirement keep denying this request without persisting a denial.
+                let _ = self.args.SetSavesInProfile(allowed);
                 let _ = self.args.SetState(if allowed {
                     COREWEBVIEW2_PERMISSION_STATE_ALLOW
                 } else {
@@ -79,8 +83,13 @@ pub(super) fn permissions(
                 {
                     return Ok(());
                 }
-                args.cast::<ICoreWebView2PermissionRequestedEventArgs3>()?
-                    .SetSavesInProfile(false)?;
+                let mut state = COREWEBVIEW2_PERMISSION_STATE_DEFAULT;
+                args.State(&mut state)?;
+                if state != COREWEBVIEW2_PERMISSION_STATE_DEFAULT {
+                    return Ok(());
+                }
+                let args = args.cast::<ICoreWebView2PermissionRequestedEventArgs3>()?;
+                args.SetSavesInProfile(false)?;
                 let mut uri = windows_core::PWSTR::null();
                 args.Uri(&mut uri)?;
                 let origin = url::Url::parse(&webview2_com::take_pwstr(uri))
@@ -177,6 +186,7 @@ impl Prompt {
                 .replace("__PIIK_PALETTE__", PALETTE)
                 .replace("__PIIK_BUTTONS__", BUTTONS)
                 .replace("__PIIK_PANEL__", PANEL)
+                .replace("__PIIK_BRAND_MARK__", BRAND_MARK)
                 .replace("__PIIK_WINDOW_CONTROLS__", CONTROLS),
         )?;
         Ok(Self {

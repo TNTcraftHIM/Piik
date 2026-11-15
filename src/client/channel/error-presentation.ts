@@ -53,7 +53,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey)
   if (error === "watch_indexed_unsupported" || error === "invalid_watch_index"
     || /^watch_(?:live_hls_unsupported|media_(?:encryption_unsupported|encoding_unsupported|range_unsupported|size_unavailable)|manifest_extension_unsupported|manifest_limit|resource_limit|mp4_parse_failed)$/.test(error))
     return display("watch.forward.unsupported");
-  if (/^(?:watch_(?:invalid_manifest|media_(?:unavailable|timeout|credentials_unavailable|changed|truncated)|resource_unavailable|source_(?:unavailable|failed|changed|retired))|invalid_watch_range_response)$/.test(error))
+  if (/^(?:watch_(?:invalid_manifest|page_unavailable|media_(?:unavailable|timeout|credentials_unavailable|changed|truncated)|resource_unavailable|source_(?:unavailable|failed|changed|retired))|invalid_watch_range_response)$/.test(error))
     return display("watch.forward.sourceUnavailable");
   if (error === "watch_source_busy" || error === "watch_read_busy")
     return display("watch.forward.busy");

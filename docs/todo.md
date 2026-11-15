@@ -12,10 +12,11 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **Native page chrome.** Make launcher and saved-site pages use the shared
-  Native window edge and header layout, while Browser pages retain their outer
-  frame. Keep content panels independent of that presentation choice. Align the
-  separate trusted caption's modal shading with the shared page backdrop.
+- [ ] **Native device permission acceptance.** Verify that an explicitly allowed
+  origin/kind is remembered when the microphone changes, with the shared Piik
+  prompt retaining correct keyboard, rejection and owner-retirement behavior.
+  Use isolated fake devices for the permission control; physical capture remains
+  a separate platform check.
 - [ ] **App connection during webpage selection.** Capture the first control
   connection failure during the reported intermittent App disconnection. Use the
   opt-in control-close diagnostic to distinguish transport closure, handshake,
@@ -128,6 +129,10 @@ the feedback period; they do not delay that delivery.
   retain manual download. The
   [delivery proposal](./research/cross-platform-client-runtime.md#30-app-update-delivery)
   keeps authority, active sessions and data outside the download operation.
+- [ ] **Native website permission reset.** Assess a small reset action in the
+  existing site details for the system WebView's saved microphone/camera grants.
+  Keep those grants distinct from App control approval and use the platform
+  permission store without introducing a second registry.
 - [ ] **Managed one-click deployment.** Validate an ordinary Piik room and data
   recovery on a persistent hosting target. The
   [deployment assessment](./deployment.md#managed-one-click-hosting) distinguishes
@@ -175,9 +180,8 @@ the feedback period; they do not delay that delivery.
   Validate actual supported websites, source-issued media grants, live playlist
   lifecycle and target Browser behavior. Complete Bilibili ordinary/member
   Browser viewing for segmented media: identify the audio-source request failure
-  and empty-source reports, including a video opened from the homepage in a new
-  window. Trace observed responses through frame association before extending
-  source discovery, and verify broader source availability.
+  when reproducible and verify broader source availability. Trace observed
+  responses through frame association before extending source discovery.
   Extend the official embedded-player coverage and verify the supplied
   girigirilove page when its original player is accessible. Keep each
   viewer's account access in its original player. Retain the
@@ -185,6 +189,11 @@ the feedback period; they do not delay that delivery.
   the sharer controls common playback; viewers own sound, participation and
   access through their own platform accounts. Complete matching-package and
   cross-network acceptance separately from the local direct-media controls.
+  Review the host's forced separate-window experience: prefer direct/official
+  playback in the room when available, give original-page mode a trusted source
+  identity, and retain necessary popup/login behavior without building a browser.
+  Explain the complete trusted-site scope and local website-login behavior before
+  use; media capability still does not grant room access or arbitrary native control.
 - [ ] **3.0 Native platform acceptance.** Build, install and validate the matching
   Android candidate. Complete physical microphone/camera acceptance for the
   Windows WebView entry; controlled runtime fallback, device
