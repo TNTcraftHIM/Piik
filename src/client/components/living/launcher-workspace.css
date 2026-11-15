@@ -87,6 +87,8 @@
 .lr-launcher-join form > label > .lr-input { display: flex; }
 .lr-launcher-join form > label > span:first-child:not(.lr-input):not(.visually-hidden) { display: block; margin-bottom: 12px; font-size: 15px; font-weight: 650; }
 @media (max-height: 650px) and (min-width: 601px) {
+  .lr-launcher-shell { margin-block: 8px; }
+  .lr-launcher-main, .lr-launcher-sidebar { padding-top: 16px; }
   .lr-launcher-welcome > .lr-welcome, .lr-launcher-eyebrow { display: none; }
   .lr-launcher-brand { margin-bottom: 18px; }
 }
