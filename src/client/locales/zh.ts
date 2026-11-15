@@ -1,7 +1,11 @@
 import type { GlyphName } from "../ui/icons";
 
-// Canonical catalog: add keys here first; every other locale must match it.
+// Canonical keys; English stays complete and other languages may be partial.
 export const zh = {
+  "host.invite.qr": "邀请二维码",
+  "host.invite.qrShort": "二维码",
+  "host.invite.qrHint": "用另一台设备扫码加入房间。",
+  "host.invite.qrFailed": "无法生成二维码，请复制邀请链接。",
   "state.peer.present": "已在房间",
   "state.peer.voiceConnected": "语音已连接",
   "host.topology.idle": "已在房间，暂无媒体线路。",

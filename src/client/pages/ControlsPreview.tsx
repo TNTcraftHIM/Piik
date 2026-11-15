@@ -11,6 +11,7 @@ import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import { REACTION_IDS, type ReactionId } from "../../shared/room-interactions";
 import { PlaybackControls } from "../components/living/PlaybackControls";
+import { InviteQrCode } from "../components/living/InviteQrCode";
 import { BrandMark } from "../components/living/BrandMark";
 import { SharingSettings } from "../components/living/SharingSettings";
 import { ShareMicrophoneSettings } from "../components/living/ShareMicrophoneSettings";
@@ -245,6 +246,7 @@ export function ControlsPreview() {
           <RoomAdmissionBadge policy="private" passwordEnabled={false} />
         </div>
         {inviteAvailable && <div className="lr-invite-field">
+          <InviteQrCode url={!includeCredential && policy === "private" && !roomPassword ? null : roomLink} />
           <Tooltip kind="hint-invite-link" text={roomLink} className="lr-invite-hint">
             <input className="lr-invite-url" readOnly dir="ltr" value={roomLink}
               aria-label={t(includeCredential ? "host.invite" : "host.invite.address")} />

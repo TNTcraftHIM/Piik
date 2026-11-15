@@ -19,14 +19,14 @@ describe("copy catalog", () => {
 
   it.each([
     ["zh-CN", "zh:false"],
-    ["zh-TW", "zh:false"],
-    ["zh-HK", "zh:false"],
+    ["zh-TW", "zh-Hant:false"],
+    ["zh-HK", "zh-Hant:false"],
     ["zh-SG", "zh:false"],
     ["zh-Hans", "zh:false"],
-    ["zh-Hant", "zh:false"],
-    ["zh-Hant-HK", "zh:false"],
+    ["zh-Hant", "zh-Hant:false"],
+    ["zh-Hant-HK", "zh-Hant:false"],
     ["en-US", "en:false"],
-    ["ja-JP", "en:false"],
+    ["ja-JP", "ja:false"],
     [undefined, "en:false"],
   ])("uses the primary system language on first use: %s", async (language, expected) => {
     vi.resetModules();
@@ -46,6 +46,9 @@ describe("copy catalog", () => {
   it.each([
     ["zh", "text", "zh:false"],
     ["en", "vis", "en:true"],
+    ["ja", "vis", "ja:true"],
+    ["zh-Hant", "text", "zh-Hant:false"],
+    ["ko", "text", "ko:false"],
   ])("keeps an explicit %s/%s choice over the system default", async (lang, mode, expected) => {
     vi.resetModules();
     vi.stubGlobal("navigator", { language: "ja-JP" });
@@ -82,15 +85,18 @@ describe("copy catalog", () => {
     expect(t("zh", "viewer.title", { name: "$&" })).toBe("$& 的屏幕");
   });
 
-  it("keeps every registered translation complete with matching placeholders", () => {
+  it("keeps primary catalogs complete and supplied translations valid", () => {
     const keys = Object.keys(locales.zh.copy) as CopyKey[];
     const placeholders = (value: string) => (value.match(/\{\w+\}/g) ?? []).sort();
+    for (const lang of ["zh", "en"] as const) {
+      expect(Object.keys(locales[lang].copy).sort(), lang).toEqual([...keys].sort());
+    }
     for (const [lang, locale] of Object.entries(locales)) {
-      expect(Object.keys(locale.copy).sort(), lang).toEqual([...keys].sort());
-      for (const key of keys) {
-        expect(locale.copy[key].trim(), `${lang}: ${key}`).not.toBe("");
-        expect(placeholders(locale.copy[key]), `${lang}: ${key}`)
-          .toEqual(placeholders(locales.zh.copy[key]));
+      for (const [key, value] of Object.entries(locale.copy)) {
+        expect(isCopyKey(key), `${lang}: obsolete ${key}`).toBe(true);
+        expect(value.trim(), `${lang}: ${key}`).not.toBe("");
+        expect(placeholders(value), `${lang}: ${key}`)
+          .toEqual(placeholders(locales.zh.copy[key as CopyKey]));
       }
       for (const frames of Object.values(locale.titleFrames)) {
         expect(frames.label.trim().length, lang).toBeGreaterThan(0);
@@ -103,15 +109,11 @@ describe("copy catalog", () => {
     }
   });
 
-  it("carries a contributed locale through selection and App handoff", async () => {
+  it.each(["zh-Hant", "ja", "ko"] as const)("carries %s through selection and App handoff", async lang => {
     vi.resetModules();
     const registry = await import("../src/client/locales");
-    // Exercise registration without shipping an unreviewed translation.
-    Object.assign(registry.locales, {
-      fr: { ...registry.locales.en, name: "Français", short: "FR", tag: "fr" },
-    });
     try {
-      const stored = new Map<string, string>([["piik:ui-lang", "fr"]]);
+      const stored = new Map<string, string>([["piik:ui-lang", lang]]);
       vi.stubGlobal("navigator", { language: "en-US" });
       vi.stubGlobal("document", { documentElement: { lang: "en" } });
       vi.stubGlobal("window", {
@@ -126,12 +128,12 @@ describe("copy catalog", () => {
       const copy = await import("../src/client/ui/copy");
       const { clientLaunchURL, takeClientLaunchBootstrap } = await import("../src/client/lib/session");
 
-      expect(registry.resolveLang("FR-ca")).toBe("fr");
+      expect(registry.resolveLang(registry.locales[lang].tag)).toBe(lang);
       expect(registry.resolveLang("zh-CN")).toBe("zh");
       expect(registry.isLang("toString")).toBe(false);
-      expect(copy.currentLang()).toBe("fr");
-      expect(document.documentElement.lang).toBe("fr");
-      expect(copy.t(copy.currentLang(), "common.host")).toBe("Host");
+      expect(copy.currentLang()).toBe(lang);
+      expect(document.documentElement.lang).toBe(registry.locales[lang].tag);
+      expect(copy.t(copy.currentLang(), "common.host")).toBe(locales[lang].copy["common.host"]);
 
       const presentation = { lang: copy.currentLang(), vis: false, theme: null };
       window.location.hash = new URL(clientLaunchURL("https://site.example/#piik-client=1", presentation)).hash;
@@ -140,9 +142,16 @@ describe("copy catalog", () => {
       expect(registry.consoleLanguage(presentation.lang, true)).toBe("vis");
       expect(registry.consoleLanguage("zh", false)).toBe("zh");
     } finally {
-      Reflect.deleteProperty(registry.locales, "fr");
       vi.resetModules();
     }
+  });
+
+  it.each(["zh-Hant", "ja", "ko"] as const)("uses the partial %s catalog with English and visual defaults", lang => {
+    expect(t(lang, "common.copied")).toBe(locales[lang].copy["common.copied"]);
+    expect(locales[lang].copy["mode.vis"]).toBeUndefined();
+    expect(t(lang, "mode.vis")).toBe(locales.en.copy["mode.vis"]);
+    expect(getTitleFrames(lang, false, "hostActive")).toBe(locales.en.titleFrames.hostActive);
+    expect(getTitleFrames(lang, true, "hostActive")).toBe(visualTitleFrames.hostActive);
   });
 
   it("say() follows the current language", () => {

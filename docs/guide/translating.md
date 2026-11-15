@@ -1,9 +1,16 @@
 # Help translate Piik
 
+The 2.x interface keeps Chinese, English and Visual only, and offers partial
+Traditional Chinese, Japanese and Korean message catalogs. Missing messages,
+text titles and playful copy use English. Visual-only presentation, saved
+preferences and the Chinese/English/visual App console keep their existing roles.
+New copy is required in Chinese and English; remove obsolete keys from every
+catalog when removing a message.
+
 [中文](./translating.zh-CN.md) · [Contributing](../../CONTRIBUTING.md)
 
-Piik includes Simplified Chinese and English. Suggest wording, correct a
-translation or add a language through GitHub issues and pull requests.
+Suggest wording, correct a translation or add a language through GitHub issues
+and pull requests.
 
 For a wording suggestion, [open an issue](https://github.com/TNTcraftHIM/Piik/issues/new/choose)
 with the language, page/control, current text, proposed text and reason. Include
@@ -28,7 +35,8 @@ personal content. You can send a suggestion without setting up development tools
 
 4. Preview the affected screen and run the [relevant checks](#preview-and-check).
    For a typo in one language, edit that language. If the underlying meaning
-   changes, update the corresponding messages in every registered language.
+   changes, update Chinese and English; remove an outdated optional translation
+   when it would misrepresent the behavior.
 5. Open a PR to `main` with the wording problem, languages/surfaces changed and
    preview results. For PR format, follow [Contributing](../../CONTRIBUTING.md#pull-request-scope).
 
@@ -36,7 +44,7 @@ personal content. You can send a suggestion without setting up development tools
 
 | Surface | Editable source |
 | --- | --- |
-| App launcher and shared Browser/App UI, including tooltips and accessible labels | [English](../../src/client/locales/en.ts), [Chinese](../../src/client/locales/zh.ts) |
+| App launcher and shared Browser/App UI, including tooltips and accessible labels | [Locale registry](../../src/client/locales/index.ts), [English](../../src/client/locales/en.ts), [Chinese](../../src/client/locales/zh.ts); extra languages live beside them |
 | Welcome lines, waiting captions and changing browser-tab titles | The `enPlayful` / `zhPlayful` pools and title-frame catalogs in those same files; website welcome lines reuse these pools |
 | Website | [Page markup](../../site/index.html) and [interactive labels](../../site/main.js); text is paired by `en` and `zh-CN` |
 | Introduction film | [Film sources](../../site/film/README.md); captions, artwork and playback labels have their own bilingual text |
@@ -94,11 +102,12 @@ layout questions, so contributors can coordinate work and review.
 
 1. Copy `src/client/locales/en.ts` to a file such as `fr.ts`. Translate the
    messages and title labels, write natural [playful entries](#playful-copy), and
-   rename the three exports. Retain `Record<CopyKey, string>`, `TitleFrameCatalog`
-   and `PlayfulCatalog` from `zh.ts`.
+   rename the three exports. Use `Partial<Record<CopyKey, string>>` for optional
+   message catalogs; retain `TitleFrameCatalog` and `PlayfulCatalog` from `zh.ts`.
+   You can reuse the English title/playful
+   catalogs until those optional surfaces are translated.
    Chinese currently defines the key set; either existing language can provide
-   context. Complete all keys rather than spreading an English catalog over
-   missing translations.
+   context. Include translated keys only; missing messages use the shared English fallback.
 2. Import the exports in [locales/index.ts](../../src/client/locales/index.ts)
    and add one registry entry. For example, **after translating** the catalogs:
 
@@ -130,7 +139,7 @@ Each language owns its welcome and waiting arrays, and each playful title has a
 fixed `label` plus a `variations` array. Add or remove entries in that language
 without matching another language's count, order or references. An empty array
 omits the decoration; one entry stays static. Operational keys and title labels
-still require complete translations. Errors, pauses, endings, required actions
+remain complete in Chinese and English. Errors, pauses, endings, required actions
 and slogans stay fixed.
 
 Welcome entries carry `text` and two `symbols`, chosen from the existing

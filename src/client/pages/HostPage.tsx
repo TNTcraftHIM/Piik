@@ -31,6 +31,7 @@ import { LiveAudioExclusion } from "../components/living/AudioExclusionSelect";
 import { RoomInteractions } from "../components/living/RoomInteractions";
 import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../components/living/RoomChatOverlay";
 import { PlaybackControls } from "../components/living/PlaybackControls";
+import { InviteQrCode } from "../components/living/InviteQrCode";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 import { useHostPreviewPlayback } from "../components/living/use-host-preview-playback";
 import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preferences";
@@ -4585,6 +4586,7 @@ export function HostPage({
                 />
               </RowGroup>
               <div className="lr-invite-field">
+                <InviteQrCode url={roomLinkBlocked ? null : roomLink} disabled={roomMutating} />
                 {roomLink ? (
                   <Tooltip kind="hint-invite-link" text={roomLink} className="lr-invite-hint">
                     <input

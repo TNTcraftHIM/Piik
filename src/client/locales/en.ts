@@ -2,6 +2,10 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // Community translations are data-only and type-checked against zh.
 export const en: Record<CopyKey, string> = {
+  "host.invite.qr": "Invitation QR code",
+  "host.invite.qrShort": "QR code",
+  "host.invite.qrHint": "Scan with another device to join the room.",
+  "host.invite.qrFailed": "Could not create a QR code. Copy the invitation link instead.",
   "state.peer.present": "In the room",
   "state.peer.voiceConnected": "Voice connected",
   "host.topology.idle": "In the room. No active media routes.",

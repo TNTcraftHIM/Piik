@@ -169,10 +169,12 @@ a permission query retain bounded discovery.
 Chinese, English, and pure-visual modes are three expressions of the same typed
 state and command catalog. On first use, the App and Server UI match the
 Browser's primary system language against registered locales, using English
-when none matches. Current catalogs cover Simplified Chinese and English.
-Both Simplified and Traditional Chinese system locales select the current
-Chinese catalog across App, Server UI and website; this includes region and
-script tags such as `zh-CN`, `zh-TW`, `zh-HK`, `zh-Hans` and `zh-Hant`.
+when none matches. Simplified Chinese and English catalogs are complete;
+Traditional Chinese, Japanese and Korean UI catalogs provide partial translations
+with English fallback. System-language matching distinguishes Chinese scripts,
+including `zh-TW`, `zh-HK` and `zh-Hant` for Traditional Chinese. The website
+retains its separate bilingual presentation. Additional UI languages use the
+existing dropdown after Chinese, English and pure-visual controls.
 Pure-visual mode remains an explicit choice. An explicit later choice is
 persisted and takes precedence over that default, including App launch handoff.
 Explicit launcher choices apply only to the presentation domains the user chose.

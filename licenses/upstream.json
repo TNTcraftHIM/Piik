@@ -1,4 +1,9 @@
 {
+  "qrcodegen/qrcode.react@4.2.0": {
+    "file": "qrcodegen-MIT.txt",
+    "source": "https://raw.githubusercontent.com/zpao/qrcode.react/v4.2.0/src/third-party/qrcodegen/LICENSE",
+    "sha256": "ba5a977288ff7463c51ea0cc5bf5a34372707985655c1ccc054f2a0caa3d9bff"
+  },
   "libc++@ndk-30.0.16248370": {
     "file": "libcxx-ndk-30.txt",
     "source": "https://github.com/llvm/llvm-project/blob/2d287f51eff2a5fbf84458a33f7fb2493cf67965/libcxx/LICENSE.TXT",
