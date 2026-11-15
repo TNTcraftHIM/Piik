@@ -1,12 +1,13 @@
 # WebRTC Adaptation And Encoder Reuse
 
-Initial review: 2026-09-08. The early review and probes below compare the fixed-output
-candidate with mature encoder adaptation. The later [Windows product attachment](#windows-product-attachment)
-and [compatible output groups](#compatible-output-groups) record the published integration.
-[ADR-0013](../adr/0013-embedded-node-local-media.md) owns the direct-child/shared-output
-model; [media quality](../standards/media-quality.md) owns current behavior. The pinned
-baseline and subsequent C++/Go integration sections retain 2.x evidence; the
-3.0 profile and Rust cadence sections identify their separate current scope.
+Initial review: 2026-09-08. The 3.0 sections below distinguish current H264
+compatibility, a codec-extension proposal and measured Rust worker cadence.
+The [network model](./channel-network-design.md#implementation-boundary) owns
+current 3.0 behavior. The pinned libwebrtc review, [Windows product attachment](#windows-product-attachment)
+and [compatible output groups](#compatible-output-groups) retain 2.x C++/Go evidence
+under [ADR-0013](../adr/0013-embedded-node-local-media.md) and
+[media quality](../standards/media-quality.md); their historical integration
+statements do not describe the Rust implementation.
 
 ## 3.0 H264 Profile Compatibility
 
@@ -32,8 +33,10 @@ answer cannot downgrade a running High 10 encoder.
 
 Each complete-AU representation owns its actual codec/profile. The source exposes
 its original representation; each output retains its negotiated formats and
-payload mappings. Incoming SDP, actual SPS and downstream capabilities remain
-separate facts. Reuse str0m's `CodecConfig::match_params` for H264 profile and
+payload mappings. Incoming SDP, expected encoding eligibility, actual SPS and
+downstream capabilities remain separate facts. The expected encoder format admits
+an encoding attempt; the produced H264 SPS establishes that feed's actual format.
+Reuse str0m's `CodecConfig::match_params` for H264 profile and
 packetization matching. A matching receiver gets the original bytes; a required
 compatible representation uses the existing decoder and encoder pool. Every
 output sends the payload type matching the representation it actually selected.
@@ -91,11 +94,12 @@ operation that consumes it; a global codec-support boolean cannot represent them
 
 Use the original compatible representation or an already available source layer.
 For a configurable source, prefer selecting a compatible representation before
-encoding. If neither is possible, expose the actual unsupported format and the
-required action. Conversion is a separately accepted fallback with measured
-resource cost: decode the selected source representation once, share its Frames,
-and retain each output's existing quality allocation and encoding lifetime.
-One output's incompatibility must not force compatible outputs through conversion.
+encoding. For an unsupported new codec family or bit depth, expose the format
+and required action when neither is possible. New conversion paths require
+separate acceptance and measured resource cost. They extend the existing
+supported 8-bit H264 profile conversion's ownership: decode once, share
+Frames, and retain each output's quality allocation and encoding lifetime.
+Compatible outputs continue to reuse encoded data.
 
 Stock OBS cannot be reconfigured by a WHIP answer today. Its public
 [preferred video format API](https://docs.obsproject.com/reference-encoders#c.obs_encoder_set_preferred_video_format)
@@ -359,15 +363,6 @@ intermediates. Browser intermediates still encode; leaves only decode. Count
 lower standby encodes and split/rejoin work too: the then-packaged producer's
 original-plus-half envelope was not changed by this replay.
 
-### Initial Integration Direction
-
-The initial direction retained Pion/LiveKit transport, estimator, pacer and
-projection, attaching codec-only VSE/VideoAdapter to the source's missing-output
-demand. The later Windows attachment and output groups record that integration.
-A low-quality input cannot manufacture detail; higher input or the existing
-bounded route operation must supply it. This introduced neither a subtree
-quality minimum nor a new congestion algorithm.
-
 ## Scheduling And Resource Follow-Up
 
 A realtime arm kept 30 fps without per-input queue draining: two healthy
@@ -427,7 +422,7 @@ the bundled SDK/libvpx and notices replaced the separate capture dependency.
 
 ### Windows Product Attachment
 
-`OutputWorker` now uses one complete stock VSE/VideoAdapter per shared local
+The 2.x `OutputWorker` uses one complete stock VSE/VideoAdapter per shared local
 output, for both WGC and encoded-input derivation. The original capture, bounded
 mailbox, generation checks and cancellable pipe writer remain. H264 receives
 same-device NV12 directly; stock VP8 uses I420 readback. The returned AU retains
@@ -436,7 +431,7 @@ The source publishes adapted dimensions through an immutable metadata snapshot;
 calling LiveKit's full track-info update for each size change would reset every
 active layer's bitrate tracker and was rejected by a focused regression.
 
-The product build now links the same pinned SDK, including its libvpx, instead
+The 2.x product build links the same pinned SDK, including its libvpx, instead
 of a second standalone libvpx build. The Windows capture executable is about
 8.0 MB and imports only Windows system DLLs/API sets. Cached SDK and official
 MSVC archives total about 816 MB, not package payload. SDK notices are retained
@@ -467,12 +462,6 @@ connection/pipeline reset or new timer forced recovery. Temporary internal
 tracing was removed after this diagnosis. This is eventual recovery, not a
 low-latency recovery guarantee; Intel-specific QP capability quirks and actual
 overload still need hardware evidence.
-
-Auto VP8 measurement now uses the actual VSE path rather than benchmarking an
-encoder with different live settings. H264's existing successful-hardware probe
-path remains. The four-second decision budget is unchanged. Current grouping
-at that point still folded multiple weak consumers into one low budget; the
-following integration addresses that independent requirement.
 
 #### H264 Burst And Recovery
 
@@ -577,7 +566,7 @@ scripts cannot apply these native field trials to the user's Browser encoder.
 
 ### Compatible Output Groups
 
-The source now retains per-consumer demand instead of taking a minimum across
+The 2.x source retains per-consumer demand instead of taking a minimum across
 weak children. Effective connection budgets are bounded by the same output
 ceiling; equal requests share one complete pipeline, while differing requests
 are isolated. The group's rates change in place, so a changing estimate is not
@@ -600,11 +589,9 @@ timestamps are fenced before attachment changes.
 The internal capture v7 contract supports encoded AUs up to 4 MiB and independent
 per-slot activation in place
 of the old prefix count, permitting equal-ceiling outputs with different
-budgets. All three platform producers implement that contract. Windows builds
-and normal tests pass; Linux production compilation and CPU-only GStreamer
-slot retirement checks pass. The macOS change is source-reviewed, not SDK or
-physical acceptance. No Browser/server signaling change is needed for private
-encoder grouping; matched App and capture artifacts are required.
+budgets. All three 2.x platform producers implement that contract. Windows build
+and Linux compilation/CPU-only slot-retirement checks passed; macOS remained source-reviewed,
+without SDK or physical acceptance.
 
 Actual VP8 relay checks exercise two equal 300 kbps consumers sharing one
 derived output, splitting to 80/300 kbps and rejoining at 300/300 kbps. Both
@@ -621,7 +608,7 @@ inputs; the separate shaped-network gate owns automatic estimator evidence.
 A subsequent [native encoder experiment](./realtime-quality-adaptation.md#native-encoder-policy-experiments)
 tested replacing this partition with one common output: either the maximum or
 the harmonic mean of the active requests. These are policy ablations, not a
-a replacement for independent receiver eligibility and dependency ownership.
+replacement for independent receiver eligibility and dependency ownership.
 The real Native VP8 fixture supplied 1280x720 motion, with requests of
 80 kbps and 1.25 Mbps for twenty seconds, then equal requests and retirement.
 The independent groups retained the healthy receiver's 640x360 output at
@@ -642,9 +629,7 @@ per-RID counters, recovery and late old-source callbacks. Complete network,
 hardware-overload, multi-room and platform acceptance remain distinct work.
 The Native H264 embedded-SFU gate additionally decodes 300 720p frames, applies
 a live 480p change, retains decoded Opus and closes publication/capture/UDP
-resources. Its Vite server disables file watching: scanning the growing ignored
-build tree had blocked the test's in-process event loop and CDP navigation
-before media started. No Browser media deadline was relaxed to obtain the pass.
+resources. This is loopback evidence, not public-network or cross-platform acceptance.
 
 The subsequent automatic-BWE relay checks are mixed: one 120 kbps constrained
 run retained a roughly 49 kbps estimate throughout the twelve seconds after
@@ -653,11 +638,9 @@ original 640x360 output about 1.3 seconds after release. That successful trace
 shows valid higher-output demand and the stock congestion guard clearing, not
 proof of why the earlier run stayed low. The fixture's 6 Mbps value is link
 capacity, not payload rate: its replayed original is roughly 157 kbps and its
-bounded queue makes keyframe/retransmission bursts relevant. Temporary probe
-instrumentation was removed. Observation files now follow each received-output
-path and counters follow the actually attached group, preserving failed runs
-and avoiding stale-group attribution. This is an unresolved repeatability
-boundary, not evidence for a new recovery timer or a permanent deadlock.
+bounded queue makes keyframe/retransmission bursts relevant. The differing
+outcomes leave a repeatability boundary; neither establishes
+a new recovery timer or a permanent deadlock.
 
 A 75-second follow-up on the 4,096-packet candidate kept the same 5-to-18-second
 120 kbps constraint and restored the original at 19.535 seconds, 1.535 seconds
@@ -669,8 +652,7 @@ frames with 25 assembly gaps during congestion. The sampled pacer queue peaked
 at 57 packets and stayed at two or fewer after recovery. This demonstrates
 sustained stock recovery in that run, without an algorithm change; it does not
 identify the earlier missed recovery as either a long cooldown or a permanent
-stall. Temporary tracing and the extended fixture duration were removed, and
-all capture/test processes exited.
+stall. All capture/test processes exited.
 
 A bounded CPU-affinity check retained the original 1280x720 child and two
 compatible 640x360 consumers through fifteen seconds with only the capture
@@ -678,7 +660,7 @@ subprocess restricted to one core, then restored its original affinity. All
 three received about 30 fps with the same shared group and decoder process.
 The subprocess used only about 11.5% of that core during the restriction, so
 this did not induce overload and cannot establish resource-adaptation parity.
-The temporary fixture was removed and process/affinity cleanup verified.
+Process/affinity cleanup was verified.
 
 A later 46-second VP8 check used the actual `AdaptiveEncoder` and mailbox at
 2560x1440, 60 fps and 12 Mbps, with an independent raw-input producer. An
@@ -716,23 +698,12 @@ or Chrome comparison. The 0.24 fps result belongs only to this helper. Keep
 overload acceptance open without changing stock thresholds or adding a custom
 CPU controller.
 
-## Initial Replacement And Preservation Map
+## Evidence Boundary
 
-The initial encoder replacement preserved room authority, STUN/SFU lifecycle,
-single-operation routing, forwarding transport, profile acknowledgement, source
-clocks, bounded queues and joined retirement. It did not authorize unrelated
-App/UI/packaging changes, double FPS limiting or parallel controllers. Direct
-Native SFU publication, independent Native sessions, ICE improvements and mixed
-Browser/App relay remained integration requirements, not automatic SDK features.
-
-## Initial Integration Gate Record
-
-The September 8 delayed-codec result selected a complete shared pipeline over a
-per-sender cache. Windows attachment and compatible groups record the later
-integration, including encoded bypass, derivation, budgets, safe switching and
-retirement. This was not release approval. Current device, overload, perceptual
-and public-network limits belong to [verification status](../verification-status.md);
-[TODO](../todo.md) owns unfinished work.
+These controls retain their stated implementation and workload scope; they do
+not establish current 3.0 or cross-platform parity. Current device, overload,
+perceptual and public-network limits belong to
+[verification status](../verification-status.md); [TODO](../todo.md) owns unfinished work.
 
 [chromium-deps]: https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.82/DEPS
 [chromium-hint]: https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.82/third_party/blink/renderer/modules/peerconnection/media_stream_video_webrtc_sink.cc
