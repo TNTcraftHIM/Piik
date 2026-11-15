@@ -67,6 +67,18 @@ input-to-output latency was 0.67/2.19 ms at p50/p95. Software encoding took
 0.46/0.64 ms, separately from its GPU-dependent readback wait of 0.43/1.08 ms.
 These are different stage measurements, not an encoder speed ranking.
 
+A further current-source control used synthetic text and moving blocks at
+1920 × 1080, 30 fps and 6 Mbps through the complete Rust texture/child-worker
+path, for five seconds per mode. Auto/Software returned 136/143 encoded AUs from
+150 input frames: startup reduced first-second delivery to 16/23; each remaining second
+delivered 30, with no budget drops. Encoding p95 was 2.77/2.48 ms; Software's
+GPU-dependent readback added a separately measured 0.90 ms p95. Child-process
+CPU totals were 609/1859 ms including initialization and shutdown, not steady
+CPU percentages. Conversion timings measure CPU submission, not GPU completion;
+Software encoding includes its owned NV12 copy. These instrumented debug runs
+measure encoded output, without decoding or network delivery, and establish
+short-run cadence rather than endurance or a compression-quality ranking.
+
 Both workers joined on exit. This establishes no fixed 60 fps limit in that
 low-load encoding path; it does not measure WGC, high-resolution games, GPU
 saturation or automatic hardware/software switching.
