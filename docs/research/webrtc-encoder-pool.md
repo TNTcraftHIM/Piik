@@ -66,6 +66,52 @@ ordinary forwarding retains its observed-cost cap; a required conversion uses
 only an explicit configured ceiling, when present, and otherwise the available
 connection allocation.
 
+### Proposed Codec Interoperability Boundary
+
+Design proposal; additional codecs and conversion dependencies are not selected.
+Prefer compatible output at the sender and reuse encoded data before considering
+conversion. Extend the existing owners rather than adding a general adaptation
+manager.
+
+| Existing owner | Responsibility |
+| --- | --- |
+| Source adapter | User intent, actual input format and whether the sender can select another format before encoding |
+| RTC transport and Output | Negotiated receive formats, payload mapping and the SDK's network allocation |
+| Video and Layers | The format of each actual encoded representation and its reusable access units |
+| Frames and Encodings | Source-frame reuse and the outputs needed by existing consumer demands |
+| Decoder and encoding worker | Supported concrete configurations, execution, failure and joined retirement |
+| WatchMedia and its Browser player | Container playback and local decoding of an online source's original bytes |
+
+Codec family, bit depth, profile, packetization and colour are distinct format
+properties. A sender's declaration, a local encoder's availability and a
+receiver's successful playback are different facts. Keep each capability at the
+operation that consumes it; a global codec-support boolean cannot represent them.
+
+Use the original compatible representation or an already available source layer.
+For a configurable source, prefer selecting a compatible representation before
+encoding. If neither is possible, expose the actual unsupported format and the
+required action. Conversion is a separately accepted fallback with measured
+resource cost: decode the selected source representation once, share its Frames,
+and retain each output's existing quality allocation and encoding lifetime.
+One output's incompatibility must not force compatible outputs through conversion.
+
+Stock OBS cannot be reconfigured by a WHIP answer today. Its public
+[preferred video format API](https://docs.obsproject.com/reference-encoders#c.obs_encoder_set_preferred_video_format)
+offers a possible sender-side path: convert raw input for the streaming encoder,
+then encode once. It also needs a compatible encoder profile and must preserve
+independent recording and explicit user format choices. Correct SDP advertisement
+and automatic encoder selection are separate upstream changes. Respect WHIP's
+[non-ICE renegotiation boundary](https://www.rfc-editor.org/rfc/rfc9725.html#section-4.3.3).
+
+The current Native derivation path couples its input and output codec. A future
+cross-codec feature should separate those parameters at the existing
+`Decoding`/`Encodings` boundary, then validate one concrete input/output combination.
+It does not require a new source registry or a second scheduler. Hardware/software
+execution recovery stays with the encoding worker; congestion control stays with
+the RTC SDK. Original-byte website playback does not imply Native RTP, decoding
+or encoding support for that codec. P010-to-NV12 conversion alone is not HDR
+tone mapping.
+
 ### Rust Worker Cadence Control
 
 On 2026-11-14, the current Rust Windows worker path was exercised with owned

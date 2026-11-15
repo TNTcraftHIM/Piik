@@ -188,6 +188,11 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
   capability. Fewer `if` statements are not a goal in themselves: do not conceal
   exceptions in flags or tables, invent a generic manager, or weaken necessary
   validation merely to reduce the visible branch count.
+- Give policy values, timing and thresholds a named owner, explicit units and a
+  single source in configuration, constants, tokens or derived values. Keep
+  different meanings separate even when their numbers match; straightforward
+  local arithmetic needs no ceremonial constants. Follow
+  [ES.45](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Res-magic).
 - Keep simple logic at its call site. Extract a helper for actual reuse, a
   substantial boundary, or a distinct concept whose name makes the caller clearer.
   In longer orchestration, keep the main flow readable and move substantial

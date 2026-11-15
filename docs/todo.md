@@ -12,10 +12,18 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **Native page chrome.** Make launcher and saved-site pages use the shared
+  Native window edge and header layout, while Browser pages retain their outer
+  frame. Keep content panels independent of that presentation choice.
 - [ ] **App connection during webpage selection.** Capture the first control
   connection failure during the reported intermittent App disconnection. Use the
   opt-in control-close diagnostic to distinguish transport closure, handshake,
   invalid events and consumer failures before changing recovery behavior.
+- [ ] **Whole-system sound in beta.29.** The reporter hears normal sound in
+  beta.25, but beta.29 needs any process excluded before sound reaches viewers.
+  Compare default-endpoint packets and queue/output progress with process
+  loopback on that setup; the capture and mixing code is unchanged between the
+  two builds. Keep this report distinct from the earlier process-specific noise.
 - [ ] **Host UDP errors and blurry viewing.** A reported beta.25 Host repeatedly
   prints Windows network-unreachable error 10051 while a friend can view a blurry
   picture. Identify whether the errors affect the selected media path or other
@@ -135,6 +143,8 @@ the feedback period; they do not delay that delivery.
   trigger, bounded candidate attempts and strict-benefit proof before enabling
   automatic alternative-parent trials. Online sessions do not prove reusable
   physical connections; keep that fact with the transport owner.
+  Clarify the room-default limit for hosts/sources versus the current page's
+  personal relay override before extending controls to linked App endpoints.
 - [ ] **NAT field coverage.** The bounded random-mapping Native implementation
   and ordinary Native-to-Browser linear extension have controlled media and
   retirement evidence. Measure difficult physical networks and sustained
@@ -145,7 +155,9 @@ the feedback period; they do not delay that delivery.
   execution under CPU/GPU contention, separating capture/copy, encoding and
   network cost. Include compatible H.264 forwarding cost and sustained runtime
   adaptation; keep congestion control with the RTC owner. AV1/HEVC product
-  integration remains a separate decision.
+  integration remains a separate decision. Review the
+  [codec interoperability proposal](./research/webrtc-encoder-pool.md#proposed-codec-interoperability-boundary)
+  before extending codec or conversion implementations.
 - [ ] **Native send-consent lifetime.** Review the RTC owner's response-based
   expiry against RFC 7675, including delayed processing and its existing Chrome
   interoperability correction. Keep transport consent and Piik route recovery
