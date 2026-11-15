@@ -30,6 +30,8 @@ func TestStaticCompressionKeepsNegotiationAndServeContentSemantics(t *testing.T)
 	}{
 		{"/", "GET", "gzip", "", 200, true, len(body)},
 		{"/app.js", "GET", "br, gzip", "", 200, true, len(body)},
+		{"/app.js", "GET", "*", "", 200, true, len(body)},
+		{"/app.js", "GET", "gzip;q=0, *", "", 200, false, len(body)},
 		{"/app.mjs", "GET", "zstd, gzip", "", 200, true, len(body)},
 		{"/app.css", "GET", "gzip", "", 200, true, len(body)},
 		{"/app.js", "GET", "gzip;q=0", "", 200, false, len(body)},
