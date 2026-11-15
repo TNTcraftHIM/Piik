@@ -89,8 +89,8 @@ export function hasCopyPreference(): boolean {
   return explicit;
 }
 
-// Older launchers do not distinguish a user choice from their system default.
-// Treat unmarked handoff values as temporary defaults, never persisted choices.
+// Explicit launcher choices replace and persist the destination preference.
+// System defaults only fill an unset preference, without being saved.
 export function applyLaunchCopy(next: Partial<CopyPrefs>, explicitChoice: boolean): void {
   if (explicitChoice) commit(next);
   else if (!explicit) apply(next);

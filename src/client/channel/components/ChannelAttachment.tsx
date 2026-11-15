@@ -30,7 +30,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
       catch { setPreviewFailed(true); }
     }
     return () => { current.request.abort(); if (current.url) URL.revokeObjectURL(current.url); };
-  }, [roomId, messageSeq, file.id, client, inlineImage]);
+  }, [roomId, messageSeq, file.id, client, inlineImage?.data, inlineImage?.mediaType, inlineImage?.original]);
   async function showImage() {
     const current = resource.current;
     if (!current || previewBusy) return;
