@@ -6,7 +6,7 @@ all-device acceptance or full HDR support.
 
 ## Playback Buffering
 
-Reviewed 2026-11-13. Browser receivers default to WebRTC's adaptive buffer;
+Reviewed 2026-11-15. Browser receivers default to WebRTC's adaptive buffer;
 Piik does not default to a zero-delay target. The standard
 [`jitterBufferTarget`](https://www.w3.org/TR/webrtc/#dom-rtcrtpreceiver-jitterbuffertarget)
 requests a preferred total buffer duration, not extra delay or a quality level.
@@ -18,13 +18,38 @@ the leaf's measured picture-delay median from 26.8 to 284.1 ms. The relay
 re-encodes its received track, so this setting is not purely local to its viewer.
 Returning to automatic restored the median, with a delayed tail during transition.
 
-A separate real-process kernel-network control applied seeded 100 ± 20 ms
-downlink delay to one viewer. In sequential 30-second windows, automatic versus
-300 ms target produced 5 versus 3 freezes and 4.733 versus 1.241 seconds frozen.
-Actual average video buffering increased from 213 to 357 ms; source-audio
-buffering increased from 148 to 270 ms. This one synthetic trial did not measure
-end-to-end latency or improved image detail, and does not establish an optimal
-target or a general performance gain.
+The initial single kernel-network trial used seeded 100 ± 20 ms downlink delay:
+automatic versus 300 ms produced 5 versus 3 freezes (4.733 versus 1.241 seconds),
+with average video buffering of 213 versus 357 ms.
+
+A 2026-11-15 comparison reused the matched older 3.0 fixture (Core 17,
+str0m 0.25.0 at `f319649`, Chromium 152), not the current product build.
+The synthetic capture was 640×360 at 10 fps; received geometry changed from
+320×180 to 640×360 during the pretrial baseline. The seeded 100 ± 20 ms path ran
+two 30-second windows per target, in forward then reverse order, with five
+seconds settling per window. Totals and emission-weighted actual video
+buffering were:
+
+| Requested target | Freezes | Frozen seconds | Actual video buffer |
+| --- | ---: | ---: | ---: |
+| Automatic | 3 | 2.795 | 162.4 ms |
+| 150 ms | 5 | 2.380 | 179.7 ms |
+| 300 ms | 0 | 0 | 346.2 ms |
+| 600 ms | 1 | 0.407 | 641.0 ms |
+
+The shared connection retained adaptation history, and per-window frame
+dimensions were not recorded. The comparison therefore cannot separate buffering
+effects from all encoding changes, and measured neither end-to-end latency nor
+improved sharpness or an optimal target.
+300 ms is a tested starting value for an editable setting, not a fixed preset
+or evidence that manual buffering always improves on automatic.
+
+A separate automatic/300 ms control requested a 200 ms outage on the owned
+leaf UDP path and dropped 31/30 packets; neither approximately two-second
+burst-surrounding window added a freeze, and both recorded NACKs and retransmissions.
+Whole-window resolution changes confound the freeze totals, so they cannot
+establish the burst's benefit or the cause of transient blur.
+This 10 fps control is not a reproduction of a user's reported 2% loss.
 
 The implemented setting follows the [screen-delivery owner](./channel-network-design.md#screen-demand-uses-reachable-paths).
 Real-room checks exercised the shared control on screen video/source audio,
