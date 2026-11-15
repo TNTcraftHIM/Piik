@@ -1,0 +1,9 @@
+.lr-client-launch-panel:has(.lr-site-start-fields) { display: flex; flex-direction: column; align-items: stretch; min-height: 0; gap: 0; padding: 0; width: 100%; overflow: visible; }
+.lr-site-start-fields { display: grid; justify-items: center; gap: 16px; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 0 24px 18px; }
+.lr-site-start-actions { display: flex; flex: none; justify-content: center; padding: 14px 24px 18px; border-top: 1px solid var(--line); }
+.lr-site-start-fields .lr-client-mode { min-height: clamp(76px, 15vh, 108px); padding: 12px; gap: 8px; }
+@media (max-width: 600px) {
+  .lr-site-start-fields { padding-inline: 16px; gap: 12px; }
+  .lr-site-start-actions { padding: 12px 16px 16px; }
+  .lr-site-start-fields .lr-client-mode { min-height: 64px; }
+}

@@ -1,6 +1,6 @@
 .lr-site-management { width: 100%; box-sizing: border-box; }
 .lr-site-list-header, .lr-site-row-actions, .lr-site-statuses, .lr-site-status, .lr-site-form-actions, .lr-site-consent { display: flex; align-items: center; gap: 8px; }
-.lr-site-list-header { justify-content: space-between; gap: 20px; }
+.lr-site-list-header { position: sticky; top: 0; z-index: 1; background: var(--paper); justify-content: space-between; gap: 20px; padding-bottom: 8px; }
 .lr-site-list-header > p { font-size: 12px; line-height: 1.6; }
 .lr-site-list-header > span { flex: none; margin-left: auto; }
 .lr-site-list { list-style: none; margin: 8px 0 0; padding: 0; }
@@ -13,7 +13,7 @@
 .lr-site-status { gap: 5px; color: var(--muted); font-size: 11px; }
 .lr-site-status > svg { flex: none; }
 .lr-site-row-actions { flex: none; }
-.lr-site-back { border: 0; padding: 0; margin: 0 0 14px; min-width: 0; }
+.lr-site-back { position: sticky; top: 0; z-index: 1; background: var(--paper); border: 0; padding: 0 0 8px; margin: 0 0 6px; min-width: 0; }
 .lr-site-detail-heading { display: flex; align-items: center; gap: 12px; outline: none; overflow-wrap: anywhere; }
 .lr-site-detail-heading > svg { flex: none; }
 .lr-site-detail-heading > div { min-width: 0; display: grid; gap: 5px; }

@@ -7,6 +7,7 @@ import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import type { AppMode } from "../../lib/app-launch";
 import { useClipboardResult } from "../../ui/use-clipboard-result";
+import "./launcher-form.css";
 
 export interface LocalCertificate { origin: string; sha256Fingerprint: string }
 
@@ -90,6 +91,7 @@ export function SiteStartControls({
       {target ? <><a className="lr-btn is-primary" href={entryURL(target)} onClick={onOpen} aria-label={t("client.launch.go")}>
         <Glyph name="arrowRight" size={19} /><span className="lr-cap">{t("client.launch.go")}</span>
       </a>{localCertificate && <LocalConnectionDetails certificate={localCertificate} />}</> : <>
+      <div className="lr-site-start-fields">
       <div
         className="lr-client-modes"
         role="radiogroup"
@@ -190,6 +192,8 @@ export function SiteStartControls({
         </NumberControl>
         <p className="lr-client-access-hint">{t(mode === "link" && publicEntry?.existing ? "client.launch.forwardPortHint" : "client.launch.sitePortHint")}</p>
       </details>}
+      </div>
+      <div className="lr-site-start-actions">
       <Btn
         icon={roomError ? "refresh" : "arrowRight"}
         title={roomError ? "common.retry" : "client.launch.go"}
@@ -198,6 +202,7 @@ export function SiteStartControls({
         type="submit"
         disabled={mode === "local" && lan !== undefined && !lan.selected}
       />
+      </div>
       </>}
   </>;
 }
