@@ -581,6 +581,23 @@ async fn base_channel_failure_preserves_media_on_the_same_physical_pair() -> Res
         let output = f.output(flow, MediaKind::Video);
         f.until(|f| f.observed(&output.1, MediaKind::Video).is_some())
             .await?;
+        let expected: HashSet<_> = f
+            .plans
+            .iter()
+            .flat_map(|plan| plan.incoming.iter().map(|flow| (plan.id, flow.id)))
+            .collect();
+        // The selected output's first packet does not prove the warm input is ready.
+        // Observe both initial picture reports before discarding and replaying them.
+        f.until(|f| {
+            expected.iter().all(|(pair, flow)| {
+                f.reported.iter().any(|command| {
+                    matches!(command,
+                    Command::FlowState { pair_id, flow_id, state: FlowState::Forwardable }
+                    if pair_id == pair && flow_id == flow)
+                })
+            })
+        })
+        .await?;
         let before = f.observed(&output.1, MediaKind::Video).unwrap();
         let instance = f.driver.pairs[&sink]
             .pc
@@ -611,11 +628,6 @@ async fn base_channel_failure_preserves_media_on_the_same_physical_pair() -> Res
                 "resync lost the connected pair"
             );
         }
-        let expected: HashSet<_> = f
-            .plans
-            .iter()
-            .flat_map(|plan| plan.incoming.iter().map(|flow| (plan.id, flow.id)))
-            .collect();
         let forwardable: Vec<_> = replayed
             .iter()
             .filter_map(|command| match command {
@@ -629,7 +641,7 @@ async fn base_channel_failure_preserves_media_on_the_same_physical_pair() -> Res
             .collect();
         ensure!(
             forwardable.len() == expected.len()
-                && forwardable.iter().all(|flow| expected.contains(flow)),
+                && forwardable.iter().copied().collect::<HashSet<_>>() == expected,
             "resync must report each current picture flow once, not its source audio"
         );
         f.driver.fail_base(sink).await;
