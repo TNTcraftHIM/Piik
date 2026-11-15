@@ -24,10 +24,7 @@ export function FloatingPanel({ id, trigger, title, compact = false, anchorOnOpe
   const panelRef = useRef<HTMLElement>(null);
   const panelWindow = usePanelWindow(detachable || directWindow, owner => {
     if (directWindow && owner === document) {
-      panelRef.current?.hidePopover();
-      setOpen(false);
-      onOpenChange?.(false, owner);
-      focusTrigger();
+      returnToPage(owner);
     }
   });
   const { container, slot, surfaceDocument, detached } = panelWindow;
@@ -43,14 +40,23 @@ export function FloatingPanel({ id, trigger, title, compact = false, anchorOnOpe
     if (element?.isConnected) element.focus({ preventScroll: true });
   };
 
+  function returnToPage(owner: Document) {
+    panelRef.current?.hidePopover();
+    setOpen(false);
+    onOpenChange?.(false, owner);
+    focusTrigger();
+  }
+
   useLayoutEffect(() => {
     const invoker = getTrigger();
     if ((!directWindow && !detached) || !invoker) return;
     const toggleWindow = (event: MouseEvent) => {
       if (detached) {
         event.preventDefault();
-        if (detachedAction === "return") panelWindow.close();
-        else surfaceDocument?.defaultView?.focus();
+        if (detachedAction === "return") {
+          panelWindow.close();
+          returnToPage(document);
+        } else surfaceDocument?.defaultView?.focus();
         return;
       }
       if (panelRef.current?.matches(":popover-open")) {
