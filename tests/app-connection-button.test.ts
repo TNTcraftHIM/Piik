@@ -16,6 +16,7 @@ import { setCopy, t } from "../src/client/ui/copy";
 import { APP_PROTOCOL, channelAppDiscovery } from "../src/client/channel/app-link";
 import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
 import { NATIVE_CLIENT_PORT_START } from "../src/client/native/discovery-ports";
+import { clientLaunchURL } from "../src/client/lib/app-launch";
 
 vi.mock("react", async importOriginal => {
   const actual = await importOriginal<typeof import("react")>();
@@ -249,7 +250,8 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   const activateClient = vi.fn();
   const onConnected = vi.fn();
   const operation = runInNewContext(executable, {
-    automatic, automaticFailed: { current: false }, window, document, pending, healthCheck, help, showHelp, setState, setAutomaticHint: vi.fn(), setUpdateManagementURL: vi.fn(), setBuild, activateClient, onConnected, AbortController, URL,
+    automatic, automaticFailed: { current: false }, window, document, pending, healthCheck, help, showHelp, setState, setAutomaticHint: vi.fn(), setUpdateManagementURL: vi.fn(), setBuild, activateClient, onConnected, AbortController, URL, URLSearchParams,
+    lang: "en", currentTheme: () => "light", clientLaunchURL,
     wakeURL: android ? "intent://app#Intent;scheme=piik;package=tv.piik.android;end" : null,
     state, connected, isClientActivated: () => activated,
     discovery: discovery ?? { health: native.discoverNativeHealth, connect: native.discoverNativeConnect,
@@ -407,13 +409,22 @@ describe("App connection approval", () => {
     page.cleanup();
   });
 
-  it("opens the launcher for an already connected Site without changing approval", async () => {
+  it("opens site management with current presentation without changing approval or the active Site", async () => {
     const page = mount(true, "ready");
     await page.connect();
     expect(page.setState).toHaveBeenLastCalledWith("ready");
     expect(page.setState).not.toHaveBeenCalledWith("approval");
     await page.connect();
-    expect(page.window.open).toHaveBeenCalledWith("http://127.0.0.1:39721/client", "_blank");
+    expect(page.window.open).toHaveBeenCalledOnce();
+    const [destination, target] = page.window.open.mock.calls[0] as unknown as [string, string];
+    const url = new URL(destination);
+    expect(url.origin + url.pathname).toBe("http://127.0.0.1:39721/client");
+    expect(url.searchParams.get("bookmarks")).toBe("1");
+    expect(url.searchParams.has("site")).toBe(false);
+    expect(url.searchParams.get("piik-preferences")).toBe("copy,theme");
+    expect(Object.fromEntries(new URLSearchParams(url.hash.slice(1)))).toEqual({ site, "piik-client": "1", "piik-lang": "en", "piik-theme": "light" });
+    expect(target).toBe("_blank");
+    expect(page.window.location.assign).not.toHaveBeenCalled();
     expect(page.setState).toHaveBeenLastCalledWith("ready");
     expect(page.pending.current).toBeNull();
     expect(page.activateClient).not.toHaveBeenCalled();

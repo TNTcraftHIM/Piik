@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialLanguage, rememberLanguage } from "../site/assets/language.js";
-import { locales, resolveLang } from "../src/client/locales";
+import { locales, primaryLanguages, resolveLang } from "../src/client/locales";
 
 import {
   getTitleFrames,
@@ -84,26 +84,29 @@ describe("copy catalog", () => {
     expect(t("zh", "viewer.title", { name: "$&" })).toBe("$& 的屏幕");
   });
 
-  it("uses English for a missing translated message", () => {
+  it.each(["zh-Hant", "ja", "ko"] as const)("uses English for a missing %s message", lang => {
     const key = "common.copied";
-    const translated = locales.ja.copy[key];
+    const translated = locales[lang].copy[key];
     try {
-      Reflect.deleteProperty(locales.ja.copy, key);
-      expect(t("ja", key)).toBe(locales.en.copy[key]);
+      Reflect.deleteProperty(locales[lang].copy, key);
+      expect(t(lang, key)).toBe(locales.en.copy[key]);
     } finally {
-      locales.ja.copy[key] = translated;
+      locales[lang].copy[key] = translated;
     }
   });
 
-  it("keeps every registered translation complete with matching placeholders", () => {
+  it("keeps primary catalogs complete and supplied translations valid", () => {
     const keys = Object.keys(locales.zh.copy) as CopyKey[];
     const placeholders = (value: string) => (value.match(/\{\w+\}/g) ?? []).sort();
+    for (const lang of primaryLanguages) {
+      expect(Object.keys(locales[lang].copy).sort(), lang).toEqual([...keys].sort());
+    }
     for (const [lang, locale] of Object.entries(locales)) {
-      expect(Object.keys(locale.copy).sort(), lang).toEqual([...keys].sort());
-      for (const key of keys) {
-        expect(locale.copy[key].trim(), `${lang}: ${key}`).not.toBe("");
-        expect(placeholders(locale.copy[key]), `${lang}: ${key}`)
-          .toEqual(placeholders(locales.zh.copy[key]));
+      for (const [key, value] of Object.entries(locale.copy)) {
+        expect(isCopyKey(key), `${lang}: obsolete ${key}`).toBe(true);
+        expect(value.trim(), `${lang}: ${key}`).not.toBe("");
+        expect(placeholders(value), `${lang}: ${key}`)
+          .toEqual(placeholders(locales.zh.copy[key as CopyKey]));
       }
       for (const frames of Object.values(locale.titleFrames)) {
         expect(frames.label.trim().length, lang).toBeGreaterThan(0);

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { activateClient, isClientActivated, watchClientActivation } from "../../lib/app-launch";
+import { activateClient, clientLaunchURL, isClientActivated, watchClientActivation } from "../../lib/app-launch";
 import { useProjectLink } from "../../lib/use-project-link";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
@@ -15,6 +15,8 @@ import { useReleaseUpdate } from "../../lib/use-release-update";
 import { AppReleaseNotice } from "./AppReleaseNotice";
 import { channelAppDiscovery } from "../../channel/app-link";
 import { OpenInClient } from "./OpenInClient";
+import { Btn } from "./primitives";
+import { currentTheme } from "../../ui/theme";
 import type {} from "../../ui/native-window";
 
 interface AppConnectionProps {
@@ -34,7 +36,7 @@ interface ConnectionAttempt {
 }
 
 export function AppConnectionButton({ onConnected, discovery = channelAppDiscovery, connected, targetURL }: AppConnectionProps) {
-  const { t } = useCopy();
+  const { lang, t } = useCopy();
   const [state, setState] = useState<"idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible">("idle");
   const wakeURL = androidAppIntent("piik://app");
   const [helpOpen, setHelpOpen] = useState(false);
@@ -191,8 +193,13 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         attempt.open = () => {
           if (signal.aborted || attempt.popup) return;
           const destination = new URL(url);
-          if (manage) destination.searchParams.delete("site");
-          attempt.popup = window.open(destination.href, "_blank");
+          if (manage) {
+            destination.searchParams.delete("site");
+            destination.searchParams.set("bookmarks", "1");
+            destination.hash = new URLSearchParams({ site: window.location.origin, "piik-client": "1" }).toString();
+          }
+          attempt.popup = window.open(manage ? clientLaunchURL(destination.href,
+            { lang, theme: currentTheme(), explicit: ["copy", "theme"] }) : destination.href, "_blank");
           if (!attempt.popup) { finish("unavailable"); return; }
           attempt.open = undefined;
           if (manage) finish("ready", true);
@@ -274,7 +281,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
       </p>}
       {update && <AppReleaseNotice update={update} managementURL={updateManagementURL} />}
       <div className="lr-app-connect-actions">
-        {state !== "busy" && <button type="button" className="lr-btn" aria-label={t(state === "approval" || state === "ready" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")} onClick={() => void connect()}>
+        {ready ? <Btn icon="globe" size="compact" title="client.launcher.manageSites" cap="client.launcher.manageSites" onClick={() => void connect()} /> : state !== "busy" && <button type="button" className="lr-btn" aria-label={t(state === "approval" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")} onClick={() => void connect()}>
           <Glyph name={state === "approval" || state === "ready" ? "arrowRight" : "refresh"} size={16} /><span>{t(state === "approval" || state === "ready" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")}</span>
         </button>}
         {failed && wakeURL && <a className="lr-btn" href={wakeURL} onClick={event => { event.preventDefault(); void connect(true); }}>

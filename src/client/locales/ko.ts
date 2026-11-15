@@ -1,7 +1,7 @@
 import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
-// Community translations are data-only and type-checked against zh.
-export const ko: Record<CopyKey, string> = {
+// Existing translations may be partial; keys are checked against zh.
+export const ko = {
   "watch.forward.tracksHelp": "영상과 선택할 음성을 따로 고르세요. 확인하면 이 기기의 업로드 대역폭을 사용해 전송합니다.",
   "watch.forward.noVideoTrack": "전송할 수 있는 영상 트랙이 없습니다. 원래 웹페이지에서 계속 시청할 수 있습니다.",
   "watch.forward.videoOnly": "영상만, 소리 없이",
@@ -12,10 +12,7 @@ export const ko: Record<CopyKey, string> = {
   "watch.viewersCount": "시청 참여: {count}명",
   "watch.joined": "시청 참여 중",
   "watch.noViewers": "아직 다른 시청 참여자가 없습니다.",
-  "watch.browserSource.title": "브라우저 재생 소스 선택",
-  "watch.browserSource.help": "브라우저에서 재생을 시도할 동영상 링크를 선택하세요. 내 재생은 원래 웹페이지에서 계속됩니다.",
   "watch.browserSource.skip": "원래 웹페이지만 공유",
-  "watch.browserSource.selectNamed": "브라우저에서 {name} 재생",
   "watch.forward.title": "원본 동영상 전달",
   "watch.forward.upload": "이 기기의 업로드 대역폭을 사용해 방 연결로 원본 동영상을 보내요.",
   "watch.forward.active": "전달 중이에요. 중지해도 웹페이지는 유지돼요.",
@@ -68,8 +65,8 @@ export const ko: Record<CopyKey, string> = {
   "room.chat.export": "채팅 텍스트 내보내기 (TXT)",
   "room.common.user": "사용자",
   "room.relay.personalLimit": "내 전달 한도",
-  "room.relay.hostNote": "방을 호스팅하는 사용자는 방 기본값을 사용해요.",
-  "room.relay.personalNote": "이 방에서 내 전달 한도만 바꿔요. 0으로 설정하면 다른 사람에게 전달하지 않지만, 음성과 화면 공유는 계속 사용할 수 있어요.",
+  "room.relay.hostNote": "방 호스트와 공유 소스는 위의 방 기본값을 사용해요.",
+  "room.relay.personalNote": "현재 웹페이지의 전달 한도를 설정하며 App에는 영향을 주지 않아요. 0이어도 통화와 공유는 가능하며, 내 공유는 방 기본값을 사용해요.",
   "room.relay.followDefault": "방 기본값 따르기",
   "room.create.appHostedNote": "App에서 호스팅해요. 이 페이지를 닫아도 방은 계속 실행돼요.",
   "room.create.browserHostedNote": "이 페이지에서 호스팅해요. 페이지를 닫으면 방이 일시 중지돼요.",
@@ -84,7 +81,7 @@ export const ko: Record<CopyKey, string> = {
   "room.settings.removePassword": "비밀번호 삭제",
   "room.settings.hidden": "입장 권한이 없는 사용자에게 숨기기",
   "room.relay.default": "방 기본 전달 한도",
-  "room.relay.defaultNote": "이 방의 기본 전달 한도예요. 다른 사용자는 자신의 한도를 조정할 수 있어요.",
+  "room.relay.defaultNote": "방 호스팅 연결과 공유 소스에 적용되는 한도예요. 다른 연결은 자신의 전달 한도를 설정할 수 있어요.",
   "room.action.cancel": "취소",
   "room.action.save": "저장",
   "room.action.create": "방 만들기",
@@ -405,7 +402,6 @@ export const ko: Record<CopyKey, string> = {
   "watch.connectApp": "페이지 상단에서 Piik App에 연결하면 웹페이지 동영상을 선택할 수 있어요.",
   "watch.openPage": "웹페이지를 열고 동영상 선택",
   "watch.directStart": "동영상 직접 URL 재생",
-  "watch.chooseVideo": "동영상을 선택하면 함께 시청을 시작해요. 다른 재생 소스가 필요하면 이어서 여기에서 선택해요. 소리와 로그인은 원래 웹페이지에서 관리해요.",
   "watch.video": "동영상",
   "watch.selectVideo": "동영상 선택",
   "watch.waitForVideo": "열린 웹페이지에서 재생을 시작하면 동영상이 여기에 표시돼요.",
@@ -1471,7 +1467,7 @@ export const ko: Record<CopyKey, string> = {
   "host.capture.codecPending": "코덱 확인 중",
   "host.capture.hasAudio": "소스 소리 포함",
   "host.capture.noAudio": "소스 소리 없음",
-};
+} satisfies Partial<Record<CopyKey, string>>;
 
 export const koTitleFrames = {
   hostActive: { label: ko["host.live"], variations: [

@@ -37,7 +37,7 @@ const MODAL_BACKDROP: &str = include_str!("../../../src/client/ui/modal-backdrop
 const PALETTE: &str = include_str!("../../../src/client/ui/palette.css");
 const CAPABILITY: &str =
     "Object.defineProperty(window, 'piikNativeWindow', { value: 'integrated' });";
-const SYSTEM_CAPABILITY: &str =
+const SYSTEM_PRESENTATION: &str =
     "Object.defineProperty(window, 'piikNativeWindow', { value: 'system' });";
 
 thread_local! {
@@ -128,7 +128,6 @@ enum ContentMessage {
 
 #[derive(Clone)]
 enum WindowAction {
-    Bookmarks,
     Minimize,
     Maximize,
     Close,
@@ -139,7 +138,7 @@ enum ServiceEvent {
     PageMessage(uuid::Uuid, String),
     PageNavigate(uuid::Uuid),
     PagePopup(uuid::Uuid),
-    Ready { entry: String, launcher: String },
+    Ready { entry: String },
     Navigate(String),
     Finished,
     PopupClosed(WindowId),
@@ -203,7 +202,6 @@ impl Core {
                 runtime.block_on(async {
                     let signal = piik_channel_native::shutdown_signal()?;
                     let listener = app::listen(port).await?;
-                    let launcher = format!("http://127.0.0.1:{}/client", listener.local_addr()?.port());
                     let (ready, entry) = oneshot::channel();
                     let service = app::serve(listener, config, async {
                         tokio::select! { _ = stopped => {}, _ = signal => {} }
@@ -212,7 +210,7 @@ impl Core {
                     tokio::select! {
                         result = &mut service => result,
                         entry = entry => {
-                            if let Ok(entry) = entry { let _ = events.send_event(ServiceEvent::Ready { entry, launcher }); }
+                            if let Ok(entry) = entry { let _ = events.send_event(ServiceEvent::Ready { entry }); }
                             service.await
                         },
                     }
@@ -255,45 +253,6 @@ impl Drop for Core {
 
 type Popups = Rc<RefCell<Vec<(WebView, Rc<Window>)>>>;
 
-// This local management window does not replace the active room document.
-struct BookmarksWindow {
-    _webview: WebView,
-    window: Rc<Window>,
-}
-impl BookmarksWindow {
-    fn new(
-        target: &EventLoopWindowTarget<ServiceEvent>,
-        context: &mut WebContext,
-        events: EventLoopProxy<ServiceEvent>,
-        url: &str,
-    ) -> Result<Self> {
-        let window = Rc::new(
-            window_builder()?
-                .with_title("Piik")
-                .with_inner_size(LogicalSize::new(640.0, 720.0))
-                .build(target)?,
-        );
-        let webview = WebViewBuilder::new_with_web_context(context)
-            .with_initialization_script(SYSTEM_CAPABILITY)
-            .with_url(url)
-            .build(window.as_ref())?;
-        let id = window.id();
-        unsafe {
-            webview.webview().add_WindowCloseRequested(
-                &WindowCloseRequestedEventHandler::create(Box::new(move |_, _| {
-                    let _ = events.send_event(ServiceEvent::PopupClosed(id));
-                    Ok(())
-                })),
-                &mut Default::default(),
-            )?;
-        }
-        Ok(Self {
-            _webview: webview,
-            window,
-        })
-    }
-}
-
 // Fields drop in this order: both WebViews retire before their native owner.
 struct MainWindow {
     caption: WebView,
@@ -335,7 +294,10 @@ impl MainWindow {
                 let create = || -> Result<NewWindowResponse> {
                     let window = Rc::new(window_builder()?.with_title("Piik")
                         .with_inner_size(LogicalSize::new(720.0, 760.0)).build(&popup_target)?);
-                    let webview = WebViewBuilder::new().with_environment(features.opener.environment).build(window.as_ref())?;
+                    let webview = WebViewBuilder::new()
+                        .with_environment(features.opener.environment)
+                        .with_initialization_script(SYSTEM_PRESENTATION)
+                        .build(window.as_ref())?;
                     let id = window.id();
                     permissions(&webview, id, popup_pending.clone(), popup_events.clone())?;
                     let closed = popup_events.clone();
@@ -393,7 +355,6 @@ impl MainWindow {
             .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)
             .with_ipc_handler(move |request| {
                 let action = match request.body().as_str() {
-                    "bookmarks" => WindowAction::Bookmarks,
                     "minimize" => WindowAction::Minimize,
                     "maximize" => WindowAction::Maximize,
                     "close" => WindowAction::Close,
@@ -514,12 +475,9 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
     let mut language = Language::En;
     let mut theme = Theme::Light;
     let mut prompt: Option<Prompt> = None;
-    let mut bookmarks: Option<BookmarksWindow> = None;
-    let mut launcher_url: Option<String> = None;
     let mut slot = None;
     let mut minimum_scale = window.as_ref().map(|main| main.window.scale_factor());
     let permission_events = events.create_proxy();
-    let bookmark_events = events.create_proxy();
     let page_events = events.create_proxy();
     events.run_return(|event, target, flow| {
         *flow = ControlFlow::Wait;
@@ -560,47 +518,6 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             Event::UserEvent(ServiceEvent::Caption(action)) => {
                 if let Some(main) = &window {
                     match action {
-                        WindowAction::Bookmarks => {
-                            if let Some(bookmarks) = &bookmarks {
-                                bookmarks.window.set_focus();
-                            } else if let Some(launcher) = &launcher_url {
-                                let mut url = url::Url::parse(launcher).expect("Local App entry");
-                                url.query_pairs_mut()
-                                    .append_pair("bookmarks", "1")
-                                    .append_pair("piik-preferences", "theme");
-                                let mut fragment =
-                                    url::form_urlencoded::Serializer::new(String::new());
-                                fragment
-                                    .append_pair("piik-client", "1")
-                                    .append_pair("piik-lang", language.code())
-                                    .append_pair("piik-theme", theme.code());
-                                if let Some(current) = main
-                                    .content
-                                    .url()
-                                    .ok()
-                                    .and_then(|value| url::Url::parse(&value).ok())
-                                {
-                                    if matches!(current.scheme(), "http" | "https")
-                                        && current.origin() != url.origin()
-                                    {
-                                        fragment.append_pair(
-                                            "site",
-                                            &current.origin().ascii_serialization(),
-                                        );
-                                    }
-                                }
-                                url.set_fragment(Some(&fragment.finish()));
-                                match BookmarksWindow::new(
-                                    target,
-                                    &mut context,
-                                    bookmark_events.clone(),
-                                    url.as_str(),
-                                ) {
-                                    Ok(created) => bookmarks = Some(created),
-                                    Err(error) => eprintln!("Open App bookmarks: {error:#}"),
-                                }
-                            }
-                        }
                         WindowAction::Minimize => main.window.set_minimized(true),
                         WindowAction::Maximize => {
                             main.window.set_maximized(!main.window.is_maximized())
@@ -675,7 +592,6 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                             prompt.take();
                             pending.borrow_mut().clear();
                             popups.borrow_mut().clear();
-                            bookmarks.take();
                             slot = None;
                             main.window.set_fullscreen(None);
                             main.position_caption(&controls, None);
@@ -686,8 +602,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                     }
                 }
             }
-            Event::UserEvent(ServiceEvent::Ready { entry, launcher }) => {
-                launcher_url = Some(launcher);
+            Event::UserEvent(ServiceEvent::Ready { entry }) => {
                 let opened = match &window {
                     Some(main) => main.content.load_url(&entry).map_err(anyhow::Error::from),
                     None => webbrowser::open(&entry).map_err(anyhow::Error::from),
@@ -707,11 +622,6 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             }
             | Event::UserEvent(ServiceEvent::PopupClosed(window_id)) => {
                 if pages.close_window(window_id) {
-                } else if bookmarks
-                    .as_ref()
-                    .is_some_and(|panel| panel.window.id() == window_id)
-                {
-                    bookmarks.take();
                 } else if prompt
                     .as_ref()
                     .is_some_and(|prompt| prompt.id() == window_id)
@@ -782,7 +692,6 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
     });
     pages.clear();
     drop(prompt);
-    drop(bookmarks);
     pending.borrow_mut().clear();
     popups.borrow_mut().clear();
     result = result.and(core.finish());

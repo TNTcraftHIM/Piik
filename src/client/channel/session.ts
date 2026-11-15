@@ -2081,8 +2081,10 @@ export class ChannelSession {
         });
         return false;
       }
-      const source: WatchSource = { kind: "website", url: page.url, ...(selected.url ? { mediaUrl: selected.url } : {}) };
-      await this.commitWatch(roomId, source, new AppPageMedia(page), selection);
+      // If main-player preparation fails, the selected original page remains an explicit choice.
+      selection.watchSources = { candidateId, choices: [], indexed: [] };
+      this.patch({});
+      await this.commitPortableWatch(roomId, page, selection, selected.url);
       return true;
     }, reportError);
   };
@@ -2094,9 +2096,23 @@ export class ChannelSession {
     const choice = choiceId === null ? undefined : watchSources.choices.find(value => value.id === choiceId);
     if (choiceId !== null && !choice) throw new Error("watch_page_unavailable");
     selection.discovery?.abort();
-    const source: WatchSource = { kind: "website", url: page.url, ...(choice ? { mediaUrl: choice.displayURL } : {}) };
-    await this.commitWatch(roomId, source, new AppPageMedia(page), selection);
+    if (choice) await this.commitPortableWatch(roomId, page, selection, choice.displayURL, choice.format);
+    else await this.commitWatch(roomId, { kind: "website", url: page.url }, new AppPageMedia(page), selection);
   }, reportError);
+  private async commitPortableWatch(roomId: string, page: AppPage, selection: SourceSelection, url: string, format?: "file" | "hls"): Promise<void> {
+    const media = new HTMLVideoMedia(url, format);
+    try {
+      // This preparation precedes commitWatch's ownership transfer and its failure cleanup.
+      await media.ready(selection.controller.signal);
+      const state = await page.read();
+      selection.controller.signal.throwIfAborted();
+      await media.patch({ position: state.position, rate: state.rate, paused: true });
+      // The main player will start after confirmation; avoid overlapping original-page sound.
+      await page.patch({ paused: true });
+    } catch (error) { media.close(); throw error; }
+    try { await this.commitWatch(roomId, { kind: "website", url: page.url, mediaUrl: url }, media, selection); }
+    finally { page.close(); }
+  }
   selectWatchIndexedSource = (roomId: string, videoId: string, audioId?: string, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const selection = this.sourceSelections.get(roomId), page = selection?.page;
     const sources = selection?.watchSources;

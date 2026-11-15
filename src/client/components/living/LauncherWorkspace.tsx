@@ -27,7 +27,7 @@ export function LauncherWorkspace({ bookmarks, bookmarksError, onRetryBookmarks,
     <aside className="lr-launcher-sidebar">
       <BrandLockup size={44} motion="once" className="lr-launcher-brand" suffix={<small>App</small>} />
       <div className="lr-launcher-saved-heading"><h2>{t("client.bookmarks.title")}</h2>
-        <Btn icon="pencil" quiet size="compact" title="client.launcher.manageSites" textTooltip onClick={onManageBookmarks} />
+        <Btn icon="sliders" quiet size="compact" title="client.launcher.manageSites" cap="client.sites.manage" onClick={onManageBookmarks} />
       </div>
       <nav className="lr-launcher-sites" aria-label={t("client.bookmarks.title")}>
         {bookmarksError ? <div className="lr-launcher-empty"><p role="alert">{t("client.bookmarks.loadFailed")}</p><Btn icon="refresh" quiet cap="common.refresh" title="common.refresh" onClick={onRetryBookmarks} /></div>
@@ -36,7 +36,7 @@ export function LauncherWorkspace({ bookmarks, bookmarksError, onRetryBookmarks,
             <span className="lr-launcher-site-symbol"><Glyph name="globe" size={22} /></span>
             <span><strong>{site.name || new URL(site.origin).hostname}</strong><small dir="ltr">{new URL(site.origin).host}</small></span>
             <Glyph name="arrowRight" size={16} />
-          </button>) : <div className="lr-launcher-empty"><Glyph name="star" size={28} /><p>{t("client.bookmarks.empty")}</p><Btn icon="plus" quiet cap="client.bookmarks.add" title="client.bookmarks.add" onClick={onManageBookmarks} /></div>}
+          </button>) : <div className="lr-launcher-empty"><Glyph name="star" size={28} /><p>{t("client.bookmarks.empty")}</p></div>}
       </nav>
       <div className="lr-launcher-local">
         <span className="lr-launcher-local-icon"><Glyph name="display" size={20} /></span>

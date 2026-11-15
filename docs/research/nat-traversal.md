@@ -572,6 +572,15 @@ saved pair identities, decoding counters and packet capture establish the media
 result. This does not establish field success rates or all cancellation paths;
 physical-network validation remains in [TODO](../todo.md#next).
 
+An address-dependent kernel mapping control used the current single-socket
+producer and Browser admission with three fixed owned STUN destinations. Three
+ports on one IP observed the same mapping and produced no prediction. Three
+different IPs exposed the linear mapping; the unchanged 16-candidate budget
+established bidirectional DataChannel traffic in about 1.5 seconds, with either
+SDP offerer. This establishes a configuration boundary, not a new media or field
+success-rate result: distinct STUN URLs or ports do not prove distinct destination
+IPs, and same-IP observations can conceal address-dependent mapping.
+
 ### External Forwarding And Participant Relays
 
 The October 19 review and isolated Linux check of

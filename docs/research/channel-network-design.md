@@ -291,6 +291,13 @@ existing room authority carries playback state. The
 [implementation ledger](../todo.md) distinguishes direct-media delivery from
 website-connector work.
 
+When a discovered media URL loads in the sharer's Browser player, that player
+owns playback in the Piik stage. Prepare it before replacing the current share;
+retire the discovery page after the room confirms the new activity. Loading
+failure keeps the original page available for an explicit original-page choice.
+Media that still depends on the Native page's resources retains that provider
+and its existing playback owner.
+
 Supported YouTube video links can use the official embedded player in the shared
 Web UI. A visible candidate must play before the sharer confirms it; its existing
 player then moves into the stage. Room authority confirms the activity before

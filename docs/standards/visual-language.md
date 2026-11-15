@@ -186,6 +186,12 @@ frame. This presentation choice does not remove meaningful content cards or
 create separate page implementations. Keep one visible application identity.
 Shared modal materials must remain consistent across the content and any
 separately trusted window controls, whose commands stay with the native host.
+Native caption controls only minimize, maximize/restore and close the window.
+Site navigation and management remain in the shared application interface;
+opening management preserves the current page until an explicit site switch.
+Saved-site rows navigate, Add opens creation, and Manage edits an existing site
+or its App access. Language, theme and help share the same preferences menu in
+the launcher and room workspace.
 
 Keep the room invitation beside the upper room title, and group Share with its
 parameters on the opposite side. Personal voice and identity stay lower left.

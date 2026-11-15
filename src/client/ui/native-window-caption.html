@@ -14,7 +14,7 @@ html[data-modal-material] body::before { content: ""; position: fixed; inset: 0;
 html[data-modal-material="image"] .controls { color: var(--primary-ink); }
 button { app-region: no-drag; width: 38px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: inherit; display: grid; place-items: center; cursor: pointer; }
 button:hover { background: var(--control-hover); }
-button:active { background: var(--control-selected); }
+button:active { background: var(--control-selected); color: var(--control-selected-ink); }
 button:focus-visible { outline: 2px solid var(--action); outline-offset: -2px; }
 button:last-child:hover { background: var(--danger); color: var(--primary-ink); }
 svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -24,7 +24,7 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 const controls = __PIIK_WINDOW_CONTROLS__;
 let language = 'en';
 let maximized = false;
-for (const action of ['bookmarks', 'minimize', 'maximize', 'close']) {
+for (const action of ['minimize', 'maximize', 'close']) {
   const button = document.createElement('button');
   button.dataset.action = action;
   button.onclick = () => window.ipc.postMessage(action);

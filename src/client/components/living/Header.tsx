@@ -1,6 +1,5 @@
 // App header: brand mark, LED connection state, language selection and theme.
-import { useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
-import { createPortal } from "react-dom";
+import { useId, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
 import { browserDebugEnabled, debugError, downloadBrowserDebug, withBrowserDebug } from "../../lib/debug";
 import { BrandMark } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
@@ -106,60 +105,12 @@ function BrowserHelpContent({ active, diagnosticControl }: { active: boolean; di
   </div>;
 }
 
-function BrowserHelpMenu({ diagnosticControl }: { diagnosticControl?: React.ReactNode }) {
-  const { t } = useCopy();
-  const id = useId();
-  const trigger = useRef<HTMLButtonElement>(null);
-  const panel = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-  useAnchoredPopover(trigger, panel);
-  return <>
-    <Tooltip kind="hint-help" text={t("help.hint")} disabled={open} place="below" align="end">
-      <button ref={trigger} type="button" className="lr-btn is-compact is-quiet"
-        popoverTarget={id} aria-haspopup="dialog" aria-expanded={open} aria-label={t("help.title")}>
-        <Glyph name="help" />
-      </button>
-    </Tooltip>
-    {createPortal(<div ref={panel} id={id} popover="auto" role="dialog" aria-label={t("help.title")}
-      className="lr-anchored-card lr-help-menu" onToggle={event => {
-        if (event.target === event.currentTarget) setOpen(event.newState === "open");
-      }}>
-      <BrowserHelpContent active={open} diagnosticControl={diagnosticControl} />
-    </div>, document.body)}
-  </>;
-}
-
 export function HeaderControls({ diagnosticControl, appControl, personalControls }: { diagnosticControl?: React.ReactNode; appControl?: React.ReactNode; personalControls?: React.ReactNode } = {}) {
   const { t } = useCopy();
-  const controls = useRef<HTMLDivElement>(null), trigger = useRef<HTMLSpanElement>(null), options = useRef<HTMLDivElement>(null);
-  const focusInline = useRef(false);
-  const hasPersonalControls = Boolean(personalControls);
+  const trigger = useRef<HTMLSpanElement>(null), options = useRef<HTMLDivElement>(null);
   const id = useId();
-  const [compact, setCompact] = useState(hasPersonalControls), [open, setOpen] = useState(false);
-  useAnchoredPopover(trigger, options, { enabled: compact });
-  useLayoutEffect(() => {
-    const header = controls.current?.closest(".lr-top") ?? controls.current;
-    if (!header) return;
-    const resize = () => {
-      const narrow = hasPersonalControls || header.clientWidth <= 600;
-      if (!narrow && options.current?.hasAttribute("popover")) {
-        const focused = header.ownerDocument.activeElement;
-        focusInline.current = options.current.contains(focused) || Boolean(trigger.current?.contains(focused));
-        if (options.current.matches(":popover-open")) options.current.hidePopover();
-      }
-      if (!narrow) options.current?.removeAttribute("style");
-      setCompact(narrow);
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(header); resize();
-    return () => observer.disconnect();
-  }, [hasPersonalControls]);
-  useLayoutEffect(() => {
-    if (!compact && focusInline.current) {
-      focusInline.current = false;
-      (options.current?.querySelector<HTMLElement>('[aria-pressed="true"]') ?? options.current?.querySelector<HTMLElement>("button, a"))?.focus();
-    }
-  }, [compact]);
+  const [open, setOpen] = useState(false);
+  useAnchoredPopover(trigger, options);
   const theme = useSyncExternalStore(subscribeTheme, currentTheme);
   const themeTitle = t(theme === "dark" ? "theme.light" : "theme.dark");
   const themeButton = (
@@ -180,14 +131,13 @@ export function HeaderControls({ diagnosticControl, appControl, personalControls
     </button>
   );
   return (
-    <div ref={controls} className={`lr-top-right lr-header-controls${compact ? " is-overflow" : ""}`}>
+    <div className="lr-top-right lr-header-controls is-overflow">
       {appControl}
-      {compact && <span ref={trigger} className="lr-header-more">
-        <Btn icon="more" title="header.more" hint="hint-advanced" size="compact" quiet popoverTarget={id} controls={id} expanded={open} />
-      </span>}
-      <div ref={options} id={id} popover={compact ? "auto" : undefined} role={compact ? "dialog" : undefined}
-        aria-label={compact ? t("header.more") : undefined}
-        className={`lr-header-options${compact ? " lr-anchored-card" : ""}`} onToggle={event => {
+      <span ref={trigger} className="lr-header-more">
+        <Btn icon="sliders" title="header.more" textTooltip size="compact" quiet popoverTarget={id} controls={id} expanded={open} />
+      </span>
+      <div ref={options} id={id} popover="auto" role="dialog" aria-label={t("header.more")}
+        className="lr-header-options lr-anchored-card" onToggle={event => {
           if (event.target === event.currentTarget) setOpen(event.newState === "open");
         }}>
         <div className="lr-header-settings">
@@ -197,7 +147,7 @@ export function HeaderControls({ diagnosticControl, appControl, personalControls
           </Tooltip>
         </div>
         {personalControls}
-        {compact ? <BrowserHelpContent active={open} diagnosticControl={diagnosticControl} /> : <BrowserHelpMenu diagnosticControl={diagnosticControl} />}
+        <BrowserHelpContent active={open} diagnosticControl={diagnosticControl} />
       </div>
     </div>
   );

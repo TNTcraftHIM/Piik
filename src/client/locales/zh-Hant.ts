@@ -1,6 +1,6 @@
 import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
-export const zhHant: Record<CopyKey, string> = {
+export const zhHant = {
   "watch.forward.tracksHelp": "分別選擇畫面及可選的聲音。確認後開始使用本機上傳頻寬。",
   "watch.forward.noVideoTrack": "沒有可轉發的影片軌道。你仍可在原網頁中觀看。",
   "watch.forward.videoOnly": "僅畫面，不帶聲音",
@@ -11,10 +11,7 @@ export const zhHant: Record<CopyKey, string> = {
   "watch.viewersCount": "已加入觀看：{count} 人",
   "watch.joined": "已加入觀看",
   "watch.noViewers": "還沒有其他人加入觀看。",
-  "watch.browserSource.title": "選擇瀏覽器播放來源",
-  "watch.browserSource.help": "選擇影片網址供瀏覽器嘗試播放。你的播放仍在原網頁中。",
   "watch.browserSource.skip": "僅分享原網頁",
-  "watch.browserSource.selectNamed": "使用 {name} 供瀏覽器播放",
   "watch.forward.title": "轉發原始影片",
   "watch.forward.upload": "使用本機上傳頻寬，透過房間連線傳送原始影片。",
   "watch.forward.active": "已開啟轉發。停止轉發會保留網頁播放。",
@@ -67,8 +64,8 @@ export const zhHant: Record<CopyKey, string> = {
   "room.chat.export": "匯出文字記錄（TXT）",
   "room.common.user": "使用者",
   "room.relay.personalLimit": "我的轉發上限",
-  "room.relay.hostNote": "房主使用房間預設上限。",
-  "room.relay.personalNote": "只調整我在這個房間的轉發。0 表示不幫別人轉發，仍可發言和分享。",
+  "room.relay.hostNote": "房間託管端及分享來源使用上方的房間預設值。",
+  "room.relay.personalNote": "設定目前網頁幫別人轉發的上限，不影響 App。0 表示不轉發，仍可通話和分享；自己的分享使用房間預設值。",
   "room.relay.followDefault": "使用房間預設值",
   "room.create.appHostedNote": "由 App 托管，關閉網頁後房間仍會繼續執行。",
   "room.create.browserHostedNote": "由此網頁托管，關閉網頁後房間會暫停。",
@@ -83,7 +80,7 @@ export const zhHant: Record<CopyKey, string> = {
   "room.settings.removePassword": "移除密碼",
   "room.settings.hidden": "對未獲准的使用者隱藏房間",
   "room.relay.default": "房間預設轉發",
-  "room.relay.defaultNote": "房間內預設的轉發上限，其他人可以單獨調整。",
+  "room.relay.defaultNote": "房間託管端及分享來源使用此上限；其他參與端可設定自己的轉發上限。",
   "room.action.cancel": "取消",
   "room.action.save": "儲存",
   "room.action.create": "建立房間",
@@ -404,7 +401,6 @@ export const zhHant: Record<CopyKey, string> = {
   "watch.connectApp": "連線頁面上方的 Piik App，即可在網頁中選擇影片。",
   "watch.openPage": "開啟網頁選影片",
   "watch.directStart": "播放影片直連網址",
-  "watch.chooseVideo": "選擇影片以開始一起看；需要額外播放來源時會在這裡繼續選擇。聲音和登入狀態保留在原網頁。",
   "watch.video": "影片",
   "watch.selectVideo": "選擇影片",
   "watch.waitForVideo": "在開啟的網頁中播放影片後，就會出現在這裡。",
@@ -1447,7 +1443,7 @@ export const zhHant: Record<CopyKey, string> = {
   "host.capture.codecPending": "編碼待定",
   "host.capture.hasAudio": "含來源音訊",
   "host.capture.noAudio": "無來源音訊",
-};
+} satisfies Partial<Record<CopyKey, string>>;
 
 export const zhHantTitleFrames: TitleFrameCatalog = {
   "hostActive": {

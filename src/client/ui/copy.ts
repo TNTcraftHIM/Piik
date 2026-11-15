@@ -101,7 +101,8 @@ export function isCopyKey(value: string): value is CopyKey {
 }
 
 export function t(lang: Lang, key: CopyKey, vars?: Record<string, string>): string {
-  let value = locales[lang].copy[key] ?? locales.en.copy[key];
+  const catalog: Partial<Record<CopyKey, string>> = locales[lang].copy;
+  let value = catalog[key] ?? locales.en.copy[key];
   if (vars) {
     for (const [name, replacement] of Object.entries(vars)) {
       value = value.replace(`{${name}}`, () => replacement);

@@ -1,5 +1,6 @@
 ﻿import { useState } from "react";
 import { AppHeader } from "../components/living/Header";
+import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { BrandLockup } from "../components/living/BrandMark";
 import { Btn } from "../components/living/primitives";
 import { LauncherWorkspace } from "../components/living/LauncherWorkspace";
@@ -29,6 +30,10 @@ export function LauncherDesignPreview() {
   ];
 
   const query = new URLSearchParams(location.search);
+  const app = query.has("app") ? <AppConnectionButton connected discovery={{
+    connect: async () => `${query.get("app-origin") ?? location.origin}/client?site=${encodeURIComponent(location.origin)}`,
+    health: async () => ({}), isIncompatible: () => false,
+  }} /> : null;
   const [sites, setSites] = useState<SiteBookmark[]>(query.get("state") === "empty" ? [] : samples);
   const [ready, setReady] = useState(query.get("state") === "ready");
   const [dialog, setDialog] = useState<"bookmarks" | "host" | "about">();
@@ -46,7 +51,7 @@ export function LauncherDesignPreview() {
     setNotice(t("client.launcher.preview.siteOpened"));
   }
   return <div className="lr-app lr-launcher-page">
-    <AppHeader homeHref="/client" appControl={null} diagnosticControl={null} />
+    <AppHeader homeHref="/client" appIdentity={<BrandLockup size={30} className="is-compact" suffix={<small>App</small>} />} appControl={app} diagnosticControl={null} />
     <main><LauncherWorkspace bookmarks={sites} onRetryBookmarks={() => {}} onOpenBookmark={openSite} onManageBookmarks={() => setDialog("bookmarks")} ready={ready}
       invitationForm={<>
         <form onSubmit={event => { event.preventDefault(); const url = siteEntryURL(address); setInvalid(!url); if (url) openSite({ id: "invitation", name: url.hostname, origin: url.origin, invitation: url.href }); }}>

@@ -1,6 +1,6 @@
 import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
-export const ja: Record<CopyKey, string> = {
+export const ja = {
   "watch.forward.tracksHelp": "映像と必要な音声を個別に選んでください。確認すると、この端末のアップロード帯域を使って転送を開始します。",
   "watch.forward.noVideoTrack": "転送できる映像トラックがありません。元のウェブページでは引き続き視聴できます。",
   "watch.forward.videoOnly": "映像のみ、音声なし",
@@ -11,10 +11,7 @@ export const ja: Record<CopyKey, string> = {
   "watch.viewersCount": "視聴に参加：{count} 人",
   "watch.joined": "視聴に参加中",
   "watch.noViewers": "ほかの人はまだ視聴に参加していません。",
-  "watch.browserSource.title": "ブラウザー用の再生元を選択",
-  "watch.browserSource.help": "ブラウザーで再生を試す動画リンクを選んでください。あなたの再生は元のウェブページで続きます。",
   "watch.browserSource.skip": "元のウェブページのみ共有",
-  "watch.browserSource.selectNamed": "ブラウザーで {name} を再生",
   "watch.forward.title": "元の動画を転送",
   "watch.forward.upload": "このデバイスのアップロード帯域を使い、ルームの接続を通して元の動画を送信します。",
   "watch.forward.active": "転送中です。停止してもウェブページは開いたままです。",
@@ -67,8 +64,8 @@ export const ja: Record<CopyKey, string> = {
   "room.chat.export": "チャットをテキストで書き出す（TXT）",
   "room.common.user": "ユーザー",
   "room.relay.personalLimit": "自分の転送上限",
-  "room.relay.hostNote": "ルームのホストにはルームの既定値が適用されます。",
-  "room.relay.personalNote": "このルームでの自分の転送だけを変更します。0 にすると他の人への転送を停止します。通話と共有は引き続き利用できます。",
+  "room.relay.hostNote": "ルームのホストと共有元には、上記のルーム既定値が適用されます。",
+  "room.relay.personalNote": "このウェブページの転送上限です。App には影響しません。0 でも通話と共有は利用でき、自分の共有にはルームの既定値が適用されます。",
   "room.relay.followDefault": "ルームの既定値に従う",
   "room.create.appHostedNote": "App がホストします。このページを閉じてもルームは動作し続けます。",
   "room.create.browserHostedNote": "このページがホストします。ページを閉じるとルームは一時停止します。",
@@ -83,7 +80,7 @@ export const ja: Record<CopyKey, string> = {
   "room.settings.removePassword": "パスワードを削除",
   "room.settings.hidden": "アクセス権のないユーザーには表示しない",
   "room.relay.default": "ルームの既定の転送上限",
-  "room.relay.defaultNote": "このルームの既定の転送上限です。他の人は自分の上限を変更できます。",
+  "room.relay.defaultNote": "ルームをホストする接続先と共有元に適用される上限です。ほかの接続先は独自の転送上限を設定できます。",
   "room.action.cancel": "キャンセル",
   "room.action.save": "保存",
   "room.action.create": "ルームを作成",
@@ -404,7 +401,6 @@ export const ja: Record<CopyKey, string> = {
   "watch.connectApp": "ページ上部から Piik App に接続すると、ウェブページの動画を選べます。",
   "watch.openPage": "ページを開いて動画を選択",
   "watch.directStart": "動画の直接 URL を再生",
-  "watch.chooseVideo": "動画を選ぶと一緒に視聴を開始します。別の再生元が必要な場合は、続けてここで選びます。音声とログインは元のページで扱います。",
   "watch.video": "動画",
   "watch.selectVideo": "動画を選択",
   "watch.waitForVideo": "開いたページで動画を再生すると、ここに表示されます。",
@@ -1447,7 +1443,7 @@ export const ja: Record<CopyKey, string> = {
   "host.capture.codecPending": "コーデック未確定",
   "host.capture.hasAudio": "ソース音声あり",
   "host.capture.noAudio": "ソース音声なし",
-};
+} satisfies Partial<Record<CopyKey, string>>;
 
 export const jaTitleFrames: TitleFrameCatalog = {
   hostActive: { label: ja["host.live"], variations: [

@@ -1,6 +1,6 @@
 import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
-// Community translations are data-only and type-checked against zh.
+// English stays complete against the canonical Chinese key set.
 export const en: Record<CopyKey, string> = {
   "watch.forward.tracksHelp": "Choose a video track and optional audio separately. Confirmation starts using this device’s upload bandwidth.",
   "watch.forward.noVideoTrack": "No video track is available to forward. You can still watch the original webpage.",
@@ -12,10 +12,10 @@ export const en: Record<CopyKey, string> = {
   "watch.viewersCount": "Joined this watch: {count}",
   "watch.joined": "Joined this watch",
   "watch.noViewers": "No one else has joined this watch yet.",
-  "watch.browserSource.title": "Choose browser playback source",
-  "watch.browserSource.help": "Choose a video link for browser viewers to try. Your playback stays in the original webpage.",
+  "watch.browserSource.title": "Choose playback source",
+  "watch.browserSource.help": "Use a video link to watch together in Piik. If it cannot play, you can choose the original webpage.",
   "watch.browserSource.skip": "Share original webpage only",
-  "watch.browserSource.selectNamed": "Use {name} for browser playback",
+  "watch.browserSource.selectNamed": "Play {name} in Piik",
   "watch.forward.title": "Forward original video",
   "watch.forward.upload": "Use this device’s upload bandwidth to send original video through room connections.",
   "watch.forward.active": "Forwarding is on. Stopping it keeps the webpage open.",
@@ -68,8 +68,8 @@ export const en: Record<CopyKey, string> = {
   "room.chat.export": "Export chat text (TXT)",
   "room.common.user": "User",
   "room.relay.personalLimit": "My forwarding limit",
-  "room.relay.hostNote": "The room host uses the room default.",
-  "room.relay.personalNote": "Only changes my forwarding in this room. Zero stops forwarding for others; I can still speak and share.",
+  "room.relay.hostNote": "The room host and share sources use the room default above.",
+  "room.relay.personalNote": "Sets this webpage's forwarding limit, independently of App. Zero declines forwarding while keeping voice and sharing available; your own shares use the room default.",
   "room.relay.followDefault": "Follow room default",
   "room.create.appHostedNote": "Hosted by App. The room keeps running when this page closes.",
   "room.create.browserHostedNote": "Hosted by this page. The room pauses when this page closes.",
@@ -84,7 +84,7 @@ export const en: Record<CopyKey, string> = {
   "room.settings.removePassword": "Remove password",
   "room.settings.hidden": "Hide from users without access",
   "room.relay.default": "Room forwarding default",
-  "room.relay.defaultNote": "The default forwarding limit in this room. Others can adjust their own.",
+  "room.relay.defaultNote": "The room host endpoint and share sources use this limit. Other endpoints can set their own forwarding limit.",
   "room.action.cancel": "Cancel",
   "room.action.save": "Save",
   "room.action.create": "Create room",
@@ -405,7 +405,7 @@ export const en: Record<CopyKey, string> = {
   "watch.connectApp": "Connect Piik App using the entry at the top of the page to select a webpage video.",
   "watch.openPage": "Open webpage and select video",
   "watch.directStart": "Play direct video URL",
-  "watch.chooseVideo": "Choose a video to start watching together. If another playback source is needed, you will choose it here next. Sound and sign-in stay in the original webpage.",
+  "watch.chooseVideo": "Choose a video to watch together. Playable links open in Piik; other sources can keep using their original webpage.",
   "watch.video": "Video",
   "watch.selectVideo": "Select video",
   "watch.waitForVideo": "Start playing in the opened webpage. Videos will appear here.",
@@ -1389,7 +1389,7 @@ export const en: Record<CopyKey, string> = {
 
   "mode.language": "Interface language",
   "mode.more": "More languages",
-  "header.more": "More options",
+  "header.more": "Preferences",
   "theme.dark": "Switch to dark mode",
   "theme.light": "Switch to light mode",
   "theme.dark.short": "Dark",

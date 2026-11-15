@@ -239,7 +239,7 @@ requesting site. Allow is remembered by the system WebView profile for that exac
 origin and permission kind, including microphone changes and later visits.
 Rejecting, closing or pressing Esc denies only the current request. Closing the
 requesting window cancels its pending requests without saving a denial.
-The window's star opens site management without leaving the current page. One
+The App menu opens site management without leaving the current page. One
 list combines saved destinations and approved exact origins; each site's details
 separate its bookmark, App consent and startup preference. Bookmarks store a
 site address and optional name separately from device approval. Editing or
@@ -260,7 +260,7 @@ it through the local launcher. Installation restarts the App and ends its active
 sessions; other installations retain manual downloads. The
 [update contract](../../docs/standards/versioning.md#app-download-and-installation)
 defines package trust, data preservation and recovery.
-An external site's star opens its fixed address. Selecting startup on the current
+An external site's startup choice opens its fixed address. Selecting startup on the current
 App-owned site saves its launch selection: the next App run starts that mode and
 enters the new ready owner address, rather than reopening an expired invitation.
 Ownership follows the running App's exact local and invitation origins, not a

@@ -385,7 +385,7 @@ export function AppLauncherPage() {
                 onChange={event => approvalCurrent
                   ? void changeSite(event.target.checked ? requestedSite : "", "startup-site")
                   : setOpenOnApproval(event.target.checked)} />
-              <Glyph name="star" size={18} />
+              <Glyph name="play" size={18} />
               <span>{t("client.connect.openOnStart")}</span>
             </label>}
             <div className="lr-client-approval-actions">

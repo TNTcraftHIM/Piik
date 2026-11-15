@@ -4,7 +4,10 @@
 
 The 3.0 App/Server UI includes Simplified Chinese, English, Traditional Chinese,
 Japanese and Korean. The public website, film and guides maintain separate
-Chinese/English content. Suggest wording, correct a translation or add a language
+Chinese/English content. During 3.0 iteration, new and changed copy is maintained
+in English and Simplified Chinese. Existing Traditional Chinese, Japanese and
+Korean translations remain selectable; missing messages use English. Remove
+obsolete keys from every catalog when removing a message. Suggest wording, correct a translation or add a language
 through GitHub issues and pull requests.
 
 For a wording suggestion, [open an issue](https://github.com/TNTcraftHIM/Piik/issues/new/choose)
@@ -30,7 +33,8 @@ personal content. You can send a suggestion without setting up development tools
 
 4. Preview the affected screen and run the [relevant checks](#preview-and-check).
    For a typo in one language, edit that language. If the underlying meaning
-   changes, update the corresponding messages in every registered language.
+   changes, update English and Simplified Chinese; remove an outdated optional
+   translation when it would misrepresent the changed behavior.
 5. Open a PR to `main` with the wording problem, languages/surfaces changed and
    preview results. For PR format, follow [Contributing](../../CONTRIBUTING.md#pull-request-scope).
 
@@ -95,11 +99,12 @@ layout questions, so contributors can coordinate work and review.
 
 1. Copy `src/client/locales/en.ts` to a file such as `fr.ts`. Translate the
    messages and title labels, write natural [playful entries](#playful-copy), and
-   rename the three exports. Retain `Record<CopyKey, string>`, `TitleFrameCatalog`
+   rename the three exports. Use `satisfies Partial<Record<CopyKey, string>>` for
+   the message object, and retain `TitleFrameCatalog`
    and `PlayfulCatalog` from `zh.ts`.
    Chinese currently defines the key set; either existing language can provide
-   context. Complete all keys rather than spreading an English catalog over
-   missing translations.
+   context. Include only translated messages; the formatter supplies English
+   for missing keys. Keep supplied placeholders correct and omit obsolete keys.
 2. Import the exports in [locales/index.ts](../../src/client/locales/index.ts)
    and add one registry entry. For example, **after translating** the catalogs:
 
@@ -117,7 +122,8 @@ layout questions, so contributors can coordinate work and review.
    [system-language policy](../standards/presentation-lifecycle.md#visual-language).
 3. Check complete screens and the launch flow, including launcher, room and error
    states. The 3.0 site and room use the shared catalog, with complete
-   `Record<CopyKey, string>` coverage and matching placeholders. Use the
+   English/Simplified Chinese coverage and matching placeholders in supplied
+   translations. Use the
    [module map](../standards/engineering.md#module-map).
 4. State coverage in the PR. Website, film and documentation translations can be
    contributed separately; update their language controls when adding a language.
@@ -136,7 +142,7 @@ Each language owns its welcome and waiting arrays, and each playful title has a
 fixed `label` plus a `variations` array. Add or remove entries in that language
 without matching another language's count, order or references. An empty array
 omits the decoration; one entry stays static. Operational keys and title labels
-still require complete translations. Errors, pauses, endings, required actions
+remain literal and complete in English/Simplified Chinese. Errors, pauses, endings, required actions
 and slogans stay fixed.
 
 Welcome entries carry `text`. For example:

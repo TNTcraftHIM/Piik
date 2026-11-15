@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ChannelWatchVideo, WatchPeerAction } from "../src/client/channel/components/ChannelMedia";
 import { ChannelStage, SourceAudience, type WatchStageSource } from "../src/client/channel/components/ChannelStage";
 import type { WatchPlayer } from "../src/client/channel/watch-playback";
-import { setCopy } from "../src/client/ui/copy";
+import { setCopy, t, type Lang } from "../src/client/ui/copy";
 import { ChannelSettingsError } from "../src/client/channel/components/ChannelSettingsDialog";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 import { locales } from "../src/client/locales";
@@ -21,9 +21,9 @@ describe("Webpage watch presentation", () => {
     [["watch_peer_requires_secure_context", "watch_peer_unavailable"], "watch.forward.secure", false],
     [["watch_path_unavailable"], "channel.error.roomCommunicationFailed", true],
   ] as const)("presents %j with actionable copy from %s", (errors, key, connectionHelp) => {
-    for (const locale of Object.values(locales)) {
+    for (const lang of Object.keys(locales) as Lang[]) {
       for (const error of errors) {
-        expect(channelErrorPresentation(error, key => locale.copy[key])).toEqual({ message: locale.copy[key], connectionHelp });
+        expect(channelErrorPresentation(error, key => t(lang, key))).toEqual({ message: t(lang, key), connectionHelp });
       }
     }
   });
