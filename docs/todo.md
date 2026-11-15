@@ -126,6 +126,11 @@ the feedback period; they do not delay that delivery.
   trigger, bounded candidate attempts and strict-benefit proof before enabling
   automatic alternative-parent trials. Online sessions do not prove reusable
   physical connections; keep that fact with the transport owner.
+- [ ] **Random-mapping NAT preparation.** Evaluate the isolated birthday
+  collision experiment against ordinary ICE, including actual media, cancellation
+  and concurrent-pair resource cost. Product preparation currently supports
+  stable/sequential observations. A Native-to-Browser extension needs a separate
+  standard-ICE control; two Native participants do not establish that coverage.
 - [ ] **Codec capability and efficiency comparison.** Measure actual platform
   encoder/decoder and Browser capabilities, then compare one available codec
   with H.264 using synthetic text and motion. Compare hardware and software
@@ -141,8 +146,10 @@ the feedback period; they do not delay that delivery.
 - [ ] **Shared-link website coverage.** Extend the implemented webpage player
   and original-media forwarding toward VideoTogether's playback coverage.
   Validate actual supported websites, source-issued media grants, live playlist
-  lifecycle and target Browser behavior; keep each viewer's account access in
-  its original player. Retain the
+  lifecycle and target Browser behavior. Complete Bilibili ordinary/member
+  Browser viewing for segmented media, YouTube Browser-only viewing, and the
+  supplied girigirilove page when its original player is accessible. Keep each
+  viewer's account access in its original player. Retain the
   [shared playback owner](./research/channel-network-design.md#synchronized-video-sources):
   the sharer controls common playback; viewers own sound, participation and
   access through their own platform accounts. Complete matching-package and

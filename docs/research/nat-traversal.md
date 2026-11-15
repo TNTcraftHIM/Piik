@@ -507,6 +507,33 @@ prefix lengths have RFC-vector coverage; physical networks, multiple translators
 and interface changes remain outside this evidence. This source change is not
 yet part of the previously delivered internal package.
 
+### Random-Mapping Collision Control
+
+Product preparation still accepts stable or sequential observations; irregular
+observations continue ordinary ICE. It does not implement random-port birthday
+search. That mechanism needs independent hard-side mappings toward one stable
+peer tuple and a distinct target set from the stable peer, not more retransmits
+of the current prediction.
+
+On 2026-11-14, an isolated Native experiment used 256 hard-side sockets and 256
+pre-frozen target ports in a Linux kernel NAT fixture. Mapping and filtering were
+calibrated separately; neither Native endpoint received a full-cone exception.
+Five fresh ordinary-ICE controls established no DataChannel within 30 seconds.
+Five matching experimental attempts produced three empty-set intersections and
+two natural authenticated matches with DataChannels. One match subsequently
+carried decoded 640 × 360 video and audio through the original winning socket.
+Failed attempts sent 1,024 preparation datagrams per pair; successful attempts
+stopped at 582 and 308. Every attempt retained its five-second preparation budget.
+Successful admission-to-DataChannel times were 8.51 and 8.11 seconds, including
+the preceding ordinary attempt.
+
+These are mechanism controls, not population success rates or accepted product
+defaults. The idealized intersection model assumes valid, live mappings and
+compatible filtering; two independently random endpoint-dependent NATs do not
+automatically satisfy it. The [original traversal explanation](https://tailscale.com/blog/how-nat-traversal-works)
+describes that distinction. Production integration, concurrent-pair cost and a
+separate Native-to-Browser standard-ICE control remain in [TODO](../todo.md#next).
+
 ### External Forwarding And Participant Relays
 
 The October 19 review and isolated Linux check of
