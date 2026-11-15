@@ -1161,6 +1161,11 @@ async function profileControls(roomId, messageId) {
       && value.message.name === name && value.message.avatar === avatar);
   await browser(1, "open", `${origin}/__channel-preview#room=${encodeURIComponent(roomId)}`);
   await reenter();
+  if (!await evaluate(0, "document.querySelector('#c3-people')?.checkVisibility() ?? false"))
+    await browser(0, "click", "#c3-companion-trigger");
+  const previewButton = `#c3-people [data-user-id=${JSON.stringify(member.id)}] .c3-avatar-preview`;
+  await browser(0, "click", previewButton);
+  await browser(0, "wait", ".c3-image-dialog[open]");
   await openProfile();
   await browser(1, "find", "role", "button", "click", "--name", "Remove picture", "--exact");
   await browser(1, "click", '.c3-name-popover:popover-open button[type="submit"]');
@@ -1169,9 +1174,26 @@ async function profileControls(roomId, messageId) {
   }), value => value.profiles.every(user => user?.name === name && user.avatar === null)
     && value.message.name === name && value.message.avatar === null
     && value.owner.id === owner.id && value.owner.name === owner.name && value.owner.avatar === owner.avatar);
+  await until("removing the viewed avatar retires its preview", () => evaluate(0,
+    "document.querySelectorAll('.c3-image-dialog[open]').length"), count => count === 0);
+  await openProfile();
+  await browser(1, "upload", '.c3-name-popover:popover-open input[type="file"]', resolve("public/favicon.png"));
+  await until("the same avatar is prepared again", () => evaluate(1,
+    "document.querySelector('.c3-name-popover:popover-open .c3-profile-picture image')?.getAttribute('href')"), value => value === avatar);
+  await browser(1, "click", '.c3-name-popover:popover-open button[type="submit"]');
+  await until("the restored avatar reaches both readers", () => Promise.all([0, 1].map(memberProfile)),
+    values => values.every(user => user?.avatar === avatar));
+  assert.equal(await evaluate(0, "document.querySelectorAll('.c3-image-dialog[open]').length"), 0,
+    "restoring an avatar does not restore an old preview intent");
+  await browser(0, "click", previewButton);
+  await browser(0, "wait", ".c3-image-dialog[open]");
+  await browser(0, "press", "Escape");
+  await until("the explicitly reopened preview closes normally", () => evaluate(0,
+    "document.querySelectorAll('.c3-image-dialog[open]').length"), count => count === 0);
   await writeFile(join(output, "member-profile-result.json"), JSON.stringify({ passed: true, userId: member.id,
     messageId, name, avatarSha256: createHash("sha256").update(avatar).digest("hex"),
-    realImagePreparation: true, bothReaders: true, reload: true, offlineAuthor: true, removal: true, ownerUnchanged: true }, null, 2));
+    realImagePreparation: true, bothReaders: true, reload: true, offlineAuthor: true, removal: true,
+    removedPreviewRetired: true, explicitPreviewReopen: true, ownerUnchanged: true }, null, 2));
   console.log("Profile UI saves name and avatar across readers/reload, retains the offline author and removes the image live");
 }
 

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { useCopy } from "../../ui/copy";
@@ -12,6 +12,7 @@ export function ChannelUser({ id, name, avatar, self, owner, online, voice, acti
 }) {
   const { t } = useCopy();
   const [preview, setPreview] = useState(false);
+  useEffect(() => { if (!avatar) setPreview(false); }, [avatar]);
   const previewLabel = t("channel.user.viewAvatar", { name });
   const pawn = <PawnSvg color={participantColor(id)} identity={id} avatar={avatar} host={owner} voice={voice} />;
   return <div className={`c3-user${online ? "" : " is-offline"}`} data-user-id={id}>
