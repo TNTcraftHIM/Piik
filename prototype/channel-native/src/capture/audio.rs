@@ -301,11 +301,81 @@ fn process(target: &Target) -> Result<Option<OwnedHandle>> {
     }
 }
 
+#[derive(Default)]
+struct CaptureCounts {
+    stream_started: bool,
+    packets: u64,
+    input_frames: u64,
+    silent_packets: u64,
+    discontinuity_packets: u64,
+    timestamp_error_packets: u64,
+    assembled_frames: u64,
+    queued_frames: u64,
+    dropped_frames: u64,
+    closed_queue_frames: u64,
+}
+
+impl CaptureCounts {
+    // Enable before acquisition; no sample values or source/device identities are inspected.
+    fn enabled() -> Option<Self> {
+        crate::diagnostics::enabled().then(Self::default)
+    }
+    fn packet(&mut self, frames: u32, flags: u32) {
+        self.packets += 1;
+        self.input_frames += u64::from(frames);
+        self.silent_packets += u64::from(flags & AUDCLNT_BUFFERFLAGS_SILENT.0 as u32 != 0);
+        self.discontinuity_packets +=
+            u64::from(flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0 as u32 != 0);
+        self.timestamp_error_packets +=
+            u64::from(flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0 as u32 != 0);
+    }
+    fn delivery(
+        &mut self,
+        result: &std::result::Result<(), mpsc::error::TrySendError<AudioFrame>>,
+    ) {
+        self.assembled_frames += 1;
+        match result {
+            Ok(()) => self.queued_frames += 1,
+            Err(mpsc::error::TrySendError::Full(_)) => self.dropped_frames += 1,
+            Err(mpsc::error::TrySendError::Closed(_)) => self.closed_queue_frames += 1,
+        }
+    }
+    fn finish(self, mode: &str, ok: bool) {
+        log::warn!(target: "piik.capture", "WASAPI capture summary: mode={mode} stream_started={} result={} packets={} input_frames={} silent_packets={} discontinuity_packets={} timestamp_error_packets={} assembled_frames={} queued_frames={} dropped_frames={} closed_queue_frames={}",
+            self.stream_started, if ok { "ok" } else { "error" }, self.packets, self.input_frames,
+            self.silent_packets, self.discontinuity_packets, self.timestamp_error_packets,
+            self.assembled_frames, self.queued_frames, self.dropped_frames, self.closed_queue_frames);
+    }
+}
+
 fn run(
     input: Input,
     control: &AudioControl,
     frames: mpsc::Sender<AudioFrame>,
     ready: &mut Option<oneshot::Sender<Result<()>>>,
+) -> Result<()> {
+    let mode = match &input {
+        Input::System(target, _) if matches!(target.kind, TargetKind::Display) => {
+            "default-endpoint"
+        }
+        Input::System(_, true) => "process-include",
+        Input::System(_, false) => "process-exclude",
+        Input::Microphone(_) => "microphone",
+    };
+    let mut counts = CaptureCounts::enabled();
+    let result = run_capture(input, control, frames, ready, &mut counts);
+    if let Some(counts) = counts {
+        counts.finish(mode, result.is_ok());
+    }
+    result
+}
+
+fn run_capture(
+    input: Input,
+    control: &AudioControl,
+    frames: mpsc::Sender<AudioFrame>,
+    ready: &mut Option<oneshot::Sender<Result<()>>>,
+    counts: &mut Option<CaptureCounts>,
 ) -> Result<()> {
     let _com = Com::start()?;
     let (process, client) = match input {
@@ -339,6 +409,9 @@ fn run(
         return Ok(());
     }
     client.start_stream()?;
+    if let Some(counts) = counts {
+        counts.stream_started = true;
+    }
     if let Some(ready) = ready.take() {
         let _ = ready.send(Ok(()));
     }
@@ -370,6 +443,9 @@ fn run(
                         Some(&mut timestamp),
                     )?
                 };
+                if let Some(counts) = counts {
+                    counts.packet(count, flags);
+                }
                 if flags
                     & (AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY.0
                         | AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR.0) as u32
@@ -406,7 +482,11 @@ fn run(
                                 std::mem::replace(&mut samples, Vec::with_capacity(1920)),
                                 first.take().unwrap(),
                             );
-                            match frames.try_send(frame) {
+                            let result = frames.try_send(frame);
+                            if let Some(counts) = counts {
+                                counts.delivery(&result);
+                            }
+                            match result {
                                 Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}
                                 Err(mpsc::error::TrySendError::Closed(_)) => {
                                     closed = true;
