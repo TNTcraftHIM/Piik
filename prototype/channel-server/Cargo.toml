@@ -61,6 +61,10 @@ objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std
 objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSOperation", "block2"] }
 block2 = "=0.6.2"
 
+[target.'cfg(windows)'.build-dependencies]
+find-msvc-tools = "=0.1.15"
+semver = "=1.0.28"
+
 [dev-dependencies]
 netwatch = { version = "=0.20.0", git = "https://github.com/TNTcraftHIM/net-tools", rev = "0a61bb64facc469d015f5ba537dda57c94cdcb17" }
 tokio-tungstenite = "0.29"

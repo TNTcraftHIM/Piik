@@ -3870,6 +3870,7 @@ dependencies = [
  "base64ct",
  "block2",
  "dirs 6.0.0",
+ "find-msvc-tools",
  "futures-util",
  "if-addrs",
  "log",
