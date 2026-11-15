@@ -131,7 +131,7 @@ export function HeaderControls({ diagnosticControl, appControl, personalControls
     </button>
   );
   return (
-    <div className="lr-top-right lr-header-controls is-overflow">
+    <div className="lr-top-right lr-header-controls">
       {appControl}
       <span ref={trigger} className="lr-header-more">
         <Btn icon="more" title="header.more" textTooltip size="compact" quiet popoverTarget={id} controls={id} expanded={open} />

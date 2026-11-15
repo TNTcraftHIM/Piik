@@ -76,6 +76,24 @@ test("separate files with track ID 1 remain explicit independent video and audio
   expect(() => indexedMediaSelection(audio, video)).toThrow("watch_indexed_unsupported");
 });
 
+test("SIDX keeps its own time units without changing media time or byte ranges", async () => {
+  const original = await selected(fixture("av1")).inspect();
+  const scaled = await selected(fixture("av1", parser => {
+    const index = parser.sidx, scale = 1000 / index.timescale;
+    index.timescale = 1000;
+    index.earliest_presentation_time *= scale;
+    for (const reference of index.references) reference.subsegment_duration *= scale;
+  })).inspect();
+  const init = parse(Uint8Array.from(atob(scaled.recipe.initBase64), byte => byte.charCodeAt(0)));
+  expect(scaled.recipe.timescale).toBe(1000);
+  expect(init.getInfo().tracks[0].timescale).toBe(16000);
+  expect(scaled.metadata.duration).toBe(original.metadata.duration);
+  expect(scaled.recipe.mediaOffset).toBe(original.recipe.mediaOffset);
+  expect(scaled.recipe.segments.map(([length, ticks]) => [length, ticks / scaled.recipe.timescale]))
+    .toEqual(original.recipe.segments.map(([length, ticks]) => [length, ticks / original.recipe.timescale]));
+  expect(scaled.recipe.initBase64).toBe(original.recipe.initBase64);
+});
+
 test.each([
   { name: "nested index", change: (p: ISOFile) => { p.sidx.references[0].reference_type = 1; }, error: "watch_indexed_unsupported" },
   { name: "non-random access", change: (p: ISOFile) => { p.sidx.references[0].starts_with_SAP = 0; }, error: "watch_indexed_unsupported" },

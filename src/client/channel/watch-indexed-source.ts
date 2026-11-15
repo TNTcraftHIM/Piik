@@ -80,7 +80,7 @@ export async function inspectIndexedTrack(candidate: NativePageIndexedCandidate,
       && edit.media_rate_integer === 1 && edit.media_rate_fraction === 0));
 
     const index = parser.sidx;
-    requireValue(index.reference_ID === track.id && index.timescale === track.timescale && index.timescale > 0);
+    requireValue(index.reference_ID === track.id && index.timescale > 0);
     requireValue(index.version === 0 || index.version === 1);
     requireValue(safe(index.earliest_presentation_time) && safe(index.first_offset) && index.references.length > 0);
     const indexStart = index.start, moovStart = parser.moov.start;

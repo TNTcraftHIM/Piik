@@ -457,3 +457,20 @@ it("keeps queued motion and wheel precision across updates to the same active gr
     vi.useRealTimers();
   }
 });
+
+it.each([
+  { rotation: 0 as const, bounds: { left: 200, top: 150, width: 400, height: 300 },
+    gutter: { x: 180, y: 300 }, inside: { x: 240, y: 300 } },
+  { rotation: 90 as const, bounds: { left: 200, top: 100 / 3, width: 400, height: 1600 / 3 },
+    gutter: { x: 400, y: 20 }, inside: { x: 400, y: 260 / 3 } },
+])("rejects cover pixels clipped by a zoomed video box at $rotation degrees", ({ rotation, bounds, gutter, inside }) => {
+  // A 1920x1080 source covers an 800x600 cell, then local zoom shrinks it to 0.5x.
+  // object-fit clips the fitted source to the video box before the CSS transform.
+  const video = { videoWidth: 1920, videoHeight: 1080,
+    style: { objectFit: "cover" }, dataset: { pictureRotation: String(rotation) },
+    getBoundingClientRect: () => bounds,
+  } as unknown as HTMLVideoElement;
+  expect(picturePoint(video, gutter.x, gutter.y)).toBeNull();
+  const point = picturePoint(video, inside.x, inside.y);
+  expect(point?.x).toBeCloseTo(.2); expect(point?.y).toBeCloseTo(.5);
+});
