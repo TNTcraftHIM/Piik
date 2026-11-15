@@ -2,12 +2,17 @@
 
 English · [简体中文](./service-management.zh-CN.md) · [Documentation](../guide/README.md)
 
+**This page applies to published 2.x Server releases.** For the internal 3.0
+runtime, use [Rust Server startup and deployment](../../prototype/channel-server/README.md#run).
+The full older guide remains at the
+[fixed 2.x revision](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/operations/service-management.md).
+
 For first installation, use the [short self-hosting guide](./self-hosting.md).
 This reference covers a persistent Linux service and container maintenance.
 
 ## systemd
 
-The [service template](../../deploy/systemd/piik.service.example) runs as the
+The [service template](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/deploy/systemd/piik.service.example) runs as the
 `piik` user, reads `/etc/piik/piik.env`, and starts
 `/opt/piik/current/piik-server`. Create the service account and place the extracted
 release at that path, or point `current` at its release directory. Copy your
@@ -25,7 +30,7 @@ sudo systemctl status piik
 
 Keep HTTP bound to loopback when the HTTPS proxy runs on the same host.
 STUN and optional SFU use their own public UDP listeners. An existing nginx
-installation can use the [proxy example](../../deploy/nginx/piik.conf.example)
+installation can use the [proxy example](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/deploy/nginx/piik.conf.example)
 after adapting the domain and certificate paths.
 
 ## Container
@@ -37,21 +42,21 @@ to match the host. Set `PIIK_IMAGE` in `.env`
 to pin a version or image digest. Updates are explicit; pulling an image does not
 replace a running container.
 
-The [runtime Dockerfile](../../deploy/container/Dockerfile) wraps the verified
+The [runtime Dockerfile](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/deploy/container/Dockerfile) wraps the verified
 Server archive, including its Web UI, license notices and `REVISION`.
 Its pinned [Distroless non-root base](https://github.com/GoogleContainerTools/distroless)
 includes CA certificates and has no shell or package manager. The
 [release workflow](../standards/versioning.md#container-distribution) owns
 building, checking and publishing the image.
 
-Use the existing [production configuration](../standards/configuration.md).
+Use the existing [production configuration](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/standards/configuration.md).
 Keep `LISTEN_HOST=0.0.0.0` inside the container and retain the host's existing
 HTTPS/WebSocket proxy. With Docker port mapping, set `SFU_PUBLIC_IP` to the
 reachable server IPv4 address when SFU is enabled; container-private candidates
 are not Internet-reachable. Advertised STUN names must resolve to the server's
 public address, and UDP must reach the container directly.
 
-The [Compose file](../../deploy/container/compose.yaml) keeps HTTP on host
+The [Compose file](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/deploy/container/compose.yaml) keeps HTTP on host
 loopback, publishes the standard UDP ports and enables automatic restart.
 Publishing a port does not enable its service; `.env` controls optional listeners.
 Edit both the application setting and port mapping if changing a listener port.
@@ -62,7 +67,7 @@ The image's `/home/nonroot` is owned by UID/GID `65532:65532` with mode `0700`.
 A new named volume inherits that directory; an existing volume or bind mount
 must already be writable by that identity. Keep this volume when replacing the
 container. Set `ROOM_DATABASE_PATH=:memory:` for memory-only room authority. Diagnostics
-remain opt-in and use `/home/nonroot/logs`; [export and retention](../standards/configuration.md#diagnostics)
+remain opt-in and use `/home/nonroot/logs`; [export and retention](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/standards/configuration.md#diagnostics)
 remain the operator's responsibility. Do not mount application files writable.
 With diagnostics enabled, `docker compose kill --signal=SIGUSR1 piik` requests a local
 export without stopping the container; the ZIP remains in the mounted log directory.

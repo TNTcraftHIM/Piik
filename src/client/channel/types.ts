@@ -92,19 +92,19 @@ export interface ChannelView {
 }
 
 export interface ChannelActions {
-  startWatch(roomId: string, url: string): Promise<void>;
-  prepareWatchEmbed(roomId: string, url: string): Promise<void>;
-  confirmWatchEmbed(roomId: string): Promise<void>;
+  startWatch(roomId: string, url: string, reportError?: boolean): Promise<void>;
+  prepareWatchEmbed(roomId: string, url: string, reportError?: boolean): Promise<void>;
+  confirmWatchEmbed(roomId: string, reportError?: boolean): Promise<void>;
   watchEmbed(roomId: string): WatchMedia | undefined;
-  prepareWatchPage(roomId: string, url: string, activityId?: string): Promise<void>;
+  prepareWatchPage(roomId: string, url: string, activityId?: string, reportError?: boolean): Promise<void>;
   watchPage(roomId: string, activityId?: string): { url: string; candidates: readonly NativePageCandidate[]; activityId?: string; watchSources?: WatchMediaSources } | undefined;
-  selectWatchPage(roomId: string, candidateId: string, activityId?: string): Promise<boolean>;
-  selectWatchBrowserSource(roomId: string, choiceId: string | null): Promise<void>;
+  selectWatchPage(roomId: string, candidateId: string, activityId?: string, reportError?: boolean): Promise<boolean>;
+  selectWatchBrowserSource(roomId: string, choiceId: string | null, reportError?: boolean): Promise<void>;
   focusWatch(id: string): Promise<void>;
   focusWatchPage(roomId: string, activityId?: string): Promise<void>;
   joinWatch(id: string, mode?: WatchMode): Promise<void>;
   watchMediaChoices(id: string, signal: AbortSignal, onChange?: (sources: WatchMediaSources) => void): Promise<WatchMediaSources>;
-  selectWatchIndexedSource(roomId: string, videoId: string, audioId?: string): Promise<void>;
+  selectWatchIndexedSource(roomId: string, videoId: string, audioId?: string, reportError?: boolean): Promise<void>;
   setWatchByteSource(id: string, choice: string | NativePageIndexedSelection | null, signal?: AbortSignal): Promise<void>;
   leaveWatch(id: string): Promise<void>;
   stopWatch(id: string): Promise<void>;

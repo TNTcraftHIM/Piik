@@ -31,7 +31,7 @@ Piik 是一个免费开源的私密屏幕共享工具，适合游戏直播、一
 
 - **观看无须安装。** 朋友通过邀请链接，用电脑或手机浏览器加入。
 - **用 Piik App 或已有 Piik 站点分享。** 支持屏幕、窗口、浏览器标签页和摄像头；可选来源与音频能力取决于平台。
-- **优先直接连接。** 画面优先在设备之间传输（P2P），自建站点可启用媒体转发（SFU）自动兜底。
+- **优先直接连接。** 画面优先在设备之间传输（P2P）。已发布的 2.x Server 支持 SFU 兜底；[3.0 的服务器转发](./prototype/channel-server/README.md#rooms-conversation-and-media)目前用于 Server 托管的房间。
 - **房间由你管理。** 支持邀请链接、房间号和可选的房间密码，一位房主、最多 20 位观众。
 - **边看边聊。** 加入房间语音，发送文字和表情，也可开启弹幕。
 - **让朋友接手操作。** 通过 Piik App 分享窗口或屏幕并授权远控，也可允许多人共用键鼠或使用受支持的手柄一起玩，随时结束控制。[查看设置方法](./docs/guide/remote-control.zh-CN.md)。
@@ -78,26 +78,21 @@ Piik App 可创建本地房间或临时公网邀请，也能在后台为已授�
 
 ## 自行部署
 
-部署 Piik Server，为朋友搭建自己的站点。
+本分支开发内部测试的 **3.0 Rust Server**。请使用匹配的 Server 与网页程序包，
+按 [Rust 启动与部署说明](./prototype/channel-server/README.md#run)操作。
+已发布的 2.x 请继续使用 [2.x 部署指南](./docs/operations/self-hosting.zh-CN.md)。
 
-<p><a href="./docs/operations/self-hosting.zh-CN.md#使用-docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="使用 Docker Compose 部署 Piik"></a></p>
+<p><a href="./prototype/channel-server/README.md#public-origin-and-udp"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="使用 Docker Compose 部署 3.0 Rust Server"></a></p>
 
-Piik Server 是内置网页界面的独立程序，支持 Windows x64 和 Linux x64／ARM64。
-根据服务器架构下载 Linux x64 的 `piik-<revision>-runtime.tar.gz` 或 ARM64 的
-`piik-<revision>-linux-arm64-runtime.tar.gz`，解压后运行：
+在本机试用 3.0 时，将程序包中的 `web/` 保留在可执行文件旁，为新站点设置私密 owner seed，
+再运行 `./piik-server`（Windows 使用 `./piik-server.exe`）。打开启动时打印的地址；
+独立 Server 默认是 `http://127.0.0.1:8791`。
+[程序包启动步骤](./prototype/channel-server/README.md#packaged-server)提供两种终端的命令。
 
-```sh
-./piik-server
-```
+[3.0 部署步骤](./prototype/channel-server/README.md#public-origin-and-udp)介绍 HTTPS、
+固定媒体 UDP 和公网地址映射。Rust Server 读取进程环境变量，不会自动读取 `.env`。
 
-Windows x64 可下载 `piik-<revision>-windows-amd64-runtime.zip`，解压后在 PowerShell
-运行 `./piik-server.exe`；配置方式相同。
-
-打开 `http://localhost:8787` 即可在本机试用。对外提供服务时，
-再配置域名、HTTPS 反向代理和 STUN 地址。房间数据保存在 SQLite 中。
-也可以使用 [Docker Compose 部署](./docs/operations/self-hosting.zh-CN.md#使用-docker-compose)。
-
-[**部署自己的站点 →**](./docs/operations/self-hosting.zh-CN.md) · [配置参考](./docs/standards/configuration.md) · [从源码运行](./docs/README.md#run-from-source)
+[**3.0 Server 部署 →**](./prototype/channel-server/README.md#run) · [环境变量模板](./deploy/container/.env.example) · [从源码运行](./docs/README.md#run-from-source)
 
 ## 参与贡献
 

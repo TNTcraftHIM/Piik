@@ -4,7 +4,9 @@ Initial review: 2026-09-08. The early review and probes below compare the fixed-
 candidate with mature encoder adaptation. The later [Windows product attachment](#windows-product-attachment)
 and [compatible output groups](#compatible-output-groups) record the published integration.
 [ADR-0013](../adr/0013-embedded-node-local-media.md) owns the direct-child/shared-output
-model; [media quality](../standards/media-quality.md) owns current behavior.
+model; [media quality](../standards/media-quality.md) owns current behavior. The pinned
+baseline and subsequent C++/Go integration sections retain 2.x evidence; the
+3.0 profile and Rust cadence sections identify their separate current scope.
 
 ## 3.0 H264 Profile Compatibility
 
@@ -199,66 +201,47 @@ across independent PeerConnections. Adding a third preset cannot establish parit
 
 ## Fixed-Output Native Gap (2026-09-08)
 
-`nativecapture.ScreenShareOutputs` constructs original plus half-size outputs
-at the same FPS. `mediaedge.Source.BeginFrame` chooses activation and lowers the
-lowest encoder's bitrate from its consumers' budgets. Windows `OutputWorker`
-keeps one fixed profile for its lifetime. At 1080p the lowest nominal output is
-960x540, not a dynamically shrinking fallback. Bounded raw mailboxes isolate
-overload but do not automatically reduce the requested encoding work.
+The initial candidate constructed original plus half-size outputs at the same
+FPS; at 1080p its lowest output was 960x540. Its consumer budgets changed
+bitrate, while the Windows worker kept fixed dimensions/FPS. Bounded raw
+mailboxes isolated overload without reducing requested encoding work.
 
-Pion supplies transport; LiveKit media components supply BWE, forwarding,
-allocation, recovery and pacing. They do not supply the omitted libwebrtc raw
-source/encoder resource-adaptation chain. That candidate's source-RTP cost adjustment
-also is not the full `RtpVideoSender` overhead/protection calculation. These are
-concrete missing integrations, not evidence that either library is defective.
-The existing constrained-codec recovery evidence remains valid within its scope,
-but cannot establish Browser-equivalent behavior below the fixed lowest size.
+Pion transport and LiveKit BWE/forwarding/allocation/pacing did not supply the
+missing libwebrtc raw-source resource-adaptation chain or full RTP overhead
+calculation. This was an integration gap, not a library defect. Constrained-codec
+recovery evidence did not establish Browser parity below the fixed lowest size.
 
 ## Where A Pool Can Fit
 
-[VideoEncoderFactory][encoder-factory] is a real native injection point. Its
-`Create(env, format)` returns a `VideoEncoder`; it is not exposed by Browser JS
-and does not receive a source/stream identifier. A source-scoped integration
-must establish that identity without guessing from dimensions or timestamps.
-Pion currently has no libwebrtc encoder factory to override: retaining the full
-chain requires a native-library integration decision, not only a new Go cache.
+[VideoEncoderFactory][encoder-factory] is a native injection point: its
+`Create(env, format)` returns a VideoEncoder without a source identifier. Browser
+JS does not expose it, and Pion has no libwebrtc factory to override. Source
+identity cannot be guessed from dimensions or timestamps; a full-chain native
+integration remains a dependency decision, not a Go cache.
 
-Shared encoded payload buffers are supported by [EncodedImage][encoded-image].
-That makes payload reuse possible, not automatically correct. The narrow
-adapter would have to preserve all of the following:
+[EncodedImage][encoded-image] permits shared immutable payloads. Correct reuse
+still requires five independently owned contracts:
 
-1. **Compatible demands.** Codec/profile, source generation, dimensions,
-   cadence, rate allocation and reference state must agree. `SetRates` applies
-   until replaced; last-writer-wins, unconditional minimum, or unconditional
-   maximum would violate another consumer's quality or budget. Resolution-only
-   keys are insufficient. Exact compatibility may produce little reuse and
-   needs measurement before introducing any grouping heuristic.
-2. **Compatible frame dependencies.** Each VSE can drop different inputs before
-   calling `Encode`. If A encoded frame F but B skipped it, a later shared
-   interframe may reference F that B never received. Skipping a whole input is
-   not equivalent to ordinary packet loss that NACK can repair. Splitting and
-   rejoining must use codec-safe recovery, not arbitrary callback suppression.
-3. **Separate callback ownership.** Each virtual encoder owns initialization,
-   keyframe requests, release and its callback. Reuse immutable payload bytes,
-   not one mutable metadata object. Preserve each caller's RTP/input identity,
-   codec descriptors, QP and completion semantics.
-4. **Honest resource feedback.** [Frame metadata][frame-metadata] matches the
-   caller's timestamp and measures its encode-start/completion interval. A cache
-   hit can appear cheap despite a busy shared physical encoder. Validate the
-   resulting resource decisions; do not fabricate CPU/QP evidence to keep reuse.
-5. **Unadapted source availability.** [VideoBroadcaster][broadcaster] aggregates
-   minimum maximum-pixel/FPS restrictions across sinks; requested-resolution
-   aggregation is a separate path. A pool cannot recreate input detail already
-   removed upstream. Retain original capture and validate sibling isolation.
+1. **Demand compatibility:** source generation, codec/profile, dimensions,
+   cadence, rate allocation and reference state must agree. SetRates persists;
+   last-writer/minimum/maximum arbitration and resolution-only keys are wrong.
+   Exact compatibility may yield little reuse; measure before adding heuristics.
+2. **Reference continuity:** independent VSE drops can omit a reference from one
+   consumer. A skipped whole input is not packet loss NACK can repair; split and
+   rejoin need codec-safe recovery rather than callback suppression.
+3. **Callback ownership:** each virtual encoder retains initialization,
+   keyframe requests, release, RTP/input identity, codec descriptors and QP.
+   Share payload bytes, not mutable metadata.
+4. **Honest resource feedback:** [frame metadata][frame-metadata] matches each
+   caller's timestamp and encode interval. Cheap cache hits do not describe a
+   busy physical encoder; do not fabricate CPU/QP feedback.
+5. **Original input availability:** [VideoBroadcaster][broadcaster] combines
+   maximum-pixel/FPS restrictions separately from requested-resolution policy.
+   Detail removed upstream cannot be recreated; preserve sibling isolation.
 
-Therefore the owner's abstraction is useful, but a transparent cross-sender
-pool preserving every independent control decision is not established by the
-factory API alone. The experiment below distinguishes that from a pool owning
-the physical encoder's correction state.
-Per-node encoding cost follows the number of compatible active representations,
-not automatically a fixed three encodes regardless of downstream conditions.
-Already-encoded Native relay/SFU forwarding must remain zero-encode when usable;
-an encoder factory by itself does not implement that bypass.
+Per-node encode cost follows compatible active representations, not a fixed
+three encodes. Usable received Native/SFU representations must bypass encoding;
+an encoder factory alone cannot supply that bypass.
 
 ## Mature Precedent And Reuse
 
@@ -288,99 +271,65 @@ The opt-in probe linked the pinned SDK only under the ignored build directory.
 
 ## Executed Feasibility Probe
 
-The [archived 2.x source and build recipe](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/native/probes/encoder-pool/README.md)
-used Shiguredo `m152.7977.0.2`, whose WebRTC revision exactly matches the pin
-above. Its relevant vendor differences are disabled built-in H264 and disabled
-pacer keyframe flushing; this VP8 encoder-only probe uses neither path.
-Matching SDK headers/static library and official MSVC libraries/linker were
-used. No desktop capture, ports, game, production service or CI job was involved.
+The [archived 2.x probe recipe](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/native/probes/encoder-pool/README.md)
+used matching Shiguredo m152.7977.0.2 headers/library and official MSVC tooling.
+Its disabled built-in H264 and pacer keyframe flushing did not affect this VP8
+encoder-only control. No desktop capture, ports, game, production service or CI
+was involved. Two VSEs/stock VideoAdapters consumed 640x360@30 at 2 Mbps;
+B alone received 100 kbps for 15 seconds, then 2 Mbps for 25. Maintain-framerate
+exposed spatial adaptation. Queues drained between inputs: external encoder
+budgets, not a full GoogCC network or throughput benchmark.
 
-Two actual VSEs receive one synthetic 640x360@30 source through separate stock
-VideoAdapters. Both receive identical 2 Mbps budgets/feedback cadence; B alone
-gets 100 kbps for 15 seconds and then returns to 2 Mbps for 25 seconds.
-Degradation preference is maintain-framerate to expose spatial adaptation.
-This supplies encoder budgets, not a simulated full GoogCC/packet network.
-The driver drains queues between inputs, so it is not a throughput benchmark.
+| Form | Healthy six-second physical Encode calls | Frames per consumer |
+| --- | ---: | ---: |
+| Independent encoders, stock correction | 360 | 180 / 180 |
+| Shared factory, independent VSE correction | 337 | 180 / 180 |
+| Shared factory, upstream corrector per physical encoder | 187 | 180 / 180 |
 
-The factory starts with exact codec/rate compatibility and one cached access
-unit per physical encoder. Different requests split, compatible streams rejoin
-on a keyframe, and each VSE gets its own metadata/callback with shared payload.
-Attempted input and successful reference identity are separate so a codec drop
-is not submitted twice. RTT/loss are excluded only because the guarded realtime
-VP8 L1T1 implementation's [DefaultTemporalLayers][vp8-default-temporal] ignores them.
+The two pooled forms reused 23 and 173 calls respectively, the latter about 48%.
+Independent [EncoderBitrateAdjuster][bitrate-adjuster] targets diverged despite
+equal logical rates (~1.67/1.59 Mbps). A disabled-adjuster diagnostic isolated
+the conflict; the viable form reused the library corrector once per physical
+output, preserving correction instead of choosing one peer as authority.
+The cache held one AU per encoder, split on incompatible demands and rejoined
+at keyframes; attempted input and successful reference identity were separate.
+RTT/loss were omitted only because guarded VP8 L1T1
+[DefaultTemporalLayers][vp8-default-temporal] ignores them.
 
-Three forms were exercised, plus an explicit disabled-adjuster ablation:
+Both paired runs reduced B at ~4.04 seconds to 320x180 and first restored
+640x360 ~24.05 seconds after release; A retained ~30 fps/full size. The pool
+reused 87 frames in the later three-second skipped-input phase and retired all
+groups, with at most two live encoders. Weak delivery differed: control
+154 frames/10.27 fps/85.3 kbps versus pool 142/9.47/95.1; extra transition
+keyframes and matching dimensions do not establish perceptual/network parity.
 
-| Form | Healthy 6-second physical Encode calls | Delivered frames per consumer | Result |
-| --- | ---: | ---: | --- |
-| Independent encoders, stock VSE correction | 360 | 180 / 180 | Control |
-| Shared factory, separate unchanged VSE correction | 337 | 180 / 180 | Only 23 reuses; independent adjusted targets soon differ |
-| Shared factory and one upstream corrector per physical encoder | 187 | 180 / 180 | 173 reuses, about 48% fewer calls in this phase |
-
-Both VSEs can have the same 2 Mbps logical target but ask their encoder for
-different corrected rates, such as about 1.67 versus 1.59 Mbps. The upstream
-[EncoderBitrateAdjuster][bitrate-adjuster] observes encoded size/timing to
-correct overshoot; it is not a resolution selector or a receiver-supplied QP.
-Disabling it only for diagnosis restored healthy reuse, locating the conflict.
-The viable probe form instead instantiates that same library class per physical
-encoder and feeds each physical output once. It does not delete correction or
-choose one peer as quality authority.
-
-In the final paired full runs, both forms first reduced B at about 4.04 seconds,
-reached 320x180, and first returned to 640x360 about 24.05 seconds after release.
-A remained full-size at about 30 fps. The pooled form resumed shared output after
-recovery and reused 87 frames in the following 3-second, single-skipped-input
-phase. Both groups fully retired, with at most two live physical encoders.
-Repeated earlier runs showed the same broad transitions. This does not promise
-fast or seamless recovery: the measured upward delay was substantial in both.
-
-Weak-phase delivery was not identical: the final control decoded 154 frames
-(10.27 fps, 85.3 kbps), versus 142 (9.47 fps, 95.1 kbps) for the pooled form.
-Splitting/rejoining also produces extra keyframes. Do not infer perceptual or
-congested-network parity from matching dimensions and transition times.
-
-WebRTC decoding checked usability; raw libvpx with postprocessing disabled
-checked matching-payload reference correctness. The [stock VP8 decoder][vp8-decoder]
-enables history-dependent MFQE on x64, so comparing its postprocessed pixels
-after different histories produced one misleading mismatch during development.
-The corrected final full pooled run compared 288 shared payloads with zero raw
-pixel mismatches. Removing reference-continuity protection in a negative
-control produced 29 mismatches despite successful decoder calls. The guard is
-necessary, not decorative defensive code. [Structured results](./data/webrtc-encoder-pool.json)
-contain no frame payloads or private identifiers.
+WebRTC checked decode usability; raw libvpx without postprocessing checked
+reference correctness. The [stock decoder][vp8-decoder]'s x64 history-dependent
+MFQE caused an earlier misleading pixel comparison. The corrected pool compared
+288 shared payloads with zero raw mismatches; removing reference protection
+produced 29 despite successful decoding. [Structured results](./data/webrtc-encoder-pool.json)
+retain counters without payloads/private identifiers.
 
 ### Verdict And Remaining Scope
 
-- **An unchanged factory cache alone does not meet the goal.** Independent
-  encoder-side correction fragments otherwise equal nominal demands.
-- **The shared-encoder abstraction passes a narrow executable feasibility
-  check when physical correction state shares that owner.** It reuses real
-  encoding, retains stock spatial adaptation and can split/rejoin safely in
-  this VP8 case. At that point, no engine replacement had been selected or integrated.
-- The group invokes correction on actual frames, with rate-write deduplication;
-  stock VSE does so on rate/configuration/FPS updates. The algorithm is reused,
-  but this cadence change must not be described as an otherwise identical move.
-- Default VP8 trusts its rate controller, so pre-encoder media-optimization
-  dropping is inactive here. Other encoders need the corresponding drop feedback:
-  it is outside VideoEncoder's callbacks. Codec drops must not impersonate it.
-- Per-VSE encode timing still differs for a physical encode and a cache hit.
-  H264 hardware/asynchronous execution, actual resource overload, transport
-  overhead, received-source bypass and perceptual parity remain unverified.
-  These are integration gates, not reasons to disable mature adaptation.
+An unchanged factory cache was insufficient: independent correction fragmented
+equal nominal demands. Sharing a physical encoder with its correction state
+passed narrow VP8 reuse/spatial-adaptation/reference-continuity controls; no
+engine replacement was selected at this feasibility stage.
 
-The reusable boundary is an encoding instance plus its encoder-side state, not
-just `Encode(frame)`. Before product replacement, resolve those remaining
-feedback owners through upstream interfaces; do not accumulate quality formulas
-or silently reintroduce per-child encoders as the ordinary product model.
+The moved library corrector runs on actual frames with deduplicated rate writes,
+unlike VSE's rate/configuration/FPS updates; its cadence is not identical.
+Trusted VP8 disables pre-encoder media-optimization dropping here. Other codecs
+need that feedback outside VideoEncoder callbacks; codec drops cannot stand in.
+Per-VSE cache-hit timing also differs from physical work. H264/asynchronous
+hardware, real overload, transport overhead, received-source bypass and
+perceptual parity were not established by this probe. The subsequent controls
+test the complete shared-pipeline boundary rather than adding quality formulas.
 
 ## Cross-Level Reuse
 
-The shared boundary already exists in `mediaedge.Source`. A Native Receiver
-feeds received packets directly through `Source.WriteRTP` into LiveKit buffers
-and DownTrack projection. It does not call a decoder or encoder to forward an
-available representation. Local capture/derivation instead supplies complete
-codec output through `Source.WriteVideo`. The pool fits behind that second
-entry, not in front of every received packet:
+The 2.x mediaedge.Source separates received encoded RTP forwarding from complete
+locally encoded outputs. Reuse belongs behind the latter boundary:
 
 ```text
 received original -> existing per-child RTP forwarding -> healthy descendants
@@ -389,168 +338,92 @@ received original -> existing per-child RTP forwarding -> healthy descendants
                                       -> Source.WriteVideo -> child transport
 ```
 
-The factory's first 180 real VP8 output AUs were exported and replayed through
-five actual loopback Pion connections: Host to R1 to R2, with one leaf attached
-at each source. Both Native receivers had normal derivation capability and
-profiles enabled. The final trace delivered 180, 167 and 167 contiguous AUs at
-the three leaves, starting at indexes 0, 13 and 13 respectively. Every received
-AU matched an original SHA-256 hash, beginning with independent recovery; no
-derivation run was observed at either relay. Earlier runs began at the later
-recovery index 19. The prerecorded source cannot answer live PLI requests, so
-this startup interval is not a capture/join-latency measurement.
+The first 180 pool VP8 AUs traversed five real loopback Pion connections,
+Host→R1→R2 with a leaf at each source. Leaves received 180/167/167 contiguous
+byte-identical AUs, starting at indexes 0/13/13 (earlier runs 19), with independent
+recovery and no relay derivation. Prerecorded input could not answer live PLI;
+this was not capture/join latency, Browser playback, original-clock or loss
+recovery acceptance.
 
-An extension to the existing Native derivation fixture separately verified
-640x360 original forwarding alongside one 320x180 derived output, then two
-compatible low consumers sharing the same live derivation process. Retiring
-one low consumer left the other receiving new frames; retiring the last stopped
-the process. The original input stayed encoded. Target layers/budgets in this
-fixture are forced to test ownership, not prove automatic network selection.
-Both checks passed together and cleaned up. The test awaits Pion's graceful
-completion outside callbacks rather than equating concurrent `Close()` return
-with completed transport teardown. [Recorded evidence](./data/webrtc-encoder-chain.json)
-contains counters and hashes, not media or private connection identifiers.
+The Native derivation fixture separately forwarded 640x360 original alongside
+320x180 derived output, shared one process between two compatible low consumers,
+kept it after one left and stopped it after the last. Forced budgets test
+ownership, not automatic network selection. Both controls cleaned up, awaiting
+Pion graceful completion outside callbacks. [Evidence](./data/webrtc-encoder-chain.json)
+contains hashes/counters without media/private identifiers. Pool, network replay
+and existing-codec derivation were separate boundaries, not a connected VSE
+derivation integration at this stage.
 
-These measurements establish zero additional encoding on the observed healthy
-Native hops, and local sharing of a genuinely missing output. They do not yet
-connect the new VSE pool to that native derivation process: the source-pool,
-network replay and existing-codec derivation are separate verified boundaries.
-The original AUs were already decoded in the C++ probe; byte-identical contiguous
-forwarding is not another Browser playback, original-clock or loss-recovery gate.
-
-"One encoding for the whole tree" requires one active source representation
-and Native/SFU intermediate forwarding nodes. Pure Browser intermediate nodes
-still encode through their normal senders; Browser leaves add decoding only.
-If Host keeps pre-encoded lower standby outputs, those encodes must also be
-counted. The current packaged producer still constructs original plus half-size;
-neither this one-output replay nor a no-extra-hop result silently changes the
-accepted envelope policy. The pool probe also has occasional split/rejoin work,
-so its healthy case is close to one encode per frame, not an unconditional bound.
+One encoding for a tree requires one active representation and Native/SFU
+intermediates. Browser intermediates still encode; leaves only decode. Count
+lower standby encodes and split/rejoin work too: the then-packaged producer's
+original-plus-half envelope was not changed by this replay.
 
 ### Initial Integration Direction
 
-Keep the existing Pion/LiveKit transport, estimator, pacer and projection per
-edge. Codec-only `VideoStreamEncoder::OnBitrateUpdated` accepts an external
-budget without constructing a GoogCC controller, Call or PeerConnection.
-`relayPlan` already recognizes missing output from observed positive bandwidth
-and paused/lower forwarding demand. It does not need to choose pixel dimensions;
-VSE and stock `VideoAdapter` can make that decision from the actual raw input.
-A healthy original consumer needs neither VSE nor a fabricated raw frame.
-
-The owning source can reuse `OnDemandChanged` to signal work, never reenter
-transport synchronously under its locks. This callback is not currently wired
-by Native `NewEdge`; current relay demand is reevaluated at input markers.
-Budget-to-payload conversion, dynamic output association in bounded source slots,
-physical resource feedback and decoder-safe switching remain concrete integration
-work. Connecting those owners is narrower than replacing the transport engine,
-but its total change/maintenance cost is not yet measured. A low-quality received
-source still cannot manufacture missing detail; higher input or the existing
-bounded topology operation must supply it. No subtree quality minimum or new
-congestion algorithm is introduced by this direction.
+The initial direction retained Pion/LiveKit transport, estimator, pacer and
+projection, attaching codec-only VSE/VideoAdapter to the source's missing-output
+demand. The later Windows attachment and output groups record that integration.
+A low-quality input cannot manufacture detail; higher input or the existing
+bounded route operation must supply it. This introduced neither a subtree
+quality minimum nor a new congestion algorithm.
 
 ## Scheduling And Resource Follow-Up
 
-The initial probe drained each VSE queue between consumers. A later
-`--realtime` arm keeps the 30 fps source cadence without that drain and flushes
-queues only at phase boundaries. Its healthy six seconds used exactly 180
-physical encodes for two 180-frame receivers, with zero decoded-hash mismatch.
-This improves the fixture's scheduling realism, not a one-encode guarantee for
-all devices, rates or source histories.
+A realtime arm kept 30 fps without per-input queue draining: two healthy
+180-frame receivers used 180 physical encodes in six seconds with zero decoded
+hash mismatch. This improved scheduling realism, not an unconditional bound.
 
-The bounded `--latency-probe` inserts 45 ms before each physical VP8 encode at
-640x360, proportional to pixel area at lower sizes. It is a synthetic service
-delay, not CPU saturation, desktop capture or a hardware-driver test. The
-prototype's registry mutex serializes physical groups, so this arm stresses
-ownership and is not a performance comparison with independent parallel codecs.
+The latency arm added 45 ms before each 640x360 VP8 encode, proportional to pixel
+area at lower sizes. This was synthetic service delay, not CPU saturation or
+driver/capture performance; a registry mutex serialized physical groups.
 
-Under that delay, the two-VSE shared-codec form developed repeated independent
-input-drop divergence. During 30 seconds, A/B decoded 391/378 frames and produced
-146/149 keyframes; the full trace created 115 codec groups and made 218 group
-changes. Reference protection kept the decoded payloads correct, but this churn
-is not acceptable product behavior. Both returned to about 30 fps after release.
-This is a counterexample to accepting the factory-cache boundary from its
-healthy result alone, not proof that all shared encoders must behave this way.
+| Ownership under delay | Decoded frames A/B in 30s | Churn |
+| --- | --- | --- |
+| Shared codec, separate VSEs | 391 / 378 | 146 / 149 keyframes, 115 groups, 218 changes |
+| Complete shared VSE/source-adaptation/codec pipeline | 484 / 484 | No delayed-phase keyframe or split/rejoin; three normal configuration instances overall |
 
-A `--shared-pipeline` control instead gives both consumers one complete stock
-VSE/source-adaptation/encoder pipeline. It has no per-consumer encoder factory
-cache and leaves upstream overshoot/resource handling enabled. In the same
-delay trace, both decoded the same 484 frames with no new keyframe during the
-delayed phase; the whole trace created three encoder instances, only for normal
-configuration changes, and no split/rejoin cycle. Both consumers' resource
-fields in this control refer to the same pipeline, not two independent sensors.
+Reference protection kept payloads correct, but factory-cache churn was not
+acceptable. Both arms returned to ~30 fps after release; neither reduced picture
+size until afterward, then showed 480x270 before full recovery. Shared resource
+fields described one pipeline, not independent sensors. [Traces](./data/webrtc-encoder-latency.json)
+establish that ownership result, not overload or perceptual parity.
 
-Neither delayed arm delivered a smaller picture until after latency was
-released; both subsequently showed 480x270 and recovered full size. Do not claim
-complete overload adaptation or perceptual parity from these runs. The useful
-result is narrower: shared input admission and shared resource ownership avoid
-one source of duplicate-controller churn. Different-child-budget grouping,
-transport coupling and actual hardware still need evidence.
-[Structured traces](./data/webrtc-encoder-latency.json) retain those limits.
-
-The pinned library also has `EncodeUsageResource`, `OveruseFrameDetector` and
-`BroadcastResourceListener` for one resource feeding multiple send streams.
-VSE exposes `AddAdaptationResource` but no public removal counterpart; registering
-a new resource after each group change would retain old restrictions until
-Stop. A stable per-VSE forwarding resource can avoid that, but is additional
-coordination, not a reason to add it before the simpler shared-pipeline boundary
-has been evaluated. Do not disable local CPU detection unless an honest shared
-measurement replaces it, or replay a cached frame's timing as physical work.
-
-Windows H264 need not be rewritten: existing `LiveEncoder` already has bounded
-Encode, SetBitrate and retirement around MFT. A shared extraction plus an adapter
-can preserve that implementation. Truthful codec information, requested FPS,
-actual QP availability, and dynamic output dimensions remain integration work;
-the old fixed `OutputWorker` policy is not a requirement to restart WGC capture.
-The following H264 step first verified that extraction and opt-in adapter;
-the subsequent product attachment is recorded below.
+Pinned VSE AddAdaptationResource has no public removal counterpart: repeated
+registration can retain restrictions until Stop. A stable forwarding resource
+would add coordination. CPU detection must not be disabled without honest
+shared measurement, nor cache timing replayed as physical work. The following
+H264 control tested reusing the existing bounded MFT implementation.
 
 ### Hardware H264 Adapter Check
 
-The 2.x Windows `LiveEncoder` and its MFT/device helpers shared one
-[H264 implementation](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/windows/h264_encoder.cpp). Both
-the capture binary and the opt-in probe linked it; WGC, source selection, audio,
-profile application and capture retirement retain their existing owners.
-The probe adapter converts synthetic I420 to NV12 and uploads it for MFT.
-This validates the native encoder interface, not a zero-copy capture path.
+The capture executable and opt-in probe linked the same 2.x Windows
+[LiveEncoder/MFT implementation](https://github.com/TNTcraftHIM/Piik/blob/72ca6f2bc97df88e216a392721250309aa53bc39/native/capture/windows/h264_encoder.cpp).
+WGC, selection, audio, profile application and retirement kept their owners.
+Synthetic I420→NV12 CPU conversion/upload checked the interface, not zero-copy.
 
-One complete stock VSE owns rates, pre-encoder dropping, correction and resource
-feedback. The adapter reports untrusted hardware rate control and unavailable
-QP, rather than claiming the VP8-specific cache feedback applies to H264.
-It preserves callback timestamps and shares immutable encoded bytes. SetRates
-uses the configured/requested-FPS bitrate compensation in Chromium's
-[Media Foundation adapter][chromium-mf]; zero budget pauses instead of writing
-an invalid MFT bitrate. WebRTC's [codec initializer][codec-initializer] owns
-default H264 settings and the single temporal layer.
+One stock VSE owned rates, dropping, correction and resources. The adapter
+reported untrusted hardware rate control and unavailable QP, preserved callback
+timestamps and shared immutable bytes. SetRates followed Chromium's
+[configured/requested-FPS compensation][chromium-mf]; zero budget paused instead
+of writing invalid MFT bitrate. The [codec initializer][codec-initializer]
+supplied default H264/single-temporal-layer settings.
 
-The bounded 640x360@30 run produced 174 physical encodes during six seconds,
-delivering 174 byte-identical AUs to each consumer. First output took about
-275 ms. Removing B left A receiving 60 further frames over two seconds.
-One physical encoder was created and all resources retired; there was no
-split/rejoin. The pinned SDK has no H264 decoder, so its C++ decoded counters
-are explicitly zero. Two Chrome WebCodecs decoders subsequently each decoded
-the exported first 180 AUs with the expected dimensions/timestamps and no
-reported errors. The last six exported AUs followed B's retirement; this is
-bitstream validation, not a claim that both actual consumers received 180.
+At 640x360@30, six seconds produced 174 physical encodes/byte-identical AUs per
+consumer, first output ~275 ms. Removing B left A receiving 60 further frames
+over two seconds; one physical encoder retired fully. SDK H264 decode counters
+were zero (no decoder). Two Chrome WebCodecs decoders each validated the first
+180 exported AUs; the last six followed B's retirement, so actual dual-consumer
+180-frame reception is not claimed. [Results](./data/webrtc-h264-pipeline.json)
+do not establish weak-child adaptation, overload, capture throughput, transport
+overhead or App integration.
 
-[Structured results](./data/webrtc-h264-pipeline.json) retain that narrow scope.
-These initial checks do not establish independent weak-child adaptation,
-overload, actual capture throughput, transport overhead or App integration.
-
-The concrete product attachment is `OutputWorker::Run`, shared by WGC and
-encoded-input derivation. Its fixed-size/FPS/direct-rate block can become a
-complete VSE while retaining the bounded mailbox, generation fence and
-stop/join lifecycle. Bind the H264 adapter to the existing D3D device and reuse
-`FrameConverter`/owned decoded NV12, rather than introducing the probe's CPU
-round-trip into normal capture. Preserve one timestamp domain across Begin and
-AUs: rounding a 100 ns capture timestamp down to WebRTC microseconds can put
-the first AU before its Begin anchor. Dynamic output sizes must update the
-forwarding format metadata as well as `Source.SetFormat`; ordinary adaptation
-must not rebase the whole source generation.
-
-The remaining grouping boundary is not transport-independent bookkeeping yet:
-the initial `OutputPlan`/`relayPlan` collapsed demand into one lowest bitrate.
-The grouped integration below replaces that owner. The SDK's bundled libvpx
-and notices now replace the separate capture dependency. Those were concrete
-implementation costs, not solved by the healthy two-callback check above.
+Product attachment retained mailbox/generation/stop/join and existing D3D
+FrameConverter/owned decoded NV12, avoiding the probe CPU round-trip. Exact input
+timestamps matter: 100 ns→microsecond rounding can place AU before Begin.
+Adapted dimensions must update forwarding metadata without rebasing generation.
+The later output groups replaced the initial collapsed-lowest-budget demand;
+the bundled SDK/libvpx and notices replaced the separate capture dependency.
 
 ### Windows Product Attachment
 
@@ -603,119 +476,55 @@ following integration addresses that independent requirement.
 
 #### H264 Burst And Recovery
 
-A 2026-11-03 Windows 2.x control traced Native H264 scene-change delay through
-normal Host approval, real clicks on an owned window, capture and Browser
-presentation. At a 5 Mbps / 30 fps ceiling, the actual 826×612 output supplied
-six AUs of 170–181 KB, each marked `Recovery=false`.
-Matching source packets and received frame timestamps placed 154–168 ms in the
-send queue before dequeue; the segmented writer control observed no synchronous
-write over 5 ms. The five-click input-to-compositor median was 235.1 ms.
+Windows H264 scene changes expose encoded-burst and recovery tradeoffs. These
+controls retain their generation, workload and measurement boundaries:
 
-A follow-up with the original settings parsed all six 172–182 KB AUs through
-Pion's H264 reader with SEI included. Each contained one type-1 non-IDR VCL NAL;
-AUD, prefix NAL and Annex-B start codes accounted for only 19 bytes. There was
-no SEI or trailing zero padding. All 139 observed wire markers matched their
-source AU uniquely, and the six large AUs spent 155–170 ms in the send queue.
-The burst is coded picture data, not removable filler. `Recovery=false` remains
-an independent encoder flag; a type-1 NAL does not identify its slice type.
+| Control | Result and decision |
+| --- | --- |
+| 2026-11-03, 2.x normal Host approval/clicks/capture/presentation, 826×612 at 5 Mbps/30 fps | Six 170–181 KB AUs, Recovery=false; 154–168 ms admission→dequeue, no segmented synchronous write >5 ms; five-click input→compositor median 235.1 ms. |
+| Same settings, Pion H264 reader/source/wire inspection with SEI included | Six 172–182 KB AUs each had one type-1 non-IDR VCL; AUD/prefix/start codes totaled 19 bytes, no SEI or trailing padding. All 139 markers matched source AUs; queue 155–170 ms. Coded picture data is not removable filler; NAL type and Recovery flag do not identify slice type. |
+| One-frame [HRD buffer](https://learn.microsoft.com/en-us/windows/win32/directshow/avenccommonbuffersize-property), initialized/live-updated in bytes | Largest AU 38 KB, median 54.5 ms and matching sampled colours, but the existing 76-second 2 Mbps→100 kbps→2 Mbps fixture stayed 320×180/~120–124 kbps with no full-size recovery. Rejected/removed, not applied to Rust MF. |
+| 2026-11-04 Rust normal App, same owned 826×612 window/ceiling, twelve changes each | Existing MF median 274 ms paint→presentation; optional LowLatencyMode 259 ms, maxima 333/360 ms. Combined path, not stage attribution or exact AU sizes from receive counters. |
+| Same-SDK Rust WGC/encoder/transport, only LowLatencyMode changed, 8 Mbps→600 kbps→8 Mbps plus healthy connection | Without request, both weak feeds stayed Original from 3–4 s after restoration; with request one remained Limited at 20 s. Its allocation matched transport feedback, so this does not prove an MFT defect. No clear presentation benefit or restoration pass; request removed. |
 
-A candidate applied optional H264
-[HRD buffer size](https://learn.microsoft.com/en-us/windows/win32/directshow/avenccommonbuffersize-property)
-in bytes, using one frame of the current rate at initialization and live updates.
-In the same control it reduced the largest AU to 38 KB and the median to
-54.5 ms, with matching sampled colours. The existing 76-second
-`TestAdaptiveOutputFixture` then rejected it: after 2 Mbps → 100 kbps → 2 Mbps,
-output remained 320×180 at about 120–124 kbps through the end, with no restored
-full-size frames. Optional setters did not avoid the earlier recovery failure.
-The candidate was removed and was not applied to the Rust MF owner. Its latency
-gain does not justify restoring the one-frame HRD override; the existing
-encoding and pacing settings remain.
+Restored settings gave 260 ms paint→last-packet median and 4.9 ms receive→composition
+over twelve changes. A separate metadata-only build uniquely matched twelve
+presented RTP timestamps across capture/encoder/IPC/sender: MF input→output median
+1.0 ms. Eight 215–225 KB AUs took 179–265 ms from SDK admission to successful primary
+marker UDP submission at observed 5.57–7.35 Mbps. Three 9–11 KB AUs waited 223–244 ms
+behind them, then entered the SDK within 0.1 ms of marker submission. This locates
+the dominant outgoing serialization cost under unchanged workload/defaults, the
+existing whole-AU owner and SDK
+[bandwidth pacer](https://github.com/algesten/str0m/blob/3b5b7ed1ff25d9432a87336a20bc2de336896db3/src/pacer/control.rs).
 
-On 2026-11-04, normal Rust App controls used the same owned 826×612 textured
-window at a 5 Mbps / 30 fps ceiling. All twelve scene changes reached Browser
-presentation in each run. The existing MF settings produced a 274 ms median
-paint-to-presentation delay; an optional `CODECAPI_AVLowLatencyMode` request
-produced 259 ms, with maxima of 333 and 360 ms respectively. These measurements
-cover the combined capture-to-presentation path, without assigning that delay
-to one stage or treating receive-counter intervals as exact AU sizes.
+The hardware accepted LowDelayVBR after format setup: in 65 s the largest AU fell
+226→116 KB; twelve scene changes improved 259→121 ms median paint→composition.
+BWE remained comparable with a somewhat higher median. Yet its first restoration
+ended Limited because 1.24 Mbps estimate was below 2.69 Mbps original supply cost.
 
-A same-SDK WGC/encoding/transport control changed only that MF request, using
-8 Mbps → 600 kbps → 8 Mbps and an independent healthy connection. Without the
-request, both weak-connection feeds stayed on Original from about 3–4 seconds
-after restoration; with it, one remained Limited at the 20-second endpoint.
-The latter's lower allocation matched its observed transport budget, so this
-pair does not establish an MF rate-control defect. The optional request was
-removed: it supplied no clear presentation benefit and did not pass the
-restoration target.
+The existing SDK [minimum transmit demand](https://github.com/algesten/str0m/blob/3b5b7ed1ff25d9432a87336a20bc2de336896db3/src/bwe/api.rs)
+now receives selected original cost separately from desired capacity. The SDK
+fills the gap within its estimate and owns congestion suppression/probes. With
+that adapter both Original feeds first adopted 6–7 s after restoration, stayed
+from 9–10 s, and temporary encoders retired; the healthy connection stayed Original.
+This adapter is independent of the hardware rate mode.
 
-With the restored settings, a normal App's twelve scene changes had a 260 ms
-median paint-to-last-packet delay and 4.9 ms from reception to composition.
-A separate metadata-only Native build uniquely matched twelve presented RTP
-timestamps through the same capture, encoder, IPC and sender. MF input-to-output
-took a median 1.0 ms; the dominant cost was outgoing burst serialization.
-Eight 215–225 KB access units took 179–265 ms from SDK admission to successful
-primary-marker UDP submission, with observed connection feedback of 5.57–7.35 Mbps.
-Three 9–11 KB units instead waited 223–244 ms for the preceding large AU to drain,
-then entered the SDK within 0.1 ms of its marker submission. This follows the
-existing whole-AU admission owner and upstream's
-[bandwidth-based pacer](https://github.com/algesten/str0m/blob/3b5b7ed1ff25d9432a87336a20bc2de336896db3/src/pacer/control.rs).
-The workload, default media settings and SDK policy stayed unchanged.
+Low-start recovery rejected the VBR candidate despite its scene-change gain:
 
-The same hardware accepted `LowDelayVBR` and retained it after format setup.
-Across the 65-second control, its largest source AU fell from 226 KB to 116 KB;
-the twelve scene changes had a 121 ms median paint-to-composition delay versus
-259 ms with CBR. BWE remained in the same range, with a somewhat higher median.
-This establishes smaller encoded bursts and faster presentation for this workload.
-Its first bandwidth-restoration control still ended Limited: the 1.24 Mbps
-estimate stayed below the 2.69 Mbps original supply cost.
+| Same 640×360 input, 100 kbps→2 Mbps live update | Observed result |
+| --- | --- |
+| LowDelayVBR initialized 2 Mbps | Returned ~2 Mbps, but low-budget QP 17 with frame dropping did not establish dynamic quality control. |
+| LowDelayVBR initialized 100 kbps | Stayed ~207 kbps; both controls retained MFT and decoded all AUs. Pinned H264 parser restored-window QP medians 18/high-start versus 50/low-start. Separate 2.x VSE received restored allocation/valid QP yet retained ~51/320×180. |
+| CBR, changing only rate mode in low-start control | ~2.07 Mbps/30 fps, QP median 17, all 341 AUs decoded. Mean readback alone was not proof; unchanged 1.728 Mbps Max did not explain VBR. Retain CBR and SDK demand adapter; remove LowDelayVBR. |
+| PeakConstrainedVBR with Chromium [paired Mean/Max updates](https://chromium.googlesource.com/chromium/src/+/cf3aaf4828707a1c8cc3c6e8f6df91d37bea418b/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc#1106) | Rust setter reported success, Max stayed initial 100 kbps while Mean read 2 Mbps; ~208 kbps/QP 50, all 342 AUs decoded. Rejected. |
 
-Piik now passes selected original supply cost to the existing SDK
-[`minimum` transmit demand](https://github.com/algesten/str0m/blob/3b5b7ed1ff25d9432a87336a20bc2de336896db3/src/bwe/api.rs),
-separately from configured desired capacity. The SDK fills the media gap within
-its estimate and owns congestion suppression and probing. With that adapter,
-the same control first adopted both Original feeds 6–7 seconds after bandwidth
-restoration and kept them from 9–10 seconds onward. Temporary encoders retired;
-the healthy connection kept both Original feeds throughout restoration. This
-SDK demand input remains independent of the hardware rate-control mode.
-
-Low-rate startup rejected the low-delay VBR candidate. Two fixed-size controls
-used the same 640×360 input and live 100 kbps → 2 Mbps update. With a 2 Mbps
-initialization, Mode4 returned to about 2 Mbps; initialized at 100 kbps, it stayed
-near 207 kbps after the same update. Both kept their MFT and decoded every AU.
-Offline parsing with the pinned WebRTC H264 parser found a restored-window QP
-median of 18 versus 50. Even the high-start control's low-budget phase retained
-QP 17 while dropping frames, so its payload-rate recovery did not establish
-dynamic hardware quality control. The separate 2.x VSE control also received
-the restored allocation and valid QP, but retained QP near 51 and 320×180 output.
-
-Changing only the low-start control's rate mode to CBR restored about 2.07 Mbps
-at 30 fps, with QP median 17 and all 341 AUs decoded. Mean-property readback
-alone was insufficient evidence; the unchanged 1.728 Mbps Max-property readback
-also did not explain the Mode4 result. Windows therefore retains one CBR path
-and the existing SDK demand adapter. The low-delay VBR candidate was removed;
-its measured scene-change benefit does not meet the live-quality contract.
-
-A `PeakConstrainedVBR` control followed Chromium's
-[paired Mean/Max updates](https://chromium.googlesource.com/chromium/src/+/cf3aaf4828707a1c8cc3c6e8f6df91d37bea418b/media/gpu/windows/media_foundation_video_encode_accelerator_win.cc#1106),
-using the same budget for both properties. On this MFT, the Rust binding reported
-success for the live update, but Max remained at its initial 100 kbps while Mean
-read back 2 Mbps. Output stayed near 208 kbps with QP 50; all 342 AUs decoded.
-This candidate also failed the low-start recovery contract and was not retained.
-
-The 2026-11-05 API review confirmed that Microsoft's
-[coded access-unit size property](https://github.com/MicrosoftDocs/win32/blob/docs/desktop-src/codecapi/avencvideocodedvideoaccessunitsize-property.md)
-applies only to VBR. The pinned SDK's
-[pacing factor](https://github.com/algesten/str0m/blob/3b5b7ed1ff25d9432a87336a20bc2de336896db3/src/pacer/control.rs)
-is internal SDK policy. CBR retains the existing encoder and SDK demand adapter.
-
-The later source-cadence correction changes MF bitrate compensation only when
-configured and observed FPS differ. It does not reduce the original 30-FPS
-scene-change AU's coded picture data. The shared QP policy adapts subsequent
-inputs, not the size of an already encoded first scene frame. The current
-Microsoft properties, Chromium hardware-CBR path and FFmpeg MF options provide
-no additional small burst-control setting that meets both quality and recovery
-requirements. Keep this as an encoder improvement boundary rather than repeat
-the rejected buffer, VBR or latency controls.
+The 2026-11-05 API review found Microsoft's [coded AU size](https://github.com/MicrosoftDocs/win32/blob/docs/desktop-src/codecapi/avencvideocodedvideoaccessunitsize-property.md)
+is VBR-only; the pinned [pacing factor](https://github.com/algesten/str0m/blob/3b5b7ed1ff25d9432a87336a20bc2de336896db3/src/pacer/control.rs)
+is internal SDK policy. Later MF FPS compensation changes only configured versus
+observed cadence; it cannot shrink the original 30-FPS first scene AU. QP adapts
+subsequent input, not encoded bytes. Reviewed Microsoft/Chromium/FFmpeg options
+offer no additional small control meeting quality and recovery together. Keep
+the improvement boundary open rather than repeat rejected HRD/VBR/latency modes.
 
 ### Budget Restoration
 
@@ -909,32 +718,21 @@ CPU controller.
 
 ## Initial Replacement And Preservation Map
 
-| Owner at the initial review | Planned treatment |
-| --- | --- |
-| Go room/controller, embedded STUN, SFU service lifecycle | Preserve. A codec experiment does not alter authority, NAT policy or single-operation routing. |
-| LiveKit forwarding/BWE/projection and Pion transport | Keep for existing encoded forwarding. Replace a Native endpoint owner only if the new library actually assumes that responsibility; never run two controllers on one edge. |
-| Native output construction, `Source.BeginFrame`, codec workers | Review together against the replacement's capabilities. Remove superseded activation, rate and switching policy in the same integration, not through a permanent legacy path. |
-| Native profile handoff, source clock, bounded queues and retirement | Preserve their verified behavior even if their implementation moves. Do not lose the profile-install acknowledgement or reintroduce double FPS limiting. |
-| App sessions, Global Link, UI, diagnostics and packaging | Outside an encoder-policy replacement. Preserve the separately useful fixes/enhancements recorded in TODO and Git. |
-
-An engine migration must also retain direct Native SFU publication, independent
-Native room sessions, native ICE improvements and mixed Browser/App relay.
-Changing transport libraries does not automatically preserve these APIs. No
-unrelated page rewrite or platform-adapter deletion is justified by this review.
+The initial encoder replacement preserved room authority, STUN/SFU lifecycle,
+single-operation routing, forwarding transport, profile acknowledgement, source
+clocks, bounded queues and joined retirement. It did not authorize unrelated
+App/UI/packaging changes, double FPS limiting or parallel controllers. Direct
+Native SFU publication, independent Native sessions, ICE improvements and mixed
+Browser/App relay remained integration requirements, not automatic SDK features.
 
 ## Initial Integration Gate Record
 
-The September 8 review required a complete shared encoding pipeline after the
-per-sender cache failed the delayed-codec control. It also required received
-encoded bypass, missing-output derivation, budget conversion, safe switching
-and source retirement to retain their existing owners. The Windows product
-attachment and compatible-output sections above record the resulting integration.
-
-That initial feasibility pass was not release approval. Current device,
-overload, perceptual-quality and public-network limits remain owned by
-[verification status](../verification-status.md); [TODO](../todo.md) owns pending
-work. The retained experiments and negative controls explain the selected
-boundary without prescribing another completed migration.
+The September 8 delayed-codec result selected a complete shared pipeline over a
+per-sender cache. Windows attachment and compatible groups record the later
+integration, including encoded bypass, derivation, budgets, safe switching and
+retirement. This was not release approval. Current device, overload, perceptual
+and public-network limits belong to [verification status](../verification-status.md);
+[TODO](../todo.md) owns unfinished work.
 
 [chromium-deps]: https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.82/DEPS
 [chromium-hint]: https://chromium.googlesource.com/chromium/src/+/refs/tags/152.0.7977.82/third_party/blink/renderer/modules/peerconnection/media_stream_video_webrtc_sink.cc

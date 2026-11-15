@@ -2,11 +2,15 @@
 
 [English](./service-management.md) · 简体中文 · [文档导航](../guide/README.zh-CN.md)
 
+**本页适用于已发布的 2.x Server。** 内部 3.0 使用
+[Rust Server 启动与部署说明](../../prototype/channel-server/README.md#run)。
+旧版完整说明保留在[固定的 2.x 版本](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/operations/service-management.zh-CN.md)。
+
 首次安装请从[部署指南](./self-hosting.zh-CN.md)开始。本页介绍 Linux 常驻服务与容器维护。
 
 ## systemd
 
-[服务模板](../../deploy/systemd/piik.service.example)使用 `piik` 用户运行，
+[服务模板](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/deploy/systemd/piik.service.example)使用 `piik` 用户运行，
 读取 `/etc/piik/piik.env`，启动 `/opt/piik/current/piik-server`。
 请创建服务账号，将解压后的发布产物放在该路径，或让 `current` 指向对应发布目录。
 将配置复制到 `/etc/piik/piik.env`，并设置 `ROOM_DATABASE_PATH=/var/lib/piik/rooms.sqlite`；
@@ -22,7 +26,7 @@ sudo systemctl status piik
 
 HTTPS 代理与 Piik 在同一主机时，让 HTTP 继续绑定回环地址。
 STUN 和可选的 SFU 使用各自的公网 UDP 监听器。已有 nginx 时，可修改
-[代理示例](../../deploy/nginx/piik.conf.example)中的域名与证书路径后使用。
+[代理示例](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/deploy/nginx/piik.conf.example)中的域名与证书路径后使用。
 
 ## 容器
 
@@ -32,18 +36,18 @@ Docker 会按主机架构选择 **linux/amd64** 或 **linux/arm64**。
 在 `.env` 中设置 `PIIK_IMAGE` 可固定版本或镜像摘要。
 更新需要手动执行；仅拉取镜像不会替换正在运行的容器。
 
-[运行时 Dockerfile](../../deploy/container/Dockerfile)封装已验证的 Server 压缩包，
+[运行时 Dockerfile](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/deploy/container/Dockerfile)封装已验证的 Server 压缩包，
 包括网页界面、许可证声明和 `REVISION`。固定版本的
 [Distroless 非 root 基础镜像](https://github.com/GoogleContainerTools/distroless)
 包含 CA 证书，没有 shell 或包管理器。镜像的构建、检查和发布由
 [发布流程](../standards/versioning.md#container-distribution)管理。
 
-使用既有的[生产配置](../standards/configuration.md)。容器内保留 `LISTEN_HOST=0.0.0.0`，
+使用既有的[生产配置](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/standards/configuration.md)。容器内保留 `LISTEN_HOST=0.0.0.0`，
 并继续使用主机已有的 HTTPS/WebSocket 代理。使用 Docker 端口映射且启用 SFU 时，
 将 `SFU_PUBLIC_IP` 设为外部可达的服务器 IPv4 地址；容器私网候选无法从互联网访问。
 公布的 STUN 域名必须解析到服务器公网地址，UDP 必须能直接到达容器。
 
-[Compose 文件](../../deploy/container/compose.yaml)将 HTTP 绑定到主机回环地址，
+[Compose 文件](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/deploy/container/compose.yaml)将 HTTP 绑定到主机回环地址，
 公布标准 UDP 端口，并启用自动重启。公布端口不会开启对应服务，可选监听器由 `.env` 控制。
 修改监听端口时，同时修改应用配置和端口映射。
 请使用主机上的代理，或明确调整代理容器的网络配置；代理容器自己的 `127.0.0.1`
@@ -52,7 +56,7 @@ Docker 会按主机架构选择 **linux/amd64** 或 **linux/arm64**。
 镜像中的 `/home/nonroot` 属于 UID/GID `65532:65532`，权限为 `0700`。
 新的命名数据卷继承该目录；已有数据卷或绑定挂载需要事先允许该身份写入。
 替换容器时保留这个数据卷。设置 `ROOM_DATABASE_PATH=:memory:` 可让房间权威状态只保存在内存中。
-诊断保持手动开启，使用 `/home/nonroot/logs`；[导出与保留](../standards/configuration.md#diagnostics)
+诊断保持手动开启，使用 `/home/nonroot/logs`；[导出与保留](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/standards/configuration.md#diagnostics)
 由运维人员负责。不要将应用文件挂载为可写。
 启用诊断后，`docker compose kill --signal=SIGUSR1 piik` 会请求本地导出，不会停止容器；
 ZIP 保存在挂载的日志目录中。

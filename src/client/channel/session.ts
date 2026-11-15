@@ -2003,32 +2003,32 @@ export class ChannelSession {
     return player;
   }
   watchEmbed = (roomId: string): WatchMedia | undefined => this.sourceSelections.get(roomId)?.embed;
-  prepareWatchEmbed = (roomId: string, rawURL: string): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  prepareWatchEmbed = (roomId: string, rawURL: string, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     if (!canUseYouTubePlayer()) throw new Error("watch_media_unsupported");
     const id = youtubeVideoId(rawURL);
     if (!id) throw new Error("invalid_watch_url");
     const selection = this.selectSource(roomId);
     selection.embed = new YouTubeMedia(id);
     this.patch({});
-  });
-  confirmWatchEmbed = (roomId: string): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  }, reportError);
+  confirmWatchEmbed = (roomId: string, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const selection = this.sourceSelections.get(roomId), media = selection?.embed;
     if (!selection || !media) throw new Error("watch_source_unavailable");
     await media.ready(selection.controller.signal);
     await media.patch({ paused: true });
     await this.commitWatch(roomId, { kind: "website", url: media.sourceURL }, media, selection);
-  });
-  startWatch = (roomId: string, rawURL: string): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  }, reportError);
+  startWatch = (roomId: string, rawURL: string, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const source = this.watchSource(rawURL);
     const selection = this.selectSource(roomId);
     await this.commitWatch(roomId, source, new HTMLVideoMedia(source.url), selection);
-  });
+  }, reportError);
   private watchSource(rawURL: string): Extract<WatchSource, { kind: "media" }> {
     try { return watchSourceSchema.parse({ kind: "media", url: new URL(rawURL).href }) as Extract<WatchSource, { kind: "media" }>; }
     catch { throw new Error("invalid_watch_url"); }
   }
-  prepareWatchPage = (roomId: string, rawURL: string, activityId?: string): Promise<void> => {
-    if (activityId) return this.prepareWatchingPage(activityId);
+  prepareWatchPage = (roomId: string, rawURL: string, activityId?: string, reportError = true): Promise<void> => {
+    if (activityId) return this.prepareWatchingPage(activityId, reportError);
     return this.action(`screen:${roomId}`, async () => {
       const url = this.watchSource(rawURL).url;
       const selection = this.selectSource(roomId);
@@ -2046,7 +2046,7 @@ export class ChannelSession {
         selection.controller.signal.addEventListener("abort", unlisten, { once: true });
         this.patch({});
       } catch (error) { this.finishSourceSelection(roomId, selection); throw error; }
-    });
+    }, reportError);
   };
   watchPage = (roomId: string, activityId?: string): ReturnType<ChannelActions["watchPage"]> => {
     if (activityId) {
@@ -2056,8 +2056,8 @@ export class ChannelSession {
     const selection = this.sourceSelections.get(roomId), page = selection?.page;
     return page ? { url: page.url, candidates: page.candidates, watchSources: selection?.watchSources } : undefined;
   };
-  selectWatchPage = async (roomId: string, candidateId: string, activityId?: string): Promise<boolean> => {
-    if (activityId) { await this.selectWatchingPage(activityId, candidateId); return true; }
+  selectWatchPage = async (roomId: string, candidateId: string, activityId?: string, reportError = true): Promise<boolean> => {
+    if (activityId) { await this.selectWatchingPage(activityId, candidateId, reportError); return true; }
     return this.action(`screen:${roomId}`, async () => {
       const selection = this.sourceSelections.get(roomId), page = selection?.page;
       const candidate = page?.candidates.find(value => value.id === candidateId);
@@ -2084,9 +2084,9 @@ export class ChannelSession {
       const source: WatchSource = { kind: "website", url: page.url, ...(selected.url ? { mediaUrl: selected.url } : {}) };
       await this.commitWatch(roomId, source, new AppPageMedia(page), selection);
       return true;
-    });
+    }, reportError);
   };
-  selectWatchBrowserSource = (roomId: string, choiceId: string | null): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  selectWatchBrowserSource = (roomId: string, choiceId: string | null, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const selection = this.sourceSelections.get(roomId), page = selection?.page;
     const watchSources = selection?.watchSources;
     if (!selection || !page || !watchSources || !page.candidates.some(value => value.id === watchSources.candidateId)) throw new Error("watch_page_unavailable");
@@ -2096,8 +2096,8 @@ export class ChannelSession {
     selection.discovery?.abort();
     const source: WatchSource = { kind: "website", url: page.url, ...(choice ? { mediaUrl: choice.displayURL } : {}) };
     await this.commitWatch(roomId, source, new AppPageMedia(page), selection);
-  });
-  selectWatchIndexedSource = (roomId: string, videoId: string, audioId?: string): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  }, reportError);
+  selectWatchIndexedSource = (roomId: string, videoId: string, audioId?: string, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const selection = this.sourceSelections.get(roomId), page = selection?.page;
     const sources = selection?.watchSources;
     if (!selection || !page || !sources || !page.candidates.some(value => value.id === sources.candidateId)) throw new Error("watch_page_unavailable");
@@ -2108,7 +2108,7 @@ export class ChannelSession {
     const byteSource = await page.prepareIndexedMedia(indexedMediaSelection(video, audio), selection.controller.signal);
     selection.controller.signal.throwIfAborted();
     await this.commitWatch(roomId, { kind: "website", url: page.url }, new AppPageMedia(page), selection, byteSource);
-  });
+  }, reportError);
   private discoverWatchSources(page: AppPage, signal: AbortSignal, publish: (sources: WatchMediaSources) => void): Promise<WatchMediaSources> {
     let running: Promise<WatchMediaSources> | null = null, dirty = false;
     let current: WatchMediaSources = { choices: [], indexed: [] };
@@ -2207,7 +2207,7 @@ export class ChannelSession {
       throw error;
     }
   });
-  private prepareWatchingPage(id: string): Promise<void> {
+  private prepareWatchingPage(id: string, reportError: boolean): Promise<void> {
     return this.action(`watch-video:${id}`, async () => {
       const activity = this.view.state?.watchActivities.find(value => value.id === id);
       if (!activity || activity.source.kind !== "website" || activity.sessionId === this.view.sessionId) throw new Error("watch_unavailable");
@@ -2226,9 +2226,9 @@ export class ChannelSession {
         if (this.watchPlayers.get(id) !== player) throw new DOMException("Cancelled", "AbortError");
         this.patch({});
       } catch (error) { if (this.watchPlayers.get(id) === player) this.retireWatchPlayer(id); this.patch({}); throw error; }
-    });
+    }, reportError);
   }
-  private selectWatchingPage(id: string, candidateId: string): Promise<void> {
+  private selectWatchingPage(id: string, candidateId: string, reportError: boolean): Promise<void> {
     return this.action(`watch-video:${id}`, async () => {
       const player = this.watchPlayers.get(id), media = player?.media;
       const page = media instanceof AppPageMedia ? media.page : null;
@@ -2238,7 +2238,7 @@ export class ChannelSession {
       if (this.watchPlayers.get(id) !== player) throw new DOMException("Cancelled", "AbortError");
       await this.sampleWatchClock(id, player);
       this.browseRooms();
-    });
+    }, reportError);
   }
   private async commitWatch(roomId: string, source: WatchSource, media: WatchMedia, selection: SourceSelection, byteSource?: WatchByteSource): Promise<void> {
     const current = () => this.sourceSelections.get(roomId) === selection;

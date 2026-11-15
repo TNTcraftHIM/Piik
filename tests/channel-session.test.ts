@@ -8317,7 +8317,7 @@ async function websiteSourceSelection(discover: () => Promise<unknown>) {
   return { ...setupResult, page, candidateId, commit, request, dispose };
 }
 
-test('a rejected webpage candidate keeps the live page for another selection and Cancel', async () => {
+test.each([true, false])('a rejected webpage candidate keeps the live page with global reporting %s', async reportError => {
   const { session, page, candidateId, commit, dispose, request } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
   const secondId = crypto.randomUUID();
   page.receive({ type: 'page_candidates', pageId: page.id, url: page.url, candidates: [
@@ -8326,9 +8326,9 @@ test('a rejected webpage candidate keeps the live page for another selection and
   ] });
   const select = vi.spyOn(page, 'select').mockRejectedValueOnce(new Error('page_candidate_unavailable'));
   try {
-    await expect(session.selectWatchPage('first', candidateId)).rejects.toThrow('page_candidate_unavailable');
+    await expect(session.selectWatchPage('first', candidateId, undefined, reportError ? undefined : false)).rejects.toThrow('page_candidate_unavailable');
     expect(session.watchPage('first')?.candidates).toHaveLength(2);
-    expect(session.getSnapshot().error).toBe('page_candidate_unavailable');
+    expect(session.getSnapshot().error).toBe(reportError ? 'page_candidate_unavailable' : null);
     expect(dispose).not.toHaveBeenCalled();
     expect(commit).not.toHaveBeenCalled();
     expect(request.mock.calls.some(([command]) => command.type === 'page_media_sources')).toBe(false);

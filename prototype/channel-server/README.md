@@ -38,6 +38,44 @@ explains saved data and backup scope.
 
 ## Run
 
+The Rust Server reads process environment variables; it does not load `.env`
+automatically. Compose and systemd load their environment files for it. The
+[environment template](../../deploy/container/.env.example) owns the deployment
+example. The [published 2.x guide](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/operations/self-hosting.md)
+describes a different runtime and its SFU controls.
+
+### Packaged Server
+
+Use a matching 3.0 Server package and keep its bundled `web/` directory beside
+the executable. For a new site, replace the placeholder below with a private
+random owner seed and save it securely. On Linux, run from the extracted directory:
+
+```sh
+export PIIK_CHANNEL_OWNER_KEY='<private owner bootstrap seed>'
+./piik-server
+```
+
+On Windows, use PowerShell:
+
+```powershell
+$env:PIIK_CHANNEL_OWNER_KEY = "<private owner bootstrap seed>"
+./piik-server.exe
+```
+
+Open the address printed at startup. With no port or origin override, it is
+`http://127.0.0.1:8791`. The Server stores site and room data in `data/` beside
+the executable unless `PIIK_CHANNEL_DATA_DIR` selects another directory. An
+existing site's database owns its saved key; changing the seed does not rotate it.
+
+The first startup creates Living room, Studio and Quiet corner under the Server's
+Native endpoint. Enter one of those rooms and share/watch normally to use its
+server media path. A room created in the page uses the current Browser or linked
+App instead. These rooms can forward media through the Server while routing
+remains automatic; 3.0 has no SFU-only switch or general server fallback for
+Browser/App-hosted rooms.
+
+### Development Server
+
 Use Rust 1.91 or newer, the repository's Node/npm environment and installed npm
 dependencies. Build the [standalone frontend](../channel-browser/README.md)
 first, and rebuild it after changing the shared Rust core. From the repository
@@ -106,6 +144,61 @@ the service's own origin. Rust serves the frontend and existing WebSocket on
 that listener. `/` and `/__channel-preview` open the frontend; missing assets
 and unknown API paths return 404. Vite is only the development server; the
 deployed frontend requires no Node runtime.
+
+### Public origin and UDP
+
+Use the [Compose file](../../deploy/container/compose.yaml) and
+[environment template](../../deploy/container/.env.example) from the same 3.0
+source revision as the runtime. Copy the template to `deploy/container/.env`,
+set your public HTTPS origin and private owner seed, and set `PIIK_IMAGE` to the
+matching 3.0 image tag or digest. Use the packaged Server when that candidate has
+no matching image; do not assume `latest` selects the internal 3.0 build.
+From the repository root, start the configured image with:
+
+```sh
+docker compose --env-file deploy/container/.env -f deploy/container/compose.yaml up -d
+```
+
+For a Linux service, create the `piik` service account and install the executable
+with its matching `web/` under `/opt/piik/current`.
+The [systemd template](../../deploy/systemd/piik.service.example)
+reads `/etc/piik/piik.env`, runs `/opt/piik/current/piik-server` on HTTP 8787 and
+stores data under `/var/lib/piik`. Put the matching environment values in that
+file, install the unit as `/etc/systemd/system/piik.service`, then run
+`sudo systemctl daemon-reload` and `sudo systemctl enable --now piik`.
+
+Set `PIIK_CHANNEL_WEB_ORIGIN` to the exact HTTPS origin users will open.
+Terminate HTTPS at your reverse proxy and forward HTTP/WebSocket traffic to the
+Server; the [nginx example](../../deploy/nginx/piik.conf.example) uses
+`127.0.0.1:8787`. Compose and systemd select that port. When launching the binary
+directly, set `PIIK_CHANNEL_PORT=8787` to match the example, or change the proxy
+upstream to the standalone port. Keep the proxy-facing HTTP listener private.
+
+Allow the fixed `PIIK_CHANNEL_UDP_PORT` through the host firewall and cloud
+security group. It defaults to the actual HTTP port; the deployment template
+selects 8787. Media UDP goes directly to this listener, not through the HTTP
+proxy. The Server uses the configured public STUN services for discovery; this
+setup does not require hosting the old 2.x STUN listeners on UDP 3478/3479/3480.
+
+When NAT or a UDP tunnel changes the reachable address, set
+`PIIK_CHANNEL_UDP_PUBLIC_ADDRESS` to its public IP and port, for example
+`203.0.113.10:8787` with your own address, and forward that public UDP endpoint to
+the bound media port. This value accepts an IP:port, not a hostname. The local
+bind remains separate: an explicit loopback tunnel backend can use
+`PIIK_CHANNEL_UDP_BIND_ADDRESS=127.0.0.1`. The normal listener binds both IP
+families; set an explicit bind address when only one family should be used.
+
+For LAN Browser capture, use an HTTPS reverse proxy with a certificate trusted
+by the devices, or use the App's Local-network HTTPS entry. The Rust Server does
+not implement the 2.x `TLS_SELF_SIGNED` option. Its standalone loopback HTTP
+entry is suitable for a local trial.
+
+Check `/healthz` locally and through the public origin; the current response is
+`piik-channel-prototype`. Then verify picture and sound between two devices in a
+Server-hosted room. A successful webpage or health response does not prove the
+UDP media path. Preserve the complete data directory and replace the executable
+and its matching Web bundle together when updating;
+[deployment and recovery](../../docs/deployment.md) owns the release procedure.
 
 ## Local App Link
 

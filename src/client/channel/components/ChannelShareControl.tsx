@@ -310,7 +310,7 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
   const committing = !activityId && channel.sourceSelectionCommitting(roomId);
   const busy = committing || channel.pending.has(activityId ? `watch-video:${activityId}` : `screen:${roomId}`);
   useEffect(() => {
-    if (activityId) void run(() => channel.prepareWatchPage(roomId, initialURL, activityId));
+    if (activityId) void run(() => channel.prepareWatchPage(roomId, initialURL, activityId, false));
   }, [roomId, activityId]);
   const close = () => {
     if (!activityId && channel.sourceSelectionCommitting(roomId)) return;
@@ -320,9 +320,9 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
   };
   return <ChannelSettingsDialog compact title={t("watch.start")} error={error ?? pageSources?.error ?? null} onClose={close} closeDisabled={committing}>
     {embed ? <WatchEmbedPreview media={embed} busy={busy}
-      onConfirm={() => { void run(() => channel.confirmWatchEmbed(roomId), onClose); }} onCancel={close}
+      onConfirm={() => { void run(() => channel.confirmWatchEmbed(roomId, false), onClose); }} onCancel={close}
       onOriginalPage={channel.pagePlayer ? () => { void run(async () => {
-        await channel.cancelScreenSelection(roomId); await channel.prepareWatchPage(roomId, url.trim());
+        await channel.cancelScreenSelection(roomId); await channel.prepareWatchPage(roomId, url.trim(), undefined, false);
       }); } : undefined} /> : page ? <div className="c3-settings-panels c3-external-input">
       {pageSources ? <><h3 ref={pageSourcesHeading} tabIndex={-1}>{t(pageSources.indexed.length ? "watch.forward.title" : "watch.browserSource.title")}</h3>{pageSources.choices.length > 0 && <p>{t("watch.browserSource.help")}</p>}</>
         : <p>{t("watch.chooseVideo")}</p>}
@@ -337,24 +337,24 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
             const source = new URL(choice.displayURL), name = choice.name || source.host;
             return <CaptureSourceCard key={choice.id} title={name} description={source.host + source.pathname}
               action={t("watch.browserSource.selectNamed", { name })} icon="play" hint="hint-source-picker" disabled={busy}
-              onSelect={() => { void run(() => channel.selectWatchBrowserSource(roomId, choice.id), onClose); }} />;
+              onSelect={() => { void run(() => channel.selectWatchBrowserSource(roomId, choice.id, false), onClose); }} />;
           })}
         </div>}
         {pageSources.indexed.length > 0 && <WatchIndexedTrackPicker choices={pageSources.indexed} busy={busy}
-          onConfirm={(videoId, audioId) => { void run(() => channel.selectWatchIndexedSource(roomId, videoId, audioId), onClose); }} />}
+          onConfirm={(videoId, audioId) => { void run(() => channel.selectWatchIndexedSource(roomId, videoId, audioId, false), onClose); }} />}
         <Btn icon="globe" quiet title="watch.browserSource.skip" cap="watch.browserSource.skip" disabled={busy}
-          onClick={() => { void run(() => channel.selectWatchBrowserSource(roomId, null), onClose); }} />
+          onClick={() => { void run(() => channel.selectWatchBrowserSource(roomId, null, false), onClose); }} />
       </> : page.candidates.length ? <div className="lr-source-picker-list">
         {page.candidates.map((candidate, index) => <CaptureSourceCard key={candidate.id} title={candidate.title || t("watch.videoNumber", { number: String(index + 1) })}
           action={t("watch.selectVideoNamed", { name: candidate.title || String(index + 1) })} icon="play" hint="hint-source-picker" disabled={busy}
-          onSelect={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, activityId), committed => { if (committed) onClose(); }); }} />)}
+          onSelect={() => { void run(() => channel.selectWatchPage(roomId, candidate.id, activityId, false), committed => { if (committed) onClose(); }); }} />)}
       </div> : <div className="lr-source-picker-status" role="status"><BrandLoader /><span>{t("watch.waitForVideo")}</span></div>}
       <Btn icon="x" quiet title="common.cancel" cap="common.cancel" disabled={committing} onClick={close} />
     </div> : activityId ? <div className="c3-settings-panels c3-external-input"><p role="status">{busy ? t("watch.openingPage") : t("watch.pageUnavailable")}</p>
       {busy && <BrandLoader />}<Btn icon="x" quiet title="common.cancel" cap="common.cancel" onClick={close} /></div> : <form className="c3-settings-panels c3-external-input" onSubmit={event => {
       event.preventDefault();
-      if (!busy) void run(() => youtube ? channel.prepareWatchEmbed(roomId, url.trim())
-        : channel.pagePlayer ? channel.prepareWatchPage(roomId, url.trim()) : channel.startWatch(roomId, url.trim()), youtube || channel.pagePlayer ? undefined : onClose);
+      if (!busy) void run(() => youtube ? channel.prepareWatchEmbed(roomId, url.trim(), false)
+        : channel.pagePlayer ? channel.prepareWatchPage(roomId, url.trim(), undefined, false) : channel.startWatch(roomId, url.trim(), false), youtube || channel.pagePlayer ? undefined : onClose);
     }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}>
       <p>{t(youtube ? "watch.embedHelp" : channel.pagePlayer ? "watch.pageHelp" : "watch.urlHelp")}</p>
       <label className="c3-external-input-field">{t("watch.url")}<span className="lr-input">
@@ -364,7 +364,7 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
       {!channel.pagePlayer && !youtube && <p>{t("watch.connectApp")}</p>}
       <div className="c3-share-title-actions"><Btn type="submit" icon={youtube ? "play" : channel.pagePlayer ? "globe" : "play"} tone="primary" title={youtube ? "watch.start" : channel.pagePlayer ? "watch.openPage" : "watch.directStart"} cap={youtube ? "watch.start" : channel.pagePlayer ? "watch.openPage" : "watch.directStart"} busy={busy} disabled={busy || !url.trim()} />
         {channel.pagePlayer && !youtube && <Btn icon="play" quiet title="watch.directStart" cap="watch.directStart" disabled={busy || !url.trim()}
-          onClick={() => { void run(() => channel.startWatch(roomId, url.trim()), onClose); }} />}
+          onClick={() => { void run(() => channel.startWatch(roomId, url.trim(), false), onClose); }} />}
         <Btn icon="x" quiet title="common.cancel" cap="common.cancel" disabled={committing} onClick={close} /></div>
     </form>}
   </ChannelSettingsDialog>;

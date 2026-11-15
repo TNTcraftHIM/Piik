@@ -2,6 +2,10 @@
 
 [English](./self-hosting.md) · 简体中文 · [文档导航](../guide/README.zh-CN.md)
 
+**本页适用于已发布的 2.x Server。** 内部 3.0 使用
+[Rust Server 启动与部署说明](../../prototype/channel-server/README.md#run)，配置与 SFU 支持范围不同。
+旧版完整说明保留在[固定的 2.x 版本](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/operations/self-hosting.zh-CN.md)。
+
 Piik Server 将网页、房间管理和可选的媒体转发打包在**一个服务端程序**中。
 解压后即可运行，房间数据保存在 SQLite 中。
 
@@ -40,11 +44,12 @@ Windows 解压后，在该目录打开 PowerShell，运行 `./piik-server.exe`�
 在已安装 Docker Compose v2 的 Linux x64 或 ARM64 服务器上，将两个部署文件下载到空目录中：
 
 ```sh
-curl -fsSLo compose.yaml https://raw.githubusercontent.com/TNTcraftHIM/Piik/main/deploy/container/compose.yaml
-curl -fsSLo .env https://raw.githubusercontent.com/TNTcraftHIM/Piik/main/deploy/container/.env.example
+curl -fsSLo compose.yaml https://raw.githubusercontent.com/TNTcraftHIM/Piik/eef70ffda0ffddce6aec109521ab70871e5b7c2f/deploy/container/compose.yaml
+curl -fsSLo .env https://raw.githubusercontent.com/TNTcraftHIM/Piik/eef70ffda0ffddce6aec109521ab70871e5b7c2f/deploy/container/.env.example
 ```
 
-将 `.env` 中的 `share.example.com` 换成自己的域名，然后启动：
+将 `.env` 中的 `share.example.com` 换成自己的域名，并将 `PIIK_IMAGE` 固定到所用
+2.x 发布版本的标签或摘要，然后启动：
 
 ```sh
 docker compose run --rm piik --check-config
@@ -128,12 +133,12 @@ Windows 请在 PowerShell 中改用 `./piik-server.exe --check-config` 和
 
 `MAX_VIEWERS_PER_ROOM` 可设置每房观众上限，不含房主，支持 `1..20`，修改后重启生效。
 人数越多，对网络和转发资源的需求也可能增加。默认值及 App 房间的区别见
-[人数限制](../standards/configuration.md#room-capacity)。
+[人数限制](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/standards/configuration.md#room-capacity)。
 
 公开站点可选设 `ROOM_EMPTY_TIMEOUT_SECONDS=3600`，重启后，无人在线的房间会在空置一小时后
 回收；房间号用满时，会提前回收最早创建的空房间，仍有人在线的房间不受影响。
 被回收的房间需要重新创建并发送邀请。不设置或设为 `0` 则保持默认的长期保留行为，
-详见[房间保留策略](../standards/configuration.md#room-retention)。
+详见[房间保留策略](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/standards/configuration.md#room-retention)。
 
 ### 2. 配置 HTTPS
 
@@ -149,7 +154,7 @@ share.example.com {
 重新加载 Caddy。域名解析正确且 TCP 80/443 可访问时，它会自动申请和续期证书。
 具体操作见 [Caddy 的 HTTPS 代理说明](https://caddyserver.com/docs/quick-starts/reverse-proxy#https)。
 
-nginx 可参考[配置示例](../../deploy/nginx/piik.conf.example)。如果沿用了旧示例，请将
+nginx 可参考[配置示例](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/deploy/nginx/piik.conf.example)。如果沿用了旧示例，请将
 `Permissions-Policy` 改为 `camera=(self), microphone=(self), geolocation=()`，然后重新加载 nginx。
 摄像头和麦克风的空白允许列表会阻止浏览器采集，即使用户已授权；`self` 允许本站请求访问。
 
@@ -157,7 +162,7 @@ nginx 可参考[配置示例](../../deploy/nginx/piik.conf.example)。如果沿�
 
 在服务器防火墙和云平台安全组中放行 **TCP 80/443**（HTTPS）和 **UDP 3478**（STUN）。
 TCP 8787 仅供本机反向代理访问。STUN 域名需要直接解析到服务器，不能只经过 CDN 的 HTTP 代理。
-可选服务的端口见[完整端口表](../standards/configuration.md#public-and-private-ports)。
+可选服务的端口见[完整端口表](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/standards/configuration.md#public-and-private-ports)。
 内置 SFU 的媒体流复用 `SFU_UDP_PORT` 指定的单个 UDP 端口。
 
 打开 `https://share.example.com/healthz`，应返回 `{"status":"ok"}`。
@@ -199,7 +204,7 @@ transport.tls.force = true
 allowPorts = [{ single = 8787 }, { single = 7882 }]
 ```
 
-在 Piik 所在机器，将 [frpc.toml.example](../../deploy/frp/frpc.toml.example)
+在 Piik 所在机器，将 [frpc.toml.example](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/deploy/frp/frpc.toml.example)
 复制为 `frpc.toml`，替换其中的 `relay.example.com`。
 为两端的 frp 进程注入相同、非空的私密环境变量 `FRP_TOKEN`。
 分别运行 `frps verify -c frps.toml` / `frpc verify -c frpc.toml` 检查配置，
@@ -246,4 +251,4 @@ Windows 可使用已有的服务管理工具或任务计划程序；Piik 不会�
 更新时保留 `.env` 和 `rooms.sqlite`：停止服务、备份房间数据、替换新版程序，再启动并检查健康状态和房间访问。
 涉及数据格式变化的版本，请先阅读发布说明。
 
-[全部配置与端口](../standards/configuration.md) · [维护者发版工具](../deployment.md)
+[全部配置与端口](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/standards/configuration.md) · [维护者发版工具](../deployment.md)

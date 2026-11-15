@@ -2,6 +2,11 @@
 
 English · [简体中文](./self-hosting.zh-CN.md) · [Documentation](../guide/README.md)
 
+**This page applies to published 2.x Server releases.** For the internal 3.0
+runtime, use [Rust Server startup and deployment](../../prototype/channel-server/README.md#run);
+its configuration and SFU support differ. The full older guide remains at the
+[fixed 2.x revision](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/operations/self-hosting.md).
+
 Piik Server packages the web interface, room management and optional media
 forwarding in **one server binary**. Extract and run it; room data is stored in SQLite.
 
@@ -45,11 +50,12 @@ On a Linux x64 or ARM64 server with Docker Compose v2, download the two deployme
 into an empty directory:
 
 ```sh
-curl -fsSLo compose.yaml https://raw.githubusercontent.com/TNTcraftHIM/Piik/main/deploy/container/compose.yaml
-curl -fsSLo .env https://raw.githubusercontent.com/TNTcraftHIM/Piik/main/deploy/container/.env.example
+curl -fsSLo compose.yaml https://raw.githubusercontent.com/TNTcraftHIM/Piik/eef70ffda0ffddce6aec109521ab70871e5b7c2f/deploy/container/compose.yaml
+curl -fsSLo .env https://raw.githubusercontent.com/TNTcraftHIM/Piik/eef70ffda0ffddce6aec109521ab70871e5b7c2f/deploy/container/.env.example
 ```
 
-Replace `share.example.com` in `.env` with your domain, then start Piik:
+Replace `share.example.com` in `.env` with your domain and pin `PIIK_IMAGE` to
+the tag or digest of your 2.x release, then start Piik:
 
 ```sh
 docker compose run --rm piik --check-config
@@ -141,14 +147,14 @@ cause [403 when creating a room](../guide/troubleshooting.md#room-creation-retur
 
 `MAX_VIEWERS_PER_ROOM` sets the room's Viewer limit, excluding the Host. Choose
 `1..20` and restart to apply it. More Viewers can require more network and relay
-resources. See [room capacity](../standards/configuration.md#room-capacity)
+resources. See [room capacity](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/standards/configuration.md#room-capacity)
 for defaults and the difference from App rooms.
 
 For a public site, optionally set `ROOM_EMPTY_TIMEOUT_SECONDS=3600` and restart.
 Rooms with nobody connected are reclaimed after an hour; if all room codes are
 used, the oldest empty room can be reclaimed earlier. Occupied rooms keep working.
 Reclaimed rooms need new invitations. Unset or `0` keeps the default indefinite
-retention; see [room retention](../standards/configuration.md#room-retention).
+retention; see [room retention](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/standards/configuration.md#room-retention).
 
 ### 2. Enable HTTPS
 
@@ -165,7 +171,7 @@ share.example.com {
 Reload Caddy. It obtains and renews the certificate automatically when DNS points
 to the server and TCP 80/443 are reachable. See [Caddy's HTTPS proxy guide](https://caddyserver.com/docs/quick-starts/reverse-proxy#https).
 
-For nginx, see the [configuration example](../../deploy/nginx/piik.conf.example).
+For nginx, see the [configuration example](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/deploy/nginx/piik.conf.example).
 If you copied an older example, change its `Permissions-Policy` to
 `camera=(self), microphone=(self), geolocation=()` and reload nginx. Empty
 camera/microphone allowlists prevent Browser capture even when the user grants
@@ -176,7 +182,7 @@ permission; `self` allows this site to request access.
 Allow **TCP 80/443** for HTTPS and **UDP 3478** for STUN in the server firewall
 and cloud security group. Keep TCP 8787 private. The STUN hostname must resolve
 directly to the server; a CDN HTTP proxy does not forward its UDP traffic.
-See the [complete port table](../standards/configuration.md#public-and-private-ports)
+See the [complete port table](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/standards/configuration.md#public-and-private-ports)
 for optional services. Embedded SFU media shares the single UDP port set by
 `SFU_UDP_PORT`.
 
@@ -223,7 +229,7 @@ transport.tls.force = true
 allowPorts = [{ single = 8787 }, { single = 7882 }]
 ```
 
-On the Piik machine, copy [frpc.toml.example](../../deploy/frp/frpc.toml.example)
+On the Piik machine, copy [frpc.toml.example](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/deploy/frp/frpc.toml.example)
 to `frpc.toml` and replace `relay.example.com`. Inject the same private, nonempty
 `FRP_TOKEN` into both frp process environments. Validate each file with
 `frps verify -c frps.toml` / `frpc verify -c frpc.toml`, then start each process
@@ -277,5 +283,5 @@ Keep `.env` and `rooms.sqlite` across updates. Back up room data while the serve
 stopped, replace the executable with the new release, then restart and check
 health and room access. Read release notes before an upgrade that changes data formats.
 
-[All settings and ports](../standards/configuration.md) ·
+[All settings and ports](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/standards/configuration.md) ·
 [Maintainer release tooling](../deployment.md)

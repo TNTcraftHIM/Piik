@@ -33,7 +33,7 @@ on your own server.
 
 - **Watch without installing.** Friends join by invitation in a desktop or mobile browser.
 - **Share from Piik App or an existing Piik site.** Choose a screen, window, browser tab or camera; available sources and audio depend on the platform.
-- **Direct connections first.** Media travels between participants where possible (P2P). A self-hosted server can provide automatic media forwarding (SFU) as a fallback.
+- **Direct connections first.** Media travels between participants where possible (P2P). Published 2.x servers can provide SFU fallback; [3.0 Server forwarding](./prototype/channel-server/README.md#rooms-conversation-and-media) currently serves Server-hosted rooms.
 - **Rooms you control.** Invitations, room codes and optional room passwords, for one host and up to 20 viewers.
 - **Talk and chat together.** Join room voice, send messages and reactions, or enable on-screen chat.
 - **Hand control to friends.** Share an App window or screen and approve remote control. Allow friends to play together with shared keyboard/mouse or supported gamepads; take control back at any time. [Setup guide](./docs/guide/remote-control.md).
@@ -86,27 +86,24 @@ networks, failed media connections or virtual LANs, see [network checks and conn
 
 ## Self-hosting
 
-Deploy Piik Server to run a site for your group.
+This branch develops the internal **3.0 Rust Server**. Use [its startup and
+deployment instructions](./prototype/channel-server/README.md#run) with a matching
+Server and Web package. Published 2.x users should follow the
+[2.x self-hosting guide](./docs/operations/self-hosting.md).
 
-<p><a href="./docs/operations/self-hosting.md#docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="Deploy Piik with Docker Compose"></a></p>
+<p><a href="./prototype/channel-server/README.md#public-origin-and-udp"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="Deploy the 3.0 Rust Server with Docker Compose"></a></p>
 
-Piik Server runs on Windows x64 and Linux x64/ARM64, with the web interface built in.
-Download the Server package for Linux x64 (`piik-<revision>-runtime.tar.gz`)
-or ARM64 (`piik-<revision>-linux-arm64-runtime.tar.gz`),
-extract it, and run:
+For a local 3.0 trial, keep the bundled `web/` directory beside the executable,
+set the private owner seed for a new site, then run `./piik-server`
+(`./piik-server.exe` on Windows). Open the address printed at startup; the
+standalone default is `http://127.0.0.1:8791`. The
+[packaged Server steps](./prototype/channel-server/README.md#packaged-server) show both shells.
 
-```sh
-./piik-server
-```
+The [3.0 deployment steps](./prototype/channel-server/README.md#public-origin-and-udp)
+cover HTTPS, fixed media UDP and public address mapping. Rust reads the process
+environment; it does not load `.env` automatically.
 
-Windows x64 uses `piik-<revision>-windows-amd64-runtime.zip`; extract it and run
-`./piik-server.exe` in PowerShell. The same configuration applies.
-
-Open `http://localhost:8787` to try it locally. For a public site, configure your
-domain, HTTPS reverse proxy and STUN address. Room data is stored in SQLite.
-For containers, use the [Docker Compose setup](./docs/operations/self-hosting.md#docker-compose).
-
-[**Deploy your own site →**](./docs/operations/self-hosting.md) · [Configuration](./docs/standards/configuration.md) · [Run from source](./docs/README.md#run-from-source)
+[**3.0 Server setup →**](./prototype/channel-server/README.md#run) · [Environment template](./deploy/container/.env.example) · [Run from source](./docs/README.md#run-from-source)
 
 ## Contributing
 
