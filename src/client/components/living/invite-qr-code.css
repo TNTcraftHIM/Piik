@@ -1,0 +1,5 @@
+.lr-invite-qr:is(:popover-open, .\:popover-open) { display: flex; flex-direction: column; width: min(288px, calc(100vw - 16px)); gap: 12px; }
+.lr-invite-qr header { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; }
+.lr-invite-qr header > button { margin-left: auto; }
+.lr-invite-qr > svg { display: block; flex: 0 1 auto; min-height: 0; width: 100%; height: auto; aspect-ratio: 1; }
+.lr-invite-qr > p { flex: none; margin: 0; text-align: center; font-size: 13px; line-height: 1.5; }

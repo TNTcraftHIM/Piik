@@ -2,6 +2,16 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // Community translations are data-only and type-checked against zh.
 export const en: Record<CopyKey, string> = {
+  "playback.buffering": "Playback buffering",
+  "playback.increaseBuffer": "Increase playback buffering",
+  "playback.bufferTarget": "Total buffer target",
+  "playback.bufferHint": "Set how long the receiver aims to wait for data. This may reduce stalls caused by network jitter, but adds viewing delay and may delay relayed pictures.",
+  "playback.bufferUnsupported": "The current receive path cannot set a buffer target.",
+  "playback.bufferFailed": "Could not apply this buffer target. Playback continues.",
+  "host.invite.qr": "Invitation QR code",
+  "host.invite.qrShort": "QR code",
+  "host.invite.qrHint": "Scan with another device to join the room.",
+  "host.invite.qrFailed": "Could not create a QR code. Copy the invitation link instead.",
   "state.peer.present": "In the room",
   "state.peer.voiceConnected": "Voice connected",
   "host.topology.idle": "In the room. No active media routes.",
@@ -809,7 +819,7 @@ export const en: Record<CopyKey, string> = {
   "viewer.hint.generic": "Reload this page to try again in a moment.",
 
   "mode.language": "Interface language",
-  "mode.more": "More languages",
+  "mode.more": "Language and display",
   "header.more": "More options",
   "mode.vis": "Visual only",
   "theme.dark": "Switch to dark mode",

@@ -577,6 +577,16 @@ Blocked initial/retransmission writes and unused stable-socket retirement have
 regression coverage. The shared wire decoder requires an explicit zero step;
 missing/null fields cannot silently select this behavior.
 
+A stable retained socket also checks the original sequential anchor and one
+anchor four steps farther within the same rounds and packet budget. It pins the
+first authenticated eligible tuple before replying and adopts that actual tuple.
+The 2026-11-14 production Pion virtual-network controls cover four independent STUN mappings
+allocated after survey, with either Native endpoint stable: socket adoption carries
+VP8 SRTP and reverse SRTCP. Wrong keys, unrelated transactions, another eligible
+tuple after locking, cancellation and alternate-port overflow have focused controls.
+This establishes a bounded allocation-drift improvement in that model, not an
+Internet success rate or a benefit for two sequential peers.
+
 A focused in-memory preparation check on 2026-10-17 retained the existing
 sequential-NAT fixture and three ordered destinations. Losing the first request
 to one destination recovered through Pion retransmission in 300 ms; delaying

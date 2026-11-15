@@ -36,8 +36,8 @@ you do not need to create a room in your App to watch them.
 2. Select **Start sharing**, then **Browser** for a screen, window or tab, or
    **Camera** where your computer or phone browser supports it. Enable source
    audio if the picker offers it.
-3. Confirm the preview and select **Copy invite link**. Open that link on a
-   second device or send it to a friend.
+3. Confirm the preview and select **Copy invite link**, or show the **QR code**
+   for another device to scan. Both use the currently selected invitation link.
 4. Select **Stop sharing** when finished.
 
 On iPhone/iPad, screen sharing requires **Safari on iOS/iPadOS 27 or later**.

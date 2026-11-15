@@ -450,3 +450,31 @@ describe("native media bridge", () => {
     expect(current.onFailed).not.toHaveBeenCalled();
   });
 });
+
+it("applies Viewer bridge buffering while Host preview keeps receiver defaults", async () => {
+  const current = fixture();
+  const starting = current.bridge.start(true);
+  const video = { id: "viewer-buffer-video", kind: "video", readyState: "live", addEventListener: vi.fn(), stop: vi.fn() } as unknown as MediaStreamTrack;
+  const receiver = { track: video, jitterBufferTarget: null };
+  current.peer().getReceivers.mockReturnValue([receiver as unknown as RTCRtpReceiver]);
+  expect(current.bridge.getPlaybackBufferStatus()).toBeNull();
+  expect(current.bridge.setPlaybackBufferTarget(450)).toBe("supported");
+  expect(receiver.jitterBufferTarget).toBe(450);
+  current.peer().emitTrack(video);
+  const late = { track: { ...video, id: "late-audio", kind: "audio" }, jitterBufferTarget: null };
+  current.peer().getReceivers.mockReturnValue([receiver, late] as unknown as RTCRtpReceiver[]);
+  current.peer().emitTrack(late.track as MediaStreamTrack);
+  current.peer().setState("connected");
+  await starting;
+  expect(late.jitterBufferTarget).toBe(450);
+  current.bridge.setPlaybackBufferTarget(null);
+  expect(receiver.jitterBufferTarget).toBeNull(); expect(late.jitterBufferTarget).toBeNull();
+  current.bridge.dispose();
+  const host = fixture();
+  const hostBufferWrite = vi.fn();
+  const hostReceiver = { track: video, get jitterBufferTarget() { return null; }, set jitterBufferTarget(value: number | null) { hostBufferWrite(value); } };
+  host.peer().getReceivers.mockReturnValue([hostReceiver as unknown as RTCRtpReceiver]);
+  host.bridge.dispose();
+  expect(hostReceiver.jitterBufferTarget).toBeNull();
+  expect(hostBufferWrite).not.toHaveBeenCalled();
+});

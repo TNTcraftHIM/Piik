@@ -62,6 +62,8 @@ class FakeMediaStream {
 }
 
 class FakePeerConnection extends EventTarget {
+  receivers: RTCRtpReceiver[] = [];
+  getReceivers() { return this.receivers; }
   static readonly instances: FakePeerConnection[] = [];
   static readonly plans: ConnectionPlan[] = [];
 
@@ -1167,4 +1169,27 @@ describe("ViewerPeer connection generations", () => {
       expect(connection.getStats).toHaveBeenCalledTimes(2),
     );
   });
+});
+
+it("keeps personal buffer target across late audio and replacement without writing retired receivers", async () => {
+  const status = vi.fn();
+  const peer = new ViewerPeer({ iceServers: [] }, { sendSignal: () => true, sendRestartRequest: () => true, onStream: () => {}, onUpdate: () => {}, onPlaybackBufferStatus: status }, { playbackBufferTargetMs: 300 });
+  const receiver = (kind: string) => ({ track: { id: crypto.randomUUID(), kind, readyState: "live" }, jitterBufferTarget: null }) as unknown as RTCRtpReceiver & { jitterBufferTarget: number | null };
+  try {
+    await peer.acceptSignal("parent", offer("buffer-one"));
+    const first = FakePeerConnection.instances.at(-1)!;
+    const video = receiver("video"); first.receivers.push(video); first.emitTrack(video.track);
+    expect(video.jitterBufferTarget).toBe(300);
+    const audio = receiver("audio"); first.receivers.push(audio); first.emitTrack(audio.track);
+    expect(audio.jitterBufferTarget).toBe(300);
+    expect(peer.setPlaybackBufferTarget(700)).toBe("supported");
+    expect([video.jitterBufferTarget, audio.jitterBufferTarget]).toEqual([700, 700]);
+    await peer.acceptSignal("parent", offer("buffer-two"));
+    const next = FakePeerConnection.instances.at(-1)!;
+    const replacement = receiver("video"); next.receivers.push(replacement); next.emitTrack(replacement.track);
+    expect(replacement.jitterBufferTarget).toBe(700);
+    peer.setPlaybackBufferTarget(null);
+    expect(replacement.jitterBufferTarget).toBeNull(); expect(video.jitterBufferTarget).toBe(700);
+  } finally { peer.dispose(); }
+  expect(status).toHaveBeenLastCalledWith(null);
 });

@@ -11,6 +11,17 @@ contract. [Status](../status.md) indexes delivery and remaining acceptance.
 
 ## Capture And Controls
 
+Viewer playback defaults to automatic receiver buffering. Where the current
+Browser receiver supports `jitterBufferTarget`, a Viewer may request a total
+buffer target of 0–4000 ms in Playback settings. The preference follows active
+and replacement P2P, SFU and Native-to-Browser playback receivers; it does not
+change Host encoding or room voice. More buffering may smooth network jitter at
+the cost of delay, including downstream Browser relays. It does not restore
+encoded detail or increase available bandwidth. The Browser controls actual
+buffering; the target and measured delay remain distinct. Unsupported paths
+retain normal playback. [WebRTC receiver buffering](https://www.w3.org/TR/webrtc/#dom-rtcrtpreceiver-jitterbuffertarget)
+owns the target range and platform behavior.
+
 Room voice handles Host and Viewer conversation microphones, separate
 from source sound and optional Host source commentary. Its Browser capture owner supplies device selection, input
 gain and optional speech processing, including on App-backed pages. Settings

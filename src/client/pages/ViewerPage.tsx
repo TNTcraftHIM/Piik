@@ -108,6 +108,7 @@ import { nextViewerMediaBinding, playbackFailure, prepareViewerPlayback, type Re
 import { observeCompositedVideoFrame } from "../media/video-frame-proof";
 import { exactPeerSignalOwner } from "../media/route-transition";
 import { ViewerSfuRoute } from "../media/viewer-sfu-route";
+import type { PlaybackBufferStatus } from "../webrtc/receiver-buffer-target";
 import type {
   ConnectionMetrics,
   PeerSnapshot,
@@ -263,6 +264,16 @@ export function ViewerPage({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const peerRef = useRef<ViewerMediaPeer | null>(null);
   const viewerSfuRouteRef = useRef<ViewerSfuRoute | null>(null);
+  const [screenBufferTargetMs, setScreenBufferTargetMs] = useState(() => readRoomPreferences().screenBufferTargetMs);
+  const screenBufferTargetRef = useRef(screenBufferTargetMs);
+  const [screenBufferStatus, setScreenBufferStatus] = useState<PlaybackBufferStatus>(null);
+  const applyScreenBufferRef = useRef<((target: number | null) => void) | null>(null);
+  function changeScreenBuffer(target: number | null): void {
+    screenBufferTargetRef.current = target;
+    setScreenBufferTargetMs(target);
+    saveRoomPreferences({ screenBufferTargetMs: target });
+    applyScreenBufferRef.current?.(target);
+  }
   const signalRef = useRef<SignalingClient | null>(null);
   const [interactionSession, setInteractionSession] = useState<RoomInteractionSession | null>(null);
   const [roomVoiceSession, setRoomVoiceSession] = useState<RoomVoiceSession | null>(null);
@@ -504,6 +515,19 @@ export function ViewerPage({
       Extract<ServerMessage, { type: "signal" }>
     > = [];
     let pendingPeer: PendingPeerRoute | null = null;
+    function refreshScreenBufferStatus(): void {
+      if (!active) return;
+      setScreenBufferStatus(currentRouteAssignment?.upstream.kind === "sfu"
+        ? viewerSfuRoute?.getPlaybackBufferStatus() ?? null
+        : peerRef.current?.getPlaybackBufferStatus?.() ?? null);
+    }
+    applyScreenBufferRef.current = target => {
+      peerRef.current?.setPlaybackBufferTarget?.(target);
+      pendingPeer?.peer?.setPlaybackBufferTarget?.(target);
+      viewerSfuRoute?.setPlaybackBufferTarget(target);
+      refreshScreenBufferStatus();
+    };
+    setScreenBufferStatus(null);
     const messageAuthority = new ViewerMessageAuthority();
     const relayChildEvidenceStore = new ViewerQualityEvidenceStore((values) => {
       if (active) setRelayChildEvidence(values);
@@ -530,18 +554,23 @@ export function ViewerPage({
       events: ViewerPeerEvents,
       options: ViewerPeerOptions,
     ): ViewerMediaPeer {
+      let peer: ViewerMediaPeer;
+      const receiverEvents = { ...events, onPlaybackBufferStatus: () => {
+        if (peerRef.current === peer) refreshScreenBufferStatus();
+      } };
+      const receiverOptions = { ...options, playbackBufferTargetMs: screenBufferTargetRef.current };
       if (!clientActivationRef.current) {
-        return new ViewerPeer(iceConfig, events, options);
-      }
-      return new NativeCapableViewerPeer(
+        peer = new ViewerPeer(iceConfig, receiverEvents, receiverOptions);
+      } else peer = new NativeCapableViewerPeer(
         iceConfig,
-        events,
-        options,
+        receiverEvents,
+        receiverOptions,
         acquireNativeClient,
         () => { nativeViewerAvailable = false; },
         nativeViewerSessionId,
         MAX_VIEWERS_PER_ROOM_LIMIT,
       );
+      return peer;
     }
 
     let pageSuspended = document.visibilityState !== "visible";
@@ -747,6 +776,7 @@ export function ViewerPage({
         activePeerMetrics = null;
       }
       pendingRouteConnection = null;
+      refreshScreenBufferStatus();
     }
 
     function acceptRelayChildEvidence(evidence: ViewerQualityEvidence): void {
@@ -1013,6 +1043,7 @@ export function ViewerPage({
       }
       let route: ViewerSfuRoute;
       route = new ViewerSfuRoute(currentPeerId!, {
+        onPlaybackBufferStatus: refreshScreenBufferStatus,
         onInputChanged: () => refreshInput(value => value + 1),
         activatePeer: async (assignment, revision) => {
           if (!active || viewerSfuRoute !== route) {
@@ -1243,6 +1274,7 @@ export function ViewerPage({
       });
       viewerSfuRoute = route;
       viewerSfuRouteRef.current = route;
+      route.setPlaybackBufferTarget(screenBufferTargetRef.current);
       return route;
     }
 
@@ -1293,6 +1325,7 @@ export function ViewerPage({
       peer?.dispose();
       peerRef.current = null;
       activePeerMetrics = null;
+      refreshScreenBufferStatus();
       setPeerSnapshot(null);
       if (clearMedia) {
         clearRemoteMedia();
@@ -1912,6 +1945,8 @@ export function ViewerPage({
     signal.start();
     return () => {
       active = false;
+      applyScreenBufferRef.current = null;
+      setScreenBufferStatus(null);
       requestRelayVolunteerRef.current = null;
       document.removeEventListener("freeze", suspendForPageLifecycle);
       document.removeEventListener("resume", recoverFromPageLifecycle);
@@ -2331,6 +2366,7 @@ export function ViewerPage({
               }, setPictureFit: fit => {
                 setPictureFit(fit); saveRoomPreferences({ pictureFit: fit });
               },
+                buffering: { target: screenBufferTargetMs, status: screenBufferStatus, onChange: changeScreenBuffer },
                 remoteTouch: inputRoute.current ? {
                   mode: remoteTouchMode,
                   onChange: mode => { setRemoteTouchMode(mode); saveRoomPreferences({ remoteTouchMode: mode }); },

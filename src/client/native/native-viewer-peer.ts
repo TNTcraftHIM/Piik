@@ -1,3 +1,4 @@
+import { validatePlaybackBufferTarget, type PlaybackBufferStatus } from "../webrtc/receiver-buffer-target";
 import type { IceConfig, SignalPayload } from "../../shared/protocol";
 import { parse, parsePayloads } from "sdp-transform";
 import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
@@ -70,6 +71,13 @@ export class NativeCapableViewerPeer implements ViewerMediaPeer {
       recoveryBudget: options.recoveryBudget ?? createViewerRecoveryBudget(),
     };
   }
+
+  setPlaybackBufferTarget(target: number | null): PlaybackBufferStatus {
+    validatePlaybackBufferTarget(target);
+    this.options = { ...this.options, playbackBufferTargetMs: target };
+    return this.backend?.setPlaybackBufferTarget?.(target) ?? null;
+  }
+  getPlaybackBufferStatus(): PlaybackBufferStatus { return this.backend?.getPlaybackBufferStatus?.() ?? null; }
 
   acceptSignal(parentPeerId: string, payload: SignalPayload): Promise<void> {
     if (payload.kind === "punch") {
@@ -231,6 +239,7 @@ export class NativeCapableViewerPeer implements ViewerMediaPeer {
 }
 
 class NativeViewerPeer implements ViewerMediaPeer {
+  private playbackBufferTargetMs: number | null;
   getRemoteInput(): RTCDataChannel | null { return this.bridge?.getRemoteInput() ?? null; }
   private currentIceConfig: PeerIceConfig;
   private parentPeerId: string | null = null;
@@ -282,6 +291,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
     private readonly edgeCapacity: number,
     private readonly onFailure: () => void,
   ) {
+    this.playbackBufferTargetMs = options.playbackBufferTargetMs ?? null;
     this.currentIceConfig = iceConfig;
     this.recoveryOwner = options.recoveryOwner ?? "viewer";
     this.recoveryBudget = options.recoveryBudget ?? createViewerRecoveryBudget();
@@ -291,6 +301,13 @@ class NativeViewerPeer implements ViewerMediaPeer {
       this.handleBridgeFailure(this.connectionId ?? "");
     });
   }
+
+  setPlaybackBufferTarget(target: number | null): PlaybackBufferStatus {
+    validatePlaybackBufferTarget(target);
+    this.playbackBufferTargetMs = target;
+    return this.bridge?.setPlaybackBufferTarget(target) ?? null;
+  }
+  getPlaybackBufferStatus(): PlaybackBufferStatus { return this.bridge?.getPlaybackBufferStatus() ?? null; }
 
   async acceptSignal(parentPeerId: string, payload: SignalPayload): Promise<void> {
     if (this.disposed) return;
@@ -538,6 +555,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
       () => this.handlePlaybackFailure(bridge, connectionId),
       connectionId,
       () => { if (this.bridge === bridge) this.emit(); },
+      { target: this.playbackBufferTargetMs, changed: status => { if (this.bridge === bridge) this.events.onPlaybackBufferStatus?.(status); } },
     );
     this.bridge = bridge;
     void bridge.start(result.audio).then((stream) => {

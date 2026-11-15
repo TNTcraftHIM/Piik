@@ -15,7 +15,7 @@ import (
 // A bounded, authenticated preflight on eight fresh sockets, or the one retained
 // observation socket when its mapping was stable. This function owns retained.
 // All readers stop before the winner transfers to the existing Pion owner.
-func punchSocketArray(ctx context.Context, listen func() (net.PacketConn, error), remote *net.UDPAddr, secret []byte, retained net.PacketConn) (net.PacketConn, error) {
+func punchSocketArray(ctx context.Context, listen func() (net.PacketConn, error), remote *net.UDPAddr, secret []byte, retained net.PacketConn, alternate *net.UDPAddr) (*PunchedSocket, error) {
 	var sockets []net.PacketConn
 	count := 8
 	if retained != nil {
@@ -32,6 +32,16 @@ func punchSocketArray(ctx context.Context, listen func() (net.PacketConn, error)
 	}()
 	if remote == nil || remote.IP.To4() == nil || remote.Port < 1 || remote.Port > 65535 || len(secret) != 32 {
 		return nil, errors.New("invalid peer or generation secret")
+	}
+	if alternate != nil && (retained == nil || !alternate.IP.Equal(remote.IP) || alternate.Port < 1024 || alternate.Port > 65535) {
+		return nil, errors.New("invalid alternate peer")
+	}
+	// One mutex owns the selected tuple across the reader and periodic sender.
+	// Only the retained stable socket can search two predicted remote tuples.
+	var targetMu sync.Mutex
+	selected := remote
+	if alternate != nil {
+		selected = nil
 	}
 	parent := ctx
 	ctx, cancel := context.WithTimeout(parent, 1100*time.Millisecond)
@@ -67,14 +77,19 @@ func punchSocketArray(ctx context.Context, listen func() (net.PacketConn, error)
 	var proved atomic.Bool
 	var requestsLeft atomic.Int32
 	requestsLeft.Store(64)
-	sendCheck := func(index int, reserve int32) {
+	sendCheck := func(index int, reserve int32, target *net.UDPAddr) {
 		for {
 			left := requestsLeft.Load()
 			if left <= reserve {
 				return
 			}
 			if requestsLeft.CompareAndSwap(left, left-1) {
-				_, _ = sockets[index].WriteTo(requests[index].Raw, remote)
+				targetMu.Lock()
+				if selected != nil {
+					target = selected
+				}
+				_, _ = sockets[index].WriteTo(requests[index].Raw, target)
+				targetMu.Unlock()
 				return
 			}
 		}
@@ -91,7 +106,25 @@ func punchSocketArray(ctx context.Context, listen func() (net.PacketConn, error)
 					return
 				}
 				message := &stun.Message{Raw: buffer[:n]}
-				if addr.String() != remote.String() || message.Decode() != nil || integrity.Check(message) != nil {
+				if message.Decode() != nil || integrity.Check(message) != nil {
+					continue
+				}
+				validResponse := message.Type == stun.BindingSuccess && message.TransactionID == requests[i].TransactionID
+				if message.Type != stun.BindingRequest && !validResponse {
+					continue
+				}
+				targetMu.Lock()
+				if selected == nil {
+					switch addr.String() {
+					case remote.String():
+						selected = remote
+					case alternate.String():
+						selected = alternate
+					}
+				}
+				target := selected
+				targetMu.Unlock()
+				if target == nil || addr.String() != target.String() {
 					continue
 				}
 				switch message.Type {
@@ -100,12 +133,12 @@ func punchSocketArray(ctx context.Context, listen func() (net.PacketConn, error)
 						continue
 					}
 					reply := stun.MustBuild(stun.BindingSuccess, stun.NewTransactionIDSetter(message.TransactionID),
-						&stun.XORMappedAddress{IP: remote.IP, Port: remote.Port}, integrity, stun.Fingerprint)
-					_, _ = connection.WriteTo(reply.Raw, remote)
+						&stun.XORMappedAddress{IP: target.IP, Port: target.Port}, integrity, stun.Fingerprint)
+					_, _ = connection.WriteTo(reply.Raw, target)
 					if !proved.Load() {
 						// The peer may start after our initial fanout. Check the
 						// authenticated tuple through this same socket and budget.
-						sendCheck(i, 0)
+						sendCheck(i, 0, target)
 					}
 				case stun.BindingSuccess:
 					if message.TransactionID == requests[i].TransactionID {
@@ -122,11 +155,15 @@ func punchSocketArray(ctx context.Context, listen func() (net.PacketConn, error)
 	// Keep the existing eight-round send window, reserving one check per socket
 	// for authenticated peer-triggered work. Both share the same 64-request bound.
 	for round := 0; round < 8 && ctx.Err() == nil; round++ {
+		target := remote
+		if alternate != nil && round%2 == 1 {
+			target = alternate
+		}
 		for i := range sockets {
 			if ctx.Err() != nil {
 				break
 			}
-			sendCheck(i, int32(len(sockets)))
+			sendCheck(i, int32(len(sockets)), target)
 		}
 		select {
 		case <-ctx.Done():
@@ -154,7 +191,7 @@ func punchSocketArray(ctx context.Context, listen func() (net.PacketConn, error)
 			winner = -1
 			return nil, err
 		}
-		return sockets[winner], nil
+		return &PunchedSocket{PacketConn: sockets[winner], remote: selected}, nil
 	default:
 		return nil, errors.New("bounded socket array found no authenticated tuple")
 	}

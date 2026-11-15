@@ -1,7 +1,17 @@
 import type { GlyphName } from "../ui/icons";
 
-// Canonical catalog: add keys here first; every other locale must match it.
+// Canonical keys; English stays complete and other languages may be partial.
 export const zh = {
+  "playback.buffering": "播放缓冲",
+  "playback.increaseBuffer": "增加播放缓冲",
+  "playback.bufferTarget": "总缓冲目标",
+  "playback.bufferHint": "设置接收端等待数据的目标时间，可减少网络抖动造成的卡顿，但会增加观看延迟，也可能延后转发的画面。",
+  "playback.bufferUnsupported": "当前接收路径不支持设置缓冲目标。",
+  "playback.bufferFailed": "未能应用此缓冲目标，播放继续。",
+  "host.invite.qr": "邀请二维码",
+  "host.invite.qrShort": "二维码",
+  "host.invite.qrHint": "用另一台设备扫码加入房间。",
+  "host.invite.qrFailed": "无法生成二维码，请复制邀请链接。",
   "state.peer.present": "已在房间",
   "state.peer.voiceConnected": "语音已连接",
   "host.topology.idle": "已在房间，暂无媒体线路。",
@@ -809,7 +819,7 @@ export const zh = {
   "viewer.hint.generic": "请稍后刷新页面重试。",
 
   "mode.language": "界面语言",
-  "mode.more": "更多语言",
+  "mode.more": "语言与显示",
   "header.more": "更多选项",
   "mode.vis": "纯视觉",
   "theme.dark": "切换到暗色模式",

@@ -59,8 +59,7 @@ export function NumberControl({ value, min, max, step, unit, showUnit = true, na
     if (event.currentTarget.contains(event.relatedTarget)) return;
     const field = input.current!;
     const valid = field.validity.valid && Number.isFinite(field.valueAsNumber);
-    setInvalid(!valid);
-    if (valid && field.valueAsNumber !== value) onChange(field.valueAsNumber);
+    if (valid) select(field.valueAsNumber); else setInvalid(true);
   }}>{children(number, select)}
     {invalid && <small id={errorId} className="lr-quality-validation" role="alert">{t("host.quality.invalidNumber", {
       min: String(min), max: String(max), step: String(step), unit,

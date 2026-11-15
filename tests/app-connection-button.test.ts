@@ -53,20 +53,20 @@ function collect(node: ts.Node): void {
 }
 collect(source);
 if (!connect || !effects.length) throw new Error("Missing App connection operation or cleanup");
-const executable = ts.transpileModule(`${rememberBuild}\n${connect}\nconst cleanups = [${effects.map(effect => `(${effect})()`).join(",")}];
-  ({ connect, cleanup: () => cleanups.reverse().forEach(fn => fn?.()) });`, {
+const executable = ts.transpileModule(`${rememberBuild}\n${connect}\nconst cleanups = [${effects.map(effect => effect.includes("connect(false, true)") ? `(automatic ? (${effect})() : undefined)` : `(${effect})()`).join(",")}];
+  ({ connect, cleanup: () => { cleanups.reverse().forEach(fn => fn?.()); pending.current?.controller.abort(); pending.current?.popup?.close(); } });`, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText;
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const site = "https://site.example";
 const approval = `http://127.0.0.1:39721/client?site=${encodeURIComponent(site)}`;
 
-function mount(activated = false, state: "idle" | "ready" = "idle", android = false) {
+function mount(activated = false, state: "idle" | "ready" = "idle", android = false, automatic = false) {
   const popup = { closed: false, close: vi.fn(() => { popup.closed = true; }) };
   const window = Object.assign(new EventTarget(), { open: vi.fn((): typeof popup | null => popup), location: { origin: site, assign: vi.fn() } });
   const document = Object.assign(new EventTarget(), { visibilityState: "visible" });
   const native = {
-    discoverNativeConnect: vi.fn(async (_signal: AbortSignal): Promise<string | null> => approval),
+    discoverNativeConnect: vi.fn(async (_options: { signal: AbortSignal; waitForPermission?: boolean }): Promise<string | null> => approval),
     discoverNativeHealth: vi.fn(async (options: { signal: AbortSignal; waitForPermission?: boolean }): Promise<object | null> =>
       options.waitForPermission === false && !activated ? null : {}),
     NativeCompatibilityError: class extends Error {},
@@ -80,7 +80,7 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   const activateClient = vi.fn();
   const onConnected = vi.fn();
   const operation = runInNewContext(executable, {
-    window, document, pending, healthCheck, help, showHelp, setState, setBuild, activateClient, onConnected, AbortController, URL,
+    automatic, automaticFailed: { current: false }, window, document, pending, healthCheck, help, showHelp, setState, setAutomaticHint: vi.fn(), setBuild, activateClient, onConnected, AbortController, URL,
     wakeURL: android ? "intent://app#Intent;scheme=piik;package=tv.piik.android;end" : null,
     state, isClientActivated: () => activated,
     watchClientActivation: (changed: () => void) => {
@@ -290,7 +290,7 @@ describe("App connection approval", () => {
     expect(page.setState).toHaveBeenLastCalledWith("ready");
     expect(page.popup.closed).toBe(true);
     expect(page.pending.current).toBeNull();
-    expect(page.native.discoverNativeConnect.mock.calls[0]![0].aborted).toBe(true);
+    expect(page.native.discoverNativeConnect.mock.calls[0]![0].signal.aborted).toBe(true);
     page.message();
     expect(page.native.discoverNativeHealth).toHaveBeenCalledOnce();
   });
@@ -417,5 +417,107 @@ describe("App connection approval", () => {
     await settle();
     expect(page.setState).toHaveBeenLastCalledWith("ready");
     page.cleanup();
+  });
+});
+
+
+describe("initial App discovery", () => {
+  it("keeps automatic permission passive and waits only for an explicit connection", async () => {
+    const page = mount(false, "idle", false, true);
+    page.native.discoverNativeConnect.mockResolvedValue(null);
+    try {
+      await settle();
+      expect(page.native.discoverNativeConnect).toHaveBeenLastCalledWith(expect.objectContaining({ waitForPermission: false }));
+      await page.connect();
+      expect(page.native.discoverNativeConnect).toHaveBeenLastCalledWith(expect.objectContaining({ waitForPermission: true }));
+    } finally { page.cleanup(); }
+  });
+
+  it("keeps passive focus incompatibility idle while explicit connection shows recovery", async () => {
+    const page = mount(true);
+    const incompatible = new page.native.NativeCompatibilityError("incompatible");
+    page.native.discoverNativeHealth.mockRejectedValue(incompatible);
+    page.native.discoverNativeConnect.mockRejectedValue(incompatible);
+    try {
+      await settle();
+      page.window.dispatchEvent(new Event("focus"));
+      await settle();
+      expect(page.setState).toHaveBeenLastCalledWith("idle");
+      expect(page.showHelp).not.toHaveBeenCalled();
+      await page.connect();
+      expect(page.setState).toHaveBeenLastCalledWith("incompatible");
+      expect(page.showHelp).toHaveBeenCalled();
+    } finally { page.cleanup(); }
+  });
+
+  it("automatically verifies an approved App without opening another page", async () => {
+    const page = mount(true, "idle", false, true);
+    await settle();
+    expect(page.native.discoverNativeConnect).toHaveBeenCalledOnce();
+    expect(page.onConnected).toHaveBeenCalledOnce();
+    expect(page.window.open).not.toHaveBeenCalled();
+    expect(page.showHelp).not.toHaveBeenCalled();
+    page.cleanup();
+  });
+
+  it("keeps unapproved discovery pending for the real approval click", async () => {
+    const page = mount(false, "idle", false, true);
+    await settle();
+    expect(page.setState).toHaveBeenLastCalledWith("approval");
+    expect(page.onConnected).not.toHaveBeenCalled();
+    expect(page.window.open).not.toHaveBeenCalled();
+    await page.connect();
+    expect(page.window.open).toHaveBeenCalledOnce();
+    page.cleanup();
+  });
+
+  it("does not repeat failed discovery on focus and aborts a manual retry on unmount", async () => {
+    const page = mount(true, "idle", false, true);
+    page.native.discoverNativeConnect.mockResolvedValue(null);
+    await settle();
+    expect(page.setState).toHaveBeenLastCalledWith("idle");
+    page.window.dispatchEvent(new Event("focus"));
+    page.activateElsewhere();
+    await settle();
+    expect(page.native.discoverNativeConnect).toHaveBeenCalledOnce();
+    expect(page.native.discoverNativeHealth).not.toHaveBeenCalled();
+    let signal: AbortSignal | undefined;
+    page.native.discoverNativeConnect.mockImplementationOnce(value => {
+      signal = value.signal;
+      return new Promise(() => {});
+    });
+    void page.connect();
+    await settle();
+    expect(page.native.discoverNativeConnect).toHaveBeenCalledTimes(2);
+    page.cleanup();
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it.each([false, true])("automatic discovery stays idle; explicit failure keeps recovery guidance (incompatible: %s)", async incompatible => {
+    const page = mount(false, "idle", false, true);
+    page.native.discoverNativeConnect.mockImplementation(async () => {
+      if (incompatible) throw new page.native.NativeCompatibilityError("incompatible");
+      return null;
+    });
+    try {
+      await settle();
+      expect(page.setState).toHaveBeenLastCalledWith("idle");
+      expect(page.showHelp).not.toHaveBeenCalled();
+      await page.connect();
+      expect(page.setState).toHaveBeenLastCalledWith(incompatible ? "incompatible" : "unavailable");
+      expect(page.showHelp).toHaveBeenCalled();
+    } finally { page.cleanup(); }
+  });
+
+  it("an explicit approval click takes over the automatic attempt's failure feedback", async () => {
+    const page = mount(false, "idle", false, true);
+    try {
+      await settle();
+      expect(page.setState).toHaveBeenLastCalledWith("approval");
+      page.window.open.mockReturnValue(null);
+      await page.connect();
+      expect(page.setState).toHaveBeenLastCalledWith("unavailable");
+      expect(page.showHelp).toHaveBeenCalled();
+    } finally { page.cleanup(); }
   });
 });

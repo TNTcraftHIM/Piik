@@ -240,9 +240,13 @@ func (preparation *PunchPreparation) Run(remote PunchPrediction) bool {
 		preparation.socket = nil
 	}
 	preparation.mu.Unlock()
+	var alternate *net.UDPAddr
+	if retained != nil && remote.Step > 0 && target.Port+4*remote.Step <= 65535 {
+		alternate = &net.UDPAddr{IP: target.IP, Port: target.Port + 4*remote.Step}
+	}
 	winner, err := punchSocketArray(preparation.ctx, func() (net.PacketConn, error) {
 		return preparation.engine.listenPacket("udp", preparation.engine.bindAddress)
-	}, target, preparation.secret, retained)
+	}, target, preparation.secret, retained, alternate)
 	preparation.mu.Lock()
 	defer preparation.mu.Unlock()
 	if err != nil || preparation.ctx.Err() != nil || preparation.stage != "running" {
@@ -251,7 +255,7 @@ func (preparation *PunchPreparation) Run(remote PunchPrediction) bool {
 		}
 		return false
 	}
-	preparation.socket = &PunchedSocket{PacketConn: winner, remote: target}
+	preparation.socket = winner
 	preparation.stage = "complete"
 	return true
 }

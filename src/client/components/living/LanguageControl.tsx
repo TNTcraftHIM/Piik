@@ -13,7 +13,8 @@ export function LanguageControl() {
   const menuRef = useRef<HTMLSpanElement>(null);
   const extraLanguages = (Object.keys(locales) as Lang[]).filter((key): boolean => key !== "zh" && key !== "en");
   const selectedExtra = !vis && extraLanguages.includes(lang) ? locales[lang] : null;
-  useAnchoredPopover(triggerRef, menuRef, { maxHeight: 360, enabled: extraLanguages.length > 0 });
+  const selectedLabel = vis ? t("mode.vis") : selectedExtra?.name;
+  useAnchoredPopover(triggerRef, menuRef, { maxHeight: 360 });
 
   useEffect(() => {
     const menu = menuRef.current;
@@ -66,15 +67,10 @@ export function LanguageControl() {
           onClick={() => setLang(key)}
         >{locales[key].short}</button>
       ))}
-      <button
-        type="button" className={vis ? "is-selected" : ""}
-        aria-label={t("mode.vis")} aria-pressed={vis} onClick={() => setVis(true)}
-      >✦</button>
-      {extraLanguages.length > 0 && (
-        <button
-          ref={triggerRef} type="button" popoverTarget={menuId} aria-haspopup="menu"
-          aria-label={selectedExtra ? `${t("mode.more")}: ${selectedExtra.name}` : t("mode.more")}
-          className={`lr-lang-more${selectedExtra ? " is-selected" : ""}`}
+      <span className="lr-lang-extra">
+        <button type="button" popoverTarget={menuId} aria-haspopup="menu"
+          aria-label={selectedLabel ?? t("mode.more")} lang={selectedExtra?.tag}
+          className={`lr-lang-marker${selectedLabel ? " is-selected" : ""}`}
           onKeyDown={(event) => {
             if (event.key === "ArrowDown") {
               event.preventDefault();
@@ -82,43 +78,56 @@ export function LanguageControl() {
             }
           }}
         >
-          <span aria-hidden="true" lang={selectedExtra?.tag}>
-            {selectedExtra ? selectedExtra.short : <Glyph name="globe" size={14} />}
-            <Glyph name="chevron" size={10} />
-          </span>
+          {vis ? "✦" : selectedExtra ? selectedExtra.short : <Glyph name="globe" size={14} />}
         </button>
-      )}
-    </span>
-    {extraLanguages.length > 0 && (
-      <span
-        ref={menuRef} id={menuId} popover="auto" role="menu"
-        aria-label={t("mode.more")} className="lr-language-menu" onKeyDown={navigate}
-        onBlur={(event) => {
-          // Returning to the trigger lets its native action close the menu.
-          if (event.relatedTarget !== triggerRef.current &&
-              !event.currentTarget.contains(event.relatedTarget as Node | null)) {
-            event.currentTarget.hidePopover();
-          }
-        }}
-      >
-        {extraLanguages.map((key) => {
-          const locale = locales[key];
-          const selected = !vis && lang === key;
-          return <button
-            key={key} type="button" role="menuitemradio" tabIndex={-1}
-            lang={locale.tag} aria-label={locale.name} aria-checked={selected}
-            onClick={() => {
-              setLang(key);
-              menuRef.current?.hidePopover();
-              triggerRef.current?.focus();
-            }}
-          >
-            <span className="lr-language-mark" aria-hidden="true">{locale.short}</span>
-            <span>{locale.name}</span>
-            <Glyph name="check" size={16} className={selected ? "" : "is-unselected"} />
-          </button>;
-        })}
+        <button ref={triggerRef} type="button" className="lr-lang-more" popoverTarget={menuId}
+          aria-haspopup="menu" aria-label={t("mode.more")}
+          onKeyDown={event => {
+            if (event.key === "ArrowDown") { event.preventDefault(); event.currentTarget.click(); }
+          }}>
+          <Glyph name="chevron" size={10} />
+        </button>
       </span>
-    )}
+    </span>
+    <span
+      ref={menuRef} id={menuId} popover="auto" role="menu"
+      aria-label={t("mode.more")} className="lr-language-menu" onKeyDown={navigate}
+      onBlur={(event) => {
+        // Either part of the language shortcut can toggle the native menu.
+        if (!triggerRef.current?.parentElement?.contains(event.relatedTarget as Node | null) &&
+            !event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          event.currentTarget.hidePopover();
+        }
+      }}
+    >
+      {extraLanguages.map((key) => {
+        const locale = locales[key];
+        const selected = !vis && lang === key;
+        return <button
+          key={key} type="button" role="menuitemradio" tabIndex={-1}
+          lang={locale.tag} aria-label={locale.name} aria-checked={selected}
+          onClick={() => {
+            setLang(key);
+            menuRef.current?.hidePopover();
+            triggerRef.current?.focus();
+          }}
+        >
+          <span className="lr-language-mark" aria-hidden="true">{locale.short}</span>
+          <span>{locale.name}</span>
+          <Glyph name="check" size={16} className={selected ? "" : "is-unselected"} />
+        </button>;
+      })}
+      <button type="button" role="menuitemradio" tabIndex={-1}
+        aria-label={t("mode.vis")} aria-checked={vis}
+        onClick={() => {
+          setVis(true);
+          menuRef.current?.hidePopover();
+          triggerRef.current?.focus();
+        }}>
+        <span className="lr-language-mark" aria-hidden="true">✦</span>
+        <span>{t("mode.vis")}</span>
+        <Glyph name="check" size={16} className={vis ? "" : "is-unselected"} />
+      </button>
+    </span>
   </>;
 }

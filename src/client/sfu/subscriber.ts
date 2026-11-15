@@ -1,3 +1,4 @@
+import { applyPlaybackBufferTarget, validatePlaybackBufferTarget, type PlaybackBufferStatus } from "../webrtc/receiver-buffer-target";
 import type { SfuSignalMessage } from "../../shared/protocol";
 import { RemoteInputChannel } from "../webrtc/remote-input-channel";
 import type { ConnectionMetrics } from "../types";
@@ -13,6 +14,7 @@ import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
 import { SfuPeer, type SfuConnectionConfig } from "./peer";
 
 interface SubscriberEvents {
+  onPlaybackBufferStatus?: (status: PlaybackBufferStatus) => void;
   onInputChanged?: () => void;
   send: (message: SfuSignalMessage) => boolean;
   onStream: (stream: MediaStream | null) => void;
@@ -46,7 +48,21 @@ export class SfuSubscriber {
   private proofMode: "fresh" | "progress" | null = null;
   private stopProof: (() => void) | null = null;
 
+  private playbackBufferTargetMs: number | null = null;
+  private playbackBufferStatus: PlaybackBufferStatus = null;
   constructor(private readonly events: SubscriberEvents) {}
+  setPlaybackBufferTarget(target: number | null): PlaybackBufferStatus {
+    validatePlaybackBufferTarget(target);
+    this.playbackBufferTargetMs = target;
+    return this.applyPlaybackBuffer();
+  }
+  getPlaybackBufferStatus(): PlaybackBufferStatus { return this.playbackBufferStatus; }
+  private applyPlaybackBuffer(): PlaybackBufferStatus {
+    const status = applyPlaybackBufferTarget([this.video, this.audio].flatMap(track => track ? [track.receiver] : []), this.playbackBufferTargetMs);
+    this.playbackBufferStatus = status;
+    this.events.onPlaybackBufferStatus?.(status);
+    return status;
+  }
 
   async connect(config: SfuConnectionConfig): Promise<boolean> {
     if (this.peer || this.closed)
@@ -156,6 +172,7 @@ export class SfuSubscriber {
     this.detach(this.audio);
     this.video = null;
     this.audio = null;
+    this.applyPlaybackBuffer();
     this.stats = createStatsAccumulator();
     if (hadVideo) this.events.onVideoAvailability?.(false);
     if (this.streamEmitted) this.events.onStream(null);
@@ -186,6 +203,7 @@ export class SfuSubscriber {
           this.stopProof = null;
           this.events.onVideoAvailability?.(false);
         } else this.audio = null;
+        this.applyPlaybackBuffer();
         this.stats = createStatsAccumulator();
         this.emitStream();
       },
@@ -194,6 +212,7 @@ export class SfuSubscriber {
     this.stream.addTrack(track);
     if (isVideo) this.video = subscribed;
     else this.audio = subscribed;
+    this.applyPlaybackBuffer();
     this.stats = createStatsAccumulator();
     this.emitStream();
     if (isVideo) {

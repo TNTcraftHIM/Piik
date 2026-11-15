@@ -4,15 +4,24 @@ import type { VideoFit, VideoRotation } from "../../media/video-geometry";
 import type { RoomPreferences } from "../../lib/room-preferences";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
-import { Btn, Cap, Chip, Pill, RowGroup, SwitchItem } from "./primitives";
+import { Btn, Cap, Chip, FieldCap, Pill, RowGroup, SwitchItem } from "./primitives";
+import { NumberControl } from "./NumberControl";
+import { MAX_PLAYBACK_BUFFER_TARGET_MS } from "../../webrtc/receiver-buffer-target";
 import { RelayVolunteerSettings, type RelayCapacitySettings } from "./RelayVolunteerSettings";
 import "./playback-controls.css";
+
+const INITIAL_MANUAL_BUFFER_TARGET_MS = 300;
 
 export interface PlaybackSettingsProps {
   pictureFit: VideoFit;
   setPictureFit: (fit: VideoFit) => void;
   pictureRotation: VideoRotation;
   setPictureRotation: (rotation: VideoRotation) => void;
+  buffering?: {
+    target: number | null;
+    status: "supported" | "unsupported" | "failed" | null;
+    onChange(target: number | null): void;
+  };
   preview?: {
     autoPause: boolean;
     onChange: (enabled: boolean) => void;
@@ -71,7 +80,7 @@ export function RemoteTouchSettings({ mode, onChange }: NonNullable<PlaybackSett
 }
 
 // Local display and connection intent; media and routing keep their owners.
-export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVolunteer, overlaySettings, reconnect }: Pick<PlaybackSettingsProps, "preview" | "remoteTouch" | "route" | "relayVolunteer"> & {
+export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVolunteer, buffering, overlaySettings, reconnect }: Pick<PlaybackSettingsProps, "preview" | "remoteTouch" | "route" | "relayVolunteer" | "buffering"> & {
   picture?: PlaybackSettingsProps;
   overlaySettings?: ReactNode; reconnect: ReactNode;
 }) {
@@ -79,7 +88,7 @@ export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVo
   const routeHint = route?.rejected ? "playback.routeRejected" : route?.sfuOnly ? "playback.routeSfuOnly"
     : route?.peerOnly ? "playback.routePeerOnly" : !route?.sfuAvailable ? "playback.routeNoSfu"
     : `playback.routeHint.${route.preference}` as const;
-  const detailedSections = [preview, remoteTouch, overlaySettings, route || relayVolunteer || reconnect].filter(Boolean).length;
+  const detailedSections = [preview, buffering, remoteTouch, overlaySettings, route || relayVolunteer || reconnect].filter(Boolean).length;
   return <div className={`lr-viewer-settings${detailedSections <= 1 ? " is-single" : ""}`}>
     {picture && <section className="lr-playback-compact-picture" aria-label={t("playback.viewControls")}>
       <div className="lr-viewer-settings-heading">
@@ -94,6 +103,20 @@ export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVo
       <RowGroup><SwitchItem checked={preview.autoPause} onChange={preview.onChange} icon="pause"
         label={t("host.previewAutoPause")} note={t("host.previewAutoPauseHint")} hint="hint-local-pause" /></RowGroup>
       {!vis && <p>{t("host.previewAutoPauseHint")}</p>}
+    </section>}
+    {buffering && <section aria-label={t("playback.buffering")}>
+      <div className="lr-viewer-settings-heading"><h3><Glyph name="clock" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.buffering")}</span></h3></div>
+      <RowGroup><SwitchItem checked={buffering.target !== null} onChange={enabled => buffering.onChange(enabled ? INITIAL_MANUAL_BUFFER_TARGET_MS : null)}
+        disabled={buffering.status === "unsupported" && buffering.target === null}
+        label={t("playback.increaseBuffer")} icon="clock" /></RowGroup>
+      {buffering.target !== null && <NumberControl value={buffering.target} min={0} max={MAX_PLAYBACK_BUFFER_TARGET_MS} step={1} unit="ms"
+        name="screen-buffer-target" label={t("playback.bufferTarget")} disabled={buffering.status === "unsupported"}
+        onChange={buffering.onChange} className="lr-door-group">{input => <div className="lr-quality-heading">
+          <FieldCap k="playback.bufferTarget" />{input}
+        </div>}</NumberControl>}
+      {!vis && <p>{t("playback.bufferHint")}</p>}
+      {buffering.status === "unsupported" && <Pill icon="alert" label={t("playback.bufferUnsupported")} comic="warning" />}
+      {buffering.status === "failed" && <Pill icon="alert" tone="bad" label={t("playback.bufferFailed")} comic="settings-failed" />}
     </section>}
     {remoteTouch && <RemoteTouchSettings {...remoteTouch} />}
     {overlaySettings && <section aria-label={t("playback.overlay")}>

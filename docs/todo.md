@@ -85,8 +85,6 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **iOS native App.** Paused in favor of Browser use. Preserve the isolated
   implementation on `feat/ios-client`; native development and publication stay
   outside the current phase.
-- [ ] **QR invitations.** Deferred from the maintenance release on 2026-10-24.
-  Keep the local QR implementation on `archive/deferred-prototypes` for later acceptance.
 - [ ] **Additional collaboration cursors.** Deferred by the owner. Keep the
   shared system mouse; do not add multi-cursor or pointer-ownership visualization.
 - [ ] **Persistent-loss estimator replacement.** Deferred on 2026-10-18.

@@ -104,6 +104,10 @@ existing invitations or clear a recipient's valid authorization. The ordinary
 room address retains the server-provided site and room path; it follows site
 access and code-entry rules. An invite-only room has no ordinary-address entry.
 
+The invitation QR code is generated locally from the same selected link,
+including its fragment. Credential choice, rotation and revocation update it
+with the copied link; no external QR service receives the invitation.
+
 Code-only admission is independent of invitations:
 
 - `open` admits a site-authorized Viewer by room code;

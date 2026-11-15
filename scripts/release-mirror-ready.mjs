@@ -1,7 +1,3 @@
-import { execFileSync } from "node:child_process";
-import { appendFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
-
 const repository = "TNTcraftHIM/Piik";
 export async function readMirror(path) {
   const response = await fetch(`https://api.atomgit.com/api/v5/repos/${repository}${path}`, {
@@ -12,15 +8,24 @@ export async function readMirror(path) {
   return response.json();
 }
 
-export async function mirrorReadiness(source, read = readMirror) {
+export function validateMirrorSource(source) {
   if (source.draft !== false || source.prerelease !== false || typeof source.tag_name !== "string"
     || !/^[a-f0-9]{40}$/.test(source.target_commitish)) throw new Error("A published GitHub release with a full source SHA is required");
+}
+
+export function validateMirrorRelease(source, release) {
+  if (!release || release.tag_name !== source.tag_name || ![true, false].includes(release.prerelease)
+    || !release.body?.split(/\r?\n/).includes(`<!-- piik-source: ${source.target_commitish} -->`)) {
+    throw new Error("Existing mirror release belongs to a different or unknown source revision");
+  }
+}
+
+export async function mirrorReadiness(source, read = readMirror) {
   const version = source.tag_name, revision = source.target_commitish;
+  validateMirrorSource(source);
   const mirror = await read(`/releases/tags/${encodeURIComponent(version)}`);
   if (mirror) {
-    if (mirror.tag_name !== version || ![true, false].includes(mirror.prerelease)
-      || !mirror.body?.split(/\r?\n/).includes(`<!-- piik-source: ${revision} -->`))
-      throw new Error("Existing mirror release belongs to a different or unknown source revision");
+    validateMirrorRelease(source, mirror);
     const packages = source.assets?.filter(asset => asset.name?.startsWith("piik-"));
     const complete = packages?.length > 0 && Array.isArray(mirror.assets) && packages.every(asset => {
       const matches = mirror.assets.filter(candidate => candidate.type === "attach" && candidate.name === asset.name);
@@ -34,16 +39,4 @@ export async function mirrorReadiness(source, read = readMirror) {
     }
   }
   return { status: "ready", version, revision };
-}
-
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const source = JSON.parse(execFileSync("gh", ["api", `repos/${repository}/releases/latest`], {
-    encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 30_000,
-  }));
-  const result = await mirrorReadiness(source);
-  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `status=${result.status}\n`);
-  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY,
-    result.status === "complete" ? `Mirror ${result.version} is already stable with the complete published attachment inventory.\n`
-        : `Mirror ${result.version} is ready to resume from original CI artifacts.\n`);
-  console.log(JSON.stringify(result));
 }

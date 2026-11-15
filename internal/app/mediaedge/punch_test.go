@@ -3,6 +3,7 @@ package mediaedge
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"math"
 	"net"
@@ -59,14 +60,17 @@ func TestPunchAdoptsProvedTupleIntoMediaAndFeedback(t *testing.T) {
 		left, right vnet.NATType
 		skew        time.Duration
 		dropLate    bool
+		driftSide   int // One-based side; zero keeps the original survey conditions.
 	}{
-		{"sequential", sequentialPunchNAT, sequentialPunchNAT, 0, false},
-		{"sequential-delayed", sequentialPunchNAT, sequentialPunchNAT, 250 * time.Millisecond, false},
-		{"sequential-late", sequentialPunchNAT, sequentialPunchNAT, 900 * time.Millisecond, false},
-		{"stable-sender", stable, sequentialPunchNAT, 250 * time.Millisecond, false},
-		{"stable-sender-late-loss", stable, sequentialPunchNAT, 900 * time.Millisecond, true},
-		{"stable-receiver", sequentialPunchNAT, stable, 250 * time.Millisecond, false},
-		{"both-stable", stable, stable, 0, false},
+		{"sequential", sequentialPunchNAT, sequentialPunchNAT, 0, false, 0},
+		{"sequential-delayed", sequentialPunchNAT, sequentialPunchNAT, 250 * time.Millisecond, false, 0},
+		{"sequential-late", sequentialPunchNAT, sequentialPunchNAT, 900 * time.Millisecond, false, 0},
+		{"stable-sender", stable, sequentialPunchNAT, 250 * time.Millisecond, false, 0},
+		{"stable-sender-late-loss", stable, sequentialPunchNAT, 900 * time.Millisecond, true, 0},
+		{"stable-receiver", sequentialPunchNAT, stable, 250 * time.Millisecond, false, 0},
+		{"both-stable", stable, stable, 0, false, 0},
+		{"stable-sender-drift4", stable, sequentialPunchNAT, 250 * time.Millisecond, false, 2},
+		{"stable-receiver-drift4", sequentialPunchNAT, stable, 250 * time.Millisecond, false, 1},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			network := newPunchLab(t, scenario.left, scenario.right)
@@ -84,6 +88,21 @@ func TestPunchAdoptsProvedTupleIntoMediaAndFeedback(t *testing.T) {
 			t.Cleanup(func() { _ = source.Close() })
 			left, leftPrediction := preparePunch(t, engines[0], source, "connection", strings.Repeat("42", 32))
 			right, rightPrediction := preparePunch(t, engines[1], nil, "connection", strings.Repeat("42", 32))
+			if scenario.driftSide != 0 {
+				// Real unrelated mappings consume the sequential allocator after survey.
+				// Each allocation receives a STUN response before preparation begins.
+				for range 4 {
+					connection, err := engines[scenario.driftSide-1].listenPacket("udp", engines[scenario.driftSide-1].bindAddress)
+					if err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(func() { _ = connection.Close() })
+					if _, err := querySTUNBinding(t.Context(), connection,
+						&net.UDPAddr{IP: net.ParseIP(punchSTUNIP), Port: 3478}, stun.MustBuild(stun.TransactionID, stun.BindingRequest)); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
 			var observing, late atomic.Bool
 			var checks, replies [2]atomic.Int32
 			var lateChecks, dropped atomic.Int32
@@ -122,6 +141,16 @@ func TestPunchAdoptsProvedTupleIntoMediaAndFeedback(t *testing.T) {
 			for range 2 {
 				if !<-results {
 					t.Fatal("authenticated preparation failed")
+				}
+			}
+			if scenario.driftSide != 0 {
+				stableSide := 2 - scenario.driftSide
+				predictions := []*PunchPrediction{leftPrediction, rightPrediction}
+				preparations := []*PunchPreparation{left, right}
+				anchor, _ := predictions[scenario.driftSide-1].Target()
+				anchor.Port += 4 * predictions[scenario.driftSide-1].Step
+				if actual := preparations[stableSide].socket.remote; actual.String() != anchor.String() {
+					t.Fatalf("adoption lost authenticated alternate: got %s want %s", actual, anchor)
 				}
 			}
 			observing.Store(false)
@@ -196,7 +225,7 @@ func TestPunchAdoptsProvedTupleIntoMediaAndFeedback(t *testing.T) {
 
 func TestPunchRetiresStableObservationSocket(t *testing.T) {
 	stable := vnet.NATType{MappingBehavior: vnet.EndpointIndependent, FilteringBehavior: vnet.EndpointAddrPortDependent}
-	for _, scenario := range []string{"connection", "source", "engine", "cancel-during", "no-response"} {
+	for _, scenario := range []string{"connection", "source", "engine", "cancel-during", "no-response", "alternate-overflow"} {
 		t.Run(scenario, func(t *testing.T) {
 			network := newPunchLab(t, stable, sequentialPunchNAT)
 			engine := punchEngine(t, network, 0)
@@ -234,8 +263,15 @@ func TestPunchRetiresStableObservationSocket(t *testing.T) {
 				if scenario == "cancel-during" {
 					connections[0].firstWrite = preparation.cancel
 				}
-				if preparation.Run(PunchPrediction{Address: network.public[1], Port: 5000, Step: 1}) {
+				port := 5000
+				if scenario == "alternate-overflow" {
+					port = 65531 // Primary 65535 remains valid; only the alternate overflows.
+				}
+				if preparation.Run(PunchPrediction{Address: network.public[1], Port: port, Step: 1}) {
 					t.Fatal("unreachable peer completed preparation")
+				}
+				if scenario == "alternate-overflow" && connections[0].writes.Load() == before {
+					t.Fatal("alternate overflow suppressed valid primary checks")
 				}
 				engine.ClosePunch("stable")
 			}
@@ -262,6 +298,99 @@ func TestPunchRejectsAnotherGenerationOnStableMapping(t *testing.T) {
 	}
 	if leftEngine.TakePunchedSocket("left", nil) != nil || rightEngine.TakePunchedSocket("right", nil) != nil {
 		t.Fatal("unauthenticated preparation exposed a socket")
+	}
+}
+
+func TestPunchAlternatePinsOnlyAnAuthenticatedTuple(t *testing.T) {
+	stable := vnet.NATType{MappingBehavior: vnet.EndpointIndependent, FilteringBehavior: vnet.EndpointIndependent}
+	network := newPunchLab(t, stable, stable)
+	socket := func(side int) (net.PacketConn, *net.UDPAddr) {
+		t.Helper()
+		connection, err := network.nets[side].ListenPacket("udp4", network.private[side]+":0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = connection.Close() })
+		mapped, err := querySTUNBinding(t.Context(), &punchSurveySocket{PacketConn: connection},
+			&net.UDPAddr{IP: net.ParseIP(punchSTUNIP), Port: 3478}, stun.MustBuild(stun.TransactionID, stun.BindingRequest))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := connection.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		return connection, &net.UDPAddr{IP: mapped.IP, Port: mapped.Port}
+	}
+	retained, local := socket(0)
+	primary, primaryAddress := socket(1)
+	alternate, alternateAddress := socket(1)
+	outsider, outsiderAddress := socket(1)
+	var forbiddenReplies atomic.Int32
+	network.wan.AddChunkFilter(func(chunk vnet.Chunk) bool {
+		if chunk.DestinationAddr().String() == primaryAddress.String() || chunk.DestinationAddr().String() == outsiderAddress.String() {
+			message := &stun.Message{Raw: chunk.UserData()}
+			if message.Decode() == nil && message.Type == stun.BindingSuccess {
+				forbiddenReplies.Add(1)
+			}
+		}
+		return true
+	})
+	secret := bytes.Repeat([]byte{42}, 32)
+	integrity := stun.NewShortTermIntegrity(hex.EncodeToString(secret))
+	type result struct {
+		socket *PunchedSocket
+		err    error
+	}
+	done := make(chan result, 1)
+	go func() {
+		winner, err := punchSocketArray(t.Context(), nil, primaryAddress, secret, retained, alternateAddress)
+		done <- result{winner, err}
+	}()
+	buffer := make([]byte, 1024)
+	n, _, err := primary.ReadFrom(buffer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := &stun.Message{Raw: bytes.Clone(buffer[:n])}
+	if err := check.Decode(); err != nil {
+		t.Fatal(err)
+	}
+	send := func(connection net.PacketConn, message *stun.Message) {
+		t.Helper()
+		if _, err := connection.WriteTo(message.Raw, local); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Neither an unrelated transaction, a wrong key nor an unauthorized tuple
+	// may lock the primary before the legitimate alternate request arrives.
+	send(primary, stun.MustBuild(stun.BindingSuccess, stun.TransactionID, integrity))
+	send(primary, stun.MustBuild(stun.BindingRequest, stun.TransactionID, stun.NewShortTermIntegrity("wrong")))
+	request := stun.MustBuild(stun.BindingRequest, stun.TransactionID, integrity)
+	send(outsider, request)
+	send(alternate, request)
+	for {
+		n, _, err := alternate.ReadFrom(buffer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		message := &stun.Message{Raw: buffer[:n]}
+		if message.Decode() == nil && integrity.Check(message) == nil && message.Type == stun.BindingSuccess && message.TransactionID == request.TransactionID {
+			break
+		}
+	}
+	// Once the alternate is pinned, even the other eligible authenticated
+	// tuple must receive no response and cannot replace the adopted endpoint.
+	send(primary, request)
+	send(alternate, stun.MustBuild(stun.BindingSuccess, stun.NewTransactionIDSetter(check.TransactionID), integrity))
+	finished := <-done
+	if finished.err != nil || finished.socket == nil {
+		t.Fatalf("alternate preparation failed: %v", finished.err)
+	}
+	if finished.socket.PacketConn != retained || finished.socket.remote.String() != alternateAddress.String() {
+		t.Fatal("adoption did not retain the proved socket and alternate tuple")
+	}
+	if forbiddenReplies.Load() != 0 {
+		t.Fatal("unproved tuple received a response")
 	}
 }
 
@@ -481,7 +610,7 @@ func TestPunchSocketResourcesAreBoundedOnFailure(t *testing.T) {
 			if scenario == "invalid-secret" {
 				secret = nil
 			}
-			winner, err := punchSocketArray(ctx, listen, &net.UDPAddr{IP: net.ParseIP(network.public[1]), Port: 50000}, secret, nil)
+			winner, err := punchSocketArray(ctx, listen, &net.UDPAddr{IP: net.ParseIP(network.public[1]), Port: 50000}, secret, nil, nil)
 			if err == nil || winner != nil {
 				t.Fatal("failed preparation transferred a socket")
 			}

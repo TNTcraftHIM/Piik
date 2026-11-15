@@ -8,7 +8,7 @@
    each stroke. Reduced motion and ordinary controls use the unanimated SVG. */
 @media (prefers-reduced-motion: no-preference) {
   :where(html:not([data-reduced-motion])) {
-    .lr-glyph-draw:not(.lr-spin),
+    .lr-glyph-draw:not(.lr-spin):not(:disabled *, [aria-disabled="true"] *),
     :is(button, a):is(.lr-btn.is-primary, .lr-tv-big, .lr-join-go, .lr-tv-overlay):not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible) .lr-glyph:not(.lr-glyph-draw):not(.lr-spin) {
       & > :is(path, circle, rect, line) {
         stroke-dasharray: 1;
