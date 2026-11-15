@@ -57,6 +57,20 @@ ordinary forwarding retains its observed-cost cap; a required conversion uses
 only an explicit configured ceiling, when present, and otherwise the available
 connection allocation.
 
+### Rust Worker Cadence Control
+
+On 2026-11-14, the current Rust Windows worker path was exercised with owned
+640 × 360 textures, H264 at 4 Mbps and a real 120 fps producer for five seconds
+per mode. Auto and Software each delivered 120 frames in every second after
+their initial worker startup; neither recorded budget drops. Hardware
+input-to-output latency was 0.67/2.19 ms at p50/p95. Software encoding took
+0.46/0.64 ms, separately from its GPU-dependent readback wait of 0.43/1.08 ms.
+These are different stage measurements, not an encoder speed ranking.
+
+Both workers joined on exit. This establishes no fixed 60 fps limit in that
+low-load encoding path; it does not measure WGC, high-resolution games, GPU
+saturation or automatic hardware/software switching.
+
 ## Pinned Baseline
 
 The initial review used Chrome 152.0.7977.82. Its [DEPS][chromium-deps] pins libwebrtc
