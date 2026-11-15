@@ -67,29 +67,34 @@ export function LanguageControl() {
           onClick={() => setLang(key)}
         >{locales[key].short}</button>
       ))}
-      <button
-        ref={triggerRef} type="button" popoverTarget={menuId} aria-haspopup="menu"
-        aria-label={selectedLabel ? `${t("mode.more")}: ${selectedLabel}` : t("mode.more")}
-        className={`lr-lang-more${selectedLabel ? " is-selected" : ""}`}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown") {
-            event.preventDefault();
-            event.currentTarget.click();
-          }
-        }}
-      >
-        <span aria-hidden="true" lang={selectedExtra?.tag}>
+      <span className="lr-lang-extra">
+        <button type="button" popoverTarget={menuId} aria-haspopup="menu"
+          aria-label={selectedLabel ?? t("mode.more")} lang={selectedExtra?.tag}
+          className={`lr-lang-marker${selectedLabel ? " is-selected" : ""}`}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              event.currentTarget.click();
+            }
+          }}
+        >
           {vis ? "✦" : selectedExtra ? selectedExtra.short : <Glyph name="globe" size={14} />}
+        </button>
+        <button ref={triggerRef} type="button" className="lr-lang-more" popoverTarget={menuId}
+          aria-haspopup="menu" aria-label={t("mode.more")}
+          onKeyDown={event => {
+            if (event.key === "ArrowDown") { event.preventDefault(); event.currentTarget.click(); }
+          }}>
           <Glyph name="chevron" size={10} />
-        </span>
-      </button>
+        </button>
+      </span>
     </span>
     <span
       ref={menuRef} id={menuId} popover="auto" role="menu"
       aria-label={t("mode.more")} className="lr-language-menu" onKeyDown={navigate}
       onBlur={(event) => {
-        // Returning to the trigger lets its native action close the menu.
-        if (event.relatedTarget !== triggerRef.current &&
+        // Either part of the language shortcut can toggle the native menu.
+        if (!triggerRef.current?.parentElement?.contains(event.relatedTarget as Node | null) &&
             !event.currentTarget.contains(event.relatedTarget as Node | null)) {
           event.currentTarget.hidePopover();
         }

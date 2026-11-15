@@ -20,7 +20,10 @@ describe("copy catalog", () => {
       setCopy(selection);
       const html = renderToStaticMarkup(createElement(LanguageControl));
       const track = html.slice(0, html.indexOf('role="menu"'));
-      expect(track.match(/<button /g)).toHaveLength(3);
+      expect(track.match(/<button /g)).toHaveLength(4);
+      expect(track).toContain('class="lr-lang-extra"');
+      expect(track).toContain('class="lr-lang-more"');
+      expect(track).not.toContain('lr-lang-more is-selected');
       expect(html.match(/role="menuitemradio"/g)).toHaveLength(4);
       if (selection.vis) expect(track).toContain("✦");
       else if (selection.lang === "ko") expect(track).toContain("한");
