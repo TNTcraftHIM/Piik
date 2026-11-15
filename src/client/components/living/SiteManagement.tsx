@@ -68,7 +68,11 @@ export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, o
     setBookmarkError(undefined);
     try {
       if (remove && detail.draft.id) await onRemove(detail.draft.id);
-      else if (url) await onSave({ ...detail.draft, name: detail.draft.name.trim(), origin: url.origin });
+      else if (url) {
+        await onSave({ ...detail.draft, name: detail.draft.name.trim(), origin: url.origin });
+        // The old origin can remain as an independently approved site.
+        if (focusReturn.current) focusReturn.current.origin = url.origin;
+      }
       setDetail(undefined);
     } catch (error) {
       setBookmarkError(error instanceof Error && error.message === "bookmark_exists" ? "client.bookmarks.duplicate" : "client.connect.saveFailed");
@@ -106,7 +110,7 @@ export function SiteManagement({ bookmarks, sites, currentOrigin, startupSite, o
         const bookmark = bookmarks.find(site => site.origin === origin);
         return <li key={origin} data-current={origin === currentOrigin || undefined}>
           <div className="lr-site-identity"><strong>{bookmark?.name || origin}</strong>{bookmark?.name && <span dir="ltr">{origin}</span>}
-            <div className="lr-site-statuses">{bookmark && <span className="lr-site-status" title={t("client.sites.saved")}><Glyph name="star" size={14} /><span>{t("client.sites.saved")}</span></span>}{(origin === localSite || sites.includes(origin)) && <span className="lr-site-status" title={t(origin === localSite ? "client.sites.automatic" : "client.sites.allowed")}><Glyph name="lock" size={14} /><span>{t(origin === localSite ? "client.sites.automatic" : "client.sites.allowed")}</span></span>}{opensOnStart(origin) && <span className="lr-site-status" title={t("client.sites.startup")}><Glyph name="play" size={14} /><span>{t("client.sites.startup")}</span></span>}{origin === currentOrigin && <span className="lr-site-status" title={t("client.sites.current")}><Glyph name="window" size={14} /><span>{t("client.sites.current")}</span></span>}</div>
+            <div className="lr-site-statuses">{bookmark && <span className="lr-site-status"><Glyph name="star" size={14} /><span>{t("client.sites.saved")}</span></span>}{(origin === localSite || sites.includes(origin)) && <span className="lr-site-status"><Glyph name="lock" size={14} /><span>{t(origin === localSite ? "client.sites.automatic" : "client.sites.allowed")}</span></span>}{opensOnStart(origin) && <span className="lr-site-status"><Glyph name="play" size={14} /><span>{t("client.sites.startup")}</span></span>}{origin === currentOrigin && <span className="lr-site-status"><Glyph name="window" size={14} /><span>{t("client.sites.current")}</span></span>}</div>
           </div>
           <div className="lr-site-row-actions"><Btn icon="arrowRight" size="compact" title={{ text: `${t("client.bookmarks.open")} ${bookmark?.name || origin}` }} cap="client.bookmarks.open" disabled={busy} onClick={() => onOpen(origin)} /><span data-site-index={index}><Btn icon="sliders" quiet size="compact" title={{ text: `${t("client.sites.manage")} ${bookmark?.name || origin}` }} cap="client.sites.manage" disabled={busy} onClick={() => edit(origin)} /></span></div>
         </li>;
