@@ -56,7 +56,7 @@ export function RoomReactionGrid({ reactionIds, canSend, onSend, compact = false
 }) {
   const { t } = useCopy();
   return <div className={`lr-reaction-grid${compact ? " is-compact" : ""}`}>
-    {reactionIds.map(reaction => <Tooltip key={reaction} kind="hint-reaction-picker" text={t(`interaction.reaction.${reaction}`)}><button type="button"
+    {reactionIds.map(reaction => <Tooltip key={reaction} text={t(`interaction.reaction.${reaction}`)}><button type="button"
       className={`lr-btn is-compact is-quiet lr-reaction-option${isThrow(reaction) ? " is-prop" : ""}`}
       aria-label={t(`interaction.reaction.${reaction}`)} aria-disabled={!canSend}
       onClick={() => { if (canSend) onSend(reaction); }}>
