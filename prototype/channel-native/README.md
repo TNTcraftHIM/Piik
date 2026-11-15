@@ -231,31 +231,21 @@ When an upstream release includes the repair, return both direct entries
 to that release and regenerate Native, Server and Android locks, then run the
 existing mapping timer/lifecycle checks and package notice collection.
 
-Native uses str0m's public RTP/Sans-I/O interface, temporarily pinned to
-[`f3196495`](https://github.com/TNTcraftHIM/str0m/commit/f3196495983841061e63d30704024f87ffb09c6b)
-on the [official `8e0067cc` baseline](https://github.com/algesten/str0m/commit/8e0067cca6a45ae4ea0532148d08a3d803d29841).
-The fork preserves the original commits from
-[PR #1134](https://github.com/algesten/str0m/pull/1134): repeated NACKs cannot
-enqueue the same packet within one round trip, while later loss can still be
-repaired. The additional reset correction clears that resend history with the
-transmit buffers. The PR author's
-[follow-up commit](https://github.com/algesten/str0m/commit/6b11796ba56b2cc332907bbdff79f44980441a88)
-includes equivalent reset behavior and the regression test.
-The [Native consumer comparison](../../docs/research/network-lab.md#duplicate-nack-feedback)
-records the effect through Piik's transport. Upstream MIT/Apache-2.0 licensing,
-public APIs and Piik's retransmission policy remain unchanged.
+Native uses str0m's public RTP/Sans-I/O interface, pinned to official
+[c97e014d](https://github.com/algesten/str0m/commit/c97e014d26095b095e8902342513e02fd9e18195).
+[PR #1134](https://github.com/algesten/str0m/pull/1134) suppresses duplicate NACK
+repairs within one round trip while permitting later repair. Resend history
+belongs to each cached packet and retires with cache eviction, buffer reset or
+SSRC reset. Native, Server and Android retain this single upstream source until
+a published release includes the repairs. MIT/Apache-2.0 licensing and the
+[rust-crypto provider](https://github.com/algesten/str0m/tree/c97e014d26095b095e8902342513e02fd9e18195/crates/rust-crypto)
+remain unchanged.
 
-The official baseline includes [RTX jitter accounting](https://github.com/algesten/str0m/pull/1121),
-[early RTX receipt accounting](https://github.com/algesten/str0m/pull/1086),
-[TWCC timestamp precision](https://github.com/algesten/str0m/pull/1071),
-[persistent-queue pacing](https://github.com/algesten/str0m/pull/1115),
-[allocation probing](https://github.com/algesten/str0m/pull/1108),
-[idle output readiness](https://github.com/algesten/str0m/issues/1011) and the
-candidate-credential refresh repair. Selected Original supply provides the
-SDK's minimum transmit demand; the SDK owns padding and probing within its estimate.
-When an official revision includes equivalent resend and reset repairs, return
-the pin to upstream and regenerate Native, Server and Android locks. Reuse the
-consumer loss/retirement checks and package notice collection before adoption.
+The [Native consumer comparison](../../docs/research/network-lab.md#duplicate-nack-feedback)
+owns retransmission evidence for its recorded revisions. Selected Original
+supply provides the SDK's minimum transmit demand; the SDK owns padding and
+probing within its estimate. The adapter adds no retransmission-history state.
+
 The SDK owns ICE, DTLS/SRTP, SCTP, pacing, retransmission and congestion control.
 Piik owns source clocks, shared encodings, output demand and pair-scoped socket
 handoff; Server owns its fixed UDP listeners. The `rust-crypto` provider requires
