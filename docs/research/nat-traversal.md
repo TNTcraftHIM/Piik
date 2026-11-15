@@ -1,10 +1,13 @@
 # Browser And Native NAT Traversal
 
-Last reviewed: 2026-10-16
+Last reviewed: 2026-11-15
 
-This document owns evidence for improving direct ICE without adding a
-new relay or a custom transport. The current product contract remains standard
-WebRTC ICE with STUN discovery and bounded SFU fallback.
+This document owns NAT traversal evidence. Current 3.0 behavior belongs to the
+[network model](./channel-network-design.md#reachability-and-repair); its results
+start at [Rust integration](#rust-integration). The [laboratory](./network-lab.md)
+owns execution methods, and [Native provenance](../../prototype/channel-native/README.md#rtc-dependency)
+owns current dependency pins. Pion, Go, LiveKit/SFU and the dated 2.x policies
+below are retained historical evidence, not instructions for the Rust runtime.
 
 ## Confirmed Boundaries
 
@@ -15,7 +18,7 @@ WebRTC ICE with STUN discovery and bounded SFU fallback.
 - A STUN operator observes the client's source address, source port, request
   time and protocol metadata. It never receives the DTLS-SRTP media path. An
   external STUN endpoint is therefore a metadata dependency, not a media relay.
-- The current `STUN_URLS` wire already accepts a bounded list. Independent
+- The 2.x `STUN_URLS` wire accepts a bounded list. Independent
   ordinary endpoints can preserve discovery when one destination is unreachable;
   additional observations alone do not establish better hole punching.
 
@@ -43,7 +46,7 @@ A v1.9.2 report describes working chat but failed media, with only MiWiFi STUN
 responding on the reporter's network. It supplies neither paired ICE traces nor
 the share's prediction setting. The code confirms a narrower configuration gap:
 disabling prediction also removed both fallback discovery destinations, leaving
-Cloudflare alone. The candidate keeps all three existing destinations in ordinary
+Cloudflare alone. The 2.x repair kept all three existing destinations in ordinary
 ICE and reuses that set for prediction. It adds no provider, polling, URL ranking,
 fallback transport or new configuration surface; Local LAN remains unchanged.
 
@@ -65,28 +68,18 @@ do not reproduce the reporter's network or establish its
 final connection cause. The [WebRTC event specification](https://www.w3.org/TR/webrtc/#rtcicecandidateerrorevent)
 owns error semantics; compare the attempt's gathered and selected candidates too.
 
-The follow-up also found a separate Native provenance gap on Sites with extra
-ordinary STUN destinations. All `nsN` results were eligible for prediction,
-while Browser observations were restricted to the configured three-URL survey.
-Native candidate markers now identify their requested destination, independent
-of response order. Both Native adapters filter prediction evidence against the
-same survey set and still forward every ordinary candidate. The Viewer retains
-the offer's actual destination list with its candidate batch, so a later config
-update cannot reinterpret an in-flight response. Controlled tests cover
-out-of-order results, an unrelated fourth destination, repeated mappings and
-stalled DNS.
-The Native collector must also retain each destination's observation until that
-eligibility filter. Deduplicating mapped endpoints first let a faster ordinary
-destination hide an equal survey response. The corrected collector preserves
-both identities; the existing predictor still deduplicates eligible mappings,
-so repeated equal mappings cannot establish a three-point pattern. ICE retains
-ownership of actual remote endpoint connectivity.
-This does not identify the public-invitation report's cause, whose configured
-set already contains exactly three destinations.
+The 2.x follow-up found two provenance defects with extra STUN destinations:
+all `nsN` results were eligible for prediction, and early endpoint deduplication
+let a faster ordinary response hide an equal survey response. The correction
+retains destination identity until filtering against the offer's actual survey
+set, then deduplicates eligible mappings. Later configuration changes cannot
+reinterpret in-flight responses; ordinary candidates still reach ICE. Reordered,
+fourth-destination and duplicate responses verified these boundaries. They do
+not explain the original report, whose configuration had exactly three destinations.
 
 ### SFU Behind Server NAT
 
-An isolated Linux kernel-NAT control on 2026-10-09 places the current Server
+An isolated 2.x Linux kernel-NAT control on 2026-10-09 placed the Server
 behind same-port UDP forwarding with `SFU_PUBLIC_IP`; direct access to its private
 address is blocked. Chromium 152 Host/Viewer pages use the real SFU route owners
 and authenticated signaling under `SFU_ONLY`. VP8/Opus reception, 720p-to-480p
@@ -145,6 +138,10 @@ supports an opt-in mechanism, not a default or a participant-wide classifier.
 
 ## Current Decision
 
+This section records the 2.x decision under
+[ADR-0009](../adr/0009-optional-nat-prediction.md). Current Rust behavior is owned
+by the [3.0 network model](./channel-network-design.md#reachability-and-repair).
+
 Ordinary STUN remains the discovery service. A Site may enable same-host
 STUN-only listeners on 3479 and 3480. Public-link App mode supplies three ordinary
 public destinations and reuses them for prediction, so disabling prediction
@@ -154,24 +151,13 @@ Current pages automatically request that capability on P2P-first sites. The
 server's accepted share policy keeps Host, Viewer and relay behavior aligned;
 the published 2.x field still accepts older pages' per-share preferences.
 
-The accepted adapter is deliberately connection-local and additive. It waits for a
-clear three-point arithmetic `srflx` shape in one ICE generation, and appends a
-small two-sided candidate window from the observed port-sequence endpoint.
-Ordinary candidates trickle immediately, so unavailable auxiliary listeners
-cannot hold back stock ICE. There is no NAT label, hard candidate skip,
-route-controller input, or SFU preference. Browser candidates are filtered by
-their reported STUN URL. Native uses Pion's STUN client over its ordinary UDP
-mux, so every fresh observation and subsequent media packet uses one socket.
-Only explicitly marked Native survey observations feed prediction;
-the independently mapped-port candidate does not. The policy applies to Host,
-Viewer upstream, and Viewer relay P2P connections. Its exact scope is recorded in
-[ADR-0009](../adr/0009-optional-nat-prediction.md).
-
-Browser and Native candidate adapters use the same generation-scoped predictor;
-Native observations do not need a second Go predictor. Predictions can trickle
-as soon as the third qualifying survey observation arrives. Route scheduling
-continues to use the operation deadline in ADR-0005, independently of whether
-prediction produces candidates.
+The 2.x Browser and Native adapters share a generation-scoped predictor: three
+eligible arithmetic `srflx` observations yield a small two-sided port window.
+Ordinary candidates trickle immediately. Browser evidence is filtered by STUN URL;
+Native uses marked survey results from Pion's STUN client on the media socket,
+excluding independently mapped gateway candidates. Prediction adds no NAT label,
+candidate skip or route/SFU preference. Host, Viewer upstream and Viewer relay
+retain the route-operation deadline independently of prediction output.
 On an ICE restart, discard the old prediction batch rather than emitting an
 unscoped end marker into the new generation. The real gathering owner supplies
 completion, following [Trickle ICE generation rules](https://www.rfc-editor.org/rfc/rfc8838.html#section-13).
@@ -239,26 +225,15 @@ Packet-level loopback regressions cover reassignment, renewal, deletion,
 cancellation and the existing PCPv6 combination. They do not establish physical
 router coverage or a higher field connection-success rate.
 
-Piik bounds a mapping caller's wait to three seconds. Optional PCPv6 operations
-have a two-second bound in both gateway adapters, leaving time to return a
-successful IPv4 mapping before that caller deadline. Joining the optional work
-at the same deadline could otherwise discard IPv4 success and suppress renewal.
-The regression uses the real budgets with a silent IPv6 gateway; IPv6-only
-mapping retains the caller's full budget. This trades away late optional IPv6
-responses, not ordinary IPv6 ICE candidates. Connection retirement
-cancels both discovery and pending creation; a canceled owner cannot start a
-later mapping request. Cleanup has its own deadline because it must still run
-after cancellation. PCPv6 rollback can
-finish after that wait, so cleanup must wait for the in-flight gateway call
-before accessing its bookkeeping. A connection does not relaunch failed mapping
-requests. Replacement connections have independent sockets and rediscover their
-gateway; one connection's failure does not disable later attempts. Close attempts
-deletion even after a failed request, because losing a
-reply does not prove the router rejected the mapping. Cleanup is best effort:
-an unreachable gateway or unsettled rollback can leave a lease to expire.
-Caller cancellation and router lease expiry remain distinct lifecycle boundaries.
-The gateway selector and its NAT-PMP/PCPv6 combination retain one mapping owner;
-ordinary ICE candidates remain independent.
+The 2.x mapping caller waits three seconds; optional PCPv6 work has a two-second
+bound so a silent IPv6 gateway cannot discard successful IPv4 mapping or renewal.
+IPv6-only mapping retains the full caller budget, and ordinary IPv6 ICE is unaffected.
+Retirement cancels discovery and creation; cleanup has a separate bound and joins
+in-flight gateway work before accessing rollback bookkeeping. Close attempts
+deletion even after a lost reply, but unreachable gateways can leave leases to
+expire. Failed mapping is not relaunched on the same connection; replacements
+rediscover independently. These caller, cleanup and lease lifetimes share one
+mapping owner and remain separate from ordinary ICE.
 
 Binding all three STUN listeners proves local startup, not public reachability.
 A local self-probe also cannot prove traversal through an operator's firewall.
@@ -301,43 +276,18 @@ Fresh connection attempts do not guarantee a new socket, mapping or predictable
 port sequence; field measurements must attribute the selected path to its actual
 connection generation.
 
-The Browser-only alternatives do not yet have an accepted implementation:
+Browser srflx events expose completed, deduplicated observations: one candidate
+cannot distinguish equal mappings from an unanswered destination, and event/URL
+order cannot establish send or NAT allocation order. ICE restart may also change
+the socket, interface or VPN/CGNAT route. These limitations support a positive
+`varies` observation, not a durable `eim | edm-sequential | edm-random` participant
+fact; [the rejected inference](#rejected-product-inference) explains the routing boundary.
+Tailscale likewise keeps `MappingVariesByDestIP` as a tri-state report and requires
+repeated observation before retaining another endpoint. Extra STUN traffic alone
+does not establish an additional direct path.
 
-- WebRTC ICE already exchanges observed candidates and performs coordinated
-  connectivity checks. libp2p's mature hole-punching specification explicitly
-  keeps private Browser peers on WebRTC because Browser code cannot own or
-  reuse the underlying UDP, QUIC or TCP socket.
-- Tailscale compares mappings observed by different STUN destinations, but
-  keeps `MappingVariesByDestIP` as a tri-state network report. It retains an
-  additional mapped endpoint only after repeated observation; it does not turn
-  one NAT label into hard connection rejection or a predicted port.
-- A second STUN destination supplies an observation, not a new path through an
-  endpoint-dependent NAT. Deploying it without a consumer adds metadata
-  exposure and candidate traffic without proving more direct connections.
-
-The Browser API is also weaker than the raw-socket netcheck model:
-
-- Different srflx endpoints prove only that the current Browser socket's mapping
-  varied by destination. An identical endpoint is deduplicated before the
-  application sees it, so one emitted candidate cannot distinguish stable
-  mapping from a second STUN destination that did not answer.
-- Candidate events expose response completion order, not a specified STUN send
-  or NAT allocation order. Sorting by configured URL or event time cannot turn
-  observed ports into a standards-backed sequential delta.
-- ICE restart creates a new generation and may use a new socket. Network
-  interface, VPN/TUN route and CGNAT allocation traffic can all change between
-  generations.
-
-Consequently Browser observations can support a positive `varies` diagnostic,
-but cannot produce the proposed `eim | edm-sequential | edm-random` participant
-fact. They cannot safely remove a Peer candidate or alter route ordering and
-deadlines.
-
-Port prediction remains additive rather than an assumed path. The controlled
-namespace matrix supports the bounded mechanism, but field prevalence,
-direction, and resource impact are not established. Configuration therefore
-stays off by default even though the flagship deployment explicitly enables its
-field rollout.
+The dated 2.x field rollout was opt-in: its controlled namespace result did not
+establish field prevalence, direction or resource impact.
 
 ## Rejected Product Inference
 
@@ -367,6 +317,9 @@ supported WebRTC transport configuration, but that is the bounded SFU path, not
 a new Peer route.
 
 ## Iroh And Tailscale Comparison
+
+The Pion/SFU comparisons below describe the 2.x line; the following
+[Rust integration](#rust-integration) section records the 3.0 adapter.
 
 Iroh's [NAT guide](https://docs.iroh.computer/concepts/nat-traversal) estimates
 direct reachability for roughly nine in ten network configurations. It does not
@@ -453,7 +406,7 @@ also distinguishes one hard NAT from two: a large socket/probe budget for the
 former does not establish practical traversal of the latter.
 
 Native recovery must translate the selected SDK's actual terminal boundary.
-Released [is 0.11.1](https://docs.rs/crate/is/0.11.1/source/src/agent.rs) emits
+The reviewed [is 0.11.1](https://docs.rs/crate/is/0.11.1/source/src/agent.rs) emits
 `Disconnected` when no candidate remains nominated or viable, and has no later
 `Failed` event. Its default unanswered-check budget is approximately 21.5 seconds.
 The str0m adapter sends that exhaustion into the existing physical-pair failure
@@ -504,8 +457,8 @@ path; room/file/input DataChannels opened, and Browser picture and sound
 advanced through the IPv6-only Native relay to another Browser. Failed discovery,
 alias exhaustion and explicit loopback controls preserve ordinary ICE. Other
 prefix lengths have RFC-vector coverage; physical networks, multiple translators
-and interface changes remain outside this evidence. This source change is not
-yet part of the previously delivered internal package.
+and interface changes remain outside this evidence. [Status](../status.md) owns
+the delivered-package snapshot.
 
 ### Random-Mapping Collision Control
 
@@ -583,7 +536,7 @@ IPs, and same-IP observations can conceal address-dependent mapping.
 
 ### External Forwarding And Participant Relays
 
-The October 19 review and isolated Linux check of
+The October 19 review and isolated 2.x Linux check of
 [frp v0.71.1](https://github.com/fatedier/frp/releases/tag/v0.71.1)
 establish fixed-UDP forwarding feasibility, not an integrated Piik provider:
 
@@ -620,20 +573,14 @@ still marks it Alpha and unsuitable for production. It requires frp setup on
 participating endpoints as well as a reachable frps service; it is not part of
 Piik's tested forwarding recipe or a default campus-network recommendation.
 
-A well-connected participant already can help through the existing Viewer relay.
-The normal integration candidate now exposes an explicit voluntary fanout
-override through that controller, bounded by actual endpoint capability and
-the room's 20-Viewer limit. This is not a new SFU worker or a guarantee that the
-participant is reachable. Browser room-voice checks cover a real three-person
-relay and local-mute isolation; external networks remain the next evidence step.
-Browser relays reuse WebRTC senders; Native relays can forward suitable encoded
-media. Any voluntary capacity control should feed the existing room controller,
-with its endpoint cap and current-edge retirement. Bandwidth alone does not prove
-reachability. A separate App-hosted SFU would need remote-worker admission,
-authorized commands and capacity/retirement ownership that the current embedded
-SFU does not expose. [Tailscale Peer Relays](https://tailscale.com/docs/features/peer-relay)
-likewise require configured reachability and authorization; they are not arbitrary
-high-bandwidth peers. This review does not accept a second graph or relay service.
+The 2.x voluntary fanout override reused the Viewer relay controller and its
+20-Viewer capacity limit. A real three-person Browser voice relay retained local
+mute isolation; that does not prove external reachability. Browser WebRTC senders
+and Native encoded forwarding retain their own resource costs. A separate
+App-hosted SFU would require remote-worker admission and lifecycle interfaces
+absent from the embedded SFU. [Tailscale Peer Relays](https://tailscale.com/docs/features/peer-relay)
+likewise require configured reachability and authorization; bandwidth alone does
+not make a participant usable. The review accepted no second graph or relay service.
 
 A controlled Native relay check blocked only Host-to-target traffic in Pion
 vnet. The unmodified controller retired that silent candidate after its existing
@@ -647,15 +594,10 @@ Browser relay behavior or a field NAT success rate.
 
 ### Coordinated Native Punching Assessment
 
-The October 12, 2026 scope includes optional Native transport at both ends when
-it provides a measured gain. Background App availability makes this usable;
-ordinary Browser peers must retain their existing connection path.
-
-The ordinary adapter already predicts on both ends of an eligible edge, but each
-end independently supplies at most eight adjacent candidates from one media
-socket. It does not coordinate probing order or open a pool of local sockets.
-Completing the ordinary-ICE and Magicsock controls therefore does not establish
-the limit of coordinated Native hole punching.
+This section records the October 2026 Go/Pion experiment and 2.x integration.
+Its ordinary adapter supplied up to eight predicted candidates per media socket,
+without coordinating peers or allocating a pool. The experiment tested whether
+coordinated Native work could add value while Browser peers retained ordinary ICE.
 
 Mature implementations provide a concrete comparison:
 
@@ -668,7 +610,7 @@ Mature implementations provide a concrete comparison:
   and random-port paths. Its implementation is evidence that these are real
   mechanisms, not evidence that replacing Piik's media stack improves coverage.
 
-An isolated Go prototype compared ordinary ICE, the current eight-candidate
+An isolated Go prototype compared ordinary ICE, the 2.x eight-candidate
 prediction policy, an ordered first tuple, a coordinated eight-socket pool and
 ordinary ICE over eight preallocated sockets. The pool authenticates generation-
 specific STUN transactions, closes its losing sockets and passes its actual
@@ -681,55 +623,42 @@ in [routing and transport](../standards/routing-transport.md).
 In Pion's sequential endpoint-dependent NAT fixture, coordinated first sends
 connect the otherwise timing-sensitive bilateral tuple. Three unrelated mappings
 after observation defeat that simple first-tuple guess; the pool still connects.
-The current candidate policy can also occasionally win through favorable check
+The eight-candidate policy could also win through favorable check
 scheduling. This is evidence for more deliberate coordination, not a newly proven
 unreachable NAT class or a public success-rate claim. Merely preallocating sockets
 does not establish the same benefit. Six unrelated mappings and blocked peer UDP
 defeat this pool's bounded prediction.
 
-The pool uses eight sockets, at most 64 requests plus 64 authenticated replies,
-one predicted remote endpoint, approximately 200 ms of overlapping sends and a
-500 ms cleanup deadline. Cancellation, allocation failure, wrong-generation
-credentials, first-packet loss and winner adoption have explicit controls.
-100 ms of peer-start skew succeeds in the fixture; 350 ms exceeds its overlap
-and fails cleanly. These are experimental budgets, not product defaults.
+The pool used eight sockets, at most 64 requests plus 64 authenticated replies,
+one predicted endpoint, approximately 200 ms of overlapping sends and a 500 ms
+cleanup deadline. A 100 ms peer-start skew succeeded; 350 ms exceeded the overlap
+and failed cleanly. Cancellation, authentication and socket adoption were checked;
+these were experimental budgets, not product defaults.
 
 The isolated policy comparator follows TS emission order, but surveys run before
 ICE; ordinary production gathering trickles while STUN work is still running.
 Its synthetic RTP does not establish decoded pictures or complete control and
 signaling integration.
 
-The 2.0 candidate now adopts the winning socket before constructing Pion, only
+The 2.0 integration adopted the winning socket before constructing Pion, only
 on an existing server-issued retry. Pion's WebRTC API does not expose ICE's
 `AddVirtualCandidate`; this avoids a private late-socket API, a second route
 owner and a delay to the first ordinary attempt. Browser peers decline this
 Native preparation and continue ordinary ICE. The authorized phases and resource
 bounds are owned by [ADR-0009](../adr/0009-optional-nat-prediction.md).
 
-The production Engine's virtual-network regression carries VP8 SRTP into its
-actual Receiver and returns SRTCP key-frame feedback after socket transfer,
-including 250 ms of peer-start skew. It retains the proved remote tuple rather
-than replacing it with a later, destination-dependent STUN mapping. Other
-controls cover early/late cancellation, source/Engine retirement, premature
-commit, resource limits, stale signaling and Browser decline. These establish
-bounded composition, not a physical difficult-network success-rate improvement.
-The candidate's send window is 800 ms within a 1.1-second hard bound; the earlier
-isolated experiment's shorter window is not its product timing.
+The 2.x Engine carried VP8 SRTP into its Receiver and reverse SRTCP after socket
+transfer, including 250 ms of peer-start skew. Its 800 ms send window had a
+1.1-second hard bound. The proved peer tuple survived later destination-dependent
+STUN observations, and all preparation readers retired before transfer.
 
-Stable observations now use the exact survey socket in that same preparation;
-reopening a socket would invalidate the observed address. Mixed stable/sequential
-fixtures previously declined at observation and now carry production SRTP and
-reverse SRTCP in both directions, including 250 ms of start skew. Stable/stable
-and sequential/sequential controls also pass. This removes an eligibility gap;
-it does not prove those pairs could never connect through ordinary ICE. Three
-equal observations, especially against different ports on one STUN IP, do not
-establish endpoint-independent mapping for every destination. Wrong-generation
-responses remain rejected, and no-response paths remain bounded. Raw survey I/O
-has the survey deadline and cancellation interruption; Pion's reader and
-retransmitter and the cancellation callback finish before a socket transfers.
-Blocked initial/retransmission writes and unused stable-socket retirement have
-regression coverage. The shared wire decoder requires an explicit zero step;
-missing/null fields cannot silently select this behavior.
+Retaining the exact survey socket also removed a stable/sequential eligibility
+gap: mixed mappings carried SRTP/SRTCP in both directions with 250 ms skew;
+stable/stable and sequential/sequential controls passed too. This does not prove
+ordinary ICE could never connect those pairs. Three equal observations, especially
+on one STUN IP, do not establish endpoint-independent mapping everywhere. The
+2.x wire required explicit zero step; canceled, unauthenticated and no-response
+attempts remained bounded. These were composition controls, not field success rates.
 
 A focused in-memory preparation check on 2026-10-17 retained the existing
 sequential-NAT fixture and three ordered destinations. Losing the first request
@@ -741,12 +670,10 @@ cannot supply the three successful observations required by this preparation.
 Keep the current failure-to-ordinary-ICE behavior; these controls establish
 bounded recovery and failure, not a physical-network success-rate benefit.
 
-The Windows Browser-to-App fanout gate also exercises the actual room retry,
-both Native control preparations and ordinary ICE continuation when the mapping
-is ineligible. Two Viewers decode about 30 fps; live quality, pause/resume, source
-audio changes and App-exit fallback remain usable. The archived 2.x [Browser fanout runner](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/scripts/app-browser-fanout-gate.ts) owns those recorded inputs. This arm uses loopback STUN
-listeners on UDP 3478/3479/3480 and injects one candidate rejection; it does not
-contact public STUN services.
+The archived 2.x [Browser fanout runner](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/scripts/app-browser-fanout-gate.ts)
+used loopback STUN and actual room retry. Two Viewers decoded about 30 fps while
+quality, pause/audio changes and App-exit fallback remained usable, including
+ineligible mapping and one rejected candidate. It did not contact public STUN.
 
 The [process laboratory](./network-lab.md#running-the-process-layer) now verifies
 successful preparation and socket adoption through sequential Linux kernel NAT,
@@ -811,7 +738,7 @@ against that same endpoint pair and relay policy.
 
 #### Stable Pion Interoperability
 
-The candidate uses Pion WebRTC v4.2.24 / ICE v4.4.8. The
+This 2.x candidate used Pion WebRTC v4.2.24 / ICE v4.4.8. The
 [upstream changes](https://github.com/pion/ice/compare/v4.4.0...v4.4.8) include
 STUN retransmission, gathering-generation ownership, Chromium mDNS compatibility
 and pre-created mux lifetime corrections. This updates the shared Native/SFU
@@ -842,13 +769,11 @@ boundary useful to App-to-Browser edges; it is not a field success-rate result
 or proof of the cause of an unmatched report. Peer-reflexive discovery can also
 let a connection succeed despite failed mDNS resolution.
 
-The package-major adaptations retain Pion's STUN transaction owner and SRTP
-buffer bounds/attributes. LiveKit forwarding and the existing ICE recovery
-owners remain unchanged. Chrome 152 and Firefox 151.0.3 recovered synthetic VP8,
-reverse RTCP and echoed data through ordinary ICE restart after the selected
-UDP path was cut. Shared forwarding, Native edges, SFU and STUN tests passed,
-including Linux race checks and a disposable-namespace interface-replacement
-control. No new automatic renomination, probing loop or retry budget is enabled.
+The 2.x upgrade retained STUN transaction and SRTP-buffer ownership. Chrome 152
+and Firefox 151.0.3 recovered synthetic VP8, reverse RTCP and echoed data through
+ordinary ICE restart after the selected UDP path was cut. Forwarding, SFU and
+interface-replacement controls passed without enabling automatic renomination
+or changing retry budgets.
 
 Keep Piik's fresh-interface mux and connection-owned STUN/mapping repairs: the
 newer framework still snapshots its default interface view and caches successful
@@ -858,7 +783,7 @@ summarizes how local evidence applies to device and network claims.
 
 #### Pion Renomination Preflight
 
-The current decision is not to enable automatic renomination. An isolated
+The 2.x decision was not to enable automatic renomination. An isolated
 two-UDP-path control with pinned WebRTC v4.2.19/ICE v4.4.0 cut the selected socket
 after stable VP8 playback. Chromium 152 recovered video and reverse feedback
 without new SDP after about 5.6 seconds. Firefox 151.0.3 repeatedly resumed video
@@ -978,25 +903,19 @@ The experimental composition exposed these integration costs:
 
 #### Scope Of The Historical Evidence
 
-The isolated overlays exercised real Pion/LiveKit forwarding, H264/VP8 and Opus,
-Browser decoding, Native control and room authorization. Bounded rendered checks
-covered reconnect, invitation revocation, overlapping parent replacement,
-healthy siblings, denial at the room capacity limit and final resource cleanup.
-Generated changing pixels distinguished fresh output from retained frames.
-The final full-App controls could select the tunnel with ordinary remote
-candidates withheld, while ordinary Web edges retained ICE.
-
-Those checks established local composition and ownership behavior. They did
-not establish physical capture, difficult-network benefit, broad mobile support
-or sustained field reliability. The experiment's detailed intermediate controls,
-failed counterfactuals and package evidence belong to historical research.
-Independent ordinary-media findings are retained here
-and in their existing owners.
+The Pion/LiveKit overlays carried H264/VP8 and Opus with fresh Browser decoding,
+room authorization and resource retirement. Full-App controls selected the tunnel
+when ordinary remote candidates were withheld, while other Web edges retained
+ICE. This establishes local composition only: physical capture, difficult-network
+benefit, broad mobile support and sustained field reliability were not established.
+Independent ordinary-media findings follow below; the removed overlay is not a
+maintained acceptance entrypoint.
 
 ## Ordinary ICE And Media Recovery
 
-These findings apply without Magicsock. They must remain part of candidate
-acceptance independently of the retired experiment.
+These Go/Pion findings belong to the 2.x line and apply without Magicsock.
+Current Rust recovery is covered by [Rust integration](#rust-integration) and the
+[network owner](./channel-network-design.md#reachability-and-repair).
 
 ### Interface Refresh And Local Browser Bridge
 
@@ -1133,6 +1052,8 @@ another mechanism is proposed.
 
 ## Native Mapping Cache And Retry Lifetimes
 
+This section records the 2.x Pion/shared-mux repairs.
+
 Pion ICE `v4.4.0` caches a shared socket's STUN mapping by destination for 25
 seconds. The former Native Host/Viewer Engine socket outlived its media edges;
 edge replacement and ICE restart did not invalidate that cache. Browser-only ICE
@@ -1170,11 +1091,10 @@ Binding request while preserving ordinary duplicate-destination sharing.
 The same review reproduced acceptance of an unmatched STUN response in the old
 universal cache path. Stock STUN transactions reject it and recover a dropped
 Binding response. Native edge replacement and receiver ICE restart now query
-again while ordinary SDP renegotiation keeps its collector. Regression checks
-exercise a healthy encoded-media sibling, concurrent/canceled gatherings,
-Engine shutdown and both address families. Replacing only the implementation
-with the prior revision makes the address-refresh and transaction tests fail.
-These controlled checks do not assign a cause to unmatched field reports.
+again while ordinary SDP renegotiation keeps its collector. Replacing only the
+implementation with the prior revision makes the address-refresh and transaction
+tests fail. These controls preserved sibling media and cancellation; they do not
+assign a cause to unmatched field reports.
 
 The missing case in the earlier shared-socket preflight was a retained Engine
 whose router mapping changed between gatherings. Proving one socket, a new
@@ -1197,14 +1117,13 @@ and emitted only the current mapping; a lost valid response plus an unmatched
 transaction response recovered through retransmission in both sequences. This
 checks real Browser candidate gathering, not a connected media session, a
 physical NAT mapping change, Firefox/Safari behavior or field success rate.
-The scoped review also retains the controller's four-attempt, final-candidate
-deadline and stale-event checks; slow DNS and gateway preparation do not hold
-ordinary candidates. Those boundaries do not establish exhaustive traversal
-coverage or justify a claim that no implementation can limit connectivity.
+The 2.x controller's four-attempt budget and final-candidate deadline were unchanged;
+slow DNS and gateway work did not hold ordinary candidates. These checks do not
+establish exhaustive traversal coverage.
 
 ## Native Connection Socket Ownership
 
-A real Native-to-Native overlap reproduced a second shared-resource defect:
+A 2.x Native-to-Native overlap reproduced a second shared-resource defect:
 the first connection delivered encoded video, the candidate connected, then the
 current connection stopped receiving RTP. Both connections had the same local
 and remote UDP tuple. Pion's mux routes non-STUN traffic by remote IP and port;
@@ -1220,13 +1139,10 @@ operation remain unchanged. Gateway cleanup precedes socket release so a late
 delete cannot target a replacement's recycled port. Engine retirement closes
 remaining owned sockets, including a preparation that fails before registration.
 
-Regression checks exercise real ICE/DTLS/SRTP for two simultaneous Native routes
-through commit and rollback, and two publications against one unchanged
-SFU-style UDP listener through rollback. Surviving media continues. The Native overlap
-test fails on the pre-correction product. Receiver renegotiation retains its
-socket, source and downstream media; failed admission releases its reservation
-and socket. IPv4, IPv6, canceled surveys and slow supplemental discovery keep
-their existing checks.
+Real ICE/DTLS/SRTP controls retained surviving media through commit/rollback of
+two Native routes and two publications against one unchanged SFU-style listener.
+The overlap test fails before the correction. Receiver renegotiation keeps its
+socket and source; failed admission releases its reservation and socket.
 
 An additional cancellation fixture showed pending mapping creation could retain
 its three-second wait after connection retirement: only discovery inherited the
