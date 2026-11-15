@@ -1,5 +1,5 @@
 //! Compose explicitly selected indexed files; GPAC in the shared Web owns MP4 parsing.
-use super::{reader::OriginReader, Format, MediaContext};
+use super::{reader::OriginReader, Format, MediaContext, SAFE_INTEGER};
 use anyhow::{anyhow, bail, ensure, Result};
 use base64ct::{Base64, Encoding};
 use piik_channel_native::watch::{ReadResult, Reader};
@@ -8,7 +8,6 @@ use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
 use tokio::sync::watch;
 use uuid::Uuid;
 
-const SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const MAX_FRAGMENT: u64 = 60_000_000;
 const MAX_INIT: usize = 1024 * 1024;
 const MAX_PLAYLIST: usize = 1024 * 1024;

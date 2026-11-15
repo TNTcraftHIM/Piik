@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { APP_PROTOCOL, ChannelApp } from "../src/client/channel/app-link";
 import { CHANNEL_PROTOCOL } from "../src/client/channel/protocol";
-import { NATIVE_PAGE_METADATA_PREFIX_BYTES, NATIVE_PAGE_METADATA_READ_BYTES, nativePageStateSchema } from "../src/client/native/wire";
+import { NATIVE_PAGE_METADATA_PREFIX_BYTES, NATIVE_PAGE_READ_BYTES, nativePageStateSchema } from "../src/client/native/wire";
 
 class Socket {
   static OPEN = 1;
@@ -32,6 +32,22 @@ async function openPage(app: ChannelApp, socket: Socket) {
   return opening;
 }
 const state = { position: 12, paused: false, rate: 1, duration: null, readyState: 4, ended: false, buffered: [[0, 60]] as [number, number][] };
+
+test('local resource playback uses the prepared root and cancels only its opaque read', async () => {
+  const {app,socket}=await setup();
+  try{
+    const page=await openPage(app,socket),sourceId=crypto.randomUUID(),resourceId=crypto.randomUUID();
+    const pending=page.readMediaResource(sourceId,resourceId,2*1024*1024,4,new AbortController().signal);
+    expect(socket.sent.at(-1)).toMatchObject({type:'page_media_resource',action:'read',pageId:page.id,sourceId,resourceId,offset:2*1024*1024,length:4});
+    socket.reply({bytesBase64:btoa('data'),mimeType:'video/mp4',totalSize:3*1024*1024,eof:false});
+    expect((await pending).bytes).toEqual(new TextEncoder().encode('data'));
+    const abort=new AbortController(),reading=page.readMediaResource(sourceId,resourceId,0,4,abort.signal);
+    const request=socket.sent.at(-1)!;const rejected=expect(reading).rejects.toMatchObject({name:'AbortError'});abort.abort();await rejected;
+    expect(socket.sent.at(-1)).toMatchObject({type:'page_media_resource',action:'cancel',pageId:page.id,sourceId,readId:request.readId});socket.reply(null);
+    socket.receive({id:request.id,result:{bytesBase64:btoa('late'),mimeType:'video/mp4',totalSize:4,eof:true}});
+    await expect(page.readMediaResource(sourceId,resourceId,0,65537,new AbortController().signal)).rejects.toThrow();
+  }finally{app.close();}
+});
 
 test("source invalidation has its own listener lifetime and never becomes a playback event", async () => {
   const { app, socket } = await setup();
@@ -153,7 +169,7 @@ test("selected-page metadata reads use opaque IDs and enforce both byte-window b
     socket.reply({ mimeType: "video/mp4", totalSize: 2000000, bytesBase64: "AP8q" });
     await expect(reading).resolves.toEqual({ mimeType: "video/mp4", totalSize: 2000000, bytes: Uint8Array.of(0, 255, 42) });
     const sent = socket.sent.length;
-    await expect(page.readMediaMetadata(choiceId, 0, NATIVE_PAGE_METADATA_READ_BYTES + 1, signal)).rejects.toThrow();
+    await expect(page.readMediaMetadata(choiceId, 0, NATIVE_PAGE_READ_BYTES + 1, signal)).rejects.toThrow();
     await expect(page.readMediaMetadata(choiceId, NATIVE_PAGE_METADATA_PREFIX_BYTES - 1, 2, signal)).rejects.toThrow();
     expect(socket.sent).toHaveLength(sent);
   } finally { app.close(); }
@@ -164,8 +180,8 @@ test("metadata response validation catches oversized decoded bytes and malformed
   try {
     const page = await openPage(app, socket), choiceId = crypto.randomUUID(), signal = new AbortController().signal;
     // 65536 and 65537 bytes have the same padded Base64 string length: decoded size needs checking.
-    const oversized = page.readMediaMetadata(choiceId, 0, NATIVE_PAGE_METADATA_READ_BYTES, signal);
-    socket.reply({ mimeType: "video/mp4", totalSize: 1000000, bytesBase64: btoa("x".repeat(NATIVE_PAGE_METADATA_READ_BYTES + 1)) });
+    const oversized = page.readMediaMetadata(choiceId, 0, NATIVE_PAGE_READ_BYTES, signal);
+    socket.reply({ mimeType: "video/mp4", totalSize: 1000000, bytesBase64: btoa("x".repeat(NATIVE_PAGE_READ_BYTES + 1)) });
     await expect(oversized).rejects.toThrow("invalid_app_response");
     const malformed = page.readMediaMetadata(choiceId, 0, 3, signal);
     socket.reply({ mimeType: "video/mp4", totalSize: 1000000, bytesBase64: "A===" });

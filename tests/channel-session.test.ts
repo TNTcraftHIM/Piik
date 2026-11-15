@@ -12,6 +12,8 @@ import * as appLink from "../src/client/channel/app-link";
 import * as indexedSource from "../src/client/channel/watch-indexed-source";
 import { HTMLVideoMedia, AppPageMedia } from "../src/client/channel/watch-media";
 import { WatchPlayer } from "../src/client/channel/watch-playback";
+import * as watchMedia from "../src/client/channel/watch-media";
+import { PageSuppliedMedia } from "../src/client/channel/watch-page-media";
 import * as nativeActivation from "../src/client/native/activation";
 import * as launchSession from "../src/client/lib/app-launch";
 import * as cameraPreviews from "../src/client/media/camera-previews";
@@ -8373,7 +8375,15 @@ function indexedInspection(kind: "video" | "audio"): indexedSource.IndexedTrackI
     recipe: { choiceId: id, totalSize: 100, codec, timescale: 1000, mediaOffset: 40, initBase64: "aW5pdA==", segments: [[60, 1000]] } };
 }
 
+function localProviderVideo() {
+  const video = new WatchTestVideo();
+  vi.stubGlobal('document', { createElement: () => video });
+  vi.spyOn(watchMedia, 'createPeerWatchMedia').mockImplementation(() => new HTMLVideoMedia('https://fixture.test/local.mp4', 'file'));
+  return video;
+}
+
 test('late clear tracks update the current selection and settings without rechecking unchanged tracks or changing the published graph', async () => {
+  localProviderVideo();
   const video = indexedInspection('video'), audio = indexedInspection('audio');
   const protectedAudio = { ...audio.candidate, id: crypto.randomUUID(), name: 'Protected audio' };
   let candidates: indexedSource.IndexedTrackInspection['candidate'][] = [protectedAudio];
@@ -8410,12 +8420,11 @@ test('late clear tracks update the current selection and settings without rechec
     const update = socket.sent.findLast(command => command.type === 'update_watch')!;
     socket.receive({ type: 'room_reply', roomId: 'first', requestId: update.requestId, result: { type: 'done' } });
     await confirming;
-    const changes = vi.fn();
-    await session.watchMediaChoices(start.id as string, settings.signal, changes);
+    expect(session.getSnapshot().watchPlayers.get(start.id as string)?.media.retainedByteSource).toEqual(byteSource);
     const inspectionsAfterSettingsOpened = inspect.mock.calls.length;
     candidates = [video.candidate, audio.candidate];
     page.receive({ type: 'page_media_changed', pageId: page.id });
-    await vi.waitFor(() => expect(changes.mock.lastCall?.[0].indexed).toHaveLength(2));
+    // Main playback owns the selected root; forwarding does not rediscover later tracks.
     expect(inspect).toHaveBeenCalledTimes(inspectionsAfterSettingsOpened);
     const readsBeforeClose = discover.mock.calls.length;
     settings.abort();
@@ -8466,6 +8475,7 @@ test('an empty first source list stays open for later sources or an explicit ori
 });
 
 test.each([false, true])('indexed sharing explicitly prepares video with optional audio=%s and publishes it atomically', async audioSelected => {
+  localProviderVideo();
   const video = indexedInspection('video'), audio = indexedInspection('audio');
   vi.spyOn(indexedSource, 'inspectIndexedTrack').mockImplementation(async candidate => candidate.id === video.candidate.id ? video : audio);
   const { session, page, socket, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({
@@ -8495,10 +8505,12 @@ test.each([false, true])('indexed sharing explicitly prepares video with optiona
     expect(session.watchPage('first')).toBeUndefined();
     expect(session.getSnapshot().watchPlayers.has(start.id as string)).toBe(true);
     expect(dispose).not.toHaveBeenCalled();
+    expect(session.getSnapshot().watchPlayers.get(start.id as string)?.media).toBeInstanceOf(PageSuppliedMedia);
   } finally { session.close(); }
 });
 
 test('rejected indexed start retires its prepared page without a separate attachment', async () => {
+  localProviderVideo();
   const video = indexedInspection('video');
   vi.spyOn(indexedSource, 'inspectIndexedTrack').mockResolvedValue(video);
   const { session, page, socket, candidateId, commit, dispose } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [video.candidate], byteSource: null }));
@@ -8519,6 +8531,50 @@ test('rejected indexed start retires its prepared page without a separate attach
     expect(socket.sent.some(command => command.type === 'update_watch')).toBe(false);
     expect(socket.sent.some(command => command.type === 'set_watch_byte_source')).toBe(false);
   } finally { session.close(); }
+});
+
+test('local provider preparation failure releases only its reader and candidate, keeping the Page and incumbent', async () => {
+  const video = indexedInspection('video');
+  vi.spyOn(indexedSource, 'inspectIndexedTrack').mockResolvedValue(video);
+  const {session,page,socket,candidateId,commit,dispose}=await websiteSourceSelection(async()=>({choices:[],indexedCandidates:[video.candidate],byteSource:null}));
+  const local=localProviderVideo();
+  vi.spyOn(page,'prepareIndexedMedia').mockResolvedValue({sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls'});
+  const stop=vi.spyOn(page,'stopMedia').mockResolvedValue();
+  vi.spyOn(HTMLVideoMedia.prototype,'ready').mockRejectedValueOnce(new Error('watch_media_unavailable'));
+  vi.stubGlobal('document', { createElement: () => new WatchTestVideo() });
+  const incumbent=new WatchPlayer('first',true,new HTMLVideoMedia('https://fixture.test/old.mp4','file'),()=>{});
+  vi.stubGlobal('document', { createElement: () => local });
+  const close=vi.spyOn(incumbent,'close');
+  (session as unknown as {watchPlayers:Map<string,WatchPlayer>}).watchPlayers.set('old',incumbent);
+  try{
+    await session.selectWatchPage('first',candidateId);
+    await expect(session.selectWatchIndexedSource('first',video.candidate.id)).rejects.toThrow('watch_media_unavailable');
+    expect(stop).toHaveBeenCalledOnce();expect(dispose).not.toHaveBeenCalled();expect(commit).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();expect(session.watchPage('first')).toBeDefined();
+    expect(socket.sent.some(command=>command.type==='start_watch'||command.type==='join_watch')).toBe(false);
+    expect(local.src).toBe('');
+  }finally{session.close();}
+});
+
+test('turning off remote forwarding preserves the Host local provider and reuses its admitted root on return', async () => {
+  const {session,page,socket,dispose}=await websiteSourceSelection(async()=>({choices:[],indexedCandidates:[],byteSource:null}));
+  localProviderVideo();const source={sessionId:crypto.randomUUID(),resourceId:crypto.randomUUID(),format:'hls' as const};
+  const media=new PageSuppliedMedia(page,new HTMLVideoMedia('https://fixture.test/local.mp4','file'),source);
+  const player=new WatchPlayer('first',true,media,()=>{}),stop=vi.spyOn(page,'stopMedia');
+  (session as unknown as {watchPlayers:Map<string,WatchPlayer>}).watchPlayers.set('owned',player);
+  try{
+    expect(player.media.retainedByteSource).toEqual(source);
+    await expect(session.watchMediaChoices('owned',new AbortController().signal)).rejects.toThrow('watch_page_unavailable');
+    for(const selected of [null,source.resourceId]){
+      const changing=session.setWatchByteSource('owned',selected);
+      const request=socket.sent.findLast(x=>x.type==='set_watch_byte_source')!;
+      expect(request.byteSource).toEqual(selected===null?null:source);
+      socket.receive({type:'room_reply',roomId:'first',requestId:request.requestId,result:{type:'done'}});await changing;
+    }
+    expect(stop).not.toHaveBeenCalled();expect(dispose).not.toHaveBeenCalled();
+    expect(socket.sent.some(x=>x.type==='join_watch')).toBe(false);
+    await expect(session.setWatchByteSource('owned',crypto.randomUUID())).rejects.toThrow('watch_page_unavailable');
+  }finally{session.close();}
 });
 
 test('cancelling indexed preparation closes its page and prevents late preparation from publishing', async () => {

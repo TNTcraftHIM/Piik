@@ -6,8 +6,8 @@ import { Glyph } from "../../ui/icons";
 import type { WatchIndexedChoice } from "../types";
 
 /** Metadata describes independent tracks; only the user selects their combination. */
-export function WatchIndexedTrackPicker({ choices, disabled, busy, onConfirm }: {
-  choices: readonly WatchIndexedChoice[]; disabled?: boolean; busy?: boolean;
+export function WatchIndexedTrackPicker({ choices, disabled, busy, mainPlayback, onConfirm }: {
+  choices: readonly WatchIndexedChoice[]; disabled?: boolean; busy?: boolean; mainPlayback?: boolean;
   onConfirm(videoId: string, audioId?: string): void;
 }) {
   const { t } = useCopy();
@@ -33,7 +33,7 @@ export function WatchIndexedTrackPicker({ choices, disabled, busy, onConfirm }: 
     if (audioId && !selectedAudio) setAudioId("");
   }, [videoId, audioId, selectedVideo, selectedAudio]);
   return <div className="c3-external-input">
-    <p>{t("watch.forward.tracksHelp")}</p>
+    <p>{t(mainPlayback ? "watch.forward.mainHelp" : "watch.forward.tracksHelp")}</p>
     <section className="c3-external-input" aria-labelledby={`${id}-video`}>
       <h3 id={`${id}-video`}><Glyph name="tv" size={18} /> {t("host.settings.picture")}</h3>
       {videos.length ? <div className="lr-source-picker-list" data-text-list>{videos.map(choice => <CaptureSourceCard

@@ -10,7 +10,7 @@ export const nativePageCandidateSchema = z.object({ id: z.uuid(), title: z.strin
 export type NativePageCandidate = z.infer<typeof nativePageCandidateSchema>;
 export const nativePageMediaChoiceSchema = z.object({ id: z.uuid(), displayURL: nativePageURLSchema, name: z.string().max(512).refine(value => [...value].length <= 256), format: z.enum(["file", "hls"]) }).strict();
 export type NativePageMediaChoice = z.infer<typeof nativePageMediaChoiceSchema>;
-export const NATIVE_PAGE_METADATA_READ_BYTES = 65536;
+export const NATIVE_PAGE_READ_BYTES = 64 * 1024;
 export const NATIVE_PAGE_METADATA_PREFIX_BYTES = 1024 * 1024;
 export const nativePageIndexedCandidateSchema = z.object({
   id: z.uuid(), name: z.string().max(512).refine(value => [...value].length <= 256), hostname: z.string().min(1).max(253).regex(/^[A-Za-z0-9.:[\]-]+$/),
@@ -19,12 +19,20 @@ export const nativePageIndexedCandidateSchema = z.object({
 export type NativePageIndexedCandidate = z.infer<typeof nativePageIndexedCandidateSchema>;
 export const nativePageMetadataReadSchema = z.object({
   choiceId: z.uuid(), offset: z.number().int().nonnegative().safe(),
-  length: z.number().int().positive().max(NATIVE_PAGE_METADATA_READ_BYTES),
+  length: z.number().int().positive().max(NATIVE_PAGE_READ_BYTES),
 }).strict().refine(value => value.offset + value.length <= NATIVE_PAGE_METADATA_PREFIX_BYTES);
 const nativePageBase64Schema = z.string().regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const nativePageMetadataResultSchema = z.object({
   mimeType: z.string().max(256), totalSize: z.number().int().positive().safe(),
-  bytesBase64: nativePageBase64Schema.max(4 * Math.ceil(NATIVE_PAGE_METADATA_READ_BYTES / 3)),
+  bytesBase64: nativePageBase64Schema.max(4 * Math.ceil(NATIVE_PAGE_READ_BYTES / 3)),
+}).strict();
+export const nativePageResourceReadSchema = z.object({
+  sourceId: z.uuid(), resourceId: z.uuid(), offset: z.number().int().nonnegative().safe(),
+  length: z.number().int().positive().max(NATIVE_PAGE_READ_BYTES),
+}).strict().refine(value => Number.isSafeInteger(value.offset + value.length));
+export const nativePageResourceResultSchema = z.object({
+  mimeType: z.string().max(256), totalSize: z.number().int().nonnegative().safe().nullable(), eof: z.boolean(),
+  bytesBase64: nativePageBase64Schema.max(4 * Math.ceil(NATIVE_PAGE_READ_BYTES / 3)),
 }).strict();
 export const nativePageIndexedTrackRecipeSchema = z.object({
   choiceId: z.uuid(), totalSize: z.number().int().positive().safe(),

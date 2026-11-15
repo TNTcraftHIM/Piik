@@ -2130,7 +2130,7 @@ impl Session {
             }
             await_peer(
                 live.peers
-                    .update_watch(state.watch_bytes, state.watch_activities, &state.pairs),
+                    .update_watch(state.watch_bytes, &state.pairs),
                 &mut live.commands,
                 &live.pairs,
                 &mut live.room,

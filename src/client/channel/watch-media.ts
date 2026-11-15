@@ -1,4 +1,5 @@
 import Hls from "hls.js";
+import type { WatchByteSource } from "./protocol";
 import { canReadWatchResources, limitWatchReads, openWatchResource, type WatchByteReader, type WatchResourceLease } from "./watch-resource";
 import { createWatchHlsLoader, watchHlsUrl } from "./watch-hls-loader";
 import { canReadWatchMp4, isWatchMp4, WatchMp4Media } from "./watch-mp4-media";
@@ -22,6 +23,8 @@ export type WatchPresentation = { kind: "video"; element: HTMLVideoElement }
   | { kind: "external" };
 
 export interface WatchMedia {
+  readonly page?: AppPagePort | null;
+  readonly retainedByteSource?: WatchByteSource;
   readonly presentation?: WatchPresentation;
   readonly seekTolerance?: number;
   readonly seekEvents?: boolean;

@@ -1,4 +1,5 @@
 import { YouTubeMedia } from "./watch-youtube-media";
+import { PageSuppliedMedia } from "./watch-page-media";
 import { canUseYouTubePlayer, youtubeVideoId, youtubeSourceId, originalWatchURL } from "./watch-youtube-source";
 import { inspectIndexedTrack, indexedMediaSelection } from "./watch-indexed-source";
 import { limitWatchReads } from "./watch-resource";
@@ -2050,7 +2051,7 @@ export class ChannelSession {
   };
   watchPage = (roomId: string, activityId?: string): ReturnType<ChannelActions["watchPage"]> => {
     if (activityId) {
-      const media = this.watchPlayers.get(activityId)?.media, page = media instanceof AppPageMedia ? media.page : null;
+      const media = this.watchPlayers.get(activityId)?.media, page = media?.page;
       return page instanceof AppPage ? { url: page.url, candidates: page.candidates, activityId } : undefined;
     }
     const selection = this.sourceSelections.get(roomId), page = selection?.page;
@@ -2123,7 +2124,20 @@ export class ChannelSession {
     selection.discovery?.abort();
     const byteSource = await page.prepareIndexedMedia(indexedMediaSelection(video, audio), selection.controller.signal);
     selection.controller.signal.throwIfAborted();
-    await this.commitWatch(roomId, { kind: "website", url: page.url }, new AppPageMedia(page), selection, byteSource);
+    const local = createPeerWatchMedia(byteSource, (resourceId, offset, length, signal) =>
+      page.readMediaResource(byteSource.resourceId, resourceId, offset, length, signal));
+    try {
+      await local.ready(selection.controller.signal);
+      const state = await page.read();
+      selection.controller.signal.throwIfAborted();
+      await local.patch({ position: state.position, rate: state.rate, paused: true });
+      await page.patch({ paused: true });
+    } catch (error) {
+      local.close();
+      await page.stopMedia().catch(() => {});
+      throw error;
+    }
+    await this.commitWatch(roomId, { kind: "website", url: page.url }, new PageSuppliedMedia(page, local, byteSource), selection, byteSource);
   }, reportError);
   private discoverWatchSources(page: AppPage, signal: AbortSignal, publish: (sources: WatchMediaSources) => void): Promise<WatchMediaSources> {
     let running: Promise<WatchMediaSources> | null = null, dirty = false;
@@ -2176,7 +2190,7 @@ export class ChannelSession {
   }
   focusWatch = async (id: string): Promise<void> => {
     const media = this.watchPlayers.get(id)?.media;
-    if (media instanceof AppPageMedia) await media.page?.focus();
+    await media?.page?.focus();
   };
   focusWatchPage = async (roomId: string, activityId?: string): Promise<void> => {
     if (activityId) await this.focusWatch(activityId);
@@ -2184,7 +2198,7 @@ export class ChannelSession {
   };
   watchMediaChoices = (id: string, signal: AbortSignal, onChange?: (sources: WatchMediaSources) => void): Promise<WatchMediaSources> => this.action(`watch-source:${id}`, async () => {
     const player = this.watchPlayers.get(id), media = player?.media;
-    if (!player?.owner || !(media instanceof AppPageMedia) || !(media.page instanceof AppPage)) throw new Error("watch_page_unavailable");
+    if (!player?.owner || !(media?.page instanceof AppPage) || media.retainedByteSource) throw new Error("watch_page_unavailable");
     return this.discoverWatchSources(media.page, signal, sources => {
       if (this.watchPlayers.get(id) === player) onChange?.(sources);
     });
@@ -2192,7 +2206,7 @@ export class ChannelSession {
   private async reconcileWatchBytes(id: string, player: WatchPlayer): Promise<void> {
     const declared = this.view.state?.watchActivities.find(activity => activity.id === id)?.byteSource;
     const media = player.media;
-    if (!declared || !(media instanceof AppPageMedia) || !(media.page instanceof AppPage)) return;
+    if (!declared || !(media.page instanceof AppPage)) return;
     const page = media.page, actual = (await page.mediaSources()).byteSource;
     if (this.watchPlayers.get(id) !== player) return;
     if (!actual || actual.sessionId !== declared.sessionId || actual.resourceId !== declared.resourceId || actual.format !== declared.format) {
@@ -2202,7 +2216,14 @@ export class ChannelSession {
   }
   setWatchByteSource = (id: string, choiceId: string | NativePageIndexedSelection | null, signal = new AbortController().signal): Promise<void> => this.action(`watch-source:${id}`, async () => {
     const player = this.watchPlayers.get(id), media = player?.media;
-    if (!player?.owner || !(media instanceof AppPageMedia) || !(media.page instanceof AppPage)) throw new Error("watch_page_unavailable");
+    if (player?.owner && media?.retainedByteSource) {
+      signal.throwIfAborted();
+      if (choiceId !== null && choiceId !== media.retainedByteSource.resourceId) throw new Error("watch_page_unavailable");
+      // Remote forwarding can stop without revoking the Host's still-used local reader.
+      await this.request({ type: "set_watch_byte_source", roomId: player.roomId, id, byteSource: choiceId === null ? null : media.retainedByteSource }, undefined, player.roomId);
+      return;
+    }
+    if (!player?.owner || !(media?.page instanceof AppPage)) throw new Error("watch_page_unavailable");
     const page = media.page;
     if (choiceId === null) {
       try { await this.request({ type: "set_watch_byte_source", roomId: player.roomId, id, byteSource: null }, undefined, player.roomId); }
@@ -2247,7 +2268,7 @@ export class ChannelSession {
   private selectWatchingPage(id: string, candidateId: string, reportError: boolean): Promise<void> {
     return this.action(`watch-video:${id}`, async () => {
       const player = this.watchPlayers.get(id), media = player?.media;
-      const page = media instanceof AppPageMedia ? media.page : null;
+      const page = media?.page;
       if (!player || !(page instanceof AppPage) || !page.candidates.some(value => value.id === candidateId)) throw new Error("watch_page_unavailable");
       await page.select(candidateId);
       await player.ready();
@@ -2283,7 +2304,7 @@ export class ChannelSession {
       this.patch({});
       const screen = this.screenShares.get(roomId);
       if (screen && (this.local.has(screen.id) || this.app?.screens.has(screen.id))) await this.stopScreen(screen.id);
-      if (media instanceof HTMLVideoMedia) await player.play();
+      if (media.presentation?.kind === "video") await player.play();
       else await player.publish(true);
       this.browseRooms();
       try { await media.waitForPresentation?.(selection.controller.signal); }

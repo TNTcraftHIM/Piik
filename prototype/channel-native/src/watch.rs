@@ -5,7 +5,7 @@ use piik_channel_core::{
     watch_delivery::{
         WatchBytePlan, WatchControl, WatchDelivery, WatchEffect, WatchKey, WATCH_FRAME_BYTES,
     },
-    wire::{WatchActivity, WatchByteSource},
+    wire::WatchByteSource,
 };
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -91,14 +91,9 @@ impl Link {
         })
     }
 }
-struct Registration {
-    reader: Arc<dyn Reader>,
-    confirmed: bool,
-}
 enum Input {
     Update(
         Vec<WatchBytePlan>,
-        Vec<WatchActivity>,
         Vec<(Uuid, Vec<String>)>,
         oneshot::Sender<()>,
     ),
@@ -147,22 +142,12 @@ impl Watches {
             let mut plans: Vec<WatchBytePlan> = vec![];
             let mut room_peers: Vec<(Uuid, Vec<String>)> = vec![];
             let mut links: BTreeMap<Uuid, Link> = BTreeMap::new();
-            let mut readers: BTreeMap<Uuid, Registration> = BTreeMap::new();
+            let mut readers: BTreeMap<Uuid, Arc<dyn Reader>> = BTreeMap::new();
             let mut reads: BTreeMap<Uuid, JoinHandle<()>> = BTreeMap::new();
             loop {
                 let message = tokio::select! { _ = cancelled.changed() => break, message = messages.recv() => match message { Some(m) => m, None => break } };
                 let effects = match message {
-                    Input::Update(next, activities, peers, done) => {
-                        readers.retain(|resource, registration| {
-                            let current = activities.iter().any(|a| {
-                                a.byte_source.as_ref().is_some_and(|s| {
-                                    s.session_id == session && s.resource_id == *resource
-                                })
-                            });
-                            let keep = current || !registration.confirmed;
-                            registration.confirmed |= current;
-                            keep
-                        });
+                    Input::Update(next, peers, done) => {
                         plans = next;
                         room_peers = peers;
                         for (peer, link) in &links {
@@ -177,13 +162,7 @@ impl Watches {
                         let result = if readers.len() >= 32 || readers.contains_key(&resource) {
                             Err(anyhow::anyhow!("watch_source_busy"))
                         } else {
-                            readers.insert(
-                                resource,
-                                Registration {
-                                    reader,
-                                    confirmed: false,
-                                },
-                            );
+                            readers.insert(resource, reader);
                             Ok(())
                         };
                         let _ = done.send(result);
@@ -268,7 +247,7 @@ impl Watches {
                                 })
                                 .map(|p| p.source.resource_id);
                             if let Some(reader) =
-                                source.and_then(|root| readers.get(&root).map(|r| r.reader.clone()))
+                                source.and_then(|root| readers.get(&root).cloned())
                             {
                                 let completed = completed.clone();
                                 let task = tokio::spawn(async move {
@@ -369,16 +348,11 @@ impl Watches {
     pub async fn revoke(&self, resource: Uuid) {
         let _ = self.input.send(Input::Revoke(resource)).await;
     }
-    pub async fn update(
-        &self,
-        plans: Vec<WatchBytePlan>,
-        activities: Vec<WatchActivity>,
-        room_peers: Vec<(Uuid, Vec<String>)>,
-    ) {
+    pub async fn update(&self, plans: Vec<WatchBytePlan>, room_peers: Vec<(Uuid, Vec<String>)>) {
         let (done, completed) = oneshot::channel();
         if self
             .input
-            .send(Input::Update(plans, activities, room_peers, done))
+            .send(Input::Update(plans, room_peers, done))
             .await
             .is_ok()
         {
@@ -411,5 +385,52 @@ fn peer_lease(plans: &[WatchBytePlan], room_peers: &[(Uuid, Vec<String>)], peer:
             .filter(|p| p.upstream == Some(peer) || p.downstream.contains(&peer))
             .cloned()
             .collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    struct Unused;
+    impl Reader for Unused {
+        fn read(
+            &self,
+            _: Uuid,
+            _: u64,
+            _: u32,
+        ) -> Pin<Box<dyn Future<Output = anyhow::Result<ReadResult>> + Send + '_>> {
+            Box::pin(async { anyhow::bail!("unexpected_read") })
+        }
+    }
+    #[tokio::test]
+    async fn source_registration_outlives_remote_demand_and_retires_only_on_revoke() {
+        let session = Uuid::new_v4();
+        let resource = Uuid::new_v4();
+        let watches = Watches::new(session);
+        let reader = Arc::new(Unused);
+        let lifetime = Arc::downgrade(&reader);
+        watches.register(resource, reader.clone()).await.unwrap();
+        drop(reader);
+        let plan = WatchBytePlan {
+            room_id: "owned".into(),
+            activity_id: Uuid::new_v4(),
+            source: WatchByteSource {
+                session_id: session,
+                resource_id: resource,
+                format: piik_channel_core::wire::WatchFormat::File,
+            },
+            upstream: None,
+            downstream: vec![],
+            receiving: false,
+        };
+        watches.update(vec![plan.clone()], vec![]).await;
+        watches.update(vec![], vec![]).await;
+        assert!(lifetime.upgrade().is_some());
+        watches.update(vec![plan], vec![]).await;
+        assert!(lifetime.upgrade().is_some());
+        watches.revoke(resource).await;
+        watches.update(vec![], vec![]).await;
+        assert!(lifetime.upgrade().is_none());
+        watches.close().await;
     }
 }

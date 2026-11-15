@@ -534,7 +534,6 @@ impl Drop for CaptureLease {
 enum Input {
     WatchPlans(
         Vec<piik_channel_core::watch_delivery::WatchBytePlan>,
-        Vec<piik_channel_core::wire::WatchActivity>,
         Vec<(Uuid, Vec<String>)>,
         oneshot::Sender<()>,
     ),
@@ -897,8 +896,8 @@ impl NativePeers {
                         Turn::Input(Input::RegisterWatchReader(resource, reader, done)) => {
                             let _ = done.send(d.watches.register(resource, reader).await);
                         }
-                        Turn::Input(Input::WatchPlans(plans, activities, room_peers, done)) => {
-                            d.watches.update(plans, activities, room_peers).await;
+                        Turn::Input(Input::WatchPlans(plans, room_peers, done)) => {
+                            d.watches.update(plans, room_peers).await;
                             let _ = done.send(());
                         }
                         Turn::Input(Input::RevokeWatchReader(resource)) => {
@@ -1087,14 +1086,12 @@ impl NativePeers {
     pub async fn update_watch(
         &self,
         plans: Vec<piik_channel_core::watch_delivery::WatchBytePlan>,
-        activities: Vec<piik_channel_core::wire::WatchActivity>,
         pairs: &[PairInfo],
     ) -> Result<()> {
         let (done, completed) = oneshot::channel();
         self.input
             .send(Input::WatchPlans(
                 plans,
-                activities,
                 pairs
                     .iter()
                     .map(|pair| (pair.peer_id, pair.rooms.clone()))

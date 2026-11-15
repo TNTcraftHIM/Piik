@@ -295,8 +295,13 @@ When a discovered media URL loads in the sharer's Browser player, that player
 owns playback in the Piik stage. Prepare it before replacing the current share;
 retire the discovery page after the room confirms the new activity. Loading
 failure keeps the original page available for an explicit original-page choice.
-Media that still depends on the Native page's resources retains that provider
-and its existing playback owner.
+For indexed VOD that needs the Native page's resources, retain that page only as
+the resource provider and pause its original player. The Piik player owns common
+playback through the same prepared reader; it does not subscribe to its own
+room route. Stopping remote forwarding preserves local playback and its reader;
+resuming forwarding reuses that resource. Ending the activity or closing its
+provider page retires both. Original-page playback remains a separate explicit
+choice when a source cannot be prepared in Piik.
 
 Supported YouTube video links can use the official embedded player in the shared
 Web UI. A visible candidate must play before the sharer confirms it; its existing

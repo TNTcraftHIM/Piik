@@ -1,5 +1,7 @@
 // Canonical keys; English stays complete and other languages may be partial.
 export const zh = {
+  "watch.forward.resume": "继续转发当前视频",
+  "watch.forward.mainHelp": "选择画面和可选的声音，在 Piik 中一起看。原视频将暂停，网页保留以提供来源访问；关闭它会结束本次一起看。转发会使用本机上传带宽。",
   "watch.forward.tracksHelp": "分别选择一段画面和可选的声音。确认后开始使用本机上传带宽。",
   "watch.forward.noVideoTrack": "没有可转发的视频轨道。你仍可在原网页中观看。",
   "watch.forward.videoOnly": "仅画面，不带声音",

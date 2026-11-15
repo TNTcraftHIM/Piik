@@ -132,7 +132,7 @@ async fn watch_reader_transfers_ranges_and_cancels_on_authority_retirement() -> 
     watches.attach(peer, link.senders()).await;
     let receiver = watches.receiver();
     watches
-        .update(vec![], vec![], vec![(peer, vec![key.room_id.clone()])])
+        .update(vec![], vec![(peer, vec![key.room_id.clone()])])
         .await;
     let mut consumer = WatchDelivery::new(peer);
     consumer.update(
@@ -160,13 +160,12 @@ async fn watch_reader_transfers_ranges_and_cancels_on_authority_retirement() -> 
     // The same Pull survives the source snapshot arriving later; the consumer
     // receives no second snapshot and never resubmits it.
     watches
-        .update(vec![], vec![], vec![(peer, vec![key.room_id.clone()])])
+        .update(vec![], vec![(peer, vec![key.room_id.clone()])])
         .await;
     ensure!(calls.load(Ordering::SeqCst) == 0);
     watches
         .update(
             vec![plan.clone()],
-            vec![],
             vec![(peer, vec![key.room_id.clone()])],
         )
         .await;
@@ -223,7 +222,6 @@ async fn watch_reader_transfers_ranges_and_cancels_on_authority_retirement() -> 
     watches
         .update(
             vec![plan.clone(), other_plan.clone()],
-            vec![],
             vec![(peer, vec![key.room_id.clone()])],
         )
         .await;
@@ -257,7 +255,6 @@ async fn watch_reader_transfers_ranges_and_cancels_on_authority_retirement() -> 
     watches
         .update(
             vec![other_plan],
-            vec![],
             vec![(peer, vec![key.room_id.clone()])],
         )
         .await;
@@ -312,7 +309,6 @@ async fn watch_reader_transfers_ranges_and_cancels_on_authority_retirement() -> 
     watches
         .update(
             vec![plan.clone()],
-            vec![],
             vec![(peer, vec![key.room_id.clone()])],
         )
         .await;
@@ -337,7 +333,7 @@ async fn watch_reader_transfers_ranges_and_cancels_on_authority_retirement() -> 
             watches.revoke(resource).await;
         } else if retirement == "route" {
             watches
-                .update(vec![], vec![], vec![(peer, vec![key.room_id.clone()])])
+                .update(vec![], vec![(peer, vec![key.room_id.clone()])])
                 .await;
         } else {
             receiver
@@ -358,7 +354,6 @@ async fn watch_reader_transfers_ranges_and_cancels_on_authority_retirement() -> 
             watches
                 .update(
                     vec![plan.clone()],
-                    vec![],
                     vec![(peer, vec![key.room_id.clone()])],
                 )
                 .await;

@@ -1,6 +1,6 @@
 import Hls from "hls.js";
 import { createFile, DataStream, FullBox, MP4BoxBuffer, type ISOFile, type Movie } from "mp4box";
-import { NATIVE_PAGE_METADATA_PREFIX_BYTES, NATIVE_PAGE_METADATA_READ_BYTES, nativePageIndexedTrackRecipeSchema,
+import { NATIVE_PAGE_METADATA_PREFIX_BYTES, NATIVE_PAGE_READ_BYTES, nativePageIndexedTrackRecipeSchema,
   nativePageIndexedSelectionSchema, type NativePageIndexedCandidate, type NativePageIndexedTrackRecipe,
   type NativePageIndexedSelection } from "../native/wire";
 
@@ -47,7 +47,7 @@ export async function inspectIndexedTrack(candidate: NativePageIndexedCandidate,
     const prefix = Math.min(candidate.totalSize, NATIVE_PAGE_METADATA_PREFIX_BYTES);
     for (let offset = 0; offset < prefix;) {
       signal.throwIfAborted();
-      const length = Math.min(NATIVE_PAGE_METADATA_READ_BYTES, prefix - offset);
+      const length = Math.min(NATIVE_PAGE_READ_BYTES, prefix - offset);
       const result = await read(candidate.id, offset, length, signal);
       signal.throwIfAborted();
       requireValue(result.totalSize === candidate.totalSize && result.bytes.length === length, "watch_media_changed");

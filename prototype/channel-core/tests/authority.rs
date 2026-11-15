@@ -487,7 +487,7 @@ fn hosted_history_uses_authenticated_peer_author_and_the_original_confirmation()
     };
     assert!(first.inserted);
     assert_eq!(first.message.message.user_id, user);
-    assert_eq!(first.message.message.text, "Hello");
+    assert_eq!(first.message.message.text, "  Hello  ");
     assert_eq!(first.message.message.seq, 1);
     let ConversationResult::History(HistoryResult::Sent(retry)) = core
         .peer_request(author, &room, send("Changed retry"))

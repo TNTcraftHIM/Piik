@@ -1,8 +1,10 @@
 import { CHANNEL_PROTOCOL, watchByteSourceSchema, type WatchByteSource, type RoomSummary } from "./protocol";
 import { nativePageEventSchema, nativePageStateSchema, nativePageMediaChoiceSchema, nativePageIndexedCandidateSchema,
   nativePageMetadataReadSchema, nativePageMetadataResultSchema, nativePageIndexedSelectionSchema,
+  nativePageResourceReadSchema, nativePageResourceResultSchema,
   type NativePageCandidate, type NativePageMediaChoice, type NativePageIndexedCandidate, type NativePageIndexedSelection } from "../native/wire";
 import type { AppPagePort, WatchMediaEvent, WatchMediaPatch, WatchMediaState } from "./watch-media";
+import type { WatchByteResult } from "./watch-resource";
 import { z } from "zod";
 import { appApprovalURL, appManagementURL, discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
 import { nativeCaptureTargetSchema, nativeVideoCodecSchema, remoteControlStateSchema, remoteStopShortcutSchema, type NativeCaptureTarget, type EncodingExecution } from "../native/wire";
@@ -14,7 +16,7 @@ import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 import { debugEvent } from "../lib/debug";
 
-export const APP_PROTOCOL = 13;
+export const APP_PROTOCOL = 14;
 const APP_REQUEST_BYTES = 256 * 1024;
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), domainProtocol: z.number().int().positive().optional(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), domainProtocol: z.literal(CHANNEL_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
@@ -105,6 +107,27 @@ export class AppPage implements AppPagePort {
     return { mimeType: result.mimeType, totalSize: result.totalSize, bytes };
   }
   async prepareMedia(choiceId: string): Promise<WatchByteSource> { return watchByteSourceSchema.parse(await this.command("page_media_prepare", { choiceId })); }
+  async readMediaResource(sourceId: string, resourceId: string, offset: number, length: number, signal: AbortSignal): Promise<WatchByteResult> {
+    const reading = AbortSignal.any([this.lifetime.signal, signal]);
+    reading.throwIfAborted();
+    const range = nativePageResourceReadSchema.parse({ sourceId, resourceId, offset, length });
+    const readId = crypto.randomUUID();
+    const cancel = () => {
+      if (!this.lifetime.signal.aborted)
+        void this.command("page_media_resource", { action: "cancel", sourceId, readId }).catch(() => {});
+    };
+    reading.addEventListener("abort", cancel, { once: true });
+    try {
+      const value = await this.request({ type: "page_media_resource", action: "read", pageId: this.id, readId, ...range }, reading);
+      reading.throwIfAborted();
+      const result = nativePageResourceResultSchema.parse(value);
+      const bytes = Uint8Array.from(atob(result.bytesBase64), value => value.charCodeAt(0));
+      if (bytes.length > length || !result.eof && bytes.length !== length
+        || result.totalSize !== null && (offset > result.totalSize || bytes.length !== Math.min(length, result.totalSize - offset)))
+        throw new Error("invalid_app_response");
+      return { bytes, mimeType: result.mimeType, totalSize: result.totalSize, eof: result.eof };
+    } finally { reading.removeEventListener("abort", cancel); }
+  }
   async prepareIndexedMedia(selection: NativePageIndexedSelection, signal: AbortSignal): Promise<WatchByteSource> {
     const preparing = AbortSignal.any([this.lifetime.signal, signal]);
     preparing.throwIfAborted();

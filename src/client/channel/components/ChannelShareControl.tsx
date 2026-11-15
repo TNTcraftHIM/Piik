@@ -86,7 +86,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const sharing = channel.state?.publications.find(publication => publication.kind === "screen" &&
     (!publicationId || publication.id === publicationId) && publication.roomId === roomId && channel.ownedScreens.has(publication.id));
   const watching = channel.state?.watchActivities.find(activity => activity.roomId === roomId && activity.sessionId === channel.sessionId);
-  const nativeWatch = watching && channel.watchPlayers.get(watching.id)?.video === null;
+  const pageWatch = watching && !!channel.watchPlayers.get(watching.id)?.media.page;
   const roomName = sharing ? channel.state?.channel.rooms.find(room => room.id === roomId)?.name : undefined;
   const settingsTitle = roomName
     ? t("screen.shareSettingsInRoom", { room: roomName })
@@ -170,7 +170,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         disabled={disabled || busy || qualityPending || microphonePending} busy={busy || qualityPending} expanded={open}
         controls={id} popoverTarget={id} />}
     </span>
-    {(!watching || sharing || nativeWatch) && <span ref={settingsTrigger} className="c3-share-control">
+    {(!watching || sharing || pageWatch) && <span ref={settingsTrigger} className="c3-share-control">
       <Btn icon="sliders" title={{ text: settingsTitle }} cap={compact ? undefined : { text: settingsLabel }} hint="hint-quality" size="compact" quiet
         disabled={disabled || busy} busy={qualityPending} popoverTarget={`${id}-settings`} controls={`${id}-settings`} expanded={settingsOpen} />
     </span>}
@@ -261,6 +261,7 @@ function WatchForwardSettings({ channel, activityId, disabled }: { channel: Chan
   const { error, run } = useSettingsAction();
   const activity = channel.state?.watchActivities.find(value => value.id === activityId);
   const busy = channel.pending.has(`watch-source:${activityId}`);
+  const retained = channel.watchPlayers.get(activityId)?.media.retainedByteSource;
   const failure = error ?? sources?.error;
   const forward = (choice: string | NativePageIndexedSelection) => {
     discovery.current?.abort();
@@ -272,6 +273,8 @@ function WatchForwardSettings({ channel, activityId, disabled }: { channel: Chan
     {activity?.byteSource ? <><p role="status">{t("watch.forward.active")}</p>
       <Btn icon="stop" title="watch.forward.stop" cap="watch.forward.stop" disabled={disabled || busy} busy={busy}
         onClick={() => { void run(() => channel.setWatchByteSource(activityId, null), cancel); }} /></>
+      : retained ? <Btn icon="share" title="watch.forward.resume" cap="watch.forward.resume" disabled={disabled || busy} busy={busy}
+        onClick={() => forward(retained.resourceId)} />
       : sources === null ? <>
         {busy ? <div className="lr-source-picker-status" role="status"><BrandLoader /><span>{t("common.loading")}</span></div>
           : <Btn icon="share" title="watch.forward.prepare" cap="watch.forward.prepare" disabled={disabled}
@@ -340,7 +343,7 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
               onSelect={() => { void run(() => channel.selectWatchBrowserSource(roomId, choice.id, false), onClose); }} />;
           })}
         </div>}
-        {pageSources.indexed.length > 0 && <WatchIndexedTrackPicker choices={pageSources.indexed} busy={busy}
+        {pageSources.indexed.length > 0 && <WatchIndexedTrackPicker choices={pageSources.indexed} busy={busy} mainPlayback
           onConfirm={(videoId, audioId) => { void run(() => channel.selectWatchIndexedSource(roomId, videoId, audioId, false), onClose); }} />}
         <Btn icon="globe" quiet title="watch.browserSource.skip" cap="watch.browserSource.skip" disabled={busy}
           onClick={() => { void run(() => channel.selectWatchBrowserSource(roomId, null, false), onClose); }} />

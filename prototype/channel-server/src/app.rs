@@ -65,7 +65,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 13;
+const PROTOCOL: u8 = 14;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -1706,6 +1706,48 @@ async fn connection(
                                     continue;
                                 }
                             }
+                            Operation::Page(page::Operation::PageMediaResource(resource)) => {
+                                if host.is_none() {
+                                    Err(anyhow!("hello_required"))
+                                } else {
+                                    match resource {
+                                        page::ResourceRequest::Read {
+                                            page_id,
+                                            source_id,
+                                            resource_id,
+                                            read_id,
+                                            offset,
+                                            length,
+                                        } => {
+                                            match pages.read_resource(
+                                                page_id,
+                                                source_id,
+                                                resource_id,
+                                                read_id,
+                                                offset,
+                                                length,
+                                            ) {
+                                                Ok(work) => {
+                                                    operations.push(async move { match work.await {
+                                                    Ok(result) => json!({"id":request.id,"result":result}),
+                                                    Err(error) => json!({"id":request.id,"error":error.to_string()}),
+                                                }}.boxed());
+                                                    continue;
+                                                }
+                                                Err(error) => Err(error),
+                                            }
+                                        }
+                                        page::ResourceRequest::Cancel {
+                                            page_id,
+                                            source_id,
+                                            read_id,
+                                        } => {
+                                            pages.cancel_resource(page_id, source_id, read_id);
+                                            Ok(Value::Null)
+                                        }
+                                    }
+                                }
+                            }
                             Operation::Page(page::Operation::PageMediaStop { page_id }) => {
                                 pages.stop_media(page_id);
                                 Ok(Value::Null)
@@ -2474,6 +2516,246 @@ async fn publish_capture_settings(
 #[cfg(test)]
 mod lifecycle_tests {
     use super::*;
+    #[tokio::test]
+    async fn active_resource_websocket_reads_and_cancels_without_blocking_control() {
+        use tokio_tungstenite::{
+            connect_async,
+            tungstenite::{client::IntoClientRequest, Message as WsMessage},
+        };
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let dir = tempfile::tempdir().unwrap();
+        let origin = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let media_url = format!("http://{}/file", origin.local_addr().unwrap());
+        let (entered, mut slow) = mpsc::unbounded_channel();
+        let http = tokio::spawn(async move {
+            axum::serve(
+                origin,
+                Router::new().route(
+                    "/file",
+                    get(move |headers: HeaderMap| {
+                        let entered = entered.clone();
+                        async move {
+                            let value = headers
+                                .get("range")
+                                .unwrap()
+                                .to_str()
+                                .unwrap()
+                                .strip_prefix("bytes=")
+                                .unwrap();
+                            let (start, end) = value.split_once('-').unwrap();
+                            let start = start.parse::<u64>().unwrap();
+                            let end = end.parse::<u64>().unwrap().min(131071);
+                            if start == 65536 {
+                                entered.send(()).unwrap();
+                                std::future::pending::<()>().await;
+                            }
+                            Response::builder()
+                                .status(206)
+                                .header("Content-Type", "video/mp4")
+                                .header("Content-Range", format!("bytes {start}-{end}/131072"))
+                                .body(axum::body::Body::from(vec![
+                                    42u8;
+                                    (end - start + 1) as usize
+                                ]))
+                                .unwrap()
+                        }
+                    }),
+                ),
+            )
+            .await
+            .unwrap();
+        });
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let site = "https://owned.test".to_string();
+        let channel = Uuid::new_v4();
+        let user = Uuid::new_v4();
+        let session = Uuid::new_v4();
+        let mut sites = sites::Sites::open(dir.path()).unwrap();
+        let permission = Arc::new(Permission::new(sites.approve(&site, true).unwrap()));
+        let (commands, mut inputs) = mpsc::channel(8);
+        let (stop, mut stopped) = watch::channel(false);
+        let (registered, mut registrations) = mpsc::unbounded_channel();
+        let (revoked, mut revocations) = mpsc::unbounded_channel();
+        let task = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _=stopped.changed()=>break,
+                    command=inputs.recv()=>match command {
+                        Some(HostCommand::RegisterWatchReader { resource_id,reader,result })=>{registered.send((resource_id,reader)).unwrap();let _=result.send(Ok(session));},
+                        Some(HostCommand::RevokeWatchReader { resource_id })=>{let _=revoked.send(resource_id);},
+                        Some(_)=>panic!("unexpected host command"),None=>break,
+                    }
+                }
+            }
+            Ok(())
+        });
+        let host = Host {
+            credential: "owned".into(),
+            commands,
+            ready: watch::channel(Some(Ok(()))).1,
+            stop,
+            task,
+        };
+        let (_retire, retired) = watch::channel(false);
+        let dispatch: page::Dispatcher = Arc::new(move |command| {
+            if let page::Command::Media { reply, .. } = command {
+                let _ = reply.send(Ok(page::MediaContext {
+                    url: media_url.clone(),
+                    request: None,
+                    format: page::Format::File,
+                    size: Some(131072),
+                    retired: retired.clone(),
+                    cookies: Arc::new(|_| Box::pin(async { Ok(None) })),
+                }));
+            }
+            true
+        });
+        let app = Arc::new(App {
+            config: Config {
+                data_root: dir.path().into(),
+                assets: dir.path().into(),
+                open_browser: false,
+                page_player: Some(dispatch),
+                window_navigation: None,
+                cloudflared: PathBuf::new(),
+                ice_servers: vec![],
+                update: Default::default(),
+            },
+            port: address.port(),
+            token: "owned".into(),
+            registry: Mutex::new(Registry {
+                sites,
+                approvals: BTreeMap::from([(site.clone(), permission)]),
+                hosts: BTreeMap::from([((site.clone(), channel, user), host)]),
+                local: None,
+            }),
+            closing: watch::channel(false).0,
+            launch: Mutex::new(None),
+            desktop: Desktop::new().unwrap(),
+            external_inputs: whip::Inputs::default(),
+            update: update::Owner::disabled(),
+        });
+        let server_app = app.clone();
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener,
+                Router::new()
+                    .route("/rooms", get(upgrade))
+                    .with_state(server_app),
+            )
+            .await
+            .unwrap();
+        });
+        let mut request = format!("ws://{address}/rooms")
+            .into_client_request()
+            .unwrap();
+        request
+            .headers_mut()
+            .insert("Origin", site.parse().unwrap());
+        request.headers_mut().insert(
+            "Sec-WebSocket-Protocol",
+            "piik-channel-rooms.owned".parse().unwrap(),
+        );
+        let (mut socket, _) = connect_async(request).await.unwrap();
+        macro_rules! send {
+            ($v:expr) => {
+                socket
+                    .send(WsMessage::Text($v.to_string().into()))
+                    .await
+                    .unwrap()
+            };
+        }
+        macro_rules! receive {
+            () => {
+                serde_json::from_str::<Value>(
+                    &timeout(Duration::from_secs(3), socket.next())
+                        .await
+                        .unwrap()
+                        .unwrap()
+                        .unwrap()
+                        .into_text()
+                        .unwrap(),
+                )
+                .unwrap()
+            };
+        }
+        send!(
+            json!({"id":"hello","type":"hello","channelId":channel,"userId":user,"credential":"owned","name":"Owned"})
+        );
+        assert!(receive!()["error"].is_null());
+        let page = Uuid::new_v4();
+        send!(
+            json!({"id":"prepare","type":"page_media_prepare","pageId":page,"choiceId":Uuid::new_v4()})
+        );
+        let prepared = receive!();
+        assert!(prepared["error"].is_null(), "{prepared}");
+        let root = prepared["result"]["resourceId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let (registered_root, reader) = registrations.recv().await.unwrap();
+        assert_eq!(registered_root.to_string(), root);
+        assert_eq!(
+            reader.read(registered_root, 0, 1).await.unwrap().bytes,
+            vec![42]
+        );
+        let read = |id: Uuid, offset: u64, length: u32| json!({"id":id,"type":"page_media_resource","action":"read","pageId":page,"sourceId":root,"resourceId":root,"readId":id,"offset":offset,"length":length});
+        send!(read(Uuid::new_v4(), 0, 65536));
+        let full = receive!();
+        assert!(full["error"].is_null(), "{full}");
+        assert_eq!(full["result"]["bytesBase64"].as_str().unwrap().len(), 87384);
+        assert!(full.to_string().len() < MAX_REQUEST_BYTES);
+        let pending = Uuid::new_v4();
+        send!(read(pending, 65536, 65536));
+        timeout(Duration::from_secs(3), slow.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        send!(
+            json!({"id":"cancel","type":"page_media_resource","action":"cancel","pageId":page,"sourceId":root,"readId":pending})
+        );
+        let first = receive!();
+        let second = receive!();
+        assert!([&first, &second]
+            .iter()
+            .any(|v| v["id"] == "cancel" && v["error"].is_null()));
+        assert!([&first, &second]
+            .iter()
+            .any(|v| v["id"] == pending.to_string() && v["error"] == "watch_read_cancelled"));
+        send!(read(Uuid::new_v4(), 0, 1));
+        assert!(receive!()["error"].is_null());
+        send!(json!({"id":"stop","type":"page_media_stop","pageId":page}));
+        assert!(receive!()["error"].is_null());
+        send!(read(Uuid::new_v4(), 0, 1));
+        assert_eq!(receive!()["error"], "watch_source_retired");
+        assert_eq!(
+            timeout(Duration::from_secs(3), revocations.recv())
+                .await
+                .unwrap()
+                .unwrap(),
+            registered_root
+        );
+        send!(json!({"id":"prepare-again","type":"page_media_prepare","pageId":page,"choiceId":Uuid::new_v4()}));
+        let prepared = receive!(); assert!(prepared["error"].is_null());
+        let (new_root, retained) = registrations.recv().await.unwrap();
+        assert_ne!(new_root, registered_root);
+        send!(read(Uuid::new_v4(),0,1));assert_eq!(receive!()["error"],"watch_source_retired");
+        send!(json!({"id":"closing-read","type":"page_media_resource","action":"read","pageId":page,"sourceId":new_root,"resourceId":new_root,"readId":Uuid::new_v4(),"offset":65536,"length":1}));
+        timeout(Duration::from_secs(3),slow.recv()).await.unwrap().unwrap();
+        socket.close(None).await.unwrap();
+        assert_eq!(timeout(Duration::from_secs(3),revocations.recv()).await.unwrap().unwrap(),new_root);
+        assert_eq!(retained.read(new_root,0,1).await.unwrap_err().to_string(),"watch_source_retired");
+        app.registry.lock().await.hosts.values().for_each(|h| {
+            h.stop.send_replace(true);
+        });
+        server.abort();
+        http.abort();
+        let _ = server.await;
+        let _ = http.await;
+    }
+
+
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpStream,

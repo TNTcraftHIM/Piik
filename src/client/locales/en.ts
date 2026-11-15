@@ -2,6 +2,8 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // English stays complete against the canonical Chinese key set.
 export const en: Record<CopyKey, string> = {
+  "watch.forward.resume": "Resume forwarding this video",
+  "watch.forward.mainHelp": "Choose video and optional audio to play together in Piik. The original video pauses; keep its webpage open for source access. Closing it ends this watch. Forwarding uses this device’s upload bandwidth.",
   "watch.forward.tracksHelp": "Choose a video track and optional audio separately. Confirmation starts using this device’s upload bandwidth.",
   "watch.forward.noVideoTrack": "No video track is available to forward. You can still watch the original webpage.",
   "watch.forward.videoOnly": "Video only, without audio",

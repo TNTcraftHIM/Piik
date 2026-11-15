@@ -808,3 +808,25 @@ describe("initial App discovery", () => {
     } finally { page.cleanup(); }
   });
 });
+
+
+it("keeps forwarding settings reachable for main playback with a retained Page source", () => {
+  setCopy({ lang: "en" });
+  const source = { sessionId: "provider", resourceId: "root", format: "hls" };
+  const activity = { id: "watch", roomId: "room", sessionId: "self", byteSource: source as typeof source | null };
+  const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: true, sessionId: "self",
+    pending: new Set(), nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined, externalInput: () => undefined,
+    state: { publications: [], voice: [], watchActivities: [activity] },
+    watchPlayers: new Map([["watch", { video: {}, media: { page: {}, retainedByteSource: source } }]]),
+  } as unknown as ChannelController;
+  const render = () => {
+    vi.mocked(useState).mockReturnValueOnce([false, vi.fn()]).mockReturnValueOnce([true, vi.fn()]);
+    return renderToStaticMarkup(createElement(ChannelShareControl, { onWatch() {}, channel, roomId: "room", disabled: false }));
+  };
+  expect(render()).toContain('aria-label="Stop forwarding"');
+  activity.byteSource = null;
+  const html = render();
+  expect(html).toContain('aria-label="Share settings"');
+  expect(html).toContain('aria-label="Resume forwarding this video"');
+  expect(html).not.toContain('aria-label="Choose video to forward"');
+});

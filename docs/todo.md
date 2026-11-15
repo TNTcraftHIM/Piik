@@ -95,10 +95,10 @@ the feedback period; they do not delay that delivery.
   verify an official release containing the repair.
   [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency)
   owns the temporary pin and removal procedure.
-- [ ] **Return str0m to an upstream pin.** Follow
-  [str0m #1134](https://github.com/algesten/str0m/pull/1134) and its transmit-reset
-  correction. Once upstream covers both repairs, replace the temporary pin
-  through the existing consumer checks and
+- [ ] **Replace the official str0m Git pin with a published release.** When a
+  release includes [str0m #1134](https://github.com/algesten/str0m/pull/1134) and
+  its transmit-reset behavior, replace the immutable upstream pin through the
+  existing consumer checks and
   [dependency provenance](../prototype/channel-native/README.md#rtc-dependency).
 - [ ] **GNOME cancellation cleanup submission.** Submit the independently
   verified Mutter repair when GitLab authentication is available, under the upstream
@@ -173,10 +173,11 @@ the feedback period; they do not delay that delivery.
 - [ ] **Shared-link website coverage.** Extend the implemented webpage player
   and original-media forwarding toward VideoTogether's playback coverage.
   Validate actual supported websites, source-issued media grants, live playlist
-  lifecycle and target Browser behavior. Complete Bilibili ordinary/member
-  Browser viewing for segmented media: identify the audio-source request failure
-  when reproducible and verify broader source availability. Trace observed
-  responses through frame association before extending source discovery.
+  lifecycle and target Browser behavior. Complete matched-package Bilibili
+  viewing with the sharer's main player: pause, seek, stop/resume forwarding and
+  provider retirement. Existing ordinary/member segmented-media evidence stays
+  with its tested packages. Trace observed responses through frame association
+  before extending source discovery.
   Extend the official embedded-player coverage and verify the supplied
   girigirilove page when its original player is accessible. Keep each
   viewer's account access in its original player. Retain the

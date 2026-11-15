@@ -1,6 +1,9 @@
 //! Page players belong to one approved App WebSocket, never to website messages.
 use anyhow::{anyhow, bail, Result};
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{
+    future::{AbortHandle, Abortable, BoxFuture},
+    FutureExt,
+};
 use piik_channel_native::session::HostCommand;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -12,7 +15,11 @@ use uuid::Uuid;
 pub mod indexed;
 #[path = "app_page/reader.rs"]
 mod reader;
+use piik_channel_core::watch_delivery::WATCH_WINDOW_BYTES;
 pub use piik_channel_core::wire::WatchFormat as Format;
+const MAX_MEDIA_READS: usize = 4;
+const MAX_METADATA_BYTES: u64 = 1024 * 1024;
+const SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 pub type Cookies = Arc<dyn Fn(String) -> BoxFuture<'static, Result<Option<String>>> + Send + Sync>;
 /// Request facts belong to one successful WebView response and never enter room data.
 #[derive(Clone)]
@@ -103,8 +110,31 @@ pub enum Operation {
         offset: u64,
         length: u32,
     },
+    PageMediaResource(ResourceRequest),
     PageMediaStop {
         page_id: Uuid,
+    },
+}
+#[derive(Clone, Debug, Deserialize)]
+#[serde(
+    tag = "action",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum ResourceRequest {
+    Read {
+        page_id: Uuid,
+        source_id: Uuid,
+        resource_id: Uuid,
+        read_id: Uuid,
+        offset: u64,
+        length: u32,
+    },
+    Cancel {
+        page_id: Uuid,
+        source_id: Uuid,
+        read_id: Uuid,
     },
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -184,6 +214,7 @@ impl Events {
     }
 }
 struct Registration {
+    reader: Arc<dyn piik_channel_native::watch::Reader>,
     source: Option<piik_channel_core::wire::WatchByteSource>,
     retired: watch::Receiver<bool>,
     cancel: watch::Sender<bool>,
@@ -219,7 +250,22 @@ pub struct Connection {
     events: Events,
     overflow: watch::Receiver<bool>,
     media: Mutex<BTreeMap<Uuid, MediaSlot>>,
-    metadata_reads: tokio::sync::Semaphore,
+    media_reads: Arc<tokio::sync::Semaphore>,
+    resource_reads: Mutex<BTreeMap<Uuid, (Uuid, Uuid, AbortHandle)>>,
+}
+struct ResourceRead {
+    connection: Arc<Connection>,
+    id: Uuid,
+    _permit: tokio::sync::OwnedSemaphorePermit,
+}
+impl Drop for ResourceRead {
+    fn drop(&mut self) {
+        self.connection
+            .resource_reads
+            .lock()
+            .unwrap()
+            .remove(&self.id);
+    }
 }
 impl Connection {
     pub fn new(dispatch: Option<Dispatcher>, events: mpsc::Sender<Value>) -> Self {
@@ -233,7 +279,8 @@ impl Connection {
             },
             overflow: failed,
             media: Mutex::new(BTreeMap::new()),
-            metadata_reads: tokio::sync::Semaphore::new(4),
+            media_reads: Arc::new(tokio::sync::Semaphore::new(MAX_MEDIA_READS)),
+            resource_reads: Mutex::new(BTreeMap::new()),
         }
     }
     pub fn media_source(&self, page: Uuid) -> Option<piik_channel_core::wire::WatchByteSource> {
@@ -324,7 +371,7 @@ impl Connection {
                     }
                     let _ = revoke.send(HostCommand::RevokeWatchReader { resource_id: root }).await;
                 });
-                let mut registration = Registration { source: None, retired, cancel: cancel.clone(), _task: task };
+                let mut registration = Registration { reader: reader.clone(), source: None, retired, cancel: cancel.clone(), _task: task };
                 host.send(HostCommand::RegisterWatchReader { resource_id: root, reader, result }).await.map_err(|_| anyhow!("hosting_unavailable"))?;
                 let session_id = response.await?.map_err(anyhow::Error::msg)?;
                 registration.source = Some(piik_channel_core::wire::WatchByteSource { session_id, resource_id: root, format });
@@ -352,6 +399,70 @@ impl Connection {
             result
         }.boxed())
     }
+    pub fn read_resource(
+        self: &Arc<Self>,
+        page_id: Uuid,
+        source_id: Uuid,
+        resource_id: Uuid,
+        read_id: Uuid,
+        offset: u64,
+        length: u32,
+    ) -> Result<BoxFuture<'static, Result<Value>>> {
+        anyhow::ensure!(
+            length > 0
+                && length as usize <= WATCH_WINDOW_BYTES
+                && offset
+                    .checked_add(u64::from(length))
+                    .is_some_and(|end| end <= SAFE_INTEGER),
+            "invalid_watch_range"
+        );
+        let reader = {
+            let pages = self.media.lock().unwrap();
+            let active = pages
+                .get(&page_id)
+                .and_then(|slot| slot.active.as_ref())
+                .filter(|active| {
+                    !*active.cancel.borrow()
+                        && !*active.retired.borrow()
+                        && active
+                            .source
+                            .as_ref()
+                            .is_some_and(|source| source.resource_id == source_id)
+                })
+                .ok_or_else(|| anyhow!("watch_source_retired"))?;
+            active.reader.clone()
+        };
+        let permit = self
+            .media_reads
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| anyhow!("watch_read_busy"))?;
+        let (cancel, cancelled) = AbortHandle::new_pair();
+        {
+            let mut reads = self.resource_reads.lock().unwrap();
+            anyhow::ensure!(!reads.contains_key(&read_id), "watch_read_busy");
+            reads.insert(read_id, (page_id, source_id, cancel));
+        }
+        let lease = ResourceRead {
+            connection: self.clone(),
+            id: read_id,
+            _permit: permit,
+        };
+        Ok(async move {
+            let _lease = lease;
+            use base64ct::{Base64, Encoding};
+            let result = Abortable::new(reader.read(resource_id, offset, length), cancelled).await;
+            let result = result.map_err(|_| anyhow!("watch_read_cancelled"))??;
+            Ok(serde_json::json!({"mimeType":result.mime_type,"totalSize":result.total_size,"bytesBase64":Base64::encode_string(&result.bytes),"eof":result.eof}))
+        }.boxed())
+    }
+    pub fn cancel_resource(&self, page_id: Uuid, source_id: Uuid, read_id: Uuid) {
+        if let Some((page, source, cancel)) = self.resource_reads.lock().unwrap().get(&read_id) {
+            if *page == page_id && *source == source_id {
+                cancel.abort();
+            }
+        }
+    }
     pub async fn overflowed(&self) {
         let mut failed = self.overflow.clone();
         let _ = failed.wait_for(|value| *value).await;
@@ -366,14 +477,14 @@ impl Connection {
         use base64ct::{Base64, Encoding};
         anyhow::ensure!(
             length > 0
-                && length <= 65536
+                && length as usize <= WATCH_WINDOW_BYTES
                 && offset
                     .checked_add(length as u64)
-                    .is_some_and(|end| end <= 1024 * 1024),
+                    .is_some_and(|end| end <= MAX_METADATA_BYTES),
             "invalid_watch_range"
         );
         let _permit = self
-            .metadata_reads
+            .media_reads
             .try_acquire()
             .map_err(|_| anyhow!("watch_read_busy"))?;
         let dispatch = self
@@ -439,7 +550,150 @@ impl Drop for Connection {
 mod tests {
     use super::*;
     #[tokio::test]
+    async fn active_resource_reads_share_the_registered_reader_and_cancel_only_their_read() {
+        use piik_channel_native::watch::{ReadResult, Reader};
+        struct OwnedReader {
+            stopped: watch::Receiver<bool>,
+            root: Uuid,
+            calls: std::sync::atomic::AtomicUsize,
+        }
+        impl Reader for OwnedReader {
+            fn read(
+                &self,
+                id: Uuid,
+                offset: u64,
+                _: u32,
+            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<ReadResult>> + Send + '_>>
+            {
+                Box::pin(async move {
+                    self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    anyhow::ensure!(id == self.root, "watch_resource_unavailable");
+                    if offset == 1 {
+                        let mut stopped = self.stopped.clone();
+                        let _ = stopped.wait_for(|v| *v).await;
+                        bail!("watch_source_retired");
+                    }
+                    Ok(ReadResult {
+                        mime_type: "video/mp4".into(),
+                        total_size: Some(1),
+                        bytes: vec![42],
+                        eof: true,
+                    })
+                })
+            }
+        }
+        let (events, _) = mpsc::channel(8);
+        let connection = Arc::new(Connection::new(None, events));
+        let page = Uuid::new_v4();
+        let root = Uuid::new_v4();
+        let (cancel, stopped) = watch::channel(false);
+        let reader = Arc::new(OwnedReader {
+            stopped,
+            root,
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        });
+        let (_retire, retired) = watch::channel(false);
+        connection.media.lock().unwrap().insert(
+            page,
+            MediaSlot {
+                pending: None,
+                active: Some(Registration {
+                    reader: reader.clone(),
+                    source: Some(piik_channel_core::wire::WatchByteSource {
+                        session_id: Uuid::new_v4(),
+                        resource_id: root,
+                        format: Format::File,
+                    }),
+                    retired,
+                    cancel,
+                    _task: tokio::spawn(async {}),
+                }),
+            },
+        );
+        assert!(Arc::ptr_eq(
+            &connection.media.lock().unwrap()[&page]
+                .active
+                .as_ref()
+                .unwrap()
+                .reader,
+            &(reader.clone() as Arc<dyn Reader>)
+        ));
+        let result = connection
+            .read_resource(page, root, root, Uuid::new_v4(), 0, 1)
+            .unwrap()
+            .await
+            .unwrap();
+        assert_eq!(result["bytesBase64"], "Kg==");
+        assert_eq!(result["eof"], true);
+        assert!(connection
+            .read_resource(Uuid::new_v4(), root, root, Uuid::new_v4(), 0, 1)
+            .is_err());
+        assert!(connection
+            .read_resource(page, Uuid::new_v4(), root, Uuid::new_v4(), 0, 1)
+            .is_err());
+        assert!(connection
+            .read_resource(page, root, Uuid::new_v4(), Uuid::new_v4(), 0, 1)
+            .unwrap()
+            .await
+            .is_err());
+        let first = Uuid::new_v4();
+        let mut pending = vec![];
+        for id in [first, Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()] {
+            pending.push(
+                connection
+                    .read_resource(page, root, root, id, 1, 1)
+                    .unwrap(),
+            );
+        }
+        assert!(connection
+            .read_resource(page, root, root, Uuid::new_v4(), 0, 1)
+            .is_err());
+        assert!(connection.media_reads.try_acquire().is_err());
+        connection.cancel_resource(page, Uuid::new_v4(), first);
+        assert!(!connection.resource_reads.lock().unwrap()[&first]
+            .2
+            .is_aborted());
+        assert!(futures_util::poll!(pending[0].as_mut()).is_pending());
+        connection.cancel_resource(page, root, first);
+        assert_eq!(
+            pending.remove(0).await.unwrap_err().to_string(),
+            "watch_read_cancelled"
+        );
+        assert_eq!(connection.resource_reads.lock().unwrap().len(), 3);
+        drop(pending);
+        assert_eq!(connection.media_reads.available_permits(), 4);
+        assert!(connection.resource_reads.lock().unwrap().is_empty());
+        let mut stopping = connection
+            .read_resource(page, root, root, Uuid::new_v4(), 1, 1)
+            .unwrap();
+        assert!(futures_util::poll!(stopping.as_mut()).is_pending());
+        connection.stop_media(page);
+        assert_eq!(
+            stopping.await.unwrap_err().to_string(),
+            "watch_source_retired"
+        );
+        assert_eq!(connection.media_reads.available_permits(), 4);
+        assert!(connection
+            .read_resource(page, root, root, Uuid::new_v4(), 0, 1)
+            .is_err());
+    }
+    #[test]
+    fn active_resource_operation_rejects_urls_and_accepts_cancel() {
+        for action in ["read", "cancel"] {
+            let mut value = serde_json::json!({"type":"page_media_resource","action":action,"pageId":Uuid::new_v4(),"sourceId":Uuid::new_v4(),"readId":Uuid::new_v4()});
+            if action == "read" {
+                value["resourceId"] = serde_json::json!(Uuid::new_v4());
+                value["offset"] = serde_json::json!(0);
+                value["length"] = serde_json::json!(1);
+            }
+            assert!(serde_json::from_value::<Operation>(value.clone()).is_ok());
+            value["url"] = serde_json::json!("https://not-admitted.test");
+            assert!(serde_json::from_value::<Operation>(value).is_err());
+        }
+    }
+    #[tokio::test]
     async fn metadata_allows_four_reads_and_page_retirement_releases_their_slots() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!(
             "http://{}/media?grant=private",
@@ -521,7 +775,7 @@ mod tests {
                 "watch_source_retired"
             );
         }
-        assert_eq!(connection.metadata_reads.available_permits(), 4);
+        assert_eq!(connection.media_reads.available_permits(), 4);
         assert_eq!(
             connection
                 .read_metadata(Uuid::new_v4(), Uuid::new_v4(), 0, 16)
@@ -530,7 +784,7 @@ mod tests {
                 .to_string(),
             "watch_source_retired"
         );
-        assert_eq!(connection.metadata_reads.available_permits(), 4);
+        assert_eq!(connection.media_reads.available_permits(), 4);
         server.abort();
     }
 
