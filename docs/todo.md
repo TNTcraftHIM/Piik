@@ -12,6 +12,12 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **Personal forwarding limit on App-hosted sharing.** With room default 1,
+  raising the webpage's personal limit does not raise its linked App source's
+  limit: the request targets the Browser endpoint, and host/source planning
+  still uses the room default. Align the existing connection settings with the
+  actual endpoint and its effective limit. Preserve the accepted zero meaning
+  (no forwarding for others, sharing still available) and healthy-route stability.
 - [ ] **App connection during webpage selection.** Capture the first control
   connection failure during the reported intermittent App disconnection. Use the
   opt-in control-close diagnostic to distinguish transport closure, handshake,
@@ -149,8 +155,6 @@ the feedback period; they do not delay that delivery.
   trigger, bounded candidate attempts and strict-benefit proof before enabling
   automatic alternative-parent trials. Online sessions do not prove reusable
   physical connections; keep that fact with the transport owner.
-  Clarify the room-default limit for hosts/sources versus the current page's
-  personal relay override before extending controls to linked App endpoints.
 - [ ] **NAT field coverage.** The bounded random-mapping Native implementation
   and ordinary Native-to-Browser linear extension have controlled media and
   retirement evidence. Measure difficult physical networks and sustained
