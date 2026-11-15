@@ -1,5 +1,5 @@
 // Control hint scenes (操作提示漫画): small explanatory scenes used
-// as hover/focus tooltips in every mode, with captions added by Tooltip.
+// when contextual guidance helps, with captions added by Tooltip.
 // Same cast, palette, 320x96 canvas, and motion
 // constitution as the state comics. Each scene group defines exactly its
 // own HintKind subset — the merge below then proves

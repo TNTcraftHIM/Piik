@@ -1,5 +1,5 @@
-// Shared tooltip: the same comic in every mode, with a localized caption in
-// text modes. Truncated literal text needs only its full value. Hover and keyboard
+// Shared contextual guidance: an optional comic and localized caption.
+// Truncated literal text needs only its full value. Hover and keyboard
 // focus show guidance; help-only controls also toggle it on click/tap. Hover
 // waits for intent; clicking the panel dismisses it without activating below it.
 // Action controls keep their click and use a 500ms touch hold for guidance,

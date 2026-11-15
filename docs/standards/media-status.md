@@ -6,7 +6,7 @@ presentation reducer continues to own playback facts; roster and quality
 evidence retain their own authority. Overlay, indicators, notices and title are
 consumers, not truth sources.
 
-Frontend controls, names and details share `Tooltip`, following the
+When supplementary guidance is needed, controls, names and details share `Tooltip`, following the
 [visual language](./visual-language.md). Its native Popover top layer escapes scrolling
 containers, with viewport-relative placement. Hover, keyboard focus and touch
 hold share one visibility owner; Escape dismisses even a mouse-only hint.
@@ -32,9 +32,8 @@ over a reused comic's default; localized tooltips retain that context.
   or a required user action. Ordinary quality warnings never cover playback.
   Initial connection guidance is not an error even though it occupies the stage.
 - Television: one media-status icon sits inside the lower television frame
-  (`lr-tv-chin`). Every mode explains it with the same comic tooltip;
-  text modes add the specific localized status beneath the scene.
-  Both reuse `Tooltip` for hover, keyboard focus, touch hold and viewport
+  (`lr-tv-chin`). Its comic tooltip includes the specific localized status
+  beneath the scene. It uses `Tooltip` for hover, keyboard focus, touch hold and viewport
   placement; no native `title` competes with the custom status hint. There is no
   permanent text bubble, additional round lamp, or repeated control-menu caption.
   Room/session termination refines this same indicator before and during sharing;
