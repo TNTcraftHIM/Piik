@@ -2,6 +2,12 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // Community translations are data-only and type-checked against zh.
 export const en: Record<CopyKey, string> = {
+  "playback.buffering": "Playback buffering",
+  "playback.bufferAutomatic": "Automatic",
+  "playback.bufferTarget": "Buffer target",
+  "playback.bufferHint": "More buffering may smooth uneven playback, but adds delay and may delay pictures relayed through this device.",
+  "playback.bufferUnsupported": "The current receive path cannot set a buffer target.",
+  "playback.bufferFailed": "Could not apply this buffer target. Playback continues.",
   "host.invite.qr": "Invitation QR code",
   "host.invite.qrShort": "QR code",
   "host.invite.qrHint": "Scan with another device to join the room.",

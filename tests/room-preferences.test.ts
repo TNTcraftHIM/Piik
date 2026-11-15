@@ -56,6 +56,19 @@ it("rejects malformed saved data and invalid patches while retaining useful defa
   }
 });
 
+it("persists a bounded receive buffer target independently from room voice", () => {
+  storage();
+  expect(readRoomPreferences().screenBufferTargetMs).toBeNull();
+  saveRoomPreferences({ voiceListeningVolume: 1.5 });
+  for (const target of [300, 0, 4000, null]) {
+    saveRoomPreferences({ screenBufferTargetMs: target });
+    expect(readRoomPreferences().screenBufferTargetMs).toBe(target);
+    expect(readRoomPreferences().voiceListeningVolume).toBe(1.5);
+  }
+  saveRoomPreferences({ screenBufferTargetMs: 4001 });
+  expect(readRoomPreferences().screenBufferTargetMs).toBeNull();
+});
+
 it("restores overlay choices in a new room without restoring messages or room authority", () => {
   storage();
   const first = new RoomInteractionSession(() => true);

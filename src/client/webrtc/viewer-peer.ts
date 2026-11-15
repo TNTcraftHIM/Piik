@@ -1,3 +1,4 @@
+import { applyPlaybackBufferTarget, validatePlaybackBufferTarget, type PlaybackBufferStatus } from "./receiver-buffer-target";
 import type { CopyKey } from "../ui/copy";
 import { RemoteInputChannel } from "./remote-input-channel";
 import type { IceConfig, SignalPayload } from "../../shared/protocol";
@@ -37,6 +38,7 @@ type SignalCandidate = Extract<
 >["candidate"];
 
 export interface ViewerPeerEvents {
+  onPlaybackBufferStatus?: (status: PlaybackBufferStatus) => void;
   sendSignal: (peerId: string, payload: SignalPayload) => boolean;
   sendRestartRequest: (
     peerId: string,
@@ -53,6 +55,7 @@ export interface ViewerPeerEvents {
 }
 
 export interface ViewerPeerOptions {
+  playbackBufferTargetMs?: number | null;
   natPredictionEnabled?: boolean;
   recoveryOwner?: "viewer" | "route";
   recoveryBudget?: ViewerRecoveryBudget;
@@ -69,6 +72,8 @@ export function createViewerRecoveryBudget(): ViewerRecoveryBudget {
 }
 
 export interface ViewerMediaPeer {
+  setPlaybackBufferTarget?(target: number | null): PlaybackBufferStatus;
+  getPlaybackBufferStatus?(): PlaybackBufferStatus;
   getRemoteInput?(): RTCDataChannel | null;
   acceptSignal(parentPeerId: string, payload: SignalPayload): Promise<void>;
   updateIceConfig(iceConfig: IceConfig): void;
@@ -87,6 +92,8 @@ export interface ViewerMediaPeer {
 }
 
 export class ViewerPeer implements ViewerMediaPeer {
+  private playbackBufferTargetMs: number | null;
+  private playbackBufferStatus: PlaybackBufferStatus = null;
   private readonly remoteInput = new RemoteInputChannel(() => this.emit());
   getRemoteInput(): RTCDataChannel | null { return this.remoteInput.current; }
   private connection: RTCPeerConnection | null = null;
@@ -120,10 +127,24 @@ export class ViewerPeer implements ViewerMediaPeer {
     private readonly events: ViewerPeerEvents,
     options: ViewerPeerOptions = {},
   ) {
+    this.playbackBufferTargetMs = options.playbackBufferTargetMs ?? null;
     this.currentIceConfig = iceConfig;
     this.natPredictionEnabled = options.natPredictionEnabled ?? false;
     this.recoveryOwner = options.recoveryOwner ?? "viewer";
     this.recoveryBudget = options.recoveryBudget ?? createViewerRecoveryBudget();
+  }
+
+  setPlaybackBufferTarget(target: number | null): PlaybackBufferStatus {
+    validatePlaybackBufferTarget(target);
+    this.playbackBufferTargetMs = target;
+    return this.applyPlaybackBuffer();
+  }
+  getPlaybackBufferStatus(): PlaybackBufferStatus { return this.playbackBufferStatus; }
+  private applyPlaybackBuffer(): PlaybackBufferStatus {
+    const status = applyPlaybackBufferTarget(this.connection?.getReceivers() ?? [], this.playbackBufferTargetMs);
+    this.playbackBufferStatus = status;
+    this.events.onPlaybackBufferStatus?.(status);
+    return status;
   }
 
   async acceptSignal(
@@ -341,6 +362,7 @@ export class ViewerPeer implements ViewerMediaPeer {
       if (!this.remoteStream.getTrackById(event.track.id)) {
         this.remoteStream.addTrack(event.track);
       }
+      this.applyPlaybackBuffer();
       this.events.onStream(this.remoteStream);
     });
     connection.addEventListener("connectionstatechange", () => {
@@ -752,6 +774,7 @@ export class ViewerPeer implements ViewerMediaPeer {
     this.connectionLifetime = null;
     this.connection?.close();
     this.connection = null;
+    this.applyPlaybackBuffer();
     this.connectionId = null;
     this.parentPeerId = null;
     this.snapshot = null;

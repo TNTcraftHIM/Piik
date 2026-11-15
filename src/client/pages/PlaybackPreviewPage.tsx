@@ -111,7 +111,7 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
   const english = lang === "en";
   const viewer = role === "viewer";
   useLayoutEffect(() => {
-    if (!viewer || new URLSearchParams(location.search).get("settings") !== "relay") return;
+    if (!viewer || !["relay", "buffering"].includes(new URLSearchParams(location.search).get("settings") ?? "")) return;
     const settings = document.querySelector<HTMLButtonElement>(".lr-playback-more button");
     settings?.scrollIntoView({ block: "center" });
     const frame = requestAnimationFrame(() => {
@@ -133,6 +133,8 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
   const [pictureRotation, setPictureRotation] = useState<VideoRotation>(0);
   const [previewAutoPause, setPreviewAutoPause] = useState(() => readRoomPreferences().previewAutoPause);
   const [viewerRoute, setViewerRoute] = useState<"auto" | "p2p" | "sfu">("auto");
+  const [bufferTarget, setBufferTarget] = useState<number | null>(null);
+  const [bufferStatus, setBufferStatus] = useState<"supported" | "unsupported" | "failed">("supported");
   const [relayVolunteer, setRelayVolunteer] = useState(false);
   const [relayCapacity, setRelayCapacity] = useState(DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY);
   const relayLimits = { capacity: relayVolunteer ? relayCapacity : DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY,
@@ -184,6 +186,9 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
 
   return <main className={`lr-room${theaterMode ? " is-theater" : ""}`}>
       {!theaterMode ? <header style={{ margin: "20px 0" }}>
+        {viewer && <label>{english ? "Sample buffer support" : "示例缓冲支持"} <select value={bufferStatus} onChange={event => setBufferStatus(event.target.value as typeof bufferStatus)}>
+          <option value="supported">{english ? "Supported" : "支持"}</option><option value="unsupported">{english ? "Unsupported" : "不支持"}</option><option value="failed">{english ? "Failed" : "应用失败"}</option>
+        </select></label>}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           <button className="lr-btn" type="button" onClick={() => start(false)}>
             {english ? "Start picture only" : "开启无声测试画面"}</button>
@@ -230,6 +235,7 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
               sourceAudio.current?.setVolume(muted ? 0 : level); setShareVolume({ level, muted });
             } }}
             settings={{ pictureFit, setPictureFit, pictureRotation, setPictureRotation,
+              buffering: viewer ? { target: bufferTarget, status: bufferStatus, onChange: setBufferTarget } : undefined,
               preview: viewer ? undefined : { autoPause: previewAutoPause, onChange: autoPause => {
                 setPreviewAutoPause(autoPause); saveRoomPreferences({ previewAutoPause: autoPause });
               } },

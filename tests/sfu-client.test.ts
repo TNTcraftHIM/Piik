@@ -671,6 +671,7 @@ describe("embedded SFU browser transport", () => {
       send: message => { messages.push(message); return true; },
     });
     cleanups.push(() => route.disconnect());
+    route.setPlaybackBufferTarget(350);
     route.accept({ revision: 3, phase: "active", assignment: {
       upstream: { kind: "peer", peerId: "healthy_parent" }, childPeerIds: [], sfuPublicationGeneration: null,
     } });
@@ -684,7 +685,12 @@ describe("embedded SFU browser transport", () => {
     await route.acceptSignal(signal({ description: { type: "offer", sdp: "offer" } }));
     let completeStats!: (report: Map<string, object>) => void;
     const report = new Promise<Map<string, object>>(resolve => { completeStats = resolve; });
-    pc.ontrack?.({ track: new FakeTrack("video"), receiver: { getStats: () => report } });
+    const bufferedReceiver = { getStats: () => report, jitterBufferTarget: null as number | null };
+    pc.ontrack?.({ track: new FakeTrack("video"), receiver: bufferedReceiver });
+    expect(bufferedReceiver.jitterBufferTarget).toBe(350);
+    expect(route.getPlaybackBufferStatus()).toBeNull();
+    route.setPlaybackBufferTarget(500);
+    expect(bufferedReceiver.jitterBufferTarget).toBe(500);
     pc.state("connected");
     pc.state("disconnected");
     completeStats(new Map([["video", { id: "video", type: "inbound-rtp", kind: "video", framesDecoded: 1 }]]));
@@ -704,6 +710,9 @@ describe("embedded SFU browser transport", () => {
     pc.state("connected");
     await vi.advanceTimersByTimeAsync(0);
     expect(onSfuStream).toHaveBeenCalledOnce();
+    expect(route.getPlaybackBufferStatus()).toBe("supported");
+    route.setPlaybackBufferTarget(null);
+    expect(bufferedReceiver.jitterBufferTarget).toBeNull();
     expect(FakePc.instances).toHaveLength(1);
     expect(pc.close).not.toHaveBeenCalled();
   });
@@ -936,4 +945,30 @@ describe("embedded SFU browser transport", () => {
     expect(pc.close).not.toHaveBeenCalled();
     expect(onDisconnected).not.toHaveBeenCalled();
   });
+});
+
+it("keeps a buffer target on SFU tracks, late audio and replacement while resetting automatic", async () => {
+  const changed=vi.fn();
+  const subscriber=new SfuSubscriber({send:()=>true,onStream:()=>{},onPlaybackBufferStatus:changed});
+  cleanups.push(()=>subscriber.disconnect());
+  subscriber.setPlaybackBufferTarget(300);
+  await subscriber.connect(config);
+  const pc=FakePc.instances.at(-1)!;
+  const video=new FakeTrack("video");
+  const first={track:video,jitterBufferTarget:null as number|null,getStats:async()=>new Map()};
+  pc.ontrack?.({track:video,receiver:first});
+  expect(first.jitterBufferTarget).toBe(300);
+  const audio=new FakeTrack("audio");
+  const second={track:audio,jitterBufferTarget:null as number|null,getStats:async()=>new Map()};
+  pc.ontrack?.({track:audio,receiver:second});
+  expect(second.jitterBufferTarget).toBe(300);
+  subscriber.setPlaybackBufferTarget(600);
+  const replaced=new FakeTrack("video");
+  const third={track:replaced,jitterBufferTarget:null as number|null,getStats:async()=>new Map()};
+  pc.ontrack?.({track:replaced,receiver:third});
+  expect(third.jitterBufferTarget).toBe(600);
+  subscriber.setPlaybackBufferTarget(null);
+  expect(third.jitterBufferTarget).toBeNull();expect(second.jitterBufferTarget).toBeNull();
+  expect(first.jitterBufferTarget).toBe(600);
+  await subscriber.disconnect();expect(changed).toHaveBeenLastCalledWith(null);
 });

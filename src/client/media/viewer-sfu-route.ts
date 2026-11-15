@@ -1,3 +1,4 @@
+import { validatePlaybackBufferTarget, type PlaybackBufferStatus } from "../webrtc/receiver-buffer-target";
 import type {
   ClientMessage,
   MediaRoutePhase,
@@ -22,6 +23,8 @@ import {
 } from "./route-transition";
 
 interface ViewerSubscriberTransport {
+  setPlaybackBufferTarget?(target: number | null): PlaybackBufferStatus;
+  getPlaybackBufferStatus?(): PlaybackBufferStatus;
   getRemoteInput?(): RTCDataChannel | null;
   connect(config: SfuConnectionConfig): Promise<boolean>;
   updateConfig(config: SfuConnectionConfig): void;
@@ -53,6 +56,7 @@ interface ViewerSubscriberSlot {
 }
 
 interface ViewerSfuRouteEvents {
+  onPlaybackBufferStatus?: (status: PlaybackBufferStatus) => void;
   onInputChanged?: () => void;
   activatePeer: (
     assignment: ParticipantRouteAssignment,
@@ -92,6 +96,7 @@ interface ViewerSfuRouteEvents {
   send: (message: ClientMessage) => boolean;
   createSubscriber?: (
     events: {
+      onPlaybackBufferStatus?: (status: PlaybackBufferStatus) => void;
       onStream: (stream: MediaStream | null) => void;
       onVideoAvailability: (available: boolean) => void;
       onStats: (metrics: ConnectionMetrics) => void;
@@ -103,6 +108,14 @@ interface ViewerSfuRouteEvents {
 }
 
 export class ViewerSfuRoute {
+  private playbackBufferTargetMs: number | null = null;
+  setPlaybackBufferTarget(target: number | null): PlaybackBufferStatus {
+    validatePlaybackBufferTarget(target);
+    this.playbackBufferTargetMs = target;
+    for (const slot of new Set([this.active, this.pending])) slot?.subscriber.setPlaybackBufferTarget?.(target);
+    return this.getPlaybackBufferStatus();
+  }
+  getPlaybackBufferStatus(): PlaybackBufferStatus { return this.active?.subscriber.getPlaybackBufferStatus?.() ?? null; }
   getRemoteInput(): RTCDataChannel | null { return this.active?.subscriber.getRemoteInput?.() ?? null; }
   private readonly route = new MediaRouteTransition();
   private pending: ViewerSubscriberSlot | null = null;
@@ -456,6 +469,7 @@ export class ViewerSfuRoute {
     let slot: ViewerSubscriberSlot;
     const subscriberEvents = {
       send: this.events.send,
+      onPlaybackBufferStatus: (status: PlaybackBufferStatus) => { if (this.active === slot) this.events.onPlaybackBufferStatus?.(status); },
       onInputChanged: () => { if (this.active === slot) this.events.onInputChanged?.(); },
       onStream: (stream: MediaStream | null) => {
         if (stream) {
@@ -524,6 +538,7 @@ export class ViewerSfuRoute {
       activationToken: null,
     };
     this.pending = slot;
+    subscriber.setPlaybackBufferTarget?.(this.playbackBufferTargetMs);
     this.events.onSfuFailure?.(null, slot.revision);
     try {
       const connected = await subscriber.connect(message);
@@ -866,6 +881,7 @@ export class ViewerSfuRoute {
       await disconnectSubscriber(slot.subscriber);
       return;
     }
+    this.events.onPlaybackBufferStatus?.(this.getPlaybackBufferStatus());
     this.events.onSfuStream(slot.stream, assignment, true, slot.revision);
     if (previous && previous !== slot) {
       previous.failed = true;

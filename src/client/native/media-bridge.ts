@@ -1,3 +1,4 @@
+import { applyPlaybackBufferTarget, validatePlaybackBufferTarget, type PlaybackBufferStatus } from "../webrtc/receiver-buffer-target";
 import type { SignalPayload } from "../../shared/protocol";
 import { createOpaqueId } from "../lib/opaque-id";
 import { browserDebugEnabled, debugError, debugEvent } from "../lib/debug";
@@ -60,6 +61,7 @@ export class NativeMediaBridge {
     private readonly onFailed: () => void,
     private readonly sourceConnectionId?: string,
     onRemoteInput: () => void = () => {},
+    private playbackBuffer?: { target: number | null; changed?: (status: PlaybackBufferStatus) => void },
   ) {
     this.remoteInput = new RemoteInputChannel(() => { if (!this.disposed) onRemoteInput(); });
     let peer: RTCPeerConnection | undefined;
@@ -72,6 +74,22 @@ export class NativeMediaBridge {
       debugError("native-bridge", "initialization-failed", error);
       throw new NativeMediaBridgeInitializationError("Native media bridge could not initialize", { cause: error });
     }
+  }
+
+  private playbackBufferStatus: PlaybackBufferStatus = null;
+  setPlaybackBufferTarget(target: number | null): PlaybackBufferStatus {
+    validatePlaybackBufferTarget(target);
+    this.playbackBuffer = { ...this.playbackBuffer, target };
+    return this.applyPlaybackBuffer();
+  }
+  getPlaybackBufferStatus(): PlaybackBufferStatus { return this.playbackBufferStatus; }
+  private applyPlaybackBuffer(): PlaybackBufferStatus {
+    // Host preview callers omit this optional Viewer-only preference entirely.
+    if (!this.playbackBuffer) return null;
+    const status = this.disposed ? null : applyPlaybackBufferTarget(this.peer.getReceivers(), this.playbackBuffer.target);
+    this.playbackBufferStatus = status;
+    this.playbackBuffer.changed?.(status);
+    return status;
   }
 
   collectMetrics(accumulator: StatsAccumulator): Promise<ConnectionMetrics> {
@@ -96,6 +114,7 @@ export class NativeMediaBridge {
     this.remoteInput.attach(this.peer);
     this.peer.addEventListener("track", (event) => {
       if (this.disposed) return;
+      this.applyPlaybackBuffer();
       if (!this.stream.getTracks().includes(event.track)) this.stream.addTrack(event.track);
       if (event.track.kind === "video") event.track.addEventListener("ended", () => this.fail("track-ended"), { once: true });
       this.completeNegotiation?.();
@@ -131,6 +150,7 @@ export class NativeMediaBridge {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.applyPlaybackBuffer();
     this.releaseDebug?.();
     this.remoteInput.dispose();
     this.lifetime.abort();

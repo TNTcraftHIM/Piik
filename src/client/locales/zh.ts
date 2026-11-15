@@ -2,6 +2,12 @@ import type { GlyphName } from "../ui/icons";
 
 // Canonical keys; English stays complete and other languages may be partial.
 export const zh = {
+  "playback.buffering": "播放缓冲",
+  "playback.bufferAutomatic": "自动",
+  "playback.bufferTarget": "缓冲目标",
+  "playback.bufferHint": "增加缓冲可减少播放抖动，但会增加延迟，也可能延迟经本机转发的画面。",
+  "playback.bufferUnsupported": "当前接收路径不支持设置缓冲目标。",
+  "playback.bufferFailed": "未能应用此缓冲目标，播放继续。",
   "host.invite.qr": "邀请二维码",
   "host.invite.qrShort": "二维码",
   "host.invite.qrHint": "用另一台设备扫码加入房间。",

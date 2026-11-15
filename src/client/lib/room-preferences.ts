@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { viewerRoutePreferenceSchema } from "../../shared/protocol";
 import { remoteControlModeSchema, remoteShortcutKeySchema } from "../remote-control/protocol";
+import { MAX_PLAYBACK_BUFFER_TARGET_MS } from "../webrtc/receiver-buffer-target";
 
 const STORAGE_KEY = "piik:room-preferences:v1";
 export const CHAT_OVERLAY_LIMITS = { scale: [.8, 1.3], opacity: [.4, 1], speed: [.5, 1.5] } as const;
@@ -11,6 +12,7 @@ const roomPreferencesSchema = z.object({
   pictureFit: z.enum(["contain", "cover", "fill"]).default("contain"),
   pictureRotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).catch(0).default(0),
   previewAutoPause: z.boolean().default(true),
+  screenBufferTargetMs: z.number().min(0).max(MAX_PLAYBACK_BUFFER_TARGET_MS).nullable().default(null),
   routePreference: viewerRoutePreferenceSchema.default("auto"),
   overlayEnabled: z.boolean().default(false),
   overlayAppearance: z.object({
