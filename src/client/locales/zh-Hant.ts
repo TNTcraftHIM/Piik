@@ -759,7 +759,6 @@ export const zhHant: Partial<Record<CopyKey, string>> = {
   "viewer.hint.invite": "請讓房主重新傳送邀請連結。",
   "viewer.hint.generic": "請稍後重新整理頁面重試。",
   "mode.language": "介面語言",
-  "mode.more": "更多語言",
   "header.more": "更多選項",
   "theme.dark": "切換為深色模式",
   "theme.light": "切換為淺色模式",

@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialLanguage, rememberLanguage } from "../site/assets/language.js";
 import { locales, visualTitleFrames } from "../src/client/locales";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { LanguageControl } from "../src/client/components/living/LanguageControl";
 
 import {
   getTitleFrames,
@@ -12,6 +15,18 @@ import {
 } from "../src/client/ui/copy.ts";
 
 describe("copy catalog", () => {
+  it("keeps Chinese and English direct while visual and extra languages share the third control", () => {
+    for (const selection of [{ lang: "en", vis: false }, { lang: "ko", vis: false }, { lang: "ko", vis: true }] as const) {
+      setCopy(selection);
+      const html = renderToStaticMarkup(createElement(LanguageControl));
+      const track = html.slice(0, html.indexOf('role="menu"'));
+      expect(track.match(/<button /g)).toHaveLength(3);
+      expect(html.match(/role="menuitemradio"/g)).toHaveLength(4);
+      if (selection.vis) expect(track).toContain("✦");
+      else if (selection.lang === "ko") expect(track).toContain("한");
+      expect(html).toContain(`aria-label="${t(selection.lang, "mode.vis")}" aria-checked="${selection.vis}"`);
+    }
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
     setCopy({ lang: "zh", vis: false });

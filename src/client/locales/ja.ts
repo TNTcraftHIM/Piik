@@ -759,7 +759,6 @@ export const ja: Partial<Record<CopyKey, string>> = {
   "viewer.hint.invite": "ホストに新しい招待リンクを依頼してください。",
   "viewer.hint.generic": "少し待ってからこのページを再読み込みしてください。",
   "mode.language": "表示言語",
-  "mode.more": "その他の言語",
   "header.more": "その他のオプション",
   "theme.dark": "ダークモードに切り替え",
   "theme.light": "ライトモードに切り替え",

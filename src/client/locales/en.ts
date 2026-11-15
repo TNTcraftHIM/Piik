@@ -813,7 +813,7 @@ export const en: Record<CopyKey, string> = {
   "viewer.hint.generic": "Reload this page to try again in a moment.",
 
   "mode.language": "Interface language",
-  "mode.more": "More languages",
+  "mode.more": "Language and display",
   "header.more": "More options",
   "mode.vis": "Visual only",
   "theme.dark": "Switch to dark mode",

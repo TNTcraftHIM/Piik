@@ -19,7 +19,6 @@
   --selection-item-size: calc(var(--control-compact-size) - 12px);
   grid-auto-columns: var(--selection-item-size);
 }
-.lr-lang:has(.lr-lang-more) { --lr-segments: 4; }
 :is(.lr-toggle, .lr-lang)::before {
   content: "";
   position: absolute;

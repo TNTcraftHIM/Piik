@@ -759,7 +759,6 @@ export const ko: Partial<Record<CopyKey, string>> = {
   "viewer.hint.invite": "호스트에게 새 초대 링크를 요청하세요.",
   "viewer.hint.generic": "잠시 후 이 페이지를 새로고침하여 다시 시도하세요.",
   "mode.language": "인터페이스 언어",
-  "mode.more": "다른 언어",
   "header.more": "더 보기",
   "theme.dark": "다크 모드로 전환",
   "theme.light": "라이트 모드로 전환",

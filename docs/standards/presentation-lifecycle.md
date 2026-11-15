@@ -174,7 +174,9 @@ Traditional Chinese, Japanese and Korean UI catalogs provide partial translation
 with English fallback. System-language matching distinguishes Chinese scripts,
 including `zh-TW`, `zh-HK` and `zh-Hant` for Traditional Chinese. The website
 retains its separate bilingual presentation. Additional UI languages use the
-existing dropdown after Chinese, English and pure-visual controls.
+existing dropdown alongside pure-visual mode. Chinese and English remain direct
+controls; the third control opens that menu and reflects the current extra
+language or visual mode without changing their independent stored preferences.
 Pure-visual mode remains an explicit choice. An explicit later choice is
 persisted and takes precedence over that default, including App launch handoff.
 Explicit launcher choices apply only to the presentation domains the user chose.

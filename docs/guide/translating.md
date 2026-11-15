@@ -119,7 +119,8 @@ layout questions, so contributors can coordinate work and review.
    Use an ASCII filename/key, the language's native name in `name`, a recognizable
    one-to-three-character button label in `short`, and a matching language tag
    in `tag`. Distinguish coexisting regional/script variants.
-   Extra languages appear in a shared dropdown after visual mode. Check language
+   Extra languages share the third control's dropdown with visual mode, beside
+   the Chinese and English shortcuts. Check language
    selection, saved preferences and App handoff against the
    [system-language policy](../standards/presentation-lifecycle.md#visual-language).
 3. Check complete screens and the launch flow. New UI languages use English in
