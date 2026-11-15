@@ -23,7 +23,7 @@ export function LauncherWorkspace({ bookmarks, bookmarksError, onRetryBookmarks,
   children?: ReactNode;
 }) {
   const { t } = useCopy();
-  return <div className="lr-launcher-shell">
+  return <div className="lr-launcher-shell" data-app-shell>
     <aside className="lr-launcher-sidebar">
       <BrandLockup size={44} motion="once" className="lr-launcher-brand" suffix={<small>App</small>} />
       <div className="lr-launcher-saved-heading"><h2>{t("client.bookmarks.title")}</h2>

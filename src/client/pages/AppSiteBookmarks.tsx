@@ -99,7 +99,7 @@ export function AppSiteBookmarks({ windowNavigation, closeOnOpen = false, render
   return <>
     {render ? render({ bookmarks, loadError, retry: () => setReload(value => value + 1),
       open: site => choose(site.origin), manage: () => setManaging(true), invitationForm })
-      : <section className="c3-settings-dialog lr-site-bookmark-manager" aria-labelledby="site-bookmarks-title">
+      : <section className="c3-settings-dialog lr-site-bookmark-manager" data-app-shell aria-labelledby="site-bookmarks-title">
         <header className="c3-settings-dialog-heading"><h2 id="site-bookmarks-title">{t("client.sites.title")}</h2></header>
         {editor}<div className="c3-settings-panels lr-site-bookmark-entry">{invitationForm}</div>
       </section>}

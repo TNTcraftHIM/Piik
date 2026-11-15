@@ -5,7 +5,7 @@ mod permission;
 use crate::app::{self, Config};
 use anyhow::{Context, Result};
 use permission::{permissions, PendingPermissions, Prompt};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::{
     cell::{Cell, RefCell},
@@ -33,8 +33,12 @@ use wry::{
 
 const CONTROLS: &str = include_str!("../../../src/client/ui/window-controls.json");
 const CAPTION: &str = include_str!("../../../src/client/ui/native-window-caption.html");
+const MODAL_BACKDROP: &str = include_str!("../../../src/client/ui/modal-backdrop.css");
 const PALETTE: &str = include_str!("../../../src/client/ui/palette.css");
-const CAPABILITY: &str = "Object.defineProperty(window, 'piikNativeWindow', { value: true });";
+const CAPABILITY: &str =
+    "Object.defineProperty(window, 'piikNativeWindow', { value: 'integrated' });";
+const SYSTEM_CAPABILITY: &str =
+    "Object.defineProperty(window, 'piikNativeWindow', { value: 'system' });";
 
 thread_local! {
     static APP_ICON: RefCell<Option<Icon>> = const { RefCell::new(None) };
@@ -102,11 +106,24 @@ impl Theme {
     }
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum ModalMaterial {
+    Surface,
+    Image,
+}
+
 #[derive(Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 enum ContentMessage {
-    Appearance { theme: Theme, language: Language },
-    Header { slot: Option<[f64; 2]> },
+    Appearance {
+        theme: Theme,
+        language: Language,
+        material: Option<ModalMaterial>,
+    },
+    Header {
+        slot: Option<[f64; 2]>,
+    },
 }
 
 #[derive(Clone)]
@@ -121,6 +138,7 @@ enum ServiceEvent {
     PageCommand(std::sync::Arc<std::sync::Mutex<Option<crate::app::page::Command>>>),
     PageMessage(uuid::Uuid, String),
     PageNavigate(uuid::Uuid),
+    PagePopup(uuid::Uuid),
     Ready { entry: String, launcher: String },
     Navigate(String),
     Finished,
@@ -256,6 +274,7 @@ impl BookmarksWindow {
                 .build(target)?,
         );
         let webview = WebViewBuilder::new_with_web_context(context)
+            .with_initialization_script(SYSTEM_CAPABILITY)
             .with_url(url)
             .build(window.as_ref())?;
         let id = window.id();
@@ -386,6 +405,7 @@ impl MainWindow {
         caption.load_html(
             &CAPTION
                 .replace("__PIIK_PALETTE__", PALETTE)
+                .replace("__PIIK_MODAL_BACKDROP__", MODAL_BACKDROP)
                 .replace("__PIIK_WINDOW_CONTROLS__", CONTROLS),
         )?;
         let result = Self {
@@ -507,14 +527,14 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             Event::UserEvent(ServiceEvent::Content(ContentMessage::Appearance {
                 theme: next_theme,
                 language: next,
+                material,
             })) => {
                 language = next;
                 theme = next_theme;
                 if let Some(main) = &window {
                     let _ = main.caption.evaluate_script(&format!(
-                        "window.updateAppearance('{}','{}')",
-                        theme.code(),
-                        language.code()
+                        "window.updateAppearance(...{})",
+                        serde_json::json!([theme.code(), language.code(), material])
                     ));
                 }
                 if let Some(prompt) = &prompt {
@@ -528,6 +548,9 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             }
             Event::UserEvent(ServiceEvent::PageMessage(id, body)) => pages.message(id, &body),
             Event::UserEvent(ServiceEvent::PageNavigate(id)) => pages.navigate(id),
+            Event::UserEvent(ServiceEvent::PagePopup(id)) => {
+                pages.popup(id, target, page_events.clone())
+            }
             Event::UserEvent(ServiceEvent::Content(ContentMessage::Header { slot: next })) => {
                 slot = next;
                 if let Some(main) = &window {

@@ -12,8 +12,8 @@ import { channelErrorPresentation } from "../error-presentation";
 import "./channel-settings-dialog.css";
 
 /** Task contents keep their own state; the native modal owns focus and dismissal. */
-export function ChannelSettingsDialog({ title, caption, compact = false, error = null, className = "", dismissOnBackdrop = false, closeDisabled = false, onClose, children }: {
-  title: string; caption?: string; compact?: boolean; error?: string | null; className?: string; dismissOnBackdrop?: boolean; closeDisabled?: boolean; onClose(): void; children: ReactNode;
+export function ChannelSettingsDialog({ title, caption, compact = false, material = "surface", error = null, className = "", dismissOnBackdrop = false, closeDisabled = false, onClose, children }: {
+  title: string; caption?: string; compact?: boolean; material?: "surface" | "image"; error?: string | null; className?: string; dismissOnBackdrop?: boolean; closeDisabled?: boolean; onClose(): void; children: ReactNode;
 }) {
   const ownerDocument = useSurfaceDocument();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -30,7 +30,7 @@ export function ChannelSettingsDialog({ title, caption, compact = false, error =
     element.showModal();
     return () => { if (element.open) element.close(); };
   }, [ownerDocument]);
-  return ownerDocument && createPortal(<dialog ref={dialog} className={`c3-settings-dialog ${className}`} data-compact={compact || undefined}
+  return ownerDocument && createPortal(<dialog ref={dialog} className={`c3-settings-dialog ${className}`} data-compact={compact || undefined} data-modal-material={material}
     closedby={closeDisabled ? "none" : dismissOnBackdrop ? "any" : "closerequest"}
     onCancel={event => { if (closeDisabled) event.preventDefault(); }}
     aria-labelledby={titleId} onClose={event => { if (!event.currentTarget.open) onClose(); }}

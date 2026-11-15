@@ -29,7 +29,7 @@ export function ShareFailureHelp({ status, label, code, checks }: {
       setOpen(true);
       dialog.current?.showModal();
     }} />
-    <dialog ref={dialog} className="lr-share-help" aria-labelledby={titleId} onClose={() => {
+    <dialog ref={dialog} className="lr-share-help" data-modal-material="surface" aria-labelledby={titleId} onClose={() => {
       copyRequest.current = null;
       setOpen(false);
     }}>

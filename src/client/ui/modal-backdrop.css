@@ -1,0 +1,16 @@
+/* Shared modal materials for Content and the separately trusted Native caption. */
+:root {
+  --modal-backdrop-surface: rgb(var(--surface-shade-rgb) / .38);
+  --modal-backdrop-image: rgb(0 0 0 / .82);
+  --modal-backdrop-filter: blur(5px);
+}
+[data-modal-material="surface"]::backdrop,
+html[data-modal-material="surface"] body::before {
+  background: var(--modal-backdrop-surface);
+  backdrop-filter: var(--modal-backdrop-filter);
+}
+[data-modal-material="image"]::backdrop,
+html[data-modal-material="image"] body::before {
+  background: var(--modal-backdrop-image);
+  backdrop-filter: var(--modal-backdrop-filter);
+}

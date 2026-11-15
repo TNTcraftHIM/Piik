@@ -1,7 +1,6 @@
 .c3-settings-dialog { width: min(760px, calc(100vw - 24px)); max-height: 90dvh; margin: auto; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 22px; background: var(--paper); color: var(--ink); box-shadow: var(--panel-shadow); }
 .c3-settings-dialog[data-compact] { width: min(520px, calc(100vw - 24px)); }
 .c3-settings-dialog[open] { display: flex; flex-direction: column; }
-.c3-settings-dialog::backdrop { background: rgb(var(--surface-shade-rgb) / .38); backdrop-filter: blur(5px); }
 .c3-settings-dialog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex: none; padding: 22px 24px 18px; }
 .c3-settings-dialog-heading > div { min-width: 0; }
 .c3-settings-dialog-heading h2 { margin: 0; font-size: 22px; line-height: 1.35; overflow-wrap: anywhere; }

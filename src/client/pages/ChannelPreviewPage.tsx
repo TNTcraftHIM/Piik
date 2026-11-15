@@ -245,7 +245,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
       onClose={closeRoomSettings} />}
     {newRoomName !== null && <ChannelRoomCreateDialog channel={channel} initialName={newRoomName}
       onCreated={selectRoom} onClose={() => setNewRoomName(null)} />}
-    <main ref={workspaceElement} className="c3-shell" data-layout={layout} data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"} data-sidebars={sidebarsInline ? "inline" : "overlay"} data-overview={overview || undefined}
+    <main ref={workspaceElement} className="c3-shell" data-app-shell data-layout={layout} data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"} data-sidebars={sidebarsInline ? "inline" : "overlay"} data-overview={overview || undefined}
       data-companion={companionVisible ? companionPane : "none"}>
       <header className="c3-site-bar"><div className="c3-site-identity">
         {layout === "quick" ? <span className="c3-site-home"><BrandMark size={30} motion="once" /></span>

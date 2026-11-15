@@ -205,6 +205,7 @@ export function HeaderControls({ diagnosticControl, appControl, personalControls
 
 export function AppHeader({
   led,
+  appIdentity,
   homeHref = "/",
   diagnosticControl,
   appControl,
@@ -212,6 +213,7 @@ export function AppHeader({
   atHome = false,
 }: {
   led?: React.ReactNode;
+  appIdentity?: React.ReactNode;
   homeHref?: string;
   diagnosticControl?: React.ReactNode;
   appControl?: React.ReactNode;
@@ -221,6 +223,7 @@ export function AppHeader({
   const { t } = useCopy();
   return (
     <header className="lr-top">
+      {appIdentity && <span className="lr-top-app-identity">{appIdentity}</span>}
       {homeHref !== "/client" && <a
         className="lr-brand"
         href={withBrowserDebug(homeHref)}

@@ -6,7 +6,11 @@ use crate::app::page::{self, Command, MediaState, Operation};
 use anyhow::{anyhow, bail, Result};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, VecDeque},
+    rc::Rc,
+};
 use tao::{
     dpi::LogicalSize,
     event_loop::{EventLoopProxy, EventLoopWindowTarget},
@@ -15,13 +19,15 @@ use tao::{
 use tokio::sync::oneshot;
 use uuid::Uuid;
 use webview2_com::{
-    Microsoft::Web::WebView2::Win32::COREWEBVIEW2_PERMISSION_STATE_DENY,
-    PermissionRequestedEventHandler, WindowCloseRequestedEventHandler,
+    Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2Deferral, ICoreWebView2Environment, ICoreWebView2NewWindowRequestedEventArgs,
+        ICoreWebView2_2, COREWEBVIEW2_PERMISSION_STATE_DENY,
+    },
+    NewWindowRequestedEventHandler, PermissionRequestedEventHandler,
+    WindowCloseRequestedEventHandler,
 };
-use wry::{
-    NewWindowResponse, WebContext, WebView, WebViewBuilder, WebViewBuilderExtWindows,
-    WebViewExtWindows,
-};
+use windows_core::{Interface, PWSTR};
+use wry::{WebContext, WebView, WebViewBuilder, WebViewBuilderExtWindows, WebViewExtWindows};
 
 type Views = Rc<RefCell<BTreeMap<Uuid, PageView>>>;
 type Reply = oneshot::Sender<Result<Value, String>>;
@@ -96,7 +102,20 @@ struct Pending {
     selecting: bool,
     patch: bool,
 }
+struct Popup {
+    args: ICoreWebView2NewWindowRequestedEventArgs,
+    environment: ICoreWebView2Environment,
+    deferral: ICoreWebView2Deferral,
+}
+impl Drop for Popup {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = self.deferral.Complete();
+        }
+    }
+}
 struct PageView {
+    popups: Rc<RefCell<VecDeque<Popup>>>,
     // WebView drops before its native window.
     view: WebView,
     window: Window,
@@ -105,6 +124,8 @@ struct PageView {
 }
 impl Drop for PageView {
     fn drop(&mut self) {
+        let pending = std::mem::take(&mut *self.popups.borrow_mut());
+        drop(pending);
         self.media.borrow().retired.send_replace(true);
     }
 }
@@ -243,6 +264,48 @@ impl Pages {
             drop(views);
             page.candidates();
         }
+    }
+    pub fn popup(
+        &mut self,
+        opener: Uuid,
+        target: &EventLoopWindowTarget<ServiceEvent>,
+        events: EventLoopProxy<ServiceEvent>,
+    ) {
+        let Some(page) = self
+            .pages
+            .values()
+            .find(|page| page.views.borrow().contains_key(&opener))
+        else {
+            return;
+        };
+        let Some(popup) = page.views.borrow()[&opener].popups.borrow_mut().pop_front() else {
+            return;
+        };
+        let create = || -> Result<()> {
+            anyhow::ensure!(page.views.borrow().len() < 64, "page_player_limit");
+            let key = Uuid::new_v4();
+            let child = page_view(
+                WebViewBuilder::new().with_environment(popup.environment.clone()),
+                key,
+                events,
+                target,
+            )?;
+            // SetNewWindow replaces the underlying web contents. Observe that final content
+            // before completing the deferral and allowing its first navigation.
+            unsafe {
+                popup.args.SetNewWindow(&child.view.webview())?;
+            }
+            media::observe(
+                &child.view,
+                child.media.clone(),
+                page.id,
+                page.events.clone(),
+            )?;
+            page.views.borrow_mut().insert(key, child);
+            Ok(())
+        };
+        // A failed child remains local and drops; Popup always completes its deferral.
+        let _ = create();
     }
     pub fn command(
         &mut self,
@@ -474,12 +537,10 @@ impl Pages {
         let view = page_view(
             WebViewBuilder::new_with_web_context(&mut self.context).with_url("about:blank"),
             key,
-            id,
-            &views,
-            outgoing.clone(),
-            target,
             events,
+            target,
         )?;
+        media::observe(&view.view, view.media.clone(), id, outgoing.clone())?;
         view.view.load_url(&url)?;
         views.borrow_mut().insert(key, view);
         self.pages.insert(
@@ -687,11 +748,8 @@ impl Pages {
 fn page_view(
     builder: WebViewBuilder<'_>,
     key: Uuid,
-    page_id: Uuid,
-    views: &Views,
-    outgoing: page::Events,
-    target: &EventLoopWindowTarget<ServiceEvent>,
     events: EventLoopProxy<ServiceEvent>,
+    target: &EventLoopWindowTarget<ServiceEvent>,
 ) -> Result<PageView> {
     let window = super::window_builder()?
         .with_title("Piik · Video")
@@ -699,10 +757,6 @@ fn page_view(
         .build(target)?;
     let messages = events.clone();
     let navigating = events.clone();
-    let popup_target = target.clone();
-    let popup_events = events.clone();
-    let popup_outgoing = outgoing.clone();
-    let weak_views = Rc::downgrade(views);
     let media = Rc::new(RefCell::new(media::Media::default()));
     let view = builder
         .with_initialization_script_for_main_only(include_str!("page-player.js"), false)
@@ -718,38 +772,43 @@ fn page_view(
             let _ = navigating.send_event(ServiceEvent::PageNavigate(key));
             true
         })
-        .with_new_window_req_handler(move |url, features| {
-            if !page::valid_url(&url) {
-                return NewWindowResponse::Deny;
-            }
-            let create = || -> Result<NewWindowResponse> {
-                let views = weak_views
-                    .upgrade()
-                    .ok_or_else(|| anyhow!("page_player_closed"))?;
-                anyhow::ensure!(views.borrow().len() < 64, "page_player_limit");
-                let key = Uuid::new_v4();
-                let child = page_view(
-                    WebViewBuilder::new().with_environment(features.opener.environment),
-                    key,
-                    page_id,
-                    &views,
-                    popup_outgoing.clone(),
-                    &popup_target,
-                    popup_events.clone(),
-                )?;
-                let response = NewWindowResponse::Create {
-                    webview: child.view.webview(),
-                };
-                views.borrow_mut().insert(key, child);
-                Ok(response)
-            };
-            create().unwrap_or(NewWindowResponse::Deny)
-        })
         .build(&window)?;
-    media::observe(&view, media.clone(), page_id, outgoing)?;
+    let popups = Rc::new(RefCell::new(VecDeque::new()));
+    let pending = popups.clone();
+    let popup_events = events.clone();
     let window_id = window.id();
     unsafe {
         website_permissions(&view)?;
+        view.webview().add_NewWindowRequested(
+            &NewWindowRequestedEventHandler::create(Box::new(move |sender, args| {
+                let (Some(sender), Some(args)) = (sender, args) else {
+                    return Ok(());
+                };
+                args.SetHandled(true)?;
+                let mut uri = PWSTR::null();
+                args.Uri(&mut uri)?;
+                let uri = webview2_com::take_pwstr(uri);
+                if !page::valid_url(&uri) || pending.borrow().len() >= 64 {
+                    return Ok(());
+                }
+                let environment = sender.cast::<ICoreWebView2_2>()?.Environment()?;
+                let popup = Popup {
+                    deferral: args.GetDeferral()?,
+                    environment,
+                    args,
+                };
+                pending.borrow_mut().push_back(popup);
+                if popup_events
+                    .send_event(ServiceEvent::PagePopup(key))
+                    .is_err()
+                {
+                    let failed = pending.borrow_mut().pop_back();
+                    drop(failed);
+                }
+                Ok(())
+            })),
+            &mut Default::default(),
+        )?;
         view.webview().add_WindowCloseRequested(
             &WindowCloseRequestedEventHandler::create(Box::new(move |_, _| {
                 let _ = events.send_event(ServiceEvent::PopupClosed(window_id));
@@ -759,6 +818,7 @@ fn page_view(
         )?;
     }
     Ok(PageView {
+        popups,
         view,
         window,
         document: None,

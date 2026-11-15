@@ -10,7 +10,7 @@ export function ChannelImageDialog({ src, name, description, original, onClose }
   onClose(): void;
 }) {
   const { t } = useCopy();
-  return <ChannelSettingsDialog title={name} className="c3-image-dialog" dismissOnBackdrop onClose={onClose}>
+  return <ChannelSettingsDialog title={name} className="c3-image-dialog" material="image" dismissOnBackdrop onClose={onClose}>
     <img src={src} alt={name} />
     {(description || original) && <div className="c3-image-detail">
       {description && <p role="status">{description}</p>}

@@ -180,6 +180,13 @@ including previews and detached panels; do not round every adjacent region
 independently or use a pill for a panel. Media clipping subtracts the tile's
 border from its surface radius; an attached pane keeps the shell edge.
 
+The native window owns the outer application frame. Internal pages fill that
+frame and share header alignment; standalone Browser pages retain their page
+frame. This presentation choice does not remove meaningful content cards or
+create separate page implementations. Keep one visible application identity.
+Shared modal materials must remain consistent across the content and any
+separately trusted window controls, whose commands stay with the native host.
+
 Keep the room invitation beside the upper room title, and group Share with its
 parameters on the opposite side. Personal voice and identity stay lower left.
 The left list contains rooms and their realtime participants; the Piik mark returns
@@ -367,10 +374,11 @@ and [focus order](https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html).
 Use `role="toolbar"` only with its [toolbar keyboard behavior](https://www.w3.org/WAI/ARIA/apg/patterns/toolbar/);
 ordinary button groups need not acquire that role for appearance alone.
 
-Show an operation's failure in the surface where it was requested. A settings
-dialog must keep that feedback visible when changing tasks, while preserving
-unrelated playback or connection errors on their own surface. Retrying clears
-only the operation's local feedback; closing retires its late UI results.
+Show an operation's failure beside its affected object and task. A settings
+dialog retains that feedback while working on the same object; another object's
+details do not inherit it. Playback and connection errors keep their own
+surfaces. Retrying clears the operation's local feedback, and retiring its owner
+discards late UI results.
 
 Chat and voice share one settings entry beside their tabs. Returning from either
 settings page or an expanded reaction palette uses `BackButton`, not a destination

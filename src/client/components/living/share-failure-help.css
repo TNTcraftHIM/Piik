@@ -12,7 +12,6 @@
   overflow-wrap: anywhere;
   overscroll-behavior: contain;
 }
-.lr-share-help::backdrop { background: #101a2c66; }
 .lr-share-help[open] { animation: lr-share-help-enter var(--motion-surface) var(--spring); }
 .lr-share-help header { display: flex; gap: 16px; align-items: center; justify-content: space-between; }
 .lr-share-help h2 { margin: 0; font-size: 18px; }

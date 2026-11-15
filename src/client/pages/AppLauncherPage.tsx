@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { z } from "zod";
 
-import { BrandMark } from "../components/living/BrandMark";
+import { BrandMark, BrandLockup } from "../components/living/BrandMark";
 import { HintComic } from "../components/living/hints";
 import { LoadingStatus } from "../components/living/WaitingStatus";
 import { AppReleaseNotice, AppUpdateStatus } from "../components/living/AppReleaseNotice";
@@ -330,7 +330,7 @@ export function AppLauncherPage() {
   </>;
   return (
     <div className={`lr-app${homeReady ? " lr-launcher-page" : ""}`}>
-      <AppHeader homeHref="/client" diagnosticControl={appDebug === undefined ? null : (
+      <AppHeader appIdentity={<BrandLockup size={30} className="is-compact" suffix={<small>App</small>} />} homeHref="/client" diagnosticControl={appDebug === undefined ? null : (
         <Btn icon={appDebug ? "arrowDown" : "cpu"} size="compact" quiet
           title={appDebug ? "client.launch.debugExportHint" : "client.launch.debugHint"}
           cap={appDebug ? "client.launch.debugExport" : "debug.start"}

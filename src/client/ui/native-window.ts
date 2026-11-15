@@ -4,17 +4,22 @@ import "./native-window.css";
 
 declare global {
   interface Window {
-    piikNativeWindow?: boolean;
+    piikNativeWindow?: "integrated" | "system";
     ipc?: { postMessage(message: string): void };
   }
 }
 
 // The Windows host supplies this capability. Content only describes appearance
 // and the slot reserved for the separately trusted window controls.
-if (window.piikNativeWindow && window.ipc) {
+if (window.piikNativeWindow) {
+  const root = document.documentElement;
+  root.dataset.piikNativeWindow = window.piikNativeWindow;
+  root.style.setProperty("--native-caption-height", `${controls.height}px`);
+}
+
+if (window.piikNativeWindow === "integrated" && window.ipc) {
   const ipc = window.ipc;
   const root = document.documentElement;
-  root.dataset.piikNativeWindow = "";
   const headers = ".c3-site-bar,.lr-app > .lr-top,.c3-monitor.is-theater > .c3-monitor-heading";
   let observed: Element | undefined;
   let previousAppearance = "";
@@ -22,11 +27,17 @@ if (window.piikNativeWindow && window.ipc) {
   let scheduled = false;
   const resize = new ResizeObserver(schedule);
 
+  function modalMaterial(): "surface" | "image" | null {
+    const dialog = [...document.querySelectorAll("dialog:modal")].at(-1);
+    const material = dialog?.getAttribute("data-modal-material");
+    return material === "surface" || material === "image" ? material : null;
+  }
+
   function report(): void {
     scheduled = false;
     const appearance = JSON.stringify({ kind: "appearance",
       theme: root.dataset.theme === "dark" ? "dark" : "light",
-      language: resolveLang(root.lang) });
+      language: resolveLang(root.lang), material: modalMaterial() });
     if (appearance !== previousAppearance) {
       ipc.postMessage(appearance);
       previousAppearance = appearance;
@@ -56,11 +67,10 @@ if (window.piikNativeWindow && window.ipc) {
   }
 
   new MutationObserver(schedule).observe(root, { subtree: true, childList: true,
-    attributes: true, attributeFilter: ["class", "hidden", "data-layout", "data-theme", "lang"] });
+    attributes: true, attributeFilter: ["class", "hidden", "data-layout", "data-theme", "lang", "open"] });
   addEventListener("resize", schedule);
   addEventListener("scroll", schedule, { capture: true, passive: true });
   document.addEventListener("fullscreenchange", schedule);
   root.style.setProperty("--native-caption-width", `${controls.width}px`);
-  root.style.setProperty("--native-caption-height", `${controls.height}px`);
   report();
 }
