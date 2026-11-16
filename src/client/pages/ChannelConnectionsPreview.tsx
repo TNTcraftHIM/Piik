@@ -9,7 +9,8 @@ import { useCopy } from "../ui/copy";
 import { PREVIEW_METRICS } from "./preview-metrics";
 import { QUALITY_PROFILES, screenVideoSettings } from "../media/quality";
 
-export function channelConnectionPreview(mode: "room" | "voice" | "both" | "app" | "unwatched", longNames = false) {
+type ConnectionPreviewMode = "room" | "voice" | "both" | "app" | "unwatched" | "host-endpoints";
+export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames = false) {
   const state = snapshotSchema.parse({
     channel: { id: "domain", name: "Friends", icon: "couch", ownerId: "host-user", historyWindow: 100, userCount: 3,
       rooms: [{ id: "room", name: "Living room", icon: "couch", creatorId: "host-user", access: "public", hidden: false,
@@ -64,18 +65,32 @@ export function channelConnectionPreview(mode: "room" | "voice" | "both" | "app"
     (sample.direction === "send" ? pair.outgoing : pair.incoming).push({ id: sample.flowId,
       publicationId: sample.publicationId, selected: true, inputFlowId: null });
   }
-  return { state, topology, metrics, roomId: "room", sessionId: "self" };
+  if (mode === "host-endpoints") {
+    // The site owner stays separate; one room owner has an App and a webpage.
+    state.channel.rooms[0].creatorId = "self-user";
+    state.channel.rooms[0].delivery!.hostSessionId = "app";
+    topology.base = { rootSessionId: "app", edges: [
+      { sender: "app", receiver: "self", ready: true }, { sender: "app", receiver: "friend", ready: true },
+    ] };
+    topology.screen = { publicationId: "screen-self", sourceSessionId: "app", edges: [
+      { sender: "app", receiver: "self", selected: true, proof: "decoded", presented: true, presentation: true },
+      { sender: "app", receiver: "friend", selected: true, proof: "forwardable", presented: null, presentation: false },
+    ] };
+    state.publications.find(value => value.id === "screen-self")!.sessionId = "app";
+  }
+  return { state, topology, metrics: mode === "host-endpoints" ? [] : metrics, roomId: "room", sessionId: "self" };
 }
 
 export function ChannelConnectionsPreview() {
   const { lang, t } = useCopy();
   const en = lang === "en";
-  const [mode, setMode] = useState<"room" | "voice" | "both" | "app" | "unwatched">("both");
+  const [mode, setMode] = useState<ConnectionPreviewMode>("both");
   const [longNames, setLongNames] = useState(false);
   const modes = [
     { value: "room", label: en ? "Room" : "房间连接" }, { value: "voice", label: en ? "Voice" : "语音" },
     { value: "both", label: en ? "Picture and voice" : "画面与语音" }, { value: "app", label: en ? "App display" : "App 显示" },
     { value: "unwatched", label: en ? "Unwatched share" : "尚未观看的分享" },
+    { value: "host-endpoints", label: en ? "One owner, App and webpage" : "同一房主的 App 与网页" },
   ] as const;
   return <section id="channel-connections-preview" className="cp-section">
     <header className="cp-section-head"><h2>{en ? "Multi-source connections" : "多源媒体连接"}</h2></header>

@@ -56,8 +56,32 @@ pub struct ExternalLease {
     control: ExternalControl,
 }
 #[derive(Clone)]
-pub struct ExternalControl(watch::Sender<Option<&'static str>>);
+pub struct ExternalControl(
+    watch::Sender<Option<&'static str>>,
+    Arc<std::sync::OnceLock<UnsupportedVideoFormat>>,
+);
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnsupportedVideoFormat {
+    pub codec: &'static str,
+    pub profile_idc: u8,
+    pub constraint_flags: u8,
+    pub level_idc: u8,
+}
 impl ExternalControl {
+    pub fn unsupported_video_format(&self) -> Option<UnsupportedVideoFormat> {
+        self.1.get().copied()
+    }
+    fn record_failure(&self, error: &anyhow::Error) {
+        if let Some(crate::media::UnsupportedH264Format([profile_idc, constraint_flags, level_idc])) =
+            error.downcast_ref::<crate::media::UnsupportedH264Format>()
+        {
+            let _ = self.1.set(UnsupportedVideoFormat {
+                codec: "h264", profile_idc: *profile_idc,
+                constraint_flags: *constraint_flags, level_idc: *level_idc,
+            });
+        }
+    }
     pub fn stop(&self) {
         self.0.send_if_modified(|reason| {
             if reason.is_some() {
@@ -2166,7 +2190,10 @@ impl Driver {
         let prepared = match result
             .context("UDP preparation task failed")
             .and_then(|result| result)
-            .and_then(|prepared| prepared.commit(id))
+            .and_then(|prepared| {
+                anyhow::ensure!(!pending.refused, "peer UDP preparation unavailable");
+                prepared.commit(id)
+            })
         {
             Ok(prepared) => Some(prepared),
             Err(error) => {

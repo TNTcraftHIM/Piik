@@ -305,6 +305,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       sample.received();
     },
     setScreenQuality: async (_id, profile) => sample.channel.setQuality(profile),
+    retryPicture: async () => sample.received(),
     watch: async id => setUnwatched(previous => { const next = new Set(previous); next.delete(id); return next; }),
     unwatch: async id => setUnwatched(previous => new Set(previous).add(id)), stopScreen: async id => { setStopped(previous => new Set(previous).add(id)); setTitles(previous => { const next = { ...previous }; delete next[id]; return next; }); sample.received(); },
     startScreen: async roomId => { setStopped(new Set()); setTitles({}); setSharingRoom(roomId); },

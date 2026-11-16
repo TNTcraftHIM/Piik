@@ -38,6 +38,25 @@ function browser(saved: string[] = [], blocked = false) {
 }
 
 describe("App presentation handoff authority", () => {
+  it("marks ordinary bookmark invitations as App launches and preserves their invitation", async () => {
+    const env = browser(["zh", "light"]);
+    const { clientLaunchURL, takeClientLaunchBootstrap, clientRuntimePort } = await import("../src/client/lib/app-launch");
+    env.page.location = new URL(clientLaunchURL("https://site.example/r?existing=1#room=owned-fixture&invite=fixture-key", {
+      lang: "en", theme: "dark", explicit: ["copy", "theme"],
+    }, false, 19481));
+    runInNewContext(firstPaint, { ...env.page, document: env.document, URLSearchParams, matchMedia: env.page.matchMedia });
+    expect(env.document.documentElement.dataset.theme).toBe("dark");
+    const presentation = takeClientLaunchBootstrap()!;
+    const themes = await import("../src/client/ui/theme");
+    const copy = await import("../src/client/ui/copy");
+    themes.initTheme(presentation.theme, presentation.explicit!.includes("theme"));
+    copy.applyLaunchCopy(presentation, presentation.explicit!.includes("copy"));
+    expect(env.saved()).toEqual(["en", "dark"]);
+    expect(clientRuntimePort()).toBe(19481);
+    expect(env.page.location.search).toBe("?existing=1");
+    expect(env.page.location.hash).toBe("#room=owned-fixture&invite=fixture-key");
+  });
+
   it.each([false, true])("activates the current page after approval, including blocked storage: %s", async (blocked) => {
     const env = browser([], blocked);
     const events = new EventTarget();

@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { spawnSync, execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +8,8 @@ import { buildChannelWeb } from './build-channel-web.mjs';
 import { writeAndroidAppIcon } from './app-icons.mjs';
 import { CLOUDFLARED_VERSION, CLOUDFLARED_SOURCE_SHA256, ANDROID_APP_PACKAGE_TARGET, androidVersionCode } from './app-package-targets.mjs';
 import { buildVersion } from './release-version.mjs';
-import { assertCleanRevision } from './build-workspace.mjs';
+import { assertBuildInputRetained, assertCleanRevision } from './build-workspace.mjs';
+import { sha256 } from './package-files.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const android = join(root, 'mobile', 'android');
@@ -21,16 +21,20 @@ const targets = [
 const tunnelOnly = process.argv.includes('--tunnel-only');
 const release = process.argv.includes('--release');
 let output;
+let webInput;
 for (let index = 2; index < process.argv.length; index++) {
   const option = process.argv[index];
   if (option === '--output' && !output && process.argv[index + 1] && !process.argv[index + 1].startsWith('--')) {
     output = resolve(process.argv[++index]);
+  } else if (option === '--web' && webInput === undefined && process.argv[index + 1] && !process.argv[index + 1].startsWith('--')) {
+    webInput = resolve(process.argv[++index]);
   } else if (option !== '--tunnel-only' && option !== '--release') {
     throw new Error(`Unknown Android build option: ${option}`);
   }
 }
 if ((release && tunnelOnly) || (release !== Boolean(output)))
   throw new Error('Use --release --output <new-directory> for a signed release APK.');
+if (tunnelOnly && webInput !== undefined) throw new Error('--web requires an Android App build.');
 if (output && existsSync(output)) throw new Error('Android release output must not already exist.');
 const releaseRevision = release ? assertCleanRevision(root) : undefined;
 if (release) {
@@ -41,6 +45,12 @@ if (release) {
 if (!process.env.ANDROID_NDK_HOME || (!tunnelOnly && (!process.env.ANDROID_HOME || !gradleHome))) {
   throw new Error('Set ANDROID_HOME, ANDROID_NDK_HOME and GRADLE_HOME to the installed SDK, NDK and Gradle distribution.');
 }
+const revision = tunnelOnly ? undefined : releaseRevision ?? execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
+const version = tunnelOnly ? undefined : buildVersion(root, revision);
+const webAssets = join(android, 'app', 'src', 'main', 'assets', 'web');
+if (webInput !== undefined) assertBuildInputRetained(webInput, webAssets);
+// Reject an incompatible shared tree before any native dependency work.
+const reusedFrontend = webInput === undefined ? undefined : buildChannelWeb(root, { version, revision, web: webInput });
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { cwd: root, env: process.env, stdio: 'inherit', windowsHide: true, ...options });
   if (result.error) throw result.error;
@@ -58,7 +68,7 @@ if (!existsSync(archive)) {
   if (!response.ok) throw new Error(`Cloudflared source download failed: ${response.status}`);
   writeFileSync(archive, Buffer.from(await response.arrayBuffer()));
 }
-if (createHash('sha256').update(readFileSync(archive)).digest('hex') !== CLOUDFLARED_SOURCE_SHA256) {
+if (sha256(archive) !== CLOUDFLARED_SOURCE_SHA256) {
   throw new Error('Cloudflared source archive differs from its pin.');
 }
 run('tar', ['-xzf', archive, '-C', cache]);
@@ -113,8 +123,6 @@ for (const { abi, goarch, rust, machine } of targets) {
   console.log(`Android cloudflared ${CLOUDFLARED_VERSION}: ${abi} PIE (16KB)`);
 }
 if (!tunnelOnly) {
-  const revision = releaseRevision ?? execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
-  const version = buildVersion(root, revision);
   const versionCode = androidVersionCode(version);
   const versionName = version === 'development' ? `${version}-${revision.slice(0, 7)}` : version;
   const launcher = readdirSync(join(gradleHome, 'lib')).find(name => /^gradle-launcher-.*\.jar$/.test(name));
@@ -144,8 +152,7 @@ if (!tunnelOnly) {
         throw new Error(`Unexpected Rust JNI Android dependency: ${library}`);
     console.log(`Android Rust runtime: ${abi} (16KB)`);
   }
-  const frontend = buildChannelWeb(root, { version, revision, cargoTarget });
-  const webAssets = join(android, 'app', 'src', 'main', 'assets', 'web');
+  const frontend = reusedFrontend ?? buildChannelWeb(root, { version, revision, cargoTarget });
   rmSync(webAssets, { recursive: true, force: true });
   mkdirSync(webAssets, { recursive: true });
   // AGP rewrites .gz assets; an opaque archive preserves the shared Web tree.
@@ -171,7 +178,7 @@ if (!tunnelOnly) {
         /application-debuggable/.test(badging) || !badging.includes("native-code: 'arm64-v8a' 'x86_64'"))
       throw new Error('Android release identity, ABIs or debuggable flag differs from the package contract.');
     const { id: target, artifact } = ANDROID_APP_PACKAGE_TARGET;
-    const digest = createHash('sha256').update(readFileSync(apk)).digest('hex');
+    const digest = sha256(apk);
     assertCleanRevision(root, revision);
     mkdirSync(output, { recursive: true });
     copyFileSync(apk, join(output, artifact));

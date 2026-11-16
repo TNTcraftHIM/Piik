@@ -4,17 +4,18 @@
 import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { mirrorReadiness, readMirror, validateMirrorSource, validateMirrorRelease } from "./release-mirror-ready.mjs";
+import { mirrorReadiness, validateMirrorSource, validateMirrorRelease } from "./release-mirror-ready.mjs";
 
 async function requestMirror(path, method = "GET", body) {
-  if (method === "GET") return readMirror(path);
   const token = process.env.ATOMGIT_TOKEN?.trim();
   if (!token) throw new Error("ATOMGIT_TOKEN is required to prepare the mirror before downloading artifacts");
   const response = await fetch(`https://api.atomgit.com/api/v5/repos/TNTcraftHIM/Piik${path}`, {
     method, redirect: "error", signal: AbortSignal.timeout(30_000),
-    headers: { Accept: "application/json", "PRIVATE-TOKEN": token, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    headers: { Accept: "application/json", "PRIVATE-TOKEN": token,
+      ...(body ? { "Content-Type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
   });
+  if (response.status === 404 && method === "GET") return null;
   if (!response.ok) {
     const detail = await response.json().catch(() => null);
     const reason = detail?.message ?? detail?.error_message ?? detail?.error;

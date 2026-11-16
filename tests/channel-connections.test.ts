@@ -52,7 +52,7 @@ describe("channel connection presentation", () => {
     const fixture = channelConnectionPreview("app");
     const graph = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);
     expect(graph.nodes.find(node => node.id === "app")).toMatchObject({ identity: "self-user", label: "Nori (App)" });
-    expect(graph.nodes.find(node => node.id === "self")).toMatchObject({ identity: "self-user", label: "Nori (Web)", you: true });
+    expect(graph.nodes.find(node => node.id === "self")).toMatchObject({ identity: "self-user", label: "Nori (connection.webpage)", you: true });
     expect(graph.edges).toHaveLength(3);
     expect(graph.edges[2]).toMatchObject({ selected: false, ready: false });
     const rows = channelConnectionRows(fixture.state, fixture.sessionId, fixture.topology, fixture.metrics, t);
@@ -62,6 +62,27 @@ describe("channel connection presentation", () => {
     expect(renderToStaticMarkup(createElement(ChannelConnectionReport, fixture))).toContain(say("connection.localDisplayHint"));
     fixture.topology.screen!.edges.find(edge => edge.presentation)!.selected = false;
     expect(renderToStaticMarkup(createElement(ChannelConnectionReport, fixture))).not.toContain(say("connection.localDisplayHint"));
+  });
+
+  it("groups one person's endpoints without merging routes or making the site owner the room host", () => {
+    const fixture = channelConnectionPreview("host-endpoints");
+    const graph = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);
+    expect(fixture.state.channel.ownerId).not.toBe(fixture.state.channel.rooms[0].creatorId);
+    expect(graph.nodes.map(node => node.id).sort()).toEqual(["app", "friend", "self"]);
+    expect(graph.edges).toHaveLength(2);
+    expect(graph.nodes.find(node => node.id === "app")).toMatchObject({ host: true, identity: "self-user" });
+    expect(graph.nodes.find(node => node.id === "self")).toMatchObject({ host: false, identity: "self-user" });
+    expect(graph.endpointGroups).toEqual([{ userId: "self-user", name: "Nori", ids: ["app", "self"], endpoints: ["App", "connection.webpage"] }]);
+    // A different participant's picture root never takes the room host's marker.
+    fixture.topology.screen!.sourceSessionId = "friend";
+    const otherSource = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);
+    expect(otherSource.rootId).toBe("friend");
+    expect(otherSource.nodes.find(node => node.id === "app")?.host).toBe(true);
+    expect(otherSource.nodes.find(node => node.id === "friend")?.host).toBe(false);
+    fixture.topology.screen = null;
+    const untyped = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);
+    expect(untyped.nodes.find(node => node.id === "app")?.label).toBe("Nori (connection.endpoint)");
+    expect(untyped.nodes.find(node => node.id === "self")?.label).toBe("Nori (connection.webpage)");
   });
 
   it("scopes an unwatched picture's empty path to that share while room voice remains active", () => {

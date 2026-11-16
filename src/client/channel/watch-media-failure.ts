@@ -10,7 +10,10 @@ export function watchElementFailure(error: MediaError | null): string | null {
   return "watch_media_failed";
 }
 
-export function watchHlsFailure(error: Pick<ErrorData, "type" | "details">): string {
+export function watchHlsFailure(error: Pick<ErrorData, "type" | "details" | "response">, fromReader = false): string {
+  const readCode = error.response?.text;
+  if (fromReader && error.type === Hls.ErrorTypes.NETWORK_ERROR && error.response?.code === 0 && readCode
+    && /^watch_(?:path_unavailable|read_(?:timeout|busy)|source_(?:failed|unavailable|changed|retired))$/.test(readCode)) return readCode;
   if (error.details === Hls.ErrorDetails.MANIFEST_INCOMPATIBLE_CODECS_ERROR
     || error.details === Hls.ErrorDetails.BUFFER_INCOMPATIBLE_CODECS_ERROR)
     return "watch_media_unsupported";

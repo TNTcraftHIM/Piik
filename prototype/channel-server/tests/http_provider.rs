@@ -28,6 +28,7 @@ async fn app_startup_precedes_first_page_http_client() -> Result<()> {
             data_root: directory.path().into(),
             assets: directory.path().into(),
             open_browser: false,
+            terminal_notice: None,
             page_player: None,
             website_permission_reset: None,
             window_navigation: None,

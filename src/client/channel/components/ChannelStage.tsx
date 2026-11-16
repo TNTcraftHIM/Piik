@@ -128,6 +128,7 @@ export interface ChannelStageProps {
   onFocus: (id: string | null) => void;
   onWatch: (id: string) => void;
   onUnwatch: (id: string) => void;
+  onRetryPicture?: (id: string) => void;
   onPause: (id: string, paused: boolean) => void;
   onStop: (id: string) => void;
   onPresentation?: (flowId: string, stream: MediaStream, state: ScreenPresentation) => void;
@@ -149,7 +150,7 @@ function SourceControl({ source, onInputPolicy, onInputDecide, onInputSimultaneo
 }
 
 /** Subscription belongs to the caller. Focus only changes the layout of existing players. */
-export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFocus, onWatch, onUnwatch, onPause, onStop, onPresentation,
+export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFocus, onWatch, onUnwatch, onRetryPicture, onPause, onStop, onPresentation,
   onInputPolicy, onInputDecide, onInputSimultaneous, onInputShortcut }: ChannelStageProps) {
   const { lang, t } = useCopy();
   const retained = sources.filter(source => source.owned || source.subscribed);
@@ -267,6 +268,7 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
               onFocus(source.id);
             }}>
             {source.stream ? <ChannelVideo buffering={buffering} stream={source.stream} owned={source.owned} localSource={source.localSource}
+              onRetryPicture={onRetryPicture ? () => onRetryPicture(source.id) : undefined} retryAvailable={canSubscribe && !source.pending}
               presentation={source.hidden ? "background" : thumbnail ? "thumbnail" : "full"} inputs={source.inputs} onPresentation={onPresentation} input={source.input}
               interaction={source.interaction}
               theaterMode={theater && isFocused} onToggleTheater={() => {
@@ -277,7 +279,10 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
                 {source.paused || source.deliveryFailed ? <Glyph name={source.paused ? "pause" : "x"} size={24} /> : <BrandLoader />}
                 <span>{source.paused ? t("host.pauseNotice") : source.deliveryFailed
                   ? t("screen.deliveryRetry")
-                  : t("screen.connectingPicture")}</span></div>}
+                  : t("screen.connectingPicture")}</span>
+                {!source.owned && !source.localSource && onRetryPicture && <Btn icon="refresh" size="compact" quiet
+                  title="screen.retryPicture" cap="screen.retryPicture" disabled={!canSubscribe || source.pending}
+                  onClick={() => onRetryPicture(source.id)} />}</div>}
             <footer>
               <div className="c3-monitor-source-row" data-tooltip-controls>
                 <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
@@ -385,7 +390,9 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
         source.onResume();
       }} />
       : <div className="c3-monitor-wait" role="status">{source.website && !source.pending ? <><Glyph name="globe" size={25} /><span>{t("watch.browserFailed")}</span>
-        {source.originalPageAvailable && (source.onAppWatch ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={source.onAppWatch} /> : <small>{t("watch.connectApp")}</small>)}
+        {!source.owned && source.originalPageAvailable && (source.onAppWatch
+          ? <Btn icon="window" title="watch.inApp" cap="watch.inApp" onClick={source.onAppWatch} />
+          : !(source.receiving?.peerAvailable && source.receiving.peerSupported) && <small>{t("watch.connectApp")}</small>)}
         {source.receiving && <WatchPeerAction receiving={source.receiving} />}</>
         : <><BrandLoader /><span>{t("watch.waiting")}</span></>}</div>}
     <footer><div className="c3-monitor-source-row" data-tooltip-controls>

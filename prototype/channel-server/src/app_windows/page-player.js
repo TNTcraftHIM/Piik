@@ -12,19 +12,20 @@
     if (window !== top) { parent.postMessage(message, '*'); return; }
     const envelope = { ...message, document: frame };
     const post = value => window.chrome.webview.postMessage(JSON.stringify(value));
-    if (message.kind !== 'resources') { post(envelope); return; }
+    if (message.kind !== 'resources' && message.kind !== 'candidates') { post(envelope); return; }
+    const field = message.kind === 'resources' ? 'urls' : 'candidates';
     // Native caps the complete UTF-8 IPC body at 64 KiB, including frame ancestry.
-    const base = encoder.encode(JSON.stringify({ ...envelope, urls: [] })).length;
-    let urls = [], bytes = base;
-    for (const url of message.urls) {
-      const length = encoder.encode(JSON.stringify(url)).length;
-      if (urls.length && (urls.length === 128 || bytes + 1 + length > 65536)) {
-        post({ ...envelope, urls }); urls = []; bytes = base;
+    const base = encoder.encode(JSON.stringify({ ...envelope, [field]: [] })).length;
+    let items = [], bytes = base;
+    for (const item of message[field]) {
+      const length = encoder.encode(JSON.stringify(item)).length;
+      if (items.length && (items.length === 128 || bytes + 1 + length > 65536)) {
+        post({ ...envelope, [field]: items }); items = []; bytes = base;
       }
       if (base + length > 65536) continue;
-      bytes += length + (urls.length ? 1 : 0); urls.push(url);
+      bytes += length + (items.length ? 1 : 0); items.push(item);
     }
-    if (urls.length) post({ ...envelope, urls });
+    if (items.length || message.removed?.length) post({ ...envelope, [field]: items });
   };
   const send = payload => forward({ bridge: 'piik-page-player', frame, ancestors: [], ...payload });
   addEventListener('message', event => {
@@ -53,14 +54,19 @@
     duration: Number.isFinite(video.duration) ? video.duration : null, readyState: video.readyState, ended: video.ended,
     buffered: Array.from({ length: video.buffered.length }, (_, index) => [video.buffered.start(index), video.buffered.end(index)]) });
   let timer;
+  let reported = new Set();
   const report = () => {
     clearTimeout(timer);
-    timer = setTimeout(() => send({ kind: 'candidates', candidates: [...elements].map(([media, { video }]) => {
-      let url = null;
-      try { const source = new URL(video.currentSrc); if (['http:', 'https:'].includes(source.protocol) && !source.username && !source.password && source.href.length <= 4096) url = source.href; } catch {}
-      return { media, resource: video.currentSrc.slice(0, 4096), title: (video.getAttribute('aria-label') || video.title || document.title || location.hostname).slice(0, 256), url,
-        duration: Number.isFinite(video.duration) ? video.duration : null };
-    }) }), 80);
+    timer = setTimeout(() => {
+      const removed = [...reported].filter(id => !elements.has(id));
+      reported = new Set(elements.keys());
+      send({ kind: 'candidates', removed, candidates: [...elements].map(([media, { video }]) => {
+        let url = null;
+        try { const source = new URL(video.currentSrc); if (['http:', 'https:'].includes(source.protocol) && !source.username && !source.password && source.href.length <= 4096) url = source.href; } catch {}
+        return { media, resource: video.currentSrc.slice(0, 4096), title: (video.getAttribute('aria-label') || video.title || document.title || location.hostname).slice(0, 256), url,
+          duration: Number.isFinite(video.duration) ? video.duration : null };
+      }) });
+    }, 80);
   };
   const discover = () => {
     for (const [source, child] of children) if (!child.element.isConnected) { children.delete(source); send({ kind: 'removed', removed: child.frame }); }

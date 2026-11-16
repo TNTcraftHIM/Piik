@@ -54,6 +54,7 @@ enum PageEvent {
     },
     Candidates {
         candidates: Vec<ReportedCandidate>,
+        removed: Vec<Uuid>,
     },
     Sample {
         media: Uuid,
@@ -284,7 +285,10 @@ impl Pages {
             return;
         };
         let create = || -> Result<()> {
-            anyhow::ensure!(page.views.borrow().len() < MAX_PAGE_VIEWS, "page_player_limit");
+            anyhow::ensure!(
+                page.views.borrow().len() < MAX_PAGE_VIEWS,
+                "page_player_limit"
+            );
             let key = Uuid::new_v4();
             let child = page_view(
                 WebViewBuilder::new().with_environment(popup.environment.clone()),
@@ -450,6 +454,7 @@ impl Pages {
             | Operation::PageRead { page_id }
             | Operation::PagePatch { page_id, .. }
             | Operation::PageFocus { page_id }
+            | Operation::PageHide { page_id }
             | Operation::PageClose { page_id }
             | Operation::PageMediaSources { page_id } => *page_id,
             _ => unreachable!(),
@@ -501,9 +506,25 @@ impl Pages {
             }
             Operation::PageRead { .. } => page.request(false, None, reply),
             Operation::PagePatch { patch, .. } => page.request(false, Some(patch), reply),
+            Operation::PageHide { .. } => {
+                let views = page.views.borrow();
+                let view = page
+                    .selected
+                    .and_then(|id| page.candidates.get(&id))
+                    .and_then(|candidate| views.get(&candidate.view))
+                    .filter(|view| view.document.is_some());
+                let result = view
+                    .ok_or_else(|| "page_candidate_unavailable".to_owned())
+                    .map(|view| {
+                        view.window.set_visible(false);
+                        Value::Null
+                    });
+                let _ = reply.send(result);
+            }
             Operation::PageFocus { .. } => {
                 let views = page.views.borrow();
                 let view = &views[&page.selected_view()];
+                view.window.set_visible(true);
                 view.window.set_minimized(false);
                 view.window.set_focus();
                 let _ = view.view.focus();
@@ -624,58 +645,26 @@ impl Pages {
                     page.candidates();
                 }
             }
-            PageEvent::Candidates { candidates } => {
-                if candidates.len() > 64 {
+            PageEvent::Candidates {
+                candidates,
+                removed,
+            } => {
+                if candidates.len() > 64 || removed.len() > 64 {
                     return;
                 }
-                let existing = std::mem::take(&mut page.candidates);
-                let mut previous = BTreeMap::new();
-                for (id, candidate) in existing {
-                    if candidate.view == view_key && candidate.frame == message.frame {
-                        previous.insert(candidate.source.media, (id, candidate));
-                    } else {
-                        page.candidates.insert(id, candidate);
-                    }
-                }
-                for mut source in candidates.into_iter().take(64 - page.candidates.len()) {
-                    source.title = source.title.chars().take(256).collect();
-                    if source.url.as_ref().is_some_and(|url| !page::valid_url(url)) {
-                        source.url = None;
-                    }
-                    if source.duration.is_some_and(|v| !v.is_finite() || v < 0.) {
-                        source.duration = None;
-                    }
-                    if source.resource.len() > 4096 {
-                        continue;
-                    }
-                    let previous = previous.remove(&source.media);
-                    if previous.as_ref().is_some_and(|(id, old)| {
-                        page.selected == Some(*id)
-                            && !old.source.resource.is_empty()
-                            && old.source.resource != source.resource
-                    }) {
-                        self.pages.remove(&key);
-                        return;
-                    }
-                    let id = previous.map(|(id, _)| id).unwrap_or_else(Uuid::new_v4);
-                    page.candidates.insert(
-                        id,
-                        Candidate {
-                            view: view_key,
-                            frame: message.frame,
-                            ancestors: message.ancestors.clone(),
-                            source,
-                        },
-                    );
-                }
-                if page
-                    .selected
-                    .is_some_and(|id| !page.candidates.contains_key(&id))
-                {
+                if !update_candidates(
+                    &mut page.candidates,
+                    page.selected,
+                    view_key,
+                    message.frame,
+                    &message.ancestors,
+                    candidates,
+                    &removed,
+                ) {
                     self.pages.remove(&key);
-                } else {
-                    page.candidates();
+                    return;
                 }
+                page.candidates();
             }
             PageEvent::Sample {
                 media,
@@ -756,6 +745,66 @@ impl Pages {
             PageEvent::Document => {}
         }
     }
+}
+
+// Each bounded bridge batch edits the same candidate map; missing batch entries are retained.
+fn update_candidates(
+    current: &mut BTreeMap<Uuid, Candidate>,
+    selected: Option<Uuid>,
+    view_key: Uuid,
+    frame: Uuid,
+    ancestors: &[Uuid],
+    candidates: Vec<ReportedCandidate>,
+    removed: &[Uuid],
+) -> bool {
+    current.retain(|_, candidate| {
+        candidate.view != view_key
+            || candidate.frame != frame
+            || !removed.contains(&candidate.source.media)
+    });
+    if selected.is_some_and(|id| !current.contains_key(&id)) {
+        return false;
+    }
+    for mut source in candidates {
+        source.title = source.title.chars().take(256).collect();
+        if source.url.as_ref().is_some_and(|url| !page::valid_url(url)) {
+            source.url = None;
+        }
+        if source.duration.is_some_and(|v| !v.is_finite() || v < 0.) {
+            source.duration = None;
+        }
+        if source.resource.len() > 4096 {
+            continue;
+        }
+        let previous = current.iter().find(|(_, candidate)| {
+            candidate.view == view_key
+                && candidate.frame == frame
+                && candidate.source.media == source.media
+        });
+        if previous.is_some_and(|(id, old)| {
+            selected == Some(*id)
+                && !old.source.resource.is_empty()
+                && old.source.resource != source.resource
+        }) {
+            return false;
+        }
+        let id = match previous {
+            Some((id, _)) => *id,
+            None if current.len() < 64 => Uuid::new_v4(),
+            None => continue,
+        };
+        current.insert(
+            id,
+            Candidate {
+                view: view_key,
+                frame,
+                ancestors: ancestors.to_vec(),
+                source,
+            },
+        );
+    }
+
+    true
 }
 
 fn page_view(
@@ -852,4 +901,125 @@ fn website_permissions(view: &WebView) -> Result<()> {
         )?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod candidate_tests {
+    use super::*;
+    fn report(media: Uuid, url: &str) -> ReportedCandidate {
+        ReportedCandidate {
+            media,
+            resource: url.into(),
+            title: "Owned video".into(),
+            url: Some(url.into()),
+            duration: Some(30.),
+        }
+    }
+    #[test]
+    fn bounded_batches_preserve_first_selection_and_retire_only_its_actual_removal() {
+        let (view, frame, sibling) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let mut candidates = BTreeMap::new();
+        let media: Vec<_> = (0..12).map(|_| Uuid::new_v4()).collect();
+        let url = format!("https://media.test/video?signature={}", "a".repeat(3900));
+        let batch = |ids: &[Uuid]| ids.iter().map(|id| report(*id, &url)).collect();
+        assert!(update_candidates(
+            &mut candidates,
+            None,
+            view,
+            frame,
+            &[],
+            batch(&media[..6]),
+            &[]
+        ));
+        let selected = *candidates
+            .iter()
+            .find(|(_, c)| c.source.media == media[0])
+            .unwrap()
+            .0;
+        // The next IPC batch is not an empty/full replacement of the first one.
+        assert!(update_candidates(
+            &mut candidates,
+            Some(selected),
+            view,
+            frame,
+            &[],
+            batch(&media[6..]),
+            &[]
+        ));
+        assert_eq!(candidates.len(), 12);
+        assert!(update_candidates(
+            &mut candidates,
+            Some(selected),
+            sibling,
+            frame,
+            &[],
+            vec![],
+            &[media[0]]
+        ));
+        assert!(update_candidates(
+            &mut candidates,
+            Some(selected),
+            view,
+            sibling,
+            &[],
+            vec![],
+            &[media[0]]
+        ));
+        assert!(candidates.contains_key(&selected));
+        assert!(!update_candidates(
+            &mut candidates,
+            Some(selected),
+            view,
+            frame,
+            &[],
+            vec![],
+            &[media[0]]
+        ));
+        assert!(!candidates.contains_key(&selected)); // false takes the existing Page drop/reader-retirement path.
+    }
+    #[test]
+    fn same_media_resource_replacement_retires_selected_but_sibling_update_does_not() {
+        let (view, frame, media, other) = (
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+        );
+        let mut candidates = BTreeMap::new();
+        assert!(update_candidates(
+            &mut candidates,
+            None,
+            view,
+            frame,
+            &[],
+            vec![
+                report(media, "https://media.test/a"),
+                report(other, "https://media.test/b")
+            ],
+            &[]
+        ));
+        let selected = *candidates
+            .iter()
+            .find(|(_, c)| c.source.media == media)
+            .unwrap()
+            .0;
+        assert!(update_candidates(
+            &mut candidates,
+            Some(selected),
+            view,
+            frame,
+            &[],
+            vec![report(other, "https://media.test/c")],
+            &[]
+        ));
+        assert!(!update_candidates(
+            &mut candidates,
+            Some(selected),
+            view,
+            frame,
+            &[],
+            vec![report(media, "https://media.test/new")],
+            &[]
+        ));
+    }
 }

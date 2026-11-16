@@ -1,4 +1,5 @@
 import { createContext, useContext, useLayoutEffect, useRef, useState } from "react";
+import { windowAppearance } from "./window-appearance";
 
 // Geometry, focus and visibility follow the document displaying a surface.
 // Its React tree and domain state continue to belong to the original page.
@@ -69,15 +70,22 @@ export async function openPanelWindow(container: HTMLElement, signal: AbortSigna
   });
   // Room retirement can beat the browser's permission/window creation work.
   if (signal.aborted || !container.isConnected) { pip.close(); return; }
+  // Only the document returned by an actual PiP request receives panel chrome.
+  // Ordinary site/login popups never opt into the Native always-on-top frame.
+  const native = home.defaultView?.piikNativeWindow === "integrated" ? pip.ipc : undefined;
+  if (native) {
+    native.postMessage(JSON.stringify({ kind: "panel", width: Math.round(width), height: Math.round(height) }));
+  }
   let returned = false;
   const observer = new MutationObserver(() => copyAttributes());
-  const attributes = ["lang", "dir", "data-theme", "data-comic-reduced-motion"];
+  const attributes = ["lang", "dir", "data-theme", "data-reduced-motion", "data-comic-reduced-motion"];
   function copyAttributes() {
     for (const name of attributes) {
       const value = home.documentElement.getAttribute(name);
       if (value === null) pip.document.documentElement.removeAttribute(name);
       else pip.document.documentElement.setAttribute(name, value);
     }
+    native?.postMessage(JSON.stringify(windowAppearance(home.documentElement)));
   }
   function restore() {
     if (returned) return;

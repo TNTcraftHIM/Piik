@@ -92,7 +92,7 @@ test("setup and media readiness share the original twenty-second deadline", asyn
   vi.useFakeTimers(); const v = video(); vi.stubGlobal("document", { createElement: () => v });
   let finish!: (resource: { url: string; close(): void }) => void;
   const media = new HTMLVideoMedia(() => new Promise(resolve => { finish = resolve; }), "file");
-  const waiting = media.ready(new AbortController().signal); const check = expect(waiting).rejects.toThrow("watch_media_failed");
+  const waiting = media.ready(new AbortController().signal); const check = expect(waiting).rejects.toThrow("watch_media_timeout");
   await vi.advanceTimersByTimeAsync(19000); finish({ url: "https://media.test/video", close() {} });
   await vi.advanceTimersByTimeAsync(1000); await check; media.close(); expect(vi.getTimerCount()).toBe(0);
 });
@@ -106,6 +106,17 @@ test("HLS can receive through the Reader when Service Workers are unavailable", 
   const v = video(); vi.stubGlobal("document", { createElement: () => v });
   const media = createPeerWatchMedia({ resourceId: "11111111-1111-4111-8111-111111111111", format: "hls" }, vi.fn());
   await expect(media.ready(new AbortController().signal)).rejects.toThrow("watch_peer_requires_secure_context"); media.close();
+});
+
+test("peer HLS preserves controlled Reader failure boundaries without publishing arbitrary response text", () => {
+  for (const code of ["watch_path_unavailable", "watch_read_timeout", "watch_source_failed"]) {
+    const error = { type: Hls.ErrorTypes.NETWORK_ERROR, details: Hls.ErrorDetails.MANIFEST_LOAD_ERROR,
+      response: { url: "https://watch-media.invalid/resource", code: 0, data: undefined, text: code } };
+    expect(watchHlsFailure(error, true)).toBe(code);
+    expect(watchHlsFailure(error)).toBe("watch_media_unavailable");
+  }
+  expect(watchHlsFailure({ type: Hls.ErrorTypes.NETWORK_ERROR, details: Hls.ErrorDetails.FRAG_LOAD_ERROR,
+    response: { url: "https://watch-media.invalid/resource", code: 0, data: undefined, text: "https://private.invalid/?token=secret" } }, true)).toBe("watch_media_unavailable");
 });
 
 test("App error during readiness rejects immediately even when its pending state read succeeds", async () => {

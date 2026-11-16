@@ -69,7 +69,7 @@ test('Node text conversation ignores unrelated media descriptions and retains si
   try {
     await client.connect();
     expect(client.summary()).toMatchObject({ userId: user, roomId: 'room', available: true, reading: true, bindingId: binding });
-    expect(await client.history()).toEqual([message]);
+    expect(await client.history()).toEqual({ messages: [message], hasMore: false, oldestSeq: 1, before: null });
     expect(live).toEqual([]);
     const delivered = once(client, 'live');
     expect(await client.chat('notice')).toMatchObject({ text: 'notice' });
@@ -111,4 +111,207 @@ test('narrow conversation verification keeps authority required and signed recor
     expect(JSON.parse(verify(futureRecord))).toEqual(address);
     expect(() => rust.verify_reply(futureRecord, signer.signing_key())).toThrow();
   } finally { signer.free(); other.free(); }
+});
+
+test('text pagination, replies and mentions use signed Core commands and host confirmations', async () => {
+  const rust = await import('../prototype/channel-browser/pkg/piik_channel_browser.js');
+  await rust.default({ module_or_path: await readFile('prototype/channel-browser/pkg/piik_channel_browser_bg.wasm') });
+  const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
+  const [host, local, user, owner, binding] = Array.from({ length: 5 }, () => randomUUID());
+  const signer = new rust.SessionSigner(randomBytes(32));
+  const room = new rust.RoomHost(rust.create_room_policy(JSON.stringify({ id: 'room', name: 'Room', icon: 'couch',
+    creatorId: owner, access: 'public', hidden: false, password: null })));
+  const messages = [1, 2, 3].map(seq => ({ id: randomUUID(), seq, userId: owner, text: `message ${seq}`, time: seq, attachments: [] }));
+  let malformedPage: 'count' | 'empty-more' | undefined;
+  const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+  await once(server, 'listening');
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Expected loopback port');
+  const client = new TextParticipant({ url: `ws://127.0.0.1:${address.port}`, origin: 'http://127.0.0.1', roomId: 'room', name: 'Text fixture' });
+  const received: Record<string, unknown>[] = [], errors: unknown[] = [], live: ChannelMessage[] = [];
+  client.on('live', message => live.push(message));
+  server.on('connection', socket => socket.on('message', raw => {
+    try {
+      const command = JSON.parse(raw.toString());
+      if (command.type === 'join') {
+        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, hostSessionId: host, revision: 1,
+          endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true } }, action: { type: 'sync' } }));
+        room.finish();
+        socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
+          selfProfile: { id: user }, state: { channel: { rooms: [{ id: 'room', authorized: true, available: true, reading: true,
+            delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: [...signer.signing_key()] }] } }));
+      } else if (command.type === 'conversation') {
+        const request = JSON.parse(command.packet.payload);
+        received.push(request.command);
+        const prepared = JSON.parse(room.prepare_peer(JSON.stringify(command.packet), 10n));
+        let result = prepared.work;
+        if (result.Ok?.type === 'history') {
+          const work = result.Ok.value;
+          if (work.type === 'read') {
+            const page = new rust.HistoryPage();
+            for (const message of messages.filter(message => work.before == null || message.seq < work.before).slice(-2).reverse())
+              page.push(JSON.stringify({ ...message, reactions: { revision: 0, counts: {} } }));
+            result = { Ok: { type: 'history', value: JSON.parse(page.finish(1n, work.before == null ? undefined : BigInt(work.before))) } };
+          } else {
+            try {
+              const confirmation = JSON.parse(rust.prepare_confirmation(JSON.stringify(work.draft), JSON.stringify({ type: 'new',
+                lastSeq: 3, reply: messages.find(message => message.seq === work.draft.reply?.seq) })));
+              result = { Ok: { type: 'history', value: confirmation } };
+            } catch (error) { result = { Err: String(error) }; }
+          }
+        }
+        for (const reply of JSON.parse(room.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result)))) {
+          if (reply.record.type === 'history_end' && malformedPage) {
+            if (malformedPage === 'count') reply.record.count++;
+            else reply.record.hasMore = true;
+          }
+          socket.send(JSON.stringify({ type: 'conversation', packet: JSON.parse(signer.sign(host, JSON.stringify(reply))) }));
+        }
+      } else socket.send(JSON.stringify({ type: 'ack', requestId: command.requestId }));
+    } catch (error) { errors.push(error); socket.terminate(); }
+  }));
+  try {
+    await client.connect();
+    let page = await client.history();
+    expect(page).toMatchObject({ hasMore: true, oldestSeq: 1, before: null });
+    expect(page.messages.map(message => message.seq)).toEqual([2, 3]);
+    const sequences = page.messages.map(message => message.seq);
+    let pages = 1;
+    while (page.hasMore) {
+      page = await client.history(page.messages[0].seq);
+      sequences.unshift(...page.messages.map(message => message.seq));
+      pages++;
+    }
+    expect(pages).toBe(2);
+    expect(sequences).toEqual([1, 2, 3]);
+    expect(new Set(sequences).size).toBe(sequences.length);
+    expect(page).toMatchObject({ hasMore: false, oldestSeq: 1, before: 2 });
+    expect(await client.history(1)).toEqual({ messages: [], hasMore: false, oldestSeq: 1, before: 1 });
+    const options = { mentions: [{ userId: owner, start: 0, end: 7, extra: 'discard' }],
+      reply: { seq: 2, notify: true, extra: 'discard' }, nonce: 'not-client-owned', text: 'override', extra: 'discard' };
+    const confirmed = await client.chat('@friend hi', options);
+    expect(confirmed).toMatchObject({ userId: user, text: '@friend hi', mentions: [{ userId: owner, start: 0, end: 7 }],
+      reply: { seq: 2, userId: owner, text: 'message 2', notify: true } });
+    expect(received[1]).toEqual({ type: 'history', before: 2 });
+    expect(received[3]).toEqual({ type: 'chat', text: '@friend hi', attachments: [], nonce: expect.any(String),
+      mentions: [{ userId: owner, start: 0, end: 7 }], reply: { seq: 2, notify: true } });
+    expect(received[3].nonce).not.toBe(options.nonce);
+    await expect(client.chat('plain', { mentions: [{ userId: owner, start: 0, end: 5 }] })).rejects.toThrow('invalid_mentions');
+    await expect(client.chat('reply', { reply: { seq: 99, notify: false } })).rejects.toThrow('message_unavailable');
+    malformedPage = 'count';
+    await expect(client.history()).rejects.toThrow('incomplete_history');
+    malformedPage = 'empty-more';
+    await expect(client.history(1)).rejects.toThrow('incomplete_history');
+    expect(live).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally {
+    await client.stop(); room.free(); signer.free();
+    for (const socket of server.clients) socket.terminate();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+});
+
+test('text message reactions use advertised support and Core counted-history nonce semantics', async () => {
+  const rust = await import('../prototype/channel-browser/pkg/piik_channel_browser.js');
+  await rust.default({ module_or_path: await readFile('prototype/channel-browser/pkg/piik_channel_browser_bg.wasm') });
+  const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
+  const [host, user, owner] = Array.from({ length: 3 }, () => randomUUID());
+  let local = randomUUID(), binding = randomUUID(), revision = 0;
+  const signer = new rust.SessionSigner(randomBytes(32));
+  const room = new rust.RoomHost(rust.create_room_policy(JSON.stringify({ id: 'room', name: 'Room', icon: 'couch',
+    creatorId: owner, access: 'public', hidden: false, password: null })));
+  const message = { id: randomUUID(), seq: 1, userId: owner, text: 'react here', time: 1, attachments: [] };
+  let stored = { ...message, reactions: { revision: 0, counts: {} as Record<string, number> } };
+  let now = 1000, advertise = true;
+  let transition: 'binding' | 'revoked' | undefined;
+  const state = () => ({ channel: { rooms: [{ id: 'room', authorized: true, available: true, reading: true,
+    delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: [...signer.signing_key()] }] });
+  const historySnapshots: unknown[] = [], received: Record<string, unknown>[] = [], errors: unknown[] = [];
+  const reactPackets: unknown[] = [];
+  const process = (packet: unknown) => {
+    const prepared = JSON.parse(room.prepare_peer(JSON.stringify(packet), BigInt(now)));
+    let result = prepared.work;
+    if (result.Ok?.type === 'history') {
+      const work = result.Ok.value;
+      if (work.type === 'react') {
+        const confirmation = JSON.parse(rust.reaction_result(JSON.stringify(work), JSON.stringify(stored)));
+        stored = { ...stored, reactions: { revision: confirmation.snapshot.revision, counts: confirmation.snapshot.counts } };
+        result = { Ok: { type: 'history', value: confirmation } };
+      } else {
+        const page = new rust.HistoryPage(); page.push(JSON.stringify(stored));
+        result = { Ok: { type: 'history', value: JSON.parse(page.finish(1n)) } };
+      }
+    }
+    return JSON.parse(room.finish_peer(JSON.stringify(prepared.address), JSON.stringify(result))) as Array<{ record: Record<string, any> }>;
+  };
+  const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+  await once(server, 'listening');
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Expected loopback port');
+  const client = new TextParticipant({ url: `ws://127.0.0.1:${address.port}`, origin: 'http://127.0.0.1', roomId: 'room', name: 'Text fixture' });
+  server.on('connection', socket => socket.on('message', raw => {
+    try {
+      const command = JSON.parse(raw.toString());
+      if (command.type === 'join') {
+        room.dispatch(JSON.stringify({ now: 1, bindingId: binding, hostSessionId: host, revision: ++revision,
+          endpoints: { [local]: { member: { userId: user }, signingKey: command.signingKey, connected: true } }, action: { type: 'sync' } }));
+        room.finish();
+        socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local,
+          selfProfile: { id: user }, state: state() }));
+      } else if (command.type === 'conversation') {
+        const request = JSON.parse(command.packet.payload);
+        received.push(request.command);
+        if (request.command.type === 'react') reactPackets.push(command.packet);
+        const replies = process(command.packet);
+        for (const reply of replies) {
+          if (reply.record.type === 'interaction_ready' && !advertise) reply.record.reactionIds = [];
+          if (reply.record.type === 'message_reactions') historySnapshots.push(reply.record.snapshot);
+          socket.send(JSON.stringify({ type: 'conversation', packet: JSON.parse(signer.sign(host, JSON.stringify(reply))) }));
+          if (reply.record.type === 'interaction_ready' && transition) {
+            if (transition === 'binding') binding = randomUUID();
+            const changed = state();
+            if (transition === 'revoked') changed.channel.rooms[0].authorized = false;
+            socket.send(JSON.stringify({ type: 'state', state: changed }));
+            transition = undefined;
+          }
+        }
+      } else socket.send(JSON.stringify({ type: 'ack', requestId: command.requestId }));
+    } catch (error) { errors.push(error); socket.terminate(); }
+  }));
+  try {
+    await client.connect();
+    await expect(client.react(1, 'not-advertised')).rejects.toThrow('unsupported_reaction');
+    expect(reactPackets).toHaveLength(0);
+    advertise = false;
+    await expect(client.react(1, 'heart')).rejects.toThrow('unsupported_reaction');
+    expect(reactPackets).toHaveLength(0);
+    advertise = true;
+    const first = await client.react(1, 'heart');
+    expect(first).toMatchObject({ type: 'reaction', nonce: 1, event: { senderUserId: user, reaction: 'heart' },
+      snapshot: { type: 'message', messageSeq: 1, revision: 1, counts: { heart: 1 } } });
+    expect(process(reactPackets[0])[0].record).toMatchObject({ nonce: 1, event: null, snapshot: { revision: 1, counts: { heart: 1 } } });
+    await expect(client.react(1, 'heart')).rejects.toThrow('rate_limited');
+    expect(stored.reactions).toEqual({ revision: 1, counts: { heart: 1 } });
+    now += 1000;
+    expect(await client.react(1, 'heart')).toMatchObject({ nonce: 3, snapshot: { revision: 2, counts: { heart: 2 } } });
+    await client.reconnect(); now += 1000;
+    expect(await client.react(1, 'heart')).toMatchObject({ nonce: 4, snapshot: { counts: { heart: 3 } } });
+    local = randomUUID();
+    await client.reconnect(); now += 1000;
+    expect(await client.react(1, 'heart')).toMatchObject({ nonce: 1, snapshot: { counts: { heart: 4 } } });
+    expect((await client.history()).messages).toEqual([message]);
+    expect(historySnapshots).toContainEqual({ messageId: message.id, messageSeq: 1, revision: 4, counts: { heart: 4 } });
+    transition = 'revoked';
+    await expect(client.react(1, 'heart')).rejects.toThrow('room_access_required');
+    await client.reconnect();
+    transition = 'binding';
+    await expect(client.react(1, 'heart')).rejects.toThrow('room_host_changed');
+    expect(received.filter(command => command.type === 'react').map(command => command.nonce)).toEqual([1, 2, 3, 4, 1]);
+    expect(received.every(command => ['interaction_ready', 'react', 'history'].includes(command.type as string))).toBe(true);
+    expect(errors).toEqual([]);
+  } finally {
+    await client.stop(); room.free(); signer.free();
+    for (const socket of server.clients) socket.terminate();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
 });

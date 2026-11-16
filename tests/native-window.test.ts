@@ -31,11 +31,24 @@ test("native appearance follows the selected locale when the document language c
   }
 });
 
-test("system-decorated internal windows share the header height without a custom caption", async () => {
-  const root = { dataset: {} as Record<string, string>, style: { setProperty: vi.fn() } };
-  vi.stubGlobal("window", { piikNativeWindow: "system" });
+test("system-decorated App windows report the same document appearance without custom caption geometry", async () => {
+  const messages: unknown[] = [];
+  const root = { lang: "en", dataset: { theme: "dark" } as Record<string, string>, style: { setProperty: vi.fn() } };
+  let changed: () => void = () => {};
+  vi.stubGlobal("window", { piikNativeWindow: "system", ipc: {
+    postMessage: (message: string) => messages.push(JSON.parse(message)),
+  } });
   vi.stubGlobal("document", { documentElement: root });
+  vi.stubGlobal("MutationObserver", class {
+    constructor(callback: () => void) { changed = callback; }
+    observe() {}
+  });
+  vi.stubGlobal("requestAnimationFrame", (callback: () => void) => callback());
   await import("../src/client/ui/native-window");
   expect(root.dataset.piikNativeWindow).toBe("system");
   expect(root.style.setProperty).toHaveBeenCalledExactlyOnceWith("--native-caption-height", `${controls.height}px`);
+  expect(messages).toEqual([{ kind: "appearance", theme: "dark", language: "en", material: null }]);
+  root.dataset.theme = "light";
+  changed();
+  expect(messages.at(-1)).toEqual({ kind: "appearance", theme: "light", language: "en", material: null });
 });

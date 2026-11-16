@@ -60,7 +60,7 @@ export function waitForWatchMedia(media: Pick<WatchMedia, "read" | "listen">, si
       }, error => finish(error))
         .finally(() => { checking = false; });
     };
-    const timer = setTimeout(() => finish(new Error("watch_media_failed")), 20000);
+    const timer = setTimeout(() => finish(new Error("watch_media_timeout")), 20000);
     const unlisten = media.listen(event => {
       if (event === "closed") finish(new Error("watch_media_failed"));
       else {
@@ -134,7 +134,7 @@ export class HTMLVideoMedia implements WatchMedia {
       this.hlsTimeline = new WatchHlsTimeline(hls, this.timeline);
       hls.on(Hls.Events.ERROR, (_event, error) => {
         if (!error.fatal || this.lifetime.signal.aborted) return;
-        this.failure = new Error(watchElementFailure(this.video.error) ?? watchHlsFailure(error)); this.video.dispatchEvent(new Event("error"));
+        this.failure = new Error(watchElementFailure(this.video.error) ?? watchHlsFailure(error, !!peerRead)); this.video.dispatchEvent(new Event("error"));
       });
       hls.loadSource(url); hls.attachMedia(this.video);
     } else {

@@ -19,8 +19,7 @@
       "camera": "Allow camera access?",
       "allow": "Allow",
       "deny": "Don't allow",
-      "permissionClose": "Cancel",
-      "startupFailed": "Piik could not start. See the terminal for details."
+      "permissionClose": "Cancel"
     },
     "zh": {
       "minimize": "最小化",
@@ -31,8 +30,7 @@
       "camera": "允许使用摄像头？",
       "allow": "允许",
       "deny": "不允许",
-      "permissionClose": "取消",
-      "startupFailed": "Piik 未能启动，请查看终端中的详细信息。"
+      "permissionClose": "取消"
     },
     "zh-Hant": {
       "minimize": "最小化",
@@ -43,8 +41,7 @@
       "camera": "允許使用相機？",
       "allow": "允許",
       "deny": "不允許",
-      "permissionClose": "取消",
-      "startupFailed": "Piik 無法啟動，請查看終端機中的詳細資訊。"
+      "permissionClose": "取消"
     },
     "ja": {
       "minimize": "最小化",
@@ -55,8 +52,7 @@
       "camera": "カメラの使用を許可しますか？",
       "allow": "許可",
       "deny": "許可しない",
-      "permissionClose": "キャンセル",
-      "startupFailed": "Piik を起動できませんでした。詳細はターミナルを確認してください。"
+      "permissionClose": "キャンセル"
     },
     "ko": {
       "minimize": "최소화",
@@ -67,8 +63,7 @@
       "camera": "카메라 사용을 허용할까요?",
       "allow": "허용",
       "deny": "허용 안 함",
-      "permissionClose": "취소",
-      "startupFailed": "Piik을 시작하지 못했습니다. 터미널에서 자세한 내용을 확인하세요."
+      "permissionClose": "취소"
     }
   }
 }

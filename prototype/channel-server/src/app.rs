@@ -3,6 +3,8 @@
 mod backup;
 #[path = "app_console.rs"]
 mod console;
+#[path = "app_terminal.rs"]
+mod terminal;
 #[path = "app_diagnostics.rs"]
 mod diagnostics;
 #[path = "app_domain.rs"]
@@ -65,7 +67,7 @@ use uuid::Uuid;
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
-const PROTOCOL: u8 = 15;
+const PROTOCOL: u8 = 16;
 const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
     Some(value) => value,
     None => "development",
@@ -86,6 +88,8 @@ pub struct Config {
     pub data_root: PathBuf,
     pub assets: PathBuf,
     pub open_browser: bool,
+    /// Startup presentation only; never a source of permission or service state.
+    pub terminal_notice: Option<String>,
     pub page_player: Option<page::Dispatcher>,
     pub website_permission_reset: Option<WebsitePermissionReset>,
     pub window_navigation: Option<Arc<dyn Fn(String) -> bool + Send + Sync>>,
@@ -350,6 +354,9 @@ pub async fn serve(
         sites::StartupIntent::None => entry_url("", address.port())?,
     };
     let open_browser = config.open_browser;
+    let terminal_enabled = (config.open_browser || ready.is_some()) && config.page_player.is_none()
+        && std::env::var_os("PIIK_CHANNEL_APP_NO_BROWSER").is_none();
+    let terminal_notice = config.terminal_notice.clone();
     let approvals = sites
         .approved()?
         .into_iter()
@@ -423,22 +430,23 @@ pub async fn serve(
         .layer(middleware::from_fn_with_state(app.clone(), access))
         .with_state(app.clone());
     let console = console::Console::new(None);
-    console.startup(BUILD_VERSION, BUILD_REVISION, address.port());
+    let mut terminal = terminal::Terminal::start(terminal_enabled, terminal_notice.as_deref());
+    if terminal.is_none() { console.startup(BUILD_VERSION, BUILD_REVISION, address.port()); }
     eprintln!("App room socket listening on {address}");
     if let Some(ready) = ready {
         let _ = ready.send(entry.clone());
     }
-    if open_browser {
-        tokio::task::spawn_blocking(move || {
-            if let Err(error) = webbrowser::open(&entry) {
-                eprintln!("Open the App address in your browser: {error}");
-            }
-        });
-    }
+    let mut opening = if open_browser {
+        match terminal::open_browser(entry) {
+            Ok(opening) => Some(opening),
+            Err(error) => { eprintln!("Could not open Browser: {error}"); None }
+        }
+    } else { None };
     crate::web::serve_http(listener, router, async move {
         tokio::pin!(stop);
         let mut closing = app.closing.subscribe();
         let mut tick = tokio::time::interval(Duration::from_millis(100));
+        let mut refresh = tokio::time::interval(Duration::from_secs(1));
         loop {
             if *closing.borrow() {
                 break;
@@ -447,8 +455,63 @@ pub async fn serve(
                 _ = &mut stop => break,
                 _ = closing.changed() => break,
                 _ = tick.tick() => app.desktop.tick(),
+                state = async { refresh.tick().await; launcher_view(&app).await }, if terminal.is_some() => {
+                    match state {
+                        Ok(state) => terminal.as_mut().unwrap().show(&state, false),
+                        Err(error) => { eprintln!("Terminal status unavailable: {error}"); }
+                    }
+                }
+                action = async { match terminal.as_mut() {
+                    Some(view) => view.next().await,
+                    None => std::future::pending().await,
+                }} => match action {
+                    Some(terminal::Command::Quit) => { app.closing.send_replace(true); break; }
+                    Some(action) => {
+                        if action != terminal::Command::Refresh && opening.is_some() { continue; }
+                        let state = tokio::select! {
+                            _ = &mut stop => break,
+                            _ = closing.changed() => break,
+                            next = terminal.as_mut().unwrap().next() => {
+                                if matches!(next, None | Some(terminal::Command::Quit)) {
+                                    app.closing.send_replace(true);
+                                    break;
+                                }
+                                continue;
+                            }
+                            state = launcher_view(&app) => state,
+                        };
+                        let state = match state {
+                            Ok(state) => state,
+                            Err(error) => { eprintln!("Terminal status unavailable: {error}"); continue; }
+                        };
+                        if action == terminal::Command::Refresh {
+                            terminal.as_mut().unwrap().show(&state, true);
+                            continue;
+                        }
+                        let url = if action == terminal::Command::Launcher { Some(format!("http://127.0.0.1:{}/client", app.port)) }
+                            else { state["target"].as_str().map(str::to_owned) };
+                        if let Some(url) = url {
+                            match terminal::open_browser(url) {
+                                Ok(request) => opening = Some(request),
+                                Err(error) => eprintln!("Could not open Browser: {error}"),
+                            }
+                        } else { terminal.as_ref().unwrap().message("Site is not ready; open the launcher. / 站点尚未就绪，请打开启动页。"); }
+                    }
+                    None => { app.closing.send_replace(true); break; }
+                },
+                result = async { match opening.as_mut() {
+                    Some(task) => task.await,
+                    None => std::future::pending().await,
+                }} => {
+                    opening = None;
+                    if !matches!(result, Ok(Ok(()))) {
+                        if let Some(view) = &terminal { view.message("Could not open Browser. Use O/S to retry or the address above. / 无法打开浏览器，可按 O/S 重试或使用上方地址。"); }
+                        else { eprintln!("Could not open Browser; the App is still running. / 无法打开浏览器，App 仍在运行。"); }
+                    }
+                }
             }
         }
+        terminal.take();
         app.desktop.revoke();
         app.shutdown().await;
     })
@@ -628,17 +691,18 @@ fn operation_failure(error: anyhow::Error) -> (StatusCode, Json<Value>) {
         Json(json!({"detail":"App settings could not be saved"})),
     )
 }
-async fn launcher(State(app): State<Arc<App>>) -> ApiResult {
+async fn launcher_view(app: &App) -> anyhow::Result<Value> {
     let mut state = {
         let registry = app.registry.lock().await;
-        launcher_state(&registry, app.port).map_err(operation_failure)?
+        launcher_state(&registry, app.port)?
     };
     state["windowNavigation"] = json!(app.config.window_navigation.is_some());
     state["websitePermissionReset"] = json!(app.config.website_permission_reset.is_some());
-    hosted::describe(&app, &mut state)
-        .await
-        .map_err(operation_failure)?;
-    Ok(Json(state))
+    hosted::describe(app, &mut state).await?;
+    Ok(state)
+}
+async fn launcher(State(app): State<Arc<App>>) -> ApiResult {
+    launcher_view(&app).await.map(Json).map_err(operation_failure)
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1232,6 +1296,14 @@ fn external_input_event(
     }
     event
 }
+fn external_format_event(mut event: Value, format: Option<piik_channel_native::peer::UnsupportedVideoFormat>) -> Value {
+    if event["error"] == "external_video_format_unsupported" {
+        if let Some(format) = format {
+            event["unsupportedVideoFormat"] = json!(format);
+        }
+    }
+    event
+}
 impl Drop for PendingCapture {
     fn drop(&mut self) {
         self.request.abort();
@@ -1457,7 +1529,11 @@ async fn connection(
                                 let retired = result.as_ref().err().is_some_and(|error| error.to_string() == "room_unavailable");
                                 capture.pending = None;
                                 if retired { external_page.remove(publication_id); }
-                                capture.external_event(publication_id, false, retired, Some(result.as_ref().err().map(|error| error.to_string()).as_deref().unwrap_or("external_input_failed")))
+                                let event = capture.external_event(publication_id, false, retired, Some(result.as_ref().err().map(|error| error.to_string()).as_deref().unwrap_or("external_input_failed")));
+                                match external_page.resources.get(&generation) {
+                                    Some(resource) => external_format_event(event, resource.control.unsupported_video_format()),
+                                    None => event,
+                                }
                             }
                         };
                         timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
@@ -1470,7 +1546,7 @@ async fn connection(
                         if external_page.permits.get(&publication_id).is_some_and(|p| p.id == resource.permit) {
                             let retired = ended.as_ref().err().is_some_and(|error| error == "room_unavailable");
                             if retired { external_page.remove(publication_id); }
-                            let event = capture.external_event(publication_id, false, retired, ended.as_ref().err().map(String::as_str));
+                            let event = external_format_event(capture.external_event(publication_id, false, retired, ended.as_ref().err().map(String::as_str)), resource.control.unsupported_video_format());
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                         }
                         continue;
@@ -2679,6 +2755,7 @@ mod lifecycle_tests {
                 data_root: dir.path().into(),
                 assets: dir.path().into(),
                 open_browser: false,
+                terminal_notice: None,
                 page_player: Some(dispatch),
                 website_permission_reset: None,
                 window_navigation: None,
@@ -2849,6 +2926,7 @@ mod lifecycle_tests {
                 data_root: directory.path().into(),
                 assets: directory.path().into(),
                 open_browser: false,
+                terminal_notice: None,
                 page_player: None,
                 website_permission_reset: None,
                 window_navigation: Some(Arc::new({
@@ -3096,6 +3174,7 @@ mod lifecycle_tests {
                 data_root: directory.path().into(),
                 assets: directory.path().into(),
                 open_browser: false,
+                terminal_notice: None,
                 page_player: None,
                 website_permission_reset: None,
                 window_navigation: None,
@@ -3273,6 +3352,7 @@ mod lifecycle_tests {
                     data_root: directory.path().into(),
                     assets: directory.path().into(),
                     open_browser: false,
+                    terminal_notice: None,
                     page_player: None,
                     website_permission_reset: None,
                     window_navigation: None,
@@ -3472,6 +3552,7 @@ mod lifecycle_tests {
                 data_root: directory.path().into(),
                 assets: directory.path().into(),
                 open_browser: false,
+                terminal_notice: None,
                 page_player: None,
                 website_permission_reset: None,
                 window_navigation: None,
@@ -3665,6 +3746,24 @@ mod tests {
         let closed = external_input_event(publication, Some(active), None, true, None);
         assert_eq!(closed["state"], "closed");
         assert!(closed.get("captureId").is_none());
+    }
+
+    #[test]
+    fn external_format_detail_describes_failed_candidate_without_changing_incumbent() {
+        let publication = Uuid::new_v4();
+        let active = (Uuid::new_v4(), Uuid::new_v4());
+        let format = Some(piik_channel_native::peer::UnsupportedVideoFormat {
+            codec: "h264", profile_idc: 110, constraint_flags: 0, level_idc: 52,
+        });
+        let event = external_format_event(external_input_event(publication, Some(active), None, false,
+            Some("external_video_format_unsupported")), format);
+        assert_eq!(event["state"], "live");
+        assert_eq!(event["captureId"], json!(active.0));
+        assert_eq!(event["unsupportedVideoFormat"], json!({"codec":"h264","profileIdc":110,"constraintFlags":0,"levelIdc":52}));
+        let unrelated = external_format_event(external_input_event(publication, None, None, false,
+            Some("private decoder detail")), format);
+        assert_eq!(unrelated["error"], "external_input_failed");
+        assert!(unrelated.get("unsupportedVideoFormat").is_none());
     }
 
     #[tokio::test]

@@ -1,5 +1,5 @@
 import { CHANNEL_PROTOCOL, MAX_RELAY_CAPACITY, watchByteSourceSchema, type WatchByteSource, type RoomSummary } from "./protocol";
-import { nativePageEventSchema, nativePageStateSchema, nativePageMediaChoiceSchema, nativePageIndexedCandidateSchema,
+import { unsupportedVideoFormatSchema, type UnsupportedVideoFormat, nativePageEventSchema, nativePageStateSchema, nativePageMediaChoiceSchema, nativePageIndexedCandidateSchema,
   nativePageMetadataReadSchema, nativePageMetadataResultSchema, nativePageIndexedSelectionSchema,
   nativePageResourceReadSchema, nativePageResourceResultSchema,
   type NativePageCandidate, type NativePageMediaChoice, type NativePageIndexedCandidate, type NativePageIndexedSelection } from "../native/wire";
@@ -16,7 +16,7 @@ import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 import { debugEvent } from "../lib/debug";
 
-export const APP_PROTOCOL = 15;
+export const APP_PROTOCOL = 16;
 const APP_REQUEST_BYTES = 256 * 1024;
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), domainProtocol: z.number().int().positive().optional(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(APP_PROTOCOL), domainProtocol: z.literal(CHANNEL_PROTOCOL), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
@@ -65,11 +65,11 @@ const preparedCaptureSchema = z.object({ captureId: z.uuid(), sessionId: z.uuid(
 export type PreparedNativeCapture = z.infer<typeof preparedCaptureSchema>;
 const externalInputSchema = z.object({ endpoint: z.string().url(), token: z.string().min(1).max(256) }).strict();
 const externalInputStateSchema = z.discriminatedUnion("state", [
-  z.object({ type: z.literal("external_input_state"), publicationId: z.uuid(), state: z.enum(["prepared", "live"]), ...preparedCaptureSchema.shape, error: z.string().optional() }).strict(),
-  z.object({ type: z.literal("external_input_state"), publicationId: z.uuid(), state: z.enum(["waiting", "closed", "error"]), error: z.string().optional() }).strict(),
+  z.object({ type: z.literal("external_input_state"), publicationId: z.uuid(), state: z.enum(["prepared", "live"]), ...preparedCaptureSchema.shape, error: z.string().optional(), unsupportedVideoFormat: unsupportedVideoFormatSchema.optional() }).strict(),
+  z.object({ type: z.literal("external_input_state"), publicationId: z.uuid(), state: z.enum(["waiting", "closed", "error"]), error: z.string().optional(), unsupportedVideoFormat: unsupportedVideoFormatSchema.optional() }).strict(),
 ]);
 export type NativeExternalInputState = z.infer<typeof externalInputStateSchema>;
-export type NativeExternalInput = z.infer<typeof externalInputSchema> & { state: NativeExternalInputState["state"]; captureId?: string; error?: string };
+export type NativeExternalInput = z.infer<typeof externalInputSchema> & { state: NativeExternalInputState["state"]; captureId?: string; error?: string; unsupportedVideoFormat?: UnsupportedVideoFormat };
 const previewSchema = z.string().max(23 + 4 * Math.ceil(64 * 1024 / 3))
   .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/).nullable();
 const captureAudioFailureSchema = z.object({ type: z.literal("capture_audio_failed"), publicationId: z.uuid() }).strict();
@@ -105,6 +105,7 @@ export class AppPage implements AppPagePort {
   async read(): Promise<WatchMediaState> { return nativePageStateSchema.parse(await this.command("page_read")); }
   async patch(patch: WatchMediaPatch): Promise<void> { await this.command("page_patch", { patch }); }
   async focus(): Promise<void> { await this.command("page_focus"); }
+  async hide(): Promise<void> { await this.command("page_hide"); }
   async mediaSources(): Promise<{ choices: NativePageMediaChoice[]; indexedCandidates: NativePageIndexedCandidate[]; byteSource: WatchByteSource | null }> {
     return z.object({ choices: z.array(nativePageMediaChoiceSchema).max(32), indexedCandidates: z.array(nativePageIndexedCandidateSchema).max(32),
       byteSource: watchByteSourceSchema.nullable() }).strict().parse(await this.command("page_media_sources"));
@@ -241,11 +242,12 @@ export class ChannelApp {
     }
   }
 
-  constructor(health: AppHealth, channelId: string, userId: string, credential: string, name: string,
+  constructor(verifiedHealth: unknown, channelId: string, userId: string, credential: string, name: string,
     onClose: () => void, onCaptureState: (publicationId: string, error?: "capture_audio_failed" | "capture_failed") => void,
     onInputState: (publicationId: string, state: ChannelRemoteControlState) => void = () => {},
     private readonly onAudioState: (publicationId: string) => void = () => {},
     onExternalInput: (event: NativeExternalInputState) => void = () => {}) {
+    const health = healthSchema.parse(verifiedHealth);
     this.pagePlayer = health.pagePlayer === true;
     this.roomHosting = new NativeRoomHosting(`http://127.0.0.1:${health.port}/rooms/${channelId}/${userId}`,
       { Authorization: `Bearer ${health.token}`, "X-Piik-Credential": credential });
@@ -321,7 +323,8 @@ export class ChannelApp {
           }
           else {
             this.externalInputs.set(event.publicationId, { ...input, state: event.state,
-              captureId: "captureId" in event ? event.captureId : undefined, error: "error" in event ? event.error : undefined });
+              captureId: "captureId" in event ? event.captureId : undefined, error: "error" in event ? event.error : undefined,
+              unsupportedVideoFormat: event.error === "external_video_format_unsupported" ? event.unsupportedVideoFormat : undefined });
             if (event.state === "live") this.captures.set(event.publicationId, { id: event.captureId, kind: "external" });
             else if (event.state === "prepared") this.prepared.set(event.publicationId, "external");
             else if (this.captures.get(event.publicationId)?.id === input.captureId) this.captures.delete(event.publicationId);

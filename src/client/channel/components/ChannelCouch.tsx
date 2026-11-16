@@ -11,6 +11,8 @@ import { useElementWidth } from "../../lib/use-element-width";
 import { useCopy } from "../../ui/copy";
 import { useSurfaceDocument } from "../../ui/panel-window";
 import { ChannelAction } from "./ChannelAction";
+import { ChannelUser } from "./ChannelUser";
+import { ChannelImageDialog } from "./ChannelImageDialog";
 import "./channel-couch.css";
 
 export interface ChannelCouchPerson {
@@ -43,6 +45,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
   const [offset, setOffset] = useState(0);
   const area = useRef<HTMLDivElement>(null);
   const [target, setTarget] = useState<{ userId: string; trigger: HTMLButtonElement } | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<{ person: ChannelCouchPerson; trigger: HTMLButtonElement } | null>(null);
   const pickerId = useId();
   const self = people.find(person => person.userId === selfUserId);
   const others = people.filter(person => person.userId !== selfUserId);
@@ -122,10 +125,17 @@ export function ChannelCouch({ people, selfUserId, session, className = "", floa
       area.current.closest(".lr-floating-panel") ?? surfaceDocument?.body ?? area.current.ownerDocument.body,
     )}
     {target && selected && state && session && <RoomQuickReactions key={selected.userId} id={pickerId} trigger={target.trigger} side="below"
+      identity={<ChannelUser id={selected.userId} name={selected.name} avatar={selected.avatar} self={selected.userId === selfUserId}
+        owner={!!selected.owner} online voice={selected.voice} collaboration={selected.collaboration}
+        onPreviewAvatar={() => setAvatarPreview({ person: selected, trigger: target.trigger })} />}
       person={{ peerId: selected.userId, displayName: selected.name }} selfPeerId={selfUserId}
       hostPeerId={people.find(person => person.owner)?.userId} reactionIds={state.reactionIds}
       canSend={state.ready && !state.pending && !state.coolingDown}
       onSend={(reaction, targetUserId) => session.send({ kind: "reaction", reaction, ...(targetUserId ? { targetPeerId: targetUserId } : {}) })}
       onClose={() => setTarget(null)} />}
+    {avatarPreview?.person.avatar && <ChannelImageDialog src={avatarPreview.person.avatar}
+      name={t("channel.user.avatar", { name: avatarPreview.person.name })} onClose={() => {
+        avatarPreview.trigger.focus({ preventScroll: true }); setAvatarPreview(null);
+      }} />}
   </section>;
 }

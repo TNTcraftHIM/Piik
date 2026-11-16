@@ -7,6 +7,6 @@
 .c3-name-popover .lr-input input { width: 100%; }
 .c3-profile-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .c3-name-popover .c3-settings-error { margin: 0; color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
-.c3-profile-picture { display: flex; align-items: center; gap: 16px; }
+.c3-profile-picture { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
 .c3-profile-picture > .lr-person { flex: none; width: 54px; height: 63px; }
-.c3-profile-picture > div { display: flex; align-items: center; gap: 6px; }
+.c3-profile-picture > .c3-identity-upload { flex: 1; min-width: 0; margin: 0; }

@@ -46,22 +46,11 @@ impl Console {
                 revision
             };
         eprintln!(
-            r#"
-     \ /
- .----v----.   Piik App
- | o     - |   {version}
- '---------'   {revision}
-   /     \
-
- ------------------------------------
- {}"#,
+            "Piik App {version} [{revision}]\n{}",
             self.paint(32, &self.text("App is ready", "App 已就绪"))
         );
         self.launcher(port);
-        eprintln!(
-            "\n {}\n",
-            self.text("Ctrl+C to quit", "按 Ctrl+C 正常退出")
-        );
+        eprintln!("\n {}\n", self.text("Ctrl+C to quit", "按 Ctrl+C 正常退出"));
     }
 
     fn launcher(&self, port: u16) {
@@ -74,10 +63,7 @@ impl Console {
 
     pub fn starting(&self, public: bool) {
         let label = if public {
-            self.text(
-                "Starting public invitation...",
-                "正在连接公网邀请…",
-            )
+            self.text("Starting public invitation...", "正在连接公网邀请…")
         } else {
             self.text("Starting local network...", "正在启动局域网…")
         };

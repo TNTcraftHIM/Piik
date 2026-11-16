@@ -30,7 +30,7 @@ export function LauncherWorkspace({ bookmarks, bookmarksError, onRetryBookmarks,
         <Btn icon="star" quiet size="compact" title="client.launcher.manageSites" cap="client.launcher.manageSites" onClick={onManageBookmarks} />
       </div>
       <nav className="lr-launcher-sites" aria-label={t("client.bookmarks.title")}>
-        {bookmarksError ? <div className="lr-launcher-empty"><p role="alert">{t("client.bookmarks.loadFailed")}</p><Btn icon="refresh" quiet cap="common.refresh" title="common.refresh" onClick={onRetryBookmarks} /></div>
+        {bookmarksError ? <div className="lr-launcher-empty"><p role="alert">{t("client.bookmarks.loadFailed")}</p><Btn icon="refresh" quiet cap="common.retry" title="common.retry" onClick={onRetryBookmarks} /></div>
           : !bookmarks ? <p className="lr-launcher-empty" role="status">{t("common.loading")}</p>
           : bookmarks.length ? bookmarks.map(site => <button key={site.id} className="lr-launcher-site" onClick={() => onOpenBookmark(site)}>
             <span className="lr-launcher-site-symbol"><Glyph name="globe" size={22} /></span>

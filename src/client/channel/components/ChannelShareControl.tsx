@@ -235,7 +235,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
         initialTab="window" selectionDisabled={disabled || busy || qualityPending || microphonePending}
         initialAudio={selectedNative?.audio} initialExcludeAudio={selectedNative?.excludeAudio} initialShowCaptureBorder={selectedNative?.showCaptureBorder}
         onBrowser={() => start(() => startScreen(roomId))}
-        onWatch={() => { close(); onWatch(); }}
+        onWatch={() => { close(); trigger.current?.querySelector("button")?.focus({ preventScroll: true }); onWatch(); }}
         onCamera={deviceId => start(() => startScreen(roomId, "camera", deviceId))}
         onExternalInput={(sources.kind === "ready" || sources.kind === "loading") && sources.externalInput ? () => {
           close();
@@ -309,7 +309,11 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
   const youtube = canUseYouTubePlayer() && !!youtubeVideoId(url.trim());
   const pageSources = !activityId ? page?.watchSources : undefined;
   const pageSourcesHeading = useRef<HTMLHeadingElement>(null);
-  useLayoutEffect(() => { if (pageSources) pageSourcesHeading.current?.focus(); }, [!!pageSources]);
+  const pageInstruction = useRef<HTMLParagraphElement>(null);
+  useLayoutEffect(() => {
+    if (pageSources) pageSourcesHeading.current?.focus();
+    else if (page) pageInstruction.current?.focus();
+  }, [!!page, !!pageSources]);
   const committing = !activityId && channel.sourceSelectionCommitting(roomId);
   const busy = committing || channel.pending.has(activityId ? `watch-video:${activityId}` : `screen:${roomId}`);
   useEffect(() => {
@@ -328,7 +332,7 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
         await channel.cancelScreenSelection(roomId); await channel.prepareWatchPage(roomId, url.trim(), undefined, false);
       }); } : undefined} /> : page ? <div className="c3-settings-panels c3-external-input">
       {pageSources ? <><h3 ref={pageSourcesHeading} tabIndex={-1}>{t(pageSources.indexed.length ? "watch.forward.title" : "watch.browserSource.title")}</h3>{pageSources.choices.length > 0 && <p>{t("watch.browserSource.help")}</p>}</>
-        : <p>{t("watch.chooseVideo")}</p>}
+        : <p ref={pageInstruction} tabIndex={-1}>{t("watch.chooseVideo")}</p>}
       <Btn icon="window" quiet size="compact" title="watch.openedPage" cap="watch.openedPage" onClick={() => { void run(() => channel.focusWatchPage(roomId, activityId)); }} />
       {pageSources ? <>
         {busy && !error && pageSources.choices.length === 0 && pageSources.indexed.length === 0 && <div className="lr-source-picker-status" role="status">

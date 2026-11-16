@@ -61,6 +61,7 @@ export function clientLaunchURL(target: string, presentation: ClientLaunchPresen
   const url = new URL(target);
   const params = new URLSearchParams(url.hash.slice(1));
   if (controlPort !== undefined) url.searchParams.set("piik-client-port", String(controlPort));
+  params.set("piik-client", "1");
   params.set("piik-lang", presentation.lang);
   params.set("piik-theme", presentation.theme ?? "system");
   url.searchParams.delete("piik-preferences");

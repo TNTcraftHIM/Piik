@@ -12,7 +12,7 @@ interface FakeVideo extends EventTarget {
   cancelVideoFrameCallback?: (handle: number) => void;
 }
 
-function fakeVideo(stream: MediaStream): FakeVideo {
+function fakeVideo(stream: MediaStream | null): FakeVideo {
   const video = new EventTarget() as FakeVideo;
   video.srcObject = stream;
   video.readyState = 0;
@@ -25,6 +25,24 @@ function fakeVideo(stream: MediaStream): FakeVideo {
 }
 
 describe("composited video frame proof", () => {
+  it("accepts a preloaded paused URL picture in the decoded-counter fallback", () => {
+    const video = fakeVideo(null); video.readyState = 2; video.decodedFrames = 1;
+    const frame = vi.fn(), cancel = observeCompositedVideoFrame(video as unknown as HTMLVideoElement, null, frame);
+    expect(frame).toHaveBeenCalledOnce(); cancel();
+  });
+  it("observes a URL player's first composed frame and cancellation retires the observation", () => {
+    const video = fakeVideo(null);
+    let frame!: () => void;
+    video.requestVideoFrameCallback = callback => { frame = callback; return 9; };
+    video.cancelVideoFrameCallback = vi.fn();
+    const shown = vi.fn(), stop = observeCompositedVideoFrame(video as unknown as HTMLVideoElement, null, shown);
+    video.readyState = 2; video.dispatchEvent(new Event("loadeddata"));
+    expect(shown).not.toHaveBeenCalled();
+    frame(); expect(shown).toHaveBeenCalledOnce(); stop();
+    const pending = observeCompositedVideoFrame(video as unknown as HTMLVideoElement, null, shown);
+    pending(); frame();
+    expect(shown).toHaveBeenCalledOnce(); expect(video.cancelVideoFrameCallback).toHaveBeenCalledWith(9);
+  });
   it("binds requestVideoFrameCallback proof to the expected srcObject", () => {
     const stream = {} as MediaStream;
     const replacement = {} as MediaStream;

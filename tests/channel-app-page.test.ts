@@ -250,3 +250,20 @@ test("indexed preparation measures the whole App request before sending and disc
     expect(socket.sent.some(value => value.type === "page_close")).toBe(false);
   } finally { app.close(); }
 });
+
+
+test("hiding and refocusing a source page preserves its requests and lifetime", async () => {
+  const { app, socket } = await setup();
+  try {
+    const page = await openPage(app, socket);
+    const hide = page.hide();
+    expect(socket.sent.at(-1)).toMatchObject({ type: "page_hide", pageId: page.id });
+    socket.reply(null); await hide;
+    expect(socket.sent.some(command => command.type === "page_close")).toBe(false);
+    const reading = page.read(); socket.reply(state); expect(await reading).toEqual(state);
+    const focus = page.focus();
+    expect(socket.sent.at(-1)).toMatchObject({ type: "page_focus", pageId: page.id });
+    socket.reply(null); await focus;
+    page.close(); expect(socket.sent.at(-1)).toMatchObject({ type: "page_close", pageId: page.id });
+  } finally { app.close(); }
+});

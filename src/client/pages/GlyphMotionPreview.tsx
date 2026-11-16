@@ -14,6 +14,15 @@ const examples: { icon: GlyphName; zh: string; en: string }[] = [
   { icon: "microphoneOff", zh: "麦克风关闭：麦克风之后画关闭斜线", en: "Muted: microphone, then the slash" },
   { icon: "headphones", zh: "耳机：头梁，然后两侧耳罩", en: "Headphones: band, then both ear cups" },
   { icon: "headphonesOff", zh: "停止收听：耳机之后画关闭斜线", en: "Deafened: headphones, then the slash" },
+  { icon: "speaker", zh: "声音：先扬声器，再声波", en: "Sound: speaker, then waves" },
+  { icon: "speakerOff", zh: "静音：先扬声器，再关闭标记", en: "Muted: speaker, then off mark" },
+  { icon: "refresh", zh: "重连：先旋转线，再两个箭头", en: "Refresh: arcs, then arrowheads" },
+  { icon: "reply", zh: "回复：保留一笔完成", en: "Reply: one continuous stroke" },
+  { icon: "screenFocus", zh: "聚焦：主画面后两张缩略图", en: "Focus: main picture, then thumbnails" },
+  { icon: "screenGrid", zh: "平铺：四个同级画面同时显示", en: "Grid: equal pictures draw together" },
+  { icon: "link", zh: "链接：两段同级链环同时显示", en: "Link: equal links draw together" },
+  { icon: "share", zh: "分享：屏幕与底座后显示箭头", en: "Share: screen and stand, then arrow" },
+  { icon: "sidebar", zh: "侧栏：框架后显示分栏", en: "Sidebar: frame, then navigation details" },
   { icon: "key", zh: "钥匙：钥匙环、杆、齿", en: "Key: ring, shaft, then teeth" },
   { icon: "arrowRight", zh: "前进：先线杆，再指向", en: "Forward: shaft, then arrowhead" },
   { icon: "x", zh: "关闭：先左上向右下，再交叉一笔", en: "Close: first diagonal, then crossing stroke" },
@@ -58,7 +67,7 @@ export function GlyphMotionPreview() {
       <dl className="gm-tokens" aria-label={zh ? "当前共享时长" : "Current shared durations"}>{motionTokens.map((token, index) =>
         <div key={token}><dt>{token}</dt><dd>{durations[index] || "—"}</dd></div>)}</dl>
       <section className="gm-runtime"><h2>{zh ? "实际控件" : "Actual controls"}</h2>
-        <Btn icon="headphones" draw="motion-preview" tone="primary" disabled={disabled} pressed={selected}
+        <Btn icon={selected ? "speakerOff" : "speaker"} draw="motion-preview" tone="primary" disabled={disabled} pressed={selected}
           title={{ text: zh ? "切换主动作反馈" : "Toggle primary feedback" }}
           cap={{ text: zh ? "主动作反馈" : "Primary feedback" }} onClick={() => setSelected(value => !value)} />
         <ChannelAction icon="key" quiet label={zh ? "普通动作：图标不重画" : "Ordinary: icon stays visible"} />

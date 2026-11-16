@@ -1,4 +1,5 @@
 import type { CopyKey } from "../locales";
+import type { UnsupportedVideoFormat } from "../native/wire";
 
 export interface ChannelErrorPresentation {
   message: string | null;
@@ -6,10 +7,13 @@ export interface ChannelErrorPresentation {
 }
 
 /** Copy and recovery guidance describe the same current failure, without owning recovery. */
-export function channelErrorPresentation(error: string | null, t: (key: CopyKey) => string,
-  fallback: CopyKey = "channel.error.actionFailed"): ChannelErrorPresentation {
+export function channelErrorPresentation(error: string | null, t: (key: CopyKey, vars?: Record<string, string>) => string,
+  fallback: CopyKey = "channel.error.actionFailed", unsupportedVideoFormat?: UnsupportedVideoFormat): ChannelErrorPresentation {
   const display = (key: CopyKey, connectionHelp = false): ChannelErrorPresentation => ({ message: t(key), connectionHelp });
   if (!error) return { message: null, connectionHelp: true };
+  if (error === "attachment_unavailable" || error === "file_unavailable" || error === "file_source_unavailable")
+    return display("channel.attachment.sourceUnavailable");
+  if (error === "file_offer_failed") return display("channel.attachment.fileOfferFailed");
   if (error === "preview_only")
     return display("channel.error.previewOnly");
   if (error === "webassembly_unavailable")
@@ -42,8 +46,18 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey)
     return display("channel.error.appDisconnected");
   if (error === "external_input_unavailable")
     return display("channel.error.externalInputUnavailable");
-  if (error === "external_video_format_unsupported")
-    return display("channel.error.externalVideoFormatUnsupported");
+  if (error === "external_video_format_unsupported") {
+    const recovery = t("channel.error.externalVideoFormatUnsupported");
+    if (!unsupportedVideoFormat) return { message: recovery, connectionHelp: false };
+    const { profileIdc, constraintFlags, levelIdc } = unsupportedVideoFormat;
+    const profiles: Record<number, string> = { 66: "Baseline", 77: "Main", 88: "Extended", 100: "High", 110: "High 10", 122: "High 4:2:2", 244: "High 4:4:4" };
+    const profile = profiles[profileIdc] ?? `profile_idc=${profileIdc}`;
+    const level = levelIdc === 11 && [66, 77, 88].includes(profileIdc) && (constraintFlags & 0x10) !== 0 ? "1b"
+      : [10, 11, 12, 13, 20, 21, 22, 30, 31, 32, 40, 41, 42, 50, 51, 52, 60, 61, 62].includes(levelIdc)
+        ? `${Math.floor(levelIdc / 10)}.${levelIdc % 10}` : `level_idc=${levelIdc}`;
+    const sps = [profileIdc, constraintFlags, levelIdc].map(value => value.toString(16).padStart(2, "0")).join("");
+    return { message: `${t("channel.error.externalVideoFormatReceived", { profile, level, sps })} ${recovery}`, connectionHelp: false };
+  }
   if (error === "external_input_failed")
     return display("channel.error.externalInputFailed");
   if (error === "watch_media_decode_failed")
@@ -58,10 +72,14 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey)
   if (error === "watch_indexed_unsupported" || error === "invalid_watch_index"
     || /^watch_(?:live_hls_unsupported|media_(?:encryption_unsupported|encoding_unsupported|range_unsupported|size_unavailable)|manifest_extension_unsupported|manifest_limit|resource_limit|mp4_parse_failed)$/.test(error))
     return display("watch.forward.unsupported");
+  if (error === "watch_page_closed" || error === "page_player_closed")
+    return display("watch.forward.sourceUnavailable");
   if (/^(?:watch_(?:invalid_manifest|page_unavailable|media_(?:unavailable|timeout|credentials_unavailable|changed|truncated)|resource_unavailable|source_(?:unavailable|failed|changed|retired))|invalid_watch_range_response)$/.test(error))
     return display("watch.forward.sourceUnavailable");
   if (error === "watch_source_busy" || error === "watch_read_busy")
     return display("watch.forward.busy");
+  if (error === "watch_read_timeout")
+    return display("watch.forward.readTimeout");
   if (error === "watch_source_already_active")
     return display("watch.forward.active");
   if (error === "watch_peer_requires_secure_context" || error === "watch_peer_unavailable")

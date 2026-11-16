@@ -353,13 +353,15 @@ describe("App connection approval", () => {
 
   it("uses fresh authorized health instead of offering approval again", async () => {
     const page = mount();
-    page.native.discoverNativeHealth.mockResolvedValue({});
+    const health = { port: 39721, token: "approved" };
+    page.native.discoverNativeHealth.mockResolvedValue(health);
     await page.connect();
     expect(page.setState).toHaveBeenLastCalledWith("ready");
     expect(page.setState).not.toHaveBeenCalledWith("approval");
     expect(page.window.open).not.toHaveBeenCalled();
     expect(page.activateClient).toHaveBeenCalledOnce();
     expect(page.onConnected).toHaveBeenCalledOnce();
+    expect(page.onConnected).toHaveBeenCalledWith(health);
     expect(page.pending.current).toBeNull();
     page.cleanup();
   });
@@ -496,10 +498,12 @@ describe("App connection approval", () => {
     page.message();
     expect(page.native.discoverNativeHealth).toHaveBeenCalledOnce();
     expect(page.activateClient).not.toHaveBeenCalled();
-    complete({});
+    const health = { port: 39721, token: "approved-after-popup" };
+    complete(health);
     await settle();
     expect(page.activateClient).toHaveBeenCalledOnce();
     expect(page.onConnected).toHaveBeenCalledOnce();
+    expect(page.onConnected).toHaveBeenCalledWith(health);
     expect(page.setState).toHaveBeenLastCalledWith("ready");
     expect(page.popup.closed).toBe(true);
     expect(page.pending.current).toBeNull();

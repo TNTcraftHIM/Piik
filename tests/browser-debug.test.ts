@@ -285,6 +285,8 @@ describe("opt-in Browser diagnostics", () => {
     rtc.debugRtcStats(peer, new Map([
       ["video", { id: "video", type: "outbound-rtp", framesEncoded: 60, totalEncodeTime: 0.3 }],
       ["codec", { id: "codec", type: "codec", mimeType: "video/H264", sdpFmtpLine: "packetization-mode=1;profile-level-id=42e01f" }],
+      ["audio-codec", { id: "audio-codec", type: "codec", mimeType: "audio/opus", clockRate: 48000, channels: 2, sdpFmtpLine: "stereo=1;sprop-stereo=1" }],
+      ["voice", { id: "voice", type: "inbound-rtp", kind: "audio", codecId: "audio-codec", trackIdentifier: "received-voice", packetsReceived: 20 }],
       ["private", { id: "private", type: "certificate", base64Certificate: "private-certificate" }],
     ]) as unknown as RTCStatsReport);
     await vi.advanceTimersByTimeAsync(5_000);
@@ -295,6 +297,9 @@ describe("opt-in Browser diagnostics", () => {
     expect(history).toContainEqual(expect.objectContaining({ event: "dtls-state", details: expect.objectContaining({ state: "connected" }) }));
     const report = await debug.exportBrowserDebug();
     expect(report).toContain("framesEncoded");
+    expect(report).toContain("stereo=1;sprop-stereo=1");
+    expect(report).toContain("audio-codec");
+    expect(report).toContain("received-voice");
     expect(report).toContain("packetization-mode=1;profile-level-id=42e01f");
     expect(report).not.toContain("private-certificate");
   });
@@ -328,4 +333,76 @@ describe("opt-in Browser diagnostics", () => {
     }]);
     expect(JSON.stringify(sample.details.ice)).not.toContain("192.0.2.");
   });
+});
+
+
+type AudioDiagnosticEvent = { event: string; details: {
+  role?: string; trackId?: string; outputTrackId?: string; gain?: number;
+  settings?: { channelCount?: number }; route?: string;
+} };
+
+it.each([false, true])("microphone diagnostics distinguish raw input from the output graph and follow replacement (%s)", async enabled => {
+  browser(enabled ? "?debug=1" : "");
+  const debug = await import("../src/client/lib/debug");
+  const { MicrophoneInput } = await import("../src/client/media/microphone-input");
+  const track = (id: string, channelCount: number) => ({ id, kind: "audio", readyState: "live", enabled: true,
+    muted: false, contentHint: "", onended: null, stop: vi.fn(),
+    getSettings: vi.fn(() => ({ channelCount, sampleRate: 48000 })),
+    getConstraints: () => ({ channelCount: { ideal: 2 }, echoCancellation: false }) });
+  const input = track("raw-mono", 1), next = track("raw-stereo", 2), output = track("graph-output", 2);
+  const stream = (current: ReturnType<typeof track>) => ({ getAudioTracks: () => [current], getTracks: () => [current] });
+  const node = () => ({ channelCount: 2, channelCountMode: "max", connect: vi.fn(), disconnect: vi.fn() });
+  const gain = { ...node(), gain: { value: .5, setTargetAtTime: vi.fn() } };
+  const destination = { ...node(), stream: stream(output) };
+  const context = { state: "running", sampleRate: 48000, createGain: () => gain,
+    createAnalyser: () => ({ ...node(), fftSize: 256 }), createMediaStreamSource: vi.fn(node),
+    createMediaStreamDestination: () => destination, close: vi.fn(async () => {}) };
+  const microphone = new MicrophoneInput(stream(input) as unknown as MediaStream, context as unknown as AudioContext, .5, vi.fn());
+  const first = JSON.parse(await debug.exportBrowserDebug()) as { events: AudioDiagnosticEvent[] };
+  const raw = first.events.find(event => event.details.role === "microphone-input");
+  expect(raw?.details.settings?.channelCount).toBe(enabled ? 1 : undefined);
+  if (enabled) {
+    expect(raw?.details.outputTrackId).toBe("graph-output");
+    expect(first.events.find(event => event.event === "microphone-graph")?.details.gain).toBe(.5);
+  }
+  microphone.replace(stream(next) as unknown as MediaStream);
+  const second = JSON.parse(await debug.exportBrowserDebug()) as { events: AudioDiagnosticEvent[] };
+  const latest = second.events.filter(event => event.details.role === "microphone-input").at(-1);
+  expect(latest?.details.trackId).toBe(enabled ? "raw-stereo" : undefined);
+  expect(latest?.details.settings?.channelCount).toBe(enabled ? 2 : undefined);
+  microphone.close();
+  expect(JSON.parse(await debug.exportBrowserDebug()).events).toHaveLength(second.events.length);
+  expect(input.getSettings).toHaveBeenCalledTimes(enabled ? 1 : 0);
+  expect(next.getSettings).toHaveBeenCalledTimes(enabled ? 1 : 0);
+  expect(input.stop).toHaveBeenCalledOnce();
+  expect(next.stop).toHaveBeenCalledOnce();
+});
+
+it("playback diagnostics distinguish native-element and gain-graph playback without changing channel policy", async () => {
+  browser();
+  const debug = await import("../src/client/lib/debug");
+  const { ViewerAudio } = await import("../src/client/media/viewer-audio");
+  class Stream {
+    constructor(public tracks: unknown[]) {}
+    getAudioTracks() { return this.tracks; }
+  }
+  vi.stubGlobal("MediaStream", Stream);
+  const track = { id: "received-stereo", kind: "audio", readyState: "live", enabled: true, muted: false,
+    contentHint: "", getSettings: () => ({ channelCount: 2 }), getConstraints: () => ({}) };
+  const video = Object.assign(new EventTarget(), { volume: 1, muted: false, paused: false, ended: false });
+  const node = { channelCount: 2, channelCountMode: "max", connect: vi.fn(), disconnect: vi.fn() };
+  const context = Object.assign(new EventTarget(), { state: "running", sampleRate: 48000, destination: { channelCount: 2 },
+    createGain: () => ({ ...node, gain: { value: 1 } }), createMediaStreamSource: () => ({ ...node }), close: vi.fn(async () => {}) });
+  vi.stubGlobal("AudioContext", function () { return context; });
+  const audio = new ViewerAudio(video as unknown as HTMLMediaElement, vi.fn());
+  audio.bind(new Stream([track]) as unknown as MediaStream);
+  let events = JSON.parse(await debug.exportBrowserDebug()).events as AudioDiagnosticEvent[];
+  expect(events.find(event => event.event === "playback-graph")?.details.route).toBe("native-element");
+  audio.setLevel(.5);
+  events = JSON.parse(await debug.exportBrowserDebug()).events as AudioDiagnosticEvent[];
+  const graph = events.filter(event => event.event === "playback-graph").at(-1);
+  expect(graph?.details).toMatchObject({ trackId: "received-stereo", route: "web-audio", gain: .5,
+    requestedLevel: .5, sourceNodeChannels: 2, destinationNodeChannels: 2 });
+  audio.dispose();
+  expect(JSON.parse(await debug.exportBrowserDebug()).events).toHaveLength(events.length);
 });

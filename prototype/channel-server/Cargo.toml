@@ -24,6 +24,7 @@ piik-channel-core = { path = "../channel-core", features = ["sqlite"] }
 piik-channel-native = { path = "../channel-native", default-features = false }
 rtc-stun = "=0.21.1"
 anyhow = "1"
+crossterm = { version = "=0.29.0", default-features = false, features = ["events", "windows"] }
 base64ct = { version = "=1.8.3", features = ["alloc"] }
 futures-util = "0.3"
 log = "0.4"

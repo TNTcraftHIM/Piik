@@ -17,7 +17,7 @@ export function connectionSessionName(state: ChannelSnapshot, sessionId: string,
 }
 
 export function channelConnectionGraph(state: ChannelSnapshot, roomId: string, sessionId: string,
-  topology: ChannelTopology, t: Translate): { nodes: RouteGraphNode[]; rootId: string; edges: RouteGraphEdge[] } {
+  topology: ChannelTopology, t: Translate) {
   const screen = topology.screen;
   const rootId = screen?.sourceSessionId ?? topology.base.rootSessionId;
   const edges: RouteGraphEdge[] = screen ? screen.edges.map(edge => ({
@@ -27,14 +27,23 @@ export function channelConnectionGraph(state: ChannelSnapshot, roomId: string, s
   const apps = new Set(screen?.edges.filter(edge => edge.presentation).map(edge => edge.sender));
   const display = new Set(screen?.edges.filter(edge => edge.presentation).map(edge => edge.receiver));
   const room = state.channel.rooms.find(room => room.id === roomId);
-  const nodes = [...new Set([rootId, ...edges.flatMap(edge => [edge.from, edge.to])])].map((id): RouteGraphNode => {
+  const ids = [...new Set([rootId, ...edges.flatMap(edge => [edge.from, edge.to])])];
+  const identity = (id: string) => state.sessions.find(session => session.id === id)?.userId ?? id;
+  const groups = [...new Set(ids.map(identity))].map(userId => ({ userId,
+    name: state.users.find(user => user.id === userId)?.name ?? t("voice.participant"),
+    ids: ids.filter(id => identity(id) === userId).sort(),
+  }));
+  const endpoint = (id: string) => apps.has(id) ? "App" : display.has(id) || id === sessionId ? t("connection.webpage")
+    : t("connection.endpoint", { number: String(groups.find(group => group.userId === identity(id))!.ids.indexOf(id) + 1) });
+  const nodes = ids.map((id): RouteGraphNode => {
     const userId = state.sessions.find(session => session.id === id)?.userId;
     const name = connectionSessionName(state, id, t);
-    const qualifier = apps.has(id) ? "App" : display.has(id) ? "Web" : null;
-    return { id, identity: userId ?? id, you: id === sessionId, host: id === rootId && userId === room?.creatorId,
+    const qualifier = apps.has(id) || display.has(id) || groups.some(group => group.userId === identity(id) && group.ids.length > 1) ? endpoint(id) : null;
+    return { id, identity: userId ?? id, you: id === sessionId, host: id === room?.delivery?.hostSessionId && userId === room?.creatorId,
       label: qualifier ? `${name} (${qualifier})` : name };
   });
-  return { nodes, rootId, edges };
+  return { nodes, rootId, edges, endpointGroups: groups.filter(group => group.ids.length > 1)
+    .map(group => ({ ...group, endpoints: group.ids.map(endpoint) })) };
 }
 
 export function channelConnectionRows(state: ChannelSnapshot, sessionId: string,

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ReactionId } from "../../../shared/room-interactions";
 import { useCopy } from "../../ui/copy";
 import { BackButton, Btn } from "./primitives";
@@ -9,11 +9,12 @@ const QUICK_REACTIONS: readonly ReactionId[] = ["thumbsup", "thumbsdown", "tomat
 const SELF_QUICK_REACTIONS: readonly ReactionId[] = ["thumbsup", "thumbsdown", "laugh", "heart"];
 
 /** Brief person actions leave the conversation and composer available. */
-export function RoomQuickReactions({ id, trigger, person, selfPeerId, hostPeerId, reactionIds, canSend, onSend, onClose, side = "above" }: {
+export function RoomQuickReactions({ id, trigger, person, identity, selfPeerId, hostPeerId, reactionIds, canSend, onSend, onClose, side = "above" }: {
   id: string; trigger: HTMLElement; person: InteractionParticipant; selfPeerId: string | null; hostPeerId?: string;
   reactionIds: readonly ReactionId[]; canSend: boolean;
   onSend: (reaction: ReactionId, targetPeerId?: string) => void; onClose: () => void;
   side?: "above" | "below";
+  identity?: ReactNode;
 }) {
   const { t } = useCopy();
   const [expanded, setExpanded] = useState(false);
@@ -37,7 +38,7 @@ export function RoomQuickReactions({ id, trigger, person, selfPeerId, hostPeerId
       {expanded ? <BackButton onClick={() => setExpanded(false)} />
         : <Btn icon="smile" title="interaction.moreReactions" size="dense" quiet hint="hint-reaction-picker"
           onClick={() => setExpanded(true)} />}
-      <RoomReactionTarget person={person} selfPeerId={selfPeerId} hostPeerId={hostPeerId} />
+      {identity ?? <RoomReactionTarget person={person} selfPeerId={selfPeerId} hostPeerId={hostPeerId} />}
     </div>
     <RoomReactionGrid reactionIds={personReactionIds(choices, person, selfPeerId)} canSend={canSend}
       onSend={reaction => onSend(reaction, person.peerId === selfPeerId ? undefined : person.peerId)} compact={!expanded} />

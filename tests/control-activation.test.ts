@@ -24,6 +24,15 @@ const controls = {
 };
 
 describe("Hinted control activation", () => {
+  it("keeps a dialog invoker focused so native modal dismissal can return to it", () => {
+    const activate = vi.fn(), blur = vi.fn();
+    const control = button(Btn({ icon: "sliders", title: "host.settings.button", textTooltip: true,
+      hasPopup: "dialog", onClick: activate }))!;
+    control.onClick!({ detail: 1, currentTarget: { blur } } as unknown as MouseEvent<HTMLButtonElement>);
+    expect(activate).toHaveBeenCalledOnce();
+    expect(blur).not.toHaveBeenCalled();
+  });
+
   it.each(Object.entries(controls))("%s applies the chosen action before focus-leave commits a draft", (_name, render) => {
     const changes: string[] = [];
     let pendingDraft = true;

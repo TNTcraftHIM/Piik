@@ -1,32 +1,28 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
   createWriteStream,
   existsSync,
   mkdirSync,
-  readFileSync,
-  readdirSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { createServer } from "node:net";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-import { appPackageTarget, appPackageDirectory, CLOUDFLARED_VERSION, MACOS_MIN_VERSION } from "./app-package-targets.mjs";
+import { appPackageTarget, CLOUDFLARED_VERSION } from "./app-package-targets.mjs";
 import { createZip, extractZip, tarExecutable } from "./archive-tool.mjs";
-import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
+import { assertBuildInputRetained, assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
 import { buildVersion } from "./release-version.mjs";
-import { spawnProcess, requestShutdown } from "./process-shutdown.mjs";
-import { checkWebSourceIdentity } from "./container-web-identity.mjs";
+import { checkAppPackageStatic, checkAppPackageRuntime } from "./check-app-package.mjs";
+import { sha256 } from "./package-files.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -48,10 +44,6 @@ function run(command, args, cwd, timeout) {
   return result.stdout.trim();
 }
 
-function sha256(path) {
-  return createHash("sha256").update(readFileSync(path)).digest("hex");
-}
-
 function assertOutsideRepository(repositoryRoot, outputRoot) {
   const path = relative(repositoryRoot, outputRoot);
   if (path === "" || (path.split(/[\\/]/)[0] !== ".." && !isAbsolute(path))) {
@@ -70,335 +62,13 @@ async function download(url, path) {
   await pipeline(Readable.fromWeb(response.body), createWriteStream(path));
 }
 
-function delay(ms) {
-  return new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
-}
-
-async function reservePort() {
-  const server = createServer();
-  return await new Promise((resolvePort, rejectPort) => {
-    server.once("error", rejectPort);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        rejectPort(new Error("App smoke port reservation failed"));
-        return;
-      }
-      server.close((error) =>
-        error ? rejectPort(error) : resolvePort(address.port),
-      );
-    });
-  });
-}
-
-async function waitForExit(child, timeoutMs) {
-  if (child.exitCode !== null || child.signalCode !== null) return child.exitCode;
-  return await new Promise((resolveExit, rejectExit) => {
-    const timer = setTimeout(() => {
-      child.off("exit", onExit);
-      rejectExit(new Error("Packaged App did not stop"));
-    }, timeoutMs);
-    const onExit = (code) => {
-      clearTimeout(timer);
-      resolveExit(code);
-    };
-    child.once("exit", onExit);
-  });
-}
-
-async function stopSmokeChild(child) {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  try {
-    await requestShutdown(child);
-    await waitForExit(child, 5_000);
-    return;
-  } catch {}
-  if (process.platform === "win32" && child.pid !== undefined) {
-    spawnSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
-      stdio: "ignore",
-      windowsHide: true,
-    });
-  } else {
-    child.kill("SIGTERM");
-  }
-  try {
-    await waitForExit(child, 3_000);
-    return;
-  } catch {}
-  child.kill("SIGKILL");
-  await waitForExit(child, 5_000).catch(() => undefined);
-}
-
-async function verifyLocalPackage(root, target, version, revision, temporaryRoot) {
-  const app = join(root, target.appName);
-  const port = await reservePort();
-  const origin = `http://127.0.0.1:${port}`;
-  const discoveryURL = `${origin}/connect-discovery`;
-  const child = await spawnProcess(app, [], {
-    cwd: temporaryRoot,
-    env: { ...process.env,
-      PIIK_CHANNEL_APP_DATA_DIR: join(temporaryRoot, "smoke-app-data"),
-      PIIK_CHANNEL_APP_PORT: String(port),
-      PIIK_CHANNEL_APP_NO_BROWSER: "1",
-      PIIK_CHANNEL_APP_WEB_DIR: undefined,
-      PIIK_CHANNEL_CLOUDFLARED: undefined,
-      PIIK_CHANNEL_ICE_SERVERS: "[]",
-    },
-    logDirectory: temporaryRoot,
-  });
-  let spawnFailure = null;
-  let stderr = "";
-  child.once("error", (error) => {
-    spawnFailure = error;
-  });
-  child.stdout.resume();
-  child.stderr.on("data", (chunk) => {
-    stderr = `${stderr}${chunk.toString()}`.slice(-4_096);
-  });
-  try {
-    const deadline = Date.now() + 15_000;
-    let appReady = false;
-    while (Date.now() < deadline) {
-      if (spawnFailure) break;
-      if (child.exitCode !== null || child.signalCode !== null) break;
-      try {
-        const response = await fetch(discoveryURL, {
-          signal: AbortSignal.timeout(500),
-        });
-        const discovery = response.ok ? await response.json() : null;
-        if (!response.ok) await response.body?.cancel();
-        appReady = discovery?.port === port && discovery?.connectURL === `${origin}/client`;
-      } catch {}
-      if (appReady) break;
-      await delay(100);
-    }
-    if (!appReady) {
-      fail(`Packaged App discovery did not become ready${spawnFailure ? `: ${spawnFailure.message}` : ""}`);
-    }
-    const request = async (path) => {
-      const response = await fetch(new URL(path, `${origin}/`), {
-        signal: AbortSignal.timeout(2_000),
-      });
-      if (!response.ok) {
-        await response.body?.cancel();
-        fail(`Packaged App returned HTTP ${response.status} for ${path}`);
-      }
-      return response;
-    };
-    const identity = await (await request("/api/client-launcher")).json();
-    if (identity.version !== version || identity.revision !== revision)
-      fail("Packaged App build identity mismatch");
-    const html = await (await request("/client")).text();
-    await checkWebSourceIdentity(html, revision, async asset => (await request(asset)).text());
-    const wasm = readdirSync(join(root, "web", "assets")).find(name => name.endsWith(".wasm"));
-    if (!wasm) fail("Packaged App frontend has no Rust/WASM adapter");
-    const wasmBytes = new Uint8Array(await (await request(`/assets/${wasm}`)).arrayBuffer());
-    if (!Buffer.from(wasmBytes.subarray(0, 4)).equals(Buffer.from([0, 0x61, 0x73, 0x6d])))
-      fail("Packaged App frontend did not serve WebAssembly");
-    if (!(await (await request("/third-party-licenses.txt")).text()).trim()) {
-      fail("Packaged App did not serve its Web third-party notices");
-    }
-    await requestShutdown(child);
-    const exitCode = await waitForExit(child, 10_000);
-    if (exitCode !== 0) {
-      const detail = stderr
-        .trim()
-        .replace(/https?:\/\/\S+/g, "<url>")
-        .replace(/\s+/g, " ")
-        .slice(-1_000);
-      fail(
-        `Packaged App did not stop cleanly (${exitCode ?? child.signalCode ?? "unknown"})${detail ? `: ${detail}` : ""}`,
-      );
-    }
-    const closeDeadline = Date.now() + 5_000;
-    while (Date.now() < closeDeadline) {
-      try {
-        const response = await fetch(discoveryURL, {
-          signal: AbortSignal.timeout(300),
-        });
-        await response.arrayBuffer();
-      } catch {
-        return;
-      }
-      await delay(100);
-    }
-    fail("Packaged App left its loopback server listening");
-  } finally {
-    await stopSmokeChild(child);
-  }
-}
-
-function macLifecycle(probe, args, root) {
-  const facts = JSON.parse(run(probe, args, root, 20_000));
-  process.stderr.write(`macOS App lifecycle ${args[0]}: ${JSON.stringify(facts)}\n`);
-  return facts;
-}
-
-async function verifyMacLifecycle(root, target, version, revision, temporaryRoot, probe) {
-  const app = join(root, target.appName);
-  const emptyWeb = join(temporaryRoot, "empty-web");
-  mkdirSync(emptyWeb);
-  const alive = (pid) => {
-    try { process.kill(pid, 0); return true; }
-    catch (error) { if (error.code === "ESRCH") return false; throw error; }
-  };
-  const waitForStop = async (pid) => {
-    const deadline = Date.now() + 10_000;
-    while (alive(pid) && Date.now() < deadline) await delay(100);
-    if (alive(pid)) fail("LaunchServices App did not finish ordered shutdown");
-  };
-  for (const web of [join(root, "web"), emptyWeb]) {
-    const port = await reservePort();
-    const origin = `http://127.0.0.1:${port}`;
-    const environment = join(temporaryRoot, "mac-lifecycle-env.json");
-    writeFileSync(environment, JSON.stringify({
-      PIIK_CHANNEL_APP_DATA_DIR: join(temporaryRoot, "smoke-app-data"),
-      PIIK_CHANNEL_APP_WEB_DIR: web, PIIK_CHANNEL_APP_PORT: String(port),
-      PIIK_CHANNEL_APP_NO_BROWSER: "1", PIIK_CHANNEL_ICE_SERVERS: "[]",
-      PIIK_CHANNEL_CLOUDFLARED: join(root, "runtime", "tunnel", target.tunnelName),
-    }));
-    let launched;
-    try {
-      launched = macLifecycle(probe, ["launch", dirname(dirname(root)), environment, app], root);
-      if (!Number.isFinite(launched.launchDate)) fail("App bundle was not started by LaunchServices");
-      if (web !== emptyWeb) {
-        const deadline = Date.now() + 15_000;
-        let ready = false;
-        while (alive(launched.pid) && Date.now() < deadline) {
-          try {
-            const response = await fetch(`${origin}/connect-discovery`, { signal: AbortSignal.timeout(500) });
-            const discovery = response.ok ? await response.json() : null;
-            if (!response.ok) await response.body?.cancel();
-            ready = discovery?.port === port && discovery?.connectURL === `${origin}/client`;
-          } catch {}
-          if (ready) break;
-          await delay(100);
-        }
-        if (!ready) fail("LaunchServices App discovery did not become ready");
-        const identity = await (await fetch(`${origin}/api/client-launcher`, {
-          signal: AbortSignal.timeout(2_000),
-        })).json();
-        if (identity.version !== version || identity.revision !== revision)
-          fail("LaunchServices App build identity mismatch");
-        const quit = macLifecycle(probe, ["quit", String(launched.pid), app], root);
-        if (quit.preflight === -1744 && quit.quitSent === false) continue;
-      }
-      await waitForStop(launched.pid);
-      const stillListening = await fetch(`${origin}/connect-discovery`, {
-        signal: AbortSignal.timeout(500),
-      }).then(async response => { await response.body?.cancel(); return true; }, () => false);
-      if (stillListening) fail("LaunchServices App left its loopback listener running");
-      process.stderr.write(`macOS App lifecycle ${web === emptyWeb ? "early-core-error" : "quit"}: exited, port closed\n`);
-    } finally {
-      // Retire our bundle after a failed or unexecuted case. SIGTERM cleanup
-      // is never accepted as evidence that the Quit AppleEvent worked.
-      if (launched && alive(launched.pid)) {
-        process.kill(launched.pid, "SIGTERM");
-        await waitForStop(launched.pid);
-      }
-    }
-  }
-}
-
-async function verifyPackage(root, target, version, revision, temporaryRoot) {
-  const runtimeRoot = join(root, appPackageDirectory(target));
-  const packagedRevision = readFileSync(join(runtimeRoot, "REVISION"), "ascii").trim();
-  if (packagedRevision !== revision) fail("App package revision mismatch");
-  for (const file of ["LICENSE", "THIRD-PARTY-NOTICES.txt",
-    "runtime/tunnel/THIRD-PARTY-NOTICES.txt"]) {
-    if (!existsSync(join(runtimeRoot, file)) || readFileSync(join(runtimeRoot, file)).length === 0) {
-      fail(`App package license text is missing: ${file}`);
-    }
-  }
-
-  const tunnel = join(runtimeRoot, "runtime", "tunnel", target.tunnelName);
-  run(tunnel, ["--version"], root);
-  verifyPlatformAssets(root, target);
-
-  let macProbe;
-  if (target.goos === "darwin") {
-    macProbe = join(temporaryRoot, "mac-app-lifecycle");
-    run("xcrun", ["swiftc", "-parse-as-library",
-      join(repositoryRoot, "scripts", "mac-app-lifecycle.swift"), "-o", macProbe], root);
-  }
-  if (macProbe) await verifyMacLifecycle(runtimeRoot, target, version, revision, temporaryRoot, macProbe);
-  await verifyLocalPackage(runtimeRoot, target, version, revision, temporaryRoot);
-}
-
-function verifyPlatformAssets(root, target) {
-  if (target.goos === "windows") {
-    const vswhere = join(process.env["ProgramFiles(x86)"], "Microsoft Visual Studio", "Installer", "vswhere.exe");
-    const dumpbin = run(vswhere, ["-latest", "-products", "*",
-      "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
-      "-find", "VC/Tools/MSVC/*/bin/Hostx64/x64/dumpbin.exe"], root)
-      .split(/\r?\n/).find(Boolean);
-    if (!dumpbin) fail("Visual Studio dumpbin was not found");
-    const dependencies = run(dumpbin, ["/nologo", "/dependents", join(root, target.appName)], root);
-    if (/\b(?:VCRUNTIME|MSVCP|MSVCR|CONCRT)\d[\w-]*\.dll\b/i.test(dependencies)) {
-      fail("Windows App requires an external Visual C++ runtime");
-    }
-  }
-  if (target.goos === "linux") {
-    const desktop = join(root, "share", "applications", "piik-app.desktop");
-    const icon = join(
-      root,
-      "share",
-      "icons",
-      "hicolor",
-      "256x256",
-      "apps",
-      "piik-app.png",
-    );
-    if (!existsSync(desktop) || !existsSync(icon)) {
-      fail("Linux App icon assets are missing");
-    }
-    const entry = readFileSync(desktop, "utf8");
-    if (!entry.includes("Icon=piik-app\n") || !entry.includes("Terminal=true\n")) {
-      fail("Linux desktop entry must retain its icon and interactive terminal");
-    }
-    if (!readFileSync(icon).subarray(0, 8).equals(Buffer.from([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-    ]))) {
-      fail("Linux App icon is not PNG");
-    }
-  }
-  if (target.goos === "darwin") {
-    const bundle = join(root, "Piik App.app");
-    const executable = join(bundle, "Contents", "MacOS", target.appName);
-    const plist = join(bundle, "Contents", "Info.plist");
-    const icon = join(bundle, "Contents", "Resources", "piik.icns");
-    if (!existsSync(executable) || !existsSync(plist) || !existsSync(icon)) {
-      fail("macOS App bundle is incomplete");
-    }
-    if (!readFileSync(icon).subarray(0, 4).equals(Buffer.from("icns"))) {
-      fail("macOS App icon is not ICNS");
-    }
-    const minimumVersion = run("otool", ["-l", executable], root)
-      .match(/^\s*minos\s+(\S+)\s*$/m)?.[1];
-    if (minimumVersion !== MACOS_MIN_VERSION) {
-      fail("macOS App deployment target does not match its minimum system version");
-    }
-    const plistText = readFileSync(plist, "utf8");
-    if (
-      !plistText.includes(`<key>CFBundleExecutable</key><string>${target.appName}</string>`) ||
-      !plistText.includes(`<key>LSMinimumSystemVersion</key><string>${MACOS_MIN_VERSION}</string>`) ||
-      !plistText.includes("<key>NSLocalNetworkUsageDescription</key>") ||
-      !plistText.includes("<key>NSScreenCaptureUsageDescription</key>") ||
-      !plistText.includes("<key>NSMicrophoneUsageDescription</key>") ||
-      !plistText.includes("<key>NSAudioCaptureUsageDescription</key>")
-    ) {
-      fail("macOS App entry or permission usage descriptions are missing");
-    }
-  }
-}
-
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2), allowPositionals: true,
-  options: { "tunnel-asset": { type: "string" } },
+  options: { "tunnel-asset": { type: "string" }, web: { type: "string" } },
 });
 if (positionals.length !== 2) {
   fail(
-    "Usage: node scripts/package-app-candidate.mjs <target> <new-output-directory> [--tunnel-asset <raw-release-asset>]",
+    "Usage: node scripts/package-app-candidate.mjs <target> <new-output-directory> [--tunnel-asset <raw-release-asset>] [--web <built-web-directory>]",
   );
 }
 
@@ -413,6 +83,7 @@ assertOutsideRepository(repositoryRoot, outputRoot);
 
 const revision = assertCleanRevision(repositoryRoot);
 const version = buildVersion(repositoryRoot, revision);
+if (values.web !== undefined) assertBuildInputRetained(values.web, join(repositoryRoot, "build", "app-package", target.id, "candidate"));
 const temporaryRoot = resetBuildWorkspace(repositoryRoot, "app-package", target.id, "candidate");
 let outputOwned = false;
 try {
@@ -445,6 +116,7 @@ try {
     target.id,
     "--tunnel",
     tunnel,
+    ...(values.web !== undefined ? ["--web", resolve(values.web)] : []),
   ];
   run(process.execPath, assembleArguments, repositoryRoot);
 
@@ -456,7 +128,8 @@ try {
   const extractedRoot = join(temporaryRoot, "extracted");
   mkdirSync(extractedRoot);
   extractZip(archive, extractedRoot);
-  await verifyPackage(extractedRoot, target, version, revision, temporaryRoot);
+  await checkAppPackageStatic(extractedRoot, target, revision);
+  await checkAppPackageRuntime(extractedRoot, target, version, revision, temporaryRoot, repositoryRoot);
   assertCleanRevision(repositoryRoot, revision);
   const digest = sha256(archive);
   writeFileSync(join(outputRoot, `${archiveName}.sha256`), `${digest}  ${archiveName}\n`, "ascii");

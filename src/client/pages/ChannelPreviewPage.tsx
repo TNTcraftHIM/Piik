@@ -56,7 +56,7 @@ export function ChannelPreviewPage() {
   const channel = useChannel(onSelect);
   return <ChannelRoomPage channel={channel} selected={selected} onSelect={onSelect} layout={layout ?? "workspace"} offerLayout={layout === undefined} onLayoutChange={changeLayout}
     appControl={<AppConnectionButton discovery={channelAppDiscovery} connected={channel.appConnected} targetURL={targetURL}
-      onConnected={() => { void channel.activateApp().catch(() => {}); }} />} />;
+      onConnected={health => { void channel.activateApp(health).catch(() => {}); }} />} />;
 }
 
 /** Session and App connection owners supply data; this view keeps one set of room slots. */
@@ -213,7 +213,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     kind: "watch", id: activity.id, userId: activity.userId, name: nameOfUser(activity.userId), title: watchTitle(activity.source.url),
     website: activity.source.kind === "website", originalPageAvailable: activity.playback.timeline === "media" && (!channel.appConnected || channel.pagePlayer), onFocusWindow: () => run(channel.focusWatch(activity.id)),
     browserSource: canWatchInBrowser(activity.source),
-    onAppWatch: activity.playback.timeline !== "program" && activity.source.kind === "website" && channel.pagePlayer && channel.watchPlayers.get(activity.id)?.presentation.kind !== "external" ? () => setAppWatchId(activity.id) : undefined,
+    onAppWatch: !ownsWatch(activity.id) && activity.playback.timeline !== "program" && activity.source.kind === "website" && channel.pagePlayer && channel.watchPlayers.get(activity.id)?.presentation.kind !== "external" ? () => setAppWatchId(activity.id) : undefined,
     roomName: nameOfRoom(activity.roomId), avatar: userProfile(state, channel.profiles, activity.userId)?.avatar ?? undefined,
     owned: ownsWatch(activity.id), subscribed: state?.watchSubscriptions.some(value => value.id === activity.id) ?? false,
     audience: state ? watchAudience(state, activity, channel.profiles) : [],
@@ -248,8 +248,8 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     <main ref={workspaceElement} className="c3-shell" data-app-shell data-layout={layout} data-pane={mobilePane} data-view={sharingView ? "share" : "workspace"} data-sidebars={sidebarsInline ? "inline" : "overlay"} data-overview={overview || undefined}
       data-companion={companionVisible ? companionPane : "none"}>
       <header className="c3-site-bar"><div className="c3-site-identity">
-        {layout === "quick" ? <span className="c3-site-home"><BrandMark size={30} motion="once" /></span>
-          : <button className="c3-site-home" type="button" aria-label={t("channel.previewPage.roomsOnThisSite")} onClick={() => selectRoom("")}><BrandMark size={30} motion="once" /></button>}
+        {layout === "quick" ? <span className="c3-site-home lr-brand-baseline"><BrandMark size={30} motion="once" /></span>
+          : <button className="c3-site-home lr-brand-baseline" type="button" aria-label={t("channel.previewPage.roomsOnThisSite")} onClick={() => selectRoom("")}><BrandMark size={30} motion="once" /></button>}
         <div className="c3-site-name">{layout !== "quick" && self && self.id === state?.channel.ownerId ? <ChannelSiteSettings channel={channel} />
           : <Tooltip overflow={{ text: state?.channel.name ?? "Piik", selector: "strong" }}><span className="c3-site-name-readonly"><ChannelIdentityMark icon={state?.channel.icon ?? "couch"} size={22} /><strong>{state?.channel.name ?? "Piik"}</strong></span></Tooltip>}</div>
         <LedStrip state={connected ? "live" : connection === "closed" ? "bad" : "busy"}
@@ -349,7 +349,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
               <p>{t("channel.previewPage.quickStartHint")}</p>
               <Btn id="c3-first-action" icon="cast" tone="primary" title={{ text: t("channel.previewPage.startSharing") }} cap={{ text: t("channel.previewPage.startSharing") }}
                 disabled={!connected || busy("create-room")} busy={busy("create-room")} onClick={() => { void prepareShare(); }} />
-            </div></StageTv> : rooms.length ? <><h2><ChannelIdentityMark icon={state.channel.icon} size={30} />{state.channel.name}</h2><div className="c3-overview-rooms">{rooms.map(value => <ChannelRoomItem key={value.id}
+            </div></StageTv> : rooms.length ? <><h2><BrandMark size={30} motion="once" />{state.channel.name}</h2><div className="c3-overview-rooms">{rooms.map(value => <ChannelRoomItem key={value.id}
               room={value} selected={false} sourceCount={screens.filter(source => source.roomId === value.id).length + watches.filter(source => source.roomId === value.id).length}
               unread={value.authorized && value.lastMessageSeq > (channel.readByRoom[value.id] ?? value.lastMessageSeq)}
               onSelect={() => selectRoom(value.id)} onManage={() => setManagedRoomId(value.id)} />)}</div></>
@@ -402,9 +402,10 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
               return remote && { ...remote, requests: remote.requests.map(request => ({ ...request,
                 name: nameOfUser(state?.sessions.find(session => session.id === request.peerId)?.userId ?? request.peerId) })) };
             })(),
-            pending: busy(channel.ownedScreens.has(publication.id) ? "stop" : "watch", publication.id),
+            pending: busy(channel.ownedScreens.has(publication.id) ? "stop" : "watch", publication.id) || busy("retry-picture", publication.id),
           })), ...watchSources]} focusedId={focusedScreen} onFocus={id => setSourceView({ roomId, focusedId: id })} canSubscribe={connected}
             onWatch={id => { showSource(roomId, id); run(channel.watch(id)); }} onUnwatch={id => run(channel.unwatch(id))}
+            onRetryPicture={id => run(channel.retryPicture(id))}
             onPause={(id, paused) => run(channel.setScreenPaused(id, paused))}
             onStop={id => run(channel.stopScreen(id))} onPresentation={channel.screenPresentation}
             onInputPolicy={channel.inputPolicy} onInputDecide={channel.inputDecide} onInputSimultaneous={channel.inputSimultaneous} onInputShortcut={channel.inputShortcut} />

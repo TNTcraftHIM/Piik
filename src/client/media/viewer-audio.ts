@@ -1,3 +1,6 @@
+import { debugTrack } from "../lib/debug-webrtc";
+import { debugEvent, registerDebugCollector } from "../lib/debug";
+
 export interface ViewerAudioSnapshot {
   level: number;
   muted: boolean;
@@ -15,6 +18,7 @@ export class ViewerAudio {
   private disposed = false;
   private nativeVolume: number;
   private nativeMuted: boolean;
+  private readonly releaseDebug: () => void;
 
   constructor(
     private readonly video: HTMLMediaElement,
@@ -27,6 +31,16 @@ export class ViewerAudio {
     this.muted = video.muted;
     this.nativeVolume = video.volume;
     this.nativeMuted = video.muted;
+    this.releaseDebug = registerDebugCollector("audio-playback", () => {
+      if (this.track) debugTrack(this.track, { role: "audio-playback-input" });
+      debugEvent("audio", "playback-graph", { trackId: this.track?.id ?? null,
+        route: this.context?.state === "running" && this.source ? "web-audio" : "native-element",
+        requestedLevel: this.level, muted: this.muted, elementMuted: this.video.muted,
+        contextState: this.context?.state ?? null, sampleRate: this.context?.sampleRate ?? null,
+        sourceNodeChannels: this.source?.channelCount ?? null, sourceNodeCountMode: this.source?.channelCountMode ?? null,
+        gainNodeChannels: this.gain?.channelCount ?? null, gainNodeCountMode: this.gain?.channelCountMode ?? null,
+        gain: this.gain?.gain.value ?? null, destinationNodeChannels: this.context?.destination.channelCount ?? null });
+    });
     video.addEventListener("play", this.onPlay);
     video.addEventListener("volumechange", this.onNativeVolume);
     for (const event of ["pause", "ended"]) {
@@ -107,6 +121,7 @@ export class ViewerAudio {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.releaseDebug();
     this.video.removeEventListener("play", this.onPlay);
     this.video.removeEventListener("volumechange", this.onNativeVolume);
     for (const event of ["pause", "ended"]) {

@@ -17,6 +17,40 @@ vi.mock("../src/client/channel/components/ChannelSettingsDialog", async importOr
 });
 
 describe("Webpage watch presentation", () => {
+  it("keeps shared seek and speed with the sharer while viewers see read-only progress", () => {
+    setCopy({ lang: "en" });
+    const player = { video: null, presentation: { kind: "external" }, media: {},
+      mediaState: { position: 12, duration: 120, rate: 1 }, error: null } as unknown as WatchPlayer;
+    const render = (owned: boolean) => renderToStaticMarkup(createElement(ChannelWatchVideo, {
+      player, owned, paused: true, label: "Owned source", presentation: "full", disabled: false,
+      website: true, originalPageAvailable: true, theaterMode: false, onToggleTheater: vi.fn(),
+      onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
+      receiving: { peerAvailable: true, peerSupported: true, mode: "direct", browserSource: true, onPeer: vi.fn(), onDirect: vi.fn() },
+    }));
+    const owner = render(true), viewer = render(false);
+    expect(owner).toContain('aria-label="Playback progress for everyone"');
+    expect(owner).toContain('aria-valuetext="0:12 / 2:00"');
+    expect(viewer).toContain('>0:12 / 2:00</output>');
+    expect(owner.indexOf('aria-label="Playback speed for everyone"')).toBeGreaterThan(owner.indexOf('popover="auto"'));
+    expect(viewer).toContain('<progress');
+    expect(viewer).toContain("Playback follows the sharer. Volume only affects you.");
+    expect(viewer).not.toContain('aria-label="Playback progress for everyone"');
+    expect(viewer).not.toContain('aria-label="Playback speed for everyone"');
+  });
+  it("labels program-time playback by distance from its live edge, not an elapsed epoch", () => {
+    setCopy({ lang: "en" });
+    const epoch = 1794744000;
+    const player = { video: null, presentation: { kind: "external" }, media: {}, error: null,
+      mediaState: { position: epoch + 10, duration: null, rate: 1,
+        live: { active: true, seekable: [[epoch, epoch + 30]], syncPosition: epoch + 27 } } } as unknown as WatchPlayer;
+    const html = renderToStaticMarkup(createElement(ChannelWatchVideo, {
+      player, owned: true, paused: true, label: "Live source", presentation: "full", disabled: false,
+      website: true, originalPageAvailable: true, theaterMode: false, onToggleTheater: vi.fn(),
+      onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
+    }));
+    expect(html).toContain(`aria-valuetext="${t("en", "watch.liveDelay", { seconds: "20" })}"`);
+    expect(html).not.toContain(' / ');
+  });
   it.each([
     { appConnected: false, pagePlayer: false, connectAdvice: true },
     { appConnected: true, pagePlayer: false, connectAdvice: false },
@@ -35,10 +69,12 @@ describe("Webpage watch presentation", () => {
   it.each([
     [["watch_live_hls_unsupported", "watch_media_encryption_unsupported", "watch_media_encoding_unsupported", "watch_media_range_unsupported", "watch_media_size_unavailable", "watch_manifest_extension_unsupported", "watch_manifest_limit", "watch_resource_limit", "watch_mp4_parse_failed", "watch_indexed_unsupported", "invalid_watch_index"], "watch.forward.unsupported", false],
     [["watch_media_decode_failed"], "watch.decodeFailed", false],
+    [["watch_source_inspection_unavailable"], "watch.sourceAccessRequired", false],
     [["watch_media_unsupported", "watch_mp4_mse_unavailable"], "watch.playbackUnsupported", false],
-    [["watch_page_unavailable"], "watch.forward.sourceUnavailable", false],
+    [["watch_page_unavailable", "watch_page_closed", "page_player_closed"], "watch.forward.sourceUnavailable", false],
     [["watch_invalid_manifest", "watch_media_credentials_unavailable", "watch_media_unavailable", "watch_media_timeout", "watch_media_changed", "watch_media_truncated", "invalid_watch_range_response", "watch_resource_unavailable", "watch_source_unavailable", "watch_source_failed", "watch_source_changed", "watch_source_retired"], "watch.forward.sourceUnavailable", false],
     [["watch_source_busy", "watch_read_busy"], "watch.forward.busy", false],
+    [["watch_read_timeout"], "watch.forward.readTimeout", false],
     [["watch_source_already_active"], "watch.forward.active", false],
     [["watch_peer_requires_secure_context", "watch_peer_unavailable"], "watch.forward.secure", false],
     [["watch_path_unavailable"], "channel.error.roomCommunicationFailed", true],
@@ -54,7 +90,8 @@ describe("Webpage watch presentation", () => {
     setCopy({ lang: "en" });
     const html = renderToStaticMarkup(createElement(ChannelSettingsError, { error: "watch_media_credentials_unavailable" }));
     expect(html).toContain('role="alert"');
-    expect(html).toContain("Check sign-in and playback on the original webpage in the App");
+    expect(html).toContain("Could not read this video source");
+    expect(html).not.toMatch(/sign-in|original webpage|Connect Piik App/);
     expect(html).not.toContain("identity");
   });
 
@@ -83,7 +120,44 @@ describe("Webpage watch presentation", () => {
     expect(render({ peerSupported: false })).toContain("trusted HTTPS address");
     expect(render({ peerSupported: false })).not.toContain("<button");
   });
-  it("shows preparation until the playback owner has a sample without covering blocked or failed playback", () => {
+
+  it.each(["watch_source_inspection_unavailable", "watch_media_unavailable", "watch_media_unsupported"])(
+    "keeps %s factual when this platform has no original-page capability", error => {
+      setCopy({ lang: "en" });
+      const player = { video: null, presentation: { kind: "embed" }, media: {}, error } as unknown as WatchPlayer;
+      const html = renderToStaticMarkup(createElement(ChannelWatchVideo, {
+        player, owned: false, paused: true, label: "Source", presentation: "full", disabled: false, website: true, originalPageAvailable: false,
+        theaterMode: false, onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
+      }));
+      expect(html).toContain('role="alert"');
+      expect(html).not.toMatch(/App|original webpage|sign-in|CORS|authentication/);
+    });
+
+  it("offers an already available peer source without also asking the viewer to connect App", () => {
+    setCopy({ lang: "en" });
+    const player = { video: null, presentation: { kind: "embed" }, media: {}, error: "watch_media_unavailable" } as unknown as WatchPlayer;
+    const receiving = { peerAvailable: true, peerSupported: true, mode: "direct" as const, browserSource: true, failed: true, onPeer: vi.fn(), onDirect: vi.fn() };
+    const render = (onAppWatch?: () => void) => renderToStaticMarkup(createElement(ChannelWatchVideo, {
+      player, owned: false, paused: true, label: "Source", presentation: "full", disabled: false, website: true, originalPageAvailable: true,
+      theaterMode: false, onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(), receiving, onAppWatch,
+    }));
+    expect(render()).toContain('aria-label="Receive from sharer"');
+    expect(render()).not.toContain("Connect Piik App");
+    expect(render(vi.fn())).toContain('aria-label="Watch in App"');
+  });
+
+  it("an owner's failure returns to its retained provider instead of offering a viewer-only watch", () => {
+    setCopy({ lang: "en" });
+    const player = { video: null, presentation: { kind: "embed" }, media: { page: {} }, error: "watch_media_unavailable" } as unknown as WatchPlayer;
+    const html = renderToStaticMarkup(createElement(ChannelWatchVideo, {
+      player, owned: true, paused: true, label: "Source", presentation: "full", disabled: false, website: true, originalPageAvailable: true,
+      theaterMode: false, onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(), onAppWatch: vi.fn(),
+    }));
+    expect(html).toContain('aria-label="Return to playback window"');
+    expect(html).not.toContain('aria-label="Watch in App"');
+    expect(html).not.toContain("Connect Piik App");
+  });
+  it("does not treat a metadata sample or a decoded but unpainted video as a visible picture", () => {
     setCopy({ lang: "en" });
     vi.stubGlobal("document", { fullscreenEnabled: false });
     try {
@@ -97,7 +171,9 @@ describe("Webpage watch presentation", () => {
       };
       expect(render()).toContain('role="status"');
       expect(render()).toContain("Preparing video");
-      expect(render({ mediaState: { readyState: 4 } })).not.toContain("Preparing video");
+      expect(render({ mediaState: { readyState: 4 } })).toContain("Preparing video");
+      expect(render({ video: { readyState: 4, videoWidth: 640, parentElement: null } })).toContain("Preparing video");
+      expect(render({ video: { readyState: 4, videoWidth: 640, parentElement: null }, hasPresentedFrame: true })).not.toContain("Preparing video");
       expect(render({ video: { readyState: 4, parentElement: null } })).not.toContain("Preparing video");
       expect(render({ blocked: true })).not.toContain("Preparing video");
       expect(render({ error: "watch_media_failed" })).not.toContain("Preparing video");
@@ -161,4 +237,21 @@ it("counts watch joins without claiming screen delivery readiness", () => {
   expect(joined).not.toContain("Connecting");
   const preparing = renderToStaticMarkup(createElement(SourceAudience, { people: [{ ...person, state: "preparing" }] }));
   expect(preparing).toContain('aria-label="Viewers: 0 watching"');
+});
+
+
+it("keeps return-to-source reachable for a healthy main player only while it retains its Native page", () => {
+  setCopy({ lang: "en" });
+  vi.stubGlobal("document", { fullscreenEnabled: false });
+  try {
+    const video = { readyState: 4, parentElement: null };
+    const render = (owned: boolean, page?: object) => renderToStaticMarkup(createElement(ChannelWatchVideo, {
+      player: { video, presentation: { kind: "video", element: video }, media: { page }, mediaState: {readyState:4}, blocked: false, error: null } as unknown as WatchPlayer,
+      owned, paused: true, label: "Prepared source", presentation: "full", disabled: false, website: true, originalPageAvailable: true,
+      theaterMode: false, onToggleTheater: vi.fn(), onPlayback: vi.fn(), onResume: vi.fn(), onFocusWindow: vi.fn(),
+    }));
+    expect(render(true, {})).toContain('aria-label="Return to playback window"');
+    expect(render(true)).not.toContain('aria-label="Return to playback window"');
+    expect(render(false, {})).not.toContain('aria-label="Return to playback window"');
+  } finally { vi.unstubAllGlobals(); }
 });

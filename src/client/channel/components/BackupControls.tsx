@@ -28,7 +28,7 @@ export function BackupControls({ disabled, busy, onExport, onRestore, replacing 
   };
   if (!available && !file && !message && !local.error) return null;
   return <section className="c3-backup-controls" aria-label={kind === "domain" ? t("channel.backupControls.siteBackup") : t("channel.backupControls.roomBackup")}>
-    {kind === "domain" && <p>{t("channel.backupControls.siteScopeNote")}</p>}
+    {(kind === "domain" || onExport) && <p>{t(kind === "domain" ? "channel.backupControls.siteScopeNote" : "channel.backupControls.roomScopeNote")}</p>}
     {available && !file && <div className="c3-backup-actions">
       {onExport && <ChannelAction icon="save" quiet label={kind === "room" ? t("channel.backupControls.exportFullBackup") : t("channel.backupControls.exportBackup")} busy={active === "export"} disabled={disabled || busy || !!active}
         onClick={() => { perform("export", async () => {

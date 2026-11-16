@@ -1,5 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { ChannelAttachments } from "../src/client/channel/attachments";
+import { channelErrorPresentation } from "../src/client/channel/error-presentation";
+import { t } from "../src/client/ui/copy";
 import { FileStore } from "../src/client/channel/file-store";
 import * as hosting from "../src/client/channel/hosting";
 import type { ChannelAttachment, ChannelMessage, ChannelRoom } from "../src/client/channel/protocol";
@@ -111,4 +113,52 @@ test("a restore reports partial caching when a later file evicts an earlier file
     expect(await files.retained(key.roomId)).toEqual([second]);
     expect(await files.content(second.key, second.attachment, new AbortController().signal)).toBe(file);
   } finally { files.reset(); }
+});
+
+
+test("preview and download share source-unavailable guidance while other failures retain their own meaning", () => {
+  for (const lang of ["en", "zh"] as const) {
+    const copy = (key: Parameters<typeof t>[1]) => t(lang, key);
+    for (const error of ["attachment_unavailable", "file_unavailable", "file_source_unavailable"]) {
+      for (const fallback of ["channel.attachment.downloadFailed", "channel.attachment.originalUnavailable"] as const)
+        expect(channelErrorPresentation(error, copy, fallback)).toEqual({ message: copy("channel.attachment.sourceUnavailable"), connectionHelp: false });
+    }
+    expect(channelErrorPresentation("image_decode_failed", copy, "channel.attachment.previewFailed").message).toBe(copy("channel.attachment.previewFailed"));
+    expect(channelErrorPresentation("file_offer_failed", copy).message).toBe(copy("channel.attachment.fileOfferFailed"));
+  }
+});
+
+
+test("file progress follows completed writes and is shared until the last consumer cancels", async () => {
+  const files = setup(), key = { roomId: "room", messageSeq: 1, attachmentId: attachment.id };
+  let finishWrite!: () => void;
+  const written = vi.fn(() => "[]"), cancel = vi.fn(() => "[]"), remove = vi.fn(async () => {});
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ initializeRuntime: async () => {},
+    FileDelivery: class {
+      start() { return "[]"; } update() { return "[]"; } next_deadline() { return undefined; }
+      written = written; cancel = cancel; free() {}
+      control() { return JSON.stringify([{ type: "write", key, offset: 0, bytes: [1, 2, 3] }]); }
+    },
+  } as never);
+  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+    getFileHandle: async () => ({ createWritable: async () => ({ write: () => new Promise<void>(resolve => { finishWrite = resolve; }), abort: async () => {} }) }), removeEntry: remove,
+  }) }) } });
+  const first = new AbortController(), second = new AbortController();
+  const a = files.content(key, attachment, first.signal), b = files.content(key, attachment, second.signal);
+  void a.catch(() => {}); void b.catch(() => {});
+  try {
+    await vi.waitFor(() => expect(files.progress(key)).toEqual({ received: 0, total: attachment.size, state: "waiting" }));
+    expect(files.progress(key)).toBe(files.progress(key)); // Stable useSyncExternalStore snapshot.
+    files.data("source", "control", "owned-write");
+    await vi.waitFor(() => expect(finishWrite).toBeTypeOf("function"));
+    expect(files.progress(key)?.received).toBe(0); expect(written).not.toHaveBeenCalled();
+    finishWrite();
+    await vi.waitFor(() => expect(files.progress(key)).toEqual({ received: 3, total: attachment.size, state: "receiving" }));
+    expect(written).toHaveBeenCalledWith(JSON.stringify(key), 0n, 3);
+    first.abort(); await expect(a).rejects.toMatchObject({ name: "AbortError" });
+    expect(files.progress(key)?.received).toBe(3); expect(cancel).not.toHaveBeenCalled();
+    second.abort(); await expect(b).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(remove).toHaveBeenCalledOnce());
+    expect(files.progress(key)).toBeNull(); expect(cancel).toHaveBeenCalledOnce();
+  } finally { files.reset(); vi.unstubAllGlobals(); }
 });

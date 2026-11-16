@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { lstatSync, mkdirSync, realpathSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 export function assertCleanRevision(repositoryRoot, expectedRevision) {
   const git = (...args) => execFileSync("git", args, {
@@ -15,6 +15,21 @@ export function assertCleanRevision(repositoryRoot, expectedRevision) {
     throw new Error("Packaging requires a clean Git checkout");
   }
   return revision;
+}
+
+/** A reused build input must survive the caller's output-directory replacement. */
+export function assertBuildInputRetained(input, output) {
+  const retained = realpathSync(input);
+  const target = resolve(output);
+  let ancestor = target;
+  while (!lstatSync(ancestor, { throwIfNoEntry: false })) ancestor = dirname(ancestor);
+  const replaced = join(realpathSync(ancestor), relative(ancestor, target));
+  for (const [parent, child] of [[replaced, retained], [retained, replaced]]) {
+    const path = relative(parent, child);
+    if (path === "" || (path.split(/[\\/]/)[0] !== ".." && !isAbsolute(path))) {
+      throw new Error("Shared Web input overlaps a replaced build directory");
+    }
+  }
 }
 
 export function resetBuildWorkspace(repositoryRoot, ...parts) {

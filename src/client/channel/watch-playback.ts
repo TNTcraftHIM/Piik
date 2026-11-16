@@ -20,6 +20,12 @@ export class WatchPlayer {
   private playback: WatchPlayback | null = null;
   private retired = false;
   private prepared = false;
+  private presented = false;
+  get hasPresentedFrame(): boolean { return this.presented; }
+  presentFrame(): void {
+    if (this.retired || this.presented) return;
+    this.presented = true; this.changed();
+  }
   private lifetime = new AbortController();
   private timer: ReturnType<typeof setInterval>;
   private unlisten: () => void;

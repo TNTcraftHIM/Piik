@@ -89,8 +89,24 @@ for later managed deployment or mirror retries: descriptors and manifests are
 available in CI artifacts for 14 days and are not public Release attachments.
 Do not rebuild an existing published version to replace missing metadata or bytes.
 
-Server and App share build identity and the frontend builder. App assembly runs
-on its target platform and builds the Rust runtime with capture enabled:
+Server and App share build identity and the frontend builder.
+
+To reuse one frontend across matched targets, build it once with
+`npm run build:web` from the clean revision and chosen `PIIK_BUILD_VERSION`.
+The builder writes `build/channel-web.build.json` beside the Web directory,
+containing that version, revision and every file's path, size and SHA-256.
+Copy the directory and its adjacent receipt together. App assembly, App candidate
+packaging, Server packaging and `build-android.mjs` accept
+`--web /path/to/channel-web`; all use the same complete-tree and linked-asset
+validation. A mismatched or incomplete input fails instead of rebuilding.
+Inputs overlapping that entry point's replaced build directories are rejected
+before cleanup, including paths reached through links.
+Without `--web`, each entry retains its ordinary build path. Dirty development
+builds remain usable locally but do not receive a reusable receipt. Reusing Web
+bytes does not satisfy the separate Native or package runtime checks.
+
+App assembly runs on its target platform and builds the Rust runtime with
+capture enabled:
 
 ```sh
 node scripts/assemble-app.mjs \
@@ -135,6 +151,22 @@ node scripts/package-app-candidate.mjs \
 The wrapper downloads the pinned public-link sidecar, verifies its digest,
 builds the target App with its integrated capture adapter, executes every packaged
 runtime from the extracted ZIP, and emits one `.zip` plus its SHA-256 file.
+
+Existing assembled or extracted App directories can be inspected independently:
+
+```sh
+node scripts/check-app-package.mjs static windows-amd64 /path/to/package <version> <full-revision>
+node scripts/check-app-package.mjs runtime windows-amd64 /path/to/package <version> <full-revision>
+```
+
+The static check verifies package contents, executable architecture, notices and
+Web source identity without launching bundled binaries. Its result explicitly
+reports runtime as `not-run`; compiled build identity still needs the runtime
+check. Runtime checking uses an isolated data directory and the same native
+startup/shutdown checks as candidate packaging. Neither independent check writes
+release metadata. The candidate wrapper always requires both before emitting
+its release descriptor; restricted environments may inspect assembly output
+without claiming runtime acceptance.
 
 App ZIPs use ordinary Store/Deflate compression and relative entry names without
 `.` or `..` path segments; include hidden files and preserve executable modes on

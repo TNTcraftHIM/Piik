@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-15
+Last reviewed: 2026-11-16
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -12,6 +12,33 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **beta.32/33: no media with a weak site and strong source.** Reproduce
+  the reported topology and locate the first missing picture/audio delivery fact
+  across room authority, selected source, forwarding plan and actual receiver.
+  Complete the separate Server-transit candidate's authority and matched-runtime
+  acceptance before considering it for this report.
+- [ ] **Left-side participant readiness.** Verify the reported ready/watching
+  indication against subscription, established delivery and actual local playback.
+  Align the participant list, source audience and waiting/error view with their
+  existing owners; joining voice or a room must not imply a received picture.
+  Accept the correction in a matching package, including a participant with no
+  media and one whose picture is still preparing.
+- [ ] **Native performance under the reported workload.** Measure capture,
+  conversion, encoding and decoded cadence on the affected machines during
+  normal use and contention. Identify the limiting stage before changing quality
+  policy. Explicit hardware-encoder failure recovery does not establish smooth
+  playback or lower resource use while hardware encoding still succeeds.
+- [ ] **Current webpage-source and playback package acceptance.** Verify the
+  pending source-selection, popup/player association, provider hide/restore and
+  playback-control changes on the reported accessible websites in a matching
+  Windows App/Web package. Cover failed replacement retaining the active source,
+  original-page closure, and independent viewer playback with and without
+  explicit forwarding. Broader website/live coverage remains below.
+- [ ] **Native PiP and console/terminal package acceptance.** Verify the new
+  integrated-window popup geometry and always-on-top behavior, room-tool return
+  with retained activities, and ordinary login popups. Check the same package's
+  silent native entry, explicit Browser terminal, unavailable-WebView fallback,
+  redirected output and normal quit/update restart.
 - [ ] **2.x periodic brief picture stalls.** With a particular Host or Viewer,
   normally clear playback pauses for less than half a second every few seconds
   or tens of seconds, skips several frames and sometimes briefly blurs. A roughly
@@ -93,7 +120,7 @@ the feedback period; they do not delay that delivery.
   supplies the allocator input Piik needs, verify recovery and remove the
   temporary replacement. [Dependency provenance](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/thirdparty/README.md#local-encoder-probe-demand)
   owns the patch and removal boundary.
-- [ ] **Replace the official RTC Git pin with a published release.** Follow
+- [ ] **Replace the official webrtc-rs/rtc Git pin with a published release.** Follow
   the merged parser repair in
   [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency).
   Once a release includes it, verify the consumers and remove the Cargo patch entries.
@@ -103,9 +130,9 @@ the feedback period; they do not delay that delivery.
   [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency)
   owns the temporary pin and removal procedure.
 - [ ] **Replace the official str0m Git pin with a published release.** When a
-  release includes [str0m #1134](https://github.com/algesten/str0m/pull/1134) and
-  its transmit-reset behavior, replace the immutable upstream pin through the
-  existing consumer checks and
+  release includes the required NACK, bandwidth-estimation and SDP-mapping repairs
+  listed in Native dependency provenance, replace the immutable upstream pin
+  through the existing consumer checks and
   [dependency provenance](../prototype/channel-native/README.md#rtc-dependency).
 - [ ] **GNOME cancellation cleanup submission.** Submit the independently
   verified Mutter repair when GitLab authentication is available, under the upstream

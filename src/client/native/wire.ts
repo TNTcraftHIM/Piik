@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+export const unsupportedVideoFormatSchema = z.object({
+  codec: z.literal("h264"), profileIdc: z.number().int().min(0).max(255),
+  constraintFlags: z.number().int().min(0).max(255), levelIdc: z.number().int().min(0).max(255),
+}).strict();
+export type UnsupportedVideoFormat = z.infer<typeof unsupportedVideoFormatSchema>;
+
 export const nativePageStateSchema = z.object({
   position: z.number().finite().nonnegative(), paused: z.boolean(), rate: z.number().positive().max(16),
   duration: z.number().finite().nonnegative().nullable(), readyState: z.number().int().min(0).max(4), ended: z.boolean(),

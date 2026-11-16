@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
 use anyhow::{Context, Result};
 use piik_channel_prototype::app::{listen, serve, Config};
 use std::{env, path::PathBuf};
@@ -10,13 +12,32 @@ fn main() -> Result<()> {
     if piik_channel_native::capture::worker_entry()? {
         return Ok(());
     }
+    let result = app_main();
+    #[cfg(target_os = "windows")]
+    if let Err(error) = &result {
+        if env::var_os("PIIK_CHANNEL_APP_NO_BROWSER").is_none() {
+            piik_channel_prototype::app_windows::report_error(&format!("{error:#}"));
+        }
+    }
+    result
+}
+
+fn app_main() -> Result<()> {
+    #[cfg(target_os = "windows")]
+    let terminal = env::var_os("PIIK_CHANNEL_APP_NO_BROWSER").is_some()
+        || env::args_os()
+            .skip(1)
+            .any(|argument| argument == "--browser");
+    #[cfg(target_os = "windows")]
+    if terminal {
+        piik_channel_prototype::app_windows::attach_console(
+            env::var_os("PIIK_CHANNEL_APP_NO_BROWSER").is_none(),
+        )
+        .context("Open the App terminal")?;
+    }
     let _capture_runtime = piik_channel_native::capture::Runtime::new()?;
     #[cfg(target_os = "windows")]
-    if env::var_os("PIIK_CHANNEL_APP_NO_BROWSER").is_none()
-        && !env::args_os()
-            .skip(1)
-            .any(|argument| argument == "--browser")
-    {
+    if !terminal {
         let (config, port) = configuration()?;
         return piik_channel_prototype::app_windows::run(config, port);
     }
@@ -64,6 +85,7 @@ fn configuration() -> Result<(Config, Option<u16>)> {
             .map(PathBuf::from)
             .unwrap_or_else(|| resources.join("web")),
         open_browser: env::var_os("PIIK_CHANNEL_APP_NO_BROWSER").is_none(),
+        terminal_notice: None,
         page_player: None,
         website_permission_reset: None,
         window_navigation: None,

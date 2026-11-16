@@ -2,10 +2,11 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, w
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { recordChannelWeb, verifyChannelWeb } from "../scripts/channel-web-artifact.mjs";
 
 const source = vi.hoisted(() => ({
   revision: "a".repeat(40), built: false, finalState: "clean", output: "", machine: 0x3e,
-  cargoTarget: "", web: "",
+  cargoTarget: "", web: "", webBuilds: 0,
 }));
 
 // Exercise the actual assembler and final export. Only external build tools,
@@ -61,7 +62,11 @@ vi.mock("node:fs", async (original) => {
 });
 vi.mock("../scripts/package-licenses.mjs", () => ({ writeAppLicenseNotices: () => undefined }));
 vi.mock("../scripts/build-channel-web.mjs", () => ({
-  buildChannelWeb: (root: string) => join(root, "build", "channel-web"),
+  buildChannelWeb: (root: string, options: { web?: string; version: string; revision: string }) => {
+    if (options.web) return verifyChannelWeb(options.web, options);
+    source.webBuilds++;
+    return join(root, "build", "channel-web");
+  },
 }));
 vi.mock("../scripts/release-version.mjs", () => ({ buildVersion: () => "development" }));
 vi.mock("../scripts/app-package-targets.mjs", async (original) => {
@@ -70,6 +75,35 @@ vi.mock("../scripts/app-package-targets.mjs", async (original) => {
     const target = targets.appPackageTarget(id);
     return target && { ...target, nodePlatform: process.platform, nodeArch: process.arch };
   } };
+});
+
+it.each(["matched", "mismatched"])("App assembly consumes an existing shared Web build (%s)", async scenario => {
+  const root = mkdtempSync(join(tmpdir(), "piik-app-shared-web-")), output = join(root, "output");
+  const previousArguments = process.argv, stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+  source.web = join(root, "web"); source.output = output; source.cargoTarget = join(root, "target");
+  source.built = false; source.finalState = "clean"; source.machine = 0x3e; source.webBuilds = 0;
+  mkdirSync(join(source.web, "assets"), { recursive: true });
+  writeFileSync(join(source.web, "index.html"), '<script src="/assets/index-fixture.js"></script>');
+  writeFileSync(join(source.web, "assets/index-fixture.js"), source.revision);
+  writeFileSync(join(source.web, "assets/adapter.wasm"), Buffer.from([0, 97, 115, 109]));
+  writeFileSync(join(source.web, "third-party-licenses.txt"), "Fixture notices");
+  recordChannelWeb(source.web, { version: scenario === "matched" ? "development" : "v3.0.0-beta.31", revision: source.revision });
+  vi.stubEnv("CARGO_TARGET_DIR", source.cargoTarget);
+  try {
+    process.argv = [process.execPath, "assemble-app.mjs", output, "--target", "linux-amd64", "--web", source.web];
+    vi.resetModules();
+    const assembly = import("../scripts/assemble-app.mjs");
+    if (scenario === "matched") {
+      await assembly;
+      expect(readFileSync(join(output, "web/assets/adapter.wasm"))).toEqual(Buffer.from([0, 97, 115, 109]));
+      expect(source.built).toBe(true);
+    } else {
+      await expect(assembly).rejects.toThrow("Shared Web build identity mismatch");
+      expect(existsSync(output)).toBe(false);
+      expect(source.built).toBe(false);
+    }
+    expect(source.webBuilds).toBe(0);
+  } finally { process.argv = previousArguments; stdout.mockRestore(); vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }); }
 });
 
 describe.each(["linux-amd64", "linux-arm64"])("App package source identity (%s)", (target) => {

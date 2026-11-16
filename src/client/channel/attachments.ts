@@ -25,10 +25,11 @@ interface Sink {
   writer: FileSystemWritableFileStream; complete: boolean;
   tail: Promise<void>; promise: Promise<File>; resolve(file: File): void; reject(error: Error): void;
 }
-interface PendingSink { ready: Promise<Sink>; consumers: Set<symbol> }
-interface Download { controller: AbortController; promise: Promise<void>; status: { busy: boolean; error: string | null } }
+export interface AttachmentProgress { received: number; total: number; state: "waiting" | "connecting" | "waiting-source" | "receiving" | "finishing" }
+interface PendingSink { ready: Promise<Sink>; consumers: Set<symbol>; progress: AttachmentProgress }
+interface Download { controller: AbortController; promise: Promise<void>; status: { busy: boolean; error: string | null; completed?: boolean } }
 interface Source { key: ChannelFileKey; attachment: ChannelAttachment; file: File; status: typeof idle; retained: boolean }
-const idle: { busy: boolean; error: string | null } = { busy: false, error: null };
+const idle: { busy: boolean; error: string | null; completed?: boolean } = { busy: false, error: null };
 const keyOf = (key: ChannelFileKey) => JSON.stringify([key.roomId, key.messageSeq, key.attachmentId]);
 const sameContent = (a: ChannelAttachment, b: ChannelAttachment) => a.size === b.size && a.sha256.toLowerCase() === b.sha256.toLowerCase();
 const errorOf = (error: unknown) => error instanceof Error ? error : new Error(String(error));
@@ -57,6 +58,7 @@ export class ChannelAttachments {
     const download = this.downloads.get(keyOf(key))?.status, source = this.sources.get(keyOf(key))?.status;
     return download?.busy ? download : source?.error ? source : download ?? idle;
   };
+  progress = (key: ChannelFileKey): AttachmentProgress | null => this.sinks.get(keyOf(key))?.progress ?? null;
   private changed() { for (const listener of this.listeners) listener(); }
   private async module(): Promise<Hosting> { const module = await loadRoomHosting(); await module.initializeRuntime(); return module; }
   limits = async (signal?: AbortSignal): Promise<AttachmentLimits> => {
@@ -93,6 +95,12 @@ export class ChannelAttachments {
     const previous = this.rooms;
     this.rooms = rooms; this.plans = plans;
     this.roomPeers = pairs.map(pair => [pair.peerId, pair.rooms]);
+    for (const [id, entry] of this.sinks) {
+      if (entry.progress.state === "finishing") continue;
+      const plan = plans.find(plan => keyOf({ roomId: plan.roomId, messageSeq: plan.messageSeq, attachmentId: plan.attachment.id }) === id);
+      const state = !plan?.sourceId ? "waiting-source" : entry.progress.state === "waiting-source" ? "waiting" : entry.progress.state;
+      if (state !== entry.progress.state) { entry.progress = { ...entry.progress, state }; this.changed(); }
+    }
     for (const [id, source] of this.sources) {
       if (!rooms.some(room => room.id === source.key.roomId && room.authorized)) this.sources.delete(id);
       else if (!this.matchesPlan(source)) this.withdraw(source, true);
@@ -238,6 +246,12 @@ export class ChannelAttachments {
     void this.ensure().then(runtime => this.invoke(runtime, () => kind === "control" ? runtime.delivery.control(peer, data as string, BigInt(Date.now())) : runtime.delivery.chunk(peer, data as Uint8Array))).catch(() => {});
   }
   peerState(peer: string, available: boolean): void {
+    for (const plan of this.plans.filter(plan => plan.upstream === peer)) {
+      const entry = this.sinks.get(keyOf({ roomId: plan.roomId, messageSeq: plan.messageSeq, attachmentId: plan.attachment.id }));
+      if (entry && entry.progress.state !== "finishing" && (!available || entry.progress.state === "connecting")) {
+        entry.progress = { ...entry.progress, state: available ? "waiting" : "connecting" }; this.changed();
+      }
+    }
     if (this.runtime) void this.runtime.then(runtime => this.invoke(runtime, () => available ? this.project(runtime) : runtime.delivery.peer_unavailable(peer))).catch(() => {});
   }
   bulkClosed(peer: string): void {
@@ -253,7 +267,7 @@ export class ChannelAttachments {
     if (previous?.status.busy) return previous.promise;
     const download: Download = { controller: new AbortController(), promise: Promise.resolve(), status: { busy: true, error: null } };
     this.downloads.set(id, download); this.changed();
-    download.promise = this.content(key, attachment, download.controller.signal, inlineImage).then(file => { download.controller.signal.throwIfAborted(); downloadBlob(file, attachment.name); })
+    download.promise = this.content(key, attachment, download.controller.signal, inlineImage).then(file => { download.controller.signal.throwIfAborted(); downloadBlob(file, attachment.name); download.status = { busy: false, error: null, completed: true }; })
       .catch(error => { if (this.downloads.get(id) === download) download.status = { busy: false, error: download.controller.signal.aborted ? null : errorOf(error).message }; throw error; })
       .finally(() => { if (this.downloads.get(id) === download) { download.status = { ...download.status, busy: false }; this.changed(); } });
     return download.promise;
@@ -272,19 +286,20 @@ export class ChannelAttachments {
     let entry = this.sinks.get(id);
     if (!entry) {
       const consumers = new Set<symbol>();
-      entry = { consumers, ready: this.createSink(runtime, key, attachment, consumers) };
+      entry = { consumers, ready: this.createSink(runtime, key, attachment, consumers),
+        progress: { received: 0, total: attachment.size, state: "waiting" } };
       this.sinks.set(id, entry);
       const creating = entry;
-      void entry.ready.catch(() => { if (this.sinks.get(id) === creating) this.sinks.delete(id); });
+      void entry.ready.catch(() => { if (this.sinks.get(id) === creating) { this.sinks.delete(id); this.changed(); } });
     }
     const active = entry, consumer = Symbol();
-    active.consumers.add(consumer);
+    active.consumers.add(consumer); this.changed();
     return new Promise<File>((resolve, reject) => {
       const cleanup = () => { signal.removeEventListener("abort", cancel); active.consumers.delete(consumer); };
       const cancel = () => {
         cleanup(); reject(aborted());
         if (!active.consumers.size && this.sinks.get(id) === active) {
-          this.sinks.delete(id); this.invoke(runtime, () => runtime.delivery.cancel(JSON.stringify(key)));
+          this.sinks.delete(id); this.changed(); this.invoke(runtime, () => runtime.delivery.cancel(JSON.stringify(key)));
           void this.command({ type: "file_receive", ...key, enabled: false }).catch(() => {});
           void active.ready.then(sink => this.disposeSink(sink, aborted())).catch(() => {});
         }
@@ -358,9 +373,12 @@ export class ChannelAttachments {
               await sink.writer.write({ type: "write", position: effect.offset, data: bytes });
               sink.lifetime.signal.throwIfAborted();
               if (!this.current(runtime) || this.sinks.get(keyOf(key)) !== entry) return;
+              // Progress counts completed sink writes, never requested or queued bytes.
+              entry.progress = { received: effect.offset + bytes.length, total: sink.attachment.size, state: "receiving" }; this.changed();
               this.invoke(runtime, () => runtime.delivery.written(JSON.stringify(key), BigInt(effect.offset), bytes.length));
             } else {
               // Complete is emitted only after shared Rust verifies the digest and written ranges.
+              entry.progress = { ...entry.progress, state: "finishing" }; this.changed();
               await sink.writer.close(); sink.lifetime.signal.throwIfAborted();
               const file = await sink.file.getFile();
               sink.lifetime.signal.throwIfAborted();
@@ -376,7 +394,7 @@ export class ChannelAttachments {
               if (retained) {
                 try {
                   await sink.directory.removeEntry(sink.name);
-                  if (this.sinks.get(keyOf(key)) === entry) this.sinks.delete(keyOf(key));
+                  if (this.sinks.get(keyOf(key)) === entry) { this.sinks.delete(keyOf(key)); this.changed(); }
                 }
                 catch { /* The existing temporary owner retries cleanup on reset. */ }
               }
@@ -388,7 +406,7 @@ export class ChannelAttachments {
   }
   private async stopSink(key: ChannelFileKey, entry: PendingSink, sink: Sink, error: Error): Promise<void> {
     if (this.sinks.get(keyOf(key)) !== entry) return;
-    this.sinks.delete(keyOf(key));
+    this.sinks.delete(keyOf(key)); this.changed();
     if (this.runtime) void this.runtime.then(runtime => this.invoke(runtime, () => runtime.delivery.cancel(JSON.stringify(key)))).catch(() => {});
     void this.command({ type: "file_receive", ...key, enabled: false }).catch(() => {});
     await this.disposeSink(sink, error);

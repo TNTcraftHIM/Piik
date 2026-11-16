@@ -1,3 +1,6 @@
+import { debugTrack } from "../lib/debug-webrtc";
+import { debugEvent, registerDebugCollector } from "../lib/debug";
+
 // A single microphone capture owns its device, gain and output. Transports
 // borrow the output track; replacing a device never changes room authority.
 export class MicrophoneInput {
@@ -8,6 +11,7 @@ export class MicrophoneInput {
   private readonly samples = new Float32Array(256);
   private readonly lifetime = new AbortController();
   readonly signal = this.lifetime.signal;
+  private readonly releaseDebug: () => void;
 
   constructor(private captured: MediaStream, private readonly context: AudioContext,
     volume: number, private readonly ended: () => void) {
@@ -21,6 +25,16 @@ export class MicrophoneInput {
     this.stream = destination.stream;
     this.stream.getAudioTracks()[0]!.contentHint = "speech";
     captured.getAudioTracks()[0]!.onended = ended;
+    this.releaseDebug = registerDebugCollector("microphone", () => {
+      const input = this.captured.getAudioTracks()[0]!, output = this.stream.getAudioTracks()[0]!;
+      debugTrack(input, { role: "microphone-input", outputTrackId: output.id });
+      debugTrack(output, { role: "microphone-output", inputTrackId: input.id });
+      debugEvent("audio", "microphone-graph", { inputTrackId: input.id, outputTrackId: output.id,
+        contextState: this.context.state, sampleRate: this.context.sampleRate,
+        sourceNodeChannels: this.source.channelCount, sourceNodeCountMode: this.source.channelCountMode,
+        gainNodeChannels: this.gain.channelCount, gainNodeCountMode: this.gain.channelCountMode,
+        destinationNodeChannels: destination.channelCount, gain: this.gain.gain.value });
+    });
   }
 
   replace(captured: MediaStream): void {
@@ -44,6 +58,7 @@ export class MicrophoneInput {
   close(): void {
     if (this.signal.aborted) return;
     this.lifetime.abort();
+    this.releaseDebug();
     this.captured.getTracks().forEach(track => { track.onended = null; track.stop(); });
     this.stream.getTracks().forEach(track => track.stop());
     void this.context.close().catch(() => {});

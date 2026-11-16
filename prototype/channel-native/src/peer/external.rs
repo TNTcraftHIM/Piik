@@ -29,12 +29,15 @@ impl Producer {
         if let Some(joining) = self.joining.take() {
             let _ = joining.send(());
         }
-        match self.task.take() {
-            Some(task) => match task.await {
+        if let Some(task) = self.task.as_mut() {
+            let result = (&mut *task).await;
+            self.task = None;
+            match result {
                 Ok(error) => error,
                 Err(error) => Some(error.to_string()),
-            },
-            None => None,
+            }
+        } else {
+            None
         }
     }
 }
@@ -52,7 +55,7 @@ impl Driver {
         let answer = accepted.answer.clone();
         let video = Uuid::new_v4();
         let audio = Uuid::new_v4();
-        let control = ExternalControl(watch::channel(None).0);
+        let control = ExternalControl(watch::channel(None).0, Default::default());
         let (ready, started) = oneshot::channel();
         let (ended, completed) = oneshot::channel();
         let (joining, joined) = oneshot::channel();
@@ -143,9 +146,9 @@ async fn run(
                     let Some(track) = track else { break Err(anyhow!("external_input_ended")) };
                     let kind = track.kind;
                     let first_frame = if kind == MediaKind::Video { ready.take() } else { None };
-                    let sources = sources.clone(); let relay = relay.clone();
+                    let sources = sources.clone(); let relay = relay.clone(); let control = control.clone();
                     readers.push(async move {
-                        (kind, receive_track(track, publication, if kind == MediaKind::Video { video } else { audio }, sources, relay, first_frame).await)
+                        (kind, receive_track(track, publication, if kind == MediaKind::Video { video } else { audio }, sources, relay, first_frame, control).await)
                     }.boxed());
                 },
             }
@@ -191,6 +194,7 @@ async fn receive_track(
     sources: mpsc::Sender<SourceReady>,
     relay: Relay,
     mut ready: Option<oneshot::Sender<Result<()>>>,
+    control: ExternalControl,
 ) -> Result<()> {
     let result = async {
     let kind = track.kind;
@@ -302,6 +306,9 @@ async fn receive_track(
     Ok(())
     }.await;
     // Both completion paths describe the same producer failure, whichever the page polls first.
+    if let Err(error) = &result {
+        control.record_failure(error);
+    }
     if let Some(ready) = ready.take() {
         let reason = result
             .as_ref()
@@ -318,12 +325,117 @@ mod tests {
     use super::*;
     use crate::peer::tests::support::{endpoint, h264, send, video_payloads};
 
+    #[tokio::test]
+    async fn cancelled_external_close_retains_its_actor_join() {
+        use std::future::Future;
+        let (release, blocked) = oneshot::channel::<()>();
+        let (finished, finished_rx) = oneshot::channel();
+        let (joining, joined) = oneshot::channel();
+        let mut producer = Producer {
+            control: ExternalControl(watch::channel(None).0, Default::default()),
+            video: Uuid::new_v4(),
+            audio: Uuid::new_v4(),
+            joining: Some(joining),
+            task: Some(tokio::spawn(async move {
+                joined.await.unwrap();
+                blocked.await.unwrap();
+                let _ = finished.send(());
+                Some("actor-finished".to_owned())
+            })),
+        };
+        let mut first = Box::pin(producer.close());
+        assert!(
+            std::future::poll_fn(|cx| {
+                std::task::Poll::Ready(first.as_mut().poll(cx).is_pending())
+            })
+            .await
+        );
+        drop(first);
+        let mut second = Box::pin(producer.close());
+        let premature = std::future::poll_fn(|cx| {
+            std::task::Poll::Ready(match second.as_mut().poll(cx) {
+                std::task::Poll::Pending => None,
+                std::task::Poll::Ready(result) => Some(result),
+            })
+        })
+        .await;
+        release.send(()).unwrap();
+        finished_rx.await.unwrap();
+        let result = match premature.as_ref() {
+            Some(result) => result.clone(),
+            None => second.await,
+        };
+        assert!(
+            premature.is_none(),
+            "second close returned before external actor completion"
+        );
+        assert_eq!(result.as_deref(), Some("actor-finished"));
+    }
+
+
     #[test]
     fn unsupported_obs_high10_retains_the_actionable_format_error() {
         let error = anyhow::Error::new(crate::media::UnsupportedH264Format([0x6e, 0, 0x34]))
             .context("external input first complete access unit");
         assert_eq!(failure_reason(&error), "external_video_format_unsupported");
         assert!(format!("{error:#}").contains("High 10 profile"));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn unsupported_sps_fact_precedes_both_ready_and_ended_completions() -> Result<()> {
+        for ended_first in [false, true] {
+            let (mut driver, mut events, _commands, _stop) = crate::peer::tests::driver();
+            let sender_runtime = transport::Runtime::new(None);
+            let (sender, _events) = endpoint(&sender_runtime, Uuid::new_v4(),
+                Some(std::net::UdpSocket::bind("127.0.0.1:0")?)).await?;
+            let video = Uuid::new_v4();
+            let (_, writable, _) = sender.add_output(video, h264(), MediaKind::Video, "obs".into(), vec![]).await?;
+            sender.offer().await?;
+            let (_, offer) = sender.local_description().await?;
+            let mut prepared = driver.prepare_external(CaptureScope {
+                publication_id: Uuid::new_v4(), room_id: "external-room".into(), binding_id: Uuid::new_v4(),
+            }, None, offer).await?;
+            let control = prepared.lease.control();
+            sender.accept("answer".into(), prepared.answer).await?;
+            let mut tick = tokio::time::interval(Duration::from_millis(20));
+            let mut frame = 0u32;
+            let result = tokio::time::timeout(Duration::from_secs(10), async {
+                // Send real local RTC packets carrying a complete synthetic SPS AU.
+                // SDP remains Baseline, as stock OBS's default declaration does.
+                while control.unsupported_video_format().is_none() {
+                    tick.tick().await;
+                    frame += 1;
+                    let packet = rtp::Packet {
+                        header: rtp::header::Header { version: 2, marker: true, timestamp: frame * 1800, ..Default::default() },
+                        payload: vec![0x67, 0x6e, 0, 0x34].into(),
+                    };
+                    send(&sender, video, vec![packet], Instant::now(), &writable).await?;
+                }
+                let expected = Some(UnsupportedVideoFormat { codec: "h264", profile_idc: 110, constraint_flags: 0, level_idc: 52 });
+                assert_eq!(control.unsupported_video_format(), expected);
+                if !ended_first {
+                    assert_eq!(prepared.lease.ready().await.unwrap_err().to_string(), "external_video_format_unsupported");
+                    assert_eq!(control.unsupported_video_format(), expected);
+                }
+                while driver.local_producers.contains_key(&prepared.lease.id) {
+                    driver.event(events.recv().await.context("failed input never ended")?).await?;
+                }
+                assert_eq!(prepared.lease.ended.take().unwrap().await?, Err("external_video_format_unsupported".into()));
+                if ended_first {
+                    assert_eq!(prepared.lease.ready().await.unwrap_err().to_string(), "external_video_format_unsupported");
+                }
+                assert_eq!(control.unsupported_video_format(), expected);
+                assert!(driver.sources.is_empty());
+                Ok::<_, anyhow::Error>(())
+            }).await;
+            prepared.lease.stop();
+            for (_, mut source) in driver.local_producers.drain() { source.producer.close().await; }
+            sender.close().await?;
+            sender_runtime.close().await;
+            driver.transport.close().await;
+            result??;
+        }
+        Ok(())
     }
 
     #[tokio::test]
@@ -357,8 +469,10 @@ mod tests {
             .await?
             .lease;
         let old_control = old.control();
+        old_control.record_failure(&crate::media::UnsupportedH264Format([0x6e, 0, 0x34]).into());
         old.stop();
         let mut next = driver.prepare_external(scope, None, offer).await?.lease;
+        assert!(next.control().unsupported_video_format().is_none());
         let result = tokio::time::timeout(Duration::from_secs(5), async {
             while driver.local_producers.contains_key(&old.id) {
                 driver

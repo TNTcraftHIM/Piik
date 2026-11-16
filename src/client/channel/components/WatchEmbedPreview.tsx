@@ -11,7 +11,9 @@ export function WatchEmbedPreview({ media, busy, onConfirm, onCancel, onOriginal
 }) {
   const { t } = useCopy();
   const slot = useRef<HTMLDivElement>(null);
+  const instruction = useRef<HTMLParagraphElement>(null);
   const [ready, setReady] = useState(false), [error, setError] = useState<string | null>(null);
+  useLayoutEffect(() => { instruction.current?.focus(); }, [media]);
   useLayoutEffect(() => {
     const surface = media.presentation, target = slot.current;
     if (surface?.kind !== "embed" || !target) return;
@@ -36,7 +38,7 @@ export function WatchEmbedPreview({ media, busy, onConfirm, onCancel, onOriginal
     return () => controller.abort();
   }, [media]);
   return <div className="c3-settings-panels c3-external-input">
-    <p>{t("watch.embedHelp")}</p>
+    <p ref={instruction} tabIndex={-1}>{t("watch.embedHelp")}</p>
     <div ref={slot} className="c3-watch-embed-preview" />
     {error && <p className="c3-settings-error" role="alert">{channelErrorPresentation(error, t).message}</p>}
     <div className="c3-share-title-actions">

@@ -16,6 +16,19 @@ class Video extends EventTarget {
 }
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
+test("one watch player retains its first-frame observation across presentation mounts and rejects a late retired callback", () => {
+  const media: WatchMedia = { read: vi.fn(), patch: vi.fn(), ready: vi.fn(), listen: () => () => {}, close: vi.fn() };
+  const changed = vi.fn(), player = new WatchPlayer('room', false, media, changed);
+  expect(player.hasPresentedFrame).toBe(false);
+  player.presentFrame(); player.presentFrame();
+  expect(player.hasPresentedFrame).toBe(true); expect(changed).toHaveBeenCalledOnce();
+  player.close(); player.presentFrame();
+  expect(changed).toHaveBeenCalledOnce();
+  const replacement = new WatchPlayer('room', false, media, changed);
+  replacement.close(); replacement.presentFrame();
+  expect(replacement.hasPresentedFrame).toBe(false);
+});
+
 test("program anchors use the domain clock and wait for the sharer when a paused point expires", async () => {
   vi.useFakeTimers(); let now = 0; vi.spyOn(performance, "now").mockImplementation(() => now);
   const epoch = 1794744000;

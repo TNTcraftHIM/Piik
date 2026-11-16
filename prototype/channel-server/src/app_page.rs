@@ -89,6 +89,9 @@ pub enum Operation {
     PageFocus {
         page_id: Uuid,
     },
+    PageHide {
+        page_id: Uuid,
+    },
     PageClose {
         page_id: Uuid,
     },
@@ -835,6 +838,45 @@ mod tests {
             matches!(commands.recv().await,Some(Command::Retire{owner:actual}) if actual==owner)
         );
     }
+    #[tokio::test]
+    async fn hide_is_a_page_owned_command_and_does_not_retire_the_connection() {
+        let (sent, mut commands) = mpsc::unbounded_channel();
+        let (events, _queue) = mpsc::channel(8);
+        let connection = Connection::new(
+            Some(Arc::new(move |command| sent.send(command).is_ok())),
+            events,
+        );
+        let id = Uuid::new_v4();
+        let operation: Operation =
+            serde_json::from_value(serde_json::json!({"type":"page_hide","pageId":id})).unwrap();
+        let request = connection.request(operation);
+        let respond = async {
+            let Command::Request {
+                owner,
+                operation: Operation::PageHide { page_id },
+                reply,
+                ..
+            } = commands.recv().await.unwrap()
+            else {
+                panic!("wrong page operation");
+            };
+            assert_eq!(page_id, id);
+            reply.send(Ok(Value::Null)).unwrap();
+            owner
+        };
+        let (result, owner) = tokio::join!(request, respond);
+        assert_eq!(result.unwrap(), Value::Null);
+        assert!(commands.try_recv().is_err());
+        drop(connection);
+        assert!(
+            matches!(commands.recv().await,Some(Command::Retire {owner: actual}) if owner==actual)
+        );
+        assert!(serde_json::from_value::<Operation>(
+            serde_json::json!({"type":"page_hide","pageId":id,"viewId":Uuid::new_v4()})
+        )
+        .is_err());
+    }
+
     #[tokio::test]
     async fn event_overflow_does_not_silently_lose_retirement() {
         let (events, _queue) = mpsc::channel(1);

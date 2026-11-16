@@ -11,7 +11,7 @@ type VideoWithFrameCallback = HTMLVideoElement & {
 
 export function observeCompositedVideoFrame(
   video: HTMLVideoElement,
-  expectedStream: MediaStream,
+  expectedStream: MediaStream | null,
   onFrame: () => void,
 ): () => void {
   const target = video as VideoWithFrameCallback;
@@ -26,7 +26,8 @@ export function observeCompositedVideoFrame(
       video.removeEventListener(event, checkFallback);
     }
   };
-  const baselineDecodedFrames = decodedFrameCount(target);
+  const initialDecodedFrames = decodedFrameCount(target);
+  const baselineDecodedFrames = expectedStream === null && initialDecodedFrames !== null ? 0 : initialDecodedFrames;
   const baselineCurrentTime = video.currentTime;
 
   function checkFallback(): void {

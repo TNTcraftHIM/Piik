@@ -7,6 +7,7 @@ import { ConnectionDetails } from "../../components/living/ConnectionDetails";
 import { RouteGraph } from "../../components/living/RouteGraph";
 import { LoadingStatus } from "../../components/living/WaitingStatus";
 import { Glyph } from "../../ui/icons";
+import { participantColor } from "../../components/living/participant-color";
 import { useCopy } from "../../ui/copy";
 import { channelConnectionGraph, channelConnectionRows, connectionSessionName, hasSelectedLocalDisplay } from "./channel-connection-data";
 import { collectNativeConnectionMetrics, type NativeMetricSamples } from "../native-connection-metrics";
@@ -30,6 +31,12 @@ export function ChannelConnectionReport({ state, roomId, sessionId, topology, me
   const displayOnly = hasSelectedLocalDisplay(topology, sessionId);
   return <div className="c3-connection-report">
     {graph && <section aria-label={t("host.topology")}><RouteGraph {...graph} emptyLabel={topology?.screen ? t("connection.noScreenPath") : undefined} /></section>}
+    {!!graph?.endpointGroups.length && <section className="c3-connection-identities" aria-label={t("connection.samePersonEndpoints")}>
+      <p className="c3-connection-note">{t("connection.samePersonEndpoints")}</p>
+      <dl>{graph.endpointGroups.map(group => <div key={group.userId} style={{ borderInlineStartColor: participantColor(group.userId) }}>
+        <dt>{group.name}</dt><dd>{group.endpoints.join(" / ")}</dd>
+      </div>)}</dl>
+    </section>}
     {graph && (graph.edges.length > 0 || !topology?.screen) && <p className="c3-connection-note">{t(graph.edges.length ? "connection.pathLegend" : "connection.signalOnly")}</p>}
     {displayOnly && <p className="c3-connection-note">{t("connection.localDisplayHint")}</p>}
     <ConnectionDetails rows={rows} />

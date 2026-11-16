@@ -19,7 +19,7 @@ import { currentTheme, subscribeTheme } from "../../ui/theme";
 import type {} from "../../ui/native-window";
 
 interface AppConnectionProps {
-  onConnected?: () => void;
+  onConnected?: (health: NonNullable<Awaited<ReturnType<AppDiscovery["health"]>>>) => void;
   discovery?: AppDiscovery;
   /** A current control connection, supplied by its owning session. */
   connected?: boolean;
@@ -133,7 +133,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         rememberBuild(health);
         finish("ready");
         activateClient();
-        onConnected?.();
+        onConnected?.(health);
       } else if (reported) finish("unavailable");
       else if (attempt.popup?.closed) finish("idle");
     };
@@ -192,7 +192,7 @@ export function AppConnectionButton({ onConnected, discovery = channelAppDiscove
         if (health) {
           finish("ready");
           activateClient();
-          onConnected?.();
+          onConnected?.(health);
           return;
         }
         approvalOrigin = new URL(url).origin;

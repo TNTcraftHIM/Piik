@@ -131,7 +131,7 @@ export interface ChannelActions {
   sourceMicrophone(publicationId: string): SourceMicrophoneConfiguration & { browser: boolean; canDisable: boolean; available: boolean; requested: SourceMicrophoneConfiguration } | undefined;
   setSourceMicrophone(publicationId: string, settings: SourceMicrophoneSettings): Promise<void>;
   sourceMicrophones(publicationId: string): Promise<CaptureDevice[]>;
-  activateApp(): Promise<void>;
+  activateApp(verifiedHealth?: unknown): Promise<void>;
   browse(roomId: string): void;
   roomTopology(roomId: string, publicationId?: string, signal?: AbortSignal): Promise<ChannelTopology>;
   connectionMetrics(roomId: string, publicationId?: string): Promise<ChannelMediaMetric[]>;
@@ -177,6 +177,7 @@ export interface ChannelActions {
   stopScreen(publicationId: string): Promise<void>;
   watch(publicationId: string): Promise<void>;
   unwatch(publicationId: string): Promise<void>;
+  retryPicture(publicationId: string): Promise<void>;
   screenPresentation(flowId: string, stream: MediaStream, state: ScreenPresentation): void;
   inputPolicy(publicationId: string, mode: RemoteControlMode, password?: string): Promise<void>;
   inputDecide(publicationId: string, requestId: string, allow: boolean): Promise<void>;

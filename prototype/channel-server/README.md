@@ -350,11 +350,19 @@ App shutdown retires its Native hosts before the domain and tunnel. A local-doma
 failure leaves unrelated approved sites' hosting alone. In a terminal, Ctrl+C
 requests normal App shutdown.
 
-The terminal shows the App build, launcher address and actual site startup
-progress. Site messages follow the launcher's selected language. The displayed
-site address contains no invitation or owner credential; copy private invitations
-from the room UI. Redirected output stays plain text, and the terminal keeps its
-own colours when colour output is available.
+The Browser entry and WebView fallback offer an interactive terminal when stdin
+and stderr are terminals. Use O + Enter to open the launcher, S + Enter to open a
+ready site, R + Enter to refresh, or Q + Enter / Ctrl+C for normal App shutdown.
+The terminal displays the build, actual startup state, local/public addresses
+and any WebView fallback cause. It reads the existing launcher projection once
+per second and appends only changed status; existing diagnostic lines stay in
+scrollback. Site configuration and room actions remain in the Web UI.
+
+Displayed addresses exclude query/fragment credentials; copy private invitations
+from the room UI. Site event messages follow the launcher's language, while
+terminal commands use English/Chinese labels. Redirected streams, TERM=dumb and
+NO_BROWSER keep plain output with no input reader. The ordinary Native window
+also creates no terminal reader.
 
 The App uses the platform's local application-data directory under `Piik/channel-app`.
 `PIIK_CHANNEL_APP_DATA_DIR` selects isolated development data. One process owns

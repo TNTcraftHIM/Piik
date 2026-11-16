@@ -89,7 +89,7 @@ export function AppLauncherPage() {
     ? `${build.version} (${build.revision.slice(0, 7)})` : build?.version;
   const [bookmarksOnly] = useState(() => new URLSearchParams(location.search).has("bookmarks") || new URLSearchParams(location.hash.slice(1)).has("open"));
   const [siteBusy, setSiteBusy] = useState(false);
-  const [siteError, setSiteError] = useState<SiteManagementProps["accessError"]>();
+  const [siteError, setSiteError] = useState<SiteManagementProps["accessError"] & { setting?: "startup-site" }>();
   const [panel, setPanel] = useState<"launch">();
   // Background reads cannot replace a newer command's result or optimistic state.
   const stateChanges = useRef({ revision: 0, pending: 0 });
@@ -272,7 +272,9 @@ export function AppLauncherPage() {
     setSiteError(undefined);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8_000);
+    let savingStartup = setting === "startup-site";
     async function save(setting: "site" | "startup-site" | "website-permissions"): Promise<boolean> {
+      savingStartup = setting === "startup-site";
       const response = await fetch(`/api/client-launcher/${setting}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ site: nextSite, ...(setting === "site" ? { allowed } : {}) }),
@@ -292,7 +294,8 @@ export function AppLauncherPage() {
     try {
       return await save(setting) && (!starAfterApproval || await save("startup-site"));
     } catch {
-      setSiteError({ site: errorSite, message: t("client.connect.saveFailed") });
+      setSiteError({ site: errorSite, message: t(savingStartup ? "client.connect.startupSaveFailed" : "client.connect.saveFailed"),
+        ...(savingStartup ? { setting: "startup-site" as const } : {}) });
       return false;
     } finally { clearTimeout(timer); finish(); setSiteBusy(false); }
   }
@@ -363,7 +366,7 @@ export function AppLauncherPage() {
             />
           </div>
         ) : bookmarksOnly ? (
-          <AppSiteBookmarks windowNavigation={windowNavigation} closeOnOpen {...siteManagement} />
+          <AppSiteBookmarks windowNavigation={windowNavigation} entryURL={launchURL} closeOnOpen {...siteManagement} />
         ) : requestedSite ? (
           <section className="lr-client-approval" aria-labelledby="site-approval-title">
             <header className="lr-client-approval-heading">
@@ -391,13 +394,19 @@ export function AppLauncherPage() {
               <span>{t("client.connect.openOnStart")}</span>
             </label>}
             <div className="lr-client-approval-actions">
+              {approvalCurrent && siteError?.setting === "startup-site" && siteError.site === requestedSite && <>
+                <Btn icon="refresh" title="common.retry" cap="common.retry" busy={siteBusy} disabled={siteBusy}
+                  onClick={() => void changeSite(requestedSite, "startup-site")} />
+                <Btn icon="arrowRight" title="client.connect.continue" cap="client.connect.continue" tone="primary" disabled={siteBusy}
+                  onClick={() => setSiteError(undefined)} />
+              </>}
               <Btn icon="x" title={approvalCurrent ? "client.connect.close" : "common.cancel"} cap={approvalCurrent ? "client.connect.close" : "common.cancel"}
                 disabled={siteBusy} onClick={() => window.close()} />
               {!approvalCurrent && <Btn icon="check" title="client.connect.approve" cap="client.connect.approve" tone="primary"
                 busy={siteBusy} disabled={!validSite || siteBusy} onClick={() => void approveSite(requestedSite)} />}
             </div>
           </section>
-        ) : <AppSiteBookmarks windowNavigation={windowNavigation} {...siteManagement} render={navigation => <LauncherWorkspace
+        ) : <AppSiteBookmarks windowNavigation={windowNavigation} entryURL={launchURL} {...siteManagement} render={navigation => <LauncherWorkspace
           bookmarks={navigation.bookmarks} bookmarksError={navigation.loadError} onRetryBookmarks={navigation.retry}
           onOpenBookmark={navigation.open} onManageBookmarks={navigation.manage}
           ready={!!target} starting={starting} invitationForm={navigation.invitationForm} footer={footer}

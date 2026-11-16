@@ -39,16 +39,18 @@ export function ChannelIconChoices({ value, onChange, disabled = false }: {
   </div>;
 }
 
-export function ChannelIdentityPicker({ value, onChange, disabled = false, busy, onBusyChange }: {
-  value: string; onChange(icon: string): void; disabled?: boolean;
-  busy: boolean; onBusyChange(busy: boolean): void;
+/** A file changes only the owning form's draft; that form owns Save and Cancel. */
+export function ChannelIdentityImageInput({ value, onChange, disabled = false, busy, onBusyChange, presets = false }: {
+  value: string | null; onChange(image: string | null): void; disabled?: boolean;
+  busy: boolean; onBusyChange(busy: boolean): void; presets?: boolean;
 }) {
   const { t } = useCopy();
   const chooser = useRef<HTMLInputElement>(null);
   const request = useRef(0);
   const [failed, setFailed] = useState(false);
+  const [failedImage, setFailedImage] = useState<string | null>(null);
   useEffect(() => () => { request.current++; }, []);
-  const select = (icon: string) => {
+  const select = (icon: string | null) => {
     request.current++; setFailed(false); onBusyChange(false); onChange(icon);
   };
   async function chooseImage(file: File) {
@@ -63,12 +65,12 @@ export function ChannelIdentityPicker({ value, onChange, disabled = false, busy,
       if (request.current === current) onBusyChange(false);
     }
   }
-  const image = isIdentityImage(value);
-  return <fieldset className="c3-identity-picker" disabled={disabled}>
-    <legend>{t("channel.identity.iconOrImage")}</legend>
-    <ChannelIconChoices value={value} onChange={select} disabled={disabled} />
+  const image = value && isIdentityImage(value) ? value : null;
+  return <>
+    {presets && <ChannelIconChoices value={value ?? "couch"} onChange={select} disabled={disabled} />}
     <div className="c3-identity-upload">
-      {image && <ChannelIdentityMark icon={value} size={36} />}
+      {image && image !== failedImage && <img className="c3-identity-image-preview" src={image} alt=""
+        onError={() => setFailedImage(image)} />}
       <ChannelAction icon="arrowUp" quiet busy={busy} disabled={disabled}
         label={busy ? t("channel.identity.openingImage")
           : image ? t("channel.identity.changeImage") : t("channel.identity.chooseImage")}
@@ -78,9 +80,21 @@ export function ChannelIdentityPicker({ value, onChange, disabled = false, busy,
         event.currentTarget.value = "";
         if (file) void chooseImage(file);
       }} />
-      {image && <ChannelAction icon="x" quiet disabled={disabled} label={t("channel.identity.remove")} onClick={() => select("couch")} />}
+      {image && <ChannelAction icon="x" quiet disabled={disabled} label={t("channel.identity.remove")} onClick={() => select(presets ? "couch" : null)} />}
     </div>
-    {failed && <p className="c3-identity-error" role="alert">{t("channel.identity.imageOpenFailed")}</p>}
+    {(failed || (value && value === failedImage)) && <p className="c3-identity-error" role="alert">{t("channel.identity.imageOpenFailed")}</p>}
+  </>;
+}
+
+export function ChannelIdentityPicker({ value, onChange, disabled = false, busy, onBusyChange }: {
+  value: string; onChange(icon: string): void; disabled?: boolean;
+  busy: boolean; onBusyChange(busy: boolean): void;
+}) {
+  const { t } = useCopy();
+  return <fieldset className="c3-identity-picker" disabled={disabled}>
+    <legend>{t("channel.identity.iconOrImage")}</legend>
+    <ChannelIdentityImageInput value={value} presets
+      onChange={image => onChange(image ?? "couch")} disabled={disabled} busy={busy} onBusyChange={onBusyChange} />
   </fieldset>;
 }
 

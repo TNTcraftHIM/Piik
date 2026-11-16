@@ -5,11 +5,14 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 import { z } from 'zod';
 import init, { SessionSigner, verify_conversation, verify_reply } from '../pkg/piik_channel_browser.js';
-import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, roomSchema, snapshotSchema, type ChannelCommand, type ChannelEvent, type ConversationReply, type ChannelMessage } from '../../../src/client/channel/protocol';
+import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, roomSchema, snapshotSchema, type ChannelCommand, type ChannelEvent, type ConversationReply, type ChannelMessage, type ChatOptions } from '../../../src/client/channel/protocol';
 await init({ module_or_path: readFileSync(new URL('../pkg/piik_channel_browser_bg.wasm', import.meta.url)) });
 type ConversationCommand = Extract<ChannelCommand, {
-  type: 'chat' | 'history';
+  type: 'chat' | 'history' | 'interaction_ready' | 'react';
 }>;
+export type TextHistoryPage = Pick<Extract<ConversationReply['record'], { type: 'history_end' }>,
+  'hasMore' | 'oldestSeq' | 'before'> & { messages: ChannelMessage[] };
+export type TextReactionResult = Extract<ConversationReply['record'], { type: 'reaction' }>;
 
 const conversationRoomSchema = roomSchema.pick({ id: true, authorized: true, available: true, reading: true })
   .extend({ delivery: roomSchema.shape.delivery.unwrap().pick({ hostSessionId: true, bindingId: true }).optional() });
@@ -67,6 +70,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
   private userId?: string;
   private state?: z.infer<typeof conversationStateSchema>;
   private pending = new Map<string, Pending>();
+  private reactionNonce = 0;
   private stopped = false;
   constructor(private readonly options: TextParticipantOptions) {
     super();
@@ -182,13 +186,30 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     return this.request({ type: 'conversation', packet }, true, requestId);
   }
 
-  async chat(text: string): Promise<ChannelMessage> {
+  async chat(text: string, options: ChatOptions = {}): Promise<ChannelMessage> {
     return await this.conversation({ type: 'chat', roomId: this.options.roomId, text,
-      nonce: randomUUID(), attachments: [] }) as ChannelMessage;
+      nonce: randomUUID(), attachments: [],
+      ...(options.mentions && { mentions: options.mentions.map(({ userId, start, end }) => ({ userId, start, end })) }),
+      ...(options.reply && { reply: { seq: options.reply.seq, notify: options.reply.notify } }),
+    }) as ChannelMessage;
   }
 
-  async history(): Promise<ChannelMessage[]> {
-    return await this.conversation({ type: 'history', roomId: this.options.roomId }) as ChannelMessage[];
+  async history(before?: number): Promise<TextHistoryPage> {
+    return await this.conversation({ type: 'history', roomId: this.options.roomId, before }) as TextHistoryPage;
+  }
+
+  async react(messageSeq: number, reaction: string): Promise<TextReactionResult> {
+    const socket = this.socket, session = this.sessionId, binding = this.summary().bindingId;
+    const supported = await this.conversation({ type: 'interaction_ready', roomId: this.options.roomId }) as
+      Extract<ConversationReply['record'], { type: 'interaction_ready' }>;
+    if (this.socket !== socket || this.sessionId !== session) throw new Error('disconnected');
+    const room = this.state?.channel.rooms.find(room => room.id === this.options.roomId);
+    if (!room?.authorized) throw new Error('room_access_required');
+    if (!room.available) throw new Error('room_host_offline');
+    if (room.delivery?.bindingId !== binding) throw new Error('room_host_changed');
+    if (!supported.reactionIds.includes(reaction)) throw new Error('unsupported_reaction');
+    return await this.conversation({ type: 'react', roomId: this.options.roomId, reaction,
+      target: { type: 'message', messageSeq }, nonce: ++this.reactionNonce }) as TextReactionResult;
   }
 
   private complete(id: string, value?: unknown, error?: Error) {
@@ -207,6 +228,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     if (event.type === 'welcome') {
       this.credential = event.credential;
       this.emit('credential', event.credential);
+      if (this.sessionId !== event.sessionId) this.reactionNonce = 0;
       this.sessionId = event.sessionId;
       this.userId = event.selfProfile.id;
       this.state = event.state;
@@ -248,10 +270,17 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       this.complete(reply.requestId, undefined, Error(record.code));
       return;
     }
+    if (record.type === 'interaction_ready' || record.type === 'reaction')
+      this.complete(reply.requestId, record);
     if (record.type === 'history_message')
       this.pending.get(reply.requestId)?.records.push(record.message);
-    if (record.type === 'history_end')
-      this.complete(reply.requestId, this.pending.get(reply.requestId)?.records);
+    if (record.type === 'history_end') {
+      const messages = this.pending.get(reply.requestId)?.records;
+      if (!messages) return;
+      if (record.count !== messages.length || record.hasMore && !messages.length)
+        this.complete(reply.requestId, undefined, new Error('incomplete_history'));
+      else this.complete(reply.requestId, { messages, hasMore: record.hasMore, oldestSeq: record.oldestSeq, before: record.before });
+    }
     if (record.type === 'confirmed') {
       this.complete(reply.requestId, record.message);
       this.emit('confirmed', record.message);

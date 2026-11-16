@@ -46,7 +46,7 @@ export function AppReleaseNotice({ update, native, managementURL }: {
       {headline.description && <p>{headline.description}</p>}
     </div>}
     <div className="lr-client-release-actions">
-      <Btn icon="book" title="client.update.notes" cap="client.update.notes" size="compact" quiet textTooltip
+      <Btn icon="book" title="client.update.notes" cap="client.update.notes" size="compact" quiet
         onClick={() => setViewedRelease(update)} />
       {canDownload ? <Btn icon="arrowDown" title={{ text: caption }} cap={{ text: caption }}
         busy={native.busy} disabled={native.busy} tone="primary"

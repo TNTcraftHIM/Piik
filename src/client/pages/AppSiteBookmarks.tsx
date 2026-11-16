@@ -17,8 +17,8 @@ type BookmarkView = {
 };
 
 /** Only the local launcher owns this directory and explicit main-window requests. */
-export function AppSiteBookmarks({ windowNavigation, closeOnOpen = false, render, ...access }: {
-  windowNavigation: boolean; closeOnOpen?: boolean; render?: (view: BookmarkView) => ReactNode;
+export function AppSiteBookmarks({ windowNavigation, entryURL, closeOnOpen = false, render, ...access }: {
+  windowNavigation: boolean; entryURL(target: string): string; closeOnOpen?: boolean; render?: (view: BookmarkView) => ReactNode;
 } & Omit<SiteManagementProps, "bookmarks" | "currentOrigin" | "onSave" | "onRemove" | "onOpen">) {
   const { t } = useCopy();
   const [entry] = useState(() => {
@@ -65,15 +65,19 @@ export function AppSiteBookmarks({ windowNavigation, closeOnOpen = false, render
     setOpenError(undefined);
     if (!url) { setOpenError(t("client.bookmarks.invalidAddress")); return; }
     if (windowNavigation) setPending(url.href);
-    else location.assign(url.href);
+    else location.assign(entryURL(url.href));
+  }
+  function cancelNavigation(): void {
+    setPending(undefined);
+    setOpenError(undefined);
   }
   async function open(): Promise<void> {
     if (!pending || busy || opening) return;
-    if (!windowNavigation) { location.assign(pending); return; }
+    if (!windowNavigation) { location.assign(entryURL(pending)); return; }
     setOpening(true); setOpenError(undefined);
     try {
       const response = await fetch("/api/client-launcher/open", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: pending }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: entryURL(pending) }),
       });
       if (!response.ok) throw new Error();
       z.object({ opened: z.literal(true) }).parse(await response.json());
@@ -84,7 +88,7 @@ export function AppSiteBookmarks({ windowNavigation, closeOnOpen = false, render
   }
   const editor = bookmarks ? <SiteManagement {...access} busy={busy} bookmarks={bookmarks} currentOrigin={entry.site ? siteEntryURL(entry.site)?.origin : undefined}
       onSave={draft => change("POST", draft)} onRemove={id => change("DELETE", undefined, id)} onOpen={choose} />
-      : loadError ? <div role="alert"><p>{t("client.bookmarks.loadFailed")}</p><Btn icon="refresh" title="common.refresh" cap="common.refresh" onClick={() => setReload(value => value + 1)} /></div>
+      : loadError ? <div role="alert"><p>{t("client.bookmarks.loadFailed")}</p><Btn icon="refresh" title="common.retry" cap="common.retry" onClick={() => setReload(value => value + 1)} /></div>
       : <p role="status">{t("common.loading")}</p>;
   const invitationForm = <>
     <form className="lr-site-bookmark-open" onSubmit={event => { event.preventDefault(); choose(address); }}>
@@ -104,12 +108,12 @@ export function AppSiteBookmarks({ windowNavigation, closeOnOpen = false, render
         {editor}<div className="c3-settings-panels lr-site-bookmark-entry">{invitationForm}</div>
       </section>}
     {render && managing && <ChannelSettingsDialog title={t("client.sites.title")} closeDisabled={busy} onClose={() => setManaging(false)}>{editor}</ChannelSettingsDialog>}
-    {pending && <ChannelSettingsDialog compact closeDisabled={opening} title={t(windowNavigation ? "client.bookmarks.switchTitle" : "client.connect.openSite")} onClose={() => setPending(undefined)}>
+    {pending && <ChannelSettingsDialog compact closeDisabled={opening} title={t(windowNavigation ? "client.bookmarks.switchTitle" : "client.connect.openSite")} onClose={cancelNavigation}>
       <div className="c3-settings-panels lr-site-bookmark-form"><strong className="lr-site-bookmark-target" dir="ltr">{new URL(pending).origin}</strong>
         {windowNavigation && <p>{t("client.bookmarks.switchHint")}</p>}
         {openError && <p role="alert">{openError}</p>}
         <div className="lr-site-bookmark-form-actions"><div>
-          <Btn icon="x" size="compact" title="common.cancel" cap="common.cancel" disabled={opening} onClick={() => setPending(undefined)} />
+          <Btn icon="x" size="compact" title="common.cancel" cap="common.cancel" disabled={opening} onClick={cancelNavigation} />
           <Btn icon="arrowRight" size="compact" tone="primary" title={windowNavigation ? "client.bookmarks.switchConfirm" : "client.connect.openSite"}
             cap={windowNavigation ? "client.bookmarks.switchConfirm" : "client.connect.openSite"} busy={opening} disabled={busy || opening} onClick={() => void open()} />
         </div></div>

@@ -291,10 +291,6 @@ fn start(plan: &Plan) -> Result<()> {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-    } else {
-        // The ordinary native window hides its own console when ready. Browser
-        // mode and unavailable-WebView fallback retain usable output and Ctrl+C.
-        command.creation_flags(0x00000010); // CREATE_NEW_CONSOLE
     }
     command.spawn().context("Create updated App process")?;
     Ok(())

@@ -54,6 +54,7 @@ pub(super) struct Pending {
     pub plan: PairInfo,
     pub signals: Vec<Signal>,
     input: mpsc::Sender<UdpSignal>,
+    pub refused: bool,
     pub task: JoinHandle<Result<Prepared>>,
 }
 
@@ -93,6 +94,7 @@ impl Pending {
             plan,
             signals: vec![],
             input,
+            refused: false,
             task,
         }
     }
@@ -102,6 +104,8 @@ impl Pending {
             if matches!(message, UdpSignal::Unavailable {}) {
                 // This also cancels DNS, survey and pool priming. Aborting skips
                 // the local error notification, so refusal never echoes back.
+                // Abort cannot revoke a successful result already awaiting the Driver.
+                self.refused = true;
                 self.task.abort();
             } else {
                 // A finished task may still await its Driver turn. Its result
@@ -1053,6 +1057,7 @@ mod tests {
                 plan: plan.clone(),
                 signals: vec![],
                 input,
+                refused: false,
                 task: tokio::spawn(async move {
                     // Start at failed completion, without unrelated OS interface discovery.
                     drop(incoming);
@@ -1132,6 +1137,140 @@ mod tests {
         }
         driver.retire_pair(pair).await;
         driver.retire_pair(sibling.id).await;
+        driver.files.close().await;
+        driver.watches.close().await;
+        driver.transport.close().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn completed_success_refusal_uses_ordinary_fallback_and_releases_prepared_socket(
+    ) -> Result<()> {
+        use super::super::*;
+        let (mut driver, _events, _commands, _stop) = tests::driver();
+        driver.session = Uuid::from_u128(u128::MAX);
+        let pair = Uuid::new_v4();
+        let first = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+        let second = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+        let SocketAddr::V4(first_address) = first.local_addr()? else {
+            unreachable!()
+        };
+        let SocketAddr::V4(second_address) = second.local_addr()? else {
+            unreachable!()
+        };
+        let (first_commands, mut first_events) = mpsc::channel(4);
+        let (second_commands, mut second_events) = mpsc::channel(4);
+        let (input, mut first_incoming) = mpsc::channel(4);
+        let (_second_input, mut second_incoming) = mpsc::channel(4);
+        let make = |socket, local: SocketAddrV4, expires| -> Result<Survey> {
+            Ok(Survey {
+                preparation: Preparation::new(pair, [94; 32], Ipv4Addr::LOCALHOST, expires)?,
+                observation: Observation::Stable {
+                    address: *local.ip(),
+                    port: local.port(),
+                },
+                retained: Some(socket),
+            })
+        };
+        let first = make(
+            first,
+            first_address,
+            Instant::now() + Duration::from_secs(5),
+        )?;
+        let second = make(
+            second,
+            second_address,
+            Instant::now() + Duration::from_millis(500),
+        )?;
+        let task = tokio::spawn(async move {
+            first
+                .check_target(second_address, &first_commands, &mut first_incoming)
+                .await
+        });
+        let second = tokio::spawn(async move {
+            let result = second
+                .check_target(first_address, &second_commands, &mut second_incoming)
+                .await;
+            // Pending::start sends this same refusal after a failed negotiate.
+            if result.is_err() {
+                let _ = second_commands.try_send(signal(pair, UdpSignal::Unavailable {}));
+            }
+            result
+        });
+        let complete = tokio::time::timeout(Duration::from_secs(3), second_events.recv())
+            .await?
+            .context("peer Complete missing")?;
+        let NativeEvent::Command(Command::Signal { pair_id, payload }) = complete else {
+            unreachable!()
+        };
+        ensure!(
+            pair_id == pair && matches!(payload.udp, Some(UdpSignal::Complete)) && payload.valid()
+        );
+        input.send(UdpSignal::Complete).await?;
+        // Delay the first side's already-produced Complete in signaling. Both
+        // sides' authenticated UDP checks are real and the second keeps waiting.
+        let local_complete = tokio::time::timeout(Duration::from_secs(3), first_events.recv())
+            .await?
+            .context("local Complete missing")?;
+        ensure!(
+            matches!(local_complete, NativeEvent::Command(Command::Signal { pair_id, payload: Signal { udp: Some(UdpSignal::Complete), .. } }) if pair_id == pair)
+        );
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !task.is_finished() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await?;
+        let refusal = tokio::time::timeout(Duration::from_secs(3), second_events.recv())
+            .await?
+            .context("peer refusal missing")?;
+        let NativeEvent::Command(Command::Signal { pair_id, payload }) = refusal else {
+            unreachable!()
+        };
+        ensure!(
+            pair_id == pair
+                && matches!(payload.udp, Some(UdpSignal::Unavailable {}))
+                && payload.valid()
+        );
+        ensure!(
+            second.await?.is_err(),
+            "peer unexpectedly completed without local Complete"
+        );
+        driver.preparings.insert(
+            pair,
+            Pending {
+                plan: PairInfo {
+                    id: pair,
+                    peer_id: Uuid::new_v4(),
+                    udp_preparation: Some(UdpPreparation::Required),
+                    can_receive_video_layers: false,
+                    rooms: vec![],
+                    incoming: vec![],
+                    outgoing: vec![],
+                },
+                signals: vec![],
+                input,
+                refused: false,
+                task,
+            },
+        );
+        driver.signal(pair, payload).await?;
+        let (id, result) = next(&mut driver.preparings).await.unwrap();
+        let pending = driver.preparings.remove(&id).unwrap();
+        driver.prepared(pending, result).await;
+        let ordinary = driver
+            .pairs
+            .get(&pair)
+            .context("refusal lost ordinary fallback")?;
+        ensure!(
+            ordinary.candidates.is_empty(),
+            "refusal adopted completed preparation tuple"
+        );
+        let rebound = UdpSocket::bind(first_address)
+            .await
+            .context("refused prepared socket retained")?;
+        drop(rebound);
+        driver.retire_pair(pair).await;
         driver.files.close().await;
         driver.watches.close().await;
         driver.transport.close().await;
@@ -1341,6 +1480,7 @@ mod tests {
             },
             signals: vec![],
             input,
+            refused: false,
             task,
         };
         let NativeEvent::Command(Command::Signal { payload, .. }) =

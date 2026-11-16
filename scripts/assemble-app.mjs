@@ -3,15 +3,12 @@
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
-  closeSync,
   copyFileSync,
   cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
-  openSync,
   readdirSync,
-  readSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -24,8 +21,9 @@ import { assertAppBundleLayout, collectAppBundleLayout } from "./app-bundle-layo
 import { writeAppPlatformAssets } from "./app-icons.mjs";
 import { writeAppLicenseNotices } from "./package-licenses.mjs";
 import { buildChannelWeb } from "./build-channel-web.mjs";
-import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
+import { assertBuildInputRetained, assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
 import { buildVersion } from "./release-version.mjs";
+import { assertTargetExecutable } from "./check-app-package.mjs";
 import { windowsCaptureEnvironment } from "./windows-capture-deps.mjs";
 
 function fail(message) {
@@ -45,43 +43,6 @@ function run(command, args, cwd, environment = process.env) {
     fail(`${command} failed: ${[result.stdout, result.stderr].filter(Boolean).join("\n").trim()}`);
   }
   return result.stdout.trim();
-}
-
-function bytesAt(path, length, position = 0) {
-  const descriptor = openSync(path, "r");
-  try {
-    const bytes = Buffer.alloc(length);
-    return bytes.subarray(0, readSync(descriptor, bytes, 0, length, position));
-  } finally {
-    closeSync(descriptor);
-  }
-}
-
-function executableMatchesTarget(path, target) {
-  const header = bytesAt(path, 64);
-  if (target.goos === "windows") {
-    if (header.length < 64 || header[0] !== 0x4d || header[1] !== 0x5a) {
-      return false;
-    }
-    const pe = bytesAt(path, 6, header.readUInt32LE(0x3c));
-    return pe.length === 6 && pe.subarray(0, 4).equals(Buffer.from("PE\0\0")) &&
-      pe.readUInt16LE(4) === 0x8664;
-  }
-  if (target.goos === "linux") {
-    return header.length >= 20 && header.subarray(0, 4).equals(
-      Buffer.from([0x7f, 0x45, 0x4c, 0x46]),
-    ) && header[4] === 2 && header[5] === 1 &&
-      header.readUInt16LE(18) === (target.goarch === "arm64" ? 0xb7 : 0x3e);
-  }
-  return header.length >= 8 && header.subarray(0, 4).equals(
-    Buffer.from([0xcf, 0xfa, 0xed, 0xfe]),
-  ) && header.readUInt32LE(4) === (target.goarch === "amd64" ? 0x01000007 : 0x0100000c);
-}
-
-function assertTargetExecutable(path, target, label) {
-  if (!lstatSync(path).isFile() || !executableMatchesTarget(path, target)) {
-    fail(`${label} does not match App package target ${target.id}`);
-  }
 }
 
 function assertOutputDirectory(repositoryRoot, outputRoot, target) {
@@ -108,18 +69,19 @@ const outputArgument = process.argv[2];
 const options = process.argv.slice(3);
 if (!outputArgument || outputArgument.startsWith("--") || options.length % 2 !== 0) {
   fail(
-    "Usage: node scripts/assemble-app.mjs <new-output-directory> --target <target> [--tunnel <executable>]",
+    "Usage: node scripts/assemble-app.mjs <new-output-directory> --target <target> [--tunnel <executable>] [--web <built-web-directory>]",
   );
 }
 
 let targetArgument = null;
 let tunnelArgument = null;
+let webArgument;
 for (let index = 0; index < options.length; index += 2) {
   const name = options[index];
   const value = options[index + 1];
   if (
     !value ||
-    (name !== "--target" && name !== "--tunnel")
+    (name !== "--target" && name !== "--tunnel" && name !== "--web")
   ) {
     fail("App package option is invalid");
   }
@@ -127,6 +89,8 @@ for (let index = 0; index < options.length; index += 2) {
     targetArgument = value;
   } else if (name === "--tunnel" && tunnelArgument === null) {
     tunnelArgument = value;
+  } else if (name === "--web" && webArgument === undefined) {
+    webArgument = value;
   } else {
     fail("App package option is duplicated");
   }
@@ -146,12 +110,13 @@ if (tunnelPath) assertTargetExecutable(tunnelPath, target, "Public tunnel runtim
 const revision = assertCleanRevision(repositoryRoot);
 const version = buildVersion(repositoryRoot, revision);
 
+if (webArgument !== undefined) assertBuildInputRetained(webArgument, join(repositoryRoot, "build", "app-package", target.id, "assembly"));
 const temporaryRoot = resetBuildWorkspace(repositoryRoot, "app-package", target.id, "assembly");
 const packageRoot = join(temporaryRoot, "package");
 const runtimeRoot = join(packageRoot, appPackageDirectory(target));
 let outputOwned = false;
 try {
-  const web = buildChannelWeb(repositoryRoot, { version, revision });
+  const web = buildChannelWeb(repositoryRoot, { version, revision, web: webArgument });
   mkdirSync(runtimeRoot, { recursive: true });
   cpSync(web, join(runtimeRoot, "web"), {
     recursive: true,

@@ -77,7 +77,7 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
     nativeCaptureSelection: session.nativeCaptureSelection,
     sourceSelectionCommitting: session.sourceSelectionCommitting,
     cancelScreenSelection: session.cancelScreenSelection,
-    stopScreen: session.stopScreen, watch: session.watch, unwatch: session.unwatch, screenPresentation: session.screenPresentation,
+    stopScreen: session.stopScreen, watch: session.watch, unwatch: session.unwatch, retryPicture: session.retryPicture, screenPresentation: session.screenPresentation,
     inputPolicy: session.inputPolicy, inputDecide: session.inputDecide, inputSimultaneous: session.inputSimultaneous, inputShortcut: session.inputShortcut,
     joinVoice: session.joinVoice, leaveVoice: session.leaveVoice, setMuted: session.setMuted, canUnmute: session.canUnmute,
     voiceActivity: session.voiceActivity,

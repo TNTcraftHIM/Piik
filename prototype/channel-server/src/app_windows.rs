@@ -1,6 +1,10 @@
 //! Windows owns presentation; the existing HTTP App owns all room and capture work.
+mod console;
 mod page;
 mod permission;
+mod popup;
+
+pub use console::attach as attach_console;
 
 use crate::app::{self, Config};
 use anyhow::{Context, Result};
@@ -18,7 +22,7 @@ use tao::{
     event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget},
     platform::{
         run_return::EventLoopExtRunReturn,
-        windows::{IconExtWindows, WindowBuilderExtWindows, WindowExtWindows},
+        windows::{IconExtWindows, WindowBuilderExtWindows},
     },
     window::{Fullscreen, Icon, Window, WindowBuilder, WindowId},
 };
@@ -60,13 +64,6 @@ pub(super) fn window_builder() -> Result<WindowBuilder> {
 #[link(name = "user32")]
 extern "system" {
     fn MessageBoxW(owner: isize, text: *const u16, caption: *const u16, flags: u32) -> i32;
-    fn ShowWindow(window: isize, command: i32) -> i32;
-}
-#[link(name = "kernel32")]
-extern "system" {
-    fn GetConsoleWindow() -> isize;
-    fn GetConsoleProcessList(ids: *mut u32, count: u32) -> u32;
-    fn GetCurrentProcessId() -> u32;
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -149,6 +146,8 @@ enum ServiceEvent {
     Navigate(String),
     Finished,
     PopupClosed(WindowId),
+    PopupPresentation(WindowId, popup::Message),
+    PopupAppearance(WindowId, Theme),
     Permission,
     PermissionReady(WindowId),
     PermissionDecision(WindowId, bool),
@@ -161,34 +160,10 @@ enum ServiceEvent {
 struct WindowControls {
     width: f64,
     height: f64,
-    labels: Labels,
-}
-#[derive(Deserialize)]
-struct Labels {
-    en: WindowCopy,
-    zh: WindowCopy,
-    #[serde(rename = "zh-Hant")]
-    zh_hant: WindowCopy,
-    ja: WindowCopy,
-    ko: WindowCopy,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct WindowCopy {
-    startup_failed: String,
 }
 impl WindowControls {
     fn size(&self) -> LogicalSize<f64> {
         LogicalSize::new(self.width, self.height)
-    }
-    fn copy(&self, language: Language) -> &WindowCopy {
-        match language {
-            Language::En => &self.labels.en,
-            Language::Zh => &self.labels.zh,
-            Language::ZhHant => &self.labels.zh_hant,
-            Language::Ja => &self.labels.ja,
-            Language::Ko => &self.labels.ko,
-        }
     }
 }
 
@@ -299,13 +274,23 @@ impl MainWindow {
             })
             .with_new_window_req_handler(move |_, features| {
                 let create = || -> Result<NewWindowResponse> {
-                    let window = Rc::new(window_builder()?.with_title("Piik")
-                        .with_inner_size(LogicalSize::new(720.0, 760.0)).build(&popup_target)?);
+                    let window = Rc::new(popup::builder(window_builder()?, features.size, features.position)
+                        .build(&popup_target)?);
+                    let id = window.id();
+                    let presentation = popup_events.clone();
+                    let title_window = window.clone();
                     let webview = WebViewBuilder::new()
                         .with_environment(features.opener.environment)
                         .with_initialization_script(SYSTEM_PRESENTATION)
+                        .with_document_title_changed_handler(move |title| title_window.set_title(&title))
+                        .with_ipc_handler(move |request| {
+                            if let Ok(message) = serde_json::from_str::<popup::Message>(request.body()) {
+                                let _ = presentation.send_event(ServiceEvent::PopupPresentation(id, message));
+                            } else if let Ok(ContentMessage::Appearance { theme, .. }) = serde_json::from_str(request.body()) {
+                                let _ = presentation.send_event(ServiceEvent::PopupAppearance(id, theme));
+                            }
+                        })
                         .build(window.as_ref())?;
-                    let id = window.id();
                     permissions(&webview, id, popup_pending.clone(), popup_events.clone())?;
                     let closed = popup_events.clone();
                     // The WebView closes its container; this adapter retires the top-level window.
@@ -425,16 +410,9 @@ fn message_box(owner: isize, text: &str, flags: u32) -> i32 {
     unsafe { MessageBoxW(owner, text.as_ptr(), caption.as_ptr(), flags) }
 }
 
-fn owned_console(visible: bool) {
-    // An existing shell/terminal has other attached processes and stays visible.
-    unsafe {
-        let mut ids = [0u32; 2];
-        if GetConsoleProcessList(ids.as_mut_ptr(), 2) == 1 && ids[0] == GetCurrentProcessId() {
-            let console = GetConsoleWindow();
-            if console != 0 {
-                ShowWindow(console, if visible { 5 } else { 0 });
-            }
-        }
+pub fn report_error(detail: &str) {
+    if !console::attached() {
+        message_box(0, detail, 0x10);
     }
 }
 
@@ -457,7 +435,9 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
     ) {
         Ok(window) => Some(window),
         Err(error) => {
-            eprintln!("System WebView unavailable: {error}. Opening the Browser; use Ctrl+C in this terminal to stop Piik. / 系统 WebView 不可用，将打开浏览器；在此终端按 Ctrl+C 退出 Piik。");
+            attach_console(true).context("Open the fallback App terminal")?;
+            config.terminal_notice = Some(format!("System WebView unavailable: {error:#}"));
+            config.open_browser = true;
             None
         }
     };
@@ -631,17 +611,32 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                     }
                 }
             }
+            Event::UserEvent(ServiceEvent::PopupPresentation(id, message)) => {
+                if let Some(size) = message.panel_size() {
+                    if let Some((_, window)) = popups.borrow().iter().find(|(_, window)| window.id() == id) {
+                        window.set_always_on_top(true);
+                        window.set_inner_size(size);
+                    }
+                }
+            }
+            Event::UserEvent(ServiceEvent::PopupAppearance(id, theme)) => {
+                if let Some((_, window)) = popups.borrow().iter().find(|(_, window)| window.id() == id) {
+                    window.set_theme(Some(match theme {
+                        Theme::Light => tao::window::Theme::Light,
+                        Theme::Dark => tao::window::Theme::Dark,
+                    }));
+                }
+            }
             Event::UserEvent(ServiceEvent::Ready { entry }) => {
                 let opened = match &window {
                     Some(main) => main.content.load_url(&entry).map_err(anyhow::Error::from),
-                    None => webbrowser::open(&entry).map_err(anyhow::Error::from),
+                    None => Ok(()),
                 };
                 if let Err(error) = opened {
                     result = Err(error);
                     core.stop();
                 } else if let Some(main) = &window {
                     main.window.set_visible(true);
-                    owned_console(false);
                 }
             }
             Event::WindowEvent {
@@ -724,11 +719,6 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
     pending.borrow_mut().clear();
     popups.borrow_mut().clear();
     result = result.and(core.finish());
-    if result.is_err() {
-        owned_console(true);
-        let owner = window.as_ref().map_or(0, |main| main.window.hwnd());
-        message_box(owner, &controls.copy(language).startup_failed, 0x10);
-    }
     drop(window);
     result
 }

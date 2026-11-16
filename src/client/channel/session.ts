@@ -1,5 +1,5 @@
 import { YouTubeMedia } from "./watch-youtube-media";
-import { preparePageSuppliedWatchMedia, preparePortableWatchMedia } from "./watch-page-media";
+import { PageSuppliedMedia, preparePageSuppliedWatchMedia, preparePortableWatchMedia } from "./watch-page-media";
 import { canUseYouTubePlayer, youtubeVideoId, youtubeSourceId, originalWatchURL } from "./watch-youtube-source";
 import { inspectIndexedTrack, indexedMediaSelection } from "./watch-indexed-source";
 import { limitWatchReads } from "./watch-resource";
@@ -24,6 +24,7 @@ import type { NativeCaptureTarget, EncodingExecution, NativePageIndexedSelection
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 import { MicrophoneInput } from "../media/microphone-input";
+import { debugOperation } from "../lib/debug";
 import { acquireMediaStream } from "../media/capture-stream";
 import { HostAudio, type CommentaryInput } from "../media/host-audio";
 import { readPreferredQuality, savePreferredQuality, screenVideoSettings, supportsCaptureProfile, type QualityProfile } from "../media/quality";
@@ -890,12 +891,14 @@ export class ChannelSession {
     catch { /* Passive return leaves permission and errors with the explicit App action. */ }
   };
 
-  private async connectApp(): Promise<ChannelApp> {
+  private async connectApp(verifiedHealth?: unknown): Promise<ChannelApp> {
     const state = this.view.state, self = this.view.self;
     if (!state || !self || !this.credential || this.closed) throw new Error("disconnected");
     if (!this.app) {
       if (this.view.connection !== "connected") throw new Error("disconnected");
-      const health = await discoverChannelAppHealth({ waitForPermission: false });
+      // The approval operation already proved this App. A passive permission query
+      // can still say "prompt" after a successful request, so do not repeat discovery.
+      const health = verifiedHealth ?? await discoverChannelAppHealth({ waitForPermission: false });
       if (!health) throw new Error("app_disconnected");
       if (this.closed || this.view.connection !== "connected" || this.view.self?.id !== self.id
           || this.view.state?.channel.id !== state.channel.id) throw new Error("disconnected");
@@ -932,9 +935,9 @@ export class ChannelSession {
     return app;
   }
 
-  activateApp = (): Promise<void> => {
+  activateApp = (verifiedHealth?: unknown): Promise<void> => {
     if (this.closed || this.view.connection !== "connected") return Promise.resolve();
-    return this.action("app", async () => { await this.connectApp(); });
+    return this.action("app", async () => { await this.connectApp(verifiedHealth); });
   };
 
   private rememberLocalEndpoint(app: ChannelApp, sessionId: string): void {
@@ -1813,6 +1816,15 @@ export class ChannelSession {
       if (this.view.connection === "connected") await this.request({ type: "subscribe", publicationId, enabled: false });
     });
   };
+  retryPicture = (publicationId: string): Promise<void> => this.action(`retry-picture:${publicationId}`, async () => {
+    const current = this.sessionContext();
+    const publication = this.view.state?.publications.find(value => value.id === publicationId && value.kind === "screen");
+    if (!publication || !this.watching.has(publicationId) || this.view.localScreens.has(publicationId)) throw new Error("publication_unavailable");
+    const context = this.connectionContext(publication.roomId, publicationId);
+    await this.unwatch(publicationId);
+    current(); context.current();
+    await this.watch(publicationId, publication.roomId);
+  });
   clearError = (): void => this.patch({ error: null });
 
   async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone, audio, profile, codec, camera, source, publicationId }: { microphone?: MicrophoneInput; audio?: HostAudio; profile?: QualityProfile; codec?: BrowserVideoCodecPreference; camera?: boolean; source?: ScreenSource; publicationId?: string } = {}): Promise<string> {
@@ -2094,10 +2106,10 @@ export class ChannelSession {
       selection.controller.signal.throwIfAborted();
       const selected = page.candidates.find(value => value.id === candidateId);
       if (!selected) throw new Error("watch_page_unavailable");
-      if (!selected.url) {
-        // Keep the selected page available for an explicit skip if discovery fails.
-        const watchSources: NonNullable<SourceSelection["watchSources"]> = selection.watchSources = { candidateId, choices: [], indexed: [] };
-        this.patch({});
+      // Both opaque players and a failed direct URL retain explicit page-source choices.
+      const watchSources: NonNullable<SourceSelection["watchSources"]> = selection.watchSources = { candidateId, choices: [], indexed: [] };
+      this.patch({});
+      const discover = async () => {
         await waitForWatchMedia(page, selection.controller.signal);
         selection.controller.signal.throwIfAborted();
         const discovery = selection.discovery = new AbortController();
@@ -2106,13 +2118,16 @@ export class ChannelSession {
           if (!sources.error) delete watchSources.error;
           this.patch({});
         });
-        return false;
+      };
+      if (!selected.url) { await discover(); return false; }
+      try {
+        await this.commitPortableWatch(roomId, page, selection, selected.url);
+        return true;
+      } catch (error) {
+        if (this.sourceSelections.get(roomId) !== selection || selection.controller.signal.aborted) throw error;
+        await discover();
+        throw error;
       }
-      // If main-player preparation fails, the selected original page remains an explicit choice.
-      selection.watchSources = { candidateId, choices: [], indexed: [] };
-      this.patch({});
-      await this.commitPortableWatch(roomId, page, selection, selected.url);
-      return true;
     }, reportError);
   };
   selectWatchBrowserSource = (roomId: string, choiceId: string | null, reportError = true): Promise<void> => this.action(`screen:${roomId}`, async () => {
@@ -2312,6 +2327,7 @@ export class ChannelSession {
       }, roomId);
       if (!current() || this.watchPlayers.get(id) !== player) throw new DOMException("Cancelled", "AbortError");
       committed = true;
+      if (media instanceof PageSuppliedMedia) void media.page.hide().catch(() => {});
       player.activate(async playback => {
         if (this.watchPlayers.get(id) === player && this.view.connection === "connected")
           await this.request({ type: "update_watch", roomId, id, playback }, undefined, roomId);
@@ -2411,7 +2427,13 @@ export class ChannelSession {
   cameraPreviews = (signal: AbortSignal, publish: (sources: CameraPreview[]) => void): Promise<void> =>
     loadCameraPreviews(signal, publish, [...this.local.values()].find(capture => capture.camera
       && capture.stream.getVideoTracks().some(track => track.readyState === "live"))?.stream);
-  nativeSources = async (): Promise<NativeCaptureSources> => (await this.connectApp()).sources();
+  nativeSources = async (): Promise<NativeCaptureSources> => {
+    const app = await this.connectApp();
+    const sources = await app.sources();
+    if (this.app === app && this.view.encodingExecution === "software" && !sources.softwareEncodingCodecs.length)
+      this.patch({ encodingExecution: "auto" });
+    return sources;
+  };
   externalInput = (roomId: string) => {
     const share = this.screenShares.get(roomId);
     const input = share && this.app?.externalInput(share.id);
@@ -2813,7 +2835,13 @@ export class ChannelSession {
   }
 
   private captureVoiceMicrophone(settings: RoomPreferences["voiceInput"], signal: AbortSignal): Promise<MediaStream> {
-    return acquireMediaStream(() => navigator.mediaDevices.getUserMedia(this.microphoneConstraints(settings)), signal).catch(error => {
+    const requested = this.microphoneConstraints(settings);
+    const complete = debugOperation("capture", "microphone", { requested });
+    return acquireMediaStream(() => navigator.mediaDevices.getUserMedia(requested), signal).then(stream => {
+      complete("applied", { trackId: stream.getAudioTracks()[0]?.id });
+      return stream;
+    }).catch(error => {
+      complete("failed", {}, error);
       if (error instanceof DOMException && error.name === "NotAllowedError") throw new Error("voice_microphone_permission_denied");
       throw error;
     });

@@ -26,7 +26,7 @@ export function ChannelExternalInput({ input, busy, onStop, onClose }: {
     : input.state === "prepared" ? t("screen.obsConnecting")
       : t("screen.obsWaitingToStart");
   const { message } = channelErrorPresentation(input.error ?? (input.state === "error" ? "external_input_failed" : null), t,
-    "channel.error.externalInputFailed");
+    "channel.error.externalInputFailed", input.unsupportedVideoFormat);
   return <ChannelSettingsDialog title="OBS / WHIP" compact onClose={onClose}>
     <div className="c3-settings-panels c3-external-input">
       {!message && <p role="status">{state}</p>}

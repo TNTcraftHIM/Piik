@@ -1,5 +1,5 @@
 import controls from "./window-controls.json";
-import { resolveLang } from "../locales";
+import { windowAppearance } from "./window-appearance";
 import "./native-window.css";
 
 declare global {
@@ -17,7 +17,8 @@ if (window.piikNativeWindow) {
   root.style.setProperty("--native-caption-height", `${controls.height}px`);
 }
 
-if (window.piikNativeWindow === "integrated" && window.ipc) {
+if (window.piikNativeWindow && window.ipc) {
+  const integrated = window.piikNativeWindow === "integrated";
   const ipc = window.ipc;
   const root = document.documentElement;
   const headers = ".c3-site-bar,.lr-app > .lr-top,.c3-monitor.is-theater > .c3-monitor-heading";
@@ -25,7 +26,7 @@ if (window.piikNativeWindow === "integrated" && window.ipc) {
   let previousAppearance = "";
   let previousHeader = "";
   let scheduled = false;
-  const resize = new ResizeObserver(schedule);
+  const resize = integrated ? new ResizeObserver(schedule) : null;
 
   function modalMaterial(): "surface" | "image" | null {
     const dialog = [...document.querySelectorAll("dialog:modal")].at(-1);
@@ -35,13 +36,12 @@ if (window.piikNativeWindow === "integrated" && window.ipc) {
 
   function report(): void {
     scheduled = false;
-    const appearance = JSON.stringify({ kind: "appearance",
-      theme: root.dataset.theme === "dark" ? "dark" : "light",
-      language: resolveLang(root.lang), material: modalMaterial() });
+    const appearance = JSON.stringify(windowAppearance(root, integrated ? modalMaterial() : null));
     if (appearance !== previousAppearance) {
       ipc.postMessage(appearance);
       previousAppearance = appearance;
     }
+    if (!integrated) return;
     const header = [...document.querySelectorAll(headers)].find(element => {
       const rect = element.getBoundingClientRect();
       return rect.width >= controls.width && rect.height >= controls.height
@@ -49,9 +49,9 @@ if (window.piikNativeWindow === "integrated" && window.ipc) {
         && getComputedStyle(element).visibility === "visible";
     });
     if (header !== observed) {
-      resize.disconnect();
+      resize?.disconnect();
       observed = header;
-      if (header) resize.observe(header);
+      if (header) resize?.observe(header);
     }
     const rect = header?.getBoundingClientRect();
     const message = JSON.stringify({ kind: "header", slot: rect && !document.fullscreenElement
@@ -66,11 +66,14 @@ if (window.piikNativeWindow === "integrated" && window.ipc) {
     if (!scheduled) { scheduled = true; requestAnimationFrame(report); }
   }
 
-  new MutationObserver(schedule).observe(root, { subtree: true, childList: true,
-    attributes: true, attributeFilter: ["class", "hidden", "data-layout", "data-theme", "lang", "open"] });
-  addEventListener("resize", schedule);
-  addEventListener("scroll", schedule, { capture: true, passive: true });
-  document.addEventListener("fullscreenchange", schedule);
-  root.style.setProperty("--native-caption-width", `${controls.width}px`);
+  new MutationObserver(schedule).observe(root, integrated ? { subtree: true, childList: true,
+    attributes: true, attributeFilter: ["class", "hidden", "data-layout", "data-theme", "lang", "open"] }
+    : { attributes: true, attributeFilter: ["data-theme", "lang"] });
+  if (integrated) {
+    addEventListener("resize", schedule);
+    addEventListener("scroll", schedule, { capture: true, passive: true });
+    document.addEventListener("fullscreenchange", schedule);
+    root.style.setProperty("--native-caption-width", `${controls.width}px`);
+  }
   report();
 }

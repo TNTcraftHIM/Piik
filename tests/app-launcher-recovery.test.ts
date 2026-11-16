@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { runInNewContext } from "node:vm";
 import { createElement, useState, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -65,9 +66,15 @@ const source = ts.createSourceFile("AppLauncherPage.tsx", readFileSync(
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const declarations: string[] = [];
 let effect: string | undefined;
+let approvalEffect: string | undefined;
+let startupRecoveryControl: string | undefined;
 let diagnosticControl: string | undefined;
 let modeInitializer: string | undefined;
 function collect(node: ts.Node): void {
+  if (ts.isCallExpression(node) && node.expression.getText(source) === "useEffect"
+    && node.arguments[1]?.getText(source).includes("approvalCurrent")) approvalEffect = node.arguments[0]!.getText(source);
+  if (ts.isJsxExpression(node) && node.expression?.getText(source).startsWith("approvalCurrent && siteError?.setting"))
+    startupRecoveryControl = node.expression.getText(source);
   if (ts.isVariableDeclaration(node) && node.name.getText(source) === "[mode, setMode]"
     && node.initializer && ts.isCallExpression(node.initializer)) modeInitializer = node.initializer.arguments[0]?.getText(source);
   if (ts.isJsxAttribute(node) && node.name.getText(source) === "diagnosticControl"
@@ -148,6 +155,16 @@ function mount(fetch: ReturnType<typeof vi.fn>, { debug = false, mode, startup =
     clearTimeout: (id: number) => timers.delete(id),
   }) as { cleanup(): void; changeMode(mode: AppMode): void; changeSite(site: string, setting?: "site" | "startup-site" | "website-permissions", starAfterApproval?: boolean, allowed?: boolean): Promise<boolean>; manageSite(site: string, setting: "site" | "startup-site" | "website-permissions", allowed?: boolean): Promise<void>; approveSite(site: string): Promise<void>; enableDebug(): Promise<void>; exportDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
   return { state, setters, ...actions, downloads, navigate: window.location.replace, focus: () => window.dispatchEvent(new Event("focus")),
+    notifyApproval: (site: string, postMessage: ReturnType<typeof vi.fn>) => runInNewContext(`(${approvalEffect})()`, {
+      approvalCurrent: (state.Sites as string[]).includes(site), requestedSite: site,
+      siteBusy: state.SiteBusy, siteError: state.SiteError, window: { opener: { postMessage } },
+    }),
+    startupRecovery: (site: string) => runInNewContext(ts.transpileModule(`(${startupRecoveryControl})`, {
+      compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React },
+    }).outputText, { React: { createElement, Fragment: "div" }, Btn,
+      approvalCurrent: (state.Sites as string[]).includes(site), requestedSite: site,
+      siteBusy: state.SiteBusy, siteError: state.SiteError, changeSite: actions.changeSite, setSiteError: setters.setSiteError,
+    }) as ReactElement<{ children: ReactElement<{ onClick(): void }>[] }>,
     retry: () => {
       const entry = [...timers].find(([, timer]) => timer.delay === 750);
       expect(entry).toBeDefined();
@@ -166,6 +183,51 @@ function mount(fetch: ReturnType<typeof vi.fn>, { debug = false, mode, startup =
 }
 
 describe("App launcher state recovery", () => {
+  it.each(["retry", "continue"])("keeps the committed HTTP grant and offers %s after startup persistence fails", async decision => {
+    const site = "https://partial.example", postMessage = vi.fn();
+    const calls: string[] = [];
+    let approved = false, startup = false, startupRequests = 0;
+    const server = createServer((request, reply) => {
+      request.resume();
+      request.on("end", () => {
+        const url = request.url!;
+        if (request.method === "POST") calls.push(url);
+        if (url.endsWith("/site")) approved = true;
+        const failed = url.endsWith("/startup-site") && ++startupRequests === 1;
+        if (url.endsWith("/startup-site") && !failed) startup = true;
+        reply.writeHead(failed ? 503 : 200, { "Content-Type": "application/json" });
+        reply.end(JSON.stringify(failed ? { detail: "owned startup save failure" }
+          : { ...saved, sites: approved ? [...saved.sites, site] : saved.sites, startupSite: startup ? site : "" }));
+      });
+    });
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address() as { port: number };
+    const http = vi.fn((path: string, init?: RequestInit) => fetch(`http://127.0.0.1:${address.port}${path}`, init));
+    const page = mount(http);
+    try {
+      await vi.waitFor(() => expect(page.state.ServerState).toBeDefined());
+      await expect(page.changeSite(site, "site", true)).resolves.toBe(false);
+      expect(page.state.Sites).toContain(site);
+      expect(page.state.StartupSite).toBe("");
+      expect(page.state.SiteError).toMatchObject({ site, setting: "startup-site", message: "client.connect.startupSaveFailed" });
+      page.notifyApproval(site, postMessage);
+      expect(postMessage).not.toHaveBeenCalled();
+      const controls = page.startupRecovery(site).props.children;
+      expect(controls).toHaveLength(2);
+      expect(renderToStaticMarkup(page.startupRecovery(site))).toContain(t(currentLang(), "common.retry"));
+      controls[decision === "retry" ? 0 : 1]!.props.onClick();
+      await vi.waitFor(() => expect(page.state.SiteBusy).toBe(false));
+      expect(page.state.SiteError).toBeUndefined();
+      expect(page.state.StartupSite).toBe(decision === "retry" ? site : "");
+      page.notifyApproval(site, postMessage);
+      expect(postMessage).toHaveBeenCalledWith({ type: "piik-app-approved", site }, site);
+      expect(calls).toEqual(["/api/client-launcher/site", "/api/client-launcher/startup-site",
+        ...(decision === "retry" ? ["/api/client-launcher/startup-site"] : [])]);
+    } finally {
+      page.cleanup(); server.closeAllConnections();
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
+  });
   it("restores an owned external entry within the public launch choice", async () => {
     const fetch = vi.fn(async () => response({ ...saved, startupMode: "external", publicOrigin: "https://piik.example" }));
     const page = mount(fetch);
@@ -425,7 +487,7 @@ describe("App launcher state recovery", () => {
       ok: savedStartup, status: savedStartup ? 200 : 503 });
     await approval;
     expect(page.state).toMatchObject({ Sites: [...saved.sites, nextSite], SiteBusy: false,
-      StartupSite: savedStartup ? nextSite : "", SiteError: savedStartup ? undefined : { site: nextSite, message: "client.connect.saveFailed" } });
+      StartupSite: savedStartup ? nextSite : "", SiteError: savedStartup ? undefined : { site: nextSite, setting: "startup-site", message: "client.connect.startupSaveFailed" } });
     page.cleanup();
   });
 
@@ -568,7 +630,7 @@ it("keeps committed approval when the startup preference body stalls", async () 
     expect(page.state).toMatchObject({ Sites: approved.sites, StartupSite: "", SiteBusy: true });
     page.expireRequest();
     await expect(approval).resolves.toBe(false);
-    expect(page.state).toMatchObject({ Sites: approved.sites, StartupSite: "", SiteBusy: false, SiteError: { site: "https://next.example", message: "client.connect.saveFailed" } });
+    expect(page.state).toMatchObject({ Sites: approved.sites, StartupSite: "", SiteBusy: false, SiteError: { site: "https://next.example", setting: "startup-site", message: "client.connect.startupSaveFailed" } });
     page.cleanup();
   });
 

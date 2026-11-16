@@ -17,11 +17,12 @@ The example supports these operations:
 | Enter a private room and subscribe | Existing invitation/password admission followed by `browse`; room rules decide access. |
 | Read recent confirmed text | Signed `history` with no `before` cursor reads the latest bounded page, currently up to 50 messages / 256 KiB. It is not a complete room export. |
 | Send a notification or conversational response | Signed `chat` with a fresh nonce and no attachments; success waits for the room Host's stored confirmation. |
+| React to a confirmed message from a bot | `react` checks the Host's advertised reaction IDs, then sends the existing signed counted-message reaction. |
 | Receive new messages and leave | Verified `live_message` events feed the CLI behavior; `leave` and socket retirement close the participant. |
 
 The interactive `!ping` command sends plain-text `pong`; it does not create a
-quoted reply. Typing `@name` is ordinary text here; structured replies, mentions
-and reactions require Core's corresponding commands.
+quoted reply. Typing `@name` is ordinary text here; the client methods below send
+structured replies, mentions and message reactions through Core's commands.
 
 Use only a site and room you own or have explicit permission to test. The room
 parameter selects what this process does; the room's access rules determine
@@ -66,7 +67,7 @@ grants; the new process creates a fresh session and signing key. No password,
 invitation key, session ID or signing key is saved in that file.
 
 For a Node bot or notifier, import `TextParticipant` from
-`../node/text-participant`. The CLI uses that same internal client. Its current methods are `connect`, `chat`, `history`,
+`../node/text-participant`. The CLI uses that same internal client. Its current methods are `connect`, `chat`, `history`, `react`,
 `reconnect`, `stop`, and verified `live`/`confirmed` events; the example's `!ping`
 behavior lives only in `main`. A fresh Host binding requires reissuing the existing
 Browse reading intent. Host-offline sends fail rather than fabricate confirmation.
@@ -88,6 +89,72 @@ const participant = new TextParticipant({
 `admission` also accepts `password`. File I/O belongs to the CLI or your caller;
 the transport accepts an initial `credential` and emits a `credential` event
 with its Welcome value. Treat that event as a secret, not a status to print.
+
+`history()` returns `{ messages, hasMore, oldestSeq, before }` for the latest page.
+Messages are ordered oldest to newest. While `hasMore` is true, pass the first
+message's sequence to read the preceding page. `oldestSeq` is the room's oldest
+retained sequence, **not the next-page cursor**; `before` is the upper bound of
+the completed request (`null` for the latest page). Core returns `hasMore: false`
+for an empty page, including when the requested bound precedes retained history.
+History does not emit `live` events or execute conversational commands.
+
+```ts
+let page = await participant.history();
+consume(page.messages);
+while (page.hasMore) {
+  page = await participant.history(page.messages[0].seq);
+  consume(page.messages);
+}
+const confirmed = await participant.chat('@friend Build finished', {
+  mentions: [{ userId: friendId, start: 0, end: 7 }],
+  reply: { seq: originalMessage.seq, notify: true },
+});
+```
+
+The optional chat argument uses the same `ChatOptions` as the room UI. Mention
+ranges use UTF-16 offsets in the exact message text, including the `@` prefix.
+The room host validates the mentions and resolves the reply from its history;
+the returned confirmation contains the accepted reply details. `notify: false`
+keeps a reply without requesting notification. The client still owns the message
+nonce; these options cannot override the command, room, text or credentials.
+
+`react(messageSeq, reaction)` adds one counted reaction to a confirmed message:
+
+```ts
+const result = await participant.react(confirmed.seq, 'heart');
+if (result.snapshot?.type === 'message') consumeCounts(result.snapshot.counts);
+```
+
+Each call first asks the current room Host for `interaction_ready.reactionIds`.
+An unadvertised reaction rejects with `unsupported_reaction`; a changed Host
+binding requires another call. The response is the existing signed reaction
+record, including its nonce, optional live event and count snapshot. Repeated
+successful calls add counts; this is not a per-user toggle or vote. Core owns
+the rate limit and accepted-nonce deduplication. A rejected call is not retried
+automatically, and callers cannot choose the nonce. A repeated packet does not
+add another count. Nonces continue when the same session reconnects and reset
+when Welcome establishes a new session. The active socket, session, room access
+and Host binding are checked again after the support reply.
+
+Browse already establishes ordinary room reading. `interaction_ready` obtains
+the Host's supported reactions under that same Read permission; it neither joins
+voice/media nor grants a new role. No reaction capability cache survives a room
+Host change. The client remains a text participant and does not host rooms.
+
+A bot can combine an ordinary quoted reply with a message reaction. Attach this
+handler instead of the CLI's plain `!ping` behavior:
+
+```ts
+participant.on('live', message => {
+  if (message.userId === participant.summary().userId || message.text !== '!ping') return;
+  void participant.chat('pong', { reply: { seq: message.seq, notify: true } })
+    .then(() => participant.react(message.seq, 'wave'))
+    .catch(error => console.error(error.message));
+});
+```
+
+Only new verified live messages trigger the handler. Reading history does not
+replay it; a declined reaction does not undo the already-confirmed reply.
 
 The existing tooling tsconfig checks the Node client and CLI during the normal
 repository checks. Its retained test uses a loopback WebSocket fixture and the

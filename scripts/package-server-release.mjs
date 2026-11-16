@@ -1,31 +1,29 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
   cpSync,
   existsSync,
-  lstatSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
   realpathSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { writeServerLicenseNotices } from "./package-licenses.mjs";
 import { createZip, extractZip, tarExecutable } from "./archive-tool.mjs";
-import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
+import { assertBuildInputRetained, assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
 import { buildVersion } from "./release-version.mjs";
 import { SERVER_PACKAGE_TARGETS } from "./server-package-targets.mjs";
+import { sha256, fileRecords, compareFileRecords } from "./package-files.mjs";
 import { buildChannelWeb } from "./build-channel-web.mjs";
+import { webSourceAssets } from "./container-web-identity.mjs";
 
 // A Windows build ships the same archive shape with an `.exe` binary, so the
 // binary name, the manifest allowlist and the archive allowlist all follow the
@@ -61,67 +59,10 @@ function run(command, args, cwd, environment = process.env) {
   return result.stdout.trim();
 }
 
-function sha256(path) {
-  return createHash("sha256").update(readFileSync(path)).digest("hex");
-}
-
-function normalizedRelative(root, path) {
-  const value = relative(root, path).split(sep).join("/");
-  if (
-    value.length === 0 ||
-    value.startsWith("../") ||
-    value.includes("\\") ||
-    value.split("/").some((part) => part === "" || part === "." || part === "..")
-  ) {
-    fail(`Invalid runtime path: ${value}`);
-  }
-  return value;
-}
-
-function regularFiles(root) {
-  const files = [];
-  const pending = [root];
-  while (pending.length > 0) {
-    const directory = pending.pop();
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      const absolute = join(directory, entry.name);
-      const metadata = lstatSync(absolute);
-      if (metadata.isSymbolicLink()) fail(`Runtime contains a link: ${absolute}`);
-      if (metadata.isDirectory()) {
-        pending.push(absolute);
-      } else if (metadata.isFile()) {
-        files.push(absolute);
-      } else {
-        fail(`Runtime contains an unsupported file type: ${absolute}`);
-      }
-    }
-  }
-  return files.sort((left, right) =>
-    normalizedRelative(root, left).localeCompare(normalizedRelative(root, right)),
-  );
-}
-
 function recordsFor(root, paths) {
-  return regularFiles(root).map((absolute) => {
-    const path = normalizedRelative(root, absolute);
-    if (!runtimePathAllowed(path, paths)) fail(`Unexpected packaged file: ${path}`);
-    return { path, size: statSync(absolute).size, sha256: sha256(absolute) };
-  });
-}
-
-function compareRecords(expected, actual) {
-  if (expected.length !== actual.length) fail("Extracted runtime file count differs");
-  for (let index = 0; index < expected.length; index += 1) {
-    const left = expected[index];
-    const right = actual[index];
-    if (
-      left.path !== right.path ||
-      left.size !== right.size ||
-      left.sha256 !== right.sha256
-    ) {
-      fail(`Extracted runtime differs at ${left.path}`);
-    }
-  }
+  const records = fileRecords(root);
+  for (const { path } of records) if (!runtimePathAllowed(path, paths)) fail('Unexpected packaged file: ' + path);
+  return records;
 }
 
 function validateArchiveEntries(entries, paths) {
@@ -144,24 +85,24 @@ function validateArchiveEntries(entries, paths) {
 // The deployment postflight proves the packaged frontend's entry over HTTP.
 function mainAssetOf(distributionRoot) {
   const html = readFileSync(join(distributionRoot, "index.html"), "utf8");
-  const match = html.match(/<script[^>]+src="(?:\.?\/)?(assets\/index-[A-Za-z0-9_-]+\.js)"/);
-  if (!match) fail("Built Web HTML has no unique main asset");
-  if (!existsSync(join(distributionRoot, ...match[1].split("/")))) {
+  const main = webSourceAssets(html)[0].slice(1);
+  if (!existsSync(join(distributionRoot, ...main.split("/")))) {
     fail("Built Web main asset is missing");
   }
-  return match[1];
+  return main;
 }
 
 const { values, positionals } = parseArgs({ args: process.argv.slice(2), allowPositionals: true, options: {
   arch: { type: "string", default: "amd64" },
   os: { type: "string", default: "linux" },
   "container-image": { type: "string" },
+  web: { type: "string" },
 } });
 const target = SERVER_PACKAGE_TARGETS.find(
   candidate => candidate.goarch === values.arch && candidate.goos === values.os,
 );
 if (positionals.length !== 1 || !target) {
-  fail("Usage: node scripts/package-server-release.mjs <new-output-directory> [--os linux|windows] [--arch amd64|arm64] [--container-image <tag>]");
+  fail("Usage: node scripts/package-server-release.mjs <new-output-directory> [--os linux|windows] [--arch amd64|arm64] [--container-image <tag>] [--web <built-web-directory>]");
 }
 const containerImage = values["container-image"];
 if (containerImage && target.goos !== "linux") {
@@ -189,7 +130,8 @@ const version = buildVersion(repositoryRoot, revision);
 const cargoTarget = resolve(process.env.CARGO_TARGET_DIR ?? join(repositoryRoot, "build", "rust-target"));
 
 if (!existsSync(join(repositoryRoot, "LICENSE"))) fail("Missing release input: LICENSE");
-const web = buildChannelWeb(repositoryRoot, { version, revision, cargoTarget });
+if (values.web !== undefined) assertBuildInputRetained(values.web, join(repositoryRoot, "build", "server-package", "assembly"));
+const web = buildChannelWeb(repositoryRoot, { version, revision, cargoTarget, web: values.web });
 assertCleanRevision(repositoryRoot, revision);
 const mainAsset = mainAssetOf(web);
 
@@ -262,7 +204,7 @@ try {
     mkdirSync(verifyRoot);
     run(tar, ["-xzf", artifactPath, "-C", verifyRoot], repositoryRoot);
   }
-  compareRecords(records, recordsFor(verifyRoot, paths));
+  compareFileRecords(records, recordsFor(verifyRoot, paths));
 
   const descriptor = {
     schema: 2,

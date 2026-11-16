@@ -94,6 +94,28 @@ test("preparation reports the platform rejection without logging its token or re
   } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
 });
 
+test("preparation authenticates the repository GET while public readiness stays anonymous", async () => {
+  vi.stubEnv("ATOMGIT_TOKEN", "fixture-private-token");
+  const origin = "https://api.atomgit.com/api/v5/repos/TNTcraftHIM/Piik";
+  const requests: { url: string; token: string | null }[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => {
+    const token = new Headers(options?.headers).get("PRIVATE-TOKEN");
+    requests.push({ url, token });
+    if (url === origin) {
+      return token === "fixture-private-token" ? Response.json({ private: false, default_branch: "main" })
+        : Response.json({ message: "Authentication required" }, { status: 401 });
+    }
+    if (options?.method === "POST") return Response.json({ ...mirror, prerelease: true, assets: [] });
+    return new Response(null, { status: 404 });
+  }));
+  try {
+    expect(await mirrorReadiness(source)).toEqual({ status: "ready", version, revision });
+    expect(requests).toEqual([{ url: `${origin}/releases/tags/${version}`, token: null }]);
+    expect(await prepareMirror(source)).toEqual({ status: "ready", version, revision });
+    expect(requests.find(request => request.url === origin)?.token).toBe("fixture-private-token");
+  } finally { vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
+});
+
 test("a missing attachment or conflicting source marker fails rather than claiming a completed mirror", async () => {
   await expect(mirrorReadiness(source, async () => ({ ...mirror, assets: [] }))).rejects.toThrow("incomplete");
   await expect(mirrorReadiness(source, async () => ({ ...mirror, body: `<!-- piik-source: ${"c".repeat(40)} -->` }))).rejects.toThrow("different or unknown source revision");
