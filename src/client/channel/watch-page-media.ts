@@ -1,6 +1,6 @@
 import type { AppPage } from "./app-link";
 import { HTMLVideoMedia, createPeerWatchMedia, type WatchMedia, type WatchMediaEvent, type WatchMediaPatch, type WatchMediaState } from "./watch-media";
-import type { WatchByteSource } from "./protocol";
+import type { WatchByteSource, WatchFormat } from "./protocol";
 
 /** Prepare the main player without transferring the selected page's lifetime. */
 async function prepareMainPlayback(page: AppPage, media: HTMLVideoMedia, signal: AbortSignal): Promise<void> {
@@ -16,7 +16,7 @@ async function prepareMainPlayback(page: AppPage, media: HTMLVideoMedia, signal:
 }
 
 export async function preparePortableWatchMedia(page: AppPage, url: string, signal: AbortSignal,
-  format?: "file" | "hls"): Promise<HTMLVideoMedia> {
+  format?: WatchFormat): Promise<HTMLVideoMedia> {
   const media = new HTMLVideoMedia(url, format);
   await prepareMainPlayback(page, media, signal);
   return media;

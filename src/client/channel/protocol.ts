@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { watchFormatSchema } from "../../shared/watch-format";
+export type { WatchFormat } from "../../shared/watch-format";
 import { videoSettingsSchema, type VideoSettings } from "../../shared/protocol";
 import { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
 export { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../../shared/relay-capacity";
@@ -90,7 +92,7 @@ export const watchSourceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("website"), url: watchURLSchema, mediaUrl: watchURLSchema.optional() }).strict(),
 ]);
 export type WatchSource = z.infer<typeof watchSourceSchema>;
-export const watchByteSourceSchema = z.object({ sessionId: z.uuid(), resourceId: z.uuid(), format: z.enum(["file", "hls"]) }).strict();
+export const watchByteSourceSchema = z.object({ sessionId: z.uuid(), resourceId: z.uuid(), format: watchFormatSchema }).strict();
 export type WatchByteSource = z.infer<typeof watchByteSourceSchema>;
 export type WatchMode = "direct" | "peer";
 export const watchBytePlanSchema = z.object({ roomId: id, activityId: z.uuid(), source: watchByteSourceSchema, upstream: z.uuid().nullable(), downstream: z.array(z.uuid()), receiving: z.boolean() }).strict();

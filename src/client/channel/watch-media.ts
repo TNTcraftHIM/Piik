@@ -1,5 +1,5 @@
 import Hls, { M3U8Parser, PlaylistLevelType } from "hls.js";
-import type { WatchByteSource, WatchTimeline } from "./protocol";
+import type { WatchByteSource, WatchTimeline, WatchFormat } from "./protocol";
 import { canReadWatchResources, limitWatchReads, openWatchResource, type WatchByteReader, type WatchResourceLease } from "./watch-resource";
 import { createWatchHlsLoader, watchHlsUrl } from "./watch-hls-loader";
 import { canReadWatchMp4, isWatchMp4, WatchMp4Media } from "./watch-mp4-media";
@@ -86,7 +86,7 @@ export class HTMLVideoMedia implements WatchMedia {
   private resource?: WatchResourceLease;
   private mp4?: WatchMp4Media;
   private failure: Error | null = null;
-  constructor(url: string | ((signal: AbortSignal) => Promise<WatchResourceLease>) | { resourceId: string; read: WatchByteReader }, format?: "file" | "hls", private timeline?: WatchTimeline) {
+  constructor(url: string | ((signal: AbortSignal) => Promise<WatchResourceLease>) | { resourceId: string; read: WatchByteReader }, format?: WatchFormat, private timeline?: WatchTimeline) {
     this.video.playsInline = true;
     this.video.preload = "auto";
     this.setup = this.load(url, format).catch(error => {
@@ -96,7 +96,7 @@ export class HTMLVideoMedia implements WatchMedia {
     });
     void this.setup.catch(() => {});
   }
-  private async load(source: string | ((signal: AbortSignal) => Promise<WatchResourceLease>) | { resourceId: string; read: WatchByteReader }, format?: "file" | "hls"): Promise<void> {
+  private async load(source: string | ((signal: AbortSignal) => Promise<WatchResourceLease>) | { resourceId: string; read: WatchByteReader }, format?: WatchFormat): Promise<void> {
     let url: string;
     let peerRead: WatchByteReader | undefined;
     if (typeof source === "object") {
@@ -204,15 +204,15 @@ export class HTMLVideoMedia implements WatchMedia {
 }
 
 /** The owner's rewritten HLS playlists use only opaque resource UUID basenames. */
-export function canReceivePeerWatch(format?: "file" | "hls"): boolean {
+export function canReceivePeerWatch(format?: WatchFormat): boolean {
   return format === "hls" && Hls.isSupported() || format === "file" && canReadWatchMp4() || canReadWatchResources();
 }
 
-export function createPeerWatchMedia(source: { resourceId: string; format: "file" | "hls" }, read: WatchByteReader, timeline?: WatchTimeline): HTMLVideoMedia {
+export function createPeerWatchMedia(source: { resourceId: string; format: WatchFormat }, read: WatchByteReader, timeline?: WatchTimeline): HTMLVideoMedia {
   return new HTMLVideoMedia({ resourceId: source.resourceId, read }, source.format, timeline);
 }
 
-async function detectWatchFormat(url: string, signal: AbortSignal): Promise<"file" | "hls" | "unknown"> {
+async function detectWatchFormat(url: string, signal: AbortSignal): Promise<WatchFormat | "unknown"> {
   const timeout = new AbortController();
   const timer = setTimeout(() => timeout.abort(), 5000);
   try {

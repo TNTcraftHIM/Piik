@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { watchFormatSchema } from "../../shared/watch-format";
 
 export const unsupportedVideoFormatSchema = z.object({
   codec: z.literal("h264"), profileIdc: z.number().int().min(0).max(255),
@@ -14,7 +15,7 @@ export const nativePageStateSchema = z.object({
 const nativePageURLSchema = z.string().url().max(4096).refine(value => /^https?:\/\//.test(value));
 export const nativePageCandidateSchema = z.object({ id: z.uuid(), title: z.string().max(512).refine(value => [...value].length <= 256), url: nativePageURLSchema.nullable(), duration: z.number().finite().nonnegative().nullable() }).strict();
 export type NativePageCandidate = z.infer<typeof nativePageCandidateSchema>;
-export const nativePageMediaChoiceSchema = z.object({ id: z.uuid(), displayURL: nativePageURLSchema, name: z.string().max(512).refine(value => [...value].length <= 256), format: z.enum(["file", "hls"]) }).strict();
+export const nativePageMediaChoiceSchema = z.object({ id: z.uuid(), displayURL: nativePageURLSchema, name: z.string().max(512).refine(value => [...value].length <= 256), format: watchFormatSchema }).strict();
 export type NativePageMediaChoice = z.infer<typeof nativePageMediaChoiceSchema>;
 export const NATIVE_PAGE_READ_BYTES = 64 * 1024;
 export const NATIVE_PAGE_METADATA_PREFIX_BYTES = 1024 * 1024;

@@ -110,7 +110,7 @@ test("cancelling prepare retires the page and ignores its late confirmation", as
   } finally { app.close(); }
 });
 
-test('watch byte source registration retains the original webpage and stop retires only its reader', async () => {
+test.each(['file', 'hls'] as const)('%s byte source registration retains the page and stop retires only its reader', async format => {
   const { app, socket } = await setup();
   try {
     const opening = app.preparePage('https://video.test/page', vi.fn(), new AbortController().signal);
@@ -119,11 +119,11 @@ test('watch byte source registration retains the original webpage and stop retir
     const choiceId = crypto.randomUUID();
     const choices = page.mediaSources();
     expect(socket.sent.at(-1)).toMatchObject({ type: 'page_media_sources', pageId });
-    socket.reply({ choices: [{ id: choiceId, displayURL: 'https://media.test/movie.m3u8', name: 'Movie', format: 'hls' }], indexedCandidates: [], byteSource: null });
-    expect((await choices).choices).toHaveLength(1);
+    socket.reply({ choices: [{ id: choiceId, displayURL: 'https://media.test/movie.m3u8', name: 'Movie', format }], indexedCandidates: [], byteSource: null });
+    expect((await choices).choices[0]?.format).toBe(format);
     const preparing = page.prepareMedia(choiceId);
     expect(socket.sent.at(-1)).toMatchObject({ type: 'page_media_prepare', pageId, choiceId });
-    const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' };
+    const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format };
     socket.reply(source); await expect(preparing).resolves.toEqual(source);
     const stopping = page.stopMedia();
     expect(socket.sent.at(-1)).toMatchObject({ type: 'page_media_stop', pageId });
