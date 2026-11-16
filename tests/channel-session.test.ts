@@ -1512,13 +1512,14 @@ test("mute and leave supersede a pending unmute without activating a late microp
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     await joining;
     const opening = session.setMuted("first", false);
+    const openingAborted = expect(opening).rejects.toMatchObject({ name: "AbortError" });
     expect(session.getSnapshot().pending.has("voice:first")).toBe(true);
     await session.setMuted("first", true);
     expect(session.getSnapshot().state?.voice[0].muted).toBe(true);
     await session.leaveVoice("first");
     expect(session.getSnapshot().state?.voice).toEqual([]);
     grant(remoteStream("late-shared-raw", [raw]));
-    await opening;
+    await openingAborted;
     expect(socket.sent.some(command => command.type === "publish")).toBe(false);
     expect(raw.stop).toHaveBeenCalledOnce();
     expect(contexts[0].close).toHaveBeenCalledOnce();
@@ -9401,4 +9402,65 @@ test("manual picture retry rejects a duplicate or failed withdrawal through the 
     expect(session.getSnapshot().state?.subscriptions).toContain("two"); expect(pc.close).not.toHaveBeenCalled();
     expect(socket.sent.slice(socket.sent.indexOf(off) + 1).some(c => c.type === "subscribe" && c.publicationId === "one" && c.enabled)).toBe(false);
   } finally { session.close(); }
+});
+
+
+test("last voice leave retires an unresolved microphone request before a late permission grant", async () => {
+  const { session, socket } = await setup(3, false);
+  const contexts = microphoneMixer([]), late = remoteTrack("audio");
+  let grant!: (stream: MediaStream) => void;
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: () => new Promise<MediaStream>(resolve => { grant = resolve; }) } });
+  const joining = session.joinVoice("first").catch(error => error);
+  try {
+    await session.leaveVoice("first");
+    await vi.waitFor(() => {
+      expect(session.getSnapshot().pending.has("voice:first")).toBe(false);
+      expect(contexts[0].close).toHaveBeenCalledOnce();
+    }, { timeout: 100 });
+    const listening = session.joinVoice("first", true);
+    const request = socket.sent.at(-1)!;
+    socket.receive({ type: "ack", requestId: request.requestId });
+    await listening;
+    expect(await joining).toMatchObject({ name: "AbortError" });
+    grant(remoteStream("late-source", [late]));
+    await Promise.resolve();
+    expect(late.stop).toHaveBeenCalledOnce();
+    expect(socket.sent.some(command => command.type === "publish")).toBe(false);
+  } finally {
+    session.close();
+    grant(remoteStream("late-source", [late]));
+    await joining;
+  }
+});
+
+
+test("leaving one pending voice room preserves a sibling's shared microphone request", async () => {
+  const { session, socket } = await setup(3, false);
+  const clone = remoteStream("second-voice", [remoteTrack("audio")]);
+  const abandoned = remoteStream("left-voice", [remoteTrack("audio")]);
+  const contexts = microphoneMixer([abandoned, clone]), raw = remoteTrack("audio");
+  let grant!: (stream: MediaStream) => void;
+  const getUserMedia = vi.fn(() => new Promise<MediaStream>(resolve => { grant = resolve; }));
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+  const first = session.joinVoice("first").catch(error => error);
+  const second = session.joinVoice("second");
+  try {
+    await session.leaveVoice("first");
+    expect(getUserMedia).toHaveBeenCalledOnce();
+    expect(contexts[0].close).not.toHaveBeenCalled();
+    grant(remoteStream("shared-raw", [raw]));
+    expect(await first).toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "voice", roomId: "second", joined: true }));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await second;
+    expect(raw.stop).not.toHaveBeenCalled();
+    expect(contexts[0].close).not.toHaveBeenCalled();
+    const leave = session.leaveVoice("second");
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await leave;
+    expect(raw.stop).toHaveBeenCalledOnce();
+    expect(contexts[0].close).toHaveBeenCalledOnce();
+  } finally { session.close(); grant(remoteStream("late", [raw])); await Promise.all([first, second]); }
 });

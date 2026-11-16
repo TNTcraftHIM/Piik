@@ -72,6 +72,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
   private pending = new Map<string, Pending>();
   private reactionNonce = 0;
   private stopped = false;
+  private stopping?: Promise<void>;
   constructor(private readonly options: TextParticipantOptions) {
     super();
     this.credential = options.credential;
@@ -296,10 +297,13 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     await this.connect();
   }
 
-  async stop() {
-    if (this.stopped)
-      return;
+  stop(): Promise<void> {
+    if (this.stopping) return this.stopping;
     this.stopped = true;
+    return this.stopping = this.close();
+  }
+
+  private async close(): Promise<void> {
     const socket = this.socket;
     try {
       if (socket?.readyState === WebSocket.OPEN)

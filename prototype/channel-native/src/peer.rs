@@ -792,6 +792,8 @@ struct Driver {
     bandwidth_changed: Arc<Notify>,
     admitted: HashSet<Uuid>,
     pairs: HashMap<Uuid, Pair>,
+    // Preserve Driver's Sync contract; only exclusive get_mut accesses this slot.
+    retiring_pair: std::sync::Mutex<Option<futures_util::future::BoxFuture<'static, ()>>>,
     preparings: HashMap<Uuid, preparation::Pending>,
     publications: HashMap<Uuid, PublicationInfo>,
     sources: HashMap<Uuid, Source>,
@@ -858,6 +860,7 @@ impl NativePeers {
                 bandwidth_changed: bandwidth_changed.clone(),
                 admitted: HashSet::new(),
                 pairs: HashMap::new(),
+                retiring_pair: std::sync::Mutex::new(None),
                 preparings: HashMap::new(),
                 publications: HashMap::new(),
                 sources: HashMap::new(),
@@ -1082,6 +1085,7 @@ impl NativePeers {
                     audio.close().await;
                 }
             }
+            d.finish_pair_retirement().await;
             for (_, pair) in d.pairs.drain() {
                 close_pair(pair).await;
             }
@@ -2684,6 +2688,12 @@ impl Driver {
             .await;
         }
     }
+    async fn finish_pair_retirement(&mut self) {
+        if let Some(retiring) = self.retiring_pair.get_mut().unwrap().as_mut() {
+            retiring.await;
+            *self.retiring_pair.get_mut().unwrap() = None;
+        }
+    }
     async fn retire_pair(&mut self, id: Uuid) -> bool {
         if let Some(pending) = self.preparings.remove(&id) {
             pending.close().await;
@@ -2691,6 +2701,10 @@ impl Driver {
         let Some(pair) = self.pairs.remove(&id) else {
             return false;
         };
+        let released = !pair.outputs.is_empty();
+        let peer = pair.plan.peer_id;
+        // Retain the whole cleanup future if stop cancels this Driver turn.
+        *self.retiring_pair.get_mut().unwrap() = Some(Box::pin(close_pair(pair)));
         for message in self.inputs.disconnected(id) {
             self.send_input(message).await;
         }
@@ -2698,10 +2712,9 @@ impl Driver {
             |_, source| !matches!(source.origin, SourceOrigin::Incoming { pair, .. } if pair == id),
         );
         self.relay.retain(&self.sources.keys().copied().collect());
-        let released = !pair.outputs.is_empty();
-        self.files.detach(pair.plan.peer_id).await;
-        self.watches.detach(pair.plan.peer_id).await;
-        close_pair(pair).await;
+        self.files.detach(peer).await;
+        self.watches.detach(peer).await;
+        self.finish_pair_retirement().await;
         released
     }
     async fn fail(&mut self, id: Uuid) {

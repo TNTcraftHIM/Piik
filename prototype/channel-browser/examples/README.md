@@ -156,7 +156,35 @@ participant.on('live', message => {
 Only new verified live messages trigger the handler. Reading history does not
 replay it; a declined reaction does not undo the already-confirmed reply.
 
-The existing tooling tsconfig checks the Node client and CLI during the normal
+## Support bot example
+
+`support-bot.ts` runs a small consumer of the same Node client. A new `!help`
+message from another user receives a quoted Markdown answer with a fenced text
+template, followed by one `wave` reaction attempt on the incoming message.
+The room Host confirms both operations. A declined or rate-limited reaction
+does not resend the confirmed reply. It does not process history as commands.
+
+From the repository root, after the same dependency/WASM setup above:
+
+```sh
+node --import tsx prototype/channel-browser/examples/support-bot.ts \
+  --url ws://127.0.0.1:8791/prototype/channel \
+  --origin http://127.0.0.1:8790 --room YOUR_ROOM_ID
+```
+
+Use only an explicitly authorized room. `PIIK_TEXT_CREDENTIAL` may supply this
+bot's own saved credential; otherwise each process starts a new identity.
+Private-room access uses `PIIK_TEXT_INVITE_KEY` or `PIIK_TEXT_ROOM_PASSWORD`.
+This example does not save credentials, expose a webhook, or export messages to
+another service. It needs no media peers, room hosting, or Bot-specific role.
+
+Ctrl+C or SIGTERM removes the handler and closes the participant, then waits for
+pending handler work to settle. A disconnect ends this example without automatic
+reconnect or replay. `attachSupportBot` can also be imported; its returned async
+cleanup removes its listener and drains work, while the caller retains ownership
+of the participant connection. No module registry or plugin loader is involved.
+
+The existing tooling tsconfig checks the Node client and examples during the normal
 repository checks. Its retained test uses a loopback WebSocket fixture and the
 real Core WASM signer/verifier, without starting an App or Server:
 

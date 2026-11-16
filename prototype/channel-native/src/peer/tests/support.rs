@@ -67,6 +67,7 @@ impl Fixture {
             bandwidth_changed: Arc::new(Notify::new()),
             admitted: HashSet::new(),
             pairs: HashMap::new(),
+            retiring_pair: std::sync::Mutex::new(None),
             preparings: HashMap::new(),
             publications: HashMap::new(),
             sources: HashMap::new(),
@@ -423,6 +424,7 @@ impl Fixture {
     }
     pub(in crate::peer) async fn close(mut self) {
         self.driver.inputs.close();
+        self.driver.finish_pair_retirement().await;
         for (_, pair) in self.driver.pairs.drain() {
             close_pair(pair).await;
         }

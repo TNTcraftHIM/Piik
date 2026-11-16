@@ -10,9 +10,11 @@ class Delivery {
   reads: string[] = []; cancels: string[] = [];
   available = true;
   update() { return "[]"; }
-  read(_key: string, requestId: string) {
+  read(key: string, requestId: string) {
     this.reads.push(requestId);
-    return this.available ? "[]" : JSON.stringify([{ type: "failed", requestId, code: "watch_path_unavailable" }]);
+    return JSON.stringify(this.available
+      ? [{ type: "send_control", peer, control: { type: "pull", requestId, key: JSON.parse(key) } }]
+      : [{ type: "failed", requestId, code: "watch_path_unavailable" }]);
   }
   cancel(id: string) { this.cancels.push(id); return "[]"; }
   control(_peer: string, control: string) { return control; }
@@ -25,7 +27,9 @@ class Delivery {
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 function setup() {
   const delivery = new Delivery();
-  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ initializeRuntime: async () => {}, WatchDelivery: class { constructor() { return delivery; } } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ initializeRuntime: async () => {},
+    encode_control: (value: string) => new TextEncoder().encode(value),
+    WatchDelivery: class { constructor() { return delivery; } } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const bytes = new WatchBytes(vi.fn(async () => {})); bytes.update(sessionId, [plan], [{ peerId: peer, rooms: [roomId] }]);
   return { bytes, delivery };
 }

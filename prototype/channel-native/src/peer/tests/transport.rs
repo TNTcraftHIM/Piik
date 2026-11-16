@@ -1,5 +1,127 @@
 use super::*;
 
+#[tokio::test]
+async fn cancelled_driver_pair_retirement_keeps_real_child_joins() -> Result<()> {
+    use crate::peer::{tests::driver, Pair, Reader};
+    use std::future::Future;
+
+    let (mut driver, _events, _commands, _stop) = driver();
+    // Use the real Transport command boundary without binding any UDP socket.
+    let (commands, mut requests) = mpsc::channel(8);
+    let id = Uuid::new_v4();
+    let instance = Uuid::new_v4();
+    let pc = Transport {
+        pair: id,
+        instance,
+        tx: commands,
+    };
+    let state = Arc::new(AtomicU8::new(PeerState::Connected as u8));
+    let data = crate::data::DataLink::new(id, state.clone(), driver.events.clone());
+    let (demand, _) = watch::channel(BandwidthDemand {
+        minimum_bps: 0,
+        desired_bps: Some(0),
+    });
+    let (_, bandwidth) = watch::channel(Estimate::Startup(0.0));
+    let (started, running) = oneshot::channel();
+    let (ended, mut dropped) = oneshot::channel();
+    struct Ended(Option<oneshot::Sender<()>>);
+    impl Drop for Ended {
+        fn drop(&mut self) {
+            if let Some(done) = self.0.take() {
+                let _ = done.send(());
+            }
+        }
+    }
+    let reader = tokio::spawn(async move {
+        let _ended = Ended(Some(ended));
+        let _ = started.send(());
+        std::future::pending::<()>().await;
+    });
+    let observer = reader.abort_handle();
+    running.await?;
+    driver.pairs.insert(
+        id,
+        Pair {
+            plan: piik_channel_core::wire::PairInfo {
+                id,
+                peer_id: Uuid::new_v4(),
+                rooms: vec![],
+                incoming: vec![],
+                outgoing: vec![],
+                udp_preparation: None,
+                can_receive_video_layers: false,
+            },
+            pc,
+            mapping: None,
+            polite: false,
+            pending_offer: None,
+            stable_outputs: None,
+            failed_offer: None,
+            answer: None,
+            negotiate: false,
+            ignore_offer: false,
+            candidates: vec![],
+            remote: HashMap::new(),
+            latest: HashMap::new(),
+            outputs: HashMap::new(),
+            rejected_outputs: HashMap::new(),
+            reports: crate::media::OutputStreams::default(),
+            bandwidth,
+            demand,
+            tasks: HashMap::from([(
+                Uuid::new_v4(),
+                Reader {
+                    key: (Uuid::new_v4(), MediaKind::Video),
+                    track: "retiring".into(),
+                    task: reader,
+                },
+            )]),
+            dc: None,
+            bulk: None,
+            input: None,
+            data,
+            state,
+            dc_open: false,
+            base_failed: false,
+            reported: HashSet::new(),
+            deadline: None,
+            overflow: Arc::new(AtomicBool::new(false)),
+        },
+    );
+    let mut retirement = Box::pin(driver.retire_pair(id));
+    let done = tokio::select! {
+        result = &mut retirement => panic!("retirement completed before transport removal: {result}"),
+        request = requests.recv() => match request {
+            Some(Command::Remove(pair, generation, done)) => {
+                assert_eq!((pair, generation), (id, instance));
+                done
+            }
+            _ => panic!("expected actual Transport::close removal request"),
+        },
+    };
+    drop(retirement); // Driver's stop select cancels this exact work future.
+    assert!(driver.pairs.is_empty());
+    assert!(!observer.is_finished());
+    let mut shutdown = Box::pin(driver.finish_pair_retirement());
+    assert!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(shutdown.as_mut().poll(cx).is_pending()))
+            .await
+    );
+    assert!(dropped.try_recv().is_err());
+    done.send(()).unwrap();
+    shutdown.await;
+    assert!(
+        observer.is_finished(),
+        "Driver shutdown must join the removed Pair reader"
+    );
+    dropped.await?;
+    assert!(driver.retiring_pair.get_mut().unwrap().is_none());
+    driver.files.close().await;
+    driver.watches.close().await;
+    driver.transport.close().await;
+    Ok(())
+}
+
 async fn completed_source_check(assigned: bool) -> JoinHandle<bool> {
     let task = tokio::spawn(async move { assigned });
     while !task.is_finished() {

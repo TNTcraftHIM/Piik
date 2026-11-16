@@ -7,15 +7,19 @@ import { openWatchResource } from "../src/client/channel/watch-resource";
 const rootId = "11111111-1111-4111-8111-111111111111";
 const leaseId = "22222222-2222-4222-8222-222222222222";
 
-function worker(holdReads = false, size = 100000) {
+function worker(holdReads = false, size = 100000, clientReady = Promise.resolve()) {
   const listeners = new Map<string, (event: unknown) => void>();
   const reads: unknown[] = [];
+  const opened = vi.fn();
   const replies: (() => void)[] = [];
   let cancelled = false;
   runInNewContext(readFileSync(new URL("../public/watch-media-worker.js", import.meta.url), "utf8"), {
     URL, Response, MessageChannel, ReadableStream, ArrayBuffer, Uint8Array, setTimeout, clearTimeout,
     self: { location: { origin: "https://piik.test" }, addEventListener: (type: string, listener: (event: unknown) => void) => listeners.set(type, listener),
-      clients: { get: async (id: string) => id === "owner-page" ? { url: "https://piik.test/", postMessage: (_value: unknown, ports: MessagePort[]) => {
+      clients: { get: async (id: string) => {
+        await clientReady;
+        return id === "owner-page" ? { url: "https://piik.test/", postMessage: (_value: unknown, ports: MessagePort[]) => {
+        opened();
         const port = ports[0];
         port.onmessage = ({ data }) => {
           if (data.type === "stat") port.postMessage({ id: data.id, size, mimeType: "video/mp4" });
@@ -26,11 +30,11 @@ function worker(holdReads = false, size = 100000) {
           }
           if (data.type === "cancel") { cancelled = true; port.close(); }
         };
-      } } : undefined } },
+      } } : undefined; } } },
   });
-  return { reads, replies, cancelled: () => cancelled, fetch: (range?: string, method = "GET", clientId = "owner-page", path = `/__watch-media/${leaseId}/${rootId}`, destination: RequestDestination = "") => {
+  return { reads, replies, opened, cancelled: () => cancelled, fetch: (range?: string, method = "GET", clientId = "owner-page", path = `/__watch-media/${leaseId}/${rootId}`, destination: RequestDestination = "", signal?: AbortSignal) => {
     let response: Promise<Response> | undefined;
-    const request = new Request(`https://piik.test${path}`, { method, headers: range ? { range } : {} });
+    const request = new Request(`https://piik.test${path}`, { method, headers: range ? { range } : {}, signal });
     Object.defineProperty(request, "destination", { value: destination });
     listeners.get("fetch")!({ clientId, request,
       respondWith: (value: Promise<Response>) => { response = value; } });
@@ -39,6 +43,16 @@ function worker(holdReads = false, size = 100000) {
 }
 
 describe("page-owned virtual media HTTP", () => {
+  test("cancelling during client lookup does not open a late page request", async () => {
+    let found!: () => void;
+    const clientReady = new Promise<void>(resolve => { found = resolve; });
+    const lifetime = new AbortController(), w = worker(false, 100000, clientReady);
+    const pending = w.fetch(undefined, "HEAD", "owner-page", undefined, "", lifetime.signal)!;
+    lifetime.abort(); found();
+    expect((await pending).status).toBe(410);
+    expect(w.opened).not.toHaveBeenCalled();
+    expect(w.reads).toEqual([]);
+  });
   test("normal, bounded and suffix ranges use proper HTTP headers and bounded windows", async () => {
     const w = worker();
     const response = await w.fetch("bytes=123-99999", "GET", "owner-page", `/__watch-media/${leaseId}/${rootId}`, "video")!;
@@ -151,4 +165,33 @@ test("closing while service-worker registration is pending leaves no reader leas
     media.close(); registered(); await Promise.resolve(); await Promise.resolve();
     expect(read).not.toHaveBeenCalled(); expect(listener).not.toHaveBeenCalled(); expect(video.src).toBe("");
   } finally { vi.unstubAllGlobals(); }
+});
+
+test.each(["timeout", "abort"] as const)("peer readiness %s retires its pending setup reader", async reason => {
+  vi.useFakeTimers();
+  const video = Object.assign(new EventTarget(), { src: "", readyState: 0, buffered: { length: 0 },
+    pause: vi.fn(), removeAttribute: vi.fn(), load: vi.fn(), remove: vi.fn() });
+  vi.stubGlobal("document", { createElement: () => video });
+  vi.stubGlobal("MediaSource", { isTypeSupported: () => true });
+  let readerSignal!: AbortSignal;
+  const reader = vi.fn((_resource, _offset, _length, signal: AbortSignal) => {
+    readerSignal = signal;
+    return new Promise<never>((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+  });
+  const media = createPeerWatchMedia({ resourceId: rootId, format: "file" }, reader);
+  const closeEvent = vi.fn(); video.addEventListener("closed", closeEvent);
+  const cancel = new AbortController();
+  try {
+    const ready = media.ready(cancel.signal);
+    const rejected = reason === "timeout" ? expect(ready).rejects.toThrow("watch_media_timeout")
+      : expect(ready).rejects.toMatchObject({ name: "AbortError" });
+    await vi.advanceTimersByTimeAsync(0); expect(reader).toHaveBeenCalledTimes(1);
+    if (reason === "timeout") await vi.advanceTimersByTimeAsync(20000); else cancel.abort();
+    await rejected;
+    expect(readerSignal.aborted).toBe(true);
+    expect(video.removeAttribute).toHaveBeenCalledWith("src");
+    expect(closeEvent).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(20000); expect(reader).toHaveBeenCalledTimes(1);
+  } finally { media.close(); vi.unstubAllGlobals(); vi.useRealTimers(); }
+  expect(video.remove).toHaveBeenCalled();
 });

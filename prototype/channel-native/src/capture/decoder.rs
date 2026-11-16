@@ -1,5 +1,5 @@
 //! One selected decoder. AU assembly, selection and source time belong to media.
-use super::{Format, VideoCodec};
+use super::{mf_common::Com, Format, VideoCodec};
 use crate::EncodedFrame;
 use anyhow::{anyhow, ensure, Context, Result};
 use std::{
@@ -16,36 +16,12 @@ use windows::{
         },
         Media::MediaFoundation::*,
         System::{
-            Com::{
-                CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
-                COINIT_MULTITHREADED,
-            },
+            Com::{CoCreateInstance, CLSCTX_INPROC_SERVER},
             Variant::VARIANT,
         },
     },
 };
 
-struct Com;
-impl Com {
-    fn start() -> Result<Self> {
-        unsafe {
-            CoInitializeEx(None, COINIT_MULTITHREADED).ok()?;
-            if let Err(e) = MFStartup(MF_VERSION, MFSTARTUP_FULL) {
-                CoUninitialize();
-                return Err(e.into());
-            }
-        }
-        Ok(Self)
-    }
-}
-impl Drop for Com {
-    fn drop(&mut self) {
-        unsafe {
-            let _ = MFShutdown();
-            CoUninitialize();
-        }
-    }
-}
 pub(crate) enum Decoder {
     H264(H264),
     Vp8(super::vp8_decoder::Decoder),

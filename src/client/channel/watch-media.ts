@@ -162,7 +162,10 @@ export class HTMLVideoMedia implements WatchMedia {
     if (value.paused === true) this.video.pause();
     else if (value.paused === false) await this.video.play();
   }
-  ready(signal: AbortSignal): Promise<void> { return waitForWatchMedia(this, AbortSignal.any([signal, this.lifetime.signal]), this.setup); }
+  async ready(signal: AbortSignal): Promise<void> {
+    try { await waitForWatchMedia(this, AbortSignal.any([signal, this.lifetime.signal]), this.setup); }
+    catch (error) { this.dispose(); throw error; }
+  }
   listen(changed: (event: WatchMediaEvent) => void): () => void {
     const lifetime = new AbortController();
     for (const event of ["loadedmetadata", "loadeddata", "play", "playing", "pause", "seeked", "ratechange", "ended", "waiting", "error", "closed"] as const)
@@ -171,8 +174,12 @@ export class HTMLVideoMedia implements WatchMedia {
   }
   close(): void {
     if (this.lifetime.signal.aborted) return;
-    this.lifetime.abort(); this.hls?.destroy(); this.mp4?.close(); this.resource?.close();
+    this.dispose();
     this.video.dispatchEvent(new Event("closed"));
+  }
+  private dispose(): void {
+    if (this.lifetime.signal.aborted) return;
+    this.lifetime.abort(); this.hls?.destroy(); this.mp4?.close(); this.resource?.close();
     this.video.pause(); this.video.removeAttribute("src"); this.video.load(); this.video.remove();
   }
 }

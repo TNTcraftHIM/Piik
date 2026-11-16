@@ -56,6 +56,7 @@ interface RoomReading {
 }
 
 interface MicrophoneRequest {
+  controller: AbortController;
   context: AudioContext | null;
   input: MicrophoneInput | null;
   promise?: Promise<MicrophoneInput>;
@@ -2786,12 +2787,13 @@ export class ChannelSession {
     // Resume during the gesture, before device permission consumes activation.
     const context = new AudioContext();
     const resumed = context.resume().then(() => true, () => false);
-    const request: MicrophoneRequest = { context, input: null };
+    const request: MicrophoneRequest = { controller: new AbortController(), context, input: null };
+    const requestSignal = AbortSignal.any([signal, request.controller.signal]);
     request.promise = (async () => {
       let stream: MediaStream | undefined, input: MicrophoneInput | undefined;
       try {
-        stream = await this.captureVoiceMicrophone(this.view.voiceInput, signal);
-        signal.throwIfAborted();
+        stream = await this.captureVoiceMicrophone(this.view.voiceInput, requestSignal);
+        requestSignal.throwIfAborted();
         if (stream.getAudioTracks()[0]?.readyState !== "live") throw new Error("microphone_unavailable");
         const captured = input = new MicrophoneInput(stream, context, this.view.voiceInput.volume, () => {
           for (const [id, capture] of [...this.local]) if (capture.microphone === captured) this.voiceCaptureEnded(id, capture.stream);
@@ -2801,7 +2803,7 @@ export class ChannelSession {
         request.input = captured;
         request.context = null;
         const started = await resumed;
-        signal.throwIfAborted();
+        requestSignal.throwIfAborted();
         if (!started || !captured.stream.active) throw new Error("microphone_unavailable");
         captured.volume(this.view.voiceInput.volume);
         this.microphone = captured;
@@ -3009,7 +3011,13 @@ export class ChannelSession {
   }
 
   private releaseUnusedMicrophone(): void {
-    if ([...this.voiceParticipation.values()].some(intent => intent.publicationId) || [...this.view.pending].some(key => key.startsWith("voice:"))) return;
+    if ([...this.voiceParticipation.values()].some(intent => intent.publicationId || !intent.muted)) return;
+    const request = this.microphoneRequest;
+    this.microphoneRequest = null;
+    request?.controller.abort();
+    request?.input?.close();
+    void request?.context?.close().catch(() => {});
+    if (request) request.context = null;
     this.microphone?.close();
     this.microphone = null;
   }

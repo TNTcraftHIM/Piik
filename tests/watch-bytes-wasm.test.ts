@@ -4,7 +4,91 @@ import { WatchBytes } from "../src/client/channel/watch-bytes";
 import * as hosting from "../src/client/channel/hosting";
 import type { WatchBytePlan } from "../src/client/channel/protocol";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
+
+async function actualRuntime() {
+  const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  await rust.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ ...rust, initializeRuntime: async () => {} } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  return rust;
+}
+
+test("response deadline starts after the real Pull send, excluding plan and transport waits", async () => {
+  await actualRuntime(); vi.useFakeTimers();
+  const [viewer, peer, activityId, resourceId] = Array.from({ length: 4 }, () => crypto.randomUUID());
+  const source = { sessionId: peer, resourceId, format: "file" as const };
+  const plan: WatchBytePlan = { roomId: "owned", activityId, source, upstream: null, downstream: [], receiving: true };
+  let sent!: () => void;
+  const sending = new Promise<void>(resolve => { sent = resolve; });
+  const send = vi.fn(async (_peer, _kind, raw) => {
+    if (JSON.parse(raw).body.type === "pull") await sending;
+  });
+  const bytes = new WatchBytes(send);
+  let settled = false;
+  try {
+    bytes.update(viewer, [plan], []);
+    const reading = bytes.read(plan.roomId, activityId, source, resourceId, 0, 1024, new AbortController().signal);
+    void reading.then(() => { settled = true; }, () => { settled = true; });
+    const timedOut = expect(reading).rejects.toThrow("watch_read_timeout");
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(settled).toBe(false); expect(send).not.toHaveBeenCalled();
+    bytes.update(viewer, [{ ...plan, upstream: peer }], [{ peerId: peer, rooms: [plan.roomId] }]);
+    await vi.advanceTimersByTimeAsync(0); expect(send).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(15000); expect(settled).toBe(false);
+    sent(); await vi.advanceTimersByTimeAsync(9999); expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1); await timedOut;
+    expect(settled).toBe(true); expect(vi.getTimerCount()).toBe(0);
+  } finally { sent(); bytes.reset(); }
+});
+
+test("cancelling a queued Pull prevents late transmission and a late response timer", async () => {
+  await actualRuntime(); vi.useFakeTimers();
+  const [viewer, peer, activityId, resourceId] = Array.from({ length: 4 }, () => crypto.randomUUID());
+  const source = { sessionId: peer, resourceId, format: "file" as const };
+  let sent!: () => void, allowed!: () => boolean;
+  const sending = new Promise<void>(resolve => { sent = resolve; });
+  const bytes = new WatchBytes(async (_peer, _kind, raw, current) => {
+    if (JSON.parse(raw as string).body.type === "pull") { allowed = current; await sending; }
+  });
+  const cancel = new AbortController();
+  try {
+    bytes.update(viewer, [{ roomId: "owned", activityId, source, upstream: peer, downstream: [], receiving: true }], [{ peerId: peer, rooms: ["owned"] }]);
+    const reading = bytes.read("owned", activityId, source, resourceId, 0, 1024, cancel.signal);
+    const rejected = expect(reading).rejects.toMatchObject({ name: "AbortError" });
+    await vi.advanceTimersByTimeAsync(0); expect(allowed()).toBe(true);
+    cancel.abort(); await rejected; expect(allowed()).toBe(false);
+    sent(); await vi.advanceTimersByTimeAsync(15000);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { sent(); bytes.reset(); }
+});
+
+test("a real response received before send completion cannot leave a response deadline", async () => {
+  const rust = await actualRuntime(); vi.useFakeTimers();
+  const [viewer, peer, activityId, resourceId] = Array.from({ length: 4 }, () => crypto.randomUUID());
+  const source = { sessionId: peer, resourceId, format: "file" as const };
+  const sourceCore = new rust.WatchDelivery(peer);
+  sourceCore.update(JSON.stringify([{ roomId: "owned", activityId, source, upstream: null, downstream: [viewer], receiving: false }]), JSON.stringify([[viewer, ["owned"]]]));
+  let sent!: () => void;
+  const sending = new Promise<void>(resolve => { sent = resolve; });
+  const bytes = new WatchBytes(async (_peer, _kind, raw) => {
+    const control = JSON.parse(rust.decode_control(new TextEncoder().encode(raw as string)));
+    for (const effect of JSON.parse(sourceCore.control(viewer, JSON.stringify(control.body)))) {
+      if (effect.type !== "read") continue;
+      for (const result of JSON.parse(sourceCore.read_result(effect.requestId, JSON.stringify({ mimeType: "video/mp4", totalSize: 3, bytes: [1, 2, 3], eof: true })))) {
+        if (result.type === "send_chunk") bytes.data(peer, "chunk", Uint8Array.from(result.frame));
+      }
+    }
+    await sending;
+  });
+  try {
+    bytes.update(viewer, [{ roomId: "owned", activityId, source, upstream: peer, downstream: [], receiving: true }], [{ peerId: peer, rooms: ["owned"] }]);
+    const reading = bytes.read("owned", activityId, source, resourceId, 0, 3, new AbortController().signal);
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(reading).resolves.toMatchObject({ bytes: Uint8Array.of(1, 2, 3) });
+    sent(); await vi.advanceTimersByTimeAsync(15000);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { sent(); bytes.reset(); sourceCore.free(); }
+});
 
 test.each(["ready", "provider", "viewer"] as const)("Browser range uses real Core typed chunks with late plan at %s", async delayed => {
   const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");

@@ -14,6 +14,7 @@ async function serve(event, url) {
   if (parts.length !== 2 || !parts.every(part => uuid.test(part))) return new Response(null, { status: 404 });
   const client = await self.clients.get(event.clientId);
   if (!client || new URL(client.url).origin !== self.location.origin) return new Response(null, { status: 403 });
+  if (event.request.signal.aborted) return new Response(null, { status: 410 });
   const { port1: port, port2 } = new MessageChannel();
   const pending = new Map();
   let sequence = 0, closed = false;

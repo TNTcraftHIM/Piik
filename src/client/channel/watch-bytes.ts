@@ -13,7 +13,7 @@ type Effect =
   | { type: "read" | "cancel_read"; requestId: string };
 interface Pending {
   key: Key; source: WatchByteSource; offset: number; length: number; started: boolean;
-  resolve(value: WatchByteResult): void; reject(error: Error): void; cleanup(): void;
+  resolve(value: WatchByteResult): void; reject(error: Error): void; sent(): void; cleanup(): void;
 }
 interface Runtime { delivery: WatchDelivery; module: Awaited<ReturnType<typeof loadRoomHosting>>; lifetime: AbortController }
 const sameSource = (a: WatchByteSource, b: WatchByteSource | undefined) => a.sessionId === b?.sessionId && a.resourceId === b.resourceId && a.format === b.format;
@@ -68,15 +68,16 @@ export class WatchBytes {
     if (!this.current(runtime)) throw new Error("disconnected");
     const id = crypto.randomUUID();
     return new Promise((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
       const cancel = () => {
         if (this.current(runtime)) this.effects(runtime, runtime.delivery.cancel(id));
         this.finish(id, new DOMException("Cancelled", "AbortError"));
       };
-      const timer = setTimeout(() => {
-        if (this.current(runtime)) this.effects(runtime, runtime.delivery.cancel(id));
-        this.finish(id, new Error("watch_read_timeout"));
-      }, 10000);
       const pending: Pending = { key: { roomId, activityId, resourceId }, source, offset, length, started: false, resolve, reject,
+        sent: () => { timer = setTimeout(() => {
+          if (this.current(runtime)) this.effects(runtime, runtime.delivery.cancel(id));
+          this.finish(id, new Error("watch_read_timeout"));
+        }, 10000); },
         cleanup: () => { clearTimeout(timer); signal.removeEventListener("abort", cancel); } };
       this.pending.set(id, pending);
       signal.addEventListener("abort", cancel, { once: true });
@@ -111,11 +112,15 @@ export class WatchBytes {
         const key = effect.type === "send_control" ? effect.control.key : effect.key;
         const source = this.plans.find(plan => plan.activityId === key.activityId && plan.roomId === key.roomId)?.source;
         const terminal = effect.type === "send_control" && ["cancel", "error"].includes(effect.control.type);
-        const allowed = () => this.current(runtime) && this.plans.some(plan => plan.activityId === key.activityId && plan.roomId === key.roomId
+        const requestId = effect.type === "send_control" ? effect.control.requestId : effect.requestId;
+        const pending = effect.type === "send_control" && effect.control.type === "pull" ? this.pending.get(requestId) : undefined;
+        const current = () => this.current(runtime) && (!pending || this.pending.get(requestId) === pending);
+        const allowed = () => current() && this.plans.some(plan => plan.activityId === key.activityId && plan.roomId === key.roomId
           && sameSource(plan.source, source) && (plan.upstream === effect.peer || plan.downstream.includes(effect.peer)));
         const data = effect.type === "send_chunk" ? Uint8Array.from(effect.frame)
           : new TextDecoder().decode(runtime.module.encode_control(JSON.stringify({ kind: "watch", body: effect.control })));
         void this.send(effect.peer, effect.type === "send_chunk" ? "chunk" : "control", data, terminal ? () => this.current(runtime) : allowed)
+          .then(() => { if (pending && current()) pending.sent(); })
           .catch(() => { if (this.current(runtime) && !terminal) this.effects(runtime, runtime.delivery.request_failed(effect.type === "send_control" ? effect.control.requestId : effect.requestId, "watch_path_unavailable")); });
       }
     }

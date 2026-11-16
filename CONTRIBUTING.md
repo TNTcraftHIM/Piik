@@ -207,6 +207,9 @@ code instead of repeatedly running the full platform matrix for one candidate.
   volume with sufficient free space. Keep them outside versioned source copies;
   do not allocate a new cache for every SHA or acceptance attempt. Repeated
   candidate builds should use stable checkout paths and separate immutable outputs.
+  When handing a shared target between source copies that preserve timestamps,
+  invalidate the affected local packages with `cargo clean -p`; retain dependency
+  caches. Run Cargo from the source root so its checked-in configuration applies.
   Keep source, credentials, running environments and required evidence separate
   from disposable compiler output when preparing cleanup.
   Before packaging, verify the selected product and checkout against the intended

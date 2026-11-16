@@ -28,6 +28,7 @@
     "network-lab.ts",
     "../tests",
     "../prototype/channel-browser/node/text-participant.ts",
-    "../prototype/channel-browser/examples/text-participant.ts"
+    "../prototype/channel-browser/examples/text-participant.ts",
+    "../prototype/channel-browser/examples/support-bot.ts"
   ]
 }
