@@ -286,7 +286,10 @@ message actions stay close to their content and appear on hover or focus;
 tapping a focusable message reveals the same controls on touch. Existing reaction
 counts remain visible when those actions are hidden.
 Keep consecutive messages within an author group close, with a larger break
-between groups. Embedded actions follow the content with compact targets rather
+between groups. In 3.0 history, show a localized date including the year before
+each day's first loaded message, including the first group. Local calendar-day
+boundaries break author groups; short message times expose the full date and
+time as details. Embedded actions follow the content with compact targets rather
 than reserving a column beside multiline text. Showing them keeps the message
 layout stable; their reaction picker retains the shared floating surface.
 [W3C focus guidance](https://www.w3.org/WAI/WCAG22/Understanding/focus-visible.html)

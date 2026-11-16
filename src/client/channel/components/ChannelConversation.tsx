@@ -309,7 +309,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
         {messages.map((message, index) => {
           const previous = messages[index - 1];
           const date = new Date(message.time), previousDate = previous && new Date(previous.time);
-          const newDay = !!previousDate && (date.getFullYear() !== previousDate.getFullYear()
+          const newDay = !previousDate || (date.getFullYear() !== previousDate.getFullYear()
             || date.getMonth() !== previousDate.getMonth() || date.getDate() !== previousDate.getDate());
           const elapsed = previous ? message.time - previous.time : 0;
           const newMessages = message.id === unreadMessage;
@@ -412,6 +412,8 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
   const { lang, t } = useCopy();
   const mentioned = message.mentions?.some(mention => mention.userId === selfUserId)
     || (message.reply?.notify && message.reply.userId === selfUserId);
+  const date = new Date(message.time);
+  const timestamp = date.toLocaleString(lang, { dateStyle: "long", timeStyle: "long" });
   const row = useRef<HTMLElement>(null);
   const effectAnchor = useCallback(() => row.current?.closest(".c3-message-content")
     ?.querySelector(`[data-message-id="${CSS.escape(authorMessageId)}"] > .lr-person`) ?? null, [authorMessageId]);
@@ -421,7 +423,7 @@ const MessageRow = memo(function MessageRow({ roomId, message, grouped, name, av
     <article ref={row} tabIndex={0} className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}${mentioned ? " is-mentioned" : ""}`} data-message-id={message.id} data-message-seq={message.seq}>
     {!grouped && <PawnSvg color={participantColor(message.userId)} identity={message.userId} avatar={avatar} />}
     <div className="c3-message-body">{!grouped && <div className="c3-message-meta"><strong>{name}</strong>
-      <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" })}</time>
+      <time dateTime={date.toISOString()} title={timestamp} aria-label={timestamp}>{date.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" })}</time>
     </div>}<div className="c3-message-content-body">
     {message.reply && <button type="button" className="c3-message-reference" disabled={!onMessage} onClick={() => onMessage?.(message.reply!.seq)}>
       <Glyph name="reply" size={14} /><strong>{message.reply.archivedAuthorName ?? users.find(user => user.id === message.reply!.userId)?.name ?? t("conversation.user")}</strong>
