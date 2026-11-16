@@ -144,6 +144,16 @@ Both workers joined on exit. This establishes no fixed 60 fps limit in that
 low-load encoding path; it does not measure WGC, high-resolution games, GPU
 saturation or automatic hardware/software switching.
 
+A later owned Windows control separately delayed the GPU-copy handoff,
+encoder-adapter service and consumption of completed AUs. Raw-frame credit gaps
+and low output cadence appeared in all three, so neither identifies encoding
+pressure. Hardware input acceptance to observed HaveOutput delivery stayed near
+2–3 ms: the delay was injected in the adapter, not reproduced GPU contention.
+Stage timing must separate capture/copy, codec service and downstream waiting.
+Software benefit requires comparing complete input-to-AU delivery under the same
+contention, including its GPU readback and CPU work. These controls leave the
+explicit Software choice and typed E_FAIL recovery unchanged.
+
 ## Pinned Baseline
 
 The initial review used Chrome 152.0.7977.82. Its [DEPS][chromium-deps] pins libwebrtc

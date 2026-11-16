@@ -165,8 +165,9 @@ the feedback period; they do not delay that delivery.
   with H.264 using synthetic text and motion. Compare hardware and software
   execution under CPU/GPU contention, separating capture/copy, encoding and
   network cost. Include compatible H.264 forwarding cost and sustained runtime
-  adaptation; keep congestion control with the RTC owner. AV1/HEVC product
-  integration remains a separate decision. Review the
+  adaptation; keep congestion control with the RTC owner. Actual GPU-contention
+  measurements are still needed to establish hardware/software switching benefit.
+  AV1/HEVC product integration remains a separate decision. Review the
   [codec interoperability proposal](./research/webrtc-encoder-pool.md#proposed-codec-interoperability-boundary)
   before extending codec or conversion implementations.
 - [ ] **Native send-consent lifetime.** Review the RTC owner's response-based
