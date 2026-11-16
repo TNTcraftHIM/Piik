@@ -126,26 +126,109 @@ pub fn verify_address(
     Ok(address)
 }
 
-/// Verify a packet delivered by the authenticated domain connection. The domain
-/// is a carrier, not a room-tree neighbor or the room's conversation authority.
+/// Only the authenticated domain facts used to verify conversation delivery.
+/// Extra activity descriptions are unrelated; required authority fields have no defaults.
+#[derive(Deserialize)]
+pub struct ConversationView {
+    channel: ConversationChannel,
+    sessions: Vec<ConversationSession>,
+}
+#[derive(Deserialize)]
+struct ConversationChannel {
+    rooms: Vec<ConversationRoom>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ConversationSession {
+    id: Uuid,
+    signing_key: [u8; 32],
+}
+#[derive(Deserialize)]
+struct ConversationRoom {
+    id: String,
+    #[serde(flatten)]
+    scope: ConversationScope,
+}
+#[derive(Clone, Copy, Deserialize)]
+struct ConversationScope {
+    authorized: bool,
+    available: bool,
+    delivery: Option<ConversationHost>,
+}
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ConversationHost {
+    host_session_id: Uuid,
+    binding_id: Uuid,
+}
+
+/// The domain is a carrier, not a room-tree neighbor or conversation authority.
 pub fn verify_delivery(
     packet: &SignedPacket,
     local: Uuid,
     snapshot: &crate::wire::Snapshot,
 ) -> Result<ConversationAddress, &'static str> {
-    let sender = snapshot
-        .sessions
-        .iter()
-        .find(|session| session.id == packet.sender)
-        .ok_or("session_expired")?;
-    let address = verify_address(packet, sender.signing_key)?;
-    let room = snapshot
-        .channel
-        .rooms
-        .iter()
-        .find(|room| room.id == address.room_id && room.authorized && room.available)
+    verify_delivery_with(
+        packet,
+        local,
+        snapshot
+            .sessions
+            .iter()
+            .find(|session| session.id == packet.sender)
+            .map(|session| session.signing_key),
+        |id| {
+            snapshot
+                .channel
+                .rooms
+                .iter()
+                .find(|room| room.id == id)
+                .map(|room| ConversationScope {
+                    authorized: room.authorized,
+                    available: room.available,
+                    delivery: room.delivery.as_ref().map(|delivery| ConversationHost {
+                        host_session_id: delivery.host_session_id,
+                        binding_id: delivery.binding_id,
+                    }),
+                })
+        },
+    )
+}
+
+impl ConversationView {
+    pub fn verify(
+        &self,
+        packet: &SignedPacket,
+        local: Uuid,
+    ) -> Result<ConversationAddress, &'static str> {
+        verify_delivery_with(
+            packet,
+            local,
+            self.sessions
+                .iter()
+                .find(|session| session.id == packet.sender)
+                .map(|session| session.signing_key),
+            |id| {
+                self.channel
+                    .rooms
+                    .iter()
+                    .find(|room| room.id == id)
+                    .map(|room| room.scope)
+            },
+        )
+    }
+}
+
+fn verify_delivery_with(
+    packet: &SignedPacket,
+    local: Uuid,
+    signing_key: Option<[u8; 32]>,
+    room: impl FnOnce(&str) -> Option<ConversationScope>,
+) -> Result<ConversationAddress, &'static str> {
+    let address = verify_address(packet, signing_key.ok_or("session_expired")?)?;
+    let scope = room(&address.room_id)
+        .filter(|scope| scope.authorized && scope.available)
         .ok_or("room_unavailable")?;
-    let delivery = room.delivery.as_ref().ok_or("room_host_offline")?;
+    let delivery = scope.delivery.ok_or("room_host_offline")?;
     if address.recipient != local
         || address.binding_id != delivery.binding_id
         || !crate::wire::valid_id(&address.request_id)

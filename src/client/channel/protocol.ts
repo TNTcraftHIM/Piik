@@ -13,6 +13,7 @@ export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
 export const CHANNEL_PROTOCOL = 25;
 export const CHANNEL_SESSION_LIMIT = 128;
+export const CHANNEL_ROOM_LIMIT = 32;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
 const roomInvitationSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("missing") }),
@@ -98,7 +99,7 @@ export const watchActivitySchema = z.object({ id, roomId: id, userId: id, sessio
 export type WatchActivity = z.infer<typeof watchActivitySchema>;
 export const snapshotSchema = z.object({
   channel: z.object({
-    id, name: identityNameSchema, icon: identityIconSchema, ownerId: id.nullable(), rooms: z.array(roomSchema).max(32), historyWindow: z.number().int().positive(), userCount: z.number().int().nonnegative(),
+    id, name: identityNameSchema, icon: identityIconSchema, ownerId: id.nullable(), rooms: z.array(roomSchema).max(CHANNEL_ROOM_LIMIT), historyWindow: z.number().int().positive(), userCount: z.number().int().nonnegative(),
   }),
   users: z.array(userSummarySchema),
   sessions: z.array(z.object({ id, userId: id, online: z.boolean(), signingKey })).max(CHANNEL_SESSION_LIMIT),
@@ -152,8 +153,9 @@ export const channelTopologySchema = z.object({
   }).strict()) }).strict().nullable(),
 }).strict();
 export type ChannelTopology = z.infer<typeof channelTopologySchema>;
+export const channelWelcomeSchema = z.object({ type: z.literal("welcome"), protocol: z.literal(CHANNEL_PROTOCOL), credential: id, selfProfile: userSchema, sessionId: id, state: snapshotSchema, invitationOrigin: z.string().url().optional() });
 export const eventSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("welcome"), protocol: z.literal(CHANNEL_PROTOCOL), credential: id, selfProfile: userSchema, sessionId: id, state: snapshotSchema, invitationOrigin: z.string().url().optional() }),
+  channelWelcomeSchema,
   profilePageSchema.extend({ type: z.literal("profiles"), requestId: id }),
   z.object({ type: z.literal("conversation"), packet: signedConversationPacketSchema }),
   z.object({ type: z.literal("state"), state: snapshotSchema }),

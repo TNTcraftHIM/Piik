@@ -5,7 +5,7 @@ import { expect, test } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { CHANNEL_PROTOCOL, snapshotSchema, type ChannelMessage } from '../src/client/channel/protocol';
 
-test('ordinary Node text client uses signed history, confirmed sends and live messages without media', async () => {
+test('Node text conversation ignores unrelated media descriptions and retains signed delivery checks', async () => {
   const rust = await import('../prototype/channel-browser/pkg/piik_channel_browser.js');
   await rust.default({ module_or_path: await readFile('prototype/channel-browser/pkg/piik_channel_browser_bg.wasm') });
   const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
@@ -38,13 +38,18 @@ test('ordinary Node text client uses signed history, confirmed sends and live me
           publications: [], voice: [], subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [],
           failedSubscriptions: [], files: [], pairs: [], iceServers: [],
         });
+        const textState = { ...state, watchActivities: [{ id: randomUUID(), roomId: 'room', userId: user,
+          sessionId: host, source: { kind: 'media', url: 'https://example.invalid/owned.mp4' },
+          playback: { timeline: 'future-timeline', position: 0, paused: true, rate: 1, anchorTime: 0 }, viewerSessionIds: [] }] };
         socket.send(JSON.stringify({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential',
-          sessionId: local, selfProfile: { ...state.users[0], avatar: null }, state }));
+          sessionId: local, selfProfile: { ...state.users[0], avatar: null }, state: textState }));
+        socket.send(JSON.stringify({ type: 'state', state: textState }));
+        socket.send(JSON.stringify({ type: 'signal', payload: { futureMediaSignal: true } }));
         socket.on('message', raw => {
           try {
             const event = JSON.parse(raw.toString());
             if (event.type !== 'conversation') return;
-            const address = JSON.parse(rust.verify_conversation(JSON.stringify(event.packet), host, JSON.stringify(state)));
+            const address = JSON.parse(rust.verify_conversation(JSON.stringify(event.packet), host, JSON.stringify(textState)));
             const request = JSON.parse(event.packet.payload);
             const reply = (record: object) => socket.send(JSON.stringify({ type: 'conversation', packet: JSON.parse(signer.sign(host,
               JSON.stringify({ ...address, sender: host, recipient: local, record }))) }));
@@ -63,7 +68,7 @@ test('ordinary Node text client uses signed history, confirmed sends and live me
   }));
   try {
     await client.connect();
-    expect(client.summary()).toMatchObject({ userId: user, pairs: 0, publications: 0, voice: 0 });
+    expect(client.summary()).toMatchObject({ userId: user, roomId: 'room', available: true, reading: true, bindingId: binding });
     expect(await client.history()).toEqual([message]);
     expect(live).toEqual([]);
     const delivered = once(client, 'live');
@@ -79,4 +84,31 @@ test('ordinary Node text client uses signed history, confirmed sends and live me
     for (const socket of server.clients) socket.terminate();
     await new Promise<void>(resolve => server.close(() => resolve()));
   }
+});
+
+test('narrow conversation verification keeps authority required and signed records closed', async () => {
+  const rust = await import('../prototype/channel-browser/pkg/piik_channel_browser.js');
+  await rust.default({ module_or_path: await readFile('prototype/channel-browser/pkg/piik_channel_browser_bg.wasm') });
+  const [host, local, binding] = Array.from({ length: 3 }, () => randomUUID());
+  const signer = new rust.SessionSigner(randomBytes(32));
+  const other = new rust.SessionSigner(randomBytes(32));
+  const address = { roomId: 'room', bindingId: binding, sender: host, recipient: local, requestId: 'reply' };
+  const state = { channel: { rooms: [{ id: 'room', authorized: true, available: true,
+    delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: [...signer.signing_key()] }] };
+  const record = { type: 'history_end', count: 0, hasMore: false, oldestSeq: null, before: null };
+  const packet = (change = {}) => signer.sign(host, JSON.stringify({ ...address, ...change, record }));
+  const verify = (value: string, view: unknown = state) => rust.verify_conversation(value, local, JSON.stringify(view));
+  try {
+    expect(JSON.parse(verify(packet()))).toEqual(address);
+    expect(() => verify(packet(), { ...state, sessions: [{ id: host, signingKey: [...other.signing_key()] }] })).toThrow();
+    expect(() => verify(packet({ bindingId: randomUUID() }))).toThrow();
+    expect(() => verify(packet({ recipient: randomUUID() }))).toThrow();
+    for (const authorized of [false, undefined, 'true']) {
+      expect(() => verify(packet(), { ...state, channel: { rooms: [{ ...state.channel.rooms[0], authorized }] } })).toThrow();
+    }
+    expect(() => verify(packet(), { ...state, sessions: [{ id: host }] })).toThrow();
+    const futureRecord = signer.sign(host, JSON.stringify({ ...address, record: { type: 'future-conversation-record' } }));
+    expect(JSON.parse(verify(futureRecord))).toEqual(address);
+    expect(() => rust.verify_reply(futureRecord, signer.signing_key())).toThrow();
+  } finally { signer.free(); other.free(); }
 });

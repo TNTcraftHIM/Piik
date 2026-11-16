@@ -3,7 +3,7 @@ mod support;
 use piik_channel_core::{
     conversation::{
         verify, verify_delivery, ConversationAddress, ConversationCommand, ConversationRecord,
-        ConversationReply, ConversationRequest, SessionSigner, SignedPacket,
+        ConversationReply, ConversationRequest, ConversationView, SessionSigner, SignedPacket,
     },
     wire::{Event, RoomAccess},
 };
@@ -133,6 +133,14 @@ fn signed_conversation_uses_domain_carriage_without_media_paths_or_a_second_conf
         let forwarded = relay(&mut network, reader, owner, &packet);
         assert_eq!(
             verify_delivery(&forwarded, owner_session, network.state(owner)).unwrap(),
+            address
+        );
+        let mut described = serde_json::to_value(network.state(owner)).unwrap();
+        described["watchActivities"] = json!([{"playback":{"timeline":"future-timeline"}}]);
+        described["pairs"] = json!([{"futureTransport":true}]);
+        let text_view: ConversationView = serde_json::from_value(described).unwrap();
+        assert_eq!(
+            text_view.verify(&forwarded, owner_session).unwrap(),
             address
         );
         let replies = network.conversation(&room, &forwarded).replies().unwrap();

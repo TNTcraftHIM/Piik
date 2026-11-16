@@ -3,12 +3,36 @@ import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
+import { z } from 'zod';
 import init, { SessionSigner, verify_conversation, verify_reply } from '../pkg/piik_channel_browser.js';
-import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, ChannelEventDecoder, type ChannelCommand, type ChannelEvent, type ChannelSnapshot, type ConversationReply, type ChannelMessage } from '../../../src/client/channel/protocol';
+import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, CHANNEL_SESSION_LIMIT, CHANNEL_ROOM_LIMIT, channelWelcomeSchema, eventSchema, roomSchema, snapshotSchema, type ChannelCommand, type ChannelEvent, type ConversationReply, type ChannelMessage } from '../../../src/client/channel/protocol';
 await init({ module_or_path: readFileSync(new URL('../pkg/piik_channel_browser_bg.wasm', import.meta.url)) });
 type ConversationCommand = Extract<ChannelCommand, {
   type: 'chat' | 'history';
 }>;
+
+const conversationRoomSchema = roomSchema.pick({ id: true, authorized: true, available: true, reading: true })
+  .extend({ delivery: roomSchema.shape.delivery.unwrap().pick({ hostSessionId: true, bindingId: true }).optional() });
+const conversationStateSchema = z.object({
+  channel: z.object({ rooms: z.array(conversationRoomSchema).max(CHANNEL_ROOM_LIMIT) }),
+  sessions: z.array(snapshotSchema.shape.sessions.element.pick({ id: true, signingKey: true })).max(CHANNEL_SESSION_LIMIT),
+});
+const textWelcomeSchema = channelWelcomeSchema.extend({ state: conversationStateSchema,
+  selfProfile: channelWelcomeSchema.shape.selfProfile.pick({ id: true }) });
+const textStateSchema = z.object({ type: z.literal('state'), state: conversationStateSchema });
+const eventTypeSchema = z.object({ type: z.string() });
+type TextEvent = ChannelEvent | z.infer<typeof textWelcomeSchema> | z.infer<typeof textStateSchema>;
+
+function decodeTextEvent(raw: unknown, wireBytes: number): TextEvent | undefined {
+  if (wireBytes > CHANNEL_EVENT_BYTES) throw new Error('Channel event exceeds frame limit');
+  switch (eventTypeSchema.parse(raw).type) {
+    case 'welcome': return textWelcomeSchema.parse(raw);
+    case 'state': return textStateSchema.parse(raw);
+    case 'conversation': case 'room_reply': case 'ack': case 'error': return eventSchema.parse(raw);
+    // This participant neither installs media nor hosts rooms.
+    default: return;
+  }
+}
 
 export interface TextParticipantOptions {
   url: string;
@@ -41,9 +65,8 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
   private credential?: string;
   private sessionId?: string;
   private userId?: string;
-  private state?: ChannelSnapshot;
+  private state?: z.infer<typeof conversationStateSchema>;
   private pending = new Map<string, Pending>();
-  private decoder = new ChannelEventDecoder();
   private stopped = false;
   constructor(private readonly options: TextParticipantOptions) {
     super();
@@ -55,7 +78,6 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       throw new Error('closed');
     if (this.socket)
       throw new Error('already_connected');
-    this.decoder = new ChannelEventDecoder();
     const socket = this.socket = new WebSocket(this.options.url, { origin: this.options.origin, maxPayload: CHANNEL_EVENT_BYTES });
     await new Promise<void>((resolve, reject) => {
       let settled = false, welcomed = false;
@@ -90,7 +112,8 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
       socket.on('error', fail);
       socket.on('message', raw => {
         try {
-          const event = this.decoder.decode(JSON.parse(raw.toString()), (raw as Buffer).byteLength);
+          const event = decodeTextEvent(JSON.parse(raw.toString()), (raw as Buffer).byteLength);
+          if (!event) return;
           if (!welcomed && event.type === 'error') throw new Error(event.code);
           this.receive(event);
           if (event.type === 'welcome') {
@@ -120,8 +143,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
   summary() {
     const room = this.state?.channel.rooms.find(room => room.id === this.options.roomId);
     return { userId: this.userId, sessionId: this.sessionId, roomId: this.options.roomId, available: room?.available ?? false,
-      bindingId: room?.delivery?.bindingId ?? null, reading: room?.reading ?? false, pairs: this.state?.pairs.length ?? 0,
-      publications: this.state?.publications.length ?? 0, voice: this.state?.voice.length ?? 0 };
+      bindingId: room?.delivery?.bindingId ?? null, reading: room?.reading ?? false };
   }
 
   private write(command: ChannelCommand, requestId?: string) {
@@ -181,7 +203,7 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     for (const id of this.pending.keys()) this.complete(id, undefined, new Error('disconnected'));
   }
 
-  private receive(event: ChannelEvent) {
+  private receive(event: TextEvent) {
     if (event.type === 'welcome') {
       this.credential = event.credential;
       this.emit('credential', event.credential);

@@ -259,7 +259,8 @@ pub fn verify_reply(packet: &str, key: &[u8]) -> Result<String, JsValue> {
 pub fn verify_conversation(packet: &str, local: &str, state: &str) -> Result<String, JsValue> {
     let packet = parse::<SignedPacket>(packet)?;
     let local = Uuid::parse_str(local).map_err(|_| error("invalid_request"))?;
-    encode(&conversation::verify_delivery(&packet, local, &parse(state)?).map_err(error)?)
+    let view: conversation::ConversationView = parse(state)?;
+    encode(&view.verify(&packet, local).map_err(error)?)
 }
 
 #[wasm_bindgen]

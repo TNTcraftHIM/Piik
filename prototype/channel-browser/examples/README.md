@@ -101,3 +101,10 @@ The Node client separates socket/signing lifecycle from CLI file I/O and busines
 behavior. `chat` is send-with-confirmation; `live` carries verified new messages;
 `stop` closes the participant. This internal entry uses Node `ws` and file-backed
 WASM initialization. It is not a Browser SDK or a published stable API.
+
+Its reader retains only the current session keys and room conversation facts;
+unrelated media descriptions and non-text events are not installed or validated.
+The summary reports identity, room availability, reading and host binding.
+The shared Core verifier checks signatures, current
+host/recipient and room authorization. Unknown signed conversation record types
+remain rejected.
