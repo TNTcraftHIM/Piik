@@ -61,6 +61,7 @@ pub(super) enum Command {
     Launcher,
     Site,
     Refresh,
+    Diagnostics,
     Quit,
 }
 
@@ -69,6 +70,7 @@ fn command(input: &str) -> Option<Command> {
         "o" => Some(Command::Launcher),
         "s" => Some(Command::Site),
         "r" => Some(Command::Refresh),
+        "d" => Some(Command::Diagnostics),
         "q" | "quit" => Some(Command::Quit),
         _ => None,
     }
@@ -255,6 +257,11 @@ fn render(state: &Value, notice: Option<&str>, width: usize) -> String {
         lines.push("S + Enter  Open site / 打开当前站点".into());
     }
     lines.push("R + Enter  Refresh / 刷新状态".into());
+    lines.push(if state["debug"].as_bool() == Some(true) {
+        "D + Enter  Export App report / 导出 App 报告".into()
+    } else {
+        "D + Enter  App report · enable Debug in launcher first / App 报告，请先在启动页启用调试".into()
+    });
     lines.push("Q + Enter  Quit normally / 正常退出   ·   Ctrl+C".into());
     lines.join("\n")
 }
@@ -297,8 +304,14 @@ mod tests {
     fn input_is_explicit_and_does_not_treat_arbitrary_text_as_a_command() {
         assert_eq!(command(" Q "), Some(Command::Quit));
         assert_eq!(command("s"), Some(Command::Site));
+        assert_eq!(command(" D "), Some(Command::Diagnostics));
         assert_eq!(command("open a different site"), None);
         assert_eq!(clean("x\u{1b}[31m\ny"), "x [31m y");
         assert_eq!(display_address("javascript:alert(1)"), None);
+    }
+    #[test]
+    fn diagnostics_are_an_explicit_export_without_a_second_enabled_state() {
+        assert!(render(&json!({"debug":true}), None, 44).contains("Export App report"));
+        assert!(render(&json!({"debug":false}), None, 44).contains("enable Debug in launcher first"));
     }
 }

@@ -453,6 +453,7 @@ pub async fn serve(
             Err(error) => { eprintln!("Could not open Browser: {error}"); None }
         }
     } else { None };
+    let mut report: Option<BoxFuture<'static, Result<PathBuf>>> = None;
     crate::web::serve_http(listener, router, async move {
         tokio::pin!(stop);
         let mut closing = app.closing.subscribe();
@@ -477,6 +478,14 @@ pub async fn serve(
                     None => std::future::pending().await,
                 }} => match action {
                     Some(terminal::Command::Quit) => { app.closing.send_replace(true); break; }
+                    Some(terminal::Command::Diagnostics) => {
+                        if report.is_some() { continue; }
+                        if piik_channel_native::diagnostics::enabled() {
+                            report = Some(diagnostics::export_to_directory(app.config.data_root.join("diagnostics")).boxed());
+                        } else {
+                            terminal.as_ref().unwrap().message("Enable Help → Debug in the App launcher, reproduce the issue, then press D + Enter. / 请在 App 启动页启用帮助 → 调试，复现问题后按 D + Enter。");
+                        }
+                    }
                     Some(action) => {
                         if action != terminal::Command::Refresh && opening.is_some() { continue; }
                         let state = tokio::select! {
@@ -509,6 +518,17 @@ pub async fn serve(
                         } else { terminal.as_ref().unwrap().message("Site is not ready; open the launcher. / 站点尚未就绪，请打开启动页。"); }
                     }
                     None => { app.closing.send_replace(true); break; }
+                },
+                result = async { match report.as_mut() {
+                    Some(report) => report.await,
+                    None => std::future::pending().await,
+                }} => {
+                    report = None;
+                    let message = match result {
+                        Ok(path) => format!("App report saved / App 报告已保存: {}", path.display()),
+                        Err(error) => format!("Could not export App report / 无法导出 App 报告: {error}"),
+                    };
+                    terminal.as_ref().unwrap().message(&message);
                 },
                 result = async { match opening.as_mut() {
                     Some(task) => task.await,

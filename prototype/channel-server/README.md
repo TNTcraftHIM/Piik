@@ -353,6 +353,8 @@ requests normal App shutdown.
 The Browser entry and WebView fallback offer an interactive terminal when stdin
 and stderr are terminals. Use O + Enter to open the launcher, S + Enter to open a
 ready site, R + Enter to refresh, or Q + Enter / Ctrl+C for normal App shutdown.
+Use D + Enter to save an App report under the App data directory's `diagnostics/`
+folder after enabling Debug in the launcher; D does not enable collection itself.
 The terminal displays the build, actual startup state, local/public addresses
 and any WebView fallback cause. It reads the existing launcher projection once
 per second and appends only changed status; existing diagnostic lines stay in
