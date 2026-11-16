@@ -34,7 +34,8 @@ export function ChannelVoiceSettings({ channel, roomId, available }: { channel: 
       <SwitchItem checked={Boolean(channel.voiceInput.strongerSuppression)}
         onChange={strongerSuppression => configure({ strongerSuppression })}
         disabled={!available || busy || !channel.voiceInput.strongerSuppression && (!channel.voiceInput.voiceProcessing || !supportsStrongerSuppression())}
-        label={t("voice.noise.enhanced")} note={t(supportsStrongerSuppression() ? "voice.noise.enhancedHint" : "voice.noise.unsupported")} />
+        label={t("voice.noise.enhanced")} hint="hint-voice-microphone-processing" note={t("voice.noise.enhancedHint")} />
+      {!supportsStrongerSuppression() && <p role="status">{t("voice.noise.unsupported")}</p>}
       {room?.canManage && <AudioBitrateControl purpose="voice" value={room.voiceBitrate} max={MAX_AUDIO_SEND_BITRATE}
         disabled={!available || channel.pending.has(`room:${roomId}`)}
         onChange={bitrate => { void channel.setRoomVoiceBitrate(roomId, bitrate).catch(() => {}); }} />}
