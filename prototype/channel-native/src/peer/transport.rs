@@ -1,6 +1,7 @@
 //! One owned sans-I/O pump. Room/flow policy and bounded producers remain outside it.
 use super::metrics::StreamCounters;
 use super::{server_udp::ServerUdp, Event};
+use crate::diagnostics::{rtc_pair, RtcPairEvent};
 use crate::media::{MediaKind, RtpCodec, RtpCodecParameters, SourceClockReport};
 use crate::peer::{IceServer, PeerState};
 use anyhow::{anyhow, ensure, Context, Result};
@@ -620,6 +621,7 @@ impl Runtime {
         ice: &[IceServer],
     ) -> Result<(Transport, watch::Receiver<Estimate>)> {
         let stats_origin = Instant::now();
+        let using_prepared = prepared.is_some();
         let local_input = events.local();
         let linear = linear && !local_input && self.fixed.is_none() && prepared.is_none();
         let handle = Transport {
@@ -793,6 +795,14 @@ impl Runtime {
             .await
             .map_err(|_| anyhow!("transport closed"))?;
         ready.await?;
+        if !local_input {
+            rtc_pair(
+                pair,
+                RtcPairEvent::TransportCreated {
+                    prepared: using_prepared,
+                },
+            );
+        }
         Ok((handle, rx))
     }
     pub async fn close(self) {
@@ -1522,7 +1532,8 @@ impl Engine {
         self.discovery_routes.clear();
         self.rtc.disconnect();
         self.drain();
-        self.udp_send_failures.flush();
+        self.udp_send_failures
+            .flush((!self.events.local()).then_some(self.handle.pair));
         self.tracks.clear();
         if let EventTarget::Local { ended, .. } = &self.events {
             let unfinished = ended.borrow().is_none();
@@ -1825,9 +1836,19 @@ impl Engine {
             }
         }
     }
+    fn trace_pair(&self, event: RtcPairEvent) {
+        if !self.events.local() {
+            rtc_pair(self.handle.pair, event);
+        }
+    }
     fn event(&mut self, event: RtcEvent) {
         match event {
             RtcEvent::IceConnectionStateChange(state) => {
+                if state.is_connected() {
+                    self.trace_pair(RtcPairEvent::IceConnected);
+                } else if state.is_disconnected() {
+                    self.trace_pair(RtcPairEvent::IceDisconnected);
+                }
                 if state.is_disconnected() {
                     // str0m has exhausted its current candidate pairs and has no
                     // later Failed state. Reuse the owned pair replacement.
@@ -1840,12 +1861,14 @@ impl Engine {
                 }
             }
             RtcEvent::Connected => {
+                self.trace_pair(RtcPairEvent::TransportConnected);
                 self.nat64.take();
                 self.state
                     .store(PeerState::Connected as u8, Ordering::Release);
                 self.emit(Event::State(self.handle.pair, PeerState::Connected));
             }
             RtcEvent::Closed => {
+                self.trace_pair(RtcPairEvent::TransportClosed);
                 self.nat64.take();
                 self.state.store(PeerState::Closed as u8, Ordering::Release);
                 self.emit(Event::State(self.handle.pair, PeerState::Closed));
@@ -1916,7 +1939,23 @@ impl Engine {
                 }
             }
             RtcEvent::PeerStats(stats) => {
-                self.udp_send_failures.flush();
+                self.udp_send_failures
+                    .flush((!self.events.local()).then_some(self.handle.pair));
+                let previous = self
+                    .peer_stats
+                    .as_ref()
+                    .and_then(|stats| stats.selected_candidate_pair.as_ref());
+                if let Some(selected) = stats.selected_candidate_pair.as_ref().filter(|selected| {
+                    previous.is_none_or(|old| {
+                        old.protocol != selected.protocol
+                            || old.local.addr != selected.local.addr
+                            || old.remote.addr != selected.remote.addr
+                    })
+                }) {
+                    self.trace_pair(RtcPairEvent::SelectedPair {
+                        ipv6: selected.local.addr.is_ipv6(),
+                    });
+                }
                 self.peer_stats = Some(stats.clone());
                 // Recheck continuing selected-path errors on the existing SDK observation.
                 // An address still assigned during a route outage can disappear later.

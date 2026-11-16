@@ -3,6 +3,7 @@
 use anyhow::{anyhow, Result};
 use log::{LevelFilter, Log, Metadata, Record};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::{
     collections::VecDeque,
     fmt::{self, Write as _},
@@ -10,6 +11,7 @@ use std::{
     sync::{Mutex, OnceLock},
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
+use uuid::Uuid;
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
 const MAX_RECORDS: usize = 8_192;
@@ -20,6 +22,83 @@ static INSTALLED: OnceLock<std::result::Result<(), log::SetLoggerError>> = OnceL
 
 pub fn enabled() -> bool {
     RECORDER.0.lock().unwrap().is_some()
+}
+
+// Canonical UUID text permits offline correlation with Browser pairId; the
+// namespace is distinct from 2.x Go diagnostic IDs. Never hash socket tuples.
+pub(crate) fn pair_alias(pair: Uuid) -> String {
+    let digest = Sha256::digest(format!("piik-native-pair-v1:{pair}"));
+    format!(
+        "pair-{}",
+        digest[..8]
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    )
+}
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PreparationStep {
+    LocalAddress,
+    StunResolution,
+    Survey,
+    PeerObservation,
+    Checks,
+}
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum MappingKind {
+    Stable,
+    Sequential,
+    Irregular,
+}
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PreparationOutcome {
+    Succeeded,
+    Failed,
+    TimedOut,
+    PeerRefused,
+    TaskFailed,
+    CommitFailed,
+}
+#[derive(Clone, Copy, Serialize)]
+#[serde(tag = "stage", rename_all = "snake_case")]
+pub(crate) enum RtcPairEvent {
+    PreparationStarted {
+        initiator: bool,
+    },
+    Preparation {
+        step: PreparationStep,
+    },
+    Mappings {
+        local: MappingKind,
+        remote: MappingKind,
+    },
+    Hypotheses {
+        count: usize,
+        random: bool,
+    },
+    PreparationFinished {
+        outcome: PreparationOutcome,
+    },
+    OrdinaryFallback,
+    TransportCreated {
+        prepared: bool,
+    },
+    PairSetupFailed,
+    IceConnected,
+    IceDisconnected,
+    TransportConnected,
+    TransportClosed,
+    SelectedPair {
+        ipv6: bool,
+    },
+}
+
+pub(crate) fn rtc_pair(pair: Uuid, event: RtcPairEvent) {
+    RECORDER.rtc_pair(pair, event);
 }
 
 /// The selected sound scope is useful even when capture succeeds without an error.
@@ -126,6 +205,23 @@ fn target(value: &str) -> Option<&'static str> {
 }
 struct Recorder(Mutex<Option<Buffer>>);
 impl Recorder {
+    fn rtc_pair(&self, pair: Uuid, event: RtcPairEvent) {
+        let mut state = self.0.lock().unwrap();
+        let Some(buffer) = state.as_mut() else { return };
+        // No formatting or hashing before opt-in; fields are reviewed values,
+        // never an upstream error string, address, SDP or preparation key.
+        if let Ok(message) =
+            serde_json::to_string(&serde_json::json!({"pair": pair_alias(pair), "event": event}))
+        {
+            buffer.push(
+                &Record::builder()
+                    .level(log::Level::Info)
+                    .args(format_args!("{message}"))
+                    .build(),
+                "piik.rtc",
+            );
+        }
+    }
     #[cfg(any(test, all(feature = "capture", windows)))]
     fn system_audio_source(&self, process: Option<(u32, bool)>) {
         let mut state = self.0.lock().unwrap();
@@ -263,6 +359,100 @@ impl Snapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn pair_stages_export_only_after_opt_in_without_conflating_preparation_and_ice() {
+        let recorder = Recorder(Mutex::new(None));
+        let first = Uuid::parse_str("00000000-0000-4000-8000-000000000001").unwrap();
+        let second = Uuid::parse_str("00000000-0000-4000-8000-000000000002").unwrap();
+        recorder.rtc_pair(first, RtcPairEvent::TransportConnected);
+        assert!(recorder.0.lock().unwrap().is_none());
+        *recorder.0.lock().unwrap() = Some(Buffer::new());
+        recorder.rtc_pair(
+            first,
+            RtcPairEvent::Mappings {
+                local: MappingKind::Stable,
+                remote: MappingKind::Irregular,
+            },
+        );
+        recorder.rtc_pair(
+            first,
+            RtcPairEvent::Hypotheses {
+                count: 256,
+                random: true,
+            },
+        );
+        recorder.rtc_pair(
+            first,
+            RtcPairEvent::PreparationFinished {
+                outcome: PreparationOutcome::TimedOut,
+            },
+        );
+        recorder.rtc_pair(first, RtcPairEvent::OrdinaryFallback);
+        recorder.rtc_pair(first, RtcPairEvent::SelectedPair { ipv6: true });
+        recorder.rtc_pair(first, RtcPairEvent::TransportConnected);
+        recorder.rtc_pair(
+            second,
+            RtcPairEvent::PreparationFinished {
+                outcome: PreparationOutcome::Succeeded,
+            },
+        );
+        let state = recorder.0.lock().unwrap();
+        let buffer = state.as_ref().unwrap();
+        let snapshot = Snapshot {
+            started_at_ms: buffer.started_at_ms,
+            evicted: buffer.evicted,
+            truncated: buffer.truncated,
+            retained_bytes: buffer.bytes,
+            events: buffer.events.iter().cloned().collect(),
+        };
+        drop(state);
+        let mut bytes = Vec::new();
+        snapshot
+            .write_archive(&mut bytes, "test", "revision", "fixture")
+            .unwrap();
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut text = String::new();
+        std::io::Read::read_to_string(&mut archive.by_name("events.ndjson").unwrap(), &mut text)
+            .unwrap();
+        let events: Vec<serde_json::Value> = text
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(events.len(), 7);
+        assert!(events
+            .iter()
+            .all(|event| event["level"] == "INFO" && event["target"] == "piik.rtc"));
+        let details: Vec<serde_json::Value> = events
+            .iter()
+            .map(|event| serde_json::from_str(event["message"].as_str().unwrap()).unwrap())
+            .collect();
+        assert!(details[..6]
+            .iter()
+            .all(|event| event["pair"] == pair_alias(first)));
+        assert_eq!(details[6]["pair"], pair_alias(second));
+        assert_ne!(pair_alias(first), pair_alias(second));
+        assert_eq!(pair_alias(first), "pair-848dc696e2308b21");
+        assert_eq!(
+            details[0]["event"],
+            serde_json::json!({"stage":"mappings","local":"stable","remote":"irregular"})
+        );
+        assert_eq!(details[1]["event"]["count"], 256);
+        assert_eq!(details[2]["event"]["outcome"], "timed_out");
+        assert_eq!(details[3]["event"]["stage"], "ordinary_fallback");
+        assert_eq!(
+            details[4]["event"],
+            serde_json::json!({"stage":"selected_pair","ipv6":true})
+        );
+        assert_eq!(details[5]["event"]["stage"], "transport_connected");
+        assert_eq!(details[6]["event"]["stage"], "preparation_finished");
+        for raw in [first.to_string(), second.to_string()] {
+            assert!(!text.contains(&raw));
+        }
+        assert!(
+            !text.contains("address") && !text.contains("\"port\"") && !text.contains("secret")
+        );
+    }
+
     #[test]
     fn audio_scope_is_opt_in_and_distinguishes_process_exclusion() {
         let recorder = Recorder(Mutex::new(None));

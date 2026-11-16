@@ -1,5 +1,6 @@
 //! Pair-scoped preparation only. ICE/DTLS/media remain owned by the existing PC.
 use super::NativeEvent;
+use crate::diagnostics::{rtc_pair, MappingKind, PreparationStep, RtcPairEvent};
 use anyhow::{bail, ensure, Result};
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use piik_channel_core::wire::UdpObservation as Observation;
@@ -68,6 +69,7 @@ impl Pending {
         let (input, incoming) = mpsc::channel(4);
         let pair = plan.id;
         let initiator = local < plan.peer_id;
+        rtc_pair(pair, RtcPairEvent::PreparationStarted { initiator });
         let deadline = Instant::now() + Duration::from_secs(5);
         let task = tokio::spawn(async move {
             let result = timeout_at(
@@ -148,9 +150,21 @@ async fn negotiate(
     mut incoming: mpsc::Receiver<UdpSignal>,
     deadline: Instant,
 ) -> Result<Prepared> {
+    rtc_pair(
+        pair,
+        RtcPairEvent::Preparation {
+            step: PreparationStep::LocalAddress,
+        },
+    );
     let local = local_ipv4()
         .await
         .ok_or_else(|| anyhow::anyhow!("no default IPv4 interface for UDP preparation"))?;
+    rtc_pair(
+        pair,
+        RtcPairEvent::Preparation {
+            step: PreparationStep::StunResolution,
+        },
+    );
     let servers = resolve_servers(servers, |server| async move {
         tokio::net::lookup_host((server.host, server.port)).await
     })
@@ -171,11 +185,23 @@ async fn negotiate(
             },
         )
         .await?;
+        rtc_pair(
+            pair,
+            RtcPairEvent::Preparation {
+                step: PreparationStep::PeerObservation,
+            },
+        );
         let Some(UdpSignal::Answer { observation }) = incoming.recv().await else {
             bail!("expected UDP preparation answer");
         };
         (survey, observation)
     } else {
+        rtc_pair(
+            pair,
+            RtcPairEvent::Preparation {
+                step: PreparationStep::PeerObservation,
+            },
+        );
         let Some(UdpSignal::Offer {
             secret,
             observation,
@@ -290,6 +316,12 @@ impl Preparation {
         })
     }
     pub async fn survey(self, servers: [SocketAddrV4; 3]) -> Result<Survey> {
+        rtc_pair(
+            self.pair,
+            RtcPairEvent::Preparation {
+                step: PreparationStep::Survey,
+            },
+        );
         ensure!(
             servers[0] != servers[1] && servers[1] != servers[2] && servers[0] != servers[2],
             "three distinct STUN destinations required"
@@ -415,7 +447,26 @@ impl Survey {
         commands: &mpsc::Sender<NativeEvent>,
         incoming: &mut mpsc::Receiver<UdpSignal>,
     ) -> Result<Prepared> {
+        let kind = |observation| match observation {
+            Observation::Stable { .. } => MappingKind::Stable,
+            Observation::Sequential { .. } => MappingKind::Sequential,
+            Observation::Irregular { .. } => MappingKind::Irregular,
+        };
+        rtc_pair(
+            self.preparation.pair,
+            RtcPairEvent::Mappings {
+                local: kind(self.observation),
+                remote: kind(remote),
+            },
+        );
         let plan = ProbePlan::new(self.observation, remote)?;
+        rtc_pair(
+            self.preparation.pair,
+            RtcPairEvent::Hypotheses {
+                count: plan.targets.len(),
+                random: plan.random.is_some(),
+            },
+        );
         self.check_plan(plan, commands, incoming).await
     }
 
@@ -459,6 +510,12 @@ impl Survey {
             ..
         } = self;
         let deadline = preparation.expires;
+        rtc_pair(
+            preparation.pair,
+            RtcPairEvent::Preparation {
+                step: PreparationStep::Checks,
+            },
+        );
         timeout_at(deadline.into(), async move {
             // Declared before sockets/readers: release capacity only after their
             // retirement, including cancellation of this entire future.

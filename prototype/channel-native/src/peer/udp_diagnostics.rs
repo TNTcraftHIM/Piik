@@ -40,9 +40,9 @@ impl UdpSendFailures {
                 Some(self.selected_snapshot_max_age_ms.unwrap_or(0).max(age));
         }
     }
-    pub fn flush(&mut self) {
+    pub fn flush(&mut self, pair: Option<Uuid>) {
         if let Some(window) = self.take() {
-            log::warn!(target: "piik.rtc", "UDP send failures: match_order=[selected,other,unknown] ipv4={:?} ipv6={:?} selected_snapshot_max_age_ms={:?}", window.ipv4, window.ipv6, window.selected_snapshot_max_age_ms);
+            log::warn!(target: "piik.rtc", "UDP send failures: pair={} match_order=[selected,other,unknown] ipv4={:?} ipv6={:?} selected_snapshot_max_age_ms={:?}", pair.map(crate::diagnostics::pair_alias).unwrap_or_else(|| "local-input".into()), window.ipv4, window.ipv6, window.selected_snapshot_max_age_ms);
         }
     }
     fn take(&mut self) -> Option<Self> {

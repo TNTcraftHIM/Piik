@@ -1378,7 +1378,6 @@ async fn connection(
                     (
                         Arc<whip::Permit>,
                         AbortHandle,
-                        futures_util::future::AbortRegistration,
                         oneshot::Sender<Result<(Uuid, String), StatusCode>>,
                         Result<piik_channel_native::peer::PreparedExternal>,
                     ),
@@ -1464,12 +1463,9 @@ async fn connection(
                                 let Ok((cancel, registration)) = capture.prepare(capture.audio_settings) else { let _ = response.send(Err(StatusCode::CONFLICT)); continue; };
                                 let replaces = capture.source().map(SourceLease::producer_id);
                                 external_offers.push(async move {
-                                    let (result, prepared) = oneshot::channel();
-                                    let result = async {
-                                        commands.send(HostCommand::PrepareExternal(session::PrepareExternal { publication_id: permit.publication, room_id: permit.room.clone(), offer, replaces, result })).await.map_err(|_| anyhow!("hosting_unavailable"))?;
-                                        prepared.await.map_err(|_| anyhow!("hosting_unavailable"))?.map_err(anyhow::Error::msg)
-                                    }.await;
-                                    (permit, cancel, registration, response, result)
+                                    let mut response = response;
+                                    let result = whip::prepare(&permit, commands, offer, replaces, registration, &mut response).await;
+                                    (permit, cancel, response, result)
                                 }.boxed());
                             }
                             whip::Request::Delete { permit, generation, response } => {
@@ -1484,7 +1480,7 @@ async fn connection(
                         continue;
                     }
                     Some(()) = external_deletes.next(), if !external_deletes.is_empty() => { continue; }
-                    Some((permit, cancel, registration, response, prepared)) = external_offers.next(), if !external_offers.is_empty() => {
+                    Some((permit, cancel, response, prepared)) = external_offers.next(), if !external_offers.is_empty() => {
                         let publication_id = permit.publication;
                         if cancel.is_aborted() || permit.stopped() || response.is_closed() {
                             if !cancel.is_aborted() { if let Some(capture) = captures.get_mut(&publication_id) { capture.pending = None; } }
@@ -1493,7 +1489,10 @@ async fn connection(
                         match prepared {
                             Ok(mut prepared) => {
                                 let generation = prepared.lease.id;
-                                captures.get_mut(&publication_id).unwrap().pending.as_mut().unwrap().producer = Some(generation);
+                                let (cancel, registration) = AbortHandle::new_pair();
+                                let pending = captures.get_mut(&publication_id).unwrap().pending.as_mut().unwrap();
+                                pending.request = cancel.clone();
+                                pending.producer = Some(generation);
                                 let ended = prepared.lease.ended.take().expect("external generation owns completion");
                                 let ended: whip::Ended = async move { ended.await.unwrap_or_else(|_| Err("external_input_stopped".into())) }.boxed().shared();
                                 external_page.resources.insert(generation, whip::Resource { permit: permit.id, control: prepared.lease.control(), ended: ended.clone(), deleting: false });

@@ -2034,6 +2034,7 @@ impl Driver {
             .await;
             if let Err(error) = result {
                 eprintln!("Native pair update failed: {error}");
+                crate::diagnostics::rtc_pair(id, crate::diagnostics::RtcPairEvent::PairSetupFailed);
                 self.fail(id).await;
             }
         }
@@ -2190,6 +2191,19 @@ impl Driver {
         result: std::result::Result<Result<preparation::Prepared>, tokio::task::JoinError>,
     ) {
         let id = pending.plan.id;
+        use crate::diagnostics::{rtc_pair, PreparationOutcome, RtcPairEvent};
+        let failure = if pending.refused {
+            PreparationOutcome::PeerRefused
+        } else {
+            match &result {
+                Err(_) => PreparationOutcome::TaskFailed,
+                Ok(Err(error)) if error.is::<tokio::time::error::Elapsed>() => {
+                    PreparationOutcome::TimedOut
+                }
+                Ok(Err(_)) => PreparationOutcome::Failed,
+                Ok(Ok(_)) => PreparationOutcome::CommitFailed,
+            }
+        };
         // next() consumed the completed JoinHandle; only unconsumed tasks are joined on retirement.
         let prepared = match result
             .context("UDP preparation task failed")
@@ -2197,10 +2211,19 @@ impl Driver {
             .and_then(|prepared| {
                 anyhow::ensure!(!pending.refused, "peer UDP preparation unavailable");
                 prepared.commit(id)
-            })
-        {
-            Ok(prepared) => Some(prepared),
+            }) {
+            Ok(prepared) => {
+                rtc_pair(
+                    id,
+                    RtcPairEvent::PreparationFinished {
+                        outcome: PreparationOutcome::Succeeded,
+                    },
+                );
+                Some(prepared)
+            }
             Err(error) => {
+                rtc_pair(id, RtcPairEvent::PreparationFinished { outcome: failure });
+                rtc_pair(id, RtcPairEvent::OrdinaryFallback);
                 eprintln!("Native UDP preparation unavailable; continuing ordinary ICE: {error}");
                 None
             }
@@ -2218,6 +2241,7 @@ impl Driver {
         .await;
         if let Err(error) = result {
             eprintln!("Native UDP preparation failed: {error}");
+            rtc_pair(id, RtcPairEvent::PairSetupFailed);
             self.fail(id).await;
         }
     }

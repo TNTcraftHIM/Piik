@@ -122,6 +122,41 @@ pub(super) enum Request {
     },
 }
 
+/// The pending page operation and HTTP caller own this preparation wait.
+pub(super) async fn prepare(
+    permit: &Permit,
+    commands: mpsc::Sender<HostCommand>,
+    offer: String,
+    replaces: Option<Uuid>,
+    registration: futures_util::future::AbortRegistration,
+    response: &mut oneshot::Sender<Result<(Uuid, String), StatusCode>>,
+) -> Result<piik_channel_native::peer::PreparedExternal> {
+    let mut revoked = permit.cancelled();
+    let work = async {
+        let (result, prepared) = oneshot::channel();
+        commands
+            .send(HostCommand::PrepareExternal(session::PrepareExternal {
+                publication_id: permit.publication,
+                room_id: permit.room.clone(),
+                offer,
+                replaces,
+                result,
+            }))
+            .await
+            .map_err(|_| anyhow!("hosting_unavailable"))?;
+        prepared
+            .await
+            .map_err(|_| anyhow!("hosting_unavailable"))?
+            .map_err(anyhow::Error::msg)
+    };
+    tokio::select! {
+        biased;
+        _ = response.closed() => Err(anyhow!("capture_cancelled")),
+        _ = revoked.wait_for(|value| *value) => Err(anyhow!("capture_cancelled")),
+        result = Abortable::new(work, registration) => result.unwrap_or_else(|_| Err(anyhow!("capture_cancelled"))),
+    }
+}
+
 pub(super) async fn offer(
     State(app): State<Arc<App>>,
     Path(id): Path<Uuid>,
@@ -201,6 +236,119 @@ pub(super) async fn delete(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn offer_preparation_retires_when_its_page_permit_or_http_caller_cancels() {
+        for cause in ["page", "permit", "http"] {
+            let (snapshot, observed) = watch::channel(None);
+            let publication = Uuid::new_v4();
+            let (requests, _queue) = mpsc::channel(1);
+            let permit = Inputs::default().permit(
+                publication,
+                "owned-room".into(),
+                requests,
+                piik_channel_native::peer::InputAuthority {
+                    scope: piik_channel_native::peer::CaptureScope {
+                        publication_id: publication,
+                        room_id: "owned-room".into(),
+                        binding_id: Uuid::new_v4(),
+                    },
+                    snapshot: observed,
+                },
+            );
+            let (commands, mut native) = mpsc::channel(1);
+            let (response, http) = oneshot::channel();
+            let mut http = Some(http);
+            let mut capture = Capture::default();
+            let (_cancel, registration) = capture.prepare(SourceAudioSettings::default()).unwrap();
+            let source = permit.clone();
+            let work = tokio::spawn(async move {
+                let mut response = response;
+                prepare(
+                    &source,
+                    commands,
+                    "owned-offer".into(),
+                    None,
+                    registration,
+                    &mut response,
+                )
+                .await
+            });
+            let HostCommand::PrepareExternal(pending) = native.recv().await.unwrap() else {
+                panic!("expected Native external preparation")
+            };
+            assert!(!pending.result.is_closed());
+            match cause {
+                "page" => capture.pending = None,
+                "permit" => permit.revoke(),
+                "http" => {
+                    drop(http.take());
+                }
+                _ => unreachable!(),
+            }
+            let result = timeout(Duration::from_secs(1), work)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                result.err().unwrap().to_string(),
+                "capture_cancelled",
+                "{cause}"
+            );
+            assert!(
+                pending.result.is_closed(),
+                "{cause} must cancel Native's pending preparation result"
+            );
+            assert_eq!(*permit.revoked.borrow(), cause == "permit");
+            drop(snapshot);
+        }
+    }
+
+    #[tokio::test]
+    async fn failed_offer_preparation_does_not_block_the_next_native_request() {
+        let (_snapshot, observed) = watch::channel(None);
+        let publication = Uuid::new_v4();
+        let (requests, _queue) = mpsc::channel(1);
+        let permit = Inputs::default().permit(
+            publication,
+            "owned-room".into(),
+            requests,
+            piik_channel_native::peer::InputAuthority {
+                scope: piik_channel_native::peer::CaptureScope {
+                    publication_id: publication,
+                    room_id: "owned-room".into(),
+                    binding_id: Uuid::new_v4(),
+                },
+                snapshot: observed,
+            },
+        );
+        let (commands, mut native) = mpsc::channel(1);
+        for reason in ["first_offer_rejected", "next_offer_reached_native"] {
+            let (_, registration) = AbortHandle::new_pair();
+            let (mut response, _http) = oneshot::channel();
+            let preparing = prepare(
+                &permit,
+                commands.clone(),
+                "owned-offer".into(),
+                None,
+                registration,
+                &mut response,
+            );
+            let producer = async {
+                let HostCommand::PrepareExternal(pending) = native.recv().await.unwrap() else {
+                    panic!("external prepare")
+                };
+                assert!(!pending.result.is_closed());
+                assert!(pending.result.send(Err(reason.into())).is_ok());
+            };
+            let (result, _) = tokio::join!(preparing, producer);
+            assert_eq!(result.err().unwrap().to_string(), reason);
+        }
+        assert!(
+            !*permit.revoked.borrow(),
+            "a failed stream does not revoke the page's input permission"
+        );
+    }
 
     #[test]
     fn page_revocation_rejects_inflight_http_and_independent_tokens_do_not_cross_permits() {
