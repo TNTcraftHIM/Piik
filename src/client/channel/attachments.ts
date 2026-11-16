@@ -162,7 +162,7 @@ export class ChannelAttachments {
       if (retained) { source.file = retained; source.retained = true; }
       else saved = false;
     }
-    return saved;
+    return saved && files.every(({ key }) => this.sources.get(keyOf(key))?.retained === true);
   }
   resume(roomId?: string): void {
     for (const source of this.sources.values()) if (!roomId || source.key.roomId === roomId) this.reofferKey(source.key);

@@ -98,3 +98,17 @@ test("a late retained copy cannot replace a successor source for the same attach
     expect(await files.content(key, attachment, new AbortController().signal)).toBe(next);
   } finally { files.reset(); }
 });
+
+test("a restore reports partial caching when a later file evicts an earlier file from the same batch", async () => {
+  const files = setup(), file = new File(["GIF89a"], attachment.name);
+  const first = { key, attachment, file };
+  const nextAttachment = { ...attachment, id: "second" };
+  const second = { key: { ...key, messageSeq: 2, attachmentId: nextAttachment.id }, attachment: nextAttachment, file };
+  vi.spyOn(FileStore.prototype, "retain").mockResolvedValueOnce({ file, evicted: [] })
+    .mockResolvedValueOnce({ file, evicted: [key] });
+  try {
+    expect(await files.restoreRetained(key.roomId, [first, second])).toBe(false);
+    expect(await files.retained(key.roomId)).toEqual([second]);
+    expect(await files.content(second.key, second.attachment, new AbortController().signal)).toBe(file);
+  } finally { files.reset(); }
+});
