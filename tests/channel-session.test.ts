@@ -1873,6 +1873,50 @@ test.each([
   } finally { session.close(); }
 });
 
+test("Native capability catalog retains known choices without echoing future descriptions", async () => {
+  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL,
+    domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  const { session } = await setup();
+  const app = ChannelSocket.current;
+  const target = { kind: "window" as const, sourceId: "1", title: "Owned fixture", pid: 42, creationTime: "10" };
+  const catalog = { sources: [target], codecs: ["h264"], softwareEncodingCodecs: ["h264"], videoAdaptation: true,
+    externalInput: false, processAudio: false, processAudioExclusion: false, systemAudio: false, captureBorderControl: false };
+  const list = async (result: unknown) => {
+    const previous = app.sent.at(-1)?.id;
+    const listing = session.nativeSources();
+    await vi.waitFor(() => expect(app.sent.at(-1)?.id).not.toBe(previous));
+    expect(app.sent.at(-1)?.type).toBe("targets");
+    app.receive({ id: app.sent.at(-1)!.id, result });
+    return listing;
+  };
+  try {
+    await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const choices = await list({ ...catalog, futureDescription: "available",
+      codecs: ["future-codec", "h264"], softwareEncodingCodecs: ["h264", "future-codec"],
+      sources: [{ ...target, futureDescription: "available" }, { kind: "future-source", opaque: "not-selectable" }] });
+    expect(choices).toEqual(catalog);
+    await expect(list({ ...catalog, sources: [{ ...target, pid: "42" }] })).rejects.toThrow();
+    await expect(list({ ...catalog, codecs: [42] })).rejects.toThrow();
+    await expect(list({ ...catalog, sources: null })).rejects.toThrow();
+    await expect(list({ ...catalog, sources: [{ kind: "future-source" }], codecs: ["future-codec"],
+      softwareEncodingCodecs: ["future-codec"] })).resolves.toEqual({ ...catalog, sources: [], codecs: [], softwareEncodingCodecs: [] });
+    await list(catalog);
+    const selecting = session.startNativeScreen("first", choices.sources[0]!).catch(error => error);
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
+    expect(app.sent.at(-1)?.target).toEqual(target);
+    expect(app.sent.at(-1)?.codecMode).not.toBe("future-codec");
+    expect(JSON.stringify(app.sent.at(-1))).not.toContain("futureDescription");
+    app.receive({ id: app.sent.at(-1)!.id, result: { captureId: crypto.randomUUID(), sessionId: crypto.randomUUID(), codec: "future-codec" } });
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("cancel_capture"));
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    expect(await selecting).toBeInstanceOf(Error);
+    expect(app.sent.some(command => command.type === "commit_capture")).toBe(false);
+    expect(session.getSnapshot().ownedScreens.size).toBe(0);
+  } finally { session.close(); }
+});
+
 test("Browser screen pause stops the retained picture and source sound before recovery acknowledgement", async () => {
   const { session, socket } = await setup(3, false);
   const video = remoteTrack("video"), sound = remoteTrack("audio");

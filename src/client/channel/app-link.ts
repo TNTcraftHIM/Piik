@@ -45,12 +45,20 @@ const nativeRelayCapacitySchema = z.object({
   relayOverride: z.number().int().min(0).max(MAX_RELAY_CAPACITY).nullable(),
 }).strict();
 export type NativeRelayCapacity = z.infer<typeof nativeRelayCapacitySchema>;
-const captureSourcesSchema = z.object({ sources: z.array(nativeCaptureTargetSchema),
-  codecs: z.array(nativeVideoCodecSchema),
-  softwareEncodingCodecs: z.array(nativeVideoCodecSchema),
+// Descriptions may grow; selected targets and prepared results keep their strict contracts.
+const captureDescriptions = nativeCaptureTargetSchema.options.map(target => target.strip());
+const advertisedCodecs = z.array(z.string()).transform(codecs => codecs.flatMap(codec => {
+  const known = nativeVideoCodecSchema.safeParse(codec);
+  return known.success ? [known.data] : [];
+}));
+const captureSourcesSchema = z.object({ sources: z.array(z.looseObject({ kind: z.string() }))
+  .transform(sources => sources.filter(source => captureDescriptions.some(target => target.shape.kind.value === source.kind)))
+  .pipe(z.array(z.union(captureDescriptions))),
+  codecs: advertisedCodecs,
+  softwareEncodingCodecs: advertisedCodecs,
   videoAdaptation: z.boolean(),
   externalInput: z.boolean(),
-  processAudio: z.boolean(), processAudioExclusion: z.boolean(), systemAudio: z.boolean(), captureBorderControl: z.boolean(), activationURL: z.string().url().max(512).optional() }).strict();
+  processAudio: z.boolean(), processAudioExclusion: z.boolean(), systemAudio: z.boolean(), captureBorderControl: z.boolean(), activationURL: z.string().url().max(512).optional() });
 export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
 export type NativeCaptureRequest = { publicationId: string; activationURL: string };
 const preparedCaptureSchema = z.object({ captureId: z.uuid(), sessionId: z.uuid(), codec: nativeVideoCodecSchema }).strict();
