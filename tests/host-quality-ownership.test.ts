@@ -107,7 +107,7 @@ function fixture(launchedByClient = true, nativeConnected = true) {
     nativeSourceRequestRef: ref<object | null>(null), nativeSourcePathRef: ref<unknown>(null),
     setNativeSources: vi.fn(), setShowCaptureBorder: vi.fn(), defaultNativeCapturePath: () => ({ adapterIndex: 0, encoderIndex: 0 }),
     roomMutationRef: ref<object | null>(null), setRoomMutation: vi.fn(),
-    generationRef: ref(0), shareGenerationRef: ref<string | null>("share"),
+    browserAudioStartAbortRef: ref<AbortController | null>(null), generationRef: ref(0), shareGenerationRef: ref<string | null>("share"),
     serverShareGenerationRef: ref<string | null>("share"), createOpaqueId: () => "share",
     setCopiedRoomLink: vi.fn(), setPhase: vi.fn(), roomInitializationRef: ref(Promise.resolve()), roomRef: ref(null),
 
@@ -479,6 +479,54 @@ describe("Camera replacement ownership", () => {
       audio.dispose();
       vi.unstubAllGlobals();
     }
+  });
+
+  it.each(["initial", "replacement"])("cancels %s capture while the audio context is still resuming", async entry => {
+    const current = sourceFixture(entry === "replacement");
+    useRealResourceDisposal(current);
+    current.context.endSharing = current.endShare;
+    current.generationRef.current = 1;
+    const pending = deferred<void>();
+    Object.assign(current.signalRef.current, { stop: vi.fn() });
+    current.context.hostSfuRouteRef.current = null;
+    const outputAudio = { readyState: "live", stop: vi.fn() };
+    const resume = vi.fn(() => pending.promise), close = vi.fn(async () => {});
+    Object.assign(current.context, { resolveStreamVideoCodec: vi.fn(async () => ({ primary: "h264" })), startBrowserNativeIngress: vi.fn(async () => {}) });
+    if (entry === "initial") {
+      current.context.phase = "idle";
+      current.activeGenerationRef.current = null;
+      current.nativeShareGenerationRef.current = null;
+      current.context.streamRef.current = null;
+      current.context.hostAudioRef.current = null;
+    }
+    vi.stubGlobal("AudioContext", class {
+      resume = resume;
+      close = close;
+      createMediaStreamDestination() { return { stream: { getAudioTracks: () => [outputAudio], getTracks: () => [outputAudio] } }; }
+      createGain() { return { gain: { value: 1 }, connect() {}, disconnect() {} }; }
+    });
+    vi.stubGlobal("MediaStream", class {
+      constructor(private tracks: unknown[]) {}
+      getTracks() { return this.tracks; }
+      getVideoTracks() { return this.tracks.filter(track => track === current.camera.video); }
+      getAudioTracks() { return this.tracks.filter(track => track === outputAudio); }
+    });
+    try {
+      const starting = entry === "initial" ? current.startBrowser() : current.context.switchSource("browser");
+      await vi.waitFor(() => expect(resume).toHaveBeenCalledOnce());
+      current.context.endSharing({ key: "host.startCancelled" });
+      await vi.waitFor(() => expect(current.camera.video.stop).toHaveBeenCalled());
+      await starting;
+      expect(current.context.streamRef.current).toBeNull();
+      expect(current.context.resolveStreamVideoCodec).not.toHaveBeenCalled();
+      expect(current.createRoom).not.toHaveBeenCalled();
+      expect(current.setPhase).toHaveBeenLastCalledWith("ended");
+      expect(current.sourceSwitchRef.current).toBeNull();
+      expect(current.roomMutationRef.current).toBeNull();
+      expect(outputAudio.stop).toHaveBeenCalled();
+      expect(close).toHaveBeenCalled();
+      pending.resolve();
+    } finally { pending.resolve(); vi.unstubAllGlobals(); }
   });
 
   it.each(["initial", "replacement"])("rejects Browser capture that ends during %s audio preparation", async entry => {

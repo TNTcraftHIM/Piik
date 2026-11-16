@@ -648,6 +648,7 @@ export function HostPage({
     VP8_ONLY_VIDEO_CODEC,
   );
   const codecProbeAbortRef = useRef<AbortController | null>(null);
+  const browserAudioStartAbortRef = useRef<AbortController | null>(null);
   const sharingPausedRef = useRef(false);
   const sharingPauseOperationRef = useRef<object | null>(null);
   const retiringStreamRef = useRef<MediaStream | null>(null);
@@ -763,6 +764,8 @@ export function HostPage({
   useEffect(
     () => () => {
       activeGenerationRef.current = null;
+      browserAudioStartAbortRef.current?.abort();
+      browserAudioStartAbortRef.current = null;
       generationRef.current += 1;
       roomMutationRef.current = null;
       sourceSwitchRef.current = null;
@@ -935,6 +938,8 @@ export function HostPage({
     commitQuality(qualitySettingsRef.current);
     codecProbeAbortRef.current?.abort();
     codecProbeAbortRef.current = null;
+    browserAudioStartAbortRef.current?.abort();
+    browserAudioStartAbortRef.current = null;
     videoCodecRef.current = VP8_ONLY_VIDEO_CODEC;
     setResolvedVideoCodec(null);
     setHostSfuQualityWarning(null);
@@ -3031,7 +3036,12 @@ export function HostPage({
         hostAudioRef.current = createBrowserAudio(captured, selection.source ?? "browser", generation, shareGeneration);
         const audio = hostAudioRef.current;
         try {
-          captured = await audio.start();
+          const audioStart = new AbortController();
+          browserAudioStartAbortRef.current = audioStart;
+          try { captured = await audio.start(audioStart.signal); }
+          finally {
+            if (browserAudioStartAbortRef.current === audioStart) browserAudioStartAbortRef.current = null;
+          }
           if (!isCurrentShare(generation, shareGeneration)) {
             audio.sourceStream.getTracks().forEach(track => track.stop()); audio.dispose(); return;
           }
@@ -3397,7 +3407,12 @@ export function HostPage({
         const shareGeneration = shareGenerationRef.current!;
         const audio = createBrowserAudio(captured, source, generation, shareGeneration);
         try {
-          captured = await audio.start();
+          const audioStart = new AbortController();
+          browserAudioStartAbortRef.current = audioStart;
+          try { captured = await audio.start(audioStart.signal); }
+          finally {
+            if (browserAudioStartAbortRef.current === audioStart) browserAudioStartAbortRef.current = null;
+          }
           await nativeRetirement;
           if (!isCurrentShare(generation, shareGeneration) || sourceSwitchRef.current !== token) {
             captured.getTracks().forEach(track => track.stop());
