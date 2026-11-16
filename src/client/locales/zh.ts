@@ -646,7 +646,7 @@ export const zh = {
   "playback.increaseBuffer": "增加播放缓冲",
   "playback.buffering": "播放缓冲",
   "playback.bufferTarget": "总缓冲目标",
-  "playback.bufferHint": "设置接收端等待数据的目标时间，可减少网络抖动造成的卡顿，但会增加观看延迟，也可能延后转发的画面。",
+  "playback.bufferHint": "设置接收端等待数据的目标时间，缓解短时网络波动。实际缓冲由浏览器决定；目标过高可能影响音画同步，也可能延后转发的画面。",
   "playback.bufferUnsupported": "此浏览器无法设置播放缓冲目标。",
   "playback.bufferFailed": "浏览器未能应用此缓冲目标，播放继续。",
   "playback.controls": "播放器控件",

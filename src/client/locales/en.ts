@@ -648,7 +648,7 @@ export const en: Record<CopyKey, string> = {
   "playback.increaseBuffer": "Increase playback buffering",
   "playback.buffering": "Playback buffering",
   "playback.bufferTarget": "Total buffer target",
-  "playback.bufferHint": "Set how long the receiver aims to wait for data. This may reduce stalls caused by network jitter, but adds viewing delay and may delay relayed pictures.",
+  "playback.bufferHint": "Set how long to wait for late data to reduce brief network stalls. The browser determines the actual buffer; high targets may affect audio/video sync and delay relayed video.",
   "playback.bufferUnsupported": "This browser cannot set the playback buffer target.",
   "playback.bufferFailed": "The browser could not apply this buffer target. Playback continues.",
   "playback.controls": "Player controls",
