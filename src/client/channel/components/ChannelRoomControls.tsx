@@ -21,7 +21,7 @@ export function RoomChatExport({ messages, users }: { messages: readonly Channel
   const hasText = messages.some(message => message.text);
   return <section className="c3-room-transcript" aria-label={t("room.chat.title")}>
     <p>{t("room.chat.exportNote")}</p>
-    {messages.length === 0 && <p role="status">{t("channel.roomStart.noMessagesYet")}</p>}
+    {messages.length === 0 && <p role="status">{t("room.chat.nothingLoaded")}</p>}
     <ChannelAction icon="save" quiet label={t("room.chat.export")}
       disabled={!hasText} onClick={() => {
         const text = formatChatTranscript(messages.filter(message => message.text).map(message => ({

@@ -255,3 +255,20 @@ it("keeps return-to-source reachable for a healthy main player only while it ret
     expect(render(false, {})).not.toContain('aria-label="Return to playback window"');
   } finally { vi.unstubAllGlobals(); }
 });
+
+
+it("keeps an authority-reported screen delivery failure in the picture with an explicit retry", () => {
+  setCopy({ lang: "en" });
+  const html = renderToStaticMarkup(createElement(ChannelStage, {
+    sources: [{ kind: "screen", id: "failed-picture", userId: "friend", name: "Friend", roomName: "Room",
+      source: { kind: "screen", name: "Owned picture" }, title: null, owned: false, localSource: false,
+      subscribed: true, paused: false, audience: [], deliveryFailed: true }],
+    focusedId: null, canSubscribe: true, onFocus() {}, onWatch() {}, onUnwatch() {}, onRetryPicture() {}, onPause() {}, onStop() {},
+    onInputPolicy: async () => {}, onInputDecide: async () => {}, onInputSimultaneous: async () => {}, onInputShortcut: async () => ({ key: 1, available: false }),
+  }));
+  expect(html).toContain('data-publication-id="failed-picture"');
+  expect(html).toContain('data-failed="true"');
+  expect(html).toContain(t("en", "screen.deliveryRetry"));
+  expect(html).toContain('aria-label="' + t("en", "screen.retryPicture") + '"');
+  expect(html).not.toContain(t("en", "channel.previewPage.reconnecting"));
+});

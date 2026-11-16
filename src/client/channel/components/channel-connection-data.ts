@@ -38,8 +38,11 @@ export function channelConnectionGraph(state: ChannelSnapshot, roomId: string, s
   const nodes = ids.map((id): RouteGraphNode => {
     const userId = state.sessions.find(session => session.id === id)?.userId;
     const name = connectionSessionName(state, id, t);
-    const qualifier = apps.has(id) || display.has(id) || groups.some(group => group.userId === identity(id) && group.ids.length > 1) ? endpoint(id) : null;
-    return { id, identity: userId ?? id, you: id === sessionId, host: id === room?.delivery?.hostSessionId && userId === room?.creatorId,
+    const multiple = groups.some(group => group.userId === identity(id) && group.ids.length > 1);
+    const qualifier = apps.has(id) || display.has(id) || multiple ? endpoint(id) : null;
+    return { id, identity: userId ?? id,
+      kind: multiple ? "endpoint" : "person",
+      you: id === sessionId, host: id === room?.delivery?.hostSessionId && userId === room?.creatorId,
       label: qualifier ? `${name} (${qualifier})` : name };
   });
   return { nodes, rootId, edges, endpointGroups: groups.filter(group => group.ids.length > 1)

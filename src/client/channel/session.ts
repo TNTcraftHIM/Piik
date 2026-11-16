@@ -23,7 +23,7 @@ import type { NativeCaptureTarget, EncodingExecution, NativePageIndexedSelection
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 import { MicrophoneInput } from "../media/microphone-input";
-import { debugOperation } from "../lib/debug";
+import { debugEvent, debugOperation, registerDebugCollector } from "../lib/debug";
 import { acquireMediaStream } from "../media/capture-stream";
 import { HostAudio, type CommentaryInput } from "../media/host-audio";
 import { readPreferredQuality, savePreferredQuality, screenVideoSettings, supportsCaptureProfile, type QualityProfile } from "../media/quality";
@@ -172,6 +172,7 @@ export class ChannelSession {
   private retry: ReturnType<typeof setTimeout> | null = null;
   private recoveryDeadline: ReturnType<typeof setTimeout> | null = null;
   private closed = true;
+  private releaseDebug?: () => void;
   private feedbackAudio = new FeedbackAudio();
   private feedbackImports = new Map<FeedbackCue, symbol>();
   private reactionNonce = 0;
@@ -377,6 +378,20 @@ export class ChannelSession {
 
   private connect(acceptWelcome?: (event: Extract<ChannelEvent, { type: "welcome" }>) => string | undefined, newIdentity = false): void {
     if (this.closed) return;
+    this.releaseDebug ??= registerDebugCollector("channel", () => {
+      const { state, sessionId } = this.view;
+      if (!state || !sessionId) return;
+      debugEvent("channel", "media-snapshot", { sessionId, connection: this.view.connection,
+        appControlReady: this.app?.connected ?? false, nativeSessionIds: [...this.localNativeEndpoints],
+        nativePublicationIds: [...(this.app?.screens ?? [])],
+        watches: [...this.watching].map(([publicationId, watch]) => ({ publicationId, helperSessionId: watch.helperSessionId ?? null,
+          helperOnline: watch.helperSessionId ? state.sessions.some(endpoint => endpoint.id === watch.helperSessionId && endpoint.online) : null })),
+        subscriptions: state.subscriptions,
+        publications: state.publications.map(({ id, roomId, sessionId, kind }) => ({ id, roomId, sessionId, kind })),
+        rooms: state.channel.rooms.filter(room => room.authorized).map(room => ({ roomId: room.id, bindingId: room.delivery?.bindingId ?? null })),
+        pairs: state.pairs.map(({ id, peerId, rooms, incoming, outgoing }) => ({ pairId: id, peerId, rooms, incoming, outgoing })),
+      });
+    });
     const url = new URL("/prototype/channel", location.href);
     url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(url);
@@ -587,6 +602,11 @@ export class ChannelSession {
     for (const id of this.localNativeEndpoints) if (!state.sessions.some(endpoint => endpoint.id === id)) this.localNativeEndpoints.delete(id);
     const previousRooms = this.view.state?.channel.rooms;
     const userId = state.sessions.find(session => session.id === sessionId)?.userId;
+    // Native can replace its Domain endpoint while this page's App control stays connected.
+    const refreshHelper = !restoring && this.app?.connected
+      && [...this.watching.values()].some(watch => watch.helperSessionId && !state.sessions.some(endpoint => endpoint.id === watch.helperSessionId))
+      && state.sessions.some(endpoint => endpoint.userId === userId && endpoint.online
+        && !this.view.state?.sessions.some(previous => previous.id === endpoint.id && previous.online));
     const readByRoom = this.readMarkers(state, userId);
     for (const id of this.admittedPublications) {
       if (!state.publications.some(publication => publication.id === id)) {
@@ -654,6 +674,7 @@ export class ChannelSession {
       historyByRoom: Object.fromEntries(Object.entries(this.view.historyByRoom).filter(([id]) => canRead(id) && !freshBindings.has(id))),
     });
     void this.loadProfiles([...state.users.map(user => user.id), ...this.historyProfileIds()]).catch(() => {});
+    if (refreshHelper) void this.syncAppWatching(true);
     for (const [id, hosted] of this.hostedRooms) if (!state.channel.rooms.some(room => room.id === id)) {
       this.hostedRooms.delete(id);
       this.hostCleanup = Promise.all([this.hostCleanup, hosted.host.close()]).then(() => {});
@@ -2170,6 +2191,7 @@ export class ChannelSession {
   }
   private discoverWatchSources(page: AppPage, signal: AbortSignal, publish: (sources: WatchMediaSources) => void): Promise<WatchMediaSources> {
     let running: Promise<WatchMediaSources> | null = null, dirty = false;
+    let inspecting: AbortController | null = null;
     let current: WatchMediaSources = { choices: [], indexed: [] };
     const read = limitWatchReads(async (id, offset, length, signal) => {
       const result = await page.readMediaMetadata(id, offset, length, signal);
@@ -2184,22 +2206,26 @@ export class ChannelSession {
             signal.throwIfAborted();
             const { choices, indexedCandidates } = await page.mediaSources();
             signal.throwIfAborted();
+            if (dirty) continue;
+            inspecting = new AbortController();
+            const checking = AbortSignal.any([signal, inspecting.signal]);
             const indexed = await Promise.all(indexedCandidates.map(async candidate => {
               const previous = current.indexed.find(choice => choice.candidate.id === candidate.id);
               if (previous && previous.candidate.totalSize === candidate.totalSize && previous.candidate.mimeType === candidate.mimeType)
                 return { ...previous, candidate };
-              try { return { candidate, inspection: await inspectIndexedTrack(candidate, read, signal) }; }
+              try { return { candidate, inspection: await inspectIndexedTrack(candidate, read, checking) }; }
               catch (error) {
-                signal.throwIfAborted();
+                checking.throwIfAborted();
                 return { candidate, error: error instanceof Error ? error.message : "watch_indexed_unsupported" };
               }
             }));
-            signal.throwIfAborted();
+            checking.throwIfAborted();
             current = { choices, indexed };
           } catch (error) {
             signal.throwIfAborted();
+            if (dirty) continue;
             current = { ...current, error: error instanceof Error ? error.message : "watch_source_unavailable" };
-          }
+          } finally { inspecting = null; }
           publish(current);
         } while (dirty && !signal.aborted);
         return current;
@@ -2211,6 +2237,7 @@ export class ChannelSession {
     };
     const unlisten = page.listenMediaSources(() => {
       dirty = true;
+      inspecting?.abort();
       void refresh().catch(() => {}); // Only retirement rejects; source failures publish above.
     });
     signal.addEventListener("abort", unlisten, { once: true });
@@ -3134,6 +3161,7 @@ export class ChannelSession {
   }
 
   close = (): void => {
+    this.releaseDebug?.(); this.releaseDebug = undefined;
     this.feedbackImports.clear();
     this.closed = true;
     this.feedbackAudio.close();

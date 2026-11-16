@@ -175,6 +175,7 @@ export class ChannelMedia {
         let transport: ChannelTransport;
         try {
           transport = new ChannelTransport({
+            identity: { sessionId, pairId: plan.id, peerId: plan.peerId },
             polite: sessionId.localeCompare(plan.peerId) > 0,
             iceServers: state.iceServers,
             canReceiveVideoLayers: plan.canReceiveVideoLayers,
@@ -216,9 +217,17 @@ export class ChannelMedia {
         this.peers.set(plan.id, peer);
       } else peer.plan = plan;
       for (const room of peer.baseReady) if (!plan.rooms.includes(room)) peer.baseReady.delete(room);
-      peer.transport.setRooms(plan.rooms);
-      peer.transport.setInputEnabled([...plan.incoming, ...plan.outgoing].some(flow => flow.selected
-        && state.publications.some(publication => publication.id === flow.publicationId && publication.kind === "screen")));
+      try {
+        peer.transport.setRooms(plan.rooms);
+        peer.transport.setInputEnabled([...plan.incoming, ...plan.outgoing].some(flow => flow.selected
+          && state.publications.some(publication => publication.id === flow.publicationId && publication.kind === "screen")));
+      } catch (error) {
+        // Browser RTC setup is a pair failure, not an invalid Domain frame.
+        console.warn("Channel peer data channels could not be created", error);
+        released = this.closePeer(peer) || released;
+        this.send({ type: "link_state", pairId: plan.id, state: "failed" });
+        continue;
+      }
       if (peer.transport.isBaseReady()) this.reportBase(peer, true);
       for (const [flowId, input] of peer.inputs) {
         if (!plan.incoming.some(flow => flow.id === flowId)) {

@@ -7,7 +7,62 @@ import { openWatchResource } from "../src/client/channel/watch-resource";
 const rootId = "11111111-1111-4111-8111-111111111111";
 const leaseId = "22222222-2222-4222-8222-222222222222";
 
-function worker(holdReads = false, size = 100000, clientReady = Promise.resolve()) {
+function pendingRegistration() {
+  let resolve!: (value: unknown) => void, reject!: (error: Error) => void;
+  const registration = new Promise((yes, no) => { resolve = yes; reject = no; });
+  const serviceWorker = Object.assign(new EventTarget(), {
+    controller: null as null | { scriptURL: string }, register: vi.fn(() => registration),
+  });
+  const add = vi.spyOn(serviceWorker, "addEventListener"), remove = vi.spyOn(serviceWorker, "removeEventListener");
+  vi.stubGlobal("navigator", { serviceWorker });
+  vi.stubGlobal("location", { origin: "https://owned.test" });
+  vi.stubGlobal("isSecureContext", true);
+  return { serviceWorker, resolve, reject, add, remove };
+}
+
+test.each(["resolve", "reject"] as const)("cancellation settles before register %s and late completion cannot acquire a reader", async late => {
+  vi.useFakeTimers();
+  const registration = pendingRegistration(), cancel = new AbortController(), read = vi.fn(), outcome = vi.fn();
+  try {
+    const pending = openWatchResource(rootId, read, cancel.signal).then(value => outcome(value), error => outcome(error));
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(outcome).not.toHaveBeenCalled();
+    cancel.abort(); await vi.advanceTimersByTimeAsync(0);
+    expect(outcome).toHaveBeenCalledOnce();
+    expect(outcome.mock.calls[0][0].name).toBe("AbortError");
+    expect(registration.remove).toHaveBeenCalledWith("controllerchange", expect.any(Function));
+    if (late === "resolve") registration.resolve({});
+    else registration.reject(new Error("owned late network error"));
+    await pending; await vi.advanceTimersByTimeAsync(20000);
+    expect(read).not.toHaveBeenCalled();
+    expect(registration.add.mock.calls.some(([type]) => type === "message")).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { cancel.abort(); registration.resolve({}); vi.useRealTimers(); vi.unstubAllGlobals(); }
+});
+
+test("registration failure rejects and successful registration waits for its matching controller", async () => {
+  const cancel = new AbortController();
+  try {
+    const failed = pendingRegistration();
+    const bad = openWatchResource(rootId, vi.fn(), cancel.signal);
+    const rejected = expect(bad).rejects.toThrow("watch_peer_unavailable");
+    failed.reject(new Error("script unavailable")); await rejected;
+    const registration = pendingRegistration();
+    const opening = openWatchResource(rootId, vi.fn(), cancel.signal);
+    let resolved = false; void opening.then(() => { resolved = true; });
+    registration.resolve({}); await Promise.resolve();
+    registration.serviceWorker.controller = { scriptURL: "https://owned.test/unrelated.js" };
+    registration.serviceWorker.dispatchEvent(new Event("controllerchange"));
+    await Promise.resolve(); expect(resolved).toBe(false);
+    registration.serviceWorker.controller = { scriptURL: "https://owned.test/watch-media-worker.js" };
+    registration.serviceWorker.dispatchEvent(new Event("controllerchange"));
+    const lease = await opening; expect(lease.url).toContain(rootId);
+    lease.close();
+    expect(registration.remove.mock.calls.some(([type]) => type === "message")).toBe(true);
+  } finally { cancel.abort(); vi.unstubAllGlobals(); }
+});
+
+function worker(holdReads = false, size = 100000, clientReady = Promise.resolve(), pageMessage?: (value: unknown, ports: MessagePort[]) => void) {
   const listeners = new Map<string, (event: unknown) => void>();
   const reads: unknown[] = [];
   const opened = vi.fn();
@@ -20,6 +75,7 @@ function worker(holdReads = false, size = 100000, clientReady = Promise.resolve(
         await clientReady;
         return id === "owner-page" ? { url: "https://piik.test/", postMessage: (_value: unknown, ports: MessagePort[]) => {
         opened();
+        if (pageMessage) { pageMessage(_value, ports); return; }
         const port = ports[0];
         port.onmessage = ({ data }) => {
           if (data.type === "stat") port.postMessage({ id: data.id, size, mimeType: "video/mp4" });
@@ -43,6 +99,46 @@ function worker(holdReads = false, size = 100000, clientReady = Promise.resolve(
 }
 
 describe("page-owned virtual media HTTP", () => {
+  test.each(["complete", "close"] as const)("both bridges retain a route-waiting read beyond 25 seconds until its owner says %s", async ending => {
+    vi.useFakeTimers();
+    const controller = { scriptURL: "https://piik.test/watch-media-worker.js" };
+    const serviceWorker = Object.assign(new EventTarget(), { controller, register: async () => {} });
+    vi.stubGlobal("navigator", { serviceWorker });
+    vi.stubGlobal("location", { origin: "https://piik.test" });
+    vi.stubGlobal("isSecureContext", true);
+    const lifetime = new AbortController();
+    let release!: () => void, readerSignal!: AbortSignal, first = true;
+    const lease = await openWatchResource(rootId, async (_id, offset, length, signal) => {
+      if (first) {
+        first = false; readerSignal = signal;
+        await new Promise<void>((resolve, reject) => {
+          release = resolve;
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+      }
+      return { mimeType: "video/mp4", totalSize: 4, bytes: new Uint8Array([11, 22, 33, 44].slice(offset, offset + length)), eof: offset + length >= 4 };
+    }, lifetime.signal);
+    const w = worker(false, 4, Promise.resolve(), (data, ports) => {
+      serviceWorker.dispatchEvent(Object.assign(new Event("message"), { source: controller, data, ports }));
+    });
+    try {
+      const pending = w.fetch("bytes=1-2", "GET", "owner-page", lease.url)!;
+      let settled = false; void pending.then(() => { settled = true; });
+      await vi.waitFor(() => expect(readerSignal).toBeDefined());
+      await vi.advanceTimersByTimeAsync(25000);
+      expect(settled).toBe(false); expect(readerSignal.aborted).toBe(false);
+      if (ending === "complete") {
+        release();
+        const response = await pending;
+        expect(response.status).toBe(206);
+        expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([22, 33]);
+      } else {
+        lease.close();
+        expect(readerSignal.aborted).toBe(true);
+        expect((await pending).status).toBe(410);
+      }
+    } finally { lease.close(); lifetime.abort(); vi.useRealTimers(); vi.unstubAllGlobals(); }
+  });
   test("cancelling during client lookup does not open a late page request", async () => {
     let found!: () => void;
     const clientReady = new Promise<void>(resolve => { found = resolve; });
@@ -156,14 +252,19 @@ test("a server ignoring the direct sniff range is canceled after the bounded hea
 
 test("closing while service-worker registration is pending leaves no reader lease", async () => {
   let registered!: () => void;
-  const listener = vi.fn(), read = vi.fn();
+  const read = vi.fn();
+  const serviceWorker = Object.assign(new EventTarget(), { register: () => new Promise<void>(resolve => { registered = resolve; }) });
+  const listener = vi.spyOn(serviceWorker, "addEventListener"), removeListener = vi.spyOn(serviceWorker, "removeEventListener");
   const video = Object.assign(new EventTarget(), { src: "", pause: vi.fn(), removeAttribute: vi.fn(), load: vi.fn(), remove: vi.fn() });
   vi.stubGlobal("document", { createElement: () => video }); vi.stubGlobal("isSecureContext", true);
-  vi.stubGlobal("navigator", { serviceWorker: { register: () => new Promise<void>(resolve => { registered = resolve; }), addEventListener: listener } });
+  vi.stubGlobal("navigator", { serviceWorker });
   try {
     const media = createPeerWatchMedia({ resourceId: rootId, format: "file" }, read);
     media.close(); registered(); await Promise.resolve(); await Promise.resolve();
-    expect(read).not.toHaveBeenCalled(); expect(listener).not.toHaveBeenCalled(); expect(video.src).toBe("");
+    expect(read).not.toHaveBeenCalled();
+    expect(listener.mock.calls.some(([type]) => type === "message")).toBe(false);
+    expect(removeListener).toHaveBeenCalledWith("controllerchange", expect.any(Function));
+    expect(video.src).toBe("");
   } finally { vi.unstubAllGlobals(); }
 });
 

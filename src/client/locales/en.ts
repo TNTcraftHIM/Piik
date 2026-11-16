@@ -74,6 +74,7 @@ export const en: Record<CopyKey, string> = {
   "client.launcher.preview.ready": "Site ready",
   "room.chat.title": "Chat text",
   "room.chat.exportNote": "Exports the text loaded on this page.",
+  "room.chat.nothingLoaded": "No messages have been loaded to export.",
   "room.chat.export": "Export chat text (TXT)",
   "room.common.user": "User",
   "room.relay.limit": "Forwarding limit",

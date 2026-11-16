@@ -91,6 +91,8 @@ const SIGNALING_IDLE_TIMEOUT: Duration = Duration::from_secs(20);
 #[cfg(test)]
 mod composition_tests;
 #[cfg(test)]
+mod hosting_ready_tests;
+#[cfg(test)]
 mod connection_tests;
 #[cfg(all(test, feature = "capture"))]
 mod tests;
@@ -612,9 +614,7 @@ pub async fn run_host(
         .map(ToString::to_string)
         .unwrap_or_else(|| "hosting_stopped".into());
     if let Some(hosting) = &session.hosting {
-        if hosting.ready.borrow().is_none() {
-            hosting.ready.send_replace(Some(Err(error.clone())));
-        }
+        hosting.ready.send_replace(Some(Err(error.clone())));
     }
     for opening in session.opening.into_values() {
         opening.fail(&error);
@@ -623,6 +623,12 @@ pub async fn run_host(
 }
 
 impl Session {
+    fn hosting_unready(&self) {
+        if let Some(hosting) = &self.hosting {
+            hosting.ready.send_replace(None);
+        }
+    }
+
     fn fail_pending_requests(&mut self, code: &str) {
         for pending in std::mem::take(&mut self.pending_relay).into_values() {
             let _ = pending.result.send(Err(code.into()));
@@ -633,6 +639,7 @@ impl Session {
     }
 
     async fn release(&mut self) -> Result<()> {
+        self.hosting_unready();
         self.fail_pending_requests("hosting_unavailable");
         let restoring: Vec<_> = self
             .opening
@@ -665,6 +672,7 @@ impl Session {
         can_prepare_udp: impl Fn() -> F,
     ) -> Result<()> {
         loop {
+            self.hosting_unready();
             let mut request = self.config.url.as_str().into_client_request()?;
             request
                 .headers_mut()
@@ -723,6 +731,7 @@ impl Session {
                     signing_key: self.signer.signing_key(),
                 };
                 let result = self.connected(&mut socket, join, stop).await;
+                self.hosting_unready();
                 self.fail_pending_requests("disconnected");
                 if let Some(live) = &mut self.live {
                     live.room.disconnected();

@@ -21,21 +21,22 @@ async function serve(event, url) {
   const close = () => {
     if (closed) return;
     closed = true; port.postMessage({ type: "cancel" }); port.close();
-    for (const current of pending.values()) { clearTimeout(current.timer); current.reject(new Error("watch_media_failed")); }
+    for (const current of pending.values()) current.reject(new Error("watch_media_failed"));
     pending.clear();
     event.request.signal.removeEventListener("abort", close);
   };
   const rpc = data => new Promise((resolve, reject) => {
     if (closed) { reject(new Error("watch_media_failed")); return; }
     const id = ++sequence;
-    pending.set(id, { resolve, reject, timer: setTimeout(close, 20000) });
+    // The page's reader owns route readiness and response timing. Fetch/port cancellation owns this wait.
+    pending.set(id, { resolve, reject });
     port.postMessage({ ...data, id });
   });
   port.onmessage = ({ data }) => {
     if (data.error) { close(); return; }
     const current = pending.get(data.id);
     if (!current) return;
-    pending.delete(data.id); clearTimeout(current.timer);
+    pending.delete(data.id);
     current.resolve(data);
   };
   event.request.signal.addEventListener("abort", close, { once: true });

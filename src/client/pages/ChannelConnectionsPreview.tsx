@@ -9,7 +9,7 @@ import { useCopy } from "../ui/copy";
 import { PREVIEW_METRICS } from "./preview-metrics";
 import { QUALITY_PROFILES, screenVideoSettings } from "../media/quality";
 
-type ConnectionPreviewMode = "room" | "voice" | "both" | "app" | "unwatched" | "host-endpoints";
+type ConnectionPreviewMode = "room" | "voice" | "both" | "app" | "unwatched" | "host-endpoints" | "multiple-endpoints";
 export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames = false) {
   const state = snapshotSchema.parse({
     channel: { id: "domain", name: "Friends", icon: "couch", ownerId: "host-user", historyWindow: 100, userCount: 3,
@@ -78,7 +78,16 @@ export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames 
     ] };
     state.publications.find(value => value.id === "screen-self")!.sessionId = "app";
   }
-  return { state, topology, metrics: mode === "host-endpoints" ? [] : metrics, roomId: "room", sessionId: "self" };
+  if (mode === "multiple-endpoints") {
+    state.sessions.push({ ...state.sessions.find(value => value.id === "friend")!, id: "friend-app" });
+    topology.screen = { publicationId: "screen-host", sourceSessionId: "host", edges: [
+      { sender: "host", receiver: "app", selected: true, proof: "forwardable", presented: null, presentation: false },
+      { sender: "app", receiver: "self", selected: true, proof: "decoded", presented: true, presentation: true },
+      { sender: "app", receiver: "friend-app", selected: true, proof: "forwardable", presented: null, presentation: false },
+      { sender: "friend-app", receiver: "friend", selected: true, proof: "decoded", presented: true, presentation: true },
+    ] };
+  }
+  return { state, topology, metrics: mode === "host-endpoints" || mode === "multiple-endpoints" ? [] : metrics, roomId: "room", sessionId: "self" };
 }
 
 export function ChannelConnectionsPreview() {
@@ -91,6 +100,7 @@ export function ChannelConnectionsPreview() {
     { value: "both", label: en ? "Picture and voice" : "画面与语音" }, { value: "app", label: en ? "App display" : "App 显示" },
     { value: "unwatched", label: en ? "Unwatched share" : "尚未观看的分享" },
     { value: "host-endpoints", label: en ? "One owner, App and webpage" : "同一房主的 App 与网页" },
+    { value: "multiple-endpoints", label: en ? "Two people, two connections each" : "两人各有两个连接" },
   ] as const;
   return <section id="channel-connections-preview" className="cp-section">
     <header className="cp-section-head"><h2>{en ? "Multi-source connections" : "多源媒体连接"}</h2></header>

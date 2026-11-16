@@ -12,9 +12,10 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
-- [ ] **beta.33 Native downloads.** Follow an attachment through completed
-  transfer and the system-WebView save operation. A Browser-dispatch message
-  does not prove an App download occurred; provide an observable save outcome.
+- [ ] **Two-App connection failure.** Correlate the reported failed attempt's
+  actual source/viewer endpoints, App control state, Native session generations,
+  STUN observations and ordinary/enhanced ICE outcome. Two open Apps do not
+  establish that their Native endpoints participated in the media route.
 - [ ] **beta.33 Browser window selection stalls.** Locate the first stalled
   stage after choosing another Chrome window in the system screen picker.
   Preserve the current share on failed replacement.
@@ -27,9 +28,6 @@ the feedback period; they do not delay that delivery.
   encoder input/output, requested/applied quality, selected route and receiver
   cadence during an actual episode before attributing it to conservative probing.
   Check equivalent 2.x timeout owners separately from the new webpage-player path.
-- [ ] **Native child-window presentation.** Correct the PiP capability-ready
-  handoff observed in beta.33; unify room tools and webpage-player window controls
-  with the shared Native presentation while keeping their distinct lifetimes.
 - [ ] **beta.32/33: no media with a weak site and strong source.** Reproduce
   the reported topology and locate the first missing picture/audio delivery fact
   across room authority, selected source, forwarding plan and actual receiver.
@@ -57,9 +55,7 @@ the feedback period; they do not delay that delivery.
   Keep the sharer's replacement admission separate: a new source must not retire
   the active share before its required playback preparation succeeds. Preparing a
   share from an already-ended original page also needs this lifecycle check.
-- [ ] **Native PiP and console/terminal package acceptance.** Verify the new
-  integrated-window popup geometry and always-on-top behavior, room-tool return
-  with retained activities, and ordinary login popups. Check the same package's
+- [ ] **Native console/terminal package acceptance.** Check the matching package's
   silent native entry, explicit Browser terminal, unavailable-WebView fallback,
   redirected output and normal quit/update restart.
 - [ ] **2.x periodic brief picture stalls.** With a particular Host or Viewer,

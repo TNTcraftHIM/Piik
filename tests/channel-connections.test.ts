@@ -70,8 +70,8 @@ describe("channel connection presentation", () => {
     expect(fixture.state.channel.ownerId).not.toBe(fixture.state.channel.rooms[0].creatorId);
     expect(graph.nodes.map(node => node.id).sort()).toEqual(["app", "friend", "self"]);
     expect(graph.edges).toHaveLength(2);
-    expect(graph.nodes.find(node => node.id === "app")).toMatchObject({ host: true, identity: "self-user" });
-    expect(graph.nodes.find(node => node.id === "self")).toMatchObject({ host: false, identity: "self-user" });
+    expect(graph.nodes.find(node => node.id === "app")).toMatchObject({ host: true, identity: "self-user", kind: "endpoint" });
+    expect(graph.nodes.find(node => node.id === "self")).toMatchObject({ host: false, identity: "self-user", kind: "endpoint" });
     expect(graph.endpointGroups).toEqual([{ userId: "self-user", name: "Nori", ids: ["app", "self"], endpoints: ["App", "connection.webpage"] }]);
     // A different participant's picture root never takes the room host's marker.
     fixture.topology.screen!.sourceSessionId = "friend";
@@ -83,6 +83,21 @@ describe("channel connection presentation", () => {
     const untyped = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);
     expect(untyped.nodes.find(node => node.id === "app")?.label).toBe("Nori (connection.endpoint)");
     expect(untyped.nodes.find(node => node.id === "self")?.label).toBe("Nori (connection.webpage)");
+  });
+
+  it("keeps each person's physical endpoints and only labels an App from its actual display hop", () => {
+    const fixture = channelConnectionPreview("multiple-endpoints");
+    const graph = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);
+    expect(graph.nodes).toHaveLength(5);
+    expect(graph.edges).toHaveLength(4);
+    expect(graph.endpointGroups.map(group => group.userId)).toEqual(["self-user", "friend-user"]);
+    expect(graph.nodes.filter(node => node.kind === "endpoint")).toHaveLength(4);
+    expect(graph.nodes.find(node => node.id === "friend-app")?.label).toBe("Kiki (App)");
+    fixture.state.users.find(user => user.id === "friend-user")!.name = "Nori";
+    fixture.topology.screen!.edges = fixture.topology.screen!.edges.map(edge => ({ ...edge, presentation: false }));
+    const untyped = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);
+    expect(untyped.endpointGroups).toHaveLength(2); // Equal names do not merge people.
+    expect(untyped.nodes.some(node => node.label.includes("(App)"))).toBe(false);
   });
 
   it("scopes an unwatched picture's empty path to that share while room voice remains active", () => {

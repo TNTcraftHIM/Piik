@@ -12,7 +12,7 @@ export interface RouteGraphNode {
   identity?: string;
   you?: boolean;
   host?: boolean;
-  kind?: "person" | "sfu";
+  kind?: "person" | "endpoint" | "sfu";
   /** Presence without an upstream can still have an explicit waiting state. */
   pending?: boolean;
   description?: string;

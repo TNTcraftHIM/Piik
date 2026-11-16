@@ -73,9 +73,9 @@ test("fatal HLS facts distinguish codec support and input loading without guessi
 test("a browser registration refusal reaches readiness as a page capability failure", async () => {
   const v = video(); vi.stubGlobal("document", { createElement: () => v });
   vi.stubGlobal("isSecureContext", true);
-  vi.stubGlobal("navigator", { serviceWorker: { register: async () => {
+  vi.stubGlobal("navigator", { serviceWorker: Object.assign(new EventTarget(), { register: async () => {
     throw new DOMException("An SSL certificate error occurred when fetching the script.", "SecurityError");
-  } } });
+  } }) });
   const media = createPeerWatchMedia({ resourceId: "11111111-1111-4111-8111-111111111111", format: "file" }, vi.fn());
   const waiting = media.ready(new AbortController().signal);
   await expect(waiting).rejects.toThrow("watch_peer_unavailable"); media.close();

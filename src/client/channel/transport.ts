@@ -63,6 +63,7 @@ interface MediaSlots {
 }
 
 interface TransportOptions {
+  identity?: { sessionId: string; pairId: string; peerId: string };
   polite: boolean;
   iceServers: RTCIceServer[];
   canReceiveVideoLayers?: boolean;
@@ -131,7 +132,15 @@ export class ChannelTransport {
 
   constructor(private options: TransportOptions) {
     this.pc = new RTCPeerConnection({ iceServers: options.iceServers, bundlePolicy: "max-bundle" });
-    this.releaseDebug = observeDebugConnection(this.pc, { role: "channel-peer" });
+    const transport = this;
+    this.releaseDebug = observeDebugConnection(this.pc, { role: "channel-peer", ...options.identity,
+      get outgoing() { return [...transport.sending].map(([flowId, output]) => ({ flowId,
+        trackIds: output.senders.flatMap(({ sender }) => sender.track ? [sender.track.id] : []) })); },
+      get incoming() { return [...transport.receiving].flatMap(([streamId, stream]) => {
+        const flowId = transport.remoteIds.get(streamId);
+        return flowId ? [{ flowId, trackIds: stream.getTracks().map(track => track.id) }] : [];
+      }); },
+    });
     this.deadline = setTimeout(() => this.timeout(), TRANSPORT_PREPARE_MS);
     this.pc.onicecandidate = ({ candidate }) => {
       if (candidate) options.send({ candidate: candidate.toJSON() });

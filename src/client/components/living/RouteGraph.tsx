@@ -2,6 +2,8 @@ import { memo, useId, useState } from "react";
 import { useElementWidth } from "../../lib/use-element-width";
 import { useCopy } from "../../ui/copy";
 import { PawnSvg } from "./Pawn";
+import { Glyph } from "../../ui/icons";
+import { HostMark } from "./HostMark";
 import { Tooltip } from "./Tooltip";
 import { participantColor } from "./participant-color";
 import { routeGraphLayout, type RouteGraphNode, type RouteGraphEdge } from "./route-tree-layout";
@@ -131,7 +133,10 @@ export const RouteGraph = memo(function RouteGraph({ nodes, rootId, edges, selec
         const selected = selectedId === id, hovered = hoveredId === id;
         return <g key={id} className={`lr-route-node${node.host ? " is-host" : ""}${pending(node) ? " is-pending" : ""}${hovered ? " is-hovered" : ""}${selected ? " is-selected" : ""}`}
           transform={`translate(${point.x - 20 * PAWN_SCALE}, ${point.y - 24 * PAWN_SCALE}) scale(${PAWN_SCALE})`}>
-          <PawnSvg color={participantColor(node.identity ?? id)} identity={node.identity ?? id} host={node.host} />
+          {node.kind === "endpoint" ? <g color={participantColor(node.identity ?? id)}>
+            <g transform="translate(4 8)"><Glyph name="window" size={32} /></g>
+            {node.host && <HostMark x={14} y={0} width={12} />}
+          </g> : <PawnSvg color={participantColor(node.identity ?? id)} identity={node.identity ?? id} host={node.host} />}
           {hovered && !selected ? <PawnOutline className="lr-route-hover" /> : null}
           {selected ? <PawnOutline className="lr-route-selection" /> : null}
           {node.you ? <PawnOutline className="lr-route-you" /> : null}

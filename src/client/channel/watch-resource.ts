@@ -40,23 +40,31 @@ export async function openWatchResource(resourceId: string, read: WatchByteReade
   signal.throwIfAborted();
   if (!canReadWatchResources()) throw new Error("watch_peer_requires_secure_context");
   if (!resourceIdPattern.test(resourceId)) throw new Error("watch_media_failed");
-  try { await navigator.serviceWorker.register(workerPath, { scope: "/" }); }
-  catch { signal.throwIfAborted(); throw new Error("watch_peer_unavailable"); }
-  signal.throwIfAborted();
   await new Promise<void>((resolve, reject) => {
+    let finished = false, registered = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const finish = (error?: unknown) => {
+      if (finished) return;
+      finished = true;
       clearTimeout(timer); signal.removeEventListener("abort", abort);
       navigator.serviceWorker.removeEventListener("controllerchange", check);
       error ? reject(error) : resolve();
     };
     const abort = () => finish(signal.reason);
     const check = () => {
-      if (navigator.serviceWorker.controller?.scriptURL === new URL(workerPath, location.origin).href) finish();
+      if (registered && navigator.serviceWorker.controller?.scriptURL === new URL(workerPath, location.origin).href) finish();
     };
-    const timer = setTimeout(() => finish(new Error("watch_peer_unavailable")), 10000);
     signal.addEventListener("abort", abort, { once: true });
     navigator.serviceWorker.addEventListener("controllerchange", check);
-    if (signal.aborted) abort(); else check();
+    if (signal.aborted) { abort(); return; }
+    // Registration belongs to the Browser and cannot be aborted, but its caller can retire.
+    // A late completion must not start a controller wait or acquire a media lease.
+    void navigator.serviceWorker.register(workerPath, { scope: "/" }).then(() => {
+      if (finished) return;
+      registered = true;
+      timer = setTimeout(() => finish(new Error("watch_peer_unavailable")), 10000);
+      check();
+    }, () => finish(new Error("watch_peer_unavailable")));
   });
   signal.throwIfAborted();
   const leaseId = crypto.randomUUID(), requests = new Set<AbortController>();
@@ -70,11 +78,9 @@ export async function openWatchResource(resourceId: string, read: WatchByteReade
     if (requests.size >= 4) { port.postMessage({ error: "watch_media_failed" }); port.close(); return; }
     const request = new AbortController();
     requests.add(request);
-    const timers = new Set<ReturnType<typeof setTimeout>>();
     let pendingReads = 0;
     const close = () => request.abort();
     request.signal.addEventListener("abort", () => {
-      for (const timer of timers) clearTimeout(timer);
       requests.delete(request);
       port.postMessage({ error: "watch_media_failed" }); port.close();
     }, { once: true });
@@ -85,8 +91,8 @@ export async function openWatchResource(resourceId: string, read: WatchByteReade
       const length = data?.type === "stat" ? 1 : data?.length;
       if (pendingReads >= 4 || !Number.isSafeInteger(data?.id) || !["stat", "read"].includes(data?.type) || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length < 1 || length > 65536) { close(); return; }
       pendingReads++;
-      const timer = setTimeout(close, 20500); timers.add(timer);
       try {
+        // The reader owns route readiness and its response deadline; the port owns cancellation.
         const result = await readBounded(id, offset, length, request.signal);
         request.signal.throwIfAborted();
         if (result.bytes.byteLength > length || (result.totalSize !== null && (!Number.isSafeInteger(result.totalSize) || result.totalSize < 0))) throw new Error("watch_media_failed");
@@ -95,7 +101,7 @@ export async function openWatchResource(resourceId: string, read: WatchByteReade
           const bytes = new Uint8Array(result.bytes).buffer;
           port.postMessage({ id: data.id, bytes }, [bytes]);
         }
-      } catch { close(); } finally { clearTimeout(timer); timers.delete(timer); pendingReads--; }
+      } catch { close(); } finally { pendingReads--; }
     };
   };
   navigator.serviceWorker.addEventListener("message", message);

@@ -7,6 +7,7 @@ import { ConnectionDetails } from "../../components/living/ConnectionDetails";
 import { RouteGraph } from "../../components/living/RouteGraph";
 import { LoadingStatus } from "../../components/living/WaitingStatus";
 import { Glyph } from "../../ui/icons";
+import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { useCopy } from "../../ui/copy";
 import { channelConnectionGraph, channelConnectionRows, connectionSessionName, hasSelectedLocalDisplay } from "./channel-connection-data";
@@ -30,13 +31,14 @@ export function ChannelConnectionReport({ state, roomId, sessionId, topology, me
   const rows = channelConnectionRows(state, sessionId, topology, metrics, t);
   const displayOnly = hasSelectedLocalDisplay(topology, sessionId);
   return <div className="c3-connection-report">
-    {graph && <section aria-label={t("host.topology")}><RouteGraph {...graph} emptyLabel={topology?.screen ? t("connection.noScreenPath") : undefined} /></section>}
     {!!graph?.endpointGroups.length && <section className="c3-connection-identities" aria-label={t("connection.samePersonEndpoints")}>
       <p className="c3-connection-note">{t("connection.samePersonEndpoints")}</p>
       <dl>{graph.endpointGroups.map(group => <div key={group.userId} style={{ borderInlineStartColor: participantColor(group.userId) }}>
-        <dt>{group.name}</dt><dd>{group.endpoints.join(" / ")}</dd>
+        <dt><PawnSvg color={participantColor(group.userId)} identity={group.userId} /><span>{group.name}</span></dt>
+        <dd>{group.endpoints.join(" / ")}</dd>
       </div>)}</dl>
     </section>}
+    {graph && <section aria-label={t("host.topology")}><RouteGraph {...graph} emptyLabel={topology?.screen ? t("connection.noScreenPath") : undefined} /></section>}
     {graph && (graph.edges.length > 0 || !topology?.screen) && <p className="c3-connection-note">{t(graph.edges.length ? "connection.pathLegend" : "connection.signalOnly")}</p>}
     {displayOnly && <p className="c3-connection-note">{t("connection.localDisplayHint")}</p>}
     {metrics.some(sample => sample.ownerSessionId !== sessionId && sample.media === "video")
@@ -83,7 +85,7 @@ function ConnectionBody({ channel, roomId, active }: { channel: ChannelControlle
       const unavailable: Observations["unavailable"] = [];
       if (topology.status === "rejected") unavailable.push("connection.topologyUnavailable");
       if (metrics.status === "rejected" || metrics.value.unavailable) unavailable.push("connection.browserMetricsUnavailable");
-      if (appExpected && (native.status === "rejected" || !owner.appConnected)) unavailable.push("connection.appMetricsUnavailable");
+      if (native.status === "rejected" || appExpected && !owner.appConnected) unavailable.push("connection.appMetricsUnavailable");
       setResult({ scope, topology: graph, metrics: samples, unavailable });
       timer = setTimeout(read, 1000);
     };

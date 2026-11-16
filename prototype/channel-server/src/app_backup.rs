@@ -7,16 +7,33 @@ use axum::{
 };
 use piik_channel_core::backup::OwnCredential;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use uuid::Uuid;
+
+struct Owner {
+    commands: mpsc::Sender<HostCommand>,
+    credential: OwnCredential,
+    ready: watch::Receiver<Option<Result<(), String>>>,
+    stopped: watch::Receiver<bool>,
+    revoked: watch::Receiver<bool>,
+}
+
+impl Owner {
+    fn require_ready(&self) -> Result<(), backup::ApiError> {
+        if matches!(*self.ready.borrow(), Some(Ok(()))) {
+            Ok(())
+        } else {
+            Err(backup::error(StatusCode::FORBIDDEN, "forbidden"))
+        }
+    }
+}
 
 async fn owner(
     app: &App,
     headers: &HeaderMap,
     domain: Uuid,
     user: Uuid,
-) -> Result<(mpsc::Sender<HostCommand>, OwnCredential), (StatusCode, axum::Json<serde_json::Value>)>
-{
+) -> Result<Owner, backup::ApiError> {
     let forbidden = || backup::error(StatusCode::FORBIDDEN, "forbidden");
     if backup::bearer(headers) != Some(app.token.as_str()) {
         return Err(forbidden());
@@ -27,25 +44,27 @@ async fn owner(
         .and_then(|value| value.to_str().ok())
         .ok_or_else(forbidden)?;
     let registry = app.registry.lock().await;
-    if registry.permission(&site).is_none() || *app.closing.borrow() {
+    let permission = registry.permission(&site).ok_or_else(forbidden)?;
+    if *permission.revoked.borrow() || *app.closing.borrow() {
         return Err(forbidden());
     }
     let host = registry
         .hosts
         .get(&(site, domain, user))
         .filter(|host| {
-            host.credential == credential
-                && !host.task.is_finished()
-                && matches!(*host.ready.borrow(), Some(Ok(())))
+            host.credential == credential && !host.task.is_finished() && !*host.stop.borrow()
         })
         .ok_or_else(forbidden)?;
-    Ok((
-        host.commands.clone(),
-        OwnCredential {
+    Ok(Owner {
+        commands: host.commands.clone(),
+        credential: OwnCredential {
             user_id: user,
             credential: credential.into(),
         },
-    ))
+        ready: host.ready.clone(),
+        stopped: host.stop.subscribe(),
+        revoked: permission.revoked.subscribe(),
+    })
 }
 
 pub(super) async fn export(
@@ -53,8 +72,9 @@ pub(super) async fn export(
     Path((domain, user, room)): Path<(Uuid, Uuid, String)>,
     headers: HeaderMap,
 ) -> ApiResult {
-    let (commands, credential) = owner(&app, &headers, domain, user).await?;
-    backup::export(commands, room, credential).await
+    let owner = owner(&app, &headers, domain, user).await?;
+    owner.require_ready()?;
+    backup::export(owner.commands, room, owner.credential).await
 }
 
 pub(super) async fn describe(
@@ -62,9 +82,54 @@ pub(super) async fn describe(
     Path((domain, user)): Path<(Uuid, Uuid)>,
     headers: HeaderMap,
 ) -> ApiResult {
-    let (commands, _) = owner(&app, &headers, domain, user).await?;
-    backup::describe(commands).await
+    let Owner {
+        commands,
+        mut ready,
+        mut stopped,
+        mut revoked,
+        ..
+    } = owner(&app, &headers, domain, user).await?;
+    let mut closing = app.closing.subscribe();
+    let current = async {
+        loop {
+            let status = ready.borrow_and_update().clone();
+            match status {
+                Some(Ok(())) => {
+                    let result = backup::describe(commands.clone()).await;
+                    // A read consumed across admission retirement is not current.
+                    if ready.has_changed().map_err(|_| {
+                        backup::error(StatusCode::SERVICE_UNAVAILABLE, "hosting_unavailable")
+                    })? {
+                        continue;
+                    }
+                    if !matches!(&result, Err((_, body)) if body.0["error"] == "hosting_unavailable")
+                    {
+                        return result;
+                    }
+                }
+                Some(Err(error)) => {
+                    return Err(backup::error(StatusCode::SERVICE_UNAVAILABLE, error))
+                }
+                None => {}
+            }
+            // Wait for the existing owner's next admission, never poll the actor.
+            ready.changed().await.map_err(|_| {
+                backup::error(StatusCode::SERVICE_UNAVAILABLE, "hosting_unavailable")
+            })?;
+        }
+    };
+    tokio::select! {
+        biased;
+        _ = revoked.wait_for(|value| *value) => Err(backup::error(StatusCode::FORBIDDEN, "forbidden")),
+        _ = stopped.wait_for(|value| *value) => Err(backup::error(StatusCode::SERVICE_UNAVAILABLE, "hosting_unavailable")),
+        _ = closing.wait_for(|value| *value) => Err(backup::error(StatusCode::SERVICE_UNAVAILABLE, "hosting_unavailable")),
+        result = current => result,
+    }
 }
+
+#[cfg(test)]
+#[path = "app_backup_description_tests.rs"]
+mod tests;
 
 pub(super) async fn restore(
     State(app): State<Arc<App>>,
@@ -72,6 +137,7 @@ pub(super) async fn restore(
     headers: HeaderMap,
     body: Body,
 ) -> ApiResult {
-    let (commands, _) = owner(&app, &headers, domain, user).await?;
-    backup::restore(commands, &headers, body).await
+    let owner = owner(&app, &headers, domain, user).await?;
+    owner.require_ready()?;
+    backup::restore(owner.commands, &headers, body).await
 }

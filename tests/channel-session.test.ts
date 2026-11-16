@@ -1090,6 +1090,52 @@ test("App rewatch admits its current helper in the first subscription without a 
   } finally { session.close(); }
 });
 
+test("a retained watch re-associates an App endpoint after its current admission becomes ready", async () => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
+  const previous = crypto.randomUUID(), current = crypto.randomUUID();
+  const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: previous, roomIds: [] });
+  const { session, socket } = await setup();
+  const state = structuredClone(session.getSnapshot().state!);
+  state.sessions.push({ id: previous, userId: "self", online: true, signingKey: testSigningKey });
+  state.publications.push({ audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen",
+    source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false });
+  state.subscriptions = ["screen"];
+  socket.receive({ type: "state", state });
+  try {
+    const connecting = session.activateApp();
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
+    const app = ChannelSocket.current;
+    await app.onopen?.(); app.receive({ id: app.sent.at(-1)!.id, result: null }); await connecting;
+    const watching = session.watch("screen");
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", helperSessionId: previous }));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await watching;
+
+    state.sessions = state.sessions.filter(endpoint => endpoint.id !== previous);
+    socket.receive({ type: "state", state });
+    let ready!: (value: { sessionId: string; roomIds: string[] }) => void;
+    description.mockImplementationOnce(() => new Promise(resolve => { ready = resolve; }));
+    state.sessions.push({ id: current, userId: "self", online: true, signingKey: testSigningKey });
+    socket.receive({ type: "state", state });
+    await vi.waitFor(() => expect(description).toHaveBeenCalledTimes(2));
+    // Native's independent Welcome may follow this page's endpoint State.
+    socket.receive({ type: "state", state });
+    await new Promise(resolve => setImmediate(resolve));
+    expect(description).toHaveBeenCalledTimes(2);
+    expect(socket.sent.filter(command => command.type === "subscribe")).toHaveLength(1);
+    expect(session.getSnapshot().appConnected).toBe(true);
+    ready({ sessionId: current, roomIds: [] });
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true, helperSessionId: current }));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    socket.receive({ type: "state", state });
+    await new Promise(resolve => setImmediate(resolve));
+    expect(description).toHaveBeenCalledTimes(2);
+    expect(socket.sent.filter(command => command.type === "subscribe").map(command => command.helperSessionId)).toEqual([previous, current]);
+    expect(session.getSnapshot().state?.subscriptions).toEqual(["screen"]);
+    expect(app.readyState).toBe(ChannelSocket.OPEN);
+    expect(session.getSnapshot().appConnected).toBe(true);
+  } finally { session.close(); }
+});
+
 test.each([false, true])("local Native playback provenance follows endpoint lifetime, without ownership or user inference (description rejected: %s)", async rejected => {
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: appLink.APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL, port: 8793, token: "approved" });
   const applyBufferTarget = vi.spyOn(ChannelMedia.prototype, "setScreenBufferTarget");
@@ -8837,6 +8883,61 @@ test('source notifications during the first read coalesce into one follow-up rea
   } finally { session.close(); }
 });
 
+test('replaced audio metadata cancels only its obsolete inspection and prepares the current explicit pair', async () => {
+  const video = indexedInspection('video'), oldAudio = indexedInspection('audio'), nextAudio = indexedInspection('audio');
+  let candidates = [video.candidate, oldAudio.candidate];
+  const discover = vi.fn(async () => ({ choices: [], indexedCandidates: candidates, byteSource: null }));
+  const { session, page, candidateId, request, commit, dispose } = await websiteSourceSelection(discover);
+  vi.stubGlobal('document', { createElement: () => new WatchTestVideo() });
+  const incumbent = new WatchPlayer('second', true, new HTMLVideoMedia('https://fixture.test/other.mp4', 'file'), () => {});
+  (session as unknown as { watchPlayers: Map<string, WatchPlayer> }).watchPlayers.set('other-watch', incumbent);
+  const closeIncumbent = vi.spyOn(incumbent, 'close');
+  localProviderVideo();
+  const original = request.getMockImplementation()!;
+  let oldSignal!: AbortSignal, oldReadId!: string, release!: () => void, active = 0;
+  const cancelled: string[] = [];
+  request.mockImplementation(async (...args: unknown[]) => {
+    const [command, signal] = args as [{ type: string; action?: string; choiceId?: string; readId?: string; length?: number }, AbortSignal];
+    if (command.type !== 'page_media_resource') return original(command);
+    if (command.action === 'cancel') { cancelled.push(command.readId!); return null; }
+    const result = { mimeType: 'video/mp4', totalSize: 100, bytesBase64: btoa('\0'.repeat(command.length!)) };
+    if (command.choiceId !== oldAudio.candidate.id) return result;
+    oldSignal = signal; oldReadId = command.readId!; active++;
+    try { return await new Promise((resolve, reject) => {
+      release = () => resolve(result);
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }); } finally { active--; }
+  });
+  vi.spyOn(indexedSource, 'inspectIndexedTrack').mockImplementation(async (candidate, read, signal) => {
+    await read(candidate.id, 0, 16, signal);
+    return candidate.id === video.candidate.id ? video : candidate.id === oldAudio.candidate.id ? oldAudio : nextAudio;
+  });
+  const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'hls' as const };
+  const prepare = vi.spyOn(page, 'prepareIndexedMedia').mockResolvedValue(source);
+  const publications: string[][] = [];
+  const unlisten = session.subscribe(() => publications.push(session.watchPage('first')?.watchSources?.indexed.map(choice => choice.candidate.id) ?? []));
+  try {
+    const selecting = session.selectWatchPage('first', candidateId);
+    void selecting.catch(() => {});
+    await vi.waitFor(() => expect(oldSignal).toBeDefined());
+    candidates = [video.candidate, nextAudio.candidate];
+    page.receive({ type: 'page_media_changed', pageId: page.id });
+    await vi.waitFor(() => expect(oldSignal.aborted).toBe(true));
+    await expect(selecting).resolves.toBe(false);
+    expect(active).toBe(0); expect(cancelled).toContain(oldReadId);
+    expect(dispose).not.toHaveBeenCalled(); expect(prepare).not.toHaveBeenCalled();
+    expect(closeIncumbent).not.toHaveBeenCalled(); expect(session.getSnapshot().watchPlayers.get('other-watch')).toBe(incumbent);
+    expect(publications.some(ids => ids.includes(oldAudio.candidate.id))).toBe(false);
+    expect(session.watchPage('first')?.watchSources?.indexed.map(choice => choice.candidate.id)).toEqual([video.candidate.id, nextAudio.candidate.id]);
+    release(); await Promise.resolve();
+    expect(session.watchPage('first')?.watchSources?.indexed.some(choice => choice.candidate.id === oldAudio.candidate.id)).toBe(false);
+    await session.selectWatchIndexedSource('first', video.candidate.id, nextAudio.candidate.id);
+    expect(prepare).toHaveBeenCalledWith({ video: video.recipe, audio: nextAudio.recipe }, expect.any(AbortSignal));
+    expect(commit.mock.calls[0]?.[2]).toBeInstanceOf(PageSuppliedMedia);
+    expect(dispose).not.toHaveBeenCalled();
+  } finally { unlisten(); await session.cancelScreenSelection('first'); session.close(); }
+});
+
 test('an empty first source list stays open for later sources or an explicit original-page share', async () => {
   const { session, candidateId, commit } = await websiteSourceSelection(async () => ({ choices: [], indexedCandidates: [], byteSource: null }));
   try {
@@ -9642,5 +9743,79 @@ test("owned display grant cancels while optional audio resume never settles", as
     expect(close).toHaveBeenCalledOnce();
     expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
     expect(socket.sent.some(command => command.type === "publish")).toBe(false);
+  } finally { session.close(); }
+});
+
+
+test.each(["remote-description", "local-answer", "room-channel", "input-channel"] as const)("rejoining after pair failure isolates %s from the live site and healthy sibling", async stage => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const { session, socket, peer } = await setup();
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    const plan = (id: string) => ({ id, peerId: "z-" + id, canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [] });
+    const healthyPlan = plan("healthy");
+    (healthyPlan.incoming as import("../src/client/channel/protocol").ChannelPair["incoming"]).push({ id: "healthy-flow", publicationId: "healthy-voice", selected: true, inputFlowId: null });
+    state.publications = [{ audience: [], id: "healthy-voice", roomId: "first", sessionId: "z-healthy", userId: "other", kind: "voice", paused: false }];
+    state.subscriptions = ["healthy-voice"];
+    state.pairs = [plan("old"), healthyPlan];
+    socket.receive({ type: "state", state });
+    const [old, healthy] = RoomPeerConnection.instances;
+    old.connected(); healthy.connected();
+    const retained = remoteStream("healthy-voice-stream", [remoteTrack("audio")]);
+    socket.receive({ type: "signal", pairId: "healthy", fromSessionId: "z-healthy", payload: {
+      exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "owned healthy offer" }, tracks: [{ flowId: "healthy-flow", streamId: retained.id }],
+    } });
+    await vi.waitFor(() => expect(healthy.remoteDescription).not.toBeNull());
+    healthy.ontrack?.({ streams: [retained] });
+    expect(session.getSnapshot().streams.get("healthy-voice")).toBe(retained);
+    old.connectionState = "failed"; old.onconnectionstatechange?.();
+    expect(socket.readyState).toBe(ChannelSocket.OPEN);
+    state.pairs = [healthyPlan]; socket.receive({ type: "state", state });
+    const dataChannel = RoomPeerConnection.prototype.createDataChannel;
+    const install = stage === "room-channel" || stage === "input-channel"
+      ? vi.spyOn(RoomPeerConnection.prototype, "createDataChannel").mockImplementation(function (this: RoomPeerConnection, label, options) {
+        if (this !== healthy && (stage === "room-channel" || label === "piik-input")) throw new DOMException("SCTP setup unavailable", "OperationError");
+        return dataChannel.call(this, label, options);
+      }) : null;
+    if (stage === "input-channel") {
+      state.publications.push({ audience: [], id: "picture", roomId: "first", sessionId: "host", userId: "other", kind: "screen", source: { kind: "screen", name: null }, title: null, paused: false });
+    }
+    const rejoinPlan = plan("rejoined");
+    if (stage === "input-channel") (rejoinPlan.incoming as import("../src/client/channel/protocol").ChannelPair["incoming"]).push({ id: "picture-flow", publicationId: "picture", selected: true, inputFlowId: null });
+    state.pairs.push(rejoinPlan); socket.receive({ type: "state", state });
+    const rejoined = RoomPeerConnection.instances.at(-1)!;
+    if (stage === "remote-description" || stage === "local-answer") {
+      vi.spyOn(rejoined, stage === "remote-description" ? "setRemoteDescription" : "setLocalDescription")
+        .mockRejectedValueOnce(new DOMException("SDP unavailable after rejoin", "OperationError"));
+      socket.receive({ type: "signal", pairId: "rejoined", fromSessionId: "z-rejoined", payload: {
+        exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "owned rejoin offer" }, tracks: [],
+      } });
+    }
+    if (install) expect(socket.readyState).toBe(ChannelSocket.OPEN);
+    await vi.waitFor(() => expect(socket.sent).toContainEqual({ type: "link_state", pairId: "rejoined", state: "failed" }));
+    expect(socket.readyState).toBe(ChannelSocket.OPEN);
+    expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null });
+    expect(healthy.close).not.toHaveBeenCalled();
+    expect(session.getSnapshot().streams.get("healthy-voice")).toBe(retained);
+    expect(rejoined.close).toHaveBeenCalledOnce();
+    // Unchanged authority does not construct an automatic retry or re-fail the pair.
+    const peerCount = RoomPeerConnection.instances.length;
+    const failedCount = socket.sent.filter(c => c.type === "link_state" && c.pairId === "rejoined" && c.state === "failed").length;
+    socket.receive({ type: "state", state }); socket.receive({ type: "state", state });
+    expect(RoomPeerConnection.instances).toHaveLength(peerCount);
+    expect(socket.sent.filter(c => c.type === "link_state" && c.pairId === "rejoined" && c.state === "failed")).toHaveLength(failedCount);
+    expect(ChannelSocket.current).toBe(socket);
+    const sending = session.sendMessage("first", message(1).text);
+    peer.reply(await peer.next(), { type: "confirmed", message: message(1), inserted: true }); await sending;
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([message(1)]);
+    install?.mockRestore();
+    state.pairs = [healthyPlan]; socket.receive({ type: "state", state });
+    state.pairs.push(plan("retry")); socket.receive({ type: "state", state });
+    const retry = RoomPeerConnection.instances.at(-1)!; retry.connected();
+    expect(socket.sent).toContainEqual({ type: "link_state", pairId: "retry", state: "connected" });
+    expect(healthy.close).not.toHaveBeenCalled();
+    expect(warning).toHaveBeenCalled();
   } finally { session.close(); }
 });

@@ -406,3 +406,87 @@ it("playback diagnostics distinguish native-element and gain-graph playback with
   audio.dispose();
   expect(JSON.parse(await debug.exportBrowserDebug()).events).toHaveLength(events.length);
 });
+
+it("exports current Core pair, flow and helper facts without borrowing a sibling's connection or frames", async () => {
+  vi.useFakeTimers();
+  const page = browser();
+  vi.stubGlobal("location", page.location);
+  vi.stubGlobal("history", { state: null });
+  Object.assign(document, { documentElement: { lang: "en" } });
+  vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
+  class Socket { static OPEN = 1; readyState = 1; send() {} close() { this.readyState = 3; } }
+  vi.stubGlobal("WebSocket", Socket);
+  class Connection extends EventTarget {
+    static all: Connection[] = [];
+    readonly index = Connection.all.push(this) - 1;
+    connectionState = this.index ? "connected" : "connecting";
+    iceConnectionState = this.index ? "connected" : "checking";
+    signalingState = "stable";
+    decoded = 0;
+    getSenders = () => [];
+    getReceivers = () => [];
+    getStats = vi.fn(async () => new Map([
+      ["same-transport-id", { id: "same-transport-id", type: "transport", dtlsState: this.index ? "connected" : "new" }],
+      ["same-rtp-id", { id: "same-rtp-id", type: "inbound-rtp", kind: "video", trackIdentifier: `track-${this.index}`,
+        transportId: "same-transport-id", framesDecoded: this.decoded }],
+    ]));
+    close() { this.connectionState = "closed"; }
+  }
+  vi.stubGlobal("RTCPeerConnection", Connection);
+  const debug = await import("../src/client/lib/debug");
+  const { ChannelSession } = await import("../src/client/channel/session");
+  const { channelConnectionPreview } = await import("../src/client/pages/ChannelConnectionsPreview");
+  const state = channelConnectionPreview("both").state;
+  state.publications = state.publications.filter(p => p.kind === "screen");
+  state.publications[1].sessionId = "friend"; state.publications[1].userId = "friend-user";
+  state.subscriptions = state.publications.map(p => p.id);
+  state.publications[0].source!.name = "private window title";
+  state.users[0].name = "private participant name";
+  state.pairs = ["host", "friend"].map((peerId, i) => ({ id: `pair-${i}`, peerId, rooms: [], canReceiveVideoLayers: false,
+    outgoing: [], incoming: [{ id: `flow-${i}`, publicationId: state.publications[i].id, selected: true, inputFlowId: null }] }));
+  const session = new ChannelSession();
+  session.start();
+  // Feed the existing owners controlled authority/RTC boundary values; no media or network is started.
+  const owner = session as unknown as { view: object; media: { update(id: string, state: unknown): void; peers: Map<string, any> } };
+  Object.assign(session, { view: { ...session.getSnapshot(), state, sessionId: "self", connection: "connected" },
+    watching: new Map([[state.publications[0].id, { helperSessionId: "retired-helper" }]]),
+    app: { connected: true, screens: new Set(), close() {}, stopCaptures() {} } });
+  owner.media.update("self", state);
+  for (const [i, plan] of state.pairs.entries()) {
+    const transport = owner.media.peers.get(plan.id).transport;
+    transport.remoteIds.set(`stream-${i}`, `flow-${i}`);
+    transport.receiving.set(`stream-${i}`, { getTracks: () => [{ id: `track-${i}` }] });
+  }
+  try {
+    const read = async () => JSON.parse(await debug.exportBrowserDebug());
+    const first = await read(), stats = first.events.filter((e: any) => e.event === "stats");
+    expect(stats.map((e: any) => [e.details.sessionId, e.details.pairId, e.details.peerId]))
+      .toEqual([["self", "pair-0", "host"], ["self", "pair-1", "friend"]]);
+    expect(stats.map((e: any) => e.details.incoming)).toEqual([
+      [{ flowId: "flow-0", trackIds: ["track-0"] }], [{ flowId: "flow-1", trackIds: ["track-1"] }],
+    ]);
+    const context = first.events.find((e: any) => e.event === "media-snapshot").details;
+    expect(context).toMatchObject({ appControlReady: true, nativeSessionIds: [],
+      watches: [{ publicationId: state.publications[0].id, helperSessionId: "retired-helper", helperOnline: false }] });
+    expect(context.pairs[0].incoming[0]).toMatchObject({ id: "flow-0", publicationId: state.publications[0].id, selected: true });
+    expect(first.events.filter((e: any) => e.event === "created").map((e: any) =>
+      [e.details.pairId, e.details.connectionState])).toEqual([["pair-0", "connecting"], ["pair-1", "connected"]]);
+    expect(stats.every((e: any) => e.details.stats.find((r: any) => r.type === "inbound-rtp").framesDecoded === 0)).toBe(true);
+    Connection.all[1].decoded = 12;
+    const second = await read();
+    const latest = second.events.filter((e: any) => e.event === "stats").slice(-2);
+    expect(latest.map((e: any) => [e.details.pairId, e.details.stats.find((r: any) => r.type === "inbound-rtp").framesDecoded]))
+      .toEqual([["pair-0", 0], ["pair-1", 12]]);
+    for (const secret of ["private window title", "private participant name", "private-grant"])
+      expect(JSON.stringify(second)).not.toContain(secret);
+    const next = { ...state, pairs: state.pairs.slice(0, 1) };
+    Object.assign(owner.view, { state: next }); owner.media.update("self", next);
+    await read();
+    expect(Connection.all[1].getStats).toHaveBeenCalledTimes(2);
+    session.close();
+    const retired = await read();
+    expect(retired.events.filter((e: any) => e.event === "media-snapshot")).toHaveLength(3);
+    expect(Connection.all[0].getStats).toHaveBeenCalledTimes(3);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { session.close(); }
+});

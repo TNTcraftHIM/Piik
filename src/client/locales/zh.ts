@@ -72,6 +72,7 @@ export const zh = {
   "client.launcher.preview.ready": "站点就绪",
   "room.chat.title": "文字记录",
   "room.chat.exportNote": "导出此页面已加载的文字。",
+  "room.chat.nothingLoaded": "本页尚未加载可导出的消息。",
   "room.chat.export": "导出文字记录（TXT）",
   "room.common.user": "用户",
   "room.relay.limit": "转发上限",
