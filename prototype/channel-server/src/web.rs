@@ -5,7 +5,6 @@ use axum::{
     middleware::{self, Next},
     response::Response,
     routing::{get_service, MethodRouter},
-    serve::ListenerExt,
     Router,
 };
 use axum_server::tls_rustls::RustlsConfig;
@@ -13,21 +12,34 @@ use rustls::pki_types::CertificateDer;
 use serde::Serialize;
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
+use std::{future::Future, time::Duration};
 use tokio::net::TcpListener;
 use tower_http::{
     services::{ServeDir, ServeFile},
     set_header::SetResponseHeader,
 };
 
-// HTTP also carries latency-sensitive room and App WebSockets.
-pub(crate) fn http_listener(
+// One HTTP drain budget for both bound entries, using the existing server owner.
+pub(crate) const HTTP_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
+
+pub(crate) async fn serve_http(
     listener: TcpListener,
-) -> impl axum::serve::Listener<Io = tokio::net::TcpStream, Addr = SocketAddr> {
-    listener.tap_io(|socket| {
-        if let Err(error) = socket.set_nodelay(true) {
-            eprintln!("HTTP TCP_NODELAY: {error}");
+    routes: Router,
+    stop: impl Future<Output = ()>,
+) -> std::io::Result<()> {
+    let handle = axum_server::Handle::new();
+    let server = axum_server::from_tcp(listener.into_std()?)?
+        .acceptor(axum_server::accept::NoDelayAcceptor::new())
+        .handle(handle.clone())
+        .serve(routes.into_make_service());
+    tokio::pin!(server, stop);
+    tokio::select! {
+        result = &mut server => result,
+        _ = &mut stop => {
+            handle.graceful_shutdown(Some(HTTP_DRAIN_TIMEOUT));
+            server.await
         }
-    })
+    }
 }
 
 #[derive(Serialize)]
@@ -360,5 +372,107 @@ mod tests {
         assert_eq!(asset_cached.0, 304);
         assert_eq!(missing.0, 404);
         assert_eq!(unknown_api.0, 404);
+    }
+}
+
+#[cfg(test)]
+mod shutdown_tests {
+    use super::*;
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpStream,
+        sync::oneshot,
+        time::timeout,
+    };
+
+    async fn request(address: SocketAddr, path: &str) -> String {
+        let mut socket = TcpStream::connect(address).await.unwrap();
+        socket
+            .write_all(
+                format!("GET {path} HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n")
+                    .as_bytes(),
+            )
+            .await
+            .unwrap();
+        let mut reply = String::new();
+        socket.read_to_string(&mut reply).await.unwrap();
+        reply
+    }
+
+    #[tokio::test]
+    async fn healthy_http_request_finishes_during_shutdown() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (started, entered) = oneshot::channel();
+        let started = std::sync::Arc::new(std::sync::Mutex::new(Some(started)));
+        let routes = Router::new().route(
+            "/owned",
+            axum::routing::get(move || {
+                let started = started.clone();
+                async move {
+                    if let Some(started) = started.lock().unwrap().take() {
+                        let _ = started.send(());
+                    }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    "completed"
+                }
+            }),
+        );
+        let (stop, stopped) = oneshot::channel();
+        let server = tokio::spawn(serve_http(listener, routes, async {
+            let _ = stopped.await;
+        }));
+        let client = tokio::spawn(request(address, "/owned"));
+        entered.await.unwrap();
+        stop.send(()).unwrap();
+        timeout(Duration::from_secs(1), server)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let response = client.await.unwrap();
+        assert!(response.starts_with("HTTP/1.1 200") && response.ends_with("completed"));
+    }
+
+    #[tokio::test]
+    async fn shutdown_retires_incomplete_http_headers_and_bodies() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let routes = Router::new().route(
+            "/",
+            axum::routing::get(|| async { "ready" })
+                .post(|_: axum::Json<serde_json::Value>| async { "complete" }),
+        );
+        let (stop, stopped) = oneshot::channel();
+        let server = tokio::spawn(serve_http(listener, routes, async {
+            let _ = stopped.await;
+        }));
+        let mut header = TcpStream::connect(address).await.unwrap();
+        header.write_all(b"GET / HTTP/1.1\r\n").await.unwrap();
+        let mut body = TcpStream::connect(address).await.unwrap();
+        body.write_all(format!("POST / HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nContent-Length: 1000\r\n\r\n{{").as_bytes()).await.unwrap();
+        assert!(request(address, "/").await.starts_with("HTTP/1.1 200"));
+        stop.send(()).unwrap();
+        timeout(HTTP_DRAIN_TIMEOUT + Duration::from_secs(1), server)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        for mut socket in [header, body] {
+            let mut bytes = Vec::new();
+            timeout(Duration::from_millis(300), socket.read_to_end(&mut bytes))
+                .await
+                .expect("accepted connection remains live after HTTP retirement")
+                .unwrap_or_else(|error| {
+                    assert!(
+                        matches!(
+                            error.kind(),
+                            std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::UnexpectedEof
+                        ),
+                        "unexpected retirement read failure: {error}"
+                    );
+                    0
+                });
+        }
     }
 }

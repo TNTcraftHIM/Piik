@@ -21,7 +21,7 @@ use piik_channel_core::{
 };
 use std::{
     collections::BTreeMap,
-    future::{Future, IntoFuture},
+    future::Future,
     path::Path,
     sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -159,6 +159,7 @@ impl Hub {
 pub struct Domain {
     hub: Arc<Mutex<Hub>>,
     sockets: Arc<Semaphore>,
+    closing: watch::Sender<bool>,
     origin: String,
     restores: Option<mpsc::Sender<RestoreDomain>>,
     ice_servers: Vec<serde_json::Value>,
@@ -281,8 +282,15 @@ async fn dispatch_request(state: &Domain, connection: Uuid, request: Request) {
 }
 
 async fn session(mut socket: WebSocket, state: Domain) {
+    let mut domain_closing = state.closing.subscribe();
+    if *domain_closing.borrow() {
+        return;
+    }
     let mut images = piik_channel_core::wire_images::StateImageEncoder::default();
-    let first = tokio::time::timeout(Duration::from_secs(10), socket.recv()).await;
+    let first = tokio::select! {
+        _ = domain_closing.changed() => return,
+        first = tokio::time::timeout(Duration::from_secs(10), socket.recv()) => first,
+    };
     let text = match first {
         Ok(Some(Ok(Message::Text(text)))) => text,
         _ => return,
@@ -308,6 +316,9 @@ async fn session(mut socket: WebSocket, state: Domain) {
     let close_writer = close.clone();
     {
         let mut hub = state.hub.lock().unwrap();
+        if *domain_closing.borrow() {
+            return;
+        }
         hub.clients.insert(connection, Client { events, close });
         hub.request(connection, request);
     }
@@ -430,6 +441,7 @@ impl Domain {
                 room_commands: None,
             })),
             sockets: Arc::new(Semaphore::new(2 * piik_channel_core::MAX_SESSIONS)),
+            closing: watch::channel(false).0,
             origin,
             restores: None,
             ice_servers,
@@ -558,11 +570,9 @@ impl Domain {
             .with_state(self.clone())
             .merge(routes);
         let (stop_http, mut http_stopped) = watch::channel(false);
-        let http = axum::serve(crate::web::http_listener(listener), app.clone())
-            .with_graceful_shutdown(async move {
-                let _ = http_stopped.changed().await;
-            })
-            .into_future();
+        let http = crate::web::serve_http(listener, app.clone(), async move {
+            let _ = http_stopped.changed().await;
+        });
         let mut servers = FuturesUnordered::new();
         servers.push(http.boxed());
         let stop_https = axum_server::Handle::new();
@@ -589,7 +599,7 @@ impl Domain {
         // A failed listener must retire its WebSocket owners as well.
         self.close_clients();
         let _ = stop_http.send(true);
-        stop_https.graceful_shutdown(None);
+        stop_https.graceful_shutdown(Some(crate::web::HTTP_DRAIN_TIMEOUT));
         while let Some(closed) = servers.next().await {
             if result.is_ok() {
                 result = closed;
@@ -599,7 +609,9 @@ impl Domain {
     }
 
     fn close_clients(&self) {
-        for client in self.hub.lock().unwrap().clients.values() {
+        let hub = self.hub.lock().unwrap();
+        self.closing.send_replace(true);
+        for client in hub.clients.values() {
             let _ = client.close.send(true);
         }
     }

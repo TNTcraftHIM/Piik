@@ -432,25 +432,24 @@ pub async fn serve(
             }
         });
     }
-    axum::serve(crate::web::http_listener(listener), router)
-        .with_graceful_shutdown(async move {
-            tokio::pin!(stop);
-            let mut closing = app.closing.subscribe();
-            let mut tick = tokio::time::interval(Duration::from_millis(100));
-            loop {
-                if *closing.borrow() {
-                    break;
-                }
-                tokio::select! {
-                    _ = &mut stop => break,
-                    _ = closing.changed() => break,
-                    _ = tick.tick() => app.desktop.tick(),
-                }
+    crate::web::serve_http(listener, router, async move {
+        tokio::pin!(stop);
+        let mut closing = app.closing.subscribe();
+        let mut tick = tokio::time::interval(Duration::from_millis(100));
+        loop {
+            if *closing.borrow() {
+                break;
             }
-            app.desktop.revoke();
-            app.shutdown().await;
-        })
-        .await?;
+            tokio::select! {
+                _ = &mut stop => break,
+                _ = closing.changed() => break,
+                _ = tick.tick() => app.desktop.tick(),
+            }
+        }
+        app.desktop.revoke();
+        app.shutdown().await;
+    })
+    .await?;
     drop(owner);
     console.stopped();
     Ok(())
