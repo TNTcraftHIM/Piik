@@ -1,5 +1,5 @@
 import { YouTubeMedia } from "./watch-youtube-media";
-import { PageSuppliedMedia } from "./watch-page-media";
+import { preparePageSuppliedWatchMedia, preparePortableWatchMedia } from "./watch-page-media";
 import { canUseYouTubePlayer, youtubeVideoId, youtubeSourceId, originalWatchURL } from "./watch-youtube-source";
 import { inspectIndexedTrack, indexedMediaSelection } from "./watch-indexed-source";
 import { limitWatchReads } from "./watch-resource";
@@ -15,7 +15,9 @@ import { selectedRoom } from "./navigation";
 import { CHANNEL_PROTOCOL, CHANNEL_EVENT_BYTES, PROFILE_PAGE_SIZE, ChannelEventDecoder, channelTopologySchema, roomSummarySchema, userSchema, type ChannelUser, type ProfilePage, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomInvitationState, type RoomSettings, type RoomSummary, type ScreenSource } from "./protocol";
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelActions, ChannelView, ChatOptions, ScreenPresentation, SourceMicrophoneConfiguration, SourceMicrophoneSettings, WatchMediaSources } from "./types";
-import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage, type BackupHistoryImport, type BackupHistoryRow } from "./hosting";
+import { loadRoomHosting, roomDatabaseName } from "./hosting";
+import type { HostedRoom, BrowserRoomSnapshot, BrowserRoomStage, BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
+import type { BackupHistoryImport } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
 import { AppPage, ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics, type NativeExternalInputState, type NativeRelayCapacity } from "./app-link";
 import { isClientActivated } from "../lib/app-launch";
 import type { NativeCaptureTarget, EncodingExecution, NativePageIndexedSelection } from "../native/wire";
@@ -2125,17 +2127,7 @@ export class ChannelSession {
     else await this.commitWatch(roomId, { kind: "website", url: page.url }, new AppPageMedia(page), selection);
   }, reportError);
   private async commitPortableWatch(roomId: string, page: AppPage, selection: SourceSelection, url: string, format?: "file" | "hls"): Promise<void> {
-    const media = new HTMLVideoMedia(url, format);
-    try {
-      // This preparation precedes commitWatch's ownership transfer and its failure cleanup.
-      await media.ready(selection.controller.signal);
-      const main = await media.read();
-      const state = main.live ? undefined : await page.read();
-      selection.controller.signal.throwIfAborted();
-      await media.patch({ ...(state && { position: state.position, rate: state.rate }), paused: true });
-      // The main player will start after confirmation; avoid overlapping original-page sound.
-      await page.patch({ paused: true });
-    } catch (error) { media.close(); throw error; }
+    const media = await preparePortableWatchMedia(page, url, selection.controller.signal, format);
     try { await this.commitWatch(roomId, { kind: "website", url: page.url, mediaUrl: url }, media, selection); }
     finally { page.close(); }
   }
@@ -2158,22 +2150,8 @@ export class ChannelSession {
     await this.commitPageSuppliedWatch(roomId, page, selection, byteSource);
   }, reportError);
   private async commitPageSuppliedWatch(roomId: string, page: AppPage, selection: SourceSelection, byteSource: WatchByteSource): Promise<void> {
-    selection.controller.signal.throwIfAborted();
-    const local = createPeerWatchMedia(byteSource, (resourceId, offset, length, signal) =>
-      page.readMediaResource(byteSource.resourceId, resourceId, offset, length, signal));
-    try {
-      await local.ready(selection.controller.signal);
-      const main = await local.read();
-      const state = main.live ? undefined : await page.read();
-      selection.controller.signal.throwIfAborted();
-      await local.patch({ ...(state && { position: state.position, rate: state.rate }), paused: true });
-      await page.patch({ paused: true });
-    } catch (error) {
-      local.close();
-      await page.stopMedia().catch(() => {});
-      throw error;
-    }
-    await this.commitWatch(roomId, { kind: "website", url: page.url }, new PageSuppliedMedia(page, local, byteSource), selection, byteSource);
+    const media = await preparePageSuppliedWatchMedia(page, byteSource, selection.controller.signal);
+    await this.commitWatch(roomId, { kind: "website", url: page.url }, media, selection, byteSource);
   }
   private discoverWatchSources(page: AppPage, signal: AbortSignal, publish: (sources: WatchMediaSources) => void): Promise<WatchMediaSources> {
     let running: Promise<WatchMediaSources> | null = null, dirty = false;

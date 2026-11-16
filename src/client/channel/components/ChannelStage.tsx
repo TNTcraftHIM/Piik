@@ -398,7 +398,7 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
         {(focusable || focused) && <Tooltip className="c3-monitor-layout-action" kind={focused ? "hint-screen-grid" : "hint-screen-focus"}
           text={focused ? t("screen.returnToGrid") : t("screen.focusNamed", { title: source.title })}><Btn icon={focused ? "screenGrid" : "screenFocus"} quiet size="dense"
           title={{ text: focused ? t("screen.returnToGrid") : t("screen.focusNamed", { title: source.title }) }}
-          onClick={() => onFocus(focused ? null : source.id)} /></Tooltip>}
+          pressed={focused} onClick={() => onFocus(focused ? null : source.id)} /></Tooltip>}
         {source.owned ? <div className="c3-monitor-publishing" role="group" aria-label={t("screen.sharingControls", { title: source.title })}>
           {source.shareControls}
           <span className="c3-monitor-close"><Btn icon="stop" tone="danger" size="dense"

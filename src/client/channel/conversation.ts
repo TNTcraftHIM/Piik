@@ -1,4 +1,6 @@
-import { loadRoomHosting, type HostedRoom, type SessionSigner } from "./hosting";
+import { loadRoomHosting } from "./hosting";
+import type { HostedRoom } from "../../../prototype/channel-browser/src/hosting-contract";
+import type { SessionSigner } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
 import type { ChannelCommand, ChannelSnapshot, ConversationAddress, ConversationReply, SignedConversationPacket } from "./protocol";
 
 type Runtime = Awaited<ReturnType<typeof loadRoomHosting>>;

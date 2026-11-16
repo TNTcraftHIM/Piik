@@ -3,14 +3,13 @@ export { AttachmentHash, BackupHistoryImport, CopyHistoryImport, DomainArchiveCh
 let initialization: Promise<void> | undefined;
 export function initializeRuntime(): Promise<void> { return initialization ??= init().then(() => {}); }
 export async function createSessionSigner(seed: Uint8Array): Promise<SessionSigner> { await initializeRuntime(); return new SessionSigner(seed); }
-import type { ChannelMessage, ChatOptions, ConversationAddress, ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket, ReactionEvent } from "../../../src/client/channel/protocol";
-import type { BackupHistoryRow, BrowserRoomSnapshot, BrowserRoomStage } from "../../../src/client/channel/hosting";
+import type { ChannelMessage, ChatOptions, ConversationAddress, ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket, ReactionEvent, MessageReactions } from "../../../src/client/channel/protocol";
+import type { BackupHistoryRow, BrowserRoomSnapshot, BrowserRoomStage, HostedRoom } from "./hosting-contract";
 
 export interface NewRoomPolicy extends RoomSettings {
   id: string; creatorId: string;
 }
 interface RoomRecord { id: string; policy: string; bindingId?: string }
-interface MessageReactions { revision: number; counts: Record<string, number> }
 interface RetainedMessage extends ChannelMessage { reactions: MessageReactions }
 interface StoredMessage extends RetainedMessage { roomId: string; nonce: string }
 export interface SentResult { type: "sent"; message: RetainedMessage; inserted: boolean }
@@ -157,7 +156,7 @@ export async function createRoomPolicy(input: NewRoomPolicy): Promise<string> {
 }
 
 /** One room's serialized authority/storage turn; DOM and network delivery stay with the caller. */
-export class BrowserRoomHost {
+export class BrowserRoomHost implements HostedRoom {
   private tail: Promise<void> = Promise.resolve();
   private closing = false;
   private bindingId: string | undefined;

@@ -1,4 +1,6 @@
-import { loadRoomHosting, type AttachmentHash, type BackupHistoryRow } from "./hosting";
+import { loadRoomHosting } from "./hosting";
+import type { AttachmentHash } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
+import type { BackupHistoryRow } from "../../../prototype/channel-browser/src/hosting-contract";
 import type { ChannelAttachment, RoomSettings, RoomSummary } from "./protocol";
 import type { FileEntry } from "@zip.js/zip.js";
 

@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { downloadBlob } from "../lib/download";
 import { FileStore, type FileScope, type FileRetentionLimits, type RetainedFile } from "./file-store";
-import { loadRoomHosting, type AttachmentHash, type FileDelivery } from "./hosting";
+import { loadRoomHosting } from "./hosting";
+import type { AttachmentHash, FileDelivery } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
 import { attachmentSchema, type ChannelAttachment, type ChannelCommand, type ChannelFileKey, type ChannelFilePlan, type ChannelMessage, type ChannelRoom, type ChannelPair, type ImageRendition } from "./protocol";
 import { inlineImageFile, prepareInlineImage } from "./image-preview";
 

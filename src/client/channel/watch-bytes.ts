@@ -1,4 +1,5 @@
-import { loadRoomHosting, type WatchDelivery } from "./hosting";
+import { loadRoomHosting } from "./hosting";
+import type { WatchDelivery } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
 import type { WatchBytePlan, WatchByteSource, ChannelPair } from "./protocol";
 import type { WatchByteResult } from "./watch-resource";
 

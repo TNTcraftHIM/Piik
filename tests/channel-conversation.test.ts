@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { ChannelConversation } from "../src/client/channel/conversation";
 import * as hosting from "../src/client/channel/hosting";
+import type { HostedRoom } from "../prototype/channel-browser/src/hosting-contract";
 import type { ChannelSnapshot, ConversationReply, SignedConversationPacket } from "../src/client/channel/protocol";
 import { readFile } from "node:fs/promises";
 
@@ -18,7 +19,7 @@ test("the Browser room host fans out Core-selected reactions and suppresses an a
       const { command: _command, ...request } = JSON.parse(packet.payload);
       return [{ ...request, sender: "host", recipient: "source", record }];
     }),
-  } as unknown as hosting.HostedRoom;
+  } as unknown as HostedRoom;
   const sign = vi.fn((sender: string, payload: string) => JSON.stringify({ sender, payload, signature: [1] }));
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
     createSessionSigner: async () => ({ signing_key: () => new Uint8Array(32), sign, free: vi.fn() }),
@@ -78,7 +79,7 @@ test("signed conversation uses Domain delivery without peers and still fences si
   const reader = new ChannelConversation({ context: () => ({ sessionId: sender, state, connected: true }),
     host: () => undefined, file: vi.fn(), reply: received, send: packet => { requests.push(packet); } });
   const owner = new ChannelConversation({ context: () => ({ sessionId: host, state, connected: true }),
-    host: () => ({ dispatchPeer } as unknown as hosting.HostedRoom), file: vi.fn(), reply: vi.fn(), send: packet => { replies.push(packet); } });
+    host: () => ({ dispatchPeer } as unknown as HostedRoom), file: vi.fn(), reply: vi.fn(), send: packet => { replies.push(packet); } });
   state.sessions = [{ id: host, userId: host, online: true, signingKey: await owner.initialize() },
     { id: sender, userId: sender, online: true, signingKey: await reader.initialize() }];
   try {

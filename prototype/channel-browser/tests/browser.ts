@@ -2,7 +2,7 @@ import { BrowserRoomHost, conversation_broadcast, createRoomPolicy, createSessio
 import type { SignedConversationPacket } from "../../../src/client/channel/protocol";
 import { IDENTITY_IMAGE_URL_BYTES, identityIconSchema } from "../../../src/client/channel/protocol";
 import { prepareIdentityImage } from "../../../src/client/channel/identity-image";
-import type { BackupHistoryRow } from "../../../src/client/channel/hosting";
+import type { BackupHistoryRow } from "../src/hosting-contract";
 import { QUALITY_PROFILES, screenVideoSettings } from "../../../src/client/media/quality";
 
 declare global { interface Window { runBrowserRoomCheck(): Promise<object> } }
