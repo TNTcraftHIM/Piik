@@ -1,6 +1,6 @@
 import type { HlsConfig, Loader, LoaderCallbacks, LoaderConfiguration, LoaderContext, LoaderStats } from "hls.js";
 import { limitWatchReads, type WatchByteReader } from "./watch-resource";
-import { readWatchWindows } from "./watch-read-windows";
+import { readWatchWindows, WATCH_READ_SIZE } from "./watch-read-windows";
 
 // hls.js resolves rewritten UUID basenames here; these URLs never enter fetch().
 const resourceOrigin = "https://watch-media.invalid";
@@ -70,7 +70,9 @@ export function createWatchHlsLoader(sourceRead: WatchByteReader, lifetime: Abor
       const start = requestedEnd === undefined ? 0 : context.rangeStart ?? 0;
       if (!Number.isSafeInteger(start) || start < 0 || requestedEnd !== undefined && (!Number.isSafeInteger(requestedEnd) || requestedEnd <= start))
         throw new Error("invalid_watch_range");
-      const stat = await read(id, 0, 1, signal);
+      // A live playlist is one atomic response; stat-then-range reads could mix revisions.
+      const text = context.responseType !== "arraybuffer";
+      const stat = await read(id, 0, text ? WATCH_READ_SIZE : 1, signal);
       signal.throwIfAborted(); first();
       const size = stat.totalSize;
       if (size === null || !Number.isSafeInteger(size) || size < 0) throw new Error("watch_media_size_unavailable");
@@ -78,7 +80,13 @@ export function createWatchHlsLoader(sourceRead: WatchByteReader, lifetime: Abor
       if (end > size || start > end) throw new Error("watch_media_truncated");
       const bytes = new Uint8Array(end - start);
       this.stats.total = bytes.length;
-      for await (const window of readWatchWindows(read, id, { start, end, size }, signal, length => { this.stats.loaded += length; }))
+      let next = start;
+      if (text) {
+        if (start !== 0 || stat.bytes.length !== Math.min(size, WATCH_READ_SIZE) || stat.eof !== (stat.bytes.length === size))
+          throw new Error("watch_media_truncated");
+        bytes.set(stat.bytes); next = stat.bytes.length; this.stats.loaded = next;
+      }
+      for await (const window of readWatchWindows(read, id, { start: next, end, size }, signal, length => { this.stats.loaded += length; }))
         bytes.set(window.bytes, window.offset - start);
       return context.responseType === "arraybuffer" ? bytes.buffer : new TextDecoder().decode(bytes);
     }

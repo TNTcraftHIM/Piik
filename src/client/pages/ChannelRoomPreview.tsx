@@ -42,7 +42,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     id: "sample-watch", roomId: "friday", viewerSessionIds: [], userId: watchMode.includes("owner") ? "sample-ada" : "sample-bo",
     sessionId: watchMode.includes("owner") ? "sample-ada-session" : "sample-bo-session", source: watchMode === "native-owner" || watchMode === "website-failed" || new URLSearchParams(location.search).has("website-source")
       ? { kind: "website", url: "https://video.example/watch/evening?private=not-in-title" } : { kind: "media", url: "https://media.example/evening.mp4?private=not-in-title" },
-    playback: { position: 0, paused: true, rate: 1, anchorTime: 0 },
+    playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 0 },
   }));
   const [watchPlayers, setWatchPlayers] = useState(new Map<string, WatchPlayer>());
   const [receiveMode, setReceiveMode] = useState<"direct" | "peer">("direct");
@@ -183,7 +183,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   }, [browserSourcePending]);
   const commitPageSelection = (roomId: string, activityId?: string, mediaUrl?: string) => {
     if (!activityId) setWatchActivity({ id: `sample-watch-${crypto.randomUUID()}`, roomId, viewerSessionIds: [], source: { kind: "website", url: pageSample!.url, ...(mediaUrl ? { mediaUrl } : {}) },
-      userId: "sample-ada", sessionId: "sample-ada-session", playback: { position: 42, paused: true, rate: 1, anchorTime: 0 } });
+      userId: "sample-ada", sessionId: "sample-ada-session", playback: { timeline: "media" as const, position: 42, paused: true, rate: 1, anchorTime: 0 } });
     setWatchMode(activityId ? "native-viewer" : "native-owner"); setPageSample(undefined);
   };
   const channel = { ...sample.channel, state, self: profiles.get(users[0].id)!, profiles, streams, error: null, siteURL: "https://friends.example/",
@@ -226,12 +226,13 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
       return true;
     },
     selectWatchIndexedSource: async roomId => { setForwarding(true); commitPageSelection(roomId); },
+    selectWatchForwardSource: async roomId => { setForwarding(true); commitPageSelection(roomId); },
     selectWatchBrowserSource: async (roomId, choiceId) => {
       commitPageSelection(roomId, undefined, browserSourceChoices.find(choice => choice.id === choiceId)?.displayURL);
     },
     startWatch: async (roomId, url) => {
       setWatchMode("owner"); setWatchActivity({ id: `sample-watch-${crypto.randomUUID()}`, roomId, viewerSessionIds: [], source: { kind: "media", url },
-        userId: "sample-ada", sessionId: "sample-ada-session", playback: { position: 0, paused: true, rate: 1, anchorTime: 0 } });
+        userId: "sample-ada", sessionId: "sample-ada-session", playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 0 } });
     },
     joinWatch: async (_id, mode = "direct") => { setReceiveMode(mode); setWatchMode("viewer"); },
     leaveWatch: async () => { setWatchMode("available"); setPageSample(undefined); }, stopWatch: async () => setWatchActivity(null),
@@ -313,7 +314,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
               selected={watchMode === mode} onClick={() => {
                 setWatchMode(mode); setWatchActivity(mode === "off" ? null : { id: "sample-watch", roomId: "friday", viewerSessionIds: [],
                   userId: mode.includes("owner") ? "sample-ada" : "sample-bo", sessionId: mode.includes("owner") ? "sample-ada-session" : "sample-bo-session",
-                  source: mode === "native-owner" || mode === "website-failed" ? { kind: "website", url: "https://video.example/watch/evening" } : { kind: "media", url: "https://media.example/evening.mp4" }, playback: { position: 0, paused: true, rate: 1, anchorTime: 0 } });
+                  source: mode === "native-owner" || mode === "website-failed" ? { kind: "website", url: "https://video.example/watch/evening" } : { kind: "media", url: "https://media.example/evening.mp4" }, playback: { timeline: "media" as const, position: 0, paused: true, rate: 1, anchorTime: 0 } });
               }}>{zh ? ["关闭", "分享者", "观看者", "尚未加入", "等待手动播放", "网页窗口", "浏览器播放失败"][index] : ["Off", "Sharer", "Viewer", "Available", "Playback blocked", "Webpage window", "Browser playback failed"][index]}</Chip>)}
           </div></fieldset>
           <div className="c3-room-preview-tools">

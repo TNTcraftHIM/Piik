@@ -105,6 +105,7 @@ export interface ChannelActions {
   joinWatch(id: string, mode?: WatchMode): Promise<void>;
   watchMediaChoices(id: string, signal: AbortSignal, onChange?: (sources: WatchMediaSources) => void): Promise<WatchMediaSources>;
   selectWatchIndexedSource(roomId: string, videoId: string, audioId?: string, reportError?: boolean): Promise<void>;
+  selectWatchForwardSource(roomId: string, choiceId: string, reportError?: boolean): Promise<void>;
   setWatchByteSource(id: string, choice: string | NativePageIndexedSelection | null, signal?: AbortSignal): Promise<void>;
   leaveWatch(id: string): Promise<void>;
   stopWatch(id: string): Promise<void>;

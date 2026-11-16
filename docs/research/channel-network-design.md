@@ -272,6 +272,21 @@ Actual playback start and recovery from buffering renew the sharer's anchor.
 Automatic drift correction waits until its target is locally buffered and the
 player can continue playback. An explicit sharer seek may select a new range.
 
+Standard live HLS uses the source's unambiguous Program Date Time as its shared
+position coordinate. The activity retains that coordinate after the playlist
+ends; ordinary media retains media seconds. Both use the same domain-time anchor.
+The source window is separate from local buffers. A viewer unable to load an
+expired shared position waits for the sharer to resume or choose Go live, rather
+than inventing its own target. The Piik HLS player owns these controls; a generic
+original webpage's local time cannot represent this program coordinate.
+Native live forwarding returns a complete playlist in one existing 64 KiB read,
+refreshes on player demand, and retires removed resources after their HLS grace.
+Missing or ambiguous PDT, larger live playlists and low-latency HLS extensions
+remain unsupported. Native-only HLS creation requires an inspected ended media
+playlist; an opaque or failed inspection retains the original-player/App-forward
+choice instead of assuming VOD. Explicit known files and declared ordinary
+viewer timelines retain their existing paths.
+
 Preparing another source preserves the current one. Cancellation during
 preparation releases only the candidate; submitting the prepared source commits
 the replacement. A new synchronized-video activity atomically replaces the same
@@ -295,7 +310,7 @@ When a discovered media URL loads in the sharer's Browser player, that player
 owns playback in the Piik stage. Prepare it before replacing the current share;
 retire the discovery page after the room confirms the new activity. Loading
 failure keeps the original page available for an explicit original-page choice.
-For indexed VOD that needs the Native page's resources, retain that page only as
+For selected media that needs the Native page's resources, retain that page only as
 the resource provider and pause its original player. The Piik player owns common
 playback through the same prepared reader; it does not subscribe to its own
 room route. Stopping remote forwarding preserves local playback and its reader;

@@ -48,6 +48,11 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey)
     return display("channel.error.externalInputFailed");
   if (error === "watch_media_decode_failed")
     return display("watch.decodeFailed");
+  if (error === "watch_live_position_unavailable") return display("watch.livePositionUnavailable");
+  if (error === "watch_source_inspection_unavailable") return display("watch.sourceAccessRequired");
+  if (error === "watch_live_timeline_unsupported" || error === "watch_live_timeline_unavailable" || error === "watch_timeline_changed"
+    || error === "watch_live_hls_atomic_read_required" || error === "watch_live_hls_timeline_unsupported")
+    return display("watch.liveUnsupported");
   if (error === "watch_media_unsupported" || error === "watch_mp4_mse_unavailable")
     return display("watch.playbackUnsupported");
   if (error === "watch_indexed_unsupported" || error === "invalid_watch_index"

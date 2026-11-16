@@ -213,7 +213,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
     kind: "watch", id: activity.id, userId: activity.userId, name: nameOfUser(activity.userId), title: watchTitle(activity.source.url),
     website: activity.source.kind === "website", onFocusWindow: () => run(channel.focusWatch(activity.id)),
     browserSource: canWatchInBrowser(activity.source),
-    onAppWatch: activity.source.kind === "website" && channel.pagePlayer && channel.watchPlayers.get(activity.id)?.presentation.kind !== "external" ? () => setAppWatchId(activity.id) : undefined,
+    onAppWatch: activity.playback.timeline !== "program" && activity.source.kind === "website" && channel.pagePlayer && channel.watchPlayers.get(activity.id)?.presentation.kind !== "external" ? () => setAppWatchId(activity.id) : undefined,
     roomName: nameOfRoom(activity.roomId), avatar: userProfile(state, channel.profiles, activity.userId)?.avatar ?? undefined,
     owned: ownsWatch(activity.id), subscribed: state?.watchSubscriptions.some(value => value.id === activity.id) ?? false,
     audience: state ? watchAudience(state, activity, channel.profiles) : [],

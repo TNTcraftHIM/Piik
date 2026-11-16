@@ -24,7 +24,7 @@ export class WatchPlayer {
   private timer: ReturnType<typeof setInterval>;
   private unlisten: () => void;
   private operations = Promise.resolve();
-  private alignment: Promise<void> | null = null;
+  private alignment: Promise<boolean> | null = null;
   private publishPlayback: ((playback: WatchPlayback) => Promise<void>) | null = null;
   private lastPublished: WatchPlayback | null = null;
   private observedAt = 0;
@@ -68,7 +68,7 @@ export class WatchPlayer {
     const start = performance.now(), state = await this.media.read(), end = performance.now();
     if (this.retired) throw new Error("watch_retired");
     this.observe(state);
-    return { position: state.position, paused: state.paused, rate: state.rate, anchorTime: Math.round((start + end) / 2 + this.offset) };
+    return { timeline: state.live ? "program" : "media", position: state.position, paused: state.paused, rate: state.rate, anchorTime: Math.round((start + end) / 2 + this.offset) };
   }
   private observe(state: WatchMediaState): void {
     if (this.retired) return;
@@ -97,9 +97,10 @@ export class WatchPlayer {
       if (!this.retired && this.error === "watch_update_failed") { this.error = null; this.changed(); }
     });
   }
-  private align(force = false, explicit = false): Promise<void> {
-    if (this.retired || !this.prepared || !this.owner && (!this.playback || this.offset === null)) return Promise.resolve();
+  private align(force = false, explicit = false): Promise<boolean> {
+    if (this.retired || !this.prepared || !this.owner && (!this.playback || this.offset === null)) return Promise.resolve(false);
     if (this.alignment) return this.alignment;
+    let aligned = true;
     const operation = this.serialize(async () => {
       const state = await this.media.read(), now = performance.now();
       const previous = this.localState, previousAt = this.observedAt;
@@ -111,18 +112,28 @@ export class WatchPlayer {
           void this.publish(true).catch(error => this.failMedia(error));
         return;
       }
-      if (this.retired || state.readyState < 1 || !this.playback || this.offset === null) return;
+      if (this.retired || state.readyState < 1 || !this.playback || this.offset === null) { aligned = false; return; }
       if (this.media.seekEvents === false && previous && (state.readyState >= 3 && previous.readyState >= 3 || state.paused && previous.paused)
         && Math.abs(state.position - (previous.position + (previous.paused ? 0 : (now - previousAt) / 1000 * previous.rate))) > (this.media.seekTolerance ?? 0.35)) {
         this.blocked = true; this.changed();
       }
       const playback = this.playback;
-      const target = Math.min(watchPosition(playback, performance.now() + this.offset), state.duration ?? Infinity);
+      if (playback.timeline !== (state.live ? "program" : "media")) throw new Error("watch_timeline_changed");
+      const position = watchPosition(playback, performance.now() + this.offset);
+      const target = playback.timeline === "program" ? position : Math.min(position, state.duration ?? Infinity);
       const patch: WatchMediaPatch = {};
-      if (!explicit && this.media.playbackAvailable?.() === false) return;
+      if (!explicit && this.media.playbackAvailable?.() === false) { aligned = false; return; }
       const buffered = state.buffered?.some(([start, end]) => start <= target && target < end);
+      const displaced = Math.abs(state.position - target) > (this.media.seekTolerance ?? (force ? 0.12 : 0.35));
+      if (state.live && displaced && !buffered && !state.live.seekable.some(([start, end]) => start <= target && target <= end)) {
+        aligned = false;
+        await this.apply({ paused: true });
+        this.error = "watch_live_position_unavailable"; this.changed();
+        return;
+      }
+      if (this.error === "watch_live_position_unavailable") { this.error = null; this.changed(); }
       // Unknown buffering permits explicit host commands, not invented periodic drift correction.
-      if ((force || state.readyState >= 3 && buffered) && Math.abs(state.position - target) > (this.media.seekTolerance ?? (force ? 0.12 : 0.35))) patch.position = target;
+      if ((force || state.readyState >= 3 && buffered) && displaced) patch.position = target;
       if (state.rate !== playback.rate) {
         if (this.media.playbackRates && !this.media.playbackRates().includes(playback.rate)) throw new Error("watch_media_unsupported");
         patch.rate = playback.rate;
@@ -130,7 +141,8 @@ export class WatchPlayer {
       if (playback.paused && !state.paused) patch.paused = true;
       else if (!playback.paused && state.paused && !this.blocked && !state.ended) patch.paused = false;
       await this.apply(patch);
-    }).catch(error => this.failMedia(error));
+      aligned = !this.error || this.error === "watch_update_failed";
+    }).then(() => aligned).catch(error => { this.failMedia(error); return false; });
     this.alignment = operation;
     void operation.finally(() => { if (this.alignment === operation) this.alignment = null; });
     return operation;
@@ -138,6 +150,7 @@ export class WatchPlayer {
   private async apply(patch: WatchMediaPatch): Promise<void> {
     try {
       await this.media.patch(patch);
+      if (this.error === "watch_live_position_unavailable" && patch.position !== undefined) this.error = null;
       if (this.media.seekEvents === false && Object.keys(patch).length) this.observe(await this.media.read());
       if (patch.paused === false && !this.retired) this.blocked = false;
     } catch (error) {
@@ -151,7 +164,7 @@ export class WatchPlayer {
   patch(value: WatchMediaPatch): Promise<void> { return this.serialize(() => this.apply(value)); }
   play(): Promise<void> { return this.patch({ paused: false }); }
   async resume(): Promise<void> {
-    await this.align(true, true);
+    if (!await this.align(true, true)) return;
     if (this.owner || !this.playback?.paused) await this.play();
   }
   serialize(operation: () => Promise<void>): Promise<void> {

@@ -1,8 +1,15 @@
 //! Origin reads remain inside a selected page lease; peers address admitted IDs only.
 use super::{Format, MediaContext};
 use anyhow::{anyhow, bail, ensure, Result};
+use piik_channel_core::watch_delivery::WATCH_WINDOW_BYTES;
 use piik_channel_native::watch::{ReadResult, Reader};
-use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    future::Future,
+    pin::Pin,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::sync::{watch, Mutex};
 use uuid::Uuid;
 
@@ -31,14 +38,27 @@ fn request_failure(error: reqwest::Error) -> anyhow::Error {
     anyhow::Error::new(error.without_url()).context(code)
 }
 #[derive(Clone)]
+struct Snapshot {
+    bytes: Arc<Vec<u8>>,
+    live: bool,
+    children: BTreeMap<Uuid, Duration>,
+}
+#[derive(Clone, Default)]
+struct Retention {
+    grace: Duration,
+    until: Option<Instant>,
+}
+#[derive(Clone)]
 enum Resource {
     File {
         url: url::Url,
         size: Option<u64>,
+        retention: Retention,
     },
     Playlist {
         url: url::Url,
-        bytes: Option<Arc<Vec<u8>>>,
+        snapshot: Option<Snapshot>,
+        reload: Arc<Mutex<()>>,
     },
 }
 pub struct OriginReader {
@@ -72,7 +92,17 @@ impl OriginReader {
         let reader = Self::new(context, stopped)?;
         let root = reader.root;
         // Prove the root before replacing an active source lease.
-        reader.read(root, 0, 1).await?;
+        reader
+            .read(
+                root,
+                0,
+                if reader.context.format == Format::Hls {
+                    WATCH_WINDOW_BYTES as u32
+                } else {
+                    1
+                },
+            )
+            .await?;
         if reader.context.format == Format::File {
             let size = reader
                 .context
@@ -91,8 +121,13 @@ impl OriginReader {
             Format::File => Resource::File {
                 url,
                 size: context.size,
+                retention: Retention::default(),
             },
-            Format::Hls => Resource::Playlist { url, bytes: None },
+            Format::Hls => Resource::Playlist {
+                url,
+                snapshot: None,
+                reload: Arc::new(Mutex::new(())),
+            },
         };
         let client = |policy| {
             reqwest::Client::builder()
@@ -188,20 +223,35 @@ impl OriginReader {
         Ok(response)
     }
     async fn window(&self, id: Uuid, offset: u64, length: u32) -> Result<ReadResult> {
-        ensure!(length > 0 && length <= 64 * 1024, "invalid_watch_range");
-        let resource = self
-            .resources
-            .lock()
-            .await
-            .get(&id)
-            .cloned()
-            .ok_or_else(|| anyhow!("watch_resource_unavailable"))?;
+        ensure!(length > 0 && length as usize <= WATCH_WINDOW_BYTES, "invalid_watch_range");
+        let resource = {
+            let mut resources = self.resources.lock().await;
+            maintain(&mut resources, Instant::now());
+            resources
+                .get(&id)
+                .cloned()
+                .ok_or_else(|| anyhow!("watch_resource_unavailable"))?
+        };
         match resource {
-            Resource::Playlist { url, bytes } => {
-                let bytes = match bytes {
-                    Some(bytes) => bytes,
-                    None => self.playlist(id, &url).await?,
+            Resource::Playlist {
+                url,
+                snapshot,
+                reload,
+            } => {
+                ensure!(
+                    !snapshot.as_ref().is_some_and(|s| s.live)
+                        || (offset == 0 && length as usize == WATCH_WINDOW_BYTES),
+                    "watch_live_hls_atomic_read_required"
+                );
+                let snapshot = match snapshot {
+                    Some(snapshot) if !snapshot.live => snapshot,
+                    _ => self.playlist(id, &url, reload).await?,
                 };
+                ensure!(
+                    !snapshot.live || (offset == 0 && length as usize == WATCH_WINDOW_BYTES),
+                    "watch_live_hls_atomic_read_required"
+                );
+                let bytes = snapshot.bytes;
                 let start = usize::try_from(offset)
                     .unwrap_or(usize::MAX)
                     .min(bytes.len());
@@ -213,7 +263,11 @@ impl OriginReader {
                     eof: end == bytes.len(),
                 })
             }
-            Resource::File { url, size } => {
+            Resource::File {
+                url,
+                size,
+                retention,
+            } => {
                 if let Some(size) = size {
                     if offset >= size {
                         return Ok(ReadResult {
@@ -312,6 +366,17 @@ impl OriginReader {
                     available == length as u64 || offset + available == total,
                     "watch_media_truncated"
                 );
+                if !retention.grace.is_zero() {
+                    if let Some(Resource::File { size, .. }) =
+                        self.resources.lock().await.get_mut(&id)
+                    {
+                        ensure!(
+                            size.is_none_or(|known| known == total),
+                            "watch_media_changed"
+                        );
+                        *size = Some(total);
+                    }
+                }
                 Ok(ReadResult {
                     mime_type,
                     total_size: Some(total),
@@ -321,15 +386,21 @@ impl OriginReader {
             }
         }
     }
-    async fn playlist(&self, id: Uuid, url: &url::Url) -> Result<Arc<Vec<u8>>> {
-        // Serialize playlist admission so readers never see half a rewritten resource graph.
-        let mut resources = self.resources.lock().await;
-        if let Some(Resource::Playlist {
-            bytes: Some(bytes), ..
-        }) = resources.get(&id)
+    async fn playlist(&self, id: Uuid, url: &url::Url, reload: Arc<Mutex<()>>) -> Result<Snapshot> {
+        // Serialize only this manifest; other resources never wait on origin I/O.
+        let _loading = reload.lock().await;
+        let was_live = if let Some(Resource::Playlist {
+            snapshot: Some(snapshot),
+            ..
+        }) = self.resources.lock().await.get(&id)
         {
-            return Ok(bytes.clone());
-        }
+            if !snapshot.live {
+                return Ok(snapshot.clone());
+            }
+            true
+        } else {
+            false
+        };
         let mut response = self.response(url, 0, None).await?;
         ensure!(response.status().is_success(), "watch_media_unavailable");
         ensure!(
@@ -340,40 +411,49 @@ impl OriginReader {
         );
         let resolved_url = response.url().clone();
         let mut bytes = vec![];
-        while let Some(chunk) = response
-            .chunk()
-            .await
-            .map_err(reqwest::Error::without_url)?
-        {
+        while let Some(chunk) = response.chunk().await.map_err(request_failure)? {
             ensure!(
                 bytes.len() + chunk.len() <= MAX_MANIFEST,
                 "watch_manifest_limit"
             );
             bytes.extend_from_slice(&chunk);
         }
-        let rewritten = rewrite(&bytes, &resolved_url, &mut resources)?;
-        let retained: usize = resources
-            .values()
-            .map(|r| match r {
+        let mut resources = self.resources.lock().await;
+        maintain(&mut resources, Instant::now());
+        // Validate/admit into a bounded transaction; failed rewrites leave the old graph intact.
+        let mut next = resources.clone();
+        let snapshot = rewrite(&bytes, &resolved_url, &mut next, was_live)?;
+        let retained: usize = next
+            .iter()
+            .filter(|(key, _)| **key != id)
+            .map(|(_, r)| match r {
                 Resource::Playlist {
-                    bytes: Some(bytes), ..
-                } => bytes.len(),
+                    snapshot: Some(s), ..
+                } => s.bytes.len(),
                 _ => 0,
             })
             .sum();
         ensure!(
-            retained + rewritten.len() <= 16 * 1024 * 1024,
+            retained + snapshot.bytes.len() <= 16 * 1024 * 1024,
             "watch_manifest_limit"
         );
-        let rewritten = Arc::new(rewritten);
-        resources.insert(
+        for (child, grace) in &snapshot.children {
+            if let Some(Resource::File { retention, .. }) = next.get_mut(child) {
+                retention.grace = retention.grace.max(*grace);
+                retention.until = None;
+            }
+        }
+        next.insert(
             id,
             Resource::Playlist {
                 url: url.clone(),
-                bytes: Some(rewritten.clone()),
+                snapshot: Some(snapshot.clone()),
+                reload: reload.clone(),
             },
         );
-        Ok(rewritten)
+        maintain(&mut next, Instant::now());
+        *resources = next;
+        Ok(snapshot)
     }
 }
 impl Reader for OriginReader {
@@ -412,11 +492,36 @@ fn mime_for(url: &url::Url) -> String {
     "application/octet-stream".into()
 }
 
+fn maintain(resources: &mut BTreeMap<Uuid, Resource>, now: Instant) {
+    let referenced: BTreeSet<_> = resources
+        .values()
+        .flat_map(|r| match r {
+            Resource::Playlist {
+                snapshot: Some(s), ..
+            } => s.children.keys().copied().collect::<Vec<_>>(),
+            _ => vec![],
+        })
+        .collect();
+    resources.retain(|id, resource| {
+        if let Resource::File { retention, .. } = resource {
+            if !retention.grace.is_zero() && !referenced.contains(id) {
+                let until = retention.until.get_or_insert_with(|| {
+                    now.checked_add(retention.grace)
+                        .expect("validated manifest duration")
+                });
+                return now < *until;
+            }
+        }
+        true
+    });
+}
+
 fn rewrite(
     bytes: &[u8],
     base: &url::Url,
     resources: &mut BTreeMap<Uuid, Resource>,
-) -> Result<Vec<u8>> {
+    was_live: bool,
+) -> Result<Snapshot> {
     use m3u8_rs::{Playlist, SessionDataField};
     let (rest, mut playlist) =
         m3u8_rs::parse_playlist(bytes).map_err(|_| anyhow!("watch_invalid_manifest"))?;
@@ -445,11 +550,78 @@ fn rewrite(
         ensure!(
             !matches!(
                 tag,
-                "#EXT-X-DEFINE" | "#EXT-X-PART" | "#EXT-X-PART-INF" | "#EXT-X-SERVER-CONTROL"
+                "#EXT-X-DEFINE"
+                    | "#EXT-X-PART"
+                    | "#EXT-X-PART-INF"
+                    | "#EXT-X-SERVER-CONTROL"
+                    | "#EXT-X-SKIP"
             ),
             "watch_manifest_extension_unsupported"
         );
     }
+    let live = matches!(&playlist,Playlist::MediaPlaylist(media) if !media.end_list);
+    let grace = if let Playlist::MediaPlaylist(media) = &playlist {
+        if live || was_live {
+            ensure!(
+                text.lines()
+                    .filter(|line| line.starts_with("#EXT-X-PROGRAM-DATE-TIME:"))
+                    .count()
+                    == media
+                        .segments
+                        .iter()
+                        .filter(|s| s.program_date_time.is_some())
+                        .count(),
+                "watch_live_hls_timeline_unsupported"
+            );
+            let mut next_time = None;
+            let mut anchored = false;
+            for segment in &media.segments {
+                ensure!(
+                    segment.duration.is_finite() && segment.duration > 0.,
+                    "watch_invalid_manifest"
+                );
+                if segment.discontinuity {
+                    ensure!(
+                        segment.program_date_time.is_some(),
+                        "watch_live_hls_timeline_unsupported"
+                    );
+                }
+                if let Some(pdt) = segment.program_date_time {
+                    let at = pdt.timestamp_millis() as f64 / 1000.;
+                    ensure!(
+                        next_time.is_none_or(|previous: f64| at + 0.001 >= previous),
+                        "watch_live_hls_timeline_unsupported"
+                    );
+                    next_time = Some(at);
+                    anchored = true;
+                }
+                if let Some(at) = next_time {
+                    next_time = Some(at + f64::from(segment.duration));
+                }
+            }
+            ensure!(anchored, "watch_live_hls_timeline_unsupported");
+            let window: f64 = media.segments.iter().map(|s| f64::from(s.duration)).sum();
+            let longest = media
+                .segments
+                .iter()
+                .map(|s| f64::from(s.duration))
+                .fold(0., f64::max);
+            {
+                let grace = Duration::try_from_secs_f64(window + longest)
+                    .map_err(|_| anyhow!("watch_invalid_manifest"))?;
+                ensure!(
+                    Instant::now().checked_add(grace).is_some(),
+                    "watch_invalid_manifest"
+                );
+                grace
+            }
+        } else {
+            Duration::ZERO
+        }
+    } else {
+        Duration::ZERO
+    };
+    let mut children = BTreeMap::new();
     let mut pending = BTreeMap::new();
     let mut known: BTreeMap<String, Uuid> = resources
         .iter()
@@ -475,13 +647,22 @@ fn rewrite(
             pending.insert(
                 id,
                 if playlist {
-                    Resource::Playlist { url, bytes: None }
+                    Resource::Playlist {
+                        url,
+                        snapshot: None,
+                        reload: Arc::new(Mutex::new(())),
+                    }
                 } else {
-                    Resource::File { url, size: None }
+                    Resource::File {
+                        url,
+                        size: None,
+                        retention: Retention::default(),
+                    }
                 },
             );
             id
         };
+        children.insert(id, grace);
         *uri = id.to_string();
         Ok(())
     };
@@ -524,7 +705,6 @@ fn rewrite(
             }
         }
         Playlist::MediaPlaylist(media) => {
-            ensure!(media.end_list, "watch_live_hls_unsupported");
             safe_unknown(&media.unknown_tags)?;
             for segment in &mut media.segments {
                 safe_unknown(&segment.unknown_tags)?;
@@ -542,8 +722,16 @@ fn rewrite(
     let mut rewritten = vec![];
     playlist.write_to(&mut rewritten)?;
     ensure!(rewritten.len() <= MAX_MANIFEST, "watch_manifest_limit");
+    ensure!(
+        !(live || was_live) || rewritten.len() <= WATCH_WINDOW_BYTES,
+        "watch_manifest_limit"
+    );
     resources.extend(pending);
-    Ok(rewritten)
+    Ok(Snapshot {
+        bytes: Arc::new(rewritten),
+        live,
+        children,
+    })
 }
 
 fn safe_unknown(tags: &[m3u8_rs::ExtTag]) -> Result<()> {
@@ -676,6 +864,205 @@ mod tests {
             page,
             stop,
         )
+    }
+
+    #[derive(Default)]
+    struct LiveOrigin {
+        file_size: std::sync::atomic::AtomicU64,
+        sequence: std::sync::atomic::AtomicUsize,
+        ended: std::sync::atomic::AtomicBool,
+        status: std::sync::atomic::AtomicU16,
+        reads: std::sync::atomic::AtomicUsize,
+        slow_manifest: std::sync::atomic::AtomicBool,
+        entered: tokio::sync::Notify,
+        release: tokio::sync::Notify,
+    }
+    async fn live_fixture() -> (String, Arc<LiveOrigin>, tokio::task::JoinHandle<()>) {
+        use std::sync::atomic::Ordering::SeqCst;
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let state = Arc::new(LiveOrigin::default());
+        let observed = state.clone();
+        let server = tokio::spawn(async move {
+            axum::serve(listener,Router::new().route("/{*path}",get(move |request:Request| {
+                let state=observed.clone();async move {
+                    let path=request.uri().path();
+                    if path.ends_with(".m3u8") {
+                        state.reads.fetch_add(1,SeqCst);
+                        if path=="/live.m3u8" && state.slow_manifest.load(SeqCst) {
+                            state.entered.notify_one();state.release.notified().await;
+                        }
+                        let status=state.status.load(SeqCst);
+                        if status!=0 {return Response::builder().status(status).body(Body::empty()).unwrap();}
+                        let sequence=if path=="/other.m3u8" {0} else {state.sequence.load(SeqCst)};
+                        let tail=if state.ended.load(SeqCst) {"#EXT-X-ENDLIST\n"} else {""};
+                        return Response::builder().header("content-type","application/vnd.apple.mpegurl").body(Body::from(format!(
+                            "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:{sequence}\n#EXT-X-PROGRAM-DATE-TIME:2026-11-15T00:00:{:02}Z\n#EXTINF:2,\ns{sequence}.ts\n#EXTINF:2,\ns{}.ts\n{tail}",sequence*2,sequence+1))).unwrap();
+                    }
+                    if path=="/s0.ts" && state.slow_manifest.load(SeqCst) {
+                        state.entered.notify_one();state.release.notified().await;
+                    }
+                    let size=state.file_size.load(SeqCst);
+                    if size>0 {
+                        let range=request.headers().get("range").unwrap().to_str().unwrap().strip_prefix("bytes=").unwrap();
+                        let (start,end)=range.split_once('-').unwrap();let start=start.parse::<u64>().unwrap();let end=end.parse::<u64>().unwrap().min(size-1);
+                        return Response::builder().status(206).header("content-type","video/mp2t").header("content-range",format!("bytes {start}-{end}/{size}"))
+                            .body(Body::from(vec![1u8;(end-start+1)as usize])).unwrap();
+                    }
+                    origin(request).await
+                }
+            }))).await.unwrap();
+        });
+        (base, state, server)
+    }
+    fn segment_ids(bytes: &[u8]) -> Vec<Uuid> {
+        String::from_utf8_lossy(bytes)
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(|line| Uuid::parse_str(line).unwrap())
+            .collect()
+    }
+    #[tokio::test]
+    async fn live_refresh_is_atomic_bounded_shared_and_freezes_at_endlist() {
+        use std::sync::atomic::Ordering::SeqCst;
+        let (base, state, server) = live_fixture().await;
+        let (ctx, _page, _) = context(format!("{base}/live.m3u8"), Format::Hls, None);
+        let (_stop, stopped) = watch::channel(false);
+        let reader = OriginReader::prepare(ctx, stopped).await.unwrap();
+        let first = reader.read(reader.root, 0, 65536).await.unwrap();
+        assert!(first.eof);
+        assert_eq!(first.total_size, Some(first.bytes.len() as u64));
+        let old = segment_ids(&first.bytes);
+        assert_eq!(
+            reader
+                .read(reader.root, 0, 1)
+                .await
+                .unwrap_err()
+                .to_string(),
+            "watch_live_hls_atomic_read_required"
+        );
+        let sibling = Uuid::new_v4();
+        reader.resources.lock().await.insert(
+            sibling,
+            Resource::Playlist {
+                url: url::Url::parse(&format!("{base}/other.m3u8")).unwrap(),
+                snapshot: None,
+                reload: Arc::new(Mutex::new(())),
+            },
+        );
+        let other = reader.read(sibling, 0, 65536).await.unwrap();
+        assert_eq!(segment_ids(&other.bytes), old);
+        state.sequence.store(1, SeqCst);
+        let next = reader.read(reader.root, 0, 65536).await.unwrap();
+        let current = segment_ids(&next.bytes);
+        assert_eq!(old[1], current[0]);
+        assert_ne!(first.bytes, next.bytes);
+        assert!(!reader.read(old[0], 0, 32).await.unwrap().bytes.is_empty());
+        // Another rendition's current window keeps the same exact resource alive.
+        maintain(
+            &mut *reader.resources.lock().await,
+            Instant::now() + Duration::from_secs(60),
+        );
+        assert!(reader.resources.lock().await.contains_key(&old[0]));
+        reader.resources.lock().await.remove(&sibling);
+        {
+            let mut graph = reader.resources.lock().await;
+            maintain(&mut graph, Instant::now());
+            let Resource::File { retention, .. } = &graph[&old[0]] else {
+                panic!()
+            };
+            assert_eq!(retention.grace, Duration::from_secs(6));
+            maintain(&mut graph, Instant::now() + Duration::from_secs(7));
+        }
+        assert_eq!(
+            reader.read(old[0], 0, 1).await.unwrap_err().to_string(),
+            "watch_resource_unavailable"
+        );
+        for sequence in 2..30 {
+            state.sequence.store(sequence, SeqCst);
+            let read = reader.read(reader.root, 0, 65536).await.unwrap();
+            assert!(read.eof);
+            maintain(
+                &mut *reader.resources.lock().await,
+                Instant::now() + Duration::from_secs(60),
+            );
+            assert!(reader.resources.lock().await.len() <= 3);
+        }
+        state.ended.store(true, SeqCst);
+        let final_bytes = reader.read(reader.root, 0, 65536).await.unwrap().bytes;
+        let fetched = state.reads.load(SeqCst);
+        state.sequence.store(100, SeqCst);
+        assert_eq!(
+            reader.read(reader.root, 0, 65536).await.unwrap().bytes,
+            final_bytes
+        );
+        assert_eq!(state.reads.load(SeqCst), fetched);
+        server.abort();
+    }
+    #[tokio::test]
+    async fn live_origin_failure_is_visible_and_reload_never_blocks_segments_or_retirement() {
+        use std::sync::atomic::Ordering::SeqCst;
+        let (base, state, server) = live_fixture().await;
+        let (ctx, page, _) = context(format!("{base}/live.m3u8"), Format::Hls, None);
+        let (_stop, stopped) = watch::channel(false);
+        let reader = OriginReader::prepare(ctx, stopped).await.unwrap();
+        let old = segment_ids(&reader.read(reader.root, 0, 65536).await.unwrap().bytes);
+        for code in [404, 410] {
+            state.status.store(code, SeqCst);
+            assert!(reader.read(reader.root, 0, 65536).await.is_err());
+            assert!(reader.resources.lock().await.contains_key(&old[0]));
+        }
+        state.status.store(0, SeqCst);
+        reader.read(old[1], 0, 32).await.unwrap();
+        state.file_size.store(129, SeqCst);
+        assert!(
+            reader.read(old[1], 0, 32).await.is_err(),
+            "a growing file cannot change total size under one admitted resource"
+        );
+        state.file_size.store(0, SeqCst);
+        state.slow_manifest.store(true, SeqCst);
+        let reading = reader.clone();
+        let reload = tokio::spawn(async move { reading.read(reading.root, 0, 65536).await });
+        state.entered.notified().await;
+        // Unrelated segment I/O proceeds while the manifest is held at the origin.
+        tokio::time::timeout(Duration::from_secs(1), reader.read(old[1], 0, 32))
+            .await
+            .unwrap()
+            .unwrap();
+        page.send_replace(true);
+        assert_eq!(
+            reload.await.unwrap().unwrap_err().to_string(),
+            "watch_source_retired"
+        );
+        server.abort();
+    }
+    #[tokio::test]
+    async fn admitted_segment_read_survives_graph_expiry() {
+        use std::sync::atomic::Ordering::SeqCst;
+        let (base, state, server) = live_fixture().await;
+        let (ctx, _page, _) = context(format!("{base}/live.m3u8"), Format::Hls, None);
+        let (_stop, stopped) = watch::channel(false);
+        let reader = OriginReader::prepare(ctx, stopped).await.unwrap();
+        let old = segment_ids(&reader.read(reader.root, 0, 65536).await.unwrap().bytes)[0];
+        state.slow_manifest.store(true, SeqCst);
+        let reading = reader.clone();
+        let segment = tokio::spawn(async move { reading.read(old, 0, 32).await });
+        state.entered.notified().await;
+        state.slow_manifest.store(false, SeqCst);
+        state.sequence.store(2, SeqCst);
+        reader.read(reader.root, 0, 65536).await.unwrap();
+        maintain(
+            &mut *reader.resources.lock().await,
+            Instant::now() + Duration::from_secs(60),
+        );
+        assert!(!reader.resources.lock().await.contains_key(&old));
+        state.release.notify_one();
+        assert_eq!(
+            segment.await.unwrap().unwrap().bytes,
+            (0..32).collect::<Vec<_>>()
+        );
+        server.abort();
     }
     #[tokio::test]
     async fn metadata_http_failure_is_distinct_from_an_ignored_successful_range() {
@@ -819,6 +1206,7 @@ mod tests {
                 Resource::File {
                     url: url::Url::parse(&format!("{base}/{path}")).unwrap(),
                     size: None,
+                    retention: Retention::default(),
                 },
             );
             assert!(reader.read(id, 10, 64).await.is_err(), "{path}");
@@ -829,6 +1217,7 @@ mod tests {
             Resource::File {
                 url: url::Url::parse(&format!("{base}/slow")).unwrap(),
                 size: None,
+                retention: Retention::default(),
             },
         );
         let work = reader.read(id, 0, 64);
@@ -974,6 +1363,7 @@ mod tests {
                 Resource::File {
                     url: url::Url::parse(&format!("{foreign_url}/file")).unwrap(),
                     size: Some(128),
+                    retention: Retention::default(),
                 },
             );
             assert_eq!(
@@ -1076,18 +1466,47 @@ mod tests {
     }
 
     #[test]
+    fn live_mapping_and_atomic_size_are_admission_bounds() {
+        let base = url::Url::parse("https://owned.test/live.m3u8").unwrap();
+        for content in [
+            "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2,\na.ts\n",
+            "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-PROGRAM-DATE-TIME:broken\n#EXTINF:2,\na.ts\n",
+            "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-PROGRAM-DATE-TIME:2026-11-15T00:00:00Z\n#EXTINF:2,\na.ts\n#EXT-X-DISCONTINUITY\n#EXTINF:2,\nb.ts\n",
+            "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-PROGRAM-DATE-TIME:2026-11-15T00:00:02Z\n#EXTINF:2,\na.ts\n#EXT-X-PROGRAM-DATE-TIME:2026-11-15T00:00:01Z\n#EXTINF:2,\nb.ts\n",
+        ] {
+            let content=content.replace("\\n","\n");
+            assert!(rewrite(content.as_bytes(),&base,&mut BTreeMap::new(),false).is_err());
+        }
+        let mut large = String::from(
+            "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-PROGRAM-DATE-TIME:2026-11-15T00:00:00Z\n",
+        );
+        for i in 0..1800 {
+            large.push_str(&format!("#EXTINF:2,\n{i}.ts\n"));
+        }
+        assert!(rewrite(large.as_bytes(), &base, &mut BTreeMap::new(), false).is_err());
+        large.push_str("#EXT-X-ENDLIST\n");
+        assert!(
+            rewrite(large.as_bytes(), &base, &mut BTreeMap::new(), false).is_ok(),
+            "static VOD keeps its larger immutable path"
+        );
+        assert!(
+            rewrite(large.as_bytes(), &base, &mut BTreeMap::new(), true).is_err(),
+            "the final live snapshot retains its atomic admission bound"
+        );
+    }
+    #[test]
     fn unsupported_hls_is_explicit_and_long_vod_is_not_truncated() {
         let base = url::Url::parse("https://media.example/video/root.m3u8").unwrap();
-        for content in ["#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\na.ts\n", "#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"license\"\n#EXTINF:6,\na.ts\n#EXT-X-ENDLIST\n", "#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXT-X-PRELOAD-HINT:TYPE=PART,URI=\"private\"\n#EXT-X-ENDLIST\n"]{assert!(rewrite(content.as_bytes(),&base,&mut BTreeMap::new()).is_err());}
+        for content in ["#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\na.ts\n", "#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"license\"\n#EXTINF:6,\na.ts\n#EXT-X-ENDLIST\n", "#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXT-X-PRELOAD-HINT:TYPE=PART,URI=\"private\"\n#EXT-X-ENDLIST\n"]{assert!(rewrite(content.as_bytes(),&base,&mut BTreeMap::new(),false).is_err());}
         let mut vod = String::from("#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-CUSTOM:harmless\n");
         for i in 0..3600 {
             vod.push_str(&format!("#EXTINF:2,\n{i}.ts\n"));
         }
         vod.push_str("#EXT-X-ENDLIST\n");
         let mut resources = BTreeMap::new();
-        let output = rewrite(vod.as_bytes(), &base, &mut resources).unwrap();
+        let output = rewrite(vod.as_bytes(), &base, &mut resources, false).unwrap();
         assert_eq!(resources.len(), 3600);
-        assert!(String::from_utf8(output)
+        assert!(String::from_utf8(output.bytes.as_ref().clone())
             .unwrap()
             .contains("#EXT-CUSTOM:harmless"));
     }

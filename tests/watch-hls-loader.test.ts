@@ -120,3 +120,28 @@ test("only admitted UUID locators reach the Reader and source errors retain thei
   await vi.waitFor(() => expect(source.onError).toHaveBeenCalledOnce());
   expect(source.onError.mock.calls[0][0].text).toBe("watch_source_retired");
 });
+
+test("each live playlist reload consumes one complete atomic window without a stat read", async () => {
+  const manifests = ["#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:100\n", "#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:101\n"];
+  const read = vi.fn<WatchByteReader>(async () => {
+    const bytes = new TextEncoder().encode(manifests.shift()!);
+    return { bytes, totalSize: bytes.length, eof: true, mimeType: "application/vnd.apple.mpegurl" };
+  });
+  const lifetime = new AbortController(), Loader = createWatchHlsLoader(read, lifetime.signal);
+  for (const sequence of [100, 101]) {
+    const cb = callbacks(); new Loader(Hls.DefaultConfig).load({ ...context(), responseType: "text" }, config(), cb);
+    await vi.waitFor(() => expect(cb.onSuccess).toHaveBeenCalledOnce());
+    expect(cb.onSuccess.mock.calls[0][0].data).toContain(`SEQUENCE:${sequence}`);
+  }
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(read.mock.calls.every(([, offset, length]) => offset === 0 && length === 65536)).toBe(true);
+});
+
+test("large immutable VOD playlists keep the first window and read only the remainder", async () => {
+  const read = vi.fn<WatchByteReader>(async (_id, offset, length) => result(offset, length));
+  const lifetime = new AbortController(), Loader = createWatchHlsLoader(read, lifetime.signal), cb = callbacks();
+  new Loader(Hls.DefaultConfig).load({ ...context(), responseType: "text" }, config(), cb);
+  await vi.waitFor(() => expect(cb.onSuccess).toHaveBeenCalledOnce());
+  expect(read.mock.calls.slice(0, 2).map(([, offset]) => offset)).toEqual([0, 65536]);
+  expect(cb.onSuccess.mock.calls[0][0].data).toBe(new TextDecoder().decode(bytes));
+});

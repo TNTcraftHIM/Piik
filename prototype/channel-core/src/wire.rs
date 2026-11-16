@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 24;
+pub const CHANNEL_PROTOCOL: u8 = 25;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -962,10 +962,17 @@ pub enum ScreenSourceKind {
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WatchPlayback {
+    pub timeline: WatchTimeline,
     pub position: f64,
     pub paused: bool,
     pub rate: f64,
     pub anchor_time: u64,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WatchTimeline {
+    Media,
+    Program,
 }
 impl WatchPlayback {
     pub(crate) fn validate(&self) -> Result<(), &'static str> {

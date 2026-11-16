@@ -173,8 +173,10 @@ the feedback period; they do not delay that delivery.
   on an isolated timeout reproduction.
 - [ ] **Shared-link website coverage.** Extend the implemented webpage player
   and original-media forwarding toward VideoTogether's playback coverage.
-  Validate actual supported websites, source-issued media grants, live playlist
-  lifecycle, target Browser behavior and cross-network delivery. The
+  Validate actual supported websites, source-issued media grants, commercial live
+  sources within the standard PDT/64 KiB boundary, target Browser behavior and
+  cross-network delivery. Live sources without a usable program-time mapping,
+  larger live playlists and low-latency HLS remain outside that first boundary. The
   [verification record](./verification-status.md#current-evidence) separates the
   matched Bilibili main-player controls from broader website coverage. Trace
   observed responses through frame association before extending source discovery.

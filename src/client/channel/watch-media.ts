@@ -1,10 +1,12 @@
-import Hls from "hls.js";
-import type { WatchByteSource } from "./protocol";
+import Hls, { M3U8Parser, PlaylistLevelType } from "hls.js";
+import type { WatchByteSource, WatchTimeline } from "./protocol";
 import { canReadWatchResources, limitWatchReads, openWatchResource, type WatchByteReader, type WatchResourceLease } from "./watch-resource";
 import { createWatchHlsLoader, watchHlsUrl } from "./watch-hls-loader";
 import { canReadWatchMp4, isWatchMp4, WatchMp4Media } from "./watch-mp4-media";
 import { watchElementFailure, watchHlsFailure } from "./watch-media-failure";
+import { WatchHlsTimeline } from "./watch-hls-timeline";
 
+export interface WatchLiveWindow { active: boolean; seekable: [number, number][]; syncPosition: number | null }
 export interface WatchMediaState {
   position: number;
   paused: boolean;
@@ -13,6 +15,7 @@ export interface WatchMediaState {
   readyState: number;
   buffered: [number, number][] | null;
   ended: boolean;
+  live?: WatchLiveWindow;
 }
 export type WatchMediaPatch = Partial<Pick<WatchMediaState, "position" | "paused" | "rate">>;
 export type WatchMediaEvent = "loadedmetadata" | "loadeddata" | "play" | "playing" | "pause" | "seeked" | "ratechange" | "ended" | "waiting" | "error" | "blocked" | "closed";
@@ -77,10 +80,11 @@ export class HTMLVideoMedia implements WatchMedia {
   private lifetime = new AbortController();
   private setup: Promise<void>;
   private hls?: Hls;
+  private hlsTimeline?: WatchHlsTimeline;
   private resource?: WatchResourceLease;
   private mp4?: WatchMp4Media;
   private failure: Error | null = null;
-  constructor(url: string | ((signal: AbortSignal) => Promise<WatchResourceLease>) | { resourceId: string; read: WatchByteReader }, format?: "file" | "hls") {
+  constructor(url: string | ((signal: AbortSignal) => Promise<WatchResourceLease>) | { resourceId: string; read: WatchByteReader }, format?: "file" | "hls", private timeline?: WatchTimeline) {
     this.video.playsInline = true;
     this.video.preload = "auto";
     this.setup = this.load(url, format).catch(error => {
@@ -123,15 +127,21 @@ export class HTMLVideoMedia implements WatchMedia {
     } else url = source;
     const detected = format ?? await detectWatchFormat(url, this.lifetime.signal);
     this.lifetime.signal.throwIfAborted();
+    if (detected === "unknown" && this.timeline !== "media") throw new Error("watch_source_inspection_unavailable");
     if (detected === "hls" && Hls.isSupported()) {
-      const hls = this.hls = new Hls({ backBufferLength: 30,
+      const hls = this.hls = new Hls({ backBufferLength: 30, liveDurationInfinity: true, lowLatencyMode: false,
         ...(peerRead && { loader: createWatchHlsLoader(peerRead, this.lifetime.signal) }) });
+      this.hlsTimeline = new WatchHlsTimeline(hls, this.timeline);
       hls.on(Hls.Events.ERROR, (_event, error) => {
         if (!error.fatal || this.lifetime.signal.aborted) return;
         this.failure = new Error(watchElementFailure(this.video.error) ?? watchHlsFailure(error)); this.video.dispatchEvent(new Event("error"));
       });
       hls.loadSource(url); hls.attachMedia(this.video);
-    } else this.video.src = url;
+    } else {
+      if (this.timeline === "program") throw new Error("watch_live_timeline_unsupported");
+      if (detected === "hls" && this.timeline === undefined) await requireNativeHlsVod(url, this.lifetime.signal);
+      this.video.src = url;
+    }
   }
   async read(): Promise<WatchMediaState> {
     await this.setup;
@@ -139,14 +149,15 @@ export class HTMLVideoMedia implements WatchMedia {
     const elementFailure = watchElementFailure(video.error);
     if (elementFailure) throw new Error(elementFailure);
     if (this.failure) throw this.failure;
+    const program = video.readyState >= 1 ? this.hlsTimeline?.read(video) : null;
     return { position: video.currentTime, paused: video.paused, rate: video.playbackRate,
-      duration: Number.isFinite(video.duration) ? video.duration : null, readyState: video.readyState,
-      buffered: Array.from({ length: video.buffered.length }, (_, i): [number, number] => [video.buffered.start(i), video.buffered.end(i)]), ended: video.ended };
+      duration: program ? null : Number.isFinite(video.duration) ? video.duration : null, readyState: video.readyState,
+      buffered: Array.from({ length: video.buffered.length }, (_, i): [number, number] => [video.buffered.start(i), video.buffered.end(i)]), ended: video.ended, ...program };
   }
   async patch(value: WatchMediaPatch): Promise<void> {
     await this.setup;
     this.lifetime.signal.throwIfAborted();
-    if (value.position !== undefined) this.video.currentTime = value.position;
+    if (value.position !== undefined) this.video.currentTime = this.hlsTimeline?.localPosition(value.position) ?? value.position;
     if (value.rate !== undefined) this.video.playbackRate = value.rate;
     if (value.paused === true) this.video.pause();
     else if (value.paused === false) await this.video.play();
@@ -171,20 +182,20 @@ export function canReceivePeerWatch(format?: "file" | "hls"): boolean {
   return format === "hls" && Hls.isSupported() || format === "file" && canReadWatchMp4() || canReadWatchResources();
 }
 
-export function createPeerWatchMedia(source: { resourceId: string; format: "file" | "hls" }, read: WatchByteReader): HTMLVideoMedia {
-  return new HTMLVideoMedia({ resourceId: source.resourceId, read }, source.format);
+export function createPeerWatchMedia(source: { resourceId: string; format: "file" | "hls" }, read: WatchByteReader, timeline?: WatchTimeline): HTMLVideoMedia {
+  return new HTMLVideoMedia({ resourceId: source.resourceId, read }, source.format, timeline);
 }
 
-async function detectWatchFormat(url: string, signal: AbortSignal): Promise<"file" | "hls"> {
+async function detectWatchFormat(url: string, signal: AbortSignal): Promise<"file" | "hls" | "unknown"> {
   const timeout = new AbortController();
   const timer = setTimeout(() => timeout.abort(), 5000);
   try {
     const response = await fetch(url, { headers: { Range: "bytes=0-511" }, signal: AbortSignal.any([signal, timeout.signal]) });
     const reader = response.body?.getReader();
     try {
-      if (!response.ok) return "file";
+      if (!response.ok) return "unknown";
       if (/^(?:application|audio)\/(?:vnd\.apple\.mpegurl|x-mpegurl)(?:;|$)/i.test(response.headers.get("content-type") ?? "")) return "hls";
-      if (!reader) return "file";
+      if (!reader) return "unknown";
       const header = new Uint8Array(512); let used = 0;
       while (used < header.length) {
         const chunk = await reader.read(); if (chunk.done) break;
@@ -193,8 +204,31 @@ async function detectWatchFormat(url: string, signal: AbortSignal): Promise<"fil
       }
       return new TextDecoder().decode(header.subarray(0, used)).replace(/^\uFEFF/, "").startsWith("#EXTM3U") ? "hls" : "file";
     } finally { await reader?.cancel(); }
-  } catch { signal.throwIfAborted(); return "file"; }
+  } catch { signal.throwIfAborted(); return "unknown"; }
   finally { clearTimeout(timer); }
+}
+
+/** Native HLS has no cross-player date API: an explicit ended media playlist proves VOD. */
+async function requireNativeHlsVod(url: string, signal: AbortSignal): Promise<void> {
+  const reading = AbortSignal.any([signal, AbortSignal.timeout(5000)]);
+  const response = await fetch(url, { signal: reading });
+  const reader = response.body?.getReader();
+  const limit = 1024 * 1024, bytes = new Uint8Array(limit);
+  let used = 0;
+  try {
+    if (!response.ok || !reader) throw new Error("watch_source_inspection_unavailable");
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      if (used + chunk.value.length > limit) throw new Error("watch_manifest_limit");
+      bytes.set(chunk.value, used); used += chunk.value.length;
+    }
+  } finally { await reader?.cancel(); }
+  signal.throwIfAborted();
+  const text = new TextDecoder().decode(bytes.subarray(0, used));
+  if (!M3U8Parser.isMediaPlaylist(text)) throw new Error("watch_source_inspection_unavailable");
+  const details = M3U8Parser.parseLevelPlaylist(text, url, 0, PlaylistLevelType.MAIN, 0, null);
+  if (details.live || details.playlistParsingError || !details.fragments.length) throw new Error("watch_live_timeline_unsupported");
 }
 
 /** The App link owns the selected webpage and rejects outstanding reads on close. */

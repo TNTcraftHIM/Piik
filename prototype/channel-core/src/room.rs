@@ -581,7 +581,7 @@ impl RoomRuntime {
         source.validate()?;
         playback.validate()?;
         if let Some(current) = self.watch_activities.get(&id) {
-            if current.session_id != session || current.source != source {
+            if current.session_id != session || current.source != source || current.playback.timeline != playback.timeline {
                 return Err("watch_identity_conflict");
             }
             // A start retry must preserve later playback and forwarding settings.
@@ -622,6 +622,9 @@ impl RoomRuntime {
             .ok_or("watch_unavailable")?;
         if activity.session_id != session {
             return Err("not_watch_owner");
+        }
+        if activity.playback.timeline != playback.timeline {
+            return Err("watch_timeline_changed");
         }
         activity.playback = playback;
         Ok(())
@@ -1387,6 +1390,7 @@ mod tests {
                 url: "https://example.com/movie.mp4".into(),
             },
             WatchPlayback {
+                timeline: crate::wire::WatchTimeline::Media,
                 position: 0.,
                 paused: true,
                 rate: 1.,

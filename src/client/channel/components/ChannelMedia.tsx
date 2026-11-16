@@ -74,8 +74,10 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
   const controlsId = useId();
   const surface = player.presentation, embedded = surface.kind === "embed";
   const [htmlMedia, setMedia] = useState({ position: 0, duration: 0, volume: 1, muted: false, rate: 1 });
-  const media = player.video ? htmlMedia : { position: player.mediaState?.position ?? 0, duration: player.mediaState?.duration ?? 0,
-    rate: player.mediaState?.rate ?? 1, volume: 1, muted: false };
+  const live = player.mediaState?.live;
+  const media = player.video && !live ? htmlMedia : { position: player.mediaState?.position ?? 0, duration: player.mediaState?.duration ?? 0,
+    rate: player.mediaState?.rate ?? 1, volume: htmlMedia.volume, muted: htmlMedia.muted };
+  const seekStart = live?.seekable[0]?.[0] ?? 0, seekEnd = live?.seekable.at(-1)?.[1] ?? media.duration;
   const [fullscreen, setFullscreen] = useState(() => player.video ? videoFullscreenState(player.video)
     : { supported: false, ready: false, active: false, nativeActive: false });
   const [fullscreenFailed, setFullscreenFailed] = useState(false);
@@ -152,9 +154,13 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       {owned && !embedded && <div className="c3-watch-shared" role="group" aria-label={t("watch.sharedControls")}>
         <Btn icon={paused ? "play" : "pause"} quiet size="dense"
           title={paused ? "watch.play" : "watch.pause"} disabled={disabled} onClick={() => onPlayback({ paused: !paused })} />
-        <input type="range" min="0" max={media.duration || 1} step="0.1" value={Math.min(media.position, media.duration || 1)}
-          aria-label={t("watch.seek")} disabled={disabled || !media.duration}
+        {live && <span>{t(live.active ? "watch.live" : "watch.liveEnded")}</span>}
+        <input type="range" min={seekStart} max={seekEnd || 1} step="0.1" value={Math.max(seekStart, Math.min(media.position, seekEnd || 1))}
+          aria-label={t("watch.seek")} disabled={disabled || seekEnd <= seekStart}
+          aria-valuetext={live ? t(live.active ? "watch.liveDelay" : "watch.liveRemaining", { seconds: String(Math.max(0, Math.round(seekEnd - media.position))) }) : undefined}
           onChange={event => onPlayback({ position: Number(event.target.value) })} />
+        {live?.active && <Btn icon="play" quiet size="dense" title="watch.goLive" cap="watch.goLive"
+          disabled={disabled || live.syncPosition === null} onClick={() => { if (live.syncPosition !== null) onPlayback({ position: live.syncPosition, paused: false }); }} />}
         <select className="lr-select" aria-label={t("watch.rate")} value={media.rate} disabled={disabled}
           onChange={event => onPlayback({ rate: Number(event.target.value) })}>
           {(player.media.playbackRates?.() ?? [0.5, 0.75, 1, 1.25, 1.5, 2]).map(rate => <option key={rate} value={rate}>{rate}×</option>)}

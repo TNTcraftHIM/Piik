@@ -16,6 +16,39 @@ class Video extends EventTarget {
 }
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
+test("program anchors use the domain clock and wait for the sharer when a paused point expires", async () => {
+  vi.useFakeTimers(); let now = 0; vi.spyOn(performance, "now").mockImplementation(() => now);
+  const epoch = 1794744000;
+  const state: WatchMediaState = { position: epoch + 8, paused: false, rate: 1, duration: null, readyState: 4, ended: false,
+    buffered: [[epoch + 6, epoch + 12]], live: { active: true, seekable: [[epoch + 6, epoch + 18]], syncPosition: epoch + 12 } };
+  const patch = vi.fn(async (value: object) => { Object.assign(state, value); });
+  const media: WatchMedia = { read: async () => ({ ...state }), patch, ready: async () => {}, listen: () => () => {}, close() {} };
+  const player = new WatchPlayer("room", false, media, vi.fn());
+  try {
+    player.calibrate(5000, 0, 0); player.update({ timeline: "program", position: epoch + 10, paused: true, rate: 1, anchorTime: 5000 });
+    await player.ready(); expect(state.position).toBe(epoch + 10); expect(state.paused).toBe(true);
+    state.live = { active: true, seekable: [[epoch + 20, epoch + 32]], syncPosition: epoch + 26 }; state.buffered = [];
+    await vi.advanceTimersByTimeAsync(1000); expect(player.error).toBeNull(); // A locally retained pause is preserved.
+    state.position = epoch + 26; patch.mockClear();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(player.error).toBe("watch_live_position_unavailable");
+    expect(patch.mock.calls.every(([value]) => !("position" in value))).toBe(true);
+    player.update({ timeline: "program", position: epoch + 10, paused: false, rate: 1, anchorTime: 5000 });
+    await player.serialize(async () => {}); patch.mockClear(); await player.resume();
+    expect(state.paused).toBe(true);
+    expect(patch.mock.calls.some(([value]) => (value as { paused?: boolean }).paused === false)).toBe(false);
+    now = 5000;
+    player.update({ timeline: "program", position: epoch + 25, paused: false, rate: 1, anchorTime: 9000 });
+    await player.serialize(async () => {});
+    expect(state.position).toBe(epoch + 26); expect(state.paused).toBe(false); expect(player.error).toBeNull();
+    state.live.active = false; state.duration = 12;
+    await vi.advanceTimersByTimeAsync(1000); expect(state.position).toBeGreaterThan(epoch);
+    player.update({ timeline: "program", position: epoch + 32, paused: true, rate: 1, anchorTime: 10000 });
+    await player.serialize(async () => {});
+    expect(state.position).toBe(epoch + 32); expect(player.error).toBeNull();
+  } finally { player.close(); }
+});
+
 test("unknown iframe buffering applies explicit updates without inventing periodic safe ranges", async () => {
   vi.useFakeTimers();
   const state: WatchMediaState = { position: 0, paused: true, rate: 1, duration: 120, readyState: 3, ended: false, buffered: null };
@@ -23,11 +56,11 @@ test("unknown iframe buffering applies explicit updates without inventing period
   const media: WatchMedia = { read: async () => ({ ...state }), patch, ready: async () => {}, listen: () => () => {}, close() {}, seekTolerance: 2, playbackRates: () => [1, 1.5] };
   const player = new WatchPlayer("room", false, media, vi.fn());
   try {
-    player.calibrate(5000, performance.now()); player.update({ position: 60, paused: true, rate: 1, anchorTime: 5000 }); await player.ready();
+    player.calibrate(5000, performance.now()); player.update({ timeline: "media" as const, position: 60, paused: true, rate: 1, anchorTime: 5000 }); await player.ready();
     expect(state.position).toBe(60); patch.mockClear(); state.position = 20;
     await vi.advanceTimersByTimeAsync(3000);
     expect(patch.mock.calls.every(([value]) => !("position" in value))).toBe(true);
-    player.update({ position: 10, paused: true, rate: 1.25, anchorTime: 8000 }); await player.serialize(async () => {});
+    player.update({ timeline: "media" as const, position: 10, paused: true, rate: 1.25, anchorTime: 8000 }); await player.serialize(async () => {});
     expect(player.error).toBe("watch_media_unsupported");
     expect(patch.mock.calls.every(([value]) => !("rate" in value))).toBe(true);
   } finally { player.close(); }
@@ -54,7 +87,7 @@ test("an embedded viewer resumes at the current host anchor after a hidden inter
     listen:fn=>{notify=fn;return()=>{};},close(){},playbackAvailable:()=>visible};
   const player=new WatchPlayer('room',false,media,vi.fn());
   try{
-    player.calibrate(5000,0,0);player.update({position:10,paused:false,rate:1,anchorTime:5000});await player.ready();
+    player.calibrate(5000,0,0);player.update({ timeline: "media" as const,position:10,paused:false,rate:1,anchorTime:5000});await player.ready();
     visible=false;state.paused=true;notify('blocked');now=10000;await vi.advanceTimersByTimeAsync(1000);
     visible=true;await vi.advanceTimersByTimeAsync(1000);expect(state.position).toBe(10);expect(state.paused).toBe(true);
     await player.resume();expect(state.position).toBe(20);expect(state.paused).toBe(false);
@@ -67,7 +100,7 @@ test("a local iframe scrub offers explicit resynchronization without periodic se
   const media:WatchMedia={read:async()=>({...state}),patch:async value=>{Object.assign(state,value);},ready:async()=>{},listen:()=>()=>{},close(){},seekEvents:false,seekTolerance:2};
   const player=new WatchPlayer('room',false,media,vi.fn());
   try{
-    player.calibrate(5000,0,0);player.update({position:10,paused:true,rate:1,anchorTime:5000});await player.ready();
+    player.calibrate(5000,0,0);player.update({ timeline: "media" as const,position:10,paused:true,rate:1,anchorTime:5000});await player.ready();
     state.position=60;now=1000;await vi.advanceTimersByTimeAsync(1000);
     expect(player.blocked).toBe(true);expect(state.position).toBe(60);
     await player.resume();expect(state.position).toBe(10);
@@ -83,7 +116,7 @@ test("late metadata and manual autoplay retry use the latest domain anchor; soun
   const player = new WatchPlayer("room", false, new HTMLVideoMedia("https://media.test/video.mp4", "file"), vi.fn());
   try {
     player.calibrate(5100, 80, 120);
-    player.update({ position: 10, anchorTime: 5100, paused: false, rate: 2 });
+    player.update({ timeline: "media" as const, position: 10, anchorTime: 5100, paused: false, rate: 2 });
     now = 2100; video.readyState = 2; video.denied = true;
     await player.ready();
     video.dispatchEvent(new Event("loadedmetadata"));
@@ -95,12 +128,12 @@ test("late metadata and manual autoplay retry use the latest domain anchor; soun
     expect(video.currentTime).toBe(18);
     expect(video.volume).toBe(0.2);
     expect(player.blocked).toBe(false);
-    player.update({ position: 3, anchorTime: 9100, paused: true, rate: 0.5 });
+    player.update({ timeline: "media" as const, position: 3, anchorTime: 9100, paused: true, rate: 0.5 });
     await player.resume();
     expect(video.currentTime).toBe(3);
     expect(video.paused).toBe(true);
     video.currentTime = 3.2;
-    player.update({ position: 3, anchorTime: 9100, paused: true, rate: 0.5 });
+    player.update({ timeline: "media" as const, position: 3, anchorTime: 9100, paused: true, rate: 0.5 });
     expect(video.currentTime).toBe(3.2);
   } finally { player.close(); }
   expect(video.src).toBe("");
@@ -123,7 +156,7 @@ test("admitted creator native playback events are serialized and use integer dom
     video.dispatchEvent(new Event("pause"));
     await player.serialize(async () => {});
     expect(send).toHaveBeenCalledTimes(1);
-    expect(send).toHaveBeenCalledWith({ position: 20, paused: true, rate: 1, anchorTime: 5010 });
+    expect(send).toHaveBeenCalledWith({ timeline: "media" as const, position: 20, paused: true, rate: 1, anchorTime: 5010 });
     video.paused = false;
     video.dispatchEvent(new Event("play"));
     await player.serialize(async () => {});
@@ -131,7 +164,7 @@ test("admitted creator native playback events are serialized and use integer dom
     video.paused = true; video.currentTime = 120;
     video.dispatchEvent(new Event("ended"));
     await player.serialize(async () => {});
-    expect(send).toHaveBeenLastCalledWith({ position: 120, paused: true, rate: 1, anchorTime: 5010 });
+    expect(send).toHaveBeenLastCalledWith({ timeline: "media" as const, position: 120, paused: true, rate: 1, anchorTime: 5010 });
   } finally { player.close(); }
 });
 
@@ -141,7 +174,7 @@ test("creator acknowledgements never seek; retiring suppresses queued sends", as
   vi.stubGlobal("document", { createElement: () => video });
   const player = new WatchPlayer("room", true, new HTMLVideoMedia("https://media.test/video.mp4", "file"), vi.fn());
   player.calibrate(5000, 0, 0);
-  player.update({ position: 2, anchorTime: 5000, paused: true, rate: 1 });
+  player.update({ timeline: "media" as const, position: 2, anchorTime: 5000, paused: true, rate: 1 });
   expect(video.currentTime).toBe(25);
   const send = vi.fn(async () => {});
   const pending = player.serialize(send);
@@ -178,12 +211,12 @@ test("creator playing reanchors initial start and buffer recovery even at the sa
     clock.mockReturnValue(1100);
     video.dispatchEvent(new Event("playing"));
     await player.serialize(async () => {});
-    expect(send).toHaveBeenLastCalledWith({ position: 20, paused: false, rate: 1, anchorTime: 6000 });
+    expect(send).toHaveBeenLastCalledWith({ timeline: "media" as const, position: 20, paused: false, rate: 1, anchorTime: 6000 });
     clock.mockReturnValue(3100);
     video.dispatchEvent(new Event("playing"));
     await player.serialize(async () => {});
     expect(send).toHaveBeenCalledTimes(3);
-    expect(send).toHaveBeenLastCalledWith({ position: 20, paused: false, rate: 1, anchorTime: 8000 });
+    expect(send).toHaveBeenLastCalledWith({ timeline: "media" as const, position: 20, paused: false, rate: 1, anchorTime: 8000 });
   } finally { player.close(); }
 });
 
@@ -252,7 +285,7 @@ test.each([1, 2])("buffering at readyState %s suspends periodic seeks while expl
   const player = new WatchPlayer("room", false, new HTMLVideoMedia("https://media.test/video.mp4", "file"), vi.fn());
   try {
     player.calibrate(5100, 100, 100);
-    player.update({ position: 10, paused: false, rate: 1, anchorTime: 5100 });
+    player.update({ timeline: "media" as const, position: 10, paused: false, rate: 1, anchorTime: 5100 });
     await player.ready();
     expect(video.currentTime).toBe(10);
     video.readyState = readyState;
@@ -261,7 +294,7 @@ test.each([1, 2])("buffering at readyState %s suspends periodic seeks while expl
       await vi.advanceTimersByTimeAsync(1000);
       expect(video.currentTime).toBe(10);
     }
-    player.update({ position: 30, paused: true, rate: 0.5, anchorTime: now + 5000 });
+    player.update({ timeline: "media" as const, position: 30, paused: true, rate: 0.5, anchorTime: now + 5000 });
     await player.serialize(async () => {});
     expect(video.currentTime).toBe(30);
     expect(video.paused).toBe(true);
@@ -289,7 +322,7 @@ test("periodic correction waits for its target to be buffered; explicit host see
   const player = new WatchPlayer("room", false, new HTMLVideoMedia("https://media.test/video.mp4", "file"), vi.fn());
   try {
     player.calibrate(5100, 100, 100);
-    player.update({ position: 10, paused: false, rate: 1, anchorTime: 5100 });
+    player.update({ timeline: "media" as const, position: 10, paused: false, rate: 1, anchorTime: 5100 });
     await player.ready();
     for (let tick = 0; tick < 3; tick++) {
       now += 1000; await vi.advanceTimersByTimeAsync(1000);
@@ -299,7 +332,7 @@ test("periodic correction waits for its target to be buffered; explicit host see
     video.ranges = [[0, 11], [13, 15]];
     now += 1000; await vi.advanceTimersByTimeAsync(1000);
     expect(video.currentTime).toBe(14);
-    player.update({ position: 90, paused: true, rate: 0.5, anchorTime: now + 5000 });
+    player.update({ timeline: "media" as const, position: 90, paused: true, rate: 0.5, anchorTime: now + 5000 });
     await player.serialize(async () => {});
     expect(video.currentTime).toBe(90);
     expect(video.paused).toBe(true);

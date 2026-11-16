@@ -12,6 +12,37 @@ function video() {
 }
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
+test("a native-only HLS creator requires an ended media playlist and keeps proven VOD", async () => {
+  vi.spyOn(Hls, "isSupported").mockReturnValue(false);
+  const v = Object.assign(video(), { currentTime: 0, duration: 120, paused: true, playbackRate: 1, readyState: 2 });
+  vi.stubGlobal("document", { createElement: () => v });
+  const base = "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2,\nsegment.ts\n";
+  const fetcher = vi.fn(async () => new Response(base + "#EXT-X-ENDLIST\n"));
+  vi.stubGlobal("fetch", fetcher);
+  const vod = new HTMLVideoMedia("https://media.test/vod.m3u8", "hls");
+  await expect(vod.read()).resolves.toMatchObject({ readyState: 2 }); expect(v.src).toContain("vod.m3u8"); vod.close();
+  fetcher.mockImplementation(async () => new Response(base));
+  const live = new HTMLVideoMedia("https://media.test/live.m3u8", "hls");
+  await expect(live.read()).rejects.toThrow("watch_live_timeline_unsupported"); live.close();
+  fetcher.mockImplementation(async () => new Response("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000\nvariant.m3u8\n"));
+  const master = new HTMLVideoMedia("https://media.test/master.m3u8", "hls");
+  await expect(master.read()).rejects.toThrow("watch_source_inspection_unavailable"); master.close();
+});
+
+test("failed format inspection remains unknown for a creator while explicit files and declared viewers remain usable", async () => {
+  vi.spyOn(Hls, "isSupported").mockReturnValue(false);
+  const v = Object.assign(video(), { currentTime: 0, duration: 120, paused: true, playbackRate: 1, readyState: 2 });
+  vi.stubGlobal("document", { createElement: () => v });
+  const fetcher = vi.fn(async () => { throw new TypeError("Failed to fetch"); }); vi.stubGlobal("fetch", fetcher);
+  const unknown = new HTMLVideoMedia("https://media.test/opaque");
+  await expect(unknown.read()).rejects.toThrow("watch_source_inspection_unavailable"); unknown.close();
+  fetcher.mockClear();
+  const file = new HTMLVideoMedia("https://media.test/known-file", "file");
+  await expect(file.read()).resolves.toMatchObject({ readyState: 2 }); expect(fetcher).not.toHaveBeenCalled(); file.close();
+  const viewer = new HTMLVideoMedia("https://media.test/opaque", undefined, "media");
+  await expect(viewer.read()).resolves.toMatchObject({ readyState: 2 }); viewer.close();
+});
+
 test.each([[2, "watch_media_unavailable"], [3, "watch_media_decode_failed"], [4, "watch_media_unsupported"]])(
   "MediaError code %s reaches the player as %s without exposing the platform message", async (code, expected) => {
     const v = video(); vi.stubGlobal("document", { createElement: () => v });

@@ -20,7 +20,7 @@ fn setup() -> (RoomNetwork, Uuid, Uuid, String) {
     (net, owner, viewer, room)
 }
 fn playback() -> Value {
-    json!({"position":12.5,"paused":false,"rate":1.5,"anchorTime":1000})
+    json!({"timeline":"media","position":12.5,"paused":false,"rate":1.5,"anchorTime":1000})
 }
 fn start(room: &str, id: Uuid) -> Value {
     json!({"type":"start_watch","roomId":room,"id":id,"source":{"kind":"media","url":"https://example.com/movie.mp4"},"playback":playback(),"requestId":"start"})
@@ -30,6 +30,21 @@ fn ready(effects: piik_channel_core::Effects, time: u64) {
 }
 fn error(effects: piik_channel_core::Effects, code: &str) {
     assert!(effects.events.iter().any(|(_,e)|matches!(e,Event::RoomReply{result:RoomResult::Error{code:c},..}|Event::Error{code:c,..} if c==code)));
+}
+#[test]
+fn program_timeline_is_required_and_stays_with_the_activity() {
+    let (mut net, owner, viewer, room) = setup();
+    let id = Uuid::new_v4();
+    let mut command = start(&room, id);
+    command["playback"]["timeline"] = json!("program");
+    command["playback"]["position"] = json!(1794744006.0);
+    ready(net.command_at(owner, command.clone(), 2000), 2000);
+    net.command(viewer, json!({"type":"join_watch","roomId":room,"id":id,"mode":"direct"}));
+    error(net.command(owner, json!({"type":"update_watch","roomId":room,"id":id,"playback":playback()})), "watch_timeline_changed");
+    assert_eq!(net.state(viewer).watch_activities[0].playback.position, 1794744006.0);
+    error(net.command(owner, start(&room, id)), "watch_identity_conflict");
+    command["playback"].as_object_mut().unwrap().remove("timeline");
+    assert!(piik_channel_core::wire::Request::parse(&command.to_string()).is_err());
 }
 #[test]
 fn watch_confirmations_late_join_and_owner_control_do_not_create_media() {
@@ -68,7 +83,7 @@ fn watch_confirmations_late_join_and_owner_control_do_not_create_media() {
     ] {
         error(net.command(owner, command), "not_watch_owner");
     }
-    let updated = json!({"position":30,"paused":true,"rate":2,"anchorTime":4000});
+    let updated = json!({"timeline":"media","position":30,"paused":true,"rate":2,"anchorTime":4000});
     net.command(
         viewer,
         json!({"type":"update_watch","roomId":room,"id":id,"playback":updated}),
@@ -352,7 +367,7 @@ fn start_retry_preserves_later_forwarding_settings_after_initial_provider_retire
     let updated_bytes =
         json!({"sessionId":provider_session,"resourceId":Uuid::new_v4(),"format":"file"});
     net.command(owner, json!({"type":"set_watch_byte_source","roomId":room,"id":activity,"byteSource":updated_bytes}));
-    net.command(owner, json!({"type":"update_watch","roomId":room,"id":activity,"playback":{"position":30,"paused":true,"rate":1,"anchorTime":3000}}));
+    net.command(owner, json!({"type":"update_watch","roomId":room,"id":activity,"playback": {"timeline":"media","position":30,"paused":true,"rate":1,"anchorTime":3000}}));
     ready(net.command_at(owner, initial.clone(), 4000), 4000);
     assert_eq!(
         serde_json::to_value(&net.state(viewer).watch_activities[0].byte_source).unwrap(),

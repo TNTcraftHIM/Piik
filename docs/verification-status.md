@@ -68,6 +68,17 @@ Browser source selection: a delayed manifest is discovered after media readiness
 and the viewer directly loads and synchronizes it without App access, uploaded
 bytes or added peer demand. Cancelling preparation preserves the existing share;
 private-source refusal retains the App and explicit-forwarding choices.
+An isolated Core25/App15 candidate passes standard PDT live HLS with a sharer and
+two independent Browser viewers through both direct origin loading and Native
+byte forwarding. The normal room paths cover late join, common pause/seek,
+expired paused rejoin, Go live, ENDLIST retaining the program coordinate, and
+retirement with no further origin reads. Native approval, Reader and peer delivery
+are real; only page discovery/control is a synthetic provider for owned media.
+Focused reader controls cover atomic snapshots, removed-resource grace, failed
+reloads and bounded window rotation. This Linux VM evidence does not establish
+commercial live website, Windows WebView, WAN or native-only live playback.
+No-PDT sources and opaque native-only creator URLs fail explicitly; proven VOD
+and explicit ordinary media paths remain covered separately.
 Watch audience checks cover direct, peer and Native webpage viewing with the
 same participant identities. Both sides show the shared count and names; joining
 direct viewing still creates no peer connection. Leave, preparation cancellation
