@@ -65,8 +65,8 @@ On a later process run, the saved credential restores the same user and room
 grants; the new process creates a fresh session and signing key. No password,
 invitation key, session ID or signing key is saved in that file.
 
-For local customization, `TextParticipant` can also be imported from the example
-source. Its current methods are `connect`, `chat`, `history`,
+For a Node bot or notifier, import `TextParticipant` from
+`../node/text-participant`. The CLI uses that same internal client. Its current methods are `connect`, `chat`, `history`,
 `reconnect`, `stop`, and verified `live`/`confirmed` events; the example's `!ping`
 behavior lives only in `main`. A fresh Host binding requires reissuing the existing
 Browse reading intent. Host-offline sends fail rather than fabricate confirmation.
@@ -76,6 +76,8 @@ promised exactly once. This client uses no media peers or database access.
 Construct it with one options object:
 
 ```ts
+import { TextParticipant } from '../node/text-participant';
+
 const participant = new TextParticipant({
   url, origin, roomId, name: 'Build notices',
   credential, // Optional: this automation user's own saved credential.
@@ -87,12 +89,15 @@ const participant = new TextParticipant({
 the transport accepts an initial `credential` and emits a `credential` event
 with its Welcome value. Treat that event as a secret, not a status to print.
 
-The Browser tsconfig deliberately excludes Node examples. Check this entry with
-the repository's existing compiler and Node types, without changing Browser types:
+The existing tooling tsconfig checks the Node client and CLI during the normal
+repository checks. Its retained test uses a loopback WebSocket fixture and the
+real Core WASM signer/verifier, without starting an App or Server:
 
 ```sh
-npx tsc --ignoreConfig --noEmit --target es2022 --module esnext \
-  --moduleResolution bundler --allowImportingTsExtensions --skipLibCheck \
-  --strict --esModuleInterop --types node \
-  prototype/channel-browser/examples/text-participant.ts
+npx tsc -p scripts/tsconfig.json
+npm test -- tests/text-participant.test.ts
 ```
+The Node client separates socket/signing lifecycle from CLI file I/O and business
+behavior. `chat` is send-with-confirmation; `live` carries verified new messages;
+`stop` closes the participant. This internal entry uses Node `ws` and file-backed
+WASM initialization. It is not a Browser SDK or a published stable API.

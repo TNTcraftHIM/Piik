@@ -26,6 +26,8 @@
     "../src/client/ui/icons.tsx",
     "browser-local-pool-probe.ts",
     "network-lab.ts",
-    "../tests"
+    "../tests",
+    "../prototype/channel-browser/node/text-participant.ts",
+    "../prototype/channel-browser/examples/text-participant.ts"
   ]
 }
