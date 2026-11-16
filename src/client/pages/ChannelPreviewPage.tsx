@@ -211,7 +211,7 @@ export function ChannelRoomPage({ channel, selected, onSelect, appControl, layou
   const watchTitle = (url: string) => { const source = new URL(url); return source.host + source.pathname; };
   const watchSources: WatchStageSource[] = watches.filter(activity => activeWatches.includes(activity) || activity.roomId === roomId).map(activity => ({
     kind: "watch", id: activity.id, userId: activity.userId, name: nameOfUser(activity.userId), title: watchTitle(activity.source.url),
-    website: activity.source.kind === "website", originalPageAvailable: activity.playback.timeline === "media", onFocusWindow: () => run(channel.focusWatch(activity.id)),
+    website: activity.source.kind === "website", originalPageAvailable: activity.playback.timeline === "media" && (!channel.appConnected || channel.pagePlayer), onFocusWindow: () => run(channel.focusWatch(activity.id)),
     browserSource: canWatchInBrowser(activity.source),
     onAppWatch: activity.playback.timeline !== "program" && activity.source.kind === "website" && channel.pagePlayer && channel.watchPlayers.get(activity.id)?.presentation.kind !== "external" ? () => setAppWatchId(activity.id) : undefined,
     roomName: nameOfRoom(activity.roomId), avatar: userProfile(state, channel.profiles, activity.userId)?.avatar ?? undefined,

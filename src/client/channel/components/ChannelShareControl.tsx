@@ -366,7 +366,7 @@ export function WatchSourceDialog({ channel, roomId, activityId, initialURL = ""
         <input type="url" required maxLength={MAX_WATCH_URL_LENGTH} value={url} placeholder="https://example.com/video.mp4" disabled={busy}
           onChange={event => setURL(event.target.value)} autoComplete="off" />
       </span></label>
-      {!channel.pagePlayer && !youtube && <p>{t("watch.connectApp")}</p>}
+      {!channel.appConnected && !channel.pagePlayer && !youtube && <p>{t("watch.connectApp")}</p>}
       <div className="c3-share-title-actions"><Btn type="submit" icon={youtube ? "play" : channel.pagePlayer ? "globe" : "play"} tone="primary" title={youtube ? "watch.start" : channel.pagePlayer ? "watch.openPage" : "watch.directStart"} cap={youtube ? "watch.start" : channel.pagePlayer ? "watch.openPage" : "watch.directStart"} busy={busy} disabled={busy || !url.trim()} />
         {channel.pagePlayer && !youtube && <Btn icon="play" quiet title="watch.directStart" cap="watch.directStart" disabled={busy || !url.trim()}
           onClick={() => { void run(() => channel.startWatch(roomId, url.trim(), false), onClose); }} />}

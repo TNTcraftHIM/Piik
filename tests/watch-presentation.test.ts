@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { ChannelWatchVideo, WatchPeerAction } from "../src/client/channel/components/ChannelMedia";
@@ -8,8 +8,30 @@ import { setCopy, t, type Lang } from "../src/client/ui/copy";
 import { ChannelSettingsError } from "../src/client/channel/components/ChannelSettingsDialog";
 import { channelErrorPresentation } from "../src/client/channel/error-presentation";
 import { locales } from "../src/client/locales";
+import { WatchSourceDialog } from "../src/client/channel/components/ChannelShareControl";
+import type { ChannelController } from "../src/client/channel/types";
+
+vi.mock("../src/client/channel/components/ChannelSettingsDialog", async importOriginal => {
+  const actual = await importOriginal<typeof import("../src/client/channel/components/ChannelSettingsDialog")>();
+  return { ...actual, ChannelSettingsDialog: ({ children }: { children: ReactNode }) => createElement("div", null, children) };
+});
 
 describe("Webpage watch presentation", () => {
+  it.each([
+    { appConnected: false, pagePlayer: false, connectAdvice: true },
+    { appConnected: true, pagePlayer: false, connectAdvice: false },
+    { appConnected: true, pagePlayer: true, connectAdvice: false },
+  ])("uses the connected App's webpage capability in source advice: %j", ({ appConnected, pagePlayer, connectAdvice }) => {
+    setCopy({ lang: "en" });
+    const channel = { appConnected, pagePlayer, pending: new Set(), watchPage: () => undefined,
+      watchEmbed: () => undefined, sourceSelectionCommitting: () => false } as unknown as ChannelController;
+    const html = renderToStaticMarkup(createElement(WatchSourceDialog, { channel, roomId: "room", onClose: vi.fn() }));
+    expect(html.includes(t("en", "watch.connectApp"))).toBe(connectAdvice);
+    expect(html.includes('aria-label="Open webpage and select video"')).toBe(pagePlayer);
+    expect(html).toContain('aria-label="Play direct video URL"');
+  });
+
+
   it.each([
     [["watch_live_hls_unsupported", "watch_media_encryption_unsupported", "watch_media_encoding_unsupported", "watch_media_range_unsupported", "watch_media_size_unavailable", "watch_manifest_extension_unsupported", "watch_manifest_limit", "watch_resource_limit", "watch_mp4_parse_failed", "watch_indexed_unsupported", "invalid_watch_index"], "watch.forward.unsupported", false],
     [["watch_media_decode_failed"], "watch.decodeFailed", false],

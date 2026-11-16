@@ -39,7 +39,7 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
     </Tooltip>
     {unread && <span id={unreadId} className="c3-room-unread-label">{t("room.item.unread")}</span>}
     {(room.authorized || room.canManage) && <span className="c3-room-manage">
-      <Btn icon="sliders" size="dense" quiet title={{ text: settingsLabel }} hint="hint-advanced"
+      <Btn icon="sliders" size="dense" quiet title={{ text: settingsLabel }} textTooltip
         expanded={settingsOpen} hasPopup="dialog" tone={settingsOpen ? "on" : undefined} onClick={onManage} />
     </span>}
   </div>;
