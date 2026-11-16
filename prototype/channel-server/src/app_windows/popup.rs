@@ -1,5 +1,6 @@
 //! Popup geometry stays ordinary until its own document identifies a PiP panel.
 use serde::Deserialize;
+use super::{caption, WindowControls};
 use tao::{
     dpi::{LogicalPosition, LogicalSize},
     window::WindowBuilder,
@@ -9,10 +10,11 @@ pub(super) fn builder(
     builder: WindowBuilder,
     size: Option<LogicalSize<f64>>,
     position: Option<LogicalPosition<f64>>,
+    controls: &WindowControls,
 ) -> WindowBuilder {
     let mut builder = builder
         .with_title("Piik")
-        .with_inner_size(size.unwrap_or_else(|| LogicalSize::new(720.0, 760.0)));
+        .with_inner_size(caption::window_size(size.unwrap_or_else(|| LogicalSize::new(720.0, 760.0)), controls));
     if let Some(position) = position {
         builder = builder.with_position(position);
     }
@@ -40,16 +42,17 @@ mod tests {
 
     #[test]
     fn ordinary_popup_retains_requested_content_geometry_without_becoming_topmost() {
+        let controls = WindowControls { width: 138.0, height: 58.0 };
         let size = LogicalSize::new(420.0, 346.0);
         let position = LogicalPosition::new(30.0, 40.0);
-        let popup = builder(WindowBuilder::new(), Some(size), Some(position));
-        assert_eq!(popup.window.inner_size, Some(Size::Logical(size)));
+        let popup = builder(WindowBuilder::new(), Some(size), Some(position), &controls);
+        assert_eq!(popup.window.inner_size, Some(Size::Logical(LogicalSize::new(420.0, 404.0))));
         assert_eq!(popup.window.position, Some(Position::Logical(position)));
         assert!(!popup.window.always_on_top);
-        let default = builder(WindowBuilder::new(), None, None);
+        let default = builder(WindowBuilder::new(), None, None, &controls);
         assert_eq!(
             default.window.inner_size,
-            Some(Size::Logical(LogicalSize::new(720.0, 760.0)))
+            Some(Size::Logical(LogicalSize::new(720.0, 818.0)))
         );
         assert!(!default.window.always_on_top);
     }

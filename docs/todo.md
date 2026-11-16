@@ -12,6 +12,24 @@ the feedback period; they do not delay that delivery.
 
 ## Now
 
+- [ ] **beta.33 Native downloads.** Follow an attachment through completed
+  transfer and the system-WebView save operation. A Browser-dispatch message
+  does not prove an App download occurred; provide an observable save outcome.
+- [ ] **beta.33 Browser window selection stalls.** Locate the first stalled
+  stage after choosing another Chrome window in the system screen picker.
+  Preserve the current share on failed replacement.
+- [ ] **beta.33 authenticated webpage sharing.** Reproduce the reported VIP
+  video failure after the sharer has started and the viewer receives no picture.
+  Use the user's authorized source. Distinguish page playback,
+  source discovery, original-byte access and receiver delivery; ordinary-video
+  acceptance does not establish this path.
+- [ ] **beta.33 shared-screen blur and brief stalls.** Correlate capture,
+  encoder input/output, requested/applied quality, selected route and receiver
+  cadence during an actual episode before attributing it to conservative probing.
+  Check equivalent 2.x timeout owners separately from the new webpage-player path.
+- [ ] **Native child-window presentation.** Correct the PiP capability-ready
+  handoff observed in beta.33; unify room tools and webpage-player window controls
+  with the shared Native presentation while keeping their distinct lifetimes.
 - [ ] **beta.32/33: no media with a weak site and strong source.** Reproduce
   the reported topology and locate the first missing picture/audio delivery fact
   across room authority, selected source, forwarding plan and actual receiver.

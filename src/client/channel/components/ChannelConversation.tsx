@@ -301,7 +301,7 @@ export function ChannelConversation({ domainId, roomId, roomName, roomIcon, entr
               if (readingAnchor.current === anchor) readingAnchor.current = null;
             });
           }} /></div>}
-        {!history?.hasMore && !messages.length && (!roomId || (!!history && !loadingHistory)) &&
+        {(!roomId || available) && !history?.hasMore && !messages.length && (!roomId || (!!history && !loadingHistory)) &&
           <ChannelRoomStart icon={roomIcon} canSend={canSend} entry={!roomId ? entry ?? { kind: "entry" } : undefined} />}
         {roomId && loadingHistory && !messages.length && <div className="c3-conversation-loading" role="status">
           <Glyph name="loader" className="lr-spin" size={18} /><span>{t("conversation.loading")}</span>

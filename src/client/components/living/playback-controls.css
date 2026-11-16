@@ -9,7 +9,6 @@
   transition: opacity var(--motion-feedback) ease, transform var(--motion-control) var(--spring);
 }
 .lr-playback.lr-media-controls { flex-wrap: nowrap; }
-.lr-playback.lr-media-toolbar { background: var(--surface-glaze) var(--paper-translucent); }
 .lr-playback-main { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .lr-playback.is-hidden { opacity: 0; transform: translateY(6px); pointer-events: none; }
 .lr-playback:has([popover]:is(:popover-open, .\:popover-open)) { opacity: 1; transform: none; pointer-events: auto; }
@@ -34,8 +33,8 @@
 .lr-playback-reveal:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }
 .lr-tv-screen > .lr-playback-reveal { right: 50%; bottom: 0; translate: 50% 0; border-radius: 10px 10px 0 0; border-bottom: 0; }
 .lr-playback-reveal-arrow { rotate: 180deg; }
-.lr-tv:has(> .lr-tv-screen > .lr-remote-input-surface):has(> .lr-tv-screen > .lr-playback.is-hidden) > .lr-tv-chin > .lr-playback-reveal,
-.lr-tv-screen:has(> .lr-remote-input-surface):has(> .lr-playback.is-hidden) > .lr-playback-reveal { display: grid; place-items: center; }
+.lr-tv:has(> .lr-tv-screen > .lr-playback.is-hidden) > .lr-tv-chin > .lr-playback-reveal,
+.lr-tv-screen:has(> .lr-playback.is-hidden) > .lr-playback-reveal { display: grid; place-items: center; }
 .lr-tv:has(.lr-remote-password, .lr-playback :is(.lr-remote-feedback, [popover]:popover-open, [popover].\:popover-open)) .lr-playback-reveal { display: none; }
 .lr-tv-screen:has(> .lr-remote-password) > .lr-playback { opacity: 1; transform: none; pointer-events: auto; }
 .lr-tv-screen:has(> .lr-playback) > .lr-tv-overlay { grid-area: 1 / 1 / 2 / 2; }

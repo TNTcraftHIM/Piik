@@ -36,6 +36,11 @@ export interface ChannelMediaMetric {
   metrics: ConnectionMetrics;
 }
 
+export interface ChannelMediaMetrics {
+  samples: ChannelMediaMetric[];
+  unavailable: boolean;
+}
+
 export interface ChannelConnectionSample extends ChannelMediaMetric {
   ownerSessionId: string;
   connectionId: string;
@@ -134,7 +139,7 @@ export interface ChannelActions {
   activateApp(verifiedHealth?: unknown): Promise<void>;
   browse(roomId: string): void;
   roomTopology(roomId: string, publicationId?: string, signal?: AbortSignal): Promise<ChannelTopology>;
-  connectionMetrics(roomId: string, publicationId?: string): Promise<ChannelMediaMetric[]>;
+  connectionMetrics(roomId: string, publicationId?: string): Promise<ChannelMediaMetrics>;
   appConnectionMetrics(roomId: string, publicationId?: string, signal?: AbortSignal): Promise<NativeConnectionMetrics>;
   sendMessage(roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal, options?: ChatOptions): Promise<void>;
   markRead(roomId: string, seq: number): void;

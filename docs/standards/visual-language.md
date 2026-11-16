@@ -220,10 +220,13 @@ promotes it to the full controls without remounting its player. The
 [responsibility map](#action-ownership-and-grouping) still separates publishing,
 participation and local viewing. Information bars follow playback-control visibility.
 Source selection and sharing settings remain directly available on the active share.
-Narrow cards condense captions before wrapping; use a second compact overlay row
-only when the direct controls otherwise cannot fit, without an extra menu.
-Counts yield space before primary actions, and
-cards retain enough height for their upper and lower controls. Conversation and people are optional
+Size control groups from their actual contents before allocating the remaining
+width to source names and counts. A viewport breakpoint must not force an action
+group onto another row when it fits. Keep essential actions directly reachable;
+source labels and count summaries yield space first. Judge upper and lower
+surfaces together against the remaining visible picture, including paused frames
+and thumbnails. Narrowness alone must not add an opaque row over the video or
+move controls into a new layout row that shrinks it. Conversation and people are optional
 companion surfaces; narrow layouts switch surfaces instead of squeezing several
 unusable regions together. Source controls stay with their picture, and personal
 voice controls keep their own activity scope. The existing room tool continues
@@ -619,9 +622,16 @@ popover. Apply [space priority](#space-priority) to narrow full-size players;
 thumbnail presentation follows the [3.0 workspace contract](#30-room-workspace).
 Picture fit and rotation belong to the existing viewing settings, reusing their
 controls rather than duplicating visible actions.
-The playback surface is lightly translucent over the picture. One visibility
-owner hides the complete surface. Grants, pause and source changes do not move
-the bar or resize the picture. Remote input retains its local bezel pull.
+Picture overlays reuse the shared quiet media controls, surface materials and
+status components. Source identity/actions and local playback retain separate
+groups within that visual family. Keep their backgrounds compact; the video is
+the primary surface. One visibility owner coordinates the complete controls and
+keeps them visible during focus, dragging or an open control menu. Pause and end
+state do not by themselves require permanent obstruction; pointer movement,
+keyboard focus and touch reveal must remain reliable. Grants, pause and source
+changes do not move the bar or resize the picture. Remote input retains its
+local bezel pull. This follows [content-first guidance](https://github.com/GoogleChrome/modern-web-guidance/blob/4dd968349e54ca45a05dd5c818fb035c9054b022/skills/modern-web-guidance/guides/user-experience/content-first-noise-reduction.md)
+and [container-based layout](https://github.com/GoogleChrome/modern-web-guidance/blob/4dd968349e54ca45a05dd5c818fb035c9054b022/skills/modern-web-guidance/guides/css/size-aware-styling.md).
 Playback settings own on-screen chat appearance and connection preferences;
 chat settings own records, and voice settings own microphone processing.
 Viewer settings prefer space below the picture without resizing it. Use equal-width

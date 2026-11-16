@@ -3,7 +3,7 @@ import { collectConnectionMetrics, collectTrackConnectionMetrics, createStatsAcc
 import { P2pQualityProbe } from "../media/candidate-quality-probe";
 import { VIEWER_QUALITY_EVIDENCE_INTERVAL_MS } from "../../shared/protocol";
 import type { ChannelCommand, ChannelPair, ChannelSignal, ChannelSnapshot } from "./protocol";
-import type { ChannelMediaMetric, ChannelScreenInput, ScreenPresentation, ScreenBufferStatus } from "./types";
+import type { ChannelMediaMetric, ChannelMediaMetrics, ChannelScreenInput, ScreenPresentation, ScreenBufferStatus } from "./types";
 import { ChannelTransport, type OutgoingMedia } from "./transport";
 import { applyCaptureProfile, screenAudioBitrate, type QualityProfile } from "../media/quality";
 import { automaticVideoCodecPreference, VP8_ONLY_VIDEO_CODEC, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
@@ -619,14 +619,16 @@ export class ChannelMedia {
     }));
   }
 
-  async connectionMetrics(roomId: string, publicationId?: string): Promise<ChannelMediaMetric[]> {
+  async connectionMetrics(roomId: string, publicationId?: string): Promise<ChannelMediaMetrics> {
     const inScope = (publication: ChannelSnapshot["publications"][number]) => publication.roomId === roomId
       && (publication.kind === "voice" || publicationId === undefined || publication.id === publicationId);
     const requested = new Set(this.publications.filter(inScope).map(publication => publication.id));
     const samples = await Promise.allSettled([...this.peers.values()].map(async (peer): Promise<ChannelMediaMetric[]> => {
-      if (![...peer.plan.incoming, ...peer.plan.outgoing].some(flow => flow.selected && requested.has(flow.publicationId))) return [];
-      const report = await peer.transport.pc.getStats();
-      if (this.peers.get(peer.plan.id) !== peer) return [];
+      const current = () => this.peers.get(peer.plan.id) === peer
+        && [...peer.plan.incoming, ...peer.plan.outgoing].some(flow => flow.selected && requested.has(flow.publicationId));
+      if (!current()) return [];
+      const report = await peer.transport.pc.getStats().catch(error => { if (current()) throw error; return null; });
+      if (!report || !current()) return [];
       const plan = peer.plan;
       const publications = new Map(this.publications.filter(inScope).map(publication => [publication.id, publication]));
       const incoming = plan.incoming.filter(flow => flow.selected && publications.has(flow.publicationId));
@@ -650,7 +652,8 @@ export class ChannelMedia {
           .map(({ flowId, metrics }) => sample(flowId, "send", metrics)),
       ];
     }));
-    return samples.flatMap(result => result.status === "fulfilled" ? result.value : []);
+    return { samples: samples.flatMap(result => result.status === "fulfilled" ? result.value : []),
+      unavailable: samples.some(result => result.status === "rejected") };
   }
 
   private closePeer(peer: Peer): boolean {

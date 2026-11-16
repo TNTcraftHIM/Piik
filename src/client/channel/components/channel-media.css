@@ -41,7 +41,7 @@
 .c3-watch-player[data-thumbnail] .c3-watch-shared { flex: none; }
 .c3-watch-player[data-thumbnail] .c3-watch-timeline,
 .c3-watch-player[data-thumbnail] .lr-playback-window { display: none; }
-.c3-mini-player[data-thumbnail] > :is(.lr-playback-reveal, .lr-remote-input-surface, .c3-mini-message) { display: none; }
+.c3-mini-player[data-thumbnail] > :is(.lr-remote-input-surface, .c3-mini-message) { display: none; }
 .c3-mini-controls {
   z-index: 4;
   position: absolute;
@@ -54,12 +54,8 @@
   max-width: calc(100% - 20px);
   margin-inline: auto;
   padding: 5px;
-  border: 1px solid var(--control-edge);
   border-radius: 999px;
   color: var(--ink);
-  background: var(--paper-translucent);
-  box-shadow: var(--control-shadow);
-  backdrop-filter: blur(14px);
   transition: opacity var(--motion-feedback) ease, transform var(--motion-control) ease;
 }
 .c3-mini-controls .lr-btn:not(:where(.c3-mini-controls [popover] *)) { --button-size: var(--control-compact-size); flex: none; min-width: 0; width: var(--button-size); height: var(--button-size); padding: 0; }
@@ -95,16 +91,13 @@
   cursor: pointer;
 }
 .c3-mini-volume:disabled { opacity: .35; cursor: default; }
-.c3-mini-player[data-controls-hidden="true"] .c3-mini-controls:not(:focus-within):not(:hover):not(:has([popover]:is(:popover-open, .\:popover-open))) {
+.c3-mini-player[data-controls-hidden="true"] .c3-mini-controls {
   opacity: 0;
   pointer-events: none;
   transform: translateY(4px);
 }
-@media (hover: none) {
-  .c3-mini-player[data-thumbnail][data-controls-hidden="true"] .c3-mini-controls:not(:focus-within):not(:hover):not(:has([popover]:is(:popover-open, .\:popover-open))) { opacity: 1; pointer-events: auto; transform: none; }
-}
 .c3-mini-player > .lr-playback-reveal { right: 50%; bottom: 0; translate: 50% 0; border-radius: 10px 10px 0 0; border-bottom: 0; }
-.c3-mini-player:not([data-thumbnail])[data-controls-hidden="true"]:has(> .lr-remote-input-surface) > .lr-playback-reveal { display: grid; place-items: center; }
+.c3-mini-player[data-controls-hidden="true"] > .lr-playback-reveal { display: grid; place-items: center; }
 /* Shared remote panels occupy the drawer row, below the picture and its tools. */
 .c3-video.c3-mini-player:has(.lr-remote-keyboard, .lr-remote-password) { display: grid; grid-template: minmax(120px, 1fr) auto auto / minmax(0, 1fr); flex: 1 0 auto; }
 .c3-mini-player:has(.lr-remote-keyboard, .lr-remote-password) > :is(video, .lr-remote-input-surface, .c3-mini-message, .lr-playback-reveal) { grid-area: 1 / 1 / 3 / 2; }

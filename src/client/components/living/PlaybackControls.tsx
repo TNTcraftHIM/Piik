@@ -56,7 +56,7 @@ export function PlaybackControls({
   const [hasAudio, setHasAudio] = useState(false);
   const [fullscreen, setFullscreen] = useState({ supported: false, ready: false, active: false });
   const [fullscreenFailed, setFullscreenFailed] = useState(false);
-  const visibility = usePlaybackControlsVisibility(videoRef, controlsRef, paused || !canPlay);
+  const visibility = usePlaybackControlsVisibility(videoRef, controlsRef, !canPlay);
   const picture = usePictureInPicture(videoRef);
   const controlsSharingAudio = sharingAudio !== undefined;
   useVideoRotation(videoRef, settings?.pictureFit, settings?.pictureRotation ?? 0);
@@ -184,7 +184,7 @@ export function PlaybackControlsView({
   const reveal = <PlaybackControlsReveal controls={barRef} controlsId={controlsId} hidden={!!visibility?.hidden} />;
 
   return <>
-    <div id={controlsId} ref={barRef} className={`lr-playback lr-media-toolbar lr-media-controls${visibility?.hidden ? " is-hidden" : ""}`}
+    <div id={controlsId} ref={barRef} className={`lr-playback lr-media-toolbar lr-media-overlay lr-media-controls${visibility?.hidden ? " is-hidden" : ""}`}
       role="group" aria-label={t("playback.controls")}>
       <div className="lr-playback-main">
         <span className="lr-playback-watch">

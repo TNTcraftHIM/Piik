@@ -57,6 +57,6 @@ export function ChannelContentReactions({ reactions, session, target, disabled =
       {open && <RoomReactionGrid reactionIds={state?.reactionIds ?? REACTION_IDS} canSend={canSend} onSend={send} />}
     </div>
     {session && effects && effects.map(event => event.payload.kind === "reaction" && <ReactionBurst key={event.id}
-      reaction={event.payload.reaction} id={event.id} expiresAt={event.expiresAt} now={session.now} anchor={effectAnchor} />)}
+      reaction={event.payload.reaction} id={event.id} expiresAt={event.expiresAt} now={session.now} anchor={effectAnchor} origin={() => trigger.current} />)}
   </div>;
 }

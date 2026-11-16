@@ -27,6 +27,20 @@
 .c3-room-manage > .lr-comic-tip-wrap { display: flex; }
 .c3-room-participants { margin-block: 4px 10px; margin-inline-start: calc(var(--room-disclosure-width) + var(--room-content-inset)); }
 .c3-room-participants:empty { display: none; }
+.c3-room-item[data-offline] .c3-room-link > .c3-identity-mark { opacity: .55; }
+.c3-room-order-help { margin: 4px 10px 8px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.c3-room-list-item[data-ordering] { display: flex; flex-wrap: wrap; align-items: center; border-radius: 8px; }
+.c3-room-list-item[data-ordering] > .c3-room-item { order: 0; flex: 1 0 100%; min-width: 0; padding-inline-start: 0; }
+.c3-room-list-item[data-ordering] .c3-room-voice-toggle { display: none; }
+.c3-room-order-controls { order: 1; display: flex; flex: 1; align-items: center; justify-content: flex-end; gap: 0; padding-inline: 6px; }
+.c3-room-order-controls > [draggable] { margin-inline-end: auto; }
+.c3-room-order-controls > [draggable] { cursor: grab; }
+.c3-room-order-controls > [draggable]:active { cursor: grabbing; }
+.c3-room-list-item[data-drop] { outline: 2px solid var(--ink); outline-offset: -2px; }
+@media (any-pointer: coarse) {
+  .c3-room-order-controls > button { min-width: 44px; min-height: 44px; }
+}
+.c3-room-participants-label { display: block; margin-block: 4px; font-size: 11px; color: var(--muted); }
 .c3-room-participants .c3-user { padding: 4px 0; }
 .c3-room-participants .c3-person { gap: var(--room-content-gap); }
 .c3-room-participants .c3-person > svg, .c3-room-participants .c3-avatar-preview > svg { width: var(--room-icon-size); height: 36px; }

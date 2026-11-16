@@ -94,7 +94,7 @@ export function roomRealtimePeople(state: ChannelSnapshot, roomId: string, profi
   return state.users.filter(user => users.has(user.id)).map(user => ({ ...user, avatar: userProfile(state, profiles, user.id)?.avatar,
     voice: voiceAppearance(state, user.id, roomId),
     sharing: screens.some(publication => publication.userId === user.id) || watches.some(activity => activity.userId === user.id),
-    watching: screens.some(publication => publication.audience.some(viewer => state.sessions.some(session => session.id === viewer.sessionId && session.userId === user.id)))
-      || watches.some(activity => activity.viewerSessionIds.some(id => state.sessions.some(session => session.id === id && session.userId === user.id))),
+    watching: screens.some(publication => publication.audience.some(viewer => viewer.state === "active" && state.sessions.some(session => session.id === viewer.sessionId && session.userId === user.id))),
+    joinedWatch: watches.some(activity => activity.viewerSessionIds.some(id => state.sessions.some(session => session.id === id && session.userId === user.id))),
   }));
 }

@@ -15,9 +15,9 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
   participantDisclosure?: { open: boolean; count: number; controls: string; onToggle(): void };
 }) {
   const { t } = useCopy();
-  const unreadId = useId();
+  const unreadId = useId(), offlineId = useId();
   const settingsLabel = t("room.item.settings", { name: room.name });
-  return <div className="c3-room-item" data-selected={selected || undefined} data-unread={unread || undefined} data-settings-open={settingsOpen || undefined}>
+  return <div className="c3-room-item" data-selected={selected || undefined} data-unread={unread || undefined} data-settings-open={settingsOpen || undefined} data-offline={!room.available || undefined}>
     {participantDisclosure && <span className="c3-room-voice-toggle lr-embedded-actions">
       <Btn icon="chevron" size="dense" quiet hint="hint-collapse"
         title={{ text: t(participantDisclosure.open ? "room.item.hideParticipants" : "room.item.showParticipants", { count: String(participantDisclosure.count) }) }}
@@ -25,12 +25,13 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
     </span>}
     <Tooltip className="c3-room-label" overflow={{ text: room.name, selector: "strong" }}>
       <button type="button" className="lr-btn is-quiet c3-room-link" aria-label={room.name}
-        aria-describedby={unread ? unreadId : undefined}
+        aria-describedby={[unread ? unreadId : "", !room.available ? offlineId : ""].filter(Boolean).join(" ") || undefined}
         aria-current={selected ? "page" : undefined} onClick={onSelect}>
         <ChannelIdentityMark icon={room.icon} size={21} />
         <strong>{room.name}</strong>
         <span className="c3-room-activity" aria-hidden="true">
           {room.access === "private" && <Glyph name="lock" size={13} />}
+          {!room.available && <span>{t("room.item.offline")}</span>}
           {voice && <Glyph name="headphones" size={14} />}
           {sharing ? <Glyph name="cast" size={14} /> : watching ? <Glyph name="eye" size={14} />
             : sourceCount > 0 ? <span>{sourceCount}<Glyph name="tv" size={13} /></span> : null}
@@ -38,6 +39,7 @@ export function ChannelRoomItem({ room, selected, voice = false, sharing = false
       </button>
     </Tooltip>
     {unread && <span id={unreadId} className="c3-room-unread-label">{t("room.item.unread")}</span>}
+    {!room.available && <span id={offlineId} className="visually-hidden">{t("room.item.offline")}</span>}
     {(room.authorized || room.canManage) && <span className="c3-room-manage">
       <Btn icon="sliders" size="dense" quiet title={{ text: settingsLabel }} textTooltip
         expanded={settingsOpen} hasPopup="dialog" tone={settingsOpen ? "on" : undefined} onClick={onManage} />

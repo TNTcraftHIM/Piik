@@ -63,20 +63,42 @@ export async function openPanelWindow(container: HTMLElement, signal: AbortSigna
   if (!api || !parent || signal.aborted) return;
   // The portal wrapper uses display: contents; its child owns visible geometry.
   const { width, height } = size ?? container.firstElementChild!.getBoundingClientRect();
-  const pip = await api.requestWindow({
-    width: Math.round(width),
-    height: Math.round(height),
-    preferInitialWindowPlacement: true,
-  });
-  // Room retirement can beat the browser's permission/window creation work.
-  if (signal.aborted || !container.isConnected) { pip.close(); return; }
-  // Only the document returned by an actual PiP request receives panel chrome.
-  // Ordinary site/login popups never opt into the Native always-on-top frame.
-  const native = home.defaultView?.piikNativeWindow === "integrated" ? pip.ipc : undefined;
-  if (native) {
-    native.postMessage(JSON.stringify({ kind: "panel", width: Math.round(width), height: Math.round(height) }));
-  }
+  const nativeOwner = home.defaultView?.piikNativeWindow === "integrated" ? home.defaultView : null;
+  let pip: Window;
+  let readySource: MessageEventSource | null = null;
+  let declared = false;
   let returned = false;
+  function declareNative() {
+    if (!pip || returned || signal.aborted || declared || !nativeOwner || readySource !== pip) return;
+    pip.postMessage({ type: "piik-native-window-presentation", message: { kind: "panel", width: Math.round(width), height: Math.round(height) } }, "*");
+    declared = true;
+    pip.postMessage({ type: "piik-native-window-presentation", message: windowAppearance(home.documentElement) }, "*");
+  }
+  function nativeReady(event: MessageEvent) {
+    if (event.data !== "piik-native-window-ready") return;
+    if (pip && event.source !== pip) return;
+    readySource = event.source;
+    declareNative();
+  }
+  // SetNewWindow can finish host injection after the PiP Promise resolves.
+  // The opener survives target replacement; subscribe before requesting it.
+  nativeOwner?.addEventListener("message", nativeReady);
+  try {
+    pip = await api.requestWindow({
+      width: Math.round(width),
+      height: Math.round(height),
+      preferInitialWindowPlacement: true,
+    });
+  } catch (error) {
+    nativeOwner?.removeEventListener("message", nativeReady);
+    throw error;
+  }
+  // Room retirement can beat the browser's permission/window creation work.
+  if (signal.aborted || !container.isConnected) {
+    nativeOwner?.removeEventListener("message", nativeReady);
+    pip.close(); return;
+  }
+  declareNative();
   const observer = new MutationObserver(() => copyAttributes());
   const attributes = ["lang", "dir", "data-theme", "data-reduced-motion", "data-comic-reduced-motion"];
   function copyAttributes() {
@@ -85,12 +107,13 @@ export async function openPanelWindow(container: HTMLElement, signal: AbortSigna
       if (value === null) pip.document.documentElement.removeAttribute(name);
       else pip.document.documentElement.setAttribute(name, value);
     }
-    native?.postMessage(JSON.stringify(windowAppearance(home.documentElement)));
+    if (declared) pip.postMessage({ type: "piik-native-window-presentation", message: windowAppearance(home.documentElement) }, "*");
   }
   function restore() {
     if (returned) return;
     returned = true;
     observer.disconnect();
+    nativeOwner?.removeEventListener("message", nativeReady);
     pip.removeEventListener("pagehide", restore);
     signal.removeEventListener("abort", retire);
     parent!.append(container);

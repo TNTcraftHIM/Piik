@@ -17,13 +17,13 @@ interface Observations {
   scope: string;
   topology: ChannelTopology | null;
   metrics: ChannelConnectionSample[];
-  unavailable: boolean;
+  unavailable: Array<"connection.topologyUnavailable" | "connection.browserMetricsUnavailable" | "connection.appMetricsUnavailable">;
 }
 
 /** Both kinds of media retain the shared four-group metric presentation. */
-export function ChannelConnectionReport({ state, roomId, sessionId, topology, metrics }: {
+export function ChannelConnectionReport({ state, roomId, sessionId, topology, metrics, showEmpty = true }: {
   state: ChannelSnapshot; roomId: string; sessionId: string; topology: ChannelTopology | null;
-  metrics: readonly ChannelConnectionSample[];
+  metrics: readonly ChannelConnectionSample[]; showEmpty?: boolean;
 }) {
   const { t } = useCopy();
   const graph = topology ? channelConnectionGraph(state, roomId, sessionId, topology, t) : null;
@@ -39,8 +39,10 @@ export function ChannelConnectionReport({ state, roomId, sessionId, topology, me
     </section>}
     {graph && (graph.edges.length > 0 || !topology?.screen) && <p className="c3-connection-note">{t(graph.edges.length ? "connection.pathLegend" : "connection.signalOnly")}</p>}
     {displayOnly && <p className="c3-connection-note">{t("connection.localDisplayHint")}</p>}
+    {metrics.some(sample => sample.ownerSessionId !== sessionId && sample.media === "video")
+      && <p className="c3-connection-note">{t("connection.appMetricScope")}</p>}
     <ConnectionDetails rows={rows} />
-    {!rows.length && <p className="c3-connection-note">{t("connection.noMedia")}</p>}
+    {showEmpty && !rows.length && <p className="c3-connection-note">{t("connection.noMedia")}</p>}
   </div>;
 }
 
@@ -70,7 +72,7 @@ function ConnectionBody({ channel, roomId, active }: { channel: ChannelControlle
         owner.appConnected ? owner.appConnectionMetrics(roomId, selected || undefined, lifetime.signal) : Promise.resolve(null),
       ]);
       if (lifetime.signal.aborted) return;
-      const browser = metrics.status === "fulfilled" ? metrics.value.map(sample => ({ ...sample,
+      const browser = metrics.status === "fulfilled" ? metrics.value.samples.map(sample => ({ ...sample,
         ownerSessionId: sessionId!, connectionId: sample.pairId, selected: true })) : [];
       const app = native.status === "fulfilled" && native.value ? collectNativeConnectionMetrics(native.value, nativePrevious) : [];
       if (native.status === "rejected") nativePrevious.clear();
@@ -78,8 +80,11 @@ function ConnectionBody({ channel, roomId, active }: { channel: ChannelControlle
         publication.id === sample.publicationId && publication.kind === "voice"));
       const graph = topology.status === "fulfilled" ? topology.value : null;
       const appExpected = hasSelectedLocalDisplay(graph, sessionId!);
-      setResult({ scope, topology: graph, metrics: samples,
-        unavailable: topology.status === "rejected" || metrics.status === "rejected" || Boolean(appExpected && native.status === "rejected") });
+      const unavailable: Observations["unavailable"] = [];
+      if (topology.status === "rejected") unavailable.push("connection.topologyUnavailable");
+      if (metrics.status === "rejected" || metrics.value.unavailable) unavailable.push("connection.browserMetricsUnavailable");
+      if (appExpected && (native.status === "rejected" || !owner.appConnected)) unavailable.push("connection.appMetricsUnavailable");
+      setResult({ scope, topology: graph, metrics: samples, unavailable });
       timer = setTimeout(read, 1000);
     };
     void read();
@@ -95,12 +100,14 @@ function ConnectionBody({ channel, roomId, active }: { channel: ChannelControlle
         </option>)}
       </select>
     </label>
-    {!room?.available || !room.authorized || !room.delivery || observation?.unavailable
+    {!room?.available || !room.authorized || !room.delivery
       ? <p className="c3-connection-note" role="status"><Glyph name="alert" size={16} />
         <span>{t("connection.unavailable")}</span></p>
       : !observation && <LoadingStatus label="connection.loading" />}
+    {observation?.unavailable.map(reason => <p className="c3-connection-note" role="status" key={reason}>
+      <Glyph name="alert" size={16} /><span>{t(reason)}</span></p>)}
     {room?.authorized && room.available && state && sessionId && observation && <ChannelConnectionReport state={state} roomId={roomId} sessionId={sessionId}
-      topology={observation.topology} metrics={observation.metrics} />}
+      topology={observation.topology} metrics={observation.metrics} showEmpty={!observation.unavailable.length} />}
   </>;
 }
 

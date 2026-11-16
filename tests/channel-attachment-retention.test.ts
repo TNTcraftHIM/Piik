@@ -162,3 +162,30 @@ test("file progress follows completed writes and is shared until the last consum
     expect(files.progress(key)).toBeNull(); expect(cancel).toHaveBeenCalledOnce();
   } finally { files.reset(); vi.unstubAllGlobals(); }
 });
+
+test("a GIF uses unused per-message image space without flattening or exceeding the shared limit", async () => {
+  const files = setup();
+  const decode = vi.fn(async () => {});
+  class Image { naturalWidth = 1; naturalHeight = 1; src = ""; decode = decode; }
+  vi.stubGlobal("Image", Image);
+  vi.mocked(hosting.loadRoomHosting).mockResolvedValue({ initializeRuntime: async () => {},
+    attachment_limits: () => JSON.stringify({ maxFileBytes: 2048, maxAttachmentsPerMessage: 8, maxRetainedBytes: 4096, maxRetainedFiles: 8, maxInlineImageBytes: 1024 }),
+    attachment_media_type: (bytes: Uint8Array) => bytes[0] === 71 ? "image/gif" : "image/png",
+    AttachmentHash: class { update() {} finish() { return "a".repeat(64); } },
+  } as never);
+  const gif = (size: number) => new File(["GIF89a", new Uint8Array(size - 6)], "owned.gif");
+  try {
+    const tiny = { id: crypto.randomUUID(), file: new File(["tiny"], "tiny.png") };
+    const prepared = await files.describe([{ id: crypto.randomUUID(), file: gif(700) }, tiny]);
+    expect(prepared[0].inlineImage).toMatchObject({ mediaType: "image/gif", original: true });
+    expect(atob(prepared[0].inlineImage!.data).length).toBe(700);
+    expect(prepared.reduce((sum, entry) => sum + atob(entry.inlineImage?.data ?? "").length, 0)).toBe(704);
+    const oversized = await files.describe([{ id: crypto.randomUUID(), file: gif(1025) }, tiny]);
+    expect(oversized[0].inlineImage).toBeUndefined();
+    expect(oversized[1].inlineImage?.original).toBe(true);
+    decode.mockClear(); decode.mockRejectedValue(new Error("invalid_image"));
+    const invalid = await files.describe([{ id: crypto.randomUUID(), file: gif(100) }]);
+    expect(invalid[0].inlineImage).toBeUndefined();
+    expect(decode).toHaveBeenCalledOnce(); // Failed decoding is not a deferred-budget candidate.
+  } finally { files.reset(); vi.unstubAllGlobals(); }
+});

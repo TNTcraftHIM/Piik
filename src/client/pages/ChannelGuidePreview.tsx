@@ -189,7 +189,7 @@ export function useChannelGuideSample(multiRoom = false) {
     sourceMicrophones: async () => [], startScreen: async () => received(), startNativeScreen: async () => received(),
     voiceInput, listeningVolume, voiceActivity,
     roomTopology: async (roomId: string, publicationId?: string) => sampleRoomTopology(state, roomId, publicationId),
-    connectionMetrics: async () => [],
+    connectionMetrics: async () => ({ samples: [], unavailable: false }),
     appConnectionMetrics: async roomId => { const { sessionId, bindingId } = await appRelayCapacity(roomId); return { sessionId, bindingId, connections: [] }; },
     canUnmute: () => true,
     setMuted: async (roomId: string, muted: boolean) => setVoiceByRoom(previous => previous[roomId]

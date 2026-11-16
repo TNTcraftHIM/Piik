@@ -1,7 +1,7 @@
 #[path = "page_media.rs"]
 mod media;
 // UI-thread ownership for website windows. Only the App connection supplies commands.
-use super::ServiceEvent;
+use super::{caption, Language, ServiceEvent, Theme, WindowAction, WindowControls};
 use crate::app::page::{self, Command, MediaState, Operation};
 use anyhow::{anyhow, bail, Result};
 use serde::Deserialize;
@@ -14,6 +14,7 @@ use std::{
 use tao::{
     dpi::LogicalSize,
     event_loop::{EventLoopProxy, EventLoopWindowTarget},
+    platform::windows::WindowBuilderExtWindows,
     window::{Window, WindowId},
 };
 use tokio::sync::oneshot;
@@ -119,7 +120,8 @@ impl Drop for Popup {
 }
 struct PageView {
     popups: Rc<RefCell<VecDeque<Popup>>>,
-    // WebView drops before its native window.
+    // Both WebViews drop before their native window.
+    caption: caption::Caption,
     view: WebView,
     window: Window,
     document: Option<Uuid>,
@@ -223,6 +225,18 @@ impl Pages {
     }
     pub fn clear(&mut self) {
         self.pages.clear();
+    }
+    pub fn appearance(&self, theme: &Theme, language: Language) {
+        for page in self.pages.values() { for view in page.views.borrow().values() { view.caption.appearance(theme, language, None); } }
+    }
+    pub fn window_action(&self, id: WindowId, action: &WindowAction) {
+        for page in self.pages.values() { if let Some(view) = page.views.borrow().values().find(|view| view.window.id() == id) { caption::apply(&view.window, action); return; } }
+    }
+    pub fn caption_ready(&self, id: WindowId, theme: &Theme, language: Language, controls: &WindowControls) {
+        for page in self.pages.values() { if let Some(view) = page.views.borrow().values().find(|view| view.window.id() == id) { view.caption.ready(theme, language); view.caption.title(&view.window.title()); view.caption.layout(&view.window, &view.view, controls); return; } }
+    }
+    pub fn resize(&self, id: WindowId, controls: &WindowControls) {
+        for page in self.pages.values() { if let Some(view) = page.views.borrow().values().find(|view| view.window.id() == id) { view.caption.layout(&view.window, &view.view, controls); return; } }
     }
     pub fn close_window(&mut self, id: WindowId) -> bool {
         let found = self.pages.iter().find_map(|(key, page)| {
@@ -609,10 +623,12 @@ impl Pages {
                         .and_then(|value| url::Url::parse(&value).ok())
                         .filter(|url| matches!(url.scheme(), "http" | "https"))
                         .map(|url| url.origin().ascii_serialization());
-                    view.window.set_title(&origin.map_or_else(
+                    let title = origin.map_or_else(
                         || "Piik · Video".into(),
                         |origin| format!("Piik · Video — {origin}"),
-                    ));
+                    );
+                    view.window.set_title(&title);
+                    view.caption.title(&title);
                 }
                 return;
             }
@@ -813,9 +829,12 @@ fn page_view(
     events: EventLoopProxy<ServiceEvent>,
     target: &EventLoopWindowTarget<ServiceEvent>,
 ) -> Result<PageView> {
+    let controls: WindowControls = serde_json::from_str(super::CONTROLS)?;
     let window = super::window_builder()?
         .with_title("Piik · Video")
-        .with_inner_size(LogicalSize::new(1000., 720.))
+        .with_decorations(false)
+        .with_undecorated_shadow(true)
+        .with_inner_size(caption::window_size(LogicalSize::new(1000., 720.), &controls))
         .build(target)?;
     let messages = events.clone();
     let navigating = events.clone();
@@ -834,7 +853,11 @@ fn page_view(
             let _ = navigating.send_event(ServiceEvent::PageNavigate(key));
             true
         })
-        .build(&window)?;
+        .build_as_child(&window)?;
+    super::download::install(&view, None)?;
+    let caption = caption::Caption::new(&window, &view, events.clone(), &controls, true)?;
+    caption.title("Piik · Video");
+    caption.layout(&window, &view, &controls);
     let popups = Rc::new(RefCell::new(VecDeque::new()));
     let pending = popups.clone();
     let popup_events = events.clone();
@@ -881,6 +904,7 @@ fn page_view(
     }
     Ok(PageView {
         popups,
+        caption,
         view,
         window,
         document: None,

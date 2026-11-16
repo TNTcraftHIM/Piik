@@ -1,8 +1,30 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { locales } from "../src/client/locales";
 import controls from "../src/client/ui/window-controls.json";
+import { surfaceViewport } from "../src/client/ui/window-appearance";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); });
+
+test.each([
+  { native: "integrated", fullscreen: false, top: 0, expectedTop: controls.height },
+  { native: "system", fullscreen: false, top: 0, expectedTop: 0 },
+  { native: "integrated", fullscreen: false, top: 20, expectedTop: controls.height },
+  { native: "integrated", fullscreen: true, top: 20, expectedTop: 20 },
+])("surface bounds use the displaying $native document at offset $top (fullscreen=$fullscreen)", value => {
+  const document = {
+    documentElement: { dataset: { piikNativeWindow: value.native } },
+    fullscreenElement: value.fullscreen ? {} : null,
+    defaultView: {
+      innerWidth: 900, innerHeight: 650,
+      visualViewport: { offsetLeft: 10, offsetTop: value.top, width: 640, height: 400 },
+      getComputedStyle: () => ({ getPropertyValue: () => `${controls.height}px` }),
+    },
+  } as unknown as Document;
+  expect(surfaceViewport(document)).toEqual({
+    left: 10, top: value.expectedTop, width: 640, height: value.top + 400 - value.expectedTop,
+    right: 650, bottom: value.top + 400,
+  });
+});
 
 test("native appearance follows the selected locale when the document language changes", async () => {
   const messages: Array<{ kind: string; language?: string }> = [];

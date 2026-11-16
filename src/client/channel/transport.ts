@@ -1,3 +1,4 @@
+import { data_queue_frames } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
 import { LinearCandidateAdmission } from "../webrtc/linear-ice-candidate";
 import { addRemoteIceCandidate } from "../webrtc/remote-ice-candidate";
 import { collectTrackConnectionMetrics, decodedVideoFrameSamples, type StatsAccumulator } from "../webrtc/stats";
@@ -16,8 +17,6 @@ const TRANSPORT_PREPARE_MS = 20_000;
 const MAX_FILE_FRAME_BYTES = 8192;
 const MAX_CONTROL_FRAME_BYTES = 32768;
 const DATA_SEND_BUFFER_BYTES = 65536;
-// Application memory queues, matching Native: 32 core ranges × at most 17 frames.
-const DATA_SEND_QUEUE_FRAMES = { control: 128, chunk: 32 * 17 };
 
 export interface OutgoingMedia {
   kind: ChannelPublication["kind"];
@@ -982,11 +981,16 @@ class ChannelWriter {
   private tail = Promise.resolve();
   private lifetime = new AbortController();
   private queuedFrames = 0;
-  constructor(private channel: RTCDataChannel, private kind: "control" | "chunk") { channel.bufferedAmountLowThreshold = DATA_SEND_BUFFER_BYTES / 2; }
+  private readonly maxQueuedFrames: number;
+  constructor(private channel: RTCDataChannel, private kind: "control" | "chunk") {
+    // Session initializes the shared Core signer before joining or creating data lanes.
+    this.maxQueuedFrames = data_queue_frames(kind === "chunk");
+    channel.bufferedAmountLowThreshold = DATA_SEND_BUFFER_BYTES / 2;
+  }
   send(data: string | Uint8Array, allowed?: () => boolean): Promise<void> {
     const size = typeof data === "string" ? new TextEncoder().encode(data).length : data.byteLength;
     if (size > (this.kind === "control" ? MAX_CONTROL_FRAME_BYTES : MAX_FILE_FRAME_BYTES)) return Promise.reject(new Error(this.kind === "control" ? "control_frame_too_large" : "file_frame_too_large"));
-    if (this.queuedFrames >= DATA_SEND_QUEUE_FRAMES[this.kind]) return Promise.reject(new Error("data_channel_busy"));
+    if (this.queuedFrames >= this.maxQueuedFrames) return Promise.reject(new Error("data_channel_busy"));
     this.queuedFrames += 1;
     const work = this.tail.then(async () => {
       this.lifetime.signal.throwIfAborted();

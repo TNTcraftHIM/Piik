@@ -25,9 +25,9 @@ it("projects joined watch people independently of transport and deduplicates the
     publications: [], voice: [], subscriptions: [], watchActivities: [activity], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   });
   expect(watchAudience(state, activity)).toEqual([{ userId: "viewer", name: "viewer", avatar: undefined }, { userId: "direct", name: "direct", avatar: undefined }]);
-  expect(roomRealtimePeople(state, "room").map(({ id, sharing, watching }) => ({ id, sharing, watching }))).toEqual([
-    { id: "owner", sharing: true, watching: true }, { id: "viewer", sharing: false, watching: true },
-    { id: "direct", sharing: false, watching: true }, { id: "relay", sharing: false, watching: false },
+  expect(roomRealtimePeople(state, "room").map(({ id, sharing, watching, joinedWatch }) => ({ id, sharing, watching, joinedWatch }))).toEqual([
+    { id: "owner", sharing: true, watching: false, joinedWatch: true }, { id: "viewer", sharing: false, watching: false, joinedWatch: true },
+    { id: "direct", sharing: false, watching: false, joinedWatch: true }, { id: "relay", sharing: false, watching: false, joinedWatch: false },
   ]);
   expect(roomPeople(state, "room")).toHaveLength(4);
   const { viewerSessionIds: _viewers, ...oldActivity } = activity;
@@ -86,6 +86,11 @@ it("merges a user's real-time endpoints without treating chat-only presence as p
     { id: "self", voice: { microphone: false, deafened: true }, sharing: true, watching: true },
     { id: "route", voice: undefined, sharing: false, watching: false },
   ]);
+  state.publications[0].audience[0].state = "preparing";
+  expect(roomRealtimePeople(state, "room").find(person => person.id === "self")?.watching).toBe(false);
+  state.publications[0].audience[0].state = "failed";
+  expect(roomRealtimePeople(state, "room").find(person => person.id === "self")?.watching).toBe(false);
+  state.publications[0].audience[0].state = "active";
   const channel = { state, profiles: new Map(), streams: new Map(), voicePlaybackByUser: new Map(), sessionId: "self-page", self: null } as unknown as ChannelController;
   const render = () => renderToStaticMarkup(createElement(ChannelRoomParticipants, { channel, room: state.channel.rooms[0] }));
   const renderPeople = () => renderToStaticMarkup(createElement(ChannelPeople, { channel, roomId: "room", active: true, onBack() {} }));

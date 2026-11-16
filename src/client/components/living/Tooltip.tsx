@@ -15,6 +15,7 @@
 // Styling in styles.css under "comic tooltip" / "glyph draw-in". SSR-safe:
 // handlers only run in the browser.
 
+import { surfaceViewport } from "../../ui/window-appearance";
 import {
   cloneElement,
   isValidElement,
@@ -182,11 +183,11 @@ export function Tooltip({
     if (!wrap) return;
     const view = wrap.ownerDocument.defaultView;
     if (!view) return;
-    const viewport = view.visualViewport;
-    const vw = viewport?.width ?? view.innerWidth;
+    const viewport = surfaceViewport(wrap.ownerDocument);
+    const vw = viewport.width;
     if (!vw) return; // no layout (SSR/test): keep the prop alignment
-    const vh = viewport?.height ?? view.innerHeight;
-    const x = viewport?.offsetLeft ?? 0, y = viewport?.offsetTop ?? 0;
+    const vh = viewport.height;
+    const x = viewport.left, y = viewport.top;
     const right = x + vw, bottom = y + vh;
     tipRef.current?.style.setProperty("--tooltip-max-width", `${Math.max(0, vw - EDGE_MARGIN * 2)}px`);
     tipRef.current?.style.setProperty("--tooltip-max-height", `${Math.max(0, vh - EDGE_MARGIN * 2)}px`);
@@ -195,7 +196,7 @@ export function Tooltip({
     const rect = (wrap.firstElementChild ?? wrap).getBoundingClientRect();
     // Popovers and fullscreen present a separate subtree. Their DOM ancestors
     // outside that surface retain page geometry and cannot place its hints.
-    const surface = wrap.closest<HTMLElement>("[popover], :fullscreen");
+    const surface = wrap.closest<HTMLElement>("[popover], dialog:modal, :fullscreen");
     const insideSurface = (element: HTMLElement | null) => element && (!surface || surface.contains(element)) ? element : null;
     // A wrapped control row remains one working area, including on narrow screens.
     const controlBar = insideSurface(wrap.closest<HTMLElement>(".lr-media-toolbar, .lr-source-picker-options, [data-tooltip-controls]"));

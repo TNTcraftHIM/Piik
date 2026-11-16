@@ -1,6 +1,6 @@
 import { en } from "../src/client/locales/en";
 import { zh } from "../src/client/locales/zh";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
 import { ChannelConversation } from "../src/client/channel/conversation";
 import { ChannelSession } from "../src/client/channel/session";
 import { FeedbackAudio } from "../src/client/channel/feedback-audio";
@@ -64,6 +64,12 @@ class ChannelSocket {
     this.onmessage?.({ data: JSON.stringify(event) });
   }
 }
+
+beforeAll(async () => {
+  const core = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  const { readFile } = await import("node:fs/promises");
+  await core.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+});
 
 const profileVersion = "0".repeat(64);
 const testSigningKey = Array.from(Buffer.from("8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c", "hex"));
@@ -3834,8 +3840,8 @@ test("topology reads reject late data after binding access account or selection 
 test("connection metrics bridge returns only the Browser media owner's current observation", async () => {
   const { session } = await setup();
   try {
-    const metrics = vi.spyOn(ChannelMedia.prototype, "connectionMetrics").mockResolvedValue([]);
-    await expect(session.connectionMetrics("first", "screen")).resolves.toEqual([]);
+    const metrics = vi.spyOn(ChannelMedia.prototype, "connectionMetrics").mockResolvedValue({ samples: [], unavailable: false });
+    await expect(session.connectionMetrics("first", "screen")).resolves.toEqual({ samples: [], unavailable: false });
     expect(metrics).toHaveBeenCalledExactlyOnceWith("first", "screen");
   } finally { session.close(); }
 });
@@ -4703,7 +4709,7 @@ test("room metrics read each PC once and follow current selected flows without m
     ])) as unknown as RTCStatsReport;
     fixture.pc.getStats.mockResolvedValueOnce(report(1000)).mockResolvedValueOnce(report(2000));
     await fixture.media.connectionMetrics("first", "screen");
-    expect(await fixture.media.connectionMetrics("first", "screen")).toMatchObject([
+    expect((await fixture.media.connectionMetrics("first", "screen")).samples).toMatchObject([
       { publicationId: "screen", direction: "send", media: "video", metrics: { bitrateKbps: 800, audioBitrateKbps: 128 } },
       { publicationId: "voice", direction: "send", media: "audio", metrics: { bitrateKbps: 48, audioBitrateKbps: 48 } },
     ]);
@@ -4714,7 +4720,69 @@ test("room metrics read each PC once and follow current selected flows without m
     fixture.state.pairs[0].outgoing = fixture.state.pairs[0].outgoing.filter(flow => flow.publicationId !== "screen");
     fixture.media.update("a", fixture.state);
     complete(report(3000));
-    expect(await reading).toMatchObject([{ publicationId: "voice", media: "audio" }]);
+    expect((await reading).samples).toMatchObject([{ publicationId: "voice", media: "audio" }]);
+  } finally { fixture.media.reset(); fixture.session.close(); }
+});
+
+async function setupRoomMetricPeers() {
+  const fixture = await setupRoomMedia();
+  fixture.state.publications = [{ audience: [], id: "screen", roomId: "first", sessionId: "a", userId: "self",
+    kind: "screen", source: { kind: "screen", name: null }, title: null, paused: false }];
+  fixture.state.pairs[0].outgoing = [{ id: "healthy-flow", publicationId: "screen", selected: true, inputFlowId: null }];
+  fixture.state.pairs.push({ id: "other-pair", peerId: "y", canReceiveVideoLayers: false, rooms: ["first"], incoming: [],
+    outgoing: [{ id: "other-flow", publicationId: "screen", selected: true, inputFlowId: null }] });
+  fixture.media.update("a", fixture.state);
+  fixture.media.setLocal("screen", new MediaStream([remoteTrack("video")]), undefined, videoCodec.VP8_ONLY_VIDEO_CODEC);
+  await vi.waitFor(() => {
+    expect(RoomPeerConnection.instances).toHaveLength(2);
+    expect(RoomPeerConnection.instances.every(pc => pc.senders.length === 1)).toBe(true);
+  });
+  const other = RoomPeerConnection.instances.find(pc => pc !== fixture.pc)!;
+  const report = (pc: RoomPeerConnection, timestamp: number) => new Map<string, Record<string, unknown>>([
+    ["source", { id: "source", timestamp, type: "media-source", kind: "video", trackIdentifier: pc.senders[0].track.id }],
+    ["rtp", { id: "rtp", timestamp, type: "outbound-rtp", kind: "video", mediaSourceId: "source",
+      bytesSent: timestamp * 50, framesEncoded: timestamp * 30 / 1000 }],
+  ]) as unknown as RTCStatsReport;
+  return { ...fixture, other, report };
+}
+
+test("room metrics retain a healthy peer when another read fails and recover on the next read", async () => {
+  const fixture = await setupRoomMetricPeers();
+  try {
+    fixture.pc.getStats.mockResolvedValueOnce(fixture.report(fixture.pc, 1000))
+      .mockResolvedValueOnce(fixture.report(fixture.pc, 2000));
+    fixture.other.getStats.mockRejectedValue(new Error("owned stats read failed"));
+    await fixture.media.connectionMetrics("first", "screen");
+    const partial = await fixture.media.connectionMetrics("first", "screen");
+    expect(partial.unavailable).toBe(true);
+    expect(partial.samples).toMatchObject([{ pairId: "pair", peerId: "z", flowId: "healthy-flow",
+      publicationId: "screen", metrics: { bitrateKbps: 400 } }]);
+    expect(fixture.pc.getStats).toHaveBeenCalledTimes(2);
+    expect(fixture.other.getStats).toHaveBeenCalledTimes(2);
+
+    fixture.pc.getStats.mockResolvedValue(fixture.report(fixture.pc, 3000));
+    fixture.other.getStats.mockResolvedValue(fixture.report(fixture.other, 3000));
+    const recovered = await fixture.media.connectionMetrics("first", "screen");
+    expect(recovered.unavailable).toBe(false);
+    expect(recovered.samples.map(sample => sample.peerId).sort()).toEqual(["y", "z"]);
+    await expect(fixture.media.connectionMetrics("second")).resolves.toEqual({ samples: [], unavailable: false });
+  } finally { fixture.media.reset(); fixture.session.close(); }
+});
+
+test("room metrics ignore a late rejected read from a retired peer", async () => {
+  const fixture = await setupRoomMetricPeers();
+  try {
+    fixture.pc.getStats.mockResolvedValue(fixture.report(fixture.pc, 1000));
+    let reject!: (reason: Error) => void;
+    fixture.other.getStats.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+    const reading = fixture.media.connectionMetrics("first", "screen");
+    fixture.state.pairs = fixture.state.pairs.filter(pair => pair.id !== "other-pair");
+    fixture.media.update("a", fixture.state);
+    reject(new Error("retired stats read failed"));
+    const current = await reading;
+    expect(current.unavailable).toBe(false);
+    expect(current.samples).toMatchObject([{ pairId: "pair", peerId: "z", flowId: "healthy-flow" }]);
+    expect(fixture.other.close).toHaveBeenCalledOnce();
   } finally { fixture.media.reset(); fixture.session.close(); }
 });
 
@@ -6010,17 +6078,19 @@ test("queued room data rechecks its owner before sending without closing the sha
 });
 
 test("a connecting bulk channel has a bounded frame queue and releases admission after sending", async () => {
+  const { data_queue_frames } = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  const capacity = data_queue_frames(true);
   const { session, media, pc } = await setupRoomMedia();
   try {
     pc.connected(); pc.channels[0].open();
-    const frames = Array.from({ length: 32 * 17 }, () => media.sendData("z", "chunk", new Uint8Array(8192)));
+    const frames = Array.from({ length: capacity }, () => media.sendData("z", "chunk", new Uint8Array(8192)));
     await expect(media.sendData("z", "chunk", new Uint8Array([1]))).rejects.toThrow("data_channel_busy");
     await media.sendData("z", "control", "independent");
     expect(pc.channels[0].send).toHaveBeenCalledOnce();
     pc.channels[1].open();
     await Promise.all(frames);
     await media.sendData("z", "chunk", new Uint8Array([2]));
-    expect(pc.channels[1].send).toHaveBeenCalledTimes(32 * 17 + 1);
+    expect(pc.channels[1].send).toHaveBeenCalledTimes(capacity + 1);
     expect(pc.close).not.toHaveBeenCalled();
   } finally { media.reset(); session.close(); }
 });
@@ -6832,6 +6902,30 @@ test("a base deadline settles missing-channel sends while polite screen media st
     expect(outcomes.at(-1)).toBe("control:peer_data_unavailable");
     await afterFailure;
   } finally { media.reset(); session.close(); }
+});
+
+test("an offline host keeps authorized loaded messages until its restored binding supplies fresh history", async () => {
+  const { session, socket, peer } = await setup();
+  try {
+    await peer.history([message(1), message(2)]);
+    const online = structuredClone(session.getSnapshot().state!);
+    const offline = structuredClone(online);
+    offline.channel.rooms[0].available = false;
+    delete offline.channel.rooms[0].delivery;
+    socket.receive({ type: "state", state: offline });
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([message(1), message(2)]);
+    const count = socket.sent.length;
+    session.browse("first");
+    expect(socket.sent).toHaveLength(count);
+    const restored = structuredClone(online);
+    restored.channel.rooms[0].delivery!.bindingId = "room-returned";
+    socket.receive({ type: "state", state: restored });
+    const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    socket.receive({ type: "ack", requestId: browse.requestId });
+    const request = await peer.next();
+    peer.page(request, [message(1), message(2), message(3)], false, 1, "room-returned");
+    await vi.waitFor(() => expect(session.getSnapshot().messagesByRoom.first).toEqual([message(1), message(2), message(3)]));
+  } finally { session.close(); }
 });
 
 test("browsing keeps watched-room reading and resumes the offline selection without ending subscriptions", async () => {
@@ -9494,4 +9588,62 @@ test("leaving one pending voice room preserves a sibling's shared microphone req
     expect(raw.stop).toHaveBeenCalledOnce();
     expect(contexts[0].close).toHaveBeenCalledOnce();
   } finally { session.close(); grant(remoteStream("late", [raw])); await Promise.all([first, second]); }
+});
+
+test("one admitted Watch aggregate fits the shared bulk queue while control stays independent", async () => {
+  const rust = await import("../prototype/channel-browser/pkg/piik_channel_browser.js");
+  const { readFile } = await import("node:fs/promises");
+  await rust.default({ module_or_path: await readFile("prototype/channel-browser/pkg/piik_channel_browser_bg.wasm") });
+  const sourceId = crypto.randomUUID(), peer = crypto.randomUUID(), activityId = crypto.randomUUID(), resourceId = crypto.randomUUID();
+  const source = new rust.WatchDelivery(sourceId), key = { roomId: "first", activityId, resourceId };
+  source.update(JSON.stringify([{ roomId: "first", activityId, source: { sessionId: sourceId, resourceId, format: "file" },
+    upstream: null, downstream: [peer], receiving: false }]), JSON.stringify([[peer, ["first"]]]));
+  const ids = Array.from({ length: 20 * 4 }, () => crypto.randomUUID());
+  for (const requestId of ids) expect(JSON.parse(source.control(peer, JSON.stringify({ type: "pull", key, requestId, offset: 0, length: 65536 })))[0].type).toBe("read");
+  const { session, media, pc } = await setupRoomMedia();
+  const pending: Promise<void>[] = [], rejected: string[] = [], sizes: number[] = [];
+  try {
+    pc.connected(); pc.channels[0].open(); pc.channels[1].open(); pc.channels[1].bufferedAmount = 65536;
+    for (const id of ids) for (const effect of JSON.parse(source.read_result(id, JSON.stringify({
+      mimeType: '"'.repeat(128), totalSize: 65536, bytes: Array(65536).fill(7), eof: true,
+    })))) if (effect.type === "send_chunk") {
+      const frame = Uint8Array.from(effect.frame as number[]); sizes.push(frame.length);
+      pending.push(media.sendData("z", "chunk", frame).catch(error => { rejected.push(error.message); }));
+    }
+    await media.sendData("z", "control", "independent");
+    expect(pc.channels[0].send).toHaveBeenCalledExactlyOnceWith("independent");
+    expect(sizes).toHaveLength(720); expect(Math.max(...sizes)).toBeLessThanOrEqual(8192);
+    pc.channels[1].bufferedAmount = 0; pc.channels[1].dispatchEvent(new Event("bufferedamountlow"));
+    await Promise.all(pending);
+    expect(rejected).toEqual([]); expect(pc.channels[1].send).toHaveBeenCalledTimes(sizes.length);
+    expect(pc.close).not.toHaveBeenCalled();
+  } finally { source.free(); media.reset(); session.close(); }
+});
+
+test("owned display grant cancels while optional audio resume never settles", async () => {
+  const { session, socket } = await setup();
+  const video = remoteTrack("video"), audio = remoteTrack("audio");
+  const source = remoteStream("owned-granted-window", [video]);
+  const resume = vi.fn(() => new Promise<void>(() => {}));
+  const close = vi.fn(async () => {});
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn(async () => source) } });
+  vi.stubGlobal("AudioContext", class {
+    currentTime = 0;
+    resume = resume;
+    close = close;
+    createMediaStreamDestination() { return { stream: remoteStream("owned-mixed", [audio]) }; }
+    createGain() { return { gain: { value: 1 }, connect() {}, disconnect() {} }; }
+  });
+  session.setVideoCodecMode("vp8");
+  const starting = session.startScreen("first").catch(error => error);
+  try {
+    await vi.waitFor(() => expect(resume).toHaveBeenCalledOnce());
+    await session.cancelScreenSelection("first");
+    await vi.waitFor(() => expect(video.stop).toHaveBeenCalledOnce(), { timeout: 150 });
+    expect(await starting).toMatchObject({ name: "AbortError" });
+    expect(audio.stop).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().pending.has("screen:first")).toBe(false);
+    expect(socket.sent.some(command => command.type === "publish")).toBe(false);
+  } finally { session.close(); }
 });

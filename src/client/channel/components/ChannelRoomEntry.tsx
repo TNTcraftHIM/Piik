@@ -26,7 +26,7 @@ export function ChannelRoomEntry({ channel, room }: { channel: ChannelController
   const { t } = useCopy();
   return <section className="c3-locked-room"><Glyph name="lock" size={46} />
     <h3>{t("room.entry.privateTitle")}</h3>
-    <p>{room.hasPassword ? t("room.entry.passwordNote")
+    <p>{!room.available ? t("room.offline.access") : room.hasPassword ? t("room.entry.passwordNote")
       : t("room.entry.invitationNote")}</p>
     {room.hasPassword && <RoomPasswordForm channel={channel} roomId={room.id} available={channel.connection === "connected" && room.available} />}
   </section>;

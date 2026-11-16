@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { downloadBlob } from "../lib/download";
+import { downloadBlob, type DownloadOutcome } from "../lib/download";
 import { FileStore, type FileScope, type FileRetentionLimits, type RetainedFile } from "./file-store";
 import { loadRoomHosting } from "./hosting";
 import type { AttachmentHash, FileDelivery } from "../../../prototype/channel-browser/pkg/piik_channel_browser";
@@ -27,9 +27,9 @@ interface Sink {
 }
 export interface AttachmentProgress { received: number; total: number; state: "waiting" | "connecting" | "waiting-source" | "receiving" | "finishing" }
 interface PendingSink { ready: Promise<Sink>; consumers: Set<symbol>; progress: AttachmentProgress }
-interface Download { controller: AbortController; promise: Promise<void>; status: { busy: boolean; error: string | null; completed?: boolean } }
+interface Download { controller: AbortController; promise: Promise<void>; status: { busy: boolean; error: string | null; outcome?: DownloadOutcome } }
 interface Source { key: ChannelFileKey; attachment: ChannelAttachment; file: File; status: typeof idle; retained: boolean }
-const idle: { busy: boolean; error: string | null; completed?: boolean } = { busy: false, error: null };
+const idle: Download["status"] = { busy: false, error: null };
 const keyOf = (key: ChannelFileKey) => JSON.stringify([key.roomId, key.messageSeq, key.attachmentId]);
 const sameContent = (a: ChannelAttachment, b: ChannelAttachment) => a.size === b.size && a.sha256.toLowerCase() === b.sha256.toLowerCase();
 const errorOf = (error: unknown) => error instanceof Error ? error : new Error(String(error));
@@ -201,6 +201,7 @@ export class ChannelAttachments {
     signal?.throwIfAborted(); lifetime.signal.throwIfAborted();
     if (files.length > limits.maxAttachmentsPerMessage || files.some(entry => entry.file.size > limits.maxFileBytes)) throw new Error("invalid_attachments");
     const prepared: PreparedFile[] = [];
+    const deferredGifs = new Set<string>();
     let inlineBytes = 0;
     const mediaTypes = await Promise.all(files.map(async entry => module.attachment_media_type(new Uint8Array(await entry.file.slice(0, 12).arrayBuffer()))));
     let remainingImages = mediaTypes.filter(type => type.startsWith("image/")).length;
@@ -220,12 +221,20 @@ export class ChannelAttachments {
         let inlineImage: ImageRendition | undefined;
         if (mediaType.startsWith("image/")) {
           const budget = Math.floor((limits.maxInlineImageBytes - inlineBytes) / remainingImages--);
+          if (mediaType === "image/gif" && entry.file.size > budget) deferredGifs.add(entry.id);
           inlineImage = await prepareInlineImage(entry.file, mediaType, budget, signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal);
           if (inlineImage) inlineBytes += Math.floor(inlineImage.data.length / 4) * 3 - (inlineImage.data.endsWith("==") ? 2 : inlineImage.data.endsWith("=") ? 1 : 0);
         }
         prepared.push({ ...entry, attachment: attachmentSchema.parse({ id: entry.id, name: entry.file.name, size: entry.file.size, mediaType, sha256 }),
           ...(inlineImage !== undefined ? { inlineImage } : {}) });
       } finally { hash?.free(); }
+    }
+    // GIF cannot use a still preview. Reuse space left by smaller images for its unchanged original.
+    for (const entry of prepared) if (deferredGifs.has(entry.id)
+      && entry.file.size <= limits.maxInlineImageBytes - inlineBytes) {
+      entry.inlineImage = await prepareInlineImage(entry.file, "image/gif", limits.maxInlineImageBytes - inlineBytes,
+        signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal);
+      if (entry.inlineImage) inlineBytes += entry.file.size;
     }
     return prepared;
   }
@@ -262,12 +271,20 @@ export class ChannelAttachments {
       }
     }).catch(() => {});
   }
-  download(key: ChannelFileKey, attachment: ChannelAttachment, inlineImage?: ImageRendition): Promise<void> {
+  download(key: ChannelFileKey, attachment: ChannelAttachment, inlineImage?: ImageRendition, surface?: Element): Promise<void> {
     const id = keyOf(key), previous = this.downloads.get(id);
     if (previous?.status.busy) return previous.promise;
+    previous?.controller.abort();
     const download: Download = { controller: new AbortController(), promise: Promise.resolve(), status: { busy: true, error: null } };
     this.downloads.set(id, download); this.changed();
-    download.promise = this.content(key, attachment, download.controller.signal, inlineImage).then(file => { download.controller.signal.throwIfAborted(); downloadBlob(file, attachment.name); download.status = { busy: false, error: null, completed: true }; })
+    download.promise = this.content(key, attachment, download.controller.signal, inlineImage).then(file => {
+      download.controller.signal.throwIfAborted();
+      downloadBlob(file, attachment.name, { document: surface?.ownerDocument, signal: download.controller.signal, outcome: outcome => {
+        if (this.downloads.get(id) !== download) return;
+        download.status = { busy: false, error: outcome === "failed" ? "download_failed" : null, outcome };
+        this.changed();
+      } });
+    })
       .catch(error => { if (this.downloads.get(id) === download) download.status = { busy: false, error: download.controller.signal.aborted ? null : errorOf(error).message }; throw error; })
       .finally(() => { if (this.downloads.get(id) === download) { download.status = { ...download.status, busy: false }; this.changed(); } });
     return download.promise;

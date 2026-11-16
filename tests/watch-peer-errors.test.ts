@@ -1,0 +1,117 @@
+import Hls, { LoaderContextType } from "hls.js";
+import { afterEach, expect, test, vi } from "vitest";
+import { ChannelSession } from "../src/client/channel/session";
+import { HTMLVideoMedia, createPeerWatchMedia } from "../src/client/channel/watch-media";
+import { WatchPlayer } from "../src/client/channel/watch-playback";
+import { channelErrorPresentation } from "../src/client/channel/error-presentation";
+
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+function element() {
+  return Object.assign(new EventTarget(), { currentTime: 0, duration: 6, paused: true, playbackRate: 1, readyState: 0,
+    error: null as { code: number; message: string } | null, src: "", videoWidth: 0, videoHeight: 0,
+    buffered: { length: 0, start: () => 0, end: () => 0 }, playsInline: true, preload: "auto",
+    play: vi.fn(async () => {}), pause: vi.fn(), load: vi.fn(), remove: vi.fn(), removeAttribute: vi.fn() });
+}
+
+test.each([
+  { code: "watch_path_unavailable", copy: "channel.error.roomCommunicationFailed", connectionHelp: true },
+  { code: "watch_source_unavailable", copy: "watch.forward.sourceUnavailable", connectionHelp: false },
+  { code: "watch_read_timeout", copy: "watch.forward.readTimeout", connectionHelp: false },
+])("a known peer $code stays actionable after the media element reports unsupported source", async value => {
+  vi.spyOn(Hls, "isSupported").mockReturnValue(true);
+  vi.spyOn(Hls.prototype, "loadSource").mockImplementation(() => {});
+  vi.spyOn(Hls.prototype, "attachMedia").mockImplementation(() => {});
+  const video = element(); vi.stubGlobal("document", { createElement: () => video });
+  const media = createPeerWatchMedia({ resourceId: crypto.randomUUID(), format: "hls" }, async () => { throw Error("unused_read"); });
+  const player = new WatchPlayer("owned", false, media, () => {});
+  const hls = (media as unknown as { hls: Hls }).hls;
+  try {
+    hls.trigger(Hls.Events.ERROR, { fatal: true, type: Hls.ErrorTypes.NETWORK_ERROR,
+      details: Hls.ErrorDetails.FRAG_LOAD_ERROR, response: { code: 0, text: value.code } } as never);
+    await expect.poll(() => player.error).toBe(value.code);
+    // A platform MediaError is less precise than this already-confirmed reader failure.
+    video.error = { code: 4, message: "https://owned.test/not-a-real-private-url" };
+    video.dispatchEvent(new Event("error"));
+    await expect.poll(() => player.error).toBe(value.code);
+    await expect(media.read()).rejects.toThrow(value.code);
+    expect(channelErrorPresentation(player.error, key => key)).toEqual({ message: value.copy, connectionHelp: value.connectionHelp });
+    expect(player.error).not.toContain("https:");
+  } finally { player.close(); }
+});
+
+test.each([
+  { status: 401, details: Hls.ErrorDetails.FRAG_LOAD_ERROR, type: Hls.ErrorTypes.NETWORK_ERROR, expected: "watch_media_unavailable" },
+  { status: 403, details: Hls.ErrorDetails.FRAG_LOAD_ERROR, type: Hls.ErrorTypes.NETWORK_ERROR, expected: "watch_media_unavailable" },
+  { status: 0, details: Hls.ErrorDetails.BUFFER_INCOMPATIBLE_CODECS_ERROR, type: Hls.ErrorTypes.MEDIA_ERROR, expected: "watch_media_unsupported" },
+])("typed HLS $status/$details wins over generic platform source rejection", async value => {
+  vi.spyOn(Hls, "isSupported").mockReturnValue(true);
+  vi.spyOn(Hls.prototype, "loadSource").mockImplementation(() => {});
+  vi.spyOn(Hls.prototype, "attachMedia").mockImplementation(() => {});
+  const video = element(); vi.stubGlobal("document", { createElement: () => video });
+  const media = new HTMLVideoMedia("https://owned.test/manifest.m3u8", "hls"),player = new WatchPlayer("owned", false, media, () => {});
+  try {
+    video.error = { code: 4, message: "platform source rejection" };
+    (media as unknown as { hls: Hls }).hls.trigger(Hls.Events.ERROR, { fatal: true, type: value.type, details: value.details, response: { code: value.status, text: "" } } as never);
+    await expect.poll(() => player.error).toBe(value.expected);
+    expect(channelErrorPresentation(player.error, key => key).connectionHelp).toBe(false);
+  } finally { player.close(); }
+});
+
+test("actual Session explicit peer command retains the admitted root and reader binding after direct failure", async () => {
+  const root = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: "hls" as const };
+  const activity = { id: "owned-published", roomId: "owned-room", source: { kind: "website", url: "https://owned.test/official", mediaUrl: "https://owned.test/direct.mp4" }, byteSource: root, playback: { timeline: "media", paused: true, position: 2, rate: 1, anchorTime: 1000 } };
+  const old = new WatchPlayer(activity.roomId, false, { ready: async () => {}, read: async () => ({ readyState: 0, position: 0, paused: true, rate: 1, duration: 6, ended: false, buffered: [] }), patch: async () => {}, listen: () => () => {}, close: vi.fn() }, () => {});
+  old.error = "watch_media_unavailable";
+  const players = new Map([[activity.id, old]]),commands: unknown[] = [];
+  const read = vi.fn(async () => { throw Error("watch_source_unavailable"); });
+  // Public joinWatch is an instance field; construct the actual Session without starting
+  // a socket, then replace only its owned authority/I/O boundaries with controlled state.
+  vi.stubGlobal("window", { localStorage: { getItem: () => null } });
+  vi.stubGlobal("localStorage", { getItem: () => null });
+  vi.stubGlobal("location", { origin: "https://owned.test", hash: "" });
+  vi.stubGlobal("history", { state: null });
+  vi.stubGlobal("document", { createElement: () => element() });
+  vi.spyOn(Hls, "isSupported").mockReturnValue(true);
+  vi.spyOn(Hls.prototype, "loadSource").mockImplementation(() => {});
+  vi.spyOn(Hls.prototype, "attachMedia").mockImplementation(() => {});
+  const session = new ChannelSession();
+  const view = session.getSnapshot();
+  const request = vi.fn(async (command: unknown, reply?: (value: unknown) => void) => {
+    commands.push(command);reply?.({ type: "room_reply", result: { type: "watch_ready", serverTime: 1000 } });
+  });
+  Object.assign(session, { watchPlayers: players, view: { ...view, state: { watchActivities: [activity], publications: [], channel: { rooms: [] } } }, watchBytes: { read }, request });
+  try {
+    await session.joinWatch(activity.id, "peer");
+    expect(commands).toEqual([{ type: "join_watch", roomId: activity.roomId, id: activity.id, mode: "peer" }]);
+    const player = session.getSnapshot().watchPlayers.get(activity.id)!;
+    expect(player.mode).toBe("peer");expect(player).not.toBe(old);
+    const media = player.media as HTMLVideoMedia;
+    const hls = (media as unknown as { hls: Hls }).hls;
+    const Loader = hls.config.loader,loader = new Loader(hls.config),failed=vi.fn();
+    loader.load({ url: `https://watch-media.invalid/${root.resourceId}`, responseType: "arraybuffer", type: LoaderContextType.MANIFEST }, { loadPolicy: { maxTimeToFirstByteMs: 1000, maxLoadTimeMs: 1000 } } as never,
+      { onError: failed, onSuccess: vi.fn(), onTimeout: vi.fn() } as never);
+    await expect.poll(() => read.mock.calls.length).toBe(1);
+    expect(read.mock.calls[0]).toEqual([activity.roomId, activity.id, root, root.resourceId, 0, 1, expect.any(AbortSignal)]);
+    await expect.poll(() => failed.mock.calls.length).toBe(1);
+    expect(failed.mock.calls[0][0]).toEqual({ code: 0, text: "watch_source_unavailable" });
+    hls.trigger(Hls.Events.ERROR, { fatal: true, type: Hls.ErrorTypes.NETWORK_ERROR,
+      details: Hls.ErrorDetails.FRAG_LOAD_ERROR, response: failed.mock.calls[0][0] } as never);
+    await expect.poll(() => player.error).toBe("watch_source_unavailable");
+    loader.destroy();
+    expect(activity.byteSource).toBe(root);
+    expect(old.error).toBe("watch_media_unavailable");
+  } finally { for(const player of players.values())player.close();old.close(); }
+});
+
+test("a generic append failure still uses a proven platform decode error", async () => {
+  vi.spyOn(Hls, "isSupported").mockReturnValue(true);
+  vi.spyOn(Hls.prototype, "loadSource").mockImplementation(() => {});
+  vi.spyOn(Hls.prototype, "attachMedia").mockImplementation(() => {});
+  const video=element();video.error={code:3,message:"platform decode error"};vi.stubGlobal("document",{createElement:()=>video});
+  const media=new HTMLVideoMedia("https://owned.test/manifest.m3u8","hls"),player=new WatchPlayer("owned",false,media,()=>{});
+  try{
+    (media as unknown as {hls:Hls}).hls.trigger(Hls.Events.ERROR,{fatal:true,type:Hls.ErrorTypes.MEDIA_ERROR,details:Hls.ErrorDetails.BUFFER_APPEND_ERROR}as never);
+    await expect.poll(()=>player.error).toBe("watch_media_decode_failed");
+  }finally{player.close()}
+});

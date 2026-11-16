@@ -27,7 +27,7 @@ function surface() {
     requestAnimationFrame: (callback: FrameRequestCallback) => { frame.set(++sequence, callback); return sequence; },
     cancelAnimationFrame: (id: number) => { frame.delete(id); },
   });
-  const owner = { defaultView: view, activeElement: null as unknown };
+  const owner = { defaultView: view, documentElement: { dataset: {} }, activeElement: null as unknown };
   const anchor = {
     getBoundingClientRect: () => ({ left: 40, right: 350, top: 600, bottom: 650, width: 310, height: 50 }),
     getClientRects: () => visible ? [{}] : [],

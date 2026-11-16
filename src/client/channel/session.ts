@@ -1945,7 +1945,7 @@ export class ChannelSession {
         });
         audio = mixer;
         audio.setVolume(share.volume.muted ? 0 : share.volume.level);
-        candidate = await audio.start();
+        candidate = await audio.start(selection.controller.signal);
         if (!audio.outputGainAvailable && audio.sourceAudioAvailable && (share.volume.muted || share.volume.level !== 1)) throw new Error("source_audio_unavailable");
       }
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");

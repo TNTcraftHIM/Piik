@@ -12,3 +12,6 @@
   background: transparent; color: inherit;
 }
 .lr-media-controls .lr-btn.is-danger { color: var(--danger); }
+
+/* In-picture controls and source information share one quiet, readable material. */
+.lr-media-toolbar.lr-media-overlay, .lr-media-overlay { background: var(--paper-translucent); border: 0; box-shadow: none; backdrop-filter: blur(14px); }

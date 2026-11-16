@@ -9,6 +9,23 @@ use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use uuid::Uuid;
 
+/// One pair's bounded application queue accommodates either admitted response burst.
+/// File and Watch share the bulk lane; this is not a sum of simultaneous peaks.
+pub const fn data_queue_frames(bulk: bool) -> usize {
+    use crate::file_delivery::{FILE_MAX_PENDING_RANGES, FILE_MAX_RANGE_FRAMES};
+    use crate::watch_delivery::{WATCH_MAX_PENDING, WATCH_MAX_RANGE_FRAMES};
+    if !bulk {
+        return FILE_MAX_PENDING_RANGES * 4;
+    }
+    let file = FILE_MAX_PENDING_RANGES * FILE_MAX_RANGE_FRAMES;
+    let watch = WATCH_MAX_PENDING * WATCH_MAX_RANGE_FRAMES;
+    if file > watch {
+        file
+    } else {
+        watch
+    }
+}
+
 pub const CONTROL_FRAME_BYTES: usize = 32768;
 pub const CONVERSATION_FRAME_BYTES: usize = 1024 * 1024;
 pub const INTERACTION_INTERVAL_MS: u64 = 800;

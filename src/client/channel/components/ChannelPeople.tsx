@@ -55,7 +55,7 @@ export function ChannelPeople({ channel, roomId, active, onBack }: { channel: Ch
     return <ChannelUser key={user.id} id={user.id} name={user.name} avatar={user.avatar ?? undefined} self={user.id === self?.id}
       owner={user.id === state?.channel.rooms.find(room => room.id === roomId)?.creatorId} online={connected}
       voice={voice}
-      actions={<><ChannelActivityIndicators sharing={activity?.sharing} watching={activity?.watching} />
+      actions={<><ChannelActivityIndicators sharing={activity?.sharing} watching={activity?.watching} joinedWatch={activity?.joinedWatch} />
         {connected && listeningUsers.has(user.id) && user.id !== self?.id && <AudioVolumeMenu volume={playback.volume}
         onVolume={volume => channel.setVoiceVolume(user.id, volume)} label="voice.personVolume" heading={user.name}>
         <Btn icon={playback.muted ? "speakerOff" : "speaker"} size="dense" quiet title="voice.listenPerson"

@@ -1,7 +1,5 @@
 //! One pair owns its reliable channel writers. Consumers own queued-work validity.
 use crate::peer::{transport::Channel, PeerState};
-use piik_channel_core::file_delivery::{FILE_MAX_PENDING_RANGES, FILE_MAX_RANGE_FRAMES};
-use piik_channel_core::watch_delivery::{WATCH_MAX_PENDING, WATCH_MAX_RANGE_FRAMES};
 use piik_channel_core::{
     conversation::{self, ControlFrame},
     wire::Snapshot,
@@ -16,16 +14,8 @@ use tokio::{
 };
 use uuid::Uuid;
 
-pub(crate) const BULK_QUEUE: usize = {
-    let file = FILE_MAX_PENDING_RANGES * FILE_MAX_RANGE_FRAMES;
-    let watch = WATCH_MAX_PENDING * WATCH_MAX_RANGE_FRAMES;
-    if file > watch {
-        file
-    } else {
-        watch
-    }
-};
-pub(crate) const CONTROL_QUEUE: usize = FILE_MAX_PENDING_RANGES * 4;
+pub(crate) const BULK_QUEUE: usize = piik_channel_core::conversation::data_queue_frames(true);
+pub(crate) const CONTROL_QUEUE: usize = piik_channel_core::conversation::data_queue_frames(false);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Lane {
@@ -368,7 +358,7 @@ mod tests {
         use piik_channel_core::{
             watch_delivery::{
                 WatchBytePlan, WatchControl, WatchDelivery, WatchEffect, WatchKey, WatchReadResult,
-                WATCH_WINDOW_BYTES,
+                WATCH_WINDOW_BYTES, WATCH_MAX_PENDING, WATCH_MAX_RANGE_FRAMES,
             },
             wire::{WatchByteSource, WatchFormat},
         };

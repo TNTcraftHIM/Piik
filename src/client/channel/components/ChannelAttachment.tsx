@@ -14,6 +14,7 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
 }) {
   const { t } = useCopy();
   const key = { roomId, messageSeq, attachmentId: file.id };
+  const downloadSurface = useRef<HTMLDivElement>(null);
   const download = useSyncExternalStore(client.subscribe, () => client.status(key));
   const progress = useSyncExternalStore(client.subscribe, () => client.progress(key));
   const [preview, setPreview] = useState<string | null>(null);
@@ -66,13 +67,13 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
   const progressBytes = progress ? `${fileSize(progress.received)} / ${fileSize(progress.total)}${progress.total > 0 ? ` · ${Math.floor(progress.received / progress.total * 100)}%` : ""}` : null;
   const imageStatus = previewBusy ? progress ? `${progressLabel} · ${progressBytes}` : t("channel.attachment.loadingOriginalImage")
     : previewMessage ?? imageDescription;
-  return <div className="c3-attachment">
+  return <div className="c3-attachment" ref={downloadSurface}>
     <div className="c3-attachment-file"><Glyph name="save" size={21} />
       <div><Tooltip overflow={{ text: file.name, selector: "strong" }}><strong>{file.name}</strong></Tooltip><small>{fileSize(file.size)}</small></div>
       <ChannelAction icon={download.busy ? "x" : "arrowDown"} label={download.busy ? t("channel.attachment.cancelDownload")
         : isImage ? t("channel.attachment.downloadOriginal") : t("channel.attachment.download")}
         quiet
-        onClick={() => { if (download.busy) client.cancelDownload(key); else { setPreviewError(null); void client.download(key, file, inlineImage).catch(() => {}); } }} />
+        onClick={() => { if (download.busy) client.cancelDownload(key); else { setPreviewError(null); void client.download(key, file, inlineImage, downloadSurface.current ?? undefined).catch(() => {}); } }} />
     </div>
     {(download.busy || previewBusy) && progress && <div className="c3-attachment-progress">
       <small role="status">{progressLabel}</small>
@@ -80,7 +81,9 @@ export function ChannelAttachment({ roomId, messageSeq, file, client, inlineImag
         value={progress.total > 0 && progress.received > 0 ? progress.received : undefined} />
       <small>{progressBytes}</small>
     </div>}
-    {!download.busy && download.completed && <small role="status">{t("channel.attachment.downloadSent")}</small>}
+    {!download.busy && (download.outcome === "requested" || download.outcome === "dispatched" || download.outcome === "started" || download.outcome === "saved") && <small role="status">{t(download.outcome === "saved"
+      ? "channel.attachment.saved" : download.outcome === "started" ? "channel.attachment.saving"
+      : download.outcome === "requested" ? "channel.attachment.downloadRequested" : "channel.attachment.downloadSent")}</small>}
     {isImage && !preview && <ChannelAction icon={previewBusy ? "x" : "eye"} quiet
       label={previewBusy ? t("channel.attachment.cancelImageLoading") : t("channel.attachment.viewImage")}
       onClick={() => { if (previewBusy) cancelPreview(); else void showImage(); }} />}

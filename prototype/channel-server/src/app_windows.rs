@@ -1,5 +1,7 @@
 //! Windows owns presentation; the existing HTTP App owns all room and capture work.
 mod console;
+mod caption;
+mod download;
 mod page;
 mod permission;
 mod popup;
@@ -12,7 +14,7 @@ use permission::{permissions, PendingPermissions, Prompt};
 use serde::{Deserialize, Serialize};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::{
-    cell::{Cell, RefCell},
+    cell::RefCell,
     rc::Rc,
     thread,
 };
@@ -42,7 +44,17 @@ const PALETTE: &str = include_str!("../../../src/client/ui/palette.css");
 const CAPABILITY: &str =
     "Object.defineProperty(window, 'piikNativeWindow', { value: 'integrated' });";
 const SYSTEM_PRESENTATION: &str =
-    "Object.defineProperty(window, 'piikNativeWindow', { value: 'system' });";
+    "Object.defineProperty(window, 'piikNativeWindow', { value: 'system' });\
+     (() => {\
+       window.addEventListener('message', event => {\
+         if (event.source !== window.opener || event.data?.type !== 'piik-native-window-presentation') return;\
+         const message = event.data.message;\
+         if (message?.kind === 'panel' || message?.kind === 'appearance') window.ipc.postMessage(JSON.stringify(message));\
+       });\
+       const ready = () => window.opener?.postMessage('piik-native-window-ready', '*');\
+       if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', ready, { once: true });\
+       else ready();\
+     })();";
 
 thread_local! {
     static APP_ICON: RefCell<Option<Icon>> = const { RefCell::new(None) };
@@ -147,16 +159,19 @@ enum ServiceEvent {
     Finished,
     PopupClosed(WindowId),
     PopupPresentation(WindowId, popup::Message),
-    PopupAppearance(WindowId, Theme),
+    PopupAppearance(WindowId, Theme, Language),
+    Download(WindowId, String, download::Status),
     Permission,
     PermissionReady(WindowId),
     PermissionDecision(WindowId, bool),
     Fullscreen(bool),
-    Caption(WindowAction),
+    Caption(WindowId, WindowAction),
+    CaptionReady(WindowId),
+    PopupTitle(WindowId, String),
     Content(ContentMessage),
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Copy, Deserialize)]
 struct WindowControls {
     width: f64,
     height: f64,
@@ -233,11 +248,16 @@ impl Drop for Core {
     }
 }
 
-type Popups = Rc<RefCell<Vec<(WebView, Rc<Window>)>>>;
+struct PopupWindow {
+    caption: caption::Caption,
+    content: WebView,
+    window: Rc<Window>,
+}
+type Popups = Rc<RefCell<Vec<PopupWindow>>>;
 
 // Fields drop in this order: both WebViews retire before their native owner.
 struct MainWindow {
-    caption: WebView,
+    caption: caption::Caption,
     content: WebView,
     window: Rc<Window>,
 }
@@ -260,12 +280,14 @@ impl MainWindow {
                 .build(target)?,
         );
         set_minimum_client_size(&window);
+        let popup_controls = *controls;
         let popup_target = target.clone();
         let popup_events = events.clone();
         let popup_pending = pending.clone();
         let content_events = events.clone();
         let content = WebViewBuilder::new_with_web_context(context).with_url("about:blank")
             .with_initialization_script(CAPABILITY)
+            .with_initialization_script(download::SCRIPT)
             .with_ipc_handler(move |request| {
                 if let Ok(message) = serde_json::from_str::<ContentMessage>(request.body()) {
                     if matches!(&message, ContentMessage::Header { slot: Some([x, y]) } if !x.is_finite() || !y.is_finite()) { return; }
@@ -274,23 +296,31 @@ impl MainWindow {
             })
             .with_new_window_req_handler(move |_, features| {
                 let create = || -> Result<NewWindowResponse> {
-                    let window = Rc::new(popup::builder(window_builder()?, features.size, features.position)
-                        .build(&popup_target)?);
+                    let window = Rc::new(popup::builder(window_builder()?, features.size, features.position, &popup_controls)
+                        .with_decorations(false).with_undecorated_shadow(true).build(&popup_target)?);
                     let id = window.id();
                     let presentation = popup_events.clone();
-                    let title_window = window.clone();
+                    let title_events = popup_events.clone();
                     let webview = WebViewBuilder::new()
                         .with_environment(features.opener.environment)
                         .with_initialization_script(SYSTEM_PRESENTATION)
-                        .with_document_title_changed_handler(move |title| title_window.set_title(&title))
+                        .with_initialization_script(download::SCRIPT)
+                        .with_document_title_changed_handler(move |title| { let _ = title_events.send_event(ServiceEvent::PopupTitle(id, title)); })
                         .with_ipc_handler(move |request| {
                             if let Ok(message) = serde_json::from_str::<popup::Message>(request.body()) {
                                 let _ = presentation.send_event(ServiceEvent::PopupPresentation(id, message));
-                            } else if let Ok(ContentMessage::Appearance { theme, .. }) = serde_json::from_str(request.body()) {
-                                let _ = presentation.send_event(ServiceEvent::PopupAppearance(id, theme));
+                            } else if let Ok(ContentMessage::Appearance { theme, language, .. }) = serde_json::from_str(request.body()) {
+                                let _ = presentation.send_event(ServiceEvent::PopupAppearance(id, theme, language));
                             }
                         })
-                        .build(window.as_ref())?;
+                        .build_as_child(window.as_ref())?;
+                    let download_events = popup_events.clone();
+                    download::install(&webview, Some(Rc::new(move |url, status| {
+                        let _ = download_events.send_event(ServiceEvent::Download(id, url, status));
+                    })))?;
+                    let caption = caption::Caption::new(&window, &webview, popup_events.clone(), &popup_controls, true)?;
+                    caption.title("Piik");
+                    caption.layout(&window, &webview, &popup_controls);
                     permissions(&webview, id, popup_pending.clone(), popup_events.clone())?;
                     let closed = popup_events.clone();
                     // The WebView closes its container; this adapter retires the top-level window.
@@ -303,7 +333,7 @@ impl MainWindow {
                         )?;
                     }
                     let response = NewWindowResponse::Create { webview: webview.webview() };
-                    popups.borrow_mut().push((webview, window));
+                    popups.borrow_mut().push(PopupWindow { caption, content: webview, window });
                     Ok(response)
                 };
                 create().unwrap_or_else(|error| {
@@ -313,6 +343,11 @@ impl MainWindow {
             })
             .with_bounds(wry::Rect { position: LogicalPosition::new(0.0, 0.0).into(), size: window.inner_size().into() })
             .build_as_child(window.as_ref())?;
+        let download_events = events.clone();
+        let id = window.id();
+        download::install(&content, Some(Rc::new(move |url, status| {
+            let _ = download_events.send_event(ServiceEvent::Download(id, url, status));
+        })))?;
         permissions(&content, window.id(), pending, events.clone())?;
         let fullscreen_events = events.clone();
         unsafe {
@@ -332,35 +367,7 @@ impl MainWindow {
             )?;
         }
 
-        // Only this compiled document can issue window commands. The remote
-        // content's WebView has a separate, appearance-only IPC handler above.
-        let initial_caption = Cell::new(true);
-        let caption = WebViewBuilder::new_with_web_context(context)
-            .with_bounds(wry::Rect {
-                position: LogicalPosition::new(0.0, 0.0).into(),
-                size: controls.size().into(),
-            })
-            .with_navigation_handler(move |url| {
-                url.starts_with("data:text/html;charset=utf-8;base64,")
-                    && initial_caption.replace(false)
-            })
-            .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)
-            .with_ipc_handler(move |request| {
-                let action = match request.body().as_str() {
-                    "minimize" => WindowAction::Minimize,
-                    "maximize" => WindowAction::Maximize,
-                    "close" => WindowAction::Close,
-                    _ => return,
-                };
-                let _ = events.send_event(ServiceEvent::Caption(action));
-            })
-            .build_as_child(window.as_ref())?;
-        caption.load_html(
-            &CAPTION
-                .replace("__PIIK_PALETTE__", PALETTE)
-                .replace("__PIIK_MODAL_BACKDROP__", MODAL_BACKDROP)
-                .replace("__PIIK_WINDOW_CONTROLS__", CONTROLS),
-        )?;
+        let caption = caption::Caption::new(&window, &content, events, controls, false)?;
         let result = Self {
             caption,
             content,
@@ -378,7 +385,7 @@ impl MainWindow {
         // Loading and the runtime's network-error page have no shared header.
         // Keep window controls reachable there without introducing another band.
         let [x, y] = slot.unwrap_or([size.width - controls.width, 0.0]);
-        let _ = self.caption.set_bounds(wry::Rect {
+        let _ = self.caption.view.set_bounds(wry::Rect {
             position: LogicalPosition::new(
                 x.clamp(0.0, (size.width - controls.width).max(0.0)),
                 y.clamp(0.0, (size.height - controls.height).max(0.0)),
@@ -386,7 +393,7 @@ impl MainWindow {
             .into(),
             size: controls.size().into(),
         });
-        let _ = self.caption.set_visible(self.window.fullscreen().is_none());
+        let _ = self.caption.view.set_visible(self.window.fullscreen().is_none());
     }
 }
 
@@ -482,6 +489,13 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
     events.run_return(|event, target, flow| {
         *flow = ControlFlow::Wait;
         match event {
+            Event::UserEvent(ServiceEvent::Download(id, url, status)) => {
+                if let Some(main) = window.as_ref().filter(|main| main.window.id() == id) {
+                    download::report(&main.content, &url, status);
+                } else if let Some(child) = popups.borrow().iter().find(|child| child.window.id() == id) {
+                    download::report(&child.content, &url, status);
+                }
+            }
             Event::UserEvent(ServiceEvent::Content(ContentMessage::Appearance {
                 theme: next_theme,
                 language: next,
@@ -490,11 +504,9 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                 language = next;
                 theme = next_theme;
                 if let Some(main) = &window {
-                    let _ = main.caption.evaluate_script(&format!(
-                        "window.updateAppearance(...{})",
-                        serde_json::json!([theme.code(), language.code(), material])
-                    ));
+                    main.caption.appearance(&theme, language, material);
                 }
+                pages.appearance(&theme, language);
                 if let Some(prompt) = &prompt {
                     prompt.update_appearance(&theme, language);
                 }
@@ -524,15 +536,27 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                     main.position_caption(&controls, slot);
                 }
             }
-            Event::UserEvent(ServiceEvent::Caption(action)) => {
-                if let Some(main) = &window {
-                    match action {
-                        WindowAction::Minimize => main.window.set_minimized(true),
-                        WindowAction::Maximize => {
-                            main.window.set_maximized(!main.window.is_maximized())
-                        }
-                        WindowAction::Close => core.stop(),
-                    }
+            Event::UserEvent(ServiceEvent::Caption(id, action)) => {
+                if matches!(action, WindowAction::Close) {
+                    if window.as_ref().is_some_and(|main| main.window.id() == id) { core.stop(); }
+                    else { let _ = permission_events.send_event(ServiceEvent::PopupClosed(id)); }
+                } else if let Some(main) = window.as_ref().filter(|main| main.window.id() == id) {
+                    caption::apply(&main.window, &action);
+                } else if let Some(child) = popups.borrow().iter().find(|child| child.window.id() == id) {
+                    caption::apply(&child.window, &action);
+                } else { pages.window_action(id, &action); }
+            }
+            Event::UserEvent(ServiceEvent::CaptionReady(id)) => {
+                if let Some(main) = window.as_ref().filter(|main| main.window.id() == id) { main.caption.ready(&theme, language); }
+                else if let Some(child) = popups.borrow().iter().find(|child| child.window.id() == id) {
+                    child.caption.ready(&theme, language);
+                    child.caption.layout(&child.window, &child.content, &controls);
+                    child.caption.title(&child.window.title());
+                } else { pages.caption_ready(id, &theme, language, &controls); }
+            }
+            Event::UserEvent(ServiceEvent::PopupTitle(id, title)) => {
+                if let Some(child) = popups.borrow().iter().find(|child| child.window.id() == id) {
+                    child.window.set_title(&title); child.caption.title(&title);
                 }
             }
             Event::WindowEvent {
@@ -559,8 +583,13 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                 });
                 main.position_caption(&controls, slot);
                 let _ = main
-                    .caption
+                    .caption.view
                     .evaluate_script(&format!("window.updateMaximized({})", owner.is_maximized()));
+            }
+            Event::WindowEvent { event: WindowEvent::Resized(_), window_id, .. } => {
+                if let Some(child) = popups.borrow().iter().find(|child| child.window.id() == window_id) {
+                    child.caption.layout(&child.window, &child.content, &controls);
+                } else { pages.resize(window_id, &controls); }
             }
             Event::UserEvent(ServiceEvent::Fullscreen(active)) => {
                 if let Some(main) = &window {
@@ -583,12 +612,12 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                     current.answer(allowed);
                     if let Some(main) = window.as_ref().filter(|main| main.window.id() == owner) {
                         let _ = main.content.focus();
-                    } else if let Some((webview, _)) = popups
+                    } else if let Some(child) = popups
                         .borrow()
                         .iter()
-                        .find(|(_, window)| window.id() == owner)
+                        .find(|child| child.window.id() == owner)
                     {
-                        let _ = webview.focus();
+                        let _ = child.content.focus();
                     }
                 }
             }
@@ -613,15 +642,16 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
             }
             Event::UserEvent(ServiceEvent::PopupPresentation(id, message)) => {
                 if let Some(size) = message.panel_size() {
-                    if let Some((_, window)) = popups.borrow().iter().find(|(_, window)| window.id() == id) {
-                        window.set_always_on_top(true);
-                        window.set_inner_size(size);
+                    if let Some(child) = popups.borrow().iter().find(|child| child.window.id() == id) {
+                        child.window.set_always_on_top(true);
+                        child.window.set_inner_size(caption::window_size(size, &controls));
                     }
                 }
             }
-            Event::UserEvent(ServiceEvent::PopupAppearance(id, theme)) => {
-                if let Some((_, window)) = popups.borrow().iter().find(|(_, window)| window.id() == id) {
-                    window.set_theme(Some(match theme {
+            Event::UserEvent(ServiceEvent::PopupAppearance(id, theme, language)) => {
+                if let Some(child) = popups.borrow().iter().find(|child| child.window.id() == id) {
+                    child.caption.appearance(&theme, language, None);
+                    child.window.set_theme(Some(match theme {
                         Theme::Light => tao::window::Theme::Light,
                         Theme::Dark => tao::window::Theme::Dark,
                     }));
@@ -669,7 +699,7 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                         .retain(|request| request.owner != window_id);
                     popups
                         .borrow_mut()
-                        .retain(|(_, child)| child.id() != window_id);
+                        .retain(|child| child.window.id() != window_id);
                 }
             }
             Event::UserEvent(ServiceEvent::Finished) => {
@@ -694,8 +724,8 @@ pub fn run(mut config: Config, port: Option<u16>) -> Result<()> {
                         popups
                             .borrow()
                             .iter()
-                            .find(|(_, child)| child.id() == request.owner)
-                            .map(|(_, child)| child.clone())
+                            .find(|child| child.window.id() == request.owner)
+                            .map(|child| child.window.clone())
                     });
                 if let Some(owner) = owner {
                     match Prompt::new(

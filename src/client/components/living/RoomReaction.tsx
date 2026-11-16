@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, type CSSProperties, type RefObject } from "react";
 import { REACTION_DURATION_MS, REACTION_GLYPHS, isThrow, type ReactionId } from "../../../shared/room-interactions";
 import type { RoomInteraction } from "../../lib/room-interactions";
 import { identityHash } from "../../lib/identity-hash";
@@ -56,32 +56,41 @@ function ReactionArtwork({ reaction, seed }: { reaction: ReactionId; seed: strin
 }
 
 /** Content targets reuse the same prop, accents and event-aged animation as people. */
-export function ReactionBurst({ reaction, id, expiresAt, now, anchor }: {
-  reaction: ReactionId; id: string; expiresAt: number; now: () => number; anchor?: () => Element | null;
+export function ReactionBurst({ reaction, id, expiresAt, now, anchor, origin }: {
+  reaction: ReactionId; id: string; expiresAt: number; now: () => number;
+  anchor?: () => Element | null; origin: () => Element | null;
 }) {
   const flight = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!anchor || !isThrow(reaction)) return;
-    const element = flight.current, target = anchor();
+  const ownerDocument = useSurfaceDocument();
+  useLayoutEffect(() => {
+    const element = flight.current, source = origin();
     const view = element?.ownerDocument.defaultView;
-    if (!element || !target || !view) return;
+    if (!element || !source || !view) return;
+    element.showPopover();
     let frame = 0;
     const place = () => {
-      if (now() >= expiresAt || !target.isConnected || !target.getClientRects().length || element.ownerDocument.hidden) {
-        element.style.visibility = "hidden";
-        return;
-      }
-      const rect = element.getBoundingClientRect(), to = (target.querySelector(".lr-person-head") ?? target).getBoundingClientRect();
-      element.style.setProperty("--to-x", `${to.x - rect.x + to.width / 2}px`);
-      element.style.setProperty("--to-y", `${to.y - rect.y + to.height / 2}px`);
-      element.style.visibility = "visible";
+      if (now() >= expiresAt || !source.isConnected) { element.style.visibility = "hidden"; return; }
       frame = view.requestAnimationFrame(place);
+      const from = source.getBoundingClientRect();
+      if (!from.width || !from.height || from.bottom < 0 || from.top > view.innerHeight || from.right < 0 || from.left > view.innerWidth || element.ownerDocument.hidden) { element.style.visibility = "hidden"; return; }
+      const root = element.getBoundingClientRect();
+      const target = anchor?.(), head = target?.querySelector(".lr-person-head") ?? target;
+      const to = head?.getBoundingClientRect();
+      // Hidden thumbnail portraits have no geometry; their visible action remains the target.
+      const targetRect = to?.width && to.height ? to : from;
+      const x = from.x - root.x + from.width / 2, y = from.y - root.y + from.height / 2;
+      element.style.setProperty("--from-x", `${x}px`);
+      element.style.setProperty("--from-y", `${y - 38}px`);
+      element.style.setProperty("--to-x", `${isThrow(reaction) ? targetRect.x - root.x + targetRect.width / 2 : x}px`);
+      element.style.setProperty("--to-y", `${isThrow(reaction) ? targetRect.y - root.y + targetRect.height / 2 : y + 12}px`);
+      element.style.visibility = "visible";
     };
     place();
-    return () => view.cancelAnimationFrame(frame);
-  }, [anchor, reaction, expiresAt, now]);
-  return <span ref={flight} className={`lr-reaction-flight lr-reaction-content ${isThrow(reaction) ? "is-throw" : "is-expression"}`}
-    style={{ visibility: anchor && isThrow(reaction) ? "hidden" : undefined, "--reaction-duration": `${REACTION_DURATION_MS}ms` } as CSSProperties} aria-hidden="true">
+    return () => { view.cancelAnimationFrame(frame); if (element.matches(":popover-open")) element.hidePopover(); };
+  }, [origin, anchor, reaction, expiresAt, now, ownerDocument]);
+  return <span ref={flight} popover="manual"
+    className={`lr-reaction-flight lr-reaction-content ${isThrow(reaction) ? "is-throw" : "is-expression"}`}
+    style={{ visibility: "hidden", "--reaction-duration": `${REACTION_DURATION_MS}ms` } as CSSProperties} aria-hidden="true">
     <span className={`lr-reaction-projectile is-${reaction}`} onAnimationStart={event => seekReactionAnimations(event.target as Element, expiresAt, now)}>
       <ReactionArtwork reaction={reaction} seed={id} />
     </span>

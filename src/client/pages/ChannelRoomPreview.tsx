@@ -51,6 +51,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
   const [longNames, setLongNames] = useState(() => new URLSearchParams(location.search).has("long-names"));
   const [roomCount, setRoomCount] = useState(() => firstUse || new URLSearchParams(location.search).has("no-rooms") ? 0 : 2);
   const [emptyChat, setEmptyChat] = useState(() => new URLSearchParams(location.search).has("empty-chat"));
+  const [hostOffline, setHostOffline] = useState(() => new URLSearchParams(location.search).has("host-offline"));
   const [fileSample, setFileSample] = useState(() => new URLSearchParams(location.search).has("file"));
   const [audienceSample, setAudienceSample] = useState(() => new URLSearchParams(location.search).has("audience"));
   const [createdRooms, setCreatedRooms] = useState<ChannelRoom[]>([]);
@@ -174,14 +175,15 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
     .map(user => `${user.id}-session`) : [];
   const watchSessions = watchActivity ? [watchActivity.sessionId, ...watchViewerSessionIds] : [];
   const state = { ...sample.channel.state!, channel: { ...sample.channel.state!.channel,
-    rooms: rooms.map(room => ({ ...room,
+    rooms: rooms.map(room => ({ ...room, ...(hostOffline && room.id === "friday" ? { available: false, delivery: undefined,
+      ...(new URLSearchParams(location.search).has("offline-locked") ? { authorized: false, canManage: false } : {}) } : {}),
       name: longNames && room.id === "friday" ? zh ? "周五一起看电影与交流的朋友们" : "Friday with friends: a shared evening together" : room.name,
       realtimeSessionIds: [...new Set([...(watchOnly ? [] : room.realtimeSessionIds), ...publications.filter(publication => publication.roomId === room.id).flatMap(publication => [publication.sessionId, ...publication.audience.map(viewer => viewer.sessionId)]), ...(watchActivity?.roomId === room.id ? watchSessions : [])])],
       participantSessionIds: [...new Set([
       ...room.participantSessionIds, ...publications.filter(publication => publication.roomId === room.id).map(publication => publication.sessionId), ...(watchActivity?.roomId === room.id ? watchSessions : []),
-    ])] })),
+    ])], ...(hostOffline && room.id === "friday" ? { participantSessionIds: [], realtimeSessionIds: [] } : {}) })),
   }, publications: [...sample.channel.state!.publications.filter(publication => roomIds.has(publication.roomId) && (!watchOnly || publication.kind !== "voice")), ...publications],
-    voice: sample.channel.state!.voice.filter(voice => !watchOnly && roomIds.has(voice.roomId)),
+    voice: sample.channel.state!.voice.filter(voice => !watchOnly && roomIds.has(voice.roomId) && !(hostOffline && voice.roomId === "friday")),
     users,
     subscriptions,
     watchActivities: watchActivity ? [{ ...watchActivity, viewerSessionIds: watchViewerSessionIds, ...(forwarding ? { byteSource: { sessionId: "sample-ada-session", resourceId: "sample-resource", format: "file" as const } } : {}) }] : [],
@@ -364,6 +366,7 @@ export function ChannelRoomPreview({ firstUse = false }: { firstUse?: boolean })
             }}>{zh ? "横竖混合" : "Mixed orientation"}</Chip>
             <Chip title={zh ? "长名字" : "Long names"} selected={longNames} onClick={() => setLongNames(!longNames)}>{zh ? "长名字" : "Long names"}</Chip>
             <Chip title={zh ? "没有房间" : "No rooms"} selected={!rooms.length} onClick={() => { setRoomCount(rooms.length ? 0 : 2); setSelected(rooms.length ? "" : "friday"); setCreatedRooms([]); setCount(0); setSharingRoom(null); }}>{zh ? "没有房间" : "No rooms"}</Chip>
+            <Chip title={zh ? "托管端离线" : "Host offline"} selected={hostOffline} onClick={() => setHostOffline(!hostOffline)}>{zh ? "托管端离线" : "Host offline"}</Chip>
             <Chip title={zh ? "空聊天" : "Empty chat"} selected={emptyChat} onClick={() => setEmptyChat(!emptyChat)}>{zh ? "空聊天" : "Empty chat"}</Chip>
             <Chip title={zh ? "附件样本" : "File sample"} selected={fileSample} onClick={() => setFileSample(!fileSample)}>{zh ? "附件样本" : "File sample"}</Chip>
             <Chip title={zh ? "观看者样本" : "Viewer sample"} selected={audienceSample} onClick={() => setAudienceSample(!audienceSample)}>{zh ? "观看者样本" : "Viewer sample"}</Chip>

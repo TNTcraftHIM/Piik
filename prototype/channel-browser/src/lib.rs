@@ -407,6 +407,11 @@ pub fn attachment_media_type(bytes: &[u8]) -> String {
     piik_channel_core::attachment::sniff_media_type(bytes).into()
 }
 #[wasm_bindgen]
+pub fn data_queue_frames(bulk: bool) -> usize {
+    piik_channel_core::conversation::data_queue_frames(bulk)
+}
+
+#[wasm_bindgen]
 pub fn attachment_limits() -> Result<String, JsValue> {
     encode(&piik_channel_core::ATTACHMENT_LIMITS)
 }

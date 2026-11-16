@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 import { useSurfaceDocument } from "../../ui/panel-window";
+import { surfaceViewport } from "../../ui/window-appearance";
 
 // Native popovers own visibility, dismissal and focus. This only places a
 // menu beside its anchor, within the document displaying it.
@@ -28,9 +29,9 @@ export function useAnchoredPopover(
       const anchor = trigger.current;
       if (!anchor || !menu.matches(":popover-open")) return;
       const rect = anchor.getBoundingClientRect();
-      const left = (viewport?.offsetLeft ?? 0) + 8, top = (viewport?.offsetTop ?? 0) + 8;
-      const right = left + (viewport?.width ?? view.innerWidth) - 16;
-      const bottom = top + (viewport?.height ?? view.innerHeight) - 16;
+      const bounds = surfaceViewport(menu.ownerDocument);
+      const left = bounds.left + 8, top = bounds.top + 8;
+      const right = bounds.right - 8, bottom = bounds.bottom - 8;
       const anchorOutside = rect.bottom < top || rect.top > bottom || rect.right < left || rect.left > right;
       // A keyboard can cover the anchor while its popover still owns input.
       // Keep that editing surface placed in view; a removed trigger still closes it.

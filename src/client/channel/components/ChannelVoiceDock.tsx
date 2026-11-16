@@ -38,14 +38,17 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
   return <section className="c3-voice-dock" aria-label={t("channel.voiceDock.voiceControls")}>
     <Glyph name="headphones" size={22} />
     <div className="c3-voice-destination">
-      <small>{t("channel.voiceDock.voiceJoined")}</small>
-      <Tooltip className="c3-voice-room" overflow={{ text: nameOfRoom(roomId), selector: "button, select" }}>
-      {joined.length === 1 ? <button type="button" onClick={() => onBrowse(roomId)}>{nameOfRoom(roomId)}</button>
-        : <select className="lr-select" aria-label={t("channel.voiceDock.selectRoom")} value={roomId}
-          onChange={event => onSelect(event.target.value)}>
-          {joined.map(value => <option key={value.roomId} value={value.roomId}>{nameOfRoom(value.roomId)}</option>)}
-        </select>}
-      </Tooltip>
+      <div className="c3-voice-room-info">
+        <small>{t("channel.voiceDock.voiceJoined")}</small>
+        <Tooltip className="c3-voice-room" overflow={{ text: nameOfRoom(roomId), selector: "button, select" }}>
+        {joined.length === 1 ? <button type="button" onClick={() => onBrowse(roomId)}>{nameOfRoom(roomId)}</button>
+          : <select className="lr-select" aria-label={t("channel.voiceDock.selectRoom")} value={roomId}
+            onChange={event => onSelect(event.target.value)}>
+            {joined.map(value => <option key={value.roomId} value={value.roomId}>{nameOfRoom(value.roomId)}</option>)}
+          </select>}
+        </Tooltip>
+      </div>
+      <ChannelVoiceSettings channel={channel} roomId={roomId} available={available} />
     </div>
     <div className="c3-voice-participants" aria-label={t("channel.voiceDock.voiceParticipants")}>
       {participants.slice(0, 4).map(({ user, ...voice }) => <Tooltip key={user.id}
@@ -63,8 +66,6 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
         <VoiceListeningButton deafened={deafened} quiet
           onClick={() => run(channel.setDeafened(roomId, !deafened))} />
       </AudioVolumeMenu>
-      <ChannelVoiceSettings channel={channel} roomId={roomId} available={available} />
-      <span className="c3-control-divider" />
       <Btn icon="door" title="voice.leave" hint="hint-voice-leave" draw="voice-membership" size="compact" quiet
         onClick={() => run(channel.leaveVoice(roomId))} />
     </div>

@@ -9,8 +9,11 @@ __PIIK_MODAL_BACKDROP__
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; }
 body { background: var(--wall); color: var(--ink); font: 12px system-ui; display: flex; align-items: center; user-select: none; }
+body[data-standalone] { app-region: drag; }
+.title { display: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-inline: 16px 8px; font-weight: 600; }
+body[data-standalone] .title { display: block; flex: 1; }
 html[data-modal-material] body::before { content: ""; position: fixed; inset: 0; pointer-events: none; }
-.controls { position: relative; display: flex; gap: 3px; padding: 0 7px; app-region: no-drag; }
+.controls { position: relative; display: flex; flex: none; gap: 3px; padding: 0 7px; app-region: no-drag; }
 html[data-modal-material="image"] .controls { color: var(--primary-ink); }
 button { app-region: no-drag; width: 38px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: inherit; display: grid; place-items: center; cursor: pointer; }
 button:hover { background: var(--control-hover); }
@@ -19,11 +22,12 @@ button:focus-visible { outline: 2px solid var(--action); outline-offset: -2px; }
 button:last-child:hover { background: var(--danger); color: var(--primary-ink); }
 svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 </style>
-<div class="controls"></div>
+<span class="title"></span><div class="controls"></div>
 <script>
 const controls = __PIIK_WINDOW_CONTROLS__;
 let language = 'en';
 let maximized = false;
+if (window.piikCaptionStandalone) document.body.dataset.standalone = '';
 for (const action of ['minimize', 'maximize', 'close']) {
   const button = document.createElement('button');
   button.dataset.action = action;
@@ -34,7 +38,7 @@ function render() {
   document.documentElement.lang = language;
   for (const button of document.querySelectorAll('button')) {
     const name = button.dataset.action === 'maximize' && maximized ? 'restore' : button.dataset.action;
-    button.title = controls.labels[language][name];
+    button.title = controls.labels[language][name === 'close' && window.piikCaptionStandalone ? 'closeWindow' : name];
     button.setAttribute('aria-label', button.title);
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
@@ -55,6 +59,8 @@ window.updateAppearance = (theme, lang, material) => {
   render();
 };
 window.updateMaximized = value => { maximized = value; render(); };
+window.updateTitle = value => { document.querySelector('.title').textContent = value; };
 render();
+window.ipc.postMessage('ready');
 </script>
 </html>

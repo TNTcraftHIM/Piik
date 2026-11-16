@@ -120,6 +120,7 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   const loadMicrophones = useCallback(() => sharingId ? sourceMicrophones(sharingId) : Promise.resolve([]), [sharingId, sourceMicrophones]);
   const roomMicrophone = channel.state?.voice.some(voice => voice.sessionId === channel.sessionId && !voice.muted);
   const busy = channel.pending.has(`screen:${roomId}`) || !!sharing && channel.pending.has(`source-audio:${sharing.id}`);
+  const cancellable = !!captureRequest || channel.pending.has(`screen:${roomId}`) && !channel.sourceSelectionCommitting(roomId);
   const label = t(sharing || watching ? "host.switchSource" : "host.start");
   const sourceTitle = roomName
     ? t("screen.switchRoomSource", { room: roomName })
@@ -158,17 +159,15 @@ export function ChannelShareControl({ channel, roomId, publicationId, compact = 
   if (publicationId && !sharing) return null;
   return <><span className="c3-share-actions" role="group" aria-label={t("screen.screenSharing")}>
     <span ref={trigger} className="c3-share-control">
-      {captureRequest ? <>
-        <span className="c3-app-confirmation">
+      {captureRequest ? <span className="c3-app-confirmation">
           <Btn icon="window" title="native.confirmInApp" cap="native.confirmInApp" size="compact" tone="primary"
             onClick={() => activateNativePicker(captureRequest.activationURL)} />
-        </span>
-        <Btn icon="x" title="common.cancel" cap="common.cancel" size="compact" quiet
-          onClick={() => { if (channel.nativeCaptureRequest(roomId)) void channel.cancelScreenSelection(roomId).catch(() => {}); }} />
-      </> : <Btn icon={sharing || watching ? "switchSource" : "cast"} title={{ text: sourceTitle }} cap={compact ? undefined : { text: label }} size="compact" tone={sharing || watching ? undefined : "primary"} quiet={compact}
+        </span> : <Btn icon={sharing || watching ? "switchSource" : "cast"} title={{ text: sourceTitle }} cap={compact ? undefined : { text: label }} size="compact" tone={sharing || watching ? undefined : "primary"} quiet={compact}
         hint={sharing || watching ? "hint-switch-source" : "hint-share-start"}
         disabled={disabled || busy || qualityPending || microphonePending} busy={busy || qualityPending} expanded={open}
         controls={id} popoverTarget={id} />}
+      {cancellable && <Btn icon="x" title="common.cancel" cap="common.cancel" size="compact" quiet
+        onClick={() => { void channel.cancelScreenSelection(roomId).catch(() => {}); }} />}
     </span>
     {(!watching || sharing || pageWatch) && <span ref={settingsTrigger} className="c3-share-control">
       <Btn icon="sliders" title={{ text: settingsTitle }} cap={compact ? undefined : { text: settingsLabel }} hint="hint-quality" size="compact" quiet

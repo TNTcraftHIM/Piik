@@ -1,4 +1,4 @@
-.c3-couch { width: 328px; max-width: 100%; min-width: 0; }
+.c3-couch { width: 100%; min-width: 0; }
 .c3-couch-width { min-width: 0; margin-inline: calc(var(--control-compact-size) / 2); }
 .c3-couch-scene { position: relative; height: 94px; max-width: 100%; margin: auto; }
 .c3-couch-bench { position: absolute; inset: 13px 0 0; pointer-events: none; }

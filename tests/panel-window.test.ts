@@ -59,10 +59,21 @@ test("unavailable or embedded browsers retain the in-page panel", () => {
   expect(panelWindowAPI({ ...view, top: view } as Window)).toBeUndefined();
 });
 
-test.each(["integrated", undefined] as const)("only an actual Native PiP child receives panel geometry: %s", async capability => {
+test.each([
+  { capability: "integrated", late: false, retireFirst: false },
+  { capability: "integrated", late: true, retireFirst: false },
+  { capability: "integrated", late: true, retireFirst: true },
+  { capability: undefined, late: false, retireFirst: false },
+] as const)("Native panel declaration follows target readiness and retirement: $capability/$late/$retireFirst", async ({ capability, late, retireFirst }) => {
   const { container, view, finish } = setup();
   const home = container.ownerDocument;
   view.piikNativeWindow = capability;
+  let notify: ((event: MessageEvent) => void) | undefined;
+  const removeEventListener = vi.fn((_type: string, listener: unknown) => { if (listener === notify) notify = undefined; });
+  Object.assign(view, {
+    addEventListener: vi.fn((_type: string, listener: (event: MessageEvent) => void) => { notify = listener; }),
+    removeEventListener,
+  });
   Object.assign(home, {
     baseURI: "https://fixture.example/", styleSheets: [],
     documentElement: { lang: "en", dataset: { theme: "dark" }, getAttribute: () => null },
@@ -71,7 +82,11 @@ test.each(["integrated", undefined] as const)("only an actual Native PiP child r
   Object.assign(container.parentElement!, { append: appendHome });
   const postMessage = vi.fn(), close = vi.fn();
   const pip = {
-    ipc: { postMessage }, close,
+    // The opener cannot rely on injected globals on this WindowProxy.
+    postMessage: vi.fn((envelope: { message: unknown }, origin: string) => {
+      expect(origin).toBe("*");
+      postMessage(JSON.stringify(envelope.message));
+    }), close,
     addEventListener: vi.fn(), removeEventListener: vi.fn(),
     document: {
       createElement: () => ({}), head: { append: vi.fn() },
@@ -87,12 +102,21 @@ test.each(["integrated", undefined] as const)("only an actual Native PiP child r
   const changed = vi.fn();
   const opening = openPanelWindow(container, controller.signal, changed);
   finish(pip);
+  if (capability && !late) notify?.({ source: pip, data: "piik-native-window-ready" } as MessageEvent);
   await opening;
-  if (capability) {
-    expect(postMessage.mock.calls.map(([message]) => JSON.parse(message))).toEqual([
-      { kind: "panel", width: 304, height: 346 },
-      { kind: "appearance", theme: "dark", language: "en", material: null },
+  if (late) {
+    expect(postMessage).not.toHaveBeenCalled();
+    if (retireFirst) controller.abort();
+    notify?.({ source: view, data: "piik-native-window-ready" } as MessageEvent);
+    expect(postMessage).not.toHaveBeenCalled();
+    notify?.({ source: pip, data: "piik-native-window-ready" } as MessageEvent);
+  }
+  if (capability && !retireFirst) {
+    expect(postMessage.mock.calls.filter(([message]) => JSON.parse(message).kind === "panel")).toEqual([
+      [JSON.stringify({ kind: "panel", width: 304, height: 346 })],
     ]);
+    expect(JSON.parse(postMessage.mock.calls.at(-1)![0])).toEqual({ kind: "appearance", theme: "dark", language: "en", material: null });
+    notify?.({ source: pip, data: "piik-native-window-ready" } as MessageEvent);
     home.documentElement.dataset.theme = "light";
     attributesChanged();
     expect(JSON.parse(postMessage.mock.calls.at(-1)![0])).toEqual({ kind: "appearance", theme: "light", language: "en", material: null });
@@ -102,4 +126,5 @@ test.each(["integrated", undefined] as const)("only an actual Native PiP child r
   controller.abort();
   expect(close).toHaveBeenCalledOnce();
   expect(appendHome).toHaveBeenCalledExactlyOnceWith(container);
+  if (capability) expect(notify).toBeUndefined();
 });

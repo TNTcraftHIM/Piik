@@ -107,7 +107,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
     fullscreen={fullscreen} fullscreenFailed={fullscreenFailed} toggleFullscreen={() => {
       if (player.video) { setFullscreenFailed(false); void toggleVideoFullscreen(player.video).catch(() => setFullscreenFailed(true)); }
     }} />;
-  const visibility = usePlaybackControlsVisibility(videoRef, controls, paused || player.blocked || !!player.error);
+  const visibility = usePlaybackControlsVisibility(videoRef, controls, player.blocked || !!player.error);
   useLayoutEffect(() => {
     if (surface.kind === "external") return;
     const element = surface.element, target = slot.current;
@@ -177,7 +177,7 @@ export function ChannelWatchVideo({ player, owned, paused, label, presentation, 
       {receiving && <WatchPeerAction receiving={receiving} />}
     </div></div>
       : player.blocked && <div className="c3-mini-message"><Btn icon="play" title="watch.resume" cap="watch.resume" onClick={onResume} /></div>}
-    {hasControls && <div ref={controls} id={controlsId} className="c3-mini-controls lr-media-toolbar lr-media-controls" role="group" aria-label={t("playback.controls")}>
+    {hasControls && <div ref={controls} id={controlsId} className="c3-mini-controls lr-media-toolbar lr-media-overlay lr-media-controls" role="group" aria-label={t("playback.controls")}>
       {!embedded && <div className="c3-watch-shared" role="group" aria-label={t(owned ? "watch.sharedControls" : "watch.following")}>
         {owned && <Btn icon={paused ? "play" : "pause"} quiet size="dense"
           title={paused ? "watch.play" : "watch.pause"} disabled={disabled} onClick={() => onPlayback({ paused: !paused })} />}
@@ -308,7 +308,7 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
   useVideoRotation(playbackRef, pictureFit, pictureRotation);
   useAnchoredPopover(pictureTrigger, picturePanel, { side: "above", align: "center" });
   useLayoutEffect(() => { if (presentation === "background") picturePanel.current?.hidePopover(); }, [presentation]);
-  const visibility = usePlaybackControlsVisibility(playbackRef, controls, paused || blocked || !ready);
+  const visibility = usePlaybackControlsVisibility(playbackRef, controls, blocked || !ready);
   const register = useCallback((input: ChannelScreenInput, element: HTMLVideoElement | null) => {
     if (element) consumers.current.set(input.stream, { element, composited: false });
     else consumers.current.delete(input.stream);
@@ -452,7 +452,7 @@ export function ChannelVideo({ stream, owned, localSource, label, presentation =
     </div>}
     {blocked && <div className="c3-mini-message"><Btn icon="play" title="playback.play" cap="playback.play"
       onClick={play} hint="hint-local-play" /></div>}
-    <div id={controlsId} ref={controls} className="c3-mini-controls lr-media-toolbar lr-media-controls" role="group" aria-label={t("playback.controls")}>
+    <div id={controlsId} ref={controls} className="c3-mini-controls lr-media-toolbar lr-media-overlay lr-media-controls" role="group" aria-label={t("playback.controls")}>
       <Btn icon={paused ? "play" : "pause"} title={paused ? "playback.play" : "playback.pause"} quiet
         hint={paused ? "hint-local-play" : "hint-local-pause"} onClick={() => { if (ref.current?.paused) play(); else ref.current?.pause(); }} />
       {!localSource && <>

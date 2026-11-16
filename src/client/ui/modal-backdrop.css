@@ -1,4 +1,6 @@
 /* Shared modal materials for Content and the separately trusted Native caption. */
+dialog:modal { overscroll-behavior: contain; }
+dialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
 :root {
   --modal-backdrop-surface: rgb(var(--surface-shade-rgb) / .38);
   --modal-backdrop-image: rgb(0 0 0 / .82);

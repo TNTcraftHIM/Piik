@@ -261,7 +261,7 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
           const title = screenTitle(source, t);
           return <article key={source.id} hidden={source.hidden} inert={source.hidden} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
             style={centeredStart ? { gridColumn: `${centeredStart} / span 2` } : undefined}
-            data-publication-id={source.id} data-focusable={focusable || undefined}
+            data-publication-id={source.id} data-focusable={focusable || undefined} data-playback-controls-scope
             aria-label={`${title} / ${source.name} / ${source.roomName}`}
             onClick={event => {
               if (!focusable || (event.target instanceof Element && event.target.closest("button, input, select, a, [popover]"))) return;
@@ -284,7 +284,7 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
                   title="screen.retryPicture" cap="screen.retryPicture" disabled={!canSubscribe || source.pending}
                   onClick={() => onRetryPicture(source.id)} />}</div>}
             <footer>
-              <div className="c3-monitor-source-row" data-tooltip-controls>
+              <div className="c3-monitor-source-row lr-media-overlay" data-tooltip-controls data-playback-controls>
                 <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
                 <div className="c3-monitor-source">
                   <Tooltip overflow={{ text: title, selector: "strong" }}><strong>{title}</strong></Tooltip>
@@ -295,15 +295,14 @@ export function ChannelStage({ buffering, sources, focusedId, canSubscribe, onFo
                 </div>
                 <div className="c3-monitor-social">
                   <ChannelContentReactions reactions={source.reactions} session={source.interaction ?? null}
-                    target={{ publicationId: source.id }} disabled={source.available === false} effectsEnabled={!source.hidden && !thumbnail}
+                    target={{ publicationId: source.id }} disabled={source.available === false} effectsEnabled={!source.hidden}
                     effectAnchor={() => grid.current?.querySelector(`[data-publication-id="${CSS.escape(source.id)}"] .c3-monitor-source-row > .lr-person`) ?? null} />
                   <SourceAudience people={source.audience} />
                 </div>
                 <div className="c3-monitor-tile-actions">
-                  {active.length > 1 && <Tooltip className="c3-monitor-layout-action" kind={isFocused ? "hint-screen-grid" : "hint-screen-focus"}
-                    text={isFocused ? t("screen.returnToGrid") : t("screen.focusNamed", { title })}><Btn icon={isFocused ? "screenGrid" : "screenFocus"} quiet size="dense"
-                      title={{ text: isFocused ? t("screen.returnToGrid") : t("screen.focusNamed", { title }) }}
-                      pressed={isFocused} onClick={() => onFocus(isFocused ? null : source.id)} /></Tooltip>}
+                  {active.length > 1 && !isFocused && <Tooltip className="c3-monitor-layout-action" kind="hint-screen-focus"
+                    text={t("screen.focusNamed", { title })}><Btn icon="screenFocus" quiet size="dense"
+                      title={{ text: t("screen.focusNamed", { title }) }} onClick={() => onFocus(source.id)} /></Tooltip>}
                   {source.owned && <div className="c3-monitor-publishing" role="group"
                     aria-label={t("screen.sharingControls", { title })}>
                     {source.shareControls}
@@ -370,7 +369,7 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
 }) {
   const { t } = useCopy();
   const embedded = source.player?.presentation.kind === "embed";
-  return <article hidden={source.hidden} inert={source.hidden} data-embed={source.player?.presentation.kind === "embed" || undefined} data-publication-id={source.id} data-source-kind="watch" data-watch-mode={source.receiving?.mode} data-focusable={focusable || undefined}
+  return <article hidden={source.hidden} inert={source.hidden} data-embed={source.player?.presentation.kind === "embed" || undefined} data-publication-id={source.id} data-source-kind="watch" data-watch-mode={source.receiving?.mode} data-focusable={focusable || undefined} data-playback-controls-scope
     className={`c3-monitor-tile${focused ? " is-focused" : ""}${thumbnail ? " is-thumbnail" : ""}`}
     style={centeredStart ? { gridColumn: `${centeredStart} / span 2` } : undefined}
     aria-label={`${source.title} / ${source.name} / ${source.roomName}`} onClick={event => {
@@ -395,17 +394,16 @@ function WatchStageTile({ source, thumbnail, focused, focusable, centeredStart, 
           : !(source.receiving?.peerAvailable && source.receiving.peerSupported) && <small>{t("watch.connectApp")}</small>)}
         {source.receiving && <WatchPeerAction receiving={source.receiving} />}</>
         : <><BrandLoader /><span>{t("watch.waiting")}</span></>}</div>}
-    <footer><div className="c3-monitor-source-row" data-tooltip-controls>
+    <footer><div className="c3-monitor-source-row lr-media-overlay" data-tooltip-controls data-playback-controls>
       <PawnSvg color={participantColor(source.userId)} identity={source.userId} avatar={source.avatar} />
       <div className="c3-monitor-source"><Tooltip overflow={{ text: source.title, selector: "strong" }}><strong>{source.title}</strong></Tooltip>
         <small>{source.name}<span aria-hidden="true"> / </span><button type="button" className="c3-source-room" onClick={source.onRoom}>{source.roomName}</button></small>
       </div>
+      <div className="c3-monitor-social"><SourceAudience people={source.audience} joined /></div>
       <div className="c3-monitor-tile-actions">
-        <SourceAudience people={source.audience} joined />
-        {(focusable || focused) && <Tooltip className="c3-monitor-layout-action" kind={focused ? "hint-screen-grid" : "hint-screen-focus"}
-          text={focused ? t("screen.returnToGrid") : t("screen.focusNamed", { title: source.title })}><Btn icon={focused ? "screenGrid" : "screenFocus"} quiet size="dense"
-          title={{ text: focused ? t("screen.returnToGrid") : t("screen.focusNamed", { title: source.title }) }}
-          pressed={focused} onClick={() => onFocus(focused ? null : source.id)} /></Tooltip>}
+        {focusable && !focused && <Tooltip className="c3-monitor-layout-action" kind="hint-screen-focus"
+          text={t("screen.focusNamed", { title: source.title })}><Btn icon="screenFocus" quiet size="dense"
+          title={{ text: t("screen.focusNamed", { title: source.title }) }} onClick={() => onFocus(source.id)} /></Tooltip>}
         {source.owned ? <div className="c3-monitor-publishing" role="group" aria-label={t("screen.sharingControls", { title: source.title })}>
           {source.shareControls}
           <span className="c3-monitor-close"><Btn icon="stop" tone="danger" size="dense"

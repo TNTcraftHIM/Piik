@@ -134,7 +134,8 @@ export class HTMLVideoMedia implements WatchMedia {
       this.hlsTimeline = new WatchHlsTimeline(hls, this.timeline);
       hls.on(Hls.Events.ERROR, (_event, error) => {
         if (!error.fatal || this.lifetime.signal.aborted) return;
-        this.failure = new Error(watchElementFailure(this.video.error) ?? watchHlsFailure(error, !!peerRead)); this.video.dispatchEvent(new Event("error"));
+        const failure = watchHlsFailure(error, !!peerRead);
+        this.failure = new Error(failure === "watch_media_failed" ? watchElementFailure(this.video.error) ?? failure : failure); this.video.dispatchEvent(new Event("error"));
       });
       hls.loadSource(url); hls.attachMedia(this.video);
     } else {
@@ -146,9 +147,9 @@ export class HTMLVideoMedia implements WatchMedia {
   async read(): Promise<WatchMediaState> {
     await this.setup;
     const video = this.video;
+    if (this.failure) throw this.failure;
     const elementFailure = watchElementFailure(video.error);
     if (elementFailure) throw new Error(elementFailure);
-    if (this.failure) throw this.failure;
     const program = video.readyState >= 1 ? this.hlsTimeline?.read(video) : null;
     return { position: video.currentTime, paused: video.paused, rate: video.playbackRate,
       duration: program ? null : Number.isFinite(video.duration) ? video.duration : null, readyState: video.readyState,
