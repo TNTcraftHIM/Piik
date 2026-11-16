@@ -334,6 +334,9 @@ pub async fn serve(
     stop: impl Future<Output = ()> + Send + 'static,
     ready: Option<oneshot::Sender<String>>,
 ) -> Result<()> {
+    // reqwest's rustls-no-provider requires a process default even for HTTP URLs.
+    // Initialize before any App request, independent of earlier WSS/HTTPS activity.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let address = listener.local_addr()?;
     if !address.ip().is_loopback() {
         bail!("App service requires a loopback listener");
