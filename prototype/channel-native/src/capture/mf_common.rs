@@ -61,3 +61,53 @@ pub(super) fn normalize_level_1b(bytes: &mut [u8]) {
         }
     }
 }
+
+/// Only an explicit unexpected MFT encode-operation failure permits software retry.
+#[derive(Debug)]
+pub(super) struct HardwareEncoderFailed;
+impl std::fmt::Display for HardwareEncoderFailed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("hardware H264 encode operation failed")
+    }
+}
+impl std::error::Error for HardwareEncoderFailed {}
+pub(super) fn encode_failure(error: windows::core::Error) -> anyhow::Error {
+    if error.code() == windows::Win32::Foundation::E_FAIL {
+        anyhow::Error::from(error).context(HardwareEncoderFailed)
+    } else {
+        error.into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use windows::Win32::{
+        Foundation::{E_FAIL, E_INVALIDARG},
+        Graphics::Dxgi::DXGI_ERROR_DEVICE_REMOVED,
+    };
+
+    #[test]
+    fn only_unexpected_encode_failure_gets_the_replacement_marker() {
+        let error = encode_failure(windows::core::Error::from_hresult(E_FAIL));
+        assert!(error.is::<HardwareEncoderFailed>());
+        assert_eq!(
+            error.downcast_ref::<windows::core::Error>().unwrap().code(),
+            E_FAIL
+        );
+        for code in [
+            E_INVALIDARG,
+            DXGI_ERROR_DEVICE_REMOVED,
+            MF_E_NOTACCEPTING,
+            MF_E_TRANSFORM_NEED_MORE_INPUT,
+            MF_E_TRANSFORM_STREAM_CHANGE,
+        ] {
+            let error = encode_failure(windows::core::Error::from_hresult(code));
+            assert!(!error.is::<HardwareEncoderFailed>());
+            assert_eq!(
+                error.downcast_ref::<windows::core::Error>().unwrap().code(),
+                code
+            );
+        }
+    }
+}

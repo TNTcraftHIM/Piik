@@ -45,6 +45,7 @@ pub(super) enum Reply {
     EncodingEnded {
         error: Option<String>,
         device_removed: Option<i32>,
+        encoder_failed: bool,
     },
 }
 pub(super) async fn write_json<W: AsyncWrite + Unpin, T: Serialize>(
@@ -106,6 +107,10 @@ async fn run() -> Result<()> {
         &mut stdout,
         &Reply::EncodingEnded {
             error: result.as_ref().err().map(|e| format!("{e:#}")),
+            encoder_failed: result
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.is::<super::mf_common::HardwareEncoderFailed>()),
             device_removed: result
                 .as_ref()
                 .err()
@@ -154,7 +159,9 @@ async fn encode(
                             gpu = Some(gpu::Receiver::new(&frame)?);
                         }
                         let frame = gpu.as_ref().unwrap().receive(frame)?;
-                        ensure!(encoding.shared.input(frame), "encoding stopped before raw input");
+                        if !encoding.shared.input(frame) {
+                            return Err(output::EncodingStopped.into());
+                        }
                     }
                     Some(Command::Read) => {
                         ensure!(!read, "duplicate AU Read");
@@ -196,8 +203,43 @@ async fn encode(
     .await;
     control.stop();
     let joined = tokio::task::spawn_blocking(move || encoding.stop()).await?;
-    result.and(joined).map_err(|error| match gpu {
+    let result = joined_result(result, joined);
+    result.map_err(|error| match gpu {
         Some(gpu) => gpu::failure(error, &gpu.device),
         None => error,
     })
+}
+
+fn joined_result(result: Result<()>, joined: Result<()>) -> Result<()> {
+    // A command can observe the stop flag before recv exposes the worker's cause.
+    match (result, joined) {
+        (Err(stopped), Err(cause)) if stopped.is::<output::EncodingStopped>() => Err(cause),
+        (result, joined) => result.and(joined),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stopped_command_yields_to_joined_cause_but_ipc_failure_does_not() {
+        use super::super::mf_common::HardwareEncoderFailed;
+        let joined = || Err(HardwareEncoderFailed.into());
+        let stopped = Err(anyhow::Error::from(output::EncodingStopped).context("bitrate command"));
+        assert!(joined_result(stopped, joined())
+            .unwrap_err()
+            .is::<HardwareEncoderFailed>());
+        assert!(joined_result(Ok(()), joined())
+            .unwrap_err()
+            .is::<HardwareEncoderFailed>());
+        let ipc = Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe).into());
+        assert!(joined_result(ipc, joined())
+            .unwrap_err()
+            .is::<std::io::Error>());
+        let stopped = Err(output::EncodingStopped.into());
+        assert!(joined_result(stopped, Ok(()))
+            .unwrap_err()
+            .is::<output::EncodingStopped>());
+    }
 }

@@ -239,6 +239,7 @@ impl Encoder {
             }
             self.transform
                 .ProcessInput(0, &sample, 0)
+                .map_err(super::mf_common::encode_failure)
                 .context("hardware H264 ProcessInput")?;
             Ok(())
         }
@@ -262,7 +263,9 @@ impl Encoder {
                     .ProcessOutput(0, std::slice::from_mut(&mut buffer), &mut status);
             let sample = ManuallyDrop::take(&mut buffer.pSample);
             drop(ManuallyDrop::take(&mut buffer.pEvents));
-            result.context("hardware H264 ProcessOutput")?;
+            result
+                .map_err(super::mf_common::encode_failure)
+                .context("hardware H264 ProcessOutput")?;
             let sample = sample.ok_or_else(|| anyhow!("hardware H264 omitted output sample"))?;
             let pts = sample.GetSampleTime()?;
             let keyframe = sample.GetUINT32(&MFSampleExtension_CleanPoint).unwrap_or(0) != 0;

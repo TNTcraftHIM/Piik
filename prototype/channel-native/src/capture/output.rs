@@ -13,11 +13,21 @@ use std::{
 };
 use tokio::sync::Notify;
 
+#[derive(Debug)]
+pub(super) struct EncodingStopped;
+impl std::fmt::Display for EncodingStopped {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("encoding stopped")
+    }
+}
+impl std::error::Error for EncodingStopped {}
+
 #[derive(Default)]
 pub(super) struct State {
     pub stop: bool,
     done: bool,
     failure: Option<String>,
+    encoder_failed: bool,
     pub latest: Option<RawFrame>,
     pub event: Option<windows::core::Result<u32>>,
     pub force_keyframe: bool,
@@ -112,7 +122,9 @@ impl EncodingControl {
     }
     pub fn force_keyframe(&self) -> Result<()> {
         let mut state = self.0.state.lock().unwrap();
-        ensure!(!state.stop, "encoding stopped");
+        if state.stop {
+            return Err(EncodingStopped.into());
+        }
         state.force_keyframe = true;
         drop(state);
         self.0.wake();
@@ -121,7 +133,9 @@ impl EncodingControl {
     pub fn set_bitrate(&self, bitrate: u32) -> Result<()> {
         ensure!(bitrate > 0, "bitrate must be positive");
         let mut state = self.0.state.lock().unwrap();
-        ensure!(!state.stop, "encoding stopped");
+        if state.stop {
+            return Err(EncodingStopped.into());
+        }
         state.bitrate = Some(bitrate);
         drop(state);
         self.0.wake();
@@ -161,6 +175,7 @@ impl Encoding {
                 let mut state = worker.state.lock().unwrap();
                 if let Err(error) = &result {
                     state.failure = Some(format!("{error:#}"));
+                    state.encoder_failed = error.is::<super::mf_common::HardwareEncoderFailed>();
                 }
                 state.stop = true;
                 state.done = true;
@@ -189,7 +204,13 @@ impl Encoding {
                     return Some(Ok(frame));
                 }
                 if state.done {
-                    return state.failure.take().map(|error| Err(anyhow!(error)));
+                    return state.failure.take().map(|error| {
+                        Err(if state.encoder_failed {
+                            anyhow!(error).context(super::mf_common::HardwareEncoderFailed)
+                        } else {
+                            anyhow!(error)
+                        })
+                    });
                 }
             }
             notified.await;

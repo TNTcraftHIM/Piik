@@ -273,6 +273,7 @@ async fn supervise(
     execution: EncodingExecution,
 ) -> Result<()> {
     let mut recovering = None;
+    let mut resolved_execution = execution;
     loop {
         if shared.stopped() {
             return Ok(());
@@ -285,7 +286,7 @@ async fn supervise(
             timing,
             settings,
             codec,
-            execution,
+            resolved_execution,
         )
         .await;
         if shared.stopped() {
@@ -309,7 +310,25 @@ async fn supervise(
                     s.latest = None;
                 }
             }
-            Err(error) => return Err(recovering.unwrap_or(error)),
+            Err(error)
+                if codec == VideoCodec::H264
+                    && resolved_execution == EncodingExecution::Auto
+                    && error.is::<super::mf_common::HardwareEncoderFailed>()
+                    && gpu::device_lost(&error).is_none() =>
+            {
+                // child() has joined the failed implementation. Keep this one
+                // encoder's clock/settings and require its next independent AU.
+                resolved_execution = EncodingExecution::Software;
+                recovering = Some(error);
+            }
+            Err(error) => {
+                return Err(match recovering {
+                    Some(previous) => {
+                        error.context(format!("encoding replacement after {previous:#}"))
+                    }
+                    None => error,
+                })
+            }
             Ok(()) => return Ok(()),
         }
         loop {
@@ -461,6 +480,15 @@ async fn child(
                         ensure!(length <= worker::MAX_AU, "encoding IPC AU too large");
                         let mut bytes = vec![0; length];
                         output.read_exact(&mut bytes).await?;
+                        if codec == VideoCodec::H264
+                            && keyframe
+                            && !reader_shared.state.lock().unwrap().independent
+                        {
+                            // A new implementation cannot borrow the preceding child's SPS.
+                            let mut sps = crate::media::H264Sps::default();
+                            sps.access_unit(&bytes)?;
+                            ensure!(sps.codec().is_some(), "replacement H264 AU has no SPS");
+                        }
                         reader_shared.output(
                             qpc,
                             EncodedFrame {
@@ -479,6 +507,7 @@ async fn child(
                     Reply::EncodingEnded {
                         error,
                         device_removed,
+                        encoder_failed,
                     } => {
                         return error.map_or(Ok(()), |error| {
                             Err(match device_removed {
@@ -486,6 +515,9 @@ async fn child(
                                     windows::core::Error::from_hresult(HRESULT(code)),
                                 )
                                 .context(error),
+                                None if encoder_failed => {
+                                    anyhow!(error).context(super::mf_common::HardwareEncoderFailed)
+                                }
                                 None => anyhow!(error),
                             })
                         });
@@ -496,7 +528,7 @@ async fn child(
         .await;
         result.context("encoding read")
     });
-    let (write, read, status) = tokio::select! {
+    let (mut write, read, status) = tokio::select! {
         write = &mut writer => (Some(write), None, None),
         read = &mut reader => (None, Some(read), None),
         status = child.wait() => (None, None, Some(status)),
@@ -506,7 +538,10 @@ async fn child(
     // terminal reply while the existing bounded process shutdown joins it.
     if write.is_none() {
         writer.abort();
-        let _ = writer.await;
+        write = match writer.await {
+            Err(error) if error.is_cancelled() => None,
+            completed => Some(completed),
+        };
     }
     let status = match status {
         Some(status) => status,
@@ -524,16 +559,26 @@ async fn child(
     }
     .context("encoding reader panicked")?;
     let write = write.map_or(Ok(()), |write| write.context("encoding writer panicked")?);
-    let result = match (write, read) {
-        (Err(write), Err(read)) if gpu::device_lost(&read).is_none() => Err(write),
-        (write, read) => read.and(write),
-    };
+    let result = child_result(write, read);
     result.with_context(|| format!("encoding process exited {status}"))?;
     ensure!(status.success(), "encoding process exited {status}");
     if let Some(Err(error)) = &*shared.stop.borrow() {
         return Err(anyhow!(error.clone()));
     }
     Ok(())
+}
+
+fn child_result(write: Result<()>, read: Result<()>) -> Result<()> {
+    match (write, read) {
+        (Err(write), _) if gpu::device_lost(&write).is_some() => Err(write),
+        (Err(write), Err(read))
+            if gpu::device_lost(&read).is_none()
+                && !read.is::<super::mf_common::HardwareEncoderFailed>() =>
+        {
+            Err(write)
+        }
+        (write, read) => read.and(write),
+    }
 }
 
 #[cfg(test)]
@@ -553,6 +598,31 @@ mod tests {
             error_reported: false,
         }
     }
+    #[test]
+    fn child_completion_keeps_device_loss_before_codec_failure_before_broken_pipe() {
+        use super::super::mf_common::HardwareEncoderFailed;
+        use windows::Win32::Graphics::Dxgi::DXGI_ERROR_DEVICE_REMOVED;
+        let device = || {
+            anyhow::Error::from(windows::core::Error::from_hresult(
+                DXGI_ERROR_DEVICE_REMOVED,
+            ))
+        };
+        let encode = || anyhow::Error::from(HardwareEncoderFailed);
+        let pipe = || anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
+        for (write, read) in [(device(), encode()), (pipe(), device())] {
+            assert_eq!(
+                gpu::device_lost(&child_result(Err(write), Err(read)).unwrap_err()),
+                Some(DXGI_ERROR_DEVICE_REMOVED)
+            );
+        }
+        assert!(child_result(Err(pipe()), Err(encode()))
+            .unwrap_err()
+            .is::<HardwareEncoderFailed>());
+        assert!(child_result(Err(pipe()), Err(anyhow!("reader ended")))
+            .unwrap_err()
+            .is::<std::io::Error>());
+    }
+
     #[tokio::test]
     async fn cancelled_recv_retains_the_same_reply_and_one_read() {
         let mut encoding = proxy();
@@ -683,9 +753,11 @@ mod tests {
         let high = Video::new(time.clone(), changed.clone());
         let low = Video::new(time.clone(), changed.clone());
         let mut encodings = Encodings::new(time.clone(), changed.clone(), VideoCodec::Vp8);
-        let high_encoder = proxy();
+        let mut high_encoder = proxy();
+        high_encoder.thread = Some(thread::spawn(|| Ok(())));
         let high_control = high_encoder.control();
-        let low_encoder = proxy();
+        let mut low_encoder = proxy();
+        low_encoder.thread = Some(thread::spawn(|| Ok(())));
         let low_control = low_encoder.control();
         encodings.baseline(high_encoder, high.clone(), high.requests());
         encodings.supplied(low_encoder, low.clone());

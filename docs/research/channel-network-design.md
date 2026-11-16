@@ -955,6 +955,14 @@ before replacement. Failure before usable output preserves the original device
 error. The process boundary contains observed driver callbacks after MFT shutdown;
 unrelated failures stay terminal without idle retention or shutdown delays.
 
+For Windows H264 in automatic execution mode, an explicit hardware MFT encode
+operation failure permits one replacement with the system software encoder after
+the failed child has joined. The replacement retains source time and the latest
+bitrate, and must supply a fresh SPS and independent frame before delivery.
+Software replacement failure ends that encoding. Device removal keeps its
+existing recovery owner; successful hardware under load keeps the existing
+quality-adaptation policy.
+
 Native Auto prefers available VP8 when the selecting Browser cannot receive H264.
 Otherwise it tries hardware H264, then available software VP8 after failed or
 timed-out first independent output. Stop the failed encoder before replacement
