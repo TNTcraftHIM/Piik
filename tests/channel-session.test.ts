@@ -8407,6 +8407,37 @@ test.each(['activity', 'subscription'] as const)('watch authority %s removal ret
   } finally { session.close(); }
 });
 
+test.each(['withdrawn', 'replaced', 'activity'] as const)('peer source %s retires setup while its first range waits for a route', async removal => {
+  const { session, socket } = await setup(1000, false);
+  const video = new WatchTestVideo(); video.readyState = 0;
+  vi.stubGlobal('document', { createElement: () => video });
+  vi.stubGlobal('MediaSource', { isTypeSupported: () => true });
+  const source = { sessionId: crypto.randomUUID(), resourceId: crypto.randomUUID(), format: 'file' as const };
+  const activity = { id: 'watch-pending-source', roomId: 'first', viewerSessionIds: [], sessionId: source.sessionId, userId: 'other',
+    source: { kind: 'media' as const, url: 'https://media.test/owned.mp4' }, byteSource: source,
+    playback: { timeline: 'media' as const, position: 0, paused: false, rate: 1, anchorTime: 1000 } };
+  let readSignal!: AbortSignal;
+  const read = vi.spyOn((session as unknown as { watchBytes: { read: (...args: unknown[]) => Promise<never> } }).watchBytes, 'read')
+    .mockImplementation((...args) => { readSignal = args.at(-1) as AbortSignal;
+      return new Promise<never>((_resolve, reject) => readSignal.addEventListener('abort', () => reject(readSignal.reason), { once: true })); });
+  try {
+    const state = { ...session.getSnapshot().state!, watchActivities: [activity], watchSubscriptions: [{ id: activity.id, mode: 'peer' as const }] };
+    socket.receive({ type: 'state', state });
+    const joining = session.joinWatch(activity.id, 'peer');
+    const join = socket.sent.findLast(command => command.type === 'join_watch')!;
+    socket.receive({ type: 'room_reply', roomId: 'first', requestId: join.requestId, result: { type: 'watch_ready', serverTime: 1000 } });
+    await joining;
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+    expect(readSignal.aborted).toBe(false);
+    const next = removal === 'activity' ? [] : [{ ...activity,
+      byteSource: removal === 'withdrawn' ? undefined : { ...source, resourceId: crypto.randomUUID() } }];
+    socket.receive({ type: 'state', state: { ...state, watchActivities: next } });
+    expect(readSignal.aborted).toBe(true);
+    expect(session.getSnapshot().watchPlayers.has(activity.id)).toBe(false);
+    expect(video.src).toBe('');
+  } finally { session.close(); }
+});
+
 test.each(['cancel', 'stop'] as const)('watch replacement commit ignores %s cancellation or honors explicit activity stop without resurrection', async operation => {
   const { session, socket } = await setup(1000, false);
   const first = new WatchTestVideo(), replacement = new WatchTestVideo();

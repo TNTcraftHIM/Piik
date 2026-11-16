@@ -47,7 +47,7 @@ export function waitForWatchMedia(media: Pick<WatchMedia, "read" | "listen">, si
     const finish = (error?: Error) => {
       if (finished) return;
       finished = true;
-      clearTimeout(timer); unlisten(); signal.removeEventListener("abort", cancel);
+      unlisten(); signal.removeEventListener("abort", cancel);
       error ? reject(error) : resolve();
     };
     const cancel = () => finish(new DOMException("Cancelled", "AbortError"));
@@ -60,7 +60,6 @@ export function waitForWatchMedia(media: Pick<WatchMedia, "read" | "listen">, si
       }, error => finish(error))
         .finally(() => { checking = false; });
     };
-    const timer = setTimeout(() => finish(new Error("watch_media_timeout")), 20000);
     const unlisten = media.listen(event => {
       if (event === "closed") finish(new Error("watch_media_failed"));
       else {
@@ -69,8 +68,9 @@ export function waitForWatchMedia(media: Pick<WatchMedia, "read" | "listen">, si
       }
     });
     signal.addEventListener("abort", cancel, { once: true });
-    void setup?.then(() => { prepared = true; check(); }, error => finish(error));
-    if (signal.aborted) cancel(); else check();
+    if (signal.aborted) cancel();
+    else if (setup) void setup.then(() => { prepared = true; check(); }, error => finish(error));
+    else check();
   });
 }
 

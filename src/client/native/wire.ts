@@ -123,9 +123,8 @@ const remoteControlRequestSchema = z.object({
   id: opaqueIdentifierSchema,
   peerId: opaqueIdentifierSchema,
   state: z.enum(["pending", "active", "suspended"]),
-  endpointId: z.string().regex(/^[0-9a-f]{32}$/).optional(),
 }).strict();
 
 export type RemoteControlRequest = z.infer<typeof remoteControlRequestSchema>;
 
-export const remoteControlStateSchema = z.object({ mode: remoteControlModeSchema, platform: remoteInputPlatformSchema, requests: z.array(remoteControlRequestSchema), coPlay: z.boolean().optional(), gamepad: z.boolean().optional(), simultaneous: z.boolean().optional() });
+export const remoteControlStateSchema = z.object({ mode: remoteControlModeSchema, platform: remoteInputPlatformSchema, requests: z.array(remoteControlRequestSchema), gamepad: z.boolean().optional(), simultaneous: z.boolean().optional() });

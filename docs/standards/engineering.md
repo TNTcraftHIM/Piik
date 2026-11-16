@@ -194,9 +194,14 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
   exceptions in flags or tables, invent a generic manager, or weaken necessary
   validation merely to reduce the visible branch count.
 - Give policy values, timing and thresholds a named owner, explicit units and a
-  single source in configuration, constants, tokens or derived values. Keep
-  different meanings separate even when their numbers match; straightforward
-  local arithmetic needs no ceremonial constants. Follow
+  single source in configuration, constants, tokens or derived values. Establish
+  the policy's purpose and evidence before retaining its value: a name or previous
+  use is not justification. Prefer an existing protocol or library owner and
+  observed progress over an independent timer. A deadline belongs to the operation
+  it limits, with explicit start, completion and cancellation boundaries; waiting
+  for a prerequisite must not imply that operation failed. Keep different meanings
+  separate even when their numbers match; straightforward local arithmetic needs
+  no ceremonial constants. Follow
   [ES.45](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Res-magic).
 - Keep simple logic at its call site. Extract a helper for actual reuse, a
   substantial boundary, or a distinct concept whose name makes the caller clearer.
@@ -355,6 +360,9 @@ compatibility, runtime and failure cost. After a material module, remove any
 new state, dependency, branch or abstraction that the accepted behavior does
 not need. A small performance gain does not justify permanent complexity;
 do not reduce viewing quality or requested functionality merely to save lines.
+Judge existing architecture, schemas and defaults against the current product
+goal as well. Preserve a design for its present value, not its age; replace a
+private experiment when a simpler coherent model serves the required behavior.
 
 A concrete reduction in duplicated writers, cross-module dependencies or
 repeated edit sites can justify structural refactoring without a reproduced

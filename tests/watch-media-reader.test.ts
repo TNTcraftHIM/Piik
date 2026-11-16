@@ -88,13 +88,17 @@ test("readiness cancellation remains immediate while setup is pending", async ()
   lifetime.abort(); await check; expect(vi.getTimerCount()).toBe(0); media.close();
 });
 
-test("setup and media readiness share the original twenty-second deadline", async () => {
+test("a slow resource setup and later media event complete without an invented readiness failure", async () => {
   vi.useFakeTimers(); const v = video(); vi.stubGlobal("document", { createElement: () => v });
   let finish!: (resource: { url: string; close(): void }) => void;
   const media = new HTMLVideoMedia(() => new Promise(resolve => { finish = resolve; }), "file");
-  const waiting = media.ready(new AbortController().signal); const check = expect(waiting).rejects.toThrow("watch_media_timeout");
-  await vi.advanceTimersByTimeAsync(19000); finish({ url: "https://media.test/video", close() {} });
-  await vi.advanceTimersByTimeAsync(1000); await check; media.close(); expect(vi.getTimerCount()).toBe(0);
+  const waiting = media.ready(new AbortController().signal);
+  let ready = false; void waiting.then(() => { ready = true; });
+  await vi.advanceTimersByTimeAsync(30000); expect(ready).toBe(false);
+  finish({ url: "https://media.test/video", close() {} });
+  await vi.advanceTimersByTimeAsync(30000); expect(ready).toBe(false);
+  v.readyState = 2; v.dispatchEvent(new Event("loadeddata"));
+  await waiting; media.close(); expect(vi.getTimerCount()).toBe(0);
 });
 
 test("HLS can receive through the Reader when Service Workers are unavailable", async () => {

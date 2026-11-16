@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { describe, expect, test, vi } from "vitest";
-import { HTMLVideoMedia, createPeerWatchMedia } from "../src/client/channel/watch-media";
+import { HTMLVideoMedia, createPeerWatchMedia, waitForWatchMedia, type WatchMediaEvent } from "../src/client/channel/watch-media";
 import { openWatchResource } from "../src/client/channel/watch-resource";
 
 const rootId = "11111111-1111-4111-8111-111111111111";
@@ -167,7 +167,7 @@ test("closing while service-worker registration is pending leaves no reader leas
   } finally { vi.unstubAllGlobals(); }
 });
 
-test.each(["timeout", "abort"] as const)("peer readiness %s retires its pending setup reader", async reason => {
+test("peer readiness abort retires its pending setup reader after a long route wait", async () => {
   vi.useFakeTimers();
   const video = Object.assign(new EventTarget(), { src: "", readyState: 0, buffered: { length: 0 },
     pause: vi.fn(), removeAttribute: vi.fn(), load: vi.fn(), remove: vi.fn() });
@@ -183,10 +183,12 @@ test.each(["timeout", "abort"] as const)("peer readiness %s retires its pending 
   const cancel = new AbortController();
   try {
     const ready = media.ready(cancel.signal);
-    const rejected = reason === "timeout" ? expect(ready).rejects.toThrow("watch_media_timeout")
-      : expect(ready).rejects.toMatchObject({ name: "AbortError" });
+    const rejected = expect(ready).rejects.toMatchObject({ name: "AbortError" });
+    void rejected.catch(() => {});
     await vi.advanceTimersByTimeAsync(0); expect(reader).toHaveBeenCalledTimes(1);
-    if (reason === "timeout") await vi.advanceTimersByTimeAsync(20000); else cancel.abort();
+    let settled = false; void ready.then(() => { settled = true; }, () => { settled = true; });
+    await vi.advanceTimersByTimeAsync(30000); expect(settled).toBe(false); expect(readerSignal.aborted).toBe(false);
+    cancel.abort();
     await rejected;
     expect(readerSignal.aborted).toBe(true);
     expect(video.removeAttribute).toHaveBeenCalledWith("src");
@@ -194,4 +196,37 @@ test.each(["timeout", "abort"] as const)("peer readiness %s retires its pending 
     await vi.advanceTimersByTimeAsync(20000); expect(reader).toHaveBeenCalledTimes(1);
   } finally { media.close(); vi.unstubAllGlobals(); vi.useRealTimers(); }
   expect(video.remove).toHaveBeenCalled();
+});
+
+test.each(["ready", "error"] as const)("readiness follows actual %s after prolonged loading instead of a generic deadline", async outcome => {
+  vi.useFakeTimers();
+  let loaded!: () => void;
+  let changed!: (event: WatchMediaEvent) => void, readyState = 0;
+  const setup = new Promise<void>(resolve => { loaded = resolve; });
+  const media = { read: vi.fn(async () => ({ position: 0, paused: true, rate: 1, duration: null,
+    readyState, buffered: null, ended: false })), listen: vi.fn((listener: (event: WatchMediaEvent) => void) => { changed = listener; return vi.fn(); }) };
+  const cancel = new AbortController();
+  try {
+    const ready = waitForWatchMedia(media, cancel.signal, setup);
+    let settled = false; void ready.then(() => { settled = true; }, () => { settled = true; });
+    void ready.catch(() => {});
+    await vi.advanceTimersByTimeAsync(30000); expect(settled).toBe(false); expect(media.read).not.toHaveBeenCalled();
+    loaded(); await vi.advanceTimersByTimeAsync(30000); expect(settled).toBe(false);
+    if (outcome === "ready") { readyState = 2; changed("loadeddata"); await expect(ready).resolves.toBeUndefined(); }
+    else { changed("error"); await expect(ready).rejects.toThrow("watch_media_failed"); }
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { cancel.abort(); vi.useRealTimers(); }
+});
+
+test("cancelled setup cannot arm a decoder deadline when it resolves late", async () => {
+  vi.useFakeTimers();
+  let loaded!: () => void;
+  const setup = new Promise<void>(resolve => { loaded = resolve; });
+  const media = { read: vi.fn(), listen: vi.fn(() => vi.fn()) }, cancel = new AbortController();
+  try {
+    const ready = waitForWatchMedia(media, cancel.signal, setup);
+    const failed = expect(ready).rejects.toMatchObject({ name: "AbortError" });
+    cancel.abort(); await failed; loaded(); await vi.advanceTimersByTimeAsync(30000);
+    expect(media.read).not.toHaveBeenCalled(); expect(vi.getTimerCount()).toBe(0);
+  } finally { vi.useRealTimers(); }
 });

@@ -621,8 +621,14 @@ export class ChannelSession {
     for (const [id, player] of this.watchPlayers) {
       const activity = state.watchActivities.find(value => value.id === id);
       if (!player.owner && !restoring && !state.watchSubscriptions.some(value => value.id === id) && this.view.state?.watchSubscriptions.some(value => value.id === id)) this.retireWatchPlayer(id);
-      else if (activity) player.update(activity.playback);
-      else if (this.view.state?.watchActivities.some(value => value.id === id)
+      else if (activity) {
+        const previousSource = this.view.state?.watchActivities.find(value => value.id === id)?.byteSource;
+        const nextSource = activity.byteSource;
+        if (player.mode === "peer" && previousSource && (!nextSource
+          || previousSource.sessionId !== nextSource.sessionId || previousSource.resourceId !== nextSource.resourceId
+          || previousSource.format !== nextSource.format)) this.retireWatchPlayer(id);
+        else player.update(activity.playback);
+      } else if (this.view.state?.watchActivities.some(value => value.id === id)
         || !this.view.pending.has(`screen:${player.roomId}`) && !this.view.pending.has(`watch-video:${id}`)) this.retireWatchPlayer(id);
     }
     const visible = this.projectActivity(state);

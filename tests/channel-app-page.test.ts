@@ -267,3 +267,22 @@ test("hiding and refocusing a source page preserves its requests and lifetime", 
     page.close(); expect(socket.sent.at(-1)).toMatchObject({ type: "page_close", pageId: page.id });
   } finally { app.close(); }
 });
+
+
+test("hello timeout and its pending rejection retire the App link once", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("WebSocket", Socket);
+  const closed = vi.fn();
+  const app = new ChannelApp({ service: "piik-channel-app", protocol: APP_PROTOCOL, domainProtocol: CHANNEL_PROTOCOL,
+    token: "test-token", port: 8793 }, "site", "user", "credential", "Me", closed, () => {});
+  const failed = expect(app.ready).rejects.toThrow("app_disconnected");
+  Socket.current.onopen?.();
+  try {
+    await vi.advanceTimersByTimeAsync(10000);
+    await failed;
+    expect(closed).toHaveBeenCalledOnce();
+  } finally {
+    app.close();
+    vi.useRealTimers();
+  }
+});

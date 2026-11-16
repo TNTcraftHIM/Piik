@@ -253,7 +253,8 @@ export class ChannelApp {
       { Authorization: `Bearer ${health.token}`, "X-Piik-Credential": credential });
     const socket = this.socket = new WebSocket(`ws://127.0.0.1:${health.port}/rooms`, `piik-channel-rooms.${health.token}`);
     const lost = (reason: "socketclose" | "hello" | "schema" | "consumer", close?: CloseEvent, timedOut = false) => {
-      if (!this.lifetime.signal.aborted) debugEvent("native", "control-closed", {
+      if (this.lifetime.signal.aborted) return;
+      debugEvent("native", "control-closed", {
         reason, ...(close && { code: close.code, wasClean: close.wasClean }), ...(reason === "hello" && { timedOut }),
       });
       this.close(); onClose();

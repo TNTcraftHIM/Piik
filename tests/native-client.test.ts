@@ -377,6 +377,13 @@ describe("Native capture and input schemas", () => {
     expect(remoteControlStateSchema.safeParse({ ...state, platform: "unknown" }).success).toBe(false);
   });
 
+  it("uses one controller identity in the current source approval view", () => {
+    const request = { id: "a".repeat(32), peerId: crypto.randomUUID(), state: "pending" };
+    const view = { mode: "ask", platform: "windows", requests: [request], simultaneous: true, gamepad: false };
+    expect(remoteControlStateSchema.parse(view)).toEqual(view);
+    expect(remoteControlStateSchema.safeParse({ ...view, requests: [{ ...request, endpointId: request.peerId.replaceAll("-", "") }] }).success).toBe(false);
+  });
+
   it("keeps exact positive physical identities and accepts system picker zero", () => {
     expect(
       nativeCaptureTargetSchema.safeParse({

@@ -63,7 +63,6 @@ pub struct RequestView {
     pub id: String,
     pub peer_id: Uuid,
     pub state: &'static str,
-    pub endpoint_id: String,
 }
 
 /// Matches the shared native remote-control state, without secret or grant tokens.
@@ -73,7 +72,6 @@ pub struct SourceView {
     pub mode: Mode,
     pub platform: &'static str,
     pub requests: Vec<RequestView>,
-    pub co_play: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gamepad: Option<bool>,
     pub simultaneous: bool,
@@ -238,7 +236,6 @@ impl Desktop {
             mode: Mode::Off,
             platform: platform(),
             requests: vec![],
-            co_play: true,
             gamepad: cfg!(target_os = "windows").then_some(executor.gamepad.is_some()),
             simultaneous: false,
             can_set_stop_shortcut: cfg!(any(target_os = "windows", target_os = "macos")),
@@ -1246,7 +1243,6 @@ impl Executor {
         let view = SourceView {
             mode: source.mode,
             platform: platform(),
-            co_play: true,
             gamepad: cfg!(target_os = "windows").then_some(self.gamepad.is_some()),
             simultaneous: source.simultaneous,
             can_set_stop_shortcut: source.view.borrow().can_set_stop_shortcut,
@@ -1259,7 +1255,6 @@ impl Executor {
                     c.intent.map(|intent| RequestView {
                         id: intent.simple().to_string(),
                         peer_id: *id,
-                        endpoint_id: id.simple().to_string(),
                         state: if c.grant.is_none() {
                             "pending"
                         } else if c.suspended {
