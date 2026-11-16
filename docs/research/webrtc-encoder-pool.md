@@ -118,6 +118,16 @@ the RTC SDK. Original-byte website playback does not imply Native RTP, decoding
 or encoding support for that codec. P010-to-NV12 conversion alone is not HDR
 tone mapping.
 
+An isolated Windows AV1 control on 2026-11-16 used adapter-bound hardware
+[MFTEnum2](https://learn.microsoft.com/en-us/windows/win32/api/mfapi/nf-mfapi-mftenum2)
+enumeration, activation and real NV12 GPU samples. One 1080p60, Main 8-bit 4:2:0
+configuration produced 180 AUs over three seconds; an independent libaom software
+decoder recovered all 180 pictures with unchanged timestamps. Output averaged
+5.884 Mbps for a 6 Mbps request. Submission-to-readout p95 was 4.283 ms, including
+the helper's polling and output handling. This proves the tested hardware path;
+Piik's Native worker, RTP negotiation, forwarding and Browser RTC integration
+remain separate work. It is not an end-to-end latency or codec-efficiency comparison.
+
 ### Rust Worker Cadence Control
 
 On 2026-11-14, the current Rust Windows worker path was exercised with owned

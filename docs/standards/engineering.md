@@ -180,6 +180,11 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
   Remove superseded paths in the same change; retain no unused legacy copy.
   A platform adapter can be justified with one implementation; judge its boundary
   and consumers before removing it.
+- Review material boundary changes with source-linked dependency and lifecycle
+  diagrams before and after the change. Show calls, state writes, queues, commits
+  and retirement; compare them with the owning standard and a relevant mature
+  design. Keep working diagrams with local review artifacts; retain stable design
+  facts in their existing owner.
 - Prefer one rule derived from the responsible owner's state, capabilities and
   user intent over accumulating platform, page, event-order or incident-specific
   exceptions. Before adding another case, check whether the shared model or
