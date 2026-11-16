@@ -97,13 +97,19 @@ avoid a major justifies mislabeling an incompatible release.
 
 ## Extending Interfaces
 
-Command/event JSON objects still reject unknown keys, and required fields reject
-omissions. Most enums remain closed; the bounded display-only reaction identifier
-has an explicit [receive-side exception](./rooms-access.md#room-interactions).
-Therefore even adding a field can break the other side.
-The former required `sfu` addition to strict `/api/capabilities` demonstrated
-both directions of this problem; an unchanged signaling identifier does not
-cover HTTP compatibility.
+Published 2.x command/event contracts reject unknown keys, with an explicit
+[receive-side exception](./rooms-access.md#room-interactions) for the bounded
+display-only reaction identifier. Current 3.0 Domain and App command variants
+also reject unknown keys, but its event readers differ: Native accepts extra
+Domain-event fields; Browser generally strips them, while passing room-host
+payloads through to Core. Nested schemas retain their own checks. The
+[Core wire types](../../prototype/channel-core/src/wire.rs) and
+[Browser decoder](../../src/client/channel/protocol.ts) own these distinctions.
+
+Required fields and closed enums can still make an addition incompatible.
+The earlier required `sfu` addition to strict 2.x `/api/capabilities`
+demonstrated both directions of this problem; an unchanged signaling identifier
+does not cover HTTP compatibility.
 
 Runtime capabilities and App discovery now ignore unknown descriptive fields
 while validating known types, bounds and required identity. An absent optional
