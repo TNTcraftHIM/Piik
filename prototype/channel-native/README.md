@@ -232,13 +232,17 @@ to that release and regenerate Native, Server and Android locks, then run the
 existing mapping timer/lifecycle checks and package notice collection.
 
 Native uses str0m's public RTP/Sans-I/O interface, pinned to official
-[c97e014d](https://github.com/algesten/str0m/commit/c97e014d26095b095e8902342513e02fd9e18195).
+[30189fda](https://github.com/algesten/str0m/commit/30189fda95d5d7b90d5eb7b19a54a6d9f4856e64).
 [PR #1134](https://github.com/algesten/str0m/pull/1134) suppresses duplicate NACK
 repairs within one round trip while permitting later repair. Resend history
 belongs to each cached packet and retires with cache eviction, buffer reset or
-SSRC reset. Native, Server and Android retain this single upstream source until
-a published release includes the repairs. MIT/Apache-2.0 licensing and the
-[rust-crypto provider](https://github.com/algesten/str0m/tree/c97e014d26095b095e8902342513e02fd9e18195/crates/rust-crypto)
+SSRC reset. The pin also includes [#1137](https://github.com/algesten/str0m/pull/1137),
+which bounds loss-based estimates by acknowledged throughput and the minimum
+bitrate, and [#1154](https://github.com/algesten/str0m/pull/1154), which rejects
+conflicting SDP payload mappings without panicking or replacing locked parameters.
+Native, Server and Android retain this single upstream source until a published
+release includes the repairs. MIT/Apache-2.0 licensing and the
+[rust-crypto provider](https://github.com/algesten/str0m/tree/30189fda95d5d7b90d5eb7b19a54a6d9f4856e64/crypto/rust-crypto)
 remain unchanged.
 
 The [Native consumer comparison](../../docs/research/network-lab.md#duplicate-nack-feedback)
