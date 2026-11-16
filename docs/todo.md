@@ -153,6 +153,9 @@ the feedback period; they do not delay that delivery.
   trigger, bounded candidate attempts and strict-benefit proof before enabling
   automatic alternative-parent trials. Online sessions do not prove reusable
   physical connections; keep that fact with the transport owner.
+  The controls also show delayed natural recovery and an incumbent freeze during
+  a rejected trial. Distinguish sustained path limits and bound the cost of
+  overlapping candidates before enabling automatic quality trials.
 - [ ] **NAT field coverage.** The bounded random-mapping Native implementation
   and ordinary Native-to-Browser linear extension have controlled media and
   retirement evidence. Measure difficult physical networks and sustained

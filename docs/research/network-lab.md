@@ -231,6 +231,28 @@ lifecycle of one explicit switch, not an automatic trigger or general Internet
 performance. Production alternative-parent selection remains in
 [TODO](../todo.md#next).
 
+An isolated `0babfe65` follow-up used actual Native selected-layer/allocation
+observations to request one existing leaf Switch after three approximately
+two-second restricted windows. Those windows were experimental parameters;
+the existing 20-second operation and five-second proof freshness remained.
+The candidate additionally needed more decoded pixels, no cadence regression,
+and continuing progress without freeze/pause increases on both inputs.
+
+The continuing local-edge limit produced a real gain: the approved interval
+compared 160 × 90 at 24 frames with 640 × 360 at 60 frames over two seconds;
+the selected replacement subsequently delivered about 29.9 fps. Its old picture
+lease retired while base and other-room leases remained. A common Viewer
+downlink limit produced no strict gain and no switch, but the incumbent incurred
+one freeze during the trial: retaining a lease does not make overlap free.
+
+When the local limit was removed at the trigger, the trial still committed and
+640-pixel-wide playback was first observed after 14.53 seconds. A matched arm
+with no Switch recovered the retained path to that width at its first
+2.26-second sample. This contrast indicates recovery interference or relative
+comparison bias; it does not isolate the transport mechanism. Relative strict
+improvement alone did not establish a sustained path defect or a net benefit
+from this trial. These controls do not support enabling automatic quality trials.
+
 ### Native Desired Capacity
 
 A `dc15472f` control on 2026-11-14 exercised the current Native demand calculation

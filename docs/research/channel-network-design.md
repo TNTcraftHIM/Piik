@@ -22,12 +22,8 @@ file bytes and file-pull control. Pictures start on usable existing paths, then 
 source-rooted delivery through bounded background transitions. All authorized,
 capable room peers can be relay candidates; only viewers and necessary transit
 nodes receive the picture. Both stages use the same route state and transports.
-The owner accepted this routing foundation and durable room records with cached
-attachments. The [room-data model](./channel-storage-and-identity.md) owns simple
-shared file delivery on those same paths. Browser and Native room owners run the
-shared Rust core with local confirmation/storage. Text, history, reactions and
-attachment descriptions and bounded small images use domain WebSocket carriage; reading alone needs no
-peer connection. TODO owns remaining implementation and platform integration.
+The [room-data model](./channel-storage-and-identity.md) owns durable room records,
+attachment copies and shared file delivery on those paths.
 
 ## Terminology And Responsibilities
 
@@ -111,10 +107,6 @@ through normal create/join actions; users do not configure a second daemon or
 storage server. Peer delivery preserves this authority and recovery path without
 adding another permission owner.
 
-When B joins A's domain and creates a room, B's actual Browser or App runtime
-operates that room. B needs no new domain, and A's domain service does not take
-over its execution or history.
-
 After room admission, the room owner confirms room changes and message order.
 Chat, history, message reactions and live room interactions use the existing
 domain WebSocket after room admission. This is their normal, single transport,
@@ -147,10 +139,9 @@ The [room-data model](./channel-storage-and-identity.md) owns persistence, chat
 retry identity, history correlation/complete pages, file copies and manual address
 replacement. Live results are room-host signed without a permanent signed history
 log; bounded queued output rechecks current authority. Domain Join/Welcome use
-one explicit protocol version, rejecting incompatible endpoints before admission;
-there is no legacy P2P conversation path. File delivery consumes its existing
-peer control transport rather than owning conversation. Domain and
-room data may reside on different devices; an App may compose both runtimes locally.
+one explicit protocol version, rejecting incompatible endpoints before admission.
+Domain and room data may reside on different devices; an App may compose both
+runtimes locally.
 The domain's public listener serves its Web UI and signaling; local approval and
 App control stay on a separate loopback listener. Local and public entries address
 the same domain, but only the local launcher receives its owner bootstrap.
