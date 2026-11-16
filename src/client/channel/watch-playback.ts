@@ -176,7 +176,6 @@ export class WatchPlayer {
       await this.media.patch(patch);
       if (this.error === "watch_live_position_unavailable" && patch.position !== undefined) this.error = null;
       if (this.media.seekEvents === false && Object.keys(patch).length) this.observe(await this.media.read());
-      if (patch.paused === false && !this.retired) this.blocked = false;
     } catch (error) {
       if (!this.retired) {
         if (error instanceof Error && (error.name === "NotAllowedError" || error.message === "watch_autoplay_blocked")) this.blocked = true;

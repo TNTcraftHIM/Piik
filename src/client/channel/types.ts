@@ -197,7 +197,7 @@ export interface ChannelActions {
   setDeafened(roomId: string, deafened: boolean): Promise<void>;
   setInputVolume(volume: number): void;
   microphones(): Promise<CaptureDevice[]>;
-  configureVoiceInput(settings: Partial<Pick<RoomPreferences["voiceInput"], "deviceId" | "voiceProcessing">>): Promise<void>;
+  configureVoiceInput(settings: Partial<Pick<RoomPreferences["voiceInput"], "deviceId" | "voiceProcessing" | "strongerSuppression">>): Promise<void>;
   setListeningVolume(volume: number): void;
   setVoiceVolume(userId: string, volume: number): void;
   setVoiceMuted(userId: string, muted: boolean): void;

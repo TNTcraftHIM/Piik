@@ -79,6 +79,8 @@ export class HTMLVideoMedia implements WatchMedia {
   readonly presentation = { kind: "video" as const, element: this.video };
   private lifetime = new AbortController();
   private setup: Promise<void>;
+  // The same media lease proves initial data once; seeking does not revoke that proof.
+  private initialDataReady = false;
   private hls?: Hls;
   private hlsTimeline?: WatchHlsTimeline;
   private resource?: WatchResourceLease;
@@ -161,15 +163,31 @@ export class HTMLVideoMedia implements WatchMedia {
     if (value.position !== undefined) this.video.currentTime = this.hlsTimeline?.localPosition(value.position) ?? value.position;
     if (value.rate !== undefined) this.video.playbackRate = value.rate;
     if (value.paused === true) this.video.pause();
-    else if (value.paused === false) await this.video.play();
+    // An unresolved play must not block a later seek or pause in the control owner.
+    else if (value.paused === false) void this.video.play().catch(error => {
+      if (this.lifetime.signal.aborted || error instanceof DOMException && error.name === "AbortError") return;
+      if (error instanceof DOMException && error.name === "NotAllowedError") this.video.dispatchEvent(new Event("blocked"));
+      else {
+        this.failure = new Error(watchElementFailure(this.video.error) ?? "watch_media_failed");
+        this.video.dispatchEvent(new Event("error"));
+      }
+    });
   }
   async ready(signal: AbortSignal): Promise<void> {
-    try { await waitForWatchMedia(this, AbortSignal.any([signal, this.lifetime.signal]), this.setup); }
+    try {
+      const lifetime = AbortSignal.any([signal, this.lifetime.signal]);
+      lifetime.throwIfAborted();
+      if (!this.initialDataReady) {
+        await waitForWatchMedia(this, lifetime, this.setup);
+        this.initialDataReady = true;
+      } else await this.read();
+      lifetime.throwIfAborted();
+    }
     catch (error) { this.dispose(); throw error; }
   }
   listen(changed: (event: WatchMediaEvent) => void): () => void {
     const lifetime = new AbortController();
-    for (const event of ["loadedmetadata", "loadeddata", "play", "playing", "pause", "seeked", "ratechange", "ended", "waiting", "error", "closed"] as const)
+    for (const event of ["loadedmetadata", "loadeddata", "play", "playing", "pause", "seeked", "ratechange", "ended", "waiting", "error", "blocked", "closed"] as const)
       this.video.addEventListener(event, () => changed(event), { signal: lifetime.signal });
     return () => lifetime.abort();
   }

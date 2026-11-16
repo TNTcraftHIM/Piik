@@ -2,7 +2,8 @@ import { useId, useRef, useState } from "react";
 import { MicrophoneSettings } from "../../components/living/MicrophoneSettings";
 import { AudioBitrateControl } from "../../components/living/QualityPresets";
 import { MAX_AUDIO_SEND_BITRATE } from "../../media/quality";
-import { Btn } from "../../components/living/primitives";
+import { supportsStrongerSuppression } from "../../media/microphone-input";
+import { Btn, SwitchItem } from "../../components/living/primitives";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useCopy } from "../../ui/copy";
 import type { ChannelController } from "../types";
@@ -30,6 +31,10 @@ export function ChannelVoiceSettings({ channel, roomId, available }: { channel: 
         loadDevices={channel.microphones} deviceId={channel.voiceInput.deviceId} onDevice={deviceId => configure({ deviceId })}
         volume={channel.voiceInput.volume} onVolume={channel.setInputVolume}
         voiceProcessing={channel.voiceInput.voiceProcessing} onVoiceProcessing={voiceProcessing => configure({ voiceProcessing })} />
+      <SwitchItem checked={Boolean(channel.voiceInput.strongerSuppression)}
+        onChange={strongerSuppression => configure({ strongerSuppression })}
+        disabled={!available || busy || !channel.voiceInput.strongerSuppression && (!channel.voiceInput.voiceProcessing || !supportsStrongerSuppression())}
+        label={t("voice.noise.enhanced")} note={t(supportsStrongerSuppression() ? "voice.noise.enhancedHint" : "voice.noise.unsupported")} />
       {room?.canManage && <AudioBitrateControl purpose="voice" value={room.voiceBitrate} max={MAX_AUDIO_SEND_BITRATE}
         disabled={!available || channel.pending.has(`room:${roomId}`)}
         onChange={bitrate => { void channel.setRoomVoiceBitrate(roomId, bitrate).catch(() => {}); }} />}

@@ -20,6 +20,44 @@ vi.mock('ws', async () => {
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
+test.each(['welcome', 'admission', 'browse'] as const)('stop fences the pending %s continuation before it can subscribe or announce ready', async phase => {
+  const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
+  vi.useFakeTimers();
+  const [local, host, binding, user] = Array.from({ length: 4 }, () => randomUUID());
+  const client = new TextParticipant({ url: 'ws://fixture.invalid', origin: 'http://fixture.invalid', roomId: 'room', name: 'Fixture',
+    admission: { password: 'owned-fixture' } });
+  const ready = vi.fn(); client.on('ready', ready);
+  const connected = client.connect().catch(error => error as Error), socket = boundary.socket;
+  const receive = (event: object) => socket.emit('message', Buffer.from(JSON.stringify(event)));
+  socket.readyState = 1; socket.emit('open');
+  receive({ type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local, selfProfile: { id: user },
+    state: { channel: { rooms: [{ id: 'room', authorized: true, available: true, reading: true,
+      delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: Array(32).fill(0) }] } });
+  if (phase !== 'welcome') await Promise.resolve();
+  if (phase === 'browse') {
+    receive({ type: 'ack', requestId: socket.sent.at(-1)!.requestId });
+    await Promise.resolve();
+  }
+  const pending = socket.sent.at(-1)!;
+  const stopping = client.stop();
+  const leave = socket.sent.at(-1)!;
+  if (phase !== 'welcome') receive({ type: 'ack', requestId: pending.requestId });
+  await Promise.resolve(); await Promise.resolve();
+  // A successful late acknowledgement must not send the next handshake step after leave.
+  const afterLeave = socket.sent.slice(socket.sent.indexOf(leave) + 1);
+  receive({ type: 'ack', requestId: leave.requestId });
+  await Promise.resolve(); await Promise.resolve();
+  socket.readyState = 3; socket.emit('close');
+  await stopping;
+  const result = await connected;
+  expect(afterLeave).toEqual([]);
+  expect(ready).not.toHaveBeenCalled();
+  expect(result).toBeInstanceOf(Error);
+  expect((result as Error).message).toBe('closed');
+  expect(vi.getTimerCount()).toBe(0);
+  expect(socket.eventNames()).toEqual([]);
+});
+
 test('concurrent stop callers await the same leave and socket retirement, including its failure', async () => {
   const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
   const { SessionSigner } = await import('../prototype/channel-browser/pkg/piik_channel_browser.js');
@@ -61,4 +99,35 @@ test('concurrent stop callers await the same leave and socket retirement, includ
   expect(socket.eventNames()).toEqual([]);
   expect(vi.getTimerCount()).toBe(0);
   await expect(client.chat('after close')).rejects.toThrow('closed');
+});
+
+test('a completed old browse cannot announce readiness for a replacement socket', async () => {
+  const { TextParticipant } = await import('../prototype/channel-browser/node/text-participant');
+  vi.useFakeTimers();
+  const [local, host, binding, user] = Array.from({ length: 4 }, () => randomUUID());
+  const welcome = { type: 'welcome', protocol: CHANNEL_PROTOCOL, credential: 'fixture-credential', sessionId: local, selfProfile: { id: user },
+    state: { channel: { rooms: [{ id: 'room', authorized: true, available: true, reading: true,
+      delivery: { hostSessionId: host, bindingId: binding } }] }, sessions: [{ id: host, signingKey: Array(32).fill(0) }] } };
+  const client = new TextParticipant({ url: 'ws://fixture.invalid', origin: 'http://fixture.invalid', roomId: 'room', name: 'Fixture' });
+  const ready = vi.fn(); client.on('ready', ready);
+  const first = client.connect().catch(error => error as Error), old = boundary.socket;
+  old.readyState = 1; old.emit('open'); old.emit('message', Buffer.from(JSON.stringify(welcome)));
+  await Promise.resolve();
+  old.emit('message', Buffer.from(JSON.stringify({ type: 'ack', requestId: old.sent.at(-1)!.requestId })));
+  old.readyState = 3; old.emit('close');
+  const replacing = client.reconnect(), next = boundary.socket;
+  const result = await first;
+  expect(result).toBeInstanceOf(Error);
+  expect((result as Error).message).toBe('disconnected');
+  expect(ready).not.toHaveBeenCalled();
+  next.readyState = 1; next.emit('open'); next.emit('message', Buffer.from(JSON.stringify(welcome)));
+  await Promise.resolve();
+  next.emit('message', Buffer.from(JSON.stringify({ type: 'ack', requestId: next.sent.at(-1)!.requestId })));
+  await replacing;
+  expect(ready).toHaveBeenCalledOnce();
+  const stopping = client.stop();
+  next.emit('message', Buffer.from(JSON.stringify({ type: 'ack', requestId: next.sent.at(-1)!.requestId })));
+  await Promise.resolve(); await Promise.resolve();
+  next.readyState = 3; next.emit('close'); await stopping;
+  expect(vi.getTimerCount()).toBe(0);
 });

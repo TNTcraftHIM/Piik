@@ -28,7 +28,7 @@ const roomPreferencesSchema = z.object({
     speed: z.number().min(CHAT_OVERLAY_LIMITS.speed[0]).max(CHAT_OVERLAY_LIMITS.speed[1]).default(CHAT_OVERLAY_DEFAULTS.speed),
     colorBySender: z.boolean().default(CHAT_OVERLAY_DEFAULTS.colorBySender),
   }).default(CHAT_OVERLAY_DEFAULTS),
-  voiceInput: z.object({ deviceId: z.string(), volume: z.number().min(0).max(2), voiceProcessing: z.boolean() })
+  voiceInput: z.object({ deviceId: z.string(), volume: z.number().min(0).max(2), voiceProcessing: z.boolean(), strongerSuppression: z.boolean().optional() })
     .default({ deviceId: "", volume: 1, voiceProcessing: true }),
   voiceListeningVolume: z.number().min(0).max(2).default(1),
   keyboardPage: z.enum(REMOTE_KEYBOARD_PAGES).default("letters"),

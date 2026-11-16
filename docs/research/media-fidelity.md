@@ -109,48 +109,35 @@ voice processing does not turn a mono source into stereo.
 
 ### Stronger Microphone Suppression
 
-Keep Browser voice processing as the default for the shared 3.0 microphone. For
-[#518](https://github.com/TNTcraftHIM/Piik/issues/518), the first candidate is
-[Jitsi's RNNoise AudioWorklet](https://github.com/jitsi/jitsi-meet/blob/cc7058813b00f33f322f587e1805528424bb5a48/react/features/stream-effects/noise-suppression/NoiseSuppressorWorklet.ts)
-and its [synchronous WASM module](https://github.com/jitsi/rnnoise-wasm/tree/cb529a59a8478fe604e57986fc96afdaecfa6fb7).
-It uses Xiph's 48 kHz, 480-sample mono processing. The selected script is 1.93 MB
-before compression, 1.33 MB with gzip, and starts with a 16 MiB WASM heap.
-[DeepFilterNet's WASM interface](https://github.com/Rikorose/DeepFilterNet/blob/7b14b895fe7fc42cab72b4a4c1e49c982bd6404b/libDF/src/wasm.rs)
-requires its model and tract inference runtime; RNNoise is the smaller initial
-integration.
+Browser voice processing remains the default. Voice settings offer optional
+RNNoise speech suppression before gain in the shared MicrophoneInput; room
+outputs keep borrowing the same track. Enhancement processes mono, retains
+Browser AEC/AGC and replaces Browser noise suppression. Turning it off restores
+ordinary capture processing; screen/system audio does not use this option.
 
-A Chrome 156 software-capture comparison used the same licensed WebRTC speech
-sample with synthetic fan-like noise, including normal speech, quiet speech and
-noise-only intervals. Capture settings confirmed the requested processing.
-RNNoise replaced Browser noise suppression while retaining Browser AEC and AGC;
-the production microphone gain/output graph remained in use. Noise-only output
-fell substantially, while voice-waveform comparison did not establish improved
-speech fidelity. Simultaneous dry and processed branches measured about 31 ms
-of added delay. This selects a candidate for matched-level listening and mobile
-runtime checks; it does not select a new default or measure acoustic echo control.
-The listening comparison time-aligns these captures, matches normal-speech RMS
-with one gain per mode and preserves relative quiet speech and pause levels.
-It reuses recorded test audio without requesting a microphone or running the
-candidate in the product.
+The default context keeps the Browser's chosen sample rate and does not load the
+worklet. Enhancement requires AudioWorklet support and an actual 48 kHz context;
+other rates fail only that operation while preserving an existing input. The UI
+explains how to turn enhancement off and, if joining failed with a saved preference,
+rejoin using default processing. No silent fallback or shared-output migration
+occurs. Preparation and device replacement commit only after readiness; the last
+microphone consumer cancels pending preparation and retires its capture/context.
 
-An Android API 35 emulator running Chrome 124 completed one 22-second dry control
-and one RNNoise AudioWorklet run with the same licensed speech/noise input,
-processing 1,056,000 samples per run without processor errors or non-finite output.
-No microphone was opened and output gain was zero. RNNoise initialization took
-315 ms with a 16 MiB WASM heap; its 2,200 processing frames averaged 0.669 ms,
-with p99 6 ms and a maximum of 26 ms. Two exceeded the 10 ms frame budget.
-The worklet's millisecond-resolution clock limits timing precision, and Chrome
-exposed no hardware playback-underrun statistics. Module loading also included
-cache effects between runs. This is emulator candidate evidence, not physical-phone
-acceptance or a mode decision; matched-level listening, real-device cost, power
-and sustained playback remain unverified.
+The bundled [Jitsi synchronous module](https://github.com/jitsi/rnnoise-wasm/tree/76193e87d99f1ae45b81ba2ba351ea6aa3c56b22)
+uses Xiph library 9acc1e5 with the official v0.1 in-tree model. Its weight arrays
+match [v0.1 source](https://github.com/xiph/rnnoise/tree/cdf196b1e9de2f8ff1003328ebf9a4316477429d),
+covered by that release's BSD license; the Jitsi adapter is Apache-2.0. Packaged
+attribution is served at /rnnoise-NOTICE.txt. The worklet is about 174 kB and
+starts a 16 MiB WASM heap only when enabled, once per shared microphone rather
+than per room. It processes 480 samples at 48 kHz; the Browser owns reclamation.
 
-Any accepted enhancement belongs before gain in the shared `MicrophoneInput`,
-once per captured microphone; rooms continue to clone its stable output. Keep
-the unprocessed stereo path and screen/system audio unchanged. Prepare processing
-before replacing the live graph, preserve Browser AEC, and retire the worklet
-with its existing AudioContext. No product dependency or processing mode has
-been added by this assessment.
+A controlled licensed speech/noise comparison found lower pause noise but lower
+normal/quiet voice-waveform correlation than Browser default, with about 20.7 ms
+added delay. This does not establish universally clearer speech. A 90-second
+silent synthetic control had finite output and normal retirement, but main-thread
+CPU throttling did not slow the AudioWorklet and cannot establish low-end phone
+headroom. Physical-device cost, acoustic echo and matched-level listening remain
+outside that evidence; keep enhancement optional.
 
 ## Windows Output Routing
 

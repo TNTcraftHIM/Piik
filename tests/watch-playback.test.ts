@@ -8,7 +8,7 @@ class Video extends EventTarget {
   get buffered() { return { length: this.ranges.length, start: (index: number) => this.ranges[index][0], end: (index: number) => this.ranges[index][1] }; }
   src = ""; error = null; volume = 1; muted = false;
   denied = false;
-  play = vi.fn(async () => { if (this.denied) throw new DOMException("Playback denied", "NotAllowedError"); this.paused = false; });
+  play = vi.fn(async () => { if (this.denied) throw new DOMException("Playback denied", "NotAllowedError"); this.paused = false; this.dispatchEvent(new Event("playing")); });
   pause() { this.paused = true; }
   removeAttribute() { this.src = ""; }
   load = vi.fn();

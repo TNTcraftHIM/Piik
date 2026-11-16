@@ -84,6 +84,10 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
     if (this.socket)
       throw new Error('already_connected');
     const socket = this.socket = new WebSocket(this.options.url, { origin: this.options.origin, maxPayload: CHANNEL_EVENT_BYTES });
+    const current = () => {
+      if (this.stopped) throw new Error('closed');
+      if (this.socket !== socket || socket.readyState !== WebSocket.OPEN) throw new Error('disconnected');
+    };
     await new Promise<void>((resolve, reject) => {
       let settled = false, welcomed = false;
       const settle = (error?: Error) => {
@@ -139,10 +143,13 @@ export class TextParticipant extends EventEmitter<TextParticipantEvents> {
         this.emit('disconnected');
       });
     });
+    current();
     const admission = this.options.admission;
     if (admission?.inviteKey !== undefined || admission?.password !== undefined)
       await this.request({ type: 'enter_room', roomId: this.options.roomId, ...admission });
+    current();
     await this.request({ type: 'browse', roomId: this.options.roomId, active: true });
+    current();
     this.emit('ready', this.summary());
   }
   summary() {

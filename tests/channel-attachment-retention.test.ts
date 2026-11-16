@@ -124,6 +124,7 @@ test("preview and download share source-unavailable guidance while other failure
         expect(channelErrorPresentation(error, copy, fallback)).toEqual({ message: copy("channel.attachment.sourceUnavailable"), connectionHelp: false });
     }
     expect(channelErrorPresentation("image_decode_failed", copy, "channel.attachment.previewFailed").message).toBe(copy("channel.attachment.previewFailed"));
+    expect(channelErrorPresentation("download_failed", copy, "channel.attachment.downloadFailed").message).toBe(copy("channel.attachment.saveFailed"));
     expect(channelErrorPresentation("file_offer_failed", copy).message).toBe(copy("channel.attachment.fileOfferFailed"));
   }
 });

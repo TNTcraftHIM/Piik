@@ -365,7 +365,7 @@ it.each([false, true])("microphone diagnostics distinguish raw input from the ou
     expect(raw?.details.outputTrackId).toBe("graph-output");
     expect(first.events.find(event => event.event === "microphone-graph")?.details.gain).toBe(.5);
   }
-  microphone.replace(stream(next) as unknown as MediaStream);
+  await microphone.configure(stream(next) as unknown as MediaStream, false);
   const second = JSON.parse(await debug.exportBrowserDebug()) as { events: AudioDiagnosticEvent[] };
   const latest = second.events.filter(event => event.details.role === "microphone-input").at(-1);
   expect(latest?.details.trackId).toBe(enabled ? "raw-stereo" : undefined);

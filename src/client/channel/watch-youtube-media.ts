@@ -29,13 +29,11 @@ function loadYouTube(): Promise<void> {
   const loading = new Promise<void>((resolve, reject) => {
     const script = document.createElement("script"), previous = scope().onYouTubeIframeAPIReady;
     const finish = (error?: Error) => {
-      clearTimeout(timer);
       if (scope().onYouTubeIframeAPIReady === ready) scope().onYouTubeIframeAPIReady = previous;
       script.onerror = null;
       if (error) { script.remove(); reject(error); } else resolve();
     };
     const ready = () => { previous?.(); finish(); };
-    const timer = setTimeout(() => finish(new Error("watch_media_timeout")), 20000);
     scope().onYouTubeIframeAPIReady = ready;
     script.src = "https://www.youtube.com/iframe_api";
     script.onerror = () => finish(new Error("watch_media_unavailable"));
@@ -77,7 +75,7 @@ export class YouTubeMedia implements WatchMedia {
   private apiReady = false;
   private paused = true;
   private played = false;
-  private blocked = false;
+  private readonly visibility = new EventTarget();
 
   constructor(private readonly id: string) {
     if (!/^[A-Za-z0-9_-]{11}$/.test(id)) throw new Error("invalid_watch_url");
@@ -87,17 +85,16 @@ export class YouTubeMedia implements WatchMedia {
   }
   get sourceURL(): string { return youtubeEmbedURL(this.id); }
   waitForPresentation(signal: AbortSignal): Promise<void> {
-    return abortable(this.presentationReady, AbortSignal.any([signal, this.lifetime.signal, AbortSignal.timeout(5000)]));
+    return abortable(this.presentationReady, AbortSignal.any([signal, this.lifetime.signal]));
   }
 
   async ready(signal: AbortSignal): Promise<void> {
     const lifetime = AbortSignal.any([signal, this.lifetime.signal]);
     await abortable(this.sdk, lifetime);
     await new Promise<void>((resolve, reject) => {
-      const finish = (error?: Error) => { clearTimeout(timer); unlisten(); lifetime.removeEventListener("abort", cancel); error ? reject(error) : resolve(); };
+      const finish = (error?: Error) => { unlisten(); lifetime.removeEventListener("abort", cancel); error ? reject(error) : resolve(); };
       const cancel = () => finish(lifetime.reason);
       const check = () => { if (this.failure) finish(this.failure); else if (this.played) finish(); };
-      const timer = setTimeout(() => finish(new Error("watch_media_timeout")), 60000);
       const unlisten = this.listen(check);
       lifetime.addEventListener("abort", cancel, { once: true });
       if (lifetime.aborted) cancel(); else check();
@@ -109,10 +106,10 @@ export class YouTubeMedia implements WatchMedia {
   private setVisible(visible: boolean): void {
     if (this.lifetime.signal.aborted) return;
     this.visible = visible;
+    this.visibility.dispatchEvent(new Event("change"));
     if (!visible) {
       if (this.apiReady && this.played) {
         this.player!.pauseVideo();
-        this.blocked = true;
         this.emit("blocked");
       }
       return;
@@ -139,11 +136,10 @@ export class YouTubeMedia implements WatchMedia {
     this.element.append(frame);
     await new Promise<void>((resolve, reject) => {
       const finish = (error?: Error) => {
-        clearTimeout(timer); this.lifetime.signal.removeEventListener("abort", cancel);
+        this.lifetime.signal.removeEventListener("abort", cancel);
         error ? reject(error) : resolve();
       };
       const cancel = () => finish(this.lifetime.signal.reason);
-      const timer = setTimeout(() => finish(new Error("watch_media_timeout")), 20000);
       this.lifetime.signal.addEventListener("abort", cancel, { once: true });
       this.player = new (scope().YT!.Player)(frame, { events: {
         onReady: () => {
@@ -153,13 +149,13 @@ export class YouTubeMedia implements WatchMedia {
         },
         onStateChange: ({ data }) => {
           if (this.lifetime.signal.aborted) return;
-          if (data === 1) { this.paused = false; this.played = true; this.blocked = false; this.emit("playing"); }
+          if (data === 1) { this.paused = false; this.played = true; this.emit("playing"); }
           else if (data === 2) { this.paused = true; this.emit("pause"); }
           else if (data === 3) this.emit("waiting");
           else if (data === 0) { this.paused = true; this.emit("ended"); }
         },
         onPlaybackRateChange: () => this.emit("ratechange"),
-        onAutoplayBlocked: () => { this.blocked = true; this.emit("blocked"); },
+        onAutoplayBlocked: () => { this.emit("blocked"); },
         onError: ({ data }) => {
           const code = data === 101 || data === 150 || data === 100 ? "watch_media_unavailable"
             : data === 2 ? "invalid_watch_url" : data === 5 ? "watch_media_unsupported" : "watch_media_failed";
@@ -186,43 +182,27 @@ export class YouTubeMedia implements WatchMedia {
     if (this.failure) throw this.failure;
     if (!this.visible || !this.mounted) throw new Error("watch_autoplay_blocked");
     await abortable(this.mounted, this.lifetime.signal);
-    const deadline = performance.now() + 10000;
-    while (value.paused === false && !this.automaticPlayback) {
-      if (!this.visible || performance.now() >= deadline) throw new Error("watch_autoplay_blocked");
-      await this.waitForObservation();
-    }
+    if (value.paused === false) await this.waitForEligibility();
     const p = this.player!;
     if (value.rate !== undefined && !this.playbackRates().includes(value.rate)) throw new Error("watch_media_unsupported");
-    // seekTo preserves an already-paused player; pause first, before issuing a seek.
-    if (value.position !== undefined && value.paused === true && p.getPlayerState() !== 2)
-      await this.patch({ paused: true });
+    // Issue the final pause after seekTo, which can itself start a non-paused player.
     if (value.rate !== undefined) p.setPlaybackRate(value.rate);
     if (value.position !== undefined) p.seekTo(value.position, true);
     if (value.paused === true) p.pauseVideo();
-    else if (value.paused === false) { this.blocked = false; p.playVideo(); }
-    // Commands are asynchronous; return only after observation, denial or the bounded timeout.
-    for (;;) {
-      const state = await this.read();
-      this.lifetime.signal.throwIfAborted();
-      if (this.blocked) throw new Error("watch_autoplay_blocked");
-      if (value.paused === true && p.getPlayerState() === 1) p.pauseVideo();
-      if ((value.paused === undefined || (value.paused ? p.getPlayerState() === 2 : p.getPlayerState() === 1))
-        && (value.rate === undefined || value.rate === state.rate)
-        && (value.position === undefined || Math.abs(state.position - value.position) <= this.seekTolerance)) {
-        if (value.position !== undefined) this.emit("seeked");
-        return;
-      }
-      if (performance.now() >= deadline) throw new Error("watch_media_timeout");
-      await this.waitForObservation();
-    }
+    else if (value.paused === false) p.playVideo();
+    // The API returns void: dispatch is not confirmation. WatchPlayer reads real state
+    // and SDK events report playback, rate changes, autoplay denial and failure.
+    this.lifetime.signal.throwIfAborted();
+    if (this.failure) throw this.failure;
   }
 
-  private waitForObservation(): Promise<void> {
+  private waitForEligibility(): Promise<void> {
     this.lifetime.signal.throwIfAborted();
-    return new Promise<void>((resolve, reject) => {
-      const abort = () => { clearTimeout(timer); reject(this.lifetime.signal.reason); };
-      const timer = setTimeout(() => { this.lifetime.signal.removeEventListener("abort", abort); resolve(); }, 100);
-      this.lifetime.signal.addEventListener("abort", abort, { once: true });
+    return new Promise((resolve, reject) => {
+      const finish = (error?: unknown) => { this.visibility.removeEventListener("change", check); this.lifetime.signal.removeEventListener("abort", abort); error ? reject(error) : resolve(); };
+      const check = () => { if (!this.visible) finish(new Error("watch_autoplay_blocked")); else if (this.automaticPlayback) finish(); };
+      const abort = () => finish(this.lifetime.signal.reason);
+      this.visibility.addEventListener("change", check); this.lifetime.signal.addEventListener("abort", abort, { once: true }); check();
     });
   }
 

@@ -255,8 +255,9 @@ the feedback period; they do not delay that delivery.
   Local OBS input still needs non-Windows desktop runtime coverage; its
   [Windows path](./research/room-interactions.md#local-obs-input) has media,
   retirement and matched-package evidence.
-- [ ] **Stronger microphone noise suppression (#518).** Compare RNNoise's voice
-  clarity and mobile runtime cost before deciding on an enhanced mode. The
+- [ ] **Enhanced microphone suppression on physical devices (#518).** Compare
+  matched-level voice clarity, acoustic echo and mobile runtime cost for the
+  optional RNNoise mode. The
   [microphone assessment](./research/media-fidelity.md#stronger-microphone-suppression)
   records the Browser comparison and integration boundary. Retain Browser voice
   processing as the default and keep screen/system audio unprocessed.

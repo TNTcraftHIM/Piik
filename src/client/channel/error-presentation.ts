@@ -13,6 +13,7 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
   if (!error) return { message: null, connectionHelp: true };
   if (error === "attachment_unavailable" || error === "file_unavailable" || error === "file_source_unavailable")
     return display("channel.attachment.sourceUnavailable");
+  if (error === "download_failed") return display("channel.attachment.saveFailed");
   if (error === "file_offer_failed") return display("channel.attachment.fileOfferFailed");
   if (error === "preview_only")
     return display("channel.error.previewOnly");
@@ -94,6 +95,8 @@ export function channelErrorPresentation(error: string | null, t: (key: CopyKey,
     return display("channel.error.captureFailed");
   if (error === "capture_audio_failed")
     return display("channel.error.captureAudioFailed");
+  if (error === "voice_noise_processing_failed") return display("voice.noise.failed");
+  if (error === "voice_noise_processing_unsupported") return display("voice.noise.unsupported");
   if (error === "voice_microphone_permission_denied")
     return display("voice.error.microphoneDenied");
   if (error === "unsupported_encoding_execution")

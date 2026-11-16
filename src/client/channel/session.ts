@@ -2827,6 +2827,8 @@ export class ChannelSession {
           if (this.microphone === captured) this.microphone = null;
         });
         request.input = captured;
+        captured.onProcessingError = () => { captured.close(); this.microphone = null; for (const [id, capture] of [...this.local]) if (capture.microphone === captured) this.voiceCaptureEnded(id, capture.stream); this.patch({ error: "voice_noise_processing_failed" }); };
+        await captured.configure(stream, Boolean(this.view.voiceInput.voiceProcessing && this.view.voiceInput.strongerSuppression));
         request.context = null;
         const started = await resumed;
         requestSignal.throwIfAborted();
@@ -2859,6 +2861,7 @@ export class ChannelSession {
 
   private microphoneConstraints(settings: RoomPreferences["voiceInput"]): MediaStreamConstraints {
     return { audio: { ...audioInputConstraints(settings.voiceProcessing),
+      ...(settings.voiceProcessing && settings.strongerSuppression ? { noiseSuppression: false, channelCount: 1 } : {}),
       ...(settings.deviceId ? { deviceId: { exact: settings.deviceId } } : {}) }, video: false };
   }
 
@@ -2875,7 +2878,7 @@ export class ChannelSession {
     });
   }
 
-  configureVoiceInput = (settings: Partial<Pick<RoomPreferences["voiceInput"], "deviceId" | "voiceProcessing">>): Promise<void> => this.action("voice-input", async () => {
+  configureVoiceInput = (settings: Partial<Pick<RoomPreferences["voiceInput"], "deviceId" | "voiceProcessing" | "strongerSuppression">>): Promise<void> => this.action("voice-input", async () => {
     const signal = this.captureLifetime.signal;
     if (this.microphoneRequest) await this.microphoneRequest.promise;
     signal.throwIfAborted();
@@ -2886,7 +2889,7 @@ export class ChannelSession {
       try {
         signal.throwIfAborted();
         if (this.microphone !== input) throw new DOMException("Microphone capture cancelled", "AbortError");
-        input.replace(captured);
+        await input.configure(captured, Boolean(voiceInput.voiceProcessing && voiceInput.strongerSuppression));
         captured = undefined;
       } finally { captured?.getTracks().forEach(track => track.stop()); }
     }

@@ -81,9 +81,9 @@ test('confirmed commands report real state, unsupported rates fail, hiding pause
   media.close();expect(player.destroyed).toBe(true);
 });
 
-test('closing a pending play command removes its wait and rejects the caller',async()=>{
+test('closing a play waiting for visible eligibility rejects its caller',async()=>{
   vi.useFakeTimers();const {media,mount}=await setup();await mount();const player=players[0];player.fire('onReady');player.playVideo();
-  await media.ready(new AbortController().signal);player.pauseVideo();player.playVideo=()=>{};
+  await media.ready(new AbortController().signal);player.pauseVideo();media.presentation.setVisible(true,false);
   const command=media.patch({paused:false});await Promise.resolve();await Promise.resolve();media.close();
   await expect(command).rejects.toMatchObject({name:'AbortError'});expect(vi.getTimerCount()).toBe(0);
 });
