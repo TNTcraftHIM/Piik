@@ -1046,9 +1046,20 @@ mod tests {
             .await?
             .connection_id;
         let (preparation_commands, mut notifications) = mpsc::channel(4);
+        let (input, incoming) = mpsc::channel(4);
         driver.preparings.insert(
             pair,
-            Pending::start(driver.session, plan.clone(), vec![], preparation_commands),
+            Pending {
+                plan: plan.clone(),
+                signals: vec![],
+                input,
+                task: tokio::spawn(async move {
+                    // Start at failed completion, without unrelated OS interface discovery.
+                    drop(incoming);
+                    let _ = preparation_commands.try_send(signal(pair, UdpSignal::Unavailable {}));
+                    Err(anyhow::anyhow!("owned preparation failure"))
+                }),
+            },
         );
         assert!(matches!(
             tokio::time::timeout(Duration::from_secs(3), notifications.recv()).await?,
