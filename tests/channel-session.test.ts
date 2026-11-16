@@ -3746,7 +3746,59 @@ test("room replies settle only the request belonging to that room", async () => 
   } finally { session.close(); }
 });
 
-const topologyResponse = () => ({ bindingId: "binding",
+test("a confirmed service preference survives failed readback without replay or rollback and follows the new binding", async () => {
+  const { session, socket } = await setup();
+  const settings = { name: "First", icon: "couch", access: "public" as const, hidden: false };
+  try {
+    const saving = session.updateRoom("first", { ...settings, allowServiceRelay: true }, false);
+    expect(session.getSnapshot().pending.has("room:first")).toBe(true);
+    const save = socket.sent.at(-1)!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: save.requestId, result: { type: "done" } });
+    await saving;
+    expect(session.getSnapshot().pending.has("room:first")).toBe(false);
+    const reading = session.roomTopology("first"), failed = expect(reading).rejects.toThrow("room_host_offline");
+    socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.at(-1)!.requestId,
+      result: { type: "error", code: "room_host_offline" } });
+    await failed;
+    expect(socket.sent.filter(command => command.type === "update_room")).toHaveLength(1);
+    const restored = structuredClone(session.getSnapshot().state!);
+    restored.channel.rooms[0].delivery!.bindingId = "restored-service-policy";
+    socket.receive({ type: "state", state: restored });
+    const retry = session.roomTopology("first");
+    const observed = { ...topologyResponse(), bindingId: "restored-service-policy", screen: null,
+      serviceEnabled: true, serviceAvailable: false, transitSession: null };
+    socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.at(-1)!.requestId,
+      result: { type: "topology", topology: observed } });
+    expect(await retry).toEqual(observed);
+    const disabling = session.updateRoom("first", { ...settings, allowServiceRelay: false }, false);
+    const rejected = expect(disabling).rejects.toThrow("storage_failed");
+    socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.at(-1)!.requestId,
+      result: { type: "error", code: "storage_failed" } });
+    await rejected;
+    expect(session.getSnapshot().pending.has("room:first")).toBe(false);
+    const unchanged = session.roomTopology("first");
+    socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.at(-1)!.requestId,
+      result: { type: "topology", topology: observed } });
+    expect((await unchanged).serviceEnabled).toBe(true);
+    expect(socket.sent.filter(command => command.type === "update_room").map(command => command.allowServiceRelay)).toEqual([true, false]);
+    expect(socket.sent.some(command => command.type === "room_transit")).toBe(false);
+  } finally { session.close(); }
+});
+
+test("room service preference uses the normal room policy writer", async () => {
+  const { session, socket } = await setup();
+  try {
+    const operation = session.updateRoom("first", { name: "First", icon: "couch", access: "public", hidden: false, allowServiceRelay: true });
+    const request = socket.sent.at(-1)!;
+    expect(request).toMatchObject({ type: "update_room", roomId: "first", allowServiceRelay: true });
+    expect(session.getSnapshot().pending.has("room:first")).toBe(true);
+    socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "done" } });
+    await operation;
+    expect(session.getSnapshot().pending.has("room:first")).toBe(false);
+  } finally { session.close(); }
+});
+
+const topologyResponse = () => ({ serviceAvailable: false, serviceEnabled: false, bindingId: "binding", transitSession: null,
   base: { rootSessionId: "host", edges: [{ sender: "host", receiver: "endpoint", ready: false }] },
   screen: { publicationId: "screen", sourceSessionId: "source", edges: [
     { sender: "source", receiver: "endpoint", selected: true, proof: null, presented: null, presentation: false },
@@ -3761,6 +3813,7 @@ test("topology reads use the Domain reply owner without room activities or media
     state.publications.push({ audience: [], id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", source: { kind: "screen", name: null }, title: null, videoSettings: screenVideoSettings(QUALITY_PROFILES["1080p30"]), paused: false });
     socket.receive({ type: "state", state });
     const before = session.getSnapshot(), sent = socket.sent.length;
+    const response = { ...topologyResponse(), transitSession: "helper" };
     let settled = false;
     const reading = session.roomTopology("first", "screen").then(result => { settled = true; return result; });
     const request = socket.sent.at(-1)!;
@@ -3769,11 +3822,11 @@ test("topology reads use the Domain reply owner without room activities or media
     expect(peer.sent).toHaveLength(0);
     expect(session.getSnapshot().pending).toEqual(before.pending);
     socket.receive({ type: "room_reply", roomId: "second", requestId: request.requestId,
-      result: { type: "topology", topology: topologyResponse() } });
+      result: { type: "topology", topology: response } });
     await Promise.resolve(); expect(settled).toBe(false);
     socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId,
-      result: { type: "topology", topology: topologyResponse() } });
-    await expect(reading).resolves.toEqual(topologyResponse());
+      result: { type: "topology", topology: response } });
+    await expect(reading).resolves.toEqual(response);
     expect(session.getSnapshot().state).toEqual(before.state);
     expect(session.getSnapshot().error).toBeNull();
   } finally { session.close(); }
@@ -3783,8 +3836,8 @@ test("topology parsing and server refusal reject only the read", async () => {
   const { session, socket } = await setup();
   try {
     for (const result of [
-      { type: "topology", topology: { bindingId: "binding", base: { rootSessionId: "host", edges: [] }, screen: null, address: "private" } },
-      { type: "topology", topology: { bindingId: "old-binding", base: { rootSessionId: "host", edges: [] }, screen: null } },
+      { type: "topology", topology: { bindingId: "binding", transitSession: null, base: { rootSessionId: "host", edges: [] }, screen: null, address: "private" } },
+      { type: "topology", topology: { bindingId: "old-binding", transitSession: null, base: { rootSessionId: "host", edges: [] }, screen: null } },
       { type: "error", code: "room_access_required" },
     ]) {
       const reading = session.roomTopology("first"), rejected = expect(reading).rejects.toThrow();

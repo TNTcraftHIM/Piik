@@ -143,6 +143,28 @@ impl Authority {
         self.channel.identity()
     }
 
+    /// The embedding Server passes its Native's actual Welcome, never a later socket lookup.
+    pub fn set_service_endpoint(
+        &mut self,
+        service: Option<host::ServiceEndpoint>,
+    ) -> Result<Effects, &'static str> {
+        if service.is_some_and(|service| {
+            self.current_connection(service.session_id) != Some(service.connection_id)
+        }) {
+            return Err("service_unavailable");
+        }
+        self.channel.service_endpoint = service;
+        self.channel.reconcile();
+        let mut effects = Effects::default();
+        self.sync_hosts(&mut effects, true);
+        self.broadcast(None, &mut effects);
+        Ok(effects)
+    }
+
+    pub fn current_connection(&self, session: Uuid) -> Option<Uuid> {
+        self.channel.identity.sessions.get(&session)?.connection
+    }
+
     /// Apply a validated request only through its current connection binding.
     pub fn handle(&mut self, connection: Uuid, request: Request, now: u64) -> Effects {
         let mut effects = self.expire(now);
@@ -505,6 +527,7 @@ impl Authority {
                             .profile(),
                         credential: admitted.credential,
                         session_id: admitted.session_id,
+                        connection_id: connection,
                         state: self.channel.snapshot(admitted.session_id),
                         invitation_origin: None,
                     },

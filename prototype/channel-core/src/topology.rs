@@ -6,7 +6,12 @@ use uuid::Uuid;
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomTopology {
+    pub service_available: bool,
+    pub service_enabled: bool,
     pub binding_id: Uuid,
+    /// A current forwarding lease, not room Read permission or a separate participant role.
+    #[serde(default)]
+    pub transit_session: Option<Uuid>,
     pub base: BaseTopology,
     pub screen: Option<ScreenTopology>,
 }

@@ -31,6 +31,7 @@ async fn current_host_readiness_retires_between_actual_admissions_and_on_stop() 
             ready,
             desktop: None,
         }),
+        None,
         async move {
             let _ = stopped.await;
         },

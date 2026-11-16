@@ -454,6 +454,13 @@ impl Domain {
         self.hub.lock().unwrap().authority.identity()
     }
 
+    pub(crate) fn register_service(&self, endpoint: piik_channel_core::host::ServiceEndpoint) {
+        let mut hub = self.hub.lock().unwrap();
+        if let Ok(effects) = hub.authority.set_service_endpoint(Some(endpoint)) {
+            hub.apply(effects);
+        }
+    }
+
     pub(crate) fn set_room_commands(
         &self,
         commands: Option<mpsc::Sender<piik_channel_native::session::HostCommand>>,

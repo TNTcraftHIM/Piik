@@ -37,7 +37,11 @@ backup; Git and immutable artifacts own history.
 Reviewed 2026-11-11. Vercel can serve Web assets, and its
 [WebSocket support is now generally available](https://vercel.com/changelog/websocket-support-is-now-generally-available).
 That does not make the current Piik Server a stateless Function: it owns a live
-site authority, durable SQLite files and Native UDP transport. Functions have
+site authority, durable SQLite files and Native UDP transport. Its fixed UDP
+media entry must be reachable separately from HTTP/WebSocket; an accessible
+HTTP tunnel or an offered forwarding capability does not prove media
+connectivity. The [Server startup reference](../prototype/channel-server/README.md#public-origin-and-udp)
+owns these listener settings. Functions have
 [bounded invocation lifetimes](https://vercel.com/docs/functions/limitations)
 and a [read-only filesystem with temporary scratch space](https://vercel.com/docs/functions/runtimes).
 The newer [Daemons beta](https://vercel.com/docs/daemons#what-does-the-daemons-beta-support)

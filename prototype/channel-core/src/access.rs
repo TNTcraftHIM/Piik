@@ -27,6 +27,8 @@ pub struct RoomState {
     pub voice_bitrate: u32,
     #[serde(default = "default_relay_capacity")]
     pub relay_capacity: u8,
+    #[serde(default)]
+    pub allow_service_relay: bool,
     password_hash: Option<String>,
     invite_hash: Option<[u8; 32]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -110,6 +112,7 @@ impl RoomState {
             hidden,
             voice_bitrate: default_voice_bitrate(),
             relay_capacity: default_relay_capacity(),
+            allow_service_relay: false,
             password_hash: None,
             invite_hash: None,
             invite_key: None,

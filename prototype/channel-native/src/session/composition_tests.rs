@@ -149,6 +149,7 @@ fn session(core: &mut CoreBurst, state: Snapshot) -> Session {
     let signer = Arc::new(SessionSigner::from_seed([1; 32]));
     let (commands, received) = mpsc::channel(64);
     Session {
+        service_admission: None,
         config: Config {
             url: "ws://owned.invalid".into(),
             origin: "http://owned.invalid".into(),

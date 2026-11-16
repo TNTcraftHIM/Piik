@@ -1197,10 +1197,22 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
             Some("publication_unavailable"),
         ),
     ] {
-        page.send(Message::Text(json!({"id":id,"type":"connection_metrics","roomId":queried_room,"publicationId":publication}).to_string().into())).await.unwrap();
-        let reply: Value =
-            serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap())
-                .unwrap();
+        let reply: Value = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                page.send(Message::Text(json!({"id":id,"type":"connection_metrics","roomId":queried_room,"publicationId":publication}).to_string().into())).await.unwrap();
+                let reply: Value = serde_json::from_str(
+                    &page.next().await.unwrap().unwrap().into_text().unwrap(),
+                ).unwrap();
+                assert_eq!(reply["id"], id);
+                // The Domain has sent the first projection, but the App command
+                // socket can run before Native consumes that signaling frame.
+                if id == "metrics" && reply["error"] == "room_unavailable" {
+                    tokio::task::yield_now().await;
+                    continue;
+                }
+                break reply;
+            }
+        }).await.expect("Native must observe its room projection within the admission budget");
         assert_eq!(reply["id"], id);
         if let Some(error) = error {
             assert_eq!(reply["error"], error);

@@ -48,6 +48,7 @@ pub struct RoomRuntime {
     publications: BTreeMap<Uuid, Publication>,
     watch_activities: BTreeMap<Uuid, Watch>,
     base: Option<BaseTree>,
+    transit_endpoint: Option<crate::host::ServiceEndpoint>,
     repair_at: Option<u64>,
     files: crate::file_room::FileRoom,
 }
@@ -69,9 +70,15 @@ pub struct RoomSnapshot {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomRecipient {
+    #[serde(default)]
+    pub allow_service_relay: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transit_endpoint: Option<crate::host::ServiceEndpoint>,
     pub watch_subscriptions: Vec<crate::wire::WatchSubscription>,
     pub watch_bytes: Vec<crate::watch_delivery::WatchBytePlan>,
     pub authorized: bool,
+    #[serde(default)]
+    pub transit: bool,
     pub can_manage: bool,
     pub reading: bool,
     pub relay_override: Option<u8>,
@@ -91,6 +98,7 @@ impl RoomRuntime {
             publications: BTreeMap::new(),
             watch_activities: BTreeMap::new(),
             base: None,
+            transit_endpoint: None,
             repair_at: None,
             files: Default::default(),
         }
@@ -98,6 +106,34 @@ impl RoomRuntime {
 
     pub fn policy(&self) -> &RoomState {
         &self.policy
+    }
+
+    pub(crate) fn set_service_relay_preference(&mut self, allowed: bool) {
+        self.policy.allow_service_relay = allowed;
+    }
+
+    pub(crate) fn service_endpoint(
+        &mut self,
+        service: Option<crate::host::ServiceEndpoint>,
+        endpoints: &BTreeMap<Uuid, Endpoint>,
+        now: u64,
+    ) {
+        if self.transit_endpoint != service {
+            if let Some(previous) = self.selected_service() {
+                // Withdraw proof from the old service socket before deriving new work.
+                let mut retired = endpoints.clone();
+                if let Some(endpoint) = retired.get_mut(&previous.session_id) {
+                    endpoint.connected = false;
+                }
+                self.reconcile(&retired, now);
+            }
+            self.transit_endpoint = service;
+        }
+    }
+
+    fn selected_service(&self) -> Option<crate::host::ServiceEndpoint> {
+        self.transit_endpoint
+            .filter(|_| self.policy.allow_service_relay)
     }
 
     pub fn authorize(
@@ -142,17 +178,33 @@ impl RoomRuntime {
     }
 
     fn recipient(&self, member: Member, session: Uuid) -> Option<RoomRecipient> {
-        let room = self.policy.view(member.user_id)?;
-        let subscriptions = if room.authorized {
+        let room = self.policy.view(member.user_id);
+        let authorized = room.as_ref().is_some_and(|room| room.authorized);
+        let transit = self
+            .selected_service()
+            .is_some_and(|service| service.session_id == session)
+            && (self
+                .base_links()
+                .any(|link| link.parent == session || link.child == session)
+                || self
+                    .flows()
+                    .any(|flow| flow.sender == session || flow.receiver == session));
+        if room.is_none() && !transit {
+            return None;
+        }
+        let subscriptions = if authorized {
             self.subscriptions(session).into_iter().collect::<Vec<_>>()
         } else {
             vec![]
         };
         Some(RoomRecipient {
+            allow_service_relay: room.as_ref().is_some_and(|room| room.can_manage)
+                && self.policy.allow_service_relay,
+            transit_endpoint: transit.then(|| self.selected_service()).flatten(),
             watch_subscriptions: self
                 .activity
                 .get(&session)
-                .filter(|_| room.authorized)
+                .filter(|_| authorized)
                 .map(|a| {
                     a.watch_subscriptions
                         .iter()
@@ -163,20 +215,21 @@ impl RoomRuntime {
                         .collect()
                 })
                 .unwrap_or_default(),
-            watch_bytes: if room.authorized {
+            watch_bytes: if authorized || transit {
                 self.watch_byte_plans(session)
             } else {
                 vec![]
             },
-            authorized: room.authorized,
-            can_manage: room.can_manage,
-            members: room.members,
-            reading: room.authorized && self.reading(session),
+            authorized,
+            transit,
+            can_manage: room.as_ref().is_some_and(|room| room.can_manage),
+            members: room.and_then(|room| room.members),
+            reading: authorized && self.reading(session),
             relay_override: self
                 .activity
                 .get(&session)
                 .and_then(|activity| activity.relay_capacity),
-            files: if room.authorized {
+            files: if authorized || transit {
                 self.base
                     .as_ref()
                     .map(|base| self.files.plans(&self.policy.id, session, base))
@@ -581,7 +634,10 @@ impl RoomRuntime {
         source.validate()?;
         playback.validate()?;
         if let Some(current) = self.watch_activities.get(&id) {
-            if current.session_id != session || current.source != source || current.playback.timeline != playback.timeline {
+            if current.session_id != session
+                || current.source != source
+                || current.playback.timeline != playback.timeline
+            {
                 return Err("watch_identity_conflict");
             }
             // A start retry must preserve later playback and forwarding settings.
@@ -1063,6 +1119,11 @@ impl RoomRuntime {
     }
 
     pub fn reconcile(&mut self, endpoints: &BTreeMap<Uuid, Endpoint>, now: u64) {
+        self.transit_endpoint = self.transit_endpoint.filter(|service| {
+            endpoints
+                .get(&service.session_id)
+                .is_some_and(|endpoint| endpoint.connected)
+        });
         let limits = self.relay_limits();
         let repair_due = self.repair_at.is_some_and(|deadline| deadline <= now);
         if repair_due {
@@ -1112,20 +1173,40 @@ impl RoomRuntime {
             .keys()
             .map(|session| (*session, self.subscriptions(*session)))
             .collect();
+        let mut demand = self.media_sessions();
+        demand.extend(self.watch_byte_demand());
+        demand.extend(self.files.demand());
+        let mut routable = readable.clone();
+        let service = self.selected_service().map(|service| service.session_id);
+        if let Some(endpoint) = self.transit_endpoint {
+            let session = endpoint.session_id;
+            if service.is_none()
+                && !demand.contains(&session)
+                && !self.reading(session)
+                && !self
+                    .base
+                    .as_ref()
+                    .is_some_and(|base| base.root() == session)
+            {
+                // Public Read alone is not consent to use the site's service.
+                routable.remove(&session);
+            }
+        }
+        routable.extend(service);
         let connected = endpoints
             .iter()
             .filter_map(|(session, endpoint)| {
-                (endpoint.connected && readable.contains(session)).then_some(*session)
+                (endpoint.connected && routable.contains(session)).then_some(*session)
             })
             .collect();
-        let mut demand = self.media_sessions();
-        demand.extend(self.watch_byte_demand());
         if let Some(base) = &mut self.base {
-            demand.extend(self.files.demand());
+            if base.needs_repair(&demand, &connected) {
+                demand.extend(service);
+            }
             if repair_due {
                 base.retry_required(&demand, &connected);
             }
-            base.reconcile(&demand, &readable, &connected, &limits, now);
+            base.reconcile(&demand, &routable, &connected, &limits, now);
         }
         for (id, publication) in &mut self.publications {
             publication.retain_sessions(endpoints);
@@ -1150,7 +1231,7 @@ impl RoomRuntime {
             }
             publication.reconcile(
                 &subscribers,
-                &readable,
+                &routable,
                 &connected,
                 self.base.as_ref(),
                 &helpers,
@@ -1173,7 +1254,7 @@ impl RoomRuntime {
                         .collect();
                     publication.reconcile(
                         &subscribers,
-                        &readable,
+                        &routable,
                         &connected,
                         self.base.as_ref(),
                         &BTreeMap::new(),
@@ -1195,7 +1276,7 @@ impl RoomRuntime {
             self.base
                 .as_mut()
                 .unwrap()
-                .reconcile(&demand, &readable, &connected, &limits, now);
+                .reconcile(&demand, &routable, &connected, &limits, now);
             self.prepare_base(&requested);
         }
         needs_repair |= self

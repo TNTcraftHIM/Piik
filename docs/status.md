@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-11-15
+Last updated: 2026-11-16
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -88,6 +88,14 @@ follow the [documented reset boundary](../prototype/channel-server/README.md#sav
 Package receipts retain each candidate's exact source and tested scope.
 [TODO](./todo.md) owns remaining work and owner holds. Applicable defects continue
 to feed the separate 2.x maintenance line, which preserves its published contracts.
+
+The current source adds optional site forwarding through the existing Server
+Native endpoint. Operators offer the capability; room owners separately save
+their permission through ordinary room settings. Existing room routing chooses
+the service only when it needs another path, preserving healthy P2P delivery.
+The [network model](./research/channel-network-design.md#site-forwarding-assistance)
+owns the permissions and lease lifecycle. Matching package acceptance remains
+separate from the controlled runtime checks.
 
 Independent text automation and local OBS input reuse the conversation and source
 owners described in the [integration boundaries](./research/room-interactions.md#extension-boundaries).

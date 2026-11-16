@@ -106,6 +106,7 @@ impl RemoteRoom {
                 view.failed_subscriptions.clear();
                 view.files.clear();
                 view.reading = false;
+                view.transit = false;
             }
         }
         replies
@@ -122,6 +123,7 @@ impl RemoteRoom {
     pub fn input(
         &mut self,
         endpoints: BTreeMap<Uuid, Endpoint>,
+        service_endpoint: Option<ServiceEndpoint>,
         action: HostAction,
         now: u64,
     ) -> Result<(Uuid, HostInput), &'static str> {
@@ -178,6 +180,7 @@ impl RemoteRoom {
                     })
                     .collect(),
                 endpoints,
+                service_endpoint,
                 action,
             },
         ))

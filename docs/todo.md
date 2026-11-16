@@ -50,11 +50,14 @@ the feedback period; they do not delay that delivery.
   Windows App/Web package. Cover failed replacement retaining the active source,
   original-page closure, and independent viewer playback with and without
   explicit forwarding. Broader website/live coverage remains below.
-- [ ] **Joining webpage playback near the end.** Allow a viewer with media
-  metadata to follow a shared seek while its old position has no current frame.
-  Keep the sharer's replacement admission separate: a new source must not retire
-  the active share before its required playback preparation succeeds. Preparing a
-  share from an already-ended original page also needs this lifecycle check.
+- [ ] **Native webpage-reader generation.** Retire the App's page-reader
+  registration in matching-package acceptance when its Native media runtime
+  ends. Verify explicit new-source preparation and retained short-recovery
+  playback; do not automatically republish an expired source.
+- [ ] **Site forwarding package acceptance.** Verify the operator setting,
+  saved room permission and actual fallback through the normal packaged Server,
+  App and Browser entries. Preserve healthy P2P and independent room leases.
+  Fixed UDP reachability remains separate from HTTP access.
 - [ ] **Native console/terminal package acceptance.** Check the matching package's
   silent native entry, explicit Browser terminal, unavailable-WebView fallback,
   redirected output and normal quit/update restart.
@@ -187,13 +190,10 @@ the feedback period; they do not delay that delivery.
   remain shared. End the separate 2.x maintenance line only at the accepted 3.0
   cutover; fix confirmed defects during the transition. A short room-code locator
   remains a separate product decision.
-- [ ] **3.0 route improvement and fallback scope.** Resolve the remaining
-  scenarios against the accepted multi-source model: replacing a still-working
-  but persistently limited upstream, and a service media bridge for Browser/App
-  rooms with no usable peer path. Existing Server-hosted rooms already use their
-  Native root. Define evidence, authorization and resource cost before extending
-  the current admission/switch owners; 2.x route-policy labels do not directly
-  describe these 3.0 paths.
+- [ ] **3.0 playable-route improvement.** Resolve replacing a still-working
+  but persistently limited upstream against the accepted multi-source model.
+  Define evidence and resource cost before extending the current switch owner;
+  2.x route-policy labels do not directly describe these 3.0 paths.
   The [controlled switch](./research/network-lab.md#playable-route-improvement)
   demonstrates benefit and independent-lease retention. Define the production
   trigger, bounded candidate attempts and strict-benefit proof before enabling

@@ -16,6 +16,7 @@ use uuid::Uuid;
 
 fn input(owner: Uuid, actor: Uuid, action: impl FnOnce(RequestContext) -> HostAction) -> HostInput {
     HostInput {
+        service_endpoint: None,
         now: 0,
         binding_id: owner,
         host_session_id: owner,
@@ -240,8 +241,21 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
     )
     .unwrap();
     let invitation = room.invite().unwrap();
-    let original_policy = serde_json::to_value(&room).unwrap();
     let mut host = StoredRoomHost::create(&folder.join("live.sqlite"), room).unwrap();
+    command(
+        &mut host,
+        owner,
+        owner,
+        json!({"type":"update_room","roomId":"retained",
+        "name":"retained","icon":"couch","access":"private","hidden":true,"allowServiceRelay":true}),
+    );
+    drop(host);
+    let mut host = StoredRoomHost::open(&folder.join("live.sqlite")).unwrap();
+    assert!(
+        host.policy().allow_service_relay,
+        "the normal setting survives reopening the room store"
+    );
+    let original_policy = serde_json::to_value(host.policy()).unwrap();
     let attachment = piik_channel_core::AttachmentDescriptor {
         id: Uuid::new_v4(),
         name: "retained.bin".into(),
@@ -448,6 +462,10 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
 
         let new_owner = Uuid::new_v4();
         let copy_policy = policy("copied", new_owner, RoomAccess::Private);
+        assert!(
+            !copy_policy.allow_service_relay,
+            "a new room does not inherit consent for a site's service"
+        );
         assert!(!copy_policy.view(owner).unwrap().authorized);
         assert!(!copy_policy.accepts_invite(&invitation));
         let staged_copy = RoomBackup::stage(
@@ -720,6 +738,83 @@ fn message_reaction_counts_commit_once_and_recover_without_replaying_effects() {
     ));
     assert!(!retry.inserted);
     assert_eq!(retry.message.reaction_snapshot(), recovered.snapshot);
+    drop((host, database));
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn service_relay_choice_commits_only_for_current_owner_and_survives_reopen() {
+    let path = std::env::temp_dir().join(format!("piik-service-choice-{}.sqlite", Uuid::new_v4()));
+    let owner = Uuid::new_v4();
+    let reader = Uuid::new_v4();
+    let mut host =
+        StoredRoomHost::create(&path, policy("relay-choice", owner, RoomAccess::Public)).unwrap();
+    assert!(!host.policy().allow_service_relay);
+    let update = |allowed| {
+        json!({"type":"update_room","roomId":"relay-choice", "name":"Relay choice",
+        "icon":"couch","access":"public","hidden":false,"allowServiceRelay":allowed})
+    };
+    let database = rusqlite::Connection::open(&path).unwrap();
+    database.execute_batch("CREATE TRIGGER reject_service_choice BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'held'); END;").unwrap();
+    let failed = command(&mut host, owner, owner, update(true));
+    assert!(
+        matches!(failed.reply.unwrap().result, RoomResult::Error { code } if code == "storage_failed")
+    );
+    assert!(
+        !host.policy().allow_service_relay,
+        "failed checkpoint must abort the in-memory policy too"
+    );
+    drop(host);
+    let mut host = StoredRoomHost::open(&path).unwrap();
+    assert!(
+        !host.policy().allow_service_relay,
+        "failed enable must not persist through reopen"
+    );
+    database
+        .execute_batch("DROP TRIGGER reject_service_choice")
+        .unwrap();
+
+    let denied = command(&mut host, owner, reader, update(true));
+    assert!(
+        matches!(denied.reply.unwrap().result, RoomResult::Error { code } if code == "forbidden")
+    );
+    assert!(!host.policy().allow_service_relay);
+    let saved = command(&mut host, owner, owner, update(true));
+    assert!(matches!(saved.reply.unwrap().result, RoomResult::Done));
+    let mut unrelated_update = update(false);
+    unrelated_update
+        .as_object_mut()
+        .unwrap()
+        .remove("allowServiceRelay");
+    command(&mut host, owner, owner, unrelated_update);
+    assert!(
+        host.policy().allow_service_relay,
+        "omitting the setting keeps the saved choice"
+    );
+
+    let mut retired = input(owner, owner, |context| HostAction::Command {
+        context,
+        command: Request::parse(&update(false).to_string()).unwrap().command,
+    });
+    retired.endpoints.remove(&owner);
+    let denied = host.dispatch(retired).unwrap();
+    assert!(
+        matches!(denied.reply.unwrap().result, RoomResult::Error { code } if code == "session_expired")
+    );
+    drop(host);
+    let mut host = StoredRoomHost::open(&path).unwrap();
+    assert!(
+        host.policy().allow_service_relay,
+        "departed owner endpoint cannot rewrite retained policy"
+    );
+    let disabled = command(&mut host, owner, owner, update(false));
+    assert!(matches!(disabled.reply.unwrap().result, RoomResult::Done));
+    drop(host);
+    let host = StoredRoomHost::open(&path).unwrap();
+    assert!(
+        !host.policy().allow_service_relay,
+        "explicit disable is durable too"
+    );
     drop((host, database));
     std::fs::remove_file(path).unwrap();
 }

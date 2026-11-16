@@ -55,6 +55,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
         now: 0,
     };
     host.dispatch(HostInput {
+        service_endpoint: None,
         now: 0,
         binding_id: binding,
         host_session_id: publisher,
@@ -90,6 +91,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
     endpoints.remove(&publisher);
     let work = host
         .dispatch(HostInput {
+            service_endpoint: None,
             now: 0,
             binding_id: binding,
             host_session_id: publisher,
@@ -107,12 +109,17 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
                     password: None,
                     voice_bitrate: None,
                     relay_capacity: None,
+                    allow_service_relay: Some(true),
                 },
             },
         })
         .unwrap();
     assert!(work.policy.is_some());
     let output = host.abort("storage_failed".into()).unwrap();
+    assert!(
+        !host.policy().allow_service_relay,
+        "a failed policy commit must roll back the saved choice"
+    );
     assert!(
         output.projection.publications.is_empty(),
         "storage failure restored the expired publisher's retired activity"

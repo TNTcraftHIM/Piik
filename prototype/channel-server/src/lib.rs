@@ -50,6 +50,12 @@ impl NativeService {
         udp: Arc<ServerUdp>,
         bootstrap: bool,
     ) -> anyhow::Result<Self> {
+        let transit_enabled = match std::env::var("PIIK_CHANNEL_SERVICE_TRANSIT") {
+            Ok(value) if value == "true" => true,
+            Ok(value) if value == "false" => false,
+            Err(std::env::VarError::NotPresent) => false,
+            _ => anyhow::bail!("PIIK_CHANNEL_SERVICE_TRANSIT must be true or false"),
+        };
         let address = listener_client_address(address);
         let directory = room_directory(directory, domain.identity());
         std::fs::create_dir_all(&directory)?;
@@ -88,14 +94,30 @@ impl NativeService {
         };
         domain.set_room_commands(Some(commands));
         let (stop, mut stopped) = watch::channel(false);
-        let task = tokio::spawn(native::run_host(
-            config,
-            rooms,
-            Some(management),
-            async move {
-                let _ = stopped.changed().await;
-            },
-        ));
+        let (admission, mut admitted) = mpsc::channel(1);
+        let service_domain = domain.clone();
+        let task = tokio::spawn(async move {
+            let running = native::run_host(
+                config,
+                rooms,
+                Some(management),
+                Some(admission),
+                async move {
+                    let _ = stopped.changed().await;
+                },
+            );
+            tokio::pin!(running);
+            loop {
+                tokio::select! {
+                    result = &mut running => return result,
+                    Some(session) = admitted.recv() => {
+                        // Only this owned Native Welcome supplies the service identity.
+                        // Its actual socket retirement clears registration in Domain.
+                        if transit_enabled { service_domain.register_service(session); }
+                    }
+                }
+            }
+        });
         Ok(Self { stop, task })
     }
 

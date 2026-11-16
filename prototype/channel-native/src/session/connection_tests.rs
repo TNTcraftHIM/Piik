@@ -77,6 +77,7 @@ async fn reader_services_ping_while_business_has_not_consumed_its_frame() {
 
 fn connection_session(url: String) -> Session {
     Session {
+        service_admission: None,
         config: Config {
             url,
             origin: "http://localhost".into(),

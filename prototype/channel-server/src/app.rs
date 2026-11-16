@@ -255,6 +255,7 @@ impl App {
                 config,
                 vec![],
                 Some(management),
+                None,
                 async move {
                     let _ = stopped.changed().await;
                 },
@@ -2893,11 +2894,12 @@ mod lifecycle_tests {
         let (registered, mut registrations) = mpsc::unbounded_channel();
         let (revoked, mut revocations) = mpsc::unbounded_channel();
         let task = tokio::spawn(async move {
+            let (_provider_alive, provider_retired) = watch::channel(false);
             loop {
                 tokio::select! {
                     _=stopped.changed()=>break,
                     command=inputs.recv()=>match command {
-                        Some(HostCommand::RegisterWatchReader { resource_id,reader,result })=>{registered.send((resource_id,reader)).unwrap();let _=result.send(Ok(session));},
+                        Some(HostCommand::RegisterWatchReader { resource_id,reader,result })=>{registered.send((resource_id,reader)).unwrap();let _=result.send(Ok(piik_channel_native::session::WatchReaderRegistration { session_id: session, retired: provider_retired.clone() }));},
                         Some(HostCommand::RevokeWatchReader { resource_id })=>{let _=revoked.send(resource_id);},
                         Some(_)=>panic!("unexpected host command"),None=>break,
                     }

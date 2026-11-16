@@ -421,6 +421,35 @@ authority-recovery window applies. Necessary transit for other viewers and App
 room hosting retain their own lifetimes. Failed assistance keeps healthy playback
 and uses the existing candidate-failure memory, rather than a second retry loop.
 
+### Site Forwarding Assistance
+
+A Server operator may offer its existing Native endpoint for forwarding; the
+capability is disabled by default. Each room owner separately permits it through
+the saved room setting `allowServiceRelay`, using the ordinary policy update and
+commit boundary. Whole-room backups retain this preference; copies created as
+new rooms start with it disabled.
+
+The setting permits use of the service when the existing routing owner needs
+another reachable path. It does not replace a healthy P2P path. The domain
+registers only its own Native's current authenticated session and connection;
+room plans bind service work to that exact live connection. Reconnection retires
+old leases and derives fresh ones from the saved choice and current availability.
+Disabling the service withdraws its work without clearing room preferences;
+disabling a room's preference withdraws only that room's optional service work.
+
+Forwarding grants only the assigned media and byte routes, not room management,
+conversation subscriptions or history access. Public-room Read alone does not
+make the service an ordinary relay candidate when assistance is disabled. An
+actual room host or explicitly active participant retains its normal duties.
+Pure service forwarding is shown as a site node in connection details, not as
+another person in the room. Current availability, saved permission and assigned
+leases remain distinct facts; none proves that a viewer can reach the UDP listener.
+
+The same base/flow plans, connection leases and resource bounds govern service
+forwarding. No additional route planner, media socket graph or room identity is
+created. A reachable HTTP site or tunnel does not establish media connectivity;
+the Server's configured UDP entry must also be reachable.
+
 ### Start On Existing Paths, Then Converge
 
 The room tree's root owns coordination. Its edges are bidirectional, so projecting

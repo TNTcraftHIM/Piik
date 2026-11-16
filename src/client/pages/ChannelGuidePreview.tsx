@@ -33,7 +33,7 @@ const sources: NativeCaptureSources = { ...SOURCES, codecs: ["h264", "vp8"], sof
 export function sampleRoomTopology(state: ChannelSnapshot, roomId: string, publicationId?: string): ChannelTopology {
   const delivery = state.channel.rooms.find(room => room.id === roomId)!.delivery!;
   const screen = state.publications.find(value => value.roomId === roomId && value.id === publicationId && value.kind === "screen");
-  return { bindingId: delivery.bindingId, base: { rootSessionId: delivery.hostSessionId, edges: [] },
+  return { serviceAvailable: false, serviceEnabled: false, bindingId: delivery.bindingId, transitSession: null, base: { rootSessionId: delivery.hostSessionId, edges: [] },
     screen: screen ? { publicationId: screen.id, sourceSessionId: screen.sessionId, edges: [] } : null };
 }
 

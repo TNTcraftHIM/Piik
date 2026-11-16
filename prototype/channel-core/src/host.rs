@@ -108,6 +108,14 @@ pub struct PairFailure {
     pub revision: u64,
 }
 
+/// The service's current authenticated socket, not a durable user capability.
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceEndpoint {
+    pub session_id: Uuid,
+    pub connection_id: Uuid,
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostInput {
@@ -118,6 +126,8 @@ pub struct HostInput {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub failed_pairs: Vec<PairFailure>,
     pub endpoints: BTreeMap<Uuid, Endpoint>,
+    #[serde(default)]
+    pub service_endpoint: Option<ServiceEndpoint>,
     pub action: HostAction,
 }
 
@@ -208,12 +218,19 @@ impl RoomProjection {
                 }
             }
         }
+        sessions.retain(|session| {
+            !self.views.get(session).is_some_and(|view| view.transit)
+                || self.participant_session_ids.contains(session)
+        });
         sessions.into_iter().collect()
     }
 
     /// Assemble only the recipient's authorized view; the host owns these rights.
     pub fn snapshot(&self, session: Uuid, available: bool) -> Option<RoomSnapshot> {
         let view = self.views.get(&session)?;
+        if !view.authorized && (view.transit || self.summary.hidden) {
+            return None;
+        }
         Some(RoomSnapshot {
             watch_activities: if view.authorized {
                 self.watch_activities.clone()
@@ -349,6 +366,7 @@ impl RoomRuntime {
                 password,
                 voice_bitrate,
                 relay_capacity,
+                allow_service_relay,
                 ..
             } => {
                 if relay_capacity
@@ -359,6 +377,9 @@ impl RoomRuntime {
                 self.update(member, name, icon, access, hidden, password, voice_bitrate)?;
                 if let Some(capacity) = relay_capacity {
                     self.set_default_relay_capacity(capacity);
+                }
+                if let Some(allowed) = allow_service_relay {
+                    self.set_service_relay_preference(allowed);
                 }
                 op.policy_changed = true;
             }
@@ -533,6 +554,7 @@ mod tests {
             .unwrap(),
         );
         host.dispatch(HostInput {
+            service_endpoint: None,
             now: 0,
             binding_id: binding,
             host_session_id: local,
@@ -763,6 +785,7 @@ mod tests {
                 endpoints.insert(native, endpoint(friend));
             }
             let input = HostInput {
+                service_endpoint: None,
                 now: 0,
                 binding_id: binding,
                 host_session_id: host_session,
@@ -826,6 +849,7 @@ mod tests {
             ),
         ] {
             let input = HostInput {
+                service_endpoint: None,
                 now: 0,
                 binding_id: Uuid::new_v4(),
                 host_session_id: session,
@@ -1133,6 +1157,8 @@ impl RoomHost {
         if self.pending.is_some() {
             return Err("room_operation_pending");
         }
+        self.room
+            .service_endpoint(input.service_endpoint, &input.endpoints, input.now);
         let applied = self
             .authority
             .as_ref()

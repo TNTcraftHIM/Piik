@@ -90,6 +90,7 @@ async fn app_startup_precedes_first_page_http_client() -> Result<()> {
     let connection = Arc::new(page::Connection::new(Some(dispatch), events));
     let (commands, mut requests) = mpsc::channel(8);
     let host = tokio::spawn(async move {
+        let (_provider_alive, provider_retired) = tokio::sync::watch::channel(false);
         let Some(HostCommand::RegisterWatchReader {
             resource_id,
             reader,
@@ -98,7 +99,7 @@ async fn app_startup_precedes_first_page_http_client() -> Result<()> {
         else {
             panic!("Page did not register its prepared reader");
         };
-        result.send(Ok(Uuid::new_v4())).unwrap();
+        result.send(Ok(piik_channel_native::session::WatchReaderRegistration { session_id: Uuid::new_v4(), retired: provider_retired })).ok().unwrap();
         let Some(HostCommand::RevokeWatchReader {
             resource_id: retired,
         }) = requests.recv().await

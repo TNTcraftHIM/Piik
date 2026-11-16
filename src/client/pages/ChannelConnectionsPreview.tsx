@@ -9,8 +9,10 @@ import { useCopy } from "../ui/copy";
 import { PREVIEW_METRICS } from "./preview-metrics";
 import { QUALITY_PROFILES, screenVideoSettings } from "../media/quality";
 
-type ConnectionPreviewMode = "room" | "voice" | "both" | "app" | "unwatched" | "host-endpoints" | "multiple-endpoints";
+type ConnectionPreviewMode = "room" | "voice" | "both" | "app" | "unwatched" | "host-endpoints" | "multiple-endpoints" | "site-forwarding";
 export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames = false) {
+  const forwarding = mode === "site-forwarding";
+  if (forwarding) mode = "both";
   const state = snapshotSchema.parse({
     channel: { id: "domain", name: "Friends", icon: "couch", ownerId: "host-user", historyWindow: 100, userCount: 3,
       rooms: [{ id: "room", name: "Living room", icon: "couch", creatorId: "host-user", access: "public", hidden: false,
@@ -28,7 +30,7 @@ export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames 
       sessionId, roomId: "room", muted: false, deafened: false,
     })), subscriptions: [], watchActivities: [], watchSubscriptions: [], watchBytes: [], failedSubscriptions: [], files: [], pairs: [], iceServers: [],
   } satisfies z.input<typeof snapshotSchema>);
-  const topology: ChannelTopology = { bindingId: "binding", base: { rootSessionId: "host", edges: mode === "room" ? [] : [
+  const topology: ChannelTopology = { serviceAvailable: false, serviceEnabled: false, bindingId: "binding", transitSession: null, base: { rootSessionId: "host", edges: mode === "room" ? [] : [
     { sender: "host", receiver: "self", ready: true }, { sender: "host", receiver: "friend", ready: true },
   ] }, screen: mode === "app" ? { publicationId: "screen-host", sourceSessionId: "host", edges: [
     { sender: "host", receiver: "app", selected: true, proof: "forwardable", presented: null, presentation: false },
@@ -55,6 +57,20 @@ export function channelConnectionPreview(mode: ConnectionPreviewMode, longNames 
   if (mode === "app") {
     metrics.push(metric("screen-host", "host", "receive", "video", "app"),
       metric("screen-host", "self", "send", "video", "app"));
+  }
+  if (forwarding) {
+    state.sessions.push({ ...state.sessions.find(session => session.id === "host")!, id: "site-service" });
+    topology.serviceAvailable = topology.serviceEnabled = true;
+    topology.transitSession = "site-service";
+    topology.base.edges = [
+      { sender: "host", receiver: "site-service", ready: true }, { sender: "site-service", receiver: "self", ready: true },
+      { sender: "self", receiver: "friend", ready: true },
+    ];
+    topology.screen!.edges = topology.base.edges.map(edge => ({ ...edge, selected: true, proof: "forwardable", presented: null, presentation: false }));
+    for (const sample of metrics) if (sample.peerId === "host") {
+      sample.peerId = "site-service"; sample.pairId = "pair-site-service";
+      sample.connectionId = `${sample.ownerSessionId}/${sample.pairId}`;
+    }
   }
   for (const sample of metrics.filter(sample => sample.ownerSessionId === "self")) {
     let pair = state.pairs.find(pair => pair.id === sample.pairId);
@@ -101,6 +117,7 @@ export function ChannelConnectionsPreview() {
     { value: "unwatched", label: en ? "Unwatched share" : "尚未观看的分享" },
     { value: "host-endpoints", label: en ? "One owner, App and webpage" : "同一房主的 App 与网页" },
     { value: "multiple-endpoints", label: en ? "Two people, two connections each" : "两人各有两个连接" },
+    { value: "site-forwarding", label: en ? "Site forwarding" : "站点转发" },
   ] as const;
   return <section id="channel-connections-preview" className="cp-section">
     <header className="cp-section-head"><h2>{en ? "Multi-source connections" : "多源媒体连接"}</h2></header>

@@ -1134,12 +1134,15 @@ impl NativePeers {
         &self,
         resource: Uuid,
         reader: Arc<dyn crate::watch::Reader>,
-    ) -> Result<()> {
+    ) -> Result<watch::Receiver<bool>> {
         let (done, completed) = oneshot::channel();
         self.input
             .send(Input::RegisterWatchReader(resource, reader, done))
             .await?;
-        completed.await?
+        completed.await??;
+        let retired = self.cancel.subscribe();
+        anyhow::ensure!(!*retired.borrow(), "watch_source_retired");
+        Ok(retired)
     }
     pub async fn revoke_watch_reader(&self, resource: Uuid) -> Result<()> {
         self.input.send(Input::RevokeWatchReader(resource)).await?;

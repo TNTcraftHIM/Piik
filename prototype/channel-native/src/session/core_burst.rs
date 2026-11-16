@@ -245,6 +245,7 @@ impl CoreBurst {
                 hidden: false,
                 voice_bitrate: None,
                 relay_capacity: None,
+                allow_service_relay: None,
                 password: None,
             },
             Some(format!("owned-update-{index}")),

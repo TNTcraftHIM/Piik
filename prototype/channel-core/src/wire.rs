@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-pub const CHANNEL_PROTOCOL: u8 = 25;
+pub const CHANNEL_PROTOCOL: u8 = 26;
 pub const CHANNEL_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -96,6 +96,8 @@ pub enum Command {
         voice_bitrate: Option<u32>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         relay_capacity: Option<u8>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        allow_service_relay: Option<bool>,
         #[serde(
             default,
             deserialize_with = "nullable_password",
@@ -891,6 +893,7 @@ pub enum Event {
         credential: String,
         self_profile: UserInfo,
         session_id: Uuid,
+        connection_id: Uuid,
         state: Snapshot,
         #[serde(skip_serializing_if = "Option::is_none")]
         invitation_origin: Option<String>,

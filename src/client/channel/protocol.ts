@@ -13,7 +13,7 @@ export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
   .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
 export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
-export const CHANNEL_PROTOCOL = 25;
+export const CHANNEL_PROTOCOL = 26;
 export const CHANNEL_SESSION_LIMIT = 128;
 export const CHANNEL_ROOM_LIMIT = 32;
 const signedConversationPacketSchema = z.object({ sender: id, payload: z.string(), signature: z.array(z.number().int().min(0).max(255)).length(64) });
@@ -147,7 +147,10 @@ export const signalSchema = z.object({
   ? [signal.resync, signal.exchangeId, signal.description, signal.candidate, signal.tracks].every(value => value === undefined)
   : Boolean(signal.description) === Boolean(signal.exchangeId), { message: "UDP preparation is exclusive; SDP requires an exchange", path: ["exchangeId"] });
 export const channelTopologySchema = z.object({
+  serviceAvailable: z.boolean(),
+  serviceEnabled: z.boolean(),
   bindingId: id,
+  transitSession: id.nullable(),
   base: z.object({ rootSessionId: id, edges: z.array(z.object({ sender: id, receiver: id, ready: z.boolean() }).strict()) }).strict(),
   screen: z.object({ publicationId: id, sourceSessionId: id, edges: z.array(z.object({
     sender: id, receiver: id, selected: z.boolean(), proof: z.enum(["forwardable", "decoded"]).nullable(),
@@ -250,6 +253,7 @@ export interface RoomSettings extends DomainSettings {
   access: "public" | "private"; hidden: boolean; password?: string | null;
   voiceBitrate?: number;
   relayCapacity?: number;
+  allowServiceRelay?: boolean;
 }
 export type ChannelCommand =
   | { type: "start_watch"; roomId: string; id: string; source: WatchSource; playback: WatchPlayback; byteSource?: WatchByteSource }

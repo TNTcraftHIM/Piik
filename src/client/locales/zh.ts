@@ -1,5 +1,10 @@
 // Canonical keys; English stays complete and other languages may be partial.
 export const zh = {
+  "room.transit.title": "站点转发协助",
+  "room.transit.allow": "允许站点转发",
+  "room.transit.note": "直连不可用时，允许此站点转发本房间已分配的媒体和文件数据，不授予聊天或历史读取权限。此选择保存在房间设置中。",
+  "room.transit.unavailable": "站点暂未提供转发；房间设置已保留。",
+  "connection.siteForwarding": "站点转发",
   "connection.webpage": "网页",
   "connection.endpoint": "连接 {number}",
   "connection.samePersonEndpoints": "同一位参与者的多个连接",

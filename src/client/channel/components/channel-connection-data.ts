@@ -7,6 +7,10 @@ import { EMPTY_METRICS } from "../../types";
 
 type Translate = (key: CopyKey, vars?: Record<string, string>) => string;
 
+function hopRoute(topology: ChannelTopology | null, from: string, to: string, presentation = false): "p2p" | "sfu" {
+  return !presentation && [from, to].includes(topology?.transitSession ?? "") ? "sfu" : "p2p";
+}
+
 export function hasSelectedLocalDisplay(topology: ChannelTopology | null, sessionId: string): boolean {
   return topology?.screen?.edges.some(edge => edge.presentation && edge.selected && edge.receiver === sessionId) ?? false;
 }
@@ -23,19 +27,23 @@ export function channelConnectionGraph(state: ChannelSnapshot, roomId: string, s
   const edges: RouteGraphEdge[] = screen ? screen.edges.map(edge => ({
     from: edge.sender, to: edge.receiver, selected: edge.selected,
     ready: edge.proof === "forwardable" || edge.proof === "decoded", presentation: edge.presentation,
-  })) : topology.base.edges.map(edge => ({ from: edge.sender, to: edge.receiver, selected: true, ready: edge.ready }));
+    route: hopRoute(topology, edge.sender, edge.receiver, edge.presentation),
+  })) : topology.base.edges.map(edge => ({ from: edge.sender, to: edge.receiver, selected: true, ready: edge.ready,
+    route: hopRoute(topology, edge.sender, edge.receiver) }));
   const apps = new Set(screen?.edges.filter(edge => edge.presentation).map(edge => edge.sender));
   const display = new Set(screen?.edges.filter(edge => edge.presentation).map(edge => edge.receiver));
   const room = state.channel.rooms.find(room => room.id === roomId);
   const ids = [...new Set([rootId, ...edges.flatMap(edge => [edge.from, edge.to])])];
   const identity = (id: string) => state.sessions.find(session => session.id === id)?.userId ?? id;
-  const groups = [...new Set(ids.map(identity))].map(userId => ({ userId,
+  const people = ids.filter(id => id !== topology.transitSession);
+  const groups = [...new Set(people.map(identity))].map(userId => ({ userId,
     name: state.users.find(user => user.id === userId)?.name ?? t("voice.participant"),
-    ids: ids.filter(id => identity(id) === userId).sort(),
+    ids: people.filter(id => identity(id) === userId).sort(),
   }));
   const endpoint = (id: string) => apps.has(id) ? "App" : display.has(id) || id === sessionId ? t("connection.webpage")
     : t("connection.endpoint", { number: String(groups.find(group => group.userId === identity(id))!.ids.indexOf(id) + 1) });
   const nodes = ids.map((id): RouteGraphNode => {
+    if (id === topology.transitSession) return { id, identity: id, kind: "sfu", label: t("connection.siteForwarding") };
     const userId = state.sessions.find(session => session.id === id)?.userId;
     const name = connectionSessionName(state, id, t);
     const multiple = groups.some(group => group.userId === identity(id) && group.ids.length > 1);
@@ -72,14 +80,14 @@ export function channelConnectionRows(state: ChannelSnapshot, sessionId: string,
     const localDisplay = topology?.screen?.publicationId === sample.publicationId && topology.screen.edges.some(edge =>
       edge.presentation && edge.sender === from && edge.receiver === to);
     const source = connectionSessionName(state, publication.sessionId, t);
-    const peer = connectionSessionName(state, sample.peerId, t);
+    const peer = sample.peerId === topology?.transitSession ? t("connection.siteForwarding") : connectionSessionName(state, sample.peerId, t);
     const label = localDisplay ? t("connection.localDisplay")
       : sample.direction === "receive" ? t("voice.details.receiveFrom", { name: peer })
       : publication.sessionId !== sample.ownerSessionId ? t("voice.details.forwardTo", { source, name: peer })
       : t("voice.details.sendTo", { name: peer });
     // Without picture topology, a sample may be the App's local display hop.
     return [{ key: `${sample.ownerSessionId}/${sample.flowId}/${sample.metrics.rtpStatsId}`, connectionId: sample.connectionId,
-      media: publication.kind === "voice" ? "audio" : "video", direction: sample.direction, route: "p2p", label, metrics,
+      media: publication.kind === "voice" ? "audio" : "video", direction: sample.direction, route: hopRoute(topology, from, to, localDisplay), label, metrics,
       detailOnly: publication.kind === "screen" && !topology?.screen || localDisplay || !sample.selected || undefined }];
   });
 }

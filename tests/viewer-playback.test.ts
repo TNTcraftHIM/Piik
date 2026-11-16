@@ -7,6 +7,7 @@ import { ChannelVideo } from "../src/client/channel/components/ChannelMedia";
 import { ChannelStage, type ChannelStageProps } from "../src/client/channel/components/ChannelStage";
 import { PlaybackControlsView } from "../src/client/components/living/PlaybackControls";
 import { setCopy } from "../src/client/ui/copy";
+import { en } from "../src/client/locales/en";
 import { useHostPreviewPlayback } from "../src/client/components/living/use-host-preview-playback";
 
 const previewHooks = vi.hoisted(() => ({ active: false, cleanup: [] as (() => void)[] }));
@@ -241,7 +242,7 @@ it("shows shared buffer intent on received screens, including limitations, and o
   expect(remote).toContain("This browser cannot set the playback buffer target.");
   expect(remote).toContain('aria-label="Increase playback buffering"');
   expect(remote).toContain("Total buffer target");
-  expect(remote).toContain("receiver aims to wait for data");
+  expect(remote).toContain(en["playback.bufferHint"]);
   const automatic = renderToStaticMarkup(createElement(ChannelVideo, { ...props, buffering: { ...props.buffering, target: null } }));
   expect(automatic).not.toContain('name="screen-buffer-target"');
   const preview = renderToStaticMarkup(createElement(ChannelVideo, { ...props, localSource: true }));

@@ -218,10 +218,10 @@ impl Events {
 }
 struct Registration {
     reader: Arc<dyn piik_channel_native::watch::Reader>,
-    source: Option<piik_channel_core::wire::WatchByteSource>,
+    source: piik_channel_core::wire::WatchByteSource,
     retired: watch::Receiver<bool>,
     cancel: watch::Sender<bool>,
-    _task: tokio::task::JoinHandle<()>,
+    provider_retired: watch::Receiver<bool>,
 }
 impl Drop for Registration {
     fn drop(&mut self) {
@@ -292,8 +292,20 @@ impl Connection {
             .unwrap()
             .get(&page)
             .and_then(|slot| slot.active.as_ref())
-            .filter(|active| !*active.cancel.borrow() && !*active.retired.borrow())
-            .and_then(|active| active.source.clone())
+            .filter(|active| !*active.cancel.borrow() && !*active.retired.borrow() && !*active.provider_retired.borrow())
+            .map(|active| active.source.clone())
+    }
+    fn retire_media(&self, page: Uuid, root: Uuid) {
+        let removed = {
+            let mut sources = self.media.lock().unwrap();
+            let Some(slot) = sources.get_mut(&page) else { return };
+            if !slot.active.as_ref().is_some_and(|active| active.source.resource_id == root) { return; }
+            let removed = slot.active.take();
+            if slot.pending.is_none() { sources.remove(&page); }
+            removed
+        };
+        drop(removed); // Cancels this reader's in-flight origin reads before notifying the page.
+        self.events.send(serde_json::json!({"type":"page_media_changed","pageId":page}));
     }
     pub fn stop_media(&self, page: Uuid) {
         self.media.lock().unwrap().remove(&page);
@@ -363,29 +375,44 @@ impl Connection {
                         (reader.root, Format::Hls, reader, retired)
                     }
                 };
+                let (lifetime, provider_ready) = oneshot::channel::<watch::Receiver<bool>>();
+                let owner = Arc::downgrade(&connection);
                 let mut watching = retired.clone();
-                let (result, response) = oneshot::channel();
-                let revoke = host.clone();
                 let mut stop = cancel.subscribe();
-                let task = tokio::spawn(async move {
+                let revoke = host.clone();
+                // Own revocation before Register can enqueue a successful reply.
+                tokio::spawn(async move {
+                    let provider = async {
+                        if let Ok(mut retired) = provider_ready.await {
+                            let _ = retired.wait_for(|value| *value).await;
+                        }
+                    };
                     tokio::select! {
                         _ = watching.wait_for(|value| *value) => {},
                         _ = stop.wait_for(|value| *value) => {},
+                        _ = provider => {},
+                    }
+                    if let Some(connection) = owner.upgrade() {
+                        connection.retire_media(page, root);
                     }
                     let _ = revoke.send(HostCommand::RevokeWatchReader { resource_id: root }).await;
                 });
-                let mut registration = Registration { reader: reader.clone(), source: None, retired, cancel: cancel.clone(), _task: task };
-                host.send(HostCommand::RegisterWatchReader { resource_id: root, reader, result }).await.map_err(|_| anyhow!("hosting_unavailable"))?;
-                let session_id = response.await?.map_err(anyhow::Error::msg)?;
-                registration.source = Some(piik_channel_core::wire::WatchByteSource { session_id, resource_id: root, format });
-                ensure_not_cancelled(&cancel)?;
-                anyhow::ensure!(!*registration.retired.borrow(), "watch_source_retired");
-                let mut sources = connection.media.lock().unwrap();
-                let slot = sources.get_mut(&page).ok_or_else(|| anyhow!("watch_source_retired"))?;
-                anyhow::ensure!(slot.pending.as_ref().is_some_and(|(id, _)| *id == generation), "watch_source_retired");
-                slot.active = Some(registration);
-                slot.pending = None;
-                Ok(serde_json::json!({"sessionId": session_id, "resourceId": root, "format": format}))
+                let (result, response) = oneshot::channel();
+                host.send(HostCommand::RegisterWatchReader { resource_id: root, reader: reader.clone(), result }).await.map_err(|_| anyhow!("hosting_unavailable"))?;
+                let provider = response.await?.map_err(anyhow::Error::msg)?;
+                let source = piik_channel_core::wire::WatchByteSource { session_id: provider.session_id, resource_id: root, format };
+                let registration = Registration { reader, source: source.clone(), retired, cancel: cancel.clone(), provider_retired: provider.retired.clone() };
+                let _ = lifetime.send(provider.retired);
+                {
+                    let mut sources = connection.media.lock().unwrap();
+                    ensure_not_cancelled(&cancel)?;
+                    anyhow::ensure!(!*registration.retired.borrow() && !*registration.provider_retired.borrow(), "watch_source_retired");
+                    let slot = sources.get_mut(&page).ok_or_else(|| anyhow!("watch_source_retired"))?;
+                    anyhow::ensure!(slot.pending.as_ref().is_some_and(|(id, _)| *id == generation), "watch_source_retired");
+                    slot.active = Some(registration);
+                    slot.pending = None;
+                }
+                Ok(serde_json::to_value(source)?)
             };
             let result = tokio::select! {
                 biased;
@@ -427,10 +454,8 @@ impl Connection {
                 .filter(|active| {
                     !*active.cancel.borrow()
                         && !*active.retired.borrow()
-                        && active
-                            .source
-                            .as_ref()
-                            .is_some_and(|source| source.resource_id == source_id)
+                        && !*active.provider_retired.borrow()
+                        && active.source.resource_id == source_id
                 })
                 .ok_or_else(|| anyhow!("watch_source_retired"))?;
             active.reader.clone()
@@ -561,6 +586,149 @@ impl Drop for Connection {
 mod tests {
     use super::*;
     #[tokio::test]
+    async fn cancelling_after_native_registration_reply_was_queued_still_revokes_reader() {
+        use piik_channel_native::{peer::NativePeers, session::WatchReaderRegistration};
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/owned", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, axum::Router::new().route("/owned", axum::routing::get(|headers: axum::http::HeaderMap| async move {
+                let range = headers.get("range").unwrap().to_str().unwrap();
+                let offset: usize = range.strip_prefix("bytes=").unwrap().split('-').next().unwrap().parse().unwrap();
+                axum::http::Response::builder().status(206).header("content-type", "video/mp4")
+                    .header("content-range", format!("bytes {offset}-{offset}/4"))
+                    .body(axum::body::Body::from(vec![42])).unwrap()
+            }))).await.unwrap();
+        });
+        let (_page_alive, retired) = watch::channel(false);
+        let dispatch = Arc::new(move |command| {
+            if let Command::Media { reply, .. } = command {
+                let _ = reply.send(Ok(MediaContext { request: None, url: url.clone(), format: Format::File,
+                    size: Some(4), retired: retired.clone(), cookies: Arc::new(|_| Box::pin(async { Ok(None) })) }));
+            }
+            true
+        });
+        let (events, _queue) = mpsc::channel(8);
+        let connection = Arc::new(Connection::new(Some(dispatch), events));
+        let (host, mut commands) = mpsc::channel(8);
+        let (events, _queue) = mpsc::channel(8);
+        let session = Uuid::new_v4();
+        let mut peers = NativePeers::new(session, vec![], events);
+        let page = Uuid::new_v4();
+        let mut preparing = connection.prepare_media(page, Uuid::new_v4(), host).unwrap();
+        let command = tokio::select! {
+            command = commands.recv() => command.unwrap(),
+            result = preparing.as_mut() => panic!("prepare completed before registration: {result:?}"),
+        };
+        let HostCommand::RegisterWatchReader { resource_id, reader, result } = command else { panic!("register expected") };
+        let retired = peers.register_watch_reader(resource_id, reader.clone()).await.unwrap();
+        result.send(Ok(WatchReaderRegistration { session_id: session, retired })).unwrap();
+        // No poll of the App future occurs between accepted reply and cancellation.
+        connection.stop_media(page);
+        assert_eq!(preparing.await.unwrap_err().to_string(), "watch_source_retired");
+        let revoked = tokio::time::timeout(Duration::from_millis(300), commands.recv()).await;
+        peers.close().await.unwrap();
+        server.abort(); let _ = server.await;
+        let Some(HostCommand::RevokeWatchReader { resource_id: root }) = revoked.expect("accepted queued reply leaked its reader") else { panic!("accepted queued reply leaked its reader: no revocation") };
+        assert_eq!(root, resource_id);
+        assert!(connection.media_source(page).is_none());
+        assert_eq!(reader.read(resource_id, 0, 1).await.unwrap_err().to_string(), "watch_source_retired");
+    }
+
+    #[tokio::test]
+    async fn native_generation_retirement_releases_page_source_reads_and_allows_explicit_prepare() {
+        use piik_channel_native::{peer::NativePeers, session::WatchReaderRegistration};
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/owned", listener.local_addr().unwrap());
+        let (entered, mut requests) = mpsc::unbounded_channel();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, axum::Router::new().route("/owned", axum::routing::get(move |headers: axum::http::HeaderMap| {
+                let entered = entered.clone();
+                async move {
+                    let range = headers.get("range").unwrap().to_str().unwrap();
+                    if range == "bytes=2-2" {
+                        entered.send(()).unwrap();
+                        std::future::pending::<()>().await;
+                    }
+                    let offset: usize = range.strip_prefix("bytes=").unwrap().split('-').next().unwrap().parse().unwrap();
+                    axum::http::Response::builder().status(206)
+                        .header("content-type", "video/mp4")
+                        .header("content-range", format!("bytes {offset}-{offset}/4"))
+                        .body(axum::body::Body::from(vec![42])).unwrap()
+                }
+            }))).await.unwrap();
+        });
+        let (_page_retire, page_retired) = watch::channel(false);
+        let dispatch = Arc::new(move |command| {
+            if let Command::Media { reply, .. } = command {
+                let _ = reply.send(Ok(MediaContext { request: None, url: url.clone(), format: Format::File,
+                    size: Some(4), retired: page_retired.clone(), cookies: Arc::new(|_| Box::pin(async { Ok(None) })) }));
+            }
+            true
+        });
+        let (events, mut changed) = mpsc::channel(8);
+        let connection = Arc::new(Connection::new(Some(dispatch), events));
+        let page = Uuid::new_v4();
+        let (host, mut commands) = mpsc::channel(8);
+        let (peer_events, _peer_queue) = mpsc::channel(8);
+        let old_session = Uuid::new_v4();
+        let mut peers = NativePeers::new(old_session, vec![], peer_events);
+        let prepare = connection.prepare_media(page, Uuid::new_v4(), host.clone()).unwrap();
+        let register = async {
+            let Some(HostCommand::RegisterWatchReader { resource_id, reader, result }) = commands.recv().await else { panic!("register expected") };
+            let retired = peers.register_watch_reader(resource_id, reader).await.unwrap();
+            result.send(Ok(WatchReaderRegistration { session_id: old_session, retired })).unwrap();
+        };
+        let (prepared, ()) = tokio::join!(prepare, register);
+        let old: piik_channel_core::wire::WatchByteSource = serde_json::from_value(prepared.unwrap()).unwrap();
+        assert_eq!(connection.media_source(page).unwrap().session_id, old_session);
+
+        // Resynchronizing the same NativePeers is the short-resume path, not retirement.
+        peers.resync().await.unwrap();
+        assert_eq!(connection.media_source(page).unwrap().resource_id, old.resource_id);
+        let result = connection.read_resource(page, old.resource_id, old.resource_id, Uuid::new_v4(), 0, 1).unwrap().await.unwrap();
+        assert_eq!(result["bytesBase64"], "Kg==");
+        assert!(changed.try_recv().is_err());
+
+        let read = connection.read_resource(page, old.resource_id, old.resource_id, Uuid::new_v4(), 2, 1).unwrap();
+        let waiting = tokio::spawn(read);
+        tokio::time::timeout(Duration::from_secs(2), requests.recv()).await.unwrap().unwrap();
+        peers.close().await.unwrap();
+        assert!(connection.media_source(page).is_none());
+        let event = tokio::time::timeout(Duration::from_secs(2), changed.recv()).await.unwrap().unwrap();
+        assert_eq!(event["type"], "page_media_changed");
+        assert_eq!(event["pageId"], page.to_string());
+        assert_eq!(waiting.await.unwrap().unwrap_err().to_string(), "watch_source_retired");
+        assert!(connection.media.lock().unwrap().get(&page).is_none());
+        assert!(connection.read_resource(page, old.resource_id, old.resource_id, Uuid::new_v4(), 0, 1).is_err());
+        let Some(HostCommand::RevokeWatchReader { resource_id }) = commands.recv().await else { panic!("revoke expected") };
+        assert_eq!(resource_id, old.resource_id);
+
+        // Only a subsequent explicit prepare registers a fresh reader in the next bank.
+        let new_session = Uuid::new_v4();
+        let (events, _queue) = mpsc::channel(8);
+        let mut next = NativePeers::new(new_session, vec![], events);
+        let prepare = connection.prepare_media(page, Uuid::new_v4(), host.clone()).unwrap();
+        let register = async {
+            let Some(HostCommand::RegisterWatchReader { resource_id, reader, result }) = commands.recv().await else { panic!("new register expected") };
+            let retired = next.register_watch_reader(resource_id, reader).await.unwrap();
+            result.send(Ok(WatchReaderRegistration { session_id: new_session, retired })).unwrap();
+        };
+        let (prepared, ()) = tokio::join!(prepare, register);
+        let fresh: piik_channel_core::wire::WatchByteSource = serde_json::from_value(prepared.unwrap()).unwrap();
+        assert_eq!(fresh.session_id, new_session);
+        assert_ne!(fresh.resource_id, old.resource_id);
+        connection.retire_media(page, old.resource_id);
+        assert_eq!(connection.media_source(page).unwrap().resource_id, fresh.resource_id);
+        assert!(changed.try_recv().is_err());
+        connection.stop_media(page);
+        next.close().await.unwrap();
+        server.abort();
+        let _ = server.await;
+    }
+
+    #[tokio::test]
     async fn active_resource_reads_share_the_registered_reader_and_cancel_only_their_read() {
         use piik_channel_native::watch::{ReadResult, Reader};
         struct OwnedReader {
@@ -610,14 +778,14 @@ mod tests {
                 pending: None,
                 active: Some(Registration {
                     reader: reader.clone(),
-                    source: Some(piik_channel_core::wire::WatchByteSource {
+                    source: piik_channel_core::wire::WatchByteSource {
                         session_id: Uuid::new_v4(),
                         resource_id: root,
                         format: Format::File,
-                    }),
+                    },
                     retired,
                     cancel,
-                    _task: tokio::spawn(async {}),
+                    provider_retired: watch::channel(false).1,
                 }),
             },
         );

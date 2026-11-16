@@ -46,6 +46,16 @@ describes a different runtime and its SFU controls.
 
 ### Packaged Server
 
+Site forwarding assistance is off by default. A Server operator can offer it
+with `PIIK_CHANNEL_SERVICE_TRANSIT=true` at startup. Each room owner must then
+allow it in the room's existing device settings. This preference stays with the
+room across host/service reconnections; copying it as a new room resets the
+choice. Each active lease still belongs to the current service socket. This does
+not transfer room hosting or grant ordinary room Read,
+chat or history access to the service. Assigned picture, sound, file and shared
+playback bytes use the existing peer plans; a reachable service media path is
+still required. Availability is not a bandwidth guarantee.
+
 Use a matching 3.0 Server package and keep its bundled `web/` directory beside
 the executable. For a new site, replace the placeholder below with a private
 random owner seed and save it securely. On Linux, run from the extracted directory:
@@ -177,7 +187,8 @@ upstream to the standalone port. Keep the proxy-facing HTTP listener private.
 Allow the fixed `PIIK_CHANNEL_UDP_PORT` through the host firewall and cloud
 security group. It defaults to the actual HTTP port; the deployment template
 selects 8787. Media UDP goes directly to this listener, not through the HTTP
-proxy. The Server uses the configured public STUN services for discovery; this
+proxy or HTTP tunnel. Offering forwarding capability does not prove that this
+UDP listener is reachable from a particular viewer. The Server uses the configured public STUN services for discovery; this
 setup does not require hosting the old 2.x STUN listeners on UDP 3478/3479/3480.
 
 When NAT or a UDP tunnel changes the reachable address, set

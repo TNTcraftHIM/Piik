@@ -728,6 +728,7 @@ mod room_tests {
             ),
         ]);
         let input = |action, binding_id| HostInput {
+            service_endpoint: None,
             now: 0,
             binding_id,
             host_session_id: host_session,

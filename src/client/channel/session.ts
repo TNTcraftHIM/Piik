@@ -1606,7 +1606,7 @@ export class ChannelSession {
   importRoomCopy = (archive: Blob, settings: RoomSettings): Promise<{ roomId: string; cached: boolean }> => this.action("room-backup", async () => {
     const current = this.sessionContext(), state = this.view.state!, self = this.view.self!;
     const runtime = await loadRoomHosting();
-    const policy = await runtime.createRoomPolicy({ ...settings, id: crypto.randomUUID(), creatorId: self.id });
+    const policy = await runtime.createRoomPolicy({ ...settings, allowServiceRelay: false, id: crypto.randomUUID(), creatorId: self.id });
     current();
     let stage: BrowserRoomStage | undefined, importer: BackupHistoryImport | undefined, converted: Blob;
     const contents = new Map<string, File>();

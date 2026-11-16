@@ -226,6 +226,7 @@ struct Live {
 
 struct Session {
     config: Config,
+    service_admission: Option<mpsc::Sender<piik_channel_core::host::ServiceEndpoint>>,
     files: Vec<RoomFile>,
     live: Option<Live>,
     recovery: Option<Instant>,
@@ -482,6 +483,12 @@ struct PendingRelay {
     binding_id: Uuid,
     result: oneshot::Sender<Result<RelayCapacityState, String>>,
 }
+#[derive(Debug)]
+pub struct WatchReaderRegistration {
+    pub session_id: Uuid,
+    pub retired: watch::Receiver<bool>,
+}
+
 pub enum HostCommand {
     RelayCapacity {
         request: RelayCapacityRequest,
@@ -490,7 +497,7 @@ pub enum HostCommand {
     RegisterWatchReader {
         resource_id: Uuid,
         reader: Arc<dyn crate::watch::Reader>,
-        result: oneshot::Sender<Result<Uuid, String>>,
+        result: oneshot::Sender<Result<WatchReaderRegistration, String>>,
     },
     RevokeWatchReader {
         resource_id: Uuid,
@@ -584,17 +591,19 @@ pub async fn run(
     files: Vec<RoomFile>,
     stop: impl Future<Output = ()> + Send,
 ) -> Result<()> {
-    run_host(config, files, None, stop).await
+    run_host(config, files, None, None, stop).await
 }
 
 pub async fn run_host(
     config: Config,
     files: Vec<RoomFile>,
     hosting: Option<Hosting>,
+    service_admission: Option<mpsc::Sender<piik_channel_core::host::ServiceEndpoint>>,
     stop: impl Future<Output = ()> + Send,
 ) -> Result<()> {
     let mut session = Session {
         config,
+        service_admission,
         files,
         live: None,
         recovery: None,
@@ -848,7 +857,7 @@ impl Session {
                                 HostCommand::RelayCapacity { request, result } => self.relay_capacity(request, result, socket).await?,
                                 HostCommand::RegisterWatchReader { resource_id, reader, result } => {
                                     let registered = if let Some(live) = &mut self.live {
-                                        await_peer(live.peers.register_watch_reader(resource_id, reader), &mut live.commands, &live.pairs, &mut live.room, &live.peers, socket).await.map(|()| live.session).map_err(|error| error.to_string())
+                                        await_peer(live.peers.register_watch_reader(resource_id, reader), &mut live.commands, &live.pairs, &mut live.room, &live.peers, socket).await.map(|retired| WatchReaderRegistration { session_id: live.session, retired }).map_err(|error| error.to_string())
                                     } else { Err("hosting_unavailable".into()) };
                                     let _ = result.send(registered);
                                 },
@@ -1130,6 +1139,7 @@ impl Session {
             Event::Welcome {
                 credential,
                 session_id,
+                connection_id,
                 state,
                 ..
             } => {
@@ -1261,6 +1271,15 @@ impl Session {
                 }
                 self.recovery = None;
                 self.state(state, socket).await?;
+                if let Some(admission) = &self.service_admission {
+                    admission
+                        .send(piik_channel_core::host::ServiceEndpoint {
+                            session_id,
+                            connection_id,
+                        })
+                        .await
+                        .map_err(|_| anyhow!("service_registration_closed"))?;
+                }
                 if resumed {
                     let live = self.live.as_mut().unwrap();
                     await_peer(

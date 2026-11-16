@@ -12,6 +12,25 @@ import { screenAudience } from "../src/client/channel/presentation";
 const t = (key: CopyKey) => key;
 
 describe("channel connection presentation", () => {
+  it("draws the actual service as forwarding infrastructure while keeping its operator's real endpoint", () => {
+    const fixture = channelConnectionPreview("host-endpoints");
+    fixture.topology.transitSession = "app";
+    const graph = channelConnectionGraph(fixture.state, fixture.roomId, fixture.sessionId, fixture.topology, t);
+    expect(graph.nodes.find(node => node.id === "app")).toMatchObject({ kind: "sfu", label: "connection.siteForwarding" });
+    expect(graph.nodes.find(node => node.id === "self")).toMatchObject({ kind: "person", identity: "self-user", you: true });
+    expect(graph.endpointGroups).toEqual([]);
+    const routed = channelConnectionPreview("app");
+    routed.topology.transitSession = "app";
+    const sample = routed.metrics.find(value => value.peerId === "app" && value.ownerSessionId === routed.sessionId)!;
+    expect(sample).toBeDefined();
+    routed.topology.screen!.edges.forEach(edge => { edge.presentation = false; });
+    const routedGraph = channelConnectionGraph(routed.state, routed.roomId, routed.sessionId, routed.topology, t);
+    expect(routedGraph.edges.filter(edge => edge.from === "app" || edge.to === "app").every(edge => edge.route === "sfu")).toBe(true);
+    const rows = channelConnectionRows(routed.state, routed.sessionId, routed.topology, [sample], t);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].route).toBe("sfu");
+    expect(renderToStaticMarkup(createElement(ChannelConnectionReport, routed))).toContain("is-sfu");
+  });
   it("merges room audience by user without counting publishers, retired identities or relay paths", () => {
     const { state } = channelConnectionPreview("app");
     const publication = state.publications.find(value => value.kind === "screen")!;

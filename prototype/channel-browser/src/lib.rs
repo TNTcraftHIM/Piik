@@ -35,6 +35,7 @@ struct NewRoom {
     password: Option<String>,
     voice_bitrate: Option<u32>,
     relay_capacity: Option<u8>,
+    allow_service_relay: Option<bool>,
 }
 
 #[wasm_bindgen]
@@ -56,6 +57,7 @@ pub fn create_room_policy(input: &str) -> Result<String, JsValue> {
     if let Some(bitrate) = input.voice_bitrate {
         policy.voice_bitrate = bitrate;
     }
+    policy.allow_service_relay = input.allow_service_relay.unwrap_or(false);
     policy.validate().map_err(error)?;
     encode(&policy)
 }

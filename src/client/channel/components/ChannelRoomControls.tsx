@@ -5,7 +5,7 @@ import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { downloadBlob } from "../../lib/download";
 import { formatChatTranscript } from "../../lib/room-chat-export";
-import type { ChannelMessage, ChannelUser, ChannelRoom, RoomSettings } from "../protocol";
+import type { ChannelMessage, ChannelUser, ChannelRoom, RoomSettings, ChannelTopology } from "../protocol";
 import { DEFAULT_RELAY_CAPACITY, MAX_RELAY_CAPACITY } from "../protocol";
 import type { ChannelController } from "../types";
 import type { NativeRelayCapacity } from "../app-link";
@@ -104,6 +104,33 @@ export function PersonalRelay({ channel, room, disabled, run }: { channel: Chann
     {channel.appConnected && <AppRelay key={`${room.id}/${room.delivery?.bindingId}/${channel.sessionId}`}
       channel={channel} room={room} disabled={disabled} run={run} />}
   </div>;
+}
+
+export function ServiceTransit({ channel, room, disabled, run }: { channel: ChannelController; room: ChannelRoom; disabled: boolean; run: SettingsAction }) {
+  const { t } = useCopy();
+  const [topology, setTopology] = useState<ChannelTopology | null>(null);
+  const [reload, setReload] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const lifetime = new AbortController();
+    setFailed(false); setLoading(true);
+    if (!disabled) void channel.roomTopology(room.id, undefined, lifetime.signal).then(
+      value => { if (!lifetime.signal.aborted) { setTopology(value); setLoading(false); } },
+      () => { if (!lifetime.signal.aborted) { setFailed(true); setLoading(false); } });
+    return () => lifetime.abort();
+  }, [channel.roomTopology, room.id, room.delivery?.bindingId, channel.state, disabled, reload]);
+  return <section className="c3-room-relay">
+    <h4>{t("room.transit.title")}</h4>
+    <SwitchItem checked={topology?.serviceEnabled ?? false} disabled={disabled || loading || failed || channel.pending.has(`room:${room.id}`)}
+      label={t("room.transit.allow")} onChange={enabled => { void run(async () => {
+        await channel.updateRoom(room.id, { name: room.name, icon: room.icon, access: room.access,
+          hidden: room.hidden, allowServiceRelay: enabled }, false);
+        setReload(value => value + 1);
+      }); }} />
+    <p>{t("room.transit.note")}</p>
+    {(failed || loading || !topology?.serviceAvailable) && <p role="status">{t(failed ? "connection.topologyUnavailable" : loading ? "common.loading" : "room.transit.unavailable")}</p>}
+  </section>;
 }
 
 export type RoomDraft = Pick<RoomSettings, "name" | "icon" | "access" | "hidden" | "voiceBitrate"> & { password: string; removePassword: boolean; relayCapacity: number };
@@ -323,6 +350,7 @@ function RoomSettings({ channel, room, onClose }: {
         {room.authorized && <section id={`${id}-relay`} role="tabpanel" aria-labelledby={`${id}-relay-tab`} hidden={selected !== "relay"}>
           <h3>{t("room.settings.device")}</h3>
           <PersonalRelay channel={channel} room={room} disabled={!available || working} run={run} />
+          {room.canManage && <ServiceTransit key={`${room.id}/${room.delivery?.bindingId}`} channel={channel} room={room} disabled={!available || working} run={run} />}
         </section>}
         {(room.authorized || room.canManage) && <section id={`${id}-data`} role="tabpanel" aria-labelledby={`${id}-data-tab`} hidden={selected !== "data"}>
           <h3>{t("room.settings.recordsTitle")}</h3>

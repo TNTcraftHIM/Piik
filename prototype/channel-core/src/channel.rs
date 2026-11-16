@@ -24,6 +24,7 @@ pub struct Channel {
     transports: TransportBook,
     input_registrations: BTreeMap<Uuid, Vec<crate::input::InputRegistration>>,
     ice_servers: Vec<Value>,
+    pub(crate) service_endpoint: Option<crate::host::ServiceEndpoint>,
 }
 
 pub(crate) struct HostAcceptance {
@@ -64,6 +65,7 @@ impl Channel {
             transports: TransportBook::default(),
             input_registrations: BTreeMap::new(),
             ice_servers,
+            service_endpoint: None,
         }
     }
 
@@ -261,15 +263,44 @@ impl Channel {
 
     pub(crate) fn reconcile(&mut self) {
         let endpoints = self.identity.endpoints();
+        self.service_endpoint = self.service_endpoint.filter(|service| {
+            self.identity
+                .sessions
+                .get(&service.session_id)
+                .is_some_and(|session| session.connection == Some(service.connection_id))
+        });
+        let service_endpoint = self.service_endpoint.map(|service| service.session_id);
         for room in self.remote.values_mut() {
             if let Some(projection) = &mut room.projection {
                 projection
                     .views
                     .retain(|session, _| endpoints.contains_key(session));
+                for (session, view) in &mut projection.views {
+                    view.transit &= view.transit_endpoint == self.service_endpoint
+                        && Some(*session) == service_endpoint
+                        && (projection
+                            .base_links
+                            .iter()
+                            .any(|link| link.parent == *session || link.child == *session)
+                            || projection
+                                .flows
+                                .iter()
+                                .any(|flow| flow.sender == *session || flow.receiver == *session));
+                    if !view.transit {
+                        view.transit_endpoint = None;
+                    }
+                }
                 let readable_sessions: BTreeSet<_> = projection
                     .views
                     .iter()
                     .filter_map(|(session, view)| view.authorized.then_some(*session))
+                    .collect();
+                let routable_sessions: BTreeSet<_> = projection
+                    .views
+                    .iter()
+                    .filter_map(|(session, view)| {
+                        (view.authorized || view.transit).then_some(*session)
+                    })
                     .collect();
                 projection
                     .publications
@@ -307,7 +338,7 @@ impl Channel {
                     .retain(|session| readable_sessions.contains(session));
                 for view in projection.views.values_mut() {
                     view.watch_bytes.retain_mut(|plan| {
-                        if !view.authorized
+                        if !(view.authorized || view.transit)
                             || !projection.watch_activities.iter().any(|activity| {
                                 activity.id == plan.activity_id
                                     && activity.byte_source.as_ref() == Some(&plan.source)
@@ -317,14 +348,17 @@ impl Channel {
                         }
                         if plan
                             .upstream
-                            .is_some_and(|peer| !readable_sessions.contains(&peer))
+                            .is_some_and(|peer| !routable_sessions.contains(&peer))
                         {
                             plan.upstream = None;
                         }
                         plan.downstream
-                            .retain(|peer| readable_sessions.contains(peer));
+                            .retain(|peer| routable_sessions.contains(peer));
                         true
                     });
+                    if !(view.authorized || view.transit) {
+                        view.files.clear();
+                    }
                     for file in &mut view.files {
                         if file
                             .source_id
@@ -336,12 +370,18 @@ impl Channel {
                         }
                         if file
                             .upstream
-                            .is_some_and(|peer| !readable_sessions.contains(&peer))
+                            .is_some_and(|peer| !routable_sessions.contains(&peer))
                         {
                             file.upstream = None;
                         }
                         file.downstream
-                            .retain(|peer| readable_sessions.contains(peer));
+                            .retain(|peer| routable_sessions.contains(peer));
+                    }
+                    if !view.authorized {
+                        view.files
+                            .retain(|file| file.upstream.is_some() && !file.downstream.is_empty());
+                        view.watch_bytes
+                            .retain(|plan| plan.upstream.is_some() && !plan.downstream.is_empty());
                     }
                     view.watch_subscriptions.retain(|subscription| {
                         view.authorized
@@ -358,7 +398,7 @@ impl Channel {
                 projection.flows.retain(|flow| {
                     [flow.sender, flow.receiver]
                         .into_iter()
-                        .all(|s| readable_sessions.contains(&s))
+                        .all(|s| routable_sessions.contains(&s))
                         && projection
                             .publications
                             .iter()
@@ -367,7 +407,7 @@ impl Channel {
                 projection.base_links.retain(|link| {
                     [link.parent, link.child]
                         .into_iter()
-                        .all(|s| projection.views.get(&s).is_some_and(|view| view.authorized))
+                        .all(|s| routable_sessions.contains(&s))
                 });
             }
         }
@@ -772,7 +812,7 @@ impl Channel {
         if !Self::host_online(&self.identity, remote) {
             return Err("room_host_offline");
         }
-        let (session, input) = remote.input(endpoints, action, self.now)?;
+        let (session, input) = remote.input(endpoints, self.service_endpoint, action, self.now)?;
         Ok((
             session,
             Event::HostInput {
@@ -1101,7 +1141,23 @@ impl Channel {
             }
         }
         for (recipient, view) in &projection.views {
+            if view.allow_service_relay && !view.can_manage
+                || view.transit_endpoint.is_some_and(|endpoint| {
+                    !view.transit || Some(endpoint) != self.service_endpoint
+                })
+            {
+                return Err("invalid_room_projection");
+            }
             if !endpoints.contains_key(recipient)
+                || view.transit
+                    && (Some(*recipient) != self.service_endpoint.map(|service| service.session_id)
+                        || !(projection
+                            .base_links
+                            .iter()
+                            .any(|link| link.parent == *recipient || link.child == *recipient)
+                            || projection.flows.iter().any(|flow| {
+                                flow.sender == *recipient || flow.receiver == *recipient
+                            })))
                 || view.can_manage
                     && (!view.authorized
                         || endpoints[recipient].member.user_id != projection.summary.creator_id)
@@ -1134,10 +1190,10 @@ impl Channel {
                 || (!view.authorized
                     && (view.reading
                         || !view.watch_subscriptions.is_empty()
-                        || !view.watch_bytes.is_empty()
+                        || !view.transit && !view.watch_bytes.is_empty()
                         || !view.subscriptions.is_empty()
                         || !view.failed_subscriptions.is_empty()
-                        || !view.files.is_empty()))
+                        || !view.transit && !view.files.is_empty()))
             {
                 return Err("invalid_room_projection");
             }
@@ -1155,6 +1211,11 @@ impl Channel {
                             })
                 };
                 if !planned.insert(plan.activity_id)
+                    || !view.authorized
+                        && (plan.receiving
+                            || plan.source.session_id == *recipient
+                            || plan.upstream.is_none()
+                            || plan.downstream.is_empty())
                     || plan.room_id != id
                     || !projection.watch_activities.iter().any(|a| {
                         a.id == plan.activity_id && a.byte_source.as_ref() == Some(&plan.source)
@@ -1188,6 +1249,11 @@ impl Channel {
                             })
                 };
                 if file.room_id != id
+                    || !view.authorized
+                        && (file.receiving
+                            || file.source_id == Some(*recipient)
+                            || file.upstream.is_none()
+                            || file.downstream.is_empty())
                     || file.message_seq == 0
                     || file.attachment.validate().is_err()
                     || file.downstream.len() > MAX_TREE_EDGES
@@ -1281,10 +1347,10 @@ impl Channel {
                 || !endpoints.contains_key(&flow.sender)
                 || !endpoints.contains_key(&flow.receiver)
                 || !projection.views.get(&flow.sender).is_some_and(|v| {
-                    v.authorized && publications.contains_key(&flow.publication_id)
+                    (v.authorized || v.transit) && publications.contains_key(&flow.publication_id)
                 })
                 || !projection.views.get(&flow.receiver).is_some_and(|v| {
-                    v.authorized && publications.contains_key(&flow.publication_id)
+                    (v.authorized || v.transit) && publications.contains_key(&flow.publication_id)
                 })
                 || previous.get(&flow.id).is_some_and(|old| {
                     old.publication_id != flow.publication_id
@@ -1351,9 +1417,12 @@ impl Channel {
         for link in &projection.base_links {
             if link.room_id != id
                 || link.parent == link.child
-                || ![link.parent, link.child]
-                    .into_iter()
-                    .all(|s| projection.views.get(&s).is_some_and(|view| view.authorized))
+                || ![link.parent, link.child].into_iter().all(|s| {
+                    projection
+                        .views
+                        .get(&s)
+                        .is_some_and(|view| view.authorized || view.transit)
+                })
             {
                 return Err("invalid_room_projection");
             }
@@ -1565,7 +1634,16 @@ impl Channel {
             })
             .transpose()?;
         Ok(RoomTopology {
+            service_available: self.service_endpoint.is_some(),
+            service_enabled: projection
+                .views
+                .get(&session)
+                .is_some_and(|view| view.allow_service_relay),
             binding_id: binding.id,
+            transit_session: projection
+                .views
+                .iter()
+                .find_map(|(session, view)| view.transit.then_some(*session)),
             base: BaseTopology {
                 root_session_id: binding.session,
                 edges: projection
@@ -1600,6 +1678,39 @@ impl Channel {
         let mut failed_subscriptions = BTreeSet::new();
         if let Some(member) = member {
             for room in self.remote.values() {
+                if let Some(projection) =
+                    room.projection.as_ref().filter(|_| room.binding.is_some())
+                {
+                    if let Some(view) = projection
+                        .views
+                        .get(&session_id)
+                        .filter(|view| view.transit && !view.authorized)
+                    {
+                        publications.extend(
+                            projection
+                                .publications
+                                .iter()
+                                .filter(|publication| {
+                                    projection.flows.iter().any(|flow| {
+                                        flow.publication_id == publication.id
+                                            && (flow.sender == session_id
+                                                || flow.receiver == session_id)
+                                    })
+                                })
+                                .cloned()
+                                .map(|mut publication| {
+                                    publication.audience.clear();
+                                    if let Some(screen) = &mut publication.screen {
+                                        screen.title = None;
+                                        screen.source.name = None;
+                                    }
+                                    publication
+                                }),
+                        );
+                        files.extend(view.files.clone());
+                        watch_bytes.extend(view.watch_bytes.clone());
+                    }
+                }
                 if let Some(mut snapshot) =
                     room.snapshot(member, session_id, Self::host_online(&self.identity, room))
                 {

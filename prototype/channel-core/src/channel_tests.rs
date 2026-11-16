@@ -110,6 +110,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
         .unwrap(),
     );
     host.dispatch(HostInput {
+        service_endpoint: None,
         now: 0,
         binding_id: Uuid::new_v4(),
         host_session_id: sessions[0],

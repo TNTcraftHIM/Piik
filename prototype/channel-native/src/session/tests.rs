@@ -69,6 +69,7 @@ async fn resumed_endpoint_retires_its_missing_host_after_a_deleted_output_cannot
     remote.close(None).await.unwrap();
     let _ = socket.close(None).await;
     let input = HostInput {
+        service_endpoint: None,
         now: 1,
         binding_id: binding,
         host_session_id: native,
@@ -130,6 +131,7 @@ async fn resumed_endpoint_retires_its_missing_host_after_a_deleted_output_cannot
     session
         .event(
             Event::Welcome {
+                connection_id: Uuid::new_v4(),
                 protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
                 self_profile: self_profile(&state, native),
                 credential: "fixture".into(),
@@ -406,6 +408,7 @@ async fn committed_restore_registration_completes_each_coalesced_reply_with_its_
                     Event::HostInput {
                         room_id: "target".into(),
                         input: HostInput {
+                            service_endpoint: None,
                             now: 1,
                             binding_id: binding,
                             host_session_id: native,
@@ -557,6 +560,7 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
     }))
     .unwrap();
     let mut session = Session {
+        service_admission: None,
         config: Config {
             url,
             origin: "http://localhost".into(),
@@ -580,6 +584,7 @@ async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpSt
     session
         .event(
             Event::Welcome {
+                connection_id: Uuid::new_v4(),
                 protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
                 self_profile: self_profile(&welcome, session_id),
                 credential: "fixture".into(),
@@ -819,6 +824,7 @@ async fn capture_settings_and_title_complete_only_on_the_correlated_room_reply()
     let (mut socket, _) = client.unwrap();
     let _remote = remote.unwrap();
     let mut session = Session {
+        service_admission: None,
         config: Config {
             url,
             origin: "http://localhost".into(),
@@ -968,6 +974,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
         }))
         .unwrap();
             let mut session = Session {
+                service_admission: None,
                 config: Config {
                     url,
                     origin: "http://localhost".into(),
@@ -988,6 +995,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
             session
                 .event(
                     Event::Welcome {
+                        connection_id: Uuid::new_v4(),
                         protocol: piik_channel_core::wire::CHANNEL_PROTOCOL,
                         self_profile: self_profile(&state, session_id),
                         credential: "fixture".into(),
