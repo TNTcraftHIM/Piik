@@ -5,7 +5,7 @@ export const en: Record<CopyKey, string> = {
   "playback.buffering": "Playback buffering",
   "playback.increaseBuffer": "Increase playback buffering",
   "playback.bufferTarget": "Total buffer target",
-  "playback.bufferHint": "Set how long the receiver aims to wait for data. This may reduce stalls caused by network jitter, but adds viewing delay and may delay relayed pictures.",
+  "playback.bufferHint": "Set how long to wait for late data to reduce brief network stalls. The browser determines the actual buffer; high targets may affect audio/video sync and delay relayed video.",
   "playback.bufferUnsupported": "The current receive path cannot set a buffer target.",
   "playback.bufferFailed": "Could not apply this buffer target. Playback continues.",
   "host.invite.qr": "Invitation QR code",
